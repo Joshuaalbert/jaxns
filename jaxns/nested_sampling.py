@@ -8,7 +8,7 @@ from jax.scipy.special import logsumexp
 from typing import NamedTuple, Dict
 from collections import namedtuple
 
-from jaxns.prior_transforms import PriorTransform
+from jaxns.prior_transforms import PriorChain, DeltaPrior
 from jaxns.param_tracking import Evidence, PosteriorFirstMoment, PosteriorSecondMoment, \
     InformationGain
 from jaxns.utils import dict_multimap
@@ -45,7 +45,7 @@ class NestedSamplerState(NamedTuple):
 class NestedSampler(object):
     _available_samplers = ['box', 'whitened_box', 'chmc', 'slice', 'ellipsoid', 'whitened_ellipsoid']
 
-    def __init__(self, loglikelihood, prior_transform: PriorTransform, sampler_name='ellipsoid'):
+    def __init__(self, loglikelihood, prior_chain: PriorChain, sampler_name='ellipsoid'):
         self.sampler_name = sampler_name
         if self.sampler_name not in self._available_samplers:
             raise ValueError("sampler {} should be one of {}.".format(self.sampler_name, self._available_samplers))
@@ -55,18 +55,21 @@ class NestedSampler(object):
             return jnp.where(jnp.isnan(log_L), -jnp.inf, log_L)
 
         self.loglikelihood = fixed_likelihood
-        self.prior_transform = prior_transform
+        self.prior_chain = prior_chain
 
         def loglikelihood_from_U(U):
-            return fixed_likelihood(**prior_transform(U))
+            return fixed_likelihood(**prior_chain(U))
 
         self.loglikelihood_from_U = loglikelihood_from_U
+
+    def _filter_prior_chain(self, d):
+        return {name: d[name] for name, prior in self.prior_chain.prior_chain.items() if prior.tracked}
 
     def initial_state(self, key, num_live_points, max_samples, collect_samples: bool):
         # get initial live points_U
         def single_sample(key):
-            U = random.uniform(key, shape=(self.prior_transform.U_ndims,))
-            constrained = self.prior_transform(U)
+            U = random.uniform(key, shape=(self.prior_chain.U_ndims,))
+            constrained = self.prior_chain(U)
             log_L = self.loglikelihood(**constrained)
             return U, constrained, log_L
 
@@ -74,15 +77,16 @@ class NestedSampler(object):
         live_points_U, live_points, log_L_live = vmap(single_sample)(random.split(init_key, num_live_points))
 
         if collect_samples:
-            dead_points = dict_multimap(lambda shape: jnp.zeros((max_samples,) + shape), self.prior_transform.to_shapes)
+            dead_points = dict_multimap(lambda shape: jnp.zeros((max_samples,) + shape),
+                                        self._filter_prior_chain(self.prior_chain.to_shapes))
             log_L_dead = jnp.zeros((max_samples,))
         else:
             dead_points = None
             log_L_dead = None
 
         evidence = Evidence()
-        m = PosteriorFirstMoment(self.prior_transform.to_shapes)
-        M = PosteriorSecondMoment(self.prior_transform.to_shapes)
+        m = PosteriorFirstMoment(self._filter_prior_chain(self.prior_chain.to_shapes))
+        M = PosteriorSecondMoment(self._filter_prior_chain(self.prior_chain.to_shapes))
         information_gain = InformationGain(global_evidence=evidence)
 
         state = NestedSamplerState(
@@ -128,9 +132,9 @@ class NestedSampler(object):
         # update tracking
         evidence = Evidence(state=state.evidence_state)
         evidence.update(dead_point, n, log_L_min)
-        m = PosteriorFirstMoment(self.prior_transform.to_shapes, state=state.m_state)
+        m = PosteriorFirstMoment(self.prior_chain.to_shapes, state=state.m_state)
         m.update(dead_point, n, log_L_min)
-        M = PosteriorSecondMoment(self.prior_transform.to_shapes, state=state.M_state)
+        M = PosteriorSecondMoment(self.prior_chain.to_shapes, state=state.M_state)
         M.update(dead_point, n, log_L_min)
         H = InformationGain(global_evidence=evidence, state=state.information_gain_state)
         H.update(dead_point, n, log_L_min)
@@ -150,7 +154,7 @@ class NestedSampler(object):
                                            live_points_U=state.live_points_U,
                                            spawn_point_U=state.live_points_U[spawn_point_id, :],
                                            loglikelihood_from_constrained=self.loglikelihood,
-                                           prior_transform=self.prior_transform,
+                                           prior_transform=self.prior_chain,
                                            whiten=False)
         elif self.sampler_name == 'whitened_box':
             key, spawn_id_key = random.split(state.key, 2)
@@ -161,39 +165,39 @@ class NestedSampler(object):
                                            live_points_U=state.live_points_U,
                                            spawn_point_U=state.live_points_U[spawn_point_id, :],
                                            loglikelihood_from_constrained=self.loglikelihood,
-                                           prior_transform=self.prior_transform,
+                                           prior_transform=self.prior_chain,
                                            whiten=True)
         elif self.sampler_name == 'ellipsoid':
             sampler_results = expanded_ellipsoid(state.key,
                                                  log_L_constraint=log_L_min,
                                                  live_points_U=state.live_points_U,
                                                  loglikelihood_from_constrained=self.loglikelihood,
-                                                 prior_transform=self.prior_transform,
+                                                 prior_transform=self.prior_chain,
                                                  whiten=False)
         elif self.sampler_name == 'whitened_ellipsoid':
             sampler_results = expanded_ellipsoid(state.key,
                                                  log_L_constraint=log_L_min,
                                                  live_points_U=state.live_points_U,
                                                  loglikelihood_from_constrained=self.loglikelihood,
-                                                 prior_transform=self.prior_transform,
+                                                 prior_transform=self.prior_chain,
                                                  whiten=True)
         elif self.sampler_name == 'chmc':
             sampler_results = constrained_hmc(state.key, log_L_constraint=log_L_min,
                                               live_points_U=state.live_points_U,
                                               last_live_point=dead_point,
                                               loglikelihood_from_constrained=self.loglikelihood,
-                                              prior_transform=self.prior_transform, T=2)
+                                              prior_transform=self.prior_chain, T=2)
         elif self.sampler_name == 'slice':
             sampler_results = slice_sampling(state.key, log_L_constraint=log_L_min, live_points_U=state.live_points_U,
                                              dead_point=dead_point,
                                              num_slices=state.live_points_U.shape[1],
                                              loglikelihood_from_constrained=self.loglikelihood,
-                                             prior_transform=self.prior_transform)
-        print(sampler_results)
+                                             prior_transform=self.prior_chain)
         #
         log_L_live = dynamic_update_slice(state.log_L_live, sampler_results.log_L_new[None], [i_min])
         live_points = dict_multimap(lambda x, y: dynamic_update_slice(x, y[None, ...],
-                                                                      [i_min] + [0] * len(y.shape)), state.live_points,
+                                                                      [i_min] + [0] * len(y.shape)),
+                                    state.live_points,
                                     sampler_results.x_new)
         live_points_U = dynamic_update_slice(state.live_points_U, sampler_results.u_new[None, :],
                                              [i_min, 0])
@@ -263,9 +267,9 @@ class NestedSampler(object):
         NestedSamplerResults = namedtuple('NestedSamplerResults', collect)
         evidence = Evidence(state=state.evidence_state)
         evidence.update_from_live_points(state.live_points, state.log_L_live)
-        m = PosteriorFirstMoment(self.prior_transform.to_shapes, state=state.m_state)
+        m = PosteriorFirstMoment(self.prior_chain.to_shapes, state=state.m_state)
         m.update_from_live_points(state.live_points, state.log_L_live)
-        M = PosteriorSecondMoment(self.prior_transform.to_shapes, state=state.M_state)
+        M = PosteriorSecondMoment(self.prior_chain.to_shapes, state=state.M_state)
         M.update_from_live_points(state.live_points, state.log_L_live)
         H = InformationGain(global_evidence=evidence, state=state.information_gain_state)
         H.update_from_live_points(state.live_points, state.log_L_live)

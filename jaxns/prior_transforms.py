@@ -42,10 +42,11 @@ class Boolean(PositiveIntegers):
 
 class PriorTransform(object):
     #@TODO(joshuaalbert): add support of RVs (Reals, Reals>0, int, boolean, interval,...)
-    def __init__(self, name, U_ndims, parents):
+    def __init__(self, name, U_ndims, parents, tracked):
         self._name = name
         self._U_ndims = U_ndims
         self._parents = list(parents)
+        self._tracked = tracked
 
     def __repr__(self):
         return "{}({})".format(self.__class__.__name__, ",".join([p.name for p in self.parents]))
@@ -61,6 +62,10 @@ class PriorTransform(object):
     @property
     def U_ndims(self):
         return self._U_ndims
+
+    @property
+    def tracked(self):
+        return self._tracked
 
     @property
     def to_shape(self):
@@ -141,9 +146,9 @@ class PriorChain(object):
 
 
 class DeltaPrior(PriorTransform):
-    def __init__(self, name, value):
-        super(DeltaPrior, self).__init__(name, 0, [])
-        self.value = jnp.asarray(value)
+    def __init__(self, name, value, tracked=False):
+        super(DeltaPrior, self).__init__(name, 0, [], tracked)
+        self.value = jnp.atleast_1d(jnp.asarray(value))
 
     def __repr__(self):
         return "DeltaPrior({})".format(self.value)
@@ -163,14 +168,14 @@ def get_shape(v):
     return ()
 
 class MVNDiagPrior(PriorTransform):
-    def __init__(self, name, mu, gamma):
+    def __init__(self, name, mu, gamma, tracked=True):
         if not isinstance(mu, PriorTransform):
-            mu = DeltaPrior('_{}_mu'.format(name), mu)
+            mu = DeltaPrior('_{}_mu'.format(name), mu, False)
         if not isinstance(gamma, PriorTransform):
-            gamma = DeltaPrior('_{}_gamma'.format(name), gamma)
+            gamma = DeltaPrior('_{}_gamma'.format(name), gamma, False)
         #replaces mu and gamma when parents injected
         U_dims = broadcast_shapes(get_shape(mu), get_shape(gamma))[0]
-        super(MVNDiagPrior, self).__init__(name, U_dims, [mu, gamma])
+        super(MVNDiagPrior, self).__init__(name, U_dims, [mu, gamma], tracked)
 
     @property
     def to_shape(self):
@@ -181,14 +186,14 @@ class MVNDiagPrior(PriorTransform):
 
 
 class LaplacePrior(PriorTransform):
-    def __init__(self, name, mu, b):
+    def __init__(self, name, mu, b, tracked=True):
         if not isinstance(mu, PriorTransform):
-            mu = DeltaPrior('_{}_mu'.format(name), mu)
+            mu = DeltaPrior('_{}_mu'.format(name), mu, False)
         if not isinstance(b, PriorTransform):
-            b = DeltaPrior('_{}_b'.format(name), b)
+            b = DeltaPrior('_{}_b'.format(name), b, False)
         #replaces mu and gamma when parents injected
         U_dims = broadcast_shapes(get_shape(mu), get_shape(b))[0]
-        super(LaplacePrior, self).__init__(name, U_dims, [mu, b])
+        super(LaplacePrior, self).__init__(name, U_dims, [mu, b], tracked)
 
 
     @property
@@ -200,14 +205,14 @@ class LaplacePrior(PriorTransform):
 
 
 class UniformPrior(PriorTransform):
-    def __init__(self, name, low, high):
+    def __init__(self, name, low, high, tracked=True):
         if not isinstance(low, PriorTransform):
-            low = DeltaPrior('_{}_low'.format(name), low)
-        if not isinstance(low, PriorTransform):
-            high = DeltaPrior('_{}_high'.format(name), high)
+            low = DeltaPrior('_{}_low'.format(name), low, False)
+        if not isinstance(high, PriorTransform):
+            high = DeltaPrior('_{}_high'.format(name), high, False)
         #replaces mu and gamma when parents injected
         U_dims = broadcast_shapes(get_shape(low), get_shape(high))[0]
-        super(UniformPrior, self).__init__(name, U_dims, [low, high])
+        super(UniformPrior, self).__init__(name, U_dims, [low, high], tracked)
 
 
     @property
@@ -219,15 +224,15 @@ class UniformPrior(PriorTransform):
 
 
 class DiagGaussianWalkPrior(PriorTransform):
-    def __init__(self, name, T, x0, omega):
+    def __init__(self, name, T, x0, omega, tracked=True):
         if not isinstance(x0, PriorTransform):
-            x0 = DeltaPrior('_{}_x0'.format(name), x0)
+            x0 = DeltaPrior('_{}_x0'.format(name), x0, False)
         if not isinstance(omega, PriorTransform):
-            omega = DeltaPrior('_{}_omega'.format(name), omega)
+            omega = DeltaPrior('_{}_omega'.format(name), omega, False)
         #replaces mu and gamma when parents injected
         self.dim = broadcast_shapes(get_shape(x0), get_shape(omega))[0]
         self.T = T
-        super(DiagGaussianWalkPrior, self).__init__(name, self.dim*self.T, [x0, omega])
+        super(DiagGaussianWalkPrior, self).__init__(name, self.dim*self.T, [x0, omega], tracked)
 
     @property
     def to_shape(self):

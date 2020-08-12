@@ -1,6 +1,7 @@
 import pylab as plt
 import jax.numpy as jnp
 from scipy.stats.kde import gaussian_kde
+from jaxns.utils import safe_gaussian_kde
 
 def plot_diagnostics(results, save_name=None):
     fig, axs = plt.subplots(4, 1, sharex=True, figsize=(8, 8))
@@ -17,11 +18,10 @@ def plot_diagnostics(results, save_name=None):
         fig.savefig(save_name)
     plt.show()
 
-def plot_cornerplot(results, save_name=None):
-    vars = ['x', 'uncert']
+def plot_cornerplot(results, vars=None,save_name=None):
     if vars is None:
-        vars = [k for k, v in results.items()]
-    ndims = sum([jnp.prod(v.shape[1:]) for k, v in results.samples.items() if (k in vars)])
+        vars = [k for k, v in results.samples.items()]
+    ndims = int(sum([jnp.prod(v.shape[1:]) for k, v in results.samples.items() if (k in vars)]))
     fig, axs = plt.subplots(ndims, ndims, figsize=(12, 12))
     weights = jnp.exp(results.log_p)
     nsamples = weights.size
@@ -30,7 +30,11 @@ def plot_cornerplot(results, save_name=None):
     for key in sorted(results.samples.keys()):
         for i in range(jnp.prod(results.samples[key].shape[1:])):
             samples1 = results.samples[key].reshape((nsamples, -1))[:, i]
+            if jnp.std(samples1) == 0.:
+                dim += 1
+                continue
             kde1 = gaussian_kde(samples1, weights=weights, bw_method='silverman')
+            # kde1 = safe_gaussian_kde(samples1, weights=weights)
             samples1_resampled = kde1.resample(size=int(results.ESS))
             binsx = jnp.linspace(*jnp.percentile(samples1_resampled, [0, 100]), 2*nbins)
             dim2 = 0
@@ -49,12 +53,15 @@ def plot_cornerplot(results, save_name=None):
                         ax.plot(binsx, kde1(binsx))
                         sample_mean = jnp.average(samples1, weights=weights)
                         sample_std = jnp.sqrt(jnp.average((samples1 - sample_mean)**2, weights=weights))
-                        ax.set_title("{:.2f}:{:.2f}:{:.2f}    {:.2f}+-{:.2f}".format(*jnp.percentile(samples1,[5,50,95]), sample_mean, sample_std))
+                        ax.set_title("{:.2f}:{:.2f}:{:.2f}\n{:.2f}+-{:.2f}".format(*jnp.percentile(samples1_resampled,[5,50,95]), sample_mean, sample_std))
                         ax.vlines(sample_mean, *ax.get_ylim(), linestyles='solid', colors='red')
                         ax.vlines([sample_mean-sample_std, sample_mean + sample_std],
                                   *ax.get_ylim(), linestyles='dotted', colors='red')
                     else:
                         samples2 = results.samples[key2].reshape((nsamples, -1))[:, i2]
+                        if jnp.std(samples2) == 0.:
+                            dim2 += 1
+                            continue
                         kde2 = gaussian_kde(jnp.stack([samples1, samples2], axis=0),
                                             weights=weights,
                                             bw_method='silverman')
