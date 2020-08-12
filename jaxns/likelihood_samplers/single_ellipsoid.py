@@ -24,8 +24,9 @@ def expanded_ellipsoid(key, log_L_constraint, live_points_U,
 
     """
     if whiten:
+        u_mean = jnp.mean(live_points_U, axis=0)
         L = jnp.linalg.cholesky(jnp.cov(live_points_U, rowvar=False, bias=True))
-        live_points_U = vmap(lambda u: solve_triangular(L, u, lower=True))(live_points_U)
+        live_points_U = vmap(lambda u: solve_triangular(L, u, lower=True))(live_points_U - u_mean)
     center, radii, rotation = minimum_volume_enclosing_ellipsoid(live_points_U, 0.01)
     # t_expand_mean = live_points_U.shape[0]/(live_points_U.shape[0] + 1)
     # print(jnp.prod(radii))
@@ -46,9 +47,10 @@ def expanded_ellipsoid(key, log_L_constraint, live_points_U,
         t_shrink = random.beta(beta_key, live_points_U.shape[0], 1) ** jnp.reciprocal(radii.size)
         u_test_white = sample_ellipsoid(sample_key, center, radii / t_shrink, rotation)
         if whiten:
-            u_test = L @ u_test_white
+            u_test = L @ u_test_white + u_mean
         else:
             u_test = u_test_white
+        u_test = jnp.clip(u_test, 0., 1.)
         x_test = prior_transform(u_test)
         log_L_test = loglikelihood_from_constrained(**x_test)
         return (key, i + 1, u_test, x_test, log_L_test)
