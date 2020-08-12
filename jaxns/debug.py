@@ -5,6 +5,7 @@ from jaxns.utils import minimum_volume_enclosing_ellipsoid, sample_ellipsoid
 from jax import numpy as jnp, random, vmap
 from jaxns.prior_transforms import MVNDiagPrior, UniformPrior
 from jaxns.utils import cluster
+from jaxns.plotting import plot_diagnostics, plot_cornerplot
 
 def debug_triangular_solve():
     from jax.lax_linalg import triangular_solve
@@ -164,7 +165,7 @@ def generate_data():
     tec = jnp.cumsum(10. * random.normal(random.PRNGKey(0), shape=(T,)))
     TEC_CONV = -8.4479745e6  # mTECU/Hz
     freqs = jnp.linspace(121e6, 168e6, 24)
-    phase = tec[:, None] / freqs * TEC_CONV + 0.2  # + onp.linspace(-onp.pi, onp.pi, T)[:, None]
+    phase = tec[:, None] / freqs * TEC_CONV #+ 0.2  # + onp.linspace(-onp.pi, onp.pi, T)[:, None]
     Y = jnp.concatenate([jnp.cos(phase), jnp.sin(phase)], axis=1)
     Y_obs = Y + 0.25 * random.normal(random.PRNGKey(1), shape=Y.shape)
     # Y_obs[500:550:2, :] += 3. * onp.random.normal(size=Y[500:550:2, :].shape)
@@ -174,7 +175,7 @@ def generate_data():
 
 
 def debug_tec_clock_inference():
-    from jax.lax_linalg import triangular_solve
+    from jax.scipy.linalg import solve_triangular
     from jax import random, jit
     from born_rime.nested_sampling.prior_transforms import UniformUncertNormalParam
 
@@ -184,19 +185,21 @@ def debug_tec_clock_inference():
     def log_normal(x, mean, cov):
         L = jnp.linalg.cholesky(cov)
         dx = x - mean
-        dx = triangular_solve(L, dx, lower=True, transpose_a=True)
+        dx = solve_triangular(L, dx, lower=True)
         return -0.5 * x.size * jnp.log(2. * jnp.pi) - jnp.sum(jnp.log(jnp.diag(L))) \
                - 0.5 * dx @ dx
 
-    def log_likelihood(x, uncert):
+    def log_likelihood(x):
         tec = x[0]  # [:, 0]
-        clock = x[1]  # [:, 1]
-        phase = tec * (TEC_CONV / freqs) + clock
+        uncert = x[1]  # [:, 1]
+        clock = x[2] * 1e-9
+        # uncert = 0.25#x[2]
+        phase = tec * (TEC_CONV / freqs) + clock *(jnp.pi*2)*freqs#+ clock
         Y = jnp.concatenate([jnp.cos(phase), jnp.sin(phase)], axis=-1)
         return log_normal(Y, Y_obs[0, :], uncert ** 2 * jnp.eye(2 * freqs.size))
 
-    prior_mu = jnp.array([0., 0.])
-    prior_cov = jnp.diag(jnp.array([20., 1.])) ** 2
+    # prior_mu = jnp.array([0., 0.])
+    # prior_cov = jnp.diag(jnp.array([20., 1.])) ** 2
 
     # import pylab as plt
     # X = random.uniform(random.PRNGKey(0),shape=(10000,2),minval=jnp.array([-100., -jnp.pi])[None,:], maxval=jnp.array([100., jnp.pi])[None,:])
@@ -205,71 +208,44 @@ def debug_tec_clock_inference():
     # return
 
     # prior_transform = MVNDiagPrior(prior_mu, jnp.sqrt(jnp.diag(prior_cov)))
-    prior_transform = UniformUncertNormalParam(jnp.array([0.01]), jnp.array([1.]), prior_mu,
-                                               jnp.sqrt(jnp.diag(prior_cov)))
+    # prior_transform = UniformUncertNormalParam(jnp.array([0.01]), jnp.array([1.]), prior_mu,
+    #                                            jnp.sqrt(jnp.diag(prior_cov)))
+
+    # prior_transform = MVNDiagPrior(prior_mu, jnp.sqrt(jnp.diag(prior_cov)))
+    # prior_transform = LaplacePrior(prior_mu, jnp.sqrt(jnp.diag(prior_cov)))
+    prior_transform = UniformPrior(jnp.array([-20., 0.01, -2.]), jnp.array([20., 0.5, 2.]))
+
     print(prior_transform.to_shapes)
     ndims = prior_transform.U_ndims
     # prior_transform = HMMPrior(0. * jnp.array([-100., -jnp.pi]), jnp.array([100., 1.]), jnp.array([10., 0.1]), T, 2)
 
     # prior_transform = UniformPrior(-10.*jnp.ones(ndims), 10.*jnp.ones(ndims))
-    ns = NestedSampler(log_likelihood, prior_transform)
+    ns = NestedSampler(log_likelihood, prior_transform, sampler_name='whitened_ellipsoid')
 
-    @jit
-    def run():
-        return ns(key=random.PRNGKey(1),
-                  num_live_points=25 * ndims,
-                  max_samples=1e6,
-                  collect_samples=True,
-                  termination_frac=0.05,
-                  stoachastic_uncertainty=True)
+    def run_with_n(n):
+        @jit
+        def run():
+            return ns(key=random.PRNGKey(0),
+                      num_live_points=n * ndims,
+                      max_samples=1e6,
+                      collect_samples=True,
+                      termination_frac=0.01,
+                      stoachastic_uncertainty=True)
 
-    # with disable_jit():
-    results = run()
+        # with disable_jit():
+        results = run()
+        return results
 
+    results = run_with_n(50)
     print(results)
-
     print(tec)
 
     ###
     import pylab as plt
 
-    fig, axs = plt.subplots(4, 1, sharex=True, figsize=(8, 8))
-    axs[0].plot(-results.log_X, results.n_per_sample)
-    axs[0].set_ylabel(r'$n(X)$')
-    axs[1].plot(-results.log_X, jnp.exp(results.log_L_samples))
-    axs[1].set_ylabel(r'$L(X)$')
-    axs[2].plot(-results.log_X, jnp.exp(results.log_p))
-    axs[2].set_ylabel(r'$Z^{-1}L(X) dX$')
-    axs[3].plot(-results.log_X, jnp.exp(results.logZ) * jnp.cumsum(jnp.exp(results.log_p)))
-    axs[3].set_ylabel(r'$Z(x > X)$')
-    axs[3].set_xlabel(r'$-\log X$')
-    plt.show()
+    plot_diagnostics(results)
+    plot_cornerplot(results)
 
-    fig, axs = plt.subplots(3, 3, figsize=(12, 12))
-    weights = jnp.exp(results.log_p)
-
-    ax = axs[0][0]
-    samples = results.samples['x'][:, 0]
-    ax.hist(samples, weights=weights, bins=int(jnp.sqrt(samples.shape[0])))
-    ax = axs[1][1]
-    samples = results.samples['x'][:, 1]
-    ax.hist(samples, weights=weights, bins=int(jnp.sqrt(samples.shape[0])))
-    ax = axs[2][2]
-    samples = results.samples['uncert'][:, 0]
-    ax.hist(samples, weights=weights, bins=int(jnp.sqrt(samples.shape[0])))
-    ax = axs[1][0]
-    samples1 = results.samples['x'][:, 1]
-    samples2 = results.samples['x'][:, 0]
-    ax.hist2d(samples1, samples2, weights=weights, bins=int(jnp.sqrt(samples1.shape[0])))
-    ax = axs[2][0]
-    samples1 = results.samples['uncert'][:, 0]
-    samples2 = results.samples['x'][:, 0]
-    ax.hist2d(samples1, samples2, weights=weights, bins=int(jnp.sqrt(samples1.shape[0])))
-    ax = axs[2][1]
-    samples1 = results.samples['uncert'][:, 0]
-    samples2 = results.samples['x'][:, 1]
-    ax.hist2d(samples1, samples2, weights=weights, bins=int(jnp.sqrt(samples1.shape[0])))
-    plt.show()
 
     # import dynesty
     # import dynesty.plotting as dyplot
@@ -495,7 +471,7 @@ def debug_riddle():
 
 if __name__ == '__main__':
     # debug_triangular_solve()
-    debug_nestest_sampler()
-    # test_tec_clock_inference()
+    # debug_nestest_sampler()
+    debug_tec_clock_inference()
     # debug_riddle()
     # debug_mvee()
