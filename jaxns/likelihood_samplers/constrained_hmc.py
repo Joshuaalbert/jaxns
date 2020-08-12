@@ -73,6 +73,7 @@ def constrained_hmc(key, log_L_constraint, live_points_U,
         # dist = jnp.where(dist == 0., jnp.inf, dist)
         step_size = jnp.std(live_points_U, axis=0)/T
         u_test, _num_f = transition(transition_key, u_init, step_size, T)
+
         x_test = prior_transform(u_test)
         log_L_test = loglikelihood_from_constrained(**x_test)
         num_f = num_f + _num_f + 1

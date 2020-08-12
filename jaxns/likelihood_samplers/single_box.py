@@ -25,9 +25,10 @@ def expanded_box(key, log_L_constraint, live_points_U,
 
     """
     if whiten:
+        u_mean = jnp.mean(live_points_U, axis=0)
         L = jnp.linalg.cholesky(jnp.cov(live_points_U, rowvar=False, bias=True))
-        live_points_U = vmap(lambda u: solve_triangular(L, u, lower=True))(live_points_U)
-        spawn_point_U = solve_triangular(L, spawn_point_U, lower=True)
+        live_points_U = vmap(lambda u: solve_triangular(L, u, lower=True))(live_points_U - u_mean)
+        spawn_point_U = solve_triangular(L, spawn_point_U-u_mean, lower=True)
 
     key, R_key = random.split(key, 2)
     # M,M
@@ -71,9 +72,10 @@ def expanded_box(key, log_L_constraint, live_points_U,
         #    = dx + R @ u
         # x_i = x0_i + R_ij u_j
         if whiten:
-            u_test = L @ (spawn_point_U + R @ u_test_white)
+            u_test = L @ (spawn_point_U + R @ u_test_white) + u_mean
         else:
             u_test = u_test_white
+        u_test = jnp.clip(u_test, 0., 1.)
         x_test = prior_transform(u_test)
         log_L_test = loglikelihood_from_constrained(**x_test)
         return (key, i + 1, u_test, x_test, log_L_test)
