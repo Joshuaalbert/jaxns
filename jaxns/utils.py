@@ -1,7 +1,14 @@
 import jax.numpy as jnp
 from jax import random, value_and_grad, vmap
 from jax.lax import scan, while_loop
+from scipy.stats.kde import gaussian_kde
 
+def safe_gaussian_kde(samples, weights):
+    try:
+        return gaussian_kde(samples, weights=weights, bw_method='silverman')
+    except:
+        hist, bin_edges = jnp.histogram(samples,weights=weights, bins='auto')
+        return lambda x: hist[jnp.searchsorted(bin_edges, x)]
 
 def random_ortho_matrix(key, n):
     """
