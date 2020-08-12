@@ -38,7 +38,7 @@ def main():
         # uncert = x[1]  # [:, 1]
         # clock = x[2] * 1e-9
         # uncert = 0.25#x[2]
-        phase = tec * (TEC_CONV / freqs)  # + clock *(jnp.pi*2)*freqs#+ clock
+        phase = tec[:,None] * (TEC_CONV / freqs)  # + clock *(jnp.pi*2)*freqs#+ clock
         Y = jnp.concatenate([jnp.cos(phase), jnp.sin(phase)], axis=-1)
         return jnp.sum(vmap(lambda Y, Y_obs: log_normal(Y, Y_obs, uncert ** 2 * jnp.eye(2 * freqs.size)))(Y, Y_obs))
 
