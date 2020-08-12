@@ -66,12 +66,12 @@ def plot_cornerplot(results, vars=None,save_name=None):
                                             weights=weights,
                                             bw_method='silverman')
                         samples2_resampled = kde2.resample(size=int(results.ESS))
-                        ax.scatter(samples2_resampled[0,:], samples2_resampled[1,:], marker='+', c='black',alpha=0.5)
+                        ax.scatter(samples2_resampled[1,:], samples2_resampled[0,:], marker='+', c='black',alpha=0.5)
                         binsy = jnp.linspace(*jnp.percentile(samples2_resampled, [0, 100]), 2*nbins)
                         X, Y = jnp.meshgrid(binsx, binsy, indexing='ij')
-                        ax.contour(kde2(jnp.stack([X.flatten(), Y.flatten()], axis=0)).reshape((2*nbins,2*nbins)).T,
-                                   extent=(binsx.min(), binsx.max(),
-                                           binsy.min(), binsy.max()),
+                        ax.contour(kde2(jnp.stack([X.flatten(), Y.flatten()], axis=0)).reshape((2*nbins,2*nbins)),
+                                   extent=(binsy.min(), binsy.max(),
+                                           binsx.min(), binsx.max()),
                                    origin='lower')
                     if dim == ndims - 1:
                         ax.set_xlabel("{}[{}]".format(key2, i2))
