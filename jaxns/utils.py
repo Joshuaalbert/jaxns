@@ -1,7 +1,6 @@
 import jax.numpy as jnp
 from jax import random, value_and_grad, vmap
-from jax.lax import scan, while_loop, dynamic_update_slice
-from jaxns.prior_transforms import PriorTransform
+from jax.lax import scan, while_loop
 
 
 def random_ortho_matrix(key, n):
@@ -95,22 +94,6 @@ def test_quadratic_contour():
     plt.show()
 
     quadratic_contour(random.PRNGKey(0), U, log_likelihood, prior_transform)
-
-def neural_constrained_sampling(prior_transform:PriorTransform, log_likelihood):
-
-
-    def masked_cluster_id(points, centers, K):
-        """
-        Compute the cluster id of `points` given the cluster centers, and masking to only first `K` clusters.
-        points: [N, M]
-        centers: [max_K, M]
-        K: int
-        """
-        max_K = centers.shape[0]
-        # max_K, N
-        dist = jnp.linalg.norm(centers[:, None, :] - points[None, :, :], axis=-1)
-        dist = jnp.where(jnp.arange(max_K)[:, None] > K - 1, jnp.full_like(dist, jnp.inf), dist)
-        return jnp.argmin(dist, axis=0)
 
 
 def masked_cluster_id(points, centers, K):
@@ -333,3 +316,88 @@ def sample_ellipsoid(key, center, radii, rotation):
     y = center + rotation @ (radii * x)
     return y
 
+def broadcast_shapes(shape1, shape2):
+    if isinstance(shape1, int):
+        shape1 = (shape1,)
+    if isinstance(shape2, int):
+        shape2 = (shape2,)
+    def left_pad_shape(shape,l):
+        return tuple([1]*l + list(shape))
+    l = max(len(shape1), len(shape2))
+    shape1 = left_pad_shape(shape1,l- len(shape1))
+    shape2 = left_pad_shape(shape2,l - len(shape2))
+    out_shape = []
+    for s1, s2 in zip(shape1, shape2):
+        m = max(s1,s2)
+        if ((s1 != m) and (s1 != 1)) or ((s2 != m) and (s2 != 1)):
+            raise ValueError("Trying to broadcast {} with {}".format(shape1,shape2))
+        out_shape.append(m)
+    return tuple(out_shape)
+
+def test_broadcast_shapes():
+
+    assert broadcast_shapes(1,1) == (1,)
+    assert broadcast_shapes(1,2) == (2,)
+    assert broadcast_shapes(1,(2,2)) == (2,2)
+    assert broadcast_shapes((2,2),1) == (2,2)
+    assert broadcast_shapes((1,1),(2,2)) == (2,2)
+    assert broadcast_shapes((1,2),(2,2)) == (2,2)
+    assert broadcast_shapes((2,1),(2,2)) == (2,2)
+    assert broadcast_shapes((2,1),(2,1)) == (2,1)
+    assert broadcast_shapes((2,1),(1,1)) == (2,1)
+    assert broadcast_shapes((1,1),(1,1)) == (1,1)
+    assert broadcast_shapes((1,),(1,1)) == (1,1)
+    assert broadcast_shapes((1,1,2),(1,1)) == (1,1,2)
+    assert broadcast_shapes((1,2,1),(1,3)) == (1,2,3)
+
+
+def iterative_topological_sort(graph, start=None):
+    """
+    Get Depth-first topology.
+
+    :param graph: dependency dict (like a dask)
+        {'a':['b','c'],
+        'c':['b'],
+        'b':[]}
+    :param start: str
+        the node you want to search from.
+        This is equivalent to the node you want to compute.
+    :return: list of str
+        The order get from `start` to all ancestors in DFS.
+    """
+    seen = set()
+    stack = []  # path variable is gone, stack and order are new
+    order = []  # order will be in reverse order at first
+    if start is None:
+        start = list(graph.keys())
+    if not isinstance(start, (list, tuple)):
+        start = [start]
+    q = start
+    while q:
+        v = q.pop()
+        if not isinstance(v, str):
+            raise ValueError("Key {} is not a str".format(v))
+        if v not in seen:
+            seen.add(v)  # no need to append to path any more
+            if v not in graph.keys():
+                graph[v] = []
+            q.extend(graph[v])
+
+            while stack and v not in graph[stack[-1]]:  # new stuff here!
+                order.append(stack.pop())
+            stack.append(v)
+
+    return stack + order[::-1]  # new return value!
+
+def test_iterative_topological_sort():
+    dsk = {'a':[],
+           'b':['a'],
+           'c':['a','b']}
+    assert iterative_topological_sort(dsk,['a','b','c']) == ['c','b','a']
+    assert iterative_topological_sort(dsk) == ['c','b','a']
+    dsk = {'a': [],
+           'b': ['a', 'd'],
+           'c': ['a', 'b']}
+    # print(iterative_topological_sort(dsk, ['a', 'b', 'c']))
+    assert iterative_topological_sort(dsk, ['a', 'b', 'c']) == ['c', 'b', 'a', 'd']
+    assert iterative_topological_sort(dsk) == ['c', 'b', 'a', 'd']
