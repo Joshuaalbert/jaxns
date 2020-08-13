@@ -72,7 +72,7 @@ def main():
         .push(UniformPrior('l', 0., 2.))\
         .push(UniformPrior('uncert',0., 2.))
 
-    ns = NestedSampler(log_likelihood, prior_chain, sampler_name='whitened_box', predict_f=predict_f, predict_fvar=predict_fvar)
+    ns = NestedSampler(log_likelihood, prior_chain, sampler_name='whitened_ellipsoid', predict_f=predict_f, predict_fvar=predict_fvar)
 
     def run_with_n(n):
         @jit
