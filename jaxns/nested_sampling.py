@@ -13,7 +13,9 @@ from jaxns.param_tracking import Evidence, PosteriorFirstMoment, PosteriorSecond
     InformationGain
 from jaxns.utils import dict_multimap
 from jaxns.likelihood_samplers import (expanded_box,
-                                       slice_sampling, constrained_hmc, expanded_ellipsoid)
+                                       slice_sampling, constrained_hmc, expanded_ellipsoid,
+                                       init_ellipsoid_sampler_state, init_box_sampler_state, init_slice_sampler_state,
+                                       init_chmc_sampler_state)
 
 
 class NestedSamplerState(NamedTuple):
@@ -40,6 +42,7 @@ class NestedSamplerState(NamedTuple):
     M_state: namedtuple  # state for parameter covariance
     information_gain_state: namedtuple  # information, H, state
     status: int  # exit status: 0=good, 1=max samples reached
+    sampler_state: namedtuple  # arbitrary state passed between iterations of the sampling step
 
 
 class NestedSampler(object):
@@ -89,6 +92,22 @@ class NestedSampler(object):
         M = PosteriorSecondMoment(self._filter_prior_chain(self.prior_chain.to_shapes))
         information_gain = InformationGain(global_evidence=evidence)
 
+        # select cluster to spawn into
+        if self.sampler_name == 'box':
+            sampler_state = init_box_sampler_state(num_live_points, whiten=False)
+        elif self.sampler_name == 'whitened_box':
+            sampler_state = init_box_sampler_state(num_live_points, whiten=True)
+        elif self.sampler_name == 'ellipsoid':
+            sampler_state = init_ellipsoid_sampler_state(num_live_points, whiten=False)
+        elif self.sampler_name == 'whitened_ellipsoid':
+            sampler_state = init_ellipsoid_sampler_state(num_live_points, whiten=True)
+        elif self.sampler_name == 'chmc':
+            sampler_state = init_chmc_sampler_state(num_live_points, whiten=False)
+        elif self.sampler_name == 'slice':
+            sampler_state = init_slice_sampler_state(num_live_points, whiten=True)
+        else:
+            raise ValueError("Invalid sampler name {}".format(self.sampler_name))
+
         state = NestedSamplerState(
             key=key,
             done=jnp.array(False),
@@ -104,7 +123,8 @@ class NestedSampler(object):
             m_state=m.state,
             M_state=M.state,
             information_gain_state=information_gain.state,
-            status=jnp.array(0)
+            status=jnp.array(0),
+            sampler_state=sampler_state
         )
 
         return state
@@ -155,6 +175,7 @@ class NestedSampler(object):
                                            spawn_point_U=state.live_points_U[spawn_point_id, :],
                                            loglikelihood_from_constrained=self.loglikelihood,
                                            prior_transform=self.prior_chain,
+                                           sampler_state=state.sampler_state,
                                            whiten=False)
         elif self.sampler_name == 'whitened_box':
             key, spawn_id_key = random.split(state.key, 2)
@@ -166,6 +187,7 @@ class NestedSampler(object):
                                            spawn_point_U=state.live_points_U[spawn_point_id, :],
                                            loglikelihood_from_constrained=self.loglikelihood,
                                            prior_transform=self.prior_chain,
+                                           sampler_state=state.sampler_state,
                                            whiten=True)
         elif self.sampler_name == 'ellipsoid':
             sampler_results = expanded_ellipsoid(state.key,
@@ -173,6 +195,7 @@ class NestedSampler(object):
                                                  live_points_U=state.live_points_U,
                                                  loglikelihood_from_constrained=self.loglikelihood,
                                                  prior_transform=self.prior_chain,
+                                                 sampler_state=state.sampler_state,
                                                  whiten=False)
         elif self.sampler_name == 'whitened_ellipsoid':
             sampler_results = expanded_ellipsoid(state.key,
@@ -180,19 +203,24 @@ class NestedSampler(object):
                                                  live_points_U=state.live_points_U,
                                                  loglikelihood_from_constrained=self.loglikelihood,
                                                  prior_transform=self.prior_chain,
+                                                 sampler_state=state.sampler_state,
                                                  whiten=True)
         elif self.sampler_name == 'chmc':
             sampler_results = constrained_hmc(state.key, log_L_constraint=log_L_min,
                                               live_points_U=state.live_points_U,
                                               last_live_point=dead_point,
                                               loglikelihood_from_constrained=self.loglikelihood,
-                                              prior_transform=self.prior_chain, T=2)
+                                              prior_transform=self.prior_chain, T=2,
+                                              sampler_state=state.sampler_state)
         elif self.sampler_name == 'slice':
             sampler_results = slice_sampling(state.key, log_L_constraint=log_L_min, live_points_U=state.live_points_U,
                                              dead_point=dead_point,
                                              num_slices=state.live_points_U.shape[1],
                                              loglikelihood_from_constrained=self.loglikelihood,
-                                             prior_transform=self.prior_chain)
+                                             prior_transform=self.prior_chain,
+                                             sampler_state=state.sampler_state)
+        else:
+            raise ValueError("Invalid sampler name {}".format(self.sampler_name))
         #
         log_L_live = dynamic_update_slice(state.log_L_live, sampler_results.log_L_new[None], [i_min])
         live_points = dict_multimap(lambda x, y: dynamic_update_slice(x, y[None, ...],
@@ -207,7 +235,8 @@ class NestedSampler(object):
                                                           sampler_results.num_likelihood_evaluations,
                                log_L_live=log_L_live,
                                live_points=live_points,
-                               live_points_U=live_points_U)
+                               live_points_U=live_points_U,
+                               sampler_state=sampler_results.sampler_state)
 
         return state
 

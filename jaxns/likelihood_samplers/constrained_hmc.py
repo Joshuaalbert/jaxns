@@ -3,10 +3,15 @@ from collections import namedtuple
 from jax import value_and_grad, random, numpy as jnp
 from jax.lax import cond, while_loop
 
+CHMCSamplerState = namedtuple('CHMCSamplerState',
+                                   ['mvee_u'])
+
+def init_chmc_sampler_state(num_live_points, whiten=True):
+    return CHMCSamplerState(mvee_u=None)
 
 def constrained_hmc(key, log_L_constraint, live_points_U,
                     last_live_point, loglikelihood_from_constrained,
-                    prior_transform, T=2):
+                    prior_transform, T, sampler_state):
     """
     Samples from the prior restricted to the likelihood constraint.
     This undoes the shrinkage at each step to approximate a bound on the contours.
@@ -84,5 +89,5 @@ def constrained_hmc(key, log_L_constraint, live_points_U,
                                                        (key, live_points_U[0, :], last_live_point, log_L_constraint, 0))
 
     CHMCResults = namedtuple('CHMCResults',
-                             ['key', 'num_likelihood_evaluations', 'u_new', 'x_new', 'log_L_new'])
-    return CHMCResults(key, num_f, u_new, x_new, log_L_new)
+                             ['key', 'num_likelihood_evaluations', 'u_new', 'x_new', 'log_L_new', 'sampler_state'])
+    return CHMCResults(key, num_f, u_new, x_new, log_L_new, CHMCSamplerState(mvee_u=None))

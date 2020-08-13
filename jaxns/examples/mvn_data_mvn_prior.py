@@ -34,7 +34,7 @@ def main():
     prior_transform = PriorChain().push(MVNDiagPrior('x', prior_mu, jnp.sqrt(jnp.diag(prior_cov))))
     # prior_transform = LaplacePrior(prior_mu, jnp.sqrt(jnp.diag(prior_cov)))
     # prior_transform = UniformPrior(-20.*jnp.ones(ndims), 20.*jnp.ones(ndims))
-    ns = NestedSampler(log_likelihood, prior_transform, sampler_name='whitened_box')
+    ns = NestedSampler(log_likelihood, prior_transform, sampler_name='ellipsoid')
 
     def run_with_n(n):
         @jit

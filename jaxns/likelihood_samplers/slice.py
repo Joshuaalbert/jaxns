@@ -7,7 +7,7 @@ from jax.lax import while_loop, scan
 
 def slice_sampling_poly(key, log_L_constraint, live_points, cluster_id,
                         spawn_point, spawn_point_cluster_id, num_repeats,
-                        loglikelihood_from_U):
+                        loglikelihood_from_U, sampler_state):
     """
     Given a spawn point inside the feasible regions, perform a series of
     1D slice samplines.
@@ -181,11 +181,17 @@ def slice_sampling_poly(key, log_L_constraint, live_points, cluster_id,
                              num_likelihood_evaluations=outer_state.num_likelihood_evaluations)
 
 
+SliceSamplerState = namedtuple('SliceSamplerState',
+                                   ['L'])
+
+def init_slice_sampler_state(num_live_points, whiten=True):
+    return SliceSamplerState(L=None)
+
 def slice_sampling(key, log_L_constraint, live_points_U,
                    dead_point,
                    num_slices,
                    loglikelihood_from_constrained,
-                   prior_transform):
+                   prior_transform, sampler_state):
 
     def constraint(U):
         return loglikelihood_from_constrained(**prior_transform(U))
@@ -256,5 +262,5 @@ def slice_sampling(key, log_L_constraint, live_points_U,
                                                    (key, 0, u_init, dead_point, log_L_constraint, num_f))
 
     SliceSamplingResults = namedtuple('SliceSamplingResults',
-                                      ['key', 'num_likelihood_evaluations', 'u_new', 'x_new', 'log_L_new'])
-    return SliceSamplingResults(key, num_likelihood_evaluations, u_new, x_new, log_L_new)
+                                      ['key', 'num_likelihood_evaluations', 'u_new', 'x_new', 'log_L_new', 'sampler_state'])
+    return SliceSamplingResults(key, num_likelihood_evaluations, u_new, x_new, log_L_new, SliceSamplerState(L=None))
