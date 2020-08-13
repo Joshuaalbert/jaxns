@@ -29,7 +29,8 @@ def plot_cornerplot(results, vars=None,save_name=None):
     nbins = int(jnp.sqrt(results.ESS)) + 1
     dim = 0
     for key in sorted(results.samples.keys()):
-        for i in range(jnp.prod(results.samples[key].shape[1:])):
+        n1 = jnp.prod(results.samples[key].shape[1:])
+        for i in range(n1):
             samples1 = results.samples[key].reshape((nsamples, -1))[:, i]
             if jnp.std(samples1) == 0.:
                 dim += 1
@@ -40,7 +41,8 @@ def plot_cornerplot(results, vars=None,save_name=None):
             binsx = jnp.linspace(*jnp.percentile(samples1_resampled, [0, 100]), 2*nbins)
             dim2 = 0
             for key2 in sorted(results.samples.keys()):
-                for i2 in range(jnp.prod(results.samples[key2].shape[1:])):
+                n2 = jnp.prod(results.samples[key2].shape[1:])
+                for i2 in range(n2):
                     ax = axs[dim][dim2] if ndims > 1 else axs[0]
                     if dim2 > dim:
                         dim2 += 1
@@ -49,7 +51,15 @@ def plot_cornerplot(results, vars=None,save_name=None):
                         ax.set_yticks([])
                         ax.set_yticklabels([])
                         continue
-                    ax.set_title('{}[{}] {}[{}]'.format(key, i, key2, i2))
+                    if n2 > 1:
+                        title2 = "{}[{}]".format(key2, i2)
+                    else:
+                        title2 = "{}".format(key2)
+                    if n1 > 1:
+                        title1 = "{}[{}]".format(key, i)
+                    else:
+                        title1 = "{}".format(key)
+                    ax.set_title('{} {}'.format(title1, title2))
                     if dim == dim2:
                         ax.plot(binsx, kde1(binsx))
                         sample_mean = jnp.average(samples1, weights=weights)
@@ -75,9 +85,10 @@ def plot_cornerplot(results, vars=None,save_name=None):
                                            binsx.min(), binsx.max()),
                                    origin='lower')
                     if dim == ndims - 1:
-                        ax.set_xlabel("{}[{}]".format(key2, i2))
+                        ax.set_xlabel("{}".format(title2))
                     if dim2 == 0:
-                        ax.set_ylabel("{}[{}]".format(key, i))
+                        ax.set_ylabel("{}".format(title1))
+
                     dim2 += 1
             dim += 1
     if save_name is not None:
