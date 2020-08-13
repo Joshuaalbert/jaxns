@@ -48,7 +48,7 @@ class NestedSamplerState(NamedTuple):
 class NestedSampler(object):
     _available_samplers = ['box', 'whitened_box', 'chmc', 'slice', 'ellipsoid', 'whitened_ellipsoid']
 
-    def __init__(self, loglikelihood, prior_chain: PriorChain, sampler_name='ellipsoid'):
+    def __init__(self, loglikelihood, prior_chain: PriorChain, sampler_name='ellipsoid', **marginalise):
         self.sampler_name = sampler_name
         if self.sampler_name not in self._available_samplers:
             raise ValueError("sampler {} should be one of {}.".format(self.sampler_name, self._available_samplers))
@@ -64,6 +64,7 @@ class NestedSampler(object):
             return fixed_likelihood(**prior_chain(U))
 
         self.loglikelihood_from_U = loglikelihood_from_U
+        self.marginalise = marginalise if len(marginalise) > 0 else None
 
     def _filter_prior_chain(self, d):
         return {name: d[name] for name, prior in self.prior_chain.prior_chain.items() if prior.tracked}
@@ -210,7 +211,7 @@ class NestedSampler(object):
                                               live_points_U=state.live_points_U,
                                               last_live_point=dead_point,
                                               loglikelihood_from_constrained=self.loglikelihood,
-                                              prior_transform=self.prior_chain, T=2,
+                                              prior_transform=self.prior_chain, T=3,
                                               sampler_state=state.sampler_state)
         elif self.sampler_name == 'slice':
             sampler_results = slice_sampling(state.key, log_L_constraint=log_L_min, live_points_U=state.live_points_U,
@@ -292,6 +293,8 @@ class NestedSampler(object):
             collect.append('n_per_sample')
             collect.append('log_p')
             collect.append('log_X')
+        if self.marginalise is not None:
+            collect.append("marginalised")
 
         NestedSamplerResults = namedtuple('NestedSamplerResults', collect)
         evidence = Evidence(state=state.evidence_state)
@@ -391,5 +394,9 @@ class NestedSampler(object):
             log_w = log_dX + log_avg_L
             log_p = log_w - logsumexp(log_w)
             data['log_p'] = log_p
+            if self.marginalise is not None:
+                def single_marginalise(marginalise):
+                    return jnp.sum(vmap(lambda p, sample: p * marginalise(**sample))(jnp.exp(log_p), samples), axis=0)
+                data['marginalised'] = dict_multimap(single_marginalise, self.marginalise)
 
         return NestedSamplerResults(**data)
