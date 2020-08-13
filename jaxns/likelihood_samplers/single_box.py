@@ -5,10 +5,15 @@ from jax import numpy as jnp, vmap, random
 from jax.lax import while_loop
 from jax.scipy.linalg import solve_triangular
 
+BoxSamplerState = namedtuple('BoxSamplerState',
+                                   ['hull'])
+
+def init_box_sampler_state(num_live_points, whiten=True):
+    return BoxSamplerState(hull=None)
 
 def expanded_box(key, log_L_constraint, live_points_U,
                  spawn_point_U, loglikelihood_from_constrained,
-                 prior_transform, whiten=False):
+                 prior_transform, sampler_state, whiten=False):
     """
     Samples from the prior restricted to the likelihood constraint.
     This undoes the shrinkage at each step to approximate a bound on the contours.
@@ -87,5 +92,5 @@ def expanded_box(key, log_L_constraint, live_points_U,
                                                                              log_L_constraint))
 
     ExpandedBoundResults = namedtuple('ExpandedBoundResults',
-                                      ['key', 'num_likelihood_evaluations', 'u_new', 'x_new', 'log_L_new'])
-    return ExpandedBoundResults(key, num_likelihood_evaluations, u_new, x_new, log_L_new)
+                                      ['key', 'num_likelihood_evaluations', 'u_new', 'x_new', 'log_L_new', 'sampler_state'])
+    return ExpandedBoundResults(key, num_likelihood_evaluations, u_new, x_new, log_L_new, BoxSamplerState(hull=None))

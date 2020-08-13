@@ -5,7 +5,7 @@ from jaxns.utils import safe_gaussian_kde
 
 def plot_diagnostics(results, save_name=None):
     fig, axs = plt.subplots(4, 1, sharex=True, figsize=(8, 8))
-    axs[0].plot(-results.log_X, results.n_per_sample)
+    axs[0].plot(-results.log_X, results.n_per_sample, label='eff.={:.3f}'.format(results.efficiency))
     axs[0].set_ylabel(r'$n(X)$')
     axs[1].plot(-results.log_X, jnp.exp(results.log_L_samples))
     axs[1].set_ylabel(r'$L(X)$')
@@ -14,6 +14,7 @@ def plot_diagnostics(results, save_name=None):
     axs[3].plot(-results.log_X, jnp.exp(results.logZ) * jnp.cumsum(jnp.exp(results.log_p)))
     axs[3].set_ylabel(r'$Z(x > X)$')
     axs[3].set_xlabel(r'$-\log X$')
+    axs[0].legend()
     if save_name is not None:
         fig.savefig(save_name)
     plt.show()
