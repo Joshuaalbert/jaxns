@@ -7,6 +7,9 @@ Install with `python setup.py install`.
 
 # Quick start
 
+JAXNS is really fast because it uses JAX. I've found it's 3-4 orders of magnitude faster than other nested sampling packages.
+The caveat is that you should define your likelihood function with JAX. This is no big deal because JAX is just a replacement for numpy. 
+If you're unfamiliar, take a quick tour of JAX (https://jax.readthedocs.io/en/latest/notebooks/quickstart.html).
 See more examples in `jaxns/examples`.
 
 ```python
