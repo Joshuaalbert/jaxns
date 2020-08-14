@@ -6,17 +6,25 @@ from jax import random, jit, disable_jit
 from jax import numpy as jnp
 import pylab as plt
 
-def rbf(x, sigma, l):
+def squared_norm(x, l):
     # r2_ij = sum_k (x_ik - x_jk)^2
     #       = sum_k x_ik^2 - 2 x_jk x_ik + x_jk^2
     #       = sum_k x_ik^2 + x_jk^2 - 2 X X^T
-    x = x/l
+    x = x / l
     x2 = jnp.sum(jnp.square(x), axis=1)
-    x2 = (x2[:, None] + x2[None,:]) - 2.*(x @ x.T)
-    x2 = jnp.maximum(x2, 1e-36)
+    x2 = (x2[:, None] + x2[None, :]) - 2. * (x @ x.T)
+    return jnp.maximum(x2, 1e-36)
+
+def rbf(x, sigma, l):
+    x2 = squared_norm(x, l)
     return jnp.square(sigma)*jnp.exp(-0.5*x2) + 1e-6*jnp.eye(x.shape[0])
 
-def main():
+def m12(x, sigma, l):
+    x = jnp.sqrt(squared_norm(x, l))
+    return jnp.square(sigma)*jnp.exp(-x) + 1e-6*jnp.eye(x.shape[0])
+
+
+def main(kernel):
     def log_normal(x, mean, cov):
         L = jnp.linalg.cholesky(cov)
         dx = x - mean
@@ -26,7 +34,7 @@ def main():
 
     N = 100
     X = jnp.linspace(-2., 2., N)[:, None]
-    true_sigma, true_l, true_uncert = 1., 0.2, 1.
+    true_sigma, true_l, true_uncert = 1., 0.2, 0.2
     data_mu = jnp.zeros((N, ))
     prior_cov = rbf(X, true_sigma, true_l)
     Y = jnp.linalg.cholesky(prior_cov) @ random.normal(random.PRNGKey(0), shape=(N, )) + data_mu
@@ -35,10 +43,10 @@ def main():
                       random.normal(random.PRNGKey(1), shape=(N, )),
                       Y_obs)
 
-    plt.scatter(X[:, 0], Y_obs, label='data')
-    plt.plot(X[:, 0], Y, label='underlying')
-    plt.legend()
-    plt.show()
+    # plt.scatter(X[:, 0], Y_obs, label='data')
+    # plt.plot(X[:, 0], Y, label='underlying')
+    # plt.legend()
+    # plt.show()
 
     def log_likelihood(sigma, l, uncert, **kwargs):
         """
@@ -50,19 +58,19 @@ def main():
         Returns:
 
         """
-        K = rbf(X, sigma, l)
+        K = kernel(X, sigma, l)
         data_cov = jnp.square(uncert)*jnp.eye(X.shape[0])
         mu = jnp.zeros_like(Y_obs)
         return log_normal(Y_obs, mu , K + data_cov)
 
     def predict_f(sigma, l, uncert, **kwargs):
-        K = rbf(X, sigma, l)
+        K = kernel(X, sigma, l)
         data_cov = jnp.square(uncert) * jnp.eye(X.shape[0])
         mu = jnp.zeros_like(Y_obs)
         return mu + K @ jnp.linalg.solve(K + data_cov, Y_obs)
 
     def predict_fvar(sigma, l, uncert, **kwargs):
-        K = rbf(X, sigma, l)
+        K = kernel(X, sigma, l)
         data_cov = jnp.square(uncert) * jnp.eye(X.shape[0])
         mu = jnp.zeros_like(Y_obs)
         return jnp.diag(K - K @ jnp.linalg.solve(K + data_cov, K))
@@ -91,6 +99,8 @@ def main():
         results = run_with_n(n)
         plt.scatter(n, results.logZ)
         plt.errorbar(n, results.logZ, yerr=results.logZerr)
+    plt.title("Kernel: {}".format(kernel.__name__))
+    plt.ylabel('log Z')
     plt.show()
 
     plt.scatter(X[:, 0], Y_obs, label='data')
@@ -98,13 +108,20 @@ def main():
     plt.plot(X[:,0], results.marginalised['predict_f'], label='marginalised')
     plt.plot(X[:,0], results.marginalised['predict_f'] + jnp.sqrt(results.marginalised['predict_fvar']), ls='dotted', c='black')
     plt.plot(X[:,0], results.marginalised['predict_f'] - jnp.sqrt(results.marginalised['predict_fvar']), ls='dotted', c='black')
+    plt.title("Kernel: {}".format(kernel.__name__))
     plt.legend()
     plt.show()
 
     plot_diagnostics(results)
     plot_cornerplot(results)
+    return results.logZ, results.logZerr
 
 
 
 if __name__ == '__main__':
-    main()
+    logZ_rbf, logZerr_rbf = main(rbf)
+    logZ_m12, logZerr_m12 = main(m12)
+    plt.errorbar(['rbf', 'm12'], [logZ_rbf, logZ_m12], [logZerr_rbf, logZerr_m12])
+    plt.ylabel("log Z")
+    plt.legend()
+    plt.show()
