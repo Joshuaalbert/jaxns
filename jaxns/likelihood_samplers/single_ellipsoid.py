@@ -31,7 +31,7 @@ def expanded_ellipsoid(key, log_L_constraint, live_points_U,
     """
     if whiten:
         u_mean = jnp.mean(live_points_U, axis=0)
-        L = jnp.linalg.cholesky(jnp.cov(live_points_U, rowvar=False, bias=True))
+        L = jnp.linalg.cholesky(jnp.atleast_2d(jnp.cov(live_points_U, rowvar=False, bias=True)))
         live_points_U = vmap(lambda u: solve_triangular(L, u, lower=True))(live_points_U - u_mean)
     center, radii, rotation, next_mvee_u = minimum_volume_enclosing_ellipsoid(live_points_U, 0.01,
                                                                               init_u=sampler_state.mvee_u,
