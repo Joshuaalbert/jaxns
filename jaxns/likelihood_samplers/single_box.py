@@ -31,7 +31,7 @@ def expanded_box(key, log_L_constraint, live_points_U,
     """
     if whiten:
         u_mean = jnp.mean(live_points_U, axis=0)
-        L = jnp.linalg.cholesky(jnp.cov(live_points_U, rowvar=False, bias=True))
+        L = jnp.linalg.cholesky(jnp.atleast_2d(jnp.cov(live_points_U, rowvar=False, bias=True)))
         live_points_U = vmap(lambda u: solve_triangular(L, u, lower=True))(live_points_U - u_mean)
         spawn_point_U = solve_triangular(L, spawn_point_U-u_mean, lower=True)
 
