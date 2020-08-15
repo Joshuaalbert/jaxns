@@ -184,6 +184,23 @@ class MVNDiagPrior(PriorTransform):
     def forward(self, U, mu, gamma, **kwargs):
         return ndtri(U) * gamma + mu
 
+class MVNPrior(PriorTransform):
+    def __init__(self, name, mu, Gamma, tracked=True):
+        if not isinstance(mu, PriorTransform):
+            mu = DeltaPrior('_{}_mu'.format(name), mu, False)
+        if not isinstance(Gamma, PriorTransform):
+            Gamma = DeltaPrior('_{}_Gamma'.format(name), Gamma, False)
+        #replaces mu and gamma when parents injected
+        U_dims = broadcast_shapes(get_shape(mu), get_shape(Gamma)[0:1])[0]
+        super(MVNPrior, self).__init__(name, U_dims, [mu, Gamma], tracked)
+
+    @property
+    def to_shape(self):
+        return (self.U_ndims,)
+
+    def forward(self, U, mu, Gamma, **kwargs):
+        L = jnp.linalg.cholesky(Gamma)
+        return L @ ndtri(U) + mu
 
 class LaplacePrior(PriorTransform):
     def __init__(self, name, mu, b, tracked=True):
@@ -202,6 +219,28 @@ class LaplacePrior(PriorTransform):
 
     def forward(self, U, mu, b, **kwargs):
         return mu - b * jnp.sign(U - 0.5) * jnp.log(1. - 2. * jnp.abs(U - 0.5))
+
+
+class HalfLaplacePrior(PriorTransform):
+    def __init__(self, name, b, tracked=True):
+        if not isinstance(b, PriorTransform):
+            b = DeltaPrior('_{}_b'.format(name), b, False)
+        #replaces mu and gamma when parents injected
+        U_dims = get_shape(b)[0]
+        super(HalfLaplacePrior, self).__init__(name, U_dims, [b], tracked)
+
+
+    @property
+    def to_shape(self):
+        return (self.U_ndims,)
+
+    def forward(self, U, b, **kwargs):
+        return  - b * jnp.sign(0.5*U) * jnp.log(1. - 2. * jnp.abs(0.5*U))
+
+def test_half_laplace():
+    p = PriorChain().push(HalfLaplacePrior('x',1.))
+    U = jnp.linspace(0., 1., 100)[:, None]
+    assert ~jnp.any(jnp.isnan(vmap(p)(U)['x']))
 
 
 class UniformPrior(PriorTransform):
