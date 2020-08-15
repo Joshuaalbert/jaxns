@@ -1,6 +1,6 @@
 from jaxns.nested_sampling import NestedSampler
 from jaxns.plotting import plot_diagnostics, plot_cornerplot
-from jaxns.prior_transforms import UniformPrior, PriorChain, LaplacePrior, MVNDiagPrior, DiagGaussianWalkPrior
+from jaxns.prior_transforms import UniformPrior, PriorChain, LaplacePrior, HalfLaplacePrior
 
 from jax.scipy.linalg import solve_triangular
 from jax import jit, vmap
@@ -45,26 +45,18 @@ def main():
     # prior_transform = MVNDiagPrior(prior_mu, jnp.sqrt(jnp.diag(prior_cov)))
     # prior_transform = LaplacePrior(prior_mu, jnp.sqrt(jnp.diag(prior_cov)))
     prior_chain = PriorChain() \
-        .push(LaplacePrior('tec', [0] * T, 100.)) \
-        .push(UniformPrior('uncert', 0, 1))
+        .push(UniformPrior('tec', [-100.]*T, [100.]*T)) \
+        .push(HalfLaplacePrior('uncert', 0.25))
 
     ns = NestedSampler(log_likelihood, prior_chain, sampler_name='whitened_box')
 
-    def run_with_n(n):
-        @jit
-        def run():
-            return ns(key=random.PRNGKey(0),
+    results = ns(key=random.PRNGKey(0),
                       num_live_points=100,
                       max_samples=1e6,
                       collect_samples=True,
                       termination_frac=0.01,
                       stoachastic_uncertainty=True)
 
-        # with disable_jit():
-        results = run()
-        return results
-
-    results = run_with_n(50)
 
     ###
 
