@@ -6,11 +6,14 @@ from jax.lax import while_loop
 from jax.scipy.linalg import solve_triangular
 
 EllipsoidSamplerState = namedtuple('EllipsoidSamplerState',
-                                   ['mvee_u'])
+                                   ['mvee_u',  'center', 'rotation', 'radii'])
 
-def init_ellipsoid_sampler_state(num_live_points, whiten=True):
+def init_ellipsoid_sampler_state(num_live_points, dim, whiten=True):
     mvee_u = jnp.ones(num_live_points)/num_live_points
-    return EllipsoidSamplerState(mvee_u=mvee_u)
+    if whiten:
+        return EllipsoidSamplerState(mvee_u=mvee_u, center=jnp.zeros(dim), rotation=jnp.eye(dim), radii=jnp.ones(dim))
+    else:
+        return EllipsoidSamplerState(mvee_u=mvee_u, center=None, rotation=None, radii=None)
 
 def expanded_ellipsoid(key, log_L_constraint, live_points_U,
                                       loglikelihood_from_constrained,
@@ -30,12 +33,24 @@ def expanded_ellipsoid(key, log_L_constraint, live_points_U,
 
     """
     if whiten:
-        u_mean = jnp.mean(live_points_U, axis=0)
-        L = jnp.linalg.cholesky(jnp.atleast_2d(jnp.cov(live_points_U, rowvar=False, bias=True)))
-        live_points_U = vmap(lambda u: solve_triangular(L, u, lower=True))(live_points_U - u_mean)
+        # u_mean = jnp.mean(live_points_U, axis=0)
+        # L = jnp.linalg.cholesky(jnp.atleast_2d(jnp.cov(live_points_U, rowvar=False, bias=True)))
+        # live_points_U = vmap(lambda u: solve_triangular(sampler_state.L, u, lower=True))(live_points_U - sampler_state.center)
+        live_points_U = vmap(lambda u: (sampler_state.rotation.T/sampler_state.radii[:,None]) @ (u - sampler_state.center))(live_points_U)
     center, radii, rotation, next_mvee_u = minimum_volume_enclosing_ellipsoid(live_points_U, 0.01,
                                                                               init_u=sampler_state.mvee_u,
                                                                               return_u=True)
+    if whiten:
+        next_sampler_state = EllipsoidSamplerState(mvee_u=next_mvee_u,
+                                                   center=center,
+                                                   rotation = rotation,
+                                                   radii=radii)
+    else:
+        next_sampler_state = EllipsoidSamplerState(mvee_u=next_mvee_u,
+                                                   center=None,
+                                                   rotation=None,
+                                                   radii=None)
+
     # t_expand_mean = live_points_U.shape[0]/(live_points_U.shape[0] + 1)
     # print(jnp.prod(radii))
     # radii = 1.2*radii / t_expand_mean**(1./radii.size)
@@ -55,7 +70,7 @@ def expanded_ellipsoid(key, log_L_constraint, live_points_U,
         t_shrink = random.beta(beta_key, live_points_U.shape[0], 1) ** jnp.reciprocal(radii.size)
         u_test_white = sample_ellipsoid(sample_key, center, radii / t_shrink, rotation)
         if whiten:
-            u_test = L @ u_test_white + u_mean
+            u_test = (sampler_state.radii[None,:]*sampler_state.rotation) @ u_test_white + sampler_state.center
         else:
             u_test = u_test_white
         u_test = jnp.clip(u_test, 0., 1.)
@@ -71,5 +86,5 @@ def expanded_ellipsoid(key, log_L_constraint, live_points_U,
 
     ExpandedEllipsoidResults = namedtuple('ExpandedEllipsoidResults',
                                       ['key', 'num_likelihood_evaluations', 'u_new', 'x_new', 'log_L_new', 'sampler_state'])
-    return ExpandedEllipsoidResults(key, num_likelihood_evaluations, u_new, x_new, log_L_new, EllipsoidSamplerState(mvee_u=next_mvee_u))
+    return ExpandedEllipsoidResults(key, num_likelihood_evaluations, u_new, x_new, log_L_new, next_sampler_state)
 
