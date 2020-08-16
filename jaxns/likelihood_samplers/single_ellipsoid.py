@@ -64,7 +64,7 @@ def expanded_ellipsoid(key, log_L_constraint, live_points_U,
         # r_i+1^d = r_i^d * t
         # r_i+1 = r_i * t^1/d
         t_shrink = random.beta(beta_key, live_points_U.shape[0], 1) ** jnp.reciprocal(radii.size)
-        u_test_white = sample_ellipsoid(sample_key, center, radii / t_shrink, rotation)
+        u_test_white = sample_ellipsoid(sample_key, center, 1.02*radii / t_shrink, rotation)
         if whiten:
             # u_test = (sampler_state.radii[None,:]*sampler_state.rotation) @ u_test_white + sampler_state.center
             u_test = L @ u_test_white + u_mean
