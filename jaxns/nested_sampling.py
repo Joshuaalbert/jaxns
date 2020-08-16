@@ -397,6 +397,7 @@ class NestedSampler(object):
             if self.marginalise is not None:
                 def single_marginalise(marginalise):
                     return jnp.sum(vmap(lambda p, sample: p * marginalise(**sample))(jnp.exp(log_p), samples), axis=0)
+
                 data['marginalised'] = dict_multimap(single_marginalise, self.marginalise)
 
         return NestedSamplerResults(**data)
