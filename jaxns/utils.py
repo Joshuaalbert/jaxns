@@ -268,60 +268,6 @@ def recluster(state, max_K: int):
                            )
     return state
 
-def minimum_volume_enclosing_ellipsoid(points, tol, init_u=None, return_u=False):
-    """
-    Performs the algorithm of
-    MINIMUM VOLUME ENCLOSING ELLIPSOIDS
-    NIMA MOSHTAGH
-    psuedo-code here:
-    https://stackoverflow.com/questions/1768197/bounding-ellipse
-
-    Args:
-        points: [N, D]
-    """
-    N, D = points.shape
-    Q = jnp.concatenate([points, jnp.ones([N, 1])], axis=1)#N,D+1
-    def body(state):
-        (count, err, u) = state
-        V = Q.T @ jnp.diag(u) @ Q
-        # g[i] = Q[i,j].V^-1_jk.Q[i,k]
-        g = vmap(lambda q: q @ jnp.linalg.solve(V,q))(Q)
-        #jnp.diag(Q @ jnp.linalg.solve(V, Q.T))
-        j = jnp.argmax(g)
-        g_max = g[j]
-        step_size = \
-            (g_max - D  - 1)/((D+1)*(g_max - 1))
-        search_direction = jnp.where(jnp.arange(N)==j, 1.- u, -u)
-        new_u = u + step_size * search_direction
-        # new_u = (1. - step_size)*u
-        # new_u = jnp.where(jnp.arange(N) == j, new_u + step_size, new_u)
-        new_err = jnp.linalg.norm(u - new_u)
-        return (count+1, new_err, new_u)
-    if init_u is None:
-        init_u = jnp.ones(N)/N
-    (count, err, u) = while_loop(lambda state: state[1] > tol,
-                                 body,
-                                 (0, 1., init_u))
-    U = jnp.diag(u)
-    PU = (points.T @ u) # D, N
-    A = jnp.reciprocal(D)* jnp.linalg.pinv(points.T @ U @ points - PU[:,None] @ PU[None,:] )
-    c = points.T @ u
-    W, Q, Vh = jnp.linalg.svd(A)
-    radii = jnp.reciprocal(jnp.sqrt(Q))
-    rotation = Vh.conj().T
-    if return_u:
-        return c, radii, rotation, u
-    return c, radii, rotation
-
-def sample_ellipsoid(key, center, radii, rotation):
-    direction_key, radii_key = random.split(key, 2)
-    direction = random.normal(direction_key, shape=radii.shape)
-    log_norm = jnp.log(jnp.linalg.norm(direction))
-    log_radius = jnp.log(random.uniform(radii_key))/radii.size
-    # x = direction * (radius/norm)
-    x = direction * jnp.exp(log_radius - log_norm)
-    y = center + rotation @ (radii * x)
-    return y
 
 def broadcast_shapes(shape1, shape2):
     if isinstance(shape1, int):
