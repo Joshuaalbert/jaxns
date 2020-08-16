@@ -1,6 +1,6 @@
 from collections import namedtuple
 
-from jaxns.utils import minimum_volume_enclosing_ellipsoid, sample_ellipsoid
+from jaxns.likelihood_samplers.ellipsoid_utils import minimum_volume_enclosing_ellipsoid, sample_ellipsoid
 from jax import numpy as jnp, vmap, random
 from jax.lax import while_loop
 from jax.scipy.linalg import solve_triangular
