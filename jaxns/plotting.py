@@ -36,6 +36,8 @@ def plot_cornerplot(results, vars=None,save_name=None):
             if jnp.std(samples1) == 0.:
                 dim += 1
                 continue
+            weights = jnp.where(jnp.isfinite(samples1), jnp.exp(results.log_p), 0.)
+            samples1 = jnp.where(jnp.isfinite(samples1), samples1, 0.)
             kde1 = gaussian_kde(samples1, weights=weights, bw_method='silverman')
             # kde1 = safe_gaussian_kde(samples1, weights=weights)
             samples1_resampled = kde1.resample(size=int(results.ESS))
@@ -76,6 +78,8 @@ def plot_cornerplot(results, vars=None,save_name=None):
                         if jnp.std(samples2) == 0.:
                             dim2 += 1
                             continue
+                        weights = jnp.where(jnp.isfinite(samples2), weights, 0.)
+                        samples2 = jnp.where(jnp.isfinite(samples2), samples2, 0.)
                         kde2 = gaussian_kde(jnp.stack([samples1, samples2], axis=0),
                                             weights=weights,
                                             bw_method='silverman')
