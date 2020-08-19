@@ -202,6 +202,53 @@ class MVNPrior(PriorTransform):
         L = jnp.linalg.cholesky(Gamma)
         return L @ ndtri(U) + mu
 
+class GMMDiagPrior(PriorTransform):
+    def __init__(self, name, pi, mu, gamma, tracked=True):
+        if not isinstance(pi, PriorTransform):
+            pi = DeltaPrior('_{}_pi'.format(name), mu, False)
+        if not isinstance(mu, PriorTransform):
+            mu = DeltaPrior('_{}_mu'.format(name), mu, False)
+        if not isinstance(gamma, PriorTransform):
+            gamma = DeltaPrior('_{}_gamma'.format(name), gamma, False)
+        assert (get_shape(pi)[0] == get_shape(mu)[0]) and (get_shape(pi)[0] == get_shape(gamma)[0])
+        #replaces mu and gamma when parents injected
+        U_dims = 1 + broadcast_shapes(get_shape(mu)[-1:], get_shape(gamma)[-1:])[0]
+        super(GMMDiagPrior, self).__init__(name, U_dims, [pi, mu, gamma], tracked)
+
+    @property
+    def to_shape(self):
+        return (self.U_ndims-1,)
+
+    def forward(self, U, pi, mu, gamma, **kwargs):
+        j = jnp.argmax(U[0]<=jnp.cumsum(pi)/jnp.sum(pi))
+        gamma = gamma[j,...]
+        mu = mu[j,...]
+        return gamma * ndtri(U[1:]) + mu
+
+class GMMPrior(PriorTransform):
+    def __init__(self, name, pi, mu, Gamma, tracked=True):
+        if not isinstance(pi, PriorTransform):
+            pi = DeltaPrior('_{}_pi'.format(name), mu, False)
+        if not isinstance(mu, PriorTransform):
+            mu = DeltaPrior('_{}_mu'.format(name), mu, False)
+        if not isinstance(Gamma, PriorTransform):
+            Gamma = DeltaPrior('_{}_Gamma'.format(name), Gamma, False)
+        assert (get_shape(pi)[0] == get_shape(mu)[0]) and (get_shape(pi)[0] == get_shape(Gamma)[0])
+        #replaces mu and gamma when parents injected
+        U_dims = 1 + broadcast_shapes(get_shape(mu)[-1:], get_shape(Gamma)[-1:])[0]
+        super(GMMPrior, self).__init__(name, U_dims, [pi, mu, Gamma], tracked)
+
+    @property
+    def to_shape(self):
+        return (self.U_ndims-1,)
+
+    def forward(self, U, pi, mu, Gamma, **kwargs):
+        j = jnp.argmax(U[0]<=jnp.cumsum(pi)/jnp.sum(pi))
+        Gamma = Gamma[j,...]
+        mu = mu[j,...]
+        L = jnp.linalg.cholesky(Gamma)
+        return L @ ndtri(U[1:]) + mu
+
 class LaplacePrior(PriorTransform):
     def __init__(self, name, mu, b, tracked=True):
         if not isinstance(mu, PriorTransform):
