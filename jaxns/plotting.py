@@ -27,6 +27,7 @@ def plot_cornerplot(results, vars=None,save_name=None):
     weights = jnp.exp(results.log_p)
     nsamples = weights.size
     nbins = int(jnp.sqrt(results.ESS)) + 1
+    lims = {}
     dim = 0
     for key in sorted(results.samples.keys()):
         n1 = jnp.prod(results.samples[key].shape[1:])
@@ -68,6 +69,8 @@ def plot_cornerplot(results, vars=None,save_name=None):
                         ax.vlines(sample_mean, *ax.get_ylim(), linestyles='solid', colors='red')
                         ax.vlines([sample_mean-sample_std, sample_mean + sample_std],
                                   *ax.get_ylim(), linestyles='dotted', colors='red')
+                        ax.set_xlim(binsx.min(), binsx.max())
+                        lims[dim] = ax.get_xlim()
                     else:
                         samples2 = results.samples[key2].reshape((nsamples, -1))[:, i2]
                         if jnp.std(samples2) == 0.:
@@ -78,7 +81,7 @@ def plot_cornerplot(results, vars=None,save_name=None):
                                             bw_method='silverman')
                         samples2_resampled = kde2.resample(size=int(results.ESS))
                         ax.scatter(samples2_resampled[1,:], samples2_resampled[0,:], marker='+', c='black',alpha=0.5)
-                        binsy = jnp.linspace(*jnp.percentile(samples2_resampled, [0, 100]), 2*nbins)
+                        binsy = jnp.linspace(*jnp.percentile(samples2_resampled[1,:], [0, 100]), 2*nbins)
                         X, Y = jnp.meshgrid(binsx, binsy, indexing='ij')
                         ax.contour(kde2(jnp.stack([X.flatten(), Y.flatten()], axis=0)).reshape((2*nbins,2*nbins)),
                                    extent=(binsy.min(), binsy.max(),
@@ -91,6 +94,15 @@ def plot_cornerplot(results, vars=None,save_name=None):
 
                     dim2 += 1
             dim += 1
+    for dim in range(ndims):
+        for dim2 in range(ndims):
+            if dim == dim2:
+                continue
+            ax = axs[dim][dim2] if ndims > 1 else axs[0]
+            if dim in lims.keys():
+                ax.set_ylim(lims[dim])
+            if dim2 in lims.keys():
+                ax.set_xlim(lims[dim2])
     if save_name is not None:
         fig.savefig(save_name)
     plt.show()
