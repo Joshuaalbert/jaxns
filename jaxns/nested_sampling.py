@@ -15,7 +15,7 @@ from jaxns.utils import dict_multimap
 from jaxns.likelihood_samplers import (expanded_box,
                                        slice_sampling, constrained_hmc, expanded_ellipsoid,
                                        init_ellipsoid_sampler_state, init_box_sampler_state, init_slice_sampler_state,
-                                       init_chmc_sampler_state)
+                                       init_chmc_sampler_state, cubes, init_cubes_sampler_state)
 
 
 class NestedSamplerState(NamedTuple):
@@ -46,7 +46,7 @@ class NestedSamplerState(NamedTuple):
 
 
 class NestedSampler(object):
-    _available_samplers = ['box', 'whitened_box', 'chmc', 'slice', 'ellipsoid', 'whitened_ellipsoid']
+    _available_samplers = ['cubes', 'box', 'whitened_box', 'chmc', 'slice', 'ellipsoid', 'whitened_ellipsoid']
 
     def __init__(self, loglikelihood, prior_chain: PriorChain, sampler_name='ellipsoid', **marginalise):
         self.sampler_name = sampler_name
@@ -106,6 +106,8 @@ class NestedSampler(object):
             sampler_state = init_chmc_sampler_state(num_live_points, whiten=False)
         elif self.sampler_name == 'slice':
             sampler_state = init_slice_sampler_state(num_live_points, whiten=True)
+        elif self.sampler_name == 'cubes':
+            sampler_state = init_cubes_sampler_state()
         else:
             raise ValueError("Invalid sampler name {}".format(self.sampler_name))
 
@@ -220,6 +222,14 @@ class NestedSampler(object):
                                              loglikelihood_from_constrained=self.loglikelihood,
                                              prior_transform=self.prior_chain,
                                              sampler_state=state.sampler_state)
+        elif self.sampler_name == 'cubes':
+            sampler_results = cubes(state.key,
+                                    log_L_min,
+                                    state.live_points_U,
+                                    self.loglikelihood,
+                                    self.prior_chain,
+                                    state.sampler_state,
+                                    evidence.X.log_value)
         else:
             raise ValueError("Invalid sampler name {}".format(self.sampler_name))
         #
