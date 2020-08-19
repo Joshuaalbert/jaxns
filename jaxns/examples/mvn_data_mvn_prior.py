@@ -34,7 +34,7 @@ def main():
     prior_transform = PriorChain().push(MVNDiagPrior('x', prior_mu, jnp.sqrt(jnp.diag(prior_cov))))
     # prior_transform = LaplacePrior(prior_mu, jnp.sqrt(jnp.diag(prior_cov)))
     # prior_transform = UniformPrior(-20.*jnp.ones(ndims), 20.*jnp.ones(ndims))
-    ns = NestedSampler(log_likelihood, prior_transform, sampler_name='ellipsoid')
+    ns = NestedSampler(log_likelihood, prior_transform, sampler_name='cubes')
 
     def run_with_n(n):
         @jit
@@ -49,7 +49,7 @@ def main():
         results = run()
         return results
 
-    for n in [200]:
+    for n in [50]:
         results = run_with_n(n)
         plt.scatter(n, results.logZ)
         plt.errorbar(n, results.logZ, yerr=results.logZerr)
