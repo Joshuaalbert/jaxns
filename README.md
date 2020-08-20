@@ -55,7 +55,7 @@ def log_normal(x, mean, cov):
 log_likelihood = lambda x, **unused_kwargs: log_normal(x, data_mu, data_cov)
 
 # define the sampler you want to use.
-ns = NestedSampler(log_likelihood, prior_chain, sampler_name='whitened_ellipsoid')
+ns = NestedSampler(log_likelihood, prior_chain, sampler_name='ellipsoid')
 
 # run with options
 results = ns(key=random.PRNGKey(0),
