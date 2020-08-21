@@ -3,7 +3,7 @@ Nested sampling in JAX
 
 # Install
 Make sure you have JAX and the usual suspects with `pip install jax jaxlib numpy matplotlib scipy`.
-Install with `python setup.py install`.
+Install with `python setup.py install` or `pip install git+http://github.com/Joshuaalbert/jaxns.git`.
 
 # Quick start
 
