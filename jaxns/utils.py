@@ -1,6 +1,7 @@
 import jax.numpy as jnp
-from jax import random, value_and_grad, vmap
+from jax import random, value_and_grad, vmap, numpy
 from jax.lax import scan, while_loop
+from jax.scipy.special import logsumexp
 from scipy.stats.kde import gaussian_kde
 
 def safe_gaussian_kde(samples, weights):
@@ -240,7 +241,7 @@ def recluster(state, max_K: int):
     Returns:
 
     """
-    # aug_points = jnp.concatenate([state.live_points_U, state.log_L_live[:, None]], axis=1)
+    # aug_points = jnp.concatenate([state.points, state.log_L_live[:, None]], axis=1)
     key, cluster_centers, K, _ = cluster(state.key,
                                          state.live_points,
                                          max_K=max_K)
@@ -248,7 +249,7 @@ def recluster(state, max_K: int):
 
     # initialise clusters
     # K, N
-    # dist = jnp.linalg.norm(state.live_points_U[None, :, :] - cluster_centers[:K, None, :], axis=-1)
+    # dist = jnp.linalg.norm(state.points[None, :, :] - cluster_centers[:K, None, :], axis=-1)
     # # N
     # cluster_id = jnp.argmin(dist, axis=0)
     cluster_id = masked_cluster_id(state.live_points, cluster_centers, K)
@@ -354,3 +355,54 @@ def test_iterative_topological_sort():
     # print(iterative_topological_sort(dsk, ['a', 'b', 'c']))
     assert iterative_topological_sort(dsk, ['a', 'b', 'c']) == ['c', 'b', 'a', 'd']
     assert iterative_topological_sort(dsk) == ['c', 'b', 'a', 'd']
+
+
+def stochastic_result_computation(n_per_sample, key, samples, log_L_samples):
+    """
+
+    Args:
+        n_per_sample:
+        key:
+        samples:
+        log_L_samples:
+
+    Returns:
+
+    """
+    # N
+    t = jnp.where(n_per_sample == jnp.inf, 1., random.beta(key, n_per_sample, 1))
+    log_t = jnp.log(t)
+    log_X = jnp.cumsum(log_t)
+    log_L_samples = jnp.concatenate([jnp.array([-jnp.inf]), log_L_samples])
+    log_X = jnp.concatenate([jnp.array([0.]), log_X])
+    # log_dX = log(1-t_i) + log(X[i-1])
+    log_dX = jnp.log(1. - t) + log_X[:-1]  # jnp.log(-jnp.diff(jnp.exp(log_X))) #-inf where n_per_sample=inf
+    log_avg_L = jnp.logaddexp(log_L_samples[:-1], log_L_samples[1:]) - jnp.log(2.)
+    log_p = log_dX + log_avg_L
+    # param calculation
+    logZ = logsumexp(log_p)
+    log_w = log_p - logZ
+    weights = jnp.exp(log_w)
+    m = dict_multimap(lambda samples: jnp.sum(left_broadcast_mul(weights, samples), axis=0), samples)
+    dsamples = dict_multimap(jnp.subtract, samples, m)
+    cov = dict_multimap(lambda dsamples: jnp.sum(
+        left_broadcast_mul(weights, (dsamples[..., :, None] * dsamples[..., None, :])), axis=0), dsamples)
+    # Kish's ESS = [sum weights]^2 / [sum weights^2]
+    ESS = jnp.exp(2. * logsumexp(log_w) - logsumexp(2. * log_w))
+    # H = sum w_i log(w_i)
+    _H = jnp.exp(log_w) * log_w
+    H = jnp.sum(jnp.where(jnp.isnan(_H), 0., _H))
+    return logZ, m, cov, ESS, H
+
+
+def left_broadcast_mul(x, y):
+    """
+    Aligns on left dim and multiplies.
+    Args:
+        x: [D]
+        y: [D,b0,...bN]
+
+    Returns:
+        [D,b0,...,bN]
+    """
+    return jnp.reshape(x, (-1,) + tuple([1] * (len(y.shape) - 1))) * y

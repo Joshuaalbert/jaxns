@@ -5,15 +5,17 @@ import jax.numpy as jnp
 from jax.lax import while_loop, dynamic_update_slice
 from jax import random, vmap
 from jax.scipy.special import logsumexp
+from jax.profiler import trace_function
 from typing import NamedTuple, Dict
+from functools import partial
 from collections import namedtuple
 
-from jaxns.prior_transforms import PriorChain, DeltaPrior
+from jaxns.prior_transforms import PriorChain
 from jaxns.param_tracking import Evidence, PosteriorFirstMoment, PosteriorSecondMoment, \
     InformationGain
-from jaxns.utils import dict_multimap
+from jaxns.utils import dict_multimap, stochastic_result_computation
 from jaxns.likelihood_samplers import (expanded_box,
-                                       slice_sampling, constrained_hmc, expanded_ellipsoid,
+                                       slice_sampling, constrained_hmc, ellipsoid_sampler,
                                        init_ellipsoid_sampler_state, init_box_sampler_state, init_slice_sampler_state,
                                        init_chmc_sampler_state, cubes, init_cubes_sampler_state)
 
@@ -24,7 +26,7 @@ class NestedSamplerState(NamedTuple):
     i: Current iteration index
     L_live: The array of likelihood at live points_U
     L_dead: The array of likelihood at dead points_U
-    live_points_U: The set of live points_U
+    points: The set of live points_U
     dead_points: The set of dead points_U
     """
     key: jnp.ndarray
@@ -37,6 +39,7 @@ class NestedSamplerState(NamedTuple):
     dead_points: Dict  # [D, M] dead points_U in dci structure
     num_dead: int  # int, number of samples (dead points_U) taken so far.
     log_L_dead: jnp.ndarray  # log likelhood of dead points_U
+    sampler_efficiency: jnp.ndarray  # array of efficiency per accepted sample
     evidence_state: namedtuple  # state for logZ
     m_state: namedtuple  # state for parameter mean
     M_state: namedtuple  # state for parameter covariance
@@ -46,7 +49,7 @@ class NestedSamplerState(NamedTuple):
 
 
 class NestedSampler(object):
-    _available_samplers = ['cubes', 'box', 'whitened_box', 'chmc', 'slice', 'ellipsoid', 'whitened_ellipsoid']
+    _available_samplers = ['cubes', 'box', 'whitened_box', 'chmc', 'slice', 'ellipsoid']
 
     def __init__(self, loglikelihood, prior_chain: PriorChain, sampler_name='ellipsoid', **marginalise):
         self.sampler_name = sampler_name
@@ -84,9 +87,11 @@ class NestedSampler(object):
             dead_points = dict_multimap(lambda shape: jnp.zeros((max_samples,) + shape),
                                         self._filter_prior_chain(self.prior_chain.to_shapes))
             log_L_dead = jnp.zeros((max_samples,))
+            sampler_efficiency = jnp.zeros((max_samples,))
         else:
             dead_points = None
             log_L_dead = None
+            sampler_efficiency = None
 
         evidence = Evidence()
         m = PosteriorFirstMoment(self._filter_prior_chain(self.prior_chain.to_shapes))
@@ -99,15 +104,13 @@ class NestedSampler(object):
         elif self.sampler_name == 'whitened_box':
             sampler_state = init_box_sampler_state(num_live_points, whiten=True)
         elif self.sampler_name == 'ellipsoid':
-            sampler_state = init_ellipsoid_sampler_state(num_live_points, whiten=False)
-        elif self.sampler_name == 'whitened_ellipsoid':
-            sampler_state = init_ellipsoid_sampler_state(num_live_points, whiten=True)
+            sampler_state = init_ellipsoid_sampler_state(live_points_U)
         elif self.sampler_name == 'chmc':
             sampler_state = init_chmc_sampler_state(num_live_points, whiten=False)
         elif self.sampler_name == 'slice':
             sampler_state = init_slice_sampler_state(num_live_points, whiten=True)
         elif self.sampler_name == 'cubes':
-            sampler_state = init_cubes_sampler_state()
+            sampler_state = init_cubes_sampler_state(*live_points_U.shape)
         else:
             raise ValueError("Invalid sampler name {}".format(self.sampler_name))
 
@@ -121,6 +124,7 @@ class NestedSampler(object):
             log_L_live=log_L_live,
             dead_points=dead_points,
             log_L_dead=log_L_dead,
+            sampler_efficiency=sampler_efficiency,
             num_dead=jnp.array(0),
             evidence_state=evidence.state,
             m_state=m.state,
@@ -132,6 +136,7 @@ class NestedSampler(object):
 
         return state
 
+    @partial(trace_function, event_name="one_step")
     def _one_step(self, state: NestedSamplerState, collect_samples: bool):
         # get next dead point
         i_min = jnp.argmin(state.log_L_live)
@@ -193,21 +198,13 @@ class NestedSampler(object):
                                            sampler_state=state.sampler_state,
                                            whiten=True)
         elif self.sampler_name == 'ellipsoid':
-            sampler_results = expanded_ellipsoid(state.key,
-                                                 log_L_constraint=log_L_min,
-                                                 live_points_U=state.live_points_U,
-                                                 loglikelihood_from_constrained=self.loglikelihood,
-                                                 prior_transform=self.prior_chain,
-                                                 sampler_state=state.sampler_state,
-                                                 whiten=False)
-        elif self.sampler_name == 'whitened_ellipsoid':
-            sampler_results = expanded_ellipsoid(state.key,
-                                                 log_L_constraint=log_L_min,
-                                                 live_points_U=state.live_points_U,
-                                                 loglikelihood_from_constrained=self.loglikelihood,
-                                                 prior_transform=self.prior_chain,
-                                                 sampler_state=state.sampler_state,
-                                                 whiten=True)
+            sampler_results = ellipsoid_sampler(state.key,
+                                                log_L_constraint=log_L_min,
+                                                live_points_U=state.live_points_U,
+                                                loglikelihood_from_constrained=self.loglikelihood,
+                                                prior_transform=self.prior_chain,
+                                                sampler_state=state.sampler_state,
+                                                whiten=False)
         elif self.sampler_name == 'chmc':
             sampler_results = constrained_hmc(state.key, log_L_constraint=log_L_min,
                                               live_points_U=state.live_points_U,
@@ -240,7 +237,12 @@ class NestedSampler(object):
                                     sampler_results.x_new)
         live_points_U = dynamic_update_slice(state.live_points_U, sampler_results.u_new[None, :],
                                              [i_min, 0])
-
+        if collect_samples:
+            state = state._replace(sampler_efficiency=dynamic_update_slice(state.sampler_efficiency,
+                                                                           jnp.ones(
+                                                                               1) / sampler_results.num_likelihood_evaluations,
+                                                                           [state.i]))
+            
         state = state._replace(key=sampler_results.key,
                                num_likelihood_evaluations=state.num_likelihood_evaluations +
                                                           sampler_results.num_likelihood_evaluations,
@@ -251,12 +253,12 @@ class NestedSampler(object):
 
         return state
 
-    def __call__(self, key, num_live_points, max_samples=1e6,
+    def __call__(self, key, num_live_points, max_samples=1e5,
                  collect_samples=True,
                  termination_frac=0.05,
                  stoachastic_uncertainty=True):
-        max_samples = jnp.array(max_samples, dtype=jnp.int64)
-        num_live_points = jnp.array(num_live_points, dtype=jnp.int64)
+        max_samples = int(max_samples)  # jnp.array(max_samples, dtype=jnp.int64)
+        num_live_points = int(num_live_points)  # jnp.array(num_live_points, dtype=jnp.int64)
         state = self.initial_state(key, num_live_points,
                                    max_samples=max_samples,
                                    collect_samples=collect_samples)
@@ -280,10 +282,12 @@ class NestedSampler(object):
                            body,
                            state)
         results = self._finalise_results(state, collect_samples=collect_samples,
-                                         stoachastic_uncertainty=stoachastic_uncertainty)
+                                         stoachastic_uncertainty=stoachastic_uncertainty,
+                                         max_samples=max_samples)
         return results
 
-    def _finalise_results(self, state: NestedSamplerState, collect_samples: bool, stoachastic_uncertainty: bool):
+    def _finalise_results(self, state: NestedSamplerState, collect_samples: bool, stoachastic_uncertainty: bool,
+                          max_samples: int):
         collect = ['logZ',
                    'logZerr',
                    'ESS',
@@ -303,8 +307,10 @@ class NestedSampler(object):
             collect.append('n_per_sample')
             collect.append('log_p')
             collect.append('log_X')
-        if self.marginalise is not None:
-            collect.append("marginalised")
+            collect.append('sampler_efficiency')
+            collect.append('num_samples')
+            if self.marginalise is not None:
+                collect.append("marginalised")
 
         NestedSamplerResults = namedtuple('NestedSamplerResults', collect)
         evidence = Evidence(state=state.evidence_state)
@@ -333,54 +339,38 @@ class NestedSampler(object):
         )
 
         if collect_samples:
-            def _left_broadcast_mul(x, y):
-                return jnp.reshape(x, (-1,) + tuple([1] * (len(y.shape) - 1))) * y
-
-            def _sample(key, samples, log_L_samples):
-                # N
-                t = random.beta(key, n_per_sample, 1)
-                log_t = jnp.log(t)
-                log_X = jnp.cumsum(log_t)
-                log_L_samples = jnp.concatenate([jnp.array([-jnp.inf]), log_L_samples])
-                log_X = jnp.concatenate([jnp.array([0.]), log_X])
-                # log_dX = log(1-t_i) + log(X[i-1])
-                log_dX = jnp.log(1. - t) + log_X[:-1]  # jnp.log(-jnp.diff(jnp.exp(log_X)))
-                log_avg_L = jnp.logaddexp(log_L_samples[:-1], log_L_samples[1:]) - jnp.log(2.)
-                log_p = log_dX + log_avg_L
-                # param calculation
-                logZ = logsumexp(log_p)
-                log_w = log_p - logZ
-                weights = jnp.exp(log_w)
-                m = dict_multimap(lambda samples: jnp.sum(_left_broadcast_mul(weights, samples), axis=0), samples)
-                dsamples = dict_multimap(jnp.subtract, samples, m)
-                cov = dict_multimap(lambda dsamples: jnp.sum(
-                    _left_broadcast_mul(weights, (dsamples[..., :, None] * dsamples[..., None, :])), axis=0), dsamples)
-                # Kish's ESS = [sum weights]^2 / [sum weights^2]
-                ESS = jnp.exp(2. * logsumexp(log_w) - logsumexp(2. * log_w))
-                # H = sum w_i log(w_i)
-                H = jnp.sum(jnp.exp(log_w) * log_w)
-                return logZ, m, cov, ESS, H
-
             num_live_points = state.log_L_live.shape[0]
-            n_per_sample = jnp.concatenate([jnp.full((state.num_dead,), num_live_points),
-                                            num_live_points - jnp.arange(num_live_points)])
+            n_per_sample = jnp.where(jnp.arange(max_samples) < state.num_dead, num_live_points, jnp.inf)
+            n_per_sample = dynamic_update_slice(n_per_sample, num_live_points - jnp.arange(num_live_points,dtype=n_per_sample.dtype),
+                                                [state.num_dead])
 
-            log_t = jnp.log(n_per_sample) - jnp.log(n_per_sample + 1.)
+            log_t = jnp.where(jnp.isinf(n_per_sample), 0., jnp.log(n_per_sample) - jnp.log(n_per_sample + 1.))
             log_X = jnp.cumsum(log_t)
             ar = jnp.argsort(state.log_L_live)
-            samples = dict_multimap(lambda dead_points, live_points: jnp.concatenate([dead_points[:state.num_dead, :],
-                                                                                      live_points[ar, :]], axis=0),
+            samples = dict_multimap(lambda dead_points, live_points:
+                                    dynamic_update_slice(dead_points,
+                                                         live_points[ar,...],
+                                                         [state.num_dead] + [0]*(len(dead_points.shape) - 1)),
                                     state.dead_points, state.live_points)
-            log_L_samples = jnp.concatenate([state.log_L_dead[:state.num_dead],
-                                             state.log_L_live[ar]])
+            log_L_samples = dynamic_update_slice(state.log_L_dead, state.log_L_live[ar], [state.num_dead])
+
+
+
+
+            sampler_efficiency = state.sampler_efficiency
+            num_samples = state.num_dead + num_live_points
             data['samples'] = samples
             data['log_L_samples'] = log_L_samples
             data['n_per_sample'] = n_per_sample
             data['log_X'] = log_X
 
+            data['sampler_efficiency'] = sampler_efficiency
+            data['num_samples'] = num_samples
+
             if stoachastic_uncertainty:
                 S = 200
-                logZ, m, cov, ESS, H = vmap(lambda key: _sample(key, samples, log_L_samples))(
+                logZ, m, cov, ESS, H = vmap(lambda key: stochastic_result_computation(n_per_sample,
+                                                                                      key, samples, log_L_samples))(
                     random.split(state.key, S))
                 data['logZ'] = jnp.mean(logZ, axis=0)
                 data['logZerr'] = jnp.std(logZ, axis=0)
@@ -404,6 +394,8 @@ class NestedSampler(object):
             log_w = log_dX + log_avg_L
             log_p = log_w - logsumexp(log_w)
             data['log_p'] = log_p
+
+
             if self.marginalise is not None:
                 def single_marginalise(marginalise):
                     return jnp.sum(vmap(lambda p, sample: p * marginalise(**sample))(jnp.exp(log_p), samples), axis=0)
