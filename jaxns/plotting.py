@@ -4,8 +4,9 @@ from scipy.stats.kde import gaussian_kde
 from jaxns.utils import safe_gaussian_kde
 
 def plot_diagnostics(results, save_name=None):
-    fig, axs = plt.subplots(4, 1, sharex=True, figsize=(8, 8))
-    axs[0].plot(-results.log_X, results.n_per_sample, label='eff.={:.3f}'.format(results.efficiency))
+    print(results)
+    fig, axs = plt.subplots(5, 1, sharex=True, figsize=(10, 8))
+    axs[0].plot(-results.log_X, results.n_per_sample)
     axs[0].set_ylabel(r'$n(X)$')
     axs[1].plot(-results.log_X, jnp.exp(results.log_L_samples))
     axs[1].set_ylabel(r'$L(X)$')
@@ -13,8 +14,12 @@ def plot_diagnostics(results, save_name=None):
     axs[2].set_ylabel(r'$Z^{-1}L(X) dX$')
     axs[3].plot(-results.log_X, jnp.exp(results.logZ) * jnp.cumsum(jnp.exp(results.log_p)))
     axs[3].set_ylabel(r'$Z(x > X)$')
-    axs[3].set_xlabel(r'$-\log X$')
-    axs[0].legend()
+    axs[4].plot(-results.log_X, results.sampler_efficiency)
+    axs[4].hlines(results.efficiency, jnp.min(-results.log_X), jnp.max(-results.log_X), colors='black',ls='dashed',
+                  label='avg. eff.={:.3f}'.format(results.efficiency))
+    axs[4].set_ylabel("sampler efficiency")
+    axs[4].set_xlabel(r'$-\log X$')
+    axs[4].legend()
     if save_name is not None:
         fig.savefig(save_name)
     plt.show()
@@ -23,7 +28,8 @@ def plot_cornerplot(results, vars=None,save_name=None):
     if vars is None:
         vars = [k for k, v in results.samples.items()]
     ndims = int(sum([jnp.prod(v.shape[1:]) for k, v in results.samples.items() if (k in vars)]))
-    fig, axs = plt.subplots(ndims, ndims, figsize=(12, 12))
+    figsize = min(20,max(4,int(2*ndims)))
+    fig, axs = plt.subplots(ndims, ndims, figsize=(figsize, figsize))
     weights = jnp.exp(results.log_p)
     nsamples = weights.size
     nbins = int(jnp.sqrt(results.ESS)) + 1
