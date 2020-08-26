@@ -2,8 +2,8 @@
 Nested sampling in JAX
 
 # Install
-Make sure you have JAX and the usual suspects with `pip install jax jaxlib numpy matplotlib scipy`.
-Install with `python setup.py install`.
+Make sure you have JAX and the usual suspects with `pip install jax jaxlib numpy matplotlib scipy tensorflow tensorboard_plugin_profile`. The last two `tensorflow tensorboard_plugin_profile` is is for profiling, and can be neglected if you don't want to profile.
+Install with `python setup.py install` or `pip install git+http://github.com/Joshuaalbert/jaxns.git`.
 
 # Quick start
 
@@ -55,7 +55,7 @@ def log_normal(x, mean, cov):
 log_likelihood = lambda x, **unused_kwargs: log_normal(x, data_mu, data_cov)
 
 # define the sampler you want to use.
-ns = NestedSampler(log_likelihood, prior_chain, sampler_name='whitened_ellipsoid')
+ns = NestedSampler(log_likelihood, prior_chain, sampler_name='ellipsoid')
 
 # run with options
 results = ns(key=random.PRNGKey(0),
