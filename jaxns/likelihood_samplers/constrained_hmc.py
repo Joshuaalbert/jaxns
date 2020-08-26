@@ -74,7 +74,7 @@ def constrained_hmc(key, log_L_constraint, live_points_U,
         (key, u_test, x_test, log_L_test, num_f) = state
         key, transition_key, select_key = random.split(key, 3)
         u_init = live_points_U[random.randint(select_key, (), 0, live_points_U.shape[0]), :]
-        # dist = jnp.abs(u_init - live_points_U)
+        # dist = jnp.abs(u_init - points)
         # dist = jnp.where(dist == 0., jnp.inf, dist)
         step_size = jnp.std(live_points_U, axis=0)/T
         u_test, _num_f = transition(transition_key, u_init, step_size, T)

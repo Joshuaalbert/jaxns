@@ -40,10 +40,10 @@ def expanded_box(key, log_L_constraint, live_points_U,
     R = random_ortho_matrix(R_key, spawn_point_U.size)
 
     # initial L, R for each direction
-    # t_R[i] = max_(k) (live_points_U[k,j] - spawn_point_U[j]) @ R[j,i]
-    # t_L[i] = max_(k) (live_points_U[k,j] - spawn_point_U[j]) @ -R[j,i]
-    # t = ((live_points_U - center)/scale - (spawn_point_U - center)/scale) . R
-    # t = (live_points_U - spawn_point_U) . R/scale
+    # t_R[i] = max_(k) (points[k,j] - spawn_point_U[j]) @ R[j,i]
+    # t_L[i] = max_(k) (points[k,j] - spawn_point_U[j]) @ -R[j,i]
+    # t = ((points - center)/scale - (spawn_point_U - center)/scale) . R
+    # t = (points - spawn_point_U) . R/scale
     # y_test = (spawn_point_U - center)/scale + U[t_L, t_R].R
     # x_test = scale y_test + center
     # N, M
@@ -55,7 +55,7 @@ def expanded_box(key, log_L_constraint, live_points_U,
     t_L = jnp.minimum(jnp.min(t, axis=0), 0.)
 
     # import pylab as plt
-    # _live_points = live_points_U
+    # _live_points = points
     # _spawn_point = spawn_point_U
     #
     # plt.scatter(_live_points[:, 0], _live_points[:, 1])

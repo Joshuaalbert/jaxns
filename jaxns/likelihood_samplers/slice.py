@@ -37,7 +37,7 @@ def slice_sampling_poly(key, log_L_constraint, live_points, cluster_id,
         # import pylab as plt
         #
         # for i in jnp.unique(cluster_id):
-        #     plt.scatter(live_points_U[cluster_id == i, 0], live_points_U[cluster_id == i, 1])
+        #     plt.scatter(points[cluster_id == i, 0], points[cluster_id == i, 1])
         # plt.plot([spawn_point_U[0], spawn_point_U[0] + t_R * p[0]], [spawn_point_U[1], spawn_point_U[1] + t_R * p[1]])
         # plt.plot([spawn_point_U[0], spawn_point_U[0] - t_L * p[0]], [spawn_point_U[1], spawn_point_U[1] - t_L * p[1]])
         # plt.show()
@@ -115,8 +115,8 @@ def slice_sampling_poly(key, log_L_constraint, live_points, cluster_id,
         # print(Rprime)
 
         # initial L, R for each direction
-        # t_R[i] = max_(k) (live_points_U[k,j] - spawn_point_U[j]) @ R[j,i]
-        # t_L[i] = max_(k) (live_points_U[k,j] - spawn_point_U[j]) @ -R[j,i]
+        # t_R[i] = max_(k) (points[k,j] - spawn_point_U[j]) @ R[j,i]
+        # t_L[i] = max_(k) (points[k,j] - spawn_point_U[j]) @ -R[j,i]
 
         # N, M
         dx = live_points - spawn_point
@@ -230,7 +230,7 @@ def slice_sampling(key, log_L_constraint, live_points_U,
         # s_L = jnp.where((_t_sorted < 0.) & (pn > 0), -1., 1.)
         # t_L = _t_sorted[get_interval(s_L)[1]]
         #
-        # t_shrink = random.beta(beta_key, live_points_U.shape[0], 1) ** jnp.reciprocal(live_points_U.shape[1])
+        # t_shrink = random.beta(beta_key, points.shape[0], 1) ** jnp.reciprocal(points.shape[1])
         # t_R = t_R / t_shrink
         # t_L = t_L / t_shrink
         # print(t_L, t_R)
