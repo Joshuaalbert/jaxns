@@ -2,7 +2,7 @@
 Nested sampling in JAX
 
 # Install
-Make sure you have JAX and the usual suspects with `pip install jax jaxlib numpy matplotlib scipy`.
+Make sure you have JAX and the usual suspects with `pip install jax jaxlib numpy matplotlib scipy tensorflow tensorboard_plugin_profile`. The last two `tensorflow tensorboard_plugin_profile` is is for profiling, and can be neglected if you don't want to profile.
 Install with `python setup.py install` or `pip install git+http://github.com/Joshuaalbert/jaxns.git`.
 
 # Quick start
