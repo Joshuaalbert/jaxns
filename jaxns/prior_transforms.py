@@ -1,5 +1,6 @@
 from jax import numpy as jnp
 from jax import vmap
+from jax.lax import scan
 from jax.scipy.special import ndtri
 from jaxns.utils import broadcast_shapes, iterative_topological_sort
 from collections import OrderedDict
@@ -205,12 +206,13 @@ class MVNPrior(PriorTransform):
 class GMMDiagPrior(PriorTransform):
     def __init__(self, name, pi, mu, gamma, tracked=True):
         if not isinstance(pi, PriorTransform):
-            pi = DeltaPrior('_{}_pi'.format(name), mu, False)
+            pi = DeltaPrior('_{}_pi'.format(name), pi, False)
         if not isinstance(mu, PriorTransform):
-            mu = DeltaPrior('_{}_mu'.format(name), mu, False)
+            mu = DeltaPrior('_{}_mu'.format(name), jnp.atleast_2d(mu), False)
         if not isinstance(gamma, PriorTransform):
-            gamma = DeltaPrior('_{}_gamma'.format(name), gamma, False)
-        assert (get_shape(pi)[0] == get_shape(mu)[0]) and (get_shape(pi)[0] == get_shape(gamma)[0])
+            gamma = DeltaPrior('_{}_gamma'.format(name), jnp.atleast_2d(gamma), False)
+        assert (get_shape(pi)[0] == get_shape(mu)[0]) and (get_shape(pi)[0] == get_shape(gamma)[0]) \
+               and (get_shape(mu)[1] == get_shape(gamma)[1])
         #replaces mu and gamma when parents injected
         U_dims = 1 + broadcast_shapes(get_shape(mu)[-1:], get_shape(gamma)[-1:])[0]
         super(GMMDiagPrior, self).__init__(name, U_dims, [pi, mu, gamma], tracked)
@@ -228,12 +230,13 @@ class GMMDiagPrior(PriorTransform):
 class GMMPrior(PriorTransform):
     def __init__(self, name, pi, mu, Gamma, tracked=True):
         if not isinstance(pi, PriorTransform):
-            pi = DeltaPrior('_{}_pi'.format(name), mu, False)
+            pi = DeltaPrior('_{}_pi'.format(name), pi, False)
         if not isinstance(mu, PriorTransform):
-            mu = DeltaPrior('_{}_mu'.format(name), mu, False)
+            mu = DeltaPrior('_{}_mu'.format(name), jnp.atleast_2d(mu), False)
         if not isinstance(Gamma, PriorTransform):
-            Gamma = DeltaPrior('_{}_Gamma'.format(name), Gamma, False)
-        assert (get_shape(pi)[0] == get_shape(mu)[0]) and (get_shape(pi)[0] == get_shape(Gamma)[0])
+            Gamma = DeltaPrior('_{}_Gamma'.format(name), jnp.atleast_3d(Gamma), False)
+        assert (get_shape(pi)[0] == get_shape(mu)[0]) and (get_shape(pi)[0] == get_shape(Gamma)[0]) \
+               and (get_shape(mu)[1] == get_shape(Gamma)[2])
         #replaces mu and gamma when parents injected
         U_dims = 1 + broadcast_shapes(get_shape(mu)[-1:], get_shape(Gamma)[-1:])[0]
         super(GMMPrior, self).__init__(name, U_dims, [pi, mu, Gamma], tracked)
@@ -289,7 +292,6 @@ def test_half_laplace():
     U = jnp.linspace(0., 1., 100)[:, None]
     assert ~jnp.any(jnp.isnan(vmap(p)(U)['x']))
 
-
 class UniformPrior(PriorTransform):
     def __init__(self, name, low, high, tracked=True):
         if not isinstance(low, PriorTransform):
@@ -297,16 +299,57 @@ class UniformPrior(PriorTransform):
         if not isinstance(high, PriorTransform):
             high = DeltaPrior('_{}_high'.format(name), high, False)
         #replaces mu and gamma when parents injected
-        U_dims = broadcast_shapes(get_shape(low), get_shape(high))[0]
+
+        self._broadcast_shape = broadcast_shapes(get_shape(low), get_shape(high))
+        U_dims = jnp.prod(self._broadcast_shape)
         super(UniformPrior, self).__init__(name, U_dims, [low, high], tracked)
 
 
     @property
     def to_shape(self):
-        return (self.U_ndims,)
+        return self._broadcast_shape
 
     def forward(self, U, low, high, **kwargs):
-        return low + U * (high - low)
+        return low + jnp.reshape(U, self.to_shape) * (high - low)
+
+class ForcedIdentifiabilityPrior(PriorTransform):
+    def __init__(self, name, n, low, high, tracked=True):
+        if not isinstance(low, PriorTransform):
+            low = DeltaPrior('_{}_low'.format(name), low, False)
+        if not isinstance(high, PriorTransform):
+            high = DeltaPrior('_{}_high'.format(name), high, False)
+        self._n = n
+        #replaces mu and gamma when parents injected
+
+        self._broadcast_shape = (self._n,) + broadcast_shapes(get_shape(low), get_shape(high))
+        U_dims = jnp.prod(self._broadcast_shape)
+        super(ForcedIdentifiabilityPrior, self).__init__(name, U_dims, [low, high], tracked)
+
+
+    @property
+    def to_shape(self):
+        return self._broadcast_shape
+
+    def forward(self, U, low, high, **kwargs):
+        log_x = jnp.log(jnp.reshape(U, self.to_shape))
+        # theta[i] = theta[i-1] * (1 - x[i]) + theta_max * x[i]
+        def body(state, X):
+            (log_theta,) = state
+            (log_x, i) = X
+            log_theta = log_x/i + log_theta
+            return (log_theta,), (log_theta,)
+        log_init_theta = jnp.zeros(broadcast_shapes(low.shape, high.shape))
+        _, (log_theta,) = scan(body,(log_init_theta,),(log_x,jnp.arange(1, self._n+1)), reverse=True)
+        theta = low + (high - low) * jnp.exp(log_theta)
+        return theta
+
+def test_forced_identifiability_prior():
+    from jax import random
+    prior = PriorChain().push(ForcedIdentifiabilityPrior('x', 10, 0., 10.))
+    for i in range(10):
+        out= prior(random.uniform(random.PRNGKey(i), shape=(prior.U_ndims,)))
+        assert jnp.all(jnp.sort(out['x'],axis=0) == out['x'])
+        assert jnp.all((out['x'] >=0.) & (out['x'] <= 10.))
 
 
 class DiagGaussianWalkPrior(PriorTransform):
