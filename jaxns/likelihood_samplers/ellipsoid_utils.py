@@ -1,7 +1,6 @@
 from jax import numpy as jnp, vmap, random
 from jax.lax import while_loop
 
-
 def minimum_volume_enclosing_ellipsoid(points, tol, init_u=None, return_u=False):
     """
     Performs the algorithm of
