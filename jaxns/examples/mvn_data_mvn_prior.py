@@ -2,7 +2,7 @@ from jaxns.nested_sampling import NestedSampler
 from jaxns.prior_transforms import PriorChain, MVNDiagPrior
 from jaxns.plotting import plot_cornerplot, plot_diagnostics
 from jax.scipy.linalg import solve_triangular
-from jax import random, jit, disable_jit
+from jax import random, jit, disable_jit, make_jaxpr
 from jax import numpy as jnp
 import pylab as plt
 
@@ -21,7 +21,7 @@ def main():
 
     data_mu = jnp.ones(ndims)
     data_cov = jnp.diag(jnp.ones(ndims)) ** 2
-    data_cov = jnp.where(data_cov == 0., -0.5, data_cov)
+    data_cov = jnp.where(data_cov == 0., 0.95, data_cov)
 
     true_logZ = log_normal(data_mu, prior_mu, prior_cov + data_cov)
 
@@ -34,22 +34,22 @@ def main():
     prior_transform = PriorChain().push(MVNDiagPrior('x', prior_mu, jnp.sqrt(jnp.diag(prior_cov))))
     # prior_transform = LaplacePrior(prior_mu, jnp.sqrt(jnp.diag(prior_cov)))
     # prior_transform = UniformPrior(-20.*jnp.ones(ndims), 20.*jnp.ones(ndims))
-    ns = NestedSampler(log_likelihood, prior_transform, sampler_name='cubes')
+    ns = NestedSampler(log_likelihood, prior_transform, sampler_name='ellipsoid')
 
     def run_with_n(n):
         @jit
-        def run():
-            return ns(key=random.PRNGKey(0),
+        def run(key):
+            return ns(key=key,
                       num_live_points=n * ndims,
-                      max_samples=1e6,
+                      max_samples=1e4,
                       collect_samples=True,
                       termination_frac=0.01,
                       stoachastic_uncertainty=True)
-
-        results = run()
+        print(make_jaxpr(run)(random.PRNGKey(0)))
+        results = run(random.PRNGKey(0))
         return results
 
-    for n in [50]:
+    for n in [20]:
         results = run_with_n(n)
         plt.scatter(n, results.logZ)
         plt.errorbar(n, results.logZ, yerr=results.logZerr)
@@ -64,4 +64,7 @@ def main():
 
 
 if __name__ == '__main__':
+    # import jax.profiler
+    # server = jax.profiler.start_server(9999)
+    # input("Ready? ")
     main()
