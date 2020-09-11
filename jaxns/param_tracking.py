@@ -4,6 +4,10 @@ from jax.lax import while_loop
 from jaxns.utils import dict_multimap
 
 class Param(object):
+    """
+    An object that silently hands linear and logarithmic parameters, and the + - * and / operators.
+    This then lets us store and do arithmetic on small and large numbers transparently.
+    """
     value: jnp.ndarray
     log_value: jnp.ndarray
 
@@ -117,7 +121,7 @@ class TrackedExpectation(object):
             def _prepare_init(x, shape):
                 x = jnp.array(x)
                 if x.shape != shape:
-                    raise ValueError("Expected shape {}, got {}.".format(shape, x.shape))
+                    raise ValueError("Expected shape_dict {}, got {}.".format(shape, x.shape))
                 return x
             initial_f = dict_multimap(_prepare_init, initial_f, param_shape)
             initial_f2 = dict_multimap(_prepare_init, initial_f2, param_shape)
@@ -292,7 +296,7 @@ class Evidence(TrackedExpectation):
 
 class PosteriorFirstMoment(TrackedExpectation):
     """
-    Computes the mean of a parameter. If the shape of the parameter is [..., M], then all dimensions except the last
+    Computes the mean of a parameter. If the shape_dict of the parameter is [..., M], then all dimensions except the last
     one are treated as batched dimensions.
     """
     def __init__(self, shape, *, state=None):
@@ -415,6 +419,38 @@ class InformationGain(TrackedExpectation):
 
         """
         return log_L_i - jnp.log(n_i + 1.)
+
+class Marginalised(TrackedExpectation):
+    """
+    logH = -1/Z int L(X) log(L(X) dX) dX + log(Z)
+    """
+    def __init__(self, func_dict, shape_dict, *, state=None):
+        initial_f = dict_multimap(lambda shape: jnp.zeros(shape), shape_dict)
+        initial_f2 = dict_multimap(lambda shape: jnp.log(jnp.zeros(shape)), shape_dict)
+        initial_fX = dict_multimap(lambda shape: jnp.zeros(shape), shape_dict)
+        super(Marginalised, self).__init__("marginalised", 'linear', True, shape_dict,
+                                              state=state,
+                                              initial_f=initial_f,
+                                              initial_f2=initial_f2,
+                                              initial_X=jnp.log(1.),
+                                              initial_fX=initial_fX,
+                                              initial_X2=jnp.log(1.)
+                                              )
+        self.func_dict = func_dict
+
+    def compute_f_alpha(self, posterior_sample, n_i, log_L_i):
+        """
+        log(L(X) dX) = logL(X) + E[w]
+        Args:
+            posterior_sample:
+            n_i:
+            log_L_i:
+            from_U:
+
+        Returns:
+
+        """
+        return dict_multimap(lambda func: func(**posterior_sample), self.func_dict)
 
 def debug_tracking():
     from jax import random, vmap
@@ -561,11 +597,9 @@ def debug_tracking():
 
 
 
-
-
 if __name__ == '__main__':
     pass
-    # def _assert_shape(x, shape):
-    #     assert x.shape == shape
+    # def _assert_shape(x, shape_dict):
+    #     assert x.shape_dict == shape_dict
     # print(dict_multimap(_assert_shape, jnp.array(1.), () ))
     # debug_tracking()

@@ -1,8 +1,9 @@
 import jax.numpy as jnp
-from jax import random, value_and_grad, vmap, numpy
+from jax import random, value_and_grad, vmap, numpy, numpy as jnp
 from jax.lax import scan, while_loop
 from jax.scipy.special import logsumexp
 from scipy.stats.kde import gaussian_kde
+
 
 def safe_gaussian_kde(samples, weights):
     try:
@@ -406,3 +407,5 @@ def left_broadcast_mul(x, y):
         [D,b0,...,bN]
     """
     return jnp.reshape(x, (-1,) + tuple([1] * (len(y.shape) - 1))) * y
+
+
