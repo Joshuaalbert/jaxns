@@ -1,9 +1,9 @@
 from jaxns.nested_sampling import NestedSampler
-from jaxns.prior_transforms import PriorChain, MVNDiagPrior, UniformPrior, DeltaPrior
+from jaxns.prior_transforms import PriorChain, UniformPrior
 from jaxns.plotting import plot_cornerplot, plot_diagnostics
-from jaxns.examples.ray_integral.fed_kernels import rational_quadratic
+from jaxns.gaussian_process.kernels import rational_quadratic
 from jax.scipy.linalg import solve_triangular
-from jax import random, jit, disable_jit
+from jax import random, jit
 from jax import numpy as jnp
 import pylab as plt
 
@@ -17,13 +17,13 @@ def main():
 
     N = 100
     X = jnp.linspace(-2., 2., N)[:, None]
-    true_alpha, true_sigma, true_l, true_uncert = 1., 1., 0.2, 0.75
+    true_alpha, true_sigma, true_l, true_uncert = 1., 1., 0.2, 0.25
     data_mu = jnp.zeros((N, ))
     prior_cov = rational_quadratic(X, X, true_sigma, true_alpha, true_l)
     Y = jnp.linalg.cholesky(prior_cov) @ random.normal(random.PRNGKey(0), shape=(N, )) + data_mu
     Y_obs = Y + true_uncert * random.normal(random.PRNGKey(1), shape=(N, ))
     # Y_obs = jnp.where((jnp.arange(N) > 50) & (jnp.arange(N) < 60),
-    #                   random.normal(random.PRNGKey(1), shape=(N, )),
+    #                   random.normal(random.PRNGKey(1), shape_dict=(N, )),
     #                   Y_obs)
 
     # plt.scatter(X[:, 0], Y_obs, label='data')
@@ -33,7 +33,7 @@ def main():
 
     def log_likelihood(sigma, l, alpha, uncert, **kwargs):
         """
-        P(Y|sigma, l) = N[Y, mu, K]
+        P(Y|sigma, half_width) = N[Y, mu, K]
         Args:
             sigma:
             l:
@@ -59,19 +59,19 @@ def main():
         return jnp.diag(K - K @ jnp.linalg.solve(K + data_cov, K))
 
     prior_chain = PriorChain()\
-        .push(UniformPrior('sigma', 0., 2.))\
-        .push(UniformPrior('l', 0., 2.))\
-        .push(UniformPrior('alpha', 0., 2.))\
+        .push(UniformPrior('sigma', 0., 4.))\
+        .push(UniformPrior('l', 0., 4.))\
+        .push(UniformPrior('alpha', 0., 4.))\
         .push(UniformPrior('uncert',0., 2.))
 
-    ns = NestedSampler(log_likelihood, prior_chain, sampler_name='whitened_ellipsoid', predict_f=predict_f, predict_fvar=predict_fvar)
+    ns = NestedSampler(log_likelihood, prior_chain, sampler_name='ellipsoid', predict_f=predict_f, predict_fvar=predict_fvar)
 
     def run_with_n(n):
         @jit
         def run():
             return ns(key=random.PRNGKey(0),
                       num_live_points=n,
-                      max_samples=1e5,
+                      max_samples=1e3,
                       collect_samples=True,
                       termination_frac=0.01,
                       stoachastic_uncertainty=True)
@@ -79,7 +79,7 @@ def main():
         results = run()
         return results
 
-    for n in [100]:
+    for n in [200]:
         results = run_with_n(n)
         plt.scatter(n, results.logZ)
         plt.errorbar(n, results.logZ, yerr=results.logZerr)

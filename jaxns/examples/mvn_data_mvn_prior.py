@@ -49,8 +49,9 @@ def main():
         results = run(random.PRNGKey(0))
         return results
 
-    for n in [20]:
-        results = run_with_n(n)
+    for n in [10]:
+        with disable_jit():
+            results = run_with_n(n)
         plt.scatter(n, results.logZ)
         plt.errorbar(n, results.logZ, yerr=results.logZerr)
     plt.hlines(true_logZ, 50, 200)
@@ -64,7 +65,7 @@ def main():
 
 
 if __name__ == '__main__':
-    # import jax.profiler
-    # server = jax.profiler.start_server(9999)
-    # input("Ready? ")
+    import jax.profiler
+    server = jax.profiler.start_server(9999)
+    input("Ready? ")
     main()

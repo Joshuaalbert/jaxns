@@ -1,14 +1,13 @@
-from jaxns.examples.ray_integral.fed_kernels import rbf_act, m52_act, m32_act, m12_act
-from jaxns.examples.ray_integral.tomographic_kernel import dtec_tomographic_kernel
+from jaxns.gaussian_process.kernels import RBF, M12
+from jaxns.gaussian_process.tomographic_kernel import dtec_tomographic_kernel
 from jaxns.examples.ray_integral.generate_data import rbf_dtec
-from jaxns.examples.ray_integral.utils import msqrt
 from jaxns.nested_sampling import NestedSampler
-from jaxns.prior_transforms import PriorChain, MVNDiagPrior, UniformPrior, DeltaPrior
+from jaxns.prior_transforms import PriorChain, UniformPrior
 from jaxns.plotting import plot_cornerplot, plot_diagnostics
-from jax.scipy.linalg import solve_triangular
-from jax import random, jit, disable_jit
+from jax import random, jit, make_jaxpr
 from jax import numpy as jnp
 import pylab as plt
+
 
 def main(kernel):
     def log_normal(x, mean, cov):
@@ -24,13 +23,13 @@ def main(kernel):
     X = jnp.linspace(-2., 2., N)[:, None]
     true_height, true_width, true_sigma, true_l, true_uncert = 200., 100., 0.2, 10., 2.5
 
-    X, Y, Y_obs = rbf_dtec(3, 3, true_height, true_width, true_sigma, true_l, true_uncert)
+    X, Y, Y_obs = rbf_dtec(1, 1, true_height, true_width, true_sigma, true_l, true_uncert)
     a = X[:, 0:3]
     k = X[:, 3:6]
 
     def log_likelihood(sigma, l, height, width, uncert, **kwargs):
         """
-        P(Y|sigma, l) = N[Y, mu, K]
+        P(Y|sigma, half_width) = N[Y, mu, K]
         Args:
             sigma:
             l:
@@ -64,21 +63,22 @@ def main(kernel):
         .push(UniformPrior('l', 0., 20.))\
         .push(UniformPrior('height', 100., 300.))\
         .push(UniformPrior('width', 50., 150.))\
-        .push(UniformPrior('uncert',0., 5.))
+        .push(UniformPrior('uncert',0.,5.))
 
     ns = NestedSampler(log_likelihood, prior_chain, sampler_name='ellipsoid', predict_f=predict_f, predict_fvar=predict_fvar)
 
     def run_with_n(n):
+        key = random.PRNGKey(0)
         @jit
-        def run():
-            return ns(key=random.PRNGKey(0),
+        def run(key):
+            return ns(key=key,
                       num_live_points=n,
                       max_samples=1e5,
                       collect_samples=True,
                       termination_frac=0.01,
                       stoachastic_uncertainty=True)
-
-        results = run()
+        print(make_jaxpr(run)(key))
+        results = run(key)
         return results
 
     for n in [100]:
@@ -105,13 +105,10 @@ def main(kernel):
 
 
 if __name__ == '__main__':
-    logZ_rbf, logZerr_rbf = main(rbf_act)
-    logZ_m52, logZerr_m52 = main(m52_act)
-    logZ_m32, logZerr_m32 = main(m32_act)
-    logZ_m12, logZerr_m12 = main(m12_act)
-    plt.errorbar(['rbf', 'm52', 'm32', 'm12'],
-                 [logZ_rbf, logZ_m52, logZ_m32, logZ_m12],
-                 [logZerr_rbf, logZerr_m52, logZerr_m32, logZerr_m12])
+    logZ_rbf, logZerr_rbf = main(RBF)
+    logZ_m12, logZerr_m12 = main(M12)
+    plt.errorbar(['rbf', 'm12'],
+                 [logZ_rbf, logZ_m12],
+                 [logZerr_rbf, logZerr_m12])
     plt.ylabel("log Z")
-    plt.legend()
     plt.show()

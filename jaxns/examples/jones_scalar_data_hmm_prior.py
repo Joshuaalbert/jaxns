@@ -16,7 +16,7 @@ def generate_data():
     phase = tec[:, None] / freqs * TEC_CONV  # + 0.2  # + onp.linspace(-onp.pi, onp.pi, T)[:, None]
     Y = jnp.concatenate([jnp.cos(phase), jnp.sin(phase)], axis=1)
     Y_obs = Y + 0.25 * random.normal(random.PRNGKey(1), shape=Y.shape)
-    # Y_obs[500:550:2, :] += 3. * onp.random.normal(size=Y[500:550:2, :].shape)
+    # Y_obs[500:550:2, :] += 3. * onp.random.normal(size=Y[500:550:2, :].shape_dict)
     Sigma = 0.25 ** 2 * jnp.eye(48)
     amp = jnp.ones_like(phase)
     return Sigma, T, Y_obs, amp, tec, freqs
