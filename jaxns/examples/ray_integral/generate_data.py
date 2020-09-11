@@ -1,9 +1,9 @@
-from jaxns.examples.ray_integral.fed_kernels import rbf_act
-from jaxns.examples.ray_integral.tomographic_kernel import dtec_tomographic_kernel
+from jaxns.gaussian_process.kernels import RBF
+from jaxns.gaussian_process.tomographic_kernel import dtec_tomographic_kernel
 import jax.numpy as jnp
 from jax import random
 
-from jaxns.examples.ray_integral.utils import msqrt, make_coord_array
+from jaxns.gaussian_process.utils import msqrt, make_coord_array
 
 
 def rbf_dtec(nant, ndir, height, width, sigma, l, uncert=1.):
@@ -14,7 +14,7 @@ def rbf_dtec(nant, ndir, height, width, sigma, l, uncert=1.):
     X = make_coord_array(a, k)
     a = X[:,0:3]
     k = X[:,3:6]
-    K = dtec_tomographic_kernel(random.PRNGKey(1), a[0,:], a, a, k, k, jnp.zeros(3), rbf_act, height, width, l, S=100, sigma=sigma)
+    K = dtec_tomographic_kernel(random.PRNGKey(1), a[0,:], a, a, k, k, jnp.zeros(3), RBF, height, width, l, S=100, sigma=sigma)
     plt.imshow(K)
     plt.colorbar()
     plt.show()
@@ -22,7 +22,7 @@ def rbf_dtec(nant, ndir, height, width, sigma, l, uncert=1.):
     plt.show()
 
 
-    L = msqrt(K)#jnp.linalg.cholesky(K + jnp.eye(K.shape[0])*1e-3)
+    L = msqrt(K)#jnp.linalg.cholesky(K + jnp.eye(K.shape_dict[0])*1e-3)
 
     dtec = L @ random.normal(random.PRNGKey(2), shape=(L.shape[0],))
     plt.plot(dtec)
