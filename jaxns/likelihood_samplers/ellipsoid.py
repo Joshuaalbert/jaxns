@@ -36,7 +36,7 @@ def ellipsoid_sampler(key, log_L_constraint, live_points_U,
                                                                               init_u=sampler_state.mvee_u,
                                                                               return_u=True)
     # D = sampler_state.radii.size
-    # log_mean_X = -sampler_state.i/points.shape[0]
+    # log_mean_X = -sampler_state.i/points.shape_dict[0]
     # log_ellipsoid_volume = jnp.log(2.) - jnp.log(D) + 0.5*D * jnp.log(jnp.pi) - gammaln(0.5*D) + jnp.sum(jnp.log(sampler_state.radii))
     # #V(E)/V(X) = max(f_e, 1) because they already enclose the points so shouldn't be smaller.
     # log_expansion_factor = jnp.maximum(log_ellipsoid_volume - log_mean_X, 0.)
@@ -63,7 +63,7 @@ def ellipsoid_sampler(key, log_L_constraint, live_points_U,
         # V_i+1 = V_i * t
         # r_i+1^d = r_i^d * t
         # r_i+1 = r_i * t^1/d
-        # t_shrink = random.beta(beta_key, points.shape[0], 1) ** jnp.reciprocal(radii.size)
+        # t_shrink = random.beta(beta_key, points.shape_dict[0], 1) ** jnp.reciprocal(radii.size)
         u_test_white = sample_ellipsoid(sample_key, center, radii, rotation)
         u_test = u_test_white
         u_test = jnp.clip(u_test, 0., 1.)
