@@ -230,7 +230,7 @@ def slice_sampling(key, log_L_constraint, live_points_U,
         # s_L = jnp.where((_t_sorted < 0.) & (pn > 0), -1., 1.)
         # t_L = _t_sorted[get_interval(s_L)[1]]
         #
-        # t_shrink = random.beta(beta_key, points.shape[0], 1) ** jnp.reciprocal(points.shape[1])
+        # t_shrink = random.beta(beta_key, points.shape_dict[0], 1) ** jnp.reciprocal(points.shape_dict[1])
         # t_R = t_R / t_shrink
         # t_L = t_L / t_shrink
         # print(t_L, t_R)

@@ -141,6 +141,18 @@ def all_cubes_intersect_volume(points, width):
 def all_cubes_unique_intersect_volume(points, width):
     return jnp.exp(log_all_cubes_unique_intersect_volume(points, width))
 
+def squared_norm(x1, x2):
+    # r2_ij = sum_k (x_ik - x_jk)^2
+    #       = sum_k x_ik^2 - 2 x_jk x_ik + x_jk^2
+    #       = sum_k x_ik^2 + x_jk^2 - 2 X X^T
+    # r2_ij = sum_k (x_ik - y_jk)^2
+    #       = sum_k x_ik^2 - 2 y_jk x_ik + y_jk^2
+    #       = sum_k x_ik^2 + y_jk^2 - 2 X Y^T
+    x1 = x1
+    x2 = x2
+    r2 = jnp.sum(jnp.square(x1), axis=1)[:, None] + jnp.sum(jnp.square(x2), axis=1)[None, :]
+    r2 = r2 - 2. * (x1 @ x2.T)
+    return jnp.maximum(r2, 1e-36)
 
 def log_klee_measure(key, points, w, eps=0.01, gamma=0.9, restricted=False):
     """
