@@ -1,5 +1,457 @@
 from jax import numpy as jnp, vmap, random
 from jax.lax import while_loop
+from jax.scipy.special import gammaln
+
+
+def test_binary_tree_bf_walk():
+    """
+    Test
+    0:    0 | # 2^0
+    1:    1 2 | # 2^1
+    2:    3 4 5 6
+    3:    7 8 9 10 11 12 13 14
+
+    index(r,c) = index(r,0) + c
+    index(r,0) = sum_p=0^(r-1) 2^p = 2^r - 1
+    index(r,c) = 2^r - 1 + c
+
+    index(r,c) = index(r-1, 2^(r-1) - 1) + c
+    child0(r,c) = index(r+1, 2*c)
+    child1(r,c) = index(r+1, 2*c+1)
+    parent(r,c) = index(r-1, c//2)
+    Returns:
+
+    """
+
+    def index(r, c):
+        return 2 ** r - 1 + c
+
+    def child0(r, c):
+        return index(r + 1, 2 * c)
+
+    def child1(r, c):
+        return index(r + 1, 2 * c + 1)
+
+    def parent(r, c):
+        return index(r - 1, c // 2)
+
+    def row(i):
+        return jnp.ceil(jnp.log2(i + 1))
+
+    depth = 3
+    for r in range(depth):
+        for c in range(2 ** r):
+            print("({},{}), row={}, index={}, child0={}, child1={}, parent={}".format(r, c,
+                                                                                      row(index(r, c)),
+                                                                                      index(r, c),
+                                                                                      child0(r, c),
+                                                                                      child1(r, c),
+                                                                                      parent(r, c)))
+
+
+def bounding_ellipsoid(points, mask):
+    """
+    Use empirical mean and covariance as approximation to bounding ellipse, then scale so that all points are inside.
+
+    for all i (points[i] - mu) @ inv(scale * cov) @ (points[i] - mu) <= 1
+    for all i (points[i] - mu) @ inv(cov) @ (points[i] - mu) <= scale
+    -> choose scale = max_i (points[i] - mu) @ inv(cov) @ (points[i] - mu)
+    Args:
+        points:
+        mask:
+
+    Returns: mu, inv(scale * cov)
+
+    """
+    mu = jnp.average(points, weights=mask, axis=0)
+    dx = points - mu
+    cov = jnp.average(dx[:, :, None] * dx[:, None, :], weights=mask, axis=0)
+    C = jnp.linalg.inv(cov)
+    maha = vmap(lambda dx: dx @ C @ dx)(dx)
+    scale = jnp.max(jnp.where(mask, maha, -jnp.inf))
+    C = C / scale
+    return mu, C
+
+
+def ellipsoid_params(C):
+    """
+    If C satisfies the sectional inequality,
+
+    (x - mu)^T C (x - mu) <= 1
+
+    then this returns the radius and rotation matrix of the ellipsoid.
+
+    Args:
+        C: [D,D]
+
+    Returns: radii [D] rotation [D,D]
+
+    """
+    W, Q, Vh = jnp.linalg.svd(C)
+    radii = jnp.reciprocal(jnp.sqrt(Q))
+    rotation = Vh.conj().T
+    return radii, rotation
+
+
+def test_bounding_ellipsoid():
+    points = random.normal(random.PRNGKey(0), shape=(10, 2))
+    mu, C = bounding_ellipsoid(points, jnp.ones(points.shape[0]))
+    radii, rotation = ellipsoid_params(C)
+    print(mu, C, radii, rotation)
+    theta = jnp.linspace(0., jnp.pi * 2, 100)
+    x = mu[:, None] + rotation @ jnp.diag(radii) @ jnp.stack([jnp.cos(theta), jnp.sin(theta)], axis=0)
+    import pylab as plt
+    plt.scatter(points[:, 0], points[:, 1])
+    plt.plot(x[0, :], x[1, :])
+    plt.show()
+
+
+def kmeans(key, points, mask, K=2):
+    """
+    Perform kmeans clustering with Euclidean metric.
+
+    Args:
+        key:
+        points: [N, D]
+        mask: [N] bool
+        K: int
+
+    Returns: cluster_id [N], centers [K, D]
+
+    """
+    N, D = points.shape
+
+    def body(state):
+        (i, done, old_cluster_id, centers) = state
+        new_centers = vmap(lambda k: jnp.average(points, weights=(old_cluster_id == k) & mask, axis=0))(jnp.arange(K))
+        dx = points - new_centers[:, None, :]  # K, N, D
+        squared_norm = jnp.sum(jnp.square(dx), axis=-1)  # K, N
+        new_cluster_id = jnp.argmin(squared_norm, axis=0)  # N
+        done = jnp.all(new_cluster_id == old_cluster_id)
+        return i + 1, done, new_cluster_id, new_centers
+    do_kmeans = jnp.sum(mask) > K
+    i, _, cluster_id, centers = while_loop(lambda state: ~state[1],
+                                           body,
+                                           (jnp.array(0), ~do_kmeans,
+                                            random.randint(key, shape=(N,), minval=0, maxval=2),
+                                            jnp.zeros((K, D))))
+    return cluster_id, centers
+
+
+def test_kmeans():
+    points = jnp.concatenate([random.normal(random.PRNGKey(0), shape=(30, 2)),
+                              3. + random.normal(random.PRNGKey(0), shape=(10, 2))],
+                             axis=0)
+
+    cluster_id, centers = kmeans(random.PRNGKey(0), points, jnp.ones(points.shape[0], dtype=jnp.bool_), K=2)
+
+    mu, C = bounding_ellipsoid(points, jnp.ones(points.shape[0]))
+    radii, rotation = ellipsoid_params(C)
+    theta = jnp.linspace(0., jnp.pi * 2, 100)
+    x = mu[:, None] + rotation @ jnp.diag(radii) @ jnp.stack([jnp.cos(theta), jnp.sin(theta)], axis=0)
+    import pylab as plt
+    mask = cluster_id == 0
+    plt.scatter(points[mask, 0], points[mask, 1])
+    mask = cluster_id == 1
+    plt.scatter(points[mask, 0], points[mask, 1])
+    plt.plot(x[0, :], x[1, :])
+    plt.show()
+
+
+def cluster_split(key, points, mask, log_VS, log_VE, kmeans_init=True):
+    """
+    Splits a set of points into two ellipsoids such that the enclosed volume is as close to V(S) without being less.
+    V(S) should be an estimate of the true volume contained by the points.
+
+    Args:
+        key:
+        points: [N, D]
+        mask: [N] only split on these points
+        log_VS: logV(S) of the set of points
+        log_VE: logV(E) of the parent ellipsoid
+        kmeans_init: whether to use kmeans to initialise the clustering
+
+    Returns:
+        cluster_id: ids of the points, places where ~mask are random assignments
+        mu1, radii1, rotation1: ellipsoid params of first subcluster
+        mu2, radii2, rotation2: ellipsoid paras of second subcluster
+
+    """
+    N, D = points.shape
+    n_S = jnp.sum(mask)
+    # # calculate bounding ellipsoid
+    # mu, C =// bounding_ellipsoid(points, mask)
+    # radii, _ = ellipsoid_params(C)
+    # log_VE = log_ellipsoid_volume(radii)
+    # # enlarge so that V(E) = max(V(E), V(S))
+    # # (const * r**D) >= V(S) -> scale = 1 else log_scale = (log_V(S) - log(const * r**D))/D
+    # log_scale = jnp.maximum(0., (log_VS - log_VE) / D)
+    # C = C / jnp.exp(log_scale)
+    ###
+    # input is essentially log_VS
+    if kmeans_init:
+        # do Euclidean kmean clustering
+        cluster_id, centers = kmeans(key, points, mask, K=2)
+    else:
+        # assign to random clusters: child0 or child1
+        cluster_id = random.randint(key, shape=(N,), minval=0, maxval=2)
+
+    def body(state):
+        (i, done, old_cluster_id, _, _, _, _, _, _, _, _, _) = state
+        mask1 = mask & (old_cluster_id == 0)
+        mask2 = mask & (old_cluster_id == 1)
+        # estimate volumes of current clustering
+        n1 = jnp.sum(mask1)
+        n2 = jnp.sum(mask & mask2)
+        log_VS1 = log_VS + jnp.log(n1) - jnp.log(n_S)
+        log_VS2 = log_VS + jnp.log(n2) - jnp.log(n_S)
+        # construct E_1, E_2 and compute volumes
+        mu1, C1 = bounding_ellipsoid(points, mask1)
+        radii1, rotation1 = ellipsoid_params(C1)
+        log_VE1 = log_ellipsoid_volume(radii1)
+        mu2, C2 = bounding_ellipsoid(points, mask2)
+        radii2, rotation2 = ellipsoid_params(C2)
+        log_VE2 = log_ellipsoid_volume(radii2)
+        # enlarge to at least cover V(S1) and V(S2)
+        log_scale1 = jnp.maximum(0., (log_VS1 - log_VE1) / D)
+        log_scale2 = jnp.maximum(0., (log_VS2 - log_VE2) / D)
+        C1 = C1 / jnp.exp(log_scale1)
+        radii1 = radii1 * jnp.exp(log_scale1)
+        C2 = C2 / jnp.exp(log_scale2)
+        radii2 = radii2 * jnp.exp(log_scale2)
+        # compute reassignment metrics
+        maha1 = vmap(lambda point: (point - mu1) @ C1 @ (point - mu1))(points)
+        maha2 = vmap(lambda point: (point - mu2) @ C2 @ (point - mu2))(points)
+        log_h1 = log_VE1 - log_VS1 + jnp.log(maha1)
+        log_h2 = log_VE2 - log_VS2 + jnp.log(maha2)
+        # reassign
+        new_cluster_id = jnp.where(log_h1 < log_h2, 0, 1)
+        log_V_sum = jnp.logaddexp(log_VE1, log_VE2)
+        do_split = (log_V_sum < log_VE) | (log_VE > log_VS + jnp.log(2.))
+        done = jnp.all(new_cluster_id == old_cluster_id) | ~do_split
+        return (i + 1, done, new_cluster_id, log_VS1, mu1, radii1, rotation1, log_VS2, mu2, radii2, rotation2, do_split)
+
+    do_split = jnp.sum(mask) > 2*(D+1)
+    (i, _, cluster_id, log_VS1, mu1, radii1, rotation1, log_VS2, mu2, radii2, rotation2, do_split) = \
+        while_loop(lambda state: ~state[1],
+                   body,
+                   (jnp.array(0), ~do_split, cluster_id,
+                    jnp.array(-jnp.inf), jnp.zeros(D), jnp.zeros(D), jnp.eye(D),
+                    jnp.array(-jnp.inf), jnp.zeros(D), jnp.zeros(D), jnp.eye(D),
+                    do_split))
+
+    return cluster_id, log_VS1, mu1, radii1, rotation1, log_VS2, mu2, radii2, rotation2, do_split
+
+
+def test_cluster_split():
+    import pylab as plt
+    from jax import disable_jit
+    points = jnp.concatenate([random.uniform(random.PRNGKey(0), shape=(30, 2)),
+                              1.25 + random.uniform(random.PRNGKey(0), shape=(10, 2))],
+                             axis=0)
+    theta = jnp.linspace(0., jnp.pi * 2, 100)
+    x = jnp.stack([jnp.cos(theta), jnp.sin(theta)], axis=0)
+    mask = jnp.zeros(points.shape[0], jnp.bool_)
+    mu, C = bounding_ellipsoid(points, jnp.ones(points.shape[0], jnp.bool_))
+    radii, rotation = ellipsoid_params(C)
+    y = mu[:, None] + rotation @ jnp.diag(radii) @ x
+    plt.plot(y[0, :], y[1, :])
+    log_VS = log_ellipsoid_volume(radii) - jnp.log(5)
+    with disable_jit():
+        cluster_id, log_VS1, mu1, radii1, rotation1, log_VS2, mu2, radii2, rotation2, do_split = \
+            cluster_split(random.PRNGKey(0), points, mask, log_VS, log_ellipsoid_volume(radii), kmeans_init=True)
+        print(jnp.logaddexp(log_ellipsoid_volume(radii1), log_ellipsoid_volume(radii2)), log_ellipsoid_volume(radii))
+        print(log_VS1, mu1, radii1, rotation1, log_VS2, mu2, radii2, rotation2, do_split)
+        print(cluster_id)
+
+    y = mu1[:, None] + rotation1 @ jnp.diag(radii1) @ x
+    plt.plot(y[0, :], y[1, :])
+
+    y = mu2[:, None] + rotation2 @ jnp.diag(radii2) @ x
+    plt.plot(y[0, :], y[1, :])
+
+    mask = cluster_id == 0
+    plt.scatter(points[mask, 0], points[mask, 1])
+    mask = cluster_id == 1
+    plt.scatter(points[mask, 0], points[mask, 1])
+
+    plt.show()
+
+
+def test_accept_order():
+    def constraint(u):
+        return u ** 2 > 0.5
+
+    def accept_prob(u):
+        if u > 0.9:
+            return 1
+        if u > 0.8:
+            return 0.5
+        if u > 0.7:
+            return 0.25
+        return 0.
+
+    def f1(key):
+        while True:
+            key, u_key = random.split(key, 2)
+            u = random.uniform(u_key)
+            if constraint(u):
+                key, a_key = random.split(key, 2)
+                if random.uniform(a_key) < accept_prob(u):
+                    return u
+
+    def f2(key):
+        while True:
+            key, u_key, a_key = random.split(key, 3)
+            u = random.uniform(u_key)
+            if random.uniform(a_key) < accept_prob(u):
+                if constraint(u):
+                    return u
+
+    from jax import vmap, disable_jit
+    import pylab as plt
+    keys = random.split(random.PRNGKey(0), 1000)
+    with disable_jit():
+        u1 = jnp.array([f1(key) for key in keys])
+        u2 = jnp.array([f2(key) for key in keys])
+
+    print(u1)
+
+    plt.hist(u1, bins='auto', alpha=0.5)
+    plt.hist(u2, bins='auto', alpha=0.5)
+    plt.show()
+
+
+def ellipsoid_clustering(key, points, depth, log_VS):
+    """
+    Partition live_points into 2^depth clusters in depth-first.
+    0:    0 | # 2^0
+    1:    1 2 | # 2^1
+    2:    3 4 5 6
+    3:    7 8 9 10 11 12 13 14
+
+    index(r,c) = index(r,0) + c
+    index(r,0) = sum_p=0^(r-1) 2^p = 2^r - 1
+    index(r,c) = 2^r - 1 + c
+
+    index(r,c) = index(r-1, 2^(r-1) - 1) + c
+    child0(r,c) = index(r+1, 2*c) = index(r+1, 0) + 2*c = index(r,0) + 2^r + 2*c = index(r,c) + 2^r + c
+    child1(r,c) = index(r+1, 2*c+1) = index(r+1, 0) + 2*c + 1 = = index(r,c) + 2^r + c + 1
+    parent(r,c) = index(r-1, c//2)
+
+    To walk this and modify memory in place we follow the rule:
+
+    Find lowest index, replace with left node, append right node.
+    0
+    1 2
+    3 2 4
+    3 5 4 6
+    7 5 4 6 8
+    7 5 9 6 8 10
+    7 11 9 6 8 10 12
+    7 11 9 13 8 10 12 13 <- final splitting
+
+    In general we will do sum_p=0^(depth-1) 2^p = 2^depth - 1 splittings
+
+    for depth = 4 -> 2^4 - 1 = 15
+    for depth = 3 -> 2^2 - 1 = 7
+
+
+    Args:
+        key:
+        points: [N, D]
+        depth:
+        log_VS: expected true volume of points
+
+    Returns:
+
+    """
+    N, D = points.shape
+
+    num_clusters = 2 ** depth
+    cluster_id = jnp.zeros(N)
+    order = [0]
+    mu, C = bounding_ellipsoid(points, cluster_id == 0)
+    radii, rotation = ellipsoid_params(C)
+    ellipsoid_parameters = [(mu, radii, rotation)]
+    log_VS_subclusters = [log_VS]
+    num_splittings = 2 ** (depth - 1) - 1
+    keys = random.split(key, num_splittings)
+    for splitting in range(num_splittings):
+        lowest = min(order)
+        child0 = max(order) + 1
+        child1 = child0 + 1
+        i_lowest = order.index(lowest)
+        mask = cluster_id == order[i_lowest]
+        log_VS_subcluster = log_VS_subclusters[i_lowest]
+        log_VE_parent = log_ellipsoid_volume(ellipsoid_parameters[i_lowest][1])
+        unsorted_cluster_id, log_VS1, mu1, radii1, rotation1, log_VS2, mu2, radii2, rotation2, do_split = cluster_split(
+            keys[splitting], points, mask, log_VS_subcluster, log_VE_parent, kmeans_init=True)
+        unsorted_cluster_id = jnp.where(unsorted_cluster_id == 0, child0, child1)
+        cluster_id = jnp.where(mask, unsorted_cluster_id, cluster_id)
+        order[i_lowest] = child0
+        order.append(child1)
+        # if do_split then keep else
+        # we replace child0 with parent and child1 gets zero-size ellipsoid that has no members.
+        log_VS1 = jnp.where(do_split, log_VS1, log_VS_subcluster)
+        mu1 = jnp.where(do_split, mu1, ellipsoid_parameters[i_lowest][0])
+        radii1 = jnp.where(do_split, radii1, ellipsoid_parameters[i_lowest][1])
+        rotation1 = jnp.where(do_split, rotation1, ellipsoid_parameters[i_lowest][2])
+        log_VS2 = jnp.where(do_split, log_VS2, jnp.array(-jnp.inf))
+        mu2 = jnp.where(do_split, mu2, jnp.zeros(D))
+        radii2 = jnp.where(do_split, radii2, jnp.zeros(D))
+        rotation2 = jnp.where(do_split, rotation2, jnp.eye(D))
+        cluster_id = jnp.where((~do_split) & (cluster_id == child1), child0, cluster_id)
+        print(do_split,  mask, cluster_id)
+        #update tracked objects
+        log_VS_subclusters[i_lowest] = log_VS1
+        log_VS_subclusters.append(log_VS2)
+        ellipsoid_parameters[i_lowest] = (mu1, radii1, rotation1)
+        ellipsoid_parameters.append((mu2, radii2, rotation2))
+    cluster_id = cluster_id - (2 ** (depth - 1) - 1)
+    return cluster_id, ellipsoid_parameters
+
+
+def test_ellipsoid_clustering():
+    import pylab as plt
+    from jax import disable_jit, jit
+    points = jnp.concatenate([random.uniform(random.PRNGKey(0), shape=(30, 2)),
+                              1.25 + random.uniform(random.PRNGKey(0), shape=(10, 2))],
+                             axis=0)
+    theta = jnp.linspace(0., jnp.pi * 2, 100)
+    x = jnp.stack([jnp.cos(theta), jnp.sin(theta)], axis=0)
+    mask = jnp.ones(points.shape[0], jnp.bool_)
+    mu, C = bounding_ellipsoid(points, mask)
+    radii, rotation = ellipsoid_params(C)
+    y = mu[:, None] + rotation @ jnp.diag(radii) @ x
+    # plt.plot(y[0, :], y[1, :])
+    log_VS = log_ellipsoid_volume(radii) - jnp.log(5)
+
+    with disable_jit():
+        cluster_id, ellipsoid_parameters = \
+            jit(lambda key, points, log_VS: ellipsoid_clustering(random.PRNGKey(0), points, 3, log_VS)
+                )(random.PRNGKey(0), points, log_VS)
+
+    for i, (mu, radii, rotation) in enumerate(ellipsoid_parameters):
+        y = mu[:, None] + rotation @ jnp.diag(radii) @ x
+        plt.plot(y[0, :], y[1, :])
+        mask = cluster_id == i
+        plt.scatter(points[mask, 0], points[mask, 1],c=plt.cm.jet(i/len(ellipsoid_parameters)))
+
+    plt.show()
+
+
+def log_ellipsoid_volume(radii):
+    D = radii.shape[0]
+    return jnp.log(2.) - jnp.log(D) + 0.5 * D * jnp.log(jnp.pi) - gammaln(0.5 * D) + jnp.sum(jnp.log(radii))
+
+
+def test_log_ellipsoid_volume():
+    radii = jnp.ones(2)
+    assert jnp.isclose(log_ellipsoid_volume(radii), jnp.log(jnp.pi))
+    radii = jnp.ones(3)
+    assert jnp.isclose(log_ellipsoid_volume(radii), jnp.log(4. * jnp.pi / 3.))
+
 
 def minimum_volume_enclosing_ellipsoid(points, tol, init_u=None, return_u=False):
     """
@@ -17,9 +469,9 @@ def minimum_volume_enclosing_ellipsoid(points, tol, init_u=None, return_u=False)
 
     def body(state):
         (count, err, u) = state
-        V = Q.T @ jnp.diag(u) @ Q#D+1, D+1
+        V = Q.T @ jnp.diag(u) @ Q  # D+1, D+1
         # g[i] = Q[i,j].V^-1_jk.Q[i,k]
-        g = vmap(lambda q: q @ jnp.linalg.solve(V, q))(Q)#difference
+        g = vmap(lambda q: q @ jnp.linalg.solve(V, q))(Q)  # difference
         # jnp.diag(Q @ jnp.linalg.solve(V, Q.T))
         j = jnp.argmax(g)
         g_max = g[j]
@@ -29,7 +481,7 @@ def minimum_volume_enclosing_ellipsoid(points, tol, init_u=None, return_u=False)
         search_direction = jnp.where(jnp.arange(N) == j, 1. - u, -u)
         new_u = u + step_size * search_direction
         # new_u = (1. - step_size)*u
-        new_u = jnp.where(jnp.arange(N) == j, u + step_size*(1. - u), u * (1.-step_size))
+        new_u = jnp.where(jnp.arange(N) == j, u + step_size * (1. - u), u * (1. - step_size))
         new_err = jnp.linalg.norm(u - new_u)
         return (count + 1, new_err, new_u)
 
@@ -118,15 +570,15 @@ def test_mvee():
     with disable_jit():
         center, radii, rotation = minimum_volume_enclosing_ellipsoid(points, 0.01, init_u=next_u)
 
-    circ_points = ellipsoid_to_circle(points[:-1,:], center, radii, rotation)
+    circ_points = ellipsoid_to_circle(points[:-1, :], center, radii, rotation)
     # plt.scatter(circ_points[:,0], circ_points[:,1])
-    plt.scatter(points[:,0], points[:,1])
+    plt.scatter(points[:, 0], points[:, 1])
     # plt.show()
-    print(jnp.max(jnp.linalg.norm(circ_points, axis=-1)**2 - 1.))
+    print(jnp.max(jnp.linalg.norm(circ_points, axis=-1) ** 2 - 1.))
     # assert jnp.all(jnp.linalg.norm(circ_points, axis=-1) <= 1.03)
 
-    theta = jnp.linspace(0., jnp.pi*2,100)
-    circle = jnp.stack([jnp.cos(theta), jnp.sin(theta)],axis=1)
+    theta = jnp.linspace(0., jnp.pi * 2, 100)
+    circle = jnp.stack([jnp.cos(theta), jnp.sin(theta)], axis=1)
     ellipse = circle_to_ellipsoid(circle, center, radii, rotation)
-    plt.plot(ellipse[:,0], ellipse[:,1])
+    plt.plot(ellipse[:, 0], ellipse[:, 1])
     plt.show()
