@@ -1,6 +1,7 @@
 from collections import namedtuple
 
-from jaxns.likelihood_samplers.cubes_utils import log_cubes_intersect_volume, points_in_box, determine_log_cube_width
+from jaxns.likelihood_samplers.cubes_utils import (log_cubes_intersect_volume, points_in_box, determine_log_cube_width,
+                                                   squared_norm)
 from jax import numpy as jnp, vmap, random, jit
 from jax.lax import while_loop
 from jax.scipy.linalg import solve_triangular
@@ -42,10 +43,15 @@ def cubes(key, log_L_constraint, live_points_U,
     log_ideal_cube_volume = log_mean_X - jnp.log(N)
     log_ideal_cube_width = log_ideal_cube_volume / D
     key, width_key = random.split(key, 2)
-    log_cube_width = determine_log_cube_width(width_key, live_points_U, log_mean_X, log_init_cube_width=sampler_state.log_cube_width,
-                             tol=0.1, shrink_amount=0.5, grow_amount=1.5, log_vol_samples=1)
 
-    log_cube_width = jnp.where(jnp.isfinite(log_cube_width), log_cube_width, log_ideal_cube_width)
+    inter_point_distance = jnp.sqrt(squared_norm(live_points_U, live_points_U))
+    inter_point_distance = jnp.where(inter_point_distance == 0., jnp.inf, inter_point_distance)
+    nearest_dist = jnp.min(inter_point_distance, axis=0)
+    log_cube_width = jnp.log(jnp.mean(nearest_dist))
+    # log_cube_width = determine_log_cube_width(width_key, live_points_U, log_mean_X, log_init_cube_width=sampler_state.log_cube_width,
+    #                          tol=0.1, shrink_amount=0.5, grow_amount=1.5, log_vol_samples=1)
+
+    # log_cube_width = jnp.where(jnp.isfinite(log_cube_width), log_cube_width, log_ideal_cube_width)
 
     # resolve center, radii if f_e
     next_sampler_state = CubesSamplerState(log_cube_width=log_cube_width)
