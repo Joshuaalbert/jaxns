@@ -4,3 +4,4 @@ from .slice import slice_sampling, slice_sampling_poly, init_slice_sampler_state
 from .ellipsoid import ellipsoid_sampler, init_ellipsoid_sampler_state
 from .cubes import cubes, init_cubes_sampler_state
 from .simplex import simplex, init_simplex_sampler_state
+from .multi_ellipsoid import multi_ellipsoid_sampler, init_multi_ellipsoid_sampler_state

@@ -34,7 +34,7 @@ def main():
     prior_transform = PriorChain().push(MVNDiagPrior('x', prior_mu, jnp.sqrt(jnp.diag(prior_cov))))
     # prior_transform = LaplacePrior(prior_mu, jnp.sqrt(jnp.diag(prior_cov)))
     # prior_transform = UniformPrior(-20.*jnp.ones(ndims), 20.*jnp.ones(ndims))
-    ns = NestedSampler(log_likelihood, prior_transform, sampler_name='ellipsoid')
+    ns = NestedSampler(log_likelihood, prior_transform, sampler_name='multi_ellipsoid')
 
     def run_with_n(n):
         @jit
@@ -45,13 +45,13 @@ def main():
                       collect_samples=True,
                       termination_frac=0.01,
                       stoachastic_uncertainty=True)
-        print(make_jaxpr(run)(random.PRNGKey(0)))
+        # print(make_jaxpr(run)(random.PRNGKey(0)))
         results = run(random.PRNGKey(0))
         return results
 
-    for n in [10]:
-        with disable_jit():
-            results = run_with_n(n)
+    for n in [10, 50, 100, 150, 200]:
+        # with disable_jit():
+        results = run_with_n(n)
         plt.scatter(n, results.logZ)
         plt.errorbar(n, results.logZ, yerr=results.logZerr)
     plt.hlines(true_logZ, 50, 200)
@@ -65,7 +65,7 @@ def main():
 
 
 if __name__ == '__main__':
-    import jax.profiler
-    server = jax.profiler.start_server(9999)
-    input("Ready? ")
+    # import jax.profiler
+    # server = jax.profiler.start_server(9999)
+    # input("Ready? ")
     main()
