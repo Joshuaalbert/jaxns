@@ -18,7 +18,8 @@ from jaxns.likelihood_samplers import (expanded_box,
                                        slice_sampling, constrained_hmc, ellipsoid_sampler,
                                        init_ellipsoid_sampler_state, init_box_sampler_state, init_slice_sampler_state,
                                        init_chmc_sampler_state, cubes, init_cubes_sampler_state,
-                                       simplex, init_simplex_sampler_state)
+                                       simplex, init_simplex_sampler_state,
+                                       multi_ellipsoid_sampler, init_multi_ellipsoid_sampler_state)
 
 
 class NestedSamplerState(NamedTuple):
@@ -47,13 +48,13 @@ class NestedSamplerState(NamedTuple):
     information_gain_state: namedtuple  # information, H, state
     status: int  # exit status: 0=good, 1=max samples reached
     sampler_state: namedtuple  # arbitrary state passed between iterations of the sampling step
-    marginalised_state: Dict #marginalised functions states
+    marginalised_state: Dict  # marginalised functions states
 
 
 class NestedSampler(object):
-    _available_samplers = ['cubes', 'box', 'whitened_box', 'chmc', 'slice', 'ellipsoid', 'simplex']
+    _available_samplers = ['cubes', 'box', 'whitened_box', 'chmc', 'slice', 'ellipsoid', 'simplex', 'multi_ellipsoid']
 
-    def __init__(self, loglikelihood, prior_chain: PriorChain, sampler_name='ellipsoid', **marginalised):
+    def __init__(self, loglikelihood, prior_chain: PriorChain, sampler_name='multi_ellipsoid', **marginalised):
         self.sampler_name = sampler_name
         if self.sampler_name not in self._available_samplers:
             raise ValueError("sampler {} should be one of {}.".format(self.sampler_name, self._available_samplers))
@@ -71,7 +72,8 @@ class NestedSampler(object):
         self.loglikelihood_from_U = loglikelihood_from_U
         self.marginalised = marginalised if len(marginalised) > 0 else None
         test_input = dict_multimap(lambda shape: jnp.zeros(shape), prior_chain.to_shapes)
-        self.marginalised_shapes = {k: marg(**test_input).shape for k, marg in marginalised.items()} if len(marginalised) > 0 else None
+        self.marginalised_shapes = {k: marg(**test_input).shape for k, marg in marginalised.items()} if len(
+            marginalised) > 0 else None
 
     def _filter_prior_chain(self, d):
         return {name: d[name] for name, prior in self.prior_chain.prior_chain.items() if prior.tracked}
@@ -101,7 +103,8 @@ class NestedSampler(object):
         m = PosteriorFirstMoment(self._filter_prior_chain(self.prior_chain.to_shapes))
         M = PosteriorSecondMoment(self._filter_prior_chain(self.prior_chain.to_shapes))
         information_gain = InformationGain(global_evidence=evidence)
-        marginalised = Marginalised(self.marginalised, self.marginalised_shapes) if self.marginalised is not None else None
+        marginalised = Marginalised(self.marginalised,
+                                    self.marginalised_shapes) if self.marginalised is not None else None
 
         # select cluster to spawn into
         if self.sampler_name == 'box':
@@ -118,6 +121,11 @@ class NestedSampler(object):
             sampler_state = init_cubes_sampler_state(*live_points_U.shape)
         elif self.sampler_name == 'simplex':
             sampler_state = init_simplex_sampler_state(live_points_U)
+        elif self.sampler_name == 'multi_ellipsoid':
+            key, init_sampler_state_key = random.split(key, 2)
+            depth = 3
+            sampler_state = init_multi_ellipsoid_sampler_state(
+                init_sampler_state_key, live_points_U, depth, evidence.X.log_value)
         else:
             raise ValueError("Invalid sampler name {}".format(self.sampler_name))
 
@@ -184,8 +192,6 @@ class NestedSampler(object):
             marginalised.update(dead_point, n, log_L_min)
             state = state._replace(marginalised_state=marginalised.state)
 
-
-
         # select cluster to spawn into
         if self.sampler_name == 'box':
             key, spawn_id_key = random.split(state.key, 2)
@@ -247,12 +253,22 @@ class NestedSampler(object):
 
         elif self.sampler_name == 'simplex':
             sampler_results = simplex(state.key,
-                                    log_L_min,
-                                    state.live_points_U,
-                                    self.loglikelihood,
-                                    self.prior_chain,
-                                    state.sampler_state,
-                                    i_min)
+                                      log_L_min,
+                                      state.live_points_U,
+                                      self.loglikelihood,
+                                      self.prior_chain,
+                                      state.sampler_state,
+                                      i_min)
+        elif self.sampler_name == 'multi_ellipsoid':
+            sampler_results = multi_ellipsoid_sampler(state.key,
+                                                      log_L_min,
+                                                      state.live_points_U,
+                                                      self.loglikelihood,
+                                                      self.prior_chain,
+                                                      state.sampler_state,
+                                                      evidence.X.log_value,
+                                                      state.i,
+                                                      i_min)
         else:
             raise ValueError("Invalid sampler name {}".format(self.sampler_name))
         #
@@ -268,7 +284,7 @@ class NestedSampler(object):
                                                                            jnp.ones(
                                                                                1) / sampler_results.num_likelihood_evaluations,
                                                                            [state.i]))
-            
+
         state = state._replace(key=sampler_results.key,
                                num_likelihood_evaluations=state.num_likelihood_evaluations +
                                                           sampler_results.num_likelihood_evaluations,
@@ -326,7 +342,7 @@ class NestedSampler(object):
                    'param_mean_err',
                    'param_covariance',
                    'param_covariance_err',
-                    'marginalised']
+                   'marginalised']
 
         if collect_samples:
             collect.append('samples')
@@ -373,7 +389,8 @@ class NestedSampler(object):
         if collect_samples:
             num_live_points = state.log_L_live.shape[0]
             n_per_sample = jnp.where(jnp.arange(max_samples) < state.num_dead, num_live_points, jnp.inf)
-            n_per_sample = dynamic_update_slice(n_per_sample, num_live_points - jnp.arange(num_live_points,dtype=n_per_sample.dtype),
+            n_per_sample = dynamic_update_slice(n_per_sample,
+                                                num_live_points - jnp.arange(num_live_points, dtype=n_per_sample.dtype),
                                                 [state.num_dead])
 
             log_t = jnp.where(jnp.isinf(n_per_sample), 0., jnp.log(n_per_sample) - jnp.log(n_per_sample + 1.))
@@ -381,8 +398,8 @@ class NestedSampler(object):
             ar = jnp.argsort(state.log_L_live)
             samples = dict_multimap(lambda dead_points, live_points:
                                     dynamic_update_slice(dead_points,
-                                                         live_points[ar,...],
-                                                         [state.num_dead] + [0]*(len(dead_points.shape) - 1)),
+                                                         live_points[ar, ...],
+                                                         [state.num_dead] + [0] * (len(dead_points.shape) - 1)),
                                     state.dead_points, state.live_points)
             log_L_samples = dynamic_update_slice(state.log_L_dead, state.log_L_live[ar], [state.num_dead])
 
@@ -426,7 +443,6 @@ class NestedSampler(object):
             log_w = log_dX + log_avg_L
             log_p = log_w - logsumexp(log_w)
             data['log_p'] = log_p
-
 
             # if self.marginalise is not None:
             #     def single_marginalise(marginalise):

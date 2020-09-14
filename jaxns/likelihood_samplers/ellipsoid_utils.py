@@ -1,6 +1,6 @@
 from jax import numpy as jnp, vmap, random
-from jax.lax import while_loop
-from jax.scipy.special import gammaln
+from jax.lax import while_loop, dynamic_update_slice, scan
+from jax.scipy.special import gammaln, logsumexp
 
 
 def test_binary_tree_bf_walk():
@@ -66,7 +66,7 @@ def bounding_ellipsoid(points, mask):
     mu = jnp.average(points, weights=mask, axis=0)
     dx = points - mu
     cov = jnp.average(dx[:, :, None] * dx[:, None, :], weights=mask, axis=0)
-    C = jnp.linalg.inv(cov)
+    C = jnp.linalg.pinv(cov)
     maha = vmap(lambda dx: dx @ C @ dx)(dx)
     scale = jnp.max(jnp.where(mask, maha, -jnp.inf))
     C = C / scale
@@ -129,6 +129,7 @@ def kmeans(key, points, mask, K=2):
         new_cluster_id = jnp.argmin(squared_norm, axis=0)  # N
         done = jnp.all(new_cluster_id == old_cluster_id)
         return i + 1, done, new_cluster_id, new_centers
+
     do_kmeans = jnp.sum(mask) > K
     i, _, cluster_id, centers = while_loop(lambda state: ~state[1],
                                            body,
@@ -156,6 +157,23 @@ def test_kmeans():
     plt.scatter(points[mask, 0], points[mask, 1])
     plt.plot(x[0, :], x[1, :])
     plt.show()
+
+
+def log_coverage_scale(log_VE, log_VS, D):
+    """
+    Computes the required scaling relation such that
+    V(E) = max(V(E), V(S))
+    where the scaling is applied to each radius.
+
+    Args:
+        log_VE:
+        log_VS:
+        D:
+
+    Returns:
+
+    """
+    return jnp.maximum(0., (log_VS - log_VE) / D)
 
 
 def cluster_split(key, points, mask, log_VS, log_VE, kmeans_init=True):
@@ -213,12 +231,12 @@ def cluster_split(key, points, mask, log_VS, log_VE, kmeans_init=True):
         radii2, rotation2 = ellipsoid_params(C2)
         log_VE2 = log_ellipsoid_volume(radii2)
         # enlarge to at least cover V(S1) and V(S2)
-        log_scale1 = jnp.maximum(0., (log_VS1 - log_VE1) / D)
-        log_scale2 = jnp.maximum(0., (log_VS2 - log_VE2) / D)
+        log_scale1 = log_coverage_scale(log_VE1, log_VS1, D)
+        log_scale2 = log_coverage_scale(log_VE2, log_VS2, D)
         C1 = C1 / jnp.exp(log_scale1)
-        radii1 = radii1 * jnp.exp(log_scale1)
+        radii1 = jnp.exp(jnp.log(radii1) + log_scale1)
         C2 = C2 / jnp.exp(log_scale2)
-        radii2 = radii2 * jnp.exp(log_scale2)
+        radii2 = jnp.exp(jnp.log(radii2) + log_scale2)
         # compute reassignment metrics
         maha1 = vmap(lambda point: (point - mu1) @ C1 @ (point - mu1))(points)
         maha2 = vmap(lambda point: (point - mu2) @ C2 @ (point - mu2))(points)
@@ -231,7 +249,7 @@ def cluster_split(key, points, mask, log_VS, log_VE, kmeans_init=True):
         done = jnp.all(new_cluster_id == old_cluster_id) | ~do_split
         return (i + 1, done, new_cluster_id, log_VS1, mu1, radii1, rotation1, log_VS2, mu2, radii2, rotation2, do_split)
 
-    do_split = jnp.sum(mask) > 2*(D+1)
+    do_split = jnp.sum(mask) > 2 * (D + 1)
     (i, _, cluster_id, log_VS1, mu1, radii1, rotation1, log_VS2, mu2, radii2, rotation2, do_split) = \
         while_loop(lambda state: ~state[1],
                    body,
@@ -239,6 +257,11 @@ def cluster_split(key, points, mask, log_VS, log_VE, kmeans_init=True):
                     jnp.array(-jnp.inf), jnp.zeros(D), jnp.zeros(D), jnp.eye(D),
                     jnp.array(-jnp.inf), jnp.zeros(D), jnp.zeros(D), jnp.eye(D),
                     do_split))
+    mask1 = mask & (cluster_id == 0)
+    mask2 = mask & (cluster_id == 1)
+    cond1 = jnp.max(radii1)/jnp.min(radii1)
+    cond2 = jnp.max(radii2)/jnp.min(radii2)
+    do_split = do_split & (jnp.sum(mask1) >= (D + 1)) & (jnp.sum(mask2) >= (D + 1)) & (cond1 < 10.) & (cond2 < 10.)
 
     return cluster_id, log_VS1, mu1, radii1, rotation1, log_VS2, mu2, radii2, rotation2, do_split
 
@@ -363,53 +386,160 @@ def ellipsoid_clustering(key, points, depth, log_VS):
         depth:
         log_VS: expected true volume of points
 
-    Returns:
+    Returns: cluster_id, ellipsoid_parameters
 
     """
     N, D = points.shape
 
-    num_clusters = 2 ** depth
-    cluster_id = jnp.zeros(N)
-    order = [0]
+    num_clusters = 2 ** (depth - 1)
+    cluster_id = jnp.zeros(N, dtype=jnp.int_)
     mu, C = bounding_ellipsoid(points, cluster_id == 0)
     radii, rotation = ellipsoid_params(C)
-    ellipsoid_parameters = [(mu, radii, rotation)]
-    log_VS_subclusters = [log_VS]
+
     num_splittings = 2 ** (depth - 1) - 1
     keys = random.split(key, num_splittings)
-    for splitting in range(num_splittings):
-        lowest = min(order)
-        child0 = max(order) + 1
+    mu_result = jnp.zeros((num_clusters, D))
+    mu_result = dynamic_update_slice(mu_result, mu[None, :], [0, 0])
+    radii_result = jnp.zeros((num_clusters, D))
+    radii_result = dynamic_update_slice(radii_result, radii[None, :], [0, 0])
+    rotation_result = jnp.zeros((num_clusters, D, D))
+    rotation_result = dynamic_update_slice(rotation_result, rotation[None, :], [0, 0, 0])
+    order = jnp.zeros(num_splittings, dtype=jnp.int_)
+    log_VS_subclusters = jnp.array([log_VS] + [0] * num_splittings)
+
+    def body(state, X):
+        (cluster_id, mu_result, radii_result, rotation_result, order, log_VS_subclusters) = state
+        (key, splitting) = X
+        # lowest = jnp.min(order[:splitting+1])
+        splitting_select = jnp.arange(num_splittings) <= splitting
+        child0 = jnp.max(jnp.where(splitting_select, order, -jnp.inf)) + 1
+        child0 = child0.astype(jnp.int_)
         child1 = child0 + 1
-        i_lowest = order.index(lowest)
+        i_lowest = jnp.argmin(jnp.where(splitting_select, order, jnp.inf))
+
+        def _replace_result(operand, update1, update2):
+            operand = dynamic_update_slice(operand, update1, jnp.asarray([i_lowest] + [0] * (len(operand.shape) - 1)))
+            operand = dynamic_update_slice(operand, update2,
+                                           jnp.asarray([splitting + 1] + [0] * (len(operand.shape) - 1)))
+            return operand
+
         mask = cluster_id == order[i_lowest]
         log_VS_subcluster = log_VS_subclusters[i_lowest]
-        log_VE_parent = log_ellipsoid_volume(ellipsoid_parameters[i_lowest][1])
+        log_VE_parent = log_ellipsoid_volume(radii_result[i_lowest, :])
         unsorted_cluster_id, log_VS1, mu1, radii1, rotation1, log_VS2, mu2, radii2, rotation2, do_split = cluster_split(
-            keys[splitting], points, mask, log_VS_subcluster, log_VE_parent, kmeans_init=True)
+            key, points, mask, log_VS_subcluster, log_VE_parent, kmeans_init=True)
         unsorted_cluster_id = jnp.where(unsorted_cluster_id == 0, child0, child1)
         cluster_id = jnp.where(mask, unsorted_cluster_id, cluster_id)
-        order[i_lowest] = child0
-        order.append(child1)
+        # order[i_lowest] = child0
+        # order.append(child1)
+        order = _replace_result(order, child0[None], child1[None])
+        # print(order)
         # if do_split then keep else
         # we replace child0 with parent and child1 gets zero-size ellipsoid that has no members.
         log_VS1 = jnp.where(do_split, log_VS1, log_VS_subcluster)
-        mu1 = jnp.where(do_split, mu1, ellipsoid_parameters[i_lowest][0])
-        radii1 = jnp.where(do_split, radii1, ellipsoid_parameters[i_lowest][1])
-        rotation1 = jnp.where(do_split, rotation1, ellipsoid_parameters[i_lowest][2])
+        mu1 = jnp.where(do_split, mu1, mu_result[i_lowest, :])
+        radii1 = jnp.where(do_split, radii1, radii_result[i_lowest, :])
+        rotation1 = jnp.where(do_split, rotation1, rotation_result[i_lowest, :])
         log_VS2 = jnp.where(do_split, log_VS2, jnp.array(-jnp.inf))
         mu2 = jnp.where(do_split, mu2, jnp.zeros(D))
         radii2 = jnp.where(do_split, radii2, jnp.zeros(D))
         rotation2 = jnp.where(do_split, rotation2, jnp.eye(D))
         cluster_id = jnp.where((~do_split) & (cluster_id == child1), child0, cluster_id)
-        print(do_split,  mask, cluster_id)
-        #update tracked objects
-        log_VS_subclusters[i_lowest] = log_VS1
-        log_VS_subclusters.append(log_VS2)
-        ellipsoid_parameters[i_lowest] = (mu1, radii1, rotation1)
-        ellipsoid_parameters.append((mu2, radii2, rotation2))
+        # update tracked objects
+        # log_VS_subclusters[i_lowest] = log_VS1
+        # log_VS_subclusters.append(log_VS2)
+        log_VS_subclusters = _replace_result(log_VS_subclusters, log_VS1[None], log_VS2[None])
+        mu_result = _replace_result(mu_result, mu1[None, :], mu2[None, :])
+        radii_result = _replace_result(radii_result, radii1[None, :], radii2[None, :])
+        rotation_result = _replace_result(rotation_result, rotation1[None, :, :], rotation2[None, :, :])
+        # print(cluster_id, mu_result, radii_result, rotation_result, order, log_VS_subclusters)
+        return (cluster_id, mu_result, radii_result, rotation_result, order, log_VS_subclusters), ()
+
+    (cluster_id, mu_result, radii_result, rotation_result, order, log_VS_subclusters), _ = \
+        scan(body,
+             (cluster_id, mu_result, radii_result, rotation_result, order, log_VS_subclusters),
+             (keys, jnp.arange(num_splittings)),
+             unroll=2)
     cluster_id = cluster_id - (2 ** (depth - 1) - 1)
-    return cluster_id, ellipsoid_parameters
+    return cluster_id, (mu_result, radii_result, rotation_result)
+
+
+def point_in_ellipsoid(u, mu, radii, rotation):
+    dx = u - mu
+    dx = jnp.diag(jnp.reciprocal(radii)) @ rotation.T @ dx
+    return dx @ dx <= 1.
+
+
+def sample_multi_ellipsoid(key, mu, radii, rotation, unit_cube_constraint=True):
+    """
+    Sample from a set of overlapping ellipsoids.
+
+    Args:
+        key:
+        mu: [K, D]
+        radii: [K, D]
+        rotation: [K,D,D]
+
+    Returns: point uniformly sampled from intersection of ellipsoids [D]
+
+    """
+    K, D = radii.shape
+    key, select_key = random.split(key, 2)
+    log_VE = vmap(log_ellipsoid_volume)(radii)
+    log_p = log_VE - logsumexp(log_VE)
+    k = random.categorical(select_key, log_p)
+    mu_k = mu[k, :]
+    radii_k = radii[k, :]
+    rotation_k = rotation[k, :, :]
+
+    def body(state):
+        (i, key, done, _) = state
+        key, accept_key, sample_key = random.split(key, 3)
+        u_test = sample_ellipsoid(sample_key, mu_k, radii_k, rotation_k)
+        inside = vmap(lambda mu, radii, rotation: point_in_ellipsoid(u_test, mu, radii, rotation))(mu, radii, rotation)
+        n_intersect = jnp.sum(inside)
+        if unit_cube_constraint:
+            done = (random.uniform(accept_key) < jnp.reciprocal(n_intersect)) \
+                   & jnp.all(u_test <= 1.) & jnp.all(u_test > 0.)
+        else:
+            done = (random.uniform(accept_key) < jnp.reciprocal(n_intersect))
+        return (i + 1, key, done, u_test)
+
+    _, _, _, u_accept = while_loop(lambda state: ~state[2],
+                                   body,
+                                   (jnp.array(0), key, jnp.array(False), jnp.zeros(D)))
+    return k, u_accept
+
+
+def test_sample_multi_ellipsoid():
+    import pylab as plt
+    from jax import disable_jit, jit
+    points = jnp.concatenate([random.uniform(random.PRNGKey(0), shape=(30, 2)),
+                              1.25 + random.uniform(random.PRNGKey(0), shape=(10, 2))],
+                             axis=0)
+    theta = jnp.linspace(0., jnp.pi * 2, 100)
+    x = jnp.stack([jnp.cos(theta), jnp.sin(theta)], axis=0)
+    mask = jnp.ones(points.shape[0], jnp.bool_)
+    mu, C = bounding_ellipsoid(points, mask)
+    radii, rotation = ellipsoid_params(C)
+    y = mu[:, None] + rotation @ jnp.diag(radii) @ x
+    # plt.plot(y[0, :], y[1, :])
+    log_VS = log_ellipsoid_volume(radii) - jnp.log(5)
+
+    with disable_jit():
+        cluster_id, ellipsoid_parameters = \
+            jit(lambda key, points, log_VS: ellipsoid_clustering(random.PRNGKey(0), points, 4, log_VS)
+                )(random.PRNGKey(0), points, log_VS)
+
+        mu, radii, rotation = ellipsoid_parameters
+        u = jnp.stack([sample_multi_ellipsoid(random.PRNGKey(i), mu, radii, rotation)[1] for i in range(100)], axis=0)
+    plt.scatter(u[:, 0], u[:, 1])
+    for i, (mu, radii, rotation) in enumerate(zip(mu, radii, rotation)):
+        y = mu[:, None] + rotation @ jnp.diag(radii) @ x
+        plt.plot(y[0, :], y[1, :])
+        mask = cluster_id == i
+        # plt.scatter(points[mask, 0], points[mask, 1], c=plt.cm.jet(i / len(ellipsoid_parameters)))
+    plt.show()
 
 
 def test_ellipsoid_clustering():
@@ -431,12 +561,14 @@ def test_ellipsoid_clustering():
         cluster_id, ellipsoid_parameters = \
             jit(lambda key, points, log_VS: ellipsoid_clustering(random.PRNGKey(0), points, 3, log_VS)
                 )(random.PRNGKey(0), points, log_VS)
+        mu, radii, rotation = ellipsoid_parameters
+        print(mu, radii, rotation)
 
-    for i, (mu, radii, rotation) in enumerate(ellipsoid_parameters):
+    for i, (mu, radii, rotation) in enumerate(zip(mu, radii, rotation)):
         y = mu[:, None] + rotation @ jnp.diag(radii) @ x
         plt.plot(y[0, :], y[1, :])
         mask = cluster_id == i
-        plt.scatter(points[mask, 0], points[mask, 1],c=plt.cm.jet(i/len(ellipsoid_parameters)))
+        plt.scatter(points[mask, 0], points[mask, 1], c=plt.cm.jet(i / len(ellipsoid_parameters)))
 
     plt.show()
 
