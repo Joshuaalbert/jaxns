@@ -15,7 +15,7 @@ def main():
         return -0.5 * x.size * jnp.log(2. * jnp.pi) - jnp.sum(jnp.log(jnp.diag(L))) \
                - 0.5 * dx @ dx
 
-    ndims = 2
+    ndims = 10
     prior_mu = 2 * jnp.ones(ndims)
     prior_cov = jnp.diag(jnp.ones(ndims)) ** 2
 
@@ -44,12 +44,12 @@ def main():
                       max_samples=1e4,
                       collect_samples=True,
                       termination_frac=0.01,
-                      stoachastic_uncertainty=True)
+                      stoachastic_uncertainty=False)
         # print(make_jaxpr(run)(random.PRNGKey(0)))
         results = run(random.PRNGKey(0))
         return results
 
-    for n in [10, 50, 100, 150, 200]:
+    for n in [10]:
         # with disable_jit():
         results = run_with_n(n)
         plt.scatter(n, results.logZ)
