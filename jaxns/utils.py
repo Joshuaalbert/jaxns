@@ -390,8 +390,8 @@ def stochastic_result_computation(n_per_sample, key, samples, log_L_samples):
         left_broadcast_mul(weights, (dsamples[..., :, None] * dsamples[..., None, :])), axis=0), dsamples)
     # Kish's ESS = [sum weights]^2 / [sum weights^2]
     ESS = jnp.exp(2. * logsumexp(log_w) - logsumexp(2. * log_w))
-    # H = sum w_i log(w_i)
-    _H = jnp.exp(log_w) * log_w
+    # H = sum w_i log(L)
+    _H = jnp.exp(log_w) * log_avg_L
     H = jnp.sum(jnp.where(jnp.isnan(_H), 0., _H))
     return logZ, m, cov, ESS, H
 
