@@ -383,10 +383,14 @@ class PosteriorSecondMoment(TrackedExpectation):
 
 class InformationGain(TrackedExpectation):
     """
-    logH = -1/Z int L(X) log(L(X) dX) dX + log(Z)
+    H = int post(x) log(post(x)/prior(x)) dx
+    = int L(x) p(x)/Z log(L(x)/Z) dx
+    = int L(x) p(x)/Z log(L(x)) dx - log(Z)
+    = E(log(L(x))) - log(Z)
+    = sum w(x) log(L(x)) - log(Z)
     """
     def __init__(self, global_evidence: Evidence, *, state=None):
-        super(InformationGain, self).__init__('logH', 'linear', True, (),
+        super(InformationGain, self).__init__('H', 'linear', True, (),
                                               state=state,
                                               initial_f=0.,
                                               initial_f2=jnp.log(0.),
@@ -408,7 +412,6 @@ class InformationGain(TrackedExpectation):
 
     def compute_f_alpha(self, posterior_sample, n_i, log_L_i):
         """
-        log(L(X) dX) = logL(X) + E[w]
         Args:
             posterior_sample:
             n_i:
@@ -418,7 +421,7 @@ class InformationGain(TrackedExpectation):
         Returns:
 
         """
-        return log_L_i - jnp.log(n_i + 1.)
+        return log_L_i
 
 class Marginalised(TrackedExpectation):
     """
@@ -452,154 +455,3 @@ class Marginalised(TrackedExpectation):
         """
         return dict_multimap(lambda func: func(**posterior_sample), self.func_dict)
 
-def debug_tracking():
-    from jax import random, vmap
-    from jax.lax import dynamic_update_slice
-    from jax.scipy.special import logsumexp
-    from jax.lax_linalg import triangular_solve
-    import pylab as plt
-    from born_rime.nested_sampling.prior_transforms import MVNDiagPrior
-    # import dynesty
-    # import dynesty.plotting as dyplot
-
-    def log_normal(x, mean, cov):
-        L = jnp.linalg.cholesky(cov)
-        dx = x - mean
-        dx = triangular_solve(L, dx, lower=True)
-        return -0.5 * x.size * jnp.log(2. * jnp.pi) - jnp.sum(jnp.log(jnp.diag(L))) \
-               - 0.5 * dx @ dx
-    #
-    ndims = 2
-    prior_mu = 1. * jnp.ones(ndims)
-    prior_cov = jnp.diag(3.*jnp.ones(ndims)) ** 2
-
-    data_mu = jnp.zeros(ndims)
-    data_cov = jnp.diag(jnp.ones(ndims)) ** 2
-    data_cov = jnp.where(data_cov==0., 0.95,data_cov)
-
-    prior_transform = MVNDiagPrior(prior_mu, jnp.sqrt(jnp.diag(prior_cov)))
-    Z = Evidence()
-    Z_state = Z.state
-    M = PosteriorSecondMoment((ndims,))
-    m = PosteriorFirstMoment((ndims,))
-    H = InformationGain(global_evidence=Z)
-
-    true_logZ = log_normal(data_mu, prior_mu, prior_cov + data_cov)
-
-    post_mu = prior_cov @ jnp.linalg.solve(prior_cov + data_cov, data_mu) + data_cov @ jnp.linalg.solve(
-        prior_cov + data_cov, prior_mu)
-    post_cov = prior_cov - prior_cov @ jnp.linalg.solve(prior_cov + data_cov, prior_cov)
-
-    def log_likelihood(U):
-        param = m.prior_transform(U)
-        return log_normal(param, data_mu, data_cov)
-
-    num_live_points = 30 * prior_mu.size
-
-    # # initialize our "static" nested sampler
-    # sampler = dynesty.NestedSampler(lambda x: log_normal(x, data_mu, data_cov),
-    #                                 prior_transform,
-    #                                 ndims,
-    #                                 nlive=num_live_points)
-    #
-    # # sample from the distribution
-    # sampler.run_nested(dlogz=0.01)
-    #
-    # # grab our results
-    # res = sampler.results
-    # dyplot.cornerplot(res, show_titles=True)
-    # plt.show()
-
-    live_points = random.uniform(random.PRNGKey(300), shape=(num_live_points, ndims))
-    log_L_live = vmap(log_likelihood)(live_points)
-    dead_points = []
-    log_L_dead = []
-    remaining_evidence = 1.
-    running_evidence = 0.
-    i = 0
-    while remaining_evidence > 0.01 * running_evidence:
-        Z = Evidence(state=Z_state)
-        U = random.uniform(random.PRNGKey(i), shape=prior_mu.shape,
-                           minval=jnp.clip(jnp.min(live_points, axis=0) - 0.01, 0., 1),
-                           maxval=jnp.clip(jnp.max(live_points, axis=0) + 0.01, 0., 1.))
-        i_min = jnp.argmin(log_L_live)
-        log_L_new = log_likelihood(U)
-        if log_L_new > log_L_live[i_min]:
-            dead_points.append(m.prior_transform(live_points[i_min, :]))
-            log_L_dead.append(log_L_live[i_min])
-            args = (live_points[i_min, :], live_points.shape[0], log_L_live[i_min])
-            M.update(*args)
-            m.update(*args)
-            Z.update(*args)
-            Z_state = Z.state
-            H.update(*args)
-            live_points = dynamic_update_slice(live_points, U[None, :], [i_min, 0])
-            log_L_live = dynamic_update_slice(log_L_live, log_L_new[None], [i_min])
-        remaining_evidence = jnp.mean(jnp.exp(log_L_live)) * Z.X.value
-        running_evidence = jnp.exp(Z.mean)
-        print("i = {}, Z = {}, Z_live = {}, efficiency = {}".format(i, running_evidence, remaining_evidence,
-                                                                    len(log_L_dead) / (i + 1)))
-        i += 1
-
-    print(Z, H, m, M)
-    print(Z.effective_sample_size)
-    dead_points = jnp.array(dead_points)
-    log_L_dead = jnp.array(log_L_dead)
-    # print(m, M, Z)
-    S = 1000
-    b = random.beta(random.PRNGKey(0), num_live_points,
-                    1, shape=(S, log_L_dead.size))
-    live_points = vmap(prior_transform)(live_points)
-    b = jnp.concatenate([b] + [random.beta(random.PRNGKey(i), num_live_points - i,
-                                           1, shape=(S, 1)) for i in range(num_live_points)], axis=1)
-    ar = jnp.argsort(log_L_live)
-    dead_points = jnp.concatenate([dead_points, live_points[ar, :]], axis=0)
-    log_L_dead = jnp.concatenate([log_L_dead, log_L_live[ar]], axis=0)
-    # S, N+1
-    log_X_i = jnp.concatenate([jnp.zeros((S, 1)),
-                               jnp.cumsum(jnp.log(b), axis=1)], axis=1)
-    # log_p_i = log_dX_i + log_L_i
-    log_L_dead = jnp.concatenate([jnp.log(jnp.zeros((1,))), log_L_dead])
-    plt.scatter(jnp.exp(log_X_i).mean(0), jnp.exp(log_L_dead))
-    plt.title("L(X)")
-    plt.show()
-    # dX_i = X_i-1 - X_i
-    log_dX_i = jnp.log(-jnp.diff(jnp.exp(log_X_i), axis=1))
-    log_p_i = jnp.logaddexp(log_dX_i + log_L_dead[1:], log_dX_i + log_L_dead[:-1]) - jnp.log(2.)
-    ESS = jnp.sum(jnp.exp(log_p_i), axis=1) ** 2 / jnp.sum(jnp.exp(log_p_i) ** 2, axis=1)
-    print("ESS = {} +- {}".format(jnp.mean(ESS), jnp.std(ESS)))
-    logZ = logsumexp(log_p_i, axis=1)
-    print("logZ = {} +- {}".format(jnp.mean(logZ), jnp.std(logZ)))
-    print("True logZ = {}".format(true_logZ))
-    plt.hist(logZ)
-    plt.show()
-    # S, N
-    w_i = jnp.exp(log_p_i - logZ[:, None])
-    plt.plot(jnp.mean(w_i, axis=0))
-    plt.title('weights')
-    plt.show()
-    plt.plot(dead_points[:, 0])
-    plt.title("p[0]")
-    plt.show()
-    # S, M
-    m = jnp.sum(w_i[:, :, None] * dead_points[None, :, :], axis=1)
-    print("m={} +- {}".format(jnp.mean(m, axis=0), jnp.std(m, axis=0)))
-    plt.hist(dead_points[:, 0], weights=jnp.mean(w_i, axis=0), bins=20)
-    plt.show()
-    plt.hist(m[:, 0], bins=30)
-    plt.title('m[0]')
-    plt.show()
-    # S, M, M
-    m2 = jnp.sum(w_i[:, :, None, None] * (dead_points[:, :, None] * dead_points[:, None, :]), axis=1)
-    print("M={} +- {}".format(jnp.mean(m2 - m[:, :, None] * m[:, None, :], axis=0),
-                              jnp.std(m2 - m[:, :, None] * m[:, None, :], axis=0)))
-    print(post_mu, post_cov)
-
-
-
-if __name__ == '__main__':
-    pass
-    # def _assert_shape(x, shape_dict):
-    #     assert x.shape_dict == shape_dict
-    # print(dict_multimap(_assert_shape, jnp.array(1.), () ))
-    # debug_tracking()
