@@ -11,7 +11,9 @@ def plot_diagnostics(results, save_name=None):
     axs[1].plot(-results.log_X[:results.num_samples], jnp.exp(results.log_L_samples[:results.num_samples]))
     axs[1].set_ylabel(r'$L(X)$')
     axs[2].plot(-results.log_X[:results.num_samples], jnp.exp(results.log_p[:results.num_samples]))
+    axs[2].vlines(-results.H, 0., jnp.exp(jnp.max(results.log_p[:results.num_samples])), colors='black', ls='dashed', label='-logX=-H={:.1f}'.format(-results.H))
     axs[2].set_ylabel(r'$Z^{-1}L(X) dX$')
+    axs[2].legend()
     axs[3].plot(-results.log_X[:results.num_samples],
                 jnp.exp(results.logZ) * jnp.cumsum(jnp.exp(results.log_p[:results.num_samples])))
     axs[3].set_ylabel(r'$Z(x > X)$')
