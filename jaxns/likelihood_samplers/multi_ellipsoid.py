@@ -9,14 +9,16 @@ import pylab as plt
 import glob
 
 MultiEllipsoidSamplerState = namedtuple('MultiEllipsoidSamplerState',
-                                        ['cluster_id', 'mu', 'radii', 'rotation', 'num_k'])
+                                        ['cluster_id', 'mu', 'radii', 'rotation', 'num_k', 'log_F'])
 
 
 def init_multi_ellipsoid_sampler_state(key, live_points_U, depth, log_X):
     cluster_id, (mu, radii, rotation) = ellipsoid_clustering(key, live_points_U, depth, log_X)
     num_k = jnp.bincount(cluster_id, minlength=0, length=mu.shape[0])
+    log_volumes = vmap(lambda radii: log_ellipsoid_volume(radii))(radii)
+    log_F = logsumexp(log_volumes) - log_X
     return MultiEllipsoidSamplerState(cluster_id=cluster_id, mu=mu, radii=radii, rotation=rotation,
-                                      num_k=num_k)
+                                      num_k=num_k, log_F=log_F)
 
 
 def recalculate_sampler_state(key, live_points_U, sampler_state, log_X):
@@ -26,13 +28,15 @@ def recalculate_sampler_state(key, live_points_U, sampler_state, log_X):
     depth = depth.astype(jnp.int_)
     cluster_id, (mu, radii, rotation) = ellipsoid_clustering(key, live_points_U, depth, log_X)
     num_k = jnp.bincount(cluster_id, minlength=0, length=mu.shape[0])
+    log_volumes = vmap(lambda radii: log_ellipsoid_volume(radii))(radii)
+    log_F = logsumexp(log_volumes) - log_X
     # print(num_k)
     # if jnp.any(jnp.isnan(radii)):
     #     print('recalc error',MultiEllipsoidSamplerState(cluster_id=cluster_id, mu=mu, radii=radii, rotation=rotation,
     #                                   num_k=num_k))
     #     raise ValueError()
     return MultiEllipsoidSamplerState(cluster_id=cluster_id, mu=mu, radii=radii, rotation=rotation,
-                                      num_k=num_k)
+                                      num_k=num_k, log_F=log_F)
 
 
 def evolve_sampler_state(sampler_state, live_points_U, log_X, k_from):
@@ -52,7 +56,6 @@ def evolve_sampler_state(sampler_state, live_points_U, log_X, k_from):
     # scale ellipsoid to bound points
     maha = vmap(lambda u: maha_ellipsoid(u, sampler_state.mu[k_from, :], sampler_state.radii[k_from, :],
                                          sampler_state.rotation[k_from, :, :]))(live_points_U)
-    maha_ = maha
     mask = sampler_state.cluster_id == k_from
     maha = jnp.where(mask, maha, 0.)
     log_bound_scale = jnp.log(jnp.max(maha)) / D
@@ -79,19 +82,12 @@ def multi_ellipsoid_sampler(key, log_L_constraint, live_points_U,
                             loglikelihood_from_constrained,
                             prior_transform, sampler_state, log_X, iteration, i_min):
     """
-    Does multi-nest sampling.
+    Does iterative multi-nest sampling with a few extra features to improve over the original algorithm.
 
-    Order of updating:
-    Start program: initialise ellipsoids -> E_0, cluster_id0
-    Loop
-        find i_min
-        sample new point
-            replace ellipsoids or evolve ellipsoids
-            draw new point
+    References:
 
-
-
-    https://arxiv.org/pdf/0809.3437.pdf
+    [1] MULTINEST: an efficient and robust Bayesian inference tool for cosmology and particle physics,
+        F. Feroz et al. 2008. https://arxiv.org/pdf/0809.3437.pdf
 
     Args:
         key:
@@ -112,9 +108,12 @@ def multi_ellipsoid_sampler(key, log_L_constraint, live_points_U,
     # evolve ellipsoids or potentially recalculate ellipsoids
     h = 1.2
     log_volumes = vmap(lambda radii: log_ellipsoid_volume(radii))(sampler_state.radii)
-    do_recalculate = (logsumexp(log_volumes) - log_X > jnp.log(h)) \
-                     | (jnp.mod(iteration, 2*live_points_U.shape[0]) == 0) \
-                     | (sampler_state.num_k[k_from] < D+1)
+    log_F = logsumexp(log_volumes) - log_X
+    # print(jnp.exp(log_F), jnp.exp(sampler_state.log_F), jnp.exp(log_F - sampler_state.log_F))
+    do_recalculate = (log_F - sampler_state.log_F > jnp.log(h)) \
+                     | (sampler_state.num_k[k_from] < D + 1)
+                     # | (jnp.mod(iteration, 2*live_points_U.shape[0]) == 0) \
+
     key, recalc_key = random.split(key, 2)
     sampler_state = cond(do_recalculate,
                          (recalc_key, live_points_U, sampler_state, log_X),
