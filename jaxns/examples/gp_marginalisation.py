@@ -2,29 +2,37 @@ from jaxns.nested_sampling import NestedSampler
 from jaxns.prior_transforms import PriorChain, MVNDiagPrior, UniformPrior, DeltaPrior, GMMDiagPrior, \
     ForcedIdentifiabilityPrior, GaussianProcessKernelPrior
 from jaxns.plotting import plot_cornerplot, plot_diagnostics
-from jaxns.gaussian_process.kernels import RBF, M12
+from jaxns.gaussian_process.kernels import RBF, M12, M32
 from jax.scipy.linalg import solve_triangular
 from jax import random, jit, disable_jit
 from jax import numpy as jnp
+from timeit import default_timer
 import pylab as plt
 
 
 def main(kernel):
     print(("Working on Kernel: {}".format(kernel.__class__.__name__)))
+
     def log_normal(x, mean, cov):
         L = jnp.linalg.cholesky(cov)
+        # U, S, Vh = jnp.linalg.svd(cov)
+        log_det = jnp.sum(jnp.log(jnp.diag(L)))  # jnp.sum(jnp.log(S))#
         dx = x - mean
         dx = solve_triangular(L, dx, lower=True)
-        log_likelihood = -0.5 * x.size * jnp.log(2. * jnp.pi) - jnp.sum(jnp.log(jnp.diag(L))) \
-               - 0.5 * dx @ dx
-        print(log_likelihood)
+        # U S Vh V 1/S Uh
+        # pinv = (Vh.T.conj() * jnp.where(S!=0., jnp.reciprocal(S), 0.)) @ U.T.conj()
+        maha = dx @ dx  # dx @ pinv @ dx#solve_triangular(L, dx, lower=True)
+        log_likelihood = -0.5 * x.size * jnp.log(2. * jnp.pi) \
+                         - log_det \
+                         - 0.5 * maha
+        # print(log_likelihood)
         return log_likelihood
 
     N = 100
     X = jnp.linspace(-2., 2., N)[:, None]
     true_sigma, true_l, true_uncert = 1., 0.2, 0.2
     data_mu = jnp.zeros((N,))
-    prior_cov = RBF()(X, X, true_l, true_sigma) + 1e-13*jnp.eye(N)
+    prior_cov = RBF()(X, X, true_l, true_sigma) + 1e-13 * jnp.eye(N)
     # print(jnp.linalg.cholesky(prior_cov), jnp.linalg.eigvals(prior_cov))
     # return
     Y = jnp.linalg.cholesky(prior_cov) @ random.normal(random.PRNGKey(0), shape=(N,)) + data_mu
@@ -62,14 +70,10 @@ def main(kernel):
         mu = jnp.zeros_like(Y_obs)
         return jnp.diag(K - K @ jnp.linalg.solve(K + data_cov, K))
 
-    # l_loc = ForcedIdentifiabilityPrior('l_loc', 2, 0., 2., tracked=False)
-    # l_std = UniformPrior('l_std', jnp.array([[0., 0.]]).T, jnp.array([[2., 2.]]).T, tracked=False)
-    # l_pi = UniformPrior('l_pi', jnp.array([0., 0.]), jnp.array([1., 1.]), tracked=False)
-    # l = GMMDiagPrior('l', l_pi, l_loc, l_std)
     l = UniformPrior('l', 0., 2.)
     uncert = UniformPrior('uncert', 0., 2.)
     sigma = UniformPrior('sigma', 0., 2.)
-    cov = GaussianProcessKernelPrior('K',kernel, X, l, sigma)
+    cov = GaussianProcessKernelPrior('K', kernel, X, l, sigma)
     prior_chain = PriorChain().push(uncert).push(cov)
 
     ns = NestedSampler(log_likelihood, prior_chain, sampler_name='multi_ellipsoid', predict_f=predict_f,
@@ -77,15 +81,24 @@ def main(kernel):
 
     def run_with_n(n):
         @jit
-        def run():
-            return ns(key=random.PRNGKey(0),
+        def run(key):
+            return ns(key=key,
                       num_live_points=n,
                       max_samples=1e4,
                       collect_samples=True,
                       termination_frac=0.01,
                       stoachastic_uncertainty=False)
 
-        results = run()
+        t0 = default_timer()
+        # with disable_jit():
+        results = run(random.PRNGKey(6))
+        print(results.efficiency)
+        print("Time to execute (including compile): {}".format(default_timer() - t0))
+        # t0 = default_timer()
+        # for i in range(1, 11):
+        #     results = run(random.PRNGKey(i))
+        #     print(results.efficiency)
+        # print("Time to execute (not including compile): {}".format((default_timer() - t0) / 10))
         return results
 
     for n in [100]:
@@ -114,7 +127,8 @@ def main(kernel):
 if __name__ == '__main__':
     logZ_rbf, logZerr_rbf = main(RBF())
     logZ_m12, logZerr_m12 = main(M12())
-    plt.errorbar(['rbf', 'm12'], [logZ_rbf, logZ_m12], [logZerr_rbf, logZerr_m12])
+    logZ_m32, logZerr_m32 = main(M32())
+    plt.errorbar(['rbf', 'm12', 'm32'], [logZ_rbf, logZ_m12, logZ_m32], [logZerr_rbf, logZerr_m12, logZerr_m32])
     plt.ylabel("log Z")
     plt.legend()
     plt.show()
