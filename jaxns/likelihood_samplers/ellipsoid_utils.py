@@ -216,12 +216,12 @@ def cluster_split(key, points, mask, log_VS, log_VE, kmeans_init=True):
         cluster_id = random.randint(key, shape=(N,), minval=0, maxval=2)
 
     def body(state):
-        (i, done, old_cluster_id, _, _, _, _, _, _, _, _, _) = state
+        (i, done, old_cluster_id, _, _, _, _, _, _, _, _, min_loss, delay) = state
         mask1 = mask & (old_cluster_id == 0)
         mask2 = mask & (old_cluster_id == 1)
         # estimate volumes of current clustering
         n1 = jnp.sum(mask1)
-        n2 = jnp.sum(mask & mask2)
+        n2 = jnp.sum(mask2)
         log_VS1 = log_VS + jnp.log(n1) - jnp.log(n_S)
         log_VS2 = log_VS + jnp.log(n2) - jnp.log(n_S)
         # construct E_1, E_2 and compute volumes
@@ -238,6 +238,8 @@ def cluster_split(key, points, mask, log_VS, log_VE, kmeans_init=True):
         radii1 = jnp.exp(jnp.log(radii1) + log_scale1)
         C2 = C2 / jnp.exp(log_scale2)
         radii2 = jnp.exp(jnp.log(radii2) + log_scale2)
+        log_VE1 = log_VE1 + log_scale1 * D
+        log_VE2 = log_VE2 + log_scale2 * D
         # compute reassignment metrics
         maha1 = vmap(lambda point: (point - mu1) @ C1 @ (point - mu1))(points)
         maha2 = vmap(lambda point: (point - mu2) @ C2 @ (point - mu2))(points)
@@ -246,24 +248,47 @@ def cluster_split(key, points, mask, log_VS, log_VE, kmeans_init=True):
         # reassign
         new_cluster_id = jnp.where(log_h1 < log_h2, 0, 1)
         log_V_sum = jnp.logaddexp(log_VE1, log_VE2)
-        do_split = ((log_V_sum < log_VE) | (log_VE > log_VS + jnp.log(2.))) & \
-                   (~jnp.any(jnp.isnan(radii1))) & (~jnp.any(jnp.isnan(radii2)))
-        done = jnp.all(new_cluster_id == old_cluster_id) | ~do_split
-        return (i + 1, done, new_cluster_id, log_VS1, mu1, radii1, rotation1, log_VS2, mu2, radii2, rotation2, do_split)
+        new_loss = jnp.exp(log_V_sum - log_VS)
+        loss_decreased = new_loss < min_loss
+        delay = jnp.where(loss_decreased, 0, delay + 1)
+        min_loss = jnp.where(loss_decreased, new_loss, min_loss)
+        ###
+        # i / delay / loss_decreased / new_loss / min_loss
+        # 0 / 0 / True / a / a
+        # 1 / 1 / False / b / a
+        # 2 / 2 / False / a / a
+        # 3 / 3 / False / b / a
+        # 4 / 4 / False / a / a
+        done = jnp.all(new_cluster_id == old_cluster_id) \
+               | (delay >= 10) \
+               | (n1 < D + 1) \
+               | (n2 < D + 1) \
+               | jnp.isnan(log_V_sum)
+        # print(i, "reassignments", jnp.sum(new_cluster_id != old_cluster_id), 'F', log_V_sum)
+        return (i + 1, done, new_cluster_id, log_VS1, mu1, radii1, rotation1, log_VS2, mu2, radii2, rotation2,
+                min_loss, delay)
 
-    do_split = jnp.sum(mask) > 2 * (D + 1)
-    (i, _, cluster_id, log_VS1, mu1, radii1, rotation1, log_VS2, mu2, radii2, rotation2, do_split) = \
+    done = jnp.sum(mask) < 2 * (D + 1)
+    (i, _, cluster_id, log_VS1, mu1, radii1, rotation1, log_VS2, mu2, radii2, rotation2, min_loss, delay) = \
         while_loop(lambda state: ~state[1],
                    body,
-                   (jnp.array(0), ~do_split, cluster_id,
+                   (jnp.array(0), done, cluster_id,
                     jnp.array(-jnp.inf), jnp.zeros(D), jnp.zeros(D), jnp.eye(D),
                     jnp.array(-jnp.inf), jnp.zeros(D), jnp.zeros(D), jnp.eye(D),
-                    do_split))
+                    jnp.asarray(jnp.inf), 0))
     mask1 = mask & (cluster_id == 0)
     mask2 = mask & (cluster_id == 1)
-    cond1 = jnp.max(radii1)/jnp.min(radii1)
-    cond2 = jnp.max(radii2)/jnp.min(radii2)
-    do_split = do_split & (jnp.sum(mask1) >= (D + 1)) & (jnp.sum(mask2) >= (D + 1)) & (cond1 < 10.) & (cond2 < 10.)
+    cond1 = jnp.max(radii1) / jnp.min(radii1)
+    cond2 = jnp.max(radii2) / jnp.min(radii2)
+    log_V_sum = jnp.logaddexp(log_ellipsoid_volume(radii1), log_ellipsoid_volume(radii2))
+
+    do_split = ((log_V_sum < log_VE) | (log_VE > log_VS + jnp.log(2.))) \
+               & (~jnp.any(jnp.isnan(radii1))) \
+               & (~jnp.any(jnp.isnan(radii2))) \
+               & (jnp.sum(mask1) >= (D + 1)) \
+               & (jnp.sum(mask2) >= (D + 1)) \
+               & (cond1 < 50.) \
+               & (cond2 < 50.)
 
     return cluster_id, log_VS1, mu1, radii1, rotation1, log_VS2, mu2, radii2, rotation2, do_split
 
@@ -430,7 +455,7 @@ def ellipsoid_clustering(key, points, depth, log_VS):
         mask = cluster_id == order[i_lowest]
         log_VS_subcluster = log_VS_subclusters[i_lowest]
         log_VE_parent = log_ellipsoid_volume(radii_result[i_lowest, :])
-        # print(log_VE_parent, i_lowest, radii_result)
+        # print(log_VE_parent, order, i_lowest, radii_result)
         unsorted_cluster_id, log_VS1, mu1, radii1, rotation1, log_VS2, mu2, radii2, rotation2, do_split = cluster_split(
             key, points, mask, log_VS_subcluster, log_VE_parent, kmeans_init=True)
         # print(do_split, radii1, radii2)
@@ -470,15 +495,17 @@ def ellipsoid_clustering(key, points, depth, log_VS):
     cluster_id = cluster_id - (2 ** (depth - 1) - 1)
     order = order - (2 ** (depth - 1) - 1)
     # order results so that cluster_id corresponds to the correct row
-    mu_result = mu_result[order,:]
-    radii_result = radii_result[order,:]
-    rotation_result = rotation_result[order,:,:]
+    mu_result = mu_result[order, :]
+    radii_result = radii_result[order, :]
+    rotation_result = rotation_result[order, :, :]
     return cluster_id, (mu_result, radii_result, rotation_result)
+
 
 def maha_ellipsoid(u, mu, radii, rotation):
     dx = u - mu
     dx = jnp.diag(jnp.reciprocal(radii)) @ rotation.T @ dx
     return dx @ dx
+
 
 def point_in_ellipsoid(u, mu, radii, rotation):
     return maha_ellipsoid(u, mu, radii, rotation) <= 1.
@@ -501,7 +528,6 @@ def sample_multi_ellipsoid(key, mu, radii, rotation, unit_cube_constraint=True):
     log_VE = vmap(log_ellipsoid_volume)(radii)
     log_p = log_VE - logsumexp(log_VE)
 
-
     def body(state):
         (i, _, key, done, _) = state
         key, accept_key, sample_key, select_key = random.split(key, 4)
@@ -520,8 +546,8 @@ def sample_multi_ellipsoid(key, mu, radii, rotation, unit_cube_constraint=True):
         return (i + 1, k, key, done, u_test)
 
     _, k, _, _, u_accept = while_loop(lambda state: ~state[3],
-                                   body,
-                                   (jnp.array(0), jnp.array(0), key, jnp.array(False), jnp.zeros(D)))
+                                      body,
+                                      (jnp.array(0), jnp.array(0), key, jnp.array(False), jnp.zeros(D)))
     return k, u_accept
 
 
@@ -547,7 +573,9 @@ def test_sample_multi_ellipsoid():
 
         mu, radii, rotation = ellipsoid_parameters
         print(mu, radii, rotation)
-        u = jnp.stack([sample_multi_ellipsoid(random.PRNGKey(i), mu, radii, rotation, unit_cube_constraint=True)[1] for i in range(100)], axis=0)
+        u = jnp.stack(
+            [sample_multi_ellipsoid(random.PRNGKey(i), mu, radii, rotation, unit_cube_constraint=True)[1] for i in
+             range(100)], axis=0)
     plt.scatter(u[:, 0], u[:, 1])
     for i, (mu, radii, rotation) in enumerate(zip(mu, radii, rotation)):
         y = mu[:, None] + rotation @ jnp.diag(radii) @ x
