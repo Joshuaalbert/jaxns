@@ -10,18 +10,23 @@ import pylab as plt
 
 
 def main(kernel):
+    print(("Working on Kernel: {}".format(kernel.__class__.__name__)))
     def log_normal(x, mean, cov):
         L = jnp.linalg.cholesky(cov)
         dx = x - mean
         dx = solve_triangular(L, dx, lower=True)
-        return -0.5 * x.size * jnp.log(2. * jnp.pi) - jnp.sum(jnp.log(jnp.diag(L))) \
+        log_likelihood = -0.5 * x.size * jnp.log(2. * jnp.pi) - jnp.sum(jnp.log(jnp.diag(L))) \
                - 0.5 * dx @ dx
+        print(log_likelihood)
+        return log_likelihood
 
     N = 100
     X = jnp.linspace(-2., 2., N)[:, None]
     true_sigma, true_l, true_uncert = 1., 0.2, 0.2
     data_mu = jnp.zeros((N,))
-    prior_cov = RBF()(X, X, true_l, true_sigma)
+    prior_cov = RBF()(X, X, true_l, true_sigma) + 1e-13*jnp.eye(N)
+    # print(jnp.linalg.cholesky(prior_cov), jnp.linalg.eigvals(prior_cov))
+    # return
     Y = jnp.linalg.cholesky(prior_cov) @ random.normal(random.PRNGKey(0), shape=(N,)) + data_mu
     Y_obs = Y + true_uncert * random.normal(random.PRNGKey(1), shape=(N,))
     Y_obs = jnp.where((jnp.arange(N) > 50) & (jnp.arange(N) < 60),
@@ -67,7 +72,7 @@ def main(kernel):
     cov = GaussianProcessKernelPrior('K',kernel, X, l, sigma)
     prior_chain = PriorChain().push(uncert).push(cov)
 
-    ns = NestedSampler(log_likelihood, prior_chain, sampler_name='whitened_box', predict_f=predict_f,
+    ns = NestedSampler(log_likelihood, prior_chain, sampler_name='multi_ellipsoid', predict_f=predict_f,
                        predict_fvar=predict_fvar)
 
     def run_with_n(n):
@@ -78,16 +83,16 @@ def main(kernel):
                       max_samples=1e4,
                       collect_samples=True,
                       termination_frac=0.01,
-                      stoachastic_uncertainty=True)
+                      stoachastic_uncertainty=False)
 
         results = run()
         return results
 
-    for n in [10]:
+    for n in [100]:
         results = run_with_n(n)
         plt.scatter(n, results.logZ)
         plt.errorbar(n, results.logZ, yerr=results.logZerr)
-    plt.title("Kernel: {}".format(kernel.__name__))
+    plt.title("Kernel: {}".format(kernel.__class__.__name__))
     plt.ylabel('log Z')
     plt.show()
 
@@ -98,7 +103,7 @@ def main(kernel):
              c='black')
     plt.plot(X[:, 0], results.marginalised['predict_f'] - jnp.sqrt(results.marginalised['predict_fvar']), ls='dotted',
              c='black')
-    plt.title("Kernel: {}".format(kernel.__name__))
+    plt.title("Kernel: {}".format(kernel.__class__.__name__))
     plt.legend()
     plt.show()
     plot_diagnostics(results)

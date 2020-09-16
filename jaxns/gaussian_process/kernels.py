@@ -12,10 +12,22 @@ class Diagonal(Kernel):
 class StationaryKernel(Kernel):
 
     def act(self, r2, *args):
+        """
+        Given the squared Euclidean norm of the outer difference between two coordinate sets,
+        return the log of the kernel. Only valid for strictly positive kernels.
+
+        Args:
+            r2: [N, M]
+            *args: other kernel arguments, e.g. sigma, alpha, ...
+
+        Returns: log(K(r2)) [N, M]
+
+        """
         raise NotImplemented()
 
     def __call__(self, x1, x2, l, *args):
         r2 = squared_norm(x1 / l, x2 / l)
+        r2 = jnp.maximum(r2, 1e-36)
         return jnp.exp(self.act(r2, *args))
 
 class RBF(StationaryKernel):
