@@ -2,7 +2,7 @@ from jax import numpy as jnp
 from jax import vmap
 from jax.lax import scan
 from jax.scipy.special import ndtri
-from jaxns.utils import broadcast_shapes, iterative_topological_sort
+from jaxns.utils import broadcast_shapes, iterative_topological_sort, tuple_prod
 from jaxns.gaussian_process.kernels import Kernel
 from collections import OrderedDict
 
@@ -469,7 +469,7 @@ class UniformPrior(PriorTransform):
         # replaces mu and gamma when parents injected
 
         self._broadcast_shape = broadcast_shapes(get_shape(low), get_shape(high))
-        U_dims = jnp.prod(self._broadcast_shape)
+        U_dims = tuple_prod(self._broadcast_shape)
         super(UniformPrior, self).__init__(name, U_dims, [low, high], tracked)
 
     @property
@@ -495,7 +495,7 @@ class ForcedIdentifiabilityPrior(PriorTransform):
         # replaces mu and gamma when parents injected
 
         self._broadcast_shape = (self._n,) + broadcast_shapes(get_shape(low), get_shape(high))
-        U_dims = jnp.prod(self._broadcast_shape)
+        U_dims = tuple_prod(self._broadcast_shape)
         super(ForcedIdentifiabilityPrior, self).__init__(name, U_dims, [low, high], tracked)
 
     @property
@@ -603,4 +603,4 @@ class GaussianProcessKernelPrior(PriorTransform):
         return self._to_shape
 
     def forward(self, U, X, *gp_params, **kwargs):
-        return self._kernel(X, X, *gp_params)
+        return self._kernel(X, X, *gp_params) + 1e-6 * jnp.eye(X.shape[0])
