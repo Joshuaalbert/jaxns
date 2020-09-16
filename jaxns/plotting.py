@@ -1,7 +1,7 @@
 import pylab as plt
 import jax.numpy as jnp
 from scipy.stats.kde import gaussian_kde
-from jaxns.utils import safe_gaussian_kde
+from jaxns.utils import safe_gaussian_kde, tuple_prod
 
 
 def plot_diagnostics(results, save_name=None):
@@ -23,6 +23,7 @@ def plot_diagnostics(results, save_name=None):
                   label='avg. eff.={:.3f}'.format(results.efficiency))
     axs[4].set_ylabel("sampler efficiency")
     axs[4].set_xlabel(r'$-\log X$')
+    axs[4].set_ylim(0., 1.05)
     axs[4].legend()
     if save_name is not None:
         fig.savefig(save_name)
@@ -34,7 +35,7 @@ def plot_cornerplot(results, vars=None, save_name=None):
         vars = [k for k, v in results.samples.items()]
     vars = [v for v in vars if v in results.samples.keys()]
     vars = sorted(vars)
-    ndims = int(sum([jnp.prod(v.shape[1:]) for k, v in results.samples.items() if (k in vars)]))
+    ndims = int(sum([tuple_prod(v.shape[1:]) for k, v in results.samples.items() if (k in vars)]))
     figsize = min(20, max(4, int(2 * ndims)))
     fig, axs = plt.subplots(ndims, ndims, figsize=(figsize, figsize))
     # if not isinstance(axs, list):
@@ -45,7 +46,7 @@ def plot_cornerplot(results, vars=None, save_name=None):
     lims = {}
     dim = 0
     for key in vars:  # sorted(results.samples.keys()):
-        n1 = jnp.prod(results.samples[key].shape[1:])
+        n1 = tuple_prod(results.samples[key].shape[1:])
         for i in range(n1):
             samples1 = results.samples[key].reshape((nsamples, -1))[:, i]
             if jnp.std(samples1) == 0.:
@@ -59,7 +60,7 @@ def plot_cornerplot(results, vars=None, save_name=None):
             binsx = jnp.linspace(*jnp.percentile(samples1_resampled, [0, 100]), 2 * nbins)
             dim2 = 0
             for key2 in vars:  # sorted(results.samples.keys()):
-                n2 = jnp.prod(results.samples[key2].shape[1:])
+                n2 = tuple_prod(results.samples[key2].shape[1:])
                 for i2 in range(n2):
                     ax = axs[dim][dim2] if ndims > 1 else axs[0]
                     if dim2 > dim:
