@@ -408,4 +408,8 @@ def left_broadcast_mul(x, y):
     """
     return jnp.reshape(x, (-1,) + tuple([1] * (len(y.shape) - 1))) * y
 
-
+def tuple_prod(t):
+    res = t[0]
+    for a in t[1:]:
+        res *= a
+    return res
