@@ -176,7 +176,7 @@ def squared_norm(x1, x2):
     x2 = x2
     r2 = jnp.sum(jnp.square(x1), axis=1)[:, None] + jnp.sum(jnp.square(x2), axis=1)[None, :]
     r2 = r2 - 2. * (x1 @ x2.T)
-    return jnp.maximum(r2, 1e-36)
+    return r2
 
 def test_squared_norm():
     x = jnp.linspace(0., 1., 100)[:, None]
