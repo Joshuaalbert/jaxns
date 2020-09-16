@@ -1,5 +1,8 @@
 # jaxns
-Nested sampling in JAX
+Enables probabilistic programming using nested sampling. It's coded in JAX in a manner that allows lowering the entire inference algorithm to XLA primatives, which are JIT compiled for high performance. 
+
+JAXNS provides a modified version of the MultiNest constrained sampler (F. Feroz et al. 2008; https://arxiv.org/pdf/0809.3437.pdf).
+In order to allow JIT compiling the MultiNest algorithm was redesigned as an iterative algorithm with fixed maximum depth.
 
 # Install
 Make sure you have JAX and the usual suspects with `pip install jax jaxlib numpy matplotlib scipy tensorflow tensorboard_plugin_profile`. The last two `tensorflow tensorboard_plugin_profile` is is for profiling, and can be neglected if you don't want to profile.
