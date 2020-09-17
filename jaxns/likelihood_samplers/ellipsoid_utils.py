@@ -129,6 +129,7 @@ def kmeans(key, points, mask, K=2):
         squared_norm = jnp.sum(jnp.square(dx), axis=-1)  # K, N
         new_cluster_id = jnp.argmin(squared_norm, axis=0)  # N
         done = jnp.all(new_cluster_id == old_cluster_id)
+        # print("kmeans reassigns", jnp.sum(old_cluster_id!=new_cluster_id))
         return i + 1, done, new_cluster_id, new_centers
 
     do_kmeans = jnp.sum(mask) > K
@@ -514,6 +515,12 @@ def point_in_ellipsoid(u, mu, radii, rotation):
 def sample_multi_ellipsoid(key, mu, radii, rotation, unit_cube_constraint=True):
     """
     Sample from a set of overlapping ellipsoids.
+    When unit_cube_constraint=True then during the sampling when a random radius is chosen, the radius is constrained.
+
+    u(t) = R @ (x + t * n) + c
+    u(t) == 1
+    1-c = R@x + t * R@n
+    t = ((1 - c) - R@x)/R@n
 
     Args:
         key:
@@ -526,7 +533,11 @@ def sample_multi_ellipsoid(key, mu, radii, rotation, unit_cube_constraint=True):
     """
     K, D = radii.shape
     log_VE = vmap(log_ellipsoid_volume)(radii)
-    log_p = log_VE - logsumexp(log_VE)
+    log_p = log_VE #- logsumexp(log_VE)
+    if unit_cube_constraint:
+        center_in_unit_cube = vmap(lambda mu: jnp.all(mu < 1.) & jnp.all(mu > 0.))(mu)
+        log_p = jnp.where(center_in_unit_cube, log_p, -jnp.inf)
+        # print(log_p)
 
     def body(state):
         (i, _, key, done, _) = state
@@ -535,14 +546,10 @@ def sample_multi_ellipsoid(key, mu, radii, rotation, unit_cube_constraint=True):
         mu_k = mu[k, :]
         radii_k = radii[k, :]
         rotation_k = rotation[k, :, :]
-        u_test = sample_ellipsoid(sample_key, mu_k, radii_k, rotation_k)
+        u_test = sample_ellipsoid(sample_key, mu_k, radii_k, rotation_k, unit_cube_constraint=unit_cube_constraint)
         inside = vmap(lambda mu, radii, rotation: point_in_ellipsoid(u_test, mu, radii, rotation))(mu, radii, rotation)
         n_intersect = jnp.sum(inside)
-        if unit_cube_constraint:
-            done = (random.uniform(accept_key) < jnp.reciprocal(n_intersect)) \
-                   & jnp.all(u_test <= 1.) & jnp.all(u_test > 0.)
-        else:
-            done = (random.uniform(accept_key) < jnp.reciprocal(n_intersect))
+        done = (random.uniform(accept_key) < jnp.reciprocal(n_intersect))
         return (i + 1, k, key, done, u_test)
 
     _, k, _, _, u_accept = while_loop(lambda state: ~state[3],
@@ -572,7 +579,7 @@ def test_sample_multi_ellipsoid():
                 )(random.PRNGKey(0), points, log_VS)
 
         mu, radii, rotation = ellipsoid_parameters
-        print(mu, radii, rotation)
+        # print(mu, radii, rotation)
         u = jnp.stack(
             [sample_multi_ellipsoid(random.PRNGKey(i), mu, radii, rotation, unit_cube_constraint=True)[1] for i in
              range(100)], axis=0)
@@ -676,9 +683,15 @@ def minimum_volume_enclosing_ellipsoid(points, tol, init_u=None, return_u=False)
     return c, radii, rotation
 
 
-def sample_ellipsoid(key, center, radii, rotation):
+def sample_ellipsoid(key, center, radii, rotation, unit_cube_constraint=False):
     """
     Sample uniformly inside an ellipsoid.
+    When unit_cube_constraint=True then during the sampling when a random radius is chosen, the radius is constrained.
+
+    u(t) = R @ (t * n) + c
+    u(t) == 1
+    1-c = t * R@n
+    t = (1 - c)/R@n
     Args:
         key:
         center: [D]
@@ -690,6 +703,17 @@ def sample_ellipsoid(key, center, radii, rotation):
     """
     direction_key, radii_key = random.split(key, 2)
     direction = random.normal(direction_key, shape=radii.shape)
+    if unit_cube_constraint:
+        direction = direction / jnp.linalg.norm(direction)
+        R = rotation * radii
+        D = R @ direction
+        t0 = -center / D
+        t1 = jnp.reciprocal(D) + t0
+        t0 = jnp.where(t0 < 0., jnp.inf, t0)
+        t1 = jnp.where(t1 < 0., jnp.inf, t1)
+        t = jnp.minimum(jnp.min(t0), jnp.min(t1))
+        t = jnp.minimum(t, 1.)
+        return random.uniform(radii_key, minval=0., maxval=t) * D + center
     log_norm = jnp.log(jnp.linalg.norm(direction))
     log_radius = jnp.log(random.uniform(radii_key)) / radii.size
     # x = direction * (radius/norm)

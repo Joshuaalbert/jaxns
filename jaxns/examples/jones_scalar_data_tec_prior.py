@@ -3,7 +3,7 @@ from jaxns.plotting import plot_diagnostics, plot_cornerplot
 from jaxns.prior_transforms import UniformPrior, PriorChain, LaplacePrior, HalfLaplacePrior
 
 from jax.scipy.linalg import solve_triangular
-from jax import jit, vmap
+from jax import jit, vmap, disable_jit
 from jax import numpy as jnp, random
 
 
@@ -38,22 +38,24 @@ def main():
         # uncert = 0.25#x[2]
         phase = tec[:,None] * (TEC_CONV / freqs)  # + clock *(jnp.pi*2)*freqs#+ clock
         Y = jnp.concatenate([jnp.cos(phase), jnp.sin(phase)], axis=-1)
-        return jnp.sum(vmap(lambda Y, Y_obs: log_normal(Y, Y_obs, uncert))(Y, Y_obs))
+        log_prob = jnp.sum(vmap(lambda Y, Y_obs: log_normal(Y, Y_obs, uncert))(Y, Y_obs))
+        # print(log_prob)
+        return log_prob
 
     # prior_transform = MVNDiagPrior(prior_mu, jnp.sqrt(jnp.diag(prior_cov)))
     # prior_transform = LaplacePrior(prior_mu, jnp.sqrt(jnp.diag(prior_cov)))
     prior_chain = PriorChain() \
         .push(UniformPrior('tec', [-100.]*T, [100.]*T)) \
-        .push(HalfLaplacePrior('uncert', 0.25*jnp.ones(freqs.size*2)))
+        .push(HalfLaplacePrior('uncert', 0.25*jnp.ones(Y_obs.shape[-1])))
 
-    ns = NestedSampler(log_likelihood, prior_chain, sampler_name='ellipsoid')
-
-    results = ns(key=random.PRNGKey(0),
+    ns = NestedSampler(log_likelihood, prior_chain, sampler_name='multi_ellipsoid')
+    results = jit(lambda key: ns(key=key,
                       num_live_points=100,
                       max_samples=1e4,
                       collect_samples=True,
                       termination_frac=0.01,
-                      stoachastic_uncertainty=True)
+                      stoachastic_uncertainty=False,
+                 sampler_kwargs=dict(depth=3)))(random.PRNGKey(0))
 
 
     ###

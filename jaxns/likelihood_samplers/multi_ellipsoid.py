@@ -111,8 +111,8 @@ def multi_ellipsoid_sampler(key, log_L_constraint, live_points_U,
     log_F = logsumexp(log_volumes) - log_X
     # print(jnp.exp(log_F), jnp.exp(sampler_state.log_F), jnp.exp(log_F - sampler_state.log_F))
     do_recalculate = (log_F - sampler_state.log_F > jnp.log(h)) \
-                     | (sampler_state.num_k[k_from] < D + 1)
-                     # | (jnp.mod(iteration, 2*live_points_U.shape[0]) == 0) \
+                     | (sampler_state.num_k[k_from] < D + 1) \
+                     | (jnp.mod(iteration+1, live_points_U.shape[0]) == 0) \
 
     key, recalc_key = random.split(key, 2)
     sampler_state = cond(do_recalculate,
@@ -133,6 +133,19 @@ def multi_ellipsoid_sampler(key, log_L_constraint, live_points_U,
         x_test = prior_transform(u_test)
         log_L_test = loglikelihood_from_constrained(**x_test)
         return (key, i + 1, k, u_test, x_test, log_L_test)
+
+    # plt.scatter(live_points_U[:, 0], live_points_U[:, 1])
+    # theta = jnp.linspace(0., jnp.pi * 2, 100)
+    # x = jnp.stack([jnp.cos(theta), jnp.sin(theta)], axis=0)
+    # for i, (mu, radii, rotation) in enumerate(zip(sampler_state.mu, sampler_state.radii, sampler_state.rotation)):
+    #     y = mu[:, None] + rotation @ jnp.diag(radii) @ x
+    #     plt.plot(y[0, :], y[1, :])
+    #     mask = sampler_state.cluster_id == i
+    #     plt.scatter(live_points_U[mask, 0], live_points_U[mask, 1])
+    # plt.savefig('/home/albert/git/jaxns/debug_figs/fig_{:04d}.png'.format(
+    #     len(glob.glob('/home/albert/git/jaxns/debug_figs/fig_*.png'))))
+    # plt.close('all')
+
 
     (key, num_likelihood_evaluations, ellipsoid_select, u_new, x_new, log_L_new) = while_loop(
         lambda state: state[-1] <= log_L_constraint,
