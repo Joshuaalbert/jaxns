@@ -78,7 +78,7 @@ class NestedSampler(object):
     def _filter_prior_chain(self, d):
         return {name: d[name] for name, prior in self.prior_chain.prior_chain.items() if prior.tracked}
 
-    def initial_state(self, key, num_live_points, max_samples, collect_samples: bool):
+    def initial_state(self, key, num_live_points, max_samples, collect_samples: bool, sampler_kwargs):
         # get initial live points_U
         def single_sample(key):
             U = random.uniform(key, shape=(self.prior_chain.U_ndims,))
@@ -122,8 +122,10 @@ class NestedSampler(object):
         elif self.sampler_name == 'simplex':
             sampler_state = init_simplex_sampler_state(live_points_U)
         elif self.sampler_name == 'multi_ellipsoid':
+            if sampler_kwargs is None:
+                sampler_kwargs = dict()
             key, init_sampler_state_key = random.split(key, 2)
-            depth = 3
+            depth = sampler_kwargs.get('depth', 3)
             sampler_state = init_multi_ellipsoid_sampler_state(
                 init_sampler_state_key, live_points_U, depth, evidence.X.log_value)
         else:
@@ -152,7 +154,7 @@ class NestedSampler(object):
 
         return state
 
-    @partial(trace_function, event_name="one_step")
+    # @partial(trace_function, event_name="one_step")
     def _one_step(self, state: NestedSamplerState, collect_samples: bool):
         # get next dead point
         i_min = jnp.argmin(state.log_L_live)
@@ -298,12 +300,13 @@ class NestedSampler(object):
     def __call__(self, key, num_live_points, max_samples=1e5,
                  collect_samples=True,
                  termination_frac=0.05,
-                 stoachastic_uncertainty=True):
+                 stoachastic_uncertainty=True, sampler_kwargs=None):
         max_samples = int(max_samples)  # jnp.array(max_samples, dtype=jnp.int64)
         num_live_points = int(num_live_points)  # jnp.array(num_live_points, dtype=jnp.int64)
         state = self.initial_state(key, num_live_points,
                                    max_samples=max_samples,
-                                   collect_samples=collect_samples)
+                                   collect_samples=collect_samples,
+                                   sampler_kwargs=sampler_kwargs)
 
         def body(state: NestedSamplerState):
             # print(list(map(lambda x: type(x), state)))

@@ -41,7 +41,7 @@ def main():
         def run(key):
             return ns(key=key,
                       num_live_points=n * ndims,
-                      max_samples=1e4,
+                      max_samples=1e5,
                       collect_samples=True,
                       termination_frac=0.01,
                       stoachastic_uncertainty=False)
@@ -49,7 +49,7 @@ def main():
         results = run(random.PRNGKey(0))
         return results
 
-    for n in [10]:
+    for n in [100]:
         # with disable_jit():
         results = run_with_n(n)
         plt.scatter(n, results.logZ)
