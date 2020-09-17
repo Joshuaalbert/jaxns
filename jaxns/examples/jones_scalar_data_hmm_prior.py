@@ -5,10 +5,11 @@ from jaxns.prior_transforms import UniformPrior, PriorChain, LaplacePrior, MVNDi
 from jax.scipy.linalg import solve_triangular
 from jax import jit, vmap
 from jax import numpy as jnp, random
+import pylab as plt
 
 
 def generate_data():
-    T = 4
+    T = 20
     tec = jnp.cumsum(10. * random.normal(random.PRNGKey(0), shape=(T,)))
     print(tec)
     TEC_CONV = -8.4479745e6  # mTECU/Hz
@@ -48,28 +49,31 @@ def main():
         .push(DiagGaussianWalkPrior('tec', T, LaplacePrior('tec0', 0., 100.), UniformPrior('omega', 0, 20))) \
         .push(UniformPrior('uncert', 0, 1))
 
-    ns = NestedSampler(log_likelihood, prior_chain, sampler_name='whitened_box')
+    ns = NestedSampler(log_likelihood, prior_chain, sampler_name='multi_ellipsoid')
 
-    def run_with_n(n):
-        @jit
-        def run():
-            return ns(key=random.PRNGKey(0),
-                      num_live_points=100,
-                      max_samples=1e6,
-                      collect_samples=True,
-                      termination_frac=0.01,
-                      stoachastic_uncertainty=True)
+    @jit
+    def run(key):
+        return ns(key=key,
+                  num_live_points=100,
+                  max_samples=1e5,
+                  collect_samples=True,
+                  termination_frac=0.01,
+                  stoachastic_uncertainty=False,
+                  sampler_kwargs=dict(depth=3))
 
-        # with disable_jit():
-        results = run()
-        return results
+    # with disable_jit():
+    results = run(random.PRNGKey(0))
 
-    results = run_with_n(50)
-
+    print(results.param_mean)
+    plt.plot(tec)
+    plt.plot(results.param_mean['tec'])
+    plt.show()
+    plt.plot(results.param_mean['tec']-tec)
+    plt.show()
     ###
 
     plot_diagnostics(results)
-    plot_cornerplot(results)
+    # plot_cornerplot(results)
 
 
 if __name__ == '__main__':
