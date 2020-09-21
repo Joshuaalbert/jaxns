@@ -2,6 +2,7 @@ import pylab as plt
 import jax.numpy as jnp
 from scipy.stats.kde import gaussian_kde
 from jaxns.utils import safe_gaussian_kde, tuple_prod
+from matplotlib.animation import FuncAnimation
 
 
 def plot_diagnostics(results, save_name=None):
@@ -31,11 +32,8 @@ def plot_diagnostics(results, save_name=None):
 
 
 def plot_cornerplot(results, vars=None, save_name=None):
-    if vars is None:
-        vars = [k for k, v in results.samples.items()]
-    vars = [v for v in vars if v in results.samples.keys()]
-    vars = sorted(vars)
-    ndims = int(sum([tuple_prod(v.shape[1:]) for k, v in results.samples.items() if (k in vars)]))
+    vars = _get_vars(results, vars)
+    ndims = _get_ndims(results, vars)
     figsize = min(20, max(4, int(2 * ndims)))
     fig, axs = plt.subplots(ndims, ndims, figsize=(figsize, figsize))
     # if not isinstance(axs, list):
@@ -126,4 +124,114 @@ def plot_cornerplot(results, vars=None, save_name=None):
                 ax.set_xlim(lims[dim2])
     if save_name is not None:
         fig.savefig(save_name)
+    plt.show()
+
+
+def _get_ndims(results, vars):
+    ndims = int(sum([tuple_prod(v.shape[1:]) for k, v in results.samples.items() if (k in vars)]))
+    return ndims
+
+
+def _get_vars(results, vars):
+    if vars is None:
+        vars = [k for k, v in results.samples.items()]
+    vars = [v for v in vars if v in results.samples.keys()]
+    vars = sorted(vars)
+    return vars
+
+
+def plot_samples_development(results, vars=None, save_name=None):
+    vars = _get_vars(results, vars)
+    ndims = _get_ndims(results, vars)
+    figsize = min(20, max(4, int(2 * ndims)))
+    fig, axs = plt.subplots(ndims, ndims, figsize=(figsize, figsize))
+    if ndims == 1:
+        axs = [[axs]]
+    weights = jnp.exp(results.log_p)
+    max_samples = weights.size
+
+    def _get_artists(artists, start, stop):
+        lims = {}
+        dim = 0
+        for key in vars:  # sorted(results.samples.keys()):
+            n1 = tuple_prod(results.samples[key].shape[1:])
+            for i in range(n1):
+                samples1 = results.samples[key].reshape((max_samples, -1))[:, i]
+                samples1 = samples1[start:stop]
+                dim2 = 0
+                for key2 in vars:  # sorted(results.samples.keys()):
+                    n2 = tuple_prod(results.samples[key2].shape[1:])
+                    for i2 in range(n2):
+                        ax = axs[dim][dim2]
+                        if dim2 > dim:
+                            dim2 += 1
+                            ax.set_xticks([])
+                            ax.set_xticklabels([])
+                            ax.set_yticks([])
+                            ax.set_yticklabels([])
+                            continue
+                        if n2 > 1:
+                            title2 = "{}[{}]".format(key2, i2)
+                        else:
+                            title2 = "{}".format(key2)
+                        if n1 > 1:
+                            title1 = "{}[{}]".format(key, i)
+                        else:
+                            title1 = "{}".format(key)
+                        # ax.set_title('{} {}'.format(title1, title2))
+                        if dim == dim2:
+                            _, _, new_patches = ax.hist(samples1)
+                            artists = artists + list(new_patches)
+                            lims[dim] = ax.get_xlim()
+                        else:
+                            samples2 = results.samples[key2].reshape((max_samples, -1))[:, i2]
+                            samples2 = samples2[start:stop]
+
+                            sc = ax.scatter(samples2, samples1, marker='+', c='black', alpha=0.5)
+                            artists.append(sc)
+                        if dim == ndims - 1:
+                            ax.set_xlabel("{}".format(title2))
+                        if dim2 == 0:
+                            ax.set_ylabel("{}".format(title1))
+
+                        dim2 += 1
+                dim += 1
+        for dim in range(ndims):
+            for dim2 in range(ndims):
+                if dim == dim2:
+                    continue
+                ax = axs[dim][dim2] if ndims > 1 else axs[0]
+                if dim in lims.keys():
+                    ax.set_ylim(lims[dim])
+                if dim2 in lims.keys():
+                    ax.set_xlim(lims[dim2])
+        return artists
+
+    def init():
+        start = 0
+        stop = start + results.n_per_sample[start].astype(jnp.int_)
+        for i in range(ndims):
+            for j in range(ndims):
+                axs[i][j].clear()
+
+        artists = []
+
+        artists = _get_artists(artists, start, stop)
+        return artists
+
+    def update(start):
+        stop = start + results.n_per_sample[start].astype(jnp.int_)
+        for i in range(ndims):
+            for j in range(ndims):
+                axs[i][j].clear()
+
+        artists = []
+
+        artists = _get_artists(artists, start, stop)
+        return artists
+
+    ani = FuncAnimation(fig, update, frames=jnp.arange(1,results.num_samples),
+                        init_func=init, blit=True)
+    if save_name is not None:
+        ani.save(save_name, fps=results.n_per_sample[0]/2.)
     plt.show()
