@@ -413,3 +413,17 @@ def tuple_prod(t):
     for a in t[1:]:
         res *= a
     return res
+
+
+def msqrt(A):
+    U, s, Vh = jnp.linalg.svd(A)
+    L = U * jnp.sqrt(s)
+    return L
+
+
+def test_msqrt():
+    for i in range(10):
+        A = random.normal(random.PRNGKey(i),shape=(30,30))
+        A = A @ A.T
+        L = msqrt(A)
+        assert jnp.all(jnp.isclose(A, L @ L.T))

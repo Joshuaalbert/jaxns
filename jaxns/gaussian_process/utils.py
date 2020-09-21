@@ -185,12 +185,6 @@ def test_squared_norm():
     assert jnp.all(jnp.isclose(squared_norm(x, y), jnp.sum(jnp.square(x[:, None, :] - y[None, :, :]), axis=-1)))
 
 
-def msqrt(A):
-    U, s, Vh = jnp.linalg.svd(A)
-    L = U * s
-    return L
-
-
 def make_coord_array(*X, flat=True, coord_map=None):
     """
     Create the design matrix from a list of coordinates

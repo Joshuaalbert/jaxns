@@ -2,7 +2,7 @@ from jax import numpy as jnp
 from jax import vmap
 from jax.lax import scan
 from jax.scipy.special import ndtri
-from jaxns.utils import broadcast_shapes, iterative_topological_sort, tuple_prod
+from jaxns.utils import broadcast_shapes, iterative_topological_sort, tuple_prod, msqrt
 from jaxns.gaussian_process.kernels import Kernel
 from collections import OrderedDict
 
@@ -153,7 +153,8 @@ class MVNDiagPrior(PriorTransform):
 
 
 class MVNPrior(PriorTransform):
-    def __init__(self, name, mu, Gamma, tracked=True):
+    def __init__(self, name, mu, Gamma, ill_cond=False, tracked=True):
+        self._ill_cond = ill_cond
         if not isinstance(mu, PriorTransform):
             mu = DeltaPrior('_{}_mu'.format(name), mu, False)
         if not isinstance(Gamma, PriorTransform):
@@ -167,7 +168,10 @@ class MVNPrior(PriorTransform):
         return (self.U_ndims,)
 
     def forward(self, U, mu, Gamma, **kwargs):
-        L = jnp.linalg.cholesky(Gamma)
+        if self._ill_cond:
+            L = msqrt(Gamma)
+        else:
+            L = jnp.linalg.cholesky(Gamma)
         return L @ ndtri(U) + mu
 
 
@@ -443,21 +447,7 @@ class SlicePrior(PriorTransform):
 #     def forward(self, U, idx, dist, **kwargs):
 #         return dist[idx,...]
 
-class TransposePrior(PriorTransform):
-    def __init__(self, name, dist, tracked=True):
-        if not isinstance(dist, PriorTransform):
-            dist = DeltaPrior('_{}_dist'.format(name), dist, False)
 
-        self._shape = get_shape(dist)[::-1]
-        U_dims = 0
-        super(TransposePrior, self).__init__(name, U_dims, [dist], tracked)
-
-    @property
-    def to_shape(self):
-        return self._shape
-
-    def forward(self, U, dist, **kwargs):
-        return jnp.transpose(dist)
 
 
 class UniformPrior(PriorTransform):
@@ -584,23 +574,35 @@ def test_prior_chain():
     y = chain(U)
     print(y)
 
-
-class GaussianProcessKernelPrior(PriorTransform):
-    def __init__(self, name, kernel: Kernel, X, *gp_params, tracked=False):
-        if not isinstance(X, PriorTransform):
-            X = DeltaPrior('_{}_X'.format(name), X, False)
-        gp_params = list(gp_params)
-        for i, gp_param in enumerate(gp_params):
-            if not isinstance(gp_param, PriorTransform):
-                gp_params[i] = DeltaPrior('_{}_param[{:d}]'.format(name, i), gp_param, False)
-        # replaces mu and gamma when parents injected
-        self._kernel = kernel
-        self._to_shape = (get_shape(X)[0], get_shape(X)[0])
-        super(GaussianProcessKernelPrior, self).__init__(name, 0, [X] + gp_params, tracked)
+class DeterministicTransformPrior(PriorTransform):
+    def __init__(self, name, transform, to_shape, *params, tracked=True):
+        params = list(params)
+        for i, param in enumerate(params):
+            if not isinstance(param, PriorTransform):
+                params[i] = DeltaPrior('_{}_param[{:d}]'.format(name, i), param, False)
+        self._to_shape = to_shape
+        self._transform = transform
+        super(DeterministicTransformPrior, self).__init__(name, 0, params, tracked)
 
     @property
     def to_shape(self):
         return self._to_shape
 
-    def forward(self, U, X, *gp_params, **kwargs):
-        return self._kernel(X, X, *gp_params) + 1e-6 * jnp.eye(X.shape[0])
+    def forward(self, U, *params, **kwargs):
+        return self._transform(*params)
+
+class GaussianProcessKernelPrior(DeterministicTransformPrior):
+    def __init__(self, name, kernel: Kernel, X, *gp_params, tracked=False):
+        gp_params = [X] + list(gp_params)
+        def _transform(X, *gp_params):
+            return kernel(X, X, *gp_params) + 1e-6 * jnp.eye(X.shape[0])
+        to_shape = (get_shape(X)[0], get_shape(X)[0])
+        super(GaussianProcessKernelPrior, self).__init__(name, _transform, to_shape, *gp_params, tracked=tracked)
+
+class TransposePrior(DeterministicTransformPrior):
+    def __init__(self, name, dist, tracked=True):
+        if not isinstance(dist, PriorTransform):
+            dist = DeltaPrior('_{}_dist'.format(name), dist, False)
+        self._shape = get_shape(dist)[::-1]
+        super(TransposePrior, self).__init__(name, lambda x: jnp.transpose(x), get_shape(dist)[::-1],
+                                             [dist], tracked=tracked)
