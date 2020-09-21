@@ -1,8 +1,24 @@
 from jaxns.gaussian_process.tomographic_kernel_utils import log_tomographic_weight_function_outer
 import jax.numpy as jnp
+from jaxns.gaussian_process.kernels import Kernel
 from jax.scipy.special import logsumexp
 
-def log_tomographic_kernel(key, a1, a2, k1, k2, x0, fed_kernel, height, width, l, S=25, **fed_kernel_params):
+
+class TomographicKernel(Kernel):
+    def __init__(self, x0, fed_kernel, S=25):
+        self.S = S
+        self.x0 = x0
+        self.fed_kernel = fed_kernel
+
+    def __call__(self, x1, x2, height, width, l, sigma, *fed_kernel_params):
+        a1 = x1[:, 0:3]
+        k1 = x1[:, 3:6]
+        a2 = x2[:, 0:3]
+        k2 = x2[:, 3:6]
+        return tomographic_kernel(a1, a2, k1, k2, self.x0, self.fed_kernel, height, width, l, sigma, *fed_kernel_params,
+                                  S=self.S)
+
+def log_tomographic_kernel(a1, a2, k1, k2, x0, fed_kernel, height, width, l, sigma, *fed_kernel_params, S=25):
     """
     Computes the tomographic kernel,
         I = int_0^1 int_0^1 K(x1+t1 p1 - x2 - t2 p2) dt1 dt2
@@ -22,7 +38,6 @@ def log_tomographic_kernel(key, a1, a2, k1, k2, x0, fed_kernel, height, width, l
     Returns: [N, M]
 
     """
-    fed_kernel = fed_kernel()
     kernel_act = fed_kernel.act
     kernel_inverse_x = fed_kernel.inverse_x
     # N
@@ -36,26 +51,27 @@ def log_tomographic_kernel(key, a1, a2, k1, k2, x0, fed_kernel, height, width, l
     x2 = (a2 + s2[:, None] * k2) / l
     p2 = (k2 * width / k2[:, 2:3]) / l
 
-    #s = t*b sec phi + s0
-    #ds = dt*b*sec phi
-    #N,M
-    log_conv = 2.*jnp.log(width) - jnp.log(k1[:,2:3]) - jnp.log(k2[None,:,2])
+    # s = t*b sec phi + s0
+    # ds = dt*b*sec phi
+    # N,M
+    log_conv = 2. * jnp.log(width) - (jnp.log(k1[:, 2:3]) + jnp.log(k2[None, :, 2]))
 
     # out until r = 5*half_width where the kernel should be really small
     # U
     bins = jnp.linspace(0., kernel_inverse_x(0.01, l=1., sigma=1.), S) ** 2
-    u = 0.5*(bins[:-1]+bins[1:])
+    u = 0.5 * (bins[:-1] + bins[1:])
     log_du = jnp.log(jnp.diff(bins))
 
     # N,M,U
     log_w = log_tomographic_weight_function_outer(bins, x1, x2, p1, p2, S=S)
 
-    # U
-    log_K = kernel_act(u, **fed_kernel_params)
-    #
-    return logsumexp(log_K + log_w + log_du + log_conv[:,:,None], axis=-1)
+    # N,M,U
+    log_K = kernel_act(u, sigma, *fed_kernel_params)
+    # N,M
+    return logsumexp(log_K + log_w + log_du + log_conv[:, :, None], axis=-1)
 
-def tomographic_kernel(key, a1, a2, k1, k2, x0, fed_kernel, height, width, l, S=25, **fed_kernel_params):
+
+def tomographic_kernel(a1, a2, k1, k2, x0, fed_kernel, height, width, l, sigma, *fed_kernel_params, S=25):
     """
     Computes the tomographic kernel,
         I = int_0^1 int_0^1 K(x1+t1 p1 - x2 - t2 p2) dt1 dt2
@@ -75,16 +91,18 @@ def tomographic_kernel(key, a1, a2, k1, k2, x0, fed_kernel, height, width, l, S=
     Returns: [N, M]
 
     """
-    return jnp.exp(log_tomographic_kernel(key, a1, a2, k1, k2, x0, fed_kernel, height, width, l, S=S, **fed_kernel_params))
+    return jnp.exp(
+        log_tomographic_kernel(a1, a2, k1, k2, x0, fed_kernel, height, width, l, sigma, *fed_kernel_params, S=S))
+
 
 def test_tomographic_kernel():
     from jax import random
-    from jaxns.gaussian_process.kernels import rbf_act
+    from jaxns.gaussian_process.kernels import RBF
     import pylab as plt
     n = 300
     a1 = jnp.array([[-1, 0., 0.]])
-    k1 = jnp.stack([4.*jnp.pi/180.*random.uniform(random.PRNGKey(0), shape=(n,), minval=-1, maxval=1),
-                    4.*jnp.pi/180.*random.uniform(random.PRNGKey(1), shape=(n,), minval=-1, maxval=1),
+    k1 = jnp.stack([4. * jnp.pi / 180. * random.uniform(random.PRNGKey(0), shape=(n,), minval=-1, maxval=1),
+                    4. * jnp.pi / 180. * random.uniform(random.PRNGKey(1), shape=(n,), minval=-1, maxval=1),
                     jnp.ones(n)], axis=1)
     k1 /= jnp.linalg.norm(k1, axis=-1, keepdims=True)
     n = 1
@@ -94,19 +112,21 @@ def test_tomographic_kernel():
                     jnp.ones(n)], axis=1)
     k2 /= jnp.linalg.norm(k2, axis=-1, keepdims=True)
     x0 = jnp.zeros(3)
-    fed_kernel_params = dict(sigma=1.)
-    log_K = log_tomographic_kernel(random.PRNGKey(4), a1, a2, k1, k2, x0, rbf_act, 10., 4., 1., **fed_kernel_params)
-    print(log_K)
-    sc = plt.scatter(k1[:, 0], k1[:, 1], c=log_K[:, 0])
+    K = tomographic_kernel(a1, a2, k1, k2, x0, RBF(), height=10., width=2., l=1., sigma=1., S=25)
+    sc = plt.scatter(k1[:, 0], k1[:, 1], c=K[:, 0])
     plt.colorbar(sc)
     plt.show()
 
 
 def dtec_tomographic_kernel(key, ref_ant, a1, a2, k1, k2, x0, fed_kernel, height, width, l, S=50, **fed_kernel_params):
     return tomographic_kernel(key, a1, a2, k1, k2, x0, fed_kernel, height, width, l, S=S, **fed_kernel_params) + \
-    tomographic_kernel(key, ref_ant[None, :], ref_ant[None, :], k1, k2, x0, fed_kernel, height, width, l, S=S, **fed_kernel_params) - \
-    tomographic_kernel(key, ref_ant[None, :], a2, k1, k2, x0, fed_kernel, height, width, l, S=S, **fed_kernel_params) -\
-    tomographic_kernel(key, a1, ref_ant[None, :], k1, k2, x0, fed_kernel, height, width, l, S=S, **fed_kernel_params)
+           tomographic_kernel(key, ref_ant[None, :], ref_ant[None, :], k1, k2, x0, fed_kernel, height, width, l, S=S,
+                              **fed_kernel_params) - \
+           tomographic_kernel(key, ref_ant[None, :], a2, k1, k2, x0, fed_kernel, height, width, l, S=S,
+                              **fed_kernel_params) - \
+           tomographic_kernel(key, a1, ref_ant[None, :], k1, k2, x0, fed_kernel, height, width, l, S=S,
+                              **fed_kernel_params)
+
 
 def test_dtec_tomographic_kernel():
     from jax import random
@@ -114,8 +134,8 @@ def test_dtec_tomographic_kernel():
     import pylab as plt
     n = 300
     a1 = jnp.array([[-1, 0., 0.]])
-    k1 = jnp.stack([4.*jnp.pi/180.*random.uniform(random.PRNGKey(0), shape=(n,), minval=-1, maxval=1),
-                    4.*jnp.pi/180.*random.uniform(random.PRNGKey(1), shape=(n,), minval=-1, maxval=1),
+    k1 = jnp.stack([4. * jnp.pi / 180. * random.uniform(random.PRNGKey(0), shape=(n,), minval=-1, maxval=1),
+                    4. * jnp.pi / 180. * random.uniform(random.PRNGKey(1), shape=(n,), minval=-1, maxval=1),
                     jnp.ones(n)], axis=1)
     k1 /= jnp.linalg.norm(k1, axis=-1, keepdims=True)
     n = 1
@@ -132,11 +152,18 @@ def test_dtec_tomographic_kernel():
     plt.colorbar(sc)
     plt.show()
 
-def ddtec_tomographic_kernel(key, ref_dir, ref_ant, a1, a2, k1, k2, x0, fed_kernel, height, width, l, S=50, **fed_kernel_params):
-    return dtec_tomographic_kernel(key, ref_ant, a1, a2, k1, k2, x0, fed_kernel, height, width, l, S=S, **fed_kernel_params) + \
-    dtec_tomographic_kernel(key, ref_ant, a1, a2, ref_dir[None, :], ref_dir[None, :], x0, fed_kernel, height, width, l, S=S, **fed_kernel_params) - \
-    dtec_tomographic_kernel(key, ref_ant, a1, a2, ref_dir[None, :], k2, x0, fed_kernel, height, width, l, S=S, **fed_kernel_params) -\
-    dtec_tomographic_kernel(key, ref_ant, a1, a2, k1, ref_dir[None, :], x0, fed_kernel, height, width, l, S=S, **fed_kernel_params)
+
+def ddtec_tomographic_kernel(key, ref_dir, ref_ant, a1, a2, k1, k2, x0, fed_kernel, height, width, l, S=50,
+                             **fed_kernel_params):
+    return dtec_tomographic_kernel(key, ref_ant, a1, a2, k1, k2, x0, fed_kernel, height, width, l, S=S,
+                                   **fed_kernel_params) + \
+           dtec_tomographic_kernel(key, ref_ant, a1, a2, ref_dir[None, :], ref_dir[None, :], x0, fed_kernel, height,
+                                   width, l, S=S, **fed_kernel_params) - \
+           dtec_tomographic_kernel(key, ref_ant, a1, a2, ref_dir[None, :], k2, x0, fed_kernel, height, width, l, S=S,
+                                   **fed_kernel_params) - \
+           dtec_tomographic_kernel(key, ref_ant, a1, a2, k1, ref_dir[None, :], x0, fed_kernel, height, width, l, S=S,
+                                   **fed_kernel_params)
+
 
 def test_ddtec_tomographic_kernel():
     from jax import random
@@ -158,7 +185,8 @@ def test_ddtec_tomographic_kernel():
     k0 = jnp.array([0., 0.05, 1.])
     k0 /= jnp.linalg.norm(k0, axis=-1, keepdims=True)
     fed_kernel_params = dict(sigma=1., alpha=2.)
-    K = ddtec_tomographic_kernel(random.PRNGKey(4), k0, x0, a1, a2, k1, k2, x0, rational_quadratic_act, 10., 2., 0.36, S=200, **fed_kernel_params)
+    K = ddtec_tomographic_kernel(random.PRNGKey(4), k0, x0, a1, a2, k1, k2, x0, rational_quadratic_act, 10., 2., 0.36,
+                                 S=200, **fed_kernel_params)
     print(K)
     sc = plt.scatter(k1[:, 0], k1[:, 1], c=K[:, 0])
     plt.colorbar(sc)
