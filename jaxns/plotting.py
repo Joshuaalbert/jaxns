@@ -141,6 +141,8 @@ def _get_vars(results, vars):
 
 
 def plot_samples_development(results, vars=None, save_name=None):
+    if save_name is None:
+        raise ValueError("In order to plot the animation we must save it.")
     vars = _get_vars(results, vars)
     ndims = _get_ndims(results, vars)
     figsize = min(20, max(4, int(2 * ndims)))
@@ -149,6 +151,8 @@ def plot_samples_development(results, vars=None, save_name=None):
         axs = [[axs]]
     weights = jnp.exp(results.log_p)
     max_samples = weights.size
+    norm = plt.Normalize(weights.min(), weights.max())
+    to_colour = lambda w: plt.cm.jet(norm(w))
 
     def _get_artists(artists, start, stop):
         lims = {}
@@ -187,7 +191,7 @@ def plot_samples_development(results, vars=None, save_name=None):
                             samples2 = results.samples[key2].reshape((max_samples, -1))[:, i2]
                             samples2 = samples2[start:stop]
 
-                            sc = ax.scatter(samples2, samples1, marker='+', c='black', alpha=0.5)
+                            sc = ax.scatter(samples2, samples1, marker='+', c=to_colour(weights[start:stop]), alpha=0.5)
                             artists.append(sc)
                         if dim == ndims - 1:
                             ax.set_xlabel("{}".format(title2))
@@ -232,6 +236,5 @@ def plot_samples_development(results, vars=None, save_name=None):
 
     ani = FuncAnimation(fig, update, frames=jnp.arange(1,results.num_samples),
                         init_func=init, blit=True)
-    if save_name is not None:
-        ani.save(save_name, fps=results.n_per_sample[0]/2.)
-    plt.show()
+
+    ani.save(save_name, fps=results.n_per_sample[0]/2.)
