@@ -36,8 +36,8 @@ def plot_cornerplot(results, vars=None, save_name=None):
     ndims = _get_ndims(results, vars)
     figsize = min(20, max(4, int(2 * ndims)))
     fig, axs = plt.subplots(ndims, ndims, figsize=(figsize, figsize))
-    # if not isinstance(axs, list):
-    #     axs = [axs]
+    if ndims == 1:
+        axs = [[axs]]
     weights = jnp.exp(results.log_p)
     nsamples = weights.size
     nbins = int(jnp.sqrt(results.ESS)) + 1
@@ -60,7 +60,7 @@ def plot_cornerplot(results, vars=None, save_name=None):
             for key2 in vars:  # sorted(results.samples.keys()):
                 n2 = tuple_prod(results.samples[key2].shape[1:])
                 for i2 in range(n2):
-                    ax = axs[dim][dim2] if ndims > 1 else axs[0]
+                    ax = axs[dim][dim2]
                     if dim2 > dim:
                         dim2 += 1
                         ax.set_xticks([])
