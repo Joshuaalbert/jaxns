@@ -117,3 +117,50 @@ class UniformPrior(PriorTransform):
         return low + jnp.reshape(U, self.to_shape) * (high - low)
 
 
+# class CategoricalPrior(PriorTransform):
+#     def __init__(self, name, pi, tracked=True):
+#         if not isinstance(pi, PriorTransform):
+#             pi = DeltaPrior('_{}_pi'.format(name), jnp.atleast_1d(pi), False)
+#         shape = ()
+#         self._shape = ()
+#         # replaces mu and gamma when parents injected
+#         U_dims = 1
+#         super(CategoricalPrior, self).__init__(name, U_dims, [pi], tracked)
+#
+#     @property
+#     def to_shape(self):
+#         return self._shape
+#
+#     def forward(self, U, pi, **kwargs):
+#         j = jnp.argmax(U[0] * jnp.sum(pi)<= jnp.cumsum(pi))
+#         return j
+
+class CategoricalPrior(PriorTransform):
+    def __init__(self, name, logits, tracked=True):
+        if not isinstance(logits, PriorTransform):
+            logits = DeltaPrior('_{}_logits'.format(name), jnp.atleast_1d(logits), False)
+        self._shape = (1,)
+        U_dims = get_shape(logits)[0]
+        super(CategoricalPrior, self).__init__(name, U_dims, [logits], tracked)
+
+    @property
+    def to_shape(self):
+        return self._shape
+
+    def forward(self, U, logits, **kwargs):
+        return jnp.argmax(logits - jnp.log(-jnp.log(jnp.maximum(U, jnp.finfo(U.dtype).eps))))[None]
+
+class Gumbel(PriorTransform):
+    def __init__(self, name, logits, tracked=True):
+        if not isinstance(logits, PriorTransform):
+            logits = DeltaPrior('_{}_logits'.format(name), jnp.atleast_1d(logits), False)
+        self._shape = (get_shape(logits)[0],)
+        U_dims = get_shape(logits)[0]
+        super(Gumbel, self).__init__(name, U_dims, [logits], tracked)
+
+    @property
+    def to_shape(self):
+        return self._shape
+
+    def forward(self, U, logits, **kwargs):
+        return -jnp.log(-jnp.log(jnp.maximum(U, jnp.finfo(U.dtype).eps)))

@@ -9,7 +9,8 @@ from jaxns.utils import broadcast_shapes, msqrt
 
 
 class MixturePrior(PriorTransform):
-    def __init__(self, name, pi, *components, tracked=True):
+    def __init__(self, name, transform, pi, *components, tracked=True):
+        self._transform = transform
         if not isinstance(pi, PriorTransform):
             pi = DeltaPrior('_{}_pi'.format(name), pi, False)
         assert (get_shape(pi)[0] == len(components))
@@ -27,9 +28,9 @@ class MixturePrior(PriorTransform):
         return self._shape
 
     def forward(self, U, pi, *components, **kwargs):
-        j = jnp.argmax(U[0] <= jnp.cumsum(pi) / jnp.sum(pi))
-        components = jnp.stack(components, axis=0)  # each components must be the same size
-        return components[j, ...]
+        j = jnp.argmax(U[0] * jnp.sum(pi)<= jnp.cumsum(pi))
+        components = [c[j,...] for c in components]  # each components must be at least 1d
+        return self._transform(*components)
 
 
 class GMMDiagPrior(PriorTransform):
@@ -60,24 +61,6 @@ class GMMDiagPrior(PriorTransform):
         gamma = gamma[j, ...]
         mu = mu[j, ...]
         return gamma * ndtri(U[1:]) + mu
-
-
-class GMMMarginalPrior(GMMDiagPrior):
-    def __init__(self, name, num_components, low, high, tracked=True):
-        pi = UniformPrior(f'_{name}_pi', jnp.zeros(num_components), jnp.ones(num_components),
-                          tracked=True)
-        mean = ForcedIdentifiabilityPrior(f'_{name}_mean',
-                                          num_components,
-                                          low,
-                                          high,
-                                          tracked=True)
-        gamma_max = (high - low) / num_components * jnp.ones((num_components, 1))
-        # gamma = ForcedIdentifiabilityPrior(f'_{name}_gamma',
-        #                                   num_components,
-        #                                   jnp.zeros_like(gamma_max),
-        #                                   gamma_max,
-        #                                   tracked=False)
-        super(GMMMarginalPrior, self).__init__(name, pi, mean, gamma_max, tracked=tracked)
 
 
 class GMMPrior(PriorTransform):
