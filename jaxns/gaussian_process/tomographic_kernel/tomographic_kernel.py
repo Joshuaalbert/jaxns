@@ -1,4 +1,4 @@
-from jaxns.gaussian_process.tomographic_kernel_utils import log_tomographic_weight_function_outer
+from jaxns.gaussian_process.tomographic_kernel.tomographic_kernel_utils import log_tomographic_weight_function_outer
 import jax.numpy as jnp
 from jaxns.gaussian_process.kernels import Kernel
 from jax.scipy.special import logsumexp
