@@ -162,7 +162,7 @@ class NestedSampler(object):
         log_L_min = state.log_L_live[i_min]
         if collect_samples:
             dead_points = dict_multimap(lambda x, y: dynamic_update_slice(x,
-                                                                          y[None, ...],
+                                                                          y.astype(x.dtype)[None, ...],
                                                                           [state.num_dead] + [0] * len(y.shape)),
                                         state.dead_points, dead_point)
             log_L_dead = dynamic_update_slice(state.log_L_dead,
@@ -275,7 +275,7 @@ class NestedSampler(object):
             raise ValueError("Invalid sampler name {}".format(self.sampler_name))
         #
         log_L_live = dynamic_update_slice(state.log_L_live, sampler_results.log_L_new[None], [i_min])
-        live_points = dict_multimap(lambda x, y: dynamic_update_slice(x, y[None, ...],
+        live_points = dict_multimap(lambda x, y: dynamic_update_slice(x, y.astype(x.dtype)[None, ...],
                                                                       [i_min] + [0] * len(y.shape)),
                                     state.live_points,
                                     sampler_results.x_new)
@@ -401,7 +401,7 @@ class NestedSampler(object):
             ar = jnp.argsort(state.log_L_live)
             samples = dict_multimap(lambda dead_points, live_points:
                                     dynamic_update_slice(dead_points,
-                                                         live_points[ar, ...],
+                                                         live_points.astype(dead_points.dtype)[ar, ...],
                                                          [state.num_dead] + [0] * (len(dead_points.shape) - 1)),
                                     state.dead_points, state.live_points)
             log_L_samples = dynamic_update_slice(state.log_L_dead, state.log_L_live[ar], [state.num_dead])
