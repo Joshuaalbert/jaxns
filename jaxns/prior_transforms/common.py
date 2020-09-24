@@ -139,28 +139,28 @@ class CategoricalPrior(PriorTransform):
     def __init__(self, name, logits, tracked=True):
         if not isinstance(logits, PriorTransform):
             logits = DeltaPrior('_{}_logits'.format(name), jnp.atleast_1d(logits), False)
+        if not isinstance(logits, PriorTransform):
+            gumbel = Gumbel('_{}_gumbel'.format(name), False)
         self._shape = (1,)
         U_dims = get_shape(logits)[0]
-        super(CategoricalPrior, self).__init__(name, U_dims, [logits], tracked)
+        super(CategoricalPrior, self).__init__(name, U_dims, [gumbel, logits], tracked)
 
     @property
     def to_shape(self):
         return self._shape
 
-    def forward(self, U, logits, **kwargs):
-        return jnp.argmax(logits - jnp.log(-jnp.log(jnp.maximum(U, jnp.finfo(U.dtype).eps))))[None]
+    def forward(self, U, gumbel, logits, **kwargs):
+        return jnp.argmax(logits + gumbel)[None]
 
 class Gumbel(PriorTransform):
-    def __init__(self, name, logits, tracked=True):
-        if not isinstance(logits, PriorTransform):
-            logits = DeltaPrior('_{}_logits'.format(name), jnp.atleast_1d(logits), False)
-        self._shape = (get_shape(logits)[0],)
-        U_dims = get_shape(logits)[0]
-        super(Gumbel, self).__init__(name, U_dims, [logits], tracked)
+    def __init__(self, name, num, tracked=True):
+        self._shape = (num,)
+        U_dims = num
+        super(Gumbel, self).__init__(name, U_dims, [], tracked)
 
     @property
     def to_shape(self):
         return self._shape
 
-    def forward(self, U, logits, **kwargs):
+    def forward(self, U, **kwargs):
         return -jnp.log(-jnp.log(jnp.maximum(U, jnp.finfo(U.dtype).eps)))
