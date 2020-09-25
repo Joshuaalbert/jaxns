@@ -1,7 +1,7 @@
 from jax import numpy as jnp
 from jax.scipy.special import ndtri
 
-from jaxns.prior_transforms import ForcedIdentifiabilityPrior, SlicePrior
+from jaxns.prior_transforms import ForcedIdentifiabilityPrior
 from jaxns.prior_transforms.common import DeltaPrior, UniformPrior
 from jaxns.prior_transforms.prior_chain import PriorTransform
 from jaxns.prior_transforms.prior_utils import get_shape
@@ -122,52 +122,52 @@ class UniformMixturePrior(PriorTransform):
         high = high[j, ...]
         return low + (high - low) * U[1:]
 
+#
+# class MultiCubeMixturePrior(UniformMixturePrior):
+#     """
+#     Creates a UniformMixturePrior with num_components components.
+#
+#     The mixture parameter, pi, is ordered from smallest to largest such that pi[i] <= pi[i+1].
+#     pi ~ ForcedIdentifiabilityPrior(num_components, 0., 1.)
+#
+#     Each components is a Uniform on some retangular regions of [0,1]^D
+#     low
+#     X[i] ~ U[low[i], high[i]]
+#
+#     j ~ MultiNomial[pi]
+#     Y ~ X[j]
+#
+#     """
+#
+#     def __init__(self, name, num_components, num_dims, low, high):
+#         pi = ForcedIdentifiabilityPrior(f'_{name}_pi', num_components, 0., 1., tracked=True)
+#         low_high = ForcedIdentifiabilityPrior(f'_{name}_low_high',
+#                                               2,
+#                                               low * jnp.ones((num_components, num_dims)),
+#                                               high * jnp.ones((num_components, num_dims)), tracked=False)
+#         low = SlicePrior(f'_{name}_low', 0, low_high, tracked=True)
+#         high = SlicePrior(f'_{name}_high', 1, low_high, tracked=True)
+#         super(MultiCubeMixturePrior, self).__init__(name, pi, low, high, tracked=True)
 
-class MultiCubeMixturePrior(UniformMixturePrior):
-    """
-    Creates a UniformMixturePrior with num_components components.
-
-    The mixture parameter, pi, is ordered from smallest to largest such that pi[i] <= pi[i+1].
-    pi ~ ForcedIdentifiabilityPrior(num_components, 0., 1.)
-
-    Each components is a Uniform on some retangular regions of [0,1]^D
-    low
-    X[i] ~ U[low[i], high[i]]
-
-    j ~ MultiNomial[pi]
-    Y ~ X[j]
-
-    """
-
-    def __init__(self, name, num_components, num_dims, low, high):
-        pi = ForcedIdentifiabilityPrior(f'_{name}_pi', num_components, 0., 1., tracked=True)
-        low_high = ForcedIdentifiabilityPrior(f'_{name}_low_high',
-                                              2,
-                                              low * jnp.ones((num_components, num_dims)),
-                                              high * jnp.ones((num_components, num_dims)), tracked=False)
-        low = SlicePrior(f'_{name}_low', 0, low_high, tracked=True)
-        high = SlicePrior(f'_{name}_high', 1, low_high, tracked=True)
-        super(MultiCubeMixturePrior, self).__init__(name, pi, low, high, tracked=True)
-
-
-class UnitCubeMixturePrior(MultiCubeMixturePrior):
-    """
-    Creates a UniformMixturePrior with num_components components.
-
-    The mixture parameter, pi, is ordered from smallest to largest such that pi[i] <= pi[i+1].
-    pi ~ ForcedIdentifiabilityPrior(num_components, 0., 1.)
-
-    Each components is a Uniform on some retangular regions of [0,1]^D
-    low
-    X[i] ~ U[low[i], high[i]]
-
-    j ~ MultiNomial[pi]
-    Y ~ X[j]
-
-    """
-
-    def __init__(self, name, num_components, num_dims):
-        super(UnitCubeMixturePrior, self).__init__(name, num_components,
-                                                   num_dims, 0., 1., tracked=True)
+#
+# class UnitCubeMixturePrior(MultiCubeMixturePrior):
+#     """
+#     Creates a UniformMixturePrior with num_components components.
+#
+#     The mixture parameter, pi, is ordered from smallest to largest such that pi[i] <= pi[i+1].
+#     pi ~ ForcedIdentifiabilityPrior(num_components, 0., 1.)
+#
+#     Each components is a Uniform on some retangular regions of [0,1]^D
+#     low
+#     X[i] ~ U[low[i], high[i]]
+#
+#     j ~ MultiNomial[pi]
+#     Y ~ X[j]
+#
+#     """
+#
+#     def __init__(self, name, num_components, num_dims):
+#         super(UnitCubeMixturePrior, self).__init__(name, num_components,
+#                                                    num_dims, 0., 1., tracked=True)
 
 

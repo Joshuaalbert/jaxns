@@ -6,21 +6,6 @@ from jaxns.prior_transforms.prior_chain import PriorTransform
 from jaxns.prior_transforms.prior_utils import get_shape
 
 
-class SlicePrior(PriorTransform):
-    def __init__(self, name, idx, dist, tracked=True):
-        self._idx = idx
-        self._shape = get_shape(dist)[1:]
-        U_dims = 0
-        super(SlicePrior, self).__init__(name, U_dims, [dist], tracked)
-
-    @property
-    def to_shape(self):
-        return self._shape
-
-    def forward(self, U, dist, **kwargs):
-        return dist[self._idx, ...]
-
-
 class DeterministicTransformPrior(PriorTransform):
     def __init__(self, name, transform, to_shape, *params, tracked=True):
         params = list(params)
