@@ -5,8 +5,7 @@ from jaxns.likelihood_samplers.ellipsoid_utils import minimum_volume_enclosing_e
 from jax import numpy as jnp, vmap, random
 from jax.lax import while_loop, cond, dynamic_update_slice
 from jax.scipy.special import logsumexp
-import pylab as plt
-import glob
+import numpy as np
 
 MultiEllipsoidSamplerState = namedtuple('MultiEllipsoidSamplerState',
                                         ['cluster_id', 'mu', 'radii', 'rotation', 'num_k', 'log_F'])
@@ -24,8 +23,8 @@ def init_multi_ellipsoid_sampler_state(key, live_points_U, depth, log_X):
 def recalculate_sampler_state(key, live_points_U, sampler_state, log_X):
     # print('recalculating ellipsoids')
     num_clusters = sampler_state.mu.shape[0]  # 2^(depth-1)
-    depth = jnp.log2(num_clusters) + 1
-    depth = depth.astype(jnp.int_)
+    depth = np.log2(num_clusters) + 1
+    depth = depth.astype(np.int_)
     cluster_id, (mu, radii, rotation) = ellipsoid_clustering(key, live_points_U, depth, log_X)
     num_k = jnp.bincount(cluster_id, minlength=0, length=mu.shape[0])
     log_volumes = vmap(lambda radii: log_ellipsoid_volume(radii))(radii)
