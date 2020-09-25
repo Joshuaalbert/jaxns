@@ -1,9 +1,11 @@
 from jax import numpy as jnp, random, vmap
 
+from jaxns.gaussian_process.tomographic_kernel.tomographic_kernel import tomographic_kernel, dtec_tomographic_kernel, \
+    ddtec_tomographic_kernel
 from jaxns.gaussian_process.tomographic_kernel.tomographic_kernel_utils import tomographic_weight_function_stochastic, \
     tomographic_weight_function_outer, tomographic_weight_function, log_tomographic_weight_dimensionless_function, \
     get_polynomial_form, cumulative_tomographic_weight_dimensionless_function, \
-    cumulative_tomographic_weight_dimensionless_polynomial
+    cumulative_tomographic_weight_dimensionless_polynomial, _tomographic_weight_function
 
 
 def test_tomographic_weight_function_stochastic():
@@ -37,11 +39,15 @@ def test_tomographic_weight():
 
     # @jit
     def tomo_weight(gamma, x1,x2,p1,p2):
-        return tomographic_weight_function(gamma, x1, x2,p1,p2,S=15)
+        return tomographic_weight_function(gamma, x1, x2,p1,p2,S=10)
 
     @jit
     def tomo_weight_ref(gamma, x1, x2, p1, p2):
         return tomographic_weight_function(gamma, x1, x2, p1, p2, S=150)
+
+    @jit
+    def _tomo_weight_ref(gamma, x1, x2, p1, p2):
+        return _tomographic_weight_function(gamma, x1, x2, p1, p2, S=150)
 
     @jit
     def tomo_weight_dimensionless_ref(gamma, x1, x2, p1, p2):
@@ -55,7 +61,7 @@ def test_tomographic_weight():
 
 
 
-    for i in range(10):
+    for i in range(100):
         keys = random.split(random.PRNGKey(i),6)
         x1 = jnp.concatenate([10. * random.uniform(keys[0], shape=( 2,)), jnp.zeros((1,))], axis=-1)
         p1 = jnp.concatenate(
@@ -76,15 +82,24 @@ def test_tomographic_weight():
         gamma = jnp.linalg.norm(u1-u2,axis=1)**2
         plt.hist(gamma.flatten(),bins=100, density=True, label='histogram')
         hist, bins = jnp.histogram(gamma.flatten(), density=True, bins=100)
+        bins = jnp.linspace(bins.min(), bins.max(), 50)
         gamma = 0.5*(bins[:-1]+bins[1:])
         w = tomo_weight(bins, x1, x2, p1, p2)
         plt.plot(gamma, w, label='analytic')
         w_ref = tomo_weight_ref(bins, x1, x2, p1, p2)
+        _w_ref = _tomo_weight_ref(gamma, x1, x2, p1, p2)
         # w_ref = tomo_weight_dimensionless_ref(bins, x1,x2,p1,p2)
         plt.plot(gamma, w_ref, label='analytic ref')
         plt.legend()
-        plt.show()
-        plt.plot()
+        plt.savefig('/home/albert/git/jaxns/debug_figs/pdf_fig{:03d}.png'.format(i))
+        plt.close('all')
+
+        plt.plot(gamma, jnp.cumsum(w), label='analytic')
+        # w_ref = tomo_weight_dimensionless_ref(bins, x1,x2,p1,p2)
+        plt.plot(gamma, jnp.cumsum(w_ref), label='analytic ref')
+        plt.legend()
+        plt.savefig('/home/albert/git/jaxns/debug_figs/cdf_fig{:03d}.png'.format(i))
+        plt.close('all')
 
         # test same as dimensionless
         # assert jnp.all(jnp.isclose(tomo_weight_dimensionless_ref(bins, x1, x2, p1, p2), w_ref))
@@ -129,6 +144,7 @@ def test_tomographic_weight_rel_err():
             u2 = x2 + t2[:, None]*p2
             gamma = jnp.linalg.norm(u1-u2,axis=1)**2
             hist, bins = jnp.histogram(gamma.flatten(), density=True, bins=100)
+            bins = jnp.linspace(bins.min(), bins.max(), 20)
             w = tomo_weight(bins, x1, x2, p1, p2)
             w_ref = tomo_weight_ref(bins, x1, x2, p1, p2)
             rel_error.append(jnp.max(jnp.abs(w - w_ref)) / jnp.max(w_ref))
@@ -224,3 +240,79 @@ def test_clip_algebra():
         # return min1(max0(z))
 
     assert jnp.all(jnp.isclose(clip01(z) , jnp.clip(z, 0., 1.)))
+
+
+def test_tomographic_kernel():
+    from jax import random
+    from jaxns.gaussian_process.kernels import RBF
+    import pylab as plt
+    n = 300
+    a1 = jnp.array([[-1, 0., 0.]])
+    k1 = jnp.stack([4. * jnp.pi / 180. * random.uniform(random.PRNGKey(0), shape=(n,), minval=-1, maxval=1),
+                    4. * jnp.pi / 180. * random.uniform(random.PRNGKey(1), shape=(n,), minval=-1, maxval=1),
+                    jnp.ones(n)], axis=1)
+    k1 /= jnp.linalg.norm(k1, axis=-1, keepdims=True)
+    n = 1
+    a2 = jnp.array([[1., 0., 0.]])
+    k2 = jnp.stack([jnp.zeros(n),
+                    jnp.zeros(n),
+                    jnp.ones(n)], axis=1)
+    k2 /= jnp.linalg.norm(k2, axis=-1, keepdims=True)
+    x0 = jnp.zeros(3)
+    K = tomographic_kernel(a1, a2, k1, k2, x0, RBF(), height=10., width=2., l=1., sigma=1., S=25)
+    sc = plt.scatter(k1[:, 0], k1[:, 1], c=K[:, 0])
+    plt.colorbar(sc)
+    plt.show()
+
+
+def test_dtec_tomographic_kernel():
+    from jax import random
+    from jaxns.gaussian_process.kernels import m12_act
+    import pylab as plt
+    n = 300
+    a1 = jnp.array([[-1, 0., 0.]])
+    k1 = jnp.stack([4. * jnp.pi / 180. * random.uniform(random.PRNGKey(0), shape=(n,), minval=-1, maxval=1),
+                    4. * jnp.pi / 180. * random.uniform(random.PRNGKey(1), shape=(n,), minval=-1, maxval=1),
+                    jnp.ones(n)], axis=1)
+    k1 /= jnp.linalg.norm(k1, axis=-1, keepdims=True)
+    n = 1
+    a2 = jnp.array([[1., 0., 0.]])
+    k2 = jnp.stack([jnp.zeros(n),
+                    jnp.zeros(n),
+                    jnp.ones(n)], axis=1)
+    k2 /= jnp.linalg.norm(k2, axis=-1, keepdims=True)
+    x0 = jnp.zeros(3)
+    fed_kernel_params = dict(sigma=1.)
+    K = dtec_tomographic_kernel(random.PRNGKey(4), x0, a1, a2, k1, k2, x0, m12_act, 10., 2., 1., **fed_kernel_params)
+    print(K)
+    sc = plt.scatter(k1[:, 0], k1[:, 1], c=K[:, 0])
+    plt.colorbar(sc)
+    plt.show()
+
+
+def test_ddtec_tomographic_kernel():
+    from jax import random
+    from jaxns.gaussian_process.kernels import rational_quadratic_act
+    import pylab as plt
+    n = 300
+    a1 = jnp.array([[-1, 0., 0.]])
+    k1 = jnp.stack([random.uniform(random.PRNGKey(0), shape=(n,), minval=-0.05, maxval=0.05),
+                    random.uniform(random.PRNGKey(1), shape=(n,), minval=-0.05, maxval=0.05),
+                    jnp.ones(n)], axis=1)
+    k1 /= jnp.linalg.norm(k1, axis=-1, keepdims=True)
+    n = 1
+    a2 = jnp.array([[1., 0., 0.]])
+    k2 = jnp.stack([jnp.zeros(n),
+                    jnp.zeros(n),
+                    jnp.ones(n)], axis=1)
+    k2 /= jnp.linalg.norm(k2, axis=-1, keepdims=True)
+    x0 = jnp.zeros(3)
+    k0 = jnp.array([0., 0.05, 1.])
+    k0 /= jnp.linalg.norm(k0, axis=-1, keepdims=True)
+    fed_kernel_params = dict(sigma=1., alpha=2.)
+    K = ddtec_tomographic_kernel(random.PRNGKey(4), k0, x0, a1, a2, k1, k2, x0, rational_quadratic_act, 10., 2., 0.36,
+                                 S=200, **fed_kernel_params)
+    print(K)
+    sc = plt.scatter(k1[:, 0], k1[:, 1], c=K[:, 0])
+    plt.colorbar(sc)
+    plt.show()

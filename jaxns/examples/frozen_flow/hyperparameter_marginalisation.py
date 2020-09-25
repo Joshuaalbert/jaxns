@@ -1,13 +1,13 @@
 from jaxns.gaussian_process.kernels import RBF, M12
-from jaxns.gaussian_process.tomographic_kernel import TomographicKernel
+from jaxns.gaussian_process.tomographic_kernel.tomographic_kernel import TomographicKernel
 from jaxns.examples.frozen_flow.generate_data import rbf_dtec
 from jaxns.nested_sampling import NestedSampler
 from jaxns.prior_transforms import PriorChain, UniformPrior, GaussianProcessKernelPrior, MVNPrior, \
     DeterministicTransformPrior, MVNDiagPrior
 from jaxns.plotting import plot_cornerplot, plot_diagnostics
-from jax import random, jit, make_jaxpr
+from jax import random, jit
 from jax.scipy.linalg import solve_triangular
-from jax import numpy as jnp, disable_jit
+from jax import numpy as jnp
 import pylab as plt
 from timeit import default_timer
 
@@ -105,7 +105,7 @@ def main(kernel):
         # print("Time to run (no compile)", default_timer() - t0)
         return results
 
-    for n in [10]:
+    for n in [100]:
         results = run_with_n(n)
         plt.scatter(n, results.logZ)
         plt.errorbar(n, results.logZ, yerr=results.logZerr)
