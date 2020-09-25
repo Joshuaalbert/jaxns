@@ -14,7 +14,7 @@ def generate_data():
     print(tec)
     TEC_CONV = -8.4479745e6  # mTECU/Hz
     freqs = jnp.linspace(121e6, 168e6, 24)
-    phase = tec[:, None] / freqs * TEC_CONV  # + 0.2  # + onp.linspace(-onp.pi, onp.pi, T)[:, None]
+    phase = tec[:, None] / freqs * TEC_CONV  # + onp.linspace(-onp.pi, onp.pi, T)[:, None]
     Y = jnp.concatenate([jnp.cos(phase), jnp.sin(phase)], axis=1)
     Y_obs = Y + 0.25 * random.normal(random.PRNGKey(1), shape=Y.shape)
     # Y_obs[500:550:2, :] += 3. * onp.random.normal(size=Y[500:550:2, :].shape_dict)
