@@ -87,7 +87,8 @@ def main(kernel):
                       max_samples=1e4,
                       collect_samples=True,
                       termination_frac=0.01,
-                      stoachastic_uncertainty=False)
+                      stoachastic_uncertainty=False,
+                      sampler_kwargs=dict(depth=3))
 
         t0 = default_timer()
         # with disable_jit():

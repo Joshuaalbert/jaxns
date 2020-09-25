@@ -1,5 +1,4 @@
-import jax.numpy as jnp
-from jax import random, value_and_grad, vmap, numpy, numpy as jnp
+from jax import random, vmap, numpy as jnp
 from jax.lax import scan, while_loop
 from jax.scipy.special import logsumexp
 from scipy.stats.kde import gaussian_kde
@@ -58,52 +57,6 @@ def test_get_interval():
     assert get_interval(s) == (0, 0)
     s = jnp.array([1,-1])
     assert get_interval(s) == (1,1)
-
-def quadratic_contour(key, points_U, log_likelihood, prior_transform):
-    M = points_U.shape[1]
-    N = points_U.shape[0]
-    if N< M+1:
-        raise ValueError("Need {} points_U, got {}".format(M+1, N))
-    key, select_key = random.split(key, 2)
-    spawn_point = points_U[random.randint(select_key, shape=(), minval=0, maxval=N), :]
-    dist = jnp.linalg.norm(points_U - spawn_point, axis=1)
-    closest = jnp.argsort(dist, axis=0)[1:1+M]
-    simp = points_U[closest, :]
-    v_grad = value_and_grad(lambda U: log_likelihood(**prior_transform(U)))
-    v0, g0 = v_grad(spawn_point)#(), [M]
-    v, g = vmap(v_grad)(simp)#(N), [N,M]
-    dg = g - g0#[N,M]
-    dx = simp - spawn_point#[N, M]
-    C = 0.5*jnp.linalg.solve(dx.T, dg.T)
-    print(C)
-
-
-def test_quadratic_contour():
-    from jax.lax_linalg import triangular_solve
-    from jax import vmap
-    from born_rime.nested_sampling.prior_transforms import MVNDiagPrior
-
-    def log_normal(x, mean, cov):
-        L = jnp.linalg.cholesky(cov)
-        dx = x - mean
-        dx = triangular_solve(L, dx, lower=True, transpose_a=True)
-        return -0.5 * x.size * jnp.log(2. * jnp.pi) - jnp.sum(jnp.log(jnp.diag(L))) \
-               - 0.5 * dx @ dx
-
-    def log_likelihood(x):
-        return log_normal(x, jnp.zeros_like(x), jnp.eye(x.size))
-
-    prior_transform = MVNDiagPrior(jnp.zeros(2), jnp.ones(2))
-
-    U = random.uniform(random.PRNGKey(0), shape=(1000,2))
-    log_L = vmap(lambda U: log_likelihood(**prior_transform(U)))(U)
-
-    import pylab as plt
-    plt.scatter(U[:,0], U[:,1], c= log_L)
-    plt.show()
-
-    quadratic_contour(random.PRNGKey(0), U, log_likelihood, prior_transform)
-
 
 def masked_cluster_id(points, centers, K):
     max_K = centers.shape[0]
@@ -232,45 +185,6 @@ def cluster(key, points, max_K=6):
     return key, centers, K, sillohettes
 
 
-def recluster(state, max_K: int):
-    """
-    Cluster the live points_U into at most max_K clusters.
-
-    Args:
-        state:
-
-    Returns:
-
-    """
-    # aug_points = jnp.concatenate([state.points, state.log_L_live[:, None]], axis=1)
-    key, cluster_centers, K, _ = cluster(state.key,
-                                         state.live_points,
-                                         max_K=max_K)
-    # cluster_centers = cluster_centers[:, :-1]
-
-    # initialise clusters
-    # K, N
-    # dist = jnp.linalg.norm(state.points[None, :, :] - cluster_centers[:K, None, :], axis=-1)
-    # # N
-    # cluster_id = jnp.argmin(dist, axis=0)
-    cluster_id = masked_cluster_id(state.live_points, cluster_centers, K)
-    # max_K (only first K are non-empty)
-    num_per_cluster = jnp.bincount(cluster_id, minlength=max_K, length=max_K)
-
-    # initialise cluster evidence and volume
-    cluster_evidence = ClusterEvidence(global_evidence=Evidence(state=state.evidence_state),
-                                       num_parent=state.live_points.shape[0],
-                                       num_per_cluster=num_per_cluster)
-    state = state._replace(key=key,
-                           num_clusters=K,
-                           cluster_centers=cluster_centers,
-                           cluster_id=cluster_id,
-                           num_per_cluster=num_per_cluster,
-                           cluster_evidence_state=cluster_evidence.state
-                           )
-    return state
-
-
 def broadcast_shapes(shape1, shape2):
     if isinstance(shape1, int):
         shape1 = (shape1,)
@@ -304,6 +218,7 @@ def test_broadcast_shapes():
     assert broadcast_shapes((1,),(1,1)) == (1,1)
     assert broadcast_shapes((1,1,2),(1,1)) == (1,1,2)
     assert broadcast_shapes((1,2,1),(1,3)) == (1,2,3)
+    assert broadcast_shapes((1,2,1),()) == (1,2,1)
 
 
 def iterative_topological_sort(graph, start=None):

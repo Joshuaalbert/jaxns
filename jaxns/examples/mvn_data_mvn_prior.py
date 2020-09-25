@@ -1,6 +1,6 @@
 from jaxns.nested_sampling import NestedSampler
-from jaxns.prior_transforms import PriorChain, MVNDiagPrior
-from jaxns.plotting import plot_cornerplot, plot_diagnostics
+from jaxns.prior_transforms import PriorChain, MVNDiagPrior, MVNPrior
+from jaxns.plotting import plot_cornerplot, plot_diagnostics, plot_samples_development
 from jax.scipy.linalg import solve_triangular
 from jax import random, jit, disable_jit, make_jaxpr
 from jax import numpy as jnp
@@ -15,7 +15,7 @@ def main():
         return -0.5 * x.size * jnp.log(2. * jnp.pi) - jnp.sum(jnp.log(jnp.diag(L))) \
                - 0.5 * dx @ dx
 
-    ndims = 10
+    ndims = 2
     prior_mu = 2 * jnp.ones(ndims)
     prior_cov = jnp.diag(jnp.ones(ndims)) ** 2
 
@@ -40,11 +40,12 @@ def main():
         @jit
         def run(key):
             return ns(key=key,
-                      num_live_points=n * ndims,
+                      num_live_points=n,
                       max_samples=1e5,
                       collect_samples=True,
                       termination_frac=0.01,
-                      stoachastic_uncertainty=False)
+                      stoachastic_uncertainty=False,
+                      sampler_kwargs=dict(depth=3))
         # print(make_jaxpr(run)(random.PRNGKey(0)))
         results = run(random.PRNGKey(0))
         return results
@@ -52,13 +53,44 @@ def main():
     for n in [100]:
         # with disable_jit():
         results = run_with_n(n)
+        print(results.efficiency)
         plt.scatter(n, results.logZ)
         plt.errorbar(n, results.logZ, yerr=results.logZerr)
+
+    prior_transform = PriorChain().push(MVNPrior('x', results.param_mean['x'], results.param_covariance['x']))
+    # prior_transform = LaplacePrior(prior_mu, jnp.sqrt(jnp.diag(prior_cov)))
+    # prior_transform = UniformPrior(-20.*jnp.ones(ndims), 20.*jnp.ones(ndims))
+    ns = NestedSampler(log_likelihood, prior_transform, sampler_name='multi_ellipsoid')
+
+    def run_with_n(n):
+        @jit
+        def run(key):
+            return ns(key=key,
+                      num_live_points=n,
+                      max_samples=1e5,
+                      collect_samples=True,
+                      termination_frac=0.01,
+                      stoachastic_uncertainty=False,
+                      sampler_kwargs=dict(depth=3))
+
+        # print(make_jaxpr(run)(random.PRNGKey(0)))
+        results = run(random.PRNGKey(0))
+        print("Efficiency (including compile)",results.efficiency)
+        return results
+
+    for n in [100]:
+        # with disable_jit():
+        results = run_with_n(n)
+        plt.scatter(n, results.logZ)
+        plt.errorbar(n, results.logZ, yerr=results.logZerr)
+
     plt.hlines(true_logZ, 50, 200)
     plt.show()
 
+    # plot_samples_development(results, save_name='./example.mp4')
     plot_diagnostics(results)
     plot_cornerplot(results)
+
 
     print("True logZ={}".format(true_logZ))
     print("True posterior m={}\nCov={}".format(post_mu, post_cov))
