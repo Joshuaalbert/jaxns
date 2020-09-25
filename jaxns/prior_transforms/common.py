@@ -25,9 +25,9 @@ class DeltaPrior(PriorTransform):
 class MVNDiagPrior(PriorTransform):
     def __init__(self, name, mu, gamma, tracked=True):
         if not isinstance(mu, PriorTransform):
-            mu = DeltaPrior('_{}_mu'.format(name), mu, False)
+            mu = DeltaPrior('_{}_mu'.format(name), jnp.atleast_1d(mu), False)
         if not isinstance(gamma, PriorTransform):
-            gamma = DeltaPrior('_{}_gamma'.format(name), gamma, False)
+            gamma = DeltaPrior('_{}_gamma'.format(name), jnp.atleast_1d(gamma), False)
         # replaces mu and gamma when parents injected
         U_dims = broadcast_shapes(get_shape(mu), get_shape(gamma))[0]
         super(MVNDiagPrior, self).__init__(name, U_dims, [mu, gamma], tracked)
@@ -44,9 +44,9 @@ class MVNPrior(PriorTransform):
     def __init__(self, name, mu, Gamma, ill_cond=False, tracked=True):
         self._ill_cond = ill_cond
         if not isinstance(mu, PriorTransform):
-            mu = DeltaPrior('_{}_mu'.format(name), mu, False)
+            mu = DeltaPrior('_{}_mu'.format(name), jnp.atleast_1d(mu), False)
         if not isinstance(Gamma, PriorTransform):
-            Gamma = DeltaPrior('_{}_Gamma'.format(name), Gamma, False)
+            Gamma = DeltaPrior('_{}_Gamma'.format(name), jnp.atleast_2d(Gamma), False)
         # replaces mu and gamma when parents injected
         U_dims = broadcast_shapes(get_shape(mu), get_shape(Gamma)[0:1])[0]
         super(MVNPrior, self).__init__(name, U_dims, [mu, Gamma], tracked)
@@ -66,7 +66,7 @@ class MVNPrior(PriorTransform):
 class LaplacePrior(PriorTransform):
     def __init__(self, name, mu, b, tracked=True):
         if not isinstance(mu, PriorTransform):
-            mu = DeltaPrior('_{}_mu'.format(name), mu, False)
+            mu = DeltaPrior('_{}_mu'.format(name), jnp.atleast_1d(mu), False)
         if not isinstance(b, PriorTransform):
             b = DeltaPrior('_{}_b'.format(name), b, False)
         # replaces mu and gamma when parents injected
@@ -139,8 +139,8 @@ class CategoricalPrior(PriorTransform):
     def __init__(self, name, logits, tracked=True):
         if not isinstance(logits, PriorTransform):
             logits = DeltaPrior('_{}_logits'.format(name), jnp.atleast_1d(logits), False)
-        if not isinstance(logits, PriorTransform):
-            gumbel = Gumbel('_{}_gumbel'.format(name), False)
+        U_dims = get_shape(logits)[0]
+        gumbel = Gumbel('_{}_gumbel'.format(name), U_dims, False)
         self._shape = (1,)
         U_dims = get_shape(logits)[0]
         super(CategoricalPrior, self).__init__(name, U_dims, [gumbel, logits], tracked)
@@ -151,6 +151,7 @@ class CategoricalPrior(PriorTransform):
 
     def forward(self, U, gumbel, logits, **kwargs):
         return jnp.argmax(logits + gumbel)[None]
+
 
 class Gumbel(PriorTransform):
     def __init__(self, name, num, tracked=True):
