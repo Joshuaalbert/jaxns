@@ -1,5 +1,5 @@
 from jaxns.gaussian_process.kernels import RBF
-from jaxns.gaussian_process.tomographic_kernel import TomographicKernel
+from jaxns.gaussian_process.tomographic_kernel.tomographic_kernel import TomographicKernel
 import jax.numpy as jnp
 from jax import random
 

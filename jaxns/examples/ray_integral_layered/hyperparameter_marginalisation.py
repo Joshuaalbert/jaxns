@@ -1,5 +1,5 @@
-from jaxns.examples.ray_integral.build_prior import build_prior
-from jaxns.gaussian_process.kernels import RBF
+from jaxns.examples.ray_integral_layered.build_prior import build_layered_prior
+from jaxns.gaussian_process.kernels import RBF, M12
 from jaxns.examples.ray_integral.generate_data import rbf_dtec
 from jaxns.nested_sampling import NestedSampler
 from jaxns.plotting import plot_cornerplot, plot_diagnostics
@@ -55,8 +55,9 @@ def main(kernel):
         dtec = jnp.reshape(tec - tec[0, :], (-1,))
         return dtec
 
-    prior_chain = build_prior(X, kernel, tec_to_dtec, x0)
-    print(prior_chain)
+    prior_chain = build_layered_prior(X, kernel, x0, tec_to_dtec)
+    # print(prior_chain)
+
 
     ns = NestedSampler(log_likelihood, prior_chain, sampler_name='multi_ellipsoid', predict_f=predict_f,
                        predict_fvar=predict_fvar)
@@ -78,9 +79,9 @@ def main(kernel):
         print("Time to run (including compile)", default_timer() - t0)
         t0 = default_timer()
         results = run(random.PRNGKey(1))
-        print("Efficiency",results.efficiency)
+        print(results.efficiency)
         print("Time to run (no compile)", default_timer() - t0)
-        print("Time efficiency normalised", (default_timer() - t0)*results.efficiency)
+        print("Efficiency normalised time", (default_timer() - t0) * results.efficiency)
         return results
 
     for n in [100]:
