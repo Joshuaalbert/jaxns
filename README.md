@@ -1,4 +1,6 @@
-# jaxns
+![JAXNS](./jaxns_logo.png)
+
+# What is it?
 Enables probabilistic programming using nested sampling. It's coded in JAX in a manner that allows lowering the entire inference algorithm to XLA primatives, which are JIT compiled for high performance. 
 
 JAXNS provides a modified version of the MultiNest constrained sampler (F. Feroz et al. 2008; https://arxiv.org/pdf/0809.3437.pdf).
