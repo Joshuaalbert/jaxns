@@ -50,37 +50,10 @@ def main():
         results = run(random.PRNGKey(0))
         return results
 
-    for n in [100]:
+    for n in [200]:
         # with disable_jit():
         results = run_with_n(n)
         print(results.efficiency)
-        plt.scatter(n, results.logZ)
-        plt.errorbar(n, results.logZ, yerr=results.logZerr)
-
-    prior_transform = PriorChain().push(MVNPrior('x', results.param_mean['x'], results.param_covariance['x']))
-    # prior_transform = LaplacePrior(prior_mu, jnp.sqrt(jnp.diag(prior_cov)))
-    # prior_transform = UniformPrior(-20.*jnp.ones(ndims), 20.*jnp.ones(ndims))
-    ns = NestedSampler(log_likelihood, prior_transform, sampler_name='multi_ellipsoid')
-
-    def run_with_n(n):
-        @jit
-        def run(key):
-            return ns(key=key,
-                      num_live_points=n,
-                      max_samples=1e5,
-                      collect_samples=True,
-                      termination_frac=0.01,
-                      stoachastic_uncertainty=False,
-                      sampler_kwargs=dict(depth=3))
-
-        # print(make_jaxpr(run)(random.PRNGKey(0)))
-        results = run(random.PRNGKey(0))
-        print("Efficiency (including compile)",results.efficiency)
-        return results
-
-    for n in [100]:
-        # with disable_jit():
-        results = run_with_n(n)
         plt.scatter(n, results.logZ)
         plt.errorbar(n, results.logZ, yerr=results.logZerr)
 

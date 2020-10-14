@@ -75,6 +75,7 @@ def main(kernel):
     sigma = UniformPrior('sigma', 0., 2.)
     cov = GaussianProcessKernelPrior('K', kernel, X, l, sigma)
     prior_chain = PriorChain().push(uncert).push(cov)
+    print(prior_chain)
 
     ns = NestedSampler(log_likelihood, prior_chain, sampler_name='multi_ellipsoid', predict_f=predict_f,
                        predict_fvar=predict_fvar)

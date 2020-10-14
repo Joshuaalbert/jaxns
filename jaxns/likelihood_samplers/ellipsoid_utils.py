@@ -1,6 +1,8 @@
 from jax import numpy as jnp, vmap, random
 from jax.lax import while_loop, dynamic_update_slice, scan
 from jax.scipy.special import gammaln, logsumexp
+from jaxns.utils import signed_logaddexp
+from collections import namedtuple
 
 
 def test_binary_tree_bf_walk():
@@ -178,6 +180,326 @@ def log_coverage_scale(log_VE, log_VS, D):
     return jnp.maximum(0., (log_VS - log_VE) / D)
 
 
+def rank_one_update_matrix_inv(Ainv, logdetAinv, u, v, add=True):
+    """
+    Uses the Woodbury matrix lemma to update a matrix inverse under either addition and subtraction.
+
+    Equivalent to,
+        (A + u v^T)^{-1} if add==True else (A - u v^T)^{-1}
+
+    Args:
+        Ainv: [N, N]
+        u: [N]
+        v: [N]
+        add: bool
+
+    Returns:
+
+    """
+    U = u[:, None]
+    V = v[None, :]
+    AinvU = Ainv @ U
+    if add:
+        S = 1. + V @ AinvU
+        Ainv_update = (jnp.eye(Ainv.shape[-1]) - (AinvU @ V) / S) @ Ainv
+        logdetAinv_update = logdetAinv - jnp.log(S[0,0])
+        print('add',S)
+        return Ainv_update, logdetAinv_update
+    else:
+        S = V @ AinvU - 1.
+        Ainv_update = (jnp.eye(Ainv.shape[-1]) - (AinvU @ V) / S) @ Ainv
+        logdetAinv_update = logdetAinv - jnp.log(-S[0, 0])
+        print('sub',S, -jnp.exp(logdetAinv)/S, jnp.linalg.det(Ainv_update))
+        return Ainv_update, logdetAinv_update
+
+
+def test_inverse_update():
+    A = random.normal(random.PRNGKey(2), shape=(3, 3))
+    A = A @ A.T
+    u = random.normal(random.PRNGKey(7), shape=(3,))
+    v = random.normal(random.PRNGKey(6), shape=(3,))
+    B = u[:, None] * v
+    Ainv = jnp.linalg.inv(A)
+    detAinv = jnp.linalg.det(Ainv)
+    # C1, detC1 = rank_one_update_matrix_inv(Ainv, detAinv, u, v, add=True)
+    # print(jnp.linalg.det(jnp.linalg.inv(A + B)), detC1)
+    # assert jnp.isclose(jnp.linalg.inv(A + B), C1).all() & jnp.isclose(jnp.linalg.det(jnp.linalg.inv(A + B)), detC1)
+    # C1, detC1 = rank_one_update_matrix_inv(Ainv, detAinv, u, v, add=False)
+    # print(jnp.linalg.det(jnp.linalg.inv(A - B)), detC1)
+    # assert jnp.isclose(jnp.linalg.inv(A - B), C1).all() & jnp.isclose(jnp.linalg.det(jnp.linalg.inv(A - B)), detC1)
+
+    C1, logdetC1 = rank_one_update_matrix_inv(Ainv, jnp.log(detAinv), u, v, add=True)
+    # print(jnp.log(jnp.linalg.det(jnp.linalg.inv(A + B))), logdetC1)
+    assert jnp.isclose(jnp.linalg.inv(A + B), C1).all()
+    assert jnp.isclose(jnp.log(jnp.linalg.det(jnp.linalg.inv(A + B))), logdetC1)
+    C2, logdetC2 = rank_one_update_matrix_inv(Ainv, jnp.log(detAinv), u, v, add=False)
+    print(jnp.log(jnp.linalg.det(jnp.linalg.inv(A - B))), logdetC2)
+    assert jnp.isclose(jnp.linalg.inv(A - B), C2).all()
+    assert jnp.isclose(jnp.log(jnp.linalg.det(jnp.linalg.inv(A - B))), logdetC2)
+
+
+def test_ellipsoid_params_update():
+    import pylab as plt
+    N = 4
+    points = random.normal(random.PRNGKey(43532), shape=(N, 3,))
+    mu = jnp.mean(points, axis=0)
+    C = jnp.linalg.inv(jnp.sum((points - mu)[:, :, None] * (points - mu)[:, None, :], axis=0))
+    detC = jnp.linalg.det(C)
+    n = N
+    for i in range(100):
+        x_n = random.normal(random.PRNGKey(i), shape=(3,))
+        mu_next = mu + (x_n - mu) / (n + 1)
+        C_next, detC_next = rank_one_update_matrix_inv(C,
+                                                       detC,
+                                                       x_n - mu,
+                                                       x_n - mu_next,
+                                                       add=True)
+        n += 1
+        points = jnp.concatenate([points, x_n[None, :]], axis=0)
+        mu_com = jnp.mean(points, axis=0)
+        C_com = jnp.linalg.inv(jnp.sum((points - mu_com)[:, :, None] * (points - mu_com)[:, None, :], axis=0))
+        detC_com = jnp.linalg.det(C_com)
+        assert jnp.isclose(detC_com, detC_next)
+        assert jnp.isclose(mu_next, mu_com).all()
+        assert jnp.isclose(C_next, C_com).all()
+        mu, C, detC = mu_next, C_next, detC_next
+        print(detC_next)
+
+
+def cluster_split_matching_pursuit(key, points, mask, log_VS, log_VE, kmeans_init=True, K=2):
+    """
+    Splits a set of points into two ellipsoids such that the enclosed volume is as close to V(S) without being less.
+    V(S) should be an estimate of the true volume contained by the points.
+
+    Args:
+        key:
+        points: [N, D]
+        mask: [N] only split on these points
+        log_VS: logV(S) of the set of points
+        log_VE: logV(E) of the parent ellipsoid
+        kmeans_init: whether to use kmeans to initialise the clustering
+
+    Returns:
+        cluster_id: ids of the points, places where ~mask are random assignments
+        mu1, radii1, rotation1: ellipsoid params of first subcluster
+        mu2, radii2, rotation2: ellipsoid paras of second subcluster
+
+    """
+    N, D = points.shape
+    num_S = jnp.sum(mask)
+    print(mask)
+    a_k = jnp.arange(K)
+
+    def log_ellipsoid_volume(logdetC_k, num_k, log_f_k):
+        """
+        Computes area of u_k @ Lamba @ u_k <= 1
+        using
+            Lambda = f_k n_k C_k)
+            and |Lambda| = f_k^d n_k^d |C_k|
+        """
+        logdetLambda = D * (log_f_k + jnp.log(num_k)) + logdetC_k
+        return (jnp.log(2.) + 0.5 * D * jnp.log(jnp.pi)
+                - jnp.log(D) - gammaln(0.5 * D)
+                - 0.5 * logdetLambda)
+
+    def log_factor_k(cluster_id, log_maha_k, num_k, logdetC_k):
+        """
+        Computes f_k such that,
+            u_k @ f0_k n_k C_k @ u_k <= 1
+        and
+            f_k^d V(n_k C_k) = max(V(S_k), V(f0_k n_k C_k))
+            log_f_k = (log max(V(S)*n_k/n_S, V(f0_k n_k C_k)) - log V(n_k C_k))/D
+            log_f_k = (max(log(V(S)*n_k/n_S), logV(n_k C_k)) - log V(n_k C_k))/D
+        """
+        # K
+        log_f_expand_k = -jnp.max(jnp.where(cluster_id == a_k[:, None], log_maha_k, -jnp.inf),
+                                  axis=-1)
+        log_VE_expand_k = log_ellipsoid_volume(logdetC_k, num_k, log_f_expand_k)
+        log_VE_k = log_ellipsoid_volume(logdetC_k, num_k, 0.)
+
+        log_scale_k = (jnp.maximum(log_VS + jnp.log(num_k) - jnp.log(num_S), log_VE_expand_k) - log_VE_k) / D
+        # K
+        return log_scale_k
+
+    # # calculate bounding ellipsoid
+    # mu, C =// bounding_ellipsoid(points, mask)
+    # radii, _ = ellipsoid_params(C)
+    # log_VE = log_ellipsoid_volume(radii)
+    # # enlarge so that V(E) = max(V(E), V(S))
+    # # (const * r**D) >= V(S) -> scale = 1 else log_scale = (log_V(S) - log(const * r**D))/D
+    # log_scale = jnp.maximum(0., (log_VS - log_VE) / D)
+    # C = C / jnp.exp(log_scale)
+    ###
+    # input is essentially log_VS
+    if kmeans_init:
+        # do Euclidean kmean clustering
+        cluster_id, centers = kmeans(key, points, mask, K=K)
+    else:
+        # assign to random clusters: child0 or child1
+        cluster_id = random.randint(key, shape=(N,), minval=0, maxval=K)
+    # K, N
+    # log_maha_k is with f_k=1
+
+    State = namedtuple('State', ['i', 'done', 'cluster_id', 'C_k', 'logdetC_k',
+                                 'mu_k', 'log_maha_k', 'num_k',
+                                 'log_VE_k', 'log_VS_k',
+                                 'min_loss', 'delay'])
+
+    def init_state(cluster_id):
+        num_k = jnp.sum(mask & (cluster_id == a_k[:, None]), axis=-1)
+        mu_k = vmap(lambda k: jnp.average(points, axis=0, weights=k == cluster_id))(a_k)
+        C_k = vmap(lambda k, mu_k: jnp.linalg.pinv(
+            jnp.average((points - mu_k)[:, :, None] * (points - mu_k)[:, None, :], axis=0,
+                        weights=k == cluster_id)))(a_k, mu_k)
+        logdetC_k = vmap(lambda C_k: jnp.sum(jnp.log(jnp.linalg.eigvals(C_k).real)))(C_k)
+        precision_k = C_k * num_k[:, None, None]
+        # K, N
+        log_maha_k = vmap(lambda mu_k, precision_k:
+                          jnp.log(vmap(lambda point:
+                                       (point - mu_k) @ precision_k @ (point - mu_k))(points)))(mu_k, precision_k)
+        log_f_k = log_factor_k(cluster_id, log_maha_k, num_k, logdetC_k)
+        log_VE_k = vmap(log_ellipsoid_volume)(logdetC_k, num_k, log_f_k)
+
+        log_VS_k = jnp.log(num_k) - jnp.log(num_S)
+        return State(i=jnp.asarray(0),
+                     done=num_S < K * (D + 1),
+                     cluster_id=cluster_id,
+                     C_k=C_k,
+                     logdetC_k=logdetC_k,
+                     mu_k=mu_k,
+                     log_maha_k=log_maha_k,
+                     num_k=num_k,
+                     log_VE_k=log_VE_k,
+                     log_VS_k=log_VS_k,
+                     min_loss=jnp.asarray(jnp.inf),
+                     delay=jnp.asarray(0)
+                     )
+
+    def body(state: State):
+        new_state_date = dict()
+        # upon the start of each iteration the state is consistent.
+        # we use the consistent state to calculate the reassignment metrics.
+        # we then reassign and update the state so that it is consistent again.
+        # K, N
+        # K
+        log_f_k = log_factor_k(state.cluster_id, state.log_maha_k, state.num_k, state.logdetC_k)
+
+        def single_log_h(log_f_k, log_maha_k, num_k, logdetC_k):
+            log_d = log_maha_k + log_f_k
+            log_VS_k = log_VS + jnp.log(num_k) - jnp.log(num_S)
+            return log_ellipsoid_volume(logdetC_k, num_k, log_f_k) + log_d - log_VS_k
+
+        # K, N
+        log_h_k = vmap(single_log_h)(log_f_k, state.log_maha_k, state.num_k, state.logdetC_k)
+        h_k = jnp.exp(log_h_k)
+        # # K, K, N
+        delta_F = h_k[:, None, :] - h_k
+        # Can reassign if mask says we are working on that node and there would be at least D+1 points in that cluster
+        # after taking from it. And, if delta_F < 0.
+        able_to_reassign = mask & (state.num_k[state.cluster_id] > D + 1)
+        delta_F_masked = jnp.where(able_to_reassign, delta_F, jnp.inf)
+
+        # (k_to, k_from, n_reassign) = jnp.where(delta_F == min_delta_F)
+        (k_to, k_from, n_reassign) = jnp.unravel_index(jnp.argmin(delta_F_masked.flatten()), delta_F.shape)
+        # dynamic update index arrays of sufficient length for all
+        dyn_k_to_idx = jnp.concatenate([k_to[None], jnp.asarray([0, 0])])
+        dyn_k_from_idx = jnp.concatenate([k_from[None], jnp.asarray([0, 0])])
+
+        ###
+        # update the state
+
+        ###
+        # cluster id
+        cluster_id = dynamic_update_slice(state.cluster_id, dyn_k_to_idx[0:1], n_reassign[None])
+
+        ###
+        # num_k
+        num_from = state.num_k[k_from] - 1
+        num_to = state.num_k[k_from] + 1
+        num_k = dynamic_update_slice(state.num_k, num_from[None], dyn_k_from_idx[0:1])
+        num_k = dynamic_update_slice(num_k, num_to[None], dyn_k_to_idx[0:1])
+
+        ###
+        # ellipsoid parameters
+        x_n = points[n_reassign, :]
+        mu_from = state.mu_k[k_from, :] + (state.mu_k[k_from, :] - x_n) / (state.num_k[k_from] - 1)
+        C_from, logdetC_from = rank_one_update_matrix_inv(state.C_k[k_from, :, :], state.logdetC_k[k_from],
+                                                          x_n - mu_from, x_n - state.mu_k[k_from, :], add=False)
+        # print(C_from, logdetC_from)
+        mu_to = state.mu_k[k_to, :] + (x_n - state.mu_k[k_to, :]) / (state.num_k[k_to] + 1)
+        C_to, logdetC_to = rank_one_update_matrix_inv(state.C_k[k_to, :, :], state.logdetC_k[k_to],
+                                                      x_n - mu_to, x_n - state.mu_k[k_to, :], add=True)
+        print('from',state.logdetC_k[k_from])
+        # print(C_to, logdetC_to)
+        mu_k = dynamic_update_slice(state.mu_k, mu_from[None, :], dyn_k_from_idx[0:2])
+        mu_k = dynamic_update_slice(mu_k, mu_to[None, :], dyn_k_to_idx[0:2])
+        C_k = dynamic_update_slice(state.C_k, C_from[None, :, :], dyn_k_from_idx)
+        C_k = dynamic_update_slice(C_k, C_to[None, :, :], dyn_k_to_idx)
+        logdetC_k = dynamic_update_slice(state.logdetC_k, logdetC_from[None], dyn_k_from_idx[0:1])
+        logdetC_k = dynamic_update_slice(logdetC_k, logdetC_to[None], dyn_k_to_idx[0:1])
+
+        ###
+        # maha
+
+        precision_from = C_from * num_from
+        precision_to = C_to * num_to
+        log_maha_from = jnp.log(vmap(lambda point: (point - mu_from) @ precision_from @ (point - mu_from))(points))
+        log_maha_to = jnp.log(vmap(lambda point: (point - mu_to) @ precision_to @ (point - mu_to))(points))
+        log_maha_k = dynamic_update_slice(state.log_maha_k, log_maha_from[None, :], dyn_k_from_idx[0:2])
+        log_maha_k = dynamic_update_slice(log_maha_k, log_maha_to[None, :], dyn_k_to_idx[0:2])
+
+        # estimate volumes of current clustering
+        log_f_k = log_factor_k(cluster_id, log_maha_k, num_k, logdetC_k)
+        log_VE_k = vmap(log_ellipsoid_volume)(logdetC_k, num_k, log_f_k)
+        log_VS_k = jnp.log(num_k) - jnp.log(num_S)
+        log_V_sum = logsumexp(log_VE_k)
+        new_loss = log_V_sum - log_VS
+        loss_decreased = new_loss < state.min_loss
+        delay = jnp.where(loss_decreased, 0, state.delay + 1)
+        min_loss = jnp.where(loss_decreased, new_loss, state.min_loss)
+        print(jnp.min(delta_F_masked), log_V_sum, logdetC_k)
+        done = jnp.all(cluster_id == state.cluster_id) \
+               | (delay >= 10) \
+               | jnp.any(num_k < D + 1) \
+               | jnp.isnan(log_V_sum) \
+               | (jnp.min(delta_F_masked) >= 0.)
+        # ['i', 'done', 'cluster_id', 'C_k', 'logdetC_k',
+        # 'mu_k', 'log_maha_k', 'num_k',
+        # 'log_VE_k', 'log_VS_k',
+        # 'min_loss', 'delay']
+        state = state._replace(i=state.i + 1,
+                               done=done,
+                               cluster_id=cluster_id,
+                               C_k=C_k,
+                               logdetC_k=logdetC_k,
+                               mu_k=mu_k,
+                               log_maha_k=log_maha_k,
+                               num_k=num_k,
+                               log_VE_k=log_VE_k,
+                               log_VS_k=log_VS_k,
+                               min_loss=min_loss,
+                               delay=delay)
+        return state
+
+    init_state = init_state(cluster_id)
+    state = while_loop(lambda state: ~state.done,
+                   body,
+                   init_state)
+
+    log_f_k = log_factor_k(state.cluster_id, state.log_maha_k, state.num_k, state.logdetC_k)
+    log_VE_k = vmap(log_ellipsoid_volume)(state.logdetC_k, state.num_k, log_f_k)
+    log_V_sum = logsumexp(log_VE_k)
+
+    do_split = ((log_V_sum < log_VE) | (log_VE > log_VS + jnp.log(K))) \
+               & (~jnp.any(jnp.isnan(state.logdetC_k))) \
+               & jnp.all(state.num_k >= D+1)
+
+    precision_k = state.C_k*jnp.exp(jnp.log(state.num_k) + log_f_k)[:, None, None]
+    radii_k, rotation_k = vmap(lambda C_k: ellipsoid_params(C_k))(precision_k)
+
+    return state.cluster_id, state.log_VS_k, state.mu_k, radii_k, rotation_k, do_split
+
+
 def cluster_split(key, points, mask, log_VS, log_VE, kmeans_init=True):
     """
     Splits a set of points into two ellipsoids such that the enclosed volume is as close to V(S) without being less.
@@ -197,6 +519,7 @@ def cluster_split(key, points, mask, log_VS, log_VE, kmeans_init=True):
         mu2, radii2, rotation2: ellipsoid paras of second subcluster
 
     """
+
     N, D = points.shape
     n_S = jnp.sum(mask)
     # # calculate bounding ellipsoid
@@ -233,8 +556,8 @@ def cluster_split(key, points, mask, log_VS, log_VE, kmeans_init=True):
         radii2, rotation2 = ellipsoid_params(C2)
         log_VE2 = log_ellipsoid_volume(radii2)
         # enlarge to at least cover V(S1) and V(S2)
-        log_scale1 = log_coverage_scale(log_VE1, log_VS1, D)
-        log_scale2 = log_coverage_scale(log_VE2, log_VS2, D)
+        log_scale1 = log_coverage_scale(log_VE1, log_VS1, D)  # +0.2
+        log_scale2 = log_coverage_scale(log_VE2, log_VS2, D)  # +0.2
         C1 = C1 / jnp.exp(log_scale1)
         radii1 = jnp.exp(jnp.log(radii1) + log_scale1)
         C2 = C2 / jnp.exp(log_scale2)
@@ -247,7 +570,10 @@ def cluster_split(key, points, mask, log_VS, log_VE, kmeans_init=True):
         log_h1 = log_VE1 - log_VS1 + jnp.log(maha1)
         log_h2 = log_VE2 - log_VS2 + jnp.log(maha2)
         # reassign
-        new_cluster_id = jnp.where(log_h1 < log_h2, 0, 1)
+        delta_F = jnp.exp(log_h1) - jnp.exp(log_h2)
+        reassign_idx = jnp.argmax(jnp.abs(delta_F))
+        new_cluster_id = dynamic_update_slice(cluster_id, jnp.where(delta_F[reassign_idx]<0, 0, 1)[None], reassign_idx[None])
+        # new_cluster_id = jnp.where(log_h1 < log_h2, 0, 1)
         log_V_sum = jnp.logaddexp(log_VE1, log_VE2)
         new_loss = jnp.exp(log_V_sum - log_VS)
         loss_decreased = new_loss < min_loss
@@ -266,6 +592,7 @@ def cluster_split(key, points, mask, log_VS, log_VE, kmeans_init=True):
                | (n2 < D + 1) \
                | jnp.isnan(log_V_sum)
         # print(i, "reassignments", jnp.sum(new_cluster_id != old_cluster_id), 'F', log_V_sum)
+        # print(i, done, jnp.abs(delta_F).max())
         return (i + 1, done, new_cluster_id, log_VS1, mu1, radii1, rotation1, log_VS2, mu2, radii2, rotation2,
                 min_loss, delay)
 
@@ -279,8 +606,8 @@ def cluster_split(key, points, mask, log_VS, log_VE, kmeans_init=True):
                     jnp.asarray(jnp.inf), 0))
     mask1 = mask & (cluster_id == 0)
     mask2 = mask & (cluster_id == 1)
-    cond1 = jnp.max(radii1) / jnp.min(radii1)
-    cond2 = jnp.max(radii2) / jnp.min(radii2)
+    # cond1 = jnp.max(radii1) / jnp.min(radii1)
+    # cond2 = jnp.max(radii2) / jnp.min(radii2)
     log_V_sum = jnp.logaddexp(log_ellipsoid_volume(radii1), log_ellipsoid_volume(radii2))
 
     do_split = ((log_V_sum < log_VE) | (log_VE > log_VS + jnp.log(2.))) \
@@ -288,8 +615,8 @@ def cluster_split(key, points, mask, log_VS, log_VE, kmeans_init=True):
                & (~jnp.any(jnp.isnan(radii2))) \
                & (jnp.sum(mask1) >= (D + 1)) \
                & (jnp.sum(mask2) >= (D + 1)) \
-               & (cond1 < 50.) \
-               & (cond2 < 50.)
+        # & (cond1 < 50.) \
+    # & (cond2 < 50.)
 
     return cluster_id, log_VS1, mu1, radii1, rotation1, log_VS2, mu2, radii2, rotation2, do_split
 
@@ -459,6 +786,18 @@ def ellipsoid_clustering(key, points, depth, log_VS):
         # print(log_VE_parent, order, i_lowest, radii_result)
         unsorted_cluster_id, log_VS1, mu1, radii1, rotation1, log_VS2, mu2, radii2, rotation2, do_split = cluster_split(
             key, points, mask, log_VS_subcluster, log_VE_parent, kmeans_init=True)
+
+        # unsorted_cluster_id, log_VS_k, mu_k, radii_k, rotation_k, do_split = cluster_split_matching_pursuit(
+        #     key, points, mask, log_VS_subcluster, log_VE_parent, kmeans_init=True, K=2)
+        # log_VS1 = log_VS_k[0]
+        # log_VS2 = log_VS_k[1]
+        # mu1 = mu_k[0,:]
+        # mu2 = mu_k[1,:]
+        # radii1 = radii_k[0,:]
+        # radii2 = radii_k[1,:]
+        # rotation1 = rotation_k[0,:,:]
+        # rotation2 = rotation_k[1,:,:]
+
         # print(do_split, radii1, radii2)
         unsorted_cluster_id = jnp.where(unsorted_cluster_id == 0, child0, child1)
         cluster_id = jnp.where(mask, unsorted_cluster_id, cluster_id)
@@ -533,7 +872,7 @@ def sample_multi_ellipsoid(key, mu, radii, rotation, unit_cube_constraint=True):
     """
     K, D = radii.shape
     log_VE = vmap(log_ellipsoid_volume)(radii)
-    log_p = log_VE #- logsumexp(log_VE)
+    log_p = log_VE  # - logsumexp(log_VE)
     if unit_cube_constraint:
         center_in_unit_cube = vmap(lambda mu: jnp.all(mu < 1.) & jnp.all(mu > 0.))(mu)
         log_p = jnp.where(center_in_unit_cube, log_p, -jnp.inf)
