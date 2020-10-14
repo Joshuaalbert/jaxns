@@ -5,9 +5,7 @@ import jax.numpy as jnp
 from jax.lax import while_loop, dynamic_update_slice
 from jax import random, vmap
 from jax.scipy.special import logsumexp
-from jax.profiler import trace_function
 from typing import NamedTuple, Dict
-from functools import partial
 from collections import namedtuple
 
 from jaxns.prior_transforms import PriorChain

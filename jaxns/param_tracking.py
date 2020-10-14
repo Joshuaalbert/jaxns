@@ -3,6 +3,7 @@ from jax import numpy as jnp
 from jax.lax import while_loop
 from jaxns.utils import dict_multimap
 
+
 class Param(object):
     """
     An object that silently hands linear and logarithmic parameters, and the + - * and / operators.
@@ -11,7 +12,7 @@ class Param(object):
     value: jnp.ndarray
     log_value: jnp.ndarray
 
-    def __init__(self, is_pytree:bool=False):
+    def __init__(self, is_pytree: bool = False):
         self.is_pytree = is_pytree
 
     def _paramify(self, other):
@@ -63,12 +64,12 @@ class Param(object):
             return LogParam(other * self.log_value, is_pytree=False)
         else:
             if self.is_pytree:
-                return LinearParam(dict_multimap(lambda x: x**other, self.value), is_pytree=True)
-            return LinearParam(self.value**other, is_pytree=False)
+                return LinearParam(dict_multimap(lambda x: x ** other, self.value), is_pytree=True)
+            return LinearParam(self.value ** other, is_pytree=False)
 
 
 class LinearParam(Param):
-    def __init__(self, value, is_pytree:bool):
+    def __init__(self, value, is_pytree: bool):
         super(LinearParam, self).__init__(is_pytree=is_pytree)
         self.value = value
 
@@ -85,7 +86,7 @@ class LinearParam(Param):
 
 
 class LogParam(Param):
-    def __init__(self, log_value, is_pytree:bool):
+    def __init__(self, log_value, is_pytree: bool):
         super(LogParam, self).__init__(is_pytree=is_pytree)
         self.log_value = log_value
 
@@ -99,6 +100,7 @@ class LogParam(Param):
         if self.is_pytree:
             return "log_value={}".format(dict_multimap(lambda x: jnp.round(x, 4), self.log_value))
         return "log_value={}".format(jnp.round(self.log_value, 4))
+
 
 class TrackedExpectation(object):
     def __init__(self, name, type, normalised: bool, param_shape, *, state=None,
@@ -123,6 +125,7 @@ class TrackedExpectation(object):
                 if x.shape != shape:
                     raise ValueError("Expected shape_dict {}, got {}.".format(shape, x.shape))
                 return x
+
             initial_f = dict_multimap(_prepare_init, initial_f, param_shape)
             initial_f2 = dict_multimap(_prepare_init, initial_f2, param_shape)
             initial_fX = dict_multimap(_prepare_init, initial_fX, param_shape)
@@ -146,7 +149,7 @@ class TrackedExpectation(object):
     def mean(self):
         if self.normalised:
             if self.type.lower() == 'linear':
-                mean = dict_multimap(lambda f: f/self.w.value, self.f.value)
+                mean = dict_multimap(lambda f: f / self.w.value, self.f.value)
             elif self.type.lower() == 'log':
                 mean = dict_multimap(lambda log_f, log_f2: (2. * log_f - 0.5 * log_f2) - self.w.log_value,
                                      self.f.log_value, self.f2.log_value)
@@ -178,7 +181,7 @@ class TrackedExpectation(object):
         return "{} = {} +- {}".format(
             # 'log' if self.type.lower() == 'log' else "",
             self.name, dict_multimap(lambda x: jnp.round(x, 4), self.mean),
-            dict_multimap(lambda x:jnp.round(jnp.sqrt(x), 4), self.variance))
+            dict_multimap(lambda x: jnp.round(jnp.sqrt(x), 4), self.variance))
 
     @property
     def state(self):
@@ -206,7 +209,7 @@ class TrackedExpectation(object):
         self.L_i1 = self._maybe_log_param(state.L_i1, 'log', False)
 
     def _maybe_log_param(self, v, type, is_pytree):
-        #v is a pytree, all treemapping is pushed into the params
+        # v is a pytree, all treemapping is pushed into the params
         if type.lower() == 'linear':
             return LinearParam(v, is_pytree)
         elif type.lower() == 'log':
@@ -222,19 +225,19 @@ class TrackedExpectation(object):
 
     def update_from_live_points(self, live_points, log_L_live):
         ar = jnp.argsort(log_L_live)
+
         def body(state):
             (i, self_state) = state
             i_min = ar[i]
             self.state = self_state
             n = log_L_live.shape[0] - i
             self.update(dict_multimap(lambda x: x[i_min, ...], live_points), n, log_L_live[i_min])
-            return (i+1, self.state)
+            return (i + 1, self.state)
 
         (_, self_state) = while_loop(lambda state: state[0] < log_L_live.shape[0],
                                      body,
                                      (0, self.state))
         self.state = self_state
-
 
     def update(self, posterior_sample_i, n_i, log_L_i):
         two = LogParam(jnp.log(2.), False)
@@ -299,6 +302,7 @@ class PosteriorFirstMoment(TrackedExpectation):
     Computes the mean of a parameter. If the shape_dict of the parameter is [..., M], then all dimensions except the last
     one are treated as batched dimensions.
     """
+
     def __init__(self, shape, *, state=None):
         def _prepare_params(shape):
             return jnp.zeros(shape), jnp.log(jnp.zeros(shape)), jnp.zeros(shape)
@@ -320,6 +324,7 @@ class PosteriorFirstMoment(TrackedExpectation):
     def compute_f_alpha(self, posterior_sample, n_i, log_L_i):
         return posterior_sample
 
+
 class PosteriorSecondMoment(TrackedExpectation):
     def __init__(self, shape, *, state=None):
         shape = dict_multimap(lambda shape: shape + shape[-1:], shape)
@@ -338,7 +343,7 @@ class PosteriorSecondMoment(TrackedExpectation):
                                                     initial_X2=jnp.log(1.))
 
     def compute_f_alpha(self, posterior_sample, n_i, log_L_i):
-        return dict_multimap(lambda posterior_sample: posterior_sample[..., None] * posterior_sample[...,None,:],
+        return dict_multimap(lambda posterior_sample: posterior_sample[..., None] * posterior_sample[..., None, :],
                              posterior_sample)
 
 
@@ -389,6 +394,7 @@ class InformationGain(TrackedExpectation):
     = E(log(L(x))) - log(Z)
     = sum w(x) log(L(x)) - log(Z)
     """
+
     def __init__(self, global_evidence: Evidence, *, state=None):
         super(InformationGain, self).__init__('H', 'linear', True, (),
                                               state=state,
@@ -417,28 +423,28 @@ class InformationGain(TrackedExpectation):
             n_i:
             log_L_i:
             from_U:
-
         Returns:
-
         """
         return log_L_i
+
 
 class Marginalised(TrackedExpectation):
     """
     logH = -1/Z int L(X) log(L(X) dX) dX + log(Z)
     """
+
     def __init__(self, func_dict, shape_dict, *, state=None):
         initial_f = dict_multimap(lambda shape: jnp.zeros(shape), shape_dict)
         initial_f2 = dict_multimap(lambda shape: jnp.log(jnp.zeros(shape)), shape_dict)
         initial_fX = dict_multimap(lambda shape: jnp.zeros(shape), shape_dict)
         super(Marginalised, self).__init__("marginalised", 'linear', True, shape_dict,
-                                              state=state,
-                                              initial_f=initial_f,
-                                              initial_f2=initial_f2,
-                                              initial_X=jnp.log(1.),
-                                              initial_fX=initial_fX,
-                                              initial_X2=jnp.log(1.)
-                                              )
+                                           state=state,
+                                           initial_f=initial_f,
+                                           initial_f2=initial_f2,
+                                           initial_X=jnp.log(1.),
+                                           initial_fX=initial_fX,
+                                           initial_X2=jnp.log(1.)
+                                           )
         self.func_dict = func_dict
 
     def compute_f_alpha(self, posterior_sample, n_i, log_L_i):
@@ -449,9 +455,6 @@ class Marginalised(TrackedExpectation):
             n_i:
             log_L_i:
             from_U:
-
         Returns:
-
         """
         return dict_multimap(lambda func: func(**posterior_sample), self.func_dict)
-

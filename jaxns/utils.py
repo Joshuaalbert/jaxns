@@ -342,3 +342,126 @@ def test_msqrt():
         A = A @ A.T
         L = msqrt(A)
         assert jnp.all(jnp.isclose(A, L @ L.T))
+
+
+def logaddexp(x1, x2):
+    if is_complex(x1) or is_complex(x2):
+        select1 = x1.real > x2.real
+        amax = jnp.where(select1, x1, x2)
+        delta = jnp.where(select1, x2-x1, x1-x2)
+        return jnp.where(jnp.isnan(delta),
+                          x1+x2,  # NaNs or infinities of the same sign.
+                          amax + jnp.log1p(jnp.exp(delta)))
+    else:
+        return jnp.logaddexp(x1, x2)
+
+def test_logaddexp():
+    a = jnp.log(1.)
+    b = jnp.log(1.)
+    assert logaddexp(a,b) == jnp.log(2.)
+    a = jnp.log(1.)
+    b = jnp.log(-2.+0j)
+    assert jnp.isclose(jnp.exp(logaddexp(a, b)).real, -1.)
+
+    a = jnp.log(-1.+0j)
+    b = jnp.log(2. + 0j)
+    assert jnp.isclose(jnp.exp(logaddexp(a, b)).real, 1.)
+
+    for i in range(100):
+        u = random.uniform(random.PRNGKey(i),shape=(2,))*20. - 10.
+        a = jnp.log(u[0] + 0j)
+        b = jnp.log(u[1] + 0j)
+        assert jnp.isclose(jnp.exp(logaddexp(a,b)).real, u[0] + u[1])
+
+def signed_logaddexp(log_abs_val1, sign1, log_abs_val2, sign2):
+    amax = jnp.maximum(log_abs_val1, log_abs_val2)
+    signmax = jnp.where(log_abs_val1 > log_abs_val2, sign1, sign2)
+    delta = -jnp.abs(log_abs_val2 - log_abs_val1)
+    sign = sign1*sign2
+    return jnp.where(jnp.isnan(delta),
+                      log_abs_val1 + log_abs_val2,  # NaNs or infinities of the same sign.
+                      amax + jnp.log1p(sign * jnp.exp(delta))), signmax
+
+def test_signed_logaddexp():
+    for i in range(100):
+        u = random.uniform(random.PRNGKey(i),shape=(2,))*20.-10.
+        a = jnp.log(jnp.abs(u[0]))
+        b = jnp.log(jnp.abs(u[1]))
+        sign1 = jnp.sign(u[0])
+        sign2 = jnp.sign(u[1])
+        ans = u[0] + u[1]
+        ans_sign = jnp.sign(ans)
+        log_abs_ans = jnp.log(jnp.abs(ans))
+        log_abs_c, sign_c = signed_logaddexp(a, sign1, b, sign2)
+        assert sign_c == ans_sign
+        assert jnp.isclose(log_abs_c, log_abs_ans)
+
+    u = [1., 1.]
+    a = jnp.log(jnp.abs(u[0]))
+    b = jnp.log(jnp.abs(u[1]))
+    sign1 = jnp.sign(u[0])
+    sign2 = jnp.sign(u[1])
+    ans = u[0] + u[1]
+    ans_sign = jnp.sign(ans)
+    log_abs_ans = jnp.log(jnp.abs(ans))
+    log_abs_c, sign_c = signed_logaddexp(a, sign1, b, sign2)
+    assert sign_c == ans_sign
+    assert jnp.isclose(log_abs_c, log_abs_ans)
+
+    u = [1., -1.]
+    a = jnp.log(jnp.abs(u[0]))
+    b = jnp.log(jnp.abs(u[1]))
+    sign1 = jnp.sign(u[0])
+    sign2 = jnp.sign(u[1])
+    ans = u[0] + u[1]
+    ans_sign = jnp.sign(ans)
+    log_abs_ans = jnp.log(jnp.abs(ans))
+    log_abs_c, sign_c = signed_logaddexp(a, sign1, b, sign2)
+    # assert sign_c == ans_sign
+    assert jnp.isclose(log_abs_c, log_abs_ans)
+
+    u = [-1., 1.]
+    a = jnp.log(jnp.abs(u[0]))
+    b = jnp.log(jnp.abs(u[1]))
+    sign1 = jnp.sign(u[0])
+    sign2 = jnp.sign(u[1])
+    ans = u[0] + u[1]
+    ans_sign = jnp.sign(ans)
+    log_abs_ans = jnp.log(jnp.abs(ans))
+    log_abs_c, sign_c = signed_logaddexp(a, sign1, b, sign2)
+    # assert sign_c == ans_sign
+    assert jnp.isclose(log_abs_c, log_abs_ans)
+
+    u = [0.,0.]
+    a = jnp.log(jnp.abs(u[0]))
+    b = jnp.log(jnp.abs(u[1]))
+    sign1 = jnp.sign(u[0])
+    sign2 = jnp.sign(u[1])
+    ans = u[0] + u[1]
+    ans_sign = jnp.sign(ans)
+    log_abs_ans = jnp.log(jnp.abs(ans))
+    log_abs_c, sign_c = signed_logaddexp(a, sign1, b, sign2)
+    # assert sign_c == ans_sign
+    assert jnp.isclose(log_abs_c, log_abs_ans)
+
+    u = [0., 1.]
+    a = jnp.log(jnp.abs(u[0]))
+    b = jnp.log(jnp.abs(u[1]))
+    sign1 = jnp.sign(u[0])
+    sign2 = jnp.sign(u[1])
+    ans = u[0] + u[1]
+    ans_sign = jnp.sign(ans)
+    log_abs_ans = jnp.log(jnp.abs(ans))
+    log_abs_c, sign_c = signed_logaddexp(a, sign1, b, sign2)
+    assert sign_c == ans_sign
+    assert jnp.isclose(log_abs_c, log_abs_ans)
+
+def is_complex(a):
+    return a.dtype in [jnp.complex64, jnp.complex128]
+
+def test_is_complext():
+    assert is_complex(jnp.ones(1, dtype=jnp.complex_))
+
+
+def cast_complex(a):
+    return jnp.asarray(a, dtype = jnp.complex_)

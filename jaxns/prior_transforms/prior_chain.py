@@ -1,5 +1,5 @@
 from collections import OrderedDict
-
+from jax import vmap, random, numpy as jnp, disable_jit
 from jaxns.utils import iterative_topological_sort
 
 
@@ -106,5 +106,23 @@ class PriorChain(object):
             dsk[p.name] = p(input, *parents, **kwargs)
         transformed_prior = dsk
         return transformed_prior
+
+    def test_prior(self,key, num_samples, log_likelihood=None, **kwargs):
+        keys = random.split(key, num_samples)
+        for key in keys:
+            U = random.uniform(key, shape=(self.U_ndims,))
+            Y = self(U, **kwargs)
+            for k,v in Y.items():
+                if jnp.any(jnp.isnan(v)):
+                    raise ValueError('nan in prior transform',Y)
+            if log_likelihood is not None:
+                loglik = log_likelihood(**Y)
+                if jnp.isnan(loglik):
+                    raise ValueError("Log likelihood is nan", Y)
+                if loglik == 0.:
+                    print("Log likelihood is zero", loglik, Y)
+                print(loglik)
+
+
 
 
