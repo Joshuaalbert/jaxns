@@ -346,46 +346,6 @@ class PosteriorSecondMoment(TrackedExpectation):
         return dict_multimap(lambda posterior_sample: posterior_sample[..., None] * posterior_sample[..., None, :],
                              posterior_sample)
 
-
-# class ClusterEvidence(TrackedExpectation):
-#     def __init__(self, *, state=None,
-#                  num_parent=None, num_per_cluster=None,
-#                  global_evidence: Evidence = None):
-#         if state is None:
-#             initial_f = global_evidence.f.log_value + jnp.log(num_per_cluster) - jnp.log(num_parent)
-#             initial_f2 = global_evidence.f2.log_value + jnp.log(num_per_cluster) + jnp.log(
-#                 num_per_cluster + 1.) - jnp.log(num_parent) - jnp.log(num_parent + 1)
-#             initial_fX = global_evidence.fX.log_value + jnp.log(num_per_cluster) + jnp.log(
-#                 num_per_cluster + 1.) - jnp.log(num_parent) - jnp.log(num_parent + 1)
-#             initial_X = global_evidence.X.log_value + jnp.log(num_per_cluster) - jnp.log(num_parent)
-#             initial_X2 = global_evidence.X2.log_value + jnp.log(num_per_cluster) + jnp.log(
-#                 num_per_cluster + 1.) - jnp.log(num_parent) - jnp.log(num_parent + 1)
-#             initial_L_i1 = global_evidence.L_i1.log_value
-#         else:
-#             initial_f = None
-#             initial_f2 = None
-#             initial_fX = None
-#             initial_X = None
-#             initial_X2 = None
-#             initial_L_i1 = None
-#         super(ClusterEvidence, self).__init__('logZp', 'log', False,
-#                                               state=state,
-#                                               initial_f=initial_f,
-#                                               initial_f2=initial_f2,
-#                                               initial_X=initial_X,
-#                                               initial_fX=initial_fX,
-#                                               initial_X2=initial_X2,
-#                                               initial_L_i1=initial_L_i1
-#                                               )
-#
-#     def compute_log_f_alpha(self, posterior_sample, n_i, log_L_i, *, from_U=True):
-#         return 0.
-#
-#     def update(self, posterior_sample_i, n_i, log_L_i,*, from_U=True):
-#         n_i = jnp.where(n_i > 0, n_i, jnp.inf)
-#         super(ClusterEvidence, self).update(posterior_sample_i, n_i, log_L_i, from_U=from_U)
-
-
 class InformationGain(TrackedExpectation):
     """
     H = int post(x) log(post(x)/prior(x)) dx

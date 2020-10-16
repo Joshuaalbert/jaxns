@@ -36,6 +36,58 @@ def dict_multimap(f, d, *args):
         mapped_results[key] = f(d[key], *[arg[key] for arg in args])
     return mapped_results
 
+def swap_dict_namedtuple(t):
+    """
+    Turn namedtuple({a:b},{a:c})
+    to {a:namedtuple(b,c)}
+
+    If dict is zero-level, i.e. scalar, then return the tuple.
+    """
+    for s in t:
+        if not isinstance(s, dict):
+            return t
+        assert sorted(s.keys()) == sorted(t[0].keys())
+    keys = t[0].keys()
+    d = dict()
+    for key in keys:
+        d[key] = t.__class__(*[s[key] for s in t])
+    return d
+
+def swap_namedtuple_dict(d):
+    """
+    Turn {a:namedtuple(b,c)}
+    to namedtuple({a:b},{a:c})
+    """
+    if not isinstance(d, dict):
+        return d
+    keys = list(d.keys())
+    for k, v in d.items():
+        assert v._fields == d[keys[0]]._fields
+    fields = d[keys[0]]._fields
+    t = []
+    for i in range(len(fields)):
+        t.append({key:d[key][i] for key in keys})
+    return d[keys[0]].__class__(*t)
+
+def test_swap():
+    from collections import namedtuple
+
+    Test = namedtuple('Test',['a','b', 'c'])
+    test_tuple = Test(dict(da=1., db=2.), dict(da=3., db=4.), dict(da=5., db=6.))
+    test_dict = {'da': Test(a=1.0, b=3.0, c=5.0), 'db': Test(a=2.0, b=4.0, c=6.0)}
+    _swap_dict = swap_dict_namedtuple(test_tuple)
+    assert _swap_dict == test_dict
+    _swap_tuple = swap_namedtuple_dict(test_dict)
+    assert _swap_tuple == test_tuple
+
+    test_tuple = Test(1.,2.,3.)
+    test_dict = Test(1.,2.,3.)
+    _swap_dict = swap_dict_namedtuple(test_tuple)
+    assert _swap_dict == test_dict
+    _swap_tuple = swap_namedtuple_dict(test_dict)
+    assert _swap_tuple == test_tuple
+
+
 def get_interval(s):
     ar_first = jnp.argmin(s)
     s = jnp.concatenate([jnp.where(jnp.arange(s.size) < ar_first, -1., s), jnp.array([1.])])
@@ -459,7 +511,7 @@ def test_signed_logaddexp():
 def is_complex(a):
     return a.dtype in [jnp.complex64, jnp.complex128]
 
-def test_is_complext():
+def test_is_complex():
     assert is_complex(jnp.ones(1, dtype=jnp.complex_))
 
 
