@@ -9,8 +9,7 @@ from typing import NamedTuple, Dict
 from collections import namedtuple
 
 from jaxns.prior_transforms import PriorChain
-from jaxns.param_tracking import Evidence, PosteriorFirstMoment, PosteriorSecondMoment, \
-    InformationGain, Marginalised
+from jaxns.param_tracking import Evidence, PosteriorFirstMoment, PosteriorSecondMoment, InformationGain, Marginalised
 from jaxns.utils import dict_multimap, stochastic_result_computation
 from jaxns.likelihood_samplers import (expanded_box,
                                        slice_sampling, constrained_hmc, ellipsoid_sampler,
@@ -125,7 +124,7 @@ class NestedSampler(object):
             key, init_sampler_state_key = random.split(key, 2)
             depth = sampler_kwargs.get('depth', 3)
             sampler_state = init_multi_ellipsoid_sampler_state(
-                init_sampler_state_key, live_points_U, depth, evidence.X.log_value)
+                init_sampler_state_key, live_points_U, depth, evidence.state.X.log_value)
         else:
             raise ValueError("Invalid sampler name {}".format(self.sampler_name))
 
@@ -266,7 +265,7 @@ class NestedSampler(object):
                                                       self.loglikelihood,
                                                       self.prior_chain,
                                                       state.sampler_state,
-                                                      evidence.X.log_value,
+                                                      evidence.state.X.log_value,
                                                       state.i,
                                                       i_min)
         else:
@@ -310,9 +309,10 @@ class NestedSampler(object):
             # print(list(map(lambda x: type(x), state)))
             # do one sampling step
             state = self._one_step(state, collect_samples=collect_samples)
+
             evidence = Evidence(state=state.evidence_state)
             # Z_live = <L> X_i = exp(logsumexp(log_L_live) - log(N) + log(X))
-            logZ_live = logsumexp(state.log_L_live) - jnp.log(state.log_L_live.shape[0]) + evidence.X.log_value
+            logZ_live = logsumexp(state.log_L_live) - jnp.log(state.log_L_live.shape[0]) + evidence.state.X.log_value
             # Z_live < f * Z => logZ_live < log(f) + logZ
             done = (logZ_live < jnp.log(termination_frac) + evidence.mean) | ((state.i + 1) >= max_samples)
             state = state._replace(done=done,
