@@ -376,10 +376,17 @@ def left_broadcast_mul(x, y):
     return jnp.reshape(x, (-1,) + tuple([1] * (len(y.shape) - 1))) * y
 
 def tuple_prod(t):
+    if len(t) == 0:
+        return 1
     res = t[0]
     for a in t[1:]:
         res *= a
     return res
+
+def test_tuple_prod():
+    assert tuple_prod(()) == 1
+    assert tuple_prod((1,2,3)) == 6
+    assert tuple_prod((4,)) == 4
 
 
 def msqrt(A):
@@ -428,7 +435,7 @@ def test_logaddexp():
 def signed_logaddexp(log_abs_val1, sign1, log_abs_val2, sign2):
     amax = jnp.maximum(log_abs_val1, log_abs_val2)
     signmax = jnp.where(log_abs_val1 > log_abs_val2, sign1, sign2)
-    delta = -jnp.abs(log_abs_val2 - log_abs_val1)
+    delta = -jnp.abs(log_abs_val2 - log_abs_val1)#nan iff inf - inf
     sign = sign1*sign2
     return jnp.where(jnp.isnan(delta),
                       log_abs_val1 + log_abs_val2,  # NaNs or infinities of the same sign.
@@ -493,10 +500,22 @@ def test_signed_logaddexp():
     ans_sign = jnp.sign(ans)
     log_abs_ans = jnp.log(jnp.abs(ans))
     log_abs_c, sign_c = signed_logaddexp(a, sign1, b, sign2)
-    # assert sign_c == ans_sign
+    assert sign_c == ans_sign
     assert jnp.isclose(log_abs_c, log_abs_ans)
 
     u = [0., 1.]
+    a = jnp.log(jnp.abs(u[0]))
+    b = jnp.log(jnp.abs(u[1]))
+    sign1 = jnp.sign(u[0])
+    sign2 = jnp.sign(u[1])
+    ans = u[0] + u[1]
+    ans_sign = jnp.sign(ans)
+    log_abs_ans = jnp.log(jnp.abs(ans))
+    log_abs_c, sign_c = signed_logaddexp(a, sign1, b, sign2)
+    assert sign_c == ans_sign
+    assert jnp.isclose(log_abs_c, log_abs_ans)
+
+    u = [0., -1.]
     a = jnp.log(jnp.abs(u[0]))
     b = jnp.log(jnp.abs(u[1]))
     sign1 = jnp.sign(u[0])
