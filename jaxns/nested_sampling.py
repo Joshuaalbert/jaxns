@@ -9,7 +9,7 @@ from typing import NamedTuple, Dict
 from collections import namedtuple
 
 from jaxns.prior_transforms import PriorChain
-from jaxns.param_tracking import Evidence, PosteriorFirstMoment, PosteriorSecondMoment, InformationGain, Marginalised
+from jaxns.param_tracking import TrackedExpectation#Evidence, PosteriorFirstMoment, PosteriorSecondMoment, InformationGain, Marginalised
 from jaxns.utils import dict_multimap, stochastic_result_computation
 from jaxns.likelihood_samplers import (expanded_box,
                                        slice_sampling, constrained_hmc, ellipsoid_sampler,
@@ -39,13 +39,9 @@ class NestedSamplerState(NamedTuple):
     num_dead: int  # int, number of samples (dead points_U) taken so far.
     log_L_dead: jnp.ndarray  # log likelhood of dead points_U
     sampler_efficiency: jnp.ndarray  # array of efficiency per accepted sample
-    evidence_state: namedtuple  # state for logZ
-    m_state: namedtuple  # state for parameter mean
-    M_state: namedtuple  # state for parameter covariance
-    information_gain_state: namedtuple  # information, H, state
     status: int  # exit status: 0=good, 1=max samples reached
     sampler_state: namedtuple  # arbitrary state passed between iterations of the sampling step
-    marginalised_state: Dict  # marginalised functions states
+    tracked_expectations_state: namedtuple  # marginalised functions states
 
 
 class NestedSampler(object):
@@ -96,12 +92,7 @@ class NestedSampler(object):
             log_L_dead = None
             sampler_efficiency = None
 
-        evidence = Evidence()
-        m = PosteriorFirstMoment(self._filter_prior_chain(self.prior_chain.to_shapes))
-        M = PosteriorSecondMoment(self._filter_prior_chain(self.prior_chain.to_shapes))
-        information_gain = InformationGain(global_evidence=evidence)
-        marginalised = Marginalised(self.marginalised,
-                                    self.marginalised_shapes) if self.marginalised is not None else None
+        tracked_expectations = TrackedExpectation(self.marginalised, self.marginalised_shapes)
 
         # select cluster to spawn into
         if self.sampler_name == 'box':
@@ -124,7 +115,7 @@ class NestedSampler(object):
             key, init_sampler_state_key = random.split(key, 2)
             depth = sampler_kwargs.get('depth', 3)
             sampler_state = init_multi_ellipsoid_sampler_state(
-                init_sampler_state_key, live_points_U, depth, evidence.state.X.log_value)
+                init_sampler_state_key, live_points_U, depth, tracked_expectations.state.X.log_value)
         else:
             raise ValueError("Invalid sampler name {}".format(self.sampler_name))
 
@@ -140,13 +131,9 @@ class NestedSampler(object):
             log_L_dead=log_L_dead,
             sampler_efficiency=sampler_efficiency,
             num_dead=jnp.array(0),
-            evidence_state=evidence.state,
-            m_state=m.state,
-            M_state=M.state,
-            information_gain_state=information_gain.state,
             status=jnp.array(0),
             sampler_state=sampler_state,
-            marginalised_state=marginalised.state if marginalised is not None else None
+            tracked_expectations_state=tracked_expectations.state
         )
 
         return state
@@ -173,23 +160,11 @@ class NestedSampler(object):
         n = state.log_L_live.shape[0]
 
         # update tracking
-        evidence = Evidence(state=state.evidence_state)
-        evidence.update(dead_point, n, log_L_min)
-        m = PosteriorFirstMoment(self.prior_chain.to_shapes, state=state.m_state)
-        m.update(dead_point, n, log_L_min)
-        M = PosteriorSecondMoment(self.prior_chain.to_shapes, state=state.M_state)
-        M.update(dead_point, n, log_L_min)
-        H = InformationGain(global_evidence=evidence, state=state.information_gain_state)
-        H.update(dead_point, n, log_L_min)
-        state = state._replace(evidence_state=evidence.state,
-                               m_state=m.state,
-                               M_state=M.state,
-                               information_gain_state=H.state)
+        tracked_expectations = TrackedExpectation(self.marginalised, self.marginalised_shapes, state=state.tracked_expectations_state)
 
-        if self.marginalised is not None:
-            marginalised = Marginalised(self.marginalised, self.marginalised_shapes)
-            marginalised.update(dead_point, n, log_L_min)
-            state = state._replace(marginalised_state=marginalised.state)
+        tracked_expectations.update(dead_point, n, log_L_min)
+
+        state = state._replace(tracked_expectations_state=tracked_expectations.state)
 
         # select cluster to spawn into
         if self.sampler_name == 'box':
@@ -233,7 +208,7 @@ class NestedSampler(object):
                                               sampler_state=state.sampler_state,
                                               max_steps=10,
                                               i_replace=i_min,
-                                              log_X_mean=evidence.X.log_value)
+                                              log_X_mean=tracked_expectations.state.X.log_value)
         elif self.sampler_name == 'slice':
             sampler_results = slice_sampling(state.key, log_L_constraint=log_L_min, live_points_U=state.live_points_U,
                                              dead_point=dead_point,
@@ -248,7 +223,7 @@ class NestedSampler(object):
                                     self.loglikelihood,
                                     self.prior_chain,
                                     state.sampler_state,
-                                    evidence.X.log_value)
+                                    tracked_expectations.state.X.log_value)
 
         elif self.sampler_name == 'simplex':
             sampler_results = simplex(state.key,
@@ -265,7 +240,7 @@ class NestedSampler(object):
                                                       self.loglikelihood,
                                                       self.prior_chain,
                                                       state.sampler_state,
-                                                      evidence.state.X.log_value,
+                                                      tracked_expectations.state.X.log_value,
                                                       state.i,
                                                       i_min)
         else:
@@ -310,15 +285,14 @@ class NestedSampler(object):
             # do one sampling step
             state = self._one_step(state, collect_samples=collect_samples)
 
-            evidence = Evidence(state=state.evidence_state)
+            tracked_expectations = TrackedExpectation(self.marginalised, self.marginalised_shapes,
+                                                      state=state.tracked_expectations_state)
             # Z_live = <L> X_i = exp(logsumexp(log_L_live) - log(N) + log(X))
-            logZ_live = logsumexp(state.log_L_live) - jnp.log(state.log_L_live.shape[0]) + evidence.state.X.log_value
+            logZ_live = logsumexp(state.log_L_live) - jnp.log(state.log_L_live.shape[0]) + tracked_expectations.state.X.log_value
             # Z_live < f * Z => logZ_live < log(f) + logZ
-            done = (logZ_live < jnp.log(termination_frac) + evidence.mean) | ((state.i + 1) >= max_samples)
+            done = (logZ_live < jnp.log(termination_frac) + tracked_expectations.evidence_mean()) | ((state.i + 1) >= max_samples)
             state = state._replace(done=done,
                                    i=state.i + 1)
-            # print(list(map(lambda x: type(x), state)))
-            # exit(0)
             return state
 
         state = while_loop(lambda state: ~state.done,
@@ -339,10 +313,6 @@ class NestedSampler(object):
                    'H_err',
                    'num_likelihood_evaluations',
                    'efficiency',
-                   'param_mean',
-                   'param_mean_err',
-                   'param_covariance',
-                   'param_covariance_err',
                    'marginalised']
 
         if collect_samples:
@@ -355,35 +325,22 @@ class NestedSampler(object):
             collect.append('num_samples')
 
         NestedSamplerResults = namedtuple('NestedSamplerResults', collect)
-        evidence = Evidence(state=state.evidence_state)
-        evidence.update_from_live_points(state.live_points, state.log_L_live)
-        m = PosteriorFirstMoment(self.prior_chain.to_shapes, state=state.m_state)
-        m.update_from_live_points(state.live_points, state.log_L_live)
-        M = PosteriorSecondMoment(self.prior_chain.to_shapes, state=state.M_state)
-        M.update_from_live_points(state.live_points, state.log_L_live)
-        H = InformationGain(global_evidence=evidence, state=state.information_gain_state)
-        H.update_from_live_points(state.live_points, state.log_L_live)
+        tracked_expectations = TrackedExpectation(self.marginalised, self.marginalised_shapes, state=state.tracked_expectations_state)
+        tracked_expectations.update_from_live_points(state.live_points, state.log_L_live)
         if self.marginalised is not None:
-            marginalised = Marginalised(self.marginalised, self.marginalised_shapes)
-            marginalised.update_from_live_points(state.live_points, state.log_L_live)
-            marginalised = marginalised.mean
+            marginalised = tracked_expectations.marg_mean()
         else:
             marginalised = None
 
         data = dict(
-            logZ=evidence.mean,
-            logZerr=jnp.sqrt(evidence.variance),
-            ESS=evidence.effective_sample_size,
+            logZ=tracked_expectations.evidence_mean(),
+            logZerr=jnp.sqrt(tracked_expectations.evidence_variance()),
+            ESS=tracked_expectations.effective_sample_size(),
             ESS_err=None,
-            H=H.mean,
-            H_err=None,
+            H=tracked_expectations.information_gain_mean(),
+            H_err=jnp.sqrt(tracked_expectations.information_gain_variance()),
             num_likelihood_evaluations=state.num_likelihood_evaluations,
             efficiency=(state.num_dead + state.log_L_live.shape[0]) / state.num_likelihood_evaluations,
-            param_mean=m.mean,
-            param_mean_err=dict_multimap(lambda x: jnp.sqrt(x), m.variance),
-            param_covariance=dict_multimap(lambda x, y: x - y[..., :, None] * y[..., None, :], M.mean, m.mean),
-            param_covariance_err=dict_multimap(lambda x, y: jnp.sqrt(
-                x + jnp.sqrt(y[..., :, None] * y[..., None, :])), M.variance, m.variance),
             marginalised=marginalised
         )
 
@@ -424,10 +381,6 @@ class NestedSampler(object):
                     random.split(state.key, S))
                 data['logZ'] = jnp.mean(logZ, axis=0)
                 data['logZerr'] = jnp.std(logZ, axis=0)
-                data['param_mean'] = dict_multimap(lambda m: jnp.mean(m, axis=0), m)
-                data['param_mean_err'] = dict_multimap(lambda m: jnp.std(m, axis=0), m)
-                data['param_covariance'] = dict_multimap(lambda cov: jnp.mean(cov, axis=0), cov)
-                data['param_covariance_err'] = dict_multimap(lambda cov: jnp.std(cov, axis=0), cov)
                 data['H'] = jnp.mean(H, axis=0)
                 data['H_err'] = jnp.std(H, axis=0)
                 data['ESS'] = jnp.mean(ESS, axis=0)
