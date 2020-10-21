@@ -1,6 +1,6 @@
 from jax import random, vmap, numpy as jnp
 from jax.lax import scan, while_loop
-from jax.scipy.special import logsumexp
+from jax.scipy.special import logsumexp, gammaln
 from scipy.stats.kde import gaussian_kde
 
 
@@ -536,3 +536,104 @@ def test_is_complex():
 
 def cast_complex(a):
     return jnp.asarray(a, dtype = jnp.complex_)
+
+def resample(key, samples, log_weights, S=None):
+    """
+    resample the samples with weights which are interpreted as log_probabilities.
+    Args:
+        samples:
+        weights:
+
+    Returns: S samples of equal weight
+
+    """
+    if S is None:
+
+        #ESS = (sum w)^2 / sum w^2
+
+        S = int(jnp.exp(2.* logsumexp(log_weights) - logsumexp(2.*log_weights)))
+        print(S)
+
+    idx = random.categorical(key, log_weights, shape=(S,))
+    return dict_multimap(lambda s:s[idx,...], samples)
+
+def test_resample():
+    x = random.normal(key=random.PRNGKey(0), shape=(50,))
+    logits = -jnp.ones(50)
+    samples = {'x':x}
+    assert jnp.all(resample(random.PRNGKey(0), samples, logits)['x'] == resample(random.PRNGKey(0), x, logits))
+
+def beta1_product_cdf(u, alpha, n):
+    """
+    u^alpha / (n-1)! Sum_m=0^(n-1) ( (-1)^m (n-1)!/m! alpha^m log(u)^m )
+    u^alpha Sum_m=0^(n-1) ( (-alpha log(u))^m  / m! )
+    Args:
+        u:
+        alpha:
+        n:
+
+    Returns:
+
+    """
+    def body(f, m):
+        f = f + (-1.)**m * jnp.exp(-gammaln(m+1.)) * alpha**m * jnp.log(u)**m
+        # f = jnp.logaddexp(f, m * (jnp.log(-jnp.log(u))  + jnp.log(alpha)) - gammaln(m+1.))
+        return f, m
+
+    f, _ = scan(body, 0., jnp.arange(0, n), unroll=2)
+    # f, _ = scan(body, -jnp.inf, jnp.arange(0, n), unroll=2)
+    return f * u**alpha
+    # return jnp.exp(jnp.logaddexp(alpha * jnp.log(u), f))
+
+def log_beta1_product_cdf(u, alpha, n):
+    """
+    e^(alpha * u) / (n-1)! Sum_m=0^(n-1) ( (-1)^m (n-1)!/m! alpha^m u^m )
+    e^(alpha * u) Sum_m=0^(n-1) ( (-alpha u)^m  / m! )
+    Args:
+        u:
+        alpha:
+        n:
+
+    Returns:
+
+    """
+    def body(f, m):
+        f = jnp.logaddexp(f,m * jnp.log(-alpha * u) - gammaln(m+1.) + alpha*u)
+        # f = jnp.logaddexp(f, m * (jnp.log(-jnp.log(u))  + jnp.log(alpha)) - gammaln(m+1.))
+        return f, m
+
+    f, _ = scan(body, jnp.log(0.), jnp.arange(0, n), unroll=2)
+    # f, _ = scan(body, -jnp.inf, jnp.arange(0, n), unroll=2)
+    return jnp.exp(f)
+    # return jnp.exp(jnp.logaddexp(alpha * jnp.log(u), f))
+
+
+def test_beta1_product_cdf():
+    from jax import vmap, grad
+    import pylab as plt
+    alpha = 10
+    n = 1000
+    u = jnp.exp(jnp.linspace(-20, 0., 1000))
+    cdf = vmap(lambda u: beta1_product_cdf(u, alpha, n))(u)
+    plt.plot(u, cdf)
+    plt.show()
+    pdf = vmap(grad(lambda u: beta1_product_cdf(u, alpha, n)))(u)
+
+    plt.plot(u,pdf)
+    plt.show()
+
+def test_log_beta1_product_cdf():
+    from jax import vmap, grad
+    import pylab as plt
+    alpha = 1
+    n = 10
+    u = jnp.linspace(-20, 0., 1000)
+    cdf = vmap(lambda u: log_beta1_product_cdf(u, alpha, n))(u)
+    plt.plot(u, cdf)
+    plt.show()
+    pdf = vmap(grad(lambda u: log_beta1_product_cdf(u, alpha, n)))(u)
+
+    plt.plot(u,pdf)
+    plt.show()
+
+
