@@ -1,7 +1,8 @@
 import pylab as plt
 import jax.numpy as jnp
 from scipy.stats.kde import gaussian_kde
-from jaxns.utils import safe_gaussian_kde, tuple_prod
+from jaxns.utils import safe_gaussian_kde, tuple_prod, resample
+from jax import random
 from matplotlib.animation import FuncAnimation
 
 
@@ -46,14 +47,14 @@ def plot_diagnostics(results, save_name=None):
 
 
 def plot_cornerplot(results, vars=None, save_name=None):
+    rkey0 = random.PRNGKey(123496)
     vars = _get_vars(results, vars)
     ndims = _get_ndims(results, vars)
     figsize = min(20, max(4, int(2 * ndims)))
     fig, axs = plt.subplots(ndims, ndims, figsize=(figsize, figsize))
     if ndims == 1:
         axs = [[axs]]
-    weights = jnp.exp(results.log_p)
-    nsamples = weights.size
+    nsamples = results.log_p.size
     nbins = int(jnp.sqrt(results.ESS)) + 1
     lims = {}
     dim = 0
@@ -65,10 +66,12 @@ def plot_cornerplot(results, vars=None, save_name=None):
                 dim += 1
                 continue
             weights = jnp.where(jnp.isfinite(samples1), jnp.exp(results.log_p), 0.)
+            log_weights = jnp.where(jnp.isfinite(samples1), results.log_p, -jnp.inf)
             samples1 = jnp.where(jnp.isfinite(samples1), samples1, 0.)
-            kde1 = gaussian_kde(samples1, weights=weights, bw_method='silverman')
-            # kde1 = safe_gaussian_kde(samples1, weights=weights)
-            samples1_resampled = kde1.resample(size=int(results.ESS))
+            # kde1 = gaussian_kde(samples1, weights=weights, bw_method='silverman')
+            # samples1_resampled = kde1.resample(size=int(results.ESS))
+            rkey0, rkey = random.split(rkey0, 2)
+            samples1_resampled = resample(rkey, samples1, log_weights, S=int(results.ESS))
             binsx = jnp.linspace(*jnp.percentile(samples1_resampled, [0, 100]), 2 * nbins)
             dim2 = 0
             for key2 in vars:  # sorted(results.samples.keys()):
@@ -92,7 +95,8 @@ def plot_cornerplot(results, vars=None, save_name=None):
                         title1 = "{}".format(key)
                     ax.set_title('{} {}'.format(title1, title2))
                     if dim == dim2:
-                        ax.plot(binsx, kde1(binsx))
+                        # ax.plot(binsx, kde1(binsx))
+                        ax.hist(samples1_resampled, bins='auto', fc='None', edgecolor='black', density=True)
                         sample_mean = jnp.average(samples1, weights=weights)
                         sample_std = jnp.sqrt(jnp.average((samples1 - sample_mean) ** 2, weights=weights))
                         ax.set_title("{:.2f}:{:.2f}:{:.2f}\n{:.2f}+-{:.2f}".format(
@@ -107,19 +111,24 @@ def plot_cornerplot(results, vars=None, save_name=None):
                         if jnp.std(samples2) == 0.:
                             dim2 += 1
                             continue
-                        weights = jnp.where(jnp.isfinite(samples2), weights, 0.)
+                        weights = jnp.where(jnp.isfinite(samples2), jnp.exp(results.log_p), 0.)
+                        log_weights = jnp.where(jnp.isfinite(samples2), results.log_p, -jnp.inf)
                         samples2 = jnp.where(jnp.isfinite(samples2), samples2, 0.)
-                        kde2 = gaussian_kde(jnp.stack([samples1, samples2], axis=0),
-                                            weights=weights,
-                                            bw_method='silverman')
-                        samples2_resampled = kde2.resample(size=int(results.ESS))
-                        ax.scatter(samples2_resampled[1, :], samples2_resampled[0, :], marker='+', c='black', alpha=0.5)
-                        binsy = jnp.linspace(*jnp.percentile(samples2_resampled[1, :], [0, 100]), 2 * nbins)
-                        X, Y = jnp.meshgrid(binsx, binsy, indexing='ij')
-                        ax.contour(kde2(jnp.stack([X.flatten(), Y.flatten()], axis=0)).reshape((2 * nbins, 2 * nbins)),
-                                   extent=(binsy.min(), binsy.max(),
-                                           binsx.min(), binsx.max()),
-                                   origin='lower')
+                        # kde2 = gaussian_kde(jnp.stack([samples1, samples2], axis=0),
+                        #                     weights=weights,
+                        #                     bw_method='silverman')
+                        # samples2_resampled = kde2.resample(size=int(results.ESS))
+                        rkey0, rkey = random.split(rkey0, 2)
+                        samples2_resampled = resample(rkey, jnp.stack([samples1,samples2], axis=-1), log_weights, S=int(results.ESS))
+                        # norm = plt.Normalize(log_weights.min(), log_weights.max())
+                        # color = jnp.atleast_2d(plt.cm.jet(norm(log_weights)))
+                        ax.scatter(samples2_resampled[:, 1], samples2_resampled[:, 0], marker='+', c='black', alpha=0.5)
+                        # binsy = jnp.linspace(*jnp.percentile(samples2_resampled[:, 1], [0, 100]), 2 * nbins)
+                        # X, Y = jnp.meshgrid(binsx, binsy, indexing='ij')
+                        # ax.contour(kde2(jnp.stack([X.flatten(), Y.flatten()], axis=0)).reshape((2 * nbins, 2 * nbins)),
+                        #            extent=(binsy.min(), binsy.max(),
+                        #                    binsx.min(), binsx.max()),
+                        #            origin='lower')
                     if dim == ndims - 1:
                         ax.set_xlabel("{}".format(title2))
                     if dim2 == 0:
@@ -205,7 +214,7 @@ def plot_samples_development(results, vars=None, save_name=None):
                             samples2 = results.samples[key2].reshape((max_samples, -1))[:, i2]
                             samples2 = samples2[start:stop]
 
-                            sc = ax.scatter(samples2, samples1, marker='+', c=to_colour(weights[start:stop]), alpha=0.5)
+                            sc = ax.scatter(samples2, samples1, marker='+', c=to_colour(weights[start:stop]), alpha=0.3)
                             artists.append(sc)
                         if dim == ndims - 1:
                             ax.set_xlabel("{}".format(title2))
