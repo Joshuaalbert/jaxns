@@ -9,6 +9,7 @@ LogParam = namedtuple('LogParam', ['log_value'])
 SignedLogParam = namedtuple('SignedLogParam', ['log_abs_value', 'sign'])
 ParamTrackingState = namedtuple("ParamTrackingState", ['f', 'f2', 'fX', 'X', 'X2', 'w', 'w2', 'L_i1'])
 
+
 class TrackedExpectation(object):
     def __init__(self,
                  marginalised_funcs,
@@ -54,13 +55,15 @@ class TrackedExpectation(object):
             def build_marg_func(func):
                 def marg_func(posterior_sample, n_i, log_L_i):
                     return func(**posterior_sample)
+
                 return marg_func
+
             ###
             # marginalised functions
             marg_keys = sorted(marginalised_funcs.keys())
             assert marg_keys == sorted(marginalised_shapes.keys())
             for key in marg_keys:
-                _funcs.append(build_marg_func(marginalised_funcs[key])) # marginalised func
+                _funcs.append(build_marg_func(marginalised_funcs[key]))  # marginalised func
                 _shapes.append(marginalised_shapes[key])
                 _names.append("marg:{}".format(key))
         # build meta
@@ -92,16 +95,17 @@ class TrackedExpectation(object):
             return (self.meta['start_idx'][idx], self.meta['stop_idx'][idx], self.meta['shape'][idx])
         else:
             res = []
-            for name in self.meta['names']:#get all matching prefixes
+            for name in self.meta['names']:  # get all matching prefixes
                 if name.split(":")[0] == prefix:
                     idx = self.meta['names'].index(name)
-                    res.append((name.split(":")[1], self.meta['start_idx'][idx], self.meta['stop_idx'][idx], self.meta['shape'][idx]))
+                    res.append((name.split(":")[1], self.meta['start_idx'][idx], self.meta['stop_idx'][idx],
+                                self.meta['shape'][idx]))
             return res
 
     def effective_sample_size(self):
         """Kish's ESS = [sum weights]^2 / [sum weights^2]
         """
-        return jnp.exp(2.*self.state.w.log_value - self.state.w2.log_value)
+        return jnp.exp(2. * self.state.w.log_value - self.state.w2.log_value)
         # w = self._linear_mean(*self.lookup_meta('static', 'Z'), normalised=False)
         # w2 = self._linear_variance(*self.lookup_meta('static', 'Z'), normalised=False) + w**2
         # return w**2/w2
@@ -130,41 +134,55 @@ class TrackedExpectation(object):
             d[key] = self._linear_variance(start_idx, stop_idx, shape, normalised=True)
         return d
 
-
-    def _linear_mean(self, start_idx:int, stop_idx:int, shape,  normalised: bool):
+    def _linear_mean(self, start_idx: int, stop_idx: int, shape, normalised: bool):
         if normalised:
-            return jnp.reshape(self.state.f.sign[start_idx:stop_idx] * jnp.exp(self.state.f.log_abs_value[start_idx: stop_idx] - self.state.w.log_value), shape)
+            return jnp.reshape(self.state.f.sign[start_idx:stop_idx] * jnp.exp(
+                self.state.f.log_abs_value[start_idx: stop_idx] - self.state.w.log_value), shape)
         else:
-            return jnp.reshape(self.state.f.sign[start_idx:stop_idx] * jnp.exp(self.state.f.log_abs_value[start_idx:stop_idx]), shape)
+            return jnp.reshape(
+                self.state.f.sign[start_idx:stop_idx] * jnp.exp(self.state.f.log_abs_value[start_idx:stop_idx]), shape)
 
-
-    def _log_mean(self, start_idx:int, stop_idx:int, shape, normalised: bool):
+    def _log_mean(self, start_idx: int, stop_idx: int, shape, normalised: bool):
         # lambda log_f, log_f2: (2. * log_f - 0.5 * log_f2) - self.w.log_value
         if normalised:
-            return jnp.reshape((2. * self.state.f.log_abs_value[start_idx:stop_idx] - 0.5 * self.state.f2.log_abs_value[start_idx:stop_idx]) - self.state.w.log_value, shape)
+            return jnp.reshape((2. * self.state.f.log_abs_value[start_idx:stop_idx] - 0.5 * self.state.f2.log_abs_value[
+                                                                                            start_idx:stop_idx]) - self.state.w.log_value,
+                               shape)
         else:
-            return jnp.reshape(2. * self.state.f.log_abs_value[start_idx:stop_idx] - 0.5 * self.state.f2.log_abs_value[start_idx:stop_idx], shape)
+            return jnp.reshape(2. * self.state.f.log_abs_value[start_idx:stop_idx] - 0.5 * self.state.f2.log_abs_value[
+                                                                                           start_idx:stop_idx], shape)
 
-    def _linear_variance(self,start_idx:int, stop_idx:int, shape, normalised: bool):
+    def _linear_variance(self, start_idx: int, stop_idx: int, shape, normalised: bool):
         if normalised:
-            # lambda f, f2: (f2 - f ** 2) / self.w.value
-            t1, t1_sign = signed_logaddexp(self.state.f2.log_abs_value[start_idx:stop_idx], self.state.f2.sign[start_idx:stop_idx], 2. * self.state.f.log_abs_value[start_idx:stop_idx], -self.state.f.sign[start_idx:stop_idx])
-            return jnp.reshape(t1_sign * jnp.exp(t1 - self.state.w.log_value), shape)
+            # lambda f, f2: (f2/ w - (f/w) ** 2)
+            t1, t1_sign = signed_logaddexp(self.state.f2.log_abs_value[start_idx:stop_idx] - self.state.w.log_value,
+                                           self.state.f2.sign[start_idx:stop_idx],
+                                           2. * (self.state.f.log_abs_value[start_idx:stop_idx] - self.state.w.log_value),
+                                           -1.)
+            return jnp.reshape(t1_sign * jnp.exp(t1), shape)
         else:
-            t1, t1_sign = signed_logaddexp(self.state.f2.log_abs_value[start_idx:stop_idx], self.state.f2.sign[start_idx:stop_idx], 2. * self.state.f.log_abs_value[start_idx:stop_idx], -self.state.f.sign[start_idx:stop_idx])
+            t1, t1_sign = signed_logaddexp(
+                self.state.f2.log_abs_value[start_idx:stop_idx],
+                self.state.f2.sign[start_idx:stop_idx],
+                2. * self.state.f.log_abs_value[start_idx:stop_idx],
+                -1.)
             return jnp.reshape(t1_sign * jnp.exp(t1), shape)
 
-    def _log_variance(self, start_idx:int, stop_idx:int, shape, normalised: bool):
+    def _log_variance(self, start_idx: int, stop_idx: int, shape, normalised: bool):
         if normalised:
             # (log_f2 - 2. * log_f) - self.w.log_value
-            return jnp.reshape(self.state.f2.log_abs_value[start_idx:stop_idx] - 2. * self.state.f.log_abs_value[start_idx:stop_idx] - self.state.w.log_value, shape)
+            return jnp.reshape(self.state.f2.log_abs_value[start_idx:stop_idx] - 2. * self.state.f.log_abs_value[
+                                                                                      start_idx:stop_idx] - self.state.w.log_value,
+                               shape)
         else:
-            return jnp.reshape(self.state.f2.log_abs_value[start_idx:stop_idx] - 2. * self.state.f.log_abs_value[start_idx:stop_idx], shape)
+            return jnp.reshape(
+                self.state.f2.log_abs_value[start_idx:stop_idx] - 2. * self.state.f.log_abs_value[start_idx:stop_idx],
+                shape)
 
     def compute_log_f_alpha(self, posterior_sample, n_i, log_L_i) -> SignedLogParam:
         # use meta data to compute
         res = []
-        for name, func in zip(self.meta['names'],self.meta['funcs']):
+        for name, func in zip(self.meta['names'], self.meta['funcs']):
             res.append(func(posterior_sample, n_i, log_L_i).flatten())
         res = jnp.concatenate(res)
         return SignedLogParam(jnp.log(jnp.abs(res)), jnp.sign(res))
@@ -200,11 +218,10 @@ class TrackedExpectation(object):
         n_plus_1 = n_i + 1.
         n_plus_2 = n_i + 2.
 
-
         # w_i = w_i1 + X_i1 * triangle /(n+1)
         log_dw_i = X_i1.log_value + log_triangle - jnp.log(n_plus_1)
         w_i = LogParam(jnp.logaddexp(w_i1.log_value, log_dw_i))
-        w2_i = LogParam(jnp.logaddexp(w2_i1.log_value, 2.*log_dw_i))
+        w2_i = LogParam(jnp.logaddexp(w2_i1.log_value, 2. * log_dw_i))
         # X_i = X_i1 * n_n_plus_1
         X_i = LogParam(X_i1.log_value + jnp.log(n_i) - jnp.log(n_plus_1))
         # X2_i = n_n_plus_2 * X2_i1
@@ -213,10 +230,11 @@ class TrackedExpectation(object):
         def _log_f_i(f_i1: SignedLogParam, f_alpha_i: SignedLogParam):
             # f_i = f_i1 + X_i1 * triangle * r_n_plus_1 * f_alpha_i
             return SignedLogParam(*signed_logaddexp(f_i1.log_abs_value, f_i1.sign,
-                                    X_i1.log_value + log_triangle + f_alpha_i.log_abs_value - jnp.log(n_plus_1),
-                                    f_alpha_i.sign))
+                                                    X_i1.log_value + log_triangle + f_alpha_i.log_abs_value - jnp.log(
+                                                        n_plus_1),
+                                                    f_alpha_i.sign))
 
-        f_i = _log_f_i(f_i1,f_alpha_i)
+        f_i = _log_f_i(f_i1, f_alpha_i)
 
         def _log_f2_i(f2_i1: SignedLogParam, fX_i1: SignedLogParam, f_alpha_i: SignedLogParam):
             # f2_i = f2_i1 + fX_i1 * two * r_n_plus_1 * triangle + X2_i1 * r_n_plus_1 * r_n_plus_2 * (triangle * f_alpha_i) ** 2
@@ -227,18 +245,18 @@ class TrackedExpectation(object):
             t3, t3_sign = signed_logaddexp(t1, t1_sign, t2, t2_sign)
             return SignedLogParam(*signed_logaddexp(f2_i1.log_abs_value, f2_i1.sign, t3, t3_sign))
 
-        f2_i = _log_f2_i(f2_i1,fX_i1,f_alpha_i)
+        f2_i = _log_f2_i(f2_i1, fX_i1, f_alpha_i)
 
         def _log_fX_i(fX_i1: SignedLogParam, f_alpha_i: SignedLogParam):
             # fX_i = n_n_plus_1 * fX_i1 + n_n_plus_2_n_plus_1 * X2_i1 * (triangle * f_alpha_i)
             t1 = fX_i1.log_abs_value + jnp.log(n_i) - jnp.log(n_plus_1)
             t1_sign = fX_i1.sign
-            t2 = X2_i1.log_value + jnp.log(n_i) - jnp.log(n_plus_1) - jnp.log(
-                n_plus_2) + log_triangle + f_alpha_i.log_abs_value
+            t2 = X2_i1.log_value + jnp.log(n_i) - jnp.log(n_plus_1) - jnp.log(n_plus_2) \
+                 + log_triangle + f_alpha_i.log_abs_value
             t2_sign = f_alpha_i.sign
             return SignedLogParam(*signed_logaddexp(t1, t1_sign, t2, t2_sign))
 
-        fX_i = _log_fX_i( fX_i1, f_alpha_i)
+        fX_i = _log_fX_i(fX_i1, f_alpha_i)
 
         self.state = self.State(f=f_i,
                                 X=X_i,
@@ -248,6 +266,7 @@ class TrackedExpectation(object):
                                 w=w_i,
                                 w2=w2_i,
                                 L_i1=LogParam(log_L_i))
+
 
 class Evidence(TrackedExpectation):
     def __init__(self, *, state=None):
@@ -262,6 +281,8 @@ class Evidence(TrackedExpectation):
 
     def compute_log_f_alpha(self, posterior_sample, n_i, log_L_i):
         return SignedLogParam(jnp.asarray(0.), jnp.asarray(1.))
+
+
 #
 #
 # class PosteriorFirstMoment(TrackedExpectation):
@@ -372,12 +393,12 @@ class Evidence(TrackedExpectation):
 def test_param_tracking():
     from jax import jit, numpy as jnp, disable_jit, make_jaxpr
     shape = {
-        'a':(4,),
-        'b':(4,),
-        'c':(4,),
-        'd':(4,),
-        'e':(4,),
-        'f':(4,),
+        'a': (4,),
+        'b': (4,),
+        'c': (4,),
+        'd': (4,),
+        'e': (4,),
+        'f': (4,),
     }
     sample = dict_multimap(jnp.ones, shape)
     n = jnp.array(10)
@@ -390,6 +411,7 @@ def test_param_tracking():
 
         return (tracked.evidence_mean(), tracked.evidence_variance(), tracked.information_gain_mean())
         # return (evidence.state, H.state, m.state, M.state)
+
     print()
     print(len(str(make_jaxpr(test_jax)(sample, n, log_L))))
     with disable_jit():

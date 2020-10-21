@@ -313,7 +313,8 @@ class NestedSampler(object):
                    'H_err',
                    'num_likelihood_evaluations',
                    'efficiency',
-                   'marginalised']
+                   'marginalised',
+                   'marginalised_uncert']
 
         if collect_samples:
             collect.append('samples')
@@ -329,8 +330,10 @@ class NestedSampler(object):
         tracked_expectations.update_from_live_points(state.live_points, state.log_L_live)
         if self.marginalised is not None:
             marginalised = tracked_expectations.marg_mean()
+            marginalised_uncert = None#tracked_expectations.marg_variance()
         else:
             marginalised = None
+            marginalised_uncert = None
 
         data = dict(
             logZ=tracked_expectations.evidence_mean(),
@@ -341,7 +344,8 @@ class NestedSampler(object):
             H_err=jnp.sqrt(tracked_expectations.information_gain_variance()),
             num_likelihood_evaluations=state.num_likelihood_evaluations,
             efficiency=(state.num_dead + state.log_L_live.shape[0]) / state.num_likelihood_evaluations,
-            marginalised=marginalised
+            marginalised=marginalised,
+            marginalised_uncert=marginalised_uncert
         )
 
         if collect_samples:
