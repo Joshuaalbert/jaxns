@@ -55,23 +55,25 @@ def main():
                       termination_frac=0.01,
                       stoachastic_uncertainty=False,
                       sampler_kwargs=dict(depth=3))
-        print(len(str(make_jaxpr(run)(random.PRNGKey(0)))))
+        # print(len(str(make_jaxpr(run)(random.PRNGKey(0)))))
         #old 720781
         #new 760803
         #new new 648404
         results = run(random.PRNGKey(0))
         return results
 
-    for n in [500]:
-        results = run_with_n(n)
-        print(results)
+    for n in [100]:
+        with disable_jit():
+            results = run_with_n(n)
+        print(results.marginalised_uncert['x_mean'], results.marginalised_uncert['x_cov'] + jnp.outer(results.marginalised_uncert['x_mean'], results.marginalised_uncert['x_mean']))
+        print(results.marginalised['x_mean'], results.marginalised['x_cov'] - jnp.outer(results.marginalised['x_mean'], results.marginalised['x_mean']))
         plt.scatter(n, results.logZ)
         plt.errorbar(n, results.logZ, yerr=results.logZerr)
 
     plt.hlines(true_logZ, 0, n)
     plt.show()
 
-    # plot_samples_development(results, save_name='./example.mp4')
+    # plot_samples_development(results, save_name='./mvn_data_mvn_prior_trajectory.mp4')
     plot_diagnostics(results)
     plot_cornerplot(results)
 

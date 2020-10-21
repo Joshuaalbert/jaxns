@@ -10,14 +10,21 @@ from timeit import default_timer
 
 def main():
     def log_likelihood(theta, **kwargs):
-        return 5.*(2. + jnp.prod(jnp.cos(0.5 * theta)))
+        def log_circ(theta, c, r, w):
+            return -0.5*(jnp.linalg.norm(theta - c) - r)**2/w**2 - jnp.log(jnp.sqrt(2*jnp.pi*w**2))
+        w1=w2=jnp.array(0.1)
+        r1=r2=jnp.array(2.)
+        c1 = jnp.array([0., -4.])
+        c2 = jnp.array([0., 4.])
+        return jnp.logaddexp(log_circ(theta, c1,r1,w1) , log_circ(theta,c2,r2,w2))
+
 
     prior_chain = PriorChain() \
-        .push(UniformPrior('theta', low=jnp.zeros(2), high=jnp.pi * 10. * jnp.ones(2)))
+        .push(UniformPrior('theta', low=-12.*jnp.ones(2), high=12.*jnp.ones(2)))
 
     theta = vmap(lambda key: prior_chain(random.uniform(key, (prior_chain.U_ndims,))))(random.split(random.PRNGKey(0),10000))
     lik = vmap(lambda theta: log_likelihood(**theta))(theta)
-    sc=plt.scatter(theta['theta'][:,0], theta['theta'][:,1],c=lik)
+    sc=plt.scatter(theta['theta'][:,0], theta['theta'][:,1],c=jnp.exp(lik))
     plt.colorbar(sc)
     plt.show()
 
