@@ -75,7 +75,7 @@ def main(kernel):
     sigma = UniformPrior('sigma', 0., 2.)
     cov = GaussianProcessKernelPrior('K', kernel, X, l, sigma)
     prior_chain = PriorChain().push(uncert).push(cov)
-    print(prior_chain)
+    # print(prior_chain)
 
     ns = NestedSampler(log_likelihood, prior_chain, sampler_name='multi_ellipsoid', predict_f=predict_f,
                        predict_fvar=predict_fvar)
@@ -85,7 +85,7 @@ def main(kernel):
         def run(key):
             return ns(key=key,
                       num_live_points=n,
-                      max_samples=1e4,
+                      max_samples=1e5,
                       collect_samples=True,
                       termination_frac=0.01,
                       stoachastic_uncertainty=False,
@@ -96,11 +96,10 @@ def main(kernel):
         results = run(random.PRNGKey(6))
         print(results.efficiency)
         print("Time to execute (including compile): {}".format(default_timer() - t0))
-        # t0 = default_timer()
-        # for i in range(1, 11):
-        #     results = run(random.PRNGKey(i))
-        #     print(results.efficiency)
-        # print("Time to execute (not including compile): {}".format((default_timer() - t0) / 10))
+        t0 = default_timer()
+        results = run(random.PRNGKey(6))
+        print(results.efficiency)
+        print("Time to execute (not including compile): {}".format((default_timer() - t0)))
         return results
 
     for n in [100]:
