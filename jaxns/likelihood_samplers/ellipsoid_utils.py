@@ -939,7 +939,7 @@ def ellipsoid_clustering(key, points, depth, log_VS):
         mu_result = _replace_result(mu_result, mu1[None, :], mu2[None, :])
         radii_result = _replace_result(radii_result, radii1[None, :], radii2[None, :])
         rotation_result = _replace_result(rotation_result, rotation1[None, :, :], rotation2[None, :, :])
-        return ((cluster_id, mu_result, radii_result, rotation_result, order, log_VS_subclusters), jnp.array([True]))
+        return (cluster_id, mu_result, radii_result, rotation_result, order, log_VS_subclusters), ()
 
     (cluster_id, mu_result, radii_result, rotation_result, order, log_VS_subclusters), _ = \
         scan(body,
@@ -957,14 +957,11 @@ def ellipsoid_clustering(key, points, depth, log_VS):
 
 
 def maha_ellipsoid(u, mu, radii, rotation):
-    dx = u - mu
-    dx = jnp.diag(jnp.reciprocal(radii)) @ rotation.T @ dx
-    return dx @ dx
-
+    u_circ = ellipsoid_to_circle(u, mu, radii, rotation)
+    return u_circ @ u_circ
 
 def point_in_ellipsoid(u, mu, radii, rotation):
     return maha_ellipsoid(u, mu, radii, rotation) <= 1.
-
 
 def sample_multi_ellipsoid(key, mu, radii, rotation, unit_cube_constraint=True):
     """
@@ -1074,7 +1071,8 @@ def sample_ellipsoid(key, center, radii, rotation, unit_cube_constraint=False):
     u(t) = R @ (t * n) + c
     u(t) == 1
     1-c = t * R@n
-    t = (1 - c)/R@n
+    t = (1 - c)/R@n take minimum t satisfying this
+    likewise for zero intersection
     Args:
         key:
         center: [D]
@@ -1124,7 +1122,7 @@ def ellipsoid_to_circle(points, center, radii, rotation):
 
 def circle_to_ellipsoid(points, center, radii, rotation):
     """
-    Scale and rotate an ellipse to a circle.
+    Scale and rotate and translate an ellipse to a circle.
     Args:
         points: [N, D] or [D]
         center: [D]
