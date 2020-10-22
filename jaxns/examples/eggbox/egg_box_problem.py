@@ -3,7 +3,7 @@ from jaxns.nested_sampling import NestedSampler
 from jaxns.prior_transforms import PriorChain, UniformPrior
 from jaxns.plotting import plot_cornerplot, plot_diagnostics
 from jax import random, jit,vmap
-from jax import numpy as jnp
+from jax import numpy as jnp, disable_jit
 import pylab as plt
 from timeit import default_timer
 
@@ -21,7 +21,7 @@ def main():
     plt.colorbar(sc)
     plt.show()
 
-    ns = NestedSampler(log_likelihood, prior_chain, sampler_name='multi_ellipsoid')
+    ns = NestedSampler(log_likelihood, prior_chain, sampler_name='slice')
 
     def run_with_n(n):
         @jit
@@ -35,6 +35,7 @@ def main():
                       sampler_kwargs=dict(depth=7))
 
         t0 = default_timer()
+        # with disable_jit():
         results = run(random.PRNGKey(0))
         print("Efficiency", results.efficiency)
         print("Time to run (including compile)", default_timer() - t0)
@@ -44,7 +45,7 @@ def main():
         print("Time to run (no compile)", default_timer() - t0)
         return results
 
-    for n in [1000]:
+    for n in [500]:
         results = run_with_n(n)
         plt.scatter(n, results.logZ)
         plt.errorbar(n, results.logZ, yerr=results.logZerr)
