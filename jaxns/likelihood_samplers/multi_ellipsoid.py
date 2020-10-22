@@ -49,7 +49,7 @@ def evolve_sampler_state(sampler_state, live_points_U):
 
 def multi_ellipsoid_sampler(key, log_L_constraint, live_points_U,
                             loglikelihood_from_constrained,
-                            prior_transform, sampler_state, log_X, iteration, i_min):
+                            prior_transform, sampler_state, log_X, i_min):
     """
     Does iterative multi-nest sampling with a few extra features to improve over the original algorithm.
 
@@ -119,7 +119,7 @@ def multi_ellipsoid_sampler(key, log_L_constraint, live_points_U,
     tau = 1./N
     sampler_state = sampler_state._replace(num_fev_ma=sampler_state.num_fev_ma*(1. - tau) + tau * num_likelihood_evaluations)
 
-    # print('do_recalculate', do_recalculate, 'num fev', num_likelihood_evaluations, '/',sampler_state.num_fev_ma,'V(E)/V(S)', jnp.exp(log_F), 'V(E_k)', jnp.exp(log_volumes), '2V(S_k)',jnp.exp(jnp.log(sampler_state.num_k) - jnp.log(N) + log_X + jnp.log(2.)))
+    print('do_recalculate', do_recalculate, 'num fev', num_likelihood_evaluations, '/',sampler_state.num_fev_ma,'V(E)/V(S)', jnp.exp(log_F), 'V(E_k)', jnp.exp(log_volumes), '2V(S_k)',jnp.exp(jnp.log(sampler_state.num_k) - jnp.log(N) + log_X + jnp.log(2.)))
 
 
     key, recalc_key = random.split(key, 2)
