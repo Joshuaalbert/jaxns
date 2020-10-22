@@ -28,7 +28,7 @@ def main():
     plt.colorbar(sc)
     plt.show()
 
-    ns = NestedSampler(log_likelihood, prior_chain, sampler_name='multi_ellipsoid')
+    ns = NestedSampler(log_likelihood, prior_chain, sampler_name='slice')
 
     def run_with_n(n):
         @jit
@@ -39,7 +39,7 @@ def main():
                       collect_samples=True,
                       termination_frac=0.01,
                       stoachastic_uncertainty=False,
-                      sampler_kwargs=dict(depth=7))
+                      sampler_kwargs=dict(depth=7, num_slices=1))
 
         t0 = default_timer()
         results = run(random.PRNGKey(0))
@@ -51,7 +51,7 @@ def main():
         print("Time to run (no compile)", default_timer() - t0)
         return results
 
-    for n in [1000]:
+    for n in [500]:
         results = run_with_n(n)
         plt.scatter(n, results.logZ)
         plt.errorbar(n, results.logZ, yerr=results.logZerr)
