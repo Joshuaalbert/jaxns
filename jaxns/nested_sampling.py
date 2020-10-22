@@ -104,7 +104,10 @@ class NestedSampler(object):
         elif self.sampler_name == 'chmc':
             sampler_state = init_chmc_sampler_state(num_live_points)
         elif self.sampler_name == 'slice':
-            sampler_state = init_slice_sampler_state(num_live_points, whiten=True)
+            key, init_sampler_state_key = random.split(key, 2)
+            depth = sampler_kwargs.get('depth', 3)
+            num_slices = sampler_kwargs.get('num_slices', 1)
+            sampler_state = init_slice_sampler_state(init_sampler_state_key, live_points_U, depth, tracked_expectations.state.X.log_value, num_slices)
         elif self.sampler_name == 'cubes':
             sampler_state = init_cubes_sampler_state(*live_points_U.shape)
         elif self.sampler_name == 'simplex':
@@ -139,7 +142,7 @@ class NestedSampler(object):
         return state
 
     # @partial(trace_function, event_name="one_step")
-    def _one_step(self, state: NestedSamplerState, collect_samples: bool):
+    def _one_step(self, state: NestedSamplerState, collect_samples: bool, sampler_kwargs):
         # get next dead point
         i_min = jnp.argmin(state.log_L_live)
         dead_point = dict_multimap(lambda x: x[i_min, ...], state.live_points)
@@ -210,11 +213,15 @@ class NestedSampler(object):
                                               i_replace=i_min,
                                               log_X_mean=tracked_expectations.state.X.log_value)
         elif self.sampler_name == 'slice':
-            sampler_results = slice_sampling(state.key, log_L_constraint=log_L_min, live_points_U=state.live_points_U,
-                                             dead_point=dead_point,
-                                             num_slices=state.live_points_U.shape[1],
+            num_slices = sampler_kwargs.get('num_slices', 1)
+            sampler_results = slice_sampling(state.key,
+                                             log_L_constraint=log_L_min,
+                                             live_points_U=state.live_points_U,
+                                             num_slices=num_slices,
                                              loglikelihood_from_constrained=self.loglikelihood,
                                              prior_transform=self.prior_chain,
+                                             i_min=i_min,
+                                             log_X=tracked_expectations.state.X.log_value,
                                              sampler_state=state.sampler_state)
         elif self.sampler_name == 'cubes':
             sampler_results = cubes(state.key,
@@ -241,7 +248,6 @@ class NestedSampler(object):
                                                       self.prior_chain,
                                                       state.sampler_state,
                                                       tracked_expectations.state.X.log_value,
-                                                      state.i,
                                                       i_min)
         else:
             raise ValueError("Invalid sampler name {}".format(self.sampler_name))
@@ -283,7 +289,7 @@ class NestedSampler(object):
         def body(state: NestedSamplerState):
             # print(list(map(lambda x: type(x), state)))
             # do one sampling step
-            state = self._one_step(state, collect_samples=collect_samples)
+            state = self._one_step(state, collect_samples=collect_samples, sampler_kwargs=sampler_kwargs)
 
             tracked_expectations = TrackedExpectation(self.marginalised, self.marginalised_shapes,
                                                       state=state.tracked_expectations_state)

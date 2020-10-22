@@ -5,6 +5,7 @@ from jax.scipy.linalg import solve_triangular
 from jax import random, jit, disable_jit, make_jaxpr
 from jax import numpy as jnp
 import pylab as plt
+from timeit import default_timer
 
 
 def main():
@@ -15,7 +16,7 @@ def main():
         return -0.5 * x.size * jnp.log(2. * jnp.pi) - jnp.sum(jnp.log(jnp.diag(L))) \
                - 0.5 * dx @ dx
 
-    ndims = 2
+    ndims = 5
     prior_mu = 2 * jnp.ones(ndims)
     prior_cov = jnp.diag(jnp.ones(ndims)) ** 2
 
@@ -44,7 +45,7 @@ def main():
             def param_covariance(x, **args):
                 return jnp.outer(x,x)
 
-            ns = NestedSampler(log_likelihood, prior_transform, sampler_name='multi_ellipsoid',
+            ns = NestedSampler(log_likelihood, prior_transform, sampler_name='slice',
                                x_mean=param_mean,
                                x_cov=param_covariance
                                )
@@ -54,18 +55,25 @@ def main():
                       collect_samples=True,
                       termination_frac=0.01,
                       stoachastic_uncertainty=False,
-                      sampler_kwargs=dict(depth=3))
+                      sampler_kwargs=dict(depth=3, num_slices=2))
         # print(len(str(make_jaxpr(run)(random.PRNGKey(0)))))
         #old 720781
         #new 760803
         #new new 648404
+        t0 = default_timer()
         results = run(random.PRNGKey(0))
+        print('efficiency',results.efficiency)
+        print("time to run including compile", default_timer() - t0)
+        t0 = default_timer()
+        results = run(random.PRNGKey(1))
+        print('efficiency', results.efficiency)
+        print("time to run not including compile", default_timer() - t0)
         return results
 
-    for n in [100]:
-        with disable_jit():
-            results = run_with_n(n)
-        print(results.marginalised_uncert['x_mean'], results.marginalised_uncert['x_cov'] + jnp.outer(results.marginalised_uncert['x_mean'], results.marginalised_uncert['x_mean']))
+    for n in [800]:
+        # with disable_jit():
+        results = run_with_n(n)
+        # print(results.marginalised_uncert['x_mean'], results.marginalised_uncert['x_cov'] + jnp.outer(results.marginalised_uncert['x_mean'], results.marginalised_uncert['x_mean']))
         print(results.marginalised['x_mean'], results.marginalised['x_cov'] - jnp.outer(results.marginalised['x_mean'], results.marginalised['x_mean']))
         plt.scatter(n, results.logZ)
         plt.errorbar(n, results.logZ, yerr=results.logZerr)
