@@ -122,7 +122,8 @@ def plot_cornerplot(results, vars=None, save_name=None):
                         samples2_resampled = resample(rkey, jnp.stack([samples1,samples2], axis=-1), log_weights, S=int(results.ESS))
                         # norm = plt.Normalize(log_weights.min(), log_weights.max())
                         # color = jnp.atleast_2d(plt.cm.jet(norm(log_weights)))
-                        ax.scatter(samples2_resampled[:, 1], samples2_resampled[:, 0], marker='+', c='black', alpha=0.5)
+                        ax.hist2d(samples2_resampled[:, 1], samples2_resampled[:,0],bins=(nbins, nbins), density=True, cmap=plt.cm.bone_r)
+                        # ax.scatter(samples2_resampled[:, 1], samples2_resampled[:, 0], marker='+', c='black', alpha=0.5)
                         # binsy = jnp.linspace(*jnp.percentile(samples2_resampled[:, 1], [0, 100]), 2 * nbins)
                         # X, Y = jnp.meshgrid(binsx, binsy, indexing='ij')
                         # ax.contour(kde2(jnp.stack([X.flatten(), Y.flatten()], axis=0)).reshape((2 * nbins, 2 * nbins)),
