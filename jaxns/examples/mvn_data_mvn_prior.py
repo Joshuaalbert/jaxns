@@ -16,7 +16,7 @@ def main():
         return -0.5 * x.size * jnp.log(2. * jnp.pi) - jnp.sum(jnp.log(jnp.diag(L))) \
                - 0.5 * dx @ dx
 
-    ndims = 5
+    ndims = 15
     prior_mu = 2 * jnp.ones(ndims)
     prior_cov = jnp.diag(jnp.ones(ndims)) ** 2
 
@@ -70,7 +70,7 @@ def main():
         print("time to run not including compile", default_timer() - t0)
         return results
 
-    for n in [800]:
+    for n in [1000]:
         # with disable_jit():
         results = run_with_n(n)
         # print(results.marginalised_uncert['x_mean'], results.marginalised_uncert['x_cov'] + jnp.outer(results.marginalised_uncert['x_mean'], results.marginalised_uncert['x_mean']))
@@ -83,7 +83,7 @@ def main():
 
     # plot_samples_development(results, save_name='./mvn_data_mvn_prior_trajectory.mp4')
     plot_diagnostics(results)
-    plot_cornerplot(results)
+    # plot_cornerplot(results)
 
 
     print("True logZ={}".format(true_logZ))
