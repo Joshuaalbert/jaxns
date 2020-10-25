@@ -1,9 +1,7 @@
+from jaxns.examples.frozen_flow.build_prior import build_frozen_flow_prior
 from jaxns.gaussian_process.kernels import RBF, M12
-from jaxns.gaussian_process.tomographic_kernel.tomographic_kernel import TomographicKernel
 from jaxns.examples.frozen_flow.generate_data import rbf_dtec
 from jaxns.nested_sampling import NestedSampler
-from jaxns.prior_transforms import PriorChain, UniformPrior, GaussianProcessKernelPrior, MVNPrior, \
-    DeterministicTransformPrior, MVNDiagPrior
 from jaxns.plotting import plot_cornerplot, plot_diagnostics
 from jax import random, jit
 from jax.scipy.linalg import solve_triangular
@@ -21,7 +19,7 @@ def main(kernel):
         # maha = dx @ jnp.linalg.solve(cov, dx)
         maha = dx @ dx
         # logdet = jnp.log(jnp.linalg.det(cov))
-        logdet = jnp.sum(jnp.diag(L))
+        logdet = jnp.sum(jnp.log(jnp.diag(L)))
         log_prob = -0.5 * x.size * jnp.log(2. * jnp.pi) - logdet - 0.5 * maha
         return log_prob
 
@@ -59,29 +57,9 @@ def main(kernel):
         dtec = jnp.reshape(tec - tec[0, :, :], (-1,))
         return dtec
 
-    v_dir = DeterministicTransformPrior('v_dir', lambda n: n/jnp.linalg.norm(n),(3,),
-                                              MVNDiagPrior('n', jnp.zeros(3), jnp.ones(3),
-                                                           tracked=False), tracked=False)
-    v_mag = UniformPrior('v_mag',0., 0.5, tracked=False)
-    v = DeterministicTransformPrior('v', lambda v_dir, v_mag: v_mag*v_dir,
-                                    (3,),v_dir, v_mag, tracked=True)
+    prior_chain = build_frozen_flow_prior(X, kernel, tec_to_dtec, x0)
 
-    X_frozen_flow = DeterministicTransformPrior('X', lambda v: X[:,0:6] - jnp.concatenate([v,jnp.zeros(3)])*X[:,6:7],X[:,0:6].shape, v, tracked=False)
-
-    K = GaussianProcessKernelPrior('K',
-                                   TomographicKernel(x0, kernel, S=20),
-                                   X_frozen_flow,
-                                   UniformPrior('height', 100., 300.),
-                                   UniformPrior('width', 50., 150.),
-                                   UniformPrior('l', 0., 20.),
-                                  UniformPrior('sigma', 0., 2.), tracked=False)
-    tec = MVNPrior('tec', jnp.zeros((X.shape[0],)), K, ill_cond=True, tracked=False)
-    dtec = DeterministicTransformPrior('dtec', tec_to_dtec, tec.to_shape, tec, tracked=False)
-    prior_chain = PriorChain() \
-        .push(dtec) \
-        .push(UniformPrior('uncert', 0., 5.))
-
-    ns = NestedSampler(log_likelihood, prior_chain, sampler_name='multi_ellipsoid', predict_f=predict_f,
+    ns = NestedSampler(log_likelihood, prior_chain, sampler_name='slice', predict_f=predict_f,
                        predict_fvar=predict_fvar)
 
     def run_with_n(n):
@@ -93,7 +71,7 @@ def main(kernel):
                       collect_samples=True,
                       termination_frac=0.01,
                       stoachastic_uncertainty=False,
-                      sampler_kwargs=dict(depth=4))
+                      sampler_kwargs=dict(depth=5, num_slices=1))
 
         t0 = default_timer()
         results = run(random.PRNGKey(0))
