@@ -7,25 +7,17 @@ from jaxns.gaussian_process.utils import make_coord_array
 from jaxns.utils import msqrt
 
 
-def rbf_dtec(nant, ndir, ntime, height, width, sigma, l, uncert, v):
-    """
-    In frozen flow the screen moves with velocity v.
-    fed(x,t) = fed(x-v*t,0)
-    so that the  tomographic kernel transforms as,
-    K(x1,k1,t1,x2,k2,t2) = K(x1-v * t1,k1,0,x2-v * t2,k2,0)
-    """
+def rbf_dtec(nant, ndir, height, width, sigma, l, uncert=1.):
     import pylab as plt
     a = jnp.concatenate([10.*random.uniform(random.PRNGKey(0), shape=(nant,2)),jnp.zeros((nant, 1))], axis=1)
     k = jnp.concatenate([4.*jnp.pi/180.*random.uniform(random.PRNGKey(0), shape=(ndir,2), minval=-1, maxval=1),jnp.ones((ndir, 1))], axis=1)
     k = k / jnp.linalg.norm(k,axis=1, keepdims=True)
-    t = jnp.arange(ntime)[:,None]*30.#seconds
-    X = make_coord_array(a, k, t)
+    X = make_coord_array(a, k)
     a = X[:,0:3]
     k = X[:,3:6]
-    t = X[:,6:7]
     x0 = a[0,:]
     kernel = TomographicKernel(x0, RBF(), S_marg=100, S_gamma=100)
-    K = kernel(X[:,:6]-jnp.concatenate([v, jnp.zeros(3)])*t, X[:,:6]-jnp.concatenate([v, jnp.zeros(3)])*t, height, width, l, sigma)
+    K = kernel(X, X, height, width, l, sigma)
     plt.imshow(K)
     plt.colorbar()
     plt.show()
@@ -36,12 +28,17 @@ def rbf_dtec(nant, ndir, ntime, height, width, sigma, l, uncert, v):
     L = msqrt(K)#jnp.linalg.cholesky(K + jnp.eye(K.shape_dict[0])*1e-3)
 
     tec = L @ random.normal(random.PRNGKey(2), shape=(L.shape[0],))
-    tec = tec.reshape((nant, ndir, ntime))
-    dtec = tec - tec[0,:, :]
-    dtec = dtec.reshape((-1,))
+    tec = tec.reshape((nant, ndir))
+    dtec = tec - tec[0,:]
+    dtec = jnp.reshape(dtec, (-1,))
+    TEC_CONV = -8.4479745e6  # mTECU/Hz
+    freqs = jnp.linspace(121e6, 168e6, 24)
+    tec_conv = TEC_CONV / freqs
+    phase = dtec[:, None] * tec_conv
+    Y = jnp.concatenate([jnp.cos(phase), jnp.sin(phase)], axis=-1)
     plt.plot(dtec)
     plt.show()
-    return X, dtec, dtec + uncert*random.normal(random.PRNGKey(3),shape=dtec.shape)
+    return X, dtec, Y, Y + uncert*random.normal(random.PRNGKey(3),shape=Y.shape), tec_conv
 
 def main():
     rbf_dtec(10,10,200., 100., 0.3, 10., 1.)

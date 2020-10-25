@@ -14,13 +14,13 @@ def main():
             return -0.5*(jnp.linalg.norm(theta - c) - r)**2/w**2 - jnp.log(jnp.sqrt(2*jnp.pi*w**2))
         w1=w2=jnp.array(0.1)
         r1=r2=jnp.array(2.)
-        c1 = jnp.array([0., -4.])
-        c2 = jnp.array([0., 4.])
+        c1 = jnp.array([0., -3.])
+        c2 = jnp.array([0., 3.])
         return jnp.logaddexp(log_circ(theta, c1,r1,w1) , log_circ(theta,c2,r2,w2))
 
 
     prior_chain = PriorChain() \
-        .push(UniformPrior('theta', low=-12.*jnp.ones(2), high=12.*jnp.ones(2)))
+        .push(UniformPrior('theta', low=-6.*jnp.ones(2), high=6.*jnp.ones(2)))
 
     theta = vmap(lambda key: prior_chain(random.uniform(key, (prior_chain.U_ndims,))))(random.split(random.PRNGKey(0),10000))
     lik = vmap(lambda theta: log_likelihood(**theta))(theta)
@@ -51,7 +51,7 @@ def main():
         print("Time to run (no compile)", default_timer() - t0)
         return results
 
-    for n in [500]:
+    for n in [1000]:
         results = run_with_n(n)
         plt.scatter(n, results.logZ)
         plt.errorbar(n, results.logZ, yerr=results.logZerr)

@@ -1,11 +1,11 @@
-from jaxns.examples.ray_integral_layered.build_prior import build_layered_prior
-from jaxns.gaussian_process.kernels import RBF, M12
+from jaxns.examples.ray_integral.build_prior import build_prior
+from jaxns.gaussian_process.kernels import RBF
 from jaxns.examples.ray_integral.generate_data import rbf_dtec
 from jaxns.nested_sampling import NestedSampler
 from jaxns.plotting import plot_cornerplot, plot_diagnostics
 from jax import random, jit
 from jax.scipy.linalg import solve_triangular
-from jax import numpy as jnp
+from jax import numpy as jnp, vmap
 import pylab as plt
 from timeit import default_timer
 
@@ -19,7 +19,7 @@ def main(kernel):
         # maha = dx @ jnp.linalg.solve(cov, dx)
         maha = dx @ dx
         # logdet = jnp.log(jnp.linalg.det(cov))
-        logdet = jnp.sum(jnp.diag(L))
+        logdet = jnp.sum(jnp.log(jnp.diag(L)))
         log_prob = -0.5 * x.size * jnp.log(2. * jnp.pi) - logdet - 0.5 * maha
         return log_prob
 
@@ -55,11 +55,14 @@ def main(kernel):
         dtec = jnp.reshape(tec - tec[0, :], (-1,))
         return dtec
 
-    prior_chain = build_layered_prior(X, kernel, x0, tec_to_dtec)
-    # print(prior_chain)
+    prior_chain = build_prior(X, kernel, tec_to_dtec, x0)
+    print(prior_chain)
 
-
-    ns = NestedSampler(log_likelihood, prior_chain, sampler_name='multi_ellipsoid', predict_f=predict_f,
+    U_test = jnp.array([random.uniform(key, shape=(prior_chain.U_ndims,)) for key in random.split(random.PRNGKey(4325),1000)])
+    log_lik = jnp.array([log_likelihood(**prior_chain(U)) for U in U_test])
+    print(jnp.sum(jnp.isnan(log_lik)))
+    print(U_test[jnp.isnan(log_lik)])
+    ns = NestedSampler(log_likelihood, prior_chain, sampler_name='slice', predict_f=predict_f,
                        predict_fvar=predict_fvar)
 
     def run_with_n(n):
@@ -71,7 +74,7 @@ def main(kernel):
                       collect_samples=True,
                       termination_frac=0.01,
                       stoachastic_uncertainty=False,
-                      sampler_kwargs=dict(depth=4))
+                      sampler_kwargs=dict(depth=7, num_slices=1))
 
         t0 = default_timer()
         results = run(random.PRNGKey(0))
@@ -79,12 +82,12 @@ def main(kernel):
         print("Time to run (including compile)", default_timer() - t0)
         t0 = default_timer()
         results = run(random.PRNGKey(1))
-        print(results.efficiency)
+        print("Efficiency",results.efficiency)
         print("Time to run (no compile)", default_timer() - t0)
-        print("Efficiency normalised time", (default_timer() - t0) * results.efficiency)
+        print("Time efficiency normalised", (default_timer() - t0)*results.efficiency)
         return results
 
-    for n in [100]:
+    for n in [1000]:
         results = run_with_n(n)
         plt.scatter(n, results.logZ)
         plt.errorbar(n, results.logZ, yerr=results.logZerr)
