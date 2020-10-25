@@ -5,6 +5,7 @@ from jaxns.prior_transforms import UniformPrior, PriorChain, LaplacePrior, HalfL
 from jax.scipy.linalg import solve_triangular
 from jax import jit, vmap, disable_jit
 from jax import numpy as jnp, random
+from timeit import default_timer
 
 
 def generate_data():
@@ -13,7 +14,7 @@ def generate_data():
     print(tec)
     TEC_CONV = -8.4479745e6  # mTECU/Hz
     freqs = jnp.linspace(121e6, 168e6, 24)
-    phase = tec[:, None] / freqs * TEC_CONV  # + 0.2  # + onp.linspace(-onp.pi, onp.pi, T)[:, None]
+    phase = tec[:, None] / freqs * TEC_CONV
     Y = jnp.concatenate([jnp.cos(phase), jnp.sin(phase)], axis=1)
     Y_obs = Y + 0.25 * random.normal(random.PRNGKey(1), shape=Y.shape)
     # Y_obs[500:550:2, :] += 3. * onp.random.normal(size=Y[500:550:2, :].shape_dict)
@@ -46,22 +47,32 @@ def main():
     # prior_transform = LaplacePrior(prior_mu, jnp.sqrt(jnp.diag(prior_cov)))
     prior_chain = PriorChain() \
         .push(UniformPrior('tec', [-100.]*T, [100.]*T)) \
-        .push(HalfLaplacePrior('uncert', 0.25*jnp.ones(Y_obs.shape[-1])))
+        .push(HalfLaplacePrior('uncert', 0.25*jnp.ones(freqs.size*2)))
 
-    ns = NestedSampler(log_likelihood, prior_chain, sampler_name='multi_ellipsoid')
-    results = jit(lambda key: ns(key=key,
-                      num_live_points=100,
-                      max_samples=1e4,
+    ns = NestedSampler(log_likelihood, prior_chain, sampler_name='slice',
+                       marg_uncert=lambda uncert, **kw: uncert)
+    run = jit(lambda key: ns(key=key,
+                      num_live_points=300,
+                      max_samples=1e5,
                       collect_samples=True,
                       termination_frac=0.01,
                       stoachastic_uncertainty=False,
-                 sampler_kwargs=dict(depth=3)))(random.PRNGKey(0))
+                 sampler_kwargs=dict(depth=3)))
+    t0 = default_timer()
+    results = run(random.PRNGKey(2364))
+    print(results.efficiency)
+    print("Time compile", default_timer() - t0)
+
+    t0 = default_timer()
+    results = run(random.PRNGKey(1324))
+    print(results.efficiency)
+    print("Time no compile",default_timer() - t0)
 
 
     ###
-
+    print(results.marginalised)
     plot_diagnostics(results)
-    plot_cornerplot(results)
+    plot_cornerplot(results, vars=['tec'])
 
 
 if __name__ == '__main__':

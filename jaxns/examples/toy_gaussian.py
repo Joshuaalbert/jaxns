@@ -21,7 +21,7 @@ def main():
 
 
     prior_transform = PriorChain().push(UniformPrior('theta', -jnp.ones(ndims), jnp.ones(ndims)))
-    ns = NestedSampler(log_likelihood, prior_transform, sampler_name='multi_ellipsoid')
+    ns = NestedSampler(log_likelihood, prior_transform, sampler_name='slice')
 
     def run_with_n(n):
         @jit
