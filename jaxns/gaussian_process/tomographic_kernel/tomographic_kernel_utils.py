@@ -81,7 +81,7 @@ def log_tomographic_weight_function(gamma, x1, x2, p1, p2=None, S=25):
     F = x12 @ x12 - gamma
 
     t1 = jnp.linspace(0., 1., S)[:, None]
-    H = (D ** 2 - 4. * A * F + 2. * B * D * t1 - 4. * A * E * t1 + B ** 2 * t1 ** 2 - 4. * A * C * t1 ** 2)
+    H = (D ** 2 - 4. * A * F + (2. * B * D - 4. * A * E) * t1 + (B ** 2 - 4. * A * C) * t1 ** 2)
     u = (-D - B * t1)
     lower = jnp.clip(0.5 * (u - jnp.sqrt(H)) / A, 0., 1.)
     upper = jnp.clip(0.5 * (u + jnp.sqrt(H)) / A, 0., 1.)
