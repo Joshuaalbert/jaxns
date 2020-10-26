@@ -55,7 +55,7 @@ def plot_cornerplot(results, vars=None, save_name=None):
     if ndims == 1:
         axs = [[axs]]
     nsamples = results.log_p.size
-    nbins = int(0.5*jnp.sqrt(results.ESS)) + 1
+    nbins = int(jnp.sqrt(results.ESS)) + 1
     lims = {}
     dim = 0
     for key in vars:  # sorted(results.samples.keys()):
