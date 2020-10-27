@@ -2,12 +2,12 @@ from collections import namedtuple, OrderedDict
 from typing import List
 from jax import jit, numpy as jnp
 import numpy as np
-from jax.lax import while_loop
+from jax.lax import while_loop, scan
 from jaxns.utils import dict_multimap, swap_dict_namedtuple, swap_namedtuple_dict, signed_logaddexp, tuple_prod
 
 LogParam = namedtuple('LogParam', ['log_value'])
 SignedLogParam = namedtuple('SignedLogParam', ['log_abs_value', 'sign'])
-ParamTrackingState = namedtuple("ParamTrackingState", ['f', 'f2', 'fX', 'X', 'X2', 'w', 'w2', 'L_i1'])
+ParamTrackingState = namedtuple("ParamTrackingState", ['f', 'f2', 'fX', 'X', 'X2', 'w', 'w2', 'L_i1', 'dw'])
 
 
 class TrackedExpectation(object):
@@ -29,6 +29,7 @@ class TrackedExpectation(object):
             initial_w = LogParam(-jnp.inf)
             initial_w2 = initial_w
             initial_L_i1 = initial_w
+            initial_dw = initial_w
 
             self.state = self.State(f=initial_f,
                                     f2=initial_f2,
@@ -37,7 +38,8 @@ class TrackedExpectation(object):
                                     X2=initial_X2,
                                     w=initial_w,
                                     w2=initial_w2,
-                                    L_i1=initial_L_i1)
+                                    L_i1=initial_L_i1,
+                                    dw=initial_dw)
 
     def build_meta(self, marginalised_funcs, marginalised_shapes):
         # build initial flat vector and the method of storing them
@@ -190,18 +192,20 @@ class TrackedExpectation(object):
     def update_from_live_points(self, live_points, log_L_live):
         ar = jnp.argsort(log_L_live)
 
-        def body(state):
-            (i, self_state) = state
+        def body(state, X):
+            (self_state,) = state
+            (i,) = X
             i_min = ar[i]
             self.state = self_state
             n = log_L_live.shape[0] - i
-            self.update(dict_multimap(lambda x: x[i_min, ...], live_points), n, log_L_live[i_min])
-            return (i + 1, self.state)
+            log_L_min = log_L_live[i_min]
+            self.update(dict_multimap(lambda x: x[i_min, ...], live_points), n, log_L_min)
+            return (self.state,), (n, log_L_min, self.state.X.log_value, self.state.dw.log_value)
 
-        (_, self_state) = while_loop(lambda state: state[0] < log_L_live.shape[0],
-                                     body,
-                                     (0, self.state))
+        (self_state,), results = scan(body,(self.state,), (jnp.arange(log_L_live.shape[0]),),unroll=2)
+
         self.state = self_state
+        return results
 
     def update(self, posterior_sample_i, n_i, log_L_i):
         L_i1 = self.state.L_i1
@@ -265,7 +269,8 @@ class TrackedExpectation(object):
                                 X2=X2_i,
                                 w=w_i,
                                 w2=w2_i,
-                                L_i1=LogParam(log_L_i))
+                                L_i1=LogParam(log_L_i),
+                                dw=LogParam(log_dw_i))
 
 
 class Evidence(TrackedExpectation):
