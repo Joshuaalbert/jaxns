@@ -1,20 +1,24 @@
 from jaxns.nested_sampling import NestedSampler
 from jaxns.plotting import plot_diagnostics, plot_cornerplot
-from jaxns.prior_transforms import UniformPrior, PriorChain, LaplacePrior, MVNDiagPrior
+from jaxns.prior_transforms import UniformPrior, PriorChain, LaplacePrior, HalfLaplacePrior
 
 from jax.scipy.linalg import solve_triangular
-import pylab as plt
-from jax import numpy as jnp, random, vmap, disable_jit
+from jax import jit, vmap, disable_jit
+from jax import numpy as jnp, random
+from timeit import default_timer
 
 
 def generate_data():
-    T=5
-    tec = 10. * jnp.cumsum(random.normal(random.PRNGKey(0), shape=(T,)))
+    tec = 50. * random.normal(random.PRNGKey(0))
+    const = -1.5
+    print("ground truth tec", tec)
+    print("ground truth const", const)
     TEC_CONV = -8.4479745e6  # mTECU/Hz
     freqs = jnp.linspace(121e6, 168e6, 24)
-    phase = tec[:,None] / freqs * TEC_CONV #- 0.2  # + onp.linspace(-onp.pi, onp.pi, T)[:, None]
+    phase = tec / freqs * TEC_CONV + const# added a constant term
     Y = jnp.concatenate([jnp.cos(phase), jnp.sin(phase)], axis=-1)
-    Y_obs = Y + 0.25 * random.normal(random.PRNGKey(1), shape=Y.shape)
+    Y_obs = Y + 0.25 * random.normal(random.PRNGKey(1452), shape=Y.shape)
+    Y_obs = Y_obs.at[5:10:2].set(1.*random.normal(random.PRNGKey(1452), shape=(3,)))
     amp = jnp.ones_like(phase)
     return Y_obs, amp, tec, freqs
 
@@ -22,49 +26,56 @@ def generate_data():
 def main():
     Y_obs, amp, tec, freqs = generate_data()
     TEC_CONV = -8.4479745e6  # mTECU/Hz
-    T = tec.size
 
-    def log_mvnormal(x, mean, cov):
-        L = jnp.linalg.cholesky(cov)
-        dx = x - mean
-        dx = solve_triangular(L, dx, lower=True)
-        return -0.5 * x.size * jnp.log(2. * jnp.pi) - jnp.sum(jnp.log(jnp.diag(L))) \
+    def log_normal(x, mean, scale):
+        dx = (x - mean)/scale
+        return -0.5 * x.size * jnp.log(2. * jnp.pi) - x.size*jnp.log(scale) \
                - 0.5 * dx @ dx
 
-    def log_normal(x, mean, uncert):
-        dx = (x - mean)/uncert
-        return -0.5 * x.size * jnp.log(2. * jnp.pi) - jnp.sum(jnp.log(uncert)) \
-               - 0.5 * dx @ dx
+    def log_laplace(x, mean, scale):
+        dx = jnp.abs(x - mean) / scale
+        return - x.size * jnp.log(2.*scale) - jnp.sum(dx)
 
     def log_likelihood(tec, const, uncert, **kwargs):
-        phase = tec[:, None] * (TEC_CONV / freqs)#  + const# + clock *(jnp.pi*2)*freqs#+ clock
-        Y = jnp.concatenate([jnp.cos(phase), jnp.sin(phase)], axis=-1)
-        return jnp.sum(vmap(lambda Y, Y_obs: log_normal(Y, Y_obs, uncert * jnp.ones(2 * freqs.size)))(Y,Y_obs))
+        phase = tec * (TEC_CONV / freqs) + const
+        Y = jnp.concatenate([amp*jnp.cos(phase), amp*jnp.sin(phase)], axis=-1)
+        log_prob = log_laplace(Y, Y_obs, uncert[0])
+        return log_prob
 
     prior_chain = PriorChain() \
-        .push(UniformPrior('tec', -200.*jnp.ones(T), 200.*jnp.ones(T))) \
+        .push(UniformPrior('tec', -100., 100.)) \
         .push(UniformPrior('const', -jnp.pi, jnp.pi)) \
-        .push(UniformPrior('uncert', 0, 1))
+        .push(HalfLaplacePrior('uncert', 0.25))
+
+    print("Probabilistic model:\n{}".format(prior_chain))
 
     ns = NestedSampler(log_likelihood, prior_chain, sampler_name='slice',
-                       tec_mean=lambda tec,**kwargs: tec,
-                       const_mean=lambda const,**kwargs: const)
+                       tec_mean=lambda tec, **kw: tec,#I would like to this function over the posterior
+                       const_mean=lambda const, **kw: const#I would like to this function over the posterior
+                       )
 
-    results = ns(key=random.PRNGKey(0),
-                      num_live_points=300,
+    run = jit(lambda key: ns(key=key,
+                      num_live_points=1000,
                       max_samples=1e5,
                       collect_samples=True,
                       termination_frac=0.01,
                       stoachastic_uncertainty=False,
-                 sampler_kwargs=dict(depth=3, num_slices=1))
+                 sampler_kwargs=dict(depth=4, num_slices=1)))
+
+    t0 = default_timer()
+    results = run(random.PRNGKey(2364))
+    print(results.efficiency)
+    print("Time compile", default_timer() - t0)
+
+    t0 = default_timer()
+    results = run(random.PRNGKey(1324))
+    print(results.efficiency)
+    print("Time no compile",default_timer() - t0)
+
 
     ###
-    plt.plot(results.marginalised['tec_mean'])
-    plt.plot(tec)
-    plt.show()
-    print(tec, results.marginalised['tec_mean'])
+    print(results.marginalised['tec_mean'])
     print(results.marginalised['const_mean'])
-
     plot_diagnostics(results)
     plot_cornerplot(results)
 
