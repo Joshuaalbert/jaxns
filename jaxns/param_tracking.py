@@ -1,9 +1,7 @@
 from collections import namedtuple, OrderedDict
-from typing import List
-from jax import jit, numpy as jnp
-import numpy as np
-from jax.lax import while_loop, scan
-from jaxns.utils import dict_multimap, swap_dict_namedtuple, swap_namedtuple_dict, signed_logaddexp, tuple_prod
+from jax import numpy as jnp
+from jax.lax import scan
+from jaxns.utils import dict_multimap, signed_logaddexp, tuple_prod
 
 LogParam = namedtuple('LogParam', ['log_value'])
 SignedLogParam = namedtuple('SignedLogParam', ['log_abs_value', 'sign'])
@@ -108,9 +106,6 @@ class TrackedExpectation(object):
         """Kish's ESS = [sum weights]^2 / [sum weights^2]
         """
         return jnp.exp(2. * self.state.w.log_value - self.state.w2.log_value)
-        # w = self._linear_mean(*self.lookup_meta('static', 'Z'), normalised=False)
-        # w2 = self._linear_variance(*self.lookup_meta('static', 'Z'), normalised=False) + w**2
-        # return w**2/w2
 
     def evidence_mean(self):
         return self._log_mean(*self.lookup_meta('static', 'Z'), normalised=False)
@@ -272,128 +267,6 @@ class TrackedExpectation(object):
                                 L_i1=LogParam(log_L_i),
                                 dw=LogParam(log_dw_i))
 
-
-class Evidence(TrackedExpectation):
-    def __init__(self, *, state=None):
-        super(Evidence, self).__init__('logZ', 'log', False, (),
-                                       state=state)
-
-    @property
-    def effective_sample_size(self):
-        """Kish's ESS = [sum weights]^2 / [sum weights^2]
-        """
-        return jnp.exp(2. * self.state.f.log_abs_value - self.state.f2.log_abs_value)
-
-    def compute_log_f_alpha(self, posterior_sample, n_i, log_L_i):
-        return SignedLogParam(jnp.asarray(0.), jnp.asarray(1.))
-
-
-#
-#
-# class PosteriorFirstMoment(TrackedExpectation):
-#     """
-#     Computes the mean of a parameter. If the shape_dict of the parameter is [..., M], then all dimensions except the last
-#     one are treated as batched dimensions.
-#     """
-#
-#     def __init__(self, shape, *, state=None):
-#         super(PosteriorFirstMoment, self).__init__('m',
-#                                                    'linear',
-#                                                    True,
-#                                                    shape,
-#                                                    state=state)
-#
-#     def compute_f_alpha(self, posterior_sample, n_i, log_L_i):
-#         return posterior_sample
-#
-#     def compute_log_f_alpha(self, posterior_sample, n_i, log_L_i):
-#         f = self.compute_f_alpha(posterior_sample, n_i, log_L_i)
-#         return SignedLogParam(dict_multimap(lambda f: jnp.log(jnp.abs(f)), f),
-#                               dict_multimap(lambda f: jnp.sign(f), f))
-#
-#
-# class PosteriorSecondMoment(TrackedExpectation):
-#     def __init__(self, shape, *, state=None):
-#         shape = dict_multimap(lambda shape: shape + shape[-1:], shape)
-#         super(PosteriorSecondMoment, self).__init__('M',
-#                                                     'linear',
-#                                                     True,
-#                                                     shape,
-#                                                     state=state)
-#
-#     def compute_f_alpha(self, posterior_sample, n_i, log_L_i):
-#         return dict_multimap(lambda posterior_sample: posterior_sample[..., None] * posterior_sample[..., None, :],
-#                              posterior_sample)
-#
-#     def compute_log_f_alpha(self, posterior_sample, n_i, log_L_i):
-#         f = self.compute_f_alpha(posterior_sample, n_i, log_L_i)
-#         return SignedLogParam(dict_multimap(lambda f: jnp.log(jnp.abs(f)), f),
-#                               dict_multimap(lambda f: jnp.sign(f), f))
-#
-#
-# class InformationGain(TrackedExpectation):
-#     """
-#     H = int post(x) log(post(x)/prior(x)) dx
-#     = int L(x) p(x)/Z log(L(x)/Z) dx
-#     = int L(x) p(x)/Z log(L(x)) dx - log(Z)
-#     = E(log(L(x))) - log(Z)
-#     = sum w(x) log(L(x)) - log(Z)
-#
-#     This produces -H.
-#     """
-#
-#     def __init__(self, global_evidence: Evidence, *, state=None):
-#         super(InformationGain, self).__init__('H', 'linear', True, (),
-#                                               state=state)
-#         self.global_evidence = global_evidence
-#
-#     @property
-#     def mean(self):
-#         mean = -super(InformationGain, self).mean + self.global_evidence.mean
-#         return mean
-#
-#     @property
-#     def variance(self):
-#         variance = super(InformationGain, self).variance + self.global_evidence.variance
-#         return variance
-#
-#     def compute_f_alpha(self, posterior_sample, n_i, log_L_i):
-#         """
-#         Args:
-#             posterior_sample:
-#             n_i:
-#             log_L_i:
-#             from_U:
-#         Returns:
-#         """
-#         return log_L_i
-#
-#     def compute_log_f_alpha(self, posterior_sample, n_i, log_L_i):
-#         return SignedLogParam(jnp.log(jnp.abs(log_L_i)), jnp.sign(log_L_i))
-#
-#
-# class Marginalised(TrackedExpectation):
-#     def __init__(self, func_dict, shape_dict, *, state=None):
-#         super(Marginalised, self).__init__("marginalised", 'linear', True, shape_dict,
-#                                            state=state)
-#         self.func_dict = func_dict
-#
-#     def compute_f_alpha(self, posterior_sample, n_i, log_L_i):
-#         """
-#         log(L(X) dX) = logL(X) + E[w]
-#         Args:
-#             posterior_sample:
-#             n_i:
-#             log_L_i:
-#             from_U:
-#         Returns:
-#         """
-#         return dict_multimap(lambda func: func(**posterior_sample), self.func_dict)
-#
-#     def compute_log_f_alpha(self, posterior_sample, n_i, log_L_i):
-#         f = self.compute_f_alpha(posterior_sample, n_i, log_L_i)
-#         return SignedLogParam(dict_multimap(lambda f: jnp.log(jnp.abs(f)), f),
-#                               dict_multimap(lambda f: jnp.sign(f), f))
 
 def test_param_tracking():
     from jax import jit, numpy as jnp, disable_jit, make_jaxpr
