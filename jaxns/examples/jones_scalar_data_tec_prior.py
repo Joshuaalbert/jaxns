@@ -9,37 +9,35 @@ from timeit import default_timer
 
 
 def generate_data():
-    T = 1
     tec = 50. * random.normal(random.PRNGKey(0))
-    print(tec)
+    print("ground truth tec", tec)
     TEC_CONV = -8.4479745e6  # mTECU/Hz
     freqs = jnp.linspace(121e6, 168e6, 24)
     phase = tec / freqs * TEC_CONV
     Y = jnp.concatenate([jnp.cos(phase), jnp.sin(phase)], axis=-1)
-    Y_obs = Y + 0.25 * random.normal(random.PRNGKey(1452), shape=Y.shape)
-    Sigma = 0.25 ** 2 * jnp.eye(freqs.size*2)
+    Y_obs = Y + 1.5 * random.normal(random.PRNGKey(1452), shape=Y.shape)
     amp = jnp.ones_like(phase)
-    return Sigma, T, Y_obs, amp, tec, freqs
+    return Y_obs, amp, tec, freqs
 
 
 def main():
-    Sigma, T, Y_obs, amp, tec, freqs = generate_data()
+    Y_obs, amp, tec, freqs = generate_data()
     TEC_CONV = -8.4479745e6  # mTECU/Hz
 
     def log_normal(x, mean, scale):
         dx = (x - mean)/scale
-        return -0.5 * x.size * jnp.log(2. * jnp.pi) - jnp.sum(jnp.log(scale)) \
+        return -0.5 * x.size * jnp.log(2. * jnp.pi) - x.size*jnp.log(scale) \
                - 0.5 * dx @ dx
 
     def log_likelihood(tec, uncert, **kwargs):
         phase = tec * (TEC_CONV / freqs)
         Y = jnp.concatenate([amp*jnp.cos(phase), amp*jnp.sin(phase)], axis=-1)
-        log_prob = log_normal(Y, Y_obs, uncert)
+        log_prob = log_normal(Y, Y_obs, uncert[0])
         return log_prob
 
     prior_chain = PriorChain() \
         .push(UniformPrior('tec', -100., 100.)) \
-        .push(HalfLaplacePrior('uncert', 0.25))
+        .push(HalfLaplacePrior('uncert', 0.5))
 
     print("Probabilistic model:\n{}".format(prior_chain))
 
@@ -48,12 +46,12 @@ def main():
                        )
 
     run = jit(lambda key: ns(key=key,
-                      num_live_points=300,
+                      num_live_points=1000,
                       max_samples=1e5,
                       collect_samples=True,
                       termination_frac=0.01,
                       stoachastic_uncertainty=False,
-                 sampler_kwargs=dict(depth=3)))
+                 sampler_kwargs=dict(depth=4, num_slices=1)))
 
     t0 = default_timer()
     results = run(random.PRNGKey(2364))
