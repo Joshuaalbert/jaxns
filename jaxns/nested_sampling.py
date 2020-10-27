@@ -296,6 +296,8 @@ class NestedSampler(object):
                  termination_frac=0.01,
                  stoachastic_uncertainty=False,
                  sampler_kwargs=None):
+        if sampler_kwargs is None:
+            sampler_kwargs = dict()
         max_samples = int(max_samples)  # jnp.array(max_samples, dtype=jnp.int64)
         num_live_points = int(num_live_points)  # jnp.array(num_live_points, dtype=jnp.int64)
         state = self.initial_state(key, num_live_points,
