@@ -54,19 +54,20 @@ def plot_cornerplot(results, vars=None, save_name=None):
     fig, axs = plt.subplots(ndims, ndims, figsize=(figsize, figsize))
     if ndims == 1:
         axs = [[axs]]
-    nsamples = results.log_p.size
+    nsamples = results.num_samples
+    log_p = results.log_p[:results.num_samples]
     nbins = int(jnp.sqrt(results.ESS)) + 1
     lims = {}
     dim = 0
     for key in vars:  # sorted(results.samples.keys()):
         n1 = tuple_prod(results.samples[key].shape[1:])
         for i in range(n1):
-            samples1 = results.samples[key].reshape((nsamples, -1))[:, i]
+            samples1 = results.samples[key][:results.num_samples,...].reshape((nsamples, -1))[:, i]
             if jnp.std(samples1) == 0.:
                 dim += 1
                 continue
-            weights = jnp.where(jnp.isfinite(samples1), jnp.exp(results.log_p), 0.)
-            log_weights = jnp.where(jnp.isfinite(samples1), results.log_p, -jnp.inf)
+            weights = jnp.where(jnp.isfinite(samples1), jnp.exp(log_p), 0.)
+            log_weights = jnp.where(jnp.isfinite(samples1), log_p, -jnp.inf)
             samples1 = jnp.where(jnp.isfinite(samples1), samples1, 0.)
             # kde1 = gaussian_kde(samples1, weights=weights, bw_method='silverman')
             # samples1_resampled = kde1.resample(size=int(results.ESS))
@@ -107,12 +108,12 @@ def plot_cornerplot(results, vars=None, save_name=None):
                         ax.set_xlim(binsx.min(), binsx.max())
                         lims[dim] = ax.get_xlim()
                     else:
-                        samples2 = results.samples[key2].reshape((nsamples, -1))[:, i2]
+                        samples2 = results.samples[key2][:results.num_samples,...].reshape((nsamples, -1))[:, i2]
                         if jnp.std(samples2) == 0.:
                             dim2 += 1
                             continue
-                        weights = jnp.where(jnp.isfinite(samples2), jnp.exp(results.log_p), 0.)
-                        log_weights = jnp.where(jnp.isfinite(samples2), results.log_p, -jnp.inf)
+                        weights = jnp.where(jnp.isfinite(samples2), jnp.exp(log_p), 0.)
+                        log_weights = jnp.where(jnp.isfinite(samples2), log_p, -jnp.inf)
                         samples2 = jnp.where(jnp.isfinite(samples2), samples2, 0.)
                         # kde2 = gaussian_kde(jnp.stack([samples1, samples2], axis=0),
                         #                     weights=weights,
