@@ -76,3 +76,31 @@ plot_cornerplot(results)
 print("True logZ={} | calculated logZ = {:.2f} +- {:.2f}".format(true_logZ, results.logZ, results.logZerr))
 print("True posterior m={}\nCov={}".format(post_mu, post_cov))
 ```
+
+# Speed test comparison with other nested sampling packages
+
+Let's compare JAXNS to some other nested sampling packages. 
+You can do this on a simple standard problem of computing the evidence of an `ndims`-dimensional multivariate Gaussian likelihood with a uniform prior.
+Specifically, the model is,
+```
+ndims=30
+sigma=0.1
+theta ~ U[-jnp.ones(ndims),jnp.ones(ndims)]
+def log_likelihood(theta, **kwargs):
+    r2 = jnp.sum(theta ** 2)
+    logL = -0.5 * jnp.log(2. * jnp.pi * sigma ** 2) * ndims
+    logL += -0.5 * r2 / sigma ** 2
+    return logL
+```
+We use 1000 live points.
+
+The packages we compare JAXNS against on this simple problem are:
+1. https://github.com/joshspeagle/dynesty
+2. https://github.com/PolyChord/PolyChordLite
+3. https://johannesbuchner.github.io/PyMultiNest/
+
+To install these packages, follow the directions on those websites. For PolyChord and MultiNest, you'll need to build the samplers from source as well as install the python interfaces. Dynesty is pure python and can be installed with `pip`.
+The speed test comparison code can be found in `./jaxns/examples/compare_with_other_nested_sampling_packages.py`.
+Note, that dynesty took 1:45 hours and so I excluded it when making this plot.
+
+![Speed Test Comparison](./speed_test.png)
