@@ -537,6 +537,23 @@ def test_is_complex():
 def cast_complex(a):
     return jnp.asarray(a, dtype = jnp.complex_)
 
+def cumulative_logsumexp(u,reverse=False,unroll=2):
+    def body(accumulant, u):
+        new_accumulant = jnp.logaddexp(accumulant, u)
+        return new_accumulant, new_accumulant
+    _, v = scan(body,
+         -jnp.inf*jnp.ones(u.shape[1:],dtype=u.dtype),
+         u,reverse=reverse,unroll=unroll)
+    return v
+
+def test_cumulative_logsumexp():
+    a = jnp.linspace(-1.,1.,100)
+    v1 = jnp.log(jnp.cumsum(jnp.exp(a)))
+    v2 = cumulative_logsumexp(a)
+    print(v1)
+    print(v2)
+    assert jnp.isclose(v1,v2).all()
+
 def resample(key, samples, log_weights, S=None):
     """
     resample the samples with weights which are interpreted as log_probabilities.
@@ -552,9 +569,12 @@ def resample(key, samples, log_weights, S=None):
         #ESS = (sum w)^2 / sum w^2
 
         S = int(jnp.exp(2.* logsumexp(log_weights) - logsumexp(2.*log_weights)))
-        print(S)
 
-    idx = random.categorical(key, log_weights, shape=(S,))
+    # use cumulative_logsumexp because some log_weights could be really small
+    log_p_cuml = cumulative_logsumexp(log_weights)
+    p_cuml = jnp.exp(log_p_cuml)
+    r = p_cuml[-1] * (1 - random.uniform(key, (S,)))
+    idx = jnp.searchsorted(p_cuml, r)
     return dict_multimap(lambda s:s[idx,...], samples)
 
 def test_resample():
