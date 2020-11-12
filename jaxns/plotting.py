@@ -1,41 +1,41 @@
 import pylab as plt
 import jax.numpy as jnp
 from scipy.stats.kde import gaussian_kde
-from jaxns.utils import safe_gaussian_kde, tuple_prod, resample
+from jaxns.utils import safe_gaussian_kde, tuple_prod, resample, cumulative_logsumexp
 from jax import random
 from matplotlib.animation import FuncAnimation
 
 
 def plot_diagnostics(results, save_name=None):
     fig, axs = plt.subplots(5, 1, sharex=True, figsize=(8, 10))
-    axs[0].plot(-results.log_X[:results.num_samples], results.n_per_sample[:results.num_samples])
+    log_X = results.log_X[:results.num_samples]
+    axs[0].plot(-log_X, results.n_per_sample[:results.num_samples])
     axs[0].set_ylabel(r'$n(X)$')
     #detect if too small log likelihood
-    likelihood = jnp.exp(results.log_L_samples[:results.num_samples])
-    too_small = jnp.any(jnp.diff(likelihood) == 0.)
-    if too_small:
-        axs[1].plot(-results.log_X[:results.num_samples], results.log_L_samples[:results.num_samples])
-        axs[1].set_ylabel(r'$\log L(X)$')
-    else:
-        axs[1].plot(-results.log_X[:results.num_samples], likelihood)
-        axs[1].set_ylabel(r'$L(X)$')
-    axs[2].plot(-results.log_X[:results.num_samples], jnp.exp(results.log_p[:results.num_samples]))
+    log_likelihood = results.log_L_samples[:results.num_samples]
+    max_log_likelihood = jnp.max(log_likelihood)
+    likelihood = jnp.exp(log_likelihood - max_log_likelihood)
+    axs[1].plot(-log_X, likelihood)
+    axs[1].hlines(1., jnp.min(-log_X),
+                  jnp.max(-log_X), colors='black', ls='dashed',
+                  label=r"$\log L_{{\rm max}}={:.1f}$".format(max_log_likelihood))
+    axs[1].set_ylabel(r'$L(X)/L_{\rm max}$')
+    axs[1].legend()
+    axs[2].plot(-log_X, jnp.exp(results.log_p[:results.num_samples]))
     axs[2].vlines(-results.H, 0., jnp.exp(jnp.max(results.log_p[:results.num_samples])), colors='black', ls='dashed', label='-logX=-H={:.1f}'.format(-results.H))
     axs[2].set_ylabel(r'$Z^{-1}L(X) dX$')
     axs[2].legend()
-    #detect if too small evidences
-    cum_evidence = jnp.exp(results.logZ) * jnp.cumsum(jnp.exp(results.log_p[:results.num_samples]))
-    too_small = jnp.any(jnp.diff(cum_evidence) == 0.)
-    if too_small:
-        axs[3].plot(-results.log_X[:results.num_samples],
-                    results.logZ + jnp.log(jnp.cumsum(jnp.exp(results.log_p[:results.num_samples]))))
-        axs[3].set_ylabel(r'$\log Z(x > X)$')
-    else:
-        axs[3].plot(-results.log_X[:results.num_samples], cum_evidence)
-        axs[3].set_ylabel(r'$Z(x > X)$')
-    axs[4].plot(-results.log_X[:results.num_samples], results.sampler_efficiency[:results.num_samples])
-    axs[4].hlines(results.efficiency, jnp.min(-results.log_X[:results.num_samples]),
-                  jnp.max(-results.log_X[:results.num_samples]), colors='black', ls='dashed',
+    log_cum_evidence = cumulative_logsumexp(results.log_p[:results.num_samples])
+    cum_evidence = jnp.exp(log_cum_evidence)
+    axs[3].plot(-log_X, cum_evidence)
+    axs[3].hlines(1., jnp.min(-log_X),
+                  jnp.max(-log_X), colors='black', ls='dashed',
+                  label=r"$\log Z={:.1f}$".format(results.logZ))
+    axs[3].set_ylabel(r'$Z(x > X)/Z$')
+    axs[3].legend()
+    axs[4].plot(-log_X, results.sampler_efficiency[:results.num_samples])
+    axs[4].hlines(results.efficiency, jnp.min(-log_X),
+                  jnp.max(-log_X), colors='black', ls='dashed',
                   label='avg. eff.={:.3f}'.format(results.efficiency))
     axs[4].set_ylabel("sampler efficiency")
     axs[4].set_xlabel(r'$-\log X$')
