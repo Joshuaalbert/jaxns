@@ -1,30 +1,30 @@
 ![JAXNS](./jaxns_logo.png)
 
 # What is it?
-Enables probabilistic programming using nested sampling. It's coded in JAX in a manner that allows lowering the entire inference algorithm to XLA primatives, which are JIT compiled for high performance. 
+Enables probabilistic programming using nested sampling. It's coded in JAX in a manner that allows lowering the entire inference algorithm to XLA primitives, which are JIT-compiled for high performance. 
 
 JAXNS provides a constrained likelihood sampler which combines and modifies ideas from MultiNest (F. Feroz et al. 2008; https://arxiv.org/pdf/0809.3437.pdf) and PolyChord (W.J. Handley et al. 2015; https://arxiv.org/abs/1506.00171).
 In particular we perform a sequence of 1D slice sampling with a step-out procedure (https://projecteuclid.org/euclid.aos/1056562461), using clustering to initialise the step-out procedure at each step.
 
 Comparison with PolyChord:
-1. We choose slice directions by randomly choosing a unit-vector, rather than randomly sampling a random-orthogonal basis and slicing along each dimension. We find that this improves the efficiency of exploring the space, such that we get accurate evidence calculations often with just one or two times the number of dimension slices (What polychord calls num_repeats)
-2. We uniformly select an initial sampling point, rather than first a mode proportional to the local volume and then uniformly within that mode. We found that the random-walk behaviour mentioned in (W.J. Handley et al. 2015) is also present when you try to estimate the local volume. In fact, we found that by uniformly sampling a starting point, and taking into account the tunneling between modes, that the modes are actually quite stable. The cluster death mentioned in their paper, is more likely due to having too few live points.
+1. We choose slice directions by randomly choosing a unit-vector, rather than randomly sampling a random-orthogonal basis and slicing along each dimension. We find that this improves the efficiency of exploring the space, such that we get accurate evidence calculations often with just one or two times the number of dimension slices (What polychord calls `num_repeats`)
+2. We uniformly select an initial sampling point, rather than first a mode proportional to the local volume and then uniformly within that mode. We found that the random-walk behaviour mentioned in (W.J. Handley et al. 2015) is also present when you try to estimate the local volume. In fact, we found that by uniformly sampling a starting point, and taking into account the tunneling between modes, the modes are actually quite stable. The cluster death mentioned in their paper, is more likely due to having too few live points.
 3. We do not directly perform whitening, but rather determine the initial step-out size (`w` in their paper) by finding the points of intersection of the slice ray with a bounding ellipsoid, which is provided by the clustering process.
 4. We do not keep phantom points. Doing so would be difficult given the static memory requirements of XLA, and we do not have a use for them. In principle, we could use them to perform rank-1 updates of the ellipsoidal parameters of each cluster during the sampling, however the increase in computational complexity doesn't warrant the improvement.
 
 Comparison with MultiNest:
 1. We use hierarchical ellipsoidal clustering, similar to the method presented in (F. Feroz et al. 2008).
 2. In order to allow JIT compiling, the ellipsoidal clustering algorithm was redesigned as an iterative algorithm with fixed maximum depth. So the user must specify how many splits are possible using a `depth` parameter. The maximum number of clusters is then `2^(depth-1)`.
-3. We also modify the splitting part of the cluster algorithm to be iterative. That is, when determining the reassignment of points, we only reassign the single point that will reduce the clustering cost the most, rather than reassigning all points at each step. In principle, because we initialise each clustering with a vanilla k-means split there are only a few reassignment iterations required. We did this because we had noticed that the clustering can be quie sub-optimal when all points are reassignment at once.
-4. We decide to perform reclustering by keeping track of an exponential moving average of the number of likelihood evaluations used in each sampling step. When this number is exceed by `2*ndims` (equivalent to an extra step-out and shrink per dimension) we recluster. Due to the  rather flat efficiency curve of slice sampling the moving average is fairly stationary, and this is a good signal for reclustering.
+3. We also modify the splitting part of the cluster algorithm to be iterative. That is, when determining the reassignment of points, we only reassign the single point that will reduce the clustering cost the most, rather than reassigning all points at each step. In principle, because we initialise each clustering with a vanilla k-means split there are only a few reassignment iterations required. We did this because we had noticed that the clustering can be quite suboptimal when all points are reassignment at once.
+4. We decide to perform reclustering by keeping track of an exponential moving average of the number of likelihood evaluations used in each sampling step. When this number is exceeded by `2*ndims` (equivalent to an extra step-out and shrink per dimension) we recluster. Due to the  rather flat efficiency curve of slice sampling the moving average is fairly stationary, and this is a good signal for reclustering.
 
 # Install
-Make sure you have JAX and the usual suspects with `pip install jax jaxlib numpy matplotlib scipy tensorflow tensorboard_plugin_profile`. The last two `tensorflow tensorboard_plugin_profile` is is for profiling, and can be neglected if you don't want to profile.
+Make sure you have JAX and the usual suspects with `pip install jax jaxlib numpy matplotlib scipy`. 
 Install with `python setup.py install` or `pip install git+http://github.com/Joshuaalbert/jaxns.git`.
 
 # Quick start
 
-JAXNS is really fast because it uses JAX. I've found it's 3-4 orders of magnitude faster than other nested sampling packages.
+JAXNS is really fast because it uses JAX. I've found it's 2-4 orders of magnitude faster than other nested sampling packages.
 The caveat is that you should define your likelihood function with JAX. This is no big deal because JAX is just a replacement for numpy. 
 If you're unfamiliar, take a quick tour of JAX (https://jax.readthedocs.io/en/latest/notebooks/quickstart.html).
 See more examples in `jaxns/examples`.
