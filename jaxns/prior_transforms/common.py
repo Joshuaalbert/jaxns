@@ -153,6 +153,21 @@ class CategoricalPrior(PriorTransform):
         return jnp.argmax(logits + gumbel)[None]
 
 
+class BernoulliPrior(PriorTransform):
+    def __init__(self, name, logits, tracked=True):
+        if not isinstance(logits, PriorTransform):
+            logits = DeltaPrior('_{}_logits'.format(name), jnp.atleast_1d(logits), False)
+        self._shape = get_shape(logits)
+        U_dims = tuple_prod(self._shape)
+        super(BernoulliPrior, self).__init__(name, U_dims, [logits], tracked)
+
+    @property
+    def to_shape(self):
+        return self._shape
+
+    def forward(self, U, logits, **kwargs):
+        return jnp.log(U) < logits
+
 class Gumbel(PriorTransform):
     def __init__(self, name, num, tracked=True):
         self._shape = (num,)
