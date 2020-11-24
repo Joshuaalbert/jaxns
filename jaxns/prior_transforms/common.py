@@ -21,6 +21,22 @@ class DeltaPrior(PriorTransform):
     def forward(self, U, **kwargs):
         return self.value
 
+class LogNormalPrior(PriorTransform):
+    def __init__(self, name, mu, gamma, tracked=True):
+        if not isinstance(mu, PriorTransform):
+            mu = DeltaPrior('_{}_mu'.format(name), jnp.atleast_1d(mu), False)
+        if not isinstance(gamma, PriorTransform):
+            gamma = DeltaPrior('_{}_gamma'.format(name), jnp.atleast_1d(gamma), False)
+        U_dims = broadcast_shapes(get_shape(mu), get_shape(gamma))[0]
+        super(LogNormalPrior, self).__init__(name, U_dims, [mu, gamma], tracked)
+
+    @property
+    def to_shape(self):
+        return (self.U_ndims,)
+
+    def forward(self, U, mu, gamma, **kwargs):
+        return jnp.exp(ndtri(U) * gamma + mu)
+
 
 class MVNDiagPrior(PriorTransform):
     def __init__(self, name, mu, gamma, tracked=True):
@@ -28,7 +44,6 @@ class MVNDiagPrior(PriorTransform):
             mu = DeltaPrior('_{}_mu'.format(name), jnp.atleast_1d(mu), False)
         if not isinstance(gamma, PriorTransform):
             gamma = DeltaPrior('_{}_gamma'.format(name), jnp.atleast_1d(gamma), False)
-        # replaces mu and gamma when parents injected
         U_dims = broadcast_shapes(get_shape(mu), get_shape(gamma))[0]
         super(MVNDiagPrior, self).__init__(name, U_dims, [mu, gamma], tracked)
 
@@ -47,7 +62,6 @@ class MVNPrior(PriorTransform):
             mu = DeltaPrior('_{}_mu'.format(name), jnp.atleast_1d(mu), False)
         if not isinstance(Gamma, PriorTransform):
             Gamma = DeltaPrior('_{}_Gamma'.format(name), jnp.atleast_2d(Gamma), False)
-        # replaces mu and gamma when parents injected
         U_dims = broadcast_shapes(get_shape(mu), get_shape(Gamma)[0:1])[0]
         super(MVNPrior, self).__init__(name, U_dims, [mu, Gamma], tracked)
 
@@ -69,7 +83,6 @@ class LaplacePrior(PriorTransform):
             mu = DeltaPrior('_{}_mu'.format(name), jnp.atleast_1d(mu), False)
         if not isinstance(b, PriorTransform):
             b = DeltaPrior('_{}_b'.format(name), b, False)
-        # replaces mu and gamma when parents injected
         U_dims = broadcast_shapes(get_shape(mu), get_shape(b))[0]
         super(LaplacePrior, self).__init__(name, U_dims, [mu, b], tracked)
 
@@ -85,7 +98,6 @@ class HalfLaplacePrior(PriorTransform):
     def __init__(self, name, b, tracked=True):
         if not isinstance(b, PriorTransform):
             b = DeltaPrior('_{}_b'.format(name), b, False)
-        # replaces mu and gamma when parents injected
         U_dims = get_shape(b)[0]
         super(HalfLaplacePrior, self).__init__(name, U_dims, [b], tracked)
 
@@ -103,7 +115,6 @@ class UniformPrior(PriorTransform):
             low = DeltaPrior('_{}_low'.format(name), low, False)
         if not isinstance(high, PriorTransform):
             high = DeltaPrior('_{}_high'.format(name), high, False)
-        # replaces mu and gamma when parents injected
 
         self._broadcast_shape = broadcast_shapes(get_shape(low), get_shape(high))
         U_dims = tuple_prod(self._broadcast_shape)
@@ -116,24 +127,6 @@ class UniformPrior(PriorTransform):
     def forward(self, U, low, high, **kwargs):
         return low + jnp.reshape(U, self.to_shape) * (high - low)
 
-
-# class CategoricalPrior(PriorTransform):
-#     def __init__(self, name, pi, tracked=True):
-#         if not isinstance(pi, PriorTransform):
-#             pi = DeltaPrior('_{}_pi'.format(name), jnp.atleast_1d(pi), False)
-#         shape = ()
-#         self._shape = ()
-#         # replaces mu and gamma when parents injected
-#         U_dims = 1
-#         super(CategoricalPrior, self).__init__(name, U_dims, [pi], tracked)
-#
-#     @property
-#     def to_shape(self):
-#         return self._shape
-#
-#     def forward(self, U, pi, **kwargs):
-#         j = jnp.argmax(U[0] * jnp.sum(pi)<= jnp.cumsum(pi))
-#         return j
 
 class CategoricalPrior(PriorTransform):
     def __init__(self, name, logits, tracked=True):
