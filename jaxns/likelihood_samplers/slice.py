@@ -197,13 +197,13 @@ def slice_sampling(key,
     # use the members of cluster to circularise the search.
     # let R map ellipsoidal to circular
     # let C map circular to ellipsoidal
-    # if (x-mu).C^T.C.(x-mu) <= 1 then
+    # if (x-f).C^T.C.(x-f) <= 1 then
     # select unit vector n distributed on ellipse:
     # n = C.n_circ / |C.n_circ|
     # Selecting x + n*t we ask how large can t be approximately and still remain inside the bounding ellipsoid.
-    # Solve (x + n*t-mu).R^T.R.(x + n*t-mu) = 1
-    # Solve (x-mu + n*t).R^T.R.(x-mu + n*t) = 1
-    # Solve (x-mu).R^T.R.(x-mu) + 2*t*n.R^T.R.(x-mu) + t**2 * n.R^T.R.n = 1
+    # Solve (x + n*t-f).R^T.R.(x + n*t-f) = 1
+    # Solve (x-f + n*t).R^T.R.(x-f + n*t) = 1
+    # Solve (x-f).R^T.R.(x-f) + 2*t*n.R^T.R.(x-f) + t**2 * n.R^T.R.n = 1
 
     def which_cluster(x):
         dist = vmap(lambda mu, radii, rotation: maha_ellipsoid(x, mu, radii, rotation))(sampler_state.mu,
@@ -247,7 +247,7 @@ def slice_sampling(key,
     (key, num_likelihood_evaluations, u_new, log_L_new), _ = scan(slice_body,
                                                                (key, jnp.asarray(0), u_init, log_L_constraint),
                                                                (jnp.arange(num_slices),),
-                                                               unroll=2)
+                                                               unroll=1)
     x_new = prior_transform(u_new)
     ellipsoid_select = which_cluster(u_new)
 
