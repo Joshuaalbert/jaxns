@@ -237,7 +237,6 @@ def test_sample_multi_ellipsoid():
                 )(random.PRNGKey(0), points, log_VS)
 
         mu, radii, rotation = ellipsoid_parameters
-        # print(mu, radii, rotation)
         u = vmap(lambda key: sample_multi_ellipsoid(key, mu, radii, rotation, unit_cube_constraint=True)[1])(random.split(random.PRNGKey(0),1000))
     plt.scatter(u[:, 0], u[:, 1], marker='+')
     for i, (mu, radii, rotation) in enumerate(zip(mu, radii, rotation)):
@@ -365,7 +364,7 @@ def test_generic_kmeans():
         cluster_id, ellipsoid_parameters = \
             jit(lambda key, points, log_VS: ellipsoid_clustering(random.PRNGKey(0), points, 7, log_VS)
                 )(random.PRNGKey(0), points, log_VS)
-        # mu, radii, rotation = ellipsoid_parameters
+        # f, radii, rotation = ellipsoid_parameters
         K = int(jnp.max(cluster_id)+1)
 
     mu, C = vmap(lambda k: bounding_ellipsoid(points, cluster_id == k))(jnp.arange(K))

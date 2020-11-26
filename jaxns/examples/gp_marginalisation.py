@@ -1,5 +1,5 @@
 from jaxns.nested_sampling import NestedSampler
-from jaxns.prior_transforms import PriorChain, MVNDiagPrior, UniformPrior, DeltaPrior, GMMDiagPrior, \
+from jaxns.prior_transforms import PriorChain, NormalPrior, UniformPrior, DeltaPrior, GMMDiagPrior, \
     ForcedIdentifiabilityPrior, GaussianProcessKernelPrior
 from jaxns.plotting import plot_cornerplot, plot_diagnostics
 from jaxns.gaussian_process.kernels import RBF, M12, M32

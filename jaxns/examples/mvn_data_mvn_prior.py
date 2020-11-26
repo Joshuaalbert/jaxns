@@ -58,7 +58,7 @@ def main():
     def run_with_n(n):
         @jit
         def run(key):
-            # prior_transform = PriorChain().push(MVNDiagPrior('x', prior_mu, jnp.sqrt(jnp.diag(prior_cov))))
+            # prior_transform = PriorChain().push(NormalPrior('x', prior_mu, jnp.sqrt(jnp.diag(prior_cov))))
             prior_transform = PriorChain().push(MVNPrior('x', prior_mu, prior_cov))
             def param_mean(x, **args):
                 return x

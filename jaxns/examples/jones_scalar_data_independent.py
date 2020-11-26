@@ -1,6 +1,6 @@
 from jaxns.nested_sampling import NestedSampler
 from jaxns.plotting import plot_diagnostics, plot_cornerplot
-from jaxns.prior_transforms import UniformPrior, PriorChain, HalfLaplacePrior, MVNDiagPrior, SymmetricUniformWalkPrior, DiagGaussianWalkPrior
+from jaxns.prior_transforms import UniformPrior, PriorChain, HalfLaplacePrior, NormalPrior, SymmetricUniformWalkPrior, DiagGaussianWalkPrior
 
 from jax.scipy.linalg import solve_triangular
 from jax import jit, vmap, soft_pmap
@@ -86,7 +86,7 @@ def main():
 
         prior_chain = PriorChain() \
             .push(UniformPrior('tec', -300., 300.)) \
-            .push(MVNDiagPrior('const', const_mu, const_std)) \
+            .push(NormalPrior('const', const_mu, const_std)) \
             .push(HalfLaplacePrior('uncert', 0.2))
 
         ns = NestedSampler(log_likelihood, prior_chain,

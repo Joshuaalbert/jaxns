@@ -1,6 +1,6 @@
 from jaxns.nested_sampling import NestedSampler
 from jaxns.plotting import plot_diagnostics, plot_cornerplot
-from jaxns.prior_transforms import UniformPrior, PriorChain, HalfLaplacePrior, MVNDiagPrior, SymmetricUniformWalkPrior, DiagGaussianWalkPrior
+from jaxns.prior_transforms import UniformPrior, PriorChain, HalfLaplacePrior, NormalPrior, SymmetricUniformWalkPrior, DiagGaussianWalkPrior
 
 from jax.scipy.linalg import solve_triangular
 from jax import jit, vmap
@@ -48,7 +48,7 @@ def main():
         Y = jnp.concatenate([jnp.cos(phase), jnp.sin(phase)], axis=-1)
         return jnp.sum(vmap(lambda Y, Y_obs: log_laplace(Y, Y_obs, uncert))(Y, Y_obs))
 
-    # prior_transform = MVNDiagPrior(prior_mu, jnp.sqrt(jnp.diag(prior_cov)))
+    # prior_transform = NormalPrior(prior_mu, jnp.sqrt(jnp.diag(prior_cov)))
     # prior_transform = LaplacePrior(prior_mu, jnp.sqrt(jnp.diag(prior_cov)))
     tec0 = UniformPrior('tec0', -100., 100.)
 

@@ -1,12 +1,12 @@
 from jaxns.nested_sampling import NestedSampler
-from jaxns.prior_transforms import PriorChain, MVNDiagPrior, MVNPrior, UniformPrior
+from jaxns.prior_transforms import PriorChain, NormalPrior, MVNPrior, UniformPrior
 from jaxns.plotting import plot_cornerplot, plot_diagnostics, plot_samples_development
 from timeit import default_timer
 from jax import random, jit, disable_jit, make_jaxpr
 from jax import numpy as jnp
 import pylab as plt
 from jaxns.nested_sampling import NestedSampler
-from jaxns.prior_transforms import PriorChain, MVNDiagPrior, MVNPrior, UniformPrior
+from jaxns.prior_transforms import PriorChain, NormalPrior, MVNPrior, UniformPrior
 from jaxns.plotting import plot_cornerplot, plot_diagnostics, plot_samples_development
 from timeit import default_timer
 from jax import random, jit, disable_jit, make_jaxpr
