@@ -10,25 +10,13 @@ from collections import namedtuple
 
 from jaxns.prior_transforms import PriorChain
 from jaxns.param_tracking import \
-    TrackedExpectation  # Evidence, PosteriorFirstMoment, PosteriorSecondMoment, InformationGain, Marginalised
-from jaxns.utils import dict_multimap, stochastic_result_computation
-from jaxns.likelihood_samplers import (expanded_box,
-                                       slice_sampling, constrained_hmc, ellipsoid_sampler,
-                                       init_ellipsoid_sampler_state, init_box_sampler_state, init_slice_sampler_state,
-                                       init_chmc_sampler_state, cubes, init_cubes_sampler_state,
-                                       simplex, init_simplex_sampler_state,
+    TrackedExpectation
+from jaxns.utils import dict_multimap
+from jaxns.likelihood_samplers import (slice_sampling,  init_slice_sampler_state,
                                        multi_ellipsoid_sampler, init_multi_ellipsoid_sampler_state)
 
 
 class NestedSamplerState(NamedTuple):
-    """
-    key: PRNG
-    i: Current iteration index
-    L_live: The array of likelihood at live points_U
-    L_dead: The array of likelihood at dead points_U
-    points: The set of live points_U
-    dead_points: The set of dead points_U
-    """
     key: jnp.ndarray
     done: bool
     i: int
@@ -48,7 +36,12 @@ class NestedSamplerState(NamedTuple):
 
 
 class NestedSampler(object):
-    _available_samplers = ['cubes', 'box', 'whitened_box', 'chmc', 'slice', 'ellipsoid', 'simplex', 'multi_ellipsoid']
+    """
+    Nested sampling class, which implements a general framework for performing nested sampling with
+    arbitrary (jax-compatible) constrained likelihood samplers.
+    """
+
+    _available_samplers = ['slice', 'multi_ellipsoid']
 
     def __init__(self, loglikelihood, prior_chain: PriorChain, sampler_name='slice', **marginalised):
         self.sampler_name = sampler_name
@@ -74,10 +67,22 @@ class NestedSampler(object):
             marginalised) > 0 else None
 
     def _filter_prior_chain(self, d):
+        """
+        Filters a dict's keys to only those where prior variable of same name is tracked.
+        Used for removing untracked priors.
+
+        Args:
+            d: dict
+
+        Returns: dict with only keys that correspond to names being tracked.
+        """
         return {name: d[name] for name, prior in self.prior_chain.prior_chain.items() if prior.tracked}
 
     def initial_state(self, key, num_live_points, max_samples, collect_samples: bool, only_marginalise: bool,
                       sampler_kwargs):
+        """
+        Initialises the state of samplers.
+        """
         # get initial live points_U
         def single_sample(key):
             U = random.uniform(key, shape=(self.prior_chain.U_ndims,))
@@ -108,24 +113,12 @@ class NestedSampler(object):
         tracked_expectations = TrackedExpectation(self.marginalised, self.marginalised_shapes)
 
         # select cluster to spawn into
-        if self.sampler_name == 'box':
-            sampler_state = init_box_sampler_state(num_live_points, whiten=False)
-        elif self.sampler_name == 'whitened_box':
-            sampler_state = init_box_sampler_state(num_live_points, whiten=True)
-        elif self.sampler_name == 'ellipsoid':
-            sampler_state = init_ellipsoid_sampler_state(live_points_U)
-        elif self.sampler_name == 'chmc':
-            sampler_state = init_chmc_sampler_state(num_live_points)
-        elif self.sampler_name == 'slice':
+        if self.sampler_name == 'slice':
             key, init_sampler_state_key = random.split(key, 2)
             depth = sampler_kwargs.get('depth', 3)
             num_slices = sampler_kwargs.get('num_slices', 1)
             sampler_state = init_slice_sampler_state(init_sampler_state_key, live_points_U, depth,
                                                      tracked_expectations.state.X.log_value, num_slices)
-        elif self.sampler_name == 'cubes':
-            sampler_state = init_cubes_sampler_state(*live_points_U.shape)
-        elif self.sampler_name == 'simplex':
-            sampler_state = init_simplex_sampler_state(live_points_U)
         elif self.sampler_name == 'multi_ellipsoid':
             if sampler_kwargs is None:
                 sampler_kwargs = dict()
@@ -157,8 +150,10 @@ class NestedSampler(object):
 
         return state
 
-    # @partial(trace_function, event_name="one_step")
     def _one_step(self, state: NestedSamplerState, collect_samples: bool, only_marginalise: bool, sampler_kwargs):
+        """
+        Performs one step of the algorthim.
+        """
         # get next dead point
         i_min = jnp.argmin(state.log_L_live)
         dead_point = dict_multimap(lambda x: x[i_min, ...], state.live_points)
@@ -192,49 +187,7 @@ class NestedSampler(object):
                 state = state._replace(dead_points=dead_points)
 
         # select cluster to spawn into
-        if self.sampler_name == 'box':
-            key, spawn_id_key = random.split(state.key, 2)
-            spawn_point_id = random.randint(spawn_id_key, shape=(), minval=0,
-                                            maxval=N)
-            sampler_results = expanded_box(key,
-                                           log_L_constraint=log_L_min,
-                                           live_points_U=state.live_points_U,
-                                           spawn_point_U=state.live_points_U[spawn_point_id, :],
-                                           loglikelihood_from_constrained=self.loglikelihood,
-                                           prior_transform=self.prior_chain,
-                                           sampler_state=state.sampler_state,
-                                           whiten=False)
-        elif self.sampler_name == 'whitened_box':
-            key, spawn_id_key = random.split(state.key, 2)
-            spawn_point_id = random.randint(spawn_id_key, shape=(), minval=0,
-                                            maxval=N)
-            sampler_results = expanded_box(key,
-                                           log_L_constraint=log_L_min,
-                                           live_points_U=state.live_points_U,
-                                           spawn_point_U=state.live_points_U[spawn_point_id, :],
-                                           loglikelihood_from_constrained=self.loglikelihood,
-                                           prior_transform=self.prior_chain,
-                                           sampler_state=state.sampler_state,
-                                           whiten=True)
-        elif self.sampler_name == 'ellipsoid':
-            sampler_results = ellipsoid_sampler(state.key,
-                                                log_L_constraint=log_L_min,
-                                                live_points_U=state.live_points_U,
-                                                loglikelihood_from_constrained=self.loglikelihood,
-                                                prior_transform=self.prior_chain,
-                                                sampler_state=state.sampler_state,
-                                                whiten=False)
-        elif self.sampler_name == 'chmc':
-            sampler_results = constrained_hmc(state.key, log_L_constraint=log_L_min,
-                                              live_points_U=state.live_points_U,
-                                              last_live_point=dead_point,
-                                              loglikelihood_from_constrained=self.loglikelihood,
-                                              prior_transform=self.prior_chain,
-                                              sampler_state=state.sampler_state,
-                                              max_steps=10,
-                                              i_replace=i_min,
-                                              log_X_mean=tracked_expectations.state.X.log_value)
-        elif self.sampler_name == 'slice':
+        if self.sampler_name == 'slice':
             num_slices = sampler_kwargs.get('num_slices', 1)
             sampler_results = slice_sampling(state.key,
                                              log_L_constraint=log_L_min,
@@ -245,23 +198,6 @@ class NestedSampler(object):
                                              i_min=i_min,
                                              log_X=tracked_expectations.state.X.log_value,
                                              sampler_state=state.sampler_state)
-        elif self.sampler_name == 'cubes':
-            sampler_results = cubes(state.key,
-                                    log_L_min,
-                                    state.live_points_U,
-                                    self.loglikelihood,
-                                    self.prior_chain,
-                                    state.sampler_state,
-                                    tracked_expectations.state.X.log_value)
-
-        elif self.sampler_name == 'simplex':
-            sampler_results = simplex(state.key,
-                                      log_L_min,
-                                      state.live_points_U,
-                                      self.loglikelihood,
-                                      self.prior_chain,
-                                      state.sampler_state,
-                                      i_min)
         elif self.sampler_name == 'multi_ellipsoid':
             sampler_results = multi_ellipsoid_sampler(state.key,
                                                       log_L_min,
@@ -307,6 +243,28 @@ class NestedSampler(object):
                  termination_frac=0.01,
                  only_marginalise=False,
                  sampler_kwargs=None):
+        """
+        Perform nested sampling.
+
+        Args:
+            key: PRNG
+            num_live_points: int, number of live points to use in the computation.
+                Rule of thumb=(D+1)*(# posterior modes)*O(50), i.e. you want at least D+1 points per mode
+                to be able to detect the mode with ellipsoidal clustering, and you need several times more than that
+                to be accurate.
+            max_samples: int, the maximum number of samples to take.
+                Rule of thumb=(information gain)*(num_live_points)*(a few), where information gain can be measured by
+                running a low accuracy run with fewer live points. Just make sure this number is big enough.
+            collect_samples: bool, whether to keep any tracked variables (tracked=True in the prior transform).
+                Consumes much more memory, as the samples need to be allocated space.
+            termination_frac: float, the algorthim is terminated when this much of current evidence estimate is greater
+                than the amount left in live points.
+            only_marginalise: bool, by setting this to true even the diagnostics are not recorded. So plot_diagnostics
+                is not possible.
+            sampler_kwargs: dict of parameters to pass to the likelihood constrained sampler.
+
+        Returns: NestedSamplingResult
+        """
         if sampler_kwargs is None:
             sampler_kwargs = dict()
         max_samples = int(max_samples)
@@ -318,7 +276,6 @@ class NestedSampler(object):
                                    sampler_kwargs=sampler_kwargs)
 
         def body(state: NestedSamplerState):
-            # print(list(map(lambda x: type(x), state)))
             # do one sampling step
             state = self._one_step(state, collect_samples=collect_samples, only_marginalise=only_marginalise,
                                    sampler_kwargs=sampler_kwargs)
@@ -346,6 +303,9 @@ class NestedSampler(object):
     def _finalise_results(self, state: NestedSamplerState, collect_samples: bool,
                           only_marginalise: bool,
                           max_samples: int):
+        """
+        Produces the NestedSamplingResult.
+        """
         collect = ['logZ',
                    'logZerr',
                    'ESS',
