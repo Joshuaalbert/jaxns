@@ -1,12 +1,20 @@
 import pylab as plt
 import jax.numpy as jnp
-from scipy.stats.kde import gaussian_kde
-from jaxns.utils import safe_gaussian_kde, tuple_prod, resample, cumulative_logsumexp
+from jaxns.utils import tuple_prod, resample, cumulative_logsumexp
 from jax import random
 from matplotlib.animation import FuncAnimation
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+
 
 
 def plot_diagnostics(results, save_name=None):
+    """
+    Plot diagnostics of the nested sampling run.
+
+    Args:
+        results: NestedSamplerResult
+        save_name: file to save figure to.
+    """
     fig, axs = plt.subplots(5, 1, sharex=True, figsize=(8, 10))
     log_X = results.log_X[:results.num_samples]
     axs[0].plot(-log_X, results.n_per_sample[:results.num_samples])
@@ -47,6 +55,14 @@ def plot_diagnostics(results, save_name=None):
 
 
 def plot_cornerplot(results, vars=None, save_name=None):
+    """
+    Plots a cornerplot of the posterior samples.
+
+    Args:
+        results: NestedSamplerResult
+        vars: list of variable names to plot, or None.
+        save_name: file to save result to.
+    """
     rkey0 = random.PRNGKey(123496)
     vars = _get_vars(results, vars)
     ndims = _get_ndims(results, vars)
@@ -166,6 +182,15 @@ def _get_vars(results, vars):
 
 
 def plot_samples_development(results, vars=None, save_name=None):
+    """
+    Animate the live points in a corner plot, visualising how the algorithm proceeds.
+    Caution, this can be very slow as it plots a frame per sample.
+
+    Args:
+        results: NestedSamplingResult
+        vars: list of variable names to plot, or None
+        save_name: '.mp4' file to save animation to.
+    """
     if save_name is None:
         raise ValueError("In order to plot the animation we must save it.")
     vars = _get_vars(results, vars)
@@ -263,3 +288,21 @@ def plot_samples_development(results, vars=None, save_name=None):
                         init_func=init, blit=True)
 
     ani.save(save_name, fps=results.n_per_sample[0]/2.)
+
+def add_colorbar_to_axes(ax, cmap, norm=None, vmin=None, vmax=None):
+    """
+    Add colorbar to axes easily.
+
+    Args:
+        ax: Axes
+        cmap: str or cmap
+        norm: Normalize or None
+        vmin: lower limit of color if norm is None
+        vmax: upper limit of color if norm is None
+    """
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes('right', size='5%', pad=0.05)
+    if norm is None:
+        norm = plt.Normalize(vmin=vmin, vmax=vmax)
+    sm = plt.cm.ScalarMappable(norm, cmap=plt.cm.get_cmap(cmap))
+    ax.figure.colorbar(sm, cax=cax, orientation='vertical')
