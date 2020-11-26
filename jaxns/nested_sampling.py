@@ -57,6 +57,8 @@ class NestedSampler(object):
 
         def fixed_likelihood(**x):
             log_L = loglikelihood(**x)
+            if log_L.shape != ():
+                raise ValueError("Shape of likelihood should be scalar, got {}".format(log_L.shape))
             return jnp.where(jnp.isnan(log_L), -jnp.inf, log_L)
 
         self.loglikelihood = fixed_likelihood
@@ -74,7 +76,8 @@ class NestedSampler(object):
     def _filter_prior_chain(self, d):
         return {name: d[name] for name, prior in self.prior_chain.prior_chain.items() if prior.tracked}
 
-    def initial_state(self, key, num_live_points, max_samples, collect_samples: bool, sampler_kwargs):
+    def initial_state(self, key, num_live_points, max_samples, collect_samples: bool, only_marginalise: bool,
+                      sampler_kwargs):
         # get initial live points_U
         def single_sample(key):
             U = random.uniform(key, shape=(self.prior_chain.U_ndims,))
@@ -85,15 +88,22 @@ class NestedSampler(object):
         key, init_key = random.split(key, 2)
         live_points_U, live_points, log_L_live = vmap(single_sample)(random.split(init_key, num_live_points))
 
-        if collect_samples:
-            dead_points = dict_multimap(lambda shape: jnp.zeros((max_samples,) + shape),
-                                        self._filter_prior_chain(self.prior_chain.to_shapes))
+        if not only_marginalise:
+            if collect_samples:
+                dead_points = dict_multimap(lambda shape: jnp.zeros((max_samples,) + shape),
+                                            self._filter_prior_chain(self.prior_chain.to_shapes))
+            else:
+                dead_points = None
+            log_L_dead = jnp.zeros((max_samples,))
+            sampler_efficiency = jnp.ones((max_samples,))
+            log_X = -jnp.inf * jnp.ones((max_samples,))  # [D] logX
+            log_w = -jnp.inf * jnp.ones((max_samples,))  # [D] dX L
         else:
             dead_points = None
-        log_L_dead = jnp.zeros((max_samples,))
-        sampler_efficiency = jnp.ones((max_samples,))
-        log_X = -jnp.inf*jnp.ones((max_samples,))  # [D] logX
-        log_w = -jnp.inf*jnp.ones((max_samples,))  # [D] dX L
+            log_L_dead = None
+            sampler_efficiency = None
+            log_X = None
+            log_w = None
 
         tracked_expectations = TrackedExpectation(self.marginalised, self.marginalised_shapes)
 
@@ -148,7 +158,7 @@ class NestedSampler(object):
         return state
 
     # @partial(trace_function, event_name="one_step")
-    def _one_step(self, state: NestedSamplerState, collect_samples: bool, sampler_kwargs):
+    def _one_step(self, state: NestedSamplerState, collect_samples: bool, only_marginalise: bool, sampler_kwargs):
         # get next dead point
         i_min = jnp.argmin(state.log_L_live)
         dead_point = dict_multimap(lambda x: x[i_min, ...], state.live_points)
@@ -161,22 +171,25 @@ class NestedSampler(object):
                                                   state=state.tracked_expectations_state)
 
         tracked_expectations.update(dead_point, N, log_L_min)
-        log_X = dynamic_update_slice(state.log_X,
-                                     tracked_expectations.state.X.log_value[None],
-                                     [state.num_dead])
-        log_w = dynamic_update_slice(state.log_w,
-                                     tracked_expectations.state.dw.log_value[None],
-                                     [state.num_dead])
-        log_L_dead = dynamic_update_slice(state.log_L_dead,
-                                          log_L_min[None],
-                                          [state.num_dead])
+        if not only_marginalise:
+            log_X = dynamic_update_slice(state.log_X,
+                                         tracked_expectations.state.X.log_value[None],
+                                         [state.num_dead])
+            log_w = dynamic_update_slice(state.log_w,
+                                         tracked_expectations.state.dw.log_value[None],
+                                         [state.num_dead])
+            log_L_dead = dynamic_update_slice(state.log_L_dead,
+                                              log_L_min[None],
+                                              [state.num_dead])
 
-        if collect_samples:
-            dead_points = dict_multimap(lambda x, y: dynamic_update_slice(x,
-                                                                          y.astype(x.dtype)[None, ...],
-                                                                          [state.num_dead] + [0] * len(y.shape)),
-                                        state.dead_points, dead_point)
-            state = state._replace(dead_points=dead_points)
+            state = state._replace(log_X=log_X, log_w=log_w, log_L_dead=log_L_dead)
+
+            if collect_samples:
+                dead_points = dict_multimap(lambda x, y: dynamic_update_slice(x,
+                                                                              y.astype(x.dtype)[None, ...],
+                                                                              [state.num_dead] + [0] * len(y.shape)),
+                                            state.dead_points, dead_point)
+                state = state._replace(dead_points=dead_points)
 
         # select cluster to spawn into
         if self.sampler_name == 'box':
@@ -268,10 +281,12 @@ class NestedSampler(object):
                                     sampler_results.x_new)
         live_points_U = dynamic_update_slice(state.live_points_U, sampler_results.u_new[None, :],
                                              [i_min, 0])
-        sampler_efficiency=dynamic_update_slice(state.sampler_efficiency,
-                                                                           1. / sampler_results.num_likelihood_evaluations[None],
-                                                                           [state.num_dead])
 
+        if not only_marginalise:
+            sampler_efficiency = dynamic_update_slice(state.sampler_efficiency,
+                                                      1. / sampler_results.num_likelihood_evaluations[None],
+                                                      [state.num_dead])
+            state = state._replace(sampler_efficiency=sampler_efficiency)
 
         state = state._replace(key=sampler_results.key,
                                num_likelihood_evaluations=state.num_likelihood_evaluations +
@@ -281,11 +296,7 @@ class NestedSampler(object):
                                live_points_U=live_points_U,
                                sampler_state=sampler_results.sampler_state,
                                tracked_expectations_state=tracked_expectations.state,
-                               log_X=log_X,
-                               log_w=log_w,
-                               log_L_dead=log_L_dead,
-                               num_dead=state.num_dead + 1,
-                                sampler_efficiency=sampler_efficiency
+                               num_dead=state.num_dead + 1
                                )
 
         return state
@@ -294,21 +305,23 @@ class NestedSampler(object):
                  max_samples=1e5,
                  collect_samples=True,
                  termination_frac=0.01,
-                 stoachastic_uncertainty=False,
+                 only_marginalise=False,
                  sampler_kwargs=None):
         if sampler_kwargs is None:
             sampler_kwargs = dict()
-        max_samples = int(max_samples)  # jnp.array(max_samples, dtype=jnp.int64)
-        num_live_points = int(num_live_points)  # jnp.array(num_live_points, dtype=jnp.int64)
+        max_samples = int(max_samples)
+        num_live_points = int(num_live_points)
         state = self.initial_state(key, num_live_points,
                                    max_samples=max_samples,
                                    collect_samples=collect_samples,
+                                   only_marginalise=only_marginalise,
                                    sampler_kwargs=sampler_kwargs)
 
         def body(state: NestedSamplerState):
             # print(list(map(lambda x: type(x), state)))
             # do one sampling step
-            state = self._one_step(state, collect_samples=collect_samples, sampler_kwargs=sampler_kwargs)
+            state = self._one_step(state, collect_samples=collect_samples, only_marginalise=only_marginalise,
+                                   sampler_kwargs=sampler_kwargs)
 
             tracked_expectations = TrackedExpectation(self.marginalised, self.marginalised_shapes,
                                                       state=state.tracked_expectations_state)
@@ -326,11 +339,12 @@ class NestedSampler(object):
                            body,
                            state)
         results = self._finalise_results(state, collect_samples=collect_samples,
-                                         stoachastic_uncertainty=stoachastic_uncertainty,
+                                         only_marginalise=only_marginalise,
                                          max_samples=max_samples)
         return results
 
-    def _finalise_results(self, state: NestedSamplerState, collect_samples: bool, stoachastic_uncertainty: bool,
+    def _finalise_results(self, state: NestedSamplerState, collect_samples: bool,
+                          only_marginalise: bool,
                           max_samples: int):
         collect = ['logZ',
                    'logZerr',
@@ -350,9 +364,8 @@ class NestedSampler(object):
                    'num_samples'
                    ]
 
-        if collect_samples:
+        if collect_samples and not only_marginalise:
             collect.append('samples')
-
 
         NestedSamplerResults = namedtuple('NestedSamplerResults', collect)
         tracked_expectations = TrackedExpectation(self.marginalised, self.marginalised_shapes,
@@ -360,32 +373,38 @@ class NestedSampler(object):
         live_update_results = tracked_expectations.update_from_live_points(state.live_points, state.log_L_live)
         if self.marginalised is not None:
             marginalised = tracked_expectations.marg_mean()
-            marginalised_uncert = None  # tracked_expectations.marg_variance()
+            marginalised_uncert = None  # tracked_expectations.marg_variance() not stable
         else:
             marginalised = None
             marginalised_uncert = None
 
         num_live_points = state.log_L_live.shape[0]
-        n_per_sample = jnp.where(jnp.arange(max_samples) < state.num_dead, num_live_points, jnp.inf)
-        n_per_sample = dynamic_update_slice(n_per_sample,
-                                            num_live_points - jnp.arange(num_live_points, dtype=n_per_sample.dtype),
-                                            [state.num_dead])
-        sampler_efficiency = dynamic_update_slice(state.sampler_efficiency,
-                                                  jnp.ones(num_live_points),
-                                                  [state.num_dead])
-        log_w = dynamic_update_slice(state.log_w,
-                                     live_update_results[3],
-                                     [state.num_dead])
-        log_p = log_w - logsumexp(log_w)
-        log_X = dynamic_update_slice(state.log_X,
-                                     live_update_results[2],
-                                     [state.num_dead])
-        log_L_samples = dynamic_update_slice(state.log_L_dead,
-                                          live_update_results[1],
-                                          [state.num_dead])
+        if not only_marginalise:
+            n_per_sample = jnp.where(jnp.arange(max_samples) < state.num_dead, num_live_points, jnp.inf)
+            n_per_sample = dynamic_update_slice(n_per_sample,
+                                                num_live_points - jnp.arange(num_live_points, dtype=n_per_sample.dtype),
+                                                [state.num_dead])
+            sampler_efficiency = dynamic_update_slice(state.sampler_efficiency,
+                                                      jnp.ones(num_live_points),
+                                                      [state.num_dead])
+            log_w = dynamic_update_slice(state.log_w,
+                                         live_update_results[3],
+                                         [state.num_dead])
+            log_p = log_w - logsumexp(log_w)
+            log_X = dynamic_update_slice(state.log_X,
+                                         live_update_results[2],
+                                         [state.num_dead])
+            log_L_samples = dynamic_update_slice(state.log_L_dead,
+                                                 live_update_results[1],
+                                                 [state.num_dead])
+        else:
+            n_per_sample = None
+            log_p = None
+            log_X = None
+            log_L_samples = None
+            sampler_efficiency = None
+
         num_samples = state.num_dead + num_live_points
-
-
 
         data = dict(
             logZ=tracked_expectations.evidence_mean(),
@@ -405,60 +424,12 @@ class NestedSampler(object):
             num_samples=num_samples,
             sampler_efficiency=sampler_efficiency
         )
-
-        if collect_samples:
-
-            # log_t = jnp.where(jnp.isinf(n_per_sample), 0., jnp.log(n_per_sample) - jnp.log(n_per_sample + 1.))
-            # log_X = jnp.cumsum(log_t)
+        if collect_samples and not only_marginalise:
             ar = jnp.argsort(state.log_L_live)
             samples = dict_multimap(lambda dead_points, live_points:
                                     dynamic_update_slice(dead_points,
                                                          live_points.astype(dead_points.dtype)[ar, ...],
                                                          [state.num_dead] + [0] * (len(dead_points.shape) - 1)),
                                     state.dead_points, state.live_points)
-            # log_L_samples = dynamic_update_slice(state.log_L_dead, state.log_L_live[ar], [state.num_dead])
-
-            # sampler_efficiency = dynamic_update_slice(state.sampler_efficiency,
-            #                                           jnp.ones(num_live_points),
-            #                                           [state.num_dead])
-
-            # num_samples = state.num_dead + num_live_points
             data['samples'] = samples
-            # data['log_L_samples'] = log_L_samples
-            # data['n_per_sample'] = n_per_sample
-            # data['log_X'] = log_X
-            #
-            # data['sampler_efficiency'] = sampler_efficiency
-            # data['num_samples'] = num_samples
-
-            if stoachastic_uncertainty:
-                S = 200
-                logZ, m, cov, ESS, H = vmap(lambda key: stochastic_result_computation(n_per_sample,
-                                                                                      key, samples, log_L_samples))(
-                    random.split(state.key, S))
-                data['logZ'] = jnp.mean(logZ, axis=0)
-                data['logZerr'] = jnp.std(logZ, axis=0)
-                data['H'] = jnp.mean(H, axis=0)
-                data['H_err'] = jnp.std(H, axis=0)
-                data['ESS'] = jnp.mean(ESS, axis=0)
-                data['ESS_err'] = jnp.std(ESS, axis=0)
-
-            # build mean weights
-            # log_L_samples = jnp.concatenate([jnp.array([-jnp.inf]), log_L_samples])
-            # log_X = jnp.concatenate([jnp.array([0.]), log_X])
-            # log(dX_i) = log(X[i-1] - X[i]) = log((1-t_i)*X[i-1]) = log(1-t_i) + log(X[i-1])
-            # log_dX = - jnp.log(n_per_sample + 1.) + log_X[:-1]
-            # log_dX = jnp.log(-jnp.diff(jnp.exp(log_X)))
-            # log_avg_L = jnp.logaddexp(log_L_samples[:-1], log_L_samples[1:]) - jnp.log(2.)
-            # w_i = dX_i avg_L_i
-            # log_w = log_dX + log_avg_L
-            # log_p = log_w - logsumexp(log_w)
-            # data['log_p'] = log_p
-
-            # if self.marginalise is not None:
-            #     def single_marginalise(marginalise):
-            #         return jnp.sum(vmap(lambda p, sample: p * marginalise(**sample))(jnp.exp(log_p), samples), axis=0)
-            #
-            #     data['marginalised'] = dict_multimap(single_marginalise, self.marginalise)
-
         return NestedSamplerResults(**data)
