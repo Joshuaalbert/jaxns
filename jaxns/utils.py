@@ -3,20 +3,16 @@ from jax.lax import scan, while_loop
 from jax.scipy.special import logsumexp, gammaln
 from scipy.stats.kde import gaussian_kde
 
-
-def safe_gaussian_kde(samples, weights):
-    try:
-        return gaussian_kde(samples, weights=weights, bw_method='silverman')
-    except:
-        hist, bin_edges = jnp.histogram(samples,weights=weights, bins='auto')
-        return lambda x: hist[jnp.searchsorted(bin_edges, x)]
-
 def random_ortho_matrix(key, n):
     """
     Samples a random orthonormal num_parent,num_parent matrix from Stiefels manifold.
-
     From https://stackoverflow.com/a/38430739
 
+    Args:
+        key: PRNG seed
+        n: Size of matrix, draws from O(n) group.
+
+    Returns: random [n,n] matrix with determinant = +-1
     """
     H = random.normal(key, shape=(n, n))
     Q, R = jnp.linalg.qr(H)
@@ -29,6 +25,16 @@ def test_random_ortho_normal_matrix():
 
 
 def dict_multimap(f, d, *args):
+    """
+    Map function across key, value pairs in dicts.
+
+    Args:
+        f: callable(d, *args)
+        d: dict
+        *args: more dicts
+
+    Returns: dict with same keys as d, with values result of `f`.
+    """
     if not isinstance(d, dict):
         return f(d,*args)
     mapped_results = dict()
@@ -111,6 +117,16 @@ def test_get_interval():
     assert get_interval(s) == (1,1)
 
 def masked_cluster_id(points, centers, K):
+    """
+    Computes the cluster cluster centre closest to points in `points`.
+    Masks to only those clusters that are in use.
+
+    Args:
+        points: [N,D] Array of points to be sorted into clusters.
+        centers: [K, D] centers of clusters
+        K: int number of clusters in use, rest of masked.
+    Returns: [N] int, cluster id's.
+    """
     max_K = centers.shape[0]
     # max_K, N
     dist = jnp.linalg.norm(centers[:, None, :] - points[None, :, :], axis=-1)
@@ -120,11 +136,11 @@ def masked_cluster_id(points, centers, K):
 def cluster(key, points, max_K=6):
     """
     Cluster `points_U` automatically choosing K.
+    Outdated.
 
     Args:
         key:
         points: [N,M]
-        niters:
         max_K:
 
     Returns: tuple of
@@ -238,6 +254,15 @@ def cluster(key, points, max_K=6):
 
 
 def broadcast_shapes(shape1, shape2):
+    """
+    Broadcasts two shapes together.
+
+    Args:
+        shape1: tuple of int
+        shape2: tuple of int
+
+    Returns: tuple of int with resulting shape.
+    """
     if isinstance(shape1, int):
         shape1 = (shape1,)
     if isinstance(shape2, int):
@@ -256,7 +281,6 @@ def broadcast_shapes(shape1, shape2):
     return tuple(out_shape)
 
 def test_broadcast_shapes():
-
     assert broadcast_shapes(1,1) == (1,)
     assert broadcast_shapes(1,2) == (2,)
     assert broadcast_shapes(1,(2,2)) == (2,2)
@@ -325,42 +349,42 @@ def test_iterative_topological_sort():
     assert iterative_topological_sort(dsk) == ['c', 'b', 'a', 'd']
 
 
-def stochastic_result_computation(n_per_sample, key, samples, log_L_samples):
+def stochastic_result_computation(key, results, S):
     """
+    MC simulate the trajectory and compute statistics, and evidence.
 
     Args:
-        n_per_sample:
-        key:
-        samples:
-        log_L_samples:
+        key: PRNG seed
+        results: NestedSamplerResult
+        S: int
 
     Returns:
-
+        ((mean logZ, std logZ), (mean ESS, std ESS), (mean H, std H))
     """
-    # N
-    t = jnp.where(n_per_sample == jnp.inf, 1., random.beta(key, n_per_sample, 1))
-    log_t = jnp.log(t)
-    log_X = jnp.cumsum(log_t)
-    log_L_samples = jnp.concatenate([jnp.array([-jnp.inf]), log_L_samples])
-    log_X = jnp.concatenate([jnp.array([0.]), log_X])
-    # log_dX = log(1-t_i) + log(X[i-1])
-    log_dX = jnp.log(1. - t) + log_X[:-1]  # jnp.log(-jnp.diff(jnp.exp(log_X))) #-inf where n_per_sample=inf
-    log_avg_L = jnp.logaddexp(log_L_samples[:-1], log_L_samples[1:]) - jnp.log(2.)
-    log_p = log_dX + log_avg_L
-    # param calculation
-    logZ = logsumexp(log_p)
-    log_w = log_p - logZ
-    weights = jnp.exp(log_w)
-    m = dict_multimap(lambda samples: jnp.sum(left_broadcast_mul(weights, samples), axis=0), samples)
-    dsamples = dict_multimap(jnp.subtract, samples, m)
-    cov = dict_multimap(lambda dsamples: jnp.sum(
-        left_broadcast_mul(weights, (dsamples[..., :, None] * dsamples[..., None, :])), axis=0), dsamples)
-    # Kish's ESS = [sum weights]^2 / [sum weights^2]
-    ESS = jnp.exp(2. * logsumexp(log_w) - logsumexp(2. * log_w))
-    # H = sum w_i log(L)
-    _H = jnp.exp(log_w) * log_avg_L
-    H = jnp.sum(jnp.where(jnp.isnan(_H), 0., _H))
-    return logZ, m, cov, ESS, H
+    def single_sample(n_per_sample, key, log_L_samples):
+        # N
+        t = jnp.where(n_per_sample == jnp.inf, 1., random.beta(key, n_per_sample, 1))
+        log_t = jnp.log(t)
+        log_X = jnp.cumsum(log_t)
+        log_L_samples = jnp.concatenate([jnp.array([-jnp.inf]), log_L_samples])
+        log_X = jnp.concatenate([jnp.array([0.]), log_X])
+        # log_dX = log(1-t_i) + log(X[i-1])
+        log_dX = jnp.log(1. - t) + log_X[:-1]  # jnp.log(-jnp.diff(jnp.exp(log_X))) #-inf where n_per_sample=inf
+        log_avg_L = jnp.logaddexp(log_L_samples[:-1], log_L_samples[1:]) - jnp.log(2.)
+        log_p = log_dX + log_avg_L
+        # param calculation
+        logZ = logsumexp(log_p)
+        log_w = log_p - logZ
+        # Kish's ESS = [sum weights]^2 / [sum weights^2]
+        ESS = jnp.exp(2. * logsumexp(log_w) - logsumexp(2. * log_w))
+        # H = sum w_i log(L)
+        _H = jnp.exp(log_w) * log_avg_L
+        H = jnp.sum(jnp.where(jnp.isnan(_H), 0., _H))
+        return logZ, ESS, H
+
+    logZ, ESS, H = vmap(lambda key: single_sample(results.n_per_sample, key, results.log_L_samples))(
+        random.split(key, S))
+    return (jnp.mean(logZ), jnp.std(logZ)), (jnp.mean(ESS), jnp.std(ESS)), (jnp.mean(H), jnp.std(H))
 
 
 def left_broadcast_mul(x, y):
@@ -390,6 +414,15 @@ def test_tuple_prod():
 
 
 def msqrt(A):
+    """
+    Computes the matrix square-root using SVD, which is robust to poorly conditioned covariance matrices.
+    Computes, M such that M @ M.T = A
+
+    Args:
+        A: [N,N] Square matrix to take square root of.
+
+    Returns: [N,N] matrix.
+    """
     U, s, Vh = jnp.linalg.svd(A)
     L = U * jnp.sqrt(s)
     return L
@@ -404,6 +437,11 @@ def test_msqrt():
 
 
 def logaddexp(x1, x2):
+    """
+    Equivalent to logaddexp but supporting complex arguments.
+
+    see np.logaddexp
+    """
     if is_complex(x1) or is_complex(x2):
         select1 = x1.real > x2.real
         amax = jnp.where(select1, x1, x2)
@@ -433,6 +471,19 @@ def test_logaddexp():
         assert jnp.isclose(jnp.exp(logaddexp(a,b)).real, u[0] + u[1])
 
 def signed_logaddexp(log_abs_val1, sign1, log_abs_val2, sign2):
+    """
+    Equivalent of logaddexp but for signed quantities too.
+    Broadcasting supported.
+
+    Args:
+        log_abs_val1: log(|val1|)
+        sign1: sign(val1)
+        log_abs_val2: log(|val2|)
+        sign2: sign(val2)
+
+    Returns:
+        (log(|val1+val2|), sign(val1+val2))
+    """
     amax = jnp.maximum(log_abs_val1, log_abs_val2)
     signmax = jnp.where(log_abs_val1 > log_abs_val2, sign1, sign2)
     delta = -jnp.abs(log_abs_val2 - log_abs_val1)#nan iff inf - inf
@@ -656,4 +707,16 @@ def test_log_beta1_product_cdf():
     plt.plot(u,pdf)
     plt.show()
 
+def normal_to_lognormal(f, f2):
+    """
+    Convert normal parameters to log-normal parameters.
+    Args:
+        f:
+        var:
 
+    Returns:
+
+    """
+    ln_mu = 2. * jnp.log(f) - 0.5 * jnp.log(f2)
+    ln_var = jnp.log(f2) - 2. * jnp.log(f)
+    return ln_mu, jnp.sqrt(ln_var)
