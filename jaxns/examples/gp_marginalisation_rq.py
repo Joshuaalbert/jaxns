@@ -35,7 +35,7 @@ def main():
 
     def log_likelihood(K, uncert, **kwargs):
         """
-        P(Y|sigma, half_width) = N[Y, mu, K]
+        P(Y|sigma, half_width) = N[Y, f, K]
         Args:
             sigma:
             l:

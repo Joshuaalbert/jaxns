@@ -15,7 +15,7 @@ def generate_data():
     freqs = jnp.linspace(121e6, 168e6, 24)
     phase = tec / freqs * TEC_CONV
     Y = jnp.concatenate([jnp.cos(phase), jnp.sin(phase)], axis=-1)
-    Y_obs = Y + 1.5 * random.normal(random.PRNGKey(1452), shape=Y.shape)
+    Y_obs = Y + 0.5 * random.normal(random.PRNGKey(1452), shape=Y.shape)
     amp = jnp.ones_like(phase)
     return Y_obs, amp, tec, freqs
 

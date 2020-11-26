@@ -1,6 +1,6 @@
 from jaxns.nested_sampling import NestedSampler
 from jaxns.plotting import plot_diagnostics, plot_cornerplot
-from jaxns.prior_transforms import UniformPrior, PriorChain, HalfLaplacePrior, MVNDiagPrior, SymmetricUniformWalkPrior, DiagGaussianWalkPrior
+from jaxns.prior_transforms import UniformPrior, PriorChain, LaplacePrior, MVNDiagPrior, SymmetricUniformWalkPrior
 
 from jax.scipy.linalg import solve_triangular
 from jax import jit, vmap
@@ -10,11 +10,10 @@ from timeit import default_timer
 
 
 def generate_data():
-    T = 100
-    tec = 30.+jnp.cumsum(10. * random.normal(random.PRNGKey(87658), shape=(T,)))
-    print(tec)
-    TEC_CONV = -8.4479745e6  # mTECU/Hz
-    freqs = jnp.linspace(121e6, 168e6, 24)
+    T = 10
+    # var = T
+    dw = jnp.sqrt(T)
+    phase = dw * jnp.cumsum(random.normal(random.PRNGKey(87658), shape=(T,)))
     phase = tec[:, None] / freqs * TEC_CONV  # + onp.linspace(-onp.pi, onp.pi, T)[:, None]
     Y = jnp.concatenate([jnp.cos(phase), jnp.sin(phase)], axis=1)
     Y_obs = Y + 0.25 * random.normal(random.PRNGKey(75467), shape=Y.shape)
@@ -34,11 +33,6 @@ def main():
         return -0.5 * x.size * jnp.log(2. * jnp.pi) - x.size * jnp.log(uncert) \
                - 0.5 * dx @ dx
 
-    def log_laplace(x, mean, uncert):
-        dx = (x - mean) / uncert
-        return - x.size * jnp.log(2.*uncert) \
-               - jnp.sum(jnp.abs(dx))
-
     def log_likelihood(tec, uncert, **kwargs):
         # tec = x[0]  # [:, 0]
         # uncert = x[1]  # [:, 1]
@@ -46,18 +40,14 @@ def main():
         # uncert = 0.25#x[2]
         phase = tec * (TEC_CONV / freqs)  # + clock *(jnp.pi*2)*freqs#+ clock
         Y = jnp.concatenate([jnp.cos(phase), jnp.sin(phase)], axis=-1)
-        return jnp.sum(vmap(lambda Y, Y_obs: log_laplace(Y, Y_obs, uncert))(Y, Y_obs))
+        return jnp.sum(vmap(lambda Y, Y_obs: log_normal(Y, Y_obs, uncert))(Y, Y_obs))
 
     # prior_transform = MVNDiagPrior(prior_mu, jnp.sqrt(jnp.diag(prior_cov)))
     # prior_transform = LaplacePrior(prior_mu, jnp.sqrt(jnp.diag(prior_cov)))
-    tec0 = UniformPrior('tec0', -100., 100.)
-
     prior_chain = PriorChain() \
-        .push(SymmetricUniformWalkPrior('tec',T,
-                                        tec0
-                                    ,
-                                    HalfLaplacePrior('half_width', 10.))) \
-        .push(HalfLaplacePrior('uncert', 0.2))
+        .push(SymmetricUniformWalkPrior('tec', T, UniformPrior('tec0', -100., 100.),
+                                        UniformPrior('half_width', 0., 20.))) \
+        .push(UniformPrior('uncert', 0.01, 1.))
 
     ns = NestedSampler(log_likelihood, prior_chain, sampler_name='slice',
                        tec_mean=lambda tec,**kwargs: tec,
@@ -66,13 +56,12 @@ def main():
     @jit
     def run(key):
         return ns(key=key,
-                  num_live_points=500,
-                  max_samples=1e6,
-                  collect_samples=False,
-                  only_marginalise=True,
-                  termination_frac=0.001,
+                  num_live_points=1000,
+                  max_samples=1e5,
+                  collect_samples=True,
+                  termination_frac=0.01,
                   stoachastic_uncertainty=False,
-                  sampler_kwargs=dict(depth=3, num_slices=1))
+                  sampler_kwargs=dict(depth=5, num_slices=1))
 
     # with disable_jit():
     t0 = default_timer()
@@ -87,17 +76,14 @@ def main():
     tec_mean = results.marginalised['tec_mean'][:, 0]
     tec_std = jnp.sqrt(results.marginalised['tec2_mean'][:,0] - tec_mean**2)
     plt.plot(tec)
-    plt.errorbar(jnp.arange(T), tec_mean, yerr=tec_std,label='RBE-exact')
-    plt.xlabel('timestep [30sec]')
-    plt.ylabel('TEC [mTECU')
-    plt.legend()
+    plt.errorbar(jnp.arange(T), tec_mean, yerr=tec_std)
     plt.show()
     plt.plot(tec_mean-tec)
     plt.show()
     ###
 
-    # plot_diagnostics(results)
-    # plot_cornerplot(results, vars=['tec0', 'half_width', 'uncert'])
+    plot_diagnostics(results)
+    plot_cornerplot(results, vars=['tec0', 'half_width', 'uncert'])
 
 
 if __name__ == '__main__':
