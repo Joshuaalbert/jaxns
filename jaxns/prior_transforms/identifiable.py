@@ -19,8 +19,6 @@ class ForcedIdentifiabilityPrior(PriorTransform):
         if not isinstance(high, PriorTransform):
             high = DeltaPrior('_{}_high'.format(name), high, False)
         self._n = n
-        # replaces mu and gamma when parents injected
-
         self._broadcast_shape = (self._n,) + broadcast_shapes(get_shape(low), get_shape(high))
         U_dims = tuple_prod(self._broadcast_shape)
         super(ForcedIdentifiabilityPrior, self).__init__(name, U_dims, [low, high], tracked)
