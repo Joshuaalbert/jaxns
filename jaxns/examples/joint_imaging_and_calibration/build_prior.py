@@ -1,9 +1,9 @@
-from jaxns.prior_transforms import PriorChain, MVNDiagPrior, DeterministicTransformPrior
+from jaxns.prior_transforms import PriorChain, NormalPrior, DeterministicTransformPrior
 import jax.numpy as jnp
 
 def build_prior(nant, ndir):
-    theta = MVNDiagPrior('theta', jnp.zeros(nant * ndir), jnp.ones(nant * ndir), tracked=True)
-    gamma = MVNDiagPrior('gamma', jnp.zeros(ndir), 0.*jnp.ones(ndir), tracked=True)
+    theta = NormalPrior('theta', jnp.zeros(nant * ndir), jnp.ones(nant * ndir), tracked=True)
+    gamma = NormalPrior('gamma', jnp.zeros(ndir), 0. * jnp.ones(ndir), tracked=True)
 
     def vis(theta, gamma, **kwargs):
         theta = theta.reshape((nant, ndir))
