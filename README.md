@@ -50,7 +50,7 @@ data_cov = jnp.where(data_cov == 0., 0.95, data_cov)
 prior_mu = 2 * jnp.ones(ndims)
 prior_cov = jnp.diag(jnp.ones(ndims)) ** 2
 # "push" on each prior
-prior_chain = PriorChain().push(MVNDiagPrior('x', prior_mu, jnp.sqrt(jnp.diag(prior_cov))))
+prior_chain = PriorChain().push(NormalPrior('x', prior_mu, jnp.sqrt(jnp.diag(prior_cov))))
 
 # ground truth is analytic for comparison
 true_logZ = log_normal(data_mu, prior_mu, prior_cov + data_cov)

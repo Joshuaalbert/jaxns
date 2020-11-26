@@ -38,14 +38,14 @@ class LogNormalPrior(PriorTransform):
         return jnp.exp(ndtri(U) * gamma + mu)
 
 
-class MVNDiagPrior(PriorTransform):
+class NormalPrior(PriorTransform):
     def __init__(self, name, mu, gamma, tracked=True):
         if not isinstance(mu, PriorTransform):
             mu = DeltaPrior('_{}_mu'.format(name), jnp.atleast_1d(mu), False)
         if not isinstance(gamma, PriorTransform):
             gamma = DeltaPrior('_{}_gamma'.format(name), jnp.atleast_1d(gamma), False)
         U_dims = broadcast_shapes(get_shape(mu), get_shape(gamma))[0]
-        super(MVNDiagPrior, self).__init__(name, U_dims, [mu, gamma], tracked)
+        super(NormalPrior, self).__init__(name, U_dims, [mu, gamma], tracked)
 
     @property
     def to_shape(self):

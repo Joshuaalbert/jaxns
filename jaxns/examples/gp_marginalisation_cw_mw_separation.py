@@ -1,5 +1,5 @@
 from jaxns.nested_sampling import NestedSampler
-from jaxns.prior_transforms import PriorChain, MVNDiagPrior, UniformPrior, GaussianProcessKernelPrior, HalfLaplacePrior,MVNPrior
+from jaxns.prior_transforms import PriorChain, NormalPrior, UniformPrior, GaussianProcessKernelPrior, HalfLaplacePrior,MVNPrior
 from jaxns.plotting import plot_cornerplot, plot_diagnostics
 from jaxns.gaussian_process.kernels import RBF
 from jax.scipy.linalg import solve_triangular

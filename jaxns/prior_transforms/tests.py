@@ -1,15 +1,15 @@
 from jax import numpy as jnp, vmap
 
-from jaxns.prior_transforms import PriorChain, MVNDiagPrior, LaplacePrior, DiagGaussianWalkPrior, HalfLaplacePrior, \
-    ForcedIdentifiabilityPrior, GMMMarginalPrior
+from jaxns.prior_transforms import PriorChain, NormalPrior, LaplacePrior, DiagGaussianWalkPrior, HalfLaplacePrior, \
+    ForcedIdentifiabilityPrior
 
 
 def test_prior_chain():
     from jax import random
     chain = PriorChain()
-    mu = MVNDiagPrior('mu', jnp.array([0., 0.]), 1.)
+    mu = NormalPrior('f', jnp.array([0., 0.]), 1.)
     gamma = jnp.array([1.])
-    X = MVNDiagPrior('x', mu, gamma)
+    X = NormalPrior('x', mu, gamma)
     chain.push(mu).push(X)
     print(chain)
     U = random.uniform(random.PRNGKey(0), shape=(chain.U_ndims,))
@@ -17,7 +17,7 @@ def test_prior_chain():
     print(y)
 
     chain = PriorChain()
-    mu = MVNDiagPrior('mu', jnp.array([0., 0.]), 1.)
+    mu = NormalPrior('f', jnp.array([0., 0.]), 1.)
     gamma = jnp.array([1.])
     X = LaplacePrior('x', mu, gamma)
     chain.push(mu).push(X)
@@ -27,7 +27,7 @@ def test_prior_chain():
     print(y)
 
     chain = PriorChain()
-    x0 = MVNDiagPrior('x0', jnp.array([0., 0.]), 1.)
+    x0 = NormalPrior('x0', jnp.array([0., 0.]), 1.)
     gamma = 1.
     X = DiagGaussianWalkPrior('W', 2, x0, gamma)
     chain.push(mu).push(X)
@@ -56,25 +56,3 @@ def test_forced_identifiability_prior():
         assert out['x'].shape == (10, 2)
         assert jnp.all(jnp.sort(out['x'], axis=0) == out['x'])
         assert jnp.all((out['x'] >= 0.) & (out['x'] <= 10.))
-
-
-def test_unit_cube_mixture_prior():
-    import jax.numpy as jnp
-    from jax import random
-    from jaxns.nested_sampling import NestedSampler
-    from jaxns.plotting import plot_cornerplot, plot_diagnostics
-
-    # prior_chain = PriorChain().push(MultiCubeMixturePrior('x', 2, 1, -5., 15.))
-    prior_chain = PriorChain().push(GMMMarginalPrior('x', 2, -5., 15.))
-
-    def loglikelihood(x, **kwargs):
-        return jnp.log(0.5 * jnp.exp(-0.5 * jnp.sum(x) ** 2) / jnp.sqrt(2. * jnp.pi)
-                       + 0.5 * jnp.exp(-0.5 * jnp.sum(x - 10.) ** 2) / jnp.sqrt(2. * jnp.pi))
-
-    ns = NestedSampler(loglikelihood, prior_chain, sampler_name='ellipsoid')
-    results = ns(random.PRNGKey(0), 100, max_samples=1e5,
-                 collect_samples=True,
-                 termination_frac=0.05,
-                 stoachastic_uncertainty=True)
-    plot_diagnostics(results)
-    plot_cornerplot(results)
