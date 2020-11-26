@@ -55,14 +55,14 @@ def bounding_ellipsoid(points, mask):
     """
     Use empirical mean and covariance as approximation to bounding ellipse, then scale so that all points are inside.
 
-    for all i (points[i] - mu) @ inv(scale * cov) @ (points[i] - mu) <= 1
-    for all i (points[i] - mu) @ inv(cov) @ (points[i] - mu) <= scale
-    -> choose scale = max_i (points[i] - mu) @ inv(cov) @ (points[i] - mu)
+    for all i (points[i] - f) @ inv(scale * cov) @ (points[i] - f) <= 1
+    for all i (points[i] - f) @ inv(cov) @ (points[i] - f) <= scale
+    -> choose scale = max_i (points[i] - f) @ inv(cov) @ (points[i] - f)
     Args:
         points:
         mask:
 
-    Returns: mu, inv(scale * cov)
+    Returns: f, inv(scale * cov)
 
     """
     mu = jnp.average(points, weights=mask, axis=0)
@@ -79,7 +79,7 @@ def ellipsoid_params(C):
     """
     If C satisfies the sectional inequality,
 
-    (x - mu)^T C (x - mu) <= 1
+    (x - f)^T C (x - f) <= 1
 
     then this returns the radius and rotation matrix of the ellipsoid.
 
@@ -275,13 +275,14 @@ def decide_split(points, mask, cluster_id, log_VS, method='volume'):
             radii, rotation = ellipsoid_params(C)
             log_VE = log_ellipsoid_volume(radii)
             return log_VE
+
         log_VE = get_log_VE(mask)
-        log_VE1 = get_log_VE(mask & (cluster_id==0))
-        log_VE2 = get_log_VE(mask & (cluster_id==1))
+        log_VE1 = get_log_VE(mask & (cluster_id == 0))
+        log_VE2 = get_log_VE(mask & (cluster_id == 1))
         # print(jnp.exp(log_VE) , jnp.exp(log_VS + jnp.log(2.)))
         return (jnp.logaddexp(log_VE1, log_VE2) < log_VE) | (log_VE > log_VS + jnp.log(2.))
 
-    elif method=='AIC':
+    elif method == 'AIC':
         def get_log_L(weights):
             mu = jnp.average(points, weights=weights, axis=0)
             dx = points - mu
@@ -289,14 +290,14 @@ def decide_split(points, mask, cluster_id, log_VS, method='volume'):
             logdetCov = jnp.log(jnp.linalg.det(Cov))
             C = jnp.linalg.pinv(Cov)
             # logdetCov = 0.
-            # C = jnp.eye(mu.size)
+            # C = jnp.eye(f.size)
             maha = vmap(lambda dx: dx @ C @ dx)(dx)
             n_i = jnp.sum(weights)
             log_L_1 = -0.5 * jnp.sum(jnp.where(weights, maha, 0.)) \
                       - 0.5 * n_i * mu.size * jnp.log(2. * jnp.pi) - 0.5 * n_i * logdetCov \
                       + jnp.log(n_i) - jnp.log(n)
             # log_L_1 = -0.5 * jnp.sum(jnp.where(weights, maha, 0.)) \
-            #           - 0.5 * n_i * mu.size * jnp.log(2. * jnp.pi) - 0.5 * n_i * logdetCov
+            #           - 0.5 * n_i * f.size * jnp.log(2. * jnp.pi) - 0.5 * n_i * logdetCov
             return jnp.where(jnp.isnan(log_L_1), -jnp.inf, log_L_1)
 
         def AICc(k, log_L):
@@ -304,11 +305,11 @@ def decide_split(points, mask, cluster_id, log_VS, method='volume'):
             return 2. * k - 2. * log_L
 
         # k = {mu_all, Cov_all}
-        k_all = points.shape[1]# + points.shape[1] * (points.shape[1]-1)
+        k_all = points.shape[1]  # + points.shape[1] * (points.shape[1]-1)
         log_L_all = get_log_L(mask)
         AICc_all = AICc(k_all, log_L_all)
         # k = {mu_0, mu_1, Cov0, Cov1}
-        k_split = 2.*k_all
+        k_split = 2. * k_all
 
         log_L_k = jnp.logaddexp(get_log_L((cluster_id == 0) & mask),
                                 get_log_L((cluster_id == 1) & mask))
@@ -397,7 +398,8 @@ def hierarchical_clustering(key, points, depth, log_VS):
         log_VS1 = jnp.log(state.metric_state.num_k[0]) - jnp.log(jnp.sum(state.metric_state.num_k)) + log_VS_subcluster
         log_VS2 = jnp.log(state.metric_state.num_k[1]) - jnp.log(jnp.sum(state.metric_state.num_k)) + log_VS_subcluster
         # decide if to do it.
-        do_split = jnp.all(state.metric_state.num_k >= D + 1) & decide_split(points, mask, unsorted_cluster_id, log_VS_subcluster)
+        do_split = jnp.all(state.metric_state.num_k >= D + 1) & decide_split(points, mask, unsorted_cluster_id,
+                                                                             log_VS_subcluster)
         unsorted_cluster_id = jnp.where(unsorted_cluster_id == 0, child0, child1)
         cluster_id = jnp.where(mask, unsorted_cluster_id, cluster_id)
         order = _replace_result(order, child0[None], child1[None])
@@ -414,7 +416,7 @@ def hierarchical_clustering(key, points, depth, log_VS):
         scan(body,
              (cluster_id, order, log_VS_subclusters),
              (keys, jnp.arange(num_splittings)),
-             unroll=2)
+             unroll=1)
     cluster_id = cluster_id - (2 ** (depth - 1) - 1)
     order = order - (2 ** (depth - 1) - 1)
     # order results so that cluster_id corresponds to the correct row
@@ -528,7 +530,7 @@ def cluster_split_matching_pursuit(key, points, mask, log_VS, log_VE, kmeans_ini
         return log_scale_k
 
     # # calculate bounding ellipsoid
-    # mu, C =// bounding_ellipsoid(points, mask)
+    # f, C =// bounding_ellipsoid(points, mask)
     # radii, _ = ellipsoid_params(C)
     # log_VE = log_ellipsoid_volume(radii)
     # # enlarge so that V(E) = max(V(E), V(S))
@@ -813,7 +815,7 @@ def cluster_split(key, points, mask, log_VS, log_VE, kmeans_init=True):
                & (~jnp.any(jnp.isnan(radii2))) \
                & (jnp.sum(mask1) >= (D + 1)) \
                & (jnp.sum(mask2) >= (D + 1))
-        # & (cond1 < 50.) \
+    # & (cond1 < 50.) \
     # & (cond2 < 50.)
 
     return cluster_id, log_VS1, mu1, radii1, rotation1, log_VS2, mu2, radii2, rotation2, do_split
@@ -946,7 +948,7 @@ def ellipsoid_clustering(key, points, depth, log_VS):
              (cluster_id, mu_result, radii_result, rotation_result, order, log_VS_subclusters),
              (keys, jnp.arange(num_splittings)),
              length=num_splittings,
-             unroll=2)
+             unroll=1)
     cluster_id = cluster_id - (2 ** (depth - 1) - 1)
     order = order - (2 ** (depth - 1) - 1)
     # order results so that cluster_id corresponds to the correct row
@@ -960,8 +962,10 @@ def maha_ellipsoid(u, mu, radii, rotation):
     u_circ = ellipsoid_to_circle(u, mu, radii, rotation)
     return u_circ @ u_circ
 
+
 def point_in_ellipsoid(u, mu, radii, rotation):
     return maha_ellipsoid(u, mu, radii, rotation) <= 1.
+
 
 def sample_multi_ellipsoid(key, mu, radii, rotation, unit_cube_constraint=True):
     """
@@ -1094,7 +1098,7 @@ def sample_ellipsoid(key, center, radii, rotation, unit_cube_constraint=False):
         t1 = jnp.where(t1 < 0., jnp.inf, t1)
         t = jnp.minimum(jnp.min(t0), jnp.min(t1))
         t = jnp.minimum(t, 1.)
-        return jnp.exp(jnp.log(random.uniform(radii_key, minval=0., maxval=t))/radii.size) * D + center
+        return jnp.exp(jnp.log(random.uniform(radii_key, minval=0., maxval=t)) / radii.size) * D + center
     log_norm = jnp.log(jnp.linalg.norm(direction))
     log_radius = jnp.log(random.uniform(radii_key)) / radii.size
     # x = direction * (radius/norm)
