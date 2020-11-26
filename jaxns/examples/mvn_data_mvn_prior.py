@@ -54,7 +54,7 @@ def main():
                       max_samples=1e5,
                       collect_samples=True,
                       termination_frac=0.01,
-                      stoachastic_uncertainty=False,
+                      stochastic_uncertainty=False,
                       sampler_kwargs=dict(depth=3, num_slices=2))
         # print(len(str(make_jaxpr(run)(random.PRNGKey(0)))))
         #old 720781

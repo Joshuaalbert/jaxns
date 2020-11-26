@@ -70,7 +70,7 @@ def main(kernel):
                       max_samples=1e5,
                       collect_samples=True,
                       termination_frac=0.01,
-                      stoachastic_uncertainty=False,
+                      stochastic_uncertainty=False,
                       sampler_kwargs=dict(depth=4))
 
         t0 = default_timer()
@@ -114,7 +114,7 @@ def main(kernel):
     #                   max_samples=1e5,
     #                   collect_samples=True,
     #                   termination_frac=0.01,
-    #                   stoachastic_uncertainty=False,
+    #                   stochastic_uncertainty=False,
     #                   sampler_kwargs=dict(depth=4))
     #
     #     t0 = default_timer()

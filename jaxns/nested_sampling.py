@@ -294,7 +294,7 @@ class NestedSampler(object):
                  max_samples=1e5,
                  collect_samples=True,
                  termination_frac=0.01,
-                 stoachastic_uncertainty=False,
+                 stochastic_uncertainty=False,
                  sampler_kwargs=None):
         if sampler_kwargs is None:
             sampler_kwargs = dict()
@@ -326,11 +326,11 @@ class NestedSampler(object):
                            body,
                            state)
         results = self._finalise_results(state, collect_samples=collect_samples,
-                                         stoachastic_uncertainty=stoachastic_uncertainty,
+                                         stochastic_uncertainty=stochastic_uncertainty,
                                          max_samples=max_samples)
         return results
 
-    def _finalise_results(self, state: NestedSamplerState, collect_samples: bool, stoachastic_uncertainty: bool,
+    def _finalise_results(self, state: NestedSamplerState, collect_samples: bool, stochastic_uncertainty: bool,
                           max_samples: int):
         collect = ['logZ',
                    'logZerr',
@@ -431,7 +431,7 @@ class NestedSampler(object):
             # data['sampler_efficiency'] = sampler_efficiency
             # data['num_samples'] = num_samples
 
-            if stoachastic_uncertainty:
+            if stochastic_uncertainty:
                 S = 200
                 logZ, m, cov, ESS, H = vmap(lambda key: stochastic_result_computation(n_per_sample,
                                                                                       key, samples, log_L_samples))(

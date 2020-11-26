@@ -143,7 +143,7 @@ def main():
                           max_samples=1e6,
                           collect_samples=False,
                           termination_frac=0.01,
-                          stoachastic_uncertainty=False,
+                          stochastic_uncertainty=False,
                           sampler_kwargs=dict(depth=3, num_slices=2))
 
             results = run(random.PRNGKey(0))

@@ -76,7 +76,7 @@ def main():
                       max_samples=1e3,
                       collect_samples=True,
                       termination_frac=0.01,
-                      stoachastic_uncertainty=True)
+                      stochastic_uncertainty=True)
 
         results = run()
         return results

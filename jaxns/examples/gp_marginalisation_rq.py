@@ -77,7 +77,7 @@ def main():
                       max_samples=1e4,
                       collect_samples=True,
                       termination_frac=0.01,
-                      stoachastic_uncertainty=False,
+                      stochastic_uncertainty=False,
                       sampler_kwargs=dict(depth=4))
 
         results = run()

@@ -75,6 +75,6 @@ def test_unit_cube_mixture_prior():
     results = ns(random.PRNGKey(0), 100, max_samples=1e5,
                  collect_samples=True,
                  termination_frac=0.05,
-                 stoachastic_uncertainty=True)
+                 stochastic_uncertainty=True)
     plot_diagnostics(results)
     plot_cornerplot(results)
