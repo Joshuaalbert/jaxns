@@ -46,7 +46,7 @@ class StationaryKernel(Kernel):
 
     def __call__(self, x1, x2, l, *args):
         r2 = squared_norm(x1, x2)
-        r2 = jnp.maximum(r2 / l, 1e-36)
+        r2 = jnp.maximum(r2 / l**2, 1e-36)
         return jnp.exp(self.act(r2, *args))
 
 
