@@ -1,6 +1,6 @@
 from jaxns.nested_sampling import NestedSampler
 from jaxns.prior_transforms import PriorChain, NormalPrior, UniformPrior, DeltaPrior, GMMDiagPrior, \
-    ForcedIdentifiabilityPrior, GaussianProcessKernelPrior
+    ForcedIdentifiabilityPrior, GaussianProcessKernelPrior, BernoulliPrior, DeterministicTransformPrior
 from jaxns.plotting import plot_cornerplot, plot_diagnostics
 from jaxns.gaussian_process.kernels import RBF, M12, M32
 from jax.scipy.linalg import solve_triangular
@@ -37,7 +37,7 @@ def main(kernel):
     # return
     Y = jnp.linalg.cholesky(prior_cov) @ random.normal(random.PRNGKey(0), shape=(N,)) + data_mu
     Y_obs = Y + true_uncert * random.normal(random.PRNGKey(1), shape=(N,))
-    Y_obs = jnp.where((jnp.arange(N) > 50) & (jnp.arange(N) < 60),
+    Y_obs = jnp.where((jnp.arange(N) > 25) & (jnp.arange(N) < 30),
                       random.normal(random.PRNGKey(1), shape=(N,)),
                       Y_obs)
 
@@ -77,7 +77,7 @@ def main(kernel):
     prior_chain = PriorChain().push(uncert).push(cov)
     # print(prior_chain)
 
-    ns = NestedSampler(log_likelihood, prior_chain, sampler_name='multi_ellipsoid', predict_f=predict_f,
+    ns = NestedSampler(log_likelihood, prior_chain, sampler_name='slice', predict_f=predict_f,
                        predict_fvar=predict_fvar)
 
     def run_with_n(n):
@@ -88,7 +88,6 @@ def main(kernel):
                       max_samples=1e5,
                       collect_samples=True,
                       termination_frac=0.01,
-                      stoachastic_uncertainty=False,
                       sampler_kwargs=dict(depth=3))
 
         t0 = default_timer()
