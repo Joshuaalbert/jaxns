@@ -2,6 +2,7 @@ from jax import numpy as jnp, random
 from jaxns.nested_sampling import NestedSampler
 from jaxns.prior_transforms import NormalPrior, HalfLaplacePrior, DeterministicTransformPrior, PriorChain, UniformPrior
 from jaxns.plotting import plot_cornerplot, plot_diagnostics
+from jax import jit
 
 
 def log_laplace(x, mean, uncert):
@@ -50,7 +51,23 @@ def constrained_solve(freqs, key, Y_obs, amp, tec_mean, tec_std, const_mu, clock
                        tec_mean=lambda tec, **kwargs: tec,
                        tec2_mean=lambda tec, **kwargs: tec ** 2
                        )
-
+    print("Running with disable_jit context works (though it takes a long time).")
+    from jax import disable_jit
+    with disable_jit():
+        results = ns(key=key,
+                     num_live_points=100,
+                     max_samples=1e5,
+                     collect_samples=True,
+                     termination_frac=0.01,
+                     sampler_kwargs=dict(depth=2, num_slices=3))
+    print("Running with jit works (quickly).")
+    results = jit(lambda key: ns(key=key,
+                 num_live_points=100,
+                 max_samples=1e5,
+                 collect_samples=True,
+                 termination_frac=0.01,
+                 sampler_kwargs=dict(depth=2, num_slices=3)))(key)
+    print("Running without jit but not with disable_jit doesn't ever terminate.")
     results = ns(key=key,
                  num_live_points=100,
                  max_samples=1e5,
