@@ -2,7 +2,7 @@ from jax import numpy as jnp, random
 from jaxns.nested_sampling import NestedSampler
 from jaxns.prior_transforms import NormalPrior, HalfLaplacePrior, DeterministicTransformPrior, PriorChain, UniformPrior
 from jaxns.plotting import plot_cornerplot, plot_diagnostics
-from jax import jit
+from jax import jit, pmap
 from timeit import default_timer
 
 
@@ -52,6 +52,33 @@ def constrained_solve(freqs, key, Y_obs, amp, tec_mean, tec_std, const_mu, clock
                        tec_mean=lambda tec, **kwargs: tec,
                        tec2_mean=lambda tec, **kwargs: tec ** 2
                        )
+    print("Running with jit works (quickly ~10 sec).")
+    t0 = default_timer()
+    results = jit(lambda key: ns(key=key,
+                 num_live_points=100,
+                 max_samples=1e5,
+                 collect_samples=True,
+                 termination_frac=0.01,
+                 sampler_kwargs=dict(depth=2, num_slices=3)))(key)
+    print("Time to run {}".format(default_timer() - t0))
+    print("Running with pmap-jit works (quickly ~10 sec).")
+    t0 = default_timer()
+    results = pmap(jit(lambda key: ns(key=key,
+                                 num_live_points=100,
+                                 max_samples=1e5,
+                                 collect_samples=True,
+                                 termination_frac=0.01,
+                                 sampler_kwargs=dict(depth=2, num_slices=3))))(key[None,...])
+    print("Time to run {}".format(default_timer() - t0))
+    print("Running with pmap works (quickly ~10 sec).")
+    t0 = default_timer()
+    results = pmap(lambda key: ns(key=key,
+                                 num_live_points=100,
+                                 max_samples=1e5,
+                                 collect_samples=True,
+                                 termination_frac=0.01,
+                                 sampler_kwargs=dict(depth=2, num_slices=3)))(key[None,...])
+    print("Time to run {}".format(default_timer() - t0))
     t0 = default_timer()
     print("Running with disable_jit context works (though it takes a long time ~15 min).")
     from jax import disable_jit
@@ -62,15 +89,6 @@ def constrained_solve(freqs, key, Y_obs, amp, tec_mean, tec_std, const_mu, clock
                      collect_samples=True,
                      termination_frac=0.01,
                      sampler_kwargs=dict(depth=2, num_slices=3))
-    print("Time to run {}".format(default_timer() - t0))
-    print("Running with jit works (quickly ~10 sec).")
-    t0 = default_timer()
-    results = jit(lambda key: ns(key=key,
-                 num_live_points=100,
-                 max_samples=1e5,
-                 collect_samples=True,
-                 termination_frac=0.01,
-                 sampler_kwargs=dict(depth=2, num_slices=3)))(key)
     print("Time to run {}".format(default_timer() - t0))
     print("Running without jit but not with disable_jit doesn't ever terminate (in at least 3 hours).")
     t0 = default_timer()
