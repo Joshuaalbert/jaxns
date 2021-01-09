@@ -67,8 +67,7 @@ results = ns(key=random.PRNGKey(0),
                   num_live_points=300,
                   max_samples=1e5,
                   collect_samples=True,
-                  termination_frac=0.01,
-                  stoachastic_uncertainty=False)
+                  termination_frac=0.01)
 
 plot_diagnostics(results)
 plot_cornerplot(results)
