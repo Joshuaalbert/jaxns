@@ -78,5 +78,5 @@ print("True posterior m={}\nCov={}".format(post_mu, post_cov))
 
 # Speed test comparison with other nested sampling packages
 
-JAXNS is much faster than PolyChord, MultiNEST, and dynesty, typically achieve two to three orders of magnitude improvement in speed.
+JAXNS is much faster than PolyChord, MultiNEST, and dynesty, typically achieving two to three orders of magnitude improvement in speed.
 I show this in (https://arxiv.org/abs/2012.15286).
