@@ -38,7 +38,6 @@ def main():
                       max_samples=1e5,
                       collect_samples=True,
                       termination_frac=0.01,
-                      stoachastic_uncertainty=False,
                       sampler_kwargs=dict(depth=7, num_slices=1))
 
         t0 = default_timer()

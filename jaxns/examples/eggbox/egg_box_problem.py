@@ -21,7 +21,7 @@ def main():
     plt.colorbar(sc)
     plt.show()
 
-    ns = NestedSampler(log_likelihood, prior_chain, sampler_name='slice')
+    ns = NestedSampler(log_likelihood, prior_chain, sampler_name='slice')#'slice')
 
     def run_with_n(n):
         @jit
@@ -31,7 +31,6 @@ def main():
                       max_samples=1e5,
                       collect_samples=True,
                       termination_frac=0.01,
-                      stoachastic_uncertainty=False,
                       sampler_kwargs=dict(depth=7))
 
         t0 = default_timer()
