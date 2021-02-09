@@ -12,7 +12,7 @@ from jaxns.prior_transforms import PriorChain
 from jaxns.param_tracking import \
     TrackedExpectation
 from jaxns.utils import dict_multimap
-from jaxns.likelihood_samplers import (slice_sampling,  init_slice_sampler_state,
+from jaxns.likelihood_samplers import (slice_sampling, init_slice_sampler_state,
                                        multi_ellipsoid_sampler, init_multi_ellipsoid_sampler_state)
 
 
@@ -83,6 +83,7 @@ class NestedSampler(object):
         """
         Initialises the state of samplers.
         """
+
         # get initial live points_U
         def single_sample(key):
             U = random.uniform(key, shape=(self.prior_chain.U_ndims,))
@@ -200,13 +201,12 @@ class NestedSampler(object):
                                              sampler_state=state.sampler_state)
         elif self.sampler_name == 'multi_ellipsoid':
             sampler_results = multi_ellipsoid_sampler(state.key,
-                                                      log_L_min,
-                                                      state.live_points_U,
-                                                      self.loglikelihood,
-                                                      self.prior_chain,
-                                                      state.sampler_state,
-                                                      tracked_expectations.state.X.log_value,
-                                                      i_min)
+                                                      log_L_constraint=log_L_min,
+                                                      live_points_U=state.live_points_U,
+                                                      loglikelihood_from_constrained=self.loglikelihood,
+                                                      prior_transform=self.prior_chain,
+                                                      log_X=tracked_expectations.state.X.log_value,
+                                                      sampler_state=state.sampler_state)
         else:
             raise ValueError("Invalid sampler name {}".format(self.sampler_name))
         #

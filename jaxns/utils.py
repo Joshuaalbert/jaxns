@@ -1,7 +1,51 @@
 from jax import random, vmap, numpy as jnp
 from jax.lax import scan, while_loop
 from jax.scipy.special import logsumexp, gammaln
-from scipy.stats.kde import gaussian_kde
+
+def marginalise_static(key, samples, log_weights, ESS, fun):
+    """
+    Marginalises function over posterior samples, where ESS is static.
+
+    Args:
+        key: PRNG key
+        samples: dict of batched array of nested sampling samples
+        log_weights: log weights from nested sampling
+        ESS: static effective sample size
+        fun: callable(**kwargs) to marginalise.
+
+    Returns: expectation over resampled samples.
+    """
+    samples = resample(key, samples, log_weights, S=ESS)
+    marginalised = jnp.mean(vmap(lambda d: fun(**d))(samples), axis=0)
+    return marginalised
+
+def marginalise(key, samples, log_weights, ESS, fun):
+    """
+    Marginalises function over posterior samples, where ESS can be dynamic.
+
+    Args:
+        key: PRNG key
+        samples: dict of batched array of nested sampling samples
+        log_weights: log weights from nested sampling
+        ESS: dynamic effective sample size
+        fun: callable(**kwargs) to marginalise.
+
+    Returns: expectation over resampled samples.
+    """
+
+    def body(state):
+        (key, i, marginalised) = state
+        key, resample_key = random.split(key, 2)
+        _samples = tree_map(lambda v: v[0], resample(resample_key, samples, log_weights, S=1))
+        marginalised += fun(**_samples)
+        return (key, i + 1., marginalised)
+
+    test_output = fun(**tree_map(lambda v: v[0], samples))
+    (_, count, marginalised) = while_loop(lambda state: state[1] < ESS,
+                                          body,
+                                          (key, jnp.array(0.), jnp.zeros_like(test_output)))
+    marginalised = marginalised / count
+    return marginalised
 
 def random_ortho_matrix(key, n):
     """

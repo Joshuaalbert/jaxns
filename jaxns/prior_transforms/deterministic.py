@@ -34,9 +34,12 @@ class TransposePrior(DeterministicTransformPrior):
 
 
 class GaussianProcessKernelPrior(DeterministicTransformPrior):
-    def __init__(self, name, kernel: Kernel, X, *gp_params, tracked=False):
+    def __init__(self, name, kernel: Kernel, X, *gp_params, Xstar=None, tracked=False):
         gp_params = [X] + list(gp_params)
         def _transform(X, *gp_params):
-            return kernel(X, X, *gp_params) + 1e-6 * jnp.eye(X.shape[0])
+            if Xstar is None:
+                return kernel(X, X, *gp_params) + 1e-6 * jnp.eye(X.shape[0])
+            else:
+                return kernel(X, Xstar, *gp_params)
         to_shape = (get_shape(X)[0], get_shape(X)[0])
         super(GaussianProcessKernelPrior, self).__init__(name, _transform, to_shape, *gp_params, tracked=tracked)
