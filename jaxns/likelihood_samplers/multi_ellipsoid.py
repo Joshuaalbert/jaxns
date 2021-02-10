@@ -93,7 +93,7 @@ def multi_ellipsoid_sampler(key,
 
     sampler_state = cond(do_recalculate,
                          lambda args: recalculate_sampler_state(*args),
-                         lambda _: evolve_sampler_state(sampler_state, N, D),
+                         lambda _: sampler_state,# evolve_sampler_state(sampler_state, N, D),
                          (recalc_key, live_points_U, sampler_state, log_X))
 
     # if do_recalculate:
