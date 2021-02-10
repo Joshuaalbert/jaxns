@@ -61,30 +61,10 @@ def slice_sampling(key,
     sampler_state = sampler_state._replace(num_k=num_k)
     ###
     # evolve ellipsoids or potentially recalculate ellipsoids
-    sampler_state = evolve_sampler_state(sampler_state, live_points_U)
+    # sampler_state = evolve_sampler_state(sampler_state, live_points_U)
 
     def log_likelihood_from_U(U):
         return loglikelihood_from_constrained(**prior_transform(U))
-
-    def plot(left, right):
-        import pylab as plt
-        # plt.scatter(live_points_U[:,0], live_points_U[:,1])
-        # plt.plot([x[0], x[0] + right * n[0]], [x[1], x[1] + right * n[1]], c='red')
-        # plt.plot([x[0], x[0] + left * n[0]], [x[1], x[1] + left * n[1]], c='green')
-
-        theta = jnp.linspace(0., jnp.pi * 2, 100)
-        x_circ = jnp.stack([jnp.cos(theta), jnp.sin(theta)], axis=0)
-
-        for i, (mu, radii, rotation) in enumerate(
-                zip(sampler_state.mu, sampler_state.radii, sampler_state.rotation)):
-            y = mu[:, None] + rotation @ jnp.diag(radii) @ x_circ
-            plt.plot(y[0, :], y[1, :], c=plt.cm.jet(i / sampler_state.mu.shape[0]))
-            mask = sampler_state.cluster_id == i
-            plt.scatter(live_points_U[mask, 0], live_points_U[mask, 1],
-                        c=jnp.atleast_2d(plt.cm.jet(i / sampler_state.mu.shape[0])))
-        plt.xlim(-1, 2)
-        plt.ylim(-1, 2)
-        plt.show()
 
     def slice_sample_1d(key, x, n, w):
         """
