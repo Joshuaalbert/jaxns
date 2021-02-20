@@ -201,13 +201,13 @@ def slice_sampling(key,
 
         key, n_key = random.split(key, 2)
 
-        n_circ = random.normal(n_key, shape=x.shape)
-        origin = jnp.zeros(n_circ.shape)
-        n_ellip = circle_to_ellipsoid(n_circ, origin, radii_k, rotation_k)
-        n_ellip = n_ellip / jnp.linalg.norm(n_ellip)
+        n = random.normal(n_key, shape=x.shape)
+        n /= jnp.linalg.norm(n)
+        origin = jnp.zeros(n.shape)
+
         # M
         # get w by circularising or getting
-        Ln = ellipsoid_to_circle(n_ellip, origin, radii_k, rotation_k)
+        Ln = ellipsoid_to_circle(n, origin, radii_k, rotation_k)
         Ldx = ellipsoid_to_circle(x-mu_k, origin, radii_k, rotation_k)
 
         a = Ln @ Ln
@@ -216,7 +216,7 @@ def slice_sampling(key,
         w = jnp.sqrt(b ** 2 - 4. * a * c) / a
         w = jnp.where(jnp.isnan(w), jnp.max(radii_k), w)
 
-        (key, x_t, f_t, num_f_eval) = slice_sample_1d(key, x, n_ellip, w)
+        (key, x_t, f_t, num_f_eval) = slice_sample_1d(key, x, n, w)
 
         return (key, num_f_eval0 + num_f_eval, x_t, f_t), ()
 
