@@ -1,5 +1,5 @@
 from collections import namedtuple, OrderedDict
-from jax import numpy as jnp
+from jax import numpy as jnp, tree_multimap
 from jax.lax import scan
 from jaxns.utils import dict_multimap, signed_logaddexp, tuple_prod
 
@@ -14,6 +14,15 @@ class TrackedExpectation(object):
                  marginalised_shapes,
                  *,
                  state=None):
+        """
+        Tracks marginalised functions including evidence and information gain.
+        Currently, the marginalisation expects the tracked expressions to all be of float dtype.
+
+        Args:
+            marginalised_funcs: dict of callables(**priors_X)
+            marginalised_shapes: dict of shapes of results of each marginalised function.
+            state: internal state, if not given then initialises this.
+        """
         self.State = ParamTrackingState
         total_length = self.build_meta(marginalised_funcs, marginalised_shapes)
         if state is not None:
@@ -184,20 +193,27 @@ class TrackedExpectation(object):
         res = jnp.concatenate(res)
         return SignedLogParam(jnp.log(jnp.abs(res)), jnp.sign(res))
 
-    def update_from_live_points(self, live_points, log_L_live):
+    def update_from_live_points(self, live_points, log_L_live, log_L_contour=None):
+        if log_L_contour is None:
+            log_L_contour = -jnp.inf
+
         ar = jnp.argsort(log_L_live)
+        num_satisfying = jnp.sum(log_L_live > log_L_contour)
+        # We offset numbering by num_satisfying
 
         def body(state, X):
-            (self_state,) = state
+            (self_state,found_satisfying) = state
             (i,) = X
             i_min = ar[i]
-            self.state = self_state
-            n = log_L_live.shape[0] - i
             log_L_min = log_L_live[i_min]
+            is_satisfying = log_L_min > log_L_contour
+            self.state = self_state
+            n = jnp.where(is_satisfying, num_satisfying - found_satisfying, jnp.inf)
+            found_satisfying += is_satisfying
             self.update(dict_multimap(lambda x: x[i_min, ...], live_points), n, log_L_min)
-            return (self.state,), (n, log_L_min, self.state.X.log_value, self.state.dw.log_value)
+            return (self.state, found_satisfying), (n, log_L_min, self.state.X.log_value, self.state.dw.log_value)
 
-        (self_state,), results = scan(body,(self.state,), (jnp.arange(log_L_live.shape[0]),),unroll=2)
+        (self_state, _), results = scan(body,(self.state,jnp.asarray(0)), (jnp.arange(log_L_live.shape[0]),),unroll=1)
 
         self.state = self_state
         return results

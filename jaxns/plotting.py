@@ -5,8 +5,6 @@ from jax import random
 from matplotlib.animation import FuncAnimation
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
-
-
 def plot_diagnostics(results, save_name=None):
     """
     Plot diagnostics of the nested sampling run.
@@ -289,7 +287,7 @@ def plot_samples_development(results, vars=None, save_name=None):
 
     ani.save(save_name, fps=results.n_per_sample[0]/2.)
 
-def add_colorbar_to_axes(ax, cmap, norm=None, vmin=None, vmax=None):
+def add_colorbar_to_axes(ax, cmap, norm=None, vmin=None, vmax=None, label=None):
     """
     Add colorbar to axes easily.
 
@@ -305,4 +303,7 @@ def add_colorbar_to_axes(ax, cmap, norm=None, vmin=None, vmax=None):
     if norm is None:
         norm = plt.Normalize(vmin=vmin, vmax=vmax)
     sm = plt.cm.ScalarMappable(norm, cmap=plt.cm.get_cmap(cmap))
-    ax.figure.colorbar(sm, cax=cax, orientation='vertical')
+    if label is None:
+        ax.figure.colorbar(sm, cax=cax, orientation='vertical')
+    else:
+        ax.figure.colorbar(sm, cax=cax, orientation='vertical', label=label)
