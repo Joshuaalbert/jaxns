@@ -66,22 +66,21 @@ def main():
                 return jnp.outer(x,x)
 
             ns = NestedSampler(log_likelihood, prior_transform, sampler_name='slice',
+                               num_live_points=n,
+                               max_samples=1e6,
+                               collect_samples=True,
+                               sampler_kwargs=dict(depth=5, num_slices=2),
                                x_mean=param_mean,
                                x_cov=param_covariance
                                )
             return ns(key=key,
-                      num_live_points=n,
-                      max_samples=1e6,
-                      collect_samples=True,
-                      termination_frac=0.001,
-                      stoachastic_uncertainty=False,
-                      sampler_kwargs=dict(depth=5, num_slices=2))
+                      termination_frac=0.001)
         t0 = default_timer()
         results = run(random.PRNGKey(0))
         print('efficiency',results.efficiency)
         print("time to run including compile", default_timer() - t0)
         t0 = default_timer()
-        results = run(random.PRNGKey(1))
+        results = run(random.PRNGKey(0))
         print('efficiency', results.efficiency, results.num_samples)
         print("time to run not including compile", default_timer() - t0)
         return results

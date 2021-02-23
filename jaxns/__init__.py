@@ -1,4 +1,6 @@
 import os, sys
+import logging
+logging.basicConfig(format='%(levelname)s[%(asctime)s]: %(message)s', level=logging.INFO)
 
 # _JAXNS_IMPORTED = False
 # if ('jax' in sys.modules) and not _JAXNS_IMPORTED:
