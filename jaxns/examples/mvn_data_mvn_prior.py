@@ -74,7 +74,6 @@ def main():
                       max_samples=1e6,
                       collect_samples=True,
                       termination_frac=0.001,
-                      stoachastic_uncertainty=False,
                       sampler_kwargs=dict(depth=5, num_slices=2))
         t0 = default_timer()
         results = run(random.PRNGKey(0))
