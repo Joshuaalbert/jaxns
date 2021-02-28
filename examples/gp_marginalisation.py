@@ -1,10 +1,9 @@
 from jaxns.nested_sampling import NestedSampler
-from jaxns.prior_transforms import PriorChain, NormalPrior, UniformPrior, DeltaPrior, GMMDiagPrior, \
-    ForcedIdentifiabilityPrior, GaussianProcessKernelPrior, BernoulliPrior, DeterministicTransformPrior
+from jaxns.prior_transforms import PriorChain, UniformPrior, GaussianProcessKernelPrior
 from jaxns.plotting import plot_cornerplot, plot_diagnostics
 from jaxns.gaussian_process.kernels import RBF, M12, M32
 from jax.scipy.linalg import solve_triangular
-from jax import random, jit, disable_jit
+from jax import random, jit
 from jax import numpy as jnp
 from timeit import default_timer
 import pylab as plt
@@ -33,18 +32,12 @@ def main(kernel):
     true_sigma, true_l, true_uncert = 1., 0.2, 0.2
     data_mu = jnp.zeros((N,))
     prior_cov = RBF()(X, X, true_l, true_sigma) + 1e-13 * jnp.eye(N)
-    # print(jnp.linalg.cholesky(prior_cov), jnp.linalg.eigvals(prior_cov))
-    # return
+
     Y = jnp.linalg.cholesky(prior_cov) @ random.normal(random.PRNGKey(0), shape=(N,)) + data_mu
     Y_obs = Y + true_uncert * random.normal(random.PRNGKey(1), shape=(N,))
     Y_obs = jnp.where((jnp.arange(N) > 25) & (jnp.arange(N) < 30),
                       random.normal(random.PRNGKey(1), shape=(N,)),
                       Y_obs)
-
-    # plt.scatter(X[:, 0], Y_obs, label='data')
-    # plt.plot(X[:, 0], Y, label='underlying')
-    # plt.legend()
-    # plt.show()
 
     def log_likelihood(K, uncert, **kwargs):
         """
@@ -75,20 +68,17 @@ def main(kernel):
     sigma = UniformPrior('sigma', 0., 2.)
     cov = GaussianProcessKernelPrior('K', kernel, X, l, sigma)
     prior_chain = PriorChain().push(uncert).push(cov)
-    # print(prior_chain)
-
-    ns = NestedSampler(log_likelihood, prior_chain, sampler_name='slice', predict_f=predict_f,
-                       predict_fvar=predict_fvar)
 
     def run_with_n(n):
+        ns = NestedSampler(log_likelihood, prior_chain, sampler_name='multi_ellipsoid', num_live_points=n,
+                           max_samples=1e5,
+                           collect_samples=True,
+                           sampler_kwargs=dict(depth=3, num_slices=5),
+                           predict_f=predict_f,
+                           predict_fvar=predict_fvar)
         @jit
         def run(key):
-            return ns(key=key,
-                      num_live_points=n,
-                      max_samples=1e5,
-                      collect_samples=True,
-                      termination_frac=0.01,
-                      sampler_kwargs=dict(depth=3))
+            return ns(key=key, termination_frac=0.01)
 
         t0 = default_timer()
         # with disable_jit():
