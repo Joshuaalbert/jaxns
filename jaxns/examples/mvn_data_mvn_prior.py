@@ -16,7 +16,7 @@ def main():
         return -0.5 * x.size * jnp.log(2. * jnp.pi) - jnp.sum(jnp.log(jnp.diag(L))) \
                - 0.5 * dx @ dx
 
-    ndims = 8
+    ndims = 2
     prior_mu = 2 * jnp.ones(ndims)
     prior_cov = jnp.diag(jnp.ones(ndims)) ** 2
 
@@ -58,31 +58,31 @@ def main():
     def run_with_n(n):
         @jit
         def run(key):
-            # prior_transform = PriorChain().push(NormalPrior('x', prior_mu, jnp.sqrt(jnp.diag(prior_cov))))
             prior_transform = PriorChain().push(MVNPrior('x', prior_mu, prior_cov))
+
             def param_mean(x, **args):
                 return x
             def param_covariance(x, **args):
                 return jnp.outer(x,x)
 
             ns = NestedSampler(log_likelihood, prior_transform, sampler_name='slice',
+                               num_live_points=n,
+                               max_samples=1e6,
+                               collect_samples=True,
+                               sampler_kwargs=dict(depth=2, num_slices=10),
                                x_mean=param_mean,
                                x_cov=param_covariance
                                )
-            return ns(key=key,
-                      num_live_points=n,
-                      max_samples=1e6,
-                      collect_samples=True,
-                      termination_frac=0.001,
-                      sampler_kwargs=dict(depth=5, num_slices=2))
+            return ns(key=key,  termination_frac=0.001)
         t0 = default_timer()
+        # with disable_jit():
         results = run(random.PRNGKey(0))
         print('efficiency',results.efficiency)
         print("time to run including compile", default_timer() - t0)
         t0 = default_timer()
-        results = run(random.PRNGKey(1))
-        print('efficiency', results.efficiency, results.num_samples)
-        print("time to run not including compile", default_timer() - t0)
+        # results = run(random.PRNGKey(747645))
+        # print('efficiency', results.efficiency, results.num_samples)
+        # print("time to run not including compile", default_timer() - t0)
         return results
 
     for n in [1000]:
