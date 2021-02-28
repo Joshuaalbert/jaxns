@@ -48,7 +48,7 @@ def cubes(key, log_L_constraint, live_points_U,
     inter_point_distance = jnp.where(inter_point_distance == 0., jnp.inf, inter_point_distance)
     nearest_dist = jnp.min(inter_point_distance, axis=0)
     log_cube_width = jnp.log(jnp.mean(nearest_dist))
-    # log_cube_width = determine_log_cube_width(width_key, live_points_U, log_mean_X, log_init_cube_width=sampler_state.log_cube_width,
+    # log_cube_width = determine_log_cube_width(width_key, init_U, log_mean_X, log_init_cube_width=sampler_state.log_cube_width,
     #                          tol=0.1, shrink_amount=0.5, grow_amount=1.5, log_vol_samples=1)
 
     # log_cube_width = jnp.where(jnp.isfinite(log_cube_width), log_cube_width, log_ideal_cube_width)

@@ -1,34 +1,31 @@
 from jax import numpy as jnp
 from jax.lax import scan
 
-from jaxns.prior_transforms.common import DeltaPrior
-from jaxns.prior_transforms.prior_chain import PriorTransform
-from jaxns.prior_transforms.prior_utils import get_shape
-from jaxns.utils import broadcast_shapes, tuple_prod
+from jaxns.prior_transforms.common import ContinuousPrior
+from jaxns.prior_transforms.prior_utils import get_shape, prior_docstring
+from jaxns.utils import broadcast_shapes
 
 
-class ForcedIdentifiabilityPrior(PriorTransform):
-    """
-    Prior for a sequence of `n` random variables uniformly distributed on U[low, high] such that X[i,...] <= X[i+1,...].
-    For broadcasting the resulting random variable is sorted on the first dimension elementwise.
-    """
-
+class ForcedIdentifiabilityPrior(ContinuousPrior):
+    @prior_docstring
     def __init__(self, name, n, low, high, tracked=True):
-        if not isinstance(low, PriorTransform):
-            low = DeltaPrior('_{}_low'.format(name), low, False)
-        if not isinstance(high, PriorTransform):
-            high = DeltaPrior('_{}_high'.format(name), high, False)
+        """
+        Prior for a sequence of `n` random variables uniformly distributed on U[low, high] such that X[i,...] <= X[i+1,...].
+        For broadcasting the resulting random variable is sorted on the first dimension elementwise.
+
+        Args:
+            n: number of samples within [low,high]
+            low: minimum of distribution
+            high: maximum of distribution
+        """
+        low = self._prepare_parameter(name, 'low', low)
+        high = self._prepare_parameter(name, 'high', high)
         self._n = n
-        self._broadcast_shape = (self._n,) + broadcast_shapes(get_shape(low), get_shape(high))
-        U_dims = tuple_prod(self._broadcast_shape)
-        super(ForcedIdentifiabilityPrior, self).__init__(name, U_dims, [low, high], tracked)
+        shape = (self._n,) + broadcast_shapes(get_shape(low), get_shape(high))
+        super(ForcedIdentifiabilityPrior, self).__init__(name, shape, [low, high], tracked)
 
-    @property
-    def to_shape(self):
-        return self._broadcast_shape
-
-    def forward(self, U, low, high, **kwargs):
-        log_x = jnp.log(jnp.reshape(U, self.to_shape))
+    def transform_U(self, U, low, high, **kwargs):
+        log_x = jnp.log(U)
 
         # theta[i] = theta[i-1] * (1 - x[i]) + theta_max * x[i]
         def body(state, X):

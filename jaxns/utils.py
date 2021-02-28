@@ -1,51 +1,9 @@
-from jax import random, vmap, numpy as jnp
+from jax import random, vmap, numpy as jnp, tree_map, local_device_count, devices as get_devices, pmap, jit
 from jax.lax import scan, while_loop
 from jax.scipy.special import logsumexp, gammaln
+import logging
 
-def marginalise_static(key, samples, log_weights, ESS, fun):
-    """
-    Marginalises function over posterior samples, where ESS is static.
-
-    Args:
-        key: PRNG key
-        samples: dict of batched array of nested sampling samples
-        log_weights: log weights from nested sampling
-        ESS: static effective sample size
-        fun: callable(**kwargs) to marginalise.
-
-    Returns: expectation over resampled samples.
-    """
-    samples = resample(key, samples, log_weights, S=ESS)
-    marginalised = jnp.mean(vmap(lambda d: fun(**d))(samples), axis=0)
-    return marginalised
-
-def marginalise(key, samples, log_weights, ESS, fun):
-    """
-    Marginalises function over posterior samples, where ESS can be dynamic.
-
-    Args:
-        key: PRNG key
-        samples: dict of batched array of nested sampling samples
-        log_weights: log weights from nested sampling
-        ESS: dynamic effective sample size
-        fun: callable(**kwargs) to marginalise.
-
-    Returns: expectation over resampled samples.
-    """
-
-    def body(state):
-        (key, i, marginalised) = state
-        key, resample_key = random.split(key, 2)
-        _samples = tree_map(lambda v: v[0], resample(resample_key, samples, log_weights, S=1))
-        marginalised += fun(**_samples)
-        return (key, i + 1., marginalised)
-
-    test_output = fun(**tree_map(lambda v: v[0], samples))
-    (_, count, marginalised) = while_loop(lambda state: state[1] < ESS,
-                                          body,
-                                          (key, jnp.array(0.), jnp.zeros_like(test_output)))
-    marginalised = marginalised / count
-    return marginalised
+logger = logging.getLogger(__name__)
 
 def random_ortho_matrix(key, n):
     """
@@ -64,8 +22,10 @@ def random_ortho_matrix(key, n):
     return Q
 
 def test_random_ortho_normal_matrix():
-    H = random_ortho_matrix(random.PRNGKey(0), 3)
-    assert jnp.all(jnp.isclose(H @ H.conj().T, jnp.eye(3), atol=1e-7))
+    for i in range(100):
+        H = random_ortho_matrix(random.PRNGKey(0), 3)
+        print(jnp.linalg.eigvals(H))
+        assert jnp.all(jnp.isclose(H @ H.conj().T, jnp.eye(3), atol=1e-7))
 
 
 def dict_multimap(f, d, *args):
@@ -179,7 +139,7 @@ def masked_cluster_id(points, centers, K):
 
 def cluster(key, points, max_K=6):
     """
-    Cluster `points_U` automatically choosing K.
+    Cluster `init_U` automatically choosing K.
     Outdated.
 
     Args:
@@ -194,8 +154,8 @@ def cluster(key, points, max_K=6):
 
     """
 
-    # points_U = points_U - jnp.mean(points_U, axis=0)
-    # points_U = points_U / jnp.maximum(jnp.std(points_U, axis=0), 1e-8)
+    # init_U = init_U - jnp.mean(init_U, axis=0)
+    # init_U = init_U / jnp.maximum(jnp.std(init_U, axis=0), 1e-8)
 
     def _init_points(key, points):
         def body(state, X):
@@ -215,7 +175,7 @@ def cluster(key, points, max_K=6):
 
     def kmeans(key, points, K):
         # key, shuffle_key = random.split(key, 2)
-        # centers = random.shuffle(shuffle_key, points_U, axis=0)
+        # centers = random.shuffle(shuffle_key, init_U, axis=0)
         # centers = centers[:K, :]
         key, centers = _init_points(key, points)
         # N
@@ -764,3 +724,93 @@ def normal_to_lognormal(f, f2):
     ln_mu = 2. * jnp.log(f) - 0.5 * jnp.log(f2)
     ln_var = jnp.log(f2) - 2. * jnp.log(f)
     return ln_mu, jnp.sqrt(ln_var)
+
+def marginalise_static(key, samples, log_weights, ESS, fun):
+    """
+    Marginalises function over posterior samples, where ESS is static.
+
+    Args:
+        key: PRNG key
+        samples: dict of batched array of nested sampling samples
+        log_weights: log weights from nested sampling
+        ESS: static effective sample size
+        fun: callable(**kwargs) to marginalise.
+
+    Returns: expectation over resampled samples.
+    """
+    samples = resample(key, samples, log_weights, S=ESS)
+    marginalised = jnp.mean(vmap(lambda d: fun(**d))(samples), axis=0)
+    return marginalised
+
+
+def marginalise(key, samples, log_weights, ESS, fun):
+    """
+    Marginalises function over posterior samples, where ESS can be dynamic.
+
+    Args:
+        key: PRNG key
+        samples: dict of batched array of nested sampling samples
+        log_weights: log weights from nested sampling
+        ESS: dynamic effective sample size
+        fun: callable(**kwargs) to marginalise.
+
+    Returns: expectation over resampled samples.
+    """
+
+    def body(state):
+        (key, i, marginalised) = state
+        key, resample_key = random.split(key, 2)
+        _samples = tree_map(lambda v: v[0], resample(resample_key, samples, log_weights, S=1))
+        marginalised += fun(**_samples)
+        return (key, i + 1., marginalised)
+
+    test_output = fun(**tree_map(lambda v: v[0], samples))
+    (_, count, marginalised) = while_loop(lambda state: state[1] < ESS,
+                                          body,
+                                          (key, jnp.array(0.), jnp.zeros_like(test_output)))
+    marginalised = marginalised / count
+    return marginalised
+
+
+def chunked_pmap(f, *args, chunksize=None):
+    """
+    Calls pmap on chunks of moderate work to be distributed over devices.
+    Automatically handle non-dividing chunksizes, by adding filler elements.
+
+    Args:
+        f: jittable, callable
+        *args: ndarray arguments to map down first dimension
+        chunksize: optional chunk size, should be <= local_device_count(). None is local_device_count.
+
+    Returns: pytree mapped result.
+    """
+    if chunksize is None:
+        chunksize = local_device_count()
+    if chunksize > local_device_count():
+        raise ValueError("chunksize should be <= {}".format(local_device_count()))
+    N = args[0].shape[0]
+    remainder = N % chunksize
+    if (remainder != 0) and (N > chunksize):
+        # only pad if not a zero remainder
+        extra = chunksize - remainder
+        args = tree_map(lambda arg: jnp.concatenate([arg, arg[:extra]], axis=0), args)
+        N = args[0].shape[0]
+    args = tree_map(lambda arg: jnp.reshape(arg, (chunksize, N // chunksize) + arg.shape[1:]), args)
+    T = N // chunksize
+    logger.info(f"Distributing {N} over {chunksize} devices in queues of length {T}.")
+    # @jit
+    def pmap_body(*args):
+        def body(state, args):
+            return state, f(*args)
+
+        _, result = scan(body, (), args, unroll=1)
+        return result
+
+    result = pmap(pmap_body)(*args)
+
+    result = tree_map(lambda arg: jnp.reshape(arg, (-1,) + arg.shape[2:]), result)
+    if remainder != 0:
+        # only slice if not a zero remainder
+        result = tree_map(lambda x: x[:-extra], result)
+
+    return result
