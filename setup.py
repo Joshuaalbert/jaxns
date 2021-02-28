@@ -3,11 +3,9 @@
 from setuptools import setup
 from setuptools import find_packages
 
-__maximum_numpy_version__ = '1.19.0'
-__minimum_jax_version__ = '0.1.67'
+__minimum_jax_version__ = '0.2.9'
 
-setup_requires = ['numpy<' + __maximum_numpy_version__,
-                  'jax>=' + __minimum_jax_version__]
+setup_requires = ['jax>=' + __minimum_jax_version__]
 
 with open("README.md", "r") as fh:
     long_description = fh.read()
