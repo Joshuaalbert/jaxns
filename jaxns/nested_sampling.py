@@ -253,7 +253,7 @@ class NestedSampler(object):
             tracked_expectations_state=tracked_expectations.state,
             log_X=log_X,
             log_w=log_w,
-            last_likelihood_evaluations_per_sample=jnp.asarray(1)
+            last_likelihood_evaluations_per_sample=jnp.asarray(1.)
         )
 
         return state
@@ -293,7 +293,12 @@ class NestedSampler(object):
             log_L_dead = dynamic_update_slice(state.log_L_dead,
                                               log_L_dead_new[None],
                                               [state.num_dead])
-            state = state._replace(log_X=log_X, log_w=log_w, log_L_dead=log_L_dead)
+            likelihood_evaluations_per_sample = dynamic_update_slice(state.likelihood_evaluations_per_sample,
+                                                                     state.last_likelihood_evaluations_per_sample[None],
+                                                                     [state.num_dead]
+                                                                     )
+            state = state._replace(log_X=log_X, log_w=log_w, log_L_dead=log_L_dead,
+                                   likelihood_evaluations_per_sample=likelihood_evaluations_per_sample)
             if self.collect_samples:
                 dead_points = dict_multimap(lambda x, y: dynamic_update_slice(x,
                                                                               y.astype(x.dtype)[None],
@@ -349,6 +354,7 @@ class NestedSampler(object):
             else:
                 raise ValueError("Subspace type {} is invalid".format(subspace_type))
             subspace_sampler_states.append(sampler_state)
+
 
         def build_log_likelihood(idx, U):
             def log_likelihood(u_compact_i):
@@ -411,22 +417,25 @@ class NestedSampler(object):
                 else:
                     raise ValueError("Subspace type {} is invalid".format(subspace_type))
             sample_X = self.prior_chain(sample_U)
-            return sample_U, sample_X, sample_log_L
+            return num_likelihood_evaluations, sample_U, sample_X, sample_log_L
 
-        # (reservoir_points_U, reservoir_points_X, log_L_reservoir) = \
+        # (num_likelihood_evaluations, reservoir_points_U, reservoir_points_X, log_L_reservoir) = \
         #     chunked_pmap(_one_sample, random.split(sample_key, state.log_L_reservoir.size))
 
         def body(state, args):
             return state, _one_sample(*args)
-        _, (reservoir_points_U, reservoir_points_X, log_L_reservoir) = scan(
+
+        _, (num_likelihood_evaluations, reservoir_points_U, reservoir_points_X, log_L_reservoir) = scan(
             body, (), (random.split(sample_key, state.log_L_reservoir.size),), unroll=1)
 
         reservoir_point_available = jnp.ones(log_L_reservoir.shape, dtype=jnp.bool_)
+        new_likelihood_evaluations_per_sample = jnp.mean(num_likelihood_evaluations)
 
         state = state._replace(reservoir_points_U=reservoir_points_U,
                                reservoir_points_X=reservoir_points_X,
                                log_L_reservoir=log_L_reservoir,
-                               reservoir_point_available=reservoir_point_available)
+                               reservoir_point_available=reservoir_point_available,
+                               last_likelihood_evaluations_per_sample=new_likelihood_evaluations_per_sample)
         return state
 
     def _replace_dead_point(self, i_min: int, state: NestedSamplerState) -> NestedSamplerState:
@@ -459,7 +468,7 @@ class NestedSampler(object):
                                           state.log_L_reservoir[None, choice],
                                           [i_min])
         reservoir_point_available = dynamic_update_slice(state.reservoir_point_available,
-                                                         jnp.ones((1,), dtype=jnp.bool_),
+                                                         jnp.zeros((1,), dtype=jnp.bool_),
                                                          [choice])
         state = state._replace(live_points_U=live_points_U,
                                live_points_X=live_points_X,
@@ -516,14 +525,13 @@ class NestedSampler(object):
         def body(state: NestedSamplerState):
             # do one sampling step
             state = self._one_step(state)
-            # exit(0)
 
             tracked_expectations = TrackedExpectation(self.marginalised, self.marginalised_shapes,
                                                       state=state.tracked_expectations_state)
             logZ = tracked_expectations.evidence_mean()
             # Z_live = <L> X_i = exp(logsumexp(log_L_live) - log(N) + log(X))
-            logZ_live = logsumexp(state.log_L_live) - jnp.log(
-                state.log_L_live.shape[0]) + tracked_expectations.state.X.log_value
+            logZ_live = logsumexp(state.log_L_live) - jnp.log(state.log_L_live.shape[0]) \
+                        + tracked_expectations.state.X.log_value
             # print("i={} | log(Z_live)={} | log(Z)={} | Z_live/Z={}".format(state.i, logZ_live, logZ, jnp.exp(logZ_live-logZ)))
             # Z_live < f * Z => logZ_live < log(f) + logZ
             done = (logZ_live < jnp.log(termination_frac) + logZ) \
@@ -569,7 +577,7 @@ class NestedSampler(object):
         reservoir_is_satisfying = state.reservoir_point_available & (state.log_L_reservoir > state.last_log_L_contour)
         log_L_reservoir = jnp.where(reservoir_is_satisfying, state.log_L_reservoir, -jnp.inf)
         remaining_points_log_L = jnp.concatenate([log_L_reservoir, state.log_L_live], axis=0)
-        remaining_points_X = tree_multimap(lambda x,y:jnp.concatenate([x,y], axis=0),
+        remaining_points_X = tree_multimap(lambda x, y: jnp.concatenate([x, y], axis=0),
                                            state.reservoir_points_X, state.live_points_X)
         live_update_results = tracked_expectations.update_from_live_points(remaining_points_X,
                                                                            remaining_points_log_L,
@@ -585,7 +593,7 @@ class NestedSampler(object):
         if not self.only_marginalise:
             n_per_sample = jnp.where(jnp.arange(self.max_samples) < state.num_dead, num_live_points, jnp.inf)
             n_per_sample = dynamic_update_slice(n_per_sample,
-                                                num_live_points - jnp.arange(num_live_points, dtype=n_per_sample.dtype),
+                                                live_update_results[0], #num_live_points - jnp.arange(num_live_points, dtype=n_per_sample.dtype),
                                                 [state.num_dead])
             sampler_efficiency = dynamic_update_slice(1. / state.likelihood_evaluations_per_sample,
                                                       jnp.ones(num_live_points),

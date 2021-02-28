@@ -73,39 +73,40 @@ def slice_sampling(key,
         #     plot(left,right)
 
         def step_out_body(state):
-            (done, num_f_eval, left, f_left, right, f_right) = state
+            (done,key, num_f_eval, left, f_left, right, f_right) = state
+
+            key, direction_key = random.split(key,2)
 
             def step_left(args):
                 # print('step left')
-                left, f_left = args
+                left, right, f_left, f_right = args
                 left = jnp.maximum(left - 0.5 * w, left_bound)
-                return 1, left, log_likelihood_from_U(x + left * n)
+                return 1, left, right, log_likelihood_from_U(x + left * n), f_right
 
             def step_right(args):
                 # print("step right")
-                right, f_right = args
+                left, right, f_left, f_right = args
                 right = jnp.minimum(right + 0.5 * w, right_bound)
-                return 1, right, log_likelihood_from_U(x + right * n)
+                return 1, left, right, f_left, log_likelihood_from_U(x + right * n)
 
-            (n_left, new_left, f_left) = cond((f_left > log_L_constraint) & (jnp.abs(left - left_bound) < 1e-15),
+            do_step_left = random.randint(direction_key,shape=(),minval=0,maxval=2, dtype=jnp.int_)==jnp.asarray(1)
+
+            (n_f_eval, new_left, new_right, f_left, f_right) = cond(do_step_left,
                                               step_left,
-                                              lambda _: (0, left, f_left),
-                                              (left, f_left))
-            (n_right, new_right, f_right) = cond((f_right > log_L_constraint) & (jnp.abs(right - right_bound) < 1e-15),
-                                                 step_right,
-                                                 lambda _: (0, right, f_right),
-                                                 (right, f_right))
+                                              step_right,
+                                              (left, right, f_left, f_right))
+
             done = ((f_left <= log_L_constraint) & (f_right <= log_L_constraint)) \
                    | ((jnp.abs(new_left - left_bound) < 1e-15) & (jnp.abs(new_right - right_bound) < 1e-15)) \
                    | ((left == new_left) & (right == new_right))
             # print('step out', 'f_left', f_left, 'f_right', f_right, 'left_bound', left_bound,
             #       'right_bound', right_bound, 'left', left, 'right', right, 'w', w)
             # plot(left,right)
-            return (done, num_f_eval + n_left + n_right, new_left, f_left, new_right, f_right)
+            return (done, key, num_f_eval + n_f_eval, new_left, f_left, new_right, f_right)
 
-        (_, num_f_eval, left, f_left, right, f_right) = while_loop(lambda state: ~state[0],
+        (_, key, num_f_eval, left, f_left, right, f_right) = while_loop(lambda state: ~state[0],
                                                                    step_out_body,
-                                                                   (~do_step_out, num_f_eval, left, f_left, right,
+                                                                   (~do_step_out, key, num_f_eval, left, f_left, right,
                                                                     f_right))
 
         # shrinkage step

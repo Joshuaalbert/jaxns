@@ -7,12 +7,19 @@ from jaxns.prior_transforms import PriorChain, NormalPrior, UniformPrior, HalfLa
 def test_prior_chain():
     # two subspaces: a -> b, c -> d
     a = DeltaPrior('a', 0.)
-    b = NormalPrior('b', a, 1.)
+    b = NormalPrior('b', a, [1.])
     chain1 = PriorChain(b)
     for name in chain1.prior_chain.keys():
         assert name in ['a', 'b', '_b_sigma']
 
-    y = chain1(chain1.compactify_U(chain1.sample_U(random.PRNGKey(235))))
+    U = chain1.sample_U(random.PRNGKey(235))
+    U_compact = chain1.compactify_U(U)
+    X = chain1(U_compact)
+    assert jnp.size(X['b']) == 1
+    assert jnp.shape(X['b']) == (1,)
+    y = chain1.disperse_U(U_compact)
+    for _U,_y in zip(U.values(), y.values()):
+        assert jnp.allclose(_U,_y)
 
     chain2 = PriorChain()
     c = UniformPrior('f2', 0., 1.)
@@ -52,11 +59,6 @@ def test_prior_chain():
         assert True
 
 
-
-
-
-
-
 def test_discrete():
     for p in [0., 0.05, 0.5, 0.95, 1.]:
         x = GumbelBernoulliPrior('x', p)
@@ -77,19 +79,20 @@ def test_discrete():
 def test_half_laplace():
     p = PriorChain().push(HalfLaplacePrior('x', 1.))
     U = jnp.linspace(0., 1., 100)[:, None]
-    assert ~jnp.any(jnp.isnan(vmap(p)(U)['x']))
+    X = vmap(lambda u: p((u,)))(U)['x']
+    assert ~jnp.any(jnp.isnan(X))
 
 
 def test_forced_identifiability_prior():
     from jax import random
-    prior = PriorChain().push(ForcedIdentifiabilityPrior('x', 10, 0., 10.))
+    prior = PriorChain(ForcedIdentifiabilityPrior('x', 10, 0., 10.))
     for i in range(10):
-        out = prior(random.uniform(random.PRNGKey(i), shape=(prior.U_ndims,)))
+        out = prior(prior.compactify_U(prior.sample_U(random.PRNGKey(i))))
         assert jnp.all(jnp.sort(out['x'], axis=0) == out['x'])
         assert jnp.all((out['x'] >= 0.) & (out['x'] <= 10.))
     prior = PriorChain().push(ForcedIdentifiabilityPrior('x', 10, jnp.array([0., 0.]), 10.))
     for i in range(10):
-        out = prior(random.uniform(random.PRNGKey(i), shape=(prior.U_ndims,)))
+        out = prior(prior.compactify_U(prior.sample_U(random.PRNGKey(i))))
         assert out['x'].shape == (10, 2)
         assert jnp.all(jnp.sort(out['x'], axis=0) == out['x'])
         assert jnp.all((out['x'] >= 0.) & (out['x'] <= 10.))
