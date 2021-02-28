@@ -205,16 +205,17 @@ class TrackedExpectation(object):
             (self_state,found_satisfying) = state
             (i,) = X
             i_min = ar[i]
+            x_min = dict_multimap(lambda x: x[i_min, ...], live_points)
             log_L_min = log_L_live[i_min]
             is_satisfying = log_L_min > log_L_contour
             self.state = self_state
             n = jnp.where(is_satisfying, num_satisfying - found_satisfying, jnp.inf)
-            found_satisfying += is_satisfying
-            self.update(dict_multimap(lambda x: x[i_min, ...], live_points), n, log_L_min)
+            found_satisfying = jnp.where(is_satisfying, found_satisfying+1, found_satisfying)
+            self.update(x_min, n, log_L_min)
             return (self.state, found_satisfying), (n, log_L_min, self.state.X.log_value, self.state.dw.log_value)
 
         (self_state, _), results = scan(body,(self.state,jnp.asarray(0)), (jnp.arange(log_L_live.shape[0]),),unroll=1)
-
+        # print(results)
         self.state = self_state
         return results
 
@@ -228,6 +229,18 @@ class TrackedExpectation(object):
         w_i1 = self.state.w
         w2_i1 = self.state.w2
         f_alpha_i = self.compute_log_f_alpha(posterior_sample_i, n_i, log_L_i)
+
+        def _maybe_replace(replace, v_i, v_i1):
+            if isinstance(v_i, SignedLogParam):
+                return SignedLogParam(log_abs_value=jnp.where(replace, v_i.log_abs_value, v_i1.log_abs_value),
+                                      sign=jnp.where(replace, v_i.sign, v_i1.sign))
+            elif isinstance(v_i, LogParam):
+                return LogParam(jnp.where(replace, v_i.log_value, v_i1.log_value))
+            else:
+                raise ValueError("Type {} invalid".format(type(v_i)))
+
+        replace = ~jnp.isinf(n_i)
+
         log_triangle = jnp.logaddexp(L_i1.log_value, log_L_i) - jnp.log(2.)
 
         n_plus_1 = n_i + 1.
@@ -236,6 +249,7 @@ class TrackedExpectation(object):
         # w_i = w_i1 + X_i1 * triangle /(n+1)
         log_dw_i = X_i1.log_value + log_triangle - jnp.log(n_plus_1)
         w_i = LogParam(jnp.logaddexp(w_i1.log_value, log_dw_i))
+
         w2_i = LogParam(jnp.logaddexp(w2_i1.log_value, 2. * log_dw_i))
         # X_i = X_i1 * n_n_plus_1
         X_i = LogParam(X_i1.log_value + jnp.log(n_i) - jnp.log(n_plus_1))
@@ -273,14 +287,14 @@ class TrackedExpectation(object):
 
         fX_i = _log_fX_i(fX_i1, f_alpha_i)
 
-        self.state = self.State(f=f_i,
-                                X=X_i,
-                                f2=f2_i,
-                                fX=fX_i,
-                                X2=X2_i,
-                                w=w_i,
-                                w2=w2_i,
-                                L_i1=LogParam(log_L_i),
+        self.state = self.State(f=_maybe_replace(replace, f_i, f_i1),
+                                X=_maybe_replace(replace,X_i, X_i1),
+                                f2=_maybe_replace(replace, f2_i, f2_i1),
+                                fX=_maybe_replace(replace,fX_i,fX_i1),
+                                X2=_maybe_replace(replace,X2_i,X2_i1),
+                                w=_maybe_replace(replace,w_i,w_i1),
+                                w2=_maybe_replace(replace,w2_i,w2_i1),
+                                L_i1=_maybe_replace(replace, LogParam(log_L_i), L_i1),
                                 dw=LogParam(log_dw_i))
 
 

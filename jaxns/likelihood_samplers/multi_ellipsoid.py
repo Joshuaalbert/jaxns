@@ -21,7 +21,7 @@ def multi_ellipsoid_sampler(key,
                             log_likelihood_from_U,
                             sampler_state: MultiEllipsoidSamplerState):
     def while_body(state):
-        (key, num_f_eval0, _, _, _) = state
+        (key, num_f_eval0, _, _) = state
         key, sample_key = random.split(key)
         k_select, u_test = sample_multi_ellipsoid(sample_key,
                                                   sampler_state.mu, sampler_state.radii, sampler_state.rotation,
