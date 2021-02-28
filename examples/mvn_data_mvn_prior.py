@@ -16,7 +16,7 @@ def main():
         return -0.5 * x.size * jnp.log(2. * jnp.pi) - jnp.sum(jnp.log(jnp.diag(L))) \
                - 0.5 * dx @ dx
 
-    ndims = 2
+    ndims = 8
     prior_mu = 2 * jnp.ones(ndims)
     prior_cov = jnp.diag(jnp.ones(ndims)) ** 2
 
@@ -50,6 +50,7 @@ def main():
                            num_live_points=n,
                            max_samples=1e6,
                            collect_samples=True,
+                           num_parallel_samplers=2,
                            sampler_kwargs=dict(depth=2, num_slices=10),
                            x_mean=param_mean,
                            x_cov=param_covariance
@@ -77,7 +78,6 @@ def main():
     plt.hlines(true_logZ, 0, n)
     plt.show()
 
-    # plot_samples_development(results, save_name='./mvn_data_mvn_prior_trajectory.mp4')
     plot_diagnostics(results)
     plot_cornerplot(results)
 
