@@ -1,11 +1,11 @@
-from jaxns.examples.ray_integral.build_prior import build_prior
+from examples import build_prior
 from jaxns.gaussian_process.kernels import RBF
-from jaxns.examples.ray_integral.generate_data import rbf_dtec
+from examples.ray_integral.generate_data import rbf_dtec
 from jaxns.nested_sampling import NestedSampler
 from jaxns.plotting import plot_cornerplot, plot_diagnostics
 from jax import random, jit
 from jax.scipy.linalg import solve_triangular
-from jax import numpy as jnp, vmap
+from jax import numpy as jnp
 import pylab as plt
 from timeit import default_timer
 

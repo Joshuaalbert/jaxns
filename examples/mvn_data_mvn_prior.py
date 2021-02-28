@@ -30,24 +30,6 @@ def main():
         prior_cov + data_cov) @ prior_mu
     post_cov = prior_cov @ jnp.linalg.inv(prior_cov + data_cov) @ data_cov
 
-    # prior_mu = post_mu
-    # prior_cov = post_cov
-    #
-    # true_logZ = log_normal(data_mu, prior_mu, prior_cov + data_cov)
-    #
-    # post_mu = prior_cov @ jnp.linalg.inv(prior_cov + data_cov) @ data_mu + data_cov @ jnp.linalg.inv(
-    #     prior_cov + data_cov) @ prior_mu
-    # post_cov = prior_cov @ jnp.linalg.inv(prior_cov + data_cov) @ data_cov
-    #
-    # prior_mu = post_mu
-    # prior_cov = post_cov
-    #
-    # true_logZ = log_normal(data_mu, prior_mu, prior_cov + data_cov)
-    #
-    # post_mu = prior_cov @ jnp.linalg.inv(prior_cov + data_cov) @ data_mu + data_cov @ jnp.linalg.inv(
-    #     prior_cov + data_cov) @ prior_mu
-    # post_cov = prior_cov @ jnp.linalg.inv(prior_cov + data_cov) @ data_cov
-
     log_likelihood = lambda x, **kwargs: log_normal(x, data_mu, data_cov)
 
     print("True logZ={}".format(true_logZ))
@@ -56,33 +38,34 @@ def main():
 
 
     def run_with_n(n):
+        prior_transform = PriorChain().push(MVNPrior('x', prior_mu, prior_cov))
+
+        def param_mean(x, **args):
+            return x
+
+        def param_covariance(x, **args):
+            return jnp.outer(x, x)
+
+        ns = NestedSampler(log_likelihood, prior_transform, sampler_name='slice',
+                           num_live_points=n,
+                           max_samples=1e6,
+                           collect_samples=True,
+                           sampler_kwargs=dict(depth=2, num_slices=10),
+                           x_mean=param_mean,
+                           x_cov=param_covariance
+                           )
+
         @jit
         def run(key):
-            prior_transform = PriorChain().push(MVNPrior('x', prior_mu, prior_cov))
-
-            def param_mean(x, **args):
-                return x
-            def param_covariance(x, **args):
-                return jnp.outer(x,x)
-
-            ns = NestedSampler(log_likelihood, prior_transform, sampler_name='slice',
-                               num_live_points=n,
-                               max_samples=1e6,
-                               collect_samples=True,
-                               sampler_kwargs=dict(depth=2, num_slices=10),
-                               x_mean=param_mean,
-                               x_cov=param_covariance
-                               )
             return ns(key=key,  termination_frac=0.001)
         t0 = default_timer()
-        # with disable_jit():
         results = run(random.PRNGKey(0))
         print('efficiency',results.efficiency)
         print("time to run including compile", default_timer() - t0)
         t0 = default_timer()
-        # results = run(random.PRNGKey(747645))
-        # print('efficiency', results.efficiency, results.num_samples)
-        # print("time to run not including compile", default_timer() - t0)
+        results = run(random.PRNGKey(747645))
+        print('efficiency', results.efficiency, results.num_samples)
+        print("time to run not including compile", default_timer() - t0)
         return results
 
     for n in [1000]:
@@ -102,8 +85,4 @@ def main():
 
 
 if __name__ == '__main__':
-
-    # import jax.profiler
-    # server = jax.profiler.start_server(9999)
-    # input("Ready? ")
     main()

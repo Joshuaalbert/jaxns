@@ -1,6 +1,6 @@
-from jaxns.examples.ray_integral_layered.build_prior import build_layered_prior
+from examples.ray_integral_from_jones import build_prior
 from jaxns.gaussian_process.kernels import RBF, M12
-from jaxns.examples.ray_integral_layered.generate_data import rbf_dtec
+from examples.ray_integral_from_jones import rbf_dtec
 from jaxns.nested_sampling import NestedSampler
 from jaxns.plotting import plot_cornerplot, plot_diagnostics
 from jax import random, jit
@@ -11,27 +11,36 @@ from timeit import default_timer
 
 
 def main(kernel):
-    def log_normal(x, mean, cov):
+    def log_mvnormal(x, mean, cov):
         L = jnp.linalg.cholesky(cov)
         dx = x - mean
-
         dx = solve_triangular(L, dx, lower=True)
         # maha = dx @ jnp.linalg.solve(cov, dx)
         maha = dx @ dx
         # logdet = jnp.log(jnp.linalg.det(cov))
-        logdet = jnp.sum(jnp.log(jnp.diag(L)))
+        logdet = jnp.sum(jnp.diag(L))
         log_prob = -0.5 * x.size * jnp.log(2. * jnp.pi) - logdet - 0.5 * maha
         return log_prob
 
-    true_height, true_width, true_sigma, true_l, true_uncert = 200., 100., 1., 10., 2.5
-    nant = 5
-    ndir = 5
-    X, Y, Y_obs = rbf_dtec(nant, ndir, true_height, true_width, true_sigma, true_l, true_uncert)
+    def log_normal(x, mean, uncert):
+
+        dx = (x - mean)/uncert
+        # maha = dx @ jnp.linalg.solve(cov, dx)
+        maha = dx @ dx
+        # logdet = jnp.log(jnp.linalg.det(cov))
+        logdet = x.size * jnp.log(uncert)
+        log_prob = -0.5 * x.size * jnp.log(2. * jnp.pi) - logdet - 0.5 * maha
+        return log_prob
+
+    true_height, true_width, true_sigma, true_l, true_uncert = 200., 100., 1., 10., 0.5
+    nant = 2
+    ndir = 10
+    X, Y_dtec, Y, Y_obs, tec_conv = rbf_dtec(nant, ndir, true_height, true_width, true_sigma, true_l, true_uncert)
     a = X[:, 0:3]
     k = X[:, 3:6]
     x0 = a[0, :]
 
-    def log_likelihood(dtec, uncert, **kwargs):
+    def log_likelihood(Y, uncert, **kwargs):
         """
         P(Y|sigma, half_width) = N[Y, f, K]
         Args:
@@ -41,13 +50,12 @@ def main(kernel):
         Returns:
 
         """
-        data_cov = jnp.square(uncert) * jnp.eye(X.shape[0])
-        return log_normal(Y_obs, dtec, data_cov)
+        return jnp.sum(log_normal(Y_obs.reshape((-1,)), Y.reshape((-1,)), uncert))
 
-    def predict_f(dtec, uncert, **kwargs):
+    def predict_f(dtec, **kwargs):
         return dtec
 
-    def predict_fvar(dtec, uncert, **kwargs):
+    def predict_fvar(dtec, **kwargs):
         return dtec ** 2
 
     def tec_to_dtec(tec):
@@ -55,11 +63,11 @@ def main(kernel):
         dtec = jnp.reshape(tec - tec[0, :], (-1,))
         return dtec
 
-    prior_chain = build_layered_prior(X, kernel, x0, tec_to_dtec)
+    prior_chain = build_prior(X, kernel, tec_to_dtec, x0, tec_conv)
     # print(prior_chain)
+    # prior_chain.test_prior(random.PRNGKey(876136),1000, log_likelihood=log_likelihood)
 
-
-    ns = NestedSampler(log_likelihood, prior_chain, sampler_name='slice', predict_f=predict_f,
+    ns = NestedSampler(log_likelihood, prior_chain, sampler_name='multi_ellipsoid', predict_f=predict_f,
                        predict_fvar=predict_fvar)
 
     def run_with_n(n):
@@ -77,11 +85,12 @@ def main(kernel):
         results = run(random.PRNGKey(0))
         print("Efficiency", results.efficiency)
         print("Time to run (including compile)", default_timer() - t0)
-        t0 = default_timer()
-        results = run(random.PRNGKey(1))
-        print(results.efficiency)
-        print("Time to run (no compile)", default_timer() - t0)
-        print("Efficiency normalised time", (default_timer() - t0) * results.efficiency)
+        print("Time efficiency normalised", (default_timer() - t0) * results.efficiency)
+        # t0 = default_timer()
+        # results = run(random.PRNGKey(1))
+        # print("Efficiency",results.efficiency)
+        # print("Time to run (no compile)", default_timer() - t0)
+        # print("Time efficiency normalised", (default_timer() - t0)*results.efficiency)
         return results
 
     for n in [100]:
@@ -138,10 +147,9 @@ def main(kernel):
     plt.show()
 
     fstd = jnp.sqrt(results.marginalised['predict_fvar'] - results.marginalised['predict_f'] ** 2)
-    plt.scatter(jnp.arange(Y.size),Y_obs, marker='+', label='data')
-    plt.scatter(jnp.arange(Y.size),Y, marker="o", label='underlying')
-    plt.scatter(jnp.arange(Y.size), results.marginalised['predict_f'], marker=".", label='underlying')
-    plt.errorbar(jnp.arange(Y.size), results.marginalised['predict_f'], yerr=fstd, label='marginalised')
+    # plt.scatter(jnp.arange(Y.size),Y_obs, marker='+', label='data')
+    plt.scatter(jnp.arange(Y_dtec.size),Y_dtec, marker="o", label='underlying')
+    plt.errorbar(jnp.arange(Y_dtec.size), results.marginalised['predict_f'], yerr=fstd, label='marginalised')
     plt.title("Kernel: {}".format(kernel.__class__.__name__))
     plt.legend()
     plt.show()
@@ -154,9 +162,9 @@ def main(kernel):
 
 if __name__ == '__main__':
     logZ_rbf, logZerr_rbf = main(RBF())
-    # logZ_m12, logZerr_m12 = main(M12())
-    # plt.errorbar(['rbf', 'm12'],
-    #              [logZ_rbf, logZ_m12],
-    #              [logZerr_rbf, logZerr_m12])
-    # plt.ylabel("log Z")
-    # plt.show()
+    logZ_m12, logZerr_m12 = main(M12())
+    plt.errorbar(['rbf', 'm12'],
+                 [logZ_rbf, logZ_m12],
+                 [logZerr_rbf, logZerr_m12])
+    plt.ylabel("log Z")
+    plt.show()

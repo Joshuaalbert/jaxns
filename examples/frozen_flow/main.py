@@ -1,6 +1,6 @@
-from jaxns.examples.frozen_flow.build_prior import build_frozen_flow_prior
+from examples.frozen_flow.build_prior import build_frozen_flow_prior
 from jaxns.gaussian_process.kernels import RBF, M12
-from jaxns.examples.frozen_flow.generate_data import rbf_dtec
+from examples.frozen_flow.generate_data import rbf_dtec
 from jaxns.nested_sampling import NestedSampler
 from jaxns.plotting import plot_cornerplot, plot_diagnostics
 from jax import random, jit
