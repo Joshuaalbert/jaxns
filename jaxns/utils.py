@@ -772,7 +772,7 @@ def marginalise(key, samples, log_weights, ESS, fun):
     return marginalised
 
 
-def chunked_pmap(f, *args, chunksize=None):
+def chunked_pmap(f, *args, chunksize=None, use_vmap=False):
     """
     Calls pmap on chunks of moderate work to be distributed over devices.
     Automatically handle non-dividing chunksizes, by adding filler elements.
@@ -806,7 +806,10 @@ def chunked_pmap(f, *args, chunksize=None):
         _, result = scan(body, (), args, unroll=1)
         return result
 
-    result = pmap(pmap_body)(*args)
+    if use_vmap:
+        result = vmap(pmap_body)(*args)
+    else:
+        result = pmap(pmap_body)(*args)
 
     result = tree_map(lambda arg: jnp.reshape(arg, (-1,) + arg.shape[2:]), result)
     if remainder != 0:

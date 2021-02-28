@@ -104,7 +104,8 @@ class NestedSampler(object):
                 is not possible.
             num_parallel_samplers: int, number of parallel reservoirs to sample from.
             sampler_kwargs: dict of parameters to pass to the likelihood constrained sampler.
-            **marginalised: dict of functions to marginalise over
+            **marginalised: dict of callables(**X, **unused) to marginalise over with the same signature as
+                log_likelihood.
         """
         self.sampler_name = sampler_name
         if num_live_points is None:
@@ -419,14 +420,15 @@ class NestedSampler(object):
             sample_X = self.prior_chain(sample_U)
             return num_likelihood_evaluations, sample_U, sample_X, sample_log_L
 
-        # (num_likelihood_evaluations, reservoir_points_U, reservoir_points_X, log_L_reservoir) = \
-        #     chunked_pmap(_one_sample, random.split(sample_key, state.log_L_reservoir.size))
-
-        def body(state, args):
-            return state, _one_sample(*args)
-
-        _, (num_likelihood_evaluations, reservoir_points_U, reservoir_points_X, log_L_reservoir) = scan(
-            body, (), (random.split(sample_key, state.log_L_reservoir.size),), unroll=1)
+        if self.num_parallel_samplers > 1:
+            (num_likelihood_evaluations, reservoir_points_U, reservoir_points_X, log_L_reservoir) = \
+                chunked_pmap(_one_sample, random.split(sample_key, state.log_L_reservoir.size),
+                             chunksize=self.num_parallel_samplers, use_vmap=True)
+        else:
+            def body(state, args):
+                return state, _one_sample(*args)
+            _, (num_likelihood_evaluations, reservoir_points_U, reservoir_points_X, log_L_reservoir) = scan(
+                body, (), (random.split(sample_key, state.log_L_reservoir.size),), unroll=1)
 
         reservoir_point_available = jnp.ones(log_L_reservoir.shape, dtype=jnp.bool_)
         new_likelihood_evaluations_per_sample = jnp.mean(num_likelihood_evaluations)
@@ -435,7 +437,8 @@ class NestedSampler(object):
                                reservoir_points_X=reservoir_points_X,
                                log_L_reservoir=log_L_reservoir,
                                reservoir_point_available=reservoir_point_available,
-                               last_likelihood_evaluations_per_sample=new_likelihood_evaluations_per_sample)
+                               last_likelihood_evaluations_per_sample=new_likelihood_evaluations_per_sample,
+                               num_likelihood_evaluations=state.num_likelihood_evaluations + jnp.sum(num_likelihood_evaluations))
         return state
 
     def _replace_dead_point(self, i_min: int, state: NestedSamplerState) -> NestedSamplerState:
@@ -453,7 +456,6 @@ class NestedSampler(object):
                 state.log_L_reservoir > state.last_log_L_contour)
         # key, choice_key = random.split(state.key, 2)
         # state = state._replace(key=key)
-        # #TODO: technically, we don't need to randomise this selection.
         # choice = random.choice(choice_key,
         #               a=jnp.arange(state.log_L_reservoir.size),
         #               p=satisfying_reservoir_points/jnp.sum(satisfying_reservoir_points))
@@ -615,7 +617,7 @@ class NestedSampler(object):
             log_L_samples = None
             sampler_efficiency = None
 
-        num_samples = state.num_dead + num_live_points
+        num_samples = state.num_dead + num_live_points + jnp.sum(reservoir_is_satisfying)
 
         data = dict(
             logZ=tracked_expectations.evidence_mean(),
