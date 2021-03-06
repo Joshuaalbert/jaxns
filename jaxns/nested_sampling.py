@@ -1,12 +1,13 @@
 from jax.config import config
 
 config.update("jax_enable_x64", True)
+import numpy as np
 import jax.numpy as jnp
 from jax.lax import while_loop, dynamic_update_slice, cond, scan
 from jax import random, vmap, tree_multimap, tree_map
 from jax.scipy.special import logsumexp
 from typing import NamedTuple, Dict, Tuple
-from collections import namedtuple
+from collections import namedtuple, OrderedDict
 
 from jaxns.prior_transforms import PriorChain
 from jaxns.param_tracking import \
@@ -29,8 +30,8 @@ class NestedSamplerState(NamedTuple):
     live_points_U: jnp.ndarray  # [N, M] init_U in unit cube of live init_U
     live_points_X: Dict  # [N, M] init_U in constrained space of live init_U in dict structure
     log_L_live: jnp.ndarray  # log likelihood of live init_U
-    num_contour_prev: jnp.ndarray  # how many live_points remaining in contour
-    last_log_L_contour: jnp.ndarray  # last value of log_L on contour
+    idx_in_current_contour: jnp.ndarray  # which live point in contour are you at
+    current_log_L_contour: jnp.ndarray  # current value of log_L on contour
     reservoir_points_U: jnp.ndarray  # [N, M] init_U in unit cube of live init_U
     reservoir_points_X: Dict  # [N, M] init_U in constrained space of live init_U in dict structure
     log_L_reservoir: jnp.ndarray  # [N] log likelihood of live init_U
@@ -41,33 +42,34 @@ class NestedSamplerState(NamedTuple):
     num_dead: int  # int, number of samples (dead init_U) taken so far.
     log_L_dead: jnp.ndarray  # log likelhood of dead init_U
     likelihood_evaluations_per_sample: jnp.ndarray  # array of efficiency per accepted sample
+    n_per_sample: jnp.ndarray # number of points above the contour
     last_likelihood_evaluations_per_sample: namedtuple  # arbitrary state passed between iterations of the sampling step
     tracked_expectations_state: namedtuple  # marginalised functions states
 
 
+class NestedSamplerResults(NamedTuple):
+    logZ: jnp.ndarray  #
+    logZerr: jnp.ndarray  #
+    ESS: jnp.ndarray  #
+    ESS_err: jnp.ndarray  #
+    H: jnp.ndarray  #
+    H_err: jnp.ndarray  #
+    num_likelihood_evaluations: jnp.ndarray  #
+    efficiency: jnp.ndarray  #
+    marginalised: jnp.ndarray  #
+    marginalised_uncert: jnp.ndarray  #
+    log_L_samples: jnp.ndarray  #
+    n_per_sample: jnp.ndarray  #
+    log_p: jnp.ndarray  #
+    log_X: jnp.ndarray  #
+    sampler_efficiency: jnp.ndarray  #
+    num_samples: jnp.ndarray  #
+    samples: jnp.ndarray  #
+
+
 class NestedSampler(object):
     """
-    Implements nested sampling with the following steps:
-    . initialise the state
-        . Initialise Sampler with Prior:
-        . Sampler -> produce pytree of shapes and dytpes of live points U subspaces
-        . Sampler -> produce pytree of shapes and dtypes of live points X subspaces (identity transform of U for some)
-        . Sampler -> sample initial set of live points in U and X subspaces and log likelihood (maximum number for
-                        dynamic types).
-        . Collector -> Allocate collector pytree for dead points X subspaces
-        . Collector -> Allocate collector pytree for dead points log likelihood
-        . Collector -> Allocate collector pytree for number of likelihood evaluations per sample
-        . Collector -> Allocate collector pytree for log_X and log_w
-    . main loop
-        . Select all live points in lowest contour plateau
-        . Replenish as many samples as were taken from live points from the reservoir.
-            . Check reservoir for how many points can be selected from there.
-            . Parallel sample until remaining are filled.
-                . When parallel sampling, always replace lowest ones first.
-            . Select lowest likelihood points from reservoir which meet the constraint.
-        . For each one increment marginalisations, and collect with Collector
-
-    . finalise
+    Implements nested sampling.
     """
 
     _available_samplers = ['slice', 'multi_ellipsoid']
@@ -81,8 +83,8 @@ class NestedSampler(object):
                  num_live_points=None,
                  max_samples=1e5,
                  collect_samples: bool = True,
-                 only_marginalise=False,
-                 **marginalised):
+                 collect_diagnostics: bool = True,
+                 marginalised=None):
         """
 
         Args:
@@ -97,15 +99,13 @@ class NestedSampler(object):
                 Rule of thumb=(information gain)*(num_live_points)*(a few), where information gain can be measured by
                 running a low accuracy run with fewer live points. Just make sure this number is big enough.
             collect_samples: bool, whether to keep any tracked variables (tracked=True in the prior transform).
-                Consumes much more memory, as the samples need to be allocated space.
-            termination_frac: float, the algorthim is terminated when this much of current evidence estimate is greater
-                than the amount left in live points.
-            only_marginalise: bool, by setting this to true even the diagnostics are not recorded. So plot_diagnostics
-                is not possible.
+                Consumes much more memory, as the samples need to be allocated space. Without this you cannot run
+                 plot_cornerplot.
+            collect_diagnostics: bool, if true then collect diagnostics which enables running plot_diagnostics.
             num_parallel_samplers: int, number of parallel reservoirs to sample from.
             sampler_kwargs: dict of parameters to pass to the likelihood constrained sampler.
-            **marginalised: dict of callables(**X, **unused) to marginalise over with the same signature as
-                log_likelihood.
+            marginalised: optional dict of callables(**X, **unused) to marginalise over the posterior.
+                Each callable has the same signature as log_likelihood.
         """
         self.sampler_name = sampler_name
         if num_live_points is None:
@@ -132,7 +132,7 @@ class NestedSampler(object):
             raise ValueError(f"num_slices {sampler_kwargs['num_slices']} should be >= 1.")
         self.sampler_kwargs = sampler_kwargs
         self.collect_samples = bool(collect_samples)
-        self.only_marginalise = bool(only_marginalise)
+        self.collect_diagnostics = bool(collect_diagnostics)
         if self.sampler_name not in self._available_samplers:
             raise ValueError("sampler {} should be one of {}.".format(self.sampler_name, self._available_samplers))
 
@@ -161,6 +161,10 @@ class NestedSampler(object):
             return corrected_likelihood(**prior_chain(U_compact))
 
         self.loglikelihood_from_U = loglikelihood_from_U
+        if marginalised is None:
+            marginalised = dict()
+        if not isinstance(marginalised, dict):
+            raise TypeError("marginalised should be dict type, got {}".format(type(marginalised)))
         self.marginalised = marginalised if len(marginalised) > 0 else None
         test_input = dict_multimap(lambda shape, dtype: jnp.zeros(shape, dtype=dtype), prior_chain.shapes,
                                    prior_chain.dtypes)
@@ -195,9 +199,22 @@ class NestedSampler(object):
             Returns:
                 U, X, log_L
             """
-            U = self.prior_chain.compactify_U(self.prior_chain.sample_U(key))
+            key, sample_key = random.split(key, 2)
+            U = self.prior_chain.compactify_U(self.prior_chain.sample_U(sample_key))
             X = self.prior_chain(U)
             log_L = self.loglikelihood(**X)
+
+            def body(state):
+                (key, _, _, _) = state
+                key, sample_key = random.split(key, 2)
+                U = self.prior_chain.compactify_U(self.prior_chain.sample_U(sample_key))
+                X = self.prior_chain(U)
+                log_L = self.loglikelihood(**X)
+                return (key, U, X, log_L)
+
+            (key, U, X, log_L) = while_loop(lambda s: s[-1] == -jnp.inf,
+                                            body,
+                                            (key, U, X, log_L))
             return U, X, log_L
 
         # generate live points and reservoir of points
@@ -210,25 +227,23 @@ class NestedSampler(object):
         reservoir_point_available = jnp.ones(log_L_reservoir.shape, dtype=jnp.bool_)
 
         # establish things to collect
-        if not self.only_marginalise:
-            # collect tracked dead points and diagnostics
-            if self.collect_samples:
-                dead_points = dict_multimap(lambda shape, dtype: jnp.zeros((self.max_samples,) + shape, dtype=dtype),
-                                            self._filter_prior_chain(self.prior_chain.shapes),
-                                            self._filter_prior_chain(self.prior_chain.dtypes))
-            else:
-                dead_points = None
+
+        dead_points = None
+        log_L_dead = None
+        likelihood_evaluations_per_sample = None
+        log_X = None
+        log_w = None
+        n_per_sample = None
+        if self.collect_samples:
+            dead_points = dict_multimap(lambda shape, dtype: jnp.zeros((self.max_samples,) + shape, dtype=dtype),
+                                        self._filter_prior_chain(self.prior_chain.shapes),
+                                        self._filter_prior_chain(self.prior_chain.dtypes))
+        if self.collect_diagnostics:
             log_L_dead = jnp.zeros((self.max_samples,), dtype=jnp.float_)
             likelihood_evaluations_per_sample = jnp.zeros((self.max_samples,), dtype=jnp.float_)
             log_X = -jnp.inf * jnp.ones((self.max_samples,), dtype=jnp.float_)  # [D] logX
             log_w = -jnp.inf * jnp.ones((self.max_samples,), dtype=jnp.float_)  # [D] dX L
-        else:
-            # collect nothing
-            dead_points = None
-            log_L_dead = None
-            likelihood_evaluations_per_sample = None
-            log_X = None
-            log_w = None
+            n_per_sample = jnp.inf * jnp.ones((self.max_samples,), dtype=jnp.float_)  # [D] dX L
 
         # contains the logic for marginalisation
         tracked_expectations = TrackedExpectation(self.marginalised, self.marginalised_shapes)
@@ -241,8 +256,8 @@ class NestedSampler(object):
             live_points_X=live_points_X,
             live_points_U=live_points_U,
             log_L_live=log_L_live,
-            num_contour_prev=jnp.asarray(0),
-            last_log_L_contour=jnp.asarray(-jnp.inf),
+            idx_in_current_contour=jnp.asarray(0),
+            current_log_L_contour=jnp.asarray(-jnp.inf),
             reservoir_points_X=reservoir_points_X,
             reservoir_points_U=reservoir_points_U,
             log_L_reservoir=log_L_reservoir,
@@ -250,6 +265,7 @@ class NestedSampler(object):
             dead_points=dead_points,
             log_L_dead=log_L_dead,
             likelihood_evaluations_per_sample=likelihood_evaluations_per_sample,
+            n_per_sample=n_per_sample,
             num_dead=jnp.asarray(0),
             tracked_expectations_state=tracked_expectations.state,
             log_X=log_X,
@@ -273,18 +289,27 @@ class NestedSampler(object):
         i_min = jnp.argmin(state.log_L_live)
         x_dead_new = tree_map(lambda x: x[i_min], state.live_points_X)
         log_L_dead_new = state.log_L_live[i_min]
+        is_new_contour = log_L_dead_new > state.current_log_L_contour
+        idx_in_current_contour = jnp.where(is_new_contour, 0, state.idx_in_current_contour)
+        n_of_sample = self.num_live_points - idx_in_current_contour
 
         tracked_expectations = TrackedExpectation(self.marginalised, self.marginalised_shapes,
                                                   state=state.tracked_expectations_state)
-        tracked_expectations.update(x_dead_new, self.num_live_points - state.num_contour_prev, log_L_dead_new)
+        tracked_expectations.update(x_dead_new, n_of_sample, log_L_dead_new)
 
-        state = state._replace(num_contour_prev=jnp.where(log_L_dead_new > state.last_log_L_contour,
-                                                          jnp.asarray(0),
-                                                          state.num_contour_prev + 1),
-                               last_log_L_contour=log_L_dead_new,
+        state = state._replace(idx_in_current_contour=idx_in_current_contour + 1,
+                               current_log_L_contour=jnp.where(is_new_contour, log_L_dead_new,
+                                                               state.current_log_L_contour),
                                tracked_expectations_state=tracked_expectations.state)
 
-        if not self.only_marginalise:
+        if self.collect_samples:
+            dead_points = dict_multimap(lambda x, y: dynamic_update_slice(x,
+                                                                          y.astype(x.dtype)[None],
+                                                                          [state.num_dead] + [0] * len(y.shape)),
+                                        state.dead_points, x_dead_new)
+            state = state._replace(dead_points=dead_points)
+
+        if self.collect_diagnostics:
             log_X = dynamic_update_slice(state.log_X,
                                          tracked_expectations.state.X.log_value[None],
                                          [state.num_dead])
@@ -294,18 +319,17 @@ class NestedSampler(object):
             log_L_dead = dynamic_update_slice(state.log_L_dead,
                                               log_L_dead_new[None],
                                               [state.num_dead])
+            n_per_sample = dynamic_update_slice(state.n_per_sample,
+                                                jnp.asarray(n_of_sample[None], dtype=jnp.float_),
+                                                [state.num_dead])
             likelihood_evaluations_per_sample = dynamic_update_slice(state.likelihood_evaluations_per_sample,
                                                                      state.last_likelihood_evaluations_per_sample[None],
                                                                      [state.num_dead]
                                                                      )
             state = state._replace(log_X=log_X, log_w=log_w, log_L_dead=log_L_dead,
-                                   likelihood_evaluations_per_sample=likelihood_evaluations_per_sample)
-            if self.collect_samples:
-                dead_points = dict_multimap(lambda x, y: dynamic_update_slice(x,
-                                                                              y.astype(x.dtype)[None],
-                                                                              [state.num_dead] + [0] * len(y.shape)),
-                                            state.dead_points, x_dead_new)
-                state = state._replace(dead_points=dead_points)
+                                   likelihood_evaluations_per_sample=likelihood_evaluations_per_sample,
+                                   n_per_sample=n_per_sample)
+
         state = state._replace(num_dead=state.num_dead + 1)
         return i_min, state
 
@@ -356,7 +380,6 @@ class NestedSampler(object):
                 raise ValueError("Subspace type {} is invalid".format(subspace_type))
             subspace_sampler_states.append(sampler_state)
 
-
         def build_log_likelihood(idx, U):
             def log_likelihood(u_compact_i):
                 U_compact = tuple([u_compact_i if i == idx else U[i] for i in range(len(U))])
@@ -366,11 +389,13 @@ class NestedSampler(object):
 
         def _one_sample(key):
             choice_key, sample_key = random.split(key, 2)
-            choice = random.choice(choice_key, self.num_live_points)
+            select_p = state.log_L_live > state.current_log_L_contour
+            select_p /= jnp.sum(select_p)
+            choice = random.choice(choice_key, self.num_live_points, p=select_p)
             sample_U = list(tree_map(lambda x: x[choice], state.live_points_U))
-            sample_log_L = state.last_log_L_contour
+            sample_log_L = state.current_log_L_contour
             num_likelihood_evaluations = 0
-            # TODO: do this loop a configurable number of times for to drop auto-correlation in the chain.
+            # TODO: do this loop a configurable number of times to drop auto-correlation in the chain.
             # Only needed when there are more than one subspace.
             if len(sample_U) > 1:
                 logger.warning("In cases where there are more than one subspace, sampling of subspaces occurs via a "
@@ -381,7 +406,7 @@ class NestedSampler(object):
                 subspace_type = self.prior_chain.subspace_type(subspace)
                 if subspace_type == 'discrete':
                     sampler_results = sample_discrete_subspace(sample_key,
-                                                               log_L_constraint=state.last_log_L_contour,
+                                                               log_L_constraint=state.current_log_L_contour,
                                                                log_likelihood_from_U=log_likelihood,
                                                                sampler_state=sampler_state)
                     sample_log_L = sampler_results.log_L_new
@@ -392,7 +417,7 @@ class NestedSampler(object):
                 elif subspace_type == 'continuous':
                     if self.sampler_name == 'slice':
                         sampler_results = slice_sampling(sample_key,
-                                                         log_L_constraint=state.last_log_L_contour,
+                                                         log_L_constraint=state.current_log_L_contour,
                                                          init_U=sample_U[subspace_idx],
                                                          num_slices=self.sampler_kwargs['num_slices'],
                                                          log_likelihood_from_U=log_likelihood,
@@ -404,7 +429,7 @@ class NestedSampler(object):
                         sample_key = sampler_results.key
                     elif self.sampler_name == 'multi_ellipsoid':
                         sampler_results = multi_ellipsoid_sampler(sample_key,
-                                                                  log_L_constraint=state.last_log_L_contour,
+                                                                  log_L_constraint=state.current_log_L_contour,
                                                                   log_likelihood_from_U=log_likelihood,
                                                                   sampler_state=sampler_state
                                                                   )
@@ -423,10 +448,11 @@ class NestedSampler(object):
         if self.num_parallel_samplers > 1:
             (num_likelihood_evaluations, reservoir_points_U, reservoir_points_X, log_L_reservoir) = \
                 chunked_pmap(_one_sample, random.split(sample_key, state.log_L_reservoir.size),
-                             chunksize=self.num_parallel_samplers, use_vmap=True)
+                             chunksize=self.num_parallel_samplers, use_vmap=False, per_device_unroll=True)
         else:
             def body(state, args):
                 return state, _one_sample(*args)
+
             _, (num_likelihood_evaluations, reservoir_points_U, reservoir_points_X, log_L_reservoir) = scan(
                 body, (), (random.split(sample_key, state.log_L_reservoir.size),), unroll=1)
 
@@ -438,7 +464,8 @@ class NestedSampler(object):
                                log_L_reservoir=log_L_reservoir,
                                reservoir_point_available=reservoir_point_available,
                                last_likelihood_evaluations_per_sample=new_likelihood_evaluations_per_sample,
-                               num_likelihood_evaluations=state.num_likelihood_evaluations + jnp.sum(num_likelihood_evaluations))
+                               num_likelihood_evaluations=state.num_likelihood_evaluations + jnp.sum(
+                                   num_likelihood_evaluations))
         return state
 
     def _replace_dead_point(self, i_min: int, state: NestedSamplerState) -> NestedSamplerState:
@@ -453,7 +480,7 @@ class NestedSampler(object):
             state: NestedSamplerState
         """
         satisfying_reservoir_points = state.reservoir_point_available & (
-                state.log_L_reservoir > state.last_log_L_contour)
+                state.log_L_reservoir > state.current_log_L_contour)
         # key, choice_key = random.split(state.key, 2)
         # state = state._replace(key=key)
         # choice = random.choice(choice_key,
@@ -498,7 +525,7 @@ class NestedSampler(object):
 
         # refill reservoirs if there are no more satisfying points
         satisfying_reservoir_points = state.reservoir_point_available & (
-                state.log_L_reservoir > state.last_log_L_contour)
+                state.log_L_reservoir > state.current_log_L_contour)
         do_refill = ~jnp.any(satisfying_reservoir_points)
         state = cond(do_refill,
                      self._refill_reservoirs,
@@ -534,10 +561,14 @@ class NestedSampler(object):
             # Z_live = <L> X_i = exp(logsumexp(log_L_live) - log(N) + log(X))
             logZ_live = logsumexp(state.log_L_live) - jnp.log(state.log_L_live.shape[0]) \
                         + tracked_expectations.state.X.log_value
-            # print("i={} | log(Z_live)={} | log(Z)={} | Z_live/Z={}".format(state.i, logZ_live, logZ, jnp.exp(logZ_live-logZ)))
             # Z_live < f * Z => logZ_live < log(f) + logZ
-            done = (logZ_live < jnp.log(termination_frac) + logZ) \
-                   | ((state.i + 1) >= self.max_samples)
+            small_remaining_evidence = logZ_live < jnp.log(termination_frac) + logZ
+            # all points are on the same contour
+            single_plateau = jnp.all(state.log_L_live == state.log_L_live[0])
+            # used all points
+            reached_max_samples = (state.i + 1) >= self.max_samples
+
+            done = small_remaining_evidence | single_plateau | reached_max_samples
             state = state._replace(done=done,
                                    i=state.i + 1)
             return state
@@ -552,38 +583,23 @@ class NestedSampler(object):
         """
         Produces the NestedSamplingResult.
         """
-        collect = ['logZ',
-                   'logZerr',
-                   'ESS',
-                   'ESS_err',
-                   'H',
-                   'H_err',
-                   'num_likelihood_evaluations',
-                   'efficiency',
-                   'marginalised',
-                   'marginalised_uncert',
-                   'log_L_samples',
-                   'n_per_sample',
-                   'log_p',
-                   'log_X',
-                   'sampler_efficiency',
-                   'num_samples'
-                   ]
+        num_live_points = state.log_L_live.shape[0]
 
-        if self.collect_samples and not self.only_marginalise:
-            collect.append('samples')
-
-        NestedSamplerResults = namedtuple('NestedSamplerResults', collect)
         tracked_expectations = TrackedExpectation(self.marginalised, self.marginalised_shapes,
                                                   state=state.tracked_expectations_state)
-        reservoir_is_satisfying = state.reservoir_point_available & (state.log_L_reservoir > state.last_log_L_contour)
-        log_L_reservoir = jnp.where(reservoir_is_satisfying, state.log_L_reservoir, -jnp.inf)
-        remaining_points_log_L = jnp.concatenate([log_L_reservoir, state.log_L_live], axis=0)
+        reservoir_is_satisfying = state.reservoir_point_available & (
+                state.log_L_reservoir > state.current_log_L_contour)
+        is_satisfying = jnp.concatenate([reservoir_is_satisfying, jnp.ones(num_live_points, dtype=jnp.bool_)])
+        remaining_points_log_L = jnp.concatenate([state.log_L_reservoir, state.log_L_live], axis=0)
         remaining_points_X = tree_multimap(lambda x, y: jnp.concatenate([x, y], axis=0),
                                            state.reservoir_points_X, state.live_points_X)
+        remaining_num_likelihood_evals = jnp.concatenate([state.last_likelihood_evaluations_per_sample *
+                                                          jnp.ones(reservoir_is_satisfying.size),
+                                                          jnp.ones(state.log_L_live.size)])
         live_update_results = tracked_expectations.update_from_live_points(remaining_points_X,
                                                                            remaining_points_log_L,
-                                                                           log_L_contour=state.last_log_L_contour)
+                                                                           is_satisfying=is_satisfying,
+                                                                           num_likelihood_evals=remaining_num_likelihood_evals)
         if self.marginalised is not None:
             marginalised = tracked_expectations.marg_mean()
             marginalised_uncert = None  # tracked_expectations.marg_variance() not stable
@@ -591,14 +607,22 @@ class NestedSampler(object):
             marginalised = None
             marginalised_uncert = None
 
-        num_live_points = state.log_L_live.shape[0]
-        if not self.only_marginalise:
-            n_per_sample = jnp.where(jnp.arange(self.max_samples) < state.num_dead, num_live_points, jnp.inf)
-            n_per_sample = dynamic_update_slice(n_per_sample,
-                                                live_update_results[0], #num_live_points - jnp.arange(num_live_points, dtype=n_per_sample.dtype),
+        if self.collect_samples:
+            samples = dict_multimap(lambda dead_points, live_points:
+                                    dynamic_update_slice(dead_points,
+                                                         live_points.astype(dead_points.dtype),
+                                                         [state.num_dead] + [0] * (len(dead_points.shape) - 1)),
+                                    state.dead_points,
+                                    live_update_results[5])
+
+        if self.collect_diagnostics:
+            # n_per_sample = jnp.where(jnp.arange(self.max_samples) < state.num_dead, num_live_points, jnp.inf)
+            n_per_sample = dynamic_update_slice(state.n_per_sample,
+                                                live_update_results[0],
+                                                # num_live_points - jnp.arange(num_live_points, dtype=n_per_sample.dtype),
                                                 [state.num_dead])
             sampler_efficiency = dynamic_update_slice(1. / state.likelihood_evaluations_per_sample,
-                                                      jnp.ones(num_live_points),
+                                                      1. / live_update_results[4],
                                                       [state.num_dead])
             log_w = dynamic_update_slice(state.log_w,
                                          live_update_results[3],
@@ -617,7 +641,9 @@ class NestedSampler(object):
             log_L_samples = None
             sampler_efficiency = None
 
-        num_samples = state.num_dead + num_live_points + jnp.sum(reservoir_is_satisfying)
+        # in this case the num samples includes also a few duplicates from the reservoirs.
+        # TODO: fix (mainly for plotting)
+        num_samples = state.num_dead + num_live_points + reservoir_is_satisfying.size  # jnp.sum(reservoir_is_satisfying)
 
         data = dict(
             logZ=tracked_expectations.evidence_mean(),
@@ -637,12 +663,56 @@ class NestedSampler(object):
             num_samples=num_samples,
             sampler_efficiency=sampler_efficiency
         )
-        if self.collect_samples and not self.only_marginalise:
-            ar = jnp.argsort(state.log_L_live)
-            samples = dict_multimap(lambda dead_points, live_points:
-                                    dynamic_update_slice(dead_points,
-                                                         live_points.astype(dead_points.dtype)[ar],
-                                                         [state.num_dead] + [0] * (len(dead_points.shape) - 1)),
-                                    state.dead_points, state.live_points_X)
+        if self.collect_samples:
             data['samples'] = samples
+        else:
+            data['samples'] = None
+
         return NestedSamplerResults(**data)
+
+
+def save_results(results: NestedSamplerResults, save_file: str):
+    """
+    Saves results of nested sampler in a npz file.
+
+    Args:
+        results: NestedSamplerResults
+        save_file: str, filename
+    """
+    _data_dict = results._asdict()
+    data_dict = {}
+    for k, v in _data_dict.items():
+        if isinstance(v, dict):
+            v = dict_multimap(lambda v: np.asarray(v), v)
+            data_dict[k] = v
+        elif isinstance(v, jnp.ndarray):
+            data_dict[k] = np.asarray(v)
+        elif v is None:
+            data_dict[k] = None
+        else:
+            raise ValueError("key, value pair {}, {} unknown".format(k, v))
+    np.savez(save_file, **data_dict)
+
+
+def load_results(save_file: str) -> NestedSamplerResults:
+    """
+    Loads saved nested sampler results from a npz file.
+
+    Args:
+        save_file: str
+
+    Returns:
+        NestedSamplerResults
+    """
+    _data_dict = np.load(save_file, allow_pickle=True)
+    data_dict = {}
+    for k, v in _data_dict.items():
+        if v.size == 1:
+            if v.item() is None:
+                data_dict[k] = None
+            else:
+                data_dict[k] = dict_multimap(lambda v: jnp.asarray(v), v.item())
+        else:
+            data_dict[k] = jnp.asarray(v)
+
+    return NestedSamplerResults(**data_dict)

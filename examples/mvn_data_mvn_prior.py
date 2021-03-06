@@ -1,14 +1,18 @@
-from jaxns.nested_sampling import NestedSampler
+from jaxns.nested_sampling import NestedSampler, save_results, load_results
 from jaxns.prior_transforms import PriorChain, MVNPrior, MVNPrior
+from jaxns.utils import summary
 from jaxns.plotting import plot_cornerplot, plot_diagnostics, plot_samples_development
 from jax.scipy.linalg import solve_triangular
 from jax import random, jit, disable_jit, make_jaxpr
 from jax import numpy as jnp
 import pylab as plt
 from timeit import default_timer
+import os
 
 
 def main():
+    os.environ['XLA_FLAGS'] = f"--xla_force_host_platform_device_count={4}"
+
     def log_normal(x, mean, cov):
         L = jnp.linalg.cholesky(cov)
         dx = x - mean
@@ -35,8 +39,6 @@ def main():
     print("True logZ={}".format(true_logZ))
     print("True posterior m={}\nCov={}".format(post_mu, post_cov))
 
-
-
     def run_with_n(n):
         prior_transform = PriorChain().push(MVNPrior('x', prior_mu, prior_cov))
 
@@ -51,17 +53,18 @@ def main():
                            max_samples=1e6,
                            collect_samples=True,
                            num_parallel_samplers=2,
-                           sampler_kwargs=dict(depth=2, num_slices=10),
-                           x_mean=param_mean,
-                           x_cov=param_covariance
+                           sampler_kwargs=dict(depth=2, num_slices=5 * ndims),
+                           marginalised=dict(x_mean=param_mean,
+                                             x_cov=param_covariance)
                            )
 
         @jit
         def run(key):
-            return ns(key=key,  termination_frac=0.001)
+            return ns(key=key, termination_frac=0.001)
+
         t0 = default_timer()
         results = run(random.PRNGKey(0))
-        print('efficiency',results.efficiency)
+        print('efficiency', results.efficiency)
         print("time to run including compile", default_timer() - t0)
         t0 = default_timer()
         results = run(random.PRNGKey(747645))
@@ -69,9 +72,17 @@ def main():
         print("time to run not including compile", default_timer() - t0)
         return results
 
-    for n in [1000]:
+    for n in [100]:
         results = run_with_n(n)
-        print(results.marginalised['x_mean'], results.marginalised['x_cov'] - jnp.outer(results.marginalised['x_mean'], results.marginalised['x_mean']))
+        # can always save results to play with later
+        save_results(results, 'save.npz')
+        # loads results that you may have saved
+        results = load_results('save.npz')
+
+        summary(results)
+
+        print(results.marginalised['x_mean'],
+              results.marginalised['x_cov'] - jnp.outer(results.marginalised['x_mean'], results.marginalised['x_mean']))
         plt.scatter(n, results.logZ)
         plt.errorbar(n, results.logZ, yerr=results.logZerr)
 
@@ -80,8 +91,6 @@ def main():
 
     plot_diagnostics(results)
     plot_cornerplot(results)
-
-
 
 
 if __name__ == '__main__':

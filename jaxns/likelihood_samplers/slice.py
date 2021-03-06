@@ -24,16 +24,16 @@ def slice_sampling(key,
                    sampler_state: SliceSamplerState):
     def slice_sample_1d(key, x, n, w):
         """
-        Perform a 1D slice sampling along x + t*n where n is a unit vector.
+        Perform a 1D slice sampling along x + t*num_options where num_options is a unit vector.
         The typical scale is given by w.
         We constrain t so that the sampling is within the unit cube.
 
-            x + t*n = 1
-            t1 = (1-x)/n
+            x + t*num_options = 1
+            t1 = (1-x)/num_options
             t1_right = where(t1>0, min(t1), inf)
             t1_left = where(t1<0, max(t1), -inf)
-            x + t*n = 0
-            t0 = max(-x/n)
+            x + t*num_options = 0
+            t0 = max(-x/num_options)
             t0_right = where(t0>0, min(t0), inf)
             t0_left = where(t0<0, max(t0), -inf)
             right_bound = jnp.minimum(t0_right,t1_right)
@@ -78,13 +78,11 @@ def slice_sampling(key,
             key, direction_key = random.split(key,2)
 
             def step_left(args):
-                # print('step left')
                 left, right, f_left, f_right = args
                 left = jnp.maximum(left - 0.5 * w, left_bound)
                 return 1, left, right, log_likelihood_from_U(x + left * n), f_right
 
             def step_right(args):
-                # print("step right")
                 left, right, f_left, f_right = args
                 right = jnp.minimum(right + 0.5 * w, right_bound)
                 return 1, left, right, f_left, log_likelihood_from_U(x + right * n)
@@ -119,8 +117,7 @@ def slice_sampling(key,
             done = f_t > log_L_constraint
             left = jnp.where(t < 0., t, left)
             right = jnp.where(t > 0., t, right)
-            # print('shrink','t', t, 'left',left,'right', right, 'f', f_t)
-            # plot(left, right)
+            # print('shrink','t', t, f'I=({left},{right})', 'log_L=', f_t)
             return (done, num_f_eval + 1, key, left, right, x_t, f_t)
 
         (done, num_f_eval, key, left, right, x_t, f_t) = while_loop(lambda state: ~state[0],
@@ -136,12 +133,12 @@ def slice_sampling(key,
     # let R map ellipsoidal to circular
     # let C map circular to ellipsoidal
     # if (x-f).C^T.C.(x-f) <= 1 then
-    # select unit vector n distributed on ellipse:
-    # n = C.n_circ / |C.n_circ|
-    # Selecting x + n*t we ask how large can t be approximately and still remain inside the bounding ellipsoid.
-    # Solve (x + n*t-f).R^T.R.(x + n*t-f) = 1
-    # Solve (x-f + n*t).R^T.R.(x-f + n*t) = 1
-    # Solve (x-f).R^T.R.(x-f) + 2*t*n.R^T.R.(x-f) + t**2 * n.R^T.R.n = 1
+    # select unit vector num_options distributed on ellipse:
+    # num_options = C.n_circ / |C.n_circ|
+    # Selecting x + num_options*t we ask how large can t be approximately and still remain inside the bounding ellipsoid.
+    # Solve (x + num_options*t-f).R^T.R.(x + num_options*t-f) = 1
+    # Solve (x-f + num_options*t).R^T.R.(x-f + num_options*t) = 1
+    # Solve (x-f).R^T.R.(x-f) + 2*t*num_options.R^T.R.(x-f) + t**2 * num_options.R^T.R.num_options = 1
 
     def which_cluster(x):
         dist = vmap(lambda mu, radii, rotation: maha_ellipsoid(x, mu, radii, rotation))(sampler_state.mu,
