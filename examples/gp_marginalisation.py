@@ -70,12 +70,13 @@ def main(kernel):
     prior_chain = PriorChain().push(uncert).push(cov)
 
     def run_with_n(n):
-        ns = NestedSampler(log_likelihood, prior_chain, sampler_name='multi_ellipsoid', num_live_points=n,
+        ns = NestedSampler(log_likelihood, prior_chain, sampler_name='slice', num_live_points=n,
                            max_samples=1e5,
                            collect_samples=True,
                            sampler_kwargs=dict(depth=3, num_slices=5),
-                           predict_f=predict_f,
-                           predict_fvar=predict_fvar)
+                           marginalised=dict(predict_f=predict_f,
+                                             predict_fvar=predict_fvar))
+
         @jit
         def run(key):
             return ns(key=key, termination_frac=0.01)
@@ -91,7 +92,7 @@ def main(kernel):
         print("Time to execute (not including compile): {}".format((default_timer() - t0)))
         return results
 
-    for n in [100]:
+    for n in [300]:
         results = run_with_n(n)
         plt.scatter(n, results.logZ)
         plt.errorbar(n, results.logZ, yerr=results.logZerr)

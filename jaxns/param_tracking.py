@@ -193,12 +193,13 @@ class TrackedExpectation(object):
         res = jnp.concatenate(res)
         return SignedLogParam(jnp.log(jnp.abs(res)), jnp.sign(res))
 
-    def update_from_live_points(self, live_points, log_L_live, log_L_contour=None):
-        if log_L_contour is None:
-            log_L_contour = -jnp.inf
-
+    def update_from_live_points(self, live_points, log_L_live, is_satisfying=None, num_likelihood_evals=None):
+        if is_satisfying is None:
+            is_satisfying = jnp.ones(log_L_live.shape, dtype=jnp.bool_)
+        if num_likelihood_evals is None:
+            num_likelihood_evals = jnp.ones(log_L_live.shape)
         ar = jnp.argsort(log_L_live)
-        num_satisfying = jnp.sum(log_L_live > log_L_contour)
+        num_satisfying = jnp.sum(is_satisfying)
         # We offset numbering by num_satisfying
 
         def body(state, X):
@@ -207,12 +208,12 @@ class TrackedExpectation(object):
             i_min = ar[i]
             x_min = dict_multimap(lambda x: x[i_min, ...], live_points)
             log_L_min = log_L_live[i_min]
-            is_satisfying = log_L_min > log_L_contour
             self.state = self_state
-            n = jnp.where(is_satisfying, num_satisfying - found_satisfying, jnp.inf)
-            found_satisfying = jnp.where(is_satisfying, found_satisfying+1, found_satisfying)
+            n = jnp.where(is_satisfying[i_min], num_satisfying - found_satisfying, jnp.inf)
+            found_satisfying = jnp.where(is_satisfying[i_min], found_satisfying+1, found_satisfying)
             self.update(x_min, n, log_L_min)
-            return (self.state, found_satisfying), (n, log_L_min, self.state.X.log_value, self.state.dw.log_value)
+            n_evals = num_likelihood_evals[i_min]
+            return (self.state, found_satisfying), (n, log_L_min, self.state.X.log_value, self.state.dw.log_value, n_evals, x_min)
 
         (self_state, _), results = scan(body,(self.state,jnp.asarray(0)), (jnp.arange(log_L_live.shape[0]),),unroll=1)
         # print(results)
@@ -246,7 +247,7 @@ class TrackedExpectation(object):
         n_plus_1 = n_i + 1.
         n_plus_2 = n_i + 2.
 
-        # w_i = w_i1 + X_i1 * triangle /(n+1)
+        # w_i = w_i1 + X_i1 * triangle /(num_options+1)
         log_dw_i = X_i1.log_value + log_triangle - jnp.log(n_plus_1)
         w_i = LogParam(jnp.logaddexp(w_i1.log_value, log_dw_i))
 

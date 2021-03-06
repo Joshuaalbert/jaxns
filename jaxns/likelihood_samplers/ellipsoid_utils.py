@@ -301,7 +301,7 @@ def decide_split(points, mask, cluster_id, log_VS, method='volume'):
             return jnp.where(jnp.isnan(log_L_1), -jnp.inf, log_L_1)
 
         def AICc(k, log_L):
-            # return (2. * k ** 2 + 2. * k) / (n - k - 1.) + 2. * k - 2. * log_L
+            # return (2. * k ** 2 + 2. * k) / (num_options - k - 1.) + 2. * k - 2. * log_L
             return 2. * k - 2. * log_L
 
         # k = {mu_all, Cov_all}
@@ -972,10 +972,10 @@ def sample_multi_ellipsoid(key, mu, radii, rotation, unit_cube_constraint=True):
     Sample from a set of overlapping ellipsoids.
     When unit_cube_constraint=True then during the sampling when a random radius is chosen, the radius is constrained.
 
-    u(t) = R @ (x + t * n) + c
+    u(t) = R @ (x + t * num_options) + c
     u(t) == 1
-    1-c = R@x + t * R@n
-    t = ((1 - c) - R@x)/R@n
+    1-c = R@x + t * R@num_options
+    t = ((1 - c) - R@x)/R@num_options
 
     Args:
         key:
@@ -1072,10 +1072,10 @@ def sample_ellipsoid(key, center, radii, rotation, unit_cube_constraint=False):
     Sample uniformly inside an ellipsoid.
     When unit_cube_constraint=True then during the sampling when a random radius is chosen, the radius is constrained.
 
-    u(t) = R @ (t * n) + c
+    u(t) = R @ (t * num_options) + c
     u(t) == 1
-    1-c = t * R@n
-    t = (1 - c)/R@n take minimum t satisfying this
+    1-c = t * R@num_options
+    t = (1 - c)/R@num_options take minimum t satisfying this
     likewise for zero intersection
     Args:
         key:

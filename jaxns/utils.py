@@ -1,9 +1,12 @@
-from jax import random, vmap, numpy as jnp, tree_map, local_device_count, devices as get_devices, pmap, jit
+from jax import random, vmap, numpy as jnp, tree_map, local_device_count, devices as get_devices, pmap, jit, device_get, \
+    tree_multimap
 from jax.lax import scan, while_loop
 from jax.scipy.special import logsumexp, gammaln
+import numpy as np
 import logging
 
 logger = logging.getLogger(__name__)
+
 
 def random_ortho_matrix(key, n):
     """
@@ -12,14 +15,15 @@ def random_ortho_matrix(key, n):
 
     Args:
         key: PRNG seed
-        n: Size of matrix, draws from O(n) group.
+        n: Size of matrix, draws from O(num_options) group.
 
-    Returns: random [n,n] matrix with determinant = +-1
+    Returns: random [num_options,num_options] matrix with determinant = +-1
     """
     H = random.normal(key, shape=(n, n))
     Q, R = jnp.linalg.qr(H)
     Q = Q @ jnp.diag(jnp.sign(jnp.diag(R)))
     return Q
+
 
 def test_random_ortho_normal_matrix():
     for i in range(100):
@@ -40,11 +44,12 @@ def dict_multimap(f, d, *args):
     Returns: dict with same keys as d, with values result of `f`.
     """
     if not isinstance(d, dict):
-        return f(d,*args)
+        return f(d, *args)
     mapped_results = dict()
     for key in d.keys():
         mapped_results[key] = f(d[key], *[arg[key] for arg in args])
     return mapped_results
+
 
 def swap_dict_namedtuple(t):
     """
@@ -63,6 +68,7 @@ def swap_dict_namedtuple(t):
         d[key] = t.__class__(*[s[key] for s in t])
     return d
 
+
 def swap_namedtuple_dict(d):
     """
     Turn {a:namedtuple(b,c)}
@@ -76,13 +82,14 @@ def swap_namedtuple_dict(d):
     fields = d[keys[0]]._fields
     t = []
     for i in range(len(fields)):
-        t.append({key:d[key][i] for key in keys})
+        t.append({key: d[key][i] for key in keys})
     return d[keys[0]].__class__(*t)
+
 
 def test_swap():
     from collections import namedtuple
 
-    Test = namedtuple('Test',['a','b', 'c'])
+    Test = namedtuple('Test', ['a', 'b', 'c'])
     test_tuple = Test(dict(da=1., db=2.), dict(da=3., db=4.), dict(da=5., db=6.))
     test_dict = {'da': Test(a=1.0, b=3.0, c=5.0), 'db': Test(a=2.0, b=4.0, c=6.0)}
     _swap_dict = swap_dict_namedtuple(test_tuple)
@@ -90,8 +97,8 @@ def test_swap():
     _swap_tuple = swap_namedtuple_dict(test_dict)
     assert _swap_tuple == test_tuple
 
-    test_tuple = Test(1.,2.,3.)
-    test_dict = Test(1.,2.,3.)
+    test_tuple = Test(1., 2., 3.)
+    test_dict = Test(1., 2., 3.)
     _swap_dict = swap_dict_namedtuple(test_tuple)
     assert _swap_dict == test_dict
     _swap_tuple = swap_namedtuple_dict(test_dict)
@@ -101,12 +108,13 @@ def test_swap():
 def get_interval(s):
     ar_first = jnp.argmin(s)
     s = jnp.concatenate([jnp.where(jnp.arange(s.size) < ar_first, -1., s), jnp.array([1.])])
-    ar_last = jnp.maximum(0,jnp.argmax(s) - 1)
+    ar_last = jnp.maximum(0, jnp.argmax(s) - 1)
     return ar_first, ar_last
 
+
 def test_get_interval():
-    s = jnp.array([1, -1,-1,-1, 1])
-    assert get_interval(s) == (1,3)
+    s = jnp.array([1, -1, -1, -1, 1])
+    assert get_interval(s) == (1, 3)
     s = jnp.array([1, -1, -1, -1])
     assert get_interval(s) == (1, 3)
     s = jnp.array([-1, -1, -1])
@@ -117,8 +125,9 @@ def test_get_interval():
     assert get_interval(s) == (0, 0)
     s = jnp.array([1])
     assert get_interval(s) == (0, 0)
-    s = jnp.array([1,-1])
-    assert get_interval(s) == (1,1)
+    s = jnp.array([1, -1])
+    assert get_interval(s) == (1, 1)
+
 
 def masked_cluster_id(points, centers, K):
     """
@@ -136,6 +145,7 @@ def masked_cluster_id(points, centers, K):
     dist = jnp.linalg.norm(centers[:, None, :] - points[None, :, :], axis=-1)
     dist = jnp.where(jnp.arange(max_K)[:, None] > K - 1, jnp.full_like(dist, jnp.inf), dist)
     return jnp.argmin(dist, axis=0)
+
 
 def cluster(key, points, max_K=6):
     """
@@ -271,34 +281,37 @@ def broadcast_shapes(shape1, shape2):
         shape1 = (shape1,)
     if isinstance(shape2, int):
         shape2 = (shape2,)
-    def left_pad_shape(shape,l):
-        return tuple([1]*l + list(shape))
+
+    def left_pad_shape(shape, l):
+        return tuple([1] * l + list(shape))
+
     l = max(len(shape1), len(shape2))
-    shape1 = left_pad_shape(shape1,l- len(shape1))
-    shape2 = left_pad_shape(shape2,l - len(shape2))
+    shape1 = left_pad_shape(shape1, l - len(shape1))
+    shape2 = left_pad_shape(shape2, l - len(shape2))
     out_shape = []
     for s1, s2 in zip(shape1, shape2):
-        m = max(s1,s2)
+        m = max(s1, s2)
         if ((s1 != m) and (s1 != 1)) or ((s2 != m) and (s2 != 1)):
-            raise ValueError("Trying to broadcast {} with {}".format(shape1,shape2))
+            raise ValueError("Trying to broadcast {} with {}".format(shape1, shape2))
         out_shape.append(m)
     return tuple(out_shape)
 
+
 def test_broadcast_shapes():
-    assert broadcast_shapes(1,1) == (1,)
-    assert broadcast_shapes(1,2) == (2,)
-    assert broadcast_shapes(1,(2,2)) == (2,2)
-    assert broadcast_shapes((2,2),1) == (2,2)
-    assert broadcast_shapes((1,1),(2,2)) == (2,2)
-    assert broadcast_shapes((1,2),(2,2)) == (2,2)
-    assert broadcast_shapes((2,1),(2,2)) == (2,2)
-    assert broadcast_shapes((2,1),(2,1)) == (2,1)
-    assert broadcast_shapes((2,1),(1,1)) == (2,1)
-    assert broadcast_shapes((1,1),(1,1)) == (1,1)
-    assert broadcast_shapes((1,),(1,1)) == (1,1)
-    assert broadcast_shapes((1,1,2),(1,1)) == (1,1,2)
-    assert broadcast_shapes((1,2,1),(1,3)) == (1,2,3)
-    assert broadcast_shapes((1,2,1),()) == (1,2,1)
+    assert broadcast_shapes(1, 1) == (1,)
+    assert broadcast_shapes(1, 2) == (2,)
+    assert broadcast_shapes(1, (2, 2)) == (2, 2)
+    assert broadcast_shapes((2, 2), 1) == (2, 2)
+    assert broadcast_shapes((1, 1), (2, 2)) == (2, 2)
+    assert broadcast_shapes((1, 2), (2, 2)) == (2, 2)
+    assert broadcast_shapes((2, 1), (2, 2)) == (2, 2)
+    assert broadcast_shapes((2, 1), (2, 1)) == (2, 1)
+    assert broadcast_shapes((2, 1), (1, 1)) == (2, 1)
+    assert broadcast_shapes((1, 1), (1, 1)) == (1, 1)
+    assert broadcast_shapes((1,), (1, 1)) == (1, 1)
+    assert broadcast_shapes((1, 1, 2), (1, 1)) == (1, 1, 2)
+    assert broadcast_shapes((1, 2, 1), (1, 3)) == (1, 2, 3)
+    assert broadcast_shapes((1, 2, 1), ()) == (1, 2, 1)
 
 
 def iterative_topological_sort(graph, start=None):
@@ -339,12 +352,13 @@ def iterative_topological_sort(graph, start=None):
 
     return stack + order[::-1]  # new return value!
 
+
 def test_iterative_topological_sort():
-    dsk = {'a':[],
-           'b':['a'],
-           'c':['a','b']}
-    assert iterative_topological_sort(dsk,['a','b','c']) == ['c','b','a']
-    assert iterative_topological_sort(dsk) == ['c','b','a']
+    dsk = {'a': [],
+           'b': ['a'],
+           'c': ['a', 'b']}
+    assert iterative_topological_sort(dsk, ['a', 'b', 'c']) == ['c', 'b', 'a']
+    assert iterative_topological_sort(dsk) == ['c', 'b', 'a']
     dsk = {'a': [],
            'b': ['a', 'd'],
            'c': ['a', 'b']}
@@ -365,6 +379,7 @@ def stochastic_result_computation(key, results, S):
     Returns:
         ((mean logZ, std logZ), (mean ESS, std ESS), (mean H, std H))
     """
+
     def single_sample(n_per_sample, key, log_L_samples):
         # N
         t = jnp.where(n_per_sample == jnp.inf, 1., random.beta(key, n_per_sample, 1))
@@ -403,6 +418,7 @@ def left_broadcast_mul(x, y):
     """
     return jnp.reshape(x, (-1,) + tuple([1] * (len(y.shape) - 1))) * y
 
+
 def tuple_prod(t):
     if len(t) == 0:
         return 1
@@ -411,9 +427,10 @@ def tuple_prod(t):
         res *= a
     return res
 
+
 def test_tuple_prod():
     assert tuple_prod(()) == 1
-    assert tuple_prod((1,2,3)) == 6
+    assert tuple_prod((1, 2, 3)) == 6
     assert tuple_prod((4,)) == 4
 
 
@@ -434,7 +451,7 @@ def msqrt(A):
 
 def test_msqrt():
     for i in range(10):
-        A = random.normal(random.PRNGKey(i),shape=(30,30))
+        A = random.normal(random.PRNGKey(i), shape=(30, 30))
         A = A @ A.T
         L = msqrt(A)
         assert jnp.all(jnp.isclose(A, L @ L.T))
@@ -449,30 +466,32 @@ def logaddexp(x1, x2):
     if is_complex(x1) or is_complex(x2):
         select1 = x1.real > x2.real
         amax = jnp.where(select1, x1, x2)
-        delta = jnp.where(select1, x2-x1, x1-x2)
+        delta = jnp.where(select1, x2 - x1, x1 - x2)
         return jnp.where(jnp.isnan(delta),
-                          x1+x2,  # NaNs or infinities of the same sign.
-                          amax + jnp.log1p(jnp.exp(delta)))
+                         x1 + x2,  # NaNs or infinities of the same sign.
+                         amax + jnp.log1p(jnp.exp(delta)))
     else:
         return jnp.logaddexp(x1, x2)
+
 
 def test_logaddexp():
     a = jnp.log(1.)
     b = jnp.log(1.)
-    assert logaddexp(a,b) == jnp.log(2.)
+    assert logaddexp(a, b) == jnp.log(2.)
     a = jnp.log(1.)
-    b = jnp.log(-2.+0j)
+    b = jnp.log(-2. + 0j)
     assert jnp.isclose(jnp.exp(logaddexp(a, b)).real, -1.)
 
-    a = jnp.log(-1.+0j)
+    a = jnp.log(-1. + 0j)
     b = jnp.log(2. + 0j)
     assert jnp.isclose(jnp.exp(logaddexp(a, b)).real, 1.)
 
     for i in range(100):
-        u = random.uniform(random.PRNGKey(i),shape=(2,))*20. - 10.
+        u = random.uniform(random.PRNGKey(i), shape=(2,)) * 20. - 10.
         a = jnp.log(u[0] + 0j)
         b = jnp.log(u[1] + 0j)
-        assert jnp.isclose(jnp.exp(logaddexp(a,b)).real, u[0] + u[1])
+        assert jnp.isclose(jnp.exp(logaddexp(a, b)).real, u[0] + u[1])
+
 
 def signed_logaddexp(log_abs_val1, sign1, log_abs_val2, sign2):
     """
@@ -490,15 +509,16 @@ def signed_logaddexp(log_abs_val1, sign1, log_abs_val2, sign2):
     """
     amax = jnp.maximum(log_abs_val1, log_abs_val2)
     signmax = jnp.where(log_abs_val1 > log_abs_val2, sign1, sign2)
-    delta = -jnp.abs(log_abs_val2 - log_abs_val1)#nan iff inf - inf
-    sign = sign1*sign2
+    delta = -jnp.abs(log_abs_val2 - log_abs_val1)  # nan iff inf - inf
+    sign = sign1 * sign2
     return jnp.where(jnp.isnan(delta),
-                      log_abs_val1 + log_abs_val2,  # NaNs or infinities of the same sign.
-                      amax + jnp.log1p(sign * jnp.exp(delta))), signmax
+                     log_abs_val1 + log_abs_val2,  # NaNs or infinities of the same sign.
+                     amax + jnp.log1p(sign * jnp.exp(delta))), signmax
+
 
 def test_signed_logaddexp():
     for i in range(100):
-        u = random.uniform(random.PRNGKey(i),shape=(2,))*20.-10.
+        u = random.uniform(random.PRNGKey(i), shape=(2,)) * 20. - 10.
         a = jnp.log(jnp.abs(u[0]))
         b = jnp.log(jnp.abs(u[1]))
         sign1 = jnp.sign(u[0])
@@ -546,7 +566,7 @@ def test_signed_logaddexp():
     # assert sign_c == ans_sign
     assert jnp.isclose(log_abs_c, log_abs_ans)
 
-    u = [0.,0.]
+    u = [0., 0.]
     a = jnp.log(jnp.abs(u[0]))
     b = jnp.log(jnp.abs(u[1]))
     sign1 = jnp.sign(u[0])
@@ -582,32 +602,38 @@ def test_signed_logaddexp():
     assert sign_c == ans_sign
     assert jnp.isclose(log_abs_c, log_abs_ans)
 
+
 def is_complex(a):
     return a.dtype in [jnp.complex64, jnp.complex128]
+
 
 def test_is_complex():
     assert is_complex(jnp.ones(1, dtype=jnp.complex_))
 
 
 def cast_complex(a):
-    return jnp.asarray(a, dtype = jnp.complex_)
+    return jnp.asarray(a, dtype=jnp.complex_)
 
-def cumulative_logsumexp(u,reverse=False,unroll=2):
+
+def cumulative_logsumexp(u, reverse=False, unroll=2):
     def body(accumulant, u):
         new_accumulant = jnp.logaddexp(accumulant, u)
         return new_accumulant, new_accumulant
+
     _, v = scan(body,
-         -jnp.inf*jnp.ones(u.shape[1:],dtype=u.dtype),
-         u,reverse=reverse,unroll=unroll)
+                -jnp.inf * jnp.ones(u.shape[1:], dtype=u.dtype),
+                u, reverse=reverse, unroll=unroll)
     return v
 
+
 def test_cumulative_logsumexp():
-    a = jnp.linspace(-1.,1.,100)
+    a = jnp.linspace(-1., 1., 100)
     v1 = jnp.log(jnp.cumsum(jnp.exp(a)))
     v2 = cumulative_logsumexp(a)
     print(v1)
     print(v2)
-    assert jnp.isclose(v1,v2).all()
+    assert jnp.isclose(v1, v2).all()
+
 
 def resample(key, samples, log_weights, S=None):
     """
@@ -620,28 +646,29 @@ def resample(key, samples, log_weights, S=None):
 
     """
     if S is None:
+        # ESS = (sum w)^2 / sum w^2
 
-        #ESS = (sum w)^2 / sum w^2
-
-        S = int(jnp.exp(2.* logsumexp(log_weights) - logsumexp(2.*log_weights)))
+        S = int(jnp.exp(2. * logsumexp(log_weights) - logsumexp(2. * log_weights)))
 
     # use cumulative_logsumexp because some log_weights could be really small
     log_p_cuml = cumulative_logsumexp(log_weights)
     p_cuml = jnp.exp(log_p_cuml)
     r = p_cuml[-1] * (1 - random.uniform(key, (S,)))
     idx = jnp.searchsorted(p_cuml, r)
-    return dict_multimap(lambda s:s[idx,...], samples)
+    return dict_multimap(lambda s: s[idx, ...], samples)
+
 
 def test_resample():
     x = random.normal(key=random.PRNGKey(0), shape=(50,))
     logits = -jnp.ones(50)
-    samples = {'x':x}
+    samples = {'x': x}
     assert jnp.all(resample(random.PRNGKey(0), samples, logits)['x'] == resample(random.PRNGKey(0), x, logits))
+
 
 def beta1_product_cdf(u, alpha, n):
     """
-    u^alpha / (n-1)! Sum_m=0^(n-1) ( (-1)^m (n-1)!/m! alpha^m log(u)^m )
-    u^alpha Sum_m=0^(n-1) ( (-alpha log(u))^m  / m! )
+    u^alpha / (num_options-1)! Sum_m=0^(num_options-1) ( (-1)^m (num_options-1)!/m! alpha^m log(u)^m )
+    u^alpha Sum_m=0^(num_options-1) ( (-alpha log(u))^m  / m! )
     Args:
         u:
         alpha:
@@ -650,20 +677,22 @@ def beta1_product_cdf(u, alpha, n):
     Returns:
 
     """
+
     def body(f, m):
-        f = f + (-1.)**m * jnp.exp(-gammaln(m+1.)) * alpha**m * jnp.log(u)**m
+        f = f + (-1.) ** m * jnp.exp(-gammaln(m + 1.)) * alpha ** m * jnp.log(u) ** m
         # f = jnp.logaddexp(f, m * (jnp.log(-jnp.log(u))  + jnp.log(alpha)) - gammaln(m+1.))
         return f, m
 
     f, _ = scan(body, 0., jnp.arange(0, n), unroll=2)
-    # f, _ = scan(body, -jnp.inf, jnp.arange(0, n), unroll=2)
-    return f * u**alpha
+    # f, _ = scan(body, -jnp.inf, jnp.arange(0, num_options), unroll=2)
+    return f * u ** alpha
     # return jnp.exp(jnp.logaddexp(alpha * jnp.log(u), f))
+
 
 def log_beta1_product_cdf(u, alpha, n):
     """
-    e^(alpha * u) / (n-1)! Sum_m=0^(n-1) ( (-1)^m (n-1)!/m! alpha^m u^m )
-    e^(alpha * u) Sum_m=0^(n-1) ( (-alpha u)^m  / m! )
+    e^(alpha * u) / (num_options-1)! Sum_m=0^(num_options-1) ( (-1)^m (num_options-1)!/m! alpha^m u^m )
+    e^(alpha * u) Sum_m=0^(num_options-1) ( (-alpha u)^m  / m! )
     Args:
         u:
         alpha:
@@ -672,13 +701,14 @@ def log_beta1_product_cdf(u, alpha, n):
     Returns:
 
     """
+
     def body(f, m):
-        f = jnp.logaddexp(f,m * jnp.log(-alpha * u) - gammaln(m+1.) + alpha*u)
+        f = jnp.logaddexp(f, m * jnp.log(-alpha * u) - gammaln(m + 1.) + alpha * u)
         # f = jnp.logaddexp(f, m * (jnp.log(-jnp.log(u))  + jnp.log(alpha)) - gammaln(m+1.))
         return f, m
 
     f, _ = scan(body, jnp.log(0.), jnp.arange(0, n), unroll=2)
-    # f, _ = scan(body, -jnp.inf, jnp.arange(0, n), unroll=2)
+    # f, _ = scan(body, -jnp.inf, jnp.arange(0, num_options), unroll=2)
     return jnp.exp(f)
     # return jnp.exp(jnp.logaddexp(alpha * jnp.log(u), f))
 
@@ -694,8 +724,9 @@ def test_beta1_product_cdf():
     plt.show()
     pdf = vmap(grad(lambda u: beta1_product_cdf(u, alpha, n)))(u)
 
-    plt.plot(u,pdf)
+    plt.plot(u, pdf)
     plt.show()
+
 
 def test_log_beta1_product_cdf():
     from jax import vmap, grad
@@ -708,8 +739,9 @@ def test_log_beta1_product_cdf():
     plt.show()
     pdf = vmap(grad(lambda u: log_beta1_product_cdf(u, alpha, n)))(u)
 
-    plt.plot(u,pdf)
+    plt.plot(u, pdf)
     plt.show()
+
 
 def normal_to_lognormal(f, f2):
     """
@@ -724,6 +756,7 @@ def normal_to_lognormal(f, f2):
     ln_mu = 2. * jnp.log(f) - 0.5 * jnp.log(f2)
     ln_var = jnp.log(f2) - 2. * jnp.log(f)
     return ln_mu, jnp.sqrt(ln_var)
+
 
 def marginalise_static(key, samples, log_weights, ESS, fun):
     """
@@ -772,7 +805,7 @@ def marginalise(key, samples, log_weights, ESS, fun):
     return marginalised
 
 
-def chunked_pmap(f, *args, chunksize=None, use_vmap=False):
+def chunked_pmap(f, *args, chunksize=None, use_vmap=False, per_device_unroll=False):
     """
     Calls pmap on chunks of moderate work to be distributed over devices.
     Automatically handle non-dividing chunksizes, by adding filler elements.
@@ -798,6 +831,7 @@ def chunked_pmap(f, *args, chunksize=None, use_vmap=False):
     args = tree_map(lambda arg: jnp.reshape(arg, (chunksize, N // chunksize) + arg.shape[1:]), args)
     T = N // chunksize
     logger.info(f"Distributing {N} over {chunksize} devices in queues of length {T}.")
+
     # @jit
     def pmap_body(*args):
         def body(state, args):
@@ -808,6 +842,18 @@ def chunked_pmap(f, *args, chunksize=None, use_vmap=False):
 
     if use_vmap:
         result = vmap(pmap_body)(*args)
+    elif per_device_unroll:
+        devices = get_devices()
+        if len(devices) < chunksize:
+            raise ValueError("Not enough devices {} for chunksize {}".format(len(devices), chunksize))
+        result = []
+        for i in range(chunksize):
+            dev = devices[i]
+            _func = jit(pmap_body, device=dev)
+            _args = tree_map(lambda x: x[i], args)
+            result.append(_func(*_args))
+        result = [device_get(r) for r in result]
+        result = tree_multimap(lambda *x: jnp.stack(x, axis=0), *result)
     else:
         result = pmap(pmap_body)(*args)
 
@@ -817,3 +863,36 @@ def chunked_pmap(f, *args, chunksize=None, use_vmap=False):
         result = tree_map(lambda x: x[:-extra], result)
 
     return result
+
+
+def summary(results):
+    print("ESS={}".format(results.ESS))
+
+    max_like_idx = jnp.argmax(results.log_L_samples)
+    max_like_points = tree_map(lambda x: x[max_like_idx], results.samples)
+    samples = resample(random.PRNGKey(23426), results.samples, results.log_p, S=int(results.ESS))
+
+    for name in samples.keys():
+        _samples = samples[name].reshape((samples[name].shape[0], -1))
+        _max_like_points = max_like_points[name].reshape((-1,))
+        ndims = _samples.shape[1]
+        print("--------")
+        print("{}: mean +- std.dev. | 10%ile / 50%ile / 90%ile | max(L) est.".format(
+            name if ndims == 1 else "{}[#]".format(name), ))
+        for dim in range(ndims):
+            _uncert = jnp.std(_samples[:, dim])
+            _max_like_point = _max_like_points[dim]
+            sig_figs = -int("{:e}".format(_uncert).split('e')[1])
+
+            def _round(ar):
+                return round(float(ar), sig_figs)
+
+            _uncert = _round(_uncert)
+            print("{}: {} +- {} | {} / {} / {} | {}".format(
+                name if ndims == 1 else "{}[{}]".format(name, dim),
+                _round(jnp.mean(_samples[:, dim])), _uncert,
+                *[_round(a) for a in jnp.percentile(_samples[:, dim], [10, 50, 90])],
+                _round(_max_like_point)
+            ))
+    print("--------")
+   
