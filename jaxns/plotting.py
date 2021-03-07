@@ -69,7 +69,7 @@ def plot_cornerplot(results, vars=None, save_name=None):
     if ndims == 1:
         axs = [[axs]]
     nsamples = results.num_samples
-    max_like_idx = jnp.argmax(results.log_L_samples)
+    max_like_idx = jnp.argmax(results.log_L_samples[:results.num_samples])
     log_p = results.log_p[:results.num_samples]
     nbins = int(jnp.sqrt(results.ESS)) + 1
     lims = {}
