@@ -239,7 +239,7 @@ class NestedSampler(object):
                                         self._filter_prior_chain(self.prior_chain.shapes),
                                         self._filter_prior_chain(self.prior_chain.dtypes))
         if self.collect_diagnostics:
-            log_L_dead = jnp.zeros((self.max_samples,), dtype=jnp.float_)
+            log_L_dead = -jnp.inf * jnp.ones((self.max_samples,), dtype=jnp.float_)
             likelihood_evaluations_per_sample = jnp.zeros((self.max_samples,), dtype=jnp.float_)
             log_X = -jnp.inf * jnp.ones((self.max_samples,), dtype=jnp.float_)  # [D] logX
             log_w = -jnp.inf * jnp.ones((self.max_samples,), dtype=jnp.float_)  # [D] dX L
