@@ -181,11 +181,11 @@ def cumulative_tomographic_weight_dimensionless_polynomial(Q, gamma_prime, n, w1
 
     Therefore a dimensionless form is ,
 
-        P(|n + t1*w1 - t2*w2|^2 < lambda')
+        P(|num_options + t1*w1 - t2*w2|^2 < lambda')
 
     where,
 
-        n = x1-x2 / |x1-x2| is a unit vector.
+        num_options = x1-x2 / |x1-x2| is a unit vector.
         w1 = p1 / |x1-x2|
         w2 = p2 / |x1-x2|
         lambda' = lambda / |x1-x2|^2
@@ -219,7 +219,7 @@ def cumulative_tomographic_weight_dimensionless_polynomial(Q, gamma_prime, n, w1
 
 def get_polynomial_form():
     """
-    The polynomial form of log P(|n + t1*w1 - t2*w2|^2 < lambda') is assumed to be:
+    The polynomial form of log P(|num_options + t1*w1 - t2*w2|^2 < lambda') is assumed to be:
 
     c_i = Q_ij p_j
     log_cdf = c_i g_i = g_i Q_ij p_j = Tr(Q @ (p g))
@@ -236,7 +236,7 @@ def get_polynomial_form():
         """
         Generate a physical set of:
 
-        n = x1-x2/|x1-x2| is a unit vector.
+        num_options = x1-x2/|x1-x2| is a unit vector.
         w1 = p1 / |x1-x2|
         w2 = p2 / |x1-x2|
         lambda' = lambda / |x1-x2|^2

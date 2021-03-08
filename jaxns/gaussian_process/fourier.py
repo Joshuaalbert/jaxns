@@ -8,8 +8,8 @@ def fourier(a, *coords):
     F[a](s) = int a(x) e^{-2pi i s x} dx
     A(k ds) = sum_m a(x_m) e^{-2pi i k ds (x0 + corner_indices dx)} dx
             = e^{-2pi i k ds x0} dx sum_m a(x_m) e^{-2pi i k ds corner_indices dx}
-    dx ds = 1/n => ds = 1/(dx n)
-    ds x0 = k ds x0 = k/n * x0/dx
+    dx ds = 1/num_options => ds = 1/(dx num_options)
+    ds x0 = k ds x0 = k/num_options * x0/dx
     """
 
     factor = fft_factor(*coords)

@@ -17,7 +17,7 @@ class DeltaPrior(Prior):
             value: singular value to always return.
         """
         value = convert_to_array(value)
-        super(DeltaPrior, self).__init__(name, get_shape(value), [], tracked, PriorBase((), value.dtype))
+        super(DeltaPrior, self).__init__(name, get_shape(value), [], tracked, PriorBase((0,), value.dtype))
         if isinstance(value, Prior):
             raise ValueError('value should be array-like, got {}'.format(type(value)))
         self.value = jnp.asarray(value)

@@ -106,11 +106,11 @@ def main(kernel):
     # ns = NestedSampler(log_likelihood, prior_chain, sampler_name='multi_ellipsoid', predict_f=predict_f,
     #                    predict_fvar=predict_fvar)
     #
-    # def run_with_n(n):
+    # def run_with_n(num_options):
     #     @jit
     #     def run(key):
     #         return ns(key=key,
-    #                   num_live_points=n,
+    #                   num_live_points=num_options,
     #                   max_samples=1e5,
     #                   collect_samples=True,
     #                   termination_frac=0.01,
@@ -127,10 +127,10 @@ def main(kernel):
     #     print("Time to run (no compile)", default_timer() - t0)
     #     return results
     #
-    # for n in [100]:
-    #     results = run_with_n(n)
-    #     plt.scatter(n, results.logZ)
-    #     plt.errorbar(n, results.logZ, yerr=results.logZerr)
+    # for num_options in [100]:
+    #     results = run_with_n(num_options)
+    #     plt.scatter(num_options, results.logZ)
+    #     plt.errorbar(num_options, results.logZ, yerr=results.logZerr)
 
 
     plt.title("Kernel: {}".format(kernel.__class__.__name__))
