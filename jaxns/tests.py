@@ -2,7 +2,7 @@ from jax import numpy as jnp, random
 
 from jaxns.utils import broadcast_shapes, tuple_prod, msqrt, \
     logaddexp, signed_logaddexp, cumulative_logsumexp, resample, random_ortho_matrix, \
-    iterative_topological_sort
+    iterative_topological_sort, is_complex
 
 
 def test_broadcast_shapes():
@@ -54,6 +54,8 @@ def test_logaddexp():
         b = jnp.log(u[1] + 0j)
         assert jnp.isclose(jnp.exp(logaddexp(a, b)).real, u[0] + u[1])
 
+def test_is_complex():
+    assert is_complex(jnp.ones(1, dtype=jnp.complex_))
 
 def test_signed_logaddexp():
     for i in range(100):
