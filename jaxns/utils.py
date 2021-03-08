@@ -157,6 +157,8 @@ def msqrt(A):
     L = U * jnp.sqrt(s)
     return L
 
+def is_complex(a):
+    return a.dtype in [jnp.complex64, jnp.complex128]
 
 def logaddexp(x1, x2):
     """
