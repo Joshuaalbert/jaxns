@@ -182,7 +182,7 @@ def test_get_Q():
         w2 = p2 / h
         gamma_prime = gamma / h ** 2
         return vmap(lambda gamma_prime: cumulative_tomographic_weight_dimensionless_polynomial(Q, gamma_prime, n, w1, w2))(gamma_prime)
-        # return jnp.exp(log_tomographic_weight_dimensionless_function(gamma_prime, n, w1, w2, S=150)) / h ** 2
+        # return jnp.exp(log_tomographic_weight_dimensionless_function(gamma_prime, num_options, w1, w2, S=150)) / h ** 2
 
     for i in range(10):
         keys = random.split(random.PRNGKey(i), 6)

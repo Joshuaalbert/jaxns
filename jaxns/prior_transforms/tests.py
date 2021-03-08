@@ -96,3 +96,15 @@ def test_forced_identifiability_prior():
         assert out['x'].shape == (10, 2)
         assert jnp.all(jnp.sort(out['x'], axis=0) == out['x'])
         assert jnp.all((out['x'] >= 0.) & (out['x'] <= 10.))
+
+
+def test_gh_20():
+    prior_a = UniformPrior('a', -20., 20.)
+    prior_b = UniformPrior('b', -20., 20.)
+    prior_c = UniformPrior('c', 0, 40)
+    prior_d = UniformPrior('d', -20., 20.)
+    prior_sigma = HalfLaplacePrior('sigma', 1)
+
+    prior_chain = PriorChain(prior_a, prior_b, prior_c, prior_d, prior_sigma)
+
+    assert prior_chain.U_ndims == 5 #should be 5

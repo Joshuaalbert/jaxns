@@ -20,7 +20,7 @@ class DeterministicTransformPrior(HierarchicalPrior):
         params = [self._prepare_parameter(name, 'param{}'.format(i), params[i]) for i in range(len(params))]
         self._to_shape = to_shape
         self._transform = transform
-        super(DeterministicTransformPrior, self).__init__(name, to_shape, params, tracked, PriorBase((), dtype), dtype=dtype)
+        super(DeterministicTransformPrior, self).__init__(name, to_shape, params, tracked, PriorBase((0,), dtype), dtype=dtype)
 
     def transform_U(self, U, *params, **kwargs):
         del U

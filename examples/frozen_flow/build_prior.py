@@ -7,7 +7,7 @@ from jaxns.prior_transforms import DeterministicTransformPrior, NormalPrior, Uni
 
 def build_frozen_flow_prior(X, kernel, tec_to_dtec, x0):
     v_dir = DeterministicTransformPrior('v_dir', lambda n: n / jnp.linalg.norm(n), (3,),
-                                        NormalPrior('n', jnp.zeros(3), jnp.ones(3),
+                                        NormalPrior('num_options', jnp.zeros(3), jnp.ones(3),
                                                     tracked=False), tracked=False)
     v_mag = UniformPrior('v_mag', 0., 0.5, tracked=False)
     v = DeterministicTransformPrior('v', lambda v_dir, v_mag: v_mag * v_dir,
