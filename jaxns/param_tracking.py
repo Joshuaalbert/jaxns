@@ -299,29 +299,3 @@ class TrackedExpectation(object):
                                 dw=LogParam(log_dw_i))
 
 
-def test_param_tracking():
-    from jax import jit, numpy as jnp, disable_jit, make_jaxpr
-    shape = {
-        'a': (4,),
-        'b': (4,),
-        'c': (4,),
-        'd': (4,),
-        'e': (4,),
-        'f': (4,),
-    }
-    sample = dict_multimap(jnp.ones, shape)
-    n = jnp.array(10)
-    log_L = jnp.array(0.)
-
-    @jit
-    def test_jax(sample, n, log_L):
-        tracked = TrackedExpectation({k: lambda sample, n, log_L: jnp.ones(shape[k]) for k in shape.keys()}, shape)
-        tracked.update(sample, n, log_L)
-
-        return (tracked.evidence_mean(), tracked.evidence_variance(), tracked.information_gain_mean())
-        # return (evidence.state, H.state, m.state, M.state)
-
-    print()
-    print(len(str(make_jaxpr(test_jax)(sample, n, log_L))))
-    with disable_jit():
-        print(test_jax(sample, n, log_L))
