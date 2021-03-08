@@ -367,8 +367,6 @@ def summary(results):
 
     max_like_idx = jnp.argmax(results.log_L_samples[:results.num_samples])
     max_like_points = tree_map(lambda x: x[max_like_idx], results.samples)
-    tree_map(lambda x: print(x[max_like_idx - 10:max_like_idx + 10]), results.samples)
-    print(results.log_L_samples[max_like_idx - 10:max_like_idx + 10])
     samples = resample(random.PRNGKey(23426), results.samples, results.log_p, S=int(results.ESS))
 
     for name in samples.keys():
