@@ -1,44 +1,8 @@
 from jax import numpy as jnp, random
 
-from jaxns.utils import swap_dict_namedtuple, swap_namedtuple_dict, get_interval, broadcast_shapes, tuple_prod, msqrt, \
-    logaddexp, signed_logaddexp, is_complex, cumulative_logsumexp, resample, random_ortho_matrix, \
+from jaxns.utils import broadcast_shapes, tuple_prod, msqrt, \
+    logaddexp, signed_logaddexp, cumulative_logsumexp, resample, random_ortho_matrix, \
     iterative_topological_sort
-
-
-def test_swap():
-    from collections import namedtuple
-
-    Test = namedtuple('Test', ['a', 'b', 'c'])
-    test_tuple = Test(dict(da=1., db=2.), dict(da=3., db=4.), dict(da=5., db=6.))
-    test_dict = {'da': Test(a=1.0, b=3.0, c=5.0), 'db': Test(a=2.0, b=4.0, c=6.0)}
-    _swap_dict = swap_dict_namedtuple(test_tuple)
-    assert _swap_dict == test_dict
-    _swap_tuple = swap_namedtuple_dict(test_dict)
-    assert _swap_tuple == test_tuple
-
-    test_tuple = Test(1., 2., 3.)
-    test_dict = Test(1., 2., 3.)
-    _swap_dict = swap_dict_namedtuple(test_tuple)
-    assert _swap_dict == test_dict
-    _swap_tuple = swap_namedtuple_dict(test_dict)
-    assert _swap_tuple == test_tuple
-
-
-def test_get_interval():
-    s = jnp.array([1, -1, -1, -1, 1])
-    assert get_interval(s) == (1, 3)
-    s = jnp.array([1, -1, -1, -1])
-    assert get_interval(s) == (1, 3)
-    s = jnp.array([-1, -1, -1])
-    assert get_interval(s) == (0, 2)
-    s = jnp.array([-1, -1, -1, 1])
-    assert get_interval(s) == (0, 2)
-    s = jnp.array([-1])
-    assert get_interval(s) == (0, 0)
-    s = jnp.array([1])
-    assert get_interval(s) == (0, 0)
-    s = jnp.array([1, -1])
-    assert get_interval(s) == (1, 1)
 
 
 def test_broadcast_shapes():
@@ -176,10 +140,6 @@ def test_signed_logaddexp():
     log_abs_c, sign_c = signed_logaddexp(a, sign1, b, sign2)
     assert sign_c == ans_sign
     assert jnp.isclose(log_abs_c, log_abs_ans)
-
-
-def test_is_complex():
-    assert is_complex(jnp.ones(1, dtype=jnp.complex_))
 
 
 def test_cumulative_logsumexp():
