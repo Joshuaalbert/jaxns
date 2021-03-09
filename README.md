@@ -11,6 +11,10 @@ There are two samplers available provided by setting `sampler_name=slice` for sl
 Make sure you have JAX and the usual suspects with `pip install jax jaxlib numpy matplotlib scipy`. 
 Install with `pip install jaxns` or `pip install git+http://github.com/Joshuaalbert/jaxns.git`.
 
+# Getting help and contributing examples
+
+Please use the [github discussion forum](https://github.com/Joshuaalbert/jaxns/discussions) for getting help, or contributing examples/neat use cases. 
+
 # Quick start
 
 JAXNS is really fast because it uses JAX. 
