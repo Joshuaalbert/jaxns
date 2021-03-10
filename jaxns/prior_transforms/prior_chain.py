@@ -575,7 +575,7 @@ class PriorChain(object):
                 log_measure.append(_log_measure)
         if len(log_measure) == 0:
             return None
-        return sum(log_measure[1:], start=log_measure[0])
+        return sum(log_measure[1:], log_measure[0])
 
     def sample_U(self, key):
         """
