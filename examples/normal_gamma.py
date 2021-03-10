@@ -15,7 +15,7 @@ def main(num_samples=10):
     _tau = np.random.gamma(true_k, true_theta, size=num_samples)
     samples = jnp.asarray(np.random.normal(0., _tau, size=num_samples))
 
-    prior_k = 2.
+    prior_k = 5.
     prior_theta = 0.3
 
     true_post_k = prior_k + 0.5*num_samples
