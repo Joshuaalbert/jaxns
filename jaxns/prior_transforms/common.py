@@ -79,7 +79,7 @@ class ContinuousPrior(HierarchicalPrior):
 
 class DiscretePrior(HierarchicalPrior):
     @prior_docstring
-    def __init__(self, name, shape, parents, tracked, num_outcomes=None, prior_base:DiscreteBase=None):
+    def __init__(self, name, shape, parents, tracked, num_outcomes=None, prior_base: DiscreteBase = None):
         """
         Represents a general prior for discrete RVs where the log-homogeneous measure is used to modulate the uniform
         samples from the PriorBase. An exception are discrete RVs that use some non-bijective trick, e.g. the
@@ -283,9 +283,9 @@ class GammaPrior(ContinuousPrior):
 
     def transform_U(self, U, k, theta, **kwargs):
         """
-        Transforms U to a range that covers most of the prior volume.
+        Transforms U to a range that covers most of the prior support.
         We use the homogeneous measure to do the rest.
         """
         mean = k * theta
-        stddev = jnp.sqrt(k * theta**2)
-        return U * (mean + 5.*stddev)
+        stddev = jnp.sqrt(k * theta ** 2)
+        return U * (mean + 20. * stddev)
