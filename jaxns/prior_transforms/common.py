@@ -279,7 +279,7 @@ class GammaPrior(ContinuousPrior):
         """
         Gamma probability density function.
         """
-        return -gammaln(k) - k * jnp.log(theta) + (k - 1.) * X - X / theta
+        return -gammaln(k) - k * jnp.log(theta) + (k - 1.) * jnp.log(X) - X / theta
 
     def transform_U(self, U, k, theta, **kwargs):
         """
