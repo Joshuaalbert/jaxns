@@ -1,7 +1,8 @@
-from jax import numpy as jnp, random
+import numpy as np
 from jaxns.nested_sampling import NestedSampler, save_results, load_results
-from jaxns.prior_transforms import PriorChain, MVNPrior
+from jaxns.prior_transforms import PriorChain, MVNPrior, GammaPrior
 from jax.scipy.linalg import solve_triangular
+from jax.scipy.special import gammaln
 from jax import random, jit, tree_multimap, test_util
 from jax import numpy as jnp
 
@@ -232,3 +233,40 @@ def test_nested_sampling():
     assert jnp.allclose(results.marginalised['x_mean'], post_mu, atol=0.02)
     assert jnp.abs(results.logZ - true_logZ) < 2.*results.logZerr
 
+def test_gh21():
+    num_samples = 10
+    true_k = 1.
+    true_theta = 0.5
+
+    _gamma = np.random.gamma(true_k, true_theta, size=num_samples)
+    samples = jnp.asarray(np.random.poisson(_gamma, size=num_samples))
+
+    prior_k = 5.
+    prior_theta = 0.3
+
+    true_post_k = prior_k + jnp.sum(samples)
+    true_post_theta = prior_theta / (num_samples * prior_theta + 1.)
+
+    def log_likelihood(gamma, **kwargs):
+        """
+        Poisson likelihood.
+        """
+        return jnp.sum(samples * jnp.log(gamma) - gamma - gammaln(samples + 1))
+
+    gamma = GammaPrior('gamma', prior_k, prior_theta)
+    prior_chain = gamma.prior_chain()
+
+    ns = NestedSampler(loglikelihood=log_likelihood, prior_chain=prior_chain,
+                       sampler_name='slice', num_parallel_samplers=1,
+                       sampler_kwargs=dict(depth=5, num_slices=prior_chain.U_ndims*5),
+                       num_live_points=5000, max_samples=1e6, collect_samples=True,
+                       collect_diagnostics=True)
+    results = jit(ns)(random.PRNGKey(32564), termination_frac=0.001)
+
+    samples = resample(random.PRNGKey(43083245),results.samples, results.log_p, S=int(results.ESS))
+
+    sample_mean = jnp.mean(samples['gamma'], axis=0)
+
+    true_mean = true_post_k * true_post_theta
+
+    assert jnp.allclose(sample_mean, true_mean, atol=0.05)
