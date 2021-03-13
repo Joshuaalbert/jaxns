@@ -1,6 +1,6 @@
 import pylab as plt
 import jax.numpy as jnp
-from jaxns.utils import tuple_prod, resample, cumulative_logsumexp
+from jaxns.utils import tuple_prod, resample, cumulative_logsumexp, estimate_map
 from jax import random
 from matplotlib.animation import FuncAnimation
 from mpl_toolkits.axes_grid1 import make_axes_locatable
@@ -16,7 +16,7 @@ def plot_diagnostics(results, save_name=None):
     fig, axs = plt.subplots(5, 1, sharex=True, figsize=(8, 10))
     log_X = results.log_X[:results.num_samples]
     axs[0].plot(-log_X, results.n_per_sample[:results.num_samples])
-    axs[0].set_ylabel(r'$num_options(X)$')
+    axs[0].set_ylabel(r'$n_{\rm live}(X)$')
     #detect if too small log likelihood
     log_likelihood = results.log_L_samples[:results.num_samples]
     max_log_likelihood = jnp.max(log_likelihood)
@@ -89,6 +89,7 @@ def plot_cornerplot(results, vars=None, save_name=None):
             rkey0, rkey = random.split(rkey0, 2)
             samples1_resampled = resample(rkey, samples1, log_weights, S=int(results.ESS))
             samples1_max_like = samples1[max_like_idx]
+            samples1_map_point = estimate_map(samples1)
             binsx = jnp.linspace(*jnp.percentile(samples1_resampled, [0, 100]), 2 * nbins)
             dim2 = 0
             for key2 in vars:  # sorted(results.samples.keys()):
@@ -117,9 +118,9 @@ def plot_cornerplot(results, vars=None, save_name=None):
                         ax.axvline(samples1_max_like, color='green')
                         sample_mean = jnp.average(samples1, weights=weights)
                         sample_std = jnp.sqrt(jnp.average((samples1 - sample_mean) ** 2, weights=weights))
-                        ax.set_title("{:.2f}:{:.2f}:{:.2f}\n{:.2f}+-{:.2f}\n{:.2f}".format(
+                        ax.set_title("{:.2f}:{:.2f}:{:.2f}\n{:.2f}+-{:.2f}\n{:.2f} | {:.2f}".format(
                             *jnp.percentile(samples1_resampled, [5, 50, 95]), sample_mean, sample_std,
-                            samples1_max_like))
+                            samples1_map_point, samples1_max_like))
                         ax.axvline(sample_mean, linestyle='dashed', color='red')
                         ax.axvline(sample_mean + sample_std,
                                    linestyle='dotted', color='red')

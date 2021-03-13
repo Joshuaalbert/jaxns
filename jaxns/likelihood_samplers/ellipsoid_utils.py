@@ -1067,43 +1067,84 @@ def minimum_volume_enclosing_ellipsoid(points, tol, init_u=None, return_u=False)
     return c, radii, rotation
 
 
-def sample_ellipsoid(key, center, radii, rotation, unit_cube_constraint=False):
+
+def sample_ellipsoid(key, mu, radii, rotation, unit_cube_constraint=False):
     """
     Sample uniformly inside an ellipsoid.
-    When unit_cube_constraint=True then during the sampling when a random radius is chosen, the radius is constrained.
+    When unit_cube_constraint=True then reject points outside box.
 
-    u(t) = R @ (t * num_options) + c
-    u(t) == 1
-    1-c = t * R@num_options
-    t = (1 - c)/R@num_options take minimum t satisfying this
-    likewise for zero intersection
     Args:
         key:
-        center: [D]
+        mu: [D]
         radii: [D]
         rotation: [D,D]
 
     Returns: [D]
 
     """
-    direction_key, radii_key = random.split(key, 2)
-    direction = random.normal(direction_key, shape=radii.shape)
-    if unit_cube_constraint:
+    R = rotation * radii
+    def body(state):
+        (key, _, _) = state
+        key, direction_key, radii_key = random.split(key, 3)
+        direction = random.normal(direction_key, shape=radii.shape)
         direction = direction / jnp.linalg.norm(direction)
-        R = rotation * radii
-        D = R @ direction
-        t0 = -center / D
-        t1 = jnp.reciprocal(D) + t0
-        t0 = jnp.where(t0 < 0., jnp.inf, t0)
-        t1 = jnp.where(t1 < 0., jnp.inf, t1)
-        t = jnp.minimum(jnp.min(t0), jnp.min(t1))
-        t = jnp.minimum(t, 1.)
-        return jnp.exp(jnp.log(random.uniform(radii_key, minval=0., maxval=t)) / radii.size) * D + center
-    log_norm = jnp.log(jnp.linalg.norm(direction))
-    log_radius = jnp.log(random.uniform(radii_key)) / radii.size
-    # x = direction * (radius/norm)
-    x = direction * jnp.exp(log_radius - log_norm)
-    return circle_to_ellipsoid(x, center, radii, rotation)
+        t = random.uniform(radii_key)**(1. / radii.size)
+        u_circ = direction * t
+        u = R @ u_circ + mu
+        done = jnp.asarray(True)
+        if unit_cube_constraint:
+            done = jnp.all((u < 1) & (u > 0))
+        return (key, done, u)
+
+    (_, _, u) = while_loop(lambda s: ~s[1],
+                           body,
+                           (key, jnp.asarray(False), mu))
+    return u
+
+def ellipsoid_normal(x, mu, radii, rotation):
+    """
+    normal = grad((x - mu) @ R @ Sigma @ R.T @ (x - mu))
+            = 2 * R @ Sigma @ R.T @ (x - mu)
+    Args:
+        x:
+        mu:
+        radii:
+        rotation:
+
+    Returns:
+
+    """
+
+def sample_box(key, mu, radii, rotation, unit_cube_constraint=False):
+    """
+    Sample uniformly inside a box aligned with ellipsoid.
+    When unit_cube_constraint=True then reject points outside box.
+
+    Args:
+        key:
+        mu: [D]
+        radii: [D]
+        rotation: [D,D]
+
+    Returns: [D]
+
+    """
+    R = rotation * radii
+    def body(state):
+        (key, _, _) = state
+        key, box_key = random.split(key, 2)
+        u_aligned = random.uniform(box_key,shape=(radii.size,), minval=-jnp.ones(radii.size), maxval=jnp.ones(radii.size))
+
+        u = R @ u_aligned + mu
+        done = jnp.asarray(True)
+        if unit_cube_constraint:
+            done = jnp.all((u < 1) & (u > 0))
+        return (key, done, u)
+
+    (_, _, u) = while_loop(lambda s: ~s[1],
+                           body,
+                           (key, jnp.asarray(False), mu))
+    return u
 
 
 def ellipsoid_to_circle(points, center, radii, rotation):

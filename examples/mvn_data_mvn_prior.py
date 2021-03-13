@@ -1,9 +1,9 @@
 from jaxns.nested_sampling import NestedSampler, save_results, load_results
-from jaxns.prior_transforms import PriorChain, MVNPrior, MVNPrior
+from jaxns.prior_transforms import PriorChain, MVNPrior
 from jaxns.utils import summary
-from jaxns.plotting import plot_cornerplot, plot_diagnostics, plot_samples_development
+from jaxns.plotting import plot_cornerplot, plot_diagnostics
 from jax.scipy.linalg import solve_triangular
-from jax import random, jit, disable_jit, make_jaxpr
+from jax import random, jit
 from jax import numpy as jnp
 import pylab as plt
 from timeit import default_timer
@@ -48,12 +48,12 @@ def main():
         def param_covariance(x, **args):
             return jnp.outer(x, x)
 
-        ns = NestedSampler(log_likelihood, prior_transform, sampler_name='slice',
+        ns = NestedSampler(log_likelihood, prior_transform, sampler_name='multi_slice',
                            num_live_points=n,
                            max_samples=1e6,
                            collect_samples=True,
                            num_parallel_samplers=2,
-                           sampler_kwargs=dict(depth=2, num_slices=5 * ndims),
+                           sampler_kwargs=dict(depth=2, num_slices=2),
                            marginalised=dict(x_mean=param_mean,
                                              x_cov=param_covariance)
                            )
@@ -72,7 +72,7 @@ def main():
         print("time to run not including compile", default_timer() - t0)
         return results
 
-    for n in [100]:
+    for n in [2000]:
         results = run_with_n(n)
         # can always save results to play with later
         save_results(results, 'save.npz')
@@ -85,6 +85,8 @@ def main():
               results.marginalised['x_cov'] - jnp.outer(results.marginalised['x_mean'], results.marginalised['x_mean']))
         plt.scatter(n, results.logZ)
         plt.errorbar(n, results.logZ, yerr=results.logZerr)
+
+
 
     plt.hlines(true_logZ, 0, n)
     plt.show()
