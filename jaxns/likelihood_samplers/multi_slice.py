@@ -1,186 +1,87 @@
 from collections import namedtuple
 from jax import vmap, numpy as jnp, random
 from jax.lax import while_loop, scan, cond
-from jaxns.likelihood_samplers.ellipsoid_utils import ellipsoid_clustering, maha_ellipsoid, ellipsoid_to_circle
+from jaxns.likelihood_samplers.ellipsoid_utils import ellipsoid_clustering, maha_ellipsoid, ellipsoid_to_circle, sample_box
 
-SliceSamplerState = namedtuple('SliceSamplerState',
-                               ['cluster_id', 'mu', 'radii', 'rotation', 'num_k', 'num_fev_ma'])
-SliceSamplingResults = namedtuple('SliceSamplingResults',
-                                  ['key', 'num_likelihood_evaluations', 'u_new', 'log_L_new'])
+MultiSliceSamplerState = namedtuple('MultiSliceSamplerState',
+                                    ['cluster_id', 'mu', 'radii', 'rotation', 'num_k', 'num_fev_ma'])
+MultiSliceSamplingResults = namedtuple('MultiSliceSamplingResults',
+                                       ['key', 'num_likelihood_evaluations', 'u_new', 'log_L_new'])
 
 
 def init_multi_slice_sampler_state(key, live_points_U, depth, log_X, num_slices):
     cluster_id, (mu, radii, rotation) = ellipsoid_clustering(key, live_points_U, depth, log_X)
     num_k = jnp.bincount(cluster_id, minlength=0, length=mu.shape[0])
-    return SliceSamplerState(cluster_id=cluster_id, mu=mu, radii=radii, rotation=rotation,
-                             num_k=num_k, num_fev_ma=jnp.asarray(num_slices * live_points_U.shape[1] + 2.))
+    return MultiSliceSamplerState(cluster_id=cluster_id, mu=mu, radii=radii, rotation=rotation,
+                                  num_k=num_k, num_fev_ma=jnp.asarray(num_slices * live_points_U.shape[1] + 2.))
 
 
+def which_cluster(x, sampler_state):
+    dist = vmap(lambda mu, radii, rotation: maha_ellipsoid(x, mu, radii, rotation))(sampler_state.mu,
+                                                                                    sampler_state.radii,
+                                                                                    sampler_state.rotation)
+    return jnp.argmin(jnp.where(jnp.isnan(dist), jnp.inf, dist))
 def multi_slice_sampling(key,
-                   log_L_constraint,
-                   init_U,
-                   num_slices,
-                   log_likelihood_from_U,
-                   sampler_state: SliceSamplerState):
-    def slice_sample_1d(key, x, n, w):
-        """
-        Perform a 1D slice sampling along x + t*num_options where num_options is a unit vector.
-        The typical scale is given by w.
-        We constrain t so that the sampling is within the unit cube.
+                         log_L_constraint,
+                         init_U,
+                         num_slices,
+                         log_likelihood_from_U,
+                         sampler_state: MultiSliceSamplerState):
 
-            x + t*num_options = 1
-            t1 = (1-x)/num_options
-            t1_right = where(t1>0, min(t1), inf)
-            t1_left = where(t1<0, max(t1), -inf)
-            x + t*num_options = 0
-            t0 = max(-x/num_options)
-            t0_right = where(t0>0, min(t0), inf)
-            t0_left = where(t0<0, max(t0), -inf)
-            right_bound = jnp.minimum(t0_right,t1_right)
-            left_bound = jnp.maximum(t0_left,t1_left)
+
+    def slice_sample_multi(key, x):
+        """
+        Performs a single multi-dimensional slice sample from point x.
 
         Args:
             key: PRNG
             x: point to sample from
-            n: unit vector
-            w: typical scale along the 1D slice.
-
-        Returns:
-
         """
+        k = which_cluster(x, sampler_state)
+        radii = sampler_state.radii[k]
+        rotation = sampler_state.rotation[k]
 
-        t1 = (1. - x) / n
-        t1_right = jnp.min(jnp.where(t1 >= 0., t1, jnp.inf))
-        t1_left = jnp.max(jnp.where(t1 <= 0., t1, -jnp.inf))
-        t0 = -x / n
-        t0_right = jnp.min(jnp.where(t0 >= 0., t0, jnp.inf))
-        t0_left = jnp.max(jnp.where(t0 <= 0., t0, -jnp.inf))
-        right_bound = jnp.minimum(t0_right, t1_right)
-        left_bound = jnp.maximum(t0_left, t1_left)
-        # find bracket, within unit-cube
-        key, brack_key = random.split(key, 2)
-        w = jnp.minimum(w, right_bound - left_bound)
+        key, placement_key = random.split(key, 2)
 
-        left = jnp.maximum(- random.uniform(brack_key, minval=0., maxval=w), left_bound)
-        right = jnp.minimum(left + w, right_bound)
-        f_left = log_likelihood_from_U(x + left * n)
-        f_right = log_likelihood_from_U(x + right * n)
-        num_f_eval = 2
-        do_step_out = (f_left > log_L_constraint) | (f_right > log_L_constraint)
+        left = random.uniform(placement_key, shape=(radii.size,), minval=-2., maxval=0.)
+        right = left + 2.
 
-        # print('do step out',do_step_out,'f_left', f_left, 'f_right', f_right, 'w', w, 'left_bound', left_bound, 'right_bound', right_bound, 'left', left, 'right', right)
-        # if jnp.isnan(w):
-        #     plot(left,right)
-
-        def step_out_body(state):
-            (done,key, num_f_eval, left, f_left, right, f_right) = state
-
-            key, direction_key = random.split(key,2)
-
-            def step_left(args):
-                # print('step left')
-                left, right, f_left, f_right = args
-                left = jnp.maximum(left - 0.5 * w, left_bound)
-                return 1, left, right, log_likelihood_from_U(x + left * n), f_right
-
-            def step_right(args):
-                # print("step right")
-                left, right, f_left, f_right = args
-                right = jnp.minimum(right + 0.5 * w, right_bound)
-                return 1, left, right, f_left, log_likelihood_from_U(x + right * n)
-
-            do_step_left = random.randint(direction_key,shape=(),minval=0,maxval=2, dtype=jnp.int_)==jnp.asarray(1)
-
-            (n_f_eval, new_left, new_right, f_left, f_right) = cond(do_step_left,
-                                              step_left,
-                                              step_right,
-                                              (left, right, f_left, f_right))
-
-            done = ((f_left <= log_L_constraint) & (f_right <= log_L_constraint)) \
-                   | ((jnp.abs(new_left - left_bound) < 1e-15) & (jnp.abs(new_right - right_bound) < 1e-15)) \
-                   | ((left == new_left) & (right == new_right))
-            # print('step out', 'f_left', f_left, 'f_right', f_right, 'left_bound', left_bound,
-            #       'right_bound', right_bound, 'left', left, 'right', right, 'w', w)
-            # plot(left,right)
-            return (done, key, num_f_eval + n_f_eval, new_left, f_left, new_right, f_right)
-
-        (_, key, num_f_eval, left, f_left, right, f_right) = while_loop(lambda state: ~state[0],
-                                                                   step_out_body,
-                                                                   (~do_step_out, key, num_f_eval, left, f_left, right,
-                                                                    f_right))
-
-        # shrinkage step
         def shrink_body(state):
             (_, num_f_eval, key, left, right, _, _) = state
-            key, t_key = random.split(key, 2)
-            t = random.uniform(t_key, minval=left, maxval=right)
-            x_t = x + t * n
-            f_t = log_likelihood_from_U(x_t)
-            done = f_t > log_L_constraint
-            left = jnp.where(t < 0., t, left)
-            right = jnp.where(t > 0., t, right)
-            # print('shrink','t', t, 'left',left,'right', right, 'f', f_t)
-            # plot(left, right)
-            return (done, num_f_eval + 1, key, left, right, x_t, f_t)
 
-        (done, num_f_eval, key, left, right, x_t, f_t) = while_loop(lambda state: ~state[0],
+            key, sample_key = random.split(key, 2)
+
+            # growth = random.uniform(growth_key, shape=(radii.size,), minval=-0.5, maxval=0.5)
+            base_point = random.uniform(sample_key, shape=(radii.size,), minval=left, maxval=right)
+            u_test = (rotation @ jnp.diag(radii)) @ (base_point) + x
+
+            logL_test = log_likelihood_from_U(u_test)
+            done = logL_test > log_L_constraint
+
+            left = jnp.where(base_point < 0, jnp.maximum(base_point, left), left)
+            # left = jnp.where(jnp.arange(left.size) == jnp.argmax(jnp.abs(_left - left)), _left, left)
+            right = jnp.where(base_point > 0, jnp.minimum(base_point, right), right)
+            # right = jnp.where(jnp.arange(right.size) == jnp.argmax(jnp.abs(_right - right)), _right, right)
+
+            return (done, num_f_eval + 1, key, left, right, u_test, logL_test)
+
+        (done, num_f_eval, key, left, right, u_test, logL_test) = while_loop(lambda state: ~state[0],
                                                                     shrink_body,
-                                                                    (
-                                                                        jnp.asarray(False), num_f_eval, key, left,
-                                                                        right, x,
-                                                                        log_L_constraint))
+                                                                    (jnp.asarray(False),
+                                                                     jnp.zeros((), dtype=jnp.int_), key, left,
+                                                                        right, x, log_L_constraint))
 
-        return key, x_t, f_t, num_f_eval
-
-    # use the members of cluster to circularise the search.
-    # let R map ellipsoidal to circular
-    # let C map circular to ellipsoidal
-    # if (x-f).C^T.C.(x-f) <= 1 then
-    # select unit vector num_options distributed on ellipse:
-    # num_options = C.n_circ / |C.n_circ|
-    # Selecting x + num_options*t we ask how large can t be approximately and still remain inside the bounding ellipsoid.
-    # Solve (x + num_options*t-f).R^T.R.(x + num_options*t-f) = 1
-    # Solve (x-f + num_options*t).R^T.R.(x-f + num_options*t) = 1
-    # Solve (x-f).R^T.R.(x-f) + 2*t*num_options.R^T.R.(x-f) + t**2 * num_options.R^T.R.num_options = 1
-
-    def which_cluster(x):
-        dist = vmap(lambda mu, radii, rotation: maha_ellipsoid(x, mu, radii, rotation))(sampler_state.mu,
-                                                                                        sampler_state.radii,
-                                                                                        sampler_state.rotation)
-        return jnp.argmin(jnp.where(jnp.isnan(dist), jnp.inf, dist))
+        return key, u_test, logL_test, num_f_eval
 
     def slice_body(state, X):
         (key, num_f_eval0, u_current, _) = state
-
-        k = which_cluster(u_current)
-        mu_k = sampler_state.mu[k, :]
-        radii_k = sampler_state.radii[k, :]
-        rotation_k = sampler_state.rotation[k, :, :]
-
-        key, n_key = random.split(key, 2)
-
-        n = random.normal(n_key, shape=u_current.shape)
-        n /= jnp.linalg.norm(n)
-        origin = jnp.zeros(n.shape)
-
-        # M
-        # get w by circularising or getting
-        Ln = ellipsoid_to_circle(n, origin, radii_k, rotation_k)
-        Ldx = ellipsoid_to_circle(u_current - mu_k, origin, radii_k, rotation_k)
-
-        a = Ln @ Ln
-        b = 2. * Ln @ Ldx
-        c = Ldx @ Ldx - 1.
-        w = jnp.sqrt(b ** 2 - 4. * a * c) / a
-        w = jnp.where(jnp.isnan(w), jnp.max(radii_k), w)
-
-        (key, u_prop, log_L_prop, num_f_eval) = slice_sample_1d(key, u_current, n, w)
+        (key, u_prop, log_L_prop, num_f_eval) = slice_sample_multi(key, u_current)
 
         return (key, num_f_eval0 + num_f_eval, u_prop, log_L_prop), ()
 
     (key, num_likelihood_evaluations, u_new, log_L_new), _ = scan(slice_body,
-                                                                  (key, jnp.asarray(0), init_U, log_L_constraint),
+                                                                  (key, jnp.asarray(0, dtype=jnp.int_), init_U, log_L_constraint),
                                                                   (jnp.arange(num_slices),),
                                                                   unroll=1)
 
-    return SliceSamplingResults(key, num_likelihood_evaluations, u_new, log_L_new)
+    return MultiSliceSamplingResults(key, num_likelihood_evaluations, u_new, log_L_new)

@@ -217,21 +217,21 @@ def test_nested_sampling():
     def param_mean(x, **args):
         return x
 
+    for sampler in ['slice', 'multi_slice']:
+        ns = NestedSampler(log_likelihood, prior_transform, sampler_name=sampler,
+                           num_live_points=5000,
+                           max_samples=1e6,
+                           collect_samples=True,
+                           num_parallel_samplers=2,
+                           sampler_kwargs=dict(depth=5, num_slices=5 * ndims),
+                           marginalised=dict(x_mean=param_mean)
+                           )
 
-    ns = NestedSampler(log_likelihood, prior_transform, sampler_name='slice',
-                       num_live_points=5000,
-                       max_samples=1e6,
-                       collect_samples=True,
-                       num_parallel_samplers=2,
-                       sampler_kwargs=dict(depth=5, num_slices=5 * ndims),
-                       marginalised=dict(x_mean=param_mean)
-                       )
 
+        results = jit(ns)(key=random.PRNGKey(42), termination_frac=0.001)
 
-    results = jit(ns)(key=random.PRNGKey(42), termination_frac=0.001)
-
-    assert jnp.allclose(results.marginalised['x_mean'], post_mu, atol=0.02)
-    assert jnp.abs(results.logZ - true_logZ) < 2.*results.logZerr
+        assert jnp.allclose(results.marginalised['x_mean'], post_mu, atol=0.02)
+        assert jnp.abs(results.logZ - true_logZ) < 2.*results.logZerr
 
 def test_gh21():
     num_samples = 10

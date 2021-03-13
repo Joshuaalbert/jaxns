@@ -3,6 +3,7 @@ from jax import random, vmap, numpy as jnp, tree_map, local_device_count, device
 from jax.lax import scan, while_loop
 from jax.scipy.special import logsumexp, gammaln
 import logging
+import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -234,18 +235,19 @@ def resample(key, samples, log_weights, S=None):
     return dict_multimap(lambda s: s[idx, ...], samples)
 
 
-def normal_to_lognormal(f, f2):
+def normal_to_lognormal(mu, std):
     """
     Convert normal parameters to log-normal parameters.
     Args:
-        f:
+        mu:
         var:
 
     Returns:
 
     """
-    ln_mu = 2. * jnp.log(f) - 0.5 * jnp.log(f2)
-    ln_var = jnp.log(f2) - 2. * jnp.log(f)
+    var = std**2
+    ln_mu = 2. * jnp.log(mu) - 0.5 * jnp.log(var)
+    ln_var = jnp.log(var) - 2. * jnp.log(mu)
     return ln_mu, jnp.sqrt(ln_var)
 
 
@@ -355,6 +357,14 @@ def chunked_pmap(f, *args, chunksize=None, use_vmap=False, per_device_unroll=Fal
 
     return result
 
+def estimate_map(samples):
+    def _get_map(samples):
+        lower, upper = jnp.percentile(samples, [1,99])
+        bins = jnp.linspace(lower, upper, int(np.sqrt(samples.size)))
+        hist, _ = jnp.histogram(samples, bins=bins)
+        centers = 0.5*(bins[1:] + bins[:-1])
+        return centers[jnp.argmax(hist)]
+    return tree_map(_get_map, samples)
 
 def summary(results):
     """
@@ -368,27 +378,32 @@ def summary(results):
     max_like_idx = jnp.argmax(results.log_L_samples[:results.num_samples])
     max_like_points = tree_map(lambda x: x[max_like_idx], results.samples)
     samples = resample(random.PRNGKey(23426), results.samples, results.log_p, S=int(results.ESS))
+    map_points = estimate_map(samples)
 
     for name in samples.keys():
         _samples = samples[name].reshape((samples[name].shape[0], -1))
         _max_like_points = max_like_points[name].reshape((-1,))
+        _map_points = map_points[name].reshape((-1,))
         ndims = _samples.shape[1]
         print("--------")
-        print("{}: mean +- std.dev. | 10%ile / 50%ile / 90%ile | max(L) est.".format(
+        print("{}: mean +- std.dev. | 10%ile / 50%ile / 90%ile | MAP est. | max(L) est.".format(
             name if ndims == 1 else "{}[#]".format(name), ))
         for dim in range(ndims):
             _uncert = jnp.std(_samples[:, dim])
             _max_like_point = _max_like_points[dim]
-            sig_figs = -int("{:e}".format(_uncert).split('e')[1])
+            _map_point = _map_points[dim]
+            # two sig-figs based on uncert
+            sig_figs = -int("{:e}".format(_uncert).split('e')[1]) + 1
 
             def _round(ar):
                 return round(float(ar), sig_figs)
 
             _uncert = _round(_uncert)
-            print("{}: {} +- {} | {} / {} / {} | {}".format(
+            print("{}: {} +- {} | {} / {} / {} | {} | {}".format(
                 name if ndims == 1 else "{}[{}]".format(name, dim),
                 _round(jnp.mean(_samples[:, dim])), _uncert,
                 *[_round(a) for a in jnp.percentile(_samples[:, dim], [10, 50, 90])],
+                _round(_map_point),
                 _round(_max_like_point)
             ))
     print("--------")

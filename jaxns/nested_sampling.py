@@ -15,7 +15,8 @@ from jaxns.param_tracking import \
 from jaxns.utils import dict_multimap, chunked_pmap
 from jaxns.likelihood_samplers import (slice_sampling, init_slice_sampler_state,
                                        multi_ellipsoid_sampler, init_multi_ellipsoid_sampler_state,
-                                       sample_discrete_subspace, init_discrete_sampler_state)
+                                       sample_discrete_subspace, init_discrete_sampler_state,
+                                       multi_slice_sampling, init_multi_slice_sampler_state)
 
 import logging
 
@@ -72,7 +73,7 @@ class NestedSampler(object):
     Implements nested sampling.
     """
 
-    _available_samplers = ['slice', 'multi_ellipsoid']
+    _available_samplers = ['slice', 'multi_ellipsoid', 'multi_slice']
 
     def __init__(self,
                  loglikelihood,
@@ -368,6 +369,12 @@ class NestedSampler(object):
                                                              self.sampler_kwargs['depth'],
                                                              tracked_expectations.state.X.log_value,
                                                              self.sampler_kwargs['num_slices'])
+                elif self.sampler_name == 'multi_slice':
+                    sampler_state = init_multi_slice_sampler_state(init_sampler_state_key,
+                                                             state.live_points_U[subspace_idx],
+                                                             self.sampler_kwargs['depth'],
+                                                             tracked_expectations.state.X.log_value,
+                                                             self.sampler_kwargs['num_slices'])
                 elif self.sampler_name == 'multi_ellipsoid':
                     sampler_state = init_multi_ellipsoid_sampler_state(
                         init_sampler_state_key,
@@ -417,6 +424,18 @@ class NestedSampler(object):
                 elif subspace_type == 'continuous':
                     if self.sampler_name == 'slice':
                         sampler_results = slice_sampling(sample_key,
+                                                         log_L_constraint=state.current_log_L_contour,
+                                                         init_U=sample_U[subspace_idx],
+                                                         num_slices=self.sampler_kwargs['num_slices'],
+                                                         log_likelihood_from_U=log_likelihood,
+                                                         sampler_state=sampler_state)
+                        sample_log_L = sampler_results.log_L_new
+                        sample_U = tuple(
+                            [sampler_results.u_new if i == subspace_idx else sample_U[i] for i in range(len(sample_U))])
+                        num_likelihood_evaluations += sampler_results.num_likelihood_evaluations
+                        sample_key = sampler_results.key
+                    elif self.sampler_name == 'multi_slice':
+                        sampler_results = multi_slice_sampling(sample_key,
                                                          log_L_constraint=state.current_log_L_contour,
                                                          init_U=sample_U[subspace_idx],
                                                          num_slices=self.sampler_kwargs['num_slices'],
