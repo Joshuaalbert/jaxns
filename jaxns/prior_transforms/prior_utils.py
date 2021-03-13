@@ -1,9 +1,17 @@
 from jax import numpy as jnp
+from jax.lax import broadcast_shapes
 import numpy as np
 from jaxns.prior_transforms.prior_chain import Prior
 import logging
 
 logger = logging.getLogger(__name__)
+
+def check_broadbast_shapes(to_shape, *shapes):
+    result_shape = broadcast_shapes(*shapes)
+    if len(result_shape) == len(to_shape):
+        if tuple(result_shape) == tuple(to_shape):
+            return True
+    return False
 
 def broadcast_dtypes(*dtypes):
     """
@@ -18,7 +26,7 @@ def broadcast_dtypes(*dtypes):
     output = -1
     for dtype in dtypes:
         if dtype not in levels:
-            raise ValueError(f"dtype {dtype} not in list {levels}.")
+            raise ValueError("dtype {dtype} not in list {levels}.")
         output = max(output, levels.index(dtype))
     return levels[output]
 

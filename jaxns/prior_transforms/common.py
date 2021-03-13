@@ -108,8 +108,8 @@ class LogNormalPrior(ContinuousPrior):
             mu: mean of underlying
             sigma: std-dev of underlying
         """
-        mu = self._prepare_parameter(name, name, 'mu', mu)
-        sigma = self._prepare_parameter(name, name, 'sigma', sigma)
+        mu = self._prepare_parameter(name, 'mu', mu)
+        sigma = self._prepare_parameter(name, 'sigma', sigma)
         shape = broadcast_shapes(get_shape(mu), get_shape(sigma))
         super(LogNormalPrior, self).__init__(name, shape, [mu, sigma], tracked)
 

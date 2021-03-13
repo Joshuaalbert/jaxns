@@ -22,34 +22,34 @@ def test_prior_chain():
         assert jnp.allclose(_U,_y)
 
     chain2 = PriorChain()
-    c = UniformPrior('f2', 0., 1.)
+    c = UniformPrior('var', 0., 1.)
     d = GumbelBernoulliPrior('x2', c)
     chain2.push(d)
     chain2.push(chain1)
-    # [{'f2', '_f2_low', 'x2', '_f2_high', '_x2_gumbel', '_log_f2'}, {'_b_sigma', 'b', 'a'}]
+    # [{'var', '_f2_low', 'x2', '_f2_high', '_x2_gumbel', '_log_f2'}, {'_b_sigma', 'b', 'a'}]
     assert len(chain2.subspaces) == 2
-    assert chain2.subspaces[0] == {'f2', '_f2_low', 'x2', '_f2_high', '_x2_gumbel', '_log_f2'}
+    assert chain2.subspaces[0] == {'var', '_f2_low', 'x2', '_f2_high', '_x2_gumbel', '_log_f2'}
     assert chain2.subspaces[1] == {'_b_sigma', 'b', 'a'}
 
     # priors in chain1 added before the chain stay in those subspaces
     chain2 = PriorChain()
-    c = UniformPrior('f2', a, 1.)
+    c = UniformPrior('var', a, 1.)
     d = GumbelBernoulliPrior('x2', c)
     chain2.push(d)
     chain2.push(chain1)
-    # [{'f2', '_f2_low', 'x2', '_f2_high', '_x2_gumbel', '_log_f2'}, {'_b_sigma', 'b', 'a'}]
+    # [{'var', '_f2_low', 'x2', '_f2_high', '_x2_gumbel', '_log_f2'}, {'_b_sigma', 'b', 'a'}]
     assert len(chain2.subspaces) == 2
-    assert chain2.subspaces[0] == {'f2', 'x2', '_f2_high', '_x2_gumbel', '_log_f2'}
+    assert chain2.subspaces[0] == {'var', 'x2', '_f2_high', '_x2_gumbel', '_log_f2'}
     assert chain2.subspaces[1] == {'_b_sigma', 'b', 'a'}
 
     # priors in chain1 added after the chain stay in those subspaces
     chain2 = PriorChain(chain1)
-    c = UniformPrior('f2', a, 1.)
+    c = UniformPrior('var', a, 1.)
     d = GumbelBernoulliPrior('x2', c)
     chain2.push(d)
-    # [{'f2', '_f2_low', 'x2', '_f2_high', '_x2_gumbel', '_log_f2'}, {'_b_sigma', 'b', 'a'}]
+    # [{'var', '_f2_low', 'x2', '_f2_high', '_x2_gumbel', '_log_f2'}, {'_b_sigma', 'b', 'a'}]
     assert len(chain2.subspaces) == 2
-    assert chain2.subspaces[0] == {'f2', 'x2', '_f2_high', '_x2_gumbel', '_log_f2'}
+    assert chain2.subspaces[0] == {'var', 'x2', '_f2_high', '_x2_gumbel', '_log_f2'}
     assert chain2.subspaces[1] == {'_b_sigma', 'b', 'a'}
 
     try:
