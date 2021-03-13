@@ -1,6 +1,6 @@
 ![JAXNS](./jaxns_logo.png)
 
-![build status](https://travis-ci.com/Joshuaalbert/jaxns.svg?branch=master&status=created)
+[![build status](https://travis-ci.com/Joshuaalbert/jaxns.svg?branch=master)](https://travis-ci.com/github/Joshuaalbert/jaxns)
 # What is it?
 Enables probabilistic programming using nested sampling. It's coded in JAX in a manner that allows lowering the entire inference algorithm to XLA primitives, which are JIT-compiled for high performance. You can read about it here: (https://arxiv.org/abs/2012.15286)
 
