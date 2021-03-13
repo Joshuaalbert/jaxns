@@ -1,8 +1,8 @@
 from jax.scipy.special import ndtri
-
+from jax import numpy as jnp
 from jaxns.prior_transforms.common import ContinuousPrior
 from jaxns.prior_transforms.discrete import GumbelCategoricalPrior
-from jaxns.prior_transforms.prior_utils import get_shape, prior_docstring
+from jaxns.prior_transforms.prior_utils import get_shape, prior_docstring, check_broadbast_shapes
 from jaxns.utils import broadcast_shapes
 
 class GMMDiagPrior(ContinuousPrior):
@@ -24,14 +24,16 @@ class GMMDiagPrior(ContinuousPrior):
         select_component = GumbelCategoricalPrior('_{}_select'.format(name),logits,False)
         mu = self._prepare_parameter(name, 'mu', mu)
         sigma = self._prepare_parameter(name, 'sigma', sigma)
-        assert (get_shape(logits)[0] == get_shape(mu)[0]) and (get_shape(logits)[0] == get_shape(sigma)[0]) \
-               and (get_shape(mu) == get_shape(sigma))
-        # replaces f and gamma when parents injected
-        shape = broadcast_shapes(get_shape(mu), get_shape(sigma))[1:]
+
+        shape = broadcast_shapes(get_shape(mu), get_shape(sigma))[len(get_shape(logits)):]
+
+        # replaces mu and gamma when parents injected
+
         super(GMMDiagPrior, self).__init__(name, shape, [select_component, mu, sigma], tracked)
 
 
     def transform_U(self, U, select, mu, sigma, **kwargs):
+        mu, sigma = jnp.broadcast_arrays(mu, sigma)
         sigma = sigma[select, ...]
         mu = mu[select, ...]
         return sigma * ndtri(U) + mu
