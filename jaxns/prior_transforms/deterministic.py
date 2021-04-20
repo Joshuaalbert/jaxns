@@ -31,13 +31,13 @@ class GaussianProcessKernelPrior(DeterministicTransformPrior):
     @prior_docstring
     def __init__(self, name, kernel: Kernel, X, *gp_params, tracked=False):
         """
-        Gaussian process kernel with priors on hyper-parameters. A small diagonal term is added to the kernel for
+        Gaussian process Q_kernel with priors on hyper-parameters. A small diagonal term is added to the Q_kernel for
         stability.
 
         Args:
             kernel: Kernel to be applied to the below params.
             X: locations
-            *gp_params: parameters that the kernel accepts.
+            *gp_params: parameters that the Q_kernel accepts.
         """
         gp_params = [X] + list(gp_params)
 
