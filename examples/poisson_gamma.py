@@ -14,15 +14,18 @@ def main(num_samples=10):
 
     _gamma = np.random.gamma(true_k, true_theta, size=num_samples)
     samples = jnp.asarray(np.random.poisson(_gamma, size=num_samples))
+    print(samples)
 
     prior_k = 5.
     prior_theta = 0.3
 
     true_post_k = prior_k + jnp.sum(samples)
     true_post_theta = prior_theta / (num_samples * prior_theta + 1.)
+    true_logZ = jnp.sum(samples * jnp.log(prior_theta) + (samples - prior_k) * jnp.log1p(prior_theta) + gammaln(prior_k + samples) - gammaln(prior_k) - gammaln(samples+1))
 
     print(f"True posterior k = {true_post_k}")
     print(f"True posterior theta = {true_post_theta}")
+    print(f"True Evidence = {true_logZ}")
 
     def log_likelihood(gamma, **kwargs):
         """
@@ -33,12 +36,11 @@ def main(num_samples=10):
     gamma = GammaPrior('gamma', prior_k, prior_theta)
     prior_chain = gamma.prior_chain()
 
-    ns = NestedSampler(loglikelihood=log_likelihood, prior_chain=prior_chain,
-                       sampler_name='slice', num_parallel_samplers=1,
-                       sampler_kwargs=dict(depth=5, num_slices=prior_chain.U_ndims*5),
-                       num_live_points=5000, max_samples=1e6, collect_samples=True,
-                       collect_diagnostics=True)
-    results = jit(ns)(random.PRNGKey(32564), termination_frac=0.001)
+    ns = NestedSampler(loglikelihood=log_likelihood, prior_chain=prior_chain)
+
+    f = jit(ns)
+
+    results = f(random.PRNGKey(3452345), 0.001)
 
     summary(results)
 
@@ -57,4 +59,4 @@ def main(num_samples=10):
 
 
 if __name__ == '__main__':
-    main(num_samples=100)
+    main(num_samples=10)

@@ -48,12 +48,12 @@ def main():
         def param_covariance(x, **args):
             return jnp.outer(x, x)
 
-        ns = NestedSampler(log_likelihood, prior_transform, sampler_name='multi_slice',
+        ns = NestedSampler(log_likelihood, prior_transform, sampler_name='cone_slice',
                            num_live_points=n,
                            max_samples=1e6,
                            collect_samples=True,
-                           num_parallel_samplers=2,
-                           sampler_kwargs=dict(depth=2, num_slices=2),
+                           num_parallel_samplers=1,
+                           sampler_kwargs=dict(depth=2, num_slices=prior_transform.U_ndims),
                            marginalised=dict(x_mean=param_mean,
                                              x_cov=param_covariance)
                            )
@@ -68,11 +68,11 @@ def main():
         print("time to run including compile", default_timer() - t0)
         t0 = default_timer()
         results = run(random.PRNGKey(747645))
-        print('efficiency', results.efficiency, results.num_samples)
+        print('efficiency', results.efficiency, results.num_likelihood_evaluations)
         print("time to run not including compile", default_timer() - t0)
         return results
 
-    for n in [2000]:
+    for n in [100]:
         results = run_with_n(n)
         # can always save results to play with later
         save_results(results, 'save.npz')

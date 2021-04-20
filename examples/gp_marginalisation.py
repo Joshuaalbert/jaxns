@@ -5,7 +5,6 @@ from jaxns.gaussian_process.kernels import RBF, M12, M32
 from jax.scipy.linalg import solve_triangular
 from jax import random, jit
 from jax import numpy as jnp
-from timeit import default_timer
 import pylab as plt
 
 
@@ -24,7 +23,6 @@ def main(kernel):
         log_likelihood = -0.5 * x.size * jnp.log(2. * jnp.pi) \
                          - log_det \
                          - 0.5 * maha
-        # print(log_likelihood)
         return log_likelihood
 
     N = 100
@@ -68,37 +66,11 @@ def main(kernel):
     sigma = UniformPrior('sigma', 0., 2.)
     cov = GaussianProcessKernelPrior('K', kernel, X, l, sigma)
     prior_chain = PriorChain().push(uncert).push(cov)
-
-    def run_with_n(n):
-        ns = NestedSampler(log_likelihood, prior_chain, sampler_name='slice', num_live_points=n,
-                           max_samples=1e5,
-                           collect_samples=True,
-                           sampler_kwargs=dict(depth=3, num_slices=5),
-                           marginalised=dict(predict_f=predict_f,
-                                             predict_fvar=predict_fvar))
-
-        @jit
-        def run(key):
-            return ns(key=key, termination_frac=0.01)
-
-        t0 = default_timer()
-        # with disable_jit():
-        results = run(random.PRNGKey(6))
-        print(results.efficiency)
-        print("Time to execute (including compile): {}".format(default_timer() - t0))
-        t0 = default_timer()
-        results = run(random.PRNGKey(6))
-        print(results.efficiency)
-        print("Time to execute (not including compile): {}".format((default_timer() - t0)))
-        return results
-
-    for n in [300]:
-        results = run_with_n(n)
-        plt.scatter(n, results.logZ)
-        plt.errorbar(n, results.logZ, yerr=results.logZerr)
-    plt.title("Kernel: {}".format(kernel.__class__.__name__))
-    plt.ylabel('log Z')
-    plt.show()
+    ns = NestedSampler(log_likelihood,
+                       prior_chain,
+                       marginalised=dict(predict_f=predict_f,
+                                         predict_fvar=predict_fvar))
+    results = jit(ns)(key=random.PRNGKey(42), termination_frac=0.01)
 
     plt.scatter(X[:, 0], Y_obs, label='data')
     plt.plot(X[:, 0], Y, label='underlying')
