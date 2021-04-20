@@ -1,5 +1,6 @@
 from jax import random, vmap, numpy as jnp, tree_map, local_device_count, devices as get_devices, pmap, jit, device_get, \
     tree_multimap
+from jax.flatten_util import ravel_pytree
 from jax.lax import scan, while_loop
 from jax.scipy.special import logsumexp, gammaln
 import logging
@@ -158,8 +159,10 @@ def msqrt(A):
     L = U * jnp.sqrt(s)
     return L
 
+
 def is_complex(a):
     return a.dtype in [jnp.complex64, jnp.complex128]
+
 
 def logaddexp(x1, x2):
     """
@@ -245,7 +248,7 @@ def normal_to_lognormal(mu, std):
     Returns:
 
     """
-    var = std**2
+    var = std ** 2
     ln_mu = 2. * jnp.log(mu) - 0.5 * jnp.log(var)
     ln_var = jnp.log(var) - 2. * jnp.log(mu)
     return ln_mu, jnp.sqrt(ln_var)
@@ -287,14 +290,14 @@ def marginalise_dynamic(key, samples, log_weights, ESS, fun):
         (key, i, marginalised) = state
         key, resample_key = random.split(key, 2)
         _samples = tree_map(lambda v: v[0], resample(resample_key, samples, log_weights, S=1))
-        marginalised += fun(**_samples)
+        marginalised = tree_multimap(lambda x, y: x + y, marginalised, fun(**_samples))
         return (key, i + 1., marginalised)
 
     test_output = fun(**tree_map(lambda v: v[0], samples))
     (_, count, marginalised) = while_loop(lambda state: state[1] < ESS,
                                           body,
-                                          (key, jnp.array(0.), jnp.zeros_like(test_output)))
-    marginalised = marginalised / count
+                                          (key, jnp.array(0.), tree_map(lambda x: jnp.zeros_like(x), test_output)))
+    marginalised = tree_map(lambda x: x / count, marginalised)
     return marginalised
 
 
@@ -313,7 +316,7 @@ def chunked_pmap(f, *args, chunksize=None, use_vmap=False, per_device_unroll=Fal
     if chunksize is None:
         chunksize = local_device_count()
     if chunksize > local_device_count():
-        raise ValueError("chunksize should be <= {}".format(local_device_count()))
+        raise ValueError("blocksize should be <= {}".format(local_device_count()))
     N = args[0].shape[0]
     remainder = N % chunksize
     if (remainder != 0) and (N > chunksize):
@@ -338,14 +341,14 @@ def chunked_pmap(f, *args, chunksize=None, use_vmap=False, per_device_unroll=Fal
     elif per_device_unroll:
         devices = get_devices()
         if len(devices) < chunksize:
-            raise ValueError("Not enough devices {} for chunksize {}".format(len(devices), chunksize))
+            raise ValueError("Not enough devices {} for blocksize {}".format(len(devices), chunksize))
         result = []
         for i in range(chunksize):
             dev = devices[i]
             _func = jit(pmap_body, device=dev)
             _args = tree_map(lambda x: x[i], args)
             result.append(_func(*_args))
-        result = [device_get(r) for r in result]
+        # result = [device_get(r) for r in result]
         result = tree_multimap(lambda *x: jnp.stack(x, axis=0), *result)
     else:
         result = pmap(pmap_body)(*args)
@@ -357,14 +360,26 @@ def chunked_pmap(f, *args, chunksize=None, use_vmap=False, per_device_unroll=Fal
 
     return result
 
-def estimate_map(samples):
+
+def estimate_map(samples, ESS=None):
     def _get_map(samples):
-        lower, upper = jnp.percentile(samples, [1,99])
-        bins = jnp.linspace(lower, upper, int(np.sqrt(samples.size)))
-        hist, _ = jnp.histogram(samples, bins=bins)
-        centers = 0.5*(bins[1:] + bins[:-1])
-        return centers[jnp.argmax(hist)]
+        shape = samples.shape[1:]
+        samples = samples.reshape([samples.shape[0], -1]).T
+
+        def _single_dim(samples):
+            lower, upper = jnp.percentile(samples, [1, 99])
+            if ESS is not None:
+                bins = jnp.linspace(lower, upper, int(np.sqrt(ESS)))
+            else:
+                bins = jnp.linspace(lower, upper, int(jnp.sqrt(samples.size)))
+            hist, _ = jnp.histogram(samples, bins=bins)
+            centers = 0.5 * (bins[1:] + bins[:-1])
+            return centers[jnp.argmax(hist)]
+
+        return vmap(_single_dim)(samples).reshape(shape)
+
     return tree_map(_get_map, samples)
+
 
 def summary(results):
     """
@@ -373,20 +388,40 @@ def summary(results):
     Args:
         results: NestedSamplerResults
     """
-    print("ESS={}".format(results.ESS))
+    main_s = []
+
+    def _print(s):
+        print(s)
+        main_s.append(s)
+
+    def _round(v, uncert_v):
+        sig_figs = -int("{:e}".format(uncert_v).split('e')[1]) + 1
+
+        return round(float(v), sig_figs)
+
+    _print("--------")
+    _print("# likelihood evals: {}".format(results.num_likelihood_evaluations))
+    _print("# samples: {}".format(results.num_samples))
+    _print("# likelihood evals / sample: {:.1f}".format(results.num_likelihood_evaluations / results.num_samples))
+    _print("--------")
+    _print("logZ={} +- {}".format(_round(results.logZ, results.logZerr),
+                                  _round(results.logZerr, results.logZerr)))
+    # _print("H={} +- {}".format(
+    #     _round(results.H, results.H_err), _round(results.H_err, results.H_err)))
+    _print("ESS={}".format(int(results.ESS)))
 
     max_like_idx = jnp.argmax(results.log_L_samples[:results.num_samples])
     max_like_points = tree_map(lambda x: x[max_like_idx], results.samples)
     samples = resample(random.PRNGKey(23426), results.samples, results.log_p, S=int(results.ESS))
-    map_points = estimate_map(samples)
+    map_points = estimate_map(samples, ESS=int(results.ESS))
 
     for name in samples.keys():
         _samples = samples[name].reshape((samples[name].shape[0], -1))
         _max_like_points = max_like_points[name].reshape((-1,))
         _map_points = map_points[name].reshape((-1,))
         ndims = _samples.shape[1]
-        print("--------")
-        print("{}: mean +- std.dev. | 10%ile / 50%ile / 90%ile | MAP est. | max(L) est.".format(
+        _print("--------")
+        _print("{}: mean +- std.dev. | 10%ile / 50%ile / 90%ile | MAP est. | max(L) est.".format(
             name if ndims == 1 else "{}[#]".format(name), ))
         for dim in range(ndims):
             _uncert = jnp.std(_samples[:, dim])
@@ -399,11 +434,51 @@ def summary(results):
                 return round(float(ar), sig_figs)
 
             _uncert = _round(_uncert)
-            print("{}: {} +- {} | {} / {} / {} | {} | {}".format(
+            _print("{}: {} +- {} | {} / {} / {} | {} | {}".format(
                 name if ndims == 1 else "{}[{}]".format(name, dim),
                 _round(jnp.mean(_samples[:, dim])), _uncert,
                 *[_round(a) for a in jnp.percentile(_samples[:, dim], [10, 50, 90])],
                 _round(_map_point),
                 _round(_max_like_point)
             ))
-    print("--------")
+    _print("--------")
+    return "\n".join(main_s)
+
+
+def squared_norm(x1, x2):
+    # r2_ij = sum_k (x_ik - x_jk)^2
+    #       = sum_k x_ik^2 - 2 x_jk x_ik + x_jk^2
+    #       = sum_k x_ik^2 + x_jk^2 - 2 X X^T
+    # r2_ij = sum_k (x_ik - y_jk)^2
+    #       = sum_k x_ik^2 - 2 y_jk x_ik + y_jk^2
+    #       = sum_k x_ik^2 + y_jk^2 - 2 X Y^T
+    x1 = x1
+    x2 = x2
+    r2 = jnp.sum(jnp.square(x1), axis=1)[:, None] + jnp.sum(jnp.square(x2), axis=1)[None, :]
+    r2 = r2 - 2. * (x1 @ x2.T)
+    return r2
+
+
+def latin_hypercube(key, num_samples, num_dim, cube_scale):
+    """
+    Sample from the latin-hypercube defined as the continuous analog of the discrete latin-hypercube.
+    That is, if you partition each dimension into `num_samples` equal volume intervals then there is (conditionally)
+    exactly one point in each interval. We guarantee that uniformity by randomly assigning the permutation of each dimension.
+    The degree of randomness is controlled by `cube_scale`. A value of 0 places the sample at the center of the grid point,
+    and a value of 1 places the value randomly inside the grid-cell.
+
+    Args:
+        key: PRNG key
+        num_samples: number of samples in total to draw
+        num_dim: number of dimensions in each sample
+        cube_scale: The scale of randomness, in (0,1).
+
+    Returns:
+        latin-hypercube samples of shape [num_samples, num_dim]
+    """
+    key1, key2 = random.split(key, 2)
+    cube_scale = jnp.clip(cube_scale, 0., 1.)
+    samples = vmap(lambda key: random.permutation(key, num_samples))(random.split(key2, num_dim)).T
+    samples += random.uniform(key1, shape=samples.shape, minval=0.5 - cube_scale / 2., maxval=0.5 + cube_scale / 2.)
+    samples /= num_samples
+    return samples

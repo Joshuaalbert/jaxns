@@ -8,7 +8,7 @@ from jax import numpy as jnp
 
 from jaxns.utils import broadcast_shapes, tuple_prod, msqrt, \
     logaddexp, signed_logaddexp, cumulative_logsumexp, resample, random_ortho_matrix, \
-    iterative_topological_sort, is_complex
+    iterative_topological_sort, is_complex, latin_hypercube
 
 
 def test_broadcast_shapes():
@@ -60,8 +60,10 @@ def test_logaddexp():
         b = jnp.log(u[1] + 0j)
         assert jnp.isclose(jnp.exp(logaddexp(a, b)).real, u[0] + u[1])
 
+
 def test_is_complex():
     assert is_complex(jnp.ones(1, dtype=jnp.complex_))
+
 
 def test_signed_logaddexp():
     for i in range(100):
@@ -186,10 +188,8 @@ def test_iterative_topological_sort():
     assert iterative_topological_sort(dsk, ['a', 'b', 'c']) == ['c', 'b', 'a', 'd']
     assert iterative_topological_sort(dsk) == ['c', 'b', 'a', 'd']
 
+
 def test_nested_sampling():
-
-
-
     def log_normal(x, mean, cov):
         L = jnp.linalg.cholesky(cov)
         dx = x - mean
@@ -227,11 +227,11 @@ def test_nested_sampling():
                            marginalised=dict(x_mean=param_mean)
                            )
 
-
         results = jit(ns)(key=random.PRNGKey(42), termination_frac=0.001)
 
         assert jnp.allclose(results.marginalised['x_mean'], post_mu, atol=0.02)
-        assert jnp.abs(results.logZ - true_logZ) < 2.*results.logZerr
+        assert jnp.abs(results.logZ - true_logZ) < 2. * results.logZerr
+
 
 def test_gh21():
     num_samples = 10
@@ -258,15 +258,31 @@ def test_gh21():
 
     ns = NestedSampler(loglikelihood=log_likelihood, prior_chain=prior_chain,
                        sampler_name='slice', num_parallel_samplers=1,
-                       sampler_kwargs=dict(depth=5, num_slices=prior_chain.U_ndims*5),
+                       sampler_kwargs=dict(depth=5, num_slices=prior_chain.U_ndims * 5),
                        num_live_points=5000, max_samples=1e6, collect_samples=True,
                        collect_diagnostics=True)
     results = jit(ns)(random.PRNGKey(32564), termination_frac=0.001)
 
-    samples = resample(random.PRNGKey(43083245),results.samples, results.log_p, S=int(results.ESS))
+    samples = resample(random.PRNGKey(43083245), results.samples, results.log_p, S=int(results.ESS))
 
     sample_mean = jnp.mean(samples['gamma'], axis=0)
 
     true_mean = true_post_k * true_post_theta
 
     assert jnp.allclose(sample_mean, true_mean, atol=0.05)
+
+
+def test_latin_hyper_cube():
+    num_samples = 50
+    ndim = 2
+    samples = latin_hypercube(random.PRNGKey(442525), num_samples, ndim, 0.)
+    s = jnp.sort(samples, axis=0) * num_samples
+    assert jnp.all(s < jnp.arange(1, num_samples + 1)[:, None])
+    assert jnp.all(s > jnp.arange(0, num_samples)[:, None])
+
+    num_samples = 50
+    ndim = 2
+    samples = latin_hypercube(random.PRNGKey(442525), num_samples, ndim, 1.)
+    s = jnp.sort(samples, axis=0) * num_samples
+    assert jnp.all(s < jnp.arange(1, num_samples + 1)[:, None])
+    assert jnp.all(s > jnp.arange(0, num_samples)[:, None])

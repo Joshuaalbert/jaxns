@@ -5,6 +5,7 @@ from jax import random
 from matplotlib.animation import FuncAnimation
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
+
 def plot_diagnostics(results, save_name=None):
     """
     Plot diagnostics of the nested sampling run.
@@ -17,7 +18,7 @@ def plot_diagnostics(results, save_name=None):
     log_X = results.log_X[:results.num_samples]
     axs[0].plot(-log_X, results.n_per_sample[:results.num_samples])
     axs[0].set_ylabel(r'$n_{\rm live}(X)$')
-    #detect if too small log likelihood
+    # detect if too small log likelihood
     log_likelihood = results.log_L_samples[:results.num_samples]
     max_log_likelihood = jnp.max(log_likelihood)
     likelihood = jnp.exp(log_likelihood - max_log_likelihood)
@@ -28,7 +29,8 @@ def plot_diagnostics(results, save_name=None):
     axs[1].set_ylabel(r'$L(X)/L_{\rm max}$')
     axs[1].legend()
     axs[2].plot(-log_X, jnp.exp(results.log_p[:results.num_samples]))
-    axs[2].vlines(-results.H, 0., jnp.exp(jnp.max(results.log_p[:results.num_samples])), colors='black', ls='dashed', label='-logX=-H={:.1f}'.format(-results.H))
+    axs[2].vlines(-results.H, 0., jnp.exp(jnp.max(results.log_p[:results.num_samples])), colors='black', ls='dashed',
+                  label='-logX=-H={:.1f}'.format(-results.H))
     axs[2].set_ylabel(r'$Z^{-1}L(X) dX$')
     axs[2].legend()
     log_cum_evidence = cumulative_logsumexp(results.log_p[:results.num_samples])
@@ -77,7 +79,7 @@ def plot_cornerplot(results, vars=None, save_name=None):
     for key in vars:  # sorted(results.samples.keys()):
         n1 = tuple_prod(results.samples[key].shape[1:])
         for i in range(n1):
-            samples1 = results.samples[key][:results.num_samples,...].reshape((nsamples, -1))[:, i]
+            samples1 = results.samples[key][:results.num_samples, ...].reshape((nsamples, -1))[:, i]
             if jnp.std(samples1) == 0.:
                 dim += 1
                 continue
@@ -118,9 +120,10 @@ def plot_cornerplot(results, vars=None, save_name=None):
                         ax.axvline(samples1_max_like, color='green')
                         sample_mean = jnp.average(samples1, weights=weights)
                         sample_std = jnp.sqrt(jnp.average((samples1 - sample_mean) ** 2, weights=weights))
-                        ax.set_title("{:.2f}:{:.2f}:{:.2f}\n{:.2f}+-{:.2f}\n{:.2f} | {:.2f}".format(
-                            *jnp.percentile(samples1_resampled, [5, 50, 95]), sample_mean, sample_std,
-                            samples1_map_point, samples1_max_like))
+                        ax.set_title(
+                            r"${:.2f}_{{{:.2f}}}^{{{:.2f}}}$".format(*jnp.percentile(samples1_resampled, [50, 5, 95])) + \
+                            "\n" + r"${:.2f}\pm{:.2f}$".format(sample_mean, sample_std) + \
+                            "\n" + r"${:.2f}$ | ${:.2f}$".format(samples1_map_point, samples1_max_like))
                         ax.axvline(sample_mean, linestyle='dashed', color='red')
                         ax.axvline(sample_mean + sample_std,
                                    linestyle='dotted', color='red')
@@ -129,7 +132,7 @@ def plot_cornerplot(results, vars=None, save_name=None):
                         ax.set_xlim(binsx.min(), binsx.max())
                         lims[dim] = ax.get_xlim()
                     else:
-                        samples2 = results.samples[key2][:results.num_samples,...].reshape((nsamples, -1))[:, i2]
+                        samples2 = results.samples[key2][:results.num_samples, ...].reshape((nsamples, -1))[:, i2]
                         if jnp.std(samples2) == 0.:
                             dim2 += 1
                             continue
@@ -141,10 +144,12 @@ def plot_cornerplot(results, vars=None, save_name=None):
                         #                     bw_method='silverman')
                         # samples2_resampled = kde2.resample(size=int(results.ESS))
                         rkey0, rkey = random.split(rkey0, 2)
-                        samples2_resampled = resample(rkey, jnp.stack([samples1,samples2], axis=-1), log_weights, S=int(results.ESS))
+                        samples2_resampled = resample(rkey, jnp.stack([samples1, samples2], axis=-1), log_weights,
+                                                      S=int(results.ESS))
                         # norm = plt.Normalize(log_weights.min(), log_weights.max())
                         # color = jnp.atleast_2d(plt.cm.jet(norm(log_weights)))
-                        ax.hist2d(samples2_resampled[:, 1], samples2_resampled[:,0],bins=(nbins, nbins), density=True, cmap=plt.cm.bone_r)
+                        ax.hist2d(samples2_resampled[:, 1], samples2_resampled[:, 0], bins=(nbins, nbins), density=True,
+                                  cmap=plt.cm.bone_r)
                         # ax.scatter(samples2_resampled[:, 1], samples2_resampled[:, 0], marker='+', c='black', alpha=0.5)
                         # binsy = jnp.linspace(*jnp.percentile(samples2_resampled[:, 1], [0, 100]), 2 * nbins)
                         # X, Y = jnp.meshgrid(binsx, binsy, indexing='ij')
@@ -289,10 +294,11 @@ def plot_samples_development(results, vars=None, save_name=None):
         artists = _get_artists(artists, start, stop)
         return artists
 
-    ani = FuncAnimation(fig, update, frames=jnp.arange(1,results.num_samples),
+    ani = FuncAnimation(fig, update, frames=jnp.arange(1, results.num_samples),
                         init_func=init, blit=True)
 
-    ani.save(save_name, fps=results.n_per_sample[0]/2.)
+    ani.save(save_name, fps=results.n_per_sample[0] / 2.)
+
 
 def add_colorbar_to_axes(ax, cmap, norm=None, vmin=None, vmax=None, label=None):
     """
