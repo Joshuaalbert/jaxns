@@ -26,3 +26,6 @@ os.environ['XLA_FLAGS'] = f"--xla_force_host_platform_device_count={ncpu}"
 from jax.config import config
 
 config.update("jax_enable_x64", True)
+
+from jaxns.nested_sampling import NestedSampler
+from jaxns.plotting import plot_cornerplot,plot_diagnostics
