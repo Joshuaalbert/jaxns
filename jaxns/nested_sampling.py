@@ -1,13 +1,10 @@
-from jax.config import config
-
-config.update("jax_enable_x64", True)
 import numpy as np
 import jax.numpy as jnp
 from jax.lax import while_loop, dynamic_update_slice, cond, scan
 from jax import random, vmap, tree_multimap, tree_map
 from jax.scipy.special import logsumexp
-from typing import NamedTuple, Dict, Tuple
-from collections import namedtuple, OrderedDict
+from typing import NamedTuple, Dict
+from collections import namedtuple
 
 from jaxns.prior_transforms import PriorChain
 from jaxns.param_tracking import \
@@ -16,7 +13,9 @@ from jaxns.utils import dict_multimap, chunked_pmap
 from jaxns.likelihood_samplers import (slice_sampling, init_slice_sampler_state,
                                        multi_ellipsoid_sampler, init_multi_ellipsoid_sampler_state,
                                        sample_discrete_subspace, init_discrete_sampler_state,
-                                       multi_slice_sampling, init_multi_slice_sampler_state)
+                                       multi_slice_sampling, init_multi_slice_sampler_state,
+                                       nn_crumbs_sampling, init_nn_crumbs_sampler_state,
+                                       cone_slice_sampling, init_cone_slice_sampler_state)
 
 import logging
 
@@ -73,7 +72,7 @@ class NestedSampler(object):
     Implements nested sampling.
     """
 
-    _available_samplers = ['slice', 'multi_ellipsoid', 'multi_slice']
+    _available_samplers = ['slice', 'multi_ellipsoid', 'cone_slice']#, 'multi_slice', 'nn_crumbs', 'cone_slice']
 
     def __init__(self,
                  loglikelihood,
@@ -110,7 +109,8 @@ class NestedSampler(object):
         """
         self.sampler_name = sampler_name
         if num_live_points is None:
-            raise ValueError("num_live_points must be given.")
+            num_live_points = prior_chain.U_ndims * 50
+            # raise ValueError("num_live_points must be given.")
         num_live_points = int(num_live_points)
         if num_live_points < 1:
             raise ValueError(f"num_live_points {num_live_points} should be >= 1.")
@@ -125,10 +125,10 @@ class NestedSampler(object):
         self.num_parallel_samplers = num_parallel_samplers
         if sampler_kwargs is None:
             sampler_kwargs = dict()
-        sampler_kwargs['depth'] = int(sampler_kwargs.get('depth', 3))
+        sampler_kwargs['depth'] = int(sampler_kwargs.get('depth', 5))
         if sampler_kwargs['depth'] < 1:
             raise ValueError(f"depth {sampler_kwargs['depth']} should be >= 1.")
-        sampler_kwargs['num_slices'] = int(sampler_kwargs.get('num_slices', 5))
+        sampler_kwargs['num_slices'] = int(sampler_kwargs.get('num_slices', prior_chain.U_ndims*5))
         if sampler_kwargs['num_slices'] < 1:
             raise ValueError(f"num_slices {sampler_kwargs['num_slices']} should be >= 1.")
         self.sampler_kwargs = sampler_kwargs
@@ -189,6 +189,9 @@ class NestedSampler(object):
         """
         Initialises the state of samplers.
         """
+        # N = self.num_live_points*(1 + self.num_parallel_samplers)
+        # samples = vmap(lambda key: random.permutation(key, N) + 0.5)(random.split(key2, D)).T
+        # samples /= N
 
         def single_sample(key):
             """
@@ -369,12 +372,24 @@ class NestedSampler(object):
                                                              self.sampler_kwargs['depth'],
                                                              tracked_expectations.state.X.log_value,
                                                              self.sampler_kwargs['num_slices'])
+                elif self.sampler_name == 'cone_slice':
+                    sampler_state = init_cone_slice_sampler_state(init_sampler_state_key,
+                                                             state.live_points_U[subspace_idx],
+                                                             self.sampler_kwargs['depth'],
+                                                             tracked_expectations.state.X.log_value,
+                                                             self.sampler_kwargs['num_slices'])
                 elif self.sampler_name == 'multi_slice':
                     sampler_state = init_multi_slice_sampler_state(init_sampler_state_key,
                                                              state.live_points_U[subspace_idx],
                                                              self.sampler_kwargs['depth'],
                                                              tracked_expectations.state.X.log_value,
                                                              self.sampler_kwargs['num_slices'])
+                elif self.sampler_name == 'nn_crumbs':
+                    sampler_state = init_nn_crumbs_sampler_state(init_sampler_state_key,
+                                                                   state.live_points_U[subspace_idx],
+                                                                   self.sampler_kwargs['depth'],
+                                                                   tracked_expectations.state.X.log_value,
+                                                                   self.sampler_kwargs['num_slices'])
                 elif self.sampler_name == 'multi_ellipsoid':
                     sampler_state = init_multi_ellipsoid_sampler_state(
                         init_sampler_state_key,
@@ -434,8 +449,33 @@ class NestedSampler(object):
                             [sampler_results.u_new if i == subspace_idx else sample_U[i] for i in range(len(sample_U))])
                         num_likelihood_evaluations += sampler_results.num_likelihood_evaluations
                         sample_key = sampler_results.key
+                    elif self.sampler_name == 'cone_slice':
+                            sampler_results = cone_slice_sampling(sample_key,
+                                                             log_L_constraint=state.current_log_L_contour,
+                                                             init_U=sample_U[subspace_idx],
+                                                             num_slices=self.sampler_kwargs['num_slices'],
+                                                             log_likelihood_from_U=log_likelihood,
+                                                             sampler_state=sampler_state)
+                            sample_log_L = sampler_results.log_L_new
+                            sample_U = tuple(
+                                [sampler_results.u_new if i == subspace_idx else sample_U[i] for i in
+                                 range(len(sample_U))])
+                            num_likelihood_evaluations += sampler_results.num_likelihood_evaluations
+                            sample_key = sampler_results.key
                     elif self.sampler_name == 'multi_slice':
                         sampler_results = multi_slice_sampling(sample_key,
+                                                         log_L_constraint=state.current_log_L_contour,
+                                                         init_U=sample_U[subspace_idx],
+                                                         num_slices=self.sampler_kwargs['num_slices'],
+                                                         log_likelihood_from_U=log_likelihood,
+                                                         sampler_state=sampler_state)
+                        sample_log_L = sampler_results.log_L_new
+                        sample_U = tuple(
+                            [sampler_results.u_new if i == subspace_idx else sample_U[i] for i in range(len(sample_U))])
+                        num_likelihood_evaluations += sampler_results.num_likelihood_evaluations
+                        sample_key = sampler_results.key
+                    elif self.sampler_name == 'nn_crumbs':
+                        sampler_results = nn_crumbs_sampling(sample_key,
                                                          log_L_constraint=state.current_log_L_contour,
                                                          init_U=sample_U[subspace_idx],
                                                          num_slices=self.sampler_kwargs['num_slices'],
@@ -465,6 +505,7 @@ class NestedSampler(object):
             return num_likelihood_evaluations, sample_U, sample_X, sample_log_L
 
         if self.num_parallel_samplers > 1:
+            # TODO: currently restricted in using pmap inside a jit, see https://github.com/google/jax/issues/2926
             (num_likelihood_evaluations, reservoir_points_U, reservoir_points_X, log_L_reservoir) = \
                 chunked_pmap(_one_sample, random.split(sample_key, state.log_L_reservoir.size),
                              chunksize=self.num_parallel_samplers, use_vmap=False, per_device_unroll=True)
@@ -526,7 +567,7 @@ class NestedSampler(object):
 
     def _one_step(self, state: NestedSamplerState) -> NestedSamplerState:
         """
-        Performs one step of the algorithm.
+        Performs sampling until the reservoir is empty.
 
         Args:
             state: NestedSamplerState before iteration
@@ -539,20 +580,25 @@ class NestedSampler(object):
             NestedSamplerState after one iteration.
         """
 
-        # Take one sample, and decrease the counter if contour stays the same.
-        i_min, state = self._collect_dead_point(state)
+        ###
+        # we iteratively collect dead points and replenish until no more to replenish
+        def body(state:NestedSamplerState):
 
-        # refill reservoirs if there are no more satisfying points
-        satisfying_reservoir_points = state.reservoir_point_available & (
-                state.log_L_reservoir > state.current_log_L_contour)
-        do_refill = ~jnp.any(satisfying_reservoir_points)
-        state = cond(do_refill,
-                     self._refill_reservoirs,
-                     lambda state: state,
-                     state)
+            # Take one sample, and decrease the counter if contour stays the same.
+            i_min, state = self._collect_dead_point(state)
+            # Replace dead point with new one.
+            state = self._replace_dead_point(i_min, state)
+            return state
 
-        # Replace dead point with new one.
-        state = self._replace_dead_point(i_min, state)
+        def cond(state:NestedSamplerState):
+            # refill reservoirs if there are no more satisfying points
+            satisfying_reservoir_points = state.reservoir_point_available & (
+                    state.log_L_reservoir > state.current_log_L_contour)
+            return jnp.any(satisfying_reservoir_points)
+
+        state = while_loop(cond,
+                           body,
+                           state)
 
         return state
 
@@ -571,23 +617,16 @@ class NestedSampler(object):
         state = self.initial_state(key)
 
         def body(state: NestedSamplerState):
-            # do one sampling step
+            # same until reservoir empty
             state = self._one_step(state)
 
-            tracked_expectations = TrackedExpectation(self.marginalised, self.marginalised_shapes,
-                                                      state=state.tracked_expectations_state)
-            logZ = tracked_expectations.evidence_mean()
-            # Z_live = <L> X_i = exp(logsumexp(log_L_live) - log(N) + log(X))
-            logZ_live = logsumexp(state.log_L_live) - jnp.log(state.log_L_live.shape[0]) \
-                        + tracked_expectations.state.X.log_value
-            # Z_live < f * Z => logZ_live < log(f) + logZ
-            small_remaining_evidence = logZ_live < jnp.log(termination_frac) + logZ
-            # all points are on the same contour
-            single_plateau = jnp.all(state.log_L_live == state.log_L_live[0])
-            # used all points
-            reached_max_samples = (state.i + 1) >= self.max_samples
+            done = self._termination_condition(state, termination_frac)
 
-            done = small_remaining_evidence | single_plateau | reached_max_samples
+            state = cond(done,
+                         lambda state: state,
+                         self._refill_reservoirs,
+                         state)
+
             state = state._replace(done=done,
                                    i=state.i + 1)
             return state
@@ -597,6 +636,33 @@ class NestedSampler(object):
                            state)
         results = self._finalise_results(state)
         return results
+
+    def _termination_condition(self, state, termination_frac):
+        """
+        Decide whether to terminate the sampler.
+
+        Args:
+            state: NestedSamplerState
+            termination_frac: float, what frac of evidence should live points hold.
+
+        Returns:
+
+        """
+        tracked_expectations = TrackedExpectation(self.marginalised, self.marginalised_shapes,
+                                                  state=state.tracked_expectations_state)
+        logZ = tracked_expectations.evidence_mean()
+        # Z_live = <L> X_i = exp(logsumexp(log_L_live) - log(N) + log(X))
+        logZ_live = logsumexp(state.log_L_live) - jnp.log(state.log_L_live.shape[0]) \
+                    + tracked_expectations.state.X.log_value
+        # Z_live < f * Z => logZ_live < log(f) + logZ
+        small_remaining_evidence = logZ_live < jnp.log(termination_frac) + logZ
+        # all points are on the same contour
+        single_plateau = jnp.all(state.log_L_live == state.log_L_live[0])
+        # used all points
+        reached_max_samples = (state.i + 1) >= self.max_samples
+
+        done = small_remaining_evidence | single_plateau | reached_max_samples
+        return done
 
     def _finalise_results(self, state: NestedSamplerState):
         """
