@@ -4,7 +4,8 @@ config.update("jax_enable_x64", True)
 
 from jax import numpy as jnp, vmap
 
-from jaxns.gaussian_process.utils import squared_norm, product_log
+from jaxns.gaussian_process.utils import product_log
+from jaxns.utils import squared_norm
 
 
 def test_squared_norm():
