@@ -1,7 +1,7 @@
 from jax import numpy as jnp, vmap, random
 
 from jaxns.prior_transforms import PriorChain, NormalPrior, UniformPrior, HalfLaplacePrior, \
-    ForcedIdentifiabilityPrior, DeltaPrior, GumbelBernoulliPrior, GumbelCategoricalPrior
+    ForcedIdentifiabilityPrior, DeltaPrior, GumbelBernoulliPrior, GumbelCategoricalPrior, PoissonPrior
 
 
 def test_prior_chain():
@@ -83,19 +83,32 @@ def test_half_laplace():
     assert ~jnp.any(jnp.isnan(X))
 
 
+def test_poisson():
+    from jax import disable_jit
+    p = PriorChain().push(PoissonPrior('x', 1000.))
+    U = jnp.linspace(0., 1., 1000)[:, None]
+    # p((jnp.asarray([1.]),))
+    X = vmap(lambda u: p((u,)))(U)['x']
+    print(X)
+    print(X.mean())
+    print(X.var())
+    assert ~jnp.any(jnp.isnan(X))
+
+
 def test_forced_identifiability_prior():
     from jax import random
-    prior = PriorChain(ForcedIdentifiabilityPrior('x', 10, 0., 10.))
+    prior = PriorChain(ForcedIdentifiabilityPrior('x', 100, 0., 10.))
     for i in range(10):
         out = prior(prior.compactify_U(prior.sample_U(random.PRNGKey(i))))
         assert jnp.all(jnp.sort(out['x'], axis=0) == out['x'])
         assert jnp.all((out['x'] >= 0.) & (out['x'] <= 10.))
-    prior = PriorChain().push(ForcedIdentifiabilityPrior('x', 10, jnp.array([0., 0.]), 10.))
+    prior = PriorChain().push(ForcedIdentifiabilityPrior('x', 100, jnp.array([0., 0.]), 10.))
     for i in range(10):
         out = prior(prior.compactify_U(prior.sample_U(random.PRNGKey(i))))
-        assert out['x'].shape == (10, 2)
+        assert out['x'].shape == (100, 2)
         assert jnp.all(jnp.sort(out['x'], axis=0) == out['x'])
         assert jnp.all((out['x'] >= 0.) & (out['x'] <= 10.))
+
 
 
 def test_gh_20():
