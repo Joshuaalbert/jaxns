@@ -34,12 +34,7 @@ def main(num_options=10, num_raters=5, tests_per_rater=10, rater_accuracy=1):
     rank = UniformPrior('rank', jnp.zeros(num_options), 5*jnp.ones(num_options))
     prior_chain = rank.prior_chain()
 
-    print('Number of live points', prior_chain.U_ndims * 50)
-    ns = NestedSampler(loglikelihood=log_likelihood, prior_chain=prior_chain,
-                       sampler_name='slice', num_parallel_samplers=1,
-                       sampler_kwargs=dict(depth=5, num_slices=prior_chain.U_ndims),
-                       num_live_points=prior_chain.U_ndims*50, max_samples=1e6, collect_samples=True,
-                       collect_diagnostics=True)
+    ns = NestedSampler(loglikelihood=log_likelihood, prior_chain=prior_chain)
     results = jit(ns)(random.PRNGKey(32564), termination_frac=0.001)
     save_results(results, 'ranking_save.npz')
     results = load_results('ranking_save.npz')

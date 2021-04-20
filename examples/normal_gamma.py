@@ -33,11 +33,7 @@ def main(num_samples=10):
     tau = GammaPrior('tau', prior_k, prior_theta)
     prior_chain = tau.prior_chain()
 
-    ns = NestedSampler(loglikelihood=log_likelihood, prior_chain=prior_chain,
-                       sampler_name='slice', num_parallel_samplers=1,
-                       sampler_kwargs=dict(depth=5, num_slices=prior_chain.U_ndims*5),
-                       num_live_points=5000, max_samples=1e6, collect_samples=True,
-                       collect_diagnostics=True)
+    ns = NestedSampler(loglikelihood=log_likelihood, prior_chain=prior_chain)
     results = jit(ns)(random.PRNGKey(32564), termination_frac=0.001)
 
     summary(results)
@@ -57,4 +53,4 @@ def main(num_samples=10):
 
 
 if __name__ == '__main__':
-    main(num_samples=100)
+    main(num_samples=1000)
