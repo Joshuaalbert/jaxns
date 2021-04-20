@@ -279,7 +279,13 @@ class GammaPrior(ContinuousPrior):
         """
         Gamma probability density function.
         """
-        return -gammaln(k) - k * jnp.log(theta) + (k - 1.) * jnp.log(X) - X / theta
+        # TODO: use full support instead of approximation of it.
+        # mean = k * theta
+        # stddev = jnp.sqrt(k * theta ** 2)
+        # ln_mean = 2. * jnp.log(mean) - 0.5 * jnp.log(stddev ** 2 + mean ** 2)
+        # ln_stddev = jnp.log(stddev ** 2 + mean ** 2) - 2. * jnp.log(mean)
+        # ln_log_prob = jnp.sum(-0.5*jnp.log(2*jnp.pi) - jnp.log(X) - jnp.log(ln_stddev)  - 0.5 * (jnp.log(X) - ln_mean)**2/ln_stddev**2)
+        return jnp.sum(-gammaln(k) - k * jnp.log(theta) + (k - 1.) * jnp.log(X) - X / theta)# - ln_log_prob
 
     def transform_U(self, U, k, theta, **kwargs):
         """
@@ -288,4 +294,7 @@ class GammaPrior(ContinuousPrior):
         """
         mean = k * theta
         stddev = jnp.sqrt(k * theta ** 2)
+        ln_mean = 2. * jnp.log(mean) - 0.5 * jnp.log(stddev**2 + mean**2)
+        ln_stddev = jnp.log(stddev**2 + mean**2) - 2. * jnp.log(mean)
         return U * (mean + 20. * stddev)
+        # return jnp.exp(ndtri(U) * ln_stddev + ln_mean)
