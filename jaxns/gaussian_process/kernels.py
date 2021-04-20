@@ -1,4 +1,5 @@
-from jaxns.gaussian_process.utils import squared_norm, product_log
+from jaxns.gaussian_process.utils import product_log
+from jaxns.utils import squared_norm
 import jax.numpy as jnp
 
 
@@ -33,11 +34,11 @@ class StationaryKernel(Kernel):
     def act(self, r2, *args):
         """
         Given the squared Euclidean norm of the outer difference between two coordinate sets,
-        return the log of the kernel. Only valid for strictly positive kernels.
+        return the log of the Q_kernel. Only valid for strictly positive kernels.
 
         Args:
             r2: [N, M]
-            *args: other kernel arguments, e.g. sigma, alpha, ...
+            *args: other Q_kernel arguments, e.g. sigma, alpha, ...
 
         Returns: log(K(r2)) [N, M]
 
