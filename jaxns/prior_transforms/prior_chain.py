@@ -613,7 +613,6 @@ class PriorChain(object):
         forward_topo_sort = iterative_topological_sort(parents_dsk)[::-1]
         subspaces_counters = [0 for _ in self.subspaces]
         U = OrderedDict()
-        idx = 0
         for i, name in enumerate(forward_topo_sort):
             prior = self.prior_chain[name]
             subspace_idx = self._which_subspace_idx(name)
