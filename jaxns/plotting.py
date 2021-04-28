@@ -104,6 +104,7 @@ def plot_cornerplot(results, vars=None, save_name=None):
                         ax.set_xticklabels([])
                         ax.set_yticks([])
                         ax.set_yticklabels([])
+                        ax.remove()
                         continue
                     if n2 > 1:
                         title2 = "{}[{}]".format(key2, i2)
@@ -124,12 +125,19 @@ def plot_cornerplot(results, vars=None, save_name=None):
                             r"${:.2f}_{{{:.2f}}}^{{{:.2f}}}$".format(*jnp.percentile(samples1_resampled, [50, 5, 95])) + \
                             "\n" + r"${:.2f}\pm{:.2f}$".format(sample_mean, sample_std) + \
                             "\n" + r"${:.2f}$ | ${:.2f}$".format(samples1_map_point, samples1_max_like))
+                        # ax.set_title(r"{}: ${:.2f}\pm{:.2f}$".format(title1, sample_mean, sample_std))
+                        # ax.text(0., 1., r"${:.2f}_{{{:.2f}}}^{{{:.2f}}}$".format(*jnp.percentile(samples1_resampled, [50, 5, 95])),
+                        #      verticalalignment = 'top', horizontalalignment='left', transform = ax.transAxes,
+                        #         bbox=dict(facecolor='grey', alpha=0.5))
+
                         ax.axvline(sample_mean, linestyle='dashed', color='red')
                         ax.axvline(sample_mean + sample_std,
                                    linestyle='dotted', color='red')
                         ax.axvline(sample_mean - sample_std,
                                    linestyle='dotted', color='red')
                         ax.set_xlim(binsx.min(), binsx.max())
+                        ax.set_yticks([])
+                        ax.set_yticklabels([])
                         lims[dim] = ax.get_xlim()
                     else:
                         samples2 = results.samples[key2][:results.num_samples, ...].reshape((nsamples, -1))[:, i2]

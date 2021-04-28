@@ -1,7 +1,7 @@
-from jaxns.gaussian_process.kernels import RBF, M12
 from jaxns.nested_sampling import NestedSampler
 from jaxns.prior_transforms import PriorChain, UniformPrior
 from jaxns.plotting import plot_cornerplot, plot_diagnostics
+from jaxns.utils import summary
 from jax import random, jit,vmap
 from jax import numpy as jnp
 import pylab as plt
@@ -28,39 +28,14 @@ def main():
     plt.colorbar(sc)
     plt.show()
 
-    def run_with_n(n):
-        ns = NestedSampler(log_likelihood,
-                           prior_chain,
-                           num_live_points=n,
-                           max_samples=1e5,
-                           collect_samples=True,
-                           sampler_name='slice',
-                           sampler_kwargs=dict(depth=7, num_slices=3))
-        @jit
-        def run(key):
-            return ns(key=key,
-                      termination_frac=0.01)
+    ns = NestedSampler(log_likelihood,
+                       prior_chain)
+    results = jit(ns)(key=random.PRNGKey(4525280), termination_frac=0.01)
 
-        t0 = default_timer()
-        results = run(random.PRNGKey(0))
-        print("Efficiency", results.efficiency)
-        print("Time to run (including compile)", default_timer() - t0)
-        t0 = default_timer()
-        results = run(random.PRNGKey(1))
-        print(results.efficiency)
-        print("Time to run (no compile)", default_timer() - t0)
-        return results
-
-    for n in [1000]:
-        results = run_with_n(n)
-        plt.scatter(n, results.logZ)
-        plt.errorbar(n, results.logZ, yerr=results.logZerr)
-    plt.ylabel('log Z')
-    plt.show()
+    summary(results)
 
     plot_diagnostics(results)
     plot_cornerplot(results)
-    return results.logZ, results.logZerr
 
 
 if __name__ == '__main__':

@@ -2,11 +2,10 @@ from collections import namedtuple
 from jax import numpy as jnp, random
 from jax.lax import while_loop
 from jaxns.likelihood_samplers.ellipsoid_utils import ellipsoid_clustering, sample_multi_ellipsoid
+from jaxns.likelihood_samplers.common import SamplingResults
 
 MultiEllipsoidSamplerState = namedtuple('MultiEllipsoidSamplerState',
                                         ['cluster_id', 'mu', 'radii', 'rotation', 'num_k', 'num_fev_ma'])
-MultiEllipsoidSamplingResults = namedtuple('MultiEllipsoidSamplingResults',
-                                           ['key', 'num_likelihood_evaluations', 'u_new', 'log_L_new'])
 
 
 def init_multi_ellipsoid_sampler_state(key, live_points_U, depth, log_X):
@@ -37,4 +36,4 @@ def multi_ellipsoid_sampler(key,
                                                                      while_body,
                                                                      (key, jnp.asarray(0), u_init, log_L_constraint))
 
-    return MultiEllipsoidSamplingResults(key, num_likelihood_evaluations, u_new, log_L_new)
+    return SamplingResults(key, num_likelihood_evaluations, u_new, log_L_new)

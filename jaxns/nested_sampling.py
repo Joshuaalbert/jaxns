@@ -10,7 +10,8 @@ from jaxns.prior_transforms import PriorChain
 from jaxns.param_tracking import \
     TrackedExpectation
 from jaxns.utils import dict_multimap, chunked_pmap
-from jaxns.likelihood_samplers import (slice_sampling, init_slice_sampler_state,
+from jaxns.likelihood_samplers import (SamplingResults,
+                                       slice_sampling, init_slice_sampler_state,
                                        multi_ellipsoid_sampler, init_multi_ellipsoid_sampler_state,
                                        sample_discrete_subspace, init_discrete_sampler_state,
                                        multi_slice_sampling, init_multi_slice_sampler_state,
@@ -72,7 +73,7 @@ class NestedSampler(object):
     Implements nested sampling.
     """
 
-    _available_samplers = ['slice', 'multi_ellipsoid', 'cone_slice']#, 'multi_slice', 'nn_crumbs', 'cone_slice']
+    _available_samplers = ['slice', 'multi_ellipsoid']#, 'multi_slice', 'nn_crumbs', 'cone_slice']
 
     def __init__(self,
                  loglikelihood,
@@ -415,7 +416,7 @@ class NestedSampler(object):
             select_p /= jnp.sum(select_p)
             choice = random.choice(choice_key, self.num_live_points, p=select_p)
             sample_U = list(tree_map(lambda x: x[choice], state.live_points_U))
-            sample_log_L = state.current_log_L_contour
+            sample_log_L = state.log_L_live[choice] # state.current_log_L_contour
             num_likelihood_evaluations = 0
             # TODO: do this loop a configurable number of times to drop auto-correlation in the chain.
             # Only needed when there are more than one subspace.
@@ -441,6 +442,7 @@ class NestedSampler(object):
                         sampler_results = slice_sampling(sample_key,
                                                          log_L_constraint=state.current_log_L_contour,
                                                          init_U=sample_U[subspace_idx],
+                                                         init_log_L=sample_log_L,
                                                          num_slices=self.sampler_kwargs['num_slices'],
                                                          log_likelihood_from_U=log_likelihood,
                                                          sampler_state=sampler_state)
