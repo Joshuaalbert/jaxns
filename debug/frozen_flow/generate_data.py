@@ -11,7 +11,7 @@ def rbf_dtec(nant, ndir, ntime, height, width, sigma, l, uncert, v):
     """
     In frozen flow the screen moves with velocity v.
     fed(x,t) = fed(x-v*t,0)
-    so that the  tomographic kernel transforms as,
+    so that the  tomographic Q_kernel transforms as,
     K(x1,k1,t1,x2,k2,t2) = K(x1-v * t1,k1,0,x2-v * t2,k2,0)
     """
     import pylab as plt

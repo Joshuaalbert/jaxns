@@ -1,6 +1,6 @@
-from examples.frozen_flow.build_prior import build_frozen_flow_prior
+from debug.frozen_flow.build_prior import build_frozen_flow_prior
 from jaxns.gaussian_process.kernels import RBF, M12
-from examples.frozen_flow.generate_data import rbf_dtec
+from debug.frozen_flow.generate_data import rbf_dtec
 from jaxns.nested_sampling import NestedSampler
 from jaxns.plotting import plot_cornerplot, plot_diagnostics
 from jax import random, jit
@@ -35,7 +35,7 @@ def main(kernel):
 
     def log_likelihood(dtec, uncert, **kwargs):
         """
-        P(Y|sigma, half_width) = N[Y, f, K]
+        P(Y|sigma, half_width) = N[Y, mu, K]
         Args:
             sigma:
             l:
