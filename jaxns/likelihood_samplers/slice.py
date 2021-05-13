@@ -3,6 +3,7 @@ from jax import numpy as jnp, random
 from jax.lax import scan
 from jaxns.likelihood_samplers.common import SamplingResults
 from jaxns.likelihood_samplers.slice_utils import slice_sample_1d
+from jaxns.utils import random_ortho_matrix
 
 SliceSamplerState = namedtuple('SliceSamplerState',
                                [])
@@ -26,21 +27,35 @@ def slice_sampling(key,
 
         key, n_key = random.split(key, 2)
 
-        n = random.normal(n_key, shape=u_current.shape)
-        n /= jnp.linalg.norm(n)
+        R = random_ortho_matrix(n_key, u_current.shape[0])
 
-        # w = compute_init_interval_size(n, origin, u_current, sampler_state.mu, sampler_state.radii, sampler_state.rotation)
-        w = jnp.inf
+        def inner_body(state, X):
+            (key, num_f_eval0, u_current, logL_current) = state
+            (i,) = X
+            # n = random.normal(n_key, shape=u_current.shape)
+            # n /= jnp.linalg.norm(n)
+            n = R[:,i]
 
-        (key, u_prop, log_L_prop, num_f_eval) = slice_sample_1d(key, u_current, logL_current, n, w, log_L_constraint,
-                                                                log_likelihood_from_U,
-                                                                do_stepout=False, midpoint_shrink=True)
+            # w = compute_init_interval_size(n, origin, u_current, sampler_state.mu, sampler_state.radii, sampler_state.rotation)
+            w = jnp.inf
 
-        return (key, num_f_eval0 + num_f_eval, u_prop, log_L_prop), ()
+            (key, u_prop, log_L_prop, num_f_eval) = slice_sample_1d(key, u_current, logL_current,
+                                                                    n, w,
+                                                                    log_L_constraint,
+                                                                    log_likelihood_from_U,
+                                                                    do_stepout=False, midpoint_shrink=True)
+
+            return (key, num_f_eval0 + num_f_eval, u_prop, log_L_prop), ()
+
+        (key, num_f_eval, u_prop, log_L_prop), _ = scan(inner_body,
+                                                             (key, num_f_eval0, u_current, logL_current),
+                                                             (jnp.arange(u_current.shape[0]),))
+
+
+        return (key, num_f_eval, u_prop, log_L_prop), ()
 
     (key, num_likelihood_evaluations, u_new, log_L_new), _ = scan(slice_body,
                                                                   (key, jnp.asarray(0), init_U, init_log_L),
-                                                                  (jnp.arange(num_slices),),
-                                                                  unroll=1)
+                                                                  (jnp.arange(num_slices//init_U.size),))
 
     return SamplingResults(key, num_likelihood_evaluations, u_new, log_L_new)

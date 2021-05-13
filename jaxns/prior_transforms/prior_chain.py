@@ -136,7 +136,7 @@ class BinaryBase(DiscreteBase):
 class Prior(object):
     def __init__(self, name, shape, parents, tracked: bool, prior_base: PriorBase, dtype=None):
         """
-        Represents a prior as a transformation from an independent RV. A prior has two main methods:
+        Represents a prior as a transformation from an independent RV. A prior has two render_team_chart methods:
 
             . sample_U - generates a sample from the PriorBase (which we call the U domain).
             . transform_U - transforms the base RV (in U domain) to a sample from the prior
