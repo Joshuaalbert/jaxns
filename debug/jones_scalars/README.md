@@ -1,1 +1,0 @@
-Material for May 2020 Lofar 2.0 newsletter.
