@@ -4,16 +4,16 @@
 # What is it?
 Enables probabilistic programming using nested sampling. It's coded in JAX in a manner that allows lowering the entire inference algorithm to XLA primitives, which are JIT-compiled for high performance. You can read about it here: (https://arxiv.org/abs/2012.15286)
 
-JAXNS provides a constrained likelihood sampler which combines and modifies ideas from MultiNest (F. Feroz et al. 2008; https://arxiv.org/pdf/0809.3437.pdf) and PolyChord (W.J. Handley et al. 2015; https://arxiv.org/abs/1506.00171).
+JAXNS provides both a slice and a multi-ellipsoidal rejection sampling constrained likelihood sampler. These are different from, but can respectively be compared to, MultiNest (F. Feroz et al. 2008; https://arxiv.org/pdf/0809.3437.pdf) and PolyChord (W.J. Handley et al. 2015; https://arxiv.org/abs/1506.00171).
 There are two samplers available provided by setting `sampler_name=slice` for slice sampling, and `sampler_name=multi_ellipsoid` for rejection sampling.
 
 # Install
 Make sure you have JAX and the usual suspects with `pip install jax jaxlib numpy matplotlib scipy`. 
-Install with `pip install jaxns` or `pip install git+http://github.com/Joshuaalbert/jaxns.git`.
+Install with `pip install jaxns` or `pip install git+http://github.com/Joshuaalbert/jaxns.git` for the (no promises) bleeding-edge.
 
 # Getting help and contributing examples
 
-Please use the [github discussion forum](https://github.com/Joshuaalbert/jaxns/discussions) for getting help, or contributing examples/neat use cases. 
+Please use the [github discussion forum](https://github.com/Joshuaalbert/jaxns/discussions) for getting help, or contributing examples/neat use cases.
 
 # Quick start
 
@@ -24,5 +24,5 @@ For a simple example see the simple [multivariate normal likelihood with conjuga
 
 # Speed test comparison with other nested sampling packages
 
-JAXNS is much faster than PolyChord, MultiNEST, and dynesty, typically achieving two to three orders of magnitude improvement in speed.
-I show this in (https://arxiv.org/abs/2012.15286).
+JAXNS is much faster than PolyChord, MultiNEST, and dynesty, typically achieving two to three orders of magnitude improvement in speed on cheap likelihood evaluations.
+This is shown in (https://arxiv.org/abs/2012.15286).
