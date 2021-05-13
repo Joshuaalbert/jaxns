@@ -230,7 +230,7 @@ def test_nested_sampling():
         results = jit(ns)(key=random.PRNGKey(42), termination_frac=0.001)
 
         assert jnp.allclose(results.marginalised['x_mean'], post_mu, atol=0.02)
-        assert jnp.abs(results.logZ - true_logZ) < 2. * results.logZerr
+        assert jnp.abs(results.logZ - true_logZ) < 3. * results.logZerr
 
 
 def test_gh21():
