@@ -1,6 +1,6 @@
 from examples import build_prior
 from jaxns.gaussian_process.kernels import RBF
-from examples.ray_integral.generate_data import rbf_dtec
+from debug.ray_integral.generate_data import rbf_dtec
 from jaxns.nested_sampling import NestedSampler
 from jaxns.plotting import plot_cornerplot, plot_diagnostics
 from jax import random, jit
@@ -33,7 +33,7 @@ def main(kernel):
 
     def log_likelihood(dtec, uncert, **kwargs):
         """
-        P(Y|sigma, half_width) = N[Y, f, K]
+        P(Y|sigma, half_width) = N[Y, mu, K]
         Args:
             sigma:
             l:
@@ -94,7 +94,7 @@ def main(kernel):
 
     # #
     # K = GaussianProcessKernelPrior('K',
-    #                                TomographicKernel(x0, kernel, S=20), X,
+    #                                TomographicKernel(x0, Q_kernel, S=20), X,
     #                                MVNPrior('height', results.param_mean['height'], results.param_covariance['height']),#UniformPrior('height', 100., 300.),
     #                                MVNPrior('width', results.param_mean['width'], results.param_covariance['width']),#UniformPrior('width', 50., 150.),
     #                                MVNPrior('l', results.param_mean['l'], results.param_covariance['l']),#UniformPrior('l', 7., 20.),
@@ -157,7 +157,7 @@ def main(kernel):
 
 if __name__ == '__main__':
     logZ_rbf, logZerr_rbf = main(RBF())
-    # logZ_m12, logZerr_m12 = main(M12())
+    # logZ_m12, logZerr_m12 = render_team_chart(M12())
     # plt.errorbar(['rbf', 'm12'],
     #              [logZ_rbf, logZ_m12],
     #              [logZerr_rbf, logZerr_m12])

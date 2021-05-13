@@ -1,6 +1,6 @@
-from examples.ray_integral_from_jones import build_prior
+from debug.ray_integral_from_jones import build_prior
 from jaxns.gaussian_process.kernels import RBF, M12
-from examples.ray_integral_from_jones import rbf_dtec
+from debug.ray_integral_from_jones import rbf_dtec
 from jaxns.nested_sampling import NestedSampler
 from jaxns.plotting import plot_cornerplot, plot_diagnostics
 from jax import random, jit
@@ -42,7 +42,7 @@ def main(kernel):
 
     def log_likelihood(Y, uncert, **kwargs):
         """
-        P(Y|sigma, half_width) = N[Y, f, K]
+        P(Y|sigma, half_width) = N[Y, mu, K]
         Args:
             sigma:
             l:
@@ -100,7 +100,7 @@ def main(kernel):
 
     # #
     # K = GaussianProcessKernelPrior('K',
-    #                                TomographicKernel(x0, kernel, S=20), X,
+    #                                TomographicKernel(x0, Q_kernel, S=20), X,
     #                                MVNPrior('height', results.param_mean['height'], results.param_covariance['height']),#UniformPrior('height', 100., 300.),
     #                                MVNPrior('width', results.param_mean['width'], results.param_covariance['width']),#UniformPrior('width', 50., 150.),
     #                                MVNPrior('l', results.param_mean['l'], results.param_covariance['l']),#UniformPrior('l', 7., 20.),
