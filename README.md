@@ -1,4 +1,4 @@
-![JAXNS](https://github.com/Joshuaalbert/jaxns/blob/master/jaxns_logo.png)
+![JAXNS](https://github.com/Joshuaalbert/jaxns/raw/master/jaxns_logo.png)
 
 [![build status](https://travis-ci.com/Joshuaalbert/jaxns.svg?branch=master)](https://travis-ci.com/github/Joshuaalbert/jaxns)
 # What is it?
