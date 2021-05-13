@@ -13,10 +13,7 @@ from jaxns.utils import dict_multimap, chunked_pmap
 from jaxns.likelihood_samplers import (SamplingResults,
                                        slice_sampling, init_slice_sampler_state,
                                        multi_ellipsoid_sampler, init_multi_ellipsoid_sampler_state,
-                                       sample_discrete_subspace, init_discrete_sampler_state,
-                                       multi_slice_sampling, init_multi_slice_sampler_state,
-                                       nn_crumbs_sampling, init_nn_crumbs_sampler_state,
-                                       cone_slice_sampling, init_cone_slice_sampler_state)
+                                       sample_discrete_subspace, init_discrete_sampler_state)
 
 import logging
 
