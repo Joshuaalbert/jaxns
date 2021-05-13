@@ -28,7 +28,7 @@ def test_prior_chain():
     chain2.push(chain1)
     # [{'var', '_f2_low', 'x2', '_f2_high', '_x2_gumbel', '_log_f2'}, {'_b_sigma', 'b', 'a'}]
     assert len(chain2.subspaces) == 2
-    assert chain2.subspaces[0] == {'var', '_f2_low', 'x2', '_f2_high', '_x2_gumbel', '_log_f2'}
+    assert chain2.subspaces[0] == {'var', '_var_low', 'x2', '_var_high', '_x2_gumbel', '_log_var'}
     assert chain2.subspaces[1] == {'_b_sigma', 'b', 'a'}
 
     # priors in chain1 added before the chain stay in those subspaces
@@ -39,7 +39,7 @@ def test_prior_chain():
     chain2.push(chain1)
     # [{'var', '_f2_low', 'x2', '_f2_high', '_x2_gumbel', '_log_f2'}, {'_b_sigma', 'b', 'a'}]
     assert len(chain2.subspaces) == 2
-    assert chain2.subspaces[0] == {'var', 'x2', '_f2_high', '_x2_gumbel', '_log_f2'}
+    assert chain2.subspaces[0] == {'var', 'x2', '_var_high', '_x2_gumbel', '_log_var'}
     assert chain2.subspaces[1] == {'_b_sigma', 'b', 'a'}
 
     # priors in chain1 added after the chain stay in those subspaces
@@ -49,7 +49,7 @@ def test_prior_chain():
     chain2.push(d)
     # [{'var', '_f2_low', 'x2', '_f2_high', '_x2_gumbel', '_log_f2'}, {'_b_sigma', 'b', 'a'}]
     assert len(chain2.subspaces) == 2
-    assert chain2.subspaces[0] == {'var', 'x2', '_f2_high', '_x2_gumbel', '_log_f2'}
+    assert chain2.subspaces[0] == {'var', 'x2', '_var_high', '_x2_gumbel', '_log_var'}
     assert chain2.subspaces[1] == {'_b_sigma', 'b', 'a'}
 
     try:
