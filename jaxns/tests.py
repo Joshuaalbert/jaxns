@@ -217,7 +217,7 @@ def test_nested_sampling():
     def param_mean(x, **args):
         return x
 
-    for sampler in ['slice', 'multi_slice']:
+    for sampler in ['slice', 'multi_ellipsoid']:
         ns = NestedSampler(log_likelihood, prior_transform, sampler_name=sampler,
                            num_live_points=5000,
                            max_samples=1e6,
