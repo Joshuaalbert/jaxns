@@ -6,12 +6,12 @@ from jaxns.likelihood_samplers.slice_utils import slice_sample_1d
 from jaxns.utils import random_ortho_matrix
 
 SliceSamplerState = namedtuple('SliceSamplerState',
-                               [])
+                               ['live_points'])
 
 
 
 def init_slice_sampler_state(key, live_points_U, depth, log_X, num_slices):
-    return SliceSamplerState()
+    return SliceSamplerState(live_points=live_points_U)
 
 
 def slice_sampling(key,
@@ -43,6 +43,8 @@ def slice_sampling(key,
                                                                     n, w,
                                                                     log_L_constraint,
                                                                     log_likelihood_from_U,
+                                                                    sampler_state.live_points,
+                                                                    do_init_try_bracket=True,
                                                                     do_stepout=False, midpoint_shrink=True)
 
             return (key, num_f_eval0 + num_f_eval, u_prop, log_L_prop), ()

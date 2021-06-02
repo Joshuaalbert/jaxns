@@ -4,8 +4,9 @@ from jax.lax import while_loop, cond
 from jaxns.likelihood_samplers.ellipsoid_utils import ellipsoid_to_circle, maha_ellipsoid
 
 
-def slice_sample_1d(key, x, logL_current, n, w, log_L_constraint, log_likelihood_from_U, do_stepout=False,
-                    midpoint_shrink=False):
+def slice_sample_1d(key, x, logL_current, n, w, log_L_constraint, log_likelihood_from_U,
+                    live_points,
+                    do_init_try_bracket=True, do_stepout=False, midpoint_shrink=False):
     """
     Perform slice sampling from a point which is inside the slice along a unit vector direction.
     The slice sampling is constrained to the unit-cube.
@@ -27,9 +28,24 @@ def slice_sample_1d(key, x, logL_current, n, w, log_L_constraint, log_likelihood
         f_t: log-likelihood at accepted point
         num_f_eval: number of likelihood evaluations used
     """
-
-    key, left, right, left_bound, right_bound = slice_initial_bounds_1d(key, w, x, n)
-    num_f_eval = jnp.asarray(0)
+    left_bound, right_bound = slice_bounds(x, n)
+    if do_init_try_bracket:
+        #(n) @ (x + n*t - point) = 0
+        #Take maximum positive as right and minimum negative as left
+        def _orth_dist(point):
+            t = (point - x) @ n
+            return t
+        t = vmap(_orth_dist)(live_points)
+        left = jnp.maximum(left_bound, jnp.min(jnp.where(t < 0., t, 0.)))
+        right = jnp.minimum(right_bound, jnp.max(jnp.where(t > 0., t, 0.)))
+        log_L_left = log_likelihood_from_U(x + n * left)
+        log_L_right = log_likelihood_from_U(x + n * right)
+        num_f_eval = jnp.asarray(2)
+        left = jnp.where(log_L_left < log_L_constraint, left, left_bound)
+        right = jnp.where(log_L_right < log_L_constraint, right, right_bound)
+    else:
+        left, right = left_bound, right_bound
+        num_f_eval = jnp.asarray(0)
     if do_stepout:
         key, left, right, num_f_eval_stepout = stepout_1d(key, left, right, left_bound, right_bound, log_L_constraint,
                                                           log_likelihood_from_U, n, x)
@@ -43,6 +59,16 @@ def slice_sample_1d(key, x, logL_current, n, w, log_L_constraint, log_likelihood
 
     return key, x_t, f_t, num_f_eval
 
+def slice_bounds(x, n):
+    t1 = (1. - x) / n
+    t1_right = jnp.min(jnp.where(t1 >= 0., t1, jnp.inf))
+    t1_left = jnp.max(jnp.where(t1 <= 0., t1, -jnp.inf))
+    t0 = -x / n
+    t0_right = jnp.min(jnp.where(t0 >= 0., t0, jnp.inf))
+    t0_left = jnp.max(jnp.where(t0 <= 0., t0, -jnp.inf))
+    right_bound = jnp.minimum(t0_right, t1_right)
+    left_bound = jnp.maximum(t0_left, t1_left)
+    return left_bound, right_bound
 
 def slice_initial_bounds_1d(key, w, x, n):
     """
