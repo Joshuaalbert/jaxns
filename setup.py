@@ -11,7 +11,7 @@ with open("README.md", "r") as fh:
     long_description = fh.read()
 
 setup(name='jaxns',
-      version='0.0.6',
+      version='0.0.7',
       description='Nested Sampling in JAX',
       long_description=long_description,
       long_description_content_type="text/markdown",
