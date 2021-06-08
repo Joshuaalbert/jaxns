@@ -24,7 +24,7 @@ os.environ['XLA_FLAGS'] = f"--xla_force_host_platform_device_count={ncpu}"
 #     raise ImportError(f"Importing JAX with 'XLA_FLAGS=--xla_force_host_platform_device_count={ncpu}' failed.")
 
 from jax.config import config
-
+#TODO: explore if we can turn this off, and ensure that logaddsum and similar works.
 config.update("jax_enable_x64", True)
 
 from jaxns.nested_sampling import NestedSampler
