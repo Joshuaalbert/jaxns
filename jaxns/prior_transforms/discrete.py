@@ -1,7 +1,8 @@
 from jax import numpy as jnp
 from jax.lax import while_loop
-from jaxns.prior_transforms import (DeterministicTransformPrior, prior_docstring, Gumbel, get_shape,broadcast_dtypes, \
-    broadcast_shapes, UniformBase, HierarchicalPrior, ContinuousPrior)
+from jaxns.prior_transforms import (DeterministicTransformPrior, prior_docstring, Gumbel, get_shape, broadcast_dtypes, \
+                                    broadcast_shapes, UniformBase, HierarchicalPrior, ContinuousPrior)
+
 
 class PoissonPrior(HierarchicalPrior):
     @prior_docstring
@@ -15,12 +16,12 @@ class PoissonPrior(HierarchicalPrior):
         lamda = self._prepare_parameter(name, 'lamda', lamda)
         prior_base = UniformBase(get_shape(lamda), broadcast_dtypes(jnp.float_, lamda.dtype))
 
-        super(PoissonPrior, self).__init__(name, get_shape(lamda),  [lamda], tracked=tracked, prior_base=prior_base,
+        super(PoissonPrior, self).__init__(name, get_shape(lamda), [lamda], tracked=tracked, prior_base=prior_base,
                                            dtype=jnp.int_)
 
     def transform_U(self, U, lamda, **kwargs):
         """
-        algorithm Poisson generator based upon the inversion by sequential search:
+        Algorithmic Poisson generator based upon the inversion by sequential search:
 
             init:
                 Let log_x ← -inf, log_p ← −λ, log_s ← log_p.
@@ -39,12 +40,13 @@ class PoissonPrior(HierarchicalPrior):
         Returns:
 
         """
-        U = jnp.clip(U, 1e-8, 1.-1e-8)
+        U = jnp.clip(U, 1e-8, 1. - 1e-8)
         U, lamda = jnp.broadcast_arrays(U, lamda)
         log_u = jnp.log(U)
         log_x = jnp.full(log_u.shape, -jnp.inf)
         log_p = -lamda
         log_s = log_p
+
         def body(state):
             (_log_x, _log_p, _log_s) = state
             impute = log_u <= _log_s
