@@ -2,16 +2,17 @@ from collections import namedtuple
 from jax import numpy as jnp, random
 from jax.lax import scan
 from jaxns.likelihood_samplers.common import SamplingResults
-from jaxns.likelihood_samplers.slice_utils import slice_sample_1d
+from jaxns.likelihood_samplers.slice_utils import slice_sample_1d, prepare_bayesian_opt
 from jaxns.utils import random_ortho_matrix
 
 SliceSamplerState = namedtuple('SliceSamplerState',
-                               ['live_points'])
+                               ['live_points', 'interval_func'])
 
 
 
-def init_slice_sampler_state(key, live_points_U, depth, log_X, num_slices):
-    return SliceSamplerState(live_points=live_points_U)
+def init_slice_sampler_state(key, live_points_U, depth, log_X, num_slices, points_all_U, log_L_all):
+    interval_func = prepare_bayesian_opt(points_all_U, log_L_all)
+    return SliceSamplerState(live_points=live_points_U, interval_func=interval_func)
 
 
 def slice_sampling(key,
@@ -44,8 +45,10 @@ def slice_sampling(key,
                                                                     log_L_constraint,
                                                                     log_likelihood_from_U,
                                                                     sampler_state.live_points,
-                                                                    do_init_try_bracket=True,
-                                                                    do_stepout=False, midpoint_shrink=True)
+                                                                    interval_func=sampler_state.interval_func,
+                                                                    do_init_try_bracket=False,
+                                                                    do_stepout=False,
+                                                                    midpoint_shrink=True)
 
             return (key, num_f_eval0 + num_f_eval, u_prop, log_L_prop), ()
 
