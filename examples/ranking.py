@@ -15,16 +15,19 @@ def get_constraints(num_options, num_raters, tests_per_rater, rater_accuracy):
     J = []
     S = []
     for rater in range(num_raters):
-        key, sample_key1, sample_key2 = random.split(key, 3)
+        key, sample_key1, sample_key2, sample_key3 = random.split(key, 4)
         choices = random.choice(sample_key1,pairs.shape[0], shape=(tests_per_rater,), replace=False)
         I.append(pairs[choices,0])
         J.append(pairs[choices,1])
-        S.append((actual_rank[I[-1]] - actual_rank[J[-1]]) >
-                 rater_accuracy * random.normal(sample_key2, shape=(tests_per_rater,)))
+        guess_i = jnp.clip(actual_rank[I[-1]] + rater_accuracy * random.normal(sample_key2, shape=(tests_per_rater,)),
+                           0., 5.)
+        guess_j = jnp.clip(actual_rank[J[-1]] + rater_accuracy * random.normal(sample_key3, shape=(tests_per_rater,)),
+                           0., 5.)
+        S.append(guess_i > guess_j)
 
     return actual_rank, jnp.concatenate(I),jnp.concatenate(J),jnp.concatenate(S)
 
-def main(num_options=10, num_raters=5, tests_per_rater=10, rater_accuracy=1):
+def main(num_options=10, num_raters=1, tests_per_rater=10, rater_accuracy=1.):
     actual_rank, I, J, S = get_constraints(num_options, num_raters, tests_per_rater, rater_accuracy)
     def log_likelihood(rank, **kwargs):
         score_ij = rank[I] > rank[J]
@@ -35,22 +38,36 @@ def main(num_options=10, num_raters=5, tests_per_rater=10, rater_accuracy=1):
     prior_chain = rank.prior_chain()
 
     ns = NestedSampler(loglikelihood=log_likelihood, prior_chain=prior_chain)
-    results = jit(ns)(random.PRNGKey(32564), termination_frac=0.001)
-    save_results(results, 'ranking_save.npz')
+    # results = jit(ns)(random.PRNGKey(32564), termination_frac=0.001)
+    # save_results(results, 'ranking_save.npz')
     results = load_results('ranking_save.npz')
 
     summary(results)
 
     plot_diagnostics(results)
-    plot_cornerplot(results, vars=['rank'])
+    # plot_cornerplot(results, vars=['rank'])
 
     samples = resample(random.PRNGKey(245944),results.samples, results.log_p, S=int(results.ESS))
 
-    posterior_rank = jnp.argsort(jnp.median(samples['rank'], axis=0))
-    true_rank = jnp.argsort(actual_rank)
+    rank_estimate = jnp.median(samples['rank'], axis=0)
+    print(rank_estimate)
+    mean_posterior_ordering = jnp.mean(jnp.argsort(samples['rank'], axis=-1), axis=0)
+    idx = jnp.argmax(results.log_L_samples)
+    rank_estimate = results.samples['rank'][idx]
+    print(rank_estimate)
+    print(actual_rank)
+    posterior_ordering = jnp.argsort(rank_estimate)
+    true_ordering = jnp.argsort(actual_rank)
     for i in range(num_options):
-        print("True rank = {}, posterior rank = {}".format(true_rank[i],posterior_rank[i]))
+        print("True rank = {}, "
+              "max(L) rank = {}, "
+              "mean_posterior_ordering={}".format(true_ordering[i],
+                                                  posterior_ordering[i],
+                                                  mean_posterior_ordering[i]))
 
 
 if __name__ == '__main__':
-    main()
+    main(num_options=20,
+         num_raters=100,
+         tests_per_rater=10,
+         rater_accuracy=1.)
