@@ -1,6 +1,6 @@
 import pylab as plt
 import jax.numpy as jnp
-from jaxns.utils import tuple_prod, resample, cumulative_logsumexp, estimate_map
+from jaxns.utils import tuple_prod, resample, cumulative_logsumexp, maximum_a_posteriori_point
 from jax import random
 from matplotlib.animation import FuncAnimation
 from mpl_toolkits.axes_grid1 import make_axes_locatable
@@ -72,6 +72,7 @@ def plot_cornerplot(results, vars=None, save_name=None):
         axs = [[axs]]
     nsamples = results.num_samples
     max_like_idx = jnp.argmax(results.log_L_samples[:results.num_samples])
+    map_idx = jnp.argmax(results.log_L_samples + results.log_p)
     log_p = results.log_p[:results.num_samples]
     nbins = int(jnp.sqrt(results.ESS)) + 1
     lims = {}
@@ -91,7 +92,7 @@ def plot_cornerplot(results, vars=None, save_name=None):
             rkey0, rkey = random.split(rkey0, 2)
             samples1_resampled = resample(rkey, samples1, log_weights, S=int(results.ESS))
             samples1_max_like = samples1[max_like_idx]
-            samples1_map_point = estimate_map(samples1)
+            samples1_map_point = samples1[map_idx]
             binsx = jnp.linspace(*jnp.percentile(samples1_resampled, [0, 100]), 2 * nbins)
             dim2 = 0
             for key2 in vars:  # sorted(results.samples.keys()):
@@ -124,7 +125,7 @@ def plot_cornerplot(results, vars=None, save_name=None):
                         ax.set_title(
                             r"${:.2f}_{{{:.2f}}}^{{{:.2f}}}$".format(*jnp.percentile(samples1_resampled, [50, 5, 95])) + \
                             "\n" + r"${:.2f}\pm{:.2f}$".format(sample_mean, sample_std) + \
-                            "\n" + r"${:.2f}$ | ${:.2f}$".format(samples1_map_point, samples1_max_like))
+                            "\n" + r"MAP ${:.2f}$ | ML ${:.2f}$".format(samples1_map_point, samples1_max_like))
                         # ax.set_title(r"{}: ${:.2f}\pm{:.2f}$".format(title1, sample_mean, sample_std))
                         # ax.text(0., 1., r"${:.2f}_{{{:.2f}}}^{{{:.2f}}}$".format(*jnp.percentile(samples1_resampled, [50, 5, 95])),
                         #      verticalalignment = 'top', horizontalalignment='left', transform = ax.transAxes,
