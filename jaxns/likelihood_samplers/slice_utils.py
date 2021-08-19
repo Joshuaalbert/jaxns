@@ -2,10 +2,105 @@ from jax import random, numpy as jnp, vmap
 from jax.lax import while_loop, cond
 
 from jaxns.likelihood_samplers.ellipsoid_utils import ellipsoid_to_circle, maha_ellipsoid
+from jax.scipy.linalg import solve_triangular
+from jaxns.gaussian_process.kernels import M32
+from jax.flatten_util import ravel_pytree
+from jax.scipy.optimize import minimize
+from jax.scipy.special import erf
 
+def prepare_bayesian_opt(X, Y):
+    def log_normal(x, mean, cov):
+        L = jnp.linalg.cholesky(cov)
+        dx = x - mean
+        dx = solve_triangular(L, dx, lower=True)
+        return -0.5 * x.size * jnp.log(2. * jnp.pi) - jnp.sum(jnp.log(jnp.diag(L))) \
+               - 0.5 * dx @ dx
+
+    #Remove infinities, which adhoc rule
+    Y = jnp.where(jnp.isinf(Y), jnp.min(Y), Y)
+
+    y_mean = jnp.mean(Y)
+    y_scale = jnp.std(Y) + 1e-6
+    Y -= y_mean
+    Y /= y_scale
+
+    x_mean = jnp.mean(X, axis=0, keepdims=True)
+    x_scale = jnp.maximum(1e-6, jnp.max(X, axis=0, keepdims=True) - jnp.min(X, axis=0, keepdims=True))
+    X -= x_mean
+    X /= x_scale
+
+    def log_likelihood(lengthscales, sigma):
+        kernel = M32()
+        K = kernel(X, X, lengthscales, sigma)
+        data_cov = 1e-6 * jnp.eye(X.shape[0])
+        mu = jnp.zeros_like(Y)
+        return log_normal(Y, mu, K + data_cov)
+
+    init_param, unravel_func = ravel_pytree(dict(lengthscales=jnp.log(0.2 * jnp.ones(X.shape[-1])),
+                                                 sigma=jnp.log(jnp.ones(())),
+                                                 ))
+
+    def loss(param):
+        kwargs = unravel_func(jnp.exp(param))
+        return -log_likelihood(**kwargs)
+
+    result = minimize(loss, init_param, method='bfgs')
+
+    def cdf(x, n, t, level):
+        """
+        P(f(x + n*t) < level)
+
+        Args:
+            x:
+            n:
+            t:
+            level:
+
+        Returns:
+
+        """
+        level -= y_mean
+        level /= y_scale
+        kernel = M32()
+        kwargs = unravel_func(jnp.exp(result.x))
+        K = kernel(X, X, kwargs['lengthscales'], kwargs['sigma'])
+        data_cov = 1e-6 * jnp.eye(X.shape[0])
+        dy = Y
+        J = jnp.linalg.solve(K + data_cov, dy)
+        K_star = kernel(x[None] + n[None] * t, X, kwargs['lengthscales'], kwargs['sigma'])
+        mu = K_star @ J
+        mu = mu[0]
+        C = kwargs['sigma'] ** 2 - K_star @ jnp.linalg.solve(K + data_cov, K_star.T)
+        C = C[0, 0]
+        dx = level - mu
+        dx /= jnp.sqrt(2. * C)
+        return 0.5 * (1. + erf(dx))
+
+    def interval_length(x, n, left_bound, right_bound, level):
+        """
+        Returns the fraction of line above a certain level.
+
+        Args:
+            x: ray origin
+            n: ray direction
+            left_bound: minimal ray affine paramter
+            right_bound: maximal ray affine parameter
+            level: slice level, log L contraint
+
+        Returns: expectation of part of ray above `level`, marginalised over a Gaussian process constrained to the line.
+        """
+        def line_integral(y, t):
+            return 1. - cdf(x, n, t, level)
+
+        t = jnp.linspace(left_bound, right_bound, 2*X.shape[0])#can't get more resolution than this typically
+        dt = t[1] - t[0]
+        w = jnp.sum(vmap(lambda t: line_integral(None, t))(t)) * dt
+        # w = odeint(line_integral, 0., jnp.asarray([left_bound, right_bound]))[-1]
+        return w
+    return interval_length
 
 def slice_sample_1d(key, x, logL_current, n, w, log_L_constraint, log_likelihood_from_U,
-                    live_points,
+                    live_points, interval_func,
                     do_init_try_bracket=True, do_stepout=False, midpoint_shrink=False):
     """
     Perform slice sampling from a point which is inside the slice along a unit vector direction.
@@ -19,8 +114,11 @@ def slice_sample_1d(key, x, logL_current, n, w, log_L_constraint, log_likelihood
         w: initial estimate of interval size
         log_L_constraint: slice level
         log_likelihood_from_U: callable(U_compact)
-        do_stepout: bool, if true then do stepout with doubling
-        midpoint_shrink: bool, if true the use midpoint shrinkage, at the cost of auto-correlation.
+        live_points: the current live points,
+        interval_func: callable to get interval width
+        do_init_try_bracket: bool, find the maximal support based on live-points.
+        do_stepout: bool, if true then do stepout with doubling until bracketed
+        midpoint_shrink: bool, if true the use midpoint shrinkage, at the cost of extra auto-correlation.
 
     Returns:
         key: new PRNG key
@@ -43,13 +141,21 @@ def slice_sample_1d(key, x, logL_current, n, w, log_L_constraint, log_likelihood
         num_f_eval = jnp.asarray(2)
         left = jnp.where(log_L_left < log_L_constraint, left, left_bound)
         right = jnp.where(log_L_right < log_L_constraint, right, right_bound)
+        if do_stepout:
+            # w = interval_func(x, n, left_bound, right_bound, log_L_constraint)
+            # key, left_key = random.split(key, 2)
+            # left = random.uniform(left_key, (), minval=-w, maxval=0.)
+            # right = left + w
+            key, left, right, num_f_eval_stepout = stepout_1d(key, left, right,
+                                                              left_bound, right_bound,
+                                                              log_L_constraint,
+                                                              log_likelihood_from_U, n, x,
+                                                              f_left=log_L_left,
+                                                              f_right=log_L_right)
+            num_f_eval += num_f_eval_stepout
     else:
         left, right = left_bound, right_bound
         num_f_eval = jnp.asarray(0)
-    if do_stepout:
-        key, left, right, num_f_eval_stepout = stepout_1d(key, left, right, left_bound, right_bound, log_L_constraint,
-                                                          log_likelihood_from_U, n, x)
-        num_f_eval += num_f_eval_stepout
 
     # shrinkage step
     key, x_t, f_t, num_f_eval_shrink = shrink_1d(key, left, right, logL_current, log_L_constraint,
@@ -104,7 +210,10 @@ def slice_initial_bounds_1d(key, w, x, n):
     return key, left, right, left_bound, right_bound
 
 
-def stepout_1d(key, left, right, left_bound, right_bound, log_L_constraint, log_likelihood_from_U, n, x):
+def stepout_1d(key, left, right, left_bound, right_bound,
+               log_L_constraint, log_likelihood_from_U, n, x,
+               f_left=None,f_right=None
+               ):
     """
     Stepout along slice in the correct way guaranteeing detailed balance of proposals (interval should be equally
         probable from accepted point).
@@ -154,9 +263,13 @@ def stepout_1d(key, left, right, left_bound, right_bound, log_L_constraint, log_
                | ((left == new_left) & (right == new_right))
         return (done, key, num_f_eval + n_f_eval, new_left, f_left, new_right, f_right)
 
-    f_left = log_likelihood_from_U(x + left * n)
-    f_right = log_likelihood_from_U(x + right * n)
-    num_f_eval = 2
+    num_f_eval = 0
+    if f_left is None:
+        f_left = log_likelihood_from_U(x + left * n)
+        num_f_eval += 1
+    if f_right is None:
+        f_right = log_likelihood_from_U(x + right * n)
+        num_f_eval += 1
     within_contour = (f_left > log_L_constraint) | (f_right > log_L_constraint)
     (_, key, num_f_eval, left, f_left, right, f_right) = while_loop(lambda state: ~state[0],
                                                                     step_out_body,
@@ -204,7 +317,7 @@ def shrink_1d(key, left, right, logL_current, log_L_constraint, log_likelihood_f
             # (y(t_R) - y(o))/t_R
             # y(t_R*alpha) = (y(t_R) - y(0))*alpha + y(0)
             key, mid_point_fraction_key = random.split(key, 2)
-            alpha = random.uniform(mid_point_fraction_key, minval=jnp.asarray(0.5), maxval=jnp.asarray(1.0))
+            alpha = random.uniform(mid_point_fraction_key, minval=jnp.asarray(0.), maxval=jnp.asarray(1.0))
             do_mid_point_shrink = alpha * (f_t - logL_current) + logL_current < log_L_constraint
             left = jnp.where((t < 0.) & do_mid_point_shrink, alpha * left, left)
             right = jnp.where((t > 0.) & do_mid_point_shrink, alpha * right, right)
