@@ -31,9 +31,9 @@ class StationaryKernel(Kernel):
     def inverse_l(self, p, x, sigma):
         return x / jnp.sqrt(2. * jnp.log(sigma ** 2 / p))
 
-    def act(self, r2, *args):
+    def act(self, r2, sigma, *args):
         """
-        Given the squared Euclidean norm of the outer difference between two coordinate sets,
+        Given the squared Euclidean norm of the outer difference between two coordinate sets, scaled by the lengthscale,
         return the log of the Q_kernel. Only valid for strictly positive kernels.
 
         Args:
@@ -46,8 +46,8 @@ class StationaryKernel(Kernel):
         raise NotImplemented()
 
     def __call__(self, x1, x2, l, *args):
-        r2 = squared_norm(x1, x2)
-        r2 = jnp.maximum(r2 / l**2, 1e-36)
+        r2 = squared_norm(x1/l, x2/l)
+        r2 = jnp.maximum(r2, 1e-36)
         return jnp.exp(self.act(r2, *args))
 
 
