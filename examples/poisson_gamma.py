@@ -7,25 +7,24 @@ from jaxns.utils import summary, resample
 import numpy as np
 import pylab as plt
 
-def main(num_samples=10):
+def log_gamma_prob(gamma, k, theta):
+    return (k-1) * jnp.log(gamma)  - gamma / theta - gammaln(k) - k * jnp.log(theta)
 
-    true_k = 1.
-    true_theta = 0.5
+def main(num_samples=10):
+    true_k = 0.1
+    true_theta = 0.1
 
     _gamma = np.random.gamma(true_k, true_theta, size=num_samples)
     samples = jnp.asarray(np.random.poisson(_gamma, size=num_samples))
-    print(samples)
 
-    prior_k = 5.
-    prior_theta = 0.3
+    prior_k = 100.
+    prior_theta = 100.
 
     true_post_k = prior_k + jnp.sum(samples)
     true_post_theta = prior_theta / (num_samples * prior_theta + 1.)
-    true_logZ = jnp.sum(samples * jnp.log(prior_theta) + (samples - prior_k) * jnp.log1p(prior_theta) + gammaln(prior_k + samples) - gammaln(prior_k) - gammaln(samples+1))
 
     print(f"True posterior k = {true_post_k}")
     print(f"True posterior theta = {true_post_theta}")
-    print(f"True Evidence = {true_logZ}")
 
     def log_likelihood(gamma, **kwargs):
         """
@@ -33,10 +32,13 @@ def main(num_samples=10):
         """
         return jnp.sum(samples * jnp.log(gamma) - gamma - gammaln(samples + 1))
 
+    true_logZ = log_likelihood(1.) + log_gamma_prob(1., prior_k, prior_theta) - log_gamma_prob(1., true_post_k, true_post_theta)
+    print(f"True Evidence = {true_logZ}")
+
     gamma = GammaPrior('gamma', prior_k, prior_theta)
     prior_chain = gamma.prior_chain()
 
-    ns = NestedSampler(loglikelihood=log_likelihood, prior_chain=prior_chain)
+    ns = NestedSampler(loglikelihood=log_likelihood, prior_chain=prior_chain, num_live_points=100)
 
     f = jit(ns)
 
