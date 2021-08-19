@@ -277,24 +277,58 @@ class GammaPrior(ContinuousPrior):
 
     def log_homogeneous_measure(self, X, k, theta):
         """
-        Gamma probability density function.
+        Gamma probability density function divided by homogeneous measure which is the exponential here since it has the same domain.
         """
-        # TODO: use full support instead of approximation of it.
-        # mean = k * theta
-        # stddev = jnp.sqrt(k * theta ** 2)
-        # ln_mean = 2. * jnp.log(mean) - 0.5 * jnp.log(stddev ** 2 + mean ** 2)
-        # ln_stddev = jnp.log(stddev ** 2 + mean ** 2) - 2. * jnp.log(mean)
-        # ln_log_prob = jnp.sum(-0.5*jnp.log(2*jnp.pi) - jnp.log(X) - jnp.log(ln_stddev)  - 0.5 * (jnp.log(X) - ln_mean)**2/ln_stddev**2)
-        return jnp.sum(-gammaln(k) - k * jnp.log(theta) + (k - 1.) * jnp.log(X) - X / theta)# - ln_log_prob
+        mean = k * theta
+        stddev = jnp.sqrt(k * theta ** 2)
+        b = mean + 2. * stddev
+        log_prob_gamma = -gammaln(k) - k * jnp.log(theta) + (k - 1.) * jnp.log(X) - X / theta
+        log_prob_exponential = -jnp.log(b) - X / b
+        return jnp.sum(log_prob_gamma - log_prob_exponential)
 
     def transform_U(self, U, k, theta, **kwargs):
         """
-        Transforms U to a range that covers most of the prior support.
+        Transforms U to a range that covers the prior support.
         We use the homogeneous measure to do the rest.
         """
         mean = k * theta
         stddev = jnp.sqrt(k * theta ** 2)
-        ln_mean = 2. * jnp.log(mean) - 0.5 * jnp.log(stddev**2 + mean**2)
-        ln_stddev = jnp.log(stddev**2 + mean**2) - 2. * jnp.log(mean)
-        return U * (mean + 20. * stddev)
-        # return jnp.exp(ndtri(U) * ln_stddev + ln_mean)
+        b = mean + 2. * stddev
+        exponential = - b * jnp.sign(0.5 * U) * jnp.log(1. - 2. * jnp.abs(0.5 * U))
+        return exponential
+
+
+class StudentT(ContinuousPrior):
+    @prior_docstring
+    def __init__(self, name, nu, mu, sigma, tracked=True):
+        """
+        Student-T distribution
+        Args:
+            nu: degree
+            mu: mean
+            sigma: scale
+        """
+        nu = self._prepare_parameter(name, 'nu', nu)
+        mu = self._prepare_parameter(name, 'mu', mu)
+        sigma = self._prepare_parameter(name, 'sigma', sigma)
+        shape = broadcast_shapes(broadcast_shapes(get_shape(nu), get_shape(mu)),
+                                 get_shape(sigma))
+        super(StudentT, self).__init__(name, shape, [nu, mu, sigma], tracked)
+
+    def log_homogeneous_measure(self, X, nu, mu, sigma):
+        """
+        Gamma probability density function divided by homogeneous measure which is the exponential here since it has the same domain.
+        """
+        log_prob_student_t = gammaln(0.5 * (nu + 1.)) - gammaln(0.5 * nu) - 0.5 * jnp.log(jnp.pi * nu) - jnp.log(sigma) \
+                             + (-0.5 * (nu + 1.)) * jnp.log(1. + (X - mu) ** 2 / sigma ** 2 / nu)
+        log_prob_cauchy = gammaln(1.) - gammaln(0.5) - 0.5 * jnp.log(jnp.pi) - jnp.log(sigma) \
+                          - jnp.log(1. + (X - mu) ** 2 / sigma ** 2)
+        return jnp.sum(log_prob_student_t - log_prob_cauchy)
+
+    def transform_U(self, U, nu, mu, sigma, **kwargs):
+        """
+        Transforms U to a range that covers the prior support.
+        We use the homogeneous measure to do the rest.
+        """
+        normal = jnp.tan(jnp.pi * (U - 0.5)) * sigma + mu
+        return normal
