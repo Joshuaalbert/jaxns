@@ -5,8 +5,7 @@ from jaxns.plotting import plot_cornerplot, plot_diagnostics
 from jax.scipy.linalg import solve_triangular
 from jax import random, jit
 from jax import numpy as jnp
-import os
-
+from timeit import default_timer
 
 def main():
     def log_normal(x, mean, cov):
@@ -47,9 +46,16 @@ def main():
                        marginalised=dict(x_mean=param_mean,
                                          x_cov=param_covariance)
                        )
-
-    results = jit(ns)(random.PRNGKey(4525325), 0.001)
-
+    ns = jit(ns)
+    results = ns(random.PRNGKey(4525325), 0.001)
+    # run once to make sure it compiles
+    results.efficiency.block_until_ready()
+    t0 = default_timer()
+    # run again and time it
+    results = ns(random.PRNGKey(4525325), 0.001)
+    results.efficiency.block_until_ready()
+    run_time = default_timer() - t0
+    print(f"Total run time: {run_time}")
 
     # can always save results to play with later
     save_results(results, 'save.npz')
