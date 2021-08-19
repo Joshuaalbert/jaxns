@@ -366,29 +366,15 @@ class NestedSampler(object):
                 sampler_state = init_discrete_sampler_state(self.prior_chain.prior_chain.num_outcomes)
             elif subspace_type == 'continuous':
                 if self.sampler_name == 'slice':
+                    points_all_U = jnp.concatenate([state.live_points_U[subspace_idx], state.reservoir_points_U[subspace_idx]], axis=0)
+                    log_L_all = jnp.concatenate([state.log_L_live, state.log_L_reservoir], axis=0)
                     sampler_state = init_slice_sampler_state(init_sampler_state_key,
                                                              state.live_points_U[subspace_idx],
                                                              self.sampler_kwargs['depth'],
                                                              tracked_expectations.state.X.log_value,
-                                                             self.sampler_kwargs['num_slices'])
-                elif self.sampler_name == 'cone_slice':
-                    sampler_state = init_cone_slice_sampler_state(init_sampler_state_key,
-                                                                  state.live_points_U[subspace_idx],
-                                                                  self.sampler_kwargs['depth'],
-                                                                  tracked_expectations.state.X.log_value,
-                                                                  self.sampler_kwargs['num_slices'])
-                elif self.sampler_name == 'multi_slice':
-                    sampler_state = init_multi_slice_sampler_state(init_sampler_state_key,
-                                                                   state.live_points_U[subspace_idx],
-                                                                   self.sampler_kwargs['depth'],
-                                                                   tracked_expectations.state.X.log_value,
-                                                                   self.sampler_kwargs['num_slices'])
-                elif self.sampler_name == 'nn_crumbs':
-                    sampler_state = init_nn_crumbs_sampler_state(init_sampler_state_key,
-                                                                 state.live_points_U[subspace_idx],
-                                                                 self.sampler_kwargs['depth'],
-                                                                 tracked_expectations.state.X.log_value,
-                                                                 self.sampler_kwargs['num_slices'])
+                                                             self.sampler_kwargs['num_slices'],
+                                                             points_all_U=points_all_U,
+                                                             log_L_all=log_L_all)
                 elif self.sampler_name == 'multi_ellipsoid':
                     sampler_state = init_multi_ellipsoid_sampler_state(
                         init_sampler_state_key,
@@ -449,43 +435,6 @@ class NestedSampler(object):
                             [sampler_results.u_new if i == subspace_idx else sample_U[i] for i in range(len(sample_U))])
                         num_likelihood_evaluations += sampler_results.num_likelihood_evaluations
                         sample_key = sampler_results.key
-                    elif self.sampler_name == 'cone_slice':
-                        sampler_results = cone_slice_sampling(sample_key,
-                                                              log_L_constraint=state.current_log_L_contour,
-                                                              init_U=sample_U[subspace_idx],
-                                                              num_slices=self.sampler_kwargs['num_slices'],
-                                                              log_likelihood_from_U=log_likelihood,
-                                                              sampler_state=sampler_state)
-                        sample_log_L = sampler_results.log_L_new
-                        sample_U = tuple(
-                            [sampler_results.u_new if i == subspace_idx else sample_U[i] for i in
-                             range(len(sample_U))])
-                        num_likelihood_evaluations += sampler_results.num_likelihood_evaluations
-                        sample_key = sampler_results.key
-                    elif self.sampler_name == 'multi_slice':
-                        sampler_results = multi_slice_sampling(sample_key,
-                                                               log_L_constraint=state.current_log_L_contour,
-                                                               init_U=sample_U[subspace_idx],
-                                                               num_slices=self.sampler_kwargs['num_slices'],
-                                                               log_likelihood_from_U=log_likelihood,
-                                                               sampler_state=sampler_state)
-                        sample_log_L = sampler_results.log_L_new
-                        sample_U = tuple(
-                            [sampler_results.u_new if i == subspace_idx else sample_U[i] for i in range(len(sample_U))])
-                        num_likelihood_evaluations += sampler_results.num_likelihood_evaluations
-                        sample_key = sampler_results.key
-                    elif self.sampler_name == 'nn_crumbs':
-                        sampler_results = nn_crumbs_sampling(sample_key,
-                                                             log_L_constraint=state.current_log_L_contour,
-                                                             init_U=sample_U[subspace_idx],
-                                                             num_slices=self.sampler_kwargs['num_slices'],
-                                                             log_likelihood_from_U=log_likelihood,
-                                                             sampler_state=sampler_state)
-                        sample_log_L = sampler_results.log_L_new
-                        sample_U = tuple(
-                            [sampler_results.u_new if i == subspace_idx else sample_U[i] for i in range(len(sample_U))])
-                        num_likelihood_evaluations += sampler_results.num_likelihood_evaluations
-                        sample_key = sampler_results.key
                     elif self.sampler_name == 'multi_ellipsoid':
                         sampler_results = multi_ellipsoid_sampler(sample_key,
                                                                   log_L_constraint=state.current_log_L_contour,
@@ -506,9 +455,12 @@ class NestedSampler(object):
 
         if self.num_parallel_samplers > 1:
             # TODO: currently restricted in using pmap inside a jit, see https://github.com/google/jax/issues/2926
+            # (num_likelihood_evaluations, reservoir_points_U, reservoir_points_X, log_L_reservoir) = \
+            #     chunked_pmap(_one_sample, random.split(sample_key, state.log_L_reservoir.size),
+            #                  chunksize=self.num_parallel_samplers, use_vmap=False, per_device_unroll=False)
+
             (num_likelihood_evaluations, reservoir_points_U, reservoir_points_X, log_L_reservoir) = \
-                chunked_pmap(_one_sample, random.split(sample_key, state.log_L_reservoir.size),
-                             chunksize=self.num_parallel_samplers, use_vmap=False, per_device_unroll=True)
+                vmap(_one_sample)(random.split(sample_key, state.log_L_reservoir.size))
         else:
             def body(state, args):
                 return state, _one_sample(*args)
