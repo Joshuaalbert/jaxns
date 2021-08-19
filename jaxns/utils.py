@@ -1,9 +1,8 @@
 from jax import random, vmap, numpy as jnp, tree_map, local_device_count, devices as get_devices, pmap, jit, device_get, \
-    tree_multimap
-from jax.flatten_util import ravel_pytree
+    tree_multimap, soft_pmap
 from timeit import default_timer
 from jax.lax import scan, while_loop
-from jax.scipy.special import logsumexp, gammaln
+from jax.scipy.special import logsumexp
 import logging
 import numpy as np
 
@@ -269,7 +268,7 @@ def marginalise_static(key, samples, log_weights, ESS, fun):
     Returns: expectation over resampled samples.
     """
     samples = resample(key, samples, log_weights, S=ESS)
-    marginalised = tree_map(lambda marg: jnp.mean(marg, axis=0), vmap(lambda d: fun(**d))(samples))
+    marginalised = tree_map(lambda marg: jnp.nanmean(marg, axis=0), vmap(lambda d: fun(**d))(samples))
     return marginalised
 
 
@@ -424,6 +423,15 @@ def chunked_pmap(f, *args, chunksize=None, use_vmap=False, per_device_unroll=Fal
 
 
 def estimate_map(samples, ESS=None):
+    """
+    Estimates MAP-point using a histogram of equally weighted samples.
+
+    Args:
+        samples: dict, equally weighted samples
+        ESS: int
+
+    Returns: dict of samples at MAP-point.
+    """
     def _get_map(samples):
         shape = samples.shape[1:]
         samples = samples.reshape([samples.shape[0], -1]).T
@@ -442,6 +450,20 @@ def estimate_map(samples, ESS=None):
 
     return tree_map(_get_map, samples)
 
+def maximum_a_posteriori_point(results):
+    """
+    Get the MAP point of a nested sampling result.
+    Does this by choosing the point with largest L(x) p(x).
+
+    Args:
+        results: NestedSamplerResult
+
+    Returns: dict of samples at MAP-point.
+    """
+
+    map_idx = jnp.argmax(results.log_L_samples + results.log_p)
+    map_points = tree_map(lambda x: x[map_idx], results.samples)
+    return map_points
 
 def summary(results):
     """
@@ -457,9 +479,11 @@ def summary(results):
         main_s.append(s)
 
     def _round(v, uncert_v):
-        sig_figs = -int("{:e}".format(uncert_v).split('e')[1]) + 1
-
-        return round(float(v), sig_figs)
+        try:
+            sig_figs = -int("{:e}".format(uncert_v).split('e')[1]) + 1
+            return round(float(v), sig_figs)
+        except:
+            return float(v)
 
     _print("--------")
     _print("# likelihood evals: {}".format(results.num_likelihood_evaluations))
@@ -475,7 +499,8 @@ def summary(results):
     max_like_idx = jnp.argmax(results.log_L_samples[:results.num_samples])
     max_like_points = tree_map(lambda x: x[max_like_idx], results.samples)
     samples = resample(random.PRNGKey(23426), results.samples, results.log_p, S=int(results.ESS))
-    map_points = estimate_map(samples, ESS=int(results.ESS))
+
+    map_points = maximum_a_posteriori_point(results)
 
     for name in samples.keys():
         _samples = samples[name].reshape((samples[name].shape[0], -1))
