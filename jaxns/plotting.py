@@ -107,6 +107,12 @@ def plot_cornerplot(results, vars=None, save_name=None):
                         ax.set_yticklabels([])
                         ax.remove()
                         continue
+                    if dim < ndims - 1:
+                        ax.set_xticks([])
+                        ax.set_xticklabels([])
+                    if dim2 > 0:
+                        ax.set_yticks([])
+                        ax.set_yticklabels([])
                     if n2 > 1:
                         title2 = "{}[{}]".format(key2, i2)
                     else:
@@ -115,7 +121,7 @@ def plot_cornerplot(results, vars=None, save_name=None):
                         title1 = "{}[{}]".format(key, i)
                     else:
                         title1 = "{}".format(key)
-                    ax.set_title('{} {}'.format(title1, title2))
+                    # ax.set_title('{} {}'.format(title1, title2))
                     if dim == dim2:
                         # ax.plot(binsx, kde1(binsx))
                         ax.hist(samples1_resampled, bins='auto', fc='None', edgecolor='black', density=True)
