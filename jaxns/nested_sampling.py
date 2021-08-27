@@ -77,6 +77,7 @@ class NestedSampler(object):
                  prior_chain: PriorChain,
                  sampler_name='slice',
                  num_parallel_samplers: int = 1,
+                 reservoir_size: int = 1,
                  sampler_kwargs=None,
                  num_live_points=None,
                  max_samples=1e5,
@@ -93,6 +94,8 @@ class NestedSampler(object):
                 Rule of thumb=(D+1)*(# posterior modes)*O(50), i.e. you want at least D+1 points per mode
                 to be able to detect the mode with ellipsoidal clustering, and you need several times more than that
                 to be accurate.
+            reservoir_size: int, how large a bin of samples to keep for replacement. Refilling happens when there are no
+                more satisfying points in the reservoir.
             max_samples: int, the maximum number of samples to take.
                 Rule of thumb=(information gain)*(num_live_points)*(a few), where information gain can be measured by
                 running a low accuracy run with fewer live points. Just make sure this number is big enough.
@@ -121,6 +124,10 @@ class NestedSampler(object):
         if num_parallel_samplers < 1:
             raise ValueError(f"num_parallel_samplers {num_parallel_samplers} should be >= 1.")
         self.num_parallel_samplers = num_parallel_samplers
+        reservoir_size = int(reservoir_size)
+        if reservoir_size < 1:
+            raise ValueError(f"reservoir_size {reservoir_size} should be >= 1.")
+        self.reservoir_size = reservoir_size
         if sampler_kwargs is None:
             sampler_kwargs = dict()
         sampler_kwargs['depth'] = int(sampler_kwargs.get('depth', 5))
@@ -188,7 +195,7 @@ class NestedSampler(object):
         Initialises the state of samplers.
         """
 
-        # N = self.num_live_points*(1 + self.num_parallel_samplers)
+        # N = self.num_live_points + self.reservoir_size
         # samples = vmap(lambda key: random.permutation(key, N) + 0.5)(random.split(key2, D)).T
         # samples /= N
 
@@ -226,7 +233,7 @@ class NestedSampler(object):
             random.split(init_key_live, self.num_live_points))
 
         reservoir_points_U, reservoir_points_X, log_L_reservoir = vmap(single_sample)(
-            random.split(init_key_reservoir, self.num_live_points * self.num_parallel_samplers))
+            random.split(init_key_reservoir, self.reservoir_size))
         reservoir_point_available = jnp.ones(log_L_reservoir.shape, dtype=jnp.bool_)
 
         # establish things to collect
@@ -255,7 +262,7 @@ class NestedSampler(object):
             key=key,
             done=jnp.array(False),
             i=jnp.asarray(0),
-            num_likelihood_evaluations=self.num_live_points * (self.num_parallel_samplers + 1),
+            num_likelihood_evaluations=self.num_live_points + self.reservoir_size,
             live_points_X=live_points_X,
             live_points_U=live_points_U,
             log_L_live=log_L_live,
@@ -275,6 +282,41 @@ class NestedSampler(object):
             log_w=log_w,
             last_likelihood_evaluations_per_sample=jnp.asarray(1.)
         )
+
+        return state
+
+    def _one_step(self, state: NestedSamplerState) -> NestedSamplerState:
+        """
+        Performs sampling until the reservoir is empty.
+
+        Args:
+            state: NestedSamplerState before iteration
+            collect_samples: bool, whether to collect samples
+            only_marginalise: bool whether to only marginalise and not collect samples of diagnostics.
+            sampler_kwargs: dict of kwargs for the sampler
+            num_parallel_samplers: int, how many parallel samplers to run with vmap.
+
+        Returns:
+            NestedSamplerState after one iteration.
+        """
+
+        ###
+        # we iteratively collect dead points and replenish until no more to replenish
+        def body(state: NestedSamplerState):
+            # Take one sample, and decrease the counter if contour stays the same.
+            i_min, state = self._collect_dead_point(state)
+            # Replace dead point with new one.
+            state = self._replace_dead_point(i_min, state)
+            return state
+
+        def cond(state: NestedSamplerState):
+            # refill reservoirs if there are no more satisfying points
+            satisfying_reservoir_points = self._satisfying_reservoir_points(state)
+            return jnp.any(satisfying_reservoir_points)
+
+        state = while_loop(cond,
+                           body,
+                           state)
 
         return state
 
@@ -336,6 +378,43 @@ class NestedSampler(object):
         state = state._replace(num_dead=state.num_dead + 1)
         return i_min, state
 
+    def _satisfying_reservoir_points(self, state:NestedSamplerState):
+        satisfying_reservoir_points = state.reservoir_point_available & (
+                state.log_L_reservoir > state.current_log_L_contour)
+        return satisfying_reservoir_points
+
+    def _replace_dead_point(self, i_min: int, state: NestedSamplerState) -> NestedSamplerState:
+        """
+        Replace the dead point with a point from one of the reservoirs.
+
+        Args:
+            i_min: int
+            state: NestedSamplerState
+
+        Returns:
+            state: NestedSamplerState
+        """
+        satisfying_reservoir_points = self._satisfying_reservoir_points(state)
+        #take first point satisfying
+        choice = jnp.argmax(satisfying_reservoir_points)
+        live_points_U = tree_multimap(
+            lambda x, y: dynamic_update_slice(x, y[None, choice], [i_min] + [0] * len(y.shape[1:])),
+            state.live_points_U, state.reservoir_points_U)
+        live_points_X = tree_multimap(
+            lambda x, y: dynamic_update_slice(x, y[None, choice], [i_min] + [0] * len(y.shape[1:])),
+            state.live_points_X, state.reservoir_points_X)
+        log_L_live = dynamic_update_slice(state.log_L_live,
+                                          state.log_L_reservoir[None, choice],
+                                          [i_min])
+        reservoir_point_available = dynamic_update_slice(state.reservoir_point_available,
+                                                         jnp.zeros((1,), dtype=jnp.bool_),
+                                                         [choice])
+        state = state._replace(live_points_U=live_points_U,
+                               live_points_X=live_points_X,
+                               log_L_live=log_L_live,
+                               reservoir_point_available=reservoir_point_available)
+        return state
+
     def _refill_reservoirs(self, state: NestedSamplerState) -> NestedSamplerState:
         """
         Refill all the reservoirs points that are not available or less than the current contour level.
@@ -354,6 +433,7 @@ class NestedSampler(object):
             state: NestedSamplerState
         """
         # build sampler initial state from the set of live_points
+        # print(jnp.mean(state.reservoir_point_available))
         key, init_sampler_state_key, sample_key = random.split(state.key, 3)
         state = state._replace(key=key)
         tracked_expectations = TrackedExpectation(self.marginalised, self.marginalised_shapes,
@@ -458,7 +538,7 @@ class NestedSampler(object):
             # (num_likelihood_evaluations, reservoir_points_U, reservoir_points_X, log_L_reservoir) = \
             #     chunked_pmap(_one_sample, random.split(sample_key, state.log_L_reservoir.size),
             #                  chunksize=self.num_parallel_samplers, use_vmap=False, per_device_unroll=False)
-
+            # note num_parallel_samplers has no effect and we parallelise over all of first dimension.
             (num_likelihood_evaluations, reservoir_points_U, reservoir_points_X, log_L_reservoir) = \
                 vmap(_one_sample)(random.split(sample_key, state.log_L_reservoir.size))
         else:
@@ -480,87 +560,19 @@ class NestedSampler(object):
                                    num_likelihood_evaluations))
         return state
 
-    def _replace_dead_point(self, i_min: int, state: NestedSamplerState) -> NestedSamplerState:
-        """
-        Replace the dead point with a point from one of the reservoirs.
 
-        Args:
-            i_min: int
-            state: NestedSamplerState
 
-        Returns:
-            state: NestedSamplerState
-        """
-        satisfying_reservoir_points = state.reservoir_point_available & (
-                state.log_L_reservoir > state.current_log_L_contour)
-        # key, choice_key = random.split(state.key, 2)
-        # state = state._replace(key=key)
-        # choice = random.choice(choice_key,
-        #               a=jnp.arange(state.log_L_reservoir.size),
-        #               p=satisfying_reservoir_points/jnp.sum(satisfying_reservoir_points))
-        choice = jnp.argmax(satisfying_reservoir_points)
-        live_points_U = tree_multimap(
-            lambda x, y: dynamic_update_slice(x, y[None, choice], [i_min] + [0] * len(y.shape[1:])),
-            state.live_points_U, state.reservoir_points_U)
-        live_points_X = tree_multimap(
-            lambda x, y: dynamic_update_slice(x, y[None, choice], [i_min] + [0] * len(y.shape[1:])),
-            state.live_points_X, state.reservoir_points_X)
-        log_L_live = dynamic_update_slice(state.log_L_live,
-                                          state.log_L_reservoir[None, choice],
-                                          [i_min])
-        reservoir_point_available = dynamic_update_slice(state.reservoir_point_available,
-                                                         jnp.zeros((1,), dtype=jnp.bool_),
-                                                         [choice])
-        state = state._replace(live_points_U=live_points_U,
-                               live_points_X=live_points_X,
-                               log_L_live=log_L_live,
-                               reservoir_point_available=reservoir_point_available)
-        return state
 
-    def _one_step(self, state: NestedSamplerState) -> NestedSamplerState:
-        """
-        Performs sampling until the reservoir is empty.
 
-        Args:
-            state: NestedSamplerState before iteration
-            collect_samples: bool, whether to collect samples
-            only_marginalise: bool whether to only marginalise and not collect samples of diagnostics.
-            sampler_kwargs: dict of kwargs for the sampler
-            num_parallel_samplers: int, how many parallel samplers to run with vmap.
-
-        Returns:
-            NestedSamplerState after one iteration.
-        """
-
-        ###
-        # we iteratively collect dead points and replenish until no more to replenish
-        def body(state: NestedSamplerState):
-            # Take one sample, and decrease the counter if contour stays the same.
-            i_min, state = self._collect_dead_point(state)
-            # Replace dead point with new one.
-            state = self._replace_dead_point(i_min, state)
-            return state
-
-        def cond(state: NestedSamplerState):
-            # refill reservoirs if there are no more satisfying points
-            satisfying_reservoir_points = state.reservoir_point_available & (
-                    state.log_L_reservoir > state.current_log_L_contour)
-            return jnp.any(satisfying_reservoir_points)
-
-        state = while_loop(cond,
-                           body,
-                           state)
-
-        return state
-
-    def __call__(self, key, termination_frac=0.01):
+    def __call__(self, key, termination_evidence_frac=0.01, termination_likelihood_frac=jnp.inf):
         """
         Perform nested sampling.
 
         Args:
             key: PRNG
-            termination_frac: float, the algorthim is terminated when this much of current evidence estimate is greater
+            termination_evidence_frac: float, the algorthim is terminated when this much of current evidence estimate is greater
                 than the amount left in live points.
+            termination_likelihood_frac: float, the algorithm is terminated when the likelihood improvement is not at least this much.
 
         Returns:
             NestedSamplingResult
@@ -571,7 +583,7 @@ class NestedSampler(object):
             # same until reservoir empty
             state = self._one_step(state)
 
-            done = self._termination_condition(state, termination_frac)
+            done = self._termination_condition(state, termination_evidence_frac, termination_likelihood_frac)
 
             state = cond(done,
                          lambda state: state,
@@ -588,13 +600,14 @@ class NestedSampler(object):
         results = self._finalise_results(state)
         return results
 
-    def _termination_condition(self, state, termination_frac):
+    def _termination_condition(self, state: NestedSamplerState, termination_evidence_frac, termination_likelihood_frac):
         """
         Decide whether to terminate the sampler.
 
         Args:
             state: NestedSamplerState
-            termination_frac: float, what frac of evidence should live points hold.
+            termination_evidence_frac: float, what frac of evidence should live points hold.
+            termination_likelihood_frac: float, what is the minimum likelihood improvement.
 
         Returns:
 
@@ -606,13 +619,16 @@ class NestedSampler(object):
         logZ_live = logsumexp(state.log_L_live) - jnp.log(state.log_L_live.shape[0]) \
                     + tracked_expectations.state.X.log_value
         # Z_live < f * Z => logZ_live < log(f) + logZ
-        small_remaining_evidence = logZ_live < jnp.log(termination_frac) + logZ
+        small_remaining_evidence = logZ_live < jnp.log(termination_evidence_frac) + logZ
         # all points are on the same contour
         single_plateau = jnp.all(state.log_L_live == state.log_L_live[0])
         # used all points
         reached_max_samples = (state.i + 1) >= self.max_samples
+        # small likelihood increase, L_[max]/L_[second largest] - 1 < frac
+        sorted_log_L_live = jnp.sort(state.log_L_live)
+        likelihood_peak_reached = sorted_log_L_live[-1] - state.log_L_dead[-2] < jnp.log(1. + termination_likelihood_frac)
 
-        done = small_remaining_evidence | single_plateau | reached_max_samples
+        done = (small_remaining_evidence & likelihood_peak_reached) | single_plateau | reached_max_samples
         return done
 
     def _finalise_results(self, state: NestedSamplerState):
@@ -623,8 +639,7 @@ class NestedSampler(object):
 
         tracked_expectations = TrackedExpectation(self.marginalised, self.marginalised_shapes,
                                                   state=state.tracked_expectations_state)
-        reservoir_is_satisfying = state.reservoir_point_available & (
-                state.log_L_reservoir > state.current_log_L_contour)
+        reservoir_is_satisfying = self._satisfying_reservoir_points(state)
         is_satisfying = jnp.concatenate([reservoir_is_satisfying, jnp.ones(num_live_points, dtype=jnp.bool_)])
         remaining_points_log_L = jnp.concatenate([state.log_L_reservoir, state.log_L_live], axis=0)
         remaining_points_X = tree_multimap(lambda x, y: jnp.concatenate([x, y], axis=0),

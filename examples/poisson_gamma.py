@@ -10,15 +10,15 @@ import pylab as plt
 def log_gamma_prob(gamma, k, theta):
     return (k-1) * jnp.log(gamma)  - gamma / theta - gammaln(k) - k * jnp.log(theta)
 
-def main(num_samples=10):
-    true_k = 0.1
-    true_theta = 0.1
+def main(num_samples):
+    true_k = 0.5
+    true_theta = 1.
 
     _gamma = np.random.gamma(true_k, true_theta, size=num_samples)
     samples = jnp.asarray(np.random.poisson(_gamma, size=num_samples))
 
     prior_k = 100.
-    prior_theta = 100.
+    prior_theta = 1.
 
     true_post_k = prior_k + jnp.sum(samples)
     true_post_theta = prior_theta / (num_samples * prior_theta + 1.)
@@ -38,11 +38,15 @@ def main(num_samples=10):
     gamma = GammaPrior('gamma', prior_k, prior_theta)
     prior_chain = gamma.prior_chain()
 
-    ns = NestedSampler(loglikelihood=log_likelihood, prior_chain=prior_chain, num_live_points=100)
+    ns = NestedSampler(loglikelihood=log_likelihood,
+                       prior_chain=prior_chain,
+                       num_live_points=100,
+                       reservoir_size=4,
+                       num_parallel_samplers=4)
 
     f = jit(ns)
 
-    results = f(random.PRNGKey(3452345), 0.001)
+    results = f(random.PRNGKey(3452345), termination_evidence_frac=0.001)
 
     summary(results)
 
@@ -61,4 +65,4 @@ def main(num_samples=10):
 
 
 if __name__ == '__main__':
-    main(num_samples=10)
+    main(num_samples=1)

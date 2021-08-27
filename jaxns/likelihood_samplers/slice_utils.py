@@ -100,7 +100,7 @@ def prepare_bayesian_opt(X, Y):
     return interval_length
 
 def slice_sample_1d(key, x, logL_current, n, w, log_L_constraint, log_likelihood_from_U,
-                    live_points, interval_func,
+                    live_points,
                     do_init_try_bracket=True, do_stepout=False, midpoint_shrink=False):
     """
     Perform slice sampling from a point which is inside the slice along a unit vector direction.
@@ -115,7 +115,6 @@ def slice_sample_1d(key, x, logL_current, n, w, log_L_constraint, log_likelihood
         log_L_constraint: slice level
         log_likelihood_from_U: callable(U_compact)
         live_points: the current live points,
-        interval_func: callable to get interval width
         do_init_try_bracket: bool, find the maximal support based on live-points.
         do_stepout: bool, if true then do stepout with doubling until bracketed
         midpoint_shrink: bool, if true the use midpoint shrinkage, at the cost of extra auto-correlation.
@@ -136,6 +135,10 @@ def slice_sample_1d(key, x, logL_current, n, w, log_L_constraint, log_likelihood
         t = vmap(_orth_dist)(live_points)
         left = jnp.maximum(left_bound, jnp.min(jnp.where(t < 0., t, 0.)))
         right = jnp.minimum(right_bound, jnp.max(jnp.where(t > 0., t, 0.)))
+        # randomise out to boundary to ensure correctness
+        key, key_left_shift, key_right_shift = random.split(key, 3)
+        # left = jnp.where(random.uniform(key_left_shift) < 0.5, left, left_bound)
+        # right = jnp.where(random.uniform(key_right_shift) < 0.5, right, right_bound)
         log_L_left = log_likelihood_from_U(x + n * left)
         log_L_right = log_likelihood_from_U(x + n * right)
         num_f_eval = jnp.asarray(2)
@@ -316,9 +319,12 @@ def shrink_1d(key, left, right, logL_current, log_L_constraint, log_likelihood_f
             # y(0) = b
             # (y(t_R) - y(o))/t_R
             # y(t_R*alpha) = (y(t_R) - y(0))*alpha + y(0)
-            key, mid_point_fraction_key = random.split(key, 2)
-            alpha = random.uniform(mid_point_fraction_key, minval=jnp.asarray(0.), maxval=jnp.asarray(1.0))
-            do_mid_point_shrink = alpha * (f_t - logL_current) + logL_current < log_L_constraint
+            key, alpha_key, beta_key = random.split(key, 3)
+            alpha = random.uniform(alpha_key)
+            beta = random.uniform(beta_key)
+            logL_alpha = logL_current + alpha * (f_t - logL_current)
+            logL_beta = f_t + beta * (log_L_constraint - f_t)
+            do_mid_point_shrink = logL_alpha < logL_beta
             left = jnp.where((t < 0.) & do_mid_point_shrink, alpha * left, left)
             right = jnp.where((t > 0.) & do_mid_point_shrink, alpha * right, right)
         return (done, num_f_eval + 1, key, left, right, x_t, f_t)
@@ -327,8 +333,9 @@ def shrink_1d(key, left, right, logL_current, log_L_constraint, log_likelihood_f
                                                                 shrink_body,
                                                                 (
                                                                     jnp.asarray(False), jnp.asarray(0), key, left,
-                                                                    right, x,
-                                                                    log_L_constraint))
+                                                                    right,
+                                                                    x,
+                                                                    logL_current))
     return key, x_t, f_t, num_f_eval
 
 

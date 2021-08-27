@@ -23,7 +23,7 @@ def main():
                        prior_chain=prior_chain,
                        num_live_points=1000)
 
-    results = ns(random.PRNGKey(32564), termination_frac=0.001)
+    results = ns(random.PRNGKey(32564))
     summary(results)
     plot_diagnostics(results)
     plot_cornerplot(results)

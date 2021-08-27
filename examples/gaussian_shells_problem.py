@@ -30,7 +30,7 @@ def main():
 
     ns = NestedSampler(log_likelihood,
                        prior_chain)
-    results = jit(ns)(key=random.PRNGKey(4525280), termination_frac=0.01)
+    results = jit(ns)(key=random.PRNGKey(4525280))
 
     summary(results)
 

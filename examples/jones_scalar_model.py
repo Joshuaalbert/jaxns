@@ -1,19 +1,18 @@
-from jaxns.nested_sampling import NestedSampler, save_results, load_results
+from jaxns.nested_sampling import NestedSampler
 from jaxns.plotting import plot_diagnostics, plot_cornerplot
-from jaxns.utils import summary, marginalise_static
-from jaxns.prior_transforms import UniformPrior, PriorChain, HalfLaplacePrior, DeltaPrior
+from jaxns.utils import summary
+from jaxns.prior_transforms import UniformPrior, PriorChain, HalfLaplacePrior, CauchyPrior
 from jax import jit
-from jax import numpy as jnp, random, flatten_util, jacfwd
-import pylab as plt
+from jax import numpy as jnp, random
 
-TEC_CONV = -8.4479745e6
-
+TEC_CONV = -8.4479745#rad*MHz/mTECU
+CLOCK_CONV = (2e-3*jnp.pi)#rad/MHz/ns
+CUBIC_TERM = 0.1*140.**3#rad*MHz^3/arb.
 
 def wrap(phi):
     return (phi + jnp.pi) % (2 * jnp.pi) - jnp.pi
 
-
-def generate_data(key, n, uncert):
+def generate_data(key, uncert):
     """
     Generate gain data where the phase have a clock const and tec component, where the clock are shared for all data,
     and the tec are different:
@@ -32,97 +31,53 @@ def generate_data(key, n, uncert):
     Returns:
         Y_obs, phase_obs, freqs
     """
-    freqs = jnp.linspace(121e6, 166e6, 24)
-    tec = jnp.arange(n)*10+100.
+    freqs = jnp.linspace(121, 166, 24)#MHz
+    tec = 90.#mTECU
     const = 2.#rad
     clock = 0.5#ns
-    phase = tec[:, None] * (TEC_CONV / freqs) + const + (1e-9 * freqs) * jnp.pi * clock
+    phase = tec * (TEC_CONV / freqs) + clock * (CLOCK_CONV * freqs) + const
     Y = jnp.concatenate([jnp.cos(phase), jnp.sin(phase)], axis=-1)
     Y_obs = Y + uncert * random.normal(key, shape=Y.shape)
     phase_obs = jnp.arctan2(Y_obs[..., freqs.size:], Y_obs[..., :freqs.size])
-    return Y_obs, phase_obs, freqs, tec, const, clock, uncert
+    return Y_obs, phase_obs, freqs
 
 
 def log_normal(x, mean, scale):
     dx = (x - mean) / scale
     return -0.5 * jnp.log(2. * jnp.pi) - jnp.log(scale)  - 0.5 * dx * dx
 
-
-def log_laplace(x, mean, scale):
-    dx = jnp.abs(x - mean) / scale
-    return - jnp.log(2. * scale) - dx
-
-
-def log_cauchy(x, mean, scale):
-    dx = (x - mean) / scale
-    return -jnp.log(jnp.pi) - jnp.log(scale) - jnp.log1p(dx ** 2)
-
 @jit
-def solve_with_clock(key, freqs, Y_obs, true_clock, true_tec, true_const, true_uncert):
+def solve_with_clock(key, freqs, Y_obs):
     def log_likelihood(tec, const, clock, uncert, **kwargs):
-        """
-        Attentional mechanism for outliers.
-        weight(y) = L(y)/sum_y L(y)
-        P(Y) = prod_y weight(y) L(y)
-        log P(Y) = sum_y log weight(y) + log L(y) = sum_y 2. * log L(y) - log sum_y L(y)
-        Args:
-            tec:
-            const:
-            uncert:
-            **kwargs:
-
-        Returns:
-
-        """
-        phase = tec[:, None] * (TEC_CONV / freqs) + const + clock * (2e-9 * freqs) * jnp.pi
+        phase = tec * (TEC_CONV / freqs) + const + clock * (CLOCK_CONV * freqs)# + cubic * (CUBIC_TERM / freqs**3)
         Y = jnp.concatenate([jnp.cos(phase), jnp.sin(phase)], axis=-1)
         logL = log_normal(Y, Y_obs, uncert)
         return jnp.sum(logL)
 
-    prior_chain = PriorChain() \
-        .push(UniformPrior('tec', -300. * jnp.ones(Y_obs.shape[0]), 300. * jnp.ones(Y_obs.shape[0]))) \
-        .push(UniformPrior('const', -jnp.pi, jnp.pi)) \
-        .push(UniformPrior('clock', -1., 1.)) \
-        .push(HalfLaplacePrior('uncert', 0.5))
+    prior_chain = PriorChain(CauchyPrior('tec', 0., 100.),
+                             UniformPrior('const', -jnp.pi, jnp.pi),
+                             UniformPrior('clock', -2., 2.),
+                             # CauchyPrior('cubic', 0., 0.5),
+                             HalfLaplacePrior('uncert', 0.5))
 
-    # print("Probabilistic model:\n{}".format(prior_chain))
-
-    def var_tec(tec, const, clock, uncert, **kwargs):
-        return (tec - true_tec) ** 2
-
-    def var_const(tec, const, clock, uncert, **kwargs):
-        return (const - true_const) ** 2
-
-    def var_clock(tec, const, clock, uncert, **kwargs):
-        return (clock - true_clock) ** 2
-
-    def var_uncert(tec, const, clock, uncert, **kwargs):
-        return (uncert - true_uncert) ** 2
-
+    #logZ=78.16 +- 0.075 with cubic
+    #logZ=78.253 +- 0.084 without cubic
     ns = NestedSampler(log_likelihood, prior_chain,
-                       num_live_points=100*prior_chain.U_ndims,
-                       marginalised=dict(var_tec=var_tec, var_const=var_const, var_clock=var_clock, var_uncert=var_uncert)
-                       )
+                       num_live_points=prior_chain.U_ndims*500)
 
-    results = ns(key, 0.001)
+    results = ns(key)
 
-    return results, (results.marginalised['var_tec'].mean(), results.marginalised['var_const'],
-                     results.marginalised['var_clock'], results.marginalised['var_uncert'])
+    return results
 
 
 def run(key):
-    n_array = [1,2,3,4]
-    for n in n_array:
-        for uncert in [0.4]:
-            print(f"Solving with clock, uncert={uncert}, n={n}")
-            key,data_key = random.split(key)
-            Y_obs, phase_obs, freqs, true_tec, true_const, true_clock, true_uncert = generate_data(data_key, n, uncert)
+    key,data_key = random.split(key)
+    Y_obs, phase_obs, freqs = generate_data(data_key, 0.05)
 
-            results, variance = solve_with_clock(key, freqs, Y_obs, true_clock, true_tec, true_const,
-                                                 true_uncert)
-            summary(results)
-            plot_diagnostics(results)
-            plot_cornerplot(results)
+    results = solve_with_clock(key, freqs, Y_obs)
+    summary(results)
+    plot_diagnostics(results)
+    plot_cornerplot(results)
 
 
 def main():
