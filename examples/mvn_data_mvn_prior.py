@@ -15,7 +15,7 @@ def main():
         return -0.5 * x.size * jnp.log(2. * jnp.pi) - jnp.sum(jnp.log(jnp.diag(L))) \
                - 0.5 * dx @ dx
 
-    ndims = 8
+    ndims = 2
     prior_mu = 2 * jnp.ones(ndims)
     prior_cov = jnp.diag(jnp.ones(ndims)) ** 2
 
@@ -32,7 +32,6 @@ def main():
     log_likelihood = lambda x, **kwargs: log_normal(x, data_mu, data_cov)
 
     print("True logZ={}".format(true_logZ))
-    print("True posterior m={}\nCov={}".format(post_mu, post_cov))
 
     prior_transform = PriorChain().push(MVNPrior('x', prior_mu, prior_cov))
 
@@ -43,16 +42,29 @@ def main():
         return jnp.outer(x, x)
 
     ns = NestedSampler(log_likelihood, prior_transform,
-                       marginalised=dict(x_mean=param_mean,
-                                         x_cov=param_covariance)
+                       # marginalised=dict(x_mean=param_mean,
+                       #                   x_cov=param_covariance),
+                       sampler_kwargs=dict(num_slices=20)
                        )
+
+    # Total
+    # run
+    # time: 38.78929797100136
+    # --------
+    # # likelihood evals: 28351177
+    # # samples: 70252
+    # # likelihood evals / sample: 403.6
+    # --------
+    # logZ = -10.09 + - 0.18
+    # ESS = 2885
+
     ns = jit(ns)
-    results = ns(random.PRNGKey(4525325), 0.001)
+    results = ns(random.PRNGKey(4525325))
     # run once to make sure it compiles
     results.efficiency.block_until_ready()
     t0 = default_timer()
     # run again and time it
-    results = ns(random.PRNGKey(4525325), 0.001)
+    results = ns(random.PRNGKey(4525325))
     results.efficiency.block_until_ready()
     run_time = default_timer() - t0
     print(f"Total run time: {run_time}")
@@ -64,8 +76,11 @@ def main():
 
     summary(results)
 
-    print(results.marginalised['x_mean'],
-          results.marginalised['x_cov'] - jnp.outer(results.marginalised['x_mean'], results.marginalised['x_mean']))
+    # print(f"True post mu {post_mu}",
+    #       f"estimate post mu {results.marginalised['x_mean']}",
+    #       f"True post cov {post_cov}",
+    #       f"estimate post cov {results.marginalised['x_cov'] - jnp.outer(results.marginalised['x_mean'], results.marginalised['x_mean'])}")
+
 
     plot_diagnostics(results)
     plot_cornerplot(results)

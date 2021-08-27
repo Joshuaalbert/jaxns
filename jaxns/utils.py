@@ -25,6 +25,12 @@ def random_ortho_matrix(key, n):
     Q = Q @ jnp.diag(jnp.sign(jnp.diag(R)))
     return Q
 
+def test_random_ortho_matrix():
+    M = random_ortho_matrix(random.PRNGKey(42), 5)
+    print(M.T@M, M@M.T)
+    print(jnp.linalg.norm(M,axis=0),
+          jnp.linalg.norm(M, axis=1))
+
 
 def dict_multimap(f, d, *args):
     """

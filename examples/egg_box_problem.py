@@ -22,7 +22,7 @@ def main():
     plt.show()
 
     ns = NestedSampler(log_likelihood, prior_chain, num_live_points=100*prior_chain.U_ndims)
-    results = jit(ns)(key=random.PRNGKey(42), termination_frac=0.01)
+    results = jit(ns)(key=random.PRNGKey(42))
 
     summary(results)
     plot_diagnostics(results)

@@ -38,8 +38,8 @@ def main(num_options=10, num_raters=1, tests_per_rater=10, rater_accuracy=1.):
     prior_chain = rank.prior_chain()
 
     ns = NestedSampler(loglikelihood=log_likelihood, prior_chain=prior_chain)
-    # results = jit(ns)(random.PRNGKey(32564), termination_frac=0.001)
-    # save_results(results, 'ranking_save.npz')
+    results = jit(ns)(random.PRNGKey(32564), termination_likelihood_frac=0.01)
+    save_results(results, 'ranking_save.npz')
     results = load_results('ranking_save.npz')
 
     summary(results)

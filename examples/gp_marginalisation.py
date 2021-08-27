@@ -70,7 +70,7 @@ def main(kernel):
                        prior_chain,
                        marginalised=dict(predict_f=predict_f,
                                          predict_fvar=predict_fvar))
-    results = jit(ns)(key=random.PRNGKey(42), termination_frac=0.01)
+    results = jit(ns)(key=random.PRNGKey(42), termination_evidence_frac=0.01)
 
     plt.scatter(X[:, 0], Y_obs, label='data')
     plt.plot(X[:, 0], Y, label='underlying')
