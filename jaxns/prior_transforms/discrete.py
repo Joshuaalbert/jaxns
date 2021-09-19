@@ -1,7 +1,8 @@
 from jax import numpy as jnp
+from jax.scipy.special import logsumexp
 from jax.lax import while_loop
 from jaxns.prior_transforms import (DeterministicTransformPrior, prior_docstring, Gumbel, get_shape, broadcast_dtypes, \
-                                    broadcast_shapes, UniformBase, HierarchicalPrior, ContinuousPrior)
+                                    UniformBase, HierarchicalPrior, UniformPrior)
 
 
 class PoissonPrior(HierarchicalPrior):
@@ -65,6 +66,73 @@ class PoissonPrior(HierarchicalPrior):
                                            (log_x, log_p, log_s))
         return jnp.exp(log_x).astype(jnp.int_)
 
+class CategoricalPrior(DeterministicTransformPrior):
+    @prior_docstring
+    def __init__(self, name, logits, tracked=True):
+        """
+        Categorical variable, which uses the GumbelMax reparametrisation to sample a discrete variable.
+
+        Args:
+            logits: the log-probability (unnormalised) of the outcomes.
+        """
+        logits = self._prepare_parameter(name, 'logits', logits)
+        shape = get_shape(logits)[:-1]
+        uniform = UniformPrior('_{}_uniform'.format(name), jnp.zeros(shape), jnp.ones(shape) , False)
+        def _transform(u, logits):
+            # normalise logits
+            logits -= logsumexp(logits, axis=-1, keepdims=True)
+            # we take the index which the uniform variable falls in in the cumulative mass array
+            # 1-d
+            # if len(logits.shape) == 1:
+            #     cumulative_mass = cumulative_logsumexp(logits)
+            #     return jnp.clip(jnp.searchsorted(cumulative_mass, jnp.log(u), side='right') - 1, 0, logits.shape[-1])
+            # else:
+            # logits [..., N]
+            log_u = jnp.log(u)
+            # parallel CDF sampling
+            def body(state):
+                #done [...]
+                #accumulant [...]
+                #i []
+                #output [...]
+                #u [...]
+                (_, accumulant, i, output) = state
+                new_accumulant = jnp.logaddexp(accumulant, logits[..., i]) #[...]
+                done = log_u < new_accumulant # [...]
+                output = jnp.where(done, output, i+1) # [...]
+                return (done, new_accumulant, i + 1, output)
+
+            loop_vars = (
+                jnp.zeros(logits.shape[:-1], dtype=jnp.bool_),
+                -jnp.inf * jnp.ones(logits.shape[:-1], dtype=u.dtype),
+                0,
+                jnp.zeros(logits.shape[:-1], dtype=jnp.int_)
+            )
+            (_, _, _, output) = while_loop(lambda state: ~jnp.all(state[0]),
+                              body,
+                              loop_vars)
+            return output
+
+        shape = get_shape(logits)[:-1]
+        super(CategoricalPrior, self).__init__(name, _transform, shape, uniform, logits, tracked=tracked,
+                                                     dtype=jnp.int_)
+
+
+class BernoulliPrior(CategoricalPrior):
+    @prior_docstring
+    def __init__(self, name, p, tracked=True):
+        """
+        Bernoulli distribution, using the GumbelMax trick.
+
+        Y ~ B[p]
+        Args:
+            p: prob of the event
+        """
+        p = self._prepare_parameter(name, 'p', p)
+        log_p = DeterministicTransformPrior('_log_{}'.format(p.name),
+                                            lambda p: jnp.stack([jnp.log(1. - p), jnp.log(p)], axis=-1),
+                                            get_shape(p) + (2,), p, tracked=False)
+        super(BernoulliPrior, self).__init__(name, log_p, tracked)
 
 class GumbelCategoricalPrior(DeterministicTransformPrior):
     @prior_docstring
