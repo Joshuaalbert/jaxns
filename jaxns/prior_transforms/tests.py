@@ -1,7 +1,8 @@
 from jax import numpy as jnp, vmap, random
+from jax._src.scipy.special import logsumexp
 
 from jaxns.prior_transforms import PriorChain, NormalPrior, UniformPrior, HalfLaplacePrior, \
-    ForcedIdentifiabilityPrior, DeltaPrior, GumbelBernoulliPrior, GumbelCategoricalPrior, PoissonPrior
+    ForcedIdentifiabilityPrior, DeltaPrior, GumbelBernoulliPrior, GumbelCategoricalPrior, PoissonPrior, CategoricalPrior
 
 
 def test_prior_chain():
@@ -121,3 +122,13 @@ def test_gh_20():
     prior_chain = PriorChain(prior_a, prior_b, prior_c, prior_d, prior_sigma)
 
     assert prior_chain.U_ndims == 5 #should be 5
+
+
+def test_CategoricalPrior():
+    from jax import random, vmap
+    logits = jnp.log(jnp.arange(4))
+    b = CategoricalPrior('b', logits, False)
+    prior_chain = b.prior_chain()
+    samples = vmap(lambda key:prior_chain(prior_chain.compactify_U(prior_chain.sample_U(key))))(random.split(random.PRNGKey(42), 100000))
+    freqs, _ = jnp.histogram(samples['b'].flatten(), bins =jnp.arange(5), density=True)
+    assert jnp.allclose(jnp.exp(logits - logsumexp(logits)), freqs, atol=1e-2)
