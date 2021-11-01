@@ -392,7 +392,7 @@ def chunked_pmap(f, *args, chunksize=None, use_vmap=False, per_device_unroll=Fal
         """
         Distributes the computation in queues which are computed with scan.
         Args:
-            *args: 
+            *args:
         """
 
         def body(state, args):
@@ -443,7 +443,7 @@ def estimate_map(samples, ESS=None):
         samples = samples.reshape([samples.shape[0], -1]).T
 
         def _single_dim(samples):
-            lower, upper = jnp.percentile(samples, [1, 99])
+            lower, upper = jnp.percentile(samples, jnp.array([1, 99]))
             if ESS is not None:
                 bins = jnp.linspace(lower, upper, int(np.sqrt(ESS)))
             else:
@@ -530,7 +530,7 @@ def summary(results):
             _print("{}: {} +- {} | {} / {} / {} | {} | {}".format(
                 name if ndims == 1 else "{}[{}]".format(name, dim),
                 _round(jnp.mean(_samples[:, dim])), _uncert,
-                *[_round(a) for a in jnp.percentile(_samples[:, dim], [10, 50, 90])],
+                *[_round(a) for a in jnp.percentile(_samples[:, dim], jnp.array([10, 50, 90]))],
                 _round(_map_point),
                 _round(_max_like_point)
             ))

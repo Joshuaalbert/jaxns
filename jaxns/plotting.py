@@ -93,7 +93,7 @@ def plot_cornerplot(results, vars=None, save_name=None):
             samples1_resampled = resample(rkey, samples1, log_weights, S=int(results.ESS))
             samples1_max_like = samples1[max_like_idx]
             samples1_map_point = samples1[map_idx]
-            binsx = jnp.linspace(*jnp.percentile(samples1_resampled, [0, 100]), 2 * nbins)
+            binsx = jnp.linspace(*jnp.percentile(samples1_resampled, jnp.array([0, 100])), 2 * nbins)
             dim2 = 0
             for key2 in vars:  # sorted(results.samples.keys()):
                 n2 = tuple_prod(results.samples[key2].shape[1:])
@@ -129,11 +129,11 @@ def plot_cornerplot(results, vars=None, save_name=None):
                         sample_mean = jnp.average(samples1, weights=weights)
                         sample_std = jnp.sqrt(jnp.average((samples1 - sample_mean) ** 2, weights=weights))
                         ax.set_title(
-                            r"${:.2f}_{{{:.2f}}}^{{{:.2f}}}$".format(*jnp.percentile(samples1_resampled, [50, 5, 95])) + \
+                            r"${:.2f}_{{{:.2f}}}^{{{:.2f}}}$".format(*jnp.percentile(samples1_resampled, jnp.array([50, 5, 95]))) + \
                             "\n" + r"${:.2f}\pm{:.2f}$".format(sample_mean, sample_std) + \
                             "\n" + r"MAP ${:.2f}$ | ML ${:.2f}$".format(samples1_map_point, samples1_max_like))
                         # ax.set_title(r"{}: ${:.2f}\pm{:.2f}$".format(title1, sample_mean, sample_std))
-                        # ax.text(0., 1., r"${:.2f}_{{{:.2f}}}^{{{:.2f}}}$".format(*jnp.percentile(samples1_resampled, [50, 5, 95])),
+                        # ax.text(0., 1., r"${:.2f}_{{{:.2f}}}^{{{:.2f}}}$".format(*jnp.percentile(samples1_resampled, jnp.array([50, 5, 95]))),
                         #      verticalalignment = 'top', horizontalalignment='left', transform = ax.transAxes,
                         #         bbox=dict(facecolor='grey', alpha=0.5))
 
@@ -166,7 +166,7 @@ def plot_cornerplot(results, vars=None, save_name=None):
                         ax.hist2d(samples2_resampled[:, 1], samples2_resampled[:, 0], bins=(nbins, nbins), density=True,
                                   cmap=plt.cm.bone_r)
                         # ax.scatter(samples2_resampled[:, 1], samples2_resampled[:, 0], marker='+', c='black', alpha=0.5)
-                        # binsy = jnp.linspace(*jnp.percentile(samples2_resampled[:, 1], [0, 100]), 2 * nbins)
+                        # binsy = jnp.linspace(*jnp.percentile(samples2_resampled[:, 1], jnp.array([0, 100])), 2 * nbins)
                         # X, Y = jnp.meshgrid(binsx, binsy, indexing='ij')
                         # ax.contour(kde2(jnp.stack([X.flatten(), Y.flatten()], axis=0)).reshape((2 * nbins, 2 * nbins)),
                         #            extent=(binsy.min(), binsy.max(),
