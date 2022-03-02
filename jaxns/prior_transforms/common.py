@@ -1,7 +1,7 @@
 from jax import numpy as jnp
 from jax.scipy.special import ndtri, gammaln
 
-from jaxns.prior_transforms.prior_chain import Prior, UniformBase, PriorBase, DiscreteBase
+from jaxns.prior_transforms.prior_chain import Prior, UniformBase, PriorBase
 from jaxns.prior_transforms.prior_utils import get_shape, prior_docstring, convert_to_array, broadcast_dtypes
 from jaxns.utils import broadcast_shapes, msqrt
 
@@ -17,17 +17,13 @@ class DeltaPrior(Prior):
             value: singular value to always return.
         """
         value = convert_to_array(value)
-        super(DeltaPrior, self).__init__(name, get_shape(value), [], tracked, PriorBase((0,), value.dtype))
         if isinstance(value, Prior):
             raise ValueError('value should be array-like, got {}'.format(type(value)))
         self.value = jnp.asarray(value)
+        super(DeltaPrior, self).__init__(name, [], tracked, PriorBase())
 
     def __repr__(self):
         return "DeltaPrior({})".format(self.value if self.value.size == 1 else "array<{}>".format(self.value.shape))
-
-    @property
-    def shape(self):
-        return self.value.shape
 
     def transform_U(self, U, **kwargs):
         """
@@ -69,31 +65,10 @@ class ContinuousPrior(HierarchicalPrior):
     def __init__(self, name, shape, parents, tracked, prior_base=None):
         """
         This is a general prior for continuous RVs that have an implemented bijective transform from the PriorBase.
-        In this case, the dimension of the prior_base is equal to the dimension codomain, and even the shapes are
-        assumed to be the same.
         """
         if prior_base is None:
             prior_base = UniformBase(shape, broadcast_dtypes(jnp.float_, *[p.dtype for p in parents]))
-        super(ContinuousPrior, self).__init__(name, shape, parents, tracked, prior_base)
-
-
-class DiscretePrior(HierarchicalPrior):
-    @prior_docstring
-    def __init__(self, name, shape, parents, tracked, num_outcomes=None, prior_base: DiscreteBase = None):
-        """
-        Represents a general prior for discrete RVs where the log-homogeneous measure is used to modulate the uniform
-        samples from the PriorBase. An exception are discrete RVs that use some non-bijective trick, e.g. the
-        CategoricalPrior which uses the Gumbel trick.
-
-        Args:
-            num_outcomes: int, number of discrete choices.
-        """
-        if prior_base is None:
-            if num_outcomes is None:
-                raise ValueError("Either prior_base or num_outcomes must be given.")
-            prior_base = DiscreteBase(num_outcomes, shape, jnp.int_)
-        super(DiscretePrior, self).__init__(name, shape, parents, tracked, prior_base)
-
+        super(ContinuousPrior, self).__init__(name, parents, tracked, prior_base)
 
 class LogNormalPrior(ContinuousPrior):
     @prior_docstring
@@ -330,5 +305,5 @@ class StudentT(ContinuousPrior):
         Transforms U to a range that covers the prior support.
         We use the homogeneous measure to do the rest.
         """
-        normal = jnp.tan(jnp.pi * (U - 0.5)) * sigma + mu
-        return normal
+        cauchy = jnp.tan(jnp.pi * (U - 0.5)) * sigma + mu
+        return cauchy

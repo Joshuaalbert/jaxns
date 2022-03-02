@@ -24,7 +24,7 @@ class DiagGaussianWalkPrior(ContinuousPrior):
         super(DiagGaussianWalkPrior, self).__init__(name, shape, [x0, omega], tracked)
 
     def transform_U(self, U, x0, omega, **kwargs):
-        return x0 + jnp.cumsum(ndtri(U), axis=0)
+        return x0 + omega*jnp.cumsum(ndtri(U), axis=0)
 
 
 class SymmetricUniformWalkPrior(ContinuousPrior):

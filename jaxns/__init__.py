@@ -1,4 +1,4 @@
-import os, sys
+import os
 import logging
 logging.basicConfig(format='%(levelname)s[%(asctime)s]: %(message)s', level=logging.INFO)
 
@@ -27,5 +27,5 @@ from jax.config import config
 #TODO: explore if we can turn this off, and ensure that logaddsum and similar works.
 config.update("jax_enable_x64", True)
 
-from jaxns.nested_sampling import NestedSampler
+from jaxns.nested_sampler.nested_sampling import NestedSampler
 from jaxns.plotting import plot_cornerplot,plot_diagnostics

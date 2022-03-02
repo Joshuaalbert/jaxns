@@ -10,7 +10,7 @@ class ForcedIdentifiabilityPrior(ContinuousPrior):
     @prior_docstring
     def __init__(self, name, n, low, high, tracked=True):
         """
-        Prior for a sequence of `num_options` random variables uniformly distributed on U[low, high] such that X[i,...] <= X[i+1,...].
+        Prior for a sequence of `n` random variables uniformly distributed on U[low, high] such that X[i,...] <= X[i+1,...].
         For broadcasting the resulting random variable is sorted on the first dimension elementwise.
 
         Args:
