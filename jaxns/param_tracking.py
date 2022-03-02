@@ -1,7 +1,9 @@
 from collections import namedtuple, OrderedDict
 from jax import numpy as jnp, tree_multimap
 from jax.lax import scan
-from jaxns.utils import dict_multimap, signed_logaddexp, tuple_prod
+from jax.flatten_util import ravel_pytree
+from jaxns.utils import dict_multimap, tuple_prod
+from jaxns.log_math import signed_logaddexp
 
 LogParam = namedtuple('LogParam', ['log_value'])
 SignedLogParam = namedtuple('SignedLogParam', ['log_abs_value', 'sign'])
@@ -10,82 +12,86 @@ ParamTrackingState = namedtuple("ParamTrackingState", ['f', 'f2', 'fX', 'X', 'X2
 
 class TrackedExpectation(object):
     def __init__(self,
-                 marginalised_funcs,
-                 marginalised_shapes,
                  *,
-                 state=None):
+                 marginalised_funcs=None,
+                 test_sample=None,
+                 dtype=None
+                 ):
         """
         Tracks marginalised functions including evidence and information gain.
-        Currently, the marginalisation expects the tracked expressions to all be of float dtype.
 
         Args:
-            marginalised_funcs: dict of callables(**priors_X)
-            marginalised_shapes: dict of shapes of results of each marginalised function.
-            state: internal state, if not given then initialises this.
+            state: ParamTrackingState or None
+            *
+            marginalised_funcs: dict of callable(**samples)
+            test_sample: dict of jnp.ndarray which are exmaple samples
+            dtype: dtype of log-likelihood or None which is jnp.float_
         """
+        if dtype is None:
+            self._dtype = jnp.float_
         self.State = ParamTrackingState
-        total_length = self.build_meta(marginalised_funcs, marginalised_shapes)
-        if state is not None:
-            self.state = state
-        else:
-            initial_f = SignedLogParam(-jnp.inf * jnp.ones(total_length), jnp.ones(total_length))
-            initial_f2 = initial_f
-            initial_fX = initial_f
-            initial_X = LogParam(jnp.zeros(()))
-            initial_X2 = initial_X
-            initial_w = LogParam(-jnp.inf)
-            initial_w2 = initial_w
-            initial_L_i1 = initial_w
-            initial_dw = initial_w
+        self.marginalised_funcs = marginalised_funcs
+        self.meta_funcs, example_meta = self.build_meta(test_sample, marginalised_funcs)
 
-            self.state = self.State(f=initial_f,
-                                    f2=initial_f2,
-                                    fX=initial_fX,
-                                    X=initial_X,
-                                    X2=initial_X2,
-                                    w=initial_w,
-                                    w2=initial_w2,
-                                    L_i1=initial_L_i1,
-                                    dw=initial_dw)
+        initial_f = SignedLogParam(-jnp.inf * jnp.ones_like(example_meta),
+                                   jnp.ones_like(example_meta))
+        initial_f2 = initial_f
+        initial_fX = initial_f
+        initial_X = LogParam(jnp.zeros((), self._dtype))
+        initial_X2 = initial_X
+        initial_w = LogParam(-jnp.inf*jnp.ones((), self._dtype))
+        initial_w2 = initial_w
+        initial_L_i1 = initial_w
+        initial_dw = initial_w
 
-    def build_meta(self, marginalised_funcs, marginalised_shapes):
-        # build initial flat vector and the method of storing them
-        self.meta = dict(funcs=[], start_idx=[], stop_idx=[], shape=[], names=[])
-        _funcs = []
-        _shapes = []
-        _names = []
-        _funcs.append(lambda posterior_sample, n_i, log_L_i: jnp.asarray(1.))  # evidence
-        _shapes.append(())
-        _names.append("static:Z")
-        _funcs.append(lambda posterior_sample, n_i, log_L_i: log_L_i)  # H
-        _shapes.append(())
-        _names.append("static:H")
-        if marginalised_shapes is not None:
-            def build_marg_func(func):
-                def marg_func(posterior_sample, n_i, log_L_i):
-                    return func(**posterior_sample)
+        self.state = self.State(f=initial_f,
+                                f2=initial_f2,
+                                fX=initial_fX,
+                                X=initial_X,
+                                X2=initial_X2,
+                                w=initial_w,
+                                w2=initial_w2,
+                                L_i1=initial_L_i1,
+                                dw=initial_dw)
+        self._dirty = True
 
-                return marg_func
+    def build_meta(self, test_sample, marginalised_funcs):
+        def build_marg_func(func):
+            def marg_func(posterior_sample, n_i, log_L_i):
+                return func(**posterior_sample)
+            return marg_func
 
-            ###
-            # marginalised functions
-            marg_keys = sorted(marginalised_funcs.keys())
-            assert marg_keys == sorted(marginalised_shapes.keys())
-            for key in marg_keys:
-                _funcs.append(build_marg_func(marginalised_funcs[key]))  # marginalised func
-                _shapes.append(marginalised_shapes[key])
-                _names.append("marg:{}".format(key))
-        # build meta
-        idx = 0
-        for func, shape, name in zip(_funcs, _shapes, _names):
-            self.meta['funcs'].append(func)
-            self.meta['start_idx'].append(idx)
-            self.meta['shape'].append(shape)
-            idx += tuple_prod(self.meta['shape'][-1])
-            self.meta['stop_idx'].append(idx)
-            self.meta['names'].append(name)
-        total_length = idx
-        return total_length
+        meta_funcs = dict()
+        for key in marginalised_funcs:
+            meta_funcs[key] = build_marg_func(marginalised_funcs[key])
+        meta_funcs["static:Z"] = lambda posterior_sample, n_i, log_L_i: jnp.ones((), self._dtype)
+        meta_funcs["static:H"] = lambda posterior_sample, n_i, log_L_i: log_L_i
+
+        meta_values = dict((k, f(test_sample, 1, jnp.zeros((), self._dtype))) for k,f in meta_funcs.items())
+        example_meta, self.unravel_func = ravel_pytree(meta_values)
+
+        return meta_funcs, example_meta
+
+    def lookup_meta(self, name):
+        """
+        Get an item from the unravelled state.
+
+        Args:
+            name: key to get
+
+        Returns: State with state replaced by specific item
+        """
+        if self._dirty:
+            self._meta = self.state._replace(
+            f=self.unravel_func(self.state.f),
+            f2=self.unravel_func(self.state.f2),
+            fX=self.unravel_func(self.state.fX)
+        )
+            self._dirty = False
+        return self._meta._replace(f=self._meta.f[name],
+                                   f2=self._meta.f2[name],
+                                   fX=self._meta.fX[name]
+                                  )
 
     @property
     def state(self):
@@ -93,107 +99,125 @@ class TrackedExpectation(object):
 
     @state.setter
     def state(self, state):
+        self._dirty = True  # need to unravel later, else already unravelled
         self._state = self.State(*state)
-
-    def lookup_meta(self, prefix, suffix=None):
-        if suffix is not None:
-            name = f"{prefix}:{suffix}"
-            if name not in self.meta['names']:
-                raise ValueError("{} not in names".format(name))
-            idx = self.meta['names'].index(name)
-            return (self.meta['start_idx'][idx], self.meta['stop_idx'][idx], self.meta['shape'][idx])
-        else:
-            res = []
-            for name in self.meta['names']:  # get all matching prefixes
-                if name.split(":")[0] == prefix:
-                    idx = self.meta['names'].index(name)
-                    res.append((name.split(":")[1], self.meta['start_idx'][idx], self.meta['stop_idx'][idx],
-                                self.meta['shape'][idx]))
-            return res
 
     def effective_sample_size(self):
         """Kish's ESS = [sum weights]^2 / [sum weights^2]
         """
         return jnp.exp(2. * self.state.w.log_value - self.state.w2.log_value)
 
+    @property
+    def enclosed_prior_mass_mean(self):
+        """
+        The current log(E[X])
+        """
+        return self.state.X.log_value
+
+    @property
+    def enclosed_prior_mass_variance(self):
+        """
+        The current log(Var[X])
+        Returns:
+
+        """
+        #jnp.log(jnp.exp(self.state.X2.log_value) - jnp.exp(self.state.X.log_value)**2)
+        return signed_logaddexp(self.state.X2.log_value, 1., 2.*self.state.X.log_value, -1.)
+
     def evidence_mean(self):
-        return self._log_mean(*self.lookup_meta('static', 'Z'), normalised=False)
+        return self._log_mean(*self.lookup_meta('static:Z'), normalised=False)
 
     def evidence_variance(self):
-        return self._log_variance(*self.lookup_meta('static', 'Z'), normalised=False)
+        return self._log_variance(*self.lookup_meta('static:Z'), normalised=False)
 
     def information_gain_mean(self):
-        return -self._linear_mean(*self.lookup_meta('static', 'H'), normalised=True) + self.evidence_mean()
+        return -self._linear_mean(*self.lookup_meta('static:H'), normalised=True) + self.evidence_mean()
 
     def information_gain_variance(self):
-        return self._linear_variance(*self.lookup_meta('static', 'H'), normalised=True) + self.evidence_variance()
+        return self._linear_variance(*self.lookup_meta('static:H'), normalised=True) + self.evidence_variance()
 
     def marg_mean(self):
         d = OrderedDict()
-        for key, start_idx, stop_idx, shape in self.lookup_meta("marg"):
-            d[key] = self._linear_mean(start_idx, stop_idx, shape, normalised=True)
+        for key in self.marginalised_funcs.keys():
+            d[key] = self._linear_mean(self.lookup_meta(key), normalised=True)
         return d
 
     def marg_variance(self):
         d = OrderedDict()
-        for key, start_idx, stop_idx, shape in self.lookup_meta("marg"):
-            d[key] = self._linear_variance(start_idx, stop_idx, shape, normalised=True)
+        for key in self.marginalised_funcs.keys:
+            d[key] = self._linear_variance(self.lookup_meta(key), normalised=True)
         return d
 
-    def _linear_mean(self, start_idx: int, stop_idx: int, shape, normalised: bool):
+    def _linear_mean(self, state:ParamTrackingState, normalised: bool):
         if normalised:
-            return jnp.reshape(self.state.f.sign[start_idx:stop_idx] * jnp.exp(
-                self.state.f.log_abs_value[start_idx: stop_idx] - self.state.w.log_value), shape)
+            return state.f.sign * jnp.exp(state.f.log_abs_value - state.w.log_value)
         else:
-            return jnp.reshape(
-                self.state.f.sign[start_idx:stop_idx] * jnp.exp(self.state.f.log_abs_value[start_idx:stop_idx]), shape)
+            return state.f.sign * jnp.exp(state.f.log_abs_value)
 
-    def _log_mean(self, start_idx: int, stop_idx: int, shape, normalised: bool):
+    def _log_mean(self, state: ParamTrackingState, normalised: bool):
         # lambda log_f, log_f2: (2. * log_f - 0.5 * log_f2) - self.w.log_value
         if normalised:
-            return jnp.reshape((2. * self.state.f.log_abs_value[start_idx:stop_idx] - 0.5 * self.state.f2.log_abs_value[
-                                                                                            start_idx:stop_idx]) - self.state.w.log_value,
-                               shape)
+            return (2. * state.f.log_abs_value - 0.5 * state.f2.log_abs_value) - state.w.log_value
         else:
-            return jnp.reshape(2. * self.state.f.log_abs_value[start_idx:stop_idx] - 0.5 * self.state.f2.log_abs_value[
-                                                                                           start_idx:stop_idx], shape)
+            return 2. * state.f.log_abs_value - 0.5 * state.f2.log_abs_value
 
-    def _linear_variance(self, start_idx: int, stop_idx: int, shape, normalised: bool):
+    def _linear_variance(self, state:ParamTrackingState, normalised: bool):
         if normalised:
             # lambda f, f2: (f2/ w - (f/w) ** 2)
-            t1, t1_sign = signed_logaddexp(self.state.f2.log_abs_value[start_idx:stop_idx] - self.state.w.log_value,
-                                           self.state.f2.sign[start_idx:stop_idx],
-                                           2. * (self.state.f.log_abs_value[start_idx:stop_idx] - self.state.w.log_value),
+            t1, t1_sign = signed_logaddexp(state.f2.log_abs_value - state.w.log_value,
+                                           state.f2.sign,
+                                           2. * (state.f.log_abs_value - state.w.log_value),
                                            -1.)
-            return jnp.reshape(t1_sign * jnp.exp(t1), shape)
+            return t1_sign * jnp.exp(t1)
         else:
             t1, t1_sign = signed_logaddexp(
-                self.state.f2.log_abs_value[start_idx:stop_idx],
-                self.state.f2.sign[start_idx:stop_idx],
-                2. * self.state.f.log_abs_value[start_idx:stop_idx],
+                state.f2.log_abs_value,
+                state.f2.sign,
+                2. * state.f.log_abs_value,
                 -1.)
-            return jnp.reshape(t1_sign * jnp.exp(t1), shape)
+            return t1_sign * jnp.exp(t1)
 
-    def _log_variance(self, start_idx: int, stop_idx: int, shape, normalised: bool):
+    def _log_variance(self, state: ParamTrackingState, normalised: bool):
         if normalised:
             # (log_f2 - 2. * log_f) - self.w.log_value
-            return jnp.reshape(self.state.f2.log_abs_value[start_idx:stop_idx] - 2. * self.state.f.log_abs_value[
-                                                                                      start_idx:stop_idx] - self.state.w.log_value,
-                               shape)
+            return state.f2.log_abs_value - 2. * state.f.log_abs_value - state.w.log_value
         else:
-            return jnp.reshape(
-                self.state.f2.log_abs_value[start_idx:stop_idx] - 2. * self.state.f.log_abs_value[start_idx:stop_idx],
-                shape)
+            return state.f2.log_abs_value - 2. * state.f.log_abs_value
 
     def compute_log_f_alpha(self, posterior_sample, n_i, log_L_i) -> SignedLogParam:
+        """
+        Computes the log(f) for each func in meta.
+
+        Each meta func is callable(sample : dict, n : int, log_L : float) -> ndarray
+
+        Args:
+            posterior_sample: dict of (key, ndarray)
+            n_i: int
+            log_L_i: float
+
+        Returns:
+            SignedLogParam with the value of log(flatten(f))
+        """
         # use meta data to compute
-        res = []
-        for name, func in zip(self.meta['names'], self.meta['funcs']):
-            res.append(func(posterior_sample, n_i, log_L_i).flatten())
-        res = jnp.concatenate(res)
+        res = dict((k, f(posterior_sample, n_i, log_L_i)) for k, f in self.meta_funcs.items())
+        example_meta, _ = ravel_pytree(res)
         return SignedLogParam(jnp.log(jnp.abs(res)), jnp.sign(res))
 
     def update_from_live_points(self, live_points, log_L_live, is_satisfying=None, num_likelihood_evals=None):
+        """
+        Update tracked state from set of points.
+
+        Args:
+            live_points: dict of (key, array) where the key is RV name, and array of RV sampled at that point, first
+            dimension indexing sample index.
+            log_L_live: array of log-likelihood associated with each live-point.
+            is_satisfying: array of whether each sample in live-points can be pulled from.
+            num_likelihood_evals: array of num-likelihood evals required for each sample in live-points.
+
+        Returns:
+            List of (n, log_L_min, self.state.X.log_value, self.state.dw.log_value, n_evals, x_min)
+            where each is an array of appropriate type.
+        """
         if is_satisfying is None:
             is_satisfying = jnp.ones(log_L_live.shape, dtype=jnp.bool_)
         if num_likelihood_evals is None:
@@ -221,6 +245,16 @@ class TrackedExpectation(object):
         return results
 
     def update(self, posterior_sample_i, n_i, log_L_i):
+        """
+        Update tracked state.
+
+        Args:
+            posterior_sample_i: dict, sample of dead point.
+            n_i: number of live-points sampled from.
+            log_L_i: log-likelihood of dead point
+        """
+
+        #TODO: propagate Var(X) with product of RV method to keep positive definite. And E[X]. Can reconstruct E[X^2] easily.
         L_i1 = self.state.L_i1
         f_i1 = self.state.f
         f2_i1 = self.state.f2
@@ -297,5 +331,3 @@ class TrackedExpectation(object):
                                 w2=_maybe_replace(replace,w2_i,w2_i1),
                                 L_i1=_maybe_replace(replace, LogParam(log_L_i), L_i1),
                                 dw=LogParam(log_dw_i))
-
-

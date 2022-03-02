@@ -26,9 +26,6 @@ class GMMDiagPrior(ContinuousPrior):
         sigma = self._prepare_parameter(name, 'sigma', sigma)
 
         shape = broadcast_shapes(get_shape(mu), get_shape(sigma))[len(get_shape(logits)):]
-
-        # replaces mu and gamma when parents injected
-
         super(GMMDiagPrior, self).__init__(name, shape, [select_component, mu, sigma], tracked)
 
 

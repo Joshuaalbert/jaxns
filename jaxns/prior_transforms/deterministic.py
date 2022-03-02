@@ -8,7 +8,7 @@ from jaxns.prior_transforms.prior_utils import get_shape, prior_docstring
 
 class DeterministicTransformPrior(HierarchicalPrior):
     @prior_docstring
-    def __init__(self, name, transform, to_shape, *params, tracked=True, dtype=jnp.float_):
+    def __init__(self, name, transform, *params, tracked=True):
         """
         Transform a set of Prior RVs, deterministically.
 
@@ -18,9 +18,8 @@ class DeterministicTransformPrior(HierarchicalPrior):
             *params: list of Priors or arrays that transform accepts.
         """
         params = [self._prepare_parameter(name, 'param{}'.format(i), params[i]) for i in range(len(params))]
-        self._to_shape = to_shape
         self._transform = transform
-        super(DeterministicTransformPrior, self).__init__(name, to_shape, params, tracked, PriorBase((0,), dtype), dtype=dtype)
+        super(DeterministicTransformPrior, self).__init__(name, params, tracked, PriorBase())
 
     def transform_U(self, U, *params, **kwargs):
         del U
@@ -44,5 +43,4 @@ class GaussianProcessKernelPrior(DeterministicTransformPrior):
         def _transform(X, *gp_params):
             return kernel(X, X, *gp_params) + 1e-6 * jnp.eye(X.shape[0])
 
-        to_shape = (get_shape(X)[0], get_shape(X)[0])
-        super(GaussianProcessKernelPrior, self).__init__(name, _transform, to_shape, *gp_params, tracked=tracked)
+        super(GaussianProcessKernelPrior, self).__init__(name, _transform, *gp_params, tracked=tracked)

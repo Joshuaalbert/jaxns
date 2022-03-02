@@ -30,9 +30,6 @@ def broadcast_dtypes(*dtypes):
         output = max(output, levels.index(dtype))
     return levels[output]
 
-def test_broadcast_dtypes():
-    assert broadcast_dtypes(jnp.array(True).dtype, jnp.int32) == jnp.int32
-
 
 def convert_to_array(v):
     """

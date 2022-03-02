@@ -1,10 +1,14 @@
 from jax import random, vmap, numpy as jnp, tree_map, local_device_count, devices as get_devices, pmap, jit, device_get, \
-    tree_multimap, soft_pmap
+    tree_multimap
 from timeit import default_timer
 from jax.lax import scan, while_loop
 from jax.scipy.special import logsumexp
 import logging
 import numpy as np
+import inspect
+
+from jaxns.log_math import cumulative_logsumexp, LogSpace
+from jaxns.types import NestedSamplerResults
 
 logger = logging.getLogger(__name__)
 
@@ -25,10 +29,11 @@ def random_ortho_matrix(key, n):
     Q = Q @ jnp.diag(jnp.sign(jnp.diag(R)))
     return Q
 
+
 def test_random_ortho_matrix():
     M = random_ortho_matrix(random.PRNGKey(42), 5)
-    print(M.T@M, M@M.T)
-    print(jnp.linalg.norm(M,axis=0),
+    print(M.T @ M, M @ M.T)
+    print(jnp.linalg.norm(M, axis=0),
           jnp.linalg.norm(M, axis=1))
 
 
@@ -166,61 +171,6 @@ def msqrt(A):
     return L
 
 
-def is_complex(a):
-    return a.dtype in [jnp.complex64, jnp.complex128]
-
-
-def logaddexp(x1, x2):
-    """
-    Equivalent to logaddexp but supporting complex arguments.
-
-    see np.logaddexp
-    """
-    if is_complex(x1) or is_complex(x2):
-        select1 = x1.real > x2.real
-        amax = jnp.where(select1, x1, x2)
-        delta = jnp.where(select1, x2 - x1, x1 - x2)
-        return jnp.where(jnp.isnan(delta),
-                         x1 + x2,  # NaNs or infinities of the same sign.
-                         amax + jnp.log1p(jnp.exp(delta)))
-    else:
-        return jnp.logaddexp(x1, x2)
-
-
-def signed_logaddexp(log_abs_val1, sign1, log_abs_val2, sign2):
-    """
-    Equivalent of logaddexp but for signed quantities too.
-    Broadcasting supported.
-
-    Args:
-        log_abs_val1: log(|val1|)
-        sign1: sign(val1)
-        log_abs_val2: log(|val2|)
-        sign2: sign(val2)
-
-    Returns:
-        (log(|val1+val2|), sign(val1+val2))
-    """
-    amax = jnp.maximum(log_abs_val1, log_abs_val2)
-    signmax = jnp.where(log_abs_val1 > log_abs_val2, sign1, sign2)
-    delta = -jnp.abs(log_abs_val2 - log_abs_val1)  # nan iff inf - inf
-    sign = sign1 * sign2
-    return jnp.where(jnp.isnan(delta),
-                     log_abs_val1 + log_abs_val2,  # NaNs or infinities of the same sign.
-                     amax + jnp.log1p(sign * jnp.exp(delta))), signmax
-
-
-def cumulative_logsumexp(u, reverse=False, unroll=2):
-    def body(accumulant, u):
-        new_accumulant = jnp.logaddexp(accumulant, u)
-        return new_accumulant, new_accumulant
-
-    _, v = scan(body,
-                -jnp.inf * jnp.ones(u.shape[1:], dtype=u.dtype),
-                u, reverse=reverse, unroll=unroll)
-    return v
-
-
 def resample(key, samples, log_weights, S=None):
     """
     resample the samples with weights which are interpreted as log_probabilities.
@@ -238,9 +188,8 @@ def resample(key, samples, log_weights, S=None):
 
     # use cumulative_logsumexp because some log_weights could be really small
     log_p_cuml = cumulative_logsumexp(log_weights)
-    p_cuml = jnp.exp(log_p_cuml)
-    r = p_cuml[-1] * (1 - random.uniform(key, (S,)))
-    idx = jnp.searchsorted(p_cuml, r)
+    log_r = log_p_cuml[-1] + jnp.log(1. - random.uniform(key, (S,)))
+    idx = jnp.searchsorted(log_p_cuml, log_r)
     return dict_multimap(lambda s: s[idx, ...], samples)
 
 
@@ -295,9 +244,10 @@ def marginalise_dynamic(key, samples, log_weights, ESS, fun):
     def body(state):
         (key, i, marginalised) = state
         key, resample_key = random.split(key, 2)
-        _samples = tree_map(lambda v: v[0], resample(resample_key, samples, log_weights, S=1))
-        marginalised = tree_multimap(lambda x, y: x + y, marginalised, fun(**_samples))
-        return (key, i + 1., marginalised)
+        _samples = resample(resample_key, samples, log_weights, S=1)
+        _sample = tree_map(lambda v: v[0], _samples)
+        marginalised = tree_map(lambda x, y: x + y, marginalised, fun(**_sample))
+        return (key, i + jnp.ones_like(i), marginalised)
 
     test_output = fun(**tree_map(lambda v: v[0], samples))
     (_, count, marginalised) = while_loop(lambda state: state[1] < ESS,
@@ -357,7 +307,7 @@ def _debug_chunked_pmap(f, *args, chunksize=None):
     return result
 
 
-def chunked_pmap(f, *args, chunksize=None, use_vmap=False, per_device_unroll=False, debug=False):
+def chunked_pmap(f, *args, chunksize=None, use_vmap=False, per_device_unroll=False, debug=False, batch_size=None):
     """
     Calls pmap on chunks of moderate work to be distributed over devices.
     Automatically handle non-dividing chunksizes, by adding filler elements.
@@ -373,7 +323,10 @@ def chunked_pmap(f, *args, chunksize=None, use_vmap=False, per_device_unroll=Fal
         chunksize = local_device_count()
     if chunksize > local_device_count():
         raise ValueError(f"blocksize should be <= {local_device_count()}.")
-    N = args[0].shape[0]
+    if batch_size is None:
+        N = args[0].shape[0]
+    else:
+        N = batch_size
     remainder = N % chunksize
     if (remainder != 0) and (N > chunksize):
         # only pad if not a zero remainder
@@ -382,7 +335,7 @@ def chunked_pmap(f, *args, chunksize=None, use_vmap=False, per_device_unroll=Fal
             args = tree_map(lambda arg: jnp.concatenate([arg, arg[:extra]], axis=0), args)
         else:
             args = tree_map(lambda arg: jnp.concatenate([arg] + [arg[-1:]] * extra, axis=0), args)
-        N = args[0].shape[0]
+        N = batch_size + extra
     args = tree_map(lambda arg: jnp.reshape(arg, (chunksize, N // chunksize) + arg.shape[1:]), args)
     T = N // chunksize
     logger.info(f"Distributing {N} over {chunksize} devices in queues of length {T}.")
@@ -438,6 +391,7 @@ def estimate_map(samples, ESS=None):
 
     Returns: dict of samples at MAP-point.
     """
+
     def _get_map(samples):
         shape = samples.shape[1:]
         samples = samples.reshape([samples.shape[0], -1]).T
@@ -456,6 +410,7 @@ def estimate_map(samples, ESS=None):
 
     return tree_map(_get_map, samples)
 
+
 def maximum_a_posteriori_point(results):
     """
     Get the MAP point of a nested sampling result.
@@ -467,11 +422,32 @@ def maximum_a_posteriori_point(results):
     Returns: dict of samples at MAP-point.
     """
 
-    map_idx = jnp.argmax(results.log_L_samples + results.log_p)
+    map_idx = jnp.argmax(results.log_dp_mean)
     map_points = tree_map(lambda x: x[map_idx], results.samples)
     return map_points
 
-def summary(results):
+
+def _bit_mask(int_mask, width=8):
+    """
+    Convert an integer mask into a bit-mask. I.e. convert an integer into list of left-starting bits.
+
+    Examples:
+
+    1 -> [1,0,0,0,0,0,0,0]
+    2 -> [0,1,0,0,0,0,0,0]
+    3 -> [1,1,0,0,0,0,0,0]
+
+    Args:
+        int_mask: int
+        width: number of output bits
+
+    Returns:
+        List of bits from left
+    """
+    return list(map(int, '{:0{size}b}'.format(int_mask, size=width)))[::-1]
+
+
+def summary(results: NestedSamplerResults) -> str:
     """
     Gives a summary of the results of a nested sampling run.
 
@@ -492,19 +468,34 @@ def summary(results):
             return float(v)
 
     _print("--------")
-    _print("# likelihood evals: {}".format(results.num_likelihood_evaluations))
-    _print("# samples: {}".format(results.num_samples))
-    _print("# likelihood evals / sample: {:.1f}".format(results.num_likelihood_evaluations / results.num_samples))
+    termination_bit_mask = _bit_mask(results.termination_reason, width=7)
+    _print("Termination Conditions:")
+    for bit, condition in zip(termination_bit_mask, ['Reached max samples',
+                                                     'Absolute evidence error low enough',
+                                                     'Likelihood contour reached',
+                                                     'Small remaining evidence',
+                                                     'Likelihood peak reached',
+                                                     'Reached ESS',
+                                                     "Reached max num threads"]):
+        if bit == 1:
+            _print(condition)
     _print("--------")
-    _print("logZ={} +- {}".format(_round(results.logZ, results.logZerr),
-                                  _round(results.logZerr, results.logZerr)))
+    _print("# likelihood evals: {}".format(results.total_num_likelihood_evaluations))
+    _print("# samples: {}".format(results.total_num_samples))
+    _print("# likelihood evals / sample: {:.1f}".format(
+        results.total_num_likelihood_evaluations / results.total_num_samples))
+    _print("--------")
+    _print("logZ={} +- {}".format(_round(results.log_Z_mean, results.log_Z_uncert),
+                                  _round(results.log_Z_uncert, results.log_Z_uncert)))
     # _print("H={} +- {}".format(
-    #     _round(results.H, results.H_err), _round(results.H_err, results.H_err)))
+    #     _round(results.H_mean, results.H_uncert), _round(results.H_uncert, results.H_uncert)))
+    _print("H={}".format(
+        _round(results.H_mean, results.H_mean)))
     _print("ESS={}".format(int(results.ESS)))
 
-    max_like_idx = jnp.argmax(results.log_L_samples[:results.num_samples])
+    max_like_idx = jnp.argmax(results.log_L_samples[:results.total_num_samples])
     max_like_points = tree_map(lambda x: x[max_like_idx], results.samples)
-    samples = resample(random.PRNGKey(23426), results.samples, results.log_p, S=int(results.ESS))
+    samples = resample(random.PRNGKey(23426), results.samples, results.log_dp_mean, S=int(results.ESS))
 
     map_points = maximum_a_posteriori_point(results)
 
@@ -530,7 +521,7 @@ def summary(results):
             _print("{}: {} +- {} | {} / {} / {} | {} | {}".format(
                 name if ndims == 1 else "{}[{}]".format(name, dim),
                 _round(jnp.mean(_samples[:, dim])), _uncert,
-                *[_round(a) for a in jnp.percentile(_samples[:, dim], [10, 50, 90])],
+                *[_round(a) for a in jnp.percentile(_samples[:, dim], jnp.asarray([10, 50, 90]))],
                 _round(_map_point),
                 _round(_max_like_point)
             ))
@@ -575,3 +566,114 @@ def latin_hypercube(key, num_samples, num_dim, cube_scale):
     samples += random.uniform(key1, shape=samples.shape, minval=0.5 - cube_scale / 2., maxval=0.5 + cube_scale / 2.)
     samples /= num_samples
     return samples
+
+
+def density_estimation(xstar, x, alpha=1. / 3., order=1):
+    assert len(x.shape) == 2
+
+    N = x.shape[0]
+    m = int(pow(N, 1. - alpha))
+    s = N // m
+    N = m * s
+    x = x[:N]
+
+    def single_density(xstar):
+        dist = jnp.linalg.norm(x - xstar, ord=order, axis=-1)  # N
+        dist = jnp.reshape(dist, (s, m))  # s,m
+        min_dist = jnp.min(dist, axis=0)  # m
+        avg_dist = jnp.mean(min_dist)  # scalar
+        return 0.5 / ((1. + s) * avg_dist)
+
+    return vmap(single_density)(xstar)
+
+
+def test_density_estimation():
+    np.random.seed(42)
+    x = jnp.asarray(np.random.standard_gamma(1., 100))[:, None]
+    xstar = jnp.linspace(0., 20., 1000)[:, None]
+    import pylab as plt
+
+    plt.plot(xstar, density_estimation(xstar, x))
+    plt.hist(np.random.standard_gamma(1., 10000), bins=np.linspace(0, 20, 100), density=True, alpha=0.5)
+    plt.hist(x[:, 0], bins=np.linspace(0., 20, 100), density=True, alpha=0.5)
+    plt.show()
+
+
+def prepare_func_args(f):
+    """
+    Takes a callable(a,b,...,z=Z) and prepares it into callable(**kwargs), such that only
+    a,b,...,z are taken fro **kwargs and the rest ignored.
+
+    Args:
+        f: callable(a,b,...,z=Z)
+
+    Returns:
+        callable(**kwargs)
+    """
+    (args, varargs, varkw, defaults, kwonlyargs, kwonlydefaults, annotations) = \
+        inspect.getfullargspec(f)
+
+    if defaults is None:  # already f is callable(**kwargs)
+        return f
+
+    def _f(**x):
+        _args = []
+        for i, arg in enumerate(args):
+            if arg in x.keys():
+                _args.append(x[arg])
+            else:
+                has_defaults = i >= (len(args) - len(defaults))
+                if has_defaults:
+                    j = i - (len(args) - len(defaults))
+                    _args.append(defaults[j])
+                else:
+                    raise ValueError(f"Value for {arg} missing from inputs {list(x.keys())}, and defaults.")
+        return f(*_args)
+
+    return _f
+
+
+def linear_to_log_stats(log_f_mean, *, log_f2_mean=None, log_f_var=None):
+    """
+    Converts normal to log-normal stats.
+    Args:
+        log_f_mean: log(E(f))
+        log_f2_mean: log(E(f**2))
+        log_f_var: log(Var(f))
+    Returns:
+        E(log(f))
+        Var(log(f))
+    """
+    f_mean = LogSpace(log_f_mean)
+    if log_f_var is not None:
+        f_var = LogSpace(log_f_var)
+        f2_mean = f_var + f_mean.square()
+    else:
+        f2_mean = LogSpace(log_f2_mean)
+    mu = f_mean.square() / f2_mean.sqrt()
+    sigma2 = f2_mean / f_mean.square()
+    return mu.log_abs_val, sigma2.log_abs_val
+
+
+def evidence_posterior_samples(key, num_live_points_per_sample, log_L_samples, S: int = 100):
+    n_i = num_live_points_per_sample
+    L = LogSpace(jnp.asarray([-jnp.inf], log_L_samples.dtype)).concatenate(
+        LogSpace(log_L_samples))
+    L_mid = (L[:-1] + L[1:]) * LogSpace(jnp.log(0.5))
+
+    def evidence_chain(key):
+        # T ~ Beta(n[i],1) <==> T ~ Kumaraswamy(n[i],1)
+        log_T = jnp.log(random.uniform(key, n_i.shape, dtype=L_mid.dtype)) / n_i
+        # log_T = jnp.log(random.beta(key, state.sample_collection.num_live_points, 1.))
+        T = LogSpace(log_T)
+        X = LogSpace(jnp.asarray([0.], log_L_samples.dtype)).concatenate(T).cumprod()
+        dX = (X[:-1] - X[1:]).abs()
+        dZ = dX * L_mid
+        Z = dZ.sum()
+        # ESS = Z.square() / dZ.square().sum()
+        return Z.log_abs_val
+
+    chain_key, key = random.split(key, 2)
+    log_Z_chains = vmap(evidence_chain)(random.split(chain_key, S))
+    Z_chains = LogSpace(log_Z_chains)
+    return Z_chains.log_abs_val
