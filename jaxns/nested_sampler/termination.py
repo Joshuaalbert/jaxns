@@ -9,8 +9,8 @@ def termination_condition(state: NestedSamplerState, *,
                           termination_likelihood_frac=None,
                           termination_ess=None,
                           termination_likelihood_contour=None,
-                          terminate_evidence_uncert=None,
-                          terminate_max_num_threads=None):
+                          termination_evidence_uncert=None,
+                          termination_max_num_threads=None):
     """
     Decide whether to terminate the sampler.
 
@@ -33,9 +33,7 @@ def termination_condition(state: NestedSamplerState, *,
         termination_likelihood_frac: float, what is the minimum likelihood improvement.
         termination_ess: float, what is the desired ESS.
         termination_likelihood_contour: float, what is the contour to reach.
-        terminate_on_plateau: bool, terminate when reservoir has single likelihood.
-        terminate_evidence_uncert: float, threshold of StdDev(log(Z))
-        terminate_evidence_uncert_frac: float, threshold of |StdDev(log(Z))/E(log(Z))|
+        termination_evidence_uncert: float, threshold of StdDev(log(Z))
 
     Returns:
         done: bool
@@ -50,10 +48,10 @@ def termination_condition(state: NestedSamplerState, *,
                                        jnp.asarray(2 ** 0, jnp.int_),
                                        jnp.asarray(0, jnp.int_))
 
-    if terminate_evidence_uncert is not None:
+    if termination_evidence_uncert is not None:
         log_Z_mean, log_Z_var = linear_to_log_stats(log_f_mean=state.evidence_calculation.log_Z_mean,
                                                     log_f2_mean=state.evidence_calculation.log_Z2_mean)
-        evidence_uncert_low_enough = log_Z_var <= jnp.square(terminate_evidence_uncert)
+        evidence_uncert_low_enough = log_Z_var <= jnp.square(termination_evidence_uncert)
         done = done | evidence_uncert_low_enough
         termination_condition += jnp.where(evidence_uncert_low_enough,
                                            jnp.asarray(2 ** 1, jnp.int_),
@@ -93,8 +91,8 @@ def termination_condition(state: NestedSamplerState, *,
         termination_condition += jnp.where(ess_reached,
                                            jnp.asarray(2 ** 5, jnp.int_),
                                            jnp.asarray(0, jnp.int_))
-    if terminate_max_num_threads is not None:
-        max_threads_reached = state.thread_idx >= terminate_max_num_threads
+    if termination_max_num_threads is not None:
+        max_threads_reached = state.thread_idx >= termination_max_num_threads
         done = done | max_threads_reached
         termination_condition += jnp.where(max_threads_reached,
                                            jnp.asarray(2 ** 6, jnp.int_),

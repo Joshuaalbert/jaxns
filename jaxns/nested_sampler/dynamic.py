@@ -373,8 +373,8 @@ def _dynamic_run(prior_chain: PriorChain,
                  sampler_kwargs: Dict[str, Any],
                  termination_ess=None,
                  termination_likelihood_contour=None,
-                 terminate_evidence_uncert=None,
-                 terminate_max_num_threads=None,
+                 termination_evidence_uncert=None,
+                 termination_max_num_threads=None,
                  f: jnp.ndarray = None,
                  G: jnp.ndarray = None):
     if f is None:
@@ -425,8 +425,8 @@ def _dynamic_run(prior_chain: PriorChain,
         done, termination_reason = termination_condition(merged_state,
                                                          termination_ess=termination_ess,
                                                          termination_likelihood_contour=termination_likelihood_contour,
-                                                         terminate_evidence_uncert=terminate_evidence_uncert,
-                                                         terminate_max_num_threads=terminate_max_num_threads)
+                                                         termination_evidence_uncert=termination_evidence_uncert,
+                                                         termination_max_num_threads=termination_max_num_threads)
 
         merged_state = merged_state._replace(done=done, termination_reason=termination_reason)
         return merged_state
