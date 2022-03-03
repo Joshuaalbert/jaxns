@@ -1,5 +1,5 @@
 from jax import numpy as jnp
-from jax.scipy.special import ndtri, gammaln
+from jax.scipy.special import ndtri
 
 from jaxns.prior_transforms.prior import PriorBase, UniformBase, Prior, prior_docstring, get_shape
 from jaxns.internals.linalg import msqrt
@@ -236,74 +236,3 @@ class CauchyPrior(ContinuousPrior):
         return jnp.tan(jnp.pi * (U - 0.5)) * gamma + mu
 
 
-class GammaPrior(ContinuousPrior):
-    @prior_docstring
-    def __init__(self, name, k, theta, tracked=True):
-        """
-        Gamma distribution
-        Args:
-            k: shape
-            theta: scale
-        """
-        k = self._prepare_parameter(name, 'k', k)
-        theta = self._prepare_parameter(name, 'theta', theta)
-        shape = broadcast_shapes(get_shape(k), get_shape(theta))
-        super(GammaPrior, self).__init__(name, shape, [k, theta], tracked)
-
-    def log_homogeneous_measure(self, X, k, theta):
-        """
-        Gamma probability density function divided by homogeneous measure which is the exponential here since it has the same domain.
-        """
-        mean = k * theta
-        stddev = jnp.sqrt(k * theta ** 2)
-        b = mean + 2. * stddev
-        log_prob_gamma = -gammaln(k) - k * jnp.log(theta) + (k - 1.) * jnp.log(X) - X / theta
-        log_prob_exponential = -jnp.log(b) - X / b
-        return jnp.sum(log_prob_gamma - log_prob_exponential)
-
-    def transform_U(self, U, k, theta, **kwargs):
-        """
-        Transforms U to a range that covers the prior support.
-        We use the homogeneous measure to do the rest.
-        """
-        mean = k * theta
-        stddev = jnp.sqrt(k * theta ** 2)
-        b = mean + 2. * stddev
-        exponential = - b * jnp.sign(0.5 * U) * jnp.log(1. - 2. * jnp.abs(0.5 * U))
-        return exponential
-
-
-class StudentT(ContinuousPrior):
-    @prior_docstring
-    def __init__(self, name, nu, mu, sigma, tracked=True):
-        """
-        Student-T distribution
-        Args:
-            nu: degree
-            mu: mean
-            sigma: scale
-        """
-        nu = self._prepare_parameter(name, 'nu', nu)
-        mu = self._prepare_parameter(name, 'mu', mu)
-        sigma = self._prepare_parameter(name, 'sigma', sigma)
-        shape = broadcast_shapes(broadcast_shapes(get_shape(nu), get_shape(mu)),
-                                 get_shape(sigma))
-        super(StudentT, self).__init__(name, shape, [nu, mu, sigma], tracked)
-
-    def log_homogeneous_measure(self, X, nu, mu, sigma):
-        """
-        Gamma probability density function divided by homogeneous measure which is the exponential here since it has the same domain.
-        """
-        log_prob_student_t = gammaln(0.5 * (nu + 1.)) - gammaln(0.5 * nu) - 0.5 * jnp.log(jnp.pi * nu) - jnp.log(sigma) \
-                             + (-0.5 * (nu + 1.)) * jnp.log(1. + (X - mu) ** 2 / sigma ** 2 / nu)
-        log_prob_cauchy = gammaln(1.) - gammaln(0.5) - 0.5 * jnp.log(jnp.pi) - jnp.log(sigma) \
-                          - jnp.log(1. + (X - mu) ** 2 / sigma ** 2)
-        return jnp.sum(log_prob_student_t - log_prob_cauchy)
-
-    def transform_U(self, U, nu, mu, sigma, **kwargs):
-        """
-        Transforms U to a range that covers the prior support.
-        We use the homogeneous measure to do the rest.
-        """
-        cauchy = jnp.tan(jnp.pi * (U - 0.5)) * sigma + mu
-        return cauchy

@@ -7,7 +7,8 @@ from jax import numpy as jnp
 
 from jaxns.utils import resample, _bit_mask
 from jaxns.nested_sampler.nested_sampling import NestedSampler
-from jaxns.prior_transforms import PriorChain, MVNPrior, GammaPrior
+from jaxns.prior_transforms import PriorChain, MVNPrior
+from jaxns.prior_transforms.no_quantile import GammaPrior
 
 
 def test_resample():
