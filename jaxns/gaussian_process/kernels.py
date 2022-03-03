@@ -1,5 +1,5 @@
 from jaxns.gaussian_process.utils import product_log
-from jaxns.utils import squared_norm
+from jaxns.internals.linalg import squared_norm
 import jax.numpy as jnp
 
 
@@ -29,6 +29,16 @@ class StationaryKernel(Kernel):
         return l * jnp.sqrt(2. * jnp.log(sigma ** 2 / p))
 
     def inverse_l(self, p, x, sigma):
+        """
+        Find l where K(x/l,0) == p
+        Args:
+            p:
+            l:
+            sigma:
+
+        Returns:
+
+        """
         return x / jnp.sqrt(2. * jnp.log(sigma ** 2 / p))
 
     def act(self, r2, sigma, *args):

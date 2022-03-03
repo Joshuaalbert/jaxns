@@ -1,8 +1,8 @@
 from jax import numpy as jnp
 from jax.scipy.special import logsumexp
 from jax.lax import while_loop
-from jaxns.prior_transforms import (DeterministicTransformPrior, prior_docstring, Gumbel, get_shape, broadcast_dtypes, \
-                                    UniformBase, HierarchicalPrior, UniformPrior)
+from jaxns.prior_transforms import (DeterministicTransformPrior, prior_docstring, Gumbel, get_shape, UniformBase, HierarchicalPrior, UniformPrior)
+from jaxns.internals.shapes import broadcast_dtypes
 
 
 class PoissonPrior(HierarchicalPrior):
@@ -17,8 +17,7 @@ class PoissonPrior(HierarchicalPrior):
         lamda = self._prepare_parameter(name, 'lamda', lamda)
         prior_base = UniformBase(get_shape(lamda), broadcast_dtypes(jnp.float_, lamda.dtype))
 
-        super(PoissonPrior, self).__init__(name, get_shape(lamda), [lamda], tracked=tracked, prior_base=prior_base,
-                                           dtype=jnp.int_)
+        super(PoissonPrior, self).__init__(name, [lamda], tracked=tracked, prior_base=prior_base)
 
     def transform_U(self, U, lamda, **kwargs):
         """
@@ -113,9 +112,7 @@ class CategoricalPrior(DeterministicTransformPrior):
                               loop_vars)
             return output
 
-        shape = get_shape(logits)[:-1]
-        super(CategoricalPrior, self).__init__(name, _transform, shape, uniform, logits, tracked=tracked,
-                                                     dtype=jnp.int_)
+        super(CategoricalPrior, self).__init__(name, _transform, uniform, logits, tracked=tracked)
 
 
 class BernoulliPrior(CategoricalPrior):
@@ -131,7 +128,7 @@ class BernoulliPrior(CategoricalPrior):
         p = self._prepare_parameter(name, 'p', p)
         log_p = DeterministicTransformPrior('_log_{}'.format(p.name),
                                             lambda p: jnp.stack([jnp.log(1. - p), jnp.log(p)], axis=-1),
-                                            get_shape(p) + (2,), p, tracked=False)
+                                            p, tracked=False)
         super(BernoulliPrior, self).__init__(name, log_p, tracked)
 
 class GumbelCategoricalPrior(DeterministicTransformPrior):
@@ -149,9 +146,7 @@ class GumbelCategoricalPrior(DeterministicTransformPrior):
         def _transform(gumbel, logits):
             return jnp.argmax(logits + gumbel, axis=-1)
 
-        shape = get_shape(logits)[:-1]
-        super(GumbelCategoricalPrior, self).__init__(name, _transform, shape, gumbel, logits, tracked=tracked,
-                                                     dtype=jnp.int_)
+        super(GumbelCategoricalPrior, self).__init__(name, _transform, gumbel, logits, tracked=tracked)
 
 
 class GumbelBernoulliPrior(GumbelCategoricalPrior):
@@ -167,5 +162,5 @@ class GumbelBernoulliPrior(GumbelCategoricalPrior):
         p = self._prepare_parameter(name, 'p', p)
         log_p = DeterministicTransformPrior('_log_{}'.format(p.name),
                                             lambda p: jnp.stack([jnp.log(1. - p), jnp.log(p)], axis=-1),
-                                            get_shape(p) + (2,), p, tracked=False)
+                                            p, tracked=False)
         super(GumbelBernoulliPrior, self).__init__(name, log_p, tracked)
