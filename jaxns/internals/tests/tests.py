@@ -10,6 +10,8 @@ from jaxns.internals.maps import prepare_func_args
 
 
 def test_prepare_func_args():
+    import inspect
+
     def f(a, b=1):
         return a + b
 
@@ -18,6 +20,15 @@ def test_prepare_func_args():
     assert g(**kwargs) == f(kwargs['a'], b=kwargs['b'])
     kwargs = dict(a=1, c=3)
     assert g(**kwargs) == f(kwargs['a'])
+
+    def f(a, b=2, *, c, d=4):
+        return a + b + c + d
+
+    g = prepare_func_args(f)
+    kwargs = dict(a=5, b=6, c=7, d=8)
+    assert g(**kwargs) == f(kwargs['a'], b=kwargs['b'], c=kwargs['c'], d=kwargs['d'])
+    kwargs = dict(a=9, c=11)
+    assert g(**kwargs) == f(kwargs['a'], c=kwargs['c'])
 
 
 def test_random_ortho_matrix():

@@ -6,7 +6,7 @@ from jax.scipy.special import logsumexp
 import logging
 import numpy as np
 
-from jaxns.internals.maps import dict_multimap
+from jaxns.internals.maps import dict_multimap, prepare_func_args
 from jaxns.internals.log_semiring import cumulative_logsumexp, LogSpace
 from jaxns.prior_transforms import PriorChain
 from jaxns.types import NestedSamplerResults
@@ -49,6 +49,7 @@ def marginalise_static(key, samples, log_weights, ESS, fun):
 
     Returns: expectation over resampled samples.
     """
+    fun = prepare_func_args(fun)
     samples = resample(key, samples, log_weights, S=ESS)
     marginalised = tree_map(lambda marg: jnp.nanmean(marg, axis=0), vmap(lambda d: fun(**d))(samples))
     return marginalised
@@ -67,6 +68,7 @@ def marginalise_dynamic(key, samples, log_weights, ESS, fun):
 
     Returns: expectation over resampled samples.
     """
+    fun = prepare_func_args(fun)
 
     def body(state):
         (key, i, marginalised) = state
@@ -391,6 +393,7 @@ def analytic_log_evidence(prior_chain: PriorChain, log_likelihood, S:int=60):
     Returns:
         log(Z)
     """
+    log_likelihood = prepare_func_args(log_likelihood)
     if not prior_chain.built:
         prior_chain.build()
 

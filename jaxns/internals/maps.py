@@ -1,4 +1,7 @@
 import inspect
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def dict_multimap(f, d, *args):
@@ -36,21 +39,35 @@ def prepare_func_args(f):
     (args, varargs, varkw, defaults, kwonlyargs, kwonlydefaults, annotations) = \
         inspect.getfullargspec(f)
 
-    if defaults is None:  # already f is callable(**kwargs)
-        return f
 
-    def _f(**x):
-        _args = []
-        for i, arg in enumerate(args):
-            if arg in x.keys():
-                _args.append(x[arg])
-            else:
-                has_defaults = i >= (len(args) - len(defaults))
-                if has_defaults:
-                    j = i - (len(args) - len(defaults))
-                    _args.append(defaults[j])
-                else:
-                    raise ValueError(f"Value for {arg} missing from inputs {list(x.keys())}, and defaults.")
-        return f(*_args)
+    if varargs is not None:
+        logger.warning(f"Function {f.__name__} has *varargs parameter, and is being dropped.")
+    if varkw is not None:
+        logger.warning(f"Function {f.__name__} has **varkw parameter, and is being dropped.")
 
+    expected_keys = set(args + kwonlyargs)
+
+
+    if defaults is None: # no defaults
+        num_defaults = 0
+        defaults = ()
+    else:
+        num_defaults = len(defaults)
+
+    num_non_default = len(args) - num_defaults
+
+    def _f(**kwargs):
+        # Replace any defaults with kwargs
+        args_with_values = dict(zip(args[num_non_default:], defaults))
+        if kwonlydefaults is not None:
+            args_with_values.update(kwonlydefaults)
+        args_with_values.update(kwargs)
+        args_with_values = dict(filter(lambda item: item[0] in expected_keys, args_with_values.items()))
+
+        for key in expected_keys:
+            if key not in args_with_values:
+                raise KeyError(f"Missing argument {key}")
+
+        return f(**args_with_values)
+    _f.__doc__ = f.__doc__
     return _f
