@@ -1,4 +1,4 @@
-from jaxns.gaussian_process.utils import product_log
+from jaxns.modules.gaussian_process.utils import product_log
 from jaxns.internals.linalg import squared_norm
 import jax.numpy as jnp
 
