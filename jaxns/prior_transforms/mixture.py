@@ -2,8 +2,9 @@ from jax.scipy.special import ndtri
 from jax import numpy as jnp
 from jaxns.prior_transforms.common import ContinuousPrior
 from jaxns.prior_transforms.discrete import GumbelCategoricalPrior
-from jaxns.prior_transforms.prior_utils import get_shape, prior_docstring, check_broadbast_shapes
-from jaxns.utils import broadcast_shapes
+from jaxns.prior_transforms import prior_docstring, get_shape
+from jaxns.internals.shapes import broadcast_shapes
+
 
 class GMMDiagPrior(ContinuousPrior):
     """

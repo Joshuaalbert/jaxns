@@ -3,7 +3,7 @@ import jax.numpy as jnp
 from jax.lax import while_loop, scan
 from jax import random, tree_map
 
-from jaxns.log_math import LogSpace
+from jaxns.internals.log_semiring import LogSpace
 from jaxns.nested_sampler.dynamic import _dynamic_run
 from jaxns.nested_sampler.reservoir_refiller import ReservoirRefiller
 from jaxns.nested_sampler.static import _static_run
@@ -11,10 +11,11 @@ from jaxns.prior_transforms import PriorChain
 from jaxns.types import Reservoir, SampleCollection, NestedSamplerState, \
     NestedSamplerResults, EvidenceCalculation, ThreadStats
 
-from jaxns.utils import dict_multimap, prepare_func_args, linear_to_log_stats
+from jaxns.internals.stats import linear_to_log_stats
+from jaxns.internals.maps import dict_multimap, prepare_func_args
 import logging
 
-from typing import Dict, Any, Optional, NamedTuple, Tuple
+from typing import Dict, Any, Optional, NamedTuple, Tuple, Union
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +46,7 @@ class NestedSampler(object):
                  num_parallel_samplers: int = 1,
                  max_num_live_points: int = None,
                  sampler_kwargs=None,
+                 collect_samples: bool = True,
                  max_samples=1e5,
                  dynamic: bool = False,
                  dtype=jnp.float_):
@@ -94,6 +96,7 @@ class NestedSampler(object):
             sampler_kwargs['num_parallel_samplers'] = int(sampler_kwargs.get('num_parallel_samplers', 1))
         else:
             raise ValueError(f"sampler_name {sampler_name} is invalid.")
+        self.collect_samples = bool(collect_samples)
         self.sampler_kwargs = sampler_kwargs
         self._dtype = dtype
         self.dynamic = bool(dynamic)
@@ -270,7 +273,7 @@ class NestedSampler(object):
                      dynamic_kwargs=None, resize_max_samples: int = None,
                      terminate_max_num_threads=None,
                      *, return_state: bool = False) \
-            -> Optional[NestedSamplerResults, Tuple[NestedSamplerResults, NestedSamplerState]]:
+            -> Union[NestedSamplerResults, Tuple[NestedSamplerResults, NestedSamplerState]]:
         """
         Incrementally improve the nested sampling result, according to a specific goal.
 
@@ -396,10 +399,10 @@ class NestedSampler(object):
             f = jnp.clip(jnp.asarray(dynamic_kwargs.get('f', 0.9), self.dtype), 0., 1.)
             G = jnp.clip(jnp.asarray(dynamic_kwargs.get('G', 0.), self.dtype), 0., 1.)
             if num_live_points is None:
-                num_live_points = self.prior_chain.U_ndims * 5
+                num_live_points = self.prior_chain.U_ndims * 20
             num_live_points = jnp.asarray(num_live_points, self.dtype)
             if delta_num_live_points is None:
-                delta_num_live_points = self.prior_chain.U_ndims * 5
+                delta_num_live_points = self.prior_chain.U_ndims * 10
             delta_num_live_points = jnp.asarray(delta_num_live_points, self.dtype)
         else:
             f = None

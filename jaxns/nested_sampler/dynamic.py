@@ -1,16 +1,15 @@
 from typing import Callable, Dict, Any, Tuple
 
 from jax.lax import while_loop, dynamic_update_slice
-from jax import numpy as jnp, tree_map, random, vmap
+from jax import numpy as jnp, tree_map, random
 
-from jaxns.log_math import LogSpace
+from jaxns.internals.log_semiring import LogSpace
 from jaxns.nested_sampler.evidence_calculation import _update_evidence_calculation
 from jaxns.nested_sampler.reservoir_refiller import ReservoirRefiller
 from jaxns.prior_transforms import PriorChain
 from jaxns.types import NestedSamplerState, SampleCollection, EvidenceCalculation, Reservoir, ThreadStats
 from jaxns.nested_sampler.termination import termination_condition
-from jaxns.utils import linear_to_log_stats
-
+from jaxns.internals.stats import linear_to_log_stats
 
 
 def normalise_log_space(x: LogSpace):

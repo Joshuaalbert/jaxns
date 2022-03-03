@@ -3,7 +3,7 @@ from typing import Tuple
 from jax.lax import while_loop, dynamic_update_slice
 from jax import numpy as jnp, tree_map
 
-from jaxns.log_math import LogSpace
+from jaxns.internals.log_semiring import LogSpace
 from jaxns.nested_sampler.evidence_calculation import _update_evidence_calculation
 from jaxns.nested_sampler.reservoir_refiller import ReservoirRefiller
 from jaxns.types import NestedSamplerState, SampleCollection

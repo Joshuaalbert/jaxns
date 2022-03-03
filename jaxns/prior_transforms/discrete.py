@@ -1,8 +1,8 @@
 from jax import numpy as jnp
 from jax.scipy.special import logsumexp
 from jax.lax import while_loop
-from jaxns.prior_transforms import (DeterministicTransformPrior, prior_docstring, Gumbel, get_shape, broadcast_dtypes, \
-                                    UniformBase, HierarchicalPrior, UniformPrior)
+from jaxns.prior_transforms import (DeterministicTransformPrior, prior_docstring, Gumbel, get_shape, UniformBase, HierarchicalPrior, UniformPrior)
+from jaxns.internals.shapes import broadcast_dtypes
 
 
 class PoissonPrior(HierarchicalPrior):

@@ -1,7 +1,7 @@
-from jax import numpy as jnp, random, jit, vmap
+from jax import numpy as jnp, random, jit
 from jax.scipy.special import gammaln
-from jaxns.nested_sampling import NestedSampler, save_results, load_results
-from jaxns.prior_transforms import UniformPrior, PriorChain, NormalPrior, GammaPrior
+from jaxns.nested_sampler.nested_sampling import NestedSampler
+from jaxns.prior_transforms import PriorChain, GammaPrior
 from jaxns.plotting import plot_diagnostics, plot_cornerplot
 from jaxns.utils import summary, resample
 import numpy as np
@@ -23,8 +23,11 @@ def main(num_samples):
     true_post_k = prior_k + jnp.sum(samples)
     true_post_theta = prior_theta / (num_samples * prior_theta + 1.)
 
+    true_post_mean_gamma = true_post_theta * true_post_k
+
     print(f"True posterior k = {true_post_k}")
     print(f"True posterior theta = {true_post_theta}")
+    print(f"True posterior gamma = {true_post_mean_gamma}")
 
     def log_likelihood(gamma, **kwargs):
         """
@@ -35,25 +38,25 @@ def main(num_samples):
     true_logZ = log_likelihood(1.) + log_gamma_prob(1., prior_k, prior_theta) - log_gamma_prob(1., true_post_k, true_post_theta)
     print(f"True Evidence = {true_logZ}")
 
-    gamma = GammaPrior('gamma', prior_k, prior_theta)
-    prior_chain = gamma.prior_chain()
+    with PriorChain() as prior_chain:
+        GammaPrior('gamma', prior_k, prior_theta)
 
     ns = NestedSampler(loglikelihood=log_likelihood,
                        prior_chain=prior_chain,
-                       num_live_points=100,
-                       reservoir_size=4,
-                       num_parallel_samplers=4)
+                       dynamic=True,
+                       sampler_kwargs=dict(midpoint_shrink=False))
 
     f = jit(ns)
 
-    results = f(random.PRNGKey(3452345), termination_evidence_frac=0.001)
-
+    results = f(random.PRNGKey(3452345), terminate_evidence_uncert=1e-2, terminate_max_num_threads=20,
+                dynamic_kwargs=dict(f=0.7, G=0.))
+    print(results.thread_stats)
     summary(results)
 
     plot_diagnostics(results)
     plot_cornerplot(results)
 
-    samples = resample(random.PRNGKey(43083245),results.samples, results.log_p, S=int(results.ESS))
+    samples = resample(random.PRNGKey(43083245), results.samples, results.log_dp_mean, S=int(results.ESS))
 
     plt.hist(samples['gamma'], bins='auto', ec='blue', alpha=0.5, density=True, fc='none')
 
@@ -65,4 +68,4 @@ def main(num_samples):
 
 
 if __name__ == '__main__':
-    main(num_samples=1)
+    main(num_samples=10)

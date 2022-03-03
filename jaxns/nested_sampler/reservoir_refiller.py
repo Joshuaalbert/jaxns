@@ -2,7 +2,7 @@ from typing import Callable, Dict, Any
 
 from jax import numpy as jnp, random
 
-from jaxns.parallel_sampling import _parallel_sampling
+from jaxns.likelihood_samplers.parallel_slice_sampling import _parallel_sampling
 from jaxns.prior_transforms import PriorChain
 from jaxns.types import NestedSamplerState
 

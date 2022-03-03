@@ -3,7 +3,7 @@ from typing import NamedTuple
 from jax import numpy as jnp, tree_map
 from jax.lax import dynamic_update_slice, while_loop
 
-from jaxns.log_math import LogSpace
+from jaxns.internals.log_semiring import LogSpace
 from jaxns.types import NestedSamplerState, SampleCollection, EvidenceCalculation
 
 

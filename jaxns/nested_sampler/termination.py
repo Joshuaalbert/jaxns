@@ -1,8 +1,8 @@
 from jax import numpy as jnp
 
 from jaxns.types import NestedSamplerState
-from jaxns.utils import linear_to_log_stats
-from jaxns.log_math import LogSpace
+from jaxns.internals.stats import linear_to_log_stats
+from jaxns.internals.log_semiring import LogSpace
 
 def termination_condition(state: NestedSamplerState, *,
                           termination_evidence_frac=None,
@@ -86,8 +86,8 @@ def termination_condition(state: NestedSamplerState, *,
                                            jnp.asarray(0, jnp.int_))
     if termination_ess is not None:
         # Kish's ESS = [sum weights]^2 / [sum weights^2]
-        ess = LogSpace(state.sample_collection.log_dZ_mean).sum().square() \
-              / LogSpace(state.sample_collection.log_dZ_mean).square().sum()
+        ess = LogSpace(state.evidence_calculation.log_Z_mean).square() \
+              / LogSpace(state.evidence_calculation.log_dZ2_mean)
         ess_reached = ess.log_abs_val >= jnp.log(termination_ess)
         done = done | ess_reached
         termination_condition += jnp.where(ess_reached,
