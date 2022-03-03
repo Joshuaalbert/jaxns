@@ -5,8 +5,10 @@ from matplotlib.animation import FuncAnimation
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 from jaxns.types import NestedSamplerResults
-from jaxns.log_math import cumulative_logsumexp
-from jaxns.utils import tuple_prod, resample, maximum_a_posteriori_point
+from jaxns.internals.log_semiring import cumulative_logsumexp
+from jaxns.utils import resample
+from jaxns.internals.shapes import tuple_prod
+
 
 def plot_diagnostics(results: NestedSamplerResults, save_name=None):
     """

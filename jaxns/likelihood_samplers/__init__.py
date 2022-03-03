@@ -1,4 +1,2 @@
-from .slice import slice_sampling, init_slice_sampler_state
 from .multi_ellipsoid import multi_ellipsoid_sampler, init_multi_ellipsoid_sampler_state
-from .discrete import sample_discrete_subspace, init_discrete_sampler_state
 from .common import SamplingResults

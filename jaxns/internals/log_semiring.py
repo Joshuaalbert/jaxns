@@ -1,8 +1,7 @@
 from jax import numpy as jnp
-from jax._src.lax.control_flow import scan
+from jax.lax import scan
 from jax.scipy.special import logsumexp
 from jaxns.types import SignedLog
-from typing import Union
 
 
 def logaddexp(x1, x2):

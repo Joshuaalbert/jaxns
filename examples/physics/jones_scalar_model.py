@@ -1,4 +1,4 @@
-from jaxns.nested_sampling import NestedSampler
+from jaxns.nested_sampler.nested_sampling import NestedSampler
 from jaxns.plotting import plot_diagnostics, plot_cornerplot
 from jaxns.utils import summary
 from jaxns.prior_transforms import UniformPrior, PriorChain, HalfLaplacePrior, CauchyPrior
@@ -41,40 +41,38 @@ def generate_data(key, uncert):
     phase_obs = jnp.arctan2(Y_obs[..., freqs.size:], Y_obs[..., :freqs.size])
     return Y_obs, phase_obs, freqs
 
-
 def log_normal(x, mean, scale):
     dx = (x - mean) / scale
     return -0.5 * jnp.log(2. * jnp.pi) - jnp.log(scale)  - 0.5 * dx * dx
 
 @jit
-def solve_with_clock(key, freqs, Y_obs):
+def solve_with_clock(key, freqs, phase_obs):
     def log_likelihood(tec, const, clock, uncert, **kwargs):
         phase = tec * (TEC_CONV / freqs) + const + clock * (CLOCK_CONV * freqs)# + cubic * (CUBIC_TERM / freqs**3)
-        Y = jnp.concatenate([jnp.cos(phase), jnp.sin(phase)], axis=-1)
-        logL = log_normal(Y, Y_obs, uncert)
+        logL = log_normal(wrap(wrap(phase) - wrap(phase_obs)), 0., uncert)
         return jnp.sum(logL)
 
-    prior_chain = PriorChain(CauchyPrior('tec', 0., 100.),
-                             UniformPrior('const', -jnp.pi, jnp.pi),
-                             UniformPrior('clock', -2., 2.),
-                             # CauchyPrior('cubic', 0., 0.5),
-                             HalfLaplacePrior('uncert', 0.5))
+    with PriorChain() as prior_chain:
+        CauchyPrior('tec', 0., 100.)
+        UniformPrior('const', -jnp.pi, jnp.pi)
+        UniformPrior('clock', -2., 2.)
+        # CauchyPrior('cubic', 0., 0.5),
+        HalfLaplacePrior('uncert', 0.5)
 
     #logZ=78.16 +- 0.075 with cubic
     #logZ=78.253 +- 0.084 without cubic
-    ns = NestedSampler(log_likelihood, prior_chain,
-                       num_live_points=prior_chain.U_ndims*500)
+    ns = NestedSampler(log_likelihood, prior_chain)
 
-    results = ns(key)
+    results = ns(key, num_live_points=prior_chain.U_ndims*100)
 
     return results
 
 
 def run(key):
     key,data_key = random.split(key)
-    Y_obs, phase_obs, freqs = generate_data(data_key, 0.05)
+    Y_obs, phase_obs, freqs = generate_data(data_key, 0.5)
 
-    results = solve_with_clock(key, freqs, Y_obs)
+    results = solve_with_clock(key, freqs, phase_obs)
     summary(results)
     plot_diagnostics(results)
     plot_cornerplot(results)

@@ -1,9 +1,10 @@
 from jax import numpy as jnp, vmap, random
-from jax._src.scipy.special import logsumexp
+from jax.scipy.special import logsumexp
 
 from jaxns.prior_transforms import PriorChain, NormalPrior, UniformPrior, HalfLaplacePrior, \
     ForcedIdentifiabilityPrior, DeltaPrior, GumbelBernoulliPrior, GumbelCategoricalPrior, BernoulliPrior, \
-    CategoricalPrior, PoissonPrior, broadcast_dtypes
+    CategoricalPrior, PoissonPrior
+from jaxns.prior_transforms.prior_chain import iterative_topological_sort
 
 
 def test_prior_chain():
@@ -67,7 +68,6 @@ def test_half_laplace():
 
 
 def test_poisson():
-    from jax import disable_jit
     with PriorChain() as p:
         x = PoissonPrior('x', 1000.)
     p.build()
@@ -123,5 +123,15 @@ def test_CategoricalPrior():
     assert jnp.allclose(jnp.exp(logits - logsumexp(logits)), freqs, atol=1e-2)
 
 
-def test_broadcast_dtypes():
-    assert broadcast_dtypes(jnp.array(True).dtype, jnp.int32) == jnp.int32
+def test_iterative_topological_sort():
+    dsk = {'a': [],
+           'b': ['a'],
+           'c': ['a', 'b']}
+    assert iterative_topological_sort(dsk, ['a', 'b', 'c']) == ['c', 'b', 'a']
+    assert iterative_topological_sort(dsk) == ['c', 'b', 'a']
+    dsk = {'a': [],
+           'b': ['a', 'd'],
+           'c': ['a', 'b']}
+    # print(iterative_topological_sort(dsk, ['a', 'b', 'c']))
+    assert iterative_topological_sort(dsk, ['a', 'b', 'c']) == ['c', 'b', 'a', 'd']
+    assert iterative_topological_sort(dsk) == ['c', 'b', 'a', 'd']

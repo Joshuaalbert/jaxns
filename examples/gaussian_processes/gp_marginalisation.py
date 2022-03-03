@@ -1,7 +1,8 @@
-from jaxns.nested_sampling import NestedSampler
+from jaxns.nested_sampler.nested_sampling import NestedSampler
 from jaxns.prior_transforms import PriorChain, UniformPrior, GaussianProcessKernelPrior
 from jaxns.plotting import plot_cornerplot, plot_diagnostics
 from jaxns.gaussian_process.kernels import RBF, M12, M32
+from jaxns.utils import marginalise_dynamic, summary
 from jax.scipy.linalg import solve_triangular
 from jax import random, jit
 from jax import numpy as jnp
@@ -51,40 +52,49 @@ def main(kernel):
         mu = jnp.zeros_like(Y_obs)
         return log_normal(Y_obs, mu, K + data_cov)
 
-    def predict_f(K, uncert, **kwargs):
+    def predict_f(uncert, l, sigma):
+        K = kernel(X, X, l, sigma)
         data_cov = jnp.square(uncert) * jnp.eye(X.shape[0])
         mu = jnp.zeros_like(Y_obs)
         return mu + K @ jnp.linalg.solve(K + data_cov, Y_obs)
 
-    def predict_fvar(K, uncert, **kwargs):
+    def predict_fvar(uncert, l, sigma):
+        K = kernel(X, X, l, sigma)
         data_cov = jnp.square(uncert) * jnp.eye(X.shape[0])
         mu = jnp.zeros_like(Y_obs)
         return jnp.diag(K - K @ jnp.linalg.solve(K + data_cov, K))
 
-    l = UniformPrior('l', 0., 2.)
-    uncert = UniformPrior('uncert', 0., 2.)
-    sigma = UniformPrior('sigma', 0., 2.)
-    cov = GaussianProcessKernelPrior('K', kernel, X, l, sigma)
-    prior_chain = PriorChain().push(uncert).push(cov)
+    with PriorChain() as prior_chain:
+        l = UniformPrior('l', 0., 2.)
+        uncert = UniformPrior('uncert', 0., 2.)
+        sigma = UniformPrior('sigma', 0., 2.)
+        cov = GaussianProcessKernelPrior('K', kernel, X, l, sigma)
+
     ns = NestedSampler(log_likelihood,
                        prior_chain,
-                       marginalised=dict(predict_f=predict_f,
-                                         predict_fvar=predict_fvar))
-    results = jit(ns)(key=random.PRNGKey(42), termination_evidence_frac=0.01)
+                       num_live_points=20)
+    results = jit(ns)(key=random.PRNGKey(42))
+
+    predict_f = marginalise_dynamic(random.PRNGKey(42), results.samples,results.log_dp_mean,
+                                                  results.ESS, predict_f)
+
+    predict_fvar = marginalise_dynamic(random.PRNGKey(42), results.samples, results.log_dp_mean,
+                                    results.ESS, predict_fvar)
 
     plt.scatter(X[:, 0], Y_obs, label='data')
     plt.plot(X[:, 0], Y, label='underlying')
-    plt.plot(X[:, 0], results.marginalised['predict_f'], label='marginalised')
-    plt.plot(X[:, 0], results.marginalised['predict_f'] + jnp.sqrt(results.marginalised['predict_fvar']), ls='dotted',
+    plt.plot(X[:, 0], predict_f, label='marginalised')
+    plt.plot(X[:, 0], predict_f + jnp.sqrt(predict_fvar), ls='dotted',
              c='black')
-    plt.plot(X[:, 0], results.marginalised['predict_f'] - jnp.sqrt(results.marginalised['predict_fvar']), ls='dotted',
+    plt.plot(X[:, 0], predict_f - jnp.sqrt(predict_fvar), ls='dotted',
              c='black')
     plt.title("Kernel: {}".format(kernel.__class__.__name__))
     plt.legend()
     plt.show()
+    summary(results)
     plot_diagnostics(results)
     plot_cornerplot(results)
-    return results.logZ, results.logZerr
+    return results.log_Z_mean, results.log_Z_uncert
 
 
 if __name__ == '__main__':

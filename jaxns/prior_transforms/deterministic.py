@@ -2,8 +2,7 @@ from jax import numpy as jnp
 
 from jaxns.gaussian_process.kernels import Kernel
 from jaxns.prior_transforms.common import HierarchicalPrior
-from jaxns.prior_transforms.prior_chain import PriorBase
-from jaxns.prior_transforms.prior_utils import get_shape, prior_docstring
+from jaxns.prior_transforms import prior_docstring, PriorBase
 
 
 class DeterministicTransformPrior(HierarchicalPrior):

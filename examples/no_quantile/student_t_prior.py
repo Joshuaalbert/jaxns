@@ -1,7 +1,6 @@
-from jax import numpy as jnp, random, jit, vmap
-from jax.scipy.special import gammaln
-from jaxns.nested_sampling import NestedSampler, save_results, load_results
-from jaxns.prior_transforms import UniformPrior, PriorChain, NormalPrior, StudentT
+from jax import random
+from jaxns.nested_sampler.nested_sampling import NestedSampler
+from jaxns.prior_transforms import StudentT, PriorChain
 from jaxns.plotting import plot_diagnostics, plot_cornerplot
 from jaxns.utils import summary, resample
 import numpy as np
@@ -17,18 +16,17 @@ def main():
         """
         return 0.
 
-    x = StudentT('x', true_nu, true_mu, true_sigma)
-    prior_chain = x.prior_chain()
+    with PriorChain() as prior_chain:
+        StudentT('x', true_nu, true_mu, true_sigma)
     ns = NestedSampler(loglikelihood=log_likelihood,
-                       prior_chain=prior_chain,
-                       num_live_points=1000)
+                       prior_chain=prior_chain)
 
     results = ns(random.PRNGKey(32564))
     summary(results)
     plot_diagnostics(results)
     plot_cornerplot(results)
 
-    samples = resample(random.PRNGKey(43083245),results.samples, results.log_p, S=int(results.ESS))
+    samples = resample(random.PRNGKey(43083245), results.samples, results.log_dp_mean, S=int(results.ESS))
 
     plt.hist(samples['x'], bins='auto', ec='blue', alpha=0.5, density=True, fc='none')
 

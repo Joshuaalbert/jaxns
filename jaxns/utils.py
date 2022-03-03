@@ -5,170 +5,13 @@ from jax.lax import scan, while_loop
 from jax.scipy.special import logsumexp
 import logging
 import numpy as np
-import inspect
 
-from jaxns.log_math import cumulative_logsumexp, LogSpace
+from jaxns.internals.maps import dict_multimap
+from jaxns.internals.log_semiring import cumulative_logsumexp, LogSpace
+from jaxns.prior_transforms import PriorChain
 from jaxns.types import NestedSamplerResults
 
 logger = logging.getLogger(__name__)
-
-
-def random_ortho_matrix(key, n):
-    """
-    Samples a random orthonormal num_parent,num_parent matrix from Stiefels manifold.
-    From https://stackoverflow.com/a/38430739
-
-    Args:
-        key: PRNG seed
-        n: Size of matrix, draws from O(num_options) group.
-
-    Returns: random [num_options,num_options] matrix with determinant = +-1
-    """
-    H = random.normal(key, shape=(n, n))
-    Q, R = jnp.linalg.qr(H)
-    Q = Q @ jnp.diag(jnp.sign(jnp.diag(R)))
-    return Q
-
-
-def test_random_ortho_matrix():
-    M = random_ortho_matrix(random.PRNGKey(42), 5)
-    print(M.T @ M, M @ M.T)
-    print(jnp.linalg.norm(M, axis=0),
-          jnp.linalg.norm(M, axis=1))
-
-
-def dict_multimap(f, d, *args):
-    """
-    Map function across key, value pairs in dicts.
-
-    Args:
-        f: callable(d, *args)
-        d: dict
-        *args: more dicts
-
-    Returns: dict with same keys as d, with values result of `f`.
-    """
-    if not isinstance(d, dict):
-        return f(d, *args)
-    mapped_results = dict()
-    for key in d.keys():
-        mapped_results[key] = f(d[key], *[arg[key] for arg in args])
-    return mapped_results
-
-
-def broadcast_shapes(shape1, shape2):
-    """
-    Broadcasts two shapes together.
-
-    Args:
-        shape1: tuple of int
-        shape2: tuple of int
-
-    Returns: tuple of int with resulting shape.
-    """
-    if isinstance(shape1, int):
-        shape1 = (shape1,)
-    if isinstance(shape2, int):
-        shape2 = (shape2,)
-
-    def left_pad_shape(shape, l):
-        return tuple([1] * l + list(shape))
-
-    l = max(len(shape1), len(shape2))
-    shape1 = left_pad_shape(shape1, l - len(shape1))
-    shape2 = left_pad_shape(shape2, l - len(shape2))
-    out_shape = []
-    for s1, s2 in zip(shape1, shape2):
-        m = max(s1, s2)
-        if ((s1 != m) and (s1 != 1)) or ((s2 != m) and (s2 != 1)):
-            raise ValueError("Trying to broadcast {} with {}".format(shape1, shape2))
-        out_shape.append(m)
-    return tuple(out_shape)
-
-
-def iterative_topological_sort(graph, start=None):
-    """
-    Get Depth-first topology.
-
-    :param graph: dependency dict (like a dask)
-        {'a':['b','c'],
-        'c':['b'],
-        'b':[]}
-    :param start: str
-        the node you want to search from.
-        This is equivalent to the node you want to compute.
-    :return: list of str
-        The order get from `start` to all ancestors in DFS.
-    """
-    seen = set()
-    stack = []  # path variable is gone, stack and order are new
-    order = []  # order will be in reverse order at first
-    if start is None:
-        start = list(graph.keys())
-    if not isinstance(start, (list, tuple)):
-        start = [start]
-    q = start
-    while q:
-        v = q.pop()
-        if not isinstance(v, str):
-            raise ValueError("Key {} is not a str".format(v))
-        if v not in seen:
-            seen.add(v)  # no need to append to path any more
-            if v not in graph.keys():
-                graph[v] = []
-            q.extend(graph[v])
-
-            while stack and v not in graph[stack[-1]]:  # new stuff here!
-                order.append(stack.pop())
-            stack.append(v)
-
-    return stack + order[::-1]  # new return value!
-
-
-def left_broadcast_mul(x, y):
-    """
-    Aligns on left dim and multiplies.
-    Args:
-        x: [D]
-        y: [D,b0,...bN]
-
-    Returns:
-        [D,b0,...,bN]
-    """
-    return jnp.reshape(x, (-1,) + tuple([1] * (len(y.shape) - 1))) * y
-
-
-def tuple_prod(t):
-    """
-    Product of shape tuple
-
-    Args:
-        t: tuple
-
-    Returns:
-        int
-    """
-    if len(t) == 0:
-        return 1
-    res = t[0]
-    for a in t[1:]:
-        res *= a
-    return res
-
-
-def msqrt(A):
-    """
-    Computes the matrix square-root using SVD, which is robust to poorly conditioned covariance matrices.
-    Computes, M such that M @ M.T = A
-
-    Args:
-        A: [N,N] Square matrix to take square root of.
-
-    Returns: [N,N] matrix.
-    """
-    U, s, Vh = jnp.linalg.svd(A)
-    L = U * jnp.sqrt(s)
-    return L
 
 
 def resample(key, samples, log_weights, S=None):
@@ -191,22 +34,6 @@ def resample(key, samples, log_weights, S=None):
     log_r = log_p_cuml[-1] + jnp.log(1. - random.uniform(key, (S,)))
     idx = jnp.searchsorted(log_p_cuml, log_r)
     return dict_multimap(lambda s: s[idx, ...], samples)
-
-
-def normal_to_lognormal(mu, std):
-    """
-    Convert normal parameters to log-normal parameters.
-    Args:
-        mu:
-        var:
-
-    Returns:
-
-    """
-    var = std ** 2
-    ln_mu = 2. * jnp.log(mu) - 0.5 * jnp.log(var)
-    ln_var = jnp.log(var) - 2. * jnp.log(mu)
-    return ln_mu, jnp.sqrt(ln_var)
 
 
 def marginalise_static(key, samples, log_weights, ESS, fun):
@@ -411,7 +238,7 @@ def estimate_map(samples, ESS=None):
     return tree_map(_get_map, samples)
 
 
-def maximum_a_posteriori_point(results):
+def maximum_a_posteriori_point(results: NestedSamplerResults):
     """
     Get the MAP point of a nested sampling result.
     Does this by choosing the point with largest L(x) p(x).
@@ -529,132 +356,6 @@ def summary(results: NestedSamplerResults) -> str:
     return "\n".join(main_s)
 
 
-def squared_norm(x1, x2):
-    # r2_ij = sum_k (x_ik - x_jk)^2
-    #       = sum_k x_ik^2 - 2 x_jk x_ik + x_jk^2
-    #       = sum_k x_ik^2 + x_jk^2 - 2 X X^T
-    # r2_ij = sum_k (x_ik - y_jk)^2
-    #       = sum_k x_ik^2 - 2 y_jk x_ik + y_jk^2
-    #       = sum_k x_ik^2 + y_jk^2 - 2 X Y^T
-    x1 = x1
-    x2 = x2
-    r2 = jnp.sum(jnp.square(x1), axis=1)[:, None] + jnp.sum(jnp.square(x2), axis=1)[None, :]
-    r2 = r2 - 2. * (x1 @ x2.T)
-    return r2
-
-
-def latin_hypercube(key, num_samples, num_dim, cube_scale):
-    """
-    Sample from the latin-hypercube defined as the continuous analog of the discrete latin-hypercube.
-    That is, if you partition each dimension into `num_samples` equal volume intervals then there is (conditionally)
-    exactly one point in each interval. We guarantee that uniformity by randomly assigning the permutation of each dimension.
-    The degree of randomness is controlled by `cube_scale`. A value of 0 places the sample at the center of the grid point,
-    and a value of 1 places the value randomly inside the grid-cell.
-
-    Args:
-        key: PRNG key
-        num_samples: number of samples in total to draw
-        num_dim: number of dimensions in each sample
-        cube_scale: The scale of randomness, in (0,1).
-
-    Returns:
-        latin-hypercube samples of shape [num_samples, num_dim]
-    """
-    key1, key2 = random.split(key, 2)
-    cube_scale = jnp.clip(cube_scale, 0., 1.)
-    samples = vmap(lambda key: random.permutation(key, num_samples))(random.split(key2, num_dim)).T
-    samples += random.uniform(key1, shape=samples.shape, minval=0.5 - cube_scale / 2., maxval=0.5 + cube_scale / 2.)
-    samples /= num_samples
-    return samples
-
-
-def density_estimation(xstar, x, alpha=1. / 3., order=1):
-    assert len(x.shape) == 2
-
-    N = x.shape[0]
-    m = int(pow(N, 1. - alpha))
-    s = N // m
-    N = m * s
-    x = x[:N]
-
-    def single_density(xstar):
-        dist = jnp.linalg.norm(x - xstar, ord=order, axis=-1)  # N
-        dist = jnp.reshape(dist, (s, m))  # s,m
-        min_dist = jnp.min(dist, axis=0)  # m
-        avg_dist = jnp.mean(min_dist)  # scalar
-        return 0.5 / ((1. + s) * avg_dist)
-
-    return vmap(single_density)(xstar)
-
-
-def test_density_estimation():
-    np.random.seed(42)
-    x = jnp.asarray(np.random.standard_gamma(1., 100))[:, None]
-    xstar = jnp.linspace(0., 20., 1000)[:, None]
-    import pylab as plt
-
-    plt.plot(xstar, density_estimation(xstar, x))
-    plt.hist(np.random.standard_gamma(1., 10000), bins=np.linspace(0, 20, 100), density=True, alpha=0.5)
-    plt.hist(x[:, 0], bins=np.linspace(0., 20, 100), density=True, alpha=0.5)
-    plt.show()
-
-
-def prepare_func_args(f):
-    """
-    Takes a callable(a,b,...,z=Z) and prepares it into callable(**kwargs), such that only
-    a,b,...,z are taken fro **kwargs and the rest ignored.
-
-    Args:
-        f: callable(a,b,...,z=Z)
-
-    Returns:
-        callable(**kwargs)
-    """
-    (args, varargs, varkw, defaults, kwonlyargs, kwonlydefaults, annotations) = \
-        inspect.getfullargspec(f)
-
-    if defaults is None:  # already f is callable(**kwargs)
-        return f
-
-    def _f(**x):
-        _args = []
-        for i, arg in enumerate(args):
-            if arg in x.keys():
-                _args.append(x[arg])
-            else:
-                has_defaults = i >= (len(args) - len(defaults))
-                if has_defaults:
-                    j = i - (len(args) - len(defaults))
-                    _args.append(defaults[j])
-                else:
-                    raise ValueError(f"Value for {arg} missing from inputs {list(x.keys())}, and defaults.")
-        return f(*_args)
-
-    return _f
-
-
-def linear_to_log_stats(log_f_mean, *, log_f2_mean=None, log_f_var=None):
-    """
-    Converts normal to log-normal stats.
-    Args:
-        log_f_mean: log(E(f))
-        log_f2_mean: log(E(f**2))
-        log_f_var: log(Var(f))
-    Returns:
-        E(log(f))
-        Var(log(f))
-    """
-    f_mean = LogSpace(log_f_mean)
-    if log_f_var is not None:
-        f_var = LogSpace(log_f_var)
-        f2_mean = f_var + f_mean.square()
-    else:
-        f2_mean = LogSpace(log_f2_mean)
-    mu = f_mean.square() / f2_mean.sqrt()
-    sigma2 = f2_mean / f_mean.square()
-    return mu.log_abs_val, sigma2.log_abs_val
-
-
 def evidence_posterior_samples(key, num_live_points_per_sample, log_L_samples, S: int = 100):
     n_i = num_live_points_per_sample
     L = LogSpace(jnp.asarray([-jnp.inf], log_L_samples.dtype)).concatenate(
@@ -677,3 +378,25 @@ def evidence_posterior_samples(key, num_live_points_per_sample, log_L_samples, S
     log_Z_chains = vmap(evidence_chain)(random.split(chain_key, S))
     Z_chains = LogSpace(log_Z_chains)
     return Z_chains.log_abs_val
+
+def analytic_log_evidence(prior_chain: PriorChain, log_likelihood, S:int=60):
+    """
+    Compute the evidence with brute-force over a regular grid.
+
+    Args:
+        prior_chain: PriorChain of model
+        log_likelihood: callable(**samples)
+        S: int, resolution of grid
+
+    Returns:
+        log(Z)
+    """
+    if not prior_chain.built:
+        prior_chain.build()
+
+    u_vec = jnp.linspace(jnp.finfo(jnp.float_).eps, 1. - jnp.finfo(jnp.float_).eps, S)
+    du = u_vec[1] - u_vec[0]
+    args = jnp.stack([x.flatten() for x in jnp.meshgrid(*[u_vec] * prior_chain.U_ndims, indexing='ij')], axis=-1)
+    Z_true = (LogSpace(jit(vmap(lambda arg: log_likelihood(**prior_chain(arg))))(args)).sum() * LogSpace(
+        jnp.log(du)) ** prior_chain.U_ndims)
+    return Z_true.log_abs_val

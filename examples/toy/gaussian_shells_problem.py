@@ -1,11 +1,10 @@
-from jaxns.nested_sampling import NestedSampler
+from jaxns.nested_sampler.nested_sampling import NestedSampler
 from jaxns.prior_transforms import PriorChain, UniformPrior
 from jaxns.plotting import plot_cornerplot, plot_diagnostics
 from jaxns.utils import summary
 from jax import random, jit,vmap
 from jax import numpy as jnp
 import pylab as plt
-from timeit import default_timer
 
 
 def main():
@@ -18,18 +17,21 @@ def main():
         c2 = jnp.array([0., 3.])
         return jnp.logaddexp(log_circ(theta, c1,r1,w1) , log_circ(theta,c2,r2,w2))
 
+    with PriorChain() as prior_chain:
+        UniformPrior('theta', low=-6.*jnp.ones(2), high=6.*jnp.ones(2))
 
-    prior_chain = PriorChain() \
-        .push(UniformPrior('theta', low=-6.*jnp.ones(2), high=6.*jnp.ones(2)))
+    prior_chain.build()
 
-    theta = vmap(lambda key: prior_chain(prior_chain.compactify_U(prior_chain.sample_U(key))))(random.split(random.PRNGKey(0),10000))
+    theta = vmap(lambda key: prior_chain(prior_chain.sample_U_flat(key)))(random.split(random.PRNGKey(0),10000))
     lik = vmap(lambda theta: log_likelihood(**theta))(theta)
     sc=plt.scatter(theta['theta'][:,0], theta['theta'][:,1],c=jnp.exp(lik))
     plt.colorbar(sc)
     plt.show()
 
+
     ns = NestedSampler(log_likelihood,
                        prior_chain)
+
     results = jit(ns)(key=random.PRNGKey(4525280))
 
     summary(results)

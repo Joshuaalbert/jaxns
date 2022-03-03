@@ -1,5 +1,5 @@
 from jaxns.gaussian_process.utils import product_log
-from jaxns.utils import squared_norm
+from jaxns.internals.linalg import squared_norm
 import jax.numpy as jnp
 
 

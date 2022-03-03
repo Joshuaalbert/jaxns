@@ -1,6 +1,6 @@
 from jax import numpy as jnp
 
-from jaxns.log_math import LogSpace
+from jaxns.internals.log_semiring import LogSpace
 from jaxns.types import EvidenceCalculation
 
 

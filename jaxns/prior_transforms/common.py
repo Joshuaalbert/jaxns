@@ -1,9 +1,9 @@
 from jax import numpy as jnp
 from jax.scipy.special import ndtri, gammaln
 
-from jaxns.prior_transforms.prior_chain import Prior, UniformBase, PriorBase
-from jaxns.prior_transforms.prior_utils import get_shape, prior_docstring, convert_to_array, broadcast_dtypes
-from jaxns.utils import broadcast_shapes, msqrt
+from jaxns.prior_transforms.prior import PriorBase, UniformBase, Prior, prior_docstring, get_shape
+from jaxns.internals.linalg import msqrt
+from jaxns.internals.shapes import broadcast_dtypes, convert_to_array, broadcast_shapes
 
 
 class DeltaPrior(Prior):

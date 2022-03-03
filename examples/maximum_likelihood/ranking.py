@@ -1,7 +1,7 @@
-from jax import numpy as jnp, random, jit, vmap
-from jaxns.nested_sampling import NestedSampler, save_results, load_results
-from jaxns.prior_transforms import UniformPrior, PriorChain, NormalPrior
-from jaxns.plotting import plot_diagnostics, plot_cornerplot
+from jax import numpy as jnp, random, jit
+from jaxns.nested_sampler.nested_sampling import NestedSampler, save_results, load_results
+from jaxns.prior_transforms import UniformPrior
+from jaxns.plotting import plot_diagnostics
 from jaxns.utils import summary, resample
 from itertools import combinations
 
@@ -47,7 +47,7 @@ def main(num_options=10, num_raters=1, tests_per_rater=10, rater_accuracy=1.):
     plot_diagnostics(results)
     # plot_cornerplot(results, vars=['rank'])
 
-    samples = resample(random.PRNGKey(245944),results.samples, results.log_p, S=int(results.ESS))
+    samples = resample(random.PRNGKey(245944), results.samples, results.log_p_mean, S=int(results.ESS))
 
     rank_estimate = jnp.median(samples['rank'], axis=0)
     print(rank_estimate)
