@@ -1,6 +1,6 @@
 from jax import numpy as jnp
 
-from jaxns.gaussian_process.kernels import Kernel
+from jaxns.modules.gaussian_process.kernels import Kernel
 from jaxns.prior_transforms.common import HierarchicalPrior
 from jaxns.prior_transforms import prior_docstring, PriorBase
 
