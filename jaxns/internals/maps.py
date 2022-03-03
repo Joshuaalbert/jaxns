@@ -39,11 +39,11 @@ def prepare_func_args(f):
     (args, varargs, varkw, defaults, kwonlyargs, kwonlydefaults, annotations) = \
         inspect.getfullargspec(f)
 
-
+    # TODO: this gets displayed each time we prepare a function. Using a cache would be cleaner for user.
     if varargs is not None:
-        logger.warning(f"Function {f.__name__} has *varargs parameter, and is being dropped.")
+        logger.warning(f"Function {f.__name__} has *varargs parameter ({varargs}), and is being dropped.")
     if varkw is not None:
-        logger.warning(f"Function {f.__name__} has **varkw parameter, and is being dropped.")
+        logger.warning(f"Function {f.__name__} has **varkw parameter ({varkw}), and is being dropped.")
 
     expected_keys = set(args + kwonlyargs)
 

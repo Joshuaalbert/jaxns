@@ -268,10 +268,13 @@ class NestedSampler(object):
 
         return nested_sampler_state
 
-    def refine_state(self, state: NestedSamplerState, delta_num_live_points: jnp.ndarray,
-                     termination_ess=None, terminate_evidence_uncert=None,
-                     dynamic_kwargs=None, resize_max_samples: int = None,
-                     terminate_max_num_threads=None,
+    def refine_state(self, state: NestedSamplerState,
+                     delta_num_live_points: jnp.ndarray=None,
+                     termination_ess=None,
+                     termination_evidence_uncert=None,
+                     termination_max_num_threads=None,
+                     dynamic_kwargs=None,
+                     resize_max_samples: int = None,
                      *, return_state: bool = False) \
             -> Union[NestedSamplerResults, Tuple[NestedSamplerResults, NestedSamplerState]]:
         """
@@ -281,26 +284,26 @@ class NestedSampler(object):
             state: NestedSamplerState from a previous run.
             delta_num_live_points: a number of live points to increment by in each thread.
             termination_ess: terminate after reaching this many effective samples.
-            terminate_evidence_uncert: terminate after reaching this uncertainty in the evidence.
+            termination_evidence_uncert: terminate after reaching this uncertainty in the evidence.
             dynamic_kwargs: Dict with keys:
                 f = float, fraction of peak to select thread likelihood range.
                 G = float, interpolates between pure evidence accuracy (0.) to pure posterior accuracy (1.)
             resize_max_samples: int, if given then grow the SampleCollection to this new total size.
-            terminate_max_num_threads: terminate when this many threads has run.
+            termination_max_num_threads: terminate when this many threads has run.
             return_state: bool, whether to return state with result
 
         Returns:
             if return_state returns NestedSamplerResults and NestedSamplerState, else just NestedSamplerResults
         """
 
-        assert (termination_ess is not None) or (terminate_evidence_uncert is not None), \
+        assert (termination_ess is not None) or (termination_evidence_uncert is not None), \
             "Need at least one dynamic stopping condition"
         if dynamic_kwargs is None:
             dynamic_kwargs = dict()
         f = jnp.clip(jnp.asarray(dynamic_kwargs.get('f', 0.9), self.dtype), 0., 1.)
         G = jnp.clip(jnp.asarray(dynamic_kwargs.get('G', 0.), self.dtype), 0., 1.)
         if delta_num_live_points is None:
-            delta_num_live_points = self.prior_chain.U_ndims * 5
+            delta_num_live_points = self.prior_chain.U_ndims * 10
         delta_num_live_points = jnp.asarray(delta_num_live_points, self.dtype)
 
         if resize_max_samples is not None:
@@ -334,8 +337,8 @@ class NestedSampler(object):
                              sampler_kwargs=self.sampler_kwargs,
                              termination_ess=termination_ess,
                              termination_likelihood_contour=None,
-                             terminate_evidence_uncert=terminate_evidence_uncert,
-                             terminate_max_num_threads=terminate_max_num_threads,
+                             termination_evidence_uncert=termination_evidence_uncert,
+                             termination_max_num_threads=termination_max_num_threads,
                              f=f,
                              G=G)
         # collect live-points, and to post-analysis
@@ -348,9 +351,9 @@ class NestedSampler(object):
                  termination_evidence_frac: jnp.ndarray = 0.01,
                  termination_likelihood_contour: jnp.ndarray = None,
                  termination_ess: jnp.ndarray = None,
-                 terminate_evidence_uncert: jnp.ndarray = None,
-                 terminate_max_num_threads: jnp.ndarray = None,
-                 delta_num_live_points: jnp.ndarray = 10,
+                 termination_evidence_uncert: jnp.ndarray = None,
+                 termination_max_num_threads: jnp.ndarray = None,
+                 delta_num_live_points: jnp.ndarray = None,
                  dynamic_kwargs: Optional[Dict[str, Any]] = None,
                  *,
                  return_state: bool = False,
@@ -366,8 +369,8 @@ class NestedSampler(object):
             termination_evidence_frac: terminate static run after this much evidence left in live-points.
             termination_likelihood_contour: halt when likelihood contour passes this level.
             termination_ess: terminate when this many effective samples taken.
-            terminate_evidence_uncert: terminate when evidence falls below this.
-            terminate_max_num_threads: terminate when this many threads used.
+            termination_evidence_uncert: terminate when evidence falls below this.
+            termination_max_num_threads: terminate when this many threads used.
             delta_num_live_points: refine with this many live points in each thread.
             dynamic_kwargs: Dict with items:
                 f - select threads with this fraction of peak
@@ -384,22 +387,22 @@ class NestedSampler(object):
             return self.refine_state(refine_state,
                                      delta_num_live_points=delta_num_live_points,
                                      termination_ess=termination_ess,
-                                     terminate_evidence_uncert=terminate_evidence_uncert,
+                                     termination_evidence_uncert=termination_evidence_uncert,
                                      dynamic_kwargs=dynamic_kwargs,
                                      resize_max_samples=resize_max_samples,
-                                     terminate_max_num_threads=terminate_max_num_threads,
+                                     termination_max_num_threads=termination_max_num_threads,
                                      return_state=return_state)
         if dynamic_kwargs is None:
             dynamic_kwargs = dict()
 
         if self.dynamic:
             # assert at least one stopping criterion
-            assert (termination_ess is not None) or (terminate_evidence_uncert is not None), \
+            assert (termination_ess is not None) or (termination_evidence_uncert is not None), \
                 "Need at least one dynamic stopping condition"
             f = jnp.clip(jnp.asarray(dynamic_kwargs.get('f', 0.9), self.dtype), 0., 1.)
             G = jnp.clip(jnp.asarray(dynamic_kwargs.get('G', 0.), self.dtype), 0., 1.)
             if num_live_points is None:
-                num_live_points = self.prior_chain.U_ndims * 20
+                num_live_points = self.prior_chain.U_ndims * 50
             num_live_points = jnp.asarray(num_live_points, self.dtype)
             if delta_num_live_points is None:
                 delta_num_live_points = self.prior_chain.U_ndims * 10
@@ -429,8 +432,8 @@ class NestedSampler(object):
                                  sampler_name=self.sampler_name,
                                  sampler_kwargs=self.sampler_kwargs,
                                  termination_ess=termination_ess,
-                                 terminate_evidence_uncert=terminate_evidence_uncert,
-                                 terminate_max_num_threads=terminate_max_num_threads,
+                                 termination_evidence_uncert=termination_evidence_uncert,
+                                 termination_max_num_threads=termination_max_num_threads,
                                  f=f,
                                  G=G)
 
