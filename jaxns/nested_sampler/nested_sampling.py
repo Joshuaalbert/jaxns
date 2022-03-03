@@ -115,12 +115,12 @@ class NestedSampler(object):
             log_homogeneous_measure = prior_chain.log_homogeneous_measure(**x)
             if log_homogeneous_measure is not None:
                 log_L += log_homogeneous_measure
-            if log_L.shape != ():
-                raise ValueError("Shape of likelihood should be scalar, got {}".format(log_L.shape))
             if not isinstance(log_L, jnp.ndarray):
                 log_L = jnp.asarray(log_L, dtype=self.dtype)
             if log_L.dtype.type != self.dtype:
                 log_L = log_L.astype(self.dtype)
+            if log_L.shape != ():
+                raise ValueError("Shape of likelihood should be scalar, got {}".format(log_L.shape))
             return jnp.where(jnp.isnan(log_L), -jnp.inf, log_L)
 
         self.loglikelihood = corrected_likelihood
@@ -497,6 +497,12 @@ class NestedSampler(object):
         return NestedSamplerResults(**data)
 
 
+def _isinstance_namedtuple(obj) -> bool:
+    return (
+            isinstance(obj, tuple) and
+            hasattr(obj, '_asdict') and
+            hasattr(obj, '_fields')
+    )
 def save_pytree(pytree: NamedTuple, save_file: str):
     """
     Saves results of nested sampler in a npz file.
@@ -505,18 +511,19 @@ def save_pytree(pytree: NamedTuple, save_file: str):
         results: NestedSamplerResults
         save_file: str, filename
     """
-    _data_dict = pytree._asdict()
-    data_dict = {}
-    for k, v in _data_dict.items():
-        if isinstance(v, dict):
-            v = dict_multimap(lambda v: np.asarray(v), v)
-            data_dict[k] = v
-        elif isinstance(v, jnp.ndarray):
-            data_dict[k] = np.asarray(v)
-        elif v is None:
-            data_dict[k] = None
-        else:
-            raise ValueError("key, value pair {}, {} unknown".format(k, v))
+    pytree_np = tree_map(lambda v: np.asarray(v) if v is not None else None, pytree)
+    def _pytree_asdict(pytree):
+        _data_dict = pytree._asdict()
+        data_dict = {}
+        for k, v in _data_dict.items():
+            if _isinstance_namedtuple(v):
+                data_dict[k] = _pytree_asdict(v)
+            elif isinstance(v, (dict, np.ndarray, None.__class__)):
+                data_dict[k] = v
+            else:
+                raise ValueError("key, value pair {}, {} unknown".format(k, v))
+        return data_dict
+    data_dict = _pytree_asdict(pytree_np)
     np.savez(save_file, **data_dict)
 
 
@@ -565,4 +572,6 @@ def load_results(save_file: str) -> NestedSamplerResults:
     Returns:
         NestedSamplerResults
     """
-    return NestedSamplerResults(**load_pytree(save_file))
+    data_dict = load_pytree(save_file)
+    thread_stats = ThreadStats(**data_dict.pop('thread_stats', None))
+    return NestedSamplerResults(**data_dict, thread_stats=thread_stats)
