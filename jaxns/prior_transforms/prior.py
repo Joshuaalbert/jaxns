@@ -163,6 +163,11 @@ class Prior(object):
 
     # n-ary ops
     def interp(self, xp, fp, left=None, right=None, period=None, *, name=None, tracked=False):
+        """
+        Interpolates values are given new positions.
+
+        This prior represents `x` in numpy syntax of interp(x,xp,fp).
+        """
         def interp(x, xp, fp):
             return jnp.interp(x, xp, fp, left=left, right=right, period=period)
         return maybe_n_ary_prior_op(interp, [self, xp, fp], name=name, tracked=tracked)
