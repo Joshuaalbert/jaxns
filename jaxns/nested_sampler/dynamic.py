@@ -18,6 +18,20 @@ def normalise_log_space(x: LogSpace):
     x = LogSpace(jnp.where(jnp.isneginf(norm.log_abs_val), -jnp.inf, x.log_abs_val))
     return x
 
+
+def _get_likelihood_maximisation_goal(state, num_live_points):
+    """
+    Gets the likelihood range to search for likelihood maximiation.
+    """
+    # We will determine a significant likelihood increase, if after a single shrinkage, the likelihood has gone up.
+    # To do this, we restart the contour at one e-fold shrinkage from the peak.
+    log_L_entry = state.sample_collection.log_L[state.sample_idx - num_live_points.astype(state.sample_idx.dtype)]
+    # We will stop the search after likelihood contour reaches the current max, which will leave a whole live set to
+    # increase the contour level
+    log_L_exit = state.sample_collection.log_L[state.sample_idx - 1]
+    return log_L_entry, log_L_exit
+
+
 def _get_dynamic_goal(state: NestedSamplerState, G: jnp.ndarray, f: jnp.ndarray):
     """
     Get likelihood range to run a thread over.
@@ -36,12 +50,12 @@ def _get_dynamic_goal(state: NestedSamplerState, G: jnp.ndarray, f: jnp.ndarray)
     # Z_remaining = dZ_mean.cumsum(reverse=True)
     # [a,b,-inf], 2 -> [a+b, b, -inf]
     # [-inf, -inf,-inf], 0 -> [-inf, -inf, -inf]
-    
+
     (log_Z_remaining, _) = while_loop(lambda _state: _state[1] > 0,
                                       logsumexp_cumsum_body,
                                       (state.sample_collection.log_dZ_mean,
                                        state.sample_idx - jnp.ones_like(state.sample_idx)))
-    
+
     Z_remaining = LogSpace(log_Z_remaining)
     # I_evidence = ((LogSpace(jnp.log(n_i + 1.)) * Z_remaining + LogSpace(jnp.log(n_i)) * dZ_mean) / (
     #         LogSpace(jnp.log(n_i)).sqrt() * LogSpace(jnp.log(n_i + 2.)) ** (1.5)))
@@ -64,7 +78,7 @@ def _get_dynamic_goal(state: NestedSamplerState, G: jnp.ndarray, f: jnp.ndarray)
     # [False, True, False] -> 0
     # [True, True, False] -> -1
     # [False, False, False] -> -1
-    start_idx = jnp.clip(jnp.argmax(important) - 1, 0,  I_goal.size - 1)
+    start_idx = jnp.clip(jnp.argmax(important) - 1, 0, I_goal.size - 1)
     log_L_start = state.sample_collection.log_L[start_idx]
     # last instance + 1
     # [False, True, False] -> 2
@@ -72,7 +86,7 @@ def _get_dynamic_goal(state: NestedSamplerState, G: jnp.ndarray, f: jnp.ndarray)
     # [False, False, False] -> 2
     end_idx = jnp.clip(I_goal.size - jnp.argmax(important[::-1]), 0, I_goal.size - 1)
     log_L_end = state.sample_collection.log_L[end_idx]
-    
+
     # import pylab as plt
     #
     # plt.plot(I_goal.cumsum().value, label='goal')
@@ -106,7 +120,6 @@ def _get_dynamic_goal(state: NestedSamplerState, G: jnp.ndarray, f: jnp.ndarray)
 
 
 def create_initial_thread_state(state, log_L_entry):
-    
     # Fill reservoir with points suitable for seeding sampler
     key, g_key = random.split(state.key)
     state = state._replace(key=key)
@@ -261,7 +274,8 @@ def _collect_sample(state: NestedSamplerState, prev_state: NestedSamplerState, i
     return state, next_i_main
 
 
-def _consume_remaining_samples(state: NestedSamplerState, prev_state: NestedSamplerState, i_main:jnp.ndarray) -> NestedSamplerState:
+def _consume_remaining_samples(state: NestedSamplerState, prev_state: NestedSamplerState,
+                               i_main: jnp.ndarray) -> NestedSamplerState:
     def thread_cond(body_state: Tuple[NestedSamplerState, jnp.ndarray]):
         (state, i_main) = body_state
         return jnp.bitwise_not(state.done)
@@ -280,16 +294,16 @@ def _consume_remaining_samples(state: NestedSamplerState, prev_state: NestedSamp
     reservoir_empty = jnp.bitwise_not(jnp.any(state.reservoir.available))
     state = state._replace(done=reservoir_empty)
     (final_state, _) = while_loop(thread_cond,
-                             thread_body,
+                                  thread_body,
                                   (state, i_main))
 
     return final_state
+
 
 def _run_thread(prev_state: NestedSamplerState,
                 init_thread_state: NestedSamplerState,
                 log_L_exit: jnp.ndarray,
                 reservoir_refiller: ReservoirRefiller) -> NestedSamplerState:
-
     def thread_cond(thread_state: Tuple[NestedSamplerState, jnp.ndarray, jnp.ndarray]):
         # Keep going while reservoir keeps getting filled, or while there are still old points to pick up.
         # We ensure that if we are only filling old points, that we're not trying to fill from the empty reservoir.
@@ -326,8 +340,8 @@ def _run_thread(prev_state: NestedSamplerState,
     # on each thread loop, we require that we collect some new point, or else we can get in an infinite loop.
     init_i_main = init_thread_state.sample_idx
     (final_state, i_main, _) = while_loop(thread_cond,
-                                     thread_body,
-                                     (init_thread_state, init_i_main, jnp.asarray(False, jnp.bool_)))
+                                          thread_body,
+                                          (init_thread_state, init_i_main, jnp.asarray(False, jnp.bool_)))
 
     final_state = _consume_remaining_samples(final_state, prev_state, i_main)
 
@@ -346,7 +360,7 @@ def set_thread_stats(prev_state, merged_state, log_L_entry, log_L_exit, init_i_m
     num_samples = merged_state.sample_idx - prev_state.sample_idx
     num_likelihood_evaluations = jnp.sum(merged_state.sample_collection.num_likelihood_evaluations) \
                                  - jnp.sum(prev_state.sample_collection.num_likelihood_evaluations)
-    thread_stat_update = ThreadStats(evidence_uncert_diff=jnp.sqrt(prev_evidence_var)-jnp.sqrt(merged_evidence_var),
+    thread_stat_update = ThreadStats(evidence_uncert_diff=jnp.sqrt(prev_evidence_var) - jnp.sqrt(merged_evidence_var),
                                      ess_diff=(merged_ess - prev_ess).value,
                                      init_i_main=init_i_main,
                                      log_L_entry=log_L_entry,
@@ -373,15 +387,27 @@ def _dynamic_run(prior_chain: PriorChain,
                  sampler_kwargs: Dict[str, Any],
                  termination_ess=None,
                  termination_likelihood_contour=None,
+                 termination_likelihood_frac_increase=None,
                  termination_evidence_uncert=None,
                  termination_max_num_threads=None,
-                 f: jnp.ndarray = None,
-                 G: jnp.ndarray = None):
-    if f is None:
-        raise ValueError("When `dynamic`=True `f` can't be None.")
-    if G is None:
-        raise ValueError("When `dynamic`=True `G` can't be None.")
-    
+                 dynamic_kwargs=None,
+                 maximise_likelihood: bool = False):
+    if dynamic_kwargs is None:
+        dynamic_kwargs = dict()
+
+    if delta_num_live_points is None:
+        delta_num_live_points = prior_chain.U_ndims * 10
+    delta_num_live_points = jnp.asarray(delta_num_live_points, state.sample_collection.num_live_points.dtype)
+
+    if maximise_likelihood:
+        assert (termination_likelihood_frac_increase is not None) or (termination_likelihood_contour is not None), \
+            "Need at least one suitable termination condition for likelihood maximisation"
+    else:
+        assert (termination_ess is not None) or (termination_evidence_uncert is not None), \
+            "Need at least one dynamic stopping condition"
+        f = jnp.clip(jnp.asarray(dynamic_kwargs.get('f', 0.9), state.log_L_contour.dtype), 0., 1.)
+        G = jnp.clip(jnp.asarray(dynamic_kwargs.get('G', 0.), state.log_L_contour.dtype), 0., 1.)
+
     def control_cond(control_state: NestedSamplerState):
         # while the termination conditions have not been met, keep going
         state = control_state
@@ -393,10 +419,17 @@ def _dynamic_run(prior_chain: PriorChain,
         # init_i_main - the index of starting contour in samples,
         # [a, b, l*, c] -> 2 -> 3 merged samples already, next sample replaced at 3, first old sample idx at 3
         # l*, [a, b, c] -> -1 -> 0 merged samples already, next sample replaced at 0, first old sample idx at Nan
-        
-        log_L_entry, log_L_exit = _get_dynamic_goal(prev_state,
-                                                    f=f,
-                                                    G=G)
+
+        if maximise_likelihood:
+            log_L_entry, log_L_exit = _get_likelihood_maximisation_goal(prev_state, delta_num_live_points)
+            _termination_likelihood_contour = termination_likelihood_contour \
+                                              or (LogSpace(jnp.log1p(termination_likelihood_frac_increase)) * LogSpace(
+                log_L_exit)).log_abs_val
+        else:
+            _termination_likelihood_contour = termination_likelihood_contour
+            log_L_entry, log_L_exit = _get_dynamic_goal(prev_state,
+                                                        f=f,
+                                                        G=G)
 
         init_thread_state = create_initial_thread_state(prev_state, log_L_entry)
 
@@ -419,12 +452,12 @@ def _dynamic_run(prior_chain: PriorChain,
                                    log_L_exit=log_L_exit,
                                    reservoir_refiller=reservoir_refiller)
 
-        merged_state = set_thread_stats(prev_state, merged_state, log_L_entry, log_L_exit,init_thread_state.sample_idx)
+        merged_state = set_thread_stats(prev_state, merged_state, log_L_entry, log_L_exit, init_thread_state.sample_idx)
 
         # Determine if we are done.
         done, termination_reason = termination_condition(merged_state,
                                                          termination_ess=termination_ess,
-                                                         termination_likelihood_contour=termination_likelihood_contour,
+                                                         termination_likelihood_contour=_termination_likelihood_contour,
                                                          termination_evidence_uncert=termination_evidence_uncert,
                                                          termination_max_num_threads=termination_max_num_threads)
 

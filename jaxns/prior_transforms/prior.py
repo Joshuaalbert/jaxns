@@ -10,6 +10,8 @@ from jax import random, numpy as jnp
 
 from jaxns.internals.shapes import tuple_prod
 
+import random as py_random
+
 from jaxns.prior_transforms.context import _PRIOR_CHAINS, _PRIOR_CHAIN_NEXT_INDEX, _PRIOR_CHAIN_INDEX_STACK
 
 class PriorBase(object):
@@ -133,6 +135,8 @@ class Prior(object):
         self._name = new_name
         return self
 
+    # operator overloads
+
     def __add__(self, other):
         return self.add(other)
 
@@ -157,15 +161,13 @@ class Prior(object):
     def __getitem__(self, item):
         return self.getitem(item)
 
-    def getitem(self, item, *, name=None, tracked=False):
-        def getitem(x):
-            return x[item]
+    # n-ary ops
+    def interp(self, xp, fp, left=None, right=None, period=None, *, name=None, tracked=False):
+        def interp(x, xp, fp):
+            return jnp.interp(x, xp, fp, left=left, right=right, period=period)
+        return maybe_n_ary_prior_op(interp, [self, xp, fp], name=name, tracked=tracked)
 
-        return unnary_prior_op(getitem)(self, name=name, tracked=tracked)
-
-    def negative(self, *, name=None, tracked=False):
-        return unnary_prior_op(jnp.negative)(self, name=name, tracked=tracked)
-
+    # binary ops
     def add(self, other, *, name=None, tracked=False):
         return maybe_binary_prior_op(jnp.add, self, other, name=name, tracked=tracked)
 
@@ -184,6 +186,17 @@ class Prior(object):
     def matmul(self, other, *, name=None, tracked=False):
         return maybe_binary_prior_op(jnp.matmul, self, other, name=name, tracked=tracked)
 
+    # unary ops
+
+    def getitem(self, item, *, name=None, tracked=False):
+        def getitem(x):
+            return x[item]
+
+        return unnary_prior_op(getitem)(self, name=name, tracked=tracked)
+
+    def negative(self, *, name=None, tracked=False):
+        return unnary_prior_op(jnp.negative)(self, name=name, tracked=tracked)
+
     def sum(self, axis=-1, keepdims=False, *, name=None, tracked=False):
         def sum(x):
             return jnp.sum(x, axis=axis, keepdims=keepdims)
@@ -198,6 +211,9 @@ class Prior(object):
 
     def sqrt(self, *, name=None, tracked=False):
         return unnary_prior_op(jnp.sqrt)(self, name=name, tracked=tracked)
+
+    def square(self, *, name=None, tracked=False):
+        return unnary_prior_op(jnp.square)(self, name=name, tracked=tracked)
 
     def reciprocal(self, *, name=None, tracked=False):
         return unnary_prior_op(jnp.reciprocal)(self, name=name, tracked=tracked)
@@ -349,6 +365,9 @@ class Prior(object):
 def maybe_binary_prior_op(binary_op, self, other, *, name=None, tracked=False):
     if isinstance(other, Prior):
         return binary_prior_op(binary_op)(self, other, name=name)
+    elif isinstance(other, (float, int, bool)):
+        other = jnp.asarray(other)
+        return unnary_prior_op(lambda x: binary_op(x, other))(self, name=name, tracked=tracked)
     elif isinstance(other, jnp.ndarray):
         return unnary_prior_op(lambda x: binary_op(x, other))(self, name=name, tracked=tracked)
     else:
@@ -357,7 +376,7 @@ def maybe_binary_prior_op(binary_op, self, other, *, name=None, tracked=False):
 
 def binary_prior_op(binary_op):
     class PriorBinaryOp(Prior):
-        def __init__(self, prior_a, prior_b, *, name=None, tracked=False):
+        def __init__(self, prior_a: Prior, prior_b:Prior, *, name=None, tracked=False):
             """
             Prior for the binary op of two priors.
 
@@ -365,7 +384,7 @@ def binary_prior_op(binary_op):
                 prior_a, prior_b: priors to apply binary op to
             """
             if name is None:
-                name = f"_{prior_a.name}_{binary_op.__name__}_{prior_b.name}_{''.join(random.choice(string.ascii_lowercase) for i in range(4))}"
+                name = f"_{binary_op.__name__}_{prior_a.name}_{prior_b.name}_{''.join(py_random.choice(string.ascii_lowercase) for i in range(4))}"
             super(PriorBinaryOp, self).__init__(name, [prior_a, prior_b], tracked, PriorBase())
 
         def transform_U(self, U, prior_a, prior_b, **kwargs):
@@ -377,7 +396,7 @@ def binary_prior_op(binary_op):
 
 def unnary_prior_op(unary_op):
     class PriorUnaryOp(Prior):
-        def __init__(self, prior_a, *, name=None, tracked=False):
+        def __init__(self, prior_a: Prior, *, name=None, tracked=False):
             """
             Prior for the unary op of a prior.
 
@@ -385,7 +404,7 @@ def unnary_prior_op(unary_op):
                 prior_a: prior to apply unary op to
             """
             if name is None:
-                name = f"_{prior_a.name}_{unary_op.__name__}_{''.join(random.choice(string.ascii_lowercase) for i in range(4))}"
+                name = f"_{unary_op.__name__}_{prior_a.name}_{''.join(py_random.choice(string.ascii_lowercase) for i in range(4))}"
             super(PriorUnaryOp, self).__init__(name, [prior_a], tracked, PriorBase())
 
         def transform_U(self, U, prior_a, **kwargs):
@@ -393,6 +412,54 @@ def unnary_prior_op(unary_op):
             return unary_op(prior_a)
 
     return PriorUnaryOp
+
+def maybe_n_ary_prior_op(n_ary_op, priors, *, name=None, tracked=False):
+    prior_args = []
+    static_args = dict()
+    num_inputs = len(priors)
+    for idx, prior in enumerate(priors):
+        if isinstance(prior, Prior):
+            prior_args.append(idx)
+        elif isinstance(prior, (float, int, bool)):
+            prior = jnp.asarray(prior)
+            static_args[idx] = prior
+        elif isinstance(prior, jnp.ndarray):
+            static_args[idx] = prior
+        else:
+            raise ValueError(f"Invalid type {type(prior)}")
+
+    def curried_n_ary_op(*priors):
+        #reconstruct input to op
+        args = [None]*num_inputs
+        for static_arg, static_val in static_args.items():
+            args[static_arg] = static_val
+        for idx, prior in zip(prior_args, priors):
+            args[idx] = prior
+        # call with replaced values
+        return n_ary_op(*args)
+
+    # run filtered input on curried function
+    filtered_priors = list(filter(lambda x: isinstance(x, Prior), priors))
+    return n_ary_prior_op(curried_n_ary_op)(filtered_priors, name=name, tracked=tracked)
+
+def n_ary_prior_op(n_ary_op):
+    class PriorNAryOp(Prior):
+        def __init__(self, priors: List[Prior], *, name=None, tracked=False):
+            """
+            Prior for the n-ary op of a set of priors.
+
+            Args:
+                *priors: list of priors to apply n-ary op to
+            """
+            if name is None:
+                name = f"_{n_ary_op.__name__}_{'_'.join([prior.name for prior in priors])}_{''.join(py_random.choice(string.ascii_lowercase) for i in range(4))}"
+            super(PriorNAryOp, self).__init__(name, priors, tracked, PriorBase())
+
+        def transform_U(self, U, *priors, **kwargs):
+            del U
+            return n_ary_op(*priors)
+
+    return PriorNAryOp
 
 
 def prior_docstring(f):

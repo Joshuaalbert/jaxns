@@ -303,7 +303,6 @@ def summary(results: NestedSamplerResults) -> str:
                                                      'Absolute evidence error low enough',
                                                      'Likelihood contour reached',
                                                      'Small remaining evidence',
-                                                     'Likelihood peak reached',
                                                      'Reached ESS',
                                                      "Reached max num threads"]):
         if bit == 1:
