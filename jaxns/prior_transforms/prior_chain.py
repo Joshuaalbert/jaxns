@@ -1,7 +1,7 @@
-from typing import Union, Dict
+from typing import Union
 from jax import random, numpy as jnp, disable_jit
 from jax.flatten_util import ravel_pytree
-
+from jaxns.internals.maps import prepare_func_args
 from jaxns.prior_transforms import Prior
 from jaxns.prior_transforms.context import _PRIOR_CHAINS, _PRIOR_CHAIN_NEXT_INDEX, _PRIOR_CHAIN_INDEX_STACK
 import logging
@@ -317,6 +317,7 @@ class PriorChain(object):
             log_likelihood: optional, callable(**prior, **kwargs)
             **kwargs: optional, dict to pass to log-likelihood and prior generation.
         """
+        log_likelihood = prepare_func_args(log_likelihood)
         assert self.built
         with disable_jit():
             keys = random.split(key, num_samples)
