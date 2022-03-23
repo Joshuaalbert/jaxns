@@ -1,12 +1,66 @@
+import os
+os.environ["XLA_FLAGS"] = "--xla_force_host_platform_device_count=2"
 import numpy as np
 from jax import random, numpy as jnp
+from jax.lib import xla_bridge
 
 from jaxns.internals.linalg import msqrt
 from jaxns.internals.log_semiring import LogSpace, logaddexp, is_complex, signed_logaddexp, cumulative_logsumexp
 from jaxns.internals.random import random_ortho_matrix, latin_hypercube
 from jaxns.internals.shapes import tuple_prod, broadcast_dtypes, broadcast_shapes
 from jaxns.internals.stats import density_estimation, linear_to_log_stats
-from jaxns.internals.maps import prepare_func_args
+from jaxns.internals.maps import prepare_func_args, chunked_pmap, replace_index
+
+def test_replace_index():
+    operand = jnp.asarray([0,1,2,3,4])
+    update = jnp.asarray([5, 5])
+    start_idx = 0
+    expect = jnp.asarray([5,5,2,3,4])
+    assert jnp.all(replace_index(operand, update, start_idx) == expect)
+
+    operand = jnp.asarray([0, 1, 2, 3, 4])
+    update = jnp.asarray(5)
+    start_idx = 0
+    expect = jnp.asarray([5, 1, 2, 3, 4])
+    assert jnp.all(replace_index(operand, update, start_idx) == expect)
+
+    operand = jnp.asarray([0, 1, 2, 3, 4])
+    update = jnp.asarray([5, 5])
+    start_idx = 4
+    expect = jnp.asarray([0, 1, 2, 5, 5])
+    assert jnp.all(replace_index(operand, update, start_idx) == expect)
+
+    operand = jnp.asarray([0, 1, 2, 3, 4])
+    update = jnp.asarray(5)
+    start_idx = 4
+    expect = jnp.asarray([0, 1, 2, 3, 5])
+    assert jnp.all(replace_index(operand, update, start_idx) == expect)
+
+def test_chunked_pmap():
+    def f(x, y):
+        return x*y
+    chunked_f = chunked_pmap(f, 1)
+    x = jnp.arange(3)
+    assert chunked_f(x, y=x).shape == x.shape
+    assert jnp.all(chunked_f(x, y=x) == x**2)
+
+    prev_xla_flags = os.getenv("XLA_FLAGS")
+    flags_str = prev_xla_flags or ""
+    # Don't override user-specified device count, or other XLA flags.
+    if "xla_force_host_platform_device_count" not in flags_str:
+        os.environ["XLA_FLAGS"] = (flags_str +
+                                   " --xla_force_host_platform_device_count=2")
+    # Clear any cached backends so new CPU backend will pick up the env var.
+    xla_bridge.get_backend.cache_clear()
+
+    chunked_f = chunked_pmap(f, 2)
+    x = jnp.arange(2)
+    assert chunked_f(x, y=x).shape == x.shape
+    assert jnp.all(chunked_f(x, y=x) == x ** 2)
+
+    x = jnp.arange(3)
+    assert chunked_f(x, y=x).shape == x.shape
+    assert jnp.all(chunked_f(x, y=x) == x ** 2)
 
 
 def test_prepare_func_args():
@@ -33,8 +87,9 @@ def test_prepare_func_args():
 
 def test_random_ortho_matrix():
     M = random_ortho_matrix(random.PRNGKey(42), 5)
-    assert jnp.allclose(M.T @ M, M @ M.T)
-    assert jnp.allclose(M.T @ M, jnp.eye(5))
+    assert jnp.isclose(jnp.linalg.det(M), 1.)
+    assert jnp.allclose(M.T @ M, M @ M.T, atol=1e-6)
+    assert jnp.allclose(M.T @ M, jnp.eye(5), atol=1e-6)
     assert jnp.allclose(jnp.linalg.norm(M, axis=0), jnp.linalg.norm(M, axis=1))
 
 
@@ -136,7 +191,7 @@ def test_logaddexp():
         u = random.uniform(random.PRNGKey(i), shape=(2,)) * 20. - 10.
         a = jnp.log(u[0] + 0j)
         b = jnp.log(u[1] + 0j)
-        assert jnp.isclose(jnp.exp(logaddexp(a, b)).real, u[0] + u[1])
+        assert jnp.isclose(jnp.exp(logaddexp(a, b)).real, u[0] + u[1], atol=5e-5)
 
 
 def test_is_complex():
@@ -240,7 +295,7 @@ def test_cumulative_logsumexp():
 def test_random_ortho_normal_matrix():
     for i in range(100):
         H = random_ortho_matrix(random.PRNGKey(0), 3)
-        assert jnp.all(jnp.isclose(H @ H.conj().T, jnp.eye(3), atol=1e-7))
+        assert jnp.all(jnp.isclose(H @ H.conj().T, jnp.eye(3), atol=1e-6))
 
 
 def test_latin_hyper_cube():
@@ -274,9 +329,9 @@ def test_linear_to_log_stats():
 def test_msqrt():
     for i in range(10):
         A = random.normal(random.PRNGKey(i), shape=(30, 30))
-        A = A @ A.T
-        L = msqrt(A)
-        assert jnp.all(jnp.isclose(A, L @ L.T))
+        B = A @ A.T
+        L = msqrt(B)
+        assert jnp.allclose(B, L @ L.T, atol=2e-5)
 
 
 def test_broadcast_dtypes():
