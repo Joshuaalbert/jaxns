@@ -10,6 +10,7 @@ class PoissonPrior(HierarchicalPrior):
     def __init__(self, name, lamda, tracked=True):
         """
         Uses a sequential transform which works for small lamda.
+        Empirical mean within 1 for lamda < 100.
 
         Args:
             lamda: the intensity of the process.
