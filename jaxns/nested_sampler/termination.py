@@ -1,6 +1,6 @@
 from jax import numpy as jnp
 
-from jaxns.types import TerminationStats
+from jaxns.internals.types import TerminationStats
 from jaxns.internals.stats import linear_to_log_stats
 from jaxns.internals.log_semiring import LogSpace
 

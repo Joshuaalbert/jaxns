@@ -1,3 +1,5 @@
+from typing import NamedTuple
+
 from jax import random, vmap, numpy as jnp, tree_map, jit
 from jax.lax import while_loop
 from jax.scipy.special import logsumexp
@@ -7,7 +9,7 @@ import numpy as np
 from jaxns.internals.maps import dict_multimap, prepare_func_args
 from jaxns.internals.log_semiring import cumulative_logsumexp, LogSpace
 from jaxns.prior_transforms import PriorChain
-from jaxns.types import NestedSamplerResults
+from jaxns.internals.types import NestedSamplerResults, ThreadStats
 
 logger = logging.getLogger(__name__)
 
@@ -282,3 +284,87 @@ def analytic_log_evidence(prior_chain: PriorChain, log_likelihood, S: int = 60):
     Z_true = (LogSpace(jit(vmap(lambda arg: log_likelihood(**prior_chain(arg))))(args)).sum() * LogSpace(
         jnp.log(du)) ** prior_chain.U_ndims)
     return Z_true.log_abs_val
+
+
+def _isinstance_namedtuple(obj) -> bool:
+    return (
+            isinstance(obj, tuple) and
+            hasattr(obj, '_asdict') and
+            hasattr(obj, '_fields')
+    )
+
+
+def save_pytree(pytree: NamedTuple, save_file: str):
+    """
+    Saves results of nested sampler in a npz file.
+
+    Args:
+        results: NestedSamplerResults
+        save_file: str, filename
+    """
+    pytree_np = tree_map(lambda v: np.asarray(v) if v is not None else None, pytree)
+
+    def _pytree_asdict(pytree):
+        _data_dict = pytree._asdict()
+        data_dict = {}
+        for k, v in _data_dict.items():
+            if _isinstance_namedtuple(v):
+                data_dict[k] = _pytree_asdict(v)
+            elif isinstance(v, (dict, np.ndarray, None.__class__)):
+                data_dict[k] = v
+            else:
+                raise ValueError("key, value pair {}, {} unknown".format(k, v))
+        return data_dict
+
+    data_dict = _pytree_asdict(pytree_np)
+    np.savez(save_file, **data_dict)
+
+
+def save_results(results: NestedSamplerResults, save_file: str):
+    """
+    Saves results of nested sampler in a npz file.
+
+    Args:
+        results: NestedSamplerResults
+        save_file: str, filename
+    """
+    save_pytree(results, save_file)
+
+
+def load_pytree(save_file: str):
+    """
+    Loads saved nested sampler results from a npz file.
+
+    Args:
+        save_file: str
+
+    Returns:
+        NestedSamplerResults
+    """
+    _data_dict = np.load(save_file, allow_pickle=True)
+    data_dict = {}
+    for k, v in _data_dict.items():
+        if v.size == 1:
+            if v.item() is None:
+                data_dict[k] = None
+            else:
+                data_dict[k] = dict_multimap(lambda v: jnp.asarray(v), v.item())
+        else:
+            data_dict[k] = jnp.asarray(v)
+
+    return data_dict
+
+
+def load_results(save_file: str) -> NestedSamplerResults:
+    """
+    Loads saved nested sampler results from a npz file.
+
+    Args:
+        save_file: str
+
+    Returns:
+        NestedSamplerResults
+    """
+    data_dict = load_pytree(save_file)
+    thread_stats = ThreadStats(**data_dict.pop('thread_stats', None))
+    return NestedSamplerResults(**data_dict, thread_stats=thread_stats)

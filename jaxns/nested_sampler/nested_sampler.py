@@ -1,22 +1,21 @@
 import logging
-from typing import Dict, Any, Optional, NamedTuple, Tuple, Union, Callable
+from typing import Dict, Any, Optional, Tuple, Union, Callable
 
-import numpy as np
 from jax import numpy as jnp, random, tree_map
 from jax.lax import scan
 from jax.lax import while_loop
 
 from jaxns.internals.log_semiring import LogSpace
 from jaxns.internals.maps import chunked_pmap, replace_index
-from jaxns.internals.maps import dict_multimap, prepare_func_args
+from jaxns.internals.maps import prepare_func_args
 from jaxns.internals.stats import linear_to_log_stats
 from jaxns.nested_sampler.live_points import infimum_constraint
 from jaxns.nested_sampler.nested_sampling import build_get_sample, get_seed_goal, sample_goal_distribution, \
     collect_samples
 from jaxns.nested_sampler.termination import termination_condition
 from jaxns.prior_transforms import PriorChain
-from jaxns.types import NestedSamplerState, EvidenceCalculation, Reservoir
-from jaxns.types import SampleCollection, NestedSamplerResults, ThreadStats, TerminationStats
+from jaxns.internals.types import NestedSamplerState, EvidenceCalculation, Reservoir
+from jaxns.internals.types import SampleCollection, NestedSamplerResults, ThreadStats, TerminationStats
 
 logger = logging.getLogger(__name__)
 
@@ -623,87 +622,3 @@ class NestedSampler(object):
             data['samples'] = None
 
         return NestedSamplerResults(**data)
-
-
-def _isinstance_namedtuple(obj) -> bool:
-    return (
-            isinstance(obj, tuple) and
-            hasattr(obj, '_asdict') and
-            hasattr(obj, '_fields')
-    )
-
-
-def save_pytree(pytree: NamedTuple, save_file: str):
-    """
-    Saves results of nested sampler in a npz file.
-
-    Args:
-        results: NestedSamplerResults
-        save_file: str, filename
-    """
-    pytree_np = tree_map(lambda v: np.asarray(v) if v is not None else None, pytree)
-
-    def _pytree_asdict(pytree):
-        _data_dict = pytree._asdict()
-        data_dict = {}
-        for k, v in _data_dict.items():
-            if _isinstance_namedtuple(v):
-                data_dict[k] = _pytree_asdict(v)
-            elif isinstance(v, (dict, np.ndarray, None.__class__)):
-                data_dict[k] = v
-            else:
-                raise ValueError("key, value pair {}, {} unknown".format(k, v))
-        return data_dict
-
-    data_dict = _pytree_asdict(pytree_np)
-    np.savez(save_file, **data_dict)
-
-
-def save_results(results: NestedSamplerResults, save_file: str):
-    """
-    Saves results of nested sampler in a npz file.
-
-    Args:
-        results: NestedSamplerResults
-        save_file: str, filename
-    """
-    save_pytree(results, save_file)
-
-
-def load_pytree(save_file: str):
-    """
-    Loads saved nested sampler results from a npz file.
-
-    Args:
-        save_file: str
-
-    Returns:
-        NestedSamplerResults
-    """
-    _data_dict = np.load(save_file, allow_pickle=True)
-    data_dict = {}
-    for k, v in _data_dict.items():
-        if v.size == 1:
-            if v.item() is None:
-                data_dict[k] = None
-            else:
-                data_dict[k] = dict_multimap(lambda v: jnp.asarray(v), v.item())
-        else:
-            data_dict[k] = jnp.asarray(v)
-
-    return data_dict
-
-
-def load_results(save_file: str) -> NestedSamplerResults:
-    """
-    Loads saved nested sampler results from a npz file.
-
-    Args:
-        save_file: str
-
-    Returns:
-        NestedSamplerResults
-    """
-    data_dict = load_pytree(save_file)
-    thread_stats = ThreadStats(**data_dict.pop('thread_stats', None))
-    return NestedSamplerResults(**data_dict, thread_stats=thread_stats)

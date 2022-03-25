@@ -3,7 +3,7 @@ from jax.lax import while_loop, dynamic_update_slice, scan
 from jax import random, vmap, tree_map
 from typing import NamedTuple, Tuple
 
-from jaxns.types import Reservoir
+from jaxns.internals.types import Reservoir
 from jaxns.prior_transforms.prior_chain import PriorChain
 import logging
 
