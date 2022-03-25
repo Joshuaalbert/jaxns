@@ -1,7 +1,7 @@
 from jax import numpy as jnp
 from jax.lax import scan
 from jax.scipy.special import logsumexp
-from jaxns.types import SignedLog
+from jaxns.internals.types import SignedLog
 
 
 def logaddexp(x1, x2):

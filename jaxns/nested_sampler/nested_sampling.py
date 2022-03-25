@@ -8,9 +8,9 @@ from jaxns.internals.maps import replace_index
 from jaxns.likelihood_samplers.parallel_slice_sampling import ProposalState, change_direction, shrink_interval, \
     sample_direction, \
     slice_bounds, pick_point_in_interval
-from jaxns.nested_sampler.live_points import compute_num_live_points_from_unit_threads, infimum_constraint
+from jaxns.nested_sampler.live_points import compute_num_live_points_from_unit_threads
 from jaxns.prior_transforms import PriorChain
-from jaxns.types import NestedSamplerState, EvidenceCalculation, Reservoir
+from jaxns.internals.types import NestedSamplerState, EvidenceCalculation, Reservoir
 
 
 def build_get_sample(prior_chain: PriorChain, loglikelihood_from_U,

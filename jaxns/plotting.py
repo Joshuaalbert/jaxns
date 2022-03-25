@@ -4,7 +4,7 @@ from jax import random
 from matplotlib.animation import FuncAnimation
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
-from jaxns.types import NestedSamplerResults
+from jaxns.internals.types import NestedSamplerResults
 from jaxns.internals.log_semiring import cumulative_logsumexp
 from jaxns.utils import resample
 from jaxns.internals.shapes import tuple_prod
