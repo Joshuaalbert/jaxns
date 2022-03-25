@@ -3,7 +3,7 @@ from jax.lax import while_loop, dynamic_update_slice, scan
 from jax import random, vmap, tree_map
 from typing import NamedTuple, Tuple
 
-from jaxns.types import Reservoir
+from jaxns.internals.types import Reservoir
 from jaxns.prior_transforms.prior_chain import PriorChain
 import logging
 
@@ -84,6 +84,8 @@ def sample_direction(n_key, ndim: int):
     Returns:
         direction: [D] direction from S^(D-1)
     """
+    if ndim == 1:
+        return jnp.ones(())
     direction = random.normal(n_key, shape=(ndim,))
     direction /= jnp.linalg.norm(direction)
     return direction
@@ -112,6 +114,121 @@ def select_from_reservoir(key, reservoir_log_L, reservoir_contraint_satisfied, r
     return point_U0, log_L0
 
 
+def propose_new_point_from_reservoir(slice_sampler_state: SliceSamplerState, log_L_contour: jnp.ndarray) -> Tuple[
+    SliceSamplerState, ProposalState]:
+    """
+    Select a point from satisfying points in reservoir.
+    Pick direction.
+    Find full interval.
+    Pick point on interval.
+    Ensures key in slice_sampler_state is new.
+    """
+    slice_sampler_key, select_key, proposal_key, n_key, t_key = random.split(slice_sampler_state.key, 5)
+    point_U0, log_L0 = select_from_reservoir(select_key,
+                                             slice_sampler_state.reservoir.log_L_samples,
+                                             slice_sampler_state.reservoir.log_L_samples >= log_L_contour,
+                                             # for the case available doesn't map to constraint satisfaction
+                                             slice_sampler_state.reservoir.points_U)
+    direction = sample_direction(n_key, point_U0.size)
+    (left, right) = slice_bounds(point_U0, direction)
+    point_U, t = pick_point_in_interval(t_key, point_U0, direction, left, right)
+    return (slice_sampler_state._replace(key=slice_sampler_key),
+            ProposalState(key=proposal_key,
+                          process_step=jnp.full((), 3, jnp.int_),
+                          proposal_count=jnp.zeros((), jnp.int_),
+                          num_likelihood_evaluations=jnp.zeros((), jnp.int_),
+                          point_U0=point_U0,
+                          log_L0=log_L0,
+                          direction=direction,
+                          left=left,
+                          right=right,
+                          point_U=point_U,
+                          t=t))
+
+def replace_point_in_reservoir(prior_chain:PriorChain, slice_sampler_state: SliceSamplerState, from_proposal_state: ProposalState,
+                               log_L_proposal: jnp.ndarray, log_L_contour:jnp.ndarray) -> Tuple[SliceSamplerState, ProposalState]:
+    """
+    Successful proposal and proposal_count==num_slices, so
+    Replace reservoir at idx_contour.
+    Return new reservoir sample.
+    """
+    # replace the first occurance of non-satisfied contour
+    # Cannot use jnp.argmin(slice_sampler_state.reservoir.available) because unavailable doesn't mean unsatisfied constraint
+    # but unsatisfied constraint mean unavailable.
+    # replace_idx = jnp.argmin(slice_sampler_state.reservoir.log_L_samples > log_L_contour)
+    replace_idx = jnp.argmin(slice_sampler_state.reservoir.available)
+
+    next_point_X = prior_chain(from_proposal_state.point_U)
+    new_reservoir_point = Reservoir(points_U=from_proposal_state.point_U,
+                                    points_X=dict((name, next_point_X[name])
+                                                  for name in slice_sampler_state.reservoir.points_X),
+                                    log_L=log_L_proposal,
+                                    num_likelihood_evaluations=from_proposal_state.num_likelihood_evaluations,
+                                    available=jnp.asarray(True, jnp.bool_))
+
+    next_reservoir = tree_map(lambda operand, update: dynamic_update_slice(operand,
+                                                                           update[None],
+                                                                           [replace_idx] + [0] * len(update.shape)),
+                              slice_sampler_state.reservoir,
+                              new_reservoir_point)
+
+    slice_sampler_state = slice_sampler_state._replace(reservoir=next_reservoir)
+
+    return propose_new_point_from_reservoir(slice_sampler_state, log_L_contour=log_L_contour)
+
+def shrink_interval(from_proposal_state: ProposalState, log_L_proposal: jnp.ndarray, log_L_contour: jnp.ndarray,
+                    midpoint_shrink: bool) -> ProposalState:
+    """
+    Not successful proposal, so shrink.
+    """
+    left = jnp.where(from_proposal_state.t < 0., from_proposal_state.t, from_proposal_state.left)
+    right = jnp.where(from_proposal_state.t > 0., from_proposal_state.t, from_proposal_state.right)
+    key, t_key, midpoint_key = random.split(from_proposal_state.key, 3)
+    if midpoint_shrink:
+        # y(t) = m * t + b
+        # y(0) = b
+        # (y(t_R) - y(o))/t_R
+        # y(t_R*alpha) = (y(t_R) - y(0))*alpha + y(0)
+        alpha_key, beta_key = random.split(midpoint_key, 2)
+        alpha = random.uniform(alpha_key)
+        beta = random.uniform(beta_key)
+        logL_alpha = from_proposal_state.log_L0 + alpha * (log_L_proposal - from_proposal_state.log_L0)
+        logL_beta = log_L_proposal + beta * (log_L_contour - log_L_proposal)
+        do_mid_point_shrink = logL_alpha < logL_beta
+        left = jnp.where((from_proposal_state.t < 0.) & do_mid_point_shrink, alpha * left, left)
+        right = jnp.where((from_proposal_state.t > 0.) & do_mid_point_shrink, alpha * right, right)
+    point_U, t = pick_point_in_interval(t_key, from_proposal_state.point_U0, from_proposal_state.direction,
+                                        left, right)
+    return from_proposal_state._replace(key=key,
+                                        process_step=jnp.full((), 3, jnp.int_),
+                                        left=left,
+                                        right=right,
+                                        point_U=point_U,
+                                        t=t)
+
+def change_direction(from_proposal_state: ProposalState, log_L_proposal: jnp.ndarray) -> ProposalState:
+    """
+    Successful proposal, but not enough proposals to de-correlate.
+    Pick a new direction and propose from current point.
+    """
+    proposal_key, n_key, t_key = random.split(from_proposal_state.key, 3)
+    point_U0 = from_proposal_state.point_U
+    log_L0 = log_L_proposal
+    direction = sample_direction(n_key, point_U0.size)
+    (left, right) = slice_bounds(point_U0, direction)
+    point_U, t = pick_point_in_interval(t_key, point_U0, direction, left, right)
+
+    return from_proposal_state._replace(key=proposal_key,
+                                        process_step=jnp.full((), 3, jnp.int_),
+                                        point_U0=point_U0,
+                                        log_L0=log_L0,
+                                        direction=direction,
+                                        left=left,
+                                        right=right,
+                                        point_U=point_U,
+                                        t=t)
+
+
 def _parallel_sampling(loglikelihood_from_U, prior_chain: PriorChain, key, log_L_contour, num_samples: jnp.ndarray,
                        reservoir_state: Reservoir, num_slices: int, midpoint_shrink: bool,
                        num_parallel_samplers: int, strict_contour: jnp.ndarray) -> Reservoir:
@@ -134,119 +251,7 @@ def _parallel_sampling(loglikelihood_from_U, prior_chain: PriorChain, key, log_L
     """
     init_num_available = jnp.sum(reservoir_state.available)
 
-    def propose_new_point_from_reservoir(slice_sampler_state: SliceSamplerState) -> Tuple[
-        SliceSamplerState, ProposalState]:
-        """
-        Select a point from satisfying points in reservoir.
-        Pick direction.
-        Find full interval.
-        Pick point on interval.
-        Ensures key in slice_sampler_state is new.
-        """
-        slice_sampler_key, select_key, proposal_key, n_key, t_key = random.split(slice_sampler_state.key, 5)
-        point_U0, log_L0 = select_from_reservoir(select_key,
-                                                 slice_sampler_state.reservoir.log_L,
-                                                 slice_sampler_state.reservoir.log_L >= log_L_contour,
-                                                 # for the case available doesn't map to constraint satisfaction
-                                                 slice_sampler_state.reservoir.points_U)
-        direction = sample_direction(n_key, point_U0.size)
-        (left, right) = slice_bounds(point_U0, direction)
-        point_U, t = pick_point_in_interval(t_key, point_U0, direction, left, right)
-        return (slice_sampler_state._replace(key=slice_sampler_key),
-                ProposalState(key=proposal_key,
-                              process_step=jnp.full((), 3, jnp.int_),
-                              proposal_count=jnp.zeros((), jnp.int_),
-                              num_likelihood_evaluations=jnp.zeros((), jnp.int_),
-                              point_U0=point_U0,
-                              log_L0=log_L0,
-                              direction=direction,
-                              left=left,
-                              right=right,
-                              point_U=point_U,
-                              t=t))
 
-    def replace_point_in_reservoir(slice_sampler_state: SliceSamplerState, from_proposal_state: ProposalState,
-                                   log_L_proposal: jnp.ndarray) -> Tuple[SliceSamplerState, ProposalState]:
-        """
-        Successful proposal and proposal_count==num_slices, so
-        Replace reservoir at idx_contour.
-        Return new reservoir sample.
-        """
-        # replace the first occurance of non-satisfied contour
-        # Cannot use jnp.argmin(slice_sampler_state.reservoir.available) because unavailable doesn't mean unsatisfied constraint
-        # but unsatisfied constraint mean unavailable.
-        # replace_idx = jnp.argmin(slice_sampler_state.reservoir.log_L > log_L_contour)
-        replace_idx = jnp.argmin(slice_sampler_state.reservoir.available)
-
-        next_point_X = prior_chain(from_proposal_state.point_U)
-        new_reservoir_point = Reservoir(points_U=from_proposal_state.point_U,
-                                        points_X=dict((name, next_point_X[name])
-                                                      for name in slice_sampler_state.reservoir.points_X),
-                                        log_L=log_L_proposal,
-                                        num_likelihood_evaluations=from_proposal_state.num_likelihood_evaluations,
-                                        available=jnp.asarray(True, jnp.bool_))
-
-        next_reservoir = tree_map(lambda operand, update: dynamic_update_slice(operand,
-                                                                               update[None],
-                                                                               [replace_idx] + [0] * len(update.shape)),
-                                  slice_sampler_state.reservoir,
-                                  new_reservoir_point)
-
-        slice_sampler_state = slice_sampler_state._replace(reservoir=next_reservoir)
-
-        return propose_new_point_from_reservoir(slice_sampler_state)
-
-    def shrink_interval(from_proposal_state: ProposalState, log_L_proposal: jnp.ndarray,
-                        midpoint_shrink: bool) -> ProposalState:
-        """
-        Not successful proposal, so shrink.
-        """
-        left = jnp.where(from_proposal_state.t < 0., from_proposal_state.t, from_proposal_state.left)
-        right = jnp.where(from_proposal_state.t > 0., from_proposal_state.t, from_proposal_state.right)
-        key, t_key, midpoint_key = random.split(from_proposal_state.key, 3)
-        if midpoint_shrink:
-            # y(t) = m * t + b
-            # y(0) = b
-            # (y(t_R) - y(o))/t_R
-            # y(t_R*alpha) = (y(t_R) - y(0))*alpha + y(0)
-            alpha_key, beta_key = random.split(midpoint_key, 2)
-            alpha = random.uniform(alpha_key)
-            beta = random.uniform(beta_key)
-            logL_alpha = from_proposal_state.log_L0 + alpha * (log_L_proposal - from_proposal_state.log_L0)
-            logL_beta = log_L_proposal + beta * (log_L_contour - log_L_proposal)
-            do_mid_point_shrink = logL_alpha < logL_beta
-            left = jnp.where((from_proposal_state.t < 0.) & do_mid_point_shrink, alpha * left, left)
-            right = jnp.where((from_proposal_state.t > 0.) & do_mid_point_shrink, alpha * right, right)
-        point_U, t = pick_point_in_interval(t_key, from_proposal_state.point_U0, from_proposal_state.direction,
-                                            left, right)
-        return from_proposal_state._replace(key=key,
-                                            process_step=jnp.full((), 3, jnp.int_),
-                                            left=left,
-                                            right=right,
-                                            point_U=point_U,
-                                            t=t)
-
-    def change_direction(from_proposal_state: ProposalState, log_L_proposal: jnp.ndarray) -> ProposalState:
-        """
-        Successful proposal, but not enough proposals to de-correlate.
-        Pick a new direction and propose from current point.
-        """
-        proposal_key, n_key, t_key = random.split(from_proposal_state.key, 3)
-        point_U0 = from_proposal_state.point_U
-        log_L0 = log_L_proposal
-        direction = sample_direction(n_key, point_U0.size)
-        (left, right) = slice_bounds(point_U0, direction)
-        point_U, t = pick_point_in_interval(t_key, point_U0, direction, left, right)
-
-        return from_proposal_state._replace(key=proposal_key,
-                                            process_step=jnp.full((), 3, jnp.int_),
-                                            point_U0=point_U0,
-                                            log_L0=log_L0,
-                                            direction=direction,
-                                            left=left,
-                                            right=right,
-                                            point_U=point_U,
-                                            t=t)
 
     def slice_sampler_body(state: Tuple[SliceSamplerState, ProposalState]) \
             -> Tuple[SliceSamplerState, ProposalState]:
@@ -302,11 +307,15 @@ def _parallel_sampling(loglikelihood_from_U, prior_chain: PriorChain, key, log_L
             def _map_where(cond, a_tree, b_tree):
                 return tree_map(lambda a, b: jnp.where(cond, a, b), a_tree, b_tree)
 
-            slice_sampler_state_from_0, proposal_state_from_0 = replace_point_in_reservoir(slice_sampler_state,
+            slice_sampler_state_from_0, proposal_state_from_0 = replace_point_in_reservoir(prior_chain,
+                                                                                           slice_sampler_state,
                                                                                            proposal_state,
-                                                                                           log_L_point_U)
+                                                                                           log_L_point_U,
+                                                                                           log_L_contour=log_L_contour)
             proposal_state_from_1 = change_direction(proposal_state, log_L_point_U)
-            proposal_state_from_2 = shrink_interval(proposal_state, log_L_point_U, midpoint_shrink=midpoint_shrink)
+            proposal_state_from_2 = shrink_interval(proposal_state, log_L_point_U,
+                                                    log_L_contour=log_L_contour,
+                                                    midpoint_shrink=midpoint_shrink)
 
             # replace with the proposal state as appropriate
             in_process_step = proposal_state.process_step
@@ -346,14 +355,14 @@ def _parallel_sampling(loglikelihood_from_U, prior_chain: PriorChain, key, log_L
 
     # Initialise state
 
-    # TODO: replace with while and dynamic loop to only do work if num_samples > 0.
+    # TODO: replace with while and dynamic _loop to only do work if num_samples > 0.
 
     init_slice_sampler_state = SliceSamplerState(key=key,
                                                  done=(num_samples == jnp.asarray(0, num_samples.dtype)) | (
                                                              init_num_available == reservoir_state.available.size),
                                                  reservoir=Reservoir(points_U=reservoir_state.points_U,
                                                                      points_X=reservoir_state.points_X,
-                                                                     log_L=reservoir_state.log_L,
+                                                                     log_L=reservoir_state.log_L_samples,
                                                                      num_likelihood_evaluations=reservoir_state.num_likelihood_evaluations,
                                                                      available=reservoir_state.available)
                                                  )
@@ -363,7 +372,8 @@ def _parallel_sampling(loglikelihood_from_U, prior_chain: PriorChain, key, log_L
         Propose a new point from reservoir, changing the PRNG key between each generation.
         """
         slice_sampler_state = init_slice_sampler_state._replace(key=key)
-        _, proposal_state = propose_new_point_from_reservoir(slice_sampler_state)
+        _, proposal_state = propose_new_point_from_reservoir(slice_sampler_state,
+                                                             log_L_contour=log_L_contour)
         return proposal_state
 
     key, _key = random.split(init_slice_sampler_state.key, 2)
