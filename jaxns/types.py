@@ -95,3 +95,5 @@ class NestedSamplerResults(NamedTuple):
     log_efficiency: jnp.ndarray  # log(total_num_samples / total_num_likelihood_evaluations)
     termination_reason: jnp.ndarray  # this will be an int reflecting the reason for termination
     thread_stats:ThreadStats
+    log_L_max: jnp.ndarray # maximum likelihood value obtained
+    sample_L_max: Dict[str, jnp.ndarray] # sample at the log_L_max point

@@ -240,21 +240,22 @@ def evidence_posterior_samples(key, num_live_points_per_sample, log_L_samples, S
     L = LogSpace(jnp.asarray([-jnp.inf], log_L_samples.dtype)).concatenate(
         LogSpace(log_L_samples))
     L_mid = (L[:-1] + L[1:]) * LogSpace(jnp.log(0.5))
-
     def evidence_chain(key):
         # T ~ Beta(n[i],1) <==> T ~ Kumaraswamy(n[i],1)
         log_T = jnp.log(random.uniform(key, n_i.shape, dtype=L_mid.dtype)) / n_i
+        # log_T = jnp.where(n_i == 0., -jnp.inf, log_T)
         # log_T = jnp.log(random.beta(key, state.sample_collection.num_live_points, 1.))
         T = LogSpace(log_T)
         X = LogSpace(jnp.asarray([0.], log_L_samples.dtype)).concatenate(T).cumprod()
         dX = (X[:-1] - X[1:]).abs()
         dZ = dX * L_mid
+        dZ = LogSpace(jnp.where(n_i == 0., -jnp.inf, dZ.log_abs_val))
+        # dZ = LogSpace(jnp.where(jnp.isnan(dZ.log_abs_val), -jnp.inf, dZ.log_abs_val))
         Z = dZ.sum()
         # ESS = Z.square() / dZ.square().sum()
         return Z.log_abs_val
 
-    chain_key, key = random.split(key, 2)
-    log_Z_chains = vmap(evidence_chain)(random.split(chain_key, S))
+    log_Z_chains = vmap(evidence_chain)(random.split(key, S))
     Z_chains = LogSpace(log_Z_chains)
     return Z_chains.log_abs_val
 
