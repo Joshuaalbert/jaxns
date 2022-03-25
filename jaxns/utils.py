@@ -1,7 +1,7 @@
-from jax import random, vmap, numpy as jnp, tree_map, local_device_count, devices as get_devices, pmap, jit, device_get, \
-    tree_multimap
-from timeit import default_timer
-from jax.lax import scan, while_loop
+from typing import NamedTuple
+
+from jax import random, vmap, numpy as jnp, tree_map, jit
+from jax.lax import while_loop
 from jax.scipy.special import logsumexp
 import logging
 import numpy as np
@@ -9,12 +9,12 @@ import numpy as np
 from jaxns.internals.maps import dict_multimap, prepare_func_args
 from jaxns.internals.log_semiring import cumulative_logsumexp, LogSpace
 from jaxns.prior_transforms import PriorChain
-from jaxns.types import NestedSamplerResults
+from jaxns.internals.types import NestedSamplerResults, ThreadStats
 
 logger = logging.getLogger(__name__)
 
 
-def resample(key, samples, log_weights, S=None):
+def resample(key, samples, log_weights, S=None, replace=False):
     """
     resample the samples with weights which are interpreted as log_probabilities.
     Args:
@@ -29,10 +29,14 @@ def resample(key, samples, log_weights, S=None):
 
         S = int(jnp.exp(2. * logsumexp(log_weights) - logsumexp(2. * log_weights)))
 
-    # use cumulative_logsumexp because some log_weights could be really small
-    log_p_cuml = cumulative_logsumexp(log_weights)
-    log_r = log_p_cuml[-1] + jnp.log(1. - random.uniform(key, (S,)))
-    idx = jnp.searchsorted(log_p_cuml, log_r)
+    if not replace:
+        # use cumulative_logsumexp because some log_weights could be really small
+        log_p_cuml = cumulative_logsumexp(log_weights)
+        log_r = log_p_cuml[-1] + jnp.log(1. - random.uniform(key, (S,)))
+        idx = jnp.searchsorted(log_p_cuml, log_r)
+    else:
+        g = -random.gumbel(key, shape=log_weights.shape) - log_weights
+        idx = jnp.argsort(g)[:S]
     return dict_multimap(lambda s: s[idx, ...], samples)
 
 
@@ -84,130 +88,6 @@ def marginalise_dynamic(key, samples, log_weights, ESS, fun):
                                           (key, jnp.array(0.), tree_map(lambda x: jnp.zeros_like(x), test_output)))
     marginalised = tree_map(lambda x: x / count, marginalised)
     return marginalised
-
-
-def _debug_chunked_pmap(f, *args, chunksize=None):
-    # TODO: remove dask, use jaxns chunked_pmap
-
-    T = args[0].shape[0]
-    # lazy import in case dask not installed
-    from datetime import datetime
-    import os
-    from dask.threaded import get
-
-    devices = get_devices()
-
-    def build_pmap_body(dev_idx):
-        fun = jit(f, device=devices[dev_idx])
-        log = os.path.join(os.getcwd(), "chunk{:02d}.log".format(dev_idx))
-
-        def pmap_body(*args):
-            result = []
-            with open(log, 'a') as f:
-                for i in range(T):
-                    item = jnp.ravel_multi_index((dev_idx, i), (chunksize, T))
-                    logger.info("Starting item: {}".format(item))
-                    f.write('{} {}'.format(datetime.now().isoformat(), "Starting item: {}".format(item)))
-                    result.append(fun(*[a[i, ...] for a in args]))
-                    tree_map(lambda a: a.block_until_ready(), result[-1])
-                    logger.info("Done item: {}".format(item))
-                    f.write('{} {}'.format(datetime.now().isoformat(), "Done item: {}".format(item)))
-            result = tree_multimap(lambda *result: jnp.stack(result, axis=0), *result)
-            return result
-
-        return pmap_body
-
-    # if jit_is_disabled():
-    #     num_devices = local_device_count()
-    #     dsk = {str(device): (build_pmap_body(device),) + tuple([arg[device] for arg in args]) for device in
-    #            range(num_devices)}
-    #     result_keys = [str(device) for device in range(num_devices)]
-    #     result = get(dsk, result_keys, num_workers=num_devices)
-    #     result = device_get(result)
-    #     result = tree_multimap(lambda *result: jnp.stack(result, axis=0), *result)
-    # else:
-    num_devices = local_device_count()
-    dsk = {str(device): (build_pmap_body(device),) + tuple([arg[device] for arg in args]) for device in
-           range(num_devices)}
-    result_keys = [str(device) for device in range(num_devices)]
-    result = get(dsk, result_keys, num_workers=num_devices)
-    result = device_get(result)
-    result = tree_multimap(lambda *result: jnp.stack(result, axis=0), *result)
-    return result
-
-
-def chunked_pmap(f, *args, chunksize=None, use_vmap=False, per_device_unroll=False, debug=False, batch_size=None):
-    """
-    Calls pmap on chunks of moderate work to be distributed over devices.
-    Automatically handle non-dividing chunksizes, by adding filler elements.
-
-    Args:
-        f: jittable, callable
-        *args: ndarray arguments to map down first dimension
-        chunksize: optional chunk size, should be <= local_device_count(). None is local_device_count.
-
-    Returns: pytree mapped result.
-    """
-    if chunksize is None:
-        chunksize = local_device_count()
-    if chunksize > local_device_count():
-        raise ValueError(f"blocksize should be <= {local_device_count()}.")
-    if batch_size is None:
-        N = args[0].shape[0]
-    else:
-        N = batch_size
-    remainder = N % chunksize
-    if (remainder != 0) and (N > chunksize):
-        # only pad if not a zero remainder
-        extra = chunksize - remainder
-        if N >= chunksize:
-            args = tree_map(lambda arg: jnp.concatenate([arg, arg[:extra]], axis=0), args)
-        else:
-            args = tree_map(lambda arg: jnp.concatenate([arg] + [arg[-1:]] * extra, axis=0), args)
-        N = batch_size + extra
-    args = tree_map(lambda arg: jnp.reshape(arg, (chunksize, N // chunksize) + arg.shape[1:]), args)
-    T = N // chunksize
-    logger.info(f"Distributing {N} over {chunksize} devices in queues of length {T}.")
-    t0 = default_timer()
-
-    def pmap_body(*args):
-        """
-        Distributes the computation in queues which are computed with scan.
-        Args:
-            *args: 
-        """
-
-        def body(state, args):
-            return state, f(*args)
-
-        _, result = scan(body, (), args, unroll=1)
-        return result
-
-    if debug:
-        result = _debug_chunked_pmap(f, *args, chunksize=chunksize)
-    elif use_vmap:
-        result = vmap(pmap_body)(*args)
-    elif per_device_unroll:
-        devices = get_devices()
-        if len(devices) < chunksize:
-            raise ValueError(f"Not enough devices {len(devices)} for blocksize {chunksize}")
-        result = []
-        for i in range(chunksize):
-            dev = devices[i]
-            _func = jit(pmap_body, device=dev)
-            _args = tree_map(lambda x: x[i], args)
-            result.append(_func(*_args))
-        # result = [device_get(r) for r in result]
-        result = tree_multimap(lambda *x: jnp.stack(x, axis=0), *result)
-    else:
-        result = pmap(pmap_body)(*args)
-    result = tree_map(lambda arg: jnp.reshape(arg, (-1,) + arg.shape[2:]), result)
-    if remainder != 0:
-        # only slice if not a zero remainder
-        result = tree_map(lambda x: x[:-extra], result)
-    dt = default_timer() - t0
-    logger.info(f"Time to run: {dt} s, rate: {N / dt} / s, normalised rate: {N / dt / chunksize} / s / device")
-    return result
 
 
 def estimate_map(samples, ESS=None):
@@ -297,14 +177,14 @@ def summary(results: NestedSamplerResults) -> str:
             return float(v)
 
     _print("--------")
-    termination_bit_mask = _bit_mask(results.termination_reason, width=7)
+    termination_bit_mask = _bit_mask(results.termination_reason, width=6)
     _print("Termination Conditions:")
     for bit, condition in zip(termination_bit_mask, ['Reached max samples',
-                                                     'Absolute evidence error low enough',
+                                                     'Evidence uncertainty low enough',
                                                      'Likelihood contour reached',
                                                      'Small remaining evidence',
                                                      'Reached ESS',
-                                                     "Reached max num threads"]):
+                                                     "Used max num steps"]):
         if bit == 1:
             _print(condition)
     _print("--------")
@@ -362,25 +242,27 @@ def evidence_posterior_samples(key, num_live_points_per_sample, log_L_samples, S
     L = LogSpace(jnp.asarray([-jnp.inf], log_L_samples.dtype)).concatenate(
         LogSpace(log_L_samples))
     L_mid = (L[:-1] + L[1:]) * LogSpace(jnp.log(0.5))
-
     def evidence_chain(key):
         # T ~ Beta(n[i],1) <==> T ~ Kumaraswamy(n[i],1)
         log_T = jnp.log(random.uniform(key, n_i.shape, dtype=L_mid.dtype)) / n_i
+        # log_T = jnp.where(n_i == 0., -jnp.inf, log_T)
         # log_T = jnp.log(random.beta(key, state.sample_collection.num_live_points, 1.))
         T = LogSpace(log_T)
         X = LogSpace(jnp.asarray([0.], log_L_samples.dtype)).concatenate(T).cumprod()
         dX = (X[:-1] - X[1:]).abs()
         dZ = dX * L_mid
+        dZ = LogSpace(jnp.where(n_i == 0., -jnp.inf, dZ.log_abs_val))
+        # dZ = LogSpace(jnp.where(jnp.isnan(dZ.log_abs_val), -jnp.inf, dZ.log_abs_val))
         Z = dZ.sum()
         # ESS = Z.square() / dZ.square().sum()
         return Z.log_abs_val
 
-    chain_key, key = random.split(key, 2)
-    log_Z_chains = vmap(evidence_chain)(random.split(chain_key, S))
+    log_Z_chains = vmap(evidence_chain)(random.split(key, S))
     Z_chains = LogSpace(log_Z_chains)
     return Z_chains.log_abs_val
 
-def analytic_log_evidence(prior_chain: PriorChain, log_likelihood, S:int=60):
+
+def analytic_log_evidence(prior_chain: PriorChain, log_likelihood, S: int = 60):
     """
     Compute the evidence with brute-force over a regular grid.
 
@@ -402,3 +284,87 @@ def analytic_log_evidence(prior_chain: PriorChain, log_likelihood, S:int=60):
     Z_true = (LogSpace(jit(vmap(lambda arg: log_likelihood(**prior_chain(arg))))(args)).sum() * LogSpace(
         jnp.log(du)) ** prior_chain.U_ndims)
     return Z_true.log_abs_val
+
+
+def _isinstance_namedtuple(obj) -> bool:
+    return (
+            isinstance(obj, tuple) and
+            hasattr(obj, '_asdict') and
+            hasattr(obj, '_fields')
+    )
+
+
+def save_pytree(pytree: NamedTuple, save_file: str):
+    """
+    Saves results of nested sampler in a npz file.
+
+    Args:
+        results: NestedSamplerResults
+        save_file: str, filename
+    """
+    pytree_np = tree_map(lambda v: np.asarray(v) if v is not None else None, pytree)
+
+    def _pytree_asdict(pytree):
+        _data_dict = pytree._asdict()
+        data_dict = {}
+        for k, v in _data_dict.items():
+            if _isinstance_namedtuple(v):
+                data_dict[k] = _pytree_asdict(v)
+            elif isinstance(v, (dict, np.ndarray, None.__class__)):
+                data_dict[k] = v
+            else:
+                raise ValueError("key, value pair {}, {} unknown".format(k, v))
+        return data_dict
+
+    data_dict = _pytree_asdict(pytree_np)
+    np.savez(save_file, **data_dict)
+
+
+def save_results(results: NestedSamplerResults, save_file: str):
+    """
+    Saves results of nested sampler in a npz file.
+
+    Args:
+        results: NestedSamplerResults
+        save_file: str, filename
+    """
+    save_pytree(results, save_file)
+
+
+def load_pytree(save_file: str):
+    """
+    Loads saved nested sampler results from a npz file.
+
+    Args:
+        save_file: str
+
+    Returns:
+        NestedSamplerResults
+    """
+    _data_dict = np.load(save_file, allow_pickle=True)
+    data_dict = {}
+    for k, v in _data_dict.items():
+        if v.size == 1:
+            if v.item() is None:
+                data_dict[k] = None
+            else:
+                data_dict[k] = dict_multimap(lambda v: jnp.asarray(v), v.item())
+        else:
+            data_dict[k] = jnp.asarray(v)
+
+    return data_dict
+
+
+def load_results(save_file: str) -> NestedSamplerResults:
+    """
+    Loads saved nested sampler results from a npz file.
+
+    Args:
+        save_file: str
+
+    Returns:
+        NestedSamplerResults
+    """
+    data_dict = load_pytree(save_file)
+    thread_stats = ThreadStats(**data_dict.pop('thread_stats', None))
+    return NestedSamplerResults(**data_dict, thread_stats=thread_stats)
