@@ -54,7 +54,7 @@ def marginalise_static(key, samples, log_weights, ESS, fun):
     Returns: expectation over resampled samples.
     """
     fun = prepare_func_args(fun)
-    samples = resample(key, samples, log_weights, S=ESS)
+    samples = resample(key, samples, log_weights, S=ESS, replace=True)
     marginalised = tree_map(lambda marg: jnp.nanmean(marg, axis=0), vmap(lambda d: fun(**d))(samples))
     return marginalised
 
@@ -203,7 +203,7 @@ def summary(results: NestedSamplerResults) -> str:
 
     max_like_idx = jnp.argmax(results.log_L_samples[:results.total_num_samples])
     max_like_points = tree_map(lambda x: x[max_like_idx], results.samples)
-    samples = resample(random.PRNGKey(23426), results.samples, results.log_dp_mean, S=int(results.ESS))
+    samples = resample(random.PRNGKey(23426), results.samples, results.log_dp_mean, S=int(results.ESS), replace=True)
 
     map_points = maximum_a_posteriori_point(results)
 

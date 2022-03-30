@@ -94,7 +94,7 @@ def plot_cornerplot(results:NestedSamplerResults, vars=None, save_name=None):
             # kde1 = gaussian_kde(samples1, weights=weights, bw_method='silverman')
             # samples1_resampled = kde1.resample(size=int(results.ESS))
             rkey0, rkey = random.split(rkey0, 2)
-            samples1_resampled = resample(rkey, samples1, log_weights, S=int(results.ESS))
+            samples1_resampled = resample(rkey, samples1, log_weights, S=int(results.ESS), replace=True)
             samples1_max_like = samples1[max_like_idx]
             samples1_map_point = samples1[map_idx]
             binsx = jnp.linspace(*jnp.percentile(samples1_resampled, jnp.asarray([0, 100])), 2 * nbins)
@@ -164,7 +164,7 @@ def plot_cornerplot(results:NestedSamplerResults, vars=None, save_name=None):
                         # samples2_resampled = kde2.resample(size=int(results.ESS))
                         rkey0, rkey = random.split(rkey0, 2)
                         samples2_resampled = resample(rkey, jnp.stack([samples1, samples2], axis=-1), log_weights,
-                                                      S=int(results.ESS))
+                                                      S=int(results.ESS), replace=True)
                         # norm = plt.Normalize(log_weights.min(), log_weights.max())
                         # color = jnp.atleast_2d(plt.cm.jet(norm(log_weights)))
                         ax.hist2d(samples2_resampled[:, 1], samples2_resampled[:, 0], bins=(nbins, nbins), density=True,

@@ -8,6 +8,51 @@ from jaxns.utils import evidence_posterior_samples
 from jaxns.prior_transforms import PriorChain, UniformPrior, MVNPrior, GammaPrior
 
 
+def test_shrinkage():
+    from jaxns.plotting import plot_diagnostics
+    from jax import disable_jit
+    n = 2
+    def log_likelihood(x):
+        return jnp.log(1. - x**n)
+
+    def exact_X(L):
+        return (1. - L)**(1./n)
+
+    with PriorChain() as prior_chain:
+        UniformPrior('x', 0., 1.)
+
+    ns = NestedSampler(log_likelihood, prior_chain, sampler_kwargs=dict(num_slices=prior_chain.U_ndims*10))
+    with disable_jit():
+        results = ns(key=random.PRNGKey(43), termination_live_evidence_frac=1e-2)
+    plot_diagnostics(results)
+    summary(results)
+
+    import pylab as plt
+    plt.plot(results.log_L_samples, results.log_X_mean, label='predict')
+    plt.plot(results.log_L_samples, jnp.log(exact_X(jnp.exp(results.log_L_samples))), label='exact')
+    plt.legend()
+    plt.show()
+
+    plt.plot(results.log_L_samples,
+             results.log_X_mean - jnp.log(exact_X(jnp.exp(results.log_L_samples))),
+             label='diff')
+    plt.legend()
+    plt.show()
+
+    x_exact = exact_X(jnp.exp(results.log_L_samples))
+    X = jnp.concatenate([jnp.asarray([1.]), x_exact])
+    n = X[1:]/(X[:-1] - X[1:])
+    plt.plot(n[:results.total_num_samples], label='exact n')
+    plt.plot(results.num_live_points_per_sample[:results.total_num_samples], label='predict n')
+    plt.legend()
+    plt.show()
+
+    plt.plot(n[:results.total_num_samples] - results.num_live_points_per_sample[:results.total_num_samples], label='diff n')
+    plt.legend()
+    plt.show()
+
+
+
 def test_nested_sampling_basic():
     from jaxns.plotting import plot_diagnostics
     def log_likelihood(x):
@@ -148,13 +193,17 @@ def test_nested_sampling_dynamic():
     with PriorChain() as prior_chain:
         MVNPrior('x', prior_mu, prior_cov)
 
-    ns = NestedSampler(log_likelihood, prior_chain, dynamic=True)
+    ns = NestedSampler(log_likelihood, prior_chain, dynamic=True, sampler_kwargs=dict(midpoint_shrink=False,
+                                                                                      gradient_boost=True))
     results = ns(key=random.PRNGKey(42),
                  dynamic_kwargs=dict(G=0.),
-                 termination_evidence_uncert=5e-2,
+                 termination_evidence_uncert=1e-2,
+                 termination_live_evidence_frac=1e-5,
+                 termination_ess=None,
                  termination_max_num_steps=30)
     print(results)
-    print(post_mu)
+    print(f"True posterior mean: {post_mu}")
+    print(f"True log(Z): {true_logZ}")
     summary(results)
     plot_diagnostics(results)
     plot_cornerplot(results)

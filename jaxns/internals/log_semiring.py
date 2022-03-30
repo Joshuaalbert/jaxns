@@ -229,6 +229,14 @@ class LogSpace(object):
     def argmax(self):
         return jnp.argmax(self.log_abs_val)
 
+    def maximum(self, other: "LogSpace"):
+        assert self._naked and other._naked
+        return LogSpace(jnp.maximum(self.log_abs_val, other.log_abs_val))
+
+    def minimum(self, other: "LogSpace"):
+        assert self._naked and other._naked
+        return LogSpace(jnp.minimum(self.log_abs_val, other.log_abs_val))
+
     def max(self):
         assert self._naked
         return LogSpace(jnp.max(self.log_abs_val))

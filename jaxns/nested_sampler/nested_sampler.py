@@ -9,9 +9,8 @@ from jaxns.internals.log_semiring import LogSpace
 from jaxns.internals.maps import chunked_pmap, replace_index
 from jaxns.internals.maps import prepare_func_args
 from jaxns.internals.stats import linear_to_log_stats
-from jaxns.nested_sampler.live_points import infimum_constraint
 from jaxns.nested_sampler.nested_sampling import build_get_sample, get_seed_goal, sample_goal_distribution, \
-    collect_samples
+    collect_samples, _single_sample_constraint_for_contour_and_idx
 from jaxns.nested_sampler.termination import termination_condition
 from jaxns.prior_transforms import PriorChain
 from jaxns.internals.types import NestedSamplerState, EvidenceCalculation, Reservoir
@@ -237,7 +236,7 @@ class NestedSampler(object):
             # The log mean evidence difference of the sample (averaged across chains)
             log_X_mean=jnp.full((self.max_samples,), -jnp.inf, self.dtype),
             # The log mean enclosed prior volume of sample
-            num_live_points=jnp.full((self.max_samples,), jnp.inf, jnp.float_)
+            num_live_points=jnp.full((self.max_samples,), 0., jnp.float_)
             # How many live points were taken for the samples.
         )
 
@@ -394,29 +393,40 @@ class NestedSampler(object):
         def body(state: NestedSamplerState):
             # Note: state enters with consistent definition, and exits with consistent definition.
 
-            # Get the seed samples and constraints, over the shrinkage constraints to sample from
+            ## Get the goal distribution from sample population.
             log_goal_weights = get_seed_goal(state,
                                              goal_type=goal_type,
+                                             num_samples=num_samples,
                                              G=G,
                                              search_top_n=search_top_n,
                                              static_num_live_points=static_num_live_points)
-            key, seed_key = random.split(state.key, 2)
+            key, goal_key, seed_key = random.split(state.key, 3)
             state = state._replace(key=key)
-            seed_indices = sample_goal_distribution(seed_key, log_goal_weights, num_samples,
+            # Probabilistically sample the contours according to goal distribution
+            indices_contour_reinforce = sample_goal_distribution(goal_key, log_goal_weights, num_samples,
                                                     replace=False)
-            # Note: sample_collection already sorted so sort_idx not needed
-            _, log_L_constraints_seed = infimum_constraint(log_L_constraints=state.sample_collection.log_L_constraint,
-                                                           log_L_samples=state.sample_collection.log_L_samples,
-                                                           sort_idx=None,
-                                                           return_contours=True)
-            log_L_constraints_seed = log_L_constraints_seed[seed_indices]
-            points_U0_seed = state.sample_collection.points_U[seed_indices]
-            log_L0_seed = state.sample_collection.log_L_samples[seed_indices]
+            # get the likelihood constraint equivalent to mean of single sample, and the supremum index
+            log_L_constraints_reinforce, constraint_supremum_idx = \
+                _single_sample_constraint_for_contour_and_idx(indices_contour_reinforce,
+                                                              state.sample_collection.log_L_constraint,
+                                                              state.sample_collection.log_L_samples,
+                                                              state.sample_collection.log_X_mean)
+            # print(log_L_constraints_reinforce,
+            #       state.sample_collection.log_L_samples[indices_contour_reinforce],
+            #       constraint_supremum_idx)
+            # exit(0)
+
+            # pick seed as random point from constraint supremeum to last sample (since we're sorted)
+            seed_idx = random.randint(seed_key, indices_contour_reinforce.shape,
+                                      minval=constraint_supremum_idx,
+                                      maxval=state.sample_idx)
+            points_U0_seed = state.sample_collection.points_U[seed_idx]
+            log_L0_seed = state.sample_collection.log_L_samples[seed_idx]
             # Sample from those seed locations, optionally in parallel.
             key, sample_key = random.split(state.key, 2)
-            sample_keys = random.split(sample_key, seed_indices.size)
+            sample_keys = random.split(sample_key, indices_contour_reinforce.size)
             # expects: key, point_U0, log_L0, log_L_constraint
-            new_reservoir = get_samples_parallel(sample_keys, points_U0_seed, log_L0_seed, log_L_constraints_seed)
+            new_reservoir = get_samples_parallel(sample_keys, points_U0_seed, log_L0_seed, log_L_constraints_reinforce)
             new_reservoir = new_reservoir._replace(points_X=self._filter_prior_chain(new_reservoir.points_X))
             # Merge samples, and recalculate statistics
             prev_evidence_calculation = state.evidence_calculation
@@ -585,7 +595,7 @@ class NestedSampler(object):
         max_L_sample = tree_map(lambda x: x[max_L_idx], samples)
         dp_mean = LogSpace(state.sample_collection.log_dZ_mean)
         dp_mean /= dp_mean.sum()
-        H_mean = (LogSpace(log_L_samples) * dp_mean).sum() / LogSpace(log_Z_mean)
+        H_mean = (LogSpace(log_L_samples) * dp_mean).sum() #/ LogSpace(state.evidence_calculation.log_Z_mean)
         X_mean = LogSpace(state.sample_collection.log_X_mean)
         num_likelihood_evaluations_per_sample = state.sample_collection.num_likelihood_evaluations
         total_num_likelihood_evaluations = jnp.sum(num_likelihood_evaluations_per_sample)

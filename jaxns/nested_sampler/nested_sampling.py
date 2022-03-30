@@ -1,6 +1,6 @@
 from typing import Tuple, Callable
 
-from jax import numpy as jnp, random, tree_map, value_and_grad
+from jax import numpy as jnp, random, tree_map, value_and_grad, numpy
 from jax._src.lax.lax import dynamic_update_slice
 from jax.lax import while_loop
 from jaxns.internals.log_semiring import LogSpace
@@ -8,7 +8,7 @@ from jaxns.internals.maps import replace_index
 from jaxns.likelihood_samplers.parallel_slice_sampling import ProposalState, change_direction, shrink_interval, \
     sample_direction, \
     slice_bounds, pick_point_in_interval
-from jaxns.nested_sampler.live_points import compute_num_live_points_from_unit_threads
+from jaxns.nested_sampler.live_points import compute_num_live_points_from_unit_threads, infimum_constraint
 from jaxns.prior_transforms import PriorChain
 from jaxns.internals.types import NestedSamplerState, EvidenceCalculation, Reservoir
 
@@ -233,19 +233,26 @@ def _get_dynamic_goal(state: NestedSamplerState, G: jnp.ndarray):
     return I_goal.log_abs_val
 
 
-def _get_static_goal(state: NestedSamplerState, static_num_live_points: jnp.ndarray):
+def _get_static_goal(state: NestedSamplerState, static_num_live_points: jnp.ndarray,
+                     num_samples:int):
     """
     Set the goal to contours where there are not enough live points.
     """
     empty_mask = jnp.arange(state.sample_collection.log_L_samples.size) >= state.sample_idx
-    diff_from_goal = static_num_live_points - state.sample_collection.num_live_points
+    diff_from_goal = jnp.maximum(static_num_live_points - state.sample_collection.num_live_points,
+                                 jnp.zeros_like(static_num_live_points))
+    too_far_away_mask = jnp.cumsum(diff_from_goal) > num_samples
     # e-fold = 1 per 25% of goal
-    logit = diff_from_goal#/(static_num_live_points*0.25)
-    log_goal_weights = jnp.where(empty_mask, -jnp.inf, logit)
+    log_goal_weights = jnp.where(too_far_away_mask | empty_mask, -jnp.inf, jnp.log(diff_from_goal))
+    import pylab as plt
+    plt.plot(state.sample_collection.num_live_points[:state.sample_idx])
+    plt.show()
+    plt.plot(log_goal_weights[:state.sample_idx])
+    plt.show()
     return log_goal_weights
 
 
-def get_seed_goal(state: NestedSamplerState, goal_type: str, G=None, search_top_n=None,
+def get_seed_goal(state: NestedSamplerState, num_samples:int, goal_type: str, G=None, search_top_n=None,
                   static_num_live_points=None) -> jnp.ndarray:
     """
     Determines what seed points to sample above. This
@@ -253,7 +260,7 @@ def get_seed_goal(state: NestedSamplerState, goal_type: str, G=None, search_top_
     if goal_type == 'static':
         if static_num_live_points is None:
             raise ValueError(f"goal_type={goal_type}. static_num_live_points should be a positive int.")
-        log_goal_weights = _get_static_goal(state, static_num_live_points)
+        log_goal_weights = _get_static_goal(state, static_num_live_points, num_samples)
     elif goal_type == 'dynamic':
         if G is None:
             raise ValueError(f"goal_type={goal_type}. G should be a float in [0,1].")
@@ -413,3 +420,38 @@ def _update_evidence_calculation(num_live_points: jnp.ndarray,
     #                                      evidence_calculation, next_evidence_calculation)
 
     return next_evidence_calculation
+
+
+def _single_sample_constraint_for_contour_and_idx(indices_contour_reinforce,
+                                                  log_L_constraint,
+                                                  log_L_samples,
+                                                  log_X_mean):
+    # Get the mean enclosed prior volume at the single sample constraint.
+    log_X_mean_contour_reinforce = log_X_mean[indices_contour_reinforce]
+    X_mean_contour_reinforce = LogSpace(log_X_mean_contour_reinforce)
+    # X_constraint_mean = min(1, X_contour_mean * 2)
+    X_mean_constraint_reinforce = (X_mean_contour_reinforce * LogSpace(jnp.log(2.))
+                                   ).minimum(LogSpace(jnp.asarray(0.)))
+    # Now, figure out what likelihood this constraint corresponds to.
+    # The maximum likelihood would be the infimum on the contour
+    # Note: sample_collection already sorted so sort_idx not needed
+    _, log_L_contraint_reinforce_max = infimum_constraint(
+        log_L_constraints=log_L_constraint,
+        log_L_samples=log_L_samples,
+        sort_idx=None,
+        return_contours=True)
+    log_L_contraint_reinforce_max = log_L_contraint_reinforce_max[indices_contour_reinforce]
+    # The mimimum would be the zero likelihood
+    x = -X_mean_constraint_reinforce.log_abs_val
+    xp = -log_X_mean
+    fp = log_L_samples
+    left = -jnp.inf
+    right = log_L_contraint_reinforce_max
+    constraint_supremum_idx = jnp.clip(jnp.searchsorted(xp, x, side='right'), 1, len(xp) - 1)
+    df = fp[constraint_supremum_idx] - fp[constraint_supremum_idx - 1]
+    dx = xp[constraint_supremum_idx] - xp[constraint_supremum_idx - 1]
+    delta = x - xp[constraint_supremum_idx - 1]
+    f = jnp.where((dx == 0), fp[constraint_supremum_idx], fp[constraint_supremum_idx - 1] + (delta / dx) * df)
+    f = jnp.where(x < xp[0], left, f)
+    log_L_contraint_reinforce = jnp.where(x > xp[-1], right, f)
+    return log_L_contraint_reinforce, constraint_supremum_idx
