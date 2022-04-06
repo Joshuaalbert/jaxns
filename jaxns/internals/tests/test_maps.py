@@ -5,7 +5,7 @@ from jax.lib import xla_bridge
 xla_bridge.get_backend.cache_clear()
 from jax import numpy as jnp
 
-from jaxns.internals.maps import replace_index, chunked_pmap, prepare_func_args
+from jaxns.internals.maps import replace_index, chunked_pmap, prepare_func_args, get_index
 
 
 def test_replace_index():
@@ -74,3 +74,29 @@ def test_prepare_func_args():
     assert g(**kwargs) == f(kwargs['a'], b=kwargs['b'], c=kwargs['c'], d=kwargs['d'])
     kwargs = dict(a=9, c=11)
     assert g(**kwargs) == f(kwargs['a'], c=kwargs['c'])
+
+
+def test_get_index():
+    operand = jnp.asarray([[1,2,3],[4,5,6]])
+    start_index = 0
+    length = 1
+    expect = jnp.asarray([[1,2,3]])
+    assert jnp.allclose(get_index(operand,start_index,length), expect)
+
+    operand = jnp.asarray([[1, 2, 3], [4, 5, 6]])
+    start_index = 0
+    length = 2
+    expect = operand
+    assert jnp.allclose(get_index(operand, start_index, length), expect)
+
+    operand = jnp.asarray([[1, 2, 3], [4, 5, 6]])
+    start_index = 1
+    length = 2
+    expect = operand
+    assert jnp.allclose(get_index(operand, start_index, length), expect)
+
+    operand = jnp.asarray([[1, 2, 3], [4, 5, 6]])
+    start_index = 1
+    length = 1
+    expect = jnp.asarray([[4,5,6]])
+    assert jnp.allclose(get_index(operand, start_index, length), expect)

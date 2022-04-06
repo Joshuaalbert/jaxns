@@ -1,7 +1,7 @@
 import inspect
 from jax import tree_map, pmap, numpy as jnp
 from jax._src.lax.control_flow import scan
-from jax.lax import dynamic_update_slice
+from jax.lax import dynamic_update_slice, dynamic_slice
 import logging
 
 logger = logging.getLogger(__name__)
@@ -16,6 +16,13 @@ def replace_index(operand, update, start_index):
         update = update[None]
     start_indices = [start_index] + [jnp.asarray(0, jnp.int_)] * (len(update.shape) - 1)
     return dynamic_update_slice(operand, update.astype(operand.dtype), start_indices)
+
+
+def get_index(operand, start_index, length):
+    return dynamic_slice(operand,
+                         [start_index] + [jnp.asarray(0, jnp.int_)] * (len(operand.shape) - 1),
+                         (length,) + operand.shape[1:])
+
 
 def dict_multimap(f, d, *args):
     """
@@ -60,8 +67,7 @@ def prepare_func_args(f):
 
     expected_keys = set(args + kwonlyargs)
 
-
-    if defaults is None: # no defaults
+    if defaults is None:  # no defaults
         num_defaults = 0
         defaults = ()
     else:
@@ -82,6 +88,7 @@ def prepare_func_args(f):
                 raise KeyError(f"Missing argument {key}")
 
         return f(**args_with_values)
+
     _f.__doc__ = f.__doc__
     return _f
 
@@ -98,8 +105,10 @@ def chunked_pmap(f, chunksize, *, batch_size=None):
             def body(state, X):
                 (args, kwargs) = X
                 return state, f(*args, **kwargs)
+
             _, result = scan(body, (), (args, kwargs))
             return result
+
         if chunksize > 1:
             if batch_size is None:
                 batch_size = args[0].shape[0] if len(args) > 0 else None
@@ -115,6 +124,7 @@ def chunked_pmap(f, chunksize, *, batch_size=None):
         else:
             result = queue(*args, **kwargs)
         return result
+
     _f.__doc__ = f.__doc__
     _f.__annotations__ = f.__annotations__
     return _f

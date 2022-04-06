@@ -6,7 +6,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 from jaxns.internals.types import NestedSamplerResults
 from jaxns.internals.log_semiring import cumulative_logsumexp
-from jaxns.utils import resample
+from jaxns.nested_sampler.utils import resample
 from jaxns.internals.shapes import tuple_prod
 
 
@@ -18,7 +18,7 @@ def plot_diagnostics(results: NestedSamplerResults, save_name=None):
         results: NestedSamplerResult
         save_name: file to save figure to.
     """
-    fig, axs = plt.subplots(5, 1, sharex=True, figsize=(8, 10))
+    fig, axs = plt.subplots(6, 1, sharex=True, figsize=(8, 12))
     log_X = results.log_X_mean[:results.total_num_samples]
     axs[0].plot(-log_X, results.num_live_points_per_sample[:results.total_num_samples])
     axs[0].set_ylabel(r'$n_{\rm live}(X)$')
@@ -50,9 +50,15 @@ def plot_diagnostics(results: NestedSamplerResults, save_name=None):
                   jnp.max(-log_X), colors='black', ls='dashed',
                   label='avg. eff.={:.3f}'.format(jnp.exp(results.log_efficiency)))
     axs[4].set_ylabel("sampler efficiency")
-    axs[4].set_xlabel(r'$-\log X$')
     axs[4].set_ylim(0., 1.05)
     axs[4].legend()
+    num_slices = results.num_slices_per_sample[:results.total_num_samples]
+    axs[5].plot(-log_X, num_slices)
+    axs[5].set_ylabel("# slices")
+    axs[5].set_xlabel(r'$-\log X$')
+    axs[5].set_ylim(jnp.nanmin(jnp.where(jnp.isfinite(num_slices), num_slices, jnp.nan)) - 1,
+                    jnp.nanmax(jnp.where(jnp.isfinite(num_slices), num_slices, jnp.nan)) + 1)
+    axs[5].legend()
     if save_name is not None:
         fig.savefig(save_name)
     plt.show()

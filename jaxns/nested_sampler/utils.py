@@ -181,10 +181,10 @@ def summary(results: NestedSamplerResults) -> str:
     _print("Termination Conditions:")
     for bit, condition in zip(termination_bit_mask, ['Reached max samples',
                                                      'Evidence uncertainty low enough',
-                                                     'Likelihood contour reached',
                                                      'Small remaining evidence',
                                                      'Reached ESS',
-                                                     "Used max num steps"]):
+                                                     "Used max num steps",
+                                                     "Used max num likelihood evaluations"]):
         if bit == 1:
             _print(condition)
     _print("--------")

@@ -1,7 +1,7 @@
 from jax import random, numpy as jnp
 
 from jaxns import resample
-from jaxns.utils import _bit_mask
+from jaxns.nested_sampler.utils import _bit_mask
 
 
 def test_resample():
