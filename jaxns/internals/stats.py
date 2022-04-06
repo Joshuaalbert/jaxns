@@ -58,3 +58,15 @@ def linear_to_log_stats(log_f_mean, *, log_f2_mean=None, log_f_var=None):
     mu = f_mean.square() / f2_mean.sqrt()
     sigma2 = f2_mean / f_mean.square()
     return mu.log_abs_val, sigma2.log_abs_val
+
+
+def effective_sample_size(log_Z_mean, log_dZ2_mean):
+    """
+    Computes Kish's ESS = [sum dZ]^2 / [sum dZ^2]
+
+    :param log_Z_mean:
+    :param log_dZ2_mean:
+    :return:
+    """
+    ess = LogSpace(log_Z_mean).square() / LogSpace(log_dZ2_mean)
+    return ess.value

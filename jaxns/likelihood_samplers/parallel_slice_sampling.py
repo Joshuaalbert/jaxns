@@ -215,6 +215,9 @@ def change_direction(from_proposal_state: ProposalState, log_L_proposal: jnp.nda
     point_U0 = from_proposal_state.point_U
     log_L0 = log_L_proposal
     direction = sample_direction(n_key, point_U0.size)
+    # project out the previous direction to sample in orthogonal slice
+    if point_U0.size > 1:
+        direction = direction - direction * (direction @ from_proposal_state.direction)
     (left, right) = slice_bounds(point_U0, direction)
     point_U, t = pick_point_in_interval(t_key, point_U0, direction, left, right)
 

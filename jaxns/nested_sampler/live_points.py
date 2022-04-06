@@ -92,7 +92,6 @@ def infimum_constraint(log_L_constraints, log_L_samples, sort_idx=None, return_c
     # log_L_constraints = jnp.where(empty_mask, jnp.inf, log_L_constraints)
     # log_L_samples = jnp.where(empty_mask, jnp.inf, log_L_samples)
     log_L_contours = jnp.concatenate([log_L_constraints[0:1], log_L_samples[:-1]],axis=0)
-    # todo: use sort_idx as sort_key to avoid gather op
     contour_idx = jnp.searchsorted(log_L_contours, log_L_samples, side='left') - 1
     if return_contours:
         # todo: consider clamping to (0, n-1) and avoid the where op

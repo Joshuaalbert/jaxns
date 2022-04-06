@@ -26,7 +26,7 @@ def _sure_compute_num_live_points_from_unit_threads(log_L_constraints, log_L_sam
         print(f"log_L_constraints: {log_L_constraints}")
         print(f"log_L_samples: {log_L_samples}")
     for idx in range(log_L_samples.size):
-        # by definition the number of live points is sum of points where:
+        # by definition the number of live points is count of points where all three conditions are true:
         # 1) not yet consumed (once consumed no longer valid)
         # 2) sampling constraint of sample are <= contour (uniform sampling within a smaller contour also uniformly samples within a larger contour)
         # 3) log(L) of sample >= current contour (we shrink upwards in likelihood, the equality makes this work for plateaus)
@@ -86,7 +86,7 @@ def test_supremum_contour_idx():
     test_example(log_L_contour,log_L_samples, expect)
 
 
-def test_threads():
+def test_compute_num_live_points():
     from jax import random
 
     def test_example(log_L_constraints, log_L_samples, num_live_points, num_samples=None, debug=False):
@@ -137,6 +137,12 @@ def test_threads():
     num_live_points = jnp.asarray([3, 2, 1])
     test_example(log_L_constraints, log_L_samples, num_live_points, debug=True)
 
+    # All one common constraint, no plateau in samples
+    log_L_constraints = jnp.asarray([0., 0., 0., jnp.inf])
+    log_L_samples = jnp.asarray([0.5, 2., 2.1, jnp.inf])
+    num_live_points = jnp.asarray([3, 2, 1, 0])
+    test_example(log_L_constraints, log_L_samples, num_live_points, num_samples=3, debug=True)
+
     # Growing
     log_L_constraints = jnp.asarray([0., 0.5, 0.5])
     log_L_samples = jnp.asarray([0.5, 2., 2.1])
@@ -179,6 +185,13 @@ def test_threads():
     log_L_samples = random.uniform(random.PRNGKey(43),shape=(100,),minval=log_L_constraints)
     num_live_points = _sure_compute_num_live_points_from_unit_threads(log_L_constraints, log_L_samples)
     test_example(log_L_constraints, log_L_samples, num_live_points)
+
+    # random generated example, no plateaus
+    log_L_constraints = jnp.concatenate([jnp.zeros(5),0.5*jnp.arange(5)/5+0.5])
+    log_L_samples = random.uniform(random.PRNGKey(43), shape=(10,), minval=log_L_constraints)
+    num_live_points = _sure_compute_num_live_points_from_unit_threads(log_L_constraints, log_L_samples)
+    test_example(log_L_constraints, log_L_samples, num_live_points,debug=True)
+
     # print(num_live_points)
     # import pylab as plt
     # plt.plot(num_live_points)
@@ -194,3 +207,62 @@ def test_sample_goal_distribution():
     assert f[0] == 0
     S = log_goal_weights.size
     assert jnp.all(jnp.isin(sample_goal_distribution(key, log_goal_weights, S, replace=False), jnp.arange(S)))
+
+
+def test_standard_nested_sampling():
+    from jax import vmap
+    from jaxns.internals.maps import replace_index
+
+    n = 0.5
+
+    def log_likelihood(x):
+        return 1. - x**n
+
+    def sample(key, log_L):
+        # sample from 1 - x**n > log_L
+        upper = (1. - log_L)**(1./n)
+        return (1. - random.uniform(key)) * upper
+
+    num_live_points = 10
+    key = random.PRNGKey(42)
+    num_samples = 100
+    log_L_constraints = []
+    log_L_samples = []
+    U_samples = []
+
+    key, sample_key = random.split(key, 2)
+
+    U_samples_live = random.uniform(sample_key, (num_live_points,))
+    log_L_samples_live = vmap(log_likelihood)(U_samples_live)
+    log_L_constraints_live = jnp.asarray([0.]*num_live_points)
+
+    while len(log_L_samples) < num_samples:
+        idx_min = jnp.argmin(log_L_samples_live)
+        log_L_samples.append(log_L_samples_live[idx_min])
+        log_L_constraints.append(log_L_constraints_live[idx_min])
+        U_samples.append(U_samples_live[idx_min])
+
+        key, sample_key = random.split(key, 2)
+        U_sample = sample(sample_key, log_L_samples[-1])
+        log_L_sample = log_likelihood(U_sample)
+
+        assert log_L_sample > log_L_samples[-1], "Numerical precision problem with unittest, don't shrink so much."
+
+        log_L_samples_live = replace_index(log_L_samples_live, log_L_sample, idx_min)
+        U_samples_live = replace_index(U_samples_live, U_sample, idx_min)
+        log_L_constraints_live = replace_index(log_L_constraints_live, log_L_samples[-1], idx_min)
+
+    for idx_min in jnp.argsort(log_L_samples_live):
+        log_L_samples.append(log_L_samples_live[idx_min])
+        log_L_constraints.append(log_L_constraints_live[idx_min])
+        U_samples.append(U_samples_live[idx_min])
+
+    n = compute_num_live_points_from_unit_threads(jnp.asarray(log_L_constraints), jnp.asarray(log_L_samples))
+    for ni, log_L_constraint, log_L_sample in zip(n, jnp.asarray(log_L_constraints), jnp.asarray(log_L_samples)):
+        # should be all `num_live_points` except last bit which decreases to 1
+        print(ni, log_L_constraint, log_L_sample)
+
+    assert jnp.allclose(n[:num_samples], num_live_points)
+
+    n_check = _sure_compute_num_live_points_from_unit_threads(jnp.asarray(log_L_constraints), jnp.asarray(log_L_samples))
+    assert jnp.allclose(n, n_check)
