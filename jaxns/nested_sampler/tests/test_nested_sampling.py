@@ -59,6 +59,25 @@ def test_nested_sampling_basic():
     assert jnp.isclose(results.log_Z_mean, -1. / 3., atol=1.75 * results.log_Z_uncert)
 
 
+def test_nested_sampling_plateau():
+    def log_likelihood(x):
+        return 0.
+
+    with PriorChain() as prior_chain:
+        UniformPrior('x', 0., 1.)
+
+    ns = NestedSampler(log_likelihood, prior_chain)
+    from jax import disable_jit
+
+    # with disable_jit():
+    results = ns(key=random.PRNGKey(43))
+    plot_diagnostics(results)
+    summary(results)
+
+    assert jnp.bitwise_not(jnp.isnan(results.log_Z_mean))
+    assert jnp.isclose(results.log_Z_mean, 0., atol=1.75 * results.log_Z_uncert)
+
+
 def test_nested_sampling_basic_parallel():
     import os
     os.environ["XLA_FLAGS"] = "--xla_force_host_platform_device_count=2"
@@ -170,15 +189,15 @@ def test_static_goal():
     static_num_live_points = 2
     num_samples = 5
     num_live_points = jnp.asarray([0, 0, 0, 0, 0])
-    expect = jnp.asarray([0,1,2,3,4])
+    expect = jnp.asarray([0, 1, 2, 3, 4])
     assert jnp.allclose(_get_static_goal(num_live_points, static_num_live_points, num_samples), expect)
 
     num_live_points = jnp.asarray([2, 0, 0, 0, 0])
-    expect = jnp.asarray([1,2,3,4,4])
+    expect = jnp.asarray([1, 2, 3, 4, 4])
     assert jnp.allclose(_get_static_goal(num_live_points, static_num_live_points, num_samples), expect)
 
     num_live_points = jnp.asarray([3, 0, 0, 0, 0])
-    expect = jnp.asarray([1,2,3,4,4])
+    expect = jnp.asarray([1, 2, 3, 4, 4])
     assert jnp.allclose(_get_static_goal(num_live_points, static_num_live_points, num_samples), expect)
 
     num_live_points = jnp.asarray([2, 2, 2, 2, 2])

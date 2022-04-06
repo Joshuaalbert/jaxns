@@ -242,7 +242,10 @@ def get_seed_goal(key, state: NestedSamplerState, num_samples: int, goal_type: s
             raise ValueError(f"goal_type={goal_type}. static_num_live_points should be a positive int.")
         indices_constraint_reinforce = _get_static_goal(state.sample_collection.num_live_points, static_num_live_points,
                                                         num_samples)
-        indices_constraint_reinforce = jnp.minimum(indices_constraint_reinforce, state.sample_idx - 1)
+        indices_constraint_reinforce = jnp.minimum(indices_constraint_reinforce, state.sample_idx-1)
+        log_L_constraints_reinforce = contours[indices_constraint_reinforce]
+        # now shift these to the infimum
+        indices_constraint_reinforce = jnp.searchsorted(contours, log_L_constraints_reinforce, side='left') - 1
         log_L_constraints_reinforce = contours[indices_constraint_reinforce]
     elif goal_type == 'dynamic':
         if G is None:
