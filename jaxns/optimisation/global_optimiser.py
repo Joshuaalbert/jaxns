@@ -69,6 +69,9 @@ class GlobalOptimiser(object):
                 raise ValueError(f"num_slices {sampler_kwargs['num_slices']} should be >= 1.")
             sampler_kwargs['midpoint_shrink'] = bool(sampler_kwargs.get('midpoint_shrink', False))
             sampler_kwargs['gradient_boost'] = bool(sampler_kwargs.get('gradient_boost', True))
+            sampler_kwargs['destructive_shrink'] = bool(sampler_kwargs.get('destructive_shrink', False))
+            assert not (sampler_kwargs['destructive_shrink'] and sampler_kwargs['midpoint_shrink']), \
+                "Only midpoint_shrink or destructive_shrink should be used."
             sampler_kwargs['num_parallel_samplers'] = int(sampler_kwargs.get('num_parallel_samplers', 1))
             if sampler_kwargs['num_parallel_samplers'] < 1:
                 raise ValueError(f"num_parallel_samplers {sampler_kwargs['num_parallel_samplers']} should be >= 1.")
@@ -214,7 +217,8 @@ class GlobalOptimiser(object):
                                                              midpoint_shrink=self.sampler_kwargs.get(
                                                                  'midpoint_shrink'),
                                                              gradient_boost=self.sampler_kwargs.get(
-                                                                 'gradient_boost')
+                                                                 'gradient_boost'),
+                                                             destructive_shrink=self.sampler_kwargs.get('destructive_shrink')
                                                              ),
                                             chunksize=num_parallel_samplers)
 
@@ -223,10 +227,9 @@ class GlobalOptimiser(object):
             key, sample_key, seed_key, alpha_key = random.split(state.key, 4)
             state = state._replace(key=key)
 
-
             contours = jnp.concatenate([state.reservoir.log_L_constraint[0:1],
                                         state.reservoir.log_L_samples])
-            alpha = 0.5 # random.uniform(alpha_key, state.reservoir.log_L_samples.shape)
+            alpha = 0.5  # random.uniform(alpha_key, state.reservoir.log_L_samples.shape)
             L_constraint_reinforce = LogSpace(state.reservoir.log_L_constraint[0]) + LogSpace(jnp.log(alpha)) * (
                     LogSpace(state.reservoir.log_L_samples[-1]) - LogSpace(state.reservoir.log_L_constraint[0]))
             log_L_constraint_reinforce = L_constraint_reinforce.log_abs_val
@@ -251,8 +254,8 @@ class GlobalOptimiser(object):
                                                  num_slices * jnp.ones_like(state.reservoir.num_slices))
             new_reservoir = sort_reservoir(new_reservoir)
             new_reservoir = new_reservoir._replace(points_X=self._filter_prior_chain(new_reservoir.points_X),
-                                                   num_slices=new_reservoir.num_slices.astype(state.reservoir.num_slices.dtype))
-
+                                                   num_slices=new_reservoir.num_slices.astype(
+                                                       state.reservoir.num_slices.dtype))
 
             prev_log_L_max = jnp.max(state.reservoir.log_L_samples)
             new_log_L_max = jnp.max(new_reservoir.log_L_samples)
@@ -308,12 +311,13 @@ class GlobalOptimiser(object):
                  ) -> Union[GlobalOptimiserResults, Tuple[GlobalOptimiserResults, GlobalOptimiserState]]:
 
         assert any([termination_patience is not None,
-                 termination_frac_likelihood_improvement is not None,
-                 termination_likelihood_contour is not None,
-                 termination_max_num_steps is not None,
-                 termination_max_num_likelihood_evaluations is not None]), "Need at least one termination criterion."
+                    termination_frac_likelihood_improvement is not None,
+                    termination_likelihood_contour is not None,
+                    termination_max_num_steps is not None,
+                    termination_max_num_likelihood_evaluations is not None]), "Need at least one termination criterion."
         if refine_state is not None:
             state = refine_state
+            state = state._replace(done=jnp.asarray(False))
         else:
             state = self.initial_state(key)
 
