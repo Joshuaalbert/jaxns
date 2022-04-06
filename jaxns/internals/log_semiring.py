@@ -183,6 +183,12 @@ class LogSpace(object):
             return LogSpace(*logsumexp(self.log_abs_val, b=self.sign, axis=axis, keepdims=keepdims, return_sign=True))
         return LogSpace(logsumexp(self._log_abs_val, axis=axis, keepdims=keepdims))
 
+    def nansum(self,axis=-1, keepdims=False):
+        log_abs_val = jnp.where(jnp.isnan(self.log_abs_val), -jnp.inf, self.log_abs_val)
+        if not self._naked:  # no coefficients
+            return LogSpace(*logsumexp(log_abs_val, b=self.sign, axis=axis, keepdims=keepdims, return_sign=True))
+        return LogSpace(logsumexp(log_abs_val, axis=axis, keepdims=keepdims))
+
     def cumsum(self,axis=0,reverse=False):
         if not self._naked:  # no coefficients
             return LogSpace(*cumulative_logsumexp(self.log_abs_val, sign=self.sign, axis=axis, reverse=reverse))
