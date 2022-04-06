@@ -95,15 +95,18 @@ class NestedSampler(object):
                 raise ValueError(f"depth {sampler_kwargs['depth']} should be >= 1.")
         elif sampler_name == 'slice':
             sampler_kwargs['min_num_slices'] = jnp.asarray(
-                sampler_kwargs.get('min_num_slices', prior_chain.U_ndims * 5))
+                sampler_kwargs.get('min_num_slices', prior_chain.U_ndims * 1))
             sampler_kwargs['max_num_slices'] = jnp.asarray(
-                sampler_kwargs.get('max_num_slices', prior_chain.U_ndims * 20))
+                sampler_kwargs.get('max_num_slices', prior_chain.U_ndims * 25))
             if sampler_kwargs['min_num_slices'] < 1:
                 raise ValueError(f"min_num_slices {sampler_kwargs['min_num_slices']} should be >= 1.")
             if sampler_kwargs['max_num_slices'] < 1:
                 raise ValueError(f"max_num_slices {sampler_kwargs['max_num_slices']} should be >= 1.")
             sampler_kwargs['midpoint_shrink'] = bool(sampler_kwargs.get('midpoint_shrink', False))
             sampler_kwargs['gradient_boost'] = bool(sampler_kwargs.get('gradient_boost', False))
+            sampler_kwargs['destructive_shrink'] = bool(sampler_kwargs.get('destructive_shrink', False))
+            assert not (sampler_kwargs['destructive_shrink'] and sampler_kwargs['midpoint_shrink']), \
+                "Only midpoint_shrink or destructive_shrink should be used."
             sampler_kwargs['num_parallel_samplers'] = int(sampler_kwargs.get('num_parallel_samplers', 1))
             if sampler_kwargs['num_parallel_samplers'] < 1:
                 raise ValueError(f"num_parallel_samplers {sampler_kwargs['num_parallel_samplers']} should be >= 1.")
@@ -271,6 +274,7 @@ class NestedSampler(object):
             sample_idx=jnp.asarray(0, jnp.int_),
             termination_reason=jnp.asarray(0, jnp.int_),
             thread_stats=init_thread_stats,
+            patience_steps=jnp.asarray(0, jnp.int_)
         )
         state = collect_samples(state, reservoir)
 
@@ -321,6 +325,8 @@ class NestedSampler(object):
                                                              loglikelihood_from_U=self.loglikelihood_from_U,
                                                              midpoint_shrink=self.sampler_kwargs.get(
                                                                  'midpoint_shrink'),
+                                                             destructive_shrink=self.sampler_kwargs.get(
+                                                                 'destructive_shrink'),
                                                              gradient_boost=self.sampler_kwargs.get(
                                                                  'gradient_boost')
                                                              ),
@@ -330,7 +336,6 @@ class NestedSampler(object):
             # Note: state enters with consistent definition, and exits with consistent definition.
             key, seed_key, sample_key = random.split(prev_state.key, 3)
             prev_state = prev_state._replace(key=key)
-
             ## Get the goal distribution from sample population.
             log_L_constraints_reinforce, seed_idx = get_seed_goal(key=seed_key,
                                                                   state=prev_state,
@@ -401,6 +406,7 @@ class NestedSampler(object):
                      min_num_slices: jnp.ndarray,
                      max_num_slices: jnp.ndarray,
                      adaptive_evidence_stopping_threshold,
+                     adaptive_evidence_patience,
                      num_parallel_samplers: int = 1
                      ) -> NestedSamplerState:
         """
@@ -415,10 +421,9 @@ class NestedSampler(object):
         # construct the parallel version of get_sample (if num_parallel_samplers > 1)
         get_samples_parallel = chunked_pmap(build_get_sample(prior_chain=self.prior_chain,
                                                              loglikelihood_from_U=self.loglikelihood_from_U,
-                                                             midpoint_shrink=self.sampler_kwargs.get(
-                                                                 'midpoint_shrink'),
-                                                             gradient_boost=self.sampler_kwargs.get(
-                                                                 'gradient_boost')
+                                                             midpoint_shrink=True,
+                                                             destructive_shrink=False,
+                                                             gradient_boost=False
                                                              ),
                                             chunksize=num_parallel_samplers)
 
@@ -435,7 +440,8 @@ class NestedSampler(object):
             # Sample from those seed locations, optionally in parallel.
             sample_keys = random.split(sample_key, diff_from_goal.size)
 
-            def sample_body(sample_body_state):
+            def sample_body(sample_body_state: Tuple[jnp.ndarray, SampleCollection]) -> Tuple[
+                jnp.ndarray, SampleCollection]:
                 (sample_idx, sample_collection) = sample_body_state
 
                 log_L_constraints_reinforce = get_index(sample_collection.log_L_constraint,
@@ -494,8 +500,14 @@ class NestedSampler(object):
             # stop when evidence changes very little between iterations.
             small_enough_change = jnp.abs(log_Z_mean - prev_log_Z_mean) <= adaptive_evidence_stopping_threshold
             too_many_slices = num_slices_goal > max_num_slices
-
-            done = small_enough_change | too_many_slices
+            if adaptive_evidence_patience is not None:
+                patience_steps = jnp.where(small_enough_change,
+                                           new_state.patience_steps + jnp.asarray(1, jnp.int_),
+                                           jnp.asarray(0, jnp.int_))
+                new_state = new_state._replace(patience_steps=patience_steps)
+                done = (patience_steps > adaptive_evidence_patience) | too_many_slices
+            else:
+                done = small_enough_change | too_many_slices
             new_state = new_state._replace(key=key, done=done)
             return (new_state, num_slices_goal)
 
@@ -511,37 +523,39 @@ class NestedSampler(object):
                  num_live_points: Union[float, int, jnp.ndarray] = None,
                  termination_ess: Union[float, int, jnp.ndarray] = None,
                  termination_evidence_uncert: Union[float, jnp.ndarray] = None,
-                 termination_live_evidence_frac: Union[float, jnp.ndarray] = 1e-3,
+                 termination_live_evidence_frac: Union[float, jnp.ndarray] = 1e-4,
                  termination_max_num_steps: Union[float, int, jnp.ndarray] = None,
                  termination_max_samples: Union[float, int, jnp.ndarray] = None,
                  termination_max_num_likelihood_evaluations: Union[float, int, jnp.ndarray] = None,
                  adaptive_evidence_stopping_threshold: Union[float, jnp.ndarray] = None,
-                 dynamic_kwargs: Optional[Dict[str, Any]] = None,
+                 adaptive_evidence_patience: Union[float, jnp.ndarray] = None,
+                 G: Union[float, jnp.ndarray] = None,
                  *,
                  return_state: bool = False,
                  refine_state: NestedSamplerState = None,
-                 resize_max_samples: int = None
                  ) -> Union[NestedSamplerResults, Tuple[NestedSamplerResults, NestedSamplerState]]:
         """
-        Applies static nested sampling, and optionally also dynamic improvement.
+        Applies static nested sampling, and optionally also dynamic improvement, with adaptive refinement.
 
         Args:
-            key: PRNG Key
-            num_live_points: number of live points in static run.
-            termination_live_evidence_frac: terminate static run after this much evidence left in live-points.
-            termination_likelihood_contour: halt when likelihood contour passes this level.
+            key: PRNG key
+            num_live_points: approximate number of live points to use in static case.
             termination_ess: terminate when this many effective samples taken.
-            termination_evidence_uncert: terminate when evidence falls below this.
-            termination_max_num_steps: terminate when this many threads used.
-            delta_num_live_points: refine with this many live points in each thread.
-            dynamic_kwargs: Dict with items:
-                G - interpolate between evidence goal (0.) and posterior goal (1.)
+            termination_evidence_uncert: terminate when evidence uncertainty falls below this point.
+            termination_live_evidence_frac: terminate when reduction in evidence from step less than this.
+                This applies only to the static case.
+            termination_max_num_steps: terminate when this many steps taken.
+            termination_max_samples: terminate when this many samples taken.
+            termination_max_num_likelihood_evaluations: terinate when this many likelihood evalations made.
+            adaptive_evidence_stopping_threshold: Terminate refinement when log-evidence doesn't improve more than this much.
+            adaptive_evidence_patience: If set then adaptive stopping condition should occur this many times in a row before stopping.
+            G: dynamic goal parameter, interpolate between evidence accuracy goal (0.) and posterior accuracy goal (1.)
             return_state: bool, whether to return state with result
-            refine_state: optional, if given then only refine the state
-            resize_max_samples: optional, if given then extend sample collection size before refinement
+            refine_state: optional, if given then refine the provided state rather than initialising.
 
         Returns:
             if return_state returns NestedSamplerResults and NestedSamplerState, else just NestedSamplerResults
+
 
         """
 
@@ -549,11 +563,13 @@ class NestedSampler(object):
             num_live_points = self.prior_chain.U_ndims * 100
         num_live_points = jnp.asarray(num_live_points, self.dtype)
 
-        if dynamic_kwargs is None:
-            dynamic_kwargs = dict()
-
         # Establish the state that we need to carry through iterations, and to facilitate post-analysis.
-        state = self.initial_state(key)
+        if refine_state is not None:
+            state = refine_state
+            # TODO: maybe other things to prepare a provided state
+            state = state._replace(done=jnp.asarray(False))
+        else:
+            state = self.initial_state(key)
 
         # cover space with static space
         assert any([termination_ess is not None,
@@ -585,7 +601,7 @@ class NestedSampler(object):
             state = self._loop(init_state=state,
                                num_slices=self.sampler_kwargs.get('min_num_slices'),
                                goal_type='dynamic',
-                               G=jnp.clip(dynamic_kwargs.get('G', 0.), 0., 1.),
+                               G=jnp.clip(G, 0., 1.),
                                num_parallel_samplers=self.num_parallel_samplers,
                                termination_ess=termination_ess,
                                termination_evidence_uncert=termination_evidence_uncert,
@@ -595,11 +611,13 @@ class NestedSampler(object):
                                termination_max_num_likelihood_evaluations=termination_max_num_likelihood_evaluations)
         if adaptive_evidence_stopping_threshold is not None:
             # adaptively decrease auto-correlation of samples until evidence converges
-            state = state._replace(done=jnp.asarray(False))
+            state = state._replace(done=jnp.asarray(False),
+                                   patience_steps=jnp.asarray(0, jnp.int_))
             state = self._second_loop(init_state=state,
                                       min_num_slices=self.sampler_kwargs.get('min_num_slices'),
                                       max_num_slices=self.sampler_kwargs.get('max_num_slices'),
                                       adaptive_evidence_stopping_threshold=adaptive_evidence_stopping_threshold,
+                                      adaptive_evidence_patience=adaptive_evidence_patience,
                                       num_parallel_samplers=self.num_parallel_samplers
                                       )
 

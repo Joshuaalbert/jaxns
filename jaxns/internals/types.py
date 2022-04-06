@@ -17,10 +17,11 @@ class Reservoir(NamedTuple):
     """
     points_U: jnp.ndarray  # [N, M] init_U in unit cube of live init_U
     points_X: Dict[str, jnp.ndarray]  # [N, M] init_U in constrained space of live init_U in dict structure
-    log_L_constraint: jnp.ndarray # [N] constraint that sample was sampled within
+    log_L_constraint: jnp.ndarray  # [N] constraint that sample was sampled within
     log_L_samples: jnp.ndarray  # [N] log likelihood of live init_U
     num_likelihood_evaluations: jnp.ndarray  # [N] how many times the likelihood was evaluated
-    num_slices: jnp.ndarray # [N] how many slices were taken
+    num_slices: jnp.ndarray  # [N] how many slices were taken
+
 
 class SampleCollection(NamedTuple):
     """
@@ -30,12 +31,12 @@ class SampleCollection(NamedTuple):
     points_U: jnp.ndarray  # [max_samples, U_ndims] -- The X-valued samples
     points_X: Dict[str, jnp.ndarray]  # {RV_name:[max_samples] + RV_shape} -- The X-valued samples
     log_L_samples: jnp.ndarray  # [max_samples] -- The log-likelihood of sample.
-    log_L_constraint: jnp.ndarray # [max_samples] -- the log-likelihood constraint sampled within to acquire sample.
+    log_L_constraint: jnp.ndarray  # [max_samples] -- the log-likelihood constraint sampled within to acquire sample.
     num_likelihood_evaluations: jnp.ndarray  # [max_samples] -- How many likelihood evaluations were required to obtain sample
     log_dZ_mean: jnp.ndarray  # [max_samples] -- The log mean evidence difference of the sample
     log_X_mean: jnp.ndarray  # [max_samples] -- The log mean enclosed prior volume of sample
     num_live_points: jnp.ndarray  # [max_samples] -- How many live points were taken for the samples.
-    num_slices: jnp.ndarray # [max_samples] how many slices were taken
+    num_slices: jnp.ndarray  # [max_samples] how many slices were taken
 
 
 class EvidenceCalculation(NamedTuple):
@@ -60,6 +61,7 @@ class ThreadStats(NamedTuple):
     log_L_max: jnp.ndarray
     num_likelihood_evaluations: jnp.ndarray
 
+
 class TerminationStats(NamedTuple):
     previous_evidence_calculation: EvidenceCalculation
     current_evidence_calculation: EvidenceCalculation
@@ -78,6 +80,7 @@ class NestedSamplerState(NamedTuple):
     step_idx: jnp.ndarray  # the step index of the algorithm, where one step is a single consumption step.
     sample_idx: jnp.ndarray  # the sample index, pointing to the next empty sample slot
     thread_stats: ThreadStats
+    patience_steps: jnp.ndarray  # how many steps since goal incremental improvement
     termination_reason: jnp.ndarray  # this will be an int reflecting the reason for termination
 
 
@@ -92,13 +95,13 @@ class NestedSamplerResults(NamedTuple):
     log_X_mean: jnp.ndarray  # log(E[X]) of each sample
     num_live_points_per_sample: jnp.ndarray  # how many live points were taken for the samples.
     num_likelihood_evaluations_per_sample: jnp.ndarray  # how many likelihood evaluations were made per sample.
-    num_slices_per_sample: jnp.ndarray # how many slices were taken
+    num_slices_per_sample: jnp.ndarray  # how many slices were taken
     total_num_samples: jnp.ndarray  # int, the total number of samples collected.
     total_num_likelihood_evaluations: jnp.ndarray  # how many likelihood evaluations were made in total,
     # sum of num_likelihood_evaluations_per_sample.
     log_efficiency: jnp.ndarray  # log(total_num_samples / total_num_likelihood_evaluations)
     termination_reason: jnp.ndarray  # this will be an int reflecting the reason for termination
-    thread_stats:ThreadStats
+    thread_stats: ThreadStats
 
 
 class GlobalOptimiserState(NamedTuple):
@@ -106,9 +109,9 @@ class GlobalOptimiserState(NamedTuple):
     done: jnp.ndarray
     reservoir: Reservoir  # Arrays to hold samples taken from the reservoir.
     num_steps: jnp.ndarray  # the step index of the algorithm, where one step is a single consumption step.
-    num_samples: jnp.ndarray # how many samples have been drawn
-    num_likelihood_evaluations: jnp.ndarray # how many times the likelihood has been evaluated
-    patience_steps: jnp.ndarray # how many steps since goal incremental improvement
+    num_samples: jnp.ndarray  # how many samples have been drawn
+    num_likelihood_evaluations: jnp.ndarray  # how many times the likelihood has been evaluated
+    patience_steps: jnp.ndarray  # how many steps since goal incremental improvement
     termination_reason: jnp.ndarray  # this will be an int reflecting the reason for termination
 
 
@@ -119,5 +122,5 @@ class GlobalOptimiserResults(NamedTuple):
     total_num_likelihood_evaluations: jnp.ndarray  # how many likelihood evaluations were made in total,
     log_efficiency: jnp.ndarray  # log(total_num_samples / total_num_likelihood_evaluations)
     termination_reason: jnp.ndarray  # this will be an int reflecting the reason for termination
-    log_L_max: jnp.ndarray # maximum likelihood value obtained
-    sample_L_max: Dict[str, jnp.ndarray] # sample at the log_L_max point
+    log_L_max: jnp.ndarray  # maximum likelihood value obtained
+    sample_L_max: Dict[str, jnp.ndarray]  # sample at the log_L_max point
