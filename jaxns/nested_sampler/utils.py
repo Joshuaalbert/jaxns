@@ -281,7 +281,7 @@ def analytic_log_evidence(prior_chain: PriorChain, log_likelihood, S: int = 60):
     u_vec = jnp.linspace(jnp.finfo(jnp.float_).eps, 1. - jnp.finfo(jnp.float_).eps, S)
     du = u_vec[1] - u_vec[0]
     args = jnp.stack([x.flatten() for x in jnp.meshgrid(*[u_vec] * prior_chain.U_ndims, indexing='ij')], axis=-1)
-    Z_true = (LogSpace(jit(vmap(lambda arg: log_likelihood(**prior_chain(arg))))(args)).sum() * LogSpace(
+    Z_true = (LogSpace(jit(vmap(lambda arg: log_likelihood(**prior_chain(arg))))(args)).nansum() * LogSpace(
         jnp.log(du)) ** prior_chain.U_ndims)
     return Z_true.log_abs_val
 

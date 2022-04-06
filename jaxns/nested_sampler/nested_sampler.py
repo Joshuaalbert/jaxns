@@ -1,20 +1,20 @@
 import logging
-from typing import Dict, Any, Optional, Tuple, Union, Callable
+from typing import Tuple, Union, Callable
 
 from jax import numpy as jnp, random, tree_map
 from jax.lax import scan
-from jax.lax import while_loop, dynamic_slice
+from jax.lax import while_loop
 
 from jaxns.internals.log_semiring import LogSpace
 from jaxns.internals.maps import chunked_pmap, replace_index, get_index, prepare_func_args
 from jaxns.internals.stats import linear_to_log_stats, effective_sample_size
-from jaxns.nested_sampler.nested_sampling import build_get_sample, get_seed_goal, sample_goal_distribution, \
-    collect_samples, _single_sample_constraint_for_contour_and_idx, compute_evidence, update_samples, \
-    _update_thread_stats
+from jaxns.nested_sampler.nested_sampling import build_get_sample, get_seed_goal, \
+    collect_samples, compute_evidence, _update_thread_stats
+from jaxns.nested_sampler.utils import summary
 from jaxns.nested_sampler.termination import termination_condition
 from jaxns.prior_transforms import PriorChain
 from jaxns.internals.types import NestedSamplerState, EvidenceCalculation, Reservoir
-from jaxns.internals.types import SampleCollection, NestedSamplerResults, ThreadStats, TerminationStats
+from jaxns.internals.types import SampleCollection, NestedSamplerResults, ThreadStats
 
 logger = logging.getLogger(__name__)
 
@@ -130,6 +130,7 @@ class NestedSampler(object):
             log_homogeneous_measure = prior_chain.log_homogeneous_measure(**x)
             if log_homogeneous_measure is not None:
                 log_L += log_homogeneous_measure
+            log_L = jnp.asarray(log_L, self.dtype)
             if log_L.shape != ():
                 raise ValueError("Shape of likelihood should be scalar, got {}".format(log_L.shape))
             return jnp.asarray(jnp.where(jnp.isnan(log_L), -jnp.inf, log_L), dtype=self.dtype)
@@ -168,6 +169,9 @@ class NestedSampler(object):
             dict with only keys that correspond to names being tracked.
         """
         return {name: d[name] for name, prior in self.prior_chain._prior_chain.items() if prior.tracked}
+
+    def summary(self, results:NestedSamplerResults) -> str:
+        return summary(results)
 
     def initial_state(self, key):
         """
@@ -528,7 +532,7 @@ class NestedSampler(object):
                  termination_max_samples: Union[float, int, jnp.ndarray] = None,
                  termination_max_num_likelihood_evaluations: Union[float, int, jnp.ndarray] = None,
                  adaptive_evidence_stopping_threshold: Union[float, jnp.ndarray] = None,
-                 adaptive_evidence_patience: Union[float, jnp.ndarray] = None,
+                 adaptive_evidence_patience: Union[float, jnp.ndarray] = 1,
                  G: Union[float, jnp.ndarray] = None,
                  *,
                  return_state: bool = False,
@@ -560,8 +564,14 @@ class NestedSampler(object):
         """
 
         if num_live_points is None:
-            num_live_points = self.prior_chain.U_ndims * 100
+            num_live_points = self.prior_chain.U_ndims * 50
         num_live_points = jnp.asarray(num_live_points, self.dtype)
+
+        if adaptive_evidence_stopping_threshold is None:
+            if termination_evidence_uncert is not None:
+                adaptive_evidence_stopping_threshold = termination_evidence_uncert/3.
+            else:
+                adaptive_evidence_stopping_threshold = 0.1
 
         # Establish the state that we need to carry through iterations, and to facilitate post-analysis.
         if refine_state is not None:

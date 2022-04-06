@@ -10,6 +10,7 @@ from jaxns.internals.maps import chunked_pmap
 from jaxns.internals.maps import prepare_func_args
 from jaxns.nested_sampler.nested_sampling import build_get_sample
 from jaxns.optimisation.global_optimisation import sort_reservoir
+from jaxns.optimisation.utils import summary
 from jaxns.optimisation.termination import termination_condition
 from jaxns.prior_transforms import PriorChain
 from jaxns.internals.types import Reservoir, GlobalOptimiserState, GlobalOptimiserResults
@@ -115,6 +116,9 @@ class GlobalOptimiser(object):
             return corrected_likelihood(**prior_chain(U_flat))
 
         self.loglikelihood_from_U = loglikelihood_from_U
+
+    def summary(self, results: GlobalOptimiserResults) -> str:
+        return summary(results)
 
     @property
     def dtype(self):
