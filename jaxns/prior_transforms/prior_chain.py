@@ -1,4 +1,4 @@
-from typing import Union
+from typing import Union, Callable
 from jax import random, numpy as jnp, disable_jit
 from jax.flatten_util import ravel_pytree
 from jaxns.internals.maps import prepare_func_args
@@ -77,6 +77,8 @@ class PriorChain(object):
         self._prior_chain = dict()
         self._prior_chain_placeholders = dict()
         self._prior_U_placeholders = dict()
+        self._U_flat_placeholder: jnp.ndarray = None
+        self._unravel_U_flat: Callable = None
 
         for prior in priors:
             self.push(prior)
