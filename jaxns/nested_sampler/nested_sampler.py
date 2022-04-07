@@ -13,7 +13,7 @@ from jaxns.nested_sampler.nested_sampling import build_get_sample, get_seed_goal
 from jaxns.nested_sampler.utils import summary
 from jaxns.nested_sampler.termination import termination_condition
 from jaxns.prior_transforms import PriorChain
-from jaxns.internals.types import NestedSamplerState, EvidenceCalculation, Reservoir
+from jaxns.internals.types import NestedSamplerState, EvidenceCalculation, Reservoir, float_type
 from jaxns.internals.types import SampleCollection, NestedSamplerResults, ThreadStats
 
 logger = logging.getLogger(__name__)
@@ -47,7 +47,7 @@ class NestedSampler(object):
                  sampler_kwargs=None,
                  max_samples=1e5,
                  dynamic: bool = False,
-                 dtype=jnp.float_):
+                 dtype=float_type):
         """
         The nested sampler class. Does both static and dynamic nested sampling with flexible termination criteria, and
         advanced likelihood samplers.
@@ -170,7 +170,7 @@ class NestedSampler(object):
         """
         return {name: d[name] for name, prior in self.prior_chain._prior_chain.items() if prior.tracked}
 
-    def summary(self, results:NestedSamplerResults) -> str:
+    def summary(self, results: NestedSamplerResults) -> str:
         return summary(results)
 
     def initial_state(self, key):
@@ -244,7 +244,7 @@ class NestedSampler(object):
             # The log mean evidence difference of the sample (averaged across chains)
             log_X_mean=jnp.full((self.max_samples,), -jnp.inf, self.dtype),
             # The log mean enclosed prior volume of sample
-            num_live_points=jnp.full((self.max_samples,), 0., jnp.float_),
+            num_live_points=jnp.full((self.max_samples,), 0., float_type),
             # How many live points were taken for the samples.
             num_slices=jnp.full((self.max_samples,), 0., self.dtype),
             # How many slices were taken for the samples.
@@ -569,7 +569,7 @@ class NestedSampler(object):
 
         if adaptive_evidence_stopping_threshold is None:
             if termination_evidence_uncert is not None:
-                adaptive_evidence_stopping_threshold = termination_evidence_uncert/3.
+                adaptive_evidence_stopping_threshold = termination_evidence_uncert / 3.
             else:
                 adaptive_evidence_stopping_threshold = 0.1
 
@@ -578,8 +578,20 @@ class NestedSampler(object):
             state = refine_state
             # TODO: maybe other things to prepare a provided state
             state = state._replace(done=jnp.asarray(False))
+            assert state.sample_collection.log_L_samples.size != self.max_samples, \
+                "Resizing sample collection not yet implemented."
         else:
             state = self.initial_state(key)
+
+        if termination_max_samples is None:
+            termination_max_samples = state.sample_collection.log_L_samples.size
+        termination_max_samples = jnp.minimum(termination_max_samples,
+                                              state.sample_collection.log_L_samples.size)
+        max_num_steps = state.sample_collection.log_L_samples.size // self.samples_per_step
+        if termination_max_num_steps is None:
+            termination_max_num_steps = max_num_steps
+        termination_max_num_steps = jnp.minimum(termination_max_num_steps,
+                                                max_num_steps)
 
         # cover space with static space
         assert any([termination_ess is not None,

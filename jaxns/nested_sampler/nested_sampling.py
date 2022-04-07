@@ -1,7 +1,7 @@
 from typing import Tuple, Callable
 
 from jax import numpy as jnp, random, tree_map, value_and_grad
-from jax._src.lax.lax import dynamic_update_slice
+from jax.lax import dynamic_update_slice
 from jax.lax import while_loop
 from jaxns.internals.log_semiring import LogSpace
 from jaxns.internals.maps import replace_index
@@ -436,6 +436,8 @@ def _update_evidence_calculation(num_live_points: jnp.ndarray,
                                                               log_ZX_mean=next_ZX_mean.log_abs_val,
                                                               log_dZ2_mean=next_dZ2_mean.log_abs_val
                                                               )
+    # log_Z_mean, log_Z_var = linear_to_log_stats(next_evidence_calculation.log_Z_mean, log_f2_mean=next_evidence_calculation.log_Z2_mean)
+
     # next_evidence_calculation = tree_map(lambda old, new: jnp.where(jnp.isnan(new), old, new),
     #                                      evidence_calculation, next_evidence_calculation)
 
