@@ -1,6 +1,6 @@
 from typing import NamedTuple
 
-from jax import random, numpy as jnp, tree_map
+from jax import numpy as jnp, tree_map
 import logging
 import numpy as np
 

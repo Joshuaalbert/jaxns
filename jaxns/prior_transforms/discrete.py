@@ -2,7 +2,7 @@ from jax import numpy as jnp
 from jax.scipy.special import logsumexp
 from jax.lax import while_loop
 
-from jaxns import float_type
+from jaxns.internals.types import float_type, int_type
 from jaxns.prior_transforms import (DeterministicTransformPrior, prior_docstring, Gumbel, get_shape, UniformBase, HierarchicalPrior, UniformPrior)
 from jaxns.internals.shapes import broadcast_dtypes
 
@@ -66,7 +66,7 @@ class PoissonPrior(HierarchicalPrior):
         (log_x, log_p, log_s) = while_loop(lambda s: jnp.any(log_u > s[2]),
                                            body,
                                            (log_x, log_p, log_s))
-        return jnp.exp(log_x).astype(jnp.int_)
+        return jnp.exp(log_x).astype(int_type)
 
 class CategoricalPrior(DeterministicTransformPrior):
     @prior_docstring
@@ -108,7 +108,7 @@ class CategoricalPrior(DeterministicTransformPrior):
                 jnp.zeros(logits.shape[:-1], dtype=jnp.bool_),
                 -jnp.inf * jnp.ones(logits.shape[:-1], dtype=u.dtype),
                 0,
-                jnp.zeros(logits.shape[:-1], dtype=jnp.int_)
+                jnp.zeros(logits.shape[:-1], dtype=int_type)
             )
             (_, _, _, output) = while_loop(lambda state: ~jnp.all(state[0]),
                               body,

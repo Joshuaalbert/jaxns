@@ -1,11 +1,12 @@
 from collections import namedtuple
 from jax import numpy as jnp, random, vmap
 from jax._src.lax.control_flow import scan
-from jax._src.lax.lax import dynamic_update_slice
+from jax.lax import dynamic_update_slice
 from jax._src.scipy.special import gammaln, logsumexp
 from jax.lax import while_loop
 
 from jaxns.internals.linalg import rank_one_update_matrix_inv
+from jaxns.internals.types import int_type
 
 MultiEllipsoidSamplerState = namedtuple('MultiEllipsoidSamplerState',
                                         ['cluster_id', 'mu', 'radii', 'rotation', 'num_k', 'num_fev_ma'])
@@ -118,7 +119,7 @@ def generic_kmeans(key, points, mask, K=2, meta=None, method='euclidean'):
     if method == 'ellipsoid':
         log_VS = meta.get('log_VS')
     MetricState = namedtuple("MetricState", ['cluster_centers', 'num_k', 'C', 'radii'])
-    weights = mask.astype(jnp.int_)
+    weights = mask.astype(int_type)
     num_S = jnp.sum(mask)
 
     def cluster_dist_metric(point, metric_state: MetricState):
@@ -185,7 +186,7 @@ def generic_kmeans(key, points, mask, K=2, meta=None, method='euclidean'):
         # N, K
         cluster_dist = vmap(lambda point: cluster_dist_metric(point, state.metric_state))(points)
         # N
-        current_cluster_dist = vmap(lambda n, k: cluster_dist[n, k])(jnp.arange(N, dtype=jnp.int_), state.cluster_id)
+        current_cluster_dist = vmap(lambda n, k: cluster_dist[n, k])(jnp.arange(N, dtype=int_type), state.cluster_id)
         # N, K
         rel_dist = cluster_dist - current_cluster_dist[:, None]
         # N
@@ -338,10 +339,10 @@ def hierarchical_clustering(key, points, depth, log_VS):
     N, D = points.shape
 
     num_clusters = 2 ** (depth - 1)
-    cluster_id = jnp.zeros(N, dtype=jnp.int_)
+    cluster_id = jnp.zeros(N, dtype=int_type)
     num_splittings = 2 ** (depth - 1) - 1
     keys = random.split(key, num_splittings)
-    order = jnp.zeros(num_clusters, dtype=jnp.int_)
+    order = jnp.zeros(num_clusters, dtype=int_type)
     log_VS_subclusters = jnp.array([log_VS] + [0] * num_splittings)
 
     def body(state, X):
@@ -349,7 +350,7 @@ def hierarchical_clustering(key, points, depth, log_VS):
         (key, splitting) = X
         splitting_select = jnp.arange(num_clusters) <= splitting
         child0 = jnp.max(jnp.where(splitting_select, order, -jnp.inf)) + 1
-        child0 = child0.astype(jnp.int_)
+        child0 = child0.astype(int_type)
         child1 = child0 + 1
         i_lowest = jnp.argmin(jnp.where(splitting_select, order, jnp.inf))
 
@@ -710,7 +711,7 @@ def cluster_split(key, points, mask, log_VS, log_VE, kmeans_init=True):
         # reassign
         delta_F = jnp.exp(log_h1) - jnp.exp(log_h2)
         reassign_idx = jnp.argmax(jnp.abs(delta_F))
-        new_cluster_id = dynamic_update_slice(cluster_id, (delta_F[reassign_idx, None] > 0).astype(jnp.int_),
+        new_cluster_id = dynamic_update_slice(cluster_id, (delta_F[reassign_idx, None] > 0).astype(int_type),
                                               reassign_idx[None])
         # new_cluster_k = jnp.where(log_h1 < log_h2, 0, 1)
         log_V_sum = jnp.logaddexp(log_VE1, log_VE2)
@@ -829,7 +830,7 @@ def ellipsoid_clustering(key, points, depth, log_VS):
     N, D = points.shape
 
     num_clusters = 2 ** (depth - 1)
-    cluster_id = jnp.zeros(N, dtype=jnp.int_)
+    cluster_id = jnp.zeros(N, dtype=int_type)
     mu, C = bounding_ellipsoid(points, cluster_id == 0)
     radii, rotation = ellipsoid_params(C)
 
@@ -841,7 +842,7 @@ def ellipsoid_clustering(key, points, depth, log_VS):
     radii_result = dynamic_update_slice(radii_result, radii[None, :], [0, 0])
     rotation_result = jnp.tile(jnp.eye(D)[None, :, :], (num_clusters, 1, 1))
     rotation_result = dynamic_update_slice(rotation_result, rotation[None, :], [0, 0, 0])
-    order = jnp.zeros(num_clusters, dtype=jnp.int_)
+    order = jnp.zeros(num_clusters, dtype=int_type)
     log_VS_subclusters = jnp.array([log_VS] + [0] * num_splittings)
 
     def body(state, X):
@@ -850,7 +851,7 @@ def ellipsoid_clustering(key, points, depth, log_VS):
         split_key, volume_key = random.split(key, 2)
         splitting_select = jnp.arange(num_clusters) <= splitting
         child0 = jnp.max(jnp.where(splitting_select, order, -jnp.inf)) + 1
-        child0 = child0.astype(jnp.int_)
+        child0 = child0.astype(int_type)
         child1 = child0 + 1
         i_lowest = jnp.argmin(jnp.where(splitting_select, order, jnp.inf))
 

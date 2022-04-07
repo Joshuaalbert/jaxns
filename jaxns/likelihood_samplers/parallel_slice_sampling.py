@@ -2,6 +2,8 @@ from jax import random, numpy as jnp
 from typing import NamedTuple
 import logging
 
+from jaxns.internals.types import int_type
+
 logger = logging.getLogger(__name__)
 
 
@@ -125,7 +127,7 @@ def shrink_interval(from_proposal_state: ProposalState, log_L_proposal: jnp.ndar
     point_U, t = pick_point_in_interval(t_key, from_proposal_state.point_U0, from_proposal_state.direction,
                                         left, right)
     return from_proposal_state._replace(key=key,
-                                        process_step=jnp.full((), 3, jnp.int_),
+                                        process_step=jnp.full((), 3, int_type),
                                         left=left,
                                         right=right,
                                         point_U=point_U,
@@ -148,7 +150,7 @@ def change_direction(from_proposal_state: ProposalState, log_L_proposal: jnp.nda
     point_U, t = pick_point_in_interval(t_key, point_U0, direction, left, right)
 
     return from_proposal_state._replace(key=proposal_key,
-                                        process_step=jnp.full((), 3, jnp.int_),
+                                        process_step=jnp.full((), 3, int_type),
                                         point_U0=point_U0,
                                         log_L0=log_L0,
                                         direction=direction,

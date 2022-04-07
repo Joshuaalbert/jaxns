@@ -3,11 +3,14 @@ import jax.numpy as jnp
 from jax import random
 from matplotlib.animation import FuncAnimation
 from mpl_toolkits.axes_grid1 import make_axes_locatable
+import logging
+logger = logging.getLogger(__name__)
 
 from jaxns.internals.types import NestedSamplerResults
 from jaxns.internals.log_semiring import cumulative_logsumexp
 from jaxns.nested_sampler.utils import resample
 from jaxns.internals.shapes import tuple_prod
+from jaxns.internals.types import int_type
 
 
 def plot_diagnostics(results: NestedSamplerResults, save_name=None):
@@ -298,7 +301,7 @@ def plot_samples_development(results, vars=None, save_name=None):
 
     def init():
         start = 0
-        stop = start + results.n_per_sample[start].astype(jnp.int_)
+        stop = start + results.n_per_sample[start].astype(int_type)
         for i in range(ndims):
             for j in range(ndims):
                 axs[i][j].clear()
@@ -309,7 +312,7 @@ def plot_samples_development(results, vars=None, save_name=None):
         return artists
 
     def update(start):
-        stop = start + results.n_per_sample[start].astype(jnp.int_)
+        stop = start + results.n_per_sample[start].astype(int_type)
         for i in range(ndims):
             for j in range(ndims):
                 axs[i][j].clear()
@@ -347,8 +350,16 @@ def add_colorbar_to_axes(ax, cmap, norm=None, vmin=None, vmax=None, label=None):
         ax.figure.colorbar(sm, cax=cax, orientation='vertical', label=label)
 
 def corner_cornerplot(results:NestedSamplerResults):
-    import corner
-    import arviz as az
+    try:
+        import corner
+    except ImportError:
+        logger.warning("You must run `pip install corner`")
+        exit(0)
+    try:
+        import arviz as az
+    except ImportError:
+        logger.warning("You must run `pip install arviz`")
+        exit(0)
     from jax import tree_map
     samples = resample(random.PRNGKey(42), results.samples, results.log_dp_mean, S=int(results.ESS))
     corner.corner(az.from_dict(posterior=tree_map(lambda x: x[None], samples)), )

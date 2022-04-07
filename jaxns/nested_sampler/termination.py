@@ -1,5 +1,5 @@
 from jax import numpy as jnp
-
+from jaxns.internals.types import int_type
 
 def termination_condition(num_samples, log_Z_var, log_Z_mean, prev_log_Z_mean, ess, num_likelihood_evaluations,
                           num_steps,
@@ -28,14 +28,14 @@ def termination_condition(num_samples, log_Z_var, log_Z_mean, prev_log_Z_mean, e
     :param termination_max_num_likelihood_evaluations:
     :return:
     """
-    termination_condition = jnp.asarray(0, jnp.int_)
+    termination_condition = jnp.asarray(0, int_type)
     done = jnp.asarray(False)
 
     def _set_done_bit(bit, bit_reason, done, termination_condition):
         done = done | bit
         termination_condition += jnp.where(bit,
-                                           jnp.asarray(2 ** bit_reason, jnp.int_),
-                                           jnp.asarray(0, jnp.int_))
+                                           jnp.asarray(2 ** bit_reason, int_type),
+                                           jnp.asarray(0, int_type))
         return done, termination_condition
 
     if termination_max_samples is not None:

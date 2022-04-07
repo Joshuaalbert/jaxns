@@ -11,7 +11,7 @@ from jaxns.likelihood_samplers.parallel_slice_sampling import ProposalState, cha
     slice_bounds, pick_point_in_interval
 from jaxns.nested_sampler.live_points import compute_num_live_points_from_unit_threads, infimum_constraint
 from jaxns.prior_transforms import PriorChain
-from jaxns.internals.types import NestedSamplerState, EvidenceCalculation, Reservoir, ThreadStats
+from jaxns.internals.types import NestedSamplerState, EvidenceCalculation, Reservoir, ThreadStats, int_type
 
 
 def build_get_sample(prior_chain: PriorChain, loglikelihood_from_U,
@@ -39,17 +39,17 @@ def build_get_sample(prior_chain: PriorChain, loglikelihood_from_U,
         slice_sampler_key, select_key, proposal_key, n_key, t_key = random.split(key, 5)
 
         direction = sample_direction(n_key, point_U0.size)
-        num_likelihood_evaluations = jnp.full((), 0, jnp.int_)
+        num_likelihood_evaluations = jnp.full((), 0, int_type)
         if gradient_boost:
             _, grad_direction = value_and_grad(loglikelihood_from_U)(point_U0)
             grad_direction /= jnp.linalg.norm(grad_direction)
             direction = jnp.where(jnp.isnan(grad_direction), direction, grad_direction)
-            num_likelihood_evaluations += jnp.full((), 1, jnp.int_)
+            num_likelihood_evaluations += jnp.full((), 1, int_type)
         (left, right) = slice_bounds(point_U0, direction)
         point_U, t = pick_point_in_interval(t_key, point_U0, direction, left, right)
         init_proposal_state = ProposalState(key=proposal_key,
-                                            process_step=jnp.full((), 3, jnp.int_),
-                                            proposal_count=jnp.zeros((), jnp.int_),
+                                            process_step=jnp.full((), 3, int_type),
+                                            proposal_count=jnp.zeros((), int_type),
                                             num_likelihood_evaluations=num_likelihood_evaluations,
                                             point_U0=point_U0,
                                             log_L0=log_L0,
@@ -223,7 +223,7 @@ def _get_static_goal(num_live_points: jnp.ndarray, static_num_live_points: jnp.n
                                  jnp.ones_like(static_num_live_points)
                                  )
     indices_constraint_reinforce = jnp.repeat(jnp.arange(diff_from_goal.size),
-                                              diff_from_goal.astype(jnp.int_),
+                                              diff_from_goal.astype(int_type),
                                               total_repeat_length=num_samples)
 
     return indices_constraint_reinforce
@@ -315,6 +315,7 @@ def compute_evidence(state: NestedSamplerState):
                                                                  next_log_L_contour=next_log_L,
                                                                  evidence_calculation=evidence_calculation)
 
+
         next_dZ_mean = (LogSpace(next_evidence_calculation.log_Z_mean)
                         - LogSpace(evidence_calculation.log_Z_mean)).abs()
 
@@ -326,7 +327,7 @@ def compute_evidence(state: NestedSamplerState):
     (final_evidence_calculation, final_idx, final_log_L_contour, final_log_dZ_mean, final_log_X_mean) = \
         while_loop(thread_cond,
                    thread_body,
-                   (initial_evidence_calculation, jnp.asarray(0, jnp.int_), init_log_L_contour,
+                   (initial_evidence_calculation, jnp.asarray(0, int_type), init_log_L_contour,
                     sample_collection.log_dZ_mean, sample_collection.log_X_mean))
 
     final_sample_collection = sample_collection._replace(log_dZ_mean=final_log_dZ_mean, log_X_mean=final_log_X_mean)
@@ -397,9 +398,12 @@ def _update_evidence_calculation(num_live_points: jnp.ndarray,
                                  log_L: jnp.ndarray,
                                  next_log_L_contour: jnp.ndarray,
                                  evidence_calculation: EvidenceCalculation):
+    def ar(v):
+        return jnp.asarray(v, log_L.dtype)
+
     next_L = LogSpace(next_log_L_contour)
     L_contour = LogSpace(log_L)
-    midL = LogSpace(jnp.log(0.5)) * (next_L + L_contour)
+    midL = LogSpace(jnp.log(ar(0.5))) * (next_L + L_contour)
     X_mean = LogSpace(evidence_calculation.log_X_mean)
     X2_mean = LogSpace(evidence_calculation.log_X2_mean)
     Z_mean = LogSpace(evidence_calculation.log_Z_mean)
@@ -409,24 +413,24 @@ def _update_evidence_calculation(num_live_points: jnp.ndarray,
 
     # T_mean = LogSpace(jnp.log(num_live_points) - jnp.log(num_live_points + 1.))
     # T_mean = LogSpace(jnp.log(1.) - jnp.log(1. + 1./num_live_points))
-    T_mean = LogSpace(- jnp.logaddexp(0, -jnp.log(num_live_points)))
+    T_mean = LogSpace(- jnp.logaddexp(ar(0.), -jnp.log(num_live_points)))
     # T_mean = LogSpace(- jnp.logaddexp(0., -jnp.log(num_live_points)))
-    t_mean = LogSpace(- jnp.log(num_live_points + 1.))
+    t_mean = LogSpace(- jnp.log(num_live_points + ar(1.)))
     # T2_mean = LogSpace(jnp.log(num_live_points) - jnp.log( num_live_points + 2.))
     # T2_mean = LogSpace(jnp.log(1.) - jnp.log(1. + 2./num_live_points))
-    T2_mean = LogSpace(- jnp.logaddexp(0., jnp.log(2.) - jnp.log(num_live_points)))
+    T2_mean = LogSpace(- jnp.logaddexp(ar(0.), jnp.log(ar(2.)) - jnp.log(num_live_points)))
     # T2_mean = LogSpace(- jnp.logaddexp(jnp.log(2.), -jnp.log(num_live_points)))
-    t2_mean = LogSpace(jnp.log(2.) - jnp.log(num_live_points + 1.) - jnp.log(num_live_points + 2.))
+    t2_mean = LogSpace(jnp.log(ar(2.)) - jnp.log(num_live_points + ar(1.)) - jnp.log(num_live_points + ar(2.)))
     # tT_mean = LogSpace(jnp.log(num_live_points) - jnp.log(num_live_points + 1.) - jnp.log(num_live_points + 2.))
     # tT_mean = LogSpace(jnp.log(1.) - jnp.log(1. + 1./num_live_points) - jnp.log(num_live_points + 2.))
-    tT_mean = LogSpace(- jnp.logaddexp(0., -jnp.log(num_live_points)) - jnp.log(num_live_points + 2.))
+    tT_mean = LogSpace(- jnp.logaddexp(ar(0.), -jnp.log(num_live_points)) - jnp.log(num_live_points + ar(2.)))
     # tT_mean = LogSpace(- jnp.logaddexp(0., -jnp.log(num_live_points)) - jnp.log(num_live_points + 2.))
 
     next_X_mean = X_mean * T_mean
     next_X2_mean = X2_mean * T2_mean
     next_Z_mean = Z_mean + X_mean * t_mean * midL
     next_ZX_mean = ZX_mean * T_mean + X2_mean * tT_mean * midL
-    next_Z2_mean = Z2_mean + LogSpace(jnp.log(2.)) * ZX_mean * t_mean * midL + (X2_mean * t2_mean * midL ** 2)
+    next_Z2_mean = Z2_mean + LogSpace(jnp.log(ar(2.))) * ZX_mean * t_mean * midL + (X2_mean * t2_mean * midL ** 2)
     next_dZ2_mean = dZ2_mean + (X2_mean * t2_mean * midL ** 2)
 
     next_evidence_calculation = evidence_calculation._replace(log_X_mean=next_X_mean.log_abs_val,

@@ -1,8 +1,10 @@
 import inspect
 from jax import tree_map, pmap, numpy as jnp
-from jax._src.lax.control_flow import scan
+from jax.lax import scan
 from jax.lax import dynamic_update_slice, dynamic_slice
 import logging
+
+from jaxns.internals.types import int_type
 
 logger = logging.getLogger(__name__)
 
@@ -14,13 +16,13 @@ def replace_index(operand, update, start_index):
     """
     if len(operand.shape) != len(update.shape):
         update = update[None]
-    start_indices = [start_index] + [jnp.asarray(0, jnp.int_)] * (len(update.shape) - 1)
+    start_indices = [start_index] + [jnp.asarray(0, int_type)] * (len(update.shape) - 1)
     return dynamic_update_slice(operand, update.astype(operand.dtype), start_indices)
 
 
 def get_index(operand, start_index, length):
     return dynamic_slice(operand,
-                         [start_index] + [jnp.asarray(0, jnp.int_)] * (len(operand.shape) - 1),
+                         [start_index] + [jnp.asarray(0, int_type)] * (len(operand.shape) - 1),
                          (length,) + operand.shape[1:])
 
 

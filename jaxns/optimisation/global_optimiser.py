@@ -13,7 +13,7 @@ from jaxns.optimisation.global_optimisation import sort_reservoir
 from jaxns.optimisation.utils import summary
 from jaxns.optimisation.termination import termination_condition
 from jaxns.prior_transforms import PriorChain
-from jaxns.internals.types import Reservoir, GlobalOptimiserState, GlobalOptimiserResults
+from jaxns.internals.types import Reservoir, GlobalOptimiserState, GlobalOptimiserResults, float_type, int_type
 
 logger = logging.getLogger(__name__)
 
@@ -30,8 +30,7 @@ class GlobalOptimiser(object):
                  sampler_name='slice',
                  num_parallel_samplers: int = 1,
                  samples_per_step: int = None,
-                 sampler_kwargs=None,
-                 dtype=jnp.float_):
+                 sampler_kwargs=None):
         """
         The global optimiser class.
 
@@ -79,7 +78,6 @@ class GlobalOptimiser(object):
         else:
             raise ValueError(f"sampler_name {sampler_name} is invalid.")
         self.sampler_kwargs = sampler_kwargs
-        self._dtype = dtype
 
         def corrected_likelihood(**x):
             """
@@ -95,9 +93,10 @@ class GlobalOptimiser(object):
             log_homogeneous_measure = prior_chain.log_homogeneous_measure(**x)
             if log_homogeneous_measure is not None:
                 log_L += log_homogeneous_measure
+            log_L = jnp.asarray(log_L, float_type)
             if log_L.shape != ():
                 raise ValueError("Shape of likelihood should be scalar, got {}".format(log_L.shape))
-            return jnp.asarray(jnp.where(jnp.isnan(log_L), -jnp.inf, log_L), dtype=self.dtype)
+            return jnp.asarray(jnp.where(jnp.isnan(log_L), -jnp.inf, log_L), dtype=float_type)
 
         self.loglikelihood = corrected_likelihood
         self.prior_chain = prior_chain
@@ -122,7 +121,7 @@ class GlobalOptimiser(object):
 
     @property
     def dtype(self):
-        return self._dtype
+        return float_type
 
     def _filter_prior_chain(self, d):
         """
@@ -165,7 +164,7 @@ class GlobalOptimiser(object):
                 X = self.prior_chain(U)
                 log_L = self.loglikelihood(**X)
                 done = ~jnp.isinf(log_L)
-                num_likelihood_evals += jnp.asarray(1, jnp.int_)
+                num_likelihood_evals += jnp.asarray(1, int_type)
                 return (done, key, U, self._filter_prior_chain(X), log_L, num_likelihood_evals)
 
             (_, _, U, X, log_L, num_likelihood_evals) = while_loop(lambda s: jnp.bitwise_not(s[0]),
@@ -174,8 +173,8 @@ class GlobalOptimiser(object):
                                                                     self.prior_chain.U_flat_placeholder,
                                                                     self._filter_prior_chain(
                                                                         self.prior_chain.sample_placeholder),
-                                                                    jnp.zeros((), self.dtype),
-                                                                    jnp.asarray(0, jnp.int_)))
+                                                                    jnp.zeros((), float_type),
+                                                                    jnp.asarray(0, int_type)))
             log_L_constraint = -jnp.inf
             sample = Reservoir(points_U=U,
                                points_X=X,
@@ -194,11 +193,11 @@ class GlobalOptimiser(object):
         state = GlobalOptimiserState(
             key=key,
             done=jnp.asarray(False, jnp.bool_),
-            num_steps=jnp.asarray(1, jnp.int_),
+            num_steps=jnp.asarray(1, int_type),
             reservoir=reservoir,
-            num_samples=jnp.asarray(self.samples_per_step, jnp.int_),
-            termination_reason=jnp.asarray(0, jnp.int_),
-            patience_steps=jnp.asarray(0, jnp.int_),
+            num_samples=jnp.asarray(self.samples_per_step, int_type),
+            termination_reason=jnp.asarray(0, int_type),
+            patience_steps=jnp.asarray(0, int_type),
             num_likelihood_evaluations=jnp.sum(reservoir.num_likelihood_evaluations)
         )
 
