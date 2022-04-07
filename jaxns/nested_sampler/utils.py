@@ -9,7 +9,7 @@ import numpy as np
 from jaxns.internals.maps import dict_multimap, prepare_func_args
 from jaxns.internals.log_semiring import cumulative_logsumexp, LogSpace
 from jaxns.prior_transforms import PriorChain
-from jaxns.internals.types import NestedSamplerResults, ThreadStats
+from jaxns.internals.types import NestedSamplerResults, ThreadStats, float_type
 
 logger = logging.getLogger(__name__)
 
@@ -278,7 +278,7 @@ def analytic_log_evidence(prior_chain: PriorChain, log_likelihood, S: int = 60):
     if not prior_chain.built:
         prior_chain.build()
 
-    u_vec = jnp.linspace(jnp.finfo(jnp.float_).eps, 1. - jnp.finfo(jnp.float_).eps, S)
+    u_vec = jnp.linspace(jnp.finfo(float_type).eps, 1. - jnp.finfo(float_type).eps, S)
     du = u_vec[1] - u_vec[0]
     args = jnp.stack([x.flatten() for x in jnp.meshgrid(*[u_vec] * prior_chain.U_ndims, indexing='ij')], axis=-1)
     Z_true = (LogSpace(jit(vmap(lambda arg: log_likelihood(**prior_chain(arg))))(args)).nansum() * LogSpace(

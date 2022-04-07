@@ -1,6 +1,7 @@
 from jax import numpy as jnp
 from jax.scipy.special import ndtri
 
+from jaxns.internals.types import float_type
 from jaxns.prior_transforms.prior import PriorBase, UniformBase, Prior, prior_docstring, get_shape
 from jaxns.internals.linalg import msqrt
 from jaxns.internals.shapes import broadcast_dtypes, convert_to_array, broadcast_shapes
@@ -67,7 +68,7 @@ class ContinuousPrior(HierarchicalPrior):
         This is a general prior for continuous RVs that have an implemented bijective transform from the PriorBase.
         """
         if prior_base is None:
-            prior_base = UniformBase(shape, broadcast_dtypes(jnp.float_, *[p.dtype for p in parents]))
+            prior_base = UniformBase(shape, broadcast_dtypes(float_type, *[p.dtype for p in parents]))
         super(ContinuousPrior, self).__init__(name, parents, tracked, prior_base)
 
 class LogNormalPrior(ContinuousPrior):

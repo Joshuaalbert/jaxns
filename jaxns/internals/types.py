@@ -2,6 +2,7 @@ from typing import NamedTuple, Dict, Any, Union
 
 from jax import numpy as jnp
 
+float_type = jnp.result_type(float)
 
 class SignedLog(NamedTuple):
     """

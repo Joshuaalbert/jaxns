@@ -1,6 +1,8 @@
 from jax import numpy as jnp
 from jax.scipy.special import logsumexp
 from jax.lax import while_loop
+
+from jaxns import float_type
 from jaxns.prior_transforms import (DeterministicTransformPrior, prior_docstring, Gumbel, get_shape, UniformBase, HierarchicalPrior, UniformPrior)
 from jaxns.internals.shapes import broadcast_dtypes
 
@@ -16,7 +18,7 @@ class PoissonPrior(HierarchicalPrior):
             lamda: the intensity of the process.
         """
         lamda = self._prepare_parameter(name, 'lamda', lamda)
-        prior_base = UniformBase(get_shape(lamda), broadcast_dtypes(jnp.float_, lamda.dtype))
+        prior_base = UniformBase(get_shape(lamda), broadcast_dtypes(float_type, lamda.dtype))
 
         super(PoissonPrior, self).__init__(name, [lamda], tracked=tracked, prior_base=prior_base)
 
