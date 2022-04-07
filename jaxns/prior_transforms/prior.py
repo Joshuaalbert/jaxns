@@ -110,6 +110,8 @@ class Prior(object):
         self._parents = list(parents)
         self._tracked = tracked
         self._prior_base = prior_base
+        self._shape = None
+        self._dtype = None
         self._built = False
 
         global _PRIOR_CHAIN_INDEX_STACK, _PRIOR_CHAINS
