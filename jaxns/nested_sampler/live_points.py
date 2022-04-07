@@ -44,6 +44,7 @@ def compute_num_live_points_from_unit_threads(log_L_constraints, log_L_samples, 
     b = u.size - jnp.cumsum(jnp.bincount(u, length=u.size))
     n = n_base - b
     n = jnp.where(empty_mask[idx_sort], 0, n)
+    n = jnp.asarray(n, log_L_samples.dtype)
     if return_sort_idx:
         return (n, idx_sort)
     return n

@@ -1,4 +1,5 @@
 from jax import numpy as jnp
+from jaxns.internals.types import int_type
 
 def termination_condition(prev_log_L_max, new_log_L_max, patience_steps, num_likelihood_evaluations,num_steps, *,
                           termination_patience=None,
@@ -23,14 +24,14 @@ def termination_condition(prev_log_L_max, new_log_L_max, patience_steps, num_lik
         done: bool, whether to Stop
         termination_condition: int, binary flag recording the reasons for stopping (if more than one).
     """
-    termination_condition = jnp.asarray(0, jnp.int_)
+    termination_condition = jnp.asarray(0, int_type)
     done = jnp.asarray(False)
 
     def _set_done_bit(bit, bit_reason, done, termination_condition):
         done = done | bit
         termination_condition += jnp.where(bit,
-                                           jnp.asarray(2 ** bit_reason, jnp.int_),
-                                           jnp.asarray(0, jnp.int_))
+                                           jnp.asarray(2 ** bit_reason, int_type),
+                                           jnp.asarray(0, int_type))
         return done, termination_condition
 
     if termination_frac_likelihood_improvement is not None:

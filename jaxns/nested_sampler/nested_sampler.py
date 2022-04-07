@@ -13,7 +13,7 @@ from jaxns.nested_sampler.nested_sampling import build_get_sample, get_seed_goal
 from jaxns.nested_sampler.utils import summary
 from jaxns.nested_sampler.termination import termination_condition
 from jaxns.prior_transforms import PriorChain
-from jaxns.internals.types import NestedSamplerState, EvidenceCalculation, Reservoir, float_type
+from jaxns.internals.types import NestedSamplerState, EvidenceCalculation, Reservoir, float_type, int_type
 from jaxns.internals.types import SampleCollection, NestedSamplerResults, ThreadStats
 
 logger = logging.getLogger(__name__)
@@ -46,8 +46,7 @@ class NestedSampler(object):
                  samples_per_step: int = None,
                  sampler_kwargs=None,
                  max_samples=1e5,
-                 dynamic: bool = False,
-                 dtype=float_type):
+                 dynamic: bool = False):
         """
         The nested sampler class. Does both static and dynamic nested sampling with flexible termination criteria, and
         advanced likelihood samplers.
@@ -113,7 +112,6 @@ class NestedSampler(object):
         else:
             raise ValueError(f"sampler_name {sampler_name} is invalid.")
         self.sampler_kwargs = sampler_kwargs
-        self._dtype = dtype
         self.dynamic = bool(dynamic)
 
         def corrected_likelihood(**x):
@@ -130,10 +128,10 @@ class NestedSampler(object):
             log_homogeneous_measure = prior_chain.log_homogeneous_measure(**x)
             if log_homogeneous_measure is not None:
                 log_L += log_homogeneous_measure
-            log_L = jnp.asarray(log_L, self.dtype)
+            log_L = jnp.asarray(log_L, float_type)
             if log_L.shape != ():
                 raise ValueError("Shape of likelihood should be scalar, got {}".format(log_L.shape))
-            return jnp.asarray(jnp.where(jnp.isnan(log_L), -jnp.inf, log_L), dtype=self.dtype)
+            return jnp.asarray(jnp.where(jnp.isnan(log_L), -jnp.inf, log_L), dtype=float_type)
 
         self.loglikelihood = corrected_likelihood
         self.prior_chain = prior_chain
@@ -155,7 +153,7 @@ class NestedSampler(object):
 
     @property
     def dtype(self):
-        return self._dtype
+        return float_type
 
     def _filter_prior_chain(self, d):
         """
@@ -201,7 +199,7 @@ class NestedSampler(object):
                 X = self.prior_chain(U)
                 log_L = self.loglikelihood(**X)
                 done = ~jnp.isinf(log_L)
-                num_likelihood_evals += jnp.asarray(1, jnp.int_)
+                num_likelihood_evals += jnp.asarray(1, int_type)
                 return (done, key, U, self._filter_prior_chain(X), log_L, num_likelihood_evals)
 
             (_, _, U, X, log_L, num_likelihood_evals) = while_loop(lambda s: jnp.bitwise_not(s[0]),
@@ -210,8 +208,8 @@ class NestedSampler(object):
                                                                     self.prior_chain.U_flat_placeholder,
                                                                     self._filter_prior_chain(
                                                                         self.prior_chain.sample_placeholder),
-                                                                    jnp.zeros((), self.dtype),
-                                                                    jnp.asarray(0, jnp.int_)))
+                                                                    jnp.zeros((), float_type),
+                                                                    jnp.asarray(0, int_type)))
             log_L_constraint = -jnp.inf
             sample = Reservoir(points_U=U,
                                points_X=X,
@@ -235,29 +233,29 @@ class NestedSampler(object):
                                           0., self.prior_chain.dtypes[name]))
                           for name in self._filter_prior_chain(self.prior_chain.shapes)),
             # The X-valued samples
-            log_L_samples=jnp.full((self.max_samples,), jnp.inf, self.dtype),
-            log_L_constraint=jnp.full((self.max_samples,), jnp.inf, self.dtype),
+            log_L_samples=jnp.full((self.max_samples,), jnp.inf, float_type),
+            log_L_constraint=jnp.full((self.max_samples,), jnp.inf, float_type),
             # The log-likelihood of sample, defaulting to inf to sort them after rest.
-            num_likelihood_evaluations=jnp.full((self.max_samples,), 0, jnp.int_),
+            num_likelihood_evaluations=jnp.full((self.max_samples,), 0, int_type),
             # How many likelihood evaluations were required to obtain sample
-            log_dZ_mean=jnp.full((self.max_samples,), -jnp.inf, self.dtype),
+            log_dZ_mean=jnp.full((self.max_samples,), -jnp.inf, float_type),
             # The log mean evidence difference of the sample (averaged across chains)
-            log_X_mean=jnp.full((self.max_samples,), -jnp.inf, self.dtype),
+            log_X_mean=jnp.full((self.max_samples,), -jnp.inf, float_type),
             # The log mean enclosed prior volume of sample
             num_live_points=jnp.full((self.max_samples,), 0., float_type),
             # How many live points were taken for the samples.
-            num_slices=jnp.full((self.max_samples,), 0., self.dtype),
+            num_slices=jnp.full((self.max_samples,), 0., float_type),
             # How many slices were taken for the samples.
         )
 
         # This contains the required information to compute Z and ZH
         evidence_calculation = EvidenceCalculation(
-            log_X_mean=jnp.asarray(0., self.dtype),
-            log_X2_mean=jnp.asarray(0., self.dtype),
-            log_Z_mean=jnp.asarray(-jnp.inf, self.dtype),
-            log_ZX_mean=jnp.asarray(-jnp.inf, self.dtype),
-            log_Z2_mean=jnp.asarray(-jnp.inf, self.dtype),
-            log_dZ2_mean=jnp.asarray(-jnp.inf, self.dtype)
+            log_X_mean=jnp.asarray(0., float_type),
+            log_X2_mean=jnp.asarray(0., float_type),
+            log_Z_mean=jnp.asarray(-jnp.inf, float_type),
+            log_ZX_mean=jnp.asarray(-jnp.inf, float_type),
+            log_Z2_mean=jnp.asarray(-jnp.inf, float_type),
+            log_dZ2_mean=jnp.asarray(-jnp.inf, float_type)
         )
 
         max_num_steps = self.max_samples // self.samples_per_step
@@ -271,14 +269,14 @@ class NestedSampler(object):
         state = NestedSamplerState(
             key=key,
             done=jnp.asarray(False, jnp.bool_),
-            step_idx=jnp.asarray(1, jnp.int_),
+            step_idx=jnp.asarray(1, int_type),
             sample_collection=sample_collection,
             evidence_calculation=evidence_calculation,
-            log_L_contour=jnp.asarray(-jnp.inf, self.dtype),
-            sample_idx=jnp.asarray(0, jnp.int_),
-            termination_reason=jnp.asarray(0, jnp.int_),
+            log_L_contour=jnp.asarray(-jnp.inf, float_type),
+            sample_idx=jnp.asarray(0, int_type),
+            termination_reason=jnp.asarray(0, int_type),
             thread_stats=init_thread_stats,
-            patience_steps=jnp.asarray(0, jnp.int_)
+            patience_steps=jnp.asarray(0, int_type)
         )
         state = collect_samples(state, reservoir)
 
@@ -483,11 +481,11 @@ class NestedSampler(object):
                 reservoir = tree_map(lambda old, new: replace_index(old, new, sample_idx), old_reservoir, new_reservoir)
                 # Update the sample collection
                 sample_collection = sample_collection._replace(**reservoir._asdict())
-                return (sample_idx + jnp.asarray(self.samples_per_step, jnp.int_), sample_collection)
+                return (sample_idx + jnp.asarray(self.samples_per_step, int_type), sample_collection)
 
             _, sample_collection = while_loop(lambda sample_body_state: sample_body_state[0] < prev_state.sample_idx,
                                               sample_body,
-                                              (jnp.asarray(0, jnp.int_), prev_state.sample_collection))
+                                              (jnp.asarray(0, int_type), prev_state.sample_collection))
 
             new_state = prev_state._replace(sample_collection=sample_collection)
             new_state = compute_evidence(new_state)
@@ -506,8 +504,8 @@ class NestedSampler(object):
             too_many_slices = num_slices_goal > max_num_slices
             if adaptive_evidence_patience is not None:
                 patience_steps = jnp.where(small_enough_change,
-                                           new_state.patience_steps + jnp.asarray(1, jnp.int_),
-                                           jnp.asarray(0, jnp.int_))
+                                           new_state.patience_steps + jnp.asarray(1, int_type),
+                                           jnp.asarray(0, int_type))
                 new_state = new_state._replace(patience_steps=patience_steps)
                 done = (patience_steps > adaptive_evidence_patience) | too_many_slices
             else:
@@ -565,7 +563,7 @@ class NestedSampler(object):
 
         if num_live_points is None:
             num_live_points = self.prior_chain.U_ndims * 50
-        num_live_points = jnp.asarray(num_live_points, self.dtype)
+        num_live_points = jnp.asarray(num_live_points, float_type)
 
         if adaptive_evidence_stopping_threshold is None:
             if termination_evidence_uncert is not None:
@@ -634,7 +632,7 @@ class NestedSampler(object):
         if adaptive_evidence_stopping_threshold is not None:
             # adaptively decrease auto-correlation of samples until evidence converges
             state = state._replace(done=jnp.asarray(False),
-                                   patience_steps=jnp.asarray(0, jnp.int_))
+                                   patience_steps=jnp.asarray(0, int_type))
             state = self._second_loop(init_state=state,
                                       min_num_slices=self.sampler_kwargs.get('min_num_slices'),
                                       max_num_slices=self.sampler_kwargs.get('max_num_slices'),
