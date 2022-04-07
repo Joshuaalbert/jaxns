@@ -1,5 +1,5 @@
 from jax import random, numpy as jnp, vmap
-from jax._src.scipy.special import logsumexp
+from jax.scipy.special import logsumexp
 
 from jaxns.prior_transforms import PriorChain, HalfLaplacePrior, GumbelBernoulliPrior, BernoulliPrior, \
     GumbelCategoricalPrior, CategoricalPrior, PoissonPrior, ForcedIdentifiabilityPrior

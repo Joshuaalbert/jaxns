@@ -1,5 +1,5 @@
 from jax import numpy as jnp
-from jax._src.lax.control_flow import scan
+from jax.lax import scan
 
 
 def msqrt(A):

@@ -1,7 +1,7 @@
 import numpy as np
 from jax import numpy as jnp, random, jit
-from jax._src.scipy.linalg import solve_triangular
-from jax._src.scipy.special import gammaln
+from jax.scipy.linalg import solve_triangular
+from jax.scipy.special import gammaln
 
 from jaxns import NestedSampler, resample, summary, plot_diagnostics, plot_cornerplot
 from jaxns.nested_sampler.nested_sampling import _get_static_goal, \

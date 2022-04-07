@@ -1,8 +1,8 @@
 from collections import namedtuple
 from jax import numpy as jnp, random, vmap
-from jax._src.lax.control_flow import scan
+from jax.lax import scan
 from jax.lax import dynamic_update_slice
-from jax._src.scipy.special import gammaln, logsumexp
+from jax.scipy.special import gammaln, logsumexp
 from jax.lax import while_loop
 
 from jaxns.internals.linalg import rank_one_update_matrix_inv
