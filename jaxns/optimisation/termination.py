@@ -1,7 +1,7 @@
 from jax import numpy as jnp
 from jaxns.internals.types import int_type
 
-def termination_condition(prev_log_L_max, new_log_L_max, patience_steps, num_likelihood_evaluations,num_steps, *,
+def termination_condition(new_log_L_min, new_log_L_max, patience_steps, num_likelihood_evaluations, num_steps, *,
                           termination_patience=None,
                           termination_frac_likelihood_improvement=None,
                           termination_likelihood_contour=None,
@@ -35,7 +35,7 @@ def termination_condition(prev_log_L_max, new_log_L_max, patience_steps, num_lik
         return done, termination_condition
 
     if termination_frac_likelihood_improvement is not None:
-        not_enough_improvement = new_log_L_max - prev_log_L_max <= jnp.log1p(termination_frac_likelihood_improvement)
+        not_enough_improvement = new_log_L_max - new_log_L_min <= jnp.log1p(termination_frac_likelihood_improvement)
         if termination_patience is not None:
             not_enough_patience = patience_steps >= termination_patience
             done, termination_condition = _set_done_bit(not_enough_patience, 0,
@@ -54,6 +54,10 @@ def termination_condition(prev_log_L_max, new_log_L_max, patience_steps, num_lik
     if termination_max_num_likelihood_evaluations is not None:
         too_max_likelihood_evaluations = num_likelihood_evaluations >= termination_max_num_likelihood_evaluations
         done, termination_condition = _set_done_bit(too_max_likelihood_evaluations, 4,
+                                                    done=done, termination_condition=termination_condition)
+
+    on_plateau = new_log_L_max == new_log_L_min
+    done, termination_condition = _set_done_bit(on_plateau, 5,
                                                     done=done, termination_condition=termination_condition)
 
     return done, termination_condition
