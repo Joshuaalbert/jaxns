@@ -6,9 +6,9 @@ from jax.lax import scan
 from jax.lax import while_loop
 
 from jaxns.internals.log_semiring import LogSpace
-from jaxns.internals.maps import chunked_pmap
+from jaxns.internals.maps import chunked_pmap, replace_index
 from jaxns.internals.maps import prepare_func_args
-from jaxns.nested_sampler.nested_sampling import build_get_sample
+from jaxns.nested_sampler.nested_sampling import build_get_sample, sample_goal_distribution
 from jaxns.optimisation.global_optimisation import sort_reservoir
 from jaxns.optimisation.utils import summary
 from jaxns.optimisation.termination import termination_condition
@@ -33,20 +33,12 @@ class GlobalOptimiser(object):
                  sampler_kwargs=None):
         """
         The global optimiser class.
-
-        :param loglikelihood:
-        :param prior_chain:
-        :param sampler_name:
-        :param num_parallel_samplers:
-        :param samples_per_step:
-        :param sampler_kwargs:
-        :param dtype:
         """
         if sampler_name not in self._available_samplers:
             raise ValueError("sampler_name {} should be one of {}.".format(sampler_name, self._available_samplers))
         self.sampler_name = sampler_name
         if samples_per_step is None:
-            samples_per_step = prior_chain.U_ndims * 50
+            samples_per_step = prior_chain.U_ndims * 10
         samples_per_step = int(samples_per_step)
         if samples_per_step < 1:
             raise ValueError(f"samples_per_step {samples_per_step} should be >= 1.")
@@ -214,56 +206,54 @@ class GlobalOptimiser(object):
                                   termination_max_num_steps=None,
                                   termination_max_num_likelihood_evaluations=None
                                   ) -> GlobalOptimiserState:
-        # construct the parallel version of get_sample (if num_parallel_samplers > 1)
-        get_samples_parallel = chunked_pmap(build_get_sample(prior_chain=self.prior_chain,
-                                                             loglikelihood_from_U=self.loglikelihood_from_U,
-                                                             midpoint_shrink=self.sampler_kwargs.get(
-                                                                 'midpoint_shrink'),
-                                                             gradient_boost=self.sampler_kwargs.get(
-                                                                 'gradient_boost'),
-                                                             destructive_shrink=self.sampler_kwargs.get('destructive_shrink')
-                                                             ),
-                                            chunksize=num_parallel_samplers)
+        assert num_parallel_samplers == 1, "Optimisation is currently a sequential process."
+
+        get_sample = build_get_sample(prior_chain=self.prior_chain,
+                                     loglikelihood_from_U=self.loglikelihood_from_U,
+                                     midpoint_shrink=self.sampler_kwargs.get(
+                                         'midpoint_shrink'),
+                                     gradient_boost=self.sampler_kwargs.get(
+                                         'gradient_boost'),
+                                     destructive_shrink=self.sampler_kwargs.get(
+                                         'destructive_shrink')
+                                     )
 
         def body(state: GlobalOptimiserState) -> GlobalOptimiserState:
             # Note: state enters with consistent definition, and exits with consistent definition.
             key, sample_key, seed_key, alpha_key = random.split(state.key, 4)
             state = state._replace(key=key)
 
-            contours = jnp.concatenate([state.reservoir.log_L_constraint[0:1],
-                                        state.reservoir.log_L_samples])
-            alpha = 0.5  # random.uniform(alpha_key, state.reservoir.log_L_samples.shape)
-            L_constraint_reinforce = LogSpace(state.reservoir.log_L_constraint[0]) + LogSpace(jnp.log(alpha)) * (
-                    LogSpace(state.reservoir.log_L_samples[-1]) - LogSpace(state.reservoir.log_L_constraint[0]))
-            log_L_constraint_reinforce = L_constraint_reinforce.log_abs_val
-            log_L_constraints_reinforce = log_L_constraint_reinforce * jnp.ones_like(state.reservoir.log_L_samples)
+            idx_min = jnp.argmin(state.reservoir.log_L_samples)
+            log_L_constraint = state.reservoir.log_L_samples[idx_min]
 
-            constraint_supremum_idx = jnp.clip(jnp.searchsorted(contours, log_L_constraint_reinforce, side='right'),
-                                               1, state.reservoir.log_L_samples.size) - 1
-            seed_idx = random.randint(seed_key,
-                                      shape=state.reservoir.log_L_samples.shape,
-                                      minval=constraint_supremum_idx,
-                                      maxval=state.reservoir.log_L_samples.size)
-            points_U_seed = state.reservoir.points_U[seed_idx]
+            log_seed_goal = jnp.where(state.reservoir.log_L_samples > log_L_constraint,
+                                      jnp.asarray(0., float_type), -jnp.inf)
+
+            seed_idx = sample_goal_distribution(seed_key, log_seed_goal, 1, replace=True)[0]
+
+
+            point_U_seed = state.reservoir.points_U[seed_idx]
             log_L_seed = state.reservoir.log_L_samples[seed_idx]
 
             # We replace every point in the sample collection with a new point sampled from that point.
-            sample_keys = random.split(sample_key, seed_idx.size)
             # expects: key, point_U0, log_L0, log_L_constraint, num_slices
-            new_reservoir = get_samples_parallel(sample_keys,
-                                                 points_U_seed,
-                                                 log_L_seed,
-                                                 log_L_constraints_reinforce,
-                                                 num_slices * jnp.ones_like(state.reservoir.num_slices))
-            new_reservoir = sort_reservoir(new_reservoir)
-            new_reservoir = new_reservoir._replace(points_X=self._filter_prior_chain(new_reservoir.points_X),
-                                                   num_slices=new_reservoir.num_slices.astype(
-                                                       state.reservoir.num_slices.dtype))
+            new_reservoir_point = get_sample(sample_key,
+                                     point_U_seed,
+                                     log_L_seed,
+                                     log_L_constraint,
+                                     num_slices)
+            new_reservoir_point = new_reservoir_point._replace(points_X=self._filter_prior_chain(new_reservoir_point.points_X))
+            new_reservoir = tree_map(lambda old, new: replace_index(old, new, idx_min),
+                     state.reservoir,
+                     new_reservoir_point)
 
-            prev_log_L_max = jnp.max(state.reservoir.log_L_samples)
+            # terminate if all plateau, or if likelihood chagne from min/max is not big enough
+            new_log_L_min = jnp.min(new_reservoir.log_L_samples)
             new_log_L_max = jnp.max(new_reservoir.log_L_samples)
+
             if termination_frac_likelihood_improvement is not None:
-                not_enough_improvement = new_log_L_max - prev_log_L_max <= jnp.log1p(
+                # L_max/L_min - 1 <= delta
+                not_enough_improvement = new_log_L_max - new_log_L_min <= jnp.log1p(
                     termination_frac_likelihood_improvement)
             else:
                 not_enough_improvement = jnp.asarray(False)
@@ -271,13 +261,12 @@ class GlobalOptimiser(object):
                                        state.patience_steps + jnp.ones_like(state.patience_steps),
                                        jnp.zeros_like(state.patience_steps))
 
-            num_likelihood_evaluations = state.num_likelihood_evaluations + jnp.sum(
-                new_reservoir.num_likelihood_evaluations)
+            num_likelihood_evaluations = state.num_likelihood_evaluations + new_reservoir_point.num_likelihood_evaluations
             num_steps = state.num_steps + jnp.ones_like(state.num_steps)
-            num_samples = state.num_samples + jnp.asarray(self.samples_per_step, state.num_samples.dtype)
+            num_samples = state.num_samples + jnp.ones_like(state.num_samples)
 
             done, termination_reason = termination_condition(
-                prev_log_L_max=prev_log_L_max,
+                new_log_L_min=new_log_L_min,
                 new_log_L_max=new_log_L_max,
                 patience_steps=patience_steps,
                 num_likelihood_evaluations=num_likelihood_evaluations,
@@ -321,6 +310,10 @@ class GlobalOptimiser(object):
         if refine_state is not None:
             state = refine_state
             state = state._replace(done=jnp.asarray(False))
+            if termination_max_num_likelihood_evaluations is not None:
+                termination_max_num_likelihood_evaluations += state.num_likelihood_evaluations
+            if termination_max_num_steps is not None:
+                termination_max_num_steps += state.num_steps
         else:
             state = self.initial_state(key)
 

@@ -56,7 +56,8 @@ def summary(results: GlobalOptimiserResults) -> str:
                                                      'Small enough likelihood change',
                                                      'Target likelihood contour reached',
                                                      "Used max num steps",
-                                                     "Used max num likelihood evaluations"]):
+                                                     "Used max num likelihood evaluations",
+                                                     "On a plateau"]):
         if bit == 1:
             _print(condition)
     _print("--------")
