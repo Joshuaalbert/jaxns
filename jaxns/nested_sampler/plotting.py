@@ -1,6 +1,7 @@
 import pylab as plt
 import jax.numpy as jnp
 from jax import random
+import numpy as np
 from matplotlib.animation import FuncAnimation
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import logging
@@ -137,7 +138,7 @@ def plot_cornerplot(results:NestedSamplerResults, vars=None, save_name=None):
                     # ax.set_title('{} {}'.format(title1, title2))
                     if dim == dim2:
                         # ax.plot(binsx, kde1(binsx))
-                        ax.hist(samples1_resampled, bins='auto', fc='None', edgecolor='black', density=True)
+                        ax.hist(np.asarray(samples1_resampled), bins='auto', fc='None', edgecolor='black', density=True)
                         ax.axvline(samples1_max_like, color='green')
                         sample_mean = jnp.average(samples1, weights=weights)
                         sample_std = jnp.sqrt(jnp.average((samples1 - sample_mean) ** 2, weights=weights))
