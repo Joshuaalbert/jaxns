@@ -292,8 +292,8 @@ class GlobalOptimiser(object):
         return state
 
     def __call__(self, key,
-                 termination_patience=None,
-                 termination_frac_likelihood_improvement=None,
+                 termination_patience=3,
+                 termination_frac_likelihood_improvement=1e-3,
                  termination_likelihood_contour=None,
                  termination_max_num_steps=None,
                  termination_max_num_likelihood_evaluations=None,
@@ -301,6 +301,25 @@ class GlobalOptimiser(object):
                  return_state: bool = False,
                  refine_state: GlobalOptimiserState = None
                  ) -> Union[GlobalOptimiserResults, Tuple[GlobalOptimiserResults, GlobalOptimiserState]]:
+        """
+        Performs global optimisation of the model, where the likelihood is maximised with a search that is guided by
+        the prior.
+
+        Args:
+            key: PRNG key
+            termination_patience: Terminate after this many termination conditions being true in a row
+            termination_frac_likelihood_improvement: Terminate if likelihood log-difference between max/min is
+                less that this.
+            termination_likelihood_contour: Terminate if likelihood gets above this.
+            termination_max_num_steps: Terminate if this many steps taken.
+            termination_max_num_likelihood_evaluations: Terminate if this many likelihood evaluations made.
+            return_state: If true, then return the state with result, which can be used for refinement.
+            refine_state: GlobalOptimiserState, If given, then refines the provided state.
+
+        Returns:
+            if return_state is true, the a tuple (GlobalOptimiserResults, GlobalOptimiserState)
+            otherwise GlobalOptimiserResults
+        """
 
         assert any([termination_patience is not None,
                     termination_frac_likelihood_improvement is not None,
@@ -310,10 +329,6 @@ class GlobalOptimiser(object):
         if refine_state is not None:
             state = refine_state
             state = state._replace(done=jnp.asarray(False))
-            if termination_max_num_likelihood_evaluations is not None:
-                termination_max_num_likelihood_evaluations += state.num_likelihood_evaluations
-            if termination_max_num_steps is not None:
-                termination_max_num_steps += state.num_steps
         else:
             state = self.initial_state(key)
 
