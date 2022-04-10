@@ -1,8 +1,8 @@
 from jax import numpy as jnp
 from jaxns.internals.types import int_type
 
-def termination_condition(num_samples, log_Z_var, log_Z_mean, prev_log_Z_mean, ess, num_likelihood_evaluations,
-                          num_steps,
+def termination_condition(num_samples, log_Z_var, log_Z_live_upper, log_Z_upper, ess, num_likelihood_evaluations,
+                          num_steps, all_plateau,
                           *,
                           termination_live_evidence_frac=None,
                           termination_ess=None,
@@ -20,6 +20,7 @@ def termination_condition(num_samples, log_Z_var, log_Z_mean, prev_log_Z_mean, e
     :param ess:
     :param num_likelihood_evaluations:
     :param num_steps:
+    :param all_plateau:
     :param termination_live_evidence_frac:
     :param termination_ess:
     :param termination_evidence_uncert:
@@ -50,8 +51,8 @@ def termination_condition(num_samples, log_Z_var, log_Z_mean, prev_log_Z_mean, e
                                                     done=done, termination_condition=termination_condition)
     if termination_live_evidence_frac is not None:
         # dynamic stopping condition, for stopping static run
-        # Z_live < f * Z_prev <=> |Z-Z_prev| < f * Z_prev <=> Z < Z_prev * (1 + f) => log(Z) < log(Z_prev) + log(1+f)
-        small_remaining_evidence = jnp.abs(log_Z_mean - prev_log_Z_mean) < jnp.log(1. + termination_live_evidence_frac)
+        # Z_live/(Z_live + Z_current) < delta
+        small_remaining_evidence = log_Z_live_upper - log_Z_upper < jnp.log(termination_live_evidence_frac)
         done, termination_condition = _set_done_bit(small_remaining_evidence, 2,
                                                     done=done, termination_condition=termination_condition)
     if termination_ess is not None:
@@ -66,6 +67,10 @@ def termination_condition(num_samples, log_Z_var, log_Z_mean, prev_log_Z_mean, e
     if termination_max_num_likelihood_evaluations is not None:
         too_max_likelihood_evaluations = num_likelihood_evaluations >= termination_max_num_likelihood_evaluations
         done, termination_condition = _set_done_bit(too_max_likelihood_evaluations, 5,
+                                                    done=done, termination_condition=termination_condition)
+
+    if all_plateau is not None:
+        done, termination_condition = _set_done_bit(all_plateau, 6,
                                                     done=done, termination_condition=termination_condition)
 
     return done, termination_condition

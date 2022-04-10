@@ -11,12 +11,13 @@ from jaxns.likelihood_samplers.parallel_slice_sampling import ProposalState, cha
     slice_bounds, pick_point_in_interval
 from jaxns.nested_sampler.live_points import compute_num_live_points_from_unit_threads, infimum_constraint
 from jaxns.prior_transforms import PriorChain
-from jaxns.internals.types import NestedSamplerState, EvidenceCalculation, Reservoir, ThreadStats, int_type
+from jaxns.internals.types import NestedSamplerState, EvidenceCalculation, Reservoir, ThreadStats, int_type, \
+    SampleCollection, float_type
 
 
 def build_get_sample(prior_chain: PriorChain, loglikelihood_from_U,
                      midpoint_shrink: bool, destructive_shrink:bool, gradient_boost: bool) \
-        -> Callable[..., Callable[..., Reservoir]]:
+        -> Callable[..., Reservoir]:
     """
     Builds slice sampler that performs sampling from a given seed point.
     """
@@ -348,12 +349,7 @@ def collect_samples(state: NestedSamplerState, new_reservoir: Reservoir) -> Nest
     Returns:
         NestedSamplerState
     """
-    old_reservoir = Reservoir(points_U=state.sample_collection.points_U,
-                              points_X=state.sample_collection.points_X,
-                              log_L_constraint=state.sample_collection.log_L_constraint,
-                              log_L_samples=state.sample_collection.log_L_samples,
-                              num_likelihood_evaluations=state.sample_collection.num_likelihood_evaluations,
-                              num_slices=state.sample_collection.num_slices)
+    old_reservoir = _sample_collection_to_reservoir(state.sample_collection)
     # Insert the new samples with a slice update
     reservoir = tree_map(lambda old, new: replace_index(old, new, state.sample_idx), old_reservoir, new_reservoir)
     # Update the sample collection
@@ -377,12 +373,7 @@ def update_samples(state: NestedSamplerState, new_reservoir: Reservoir, update_i
     Returns:
         NestedSamplerState
     """
-    old_reservoir = Reservoir(points_U=state.sample_collection.points_U,
-                              points_X=state.sample_collection.points_X,
-                              log_L_constraint=state.sample_collection.log_L_constraint,
-                              log_L_samples=state.sample_collection.log_L_samples,
-                              num_likelihood_evaluations=state.sample_collection.num_likelihood_evaluations,
-                              num_slices=state.sample_collection.num_slices)
+    old_reservoir = _sample_collection_to_reservoir(state.sample_collection)
     # Insert the new samples with a slice update
     reservoir = tree_map(lambda old, new: old.at[update_indices].set(new), old_reservoir, new_reservoir)
     # Update the sample collection
@@ -397,7 +388,7 @@ def update_samples(state: NestedSamplerState, new_reservoir: Reservoir, update_i
 def _update_evidence_calculation(num_live_points: jnp.ndarray,
                                  log_L: jnp.ndarray,
                                  next_log_L_contour: jnp.ndarray,
-                                 evidence_calculation: EvidenceCalculation):
+                                 evidence_calculation: EvidenceCalculation) -> EvidenceCalculation:
     def ar(v):
         return jnp.asarray(v, log_L.dtype)
 
@@ -503,3 +494,72 @@ def _update_thread_stats(state: NestedSamplerState):
     thread_stats = tree_map(lambda operand, update: replace_index(operand, update, state.step_idx),
                             state.thread_stats, thread_stats_update)
     return thread_stats
+
+def _sample_collection_to_reservoir(sample_collection: SampleCollection) -> Reservoir:
+    reservoir = Reservoir(points_U=sample_collection.points_U,
+                          points_X=sample_collection.points_X,
+                          log_L_constraint=sample_collection.log_L_constraint,
+                          log_L_samples=sample_collection.log_L_samples,
+                          num_likelihood_evaluations=sample_collection.num_likelihood_evaluations,
+                          num_slices=sample_collection.num_slices)
+    return reservoir
+
+def _init_evidence_calculation():
+    evidence_calculation = EvidenceCalculation(
+        log_X_mean=jnp.asarray(0., float_type),
+        log_X2_mean=jnp.asarray(0., float_type),
+        log_Z_mean=jnp.asarray(-jnp.inf, float_type),
+        log_ZX_mean=jnp.asarray(-jnp.inf, float_type),
+        log_Z2_mean=jnp.asarray(-jnp.inf, float_type),
+        log_dZ2_mean=jnp.asarray(-jnp.inf, float_type)
+    )
+    return evidence_calculation
+
+    def _init_reservoir(self, key, size: int) -> Reservoir:
+        # Some of the points might have log(L)=-inf, so we need to filter those out. Otherwise we could do:
+        # N = self.num_live_points + self.reservoir_size
+        # samples = vmap(lambda key: random.permutation(key, N) + 0.5)(random.split(key2, D)).T
+        # samples /= N
+
+        def single_sample(unused_state, key):
+            """
+            Produces a single sample from the joint-prior and computes the likelihood.
+
+            Args:
+                key: PRNG key
+
+            Returns:
+                U, X, log_L_samples
+            """
+
+            def body(state):
+                (_, key, _, _, _, num_likelihood_evals) = state
+                key, sample_key, break_plateau_key = random.split(key, 3)
+                U = self.prior_chain.sample_U_flat(sample_key)
+                X = self.prior_chain(U)
+                log_L = self.loglikelihood(**X)
+                done = ~jnp.isinf(log_L)
+                num_likelihood_evals += jnp.asarray(1, int_type)
+                return (done, key, U, self._filter_prior_chain(X), log_L, num_likelihood_evals)
+
+            (_, _, U, X, log_L, num_likelihood_evals) = while_loop(lambda s: jnp.bitwise_not(s[0]),
+                                                                   body,
+                                                                   (jnp.asarray(False), key,
+                                                                    self.prior_chain.U_flat_placeholder,
+                                                                    self._filter_prior_chain(
+                                                                        self.prior_chain.sample_placeholder),
+                                                                    jnp.zeros((), float_type),
+                                                                    jnp.asarray(0, int_type)))
+            log_L_constraint = -jnp.inf
+            sample = Reservoir(points_U=U,
+                               points_X=X,
+                               log_L_constraint=log_L_constraint,
+                               log_L_samples=log_L,
+                               num_likelihood_evaluations=num_likelihood_evals,
+                               num_slices=jnp.inf)
+            return (), sample
+
+        # generate initial reservoir of points, filtering out those -inf (forbidden zones)
+        (), reservoir = scan(single_sample, (), random.split(key, size))
+
+        return reservoir

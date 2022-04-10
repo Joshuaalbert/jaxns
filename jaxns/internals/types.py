@@ -79,7 +79,8 @@ class NestedSamplerState(NamedTuple):
     sample_collection: SampleCollection  # Arrays to hold samples taken from the reservoir.
     evidence_calculation: EvidenceCalculation  # holds running calculation of evidence
     log_L_contour: jnp.ndarray  # the contour of the sampler
-    step_idx: jnp.ndarray  # the step index of the algorithm, where one step is a single consumption step.
+    step_idx: jnp.ndarray  # the step index of the algorithm.
+    num_likelihood_evaluations: jnp.ndarray # cumulative num likelihood evaluations
     sample_idx: jnp.ndarray  # the sample index, pointing to the next empty sample slot
     thread_stats: ThreadStats
     patience_steps: jnp.ndarray  # how many steps since goal incremental improvement

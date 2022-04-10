@@ -177,14 +177,15 @@ def summary(results: NestedSamplerResults) -> str:
             return float(v)
 
     _print("--------")
-    termination_bit_mask = _bit_mask(results.termination_reason, width=6)
+    termination_bit_mask = _bit_mask(results.termination_reason, width=7)
     _print("Termination Conditions:")
     for bit, condition in zip(termination_bit_mask, ['Reached max samples',
                                                      'Evidence uncertainty low enough',
                                                      'Small remaining evidence',
                                                      'Reached ESS',
                                                      "Used max num steps",
-                                                     "Used max num likelihood evaluations"]):
+                                                     "Used max num likelihood evaluations",
+                                                     "All samples on plateau"]):
         if bit == 1:
             _print(condition)
     _print("--------")

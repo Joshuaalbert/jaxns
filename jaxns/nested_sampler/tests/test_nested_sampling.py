@@ -3,7 +3,7 @@ from jax import numpy as jnp, random, jit
 from jax.scipy.linalg import solve_triangular
 from jax.scipy.special import gammaln
 
-from jaxns import NestedSampler, resample, summary, plot_diagnostics, plot_cornerplot
+from jaxns import NestedSampler, resample, summary, plot_diagnostics
 from jaxns.nested_sampler.nested_sampling import _get_static_goal, \
     compute_remaining_evidence
 from jaxns.nested_sampler.utils import evidence_posterior_samples
@@ -23,10 +23,8 @@ def test_shrinkage():
         UniformPrior('x', 0., 1.)
 
     ns = NestedSampler(log_likelihood, prior_chain)
-    results = ns(key=random.PRNGKey(43),
-                 num_live_points=100,
-                 adaptive_evidence_stopping_threshold=0.01, adaptive_evidence_patience=1,
-                 termination_live_evidence_frac=1e-4)
+    results = ns(key=random.PRNGKey(43))
+    ns.summary(results)
 
     # print(list(results.log_X_mean[:results.total_num_samples]))
     # print(list(results.log_L_samples[:results.total_num_samples]))
@@ -34,7 +32,8 @@ def test_shrinkage():
     diff = results.log_X_mean[:results.total_num_samples] - jnp.log(
         exact_X(jnp.exp(results.log_L_samples[:results.total_num_samples])))
     diff = jnp.where(jnp.isfinite(diff), diff, jnp.nan)
-    assert jnp.nanstd(diff) < 0.12
+    # print(jnp.nanstd(diff))
+    assert jnp.nanstd(diff) < 0.09
 
 
 def test_nested_sampling_basic():
@@ -45,7 +44,7 @@ def test_nested_sampling_basic():
         UniformPrior('x', 0., 1.)
 
     ns = NestedSampler(log_likelihood, prior_chain)
-    results = ns(key=random.PRNGKey(43))
+    results = ns(key=random.PRNGKey(43), adaptive_evidence_stopping_threshold=0.01)
     plot_diagnostics(results)
     summary(results)
 
@@ -67,9 +66,7 @@ def test_nested_sampling_plateau():
         UniformPrior('x', 0., 1.)
 
     ns = NestedSampler(log_likelihood, prior_chain)
-    from jax import disable_jit
 
-    # with disable_jit():
     results = ns(key=random.PRNGKey(43))
     plot_diagnostics(results)
     summary(results)
