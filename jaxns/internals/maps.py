@@ -16,7 +16,7 @@ def replace_index(operand, update, start_index):
     """
     if len(operand.shape) != len(update.shape):
         update = update[None]
-    start_indices = [start_index] + [jnp.asarray(0, int_type)] * (len(update.shape) - 1)
+    start_indices = [start_index] + [jnp.asarray(0, start_index.dtype)] * (len(update.shape) - 1)
     return dynamic_update_slice(operand, update.astype(operand.dtype), start_indices)
 
 
