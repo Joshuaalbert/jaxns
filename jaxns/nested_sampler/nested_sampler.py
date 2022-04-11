@@ -691,7 +691,6 @@ class NestedSampler(object):
 
         if num_live_points is None:
             num_live_points = self.prior_chain.U_ndims * 50
-        num_live_points = jnp.asarray(num_live_points, float_type)
 
         # if termination_evidence_uncert is not None:
         #     adaptive_evidence_stopping_threshold = termination_evidence_uncert / 3.
