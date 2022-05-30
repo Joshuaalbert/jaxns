@@ -1,1 +1,0 @@
-from jaxns.optimisation.global_optimiser import GlobalOptimiser

@@ -1,7 +1,7 @@
 import logging
-from typing import Tuple, Union, Callable
+from typing import Tuple, Union, Callable, Any
 
-from jax import numpy as jnp, random, tree_map
+from jax import numpy as jnp, random, tree_map, pmap
 from jax.lax import scan
 from jax.lax import while_loop
 
@@ -10,7 +10,7 @@ from jaxns.internals.maps import chunked_pmap, replace_index, get_index, prepare
 from jaxns.internals.stats import linear_to_log_stats, effective_sample_size
 from jaxns.internals.types import NestedSamplerState, Reservoir, SampleCollection, NestedSamplerResults, ThreadStats, \
     float_type, int_type
-from jaxns.nested_sampler.nested_sampling import build_get_sample, get_seed_goal, \
+from jaxns.nested_sampler.nested_sampling import build_get_sample, get_dynamic_goal, \
     collect_samples, compute_evidence, _update_thread_stats, _sample_collection_to_reservoir, sample_goal_distribution, \
     _update_evidence_calculation, _init_evidence_calculation
 from jaxns.nested_sampler.termination import termination_condition
@@ -54,7 +54,7 @@ class NestedSampler(object):
         advanced likelihood samplers.
 
         Args:
-            loglikelihood: callable(**priors) evaluates the log-likelihood given kwarg-provided priors in X-domain.
+            loglikelihood: callable(**priors) evaluates the log-likelihood given kwarg-provided priors in U-domain.
             prior_chain: PriorChain, the prior chain describing prior formulation
             sampler_name: str, the likelihood sampler to use
             num_parallel_samplers: int, how many parallel likelihood evaluations to make using vmap.
@@ -95,10 +95,8 @@ class NestedSampler(object):
             if sampler_kwargs['depth'] < 1:
                 raise ValueError(f"depth {sampler_kwargs['depth']} should be >= 1.")
         elif sampler_name == 'slice':
-            sampler_kwargs['min_num_slices'] = jnp.asarray(
-                sampler_kwargs.get('min_num_slices', prior_chain.U_ndims * 1))
-            sampler_kwargs['max_num_slices'] = jnp.asarray(
-                sampler_kwargs.get('max_num_slices', prior_chain.U_ndims * 25))
+            sampler_kwargs['min_num_slices'] = sampler_kwargs.get('min_num_slices', prior_chain.U_ndims * 1)
+            sampler_kwargs['max_num_slices'] = sampler_kwargs.get('max_num_slices', prior_chain.U_ndims * 25)
             if sampler_kwargs['min_num_slices'] < 1:
                 raise ValueError(f"min_num_slices {sampler_kwargs['min_num_slices']} should be >= 1.")
             if sampler_kwargs['max_num_slices'] < 1:
@@ -121,7 +119,7 @@ class NestedSampler(object):
             Adds the log-homogeneous measure to the log-likelihood to account for the transform from a PriorBase.
 
             Args:
-                **x: dict of priors in X domain.
+                **x: dict of priors in U domain.
 
             Returns:
                 log-likelihood plus the log-homogeneous measure, and -inf if it is a nan.
@@ -184,7 +182,7 @@ class NestedSampler(object):
                 key: PRNG key
 
             Returns:
-                U, X, log_L_samples
+                U, U, log_L_samples
             """
 
             def body(state):
@@ -226,20 +224,13 @@ class NestedSampler(object):
             points_X=dict((name, jnp.full((size,) + self.prior_chain.shapes[name],
                                           0., self.prior_chain.dtypes[name]))
                           for name in self._filter_prior_chain(self.prior_chain.shapes)),
-            # The X-valued samples
             log_L_samples=jnp.full((size,), jnp.inf, float_type),
             log_L_constraint=jnp.full((size,), jnp.inf, float_type),
-            # The log-likelihood of sample, defaulting to inf to sort them after rest.
             num_likelihood_evaluations=jnp.full((size,), 0, int_type),
-            # How many likelihood evaluations were required to obtain sample
             log_dZ_mean=jnp.full((size,), -jnp.inf, float_type),
-            # The log mean evidence difference of the sample (averaged across chains)
             log_X_mean=jnp.full((size,), -jnp.inf, float_type),
-            # The log mean enclosed prior volume of sample
             num_live_points=jnp.full((size,), 0., float_type),
-            # How many live points were taken for the samples.
             num_slices=jnp.full((size,), 0., float_type),
-            # How many slices were taken for the samples.
         )
         return sample_collection
 
@@ -273,9 +264,169 @@ class NestedSampler(object):
             sample_idx=jnp.asarray(0, int_type),
             termination_reason=jnp.asarray(0, int_type),
             thread_stats=init_thread_stats,
-            patience_steps=jnp.asarray(0, int_type),
             num_likelihood_evaluations=jnp.asarray(0, int_type)
         )
+
+        return state
+
+    def _new_static_loop(self,
+                         init_state: NestedSamplerState,
+                         num_slices: jnp.ndarray,
+                         static_num_live_points: int,
+                         num_parallel_samplers: int = 1,
+                         termination_ess=None,
+                         termination_evidence_uncert=None,
+                         termination_live_evidence_frac=None,
+                         termination_max_num_steps=None,
+                         termination_max_samples=None,
+                         termination_max_num_likelihood_evaluations=None
+                         ) -> NestedSamplerState:
+
+        get_sample = build_get_sample(prior_chain=self.prior_chain,
+                                      loglikelihood_from_U=self.loglikelihood_from_U,
+                                      midpoint_shrink=self.sampler_kwargs.get(
+                                          'midpoint_shrink'),
+                                      destructive_shrink=self.sampler_kwargs.get(
+                                          'destructive_shrink'),
+                                      gradient_boost=self.sampler_kwargs.get(
+                                          'gradient_boost'))
+
+        extra = static_num_live_points % num_parallel_samplers
+        if extra > 0:
+            logger.info(
+                f"Extending num_live_points by {extra} to evenly divide num_live_points {static_num_live_points} by of parallel samplers {num_parallel_samplers}.")
+            static_num_live_points += (num_parallel_samplers - extra)
+
+        key, init_reservoir_key = random.split(init_state.key, 2)
+        init_state = init_state._replace(key=key)
+        # initial uniformly sampled reservoir
+        init_reservoir = self._init_reservoir(init_reservoir_key, static_num_live_points)
+
+        def single_thread_sampler(key: jnp.ndarray, init_reservoir: Reservoir) -> Tuple[Reservoir, Reservoir]:
+            """
+            Performs a single thread of nested sampling with a reduced number of live_points.
+            Args:
+                init_reservoir:
+
+            Returns:
+
+            """
+
+            def body(body_state: Tuple[jnp.ndarray, Reservoir], X: Any) -> Tuple[
+                Tuple[jnp.ndarray, Reservoir], Reservoir]:
+                (key, reservoir) = body_state
+
+                idx_min = jnp.argmin(reservoir.log_L_samples)
+                dead_point = tree_map(lambda x: x[idx_min], reservoir)
+                log_L_dead = dead_point.log_L_samples
+
+                # contour becomes log_L_dead if log_L_dead is not supremum of live-points, else we choose the original constraint of dead point
+                # Note: we are at liberty to choose any log_L level as a contour so long as we can sample within it uniformly.
+                on_supremum = jnp.equal(log_L_dead, jnp.max(reservoir.log_L_samples))
+                log_L_contour = jnp.where(on_supremum, dead_point.log_L_constraint, log_L_dead)
+
+                # replace dead point with a new sample about contour
+
+                key, seed_key, sample_key = random.split(key, 3)
+
+                log_seed_goal = jnp.where(reservoir.log_L_samples > log_L_contour,
+                                          jnp.asarray(0., float_type), -jnp.inf)
+
+                seed_idx = sample_goal_distribution(seed_key, log_seed_goal, 1, replace=True)[0]
+
+                point_U_seed = reservoir.points_U[seed_idx]
+                log_L_seed = reservoir.log_L_samples[seed_idx]
+
+                new_reservoir_point = get_sample(sample_key,
+                                                 point_U_seed,
+                                                 log_L_seed,
+                                                 log_L_contour,
+                                                 num_slices)
+
+                new_reservoir_point = new_reservoir_point._replace(
+                    points_X=self._filter_prior_chain(new_reservoir_point.points_X))
+
+                reservoir = tree_map(lambda old, update: replace_index(old, update, idx_min),
+                                     reservoir, new_reservoir_point)
+
+                return (key, reservoir), dead_point
+
+            (_, live_reservoir), dead_reservoir = scan(body, (key, init_reservoir), init_reservoir.log_L_samples)
+            return (live_reservoir, dead_reservoir)
+
+        parallel_single_thread_sampler = pmap(single_thread_sampler)
+
+        def body(body_state: Tuple[NestedSamplerState, Reservoir]) -> Tuple[NestedSamplerState, Reservoir]:
+            (state, live_reservoir) = body_state
+
+            key, key_sample = random.split(state.key, 2)
+            state = state._replace(key=key)
+
+            if self.num_parallel_samplers > 1:
+                # split up reservoir into number of samplers
+                def _add_chunk_dim(a):
+                    shape = list(a.shape)
+                    shape = [num_parallel_samplers, shape[0] // num_parallel_samplers] + shape[1:]
+                    return jnp.reshape(a, shape)
+
+                live_reservoir = tree_map(_add_chunk_dim, live_reservoir)
+                keys = random.split(key_sample, num_parallel_samplers)
+                # parallel sampling
+                live_reservoir, dead_reservoir = parallel_single_thread_sampler(keys, live_reservoir)
+
+                # concatenate reservoir samples
+                def _remove_chunk_dim(a):
+                    shape = list(a.shape)
+                    shape = [shape[0] * shape[1]] + shape[2:]
+                    return jnp.reshape(a, shape)
+
+                live_reservoir = tree_map(_remove_chunk_dim, live_reservoir)
+                dead_reservoir = tree_map(_remove_chunk_dim, dead_reservoir)
+            else:
+                live_reservoir, dead_reservoir = single_thread_sampler(key_sample, live_reservoir)
+
+            # update the state with sampled points from last round
+            new_state = collect_samples(state, dead_reservoir)
+            new_state = new_state._replace(step_idx=new_state.step_idx + jnp.ones_like(new_state.step_idx))
+
+            # determine if done
+
+            remaining_evidence_upper_bound = LogSpace(live_reservoir.log_L_samples).max() * LogSpace(
+                new_state.evidence_calculation.log_X_mean)
+            evidence_upper_bound = remaining_evidence_upper_bound + LogSpace(new_state.evidence_calculation.log_Z_mean)
+
+            _, log_Z_var = linear_to_log_stats(
+                log_f_mean=new_state.evidence_calculation.log_Z_mean,
+                log_f2_mean=new_state.evidence_calculation.log_Z2_mean)
+            ess = effective_sample_size(new_state.evidence_calculation.log_Z_mean,
+                                        new_state.evidence_calculation.log_dZ2_mean)
+            num_samples = new_state.sample_idx
+            num_steps = new_state.step_idx
+            num_likelihood_evaluations = new_state.num_likelihood_evaluations
+            done, termination_reason = termination_condition(
+                num_samples=num_samples,
+                log_Z_var=log_Z_var,
+                log_Z_remaining_upper=remaining_evidence_upper_bound.log_abs_val,
+                log_Z_upper=evidence_upper_bound.log_abs_val,
+                ess=ess,
+                num_likelihood_evaluations=num_likelihood_evaluations,
+                num_steps=num_steps,
+                all_plateau=None,  # We replace a dead point from it's last constraint if it's a supremum point.
+                termination_ess=termination_ess,
+                termination_evidence_uncert=termination_evidence_uncert,
+                termination_live_evidence_frac=termination_live_evidence_frac,
+                termination_max_num_steps=termination_max_num_steps,
+                termination_max_samples=termination_max_samples,
+                termination_max_num_likelihood_evaluations=termination_max_num_likelihood_evaluations)
+            new_state = new_state._replace(done=done, termination_reason=termination_reason)
+
+            return new_state, live_reservoir
+
+        (state, live_reservoir) = while_loop(lambda body_state: jnp.bitwise_not(body_state[0].done),
+                                             body,
+                                             (init_state, init_reservoir))
+
+        state = collect_samples(state, live_reservoir)
 
         return state
 
@@ -368,7 +519,7 @@ class NestedSampler(object):
 
             all_plateau = jnp.min(reservoir.log_L_samples) == jnp.max(reservoir.log_L_samples)
 
-            # upper limit on live evidence is Z_live = sum_i dx_i L_i <= X/n sum_i L_i = X mean(L_i)
+            # upper limit on live evidence is Z_live = sum_i dx_i L_i <= U/n sum_i L_i = U mean(L_i)
             # small remaining evidence: Z_live/(Z_current+Z_live) <= delta
             # Z_live <= delta * (Z_current+Z_live)
 
@@ -387,7 +538,7 @@ class NestedSampler(object):
             done, termination_reason = termination_condition(
                 num_samples=num_samples,
                 log_Z_var=log_Z_var,
-                log_Z_live_upper=live_evidence_upper_bound.log_abs_val,
+                log_Z_remaining_upper=live_evidence_upper_bound.log_abs_val,
                 log_Z_upper=evidence_upper_bound.log_abs_val,
                 ess=ess,
                 num_likelihood_evaluations=num_likelihood_evaluations,
@@ -407,7 +558,7 @@ class NestedSampler(object):
             (state, _) = body_state
             return jnp.bitwise_not(state.done)
 
-        all_plateau = jnp.min(init_reservoir.log_L_samples) == jnp.max(init_reservoir.log_L_samples)
+        all_plateau = jnp.equal(jnp.min(init_reservoir.log_L_samples), jnp.max(init_reservoir.log_L_samples))
         init_state = init_state._replace(done=all_plateau)
 
         (state, reservoir) = while_loop(cond,
@@ -472,12 +623,10 @@ class NestedSampler(object):
             key, seed_key, sample_key = random.split(prev_state.key, 3)
             prev_state = prev_state._replace(key=key)
             ## Get the goal distribution from sample population.
-            log_L_constraints_reinforce, seed_idx = get_seed_goal(key=seed_key,
-                                                                  state=prev_state,
-                                                                  goal_type='dynamic',
-                                                                  num_samples=self.samples_per_step,
-                                                                  G=G,
-                                                                  static_num_live_points=None)
+            log_L_constraints_reinforce, seed_idx = get_dynamic_goal(key=seed_key,
+                                                                     state=prev_state,
+                                                                     num_samples=self.samples_per_step,
+                                                                     G=G)
 
             points_U0_seed = prev_state.sample_collection.points_U[seed_idx]
             log_L0_seed = prev_state.sample_collection.log_L_samples[seed_idx]
@@ -501,16 +650,19 @@ class NestedSampler(object):
             ess = effective_sample_size(new_state.evidence_calculation.log_Z_mean,
                                         new_state.evidence_calculation.log_dZ2_mean)
             new_thread_stats = _update_thread_stats(new_state)
-            new_state = new_state._replace(thread_stats=new_thread_stats,
-                                           step_idx=new_state.step_idx + jnp.ones_like(new_state.step_idx))
+            new_state = new_state._replace(
+                thread_stats=new_thread_stats,
+                step_idx=new_state.step_idx + jnp.ones_like(new_state.step_idx),
+                num_likelihood_evaluations=new_state.num_likelihood_evaluations + jnp.sum(
+                    new_reservoir.num_likelihood_evaluations))
 
             num_samples = new_state.sample_idx
             num_steps = new_state.step_idx
-            num_likelihood_evaluations = jnp.sum(new_state.sample_collection.num_likelihood_evaluations)
+            num_likelihood_evaluations = new_state.num_likelihood_evaluations
             done, termination_reason = termination_condition(
                 num_samples=num_samples,
                 log_Z_var=log_Z_var,
-                log_Z_live_upper=None,
+                log_Z_remaining_upper=None,
                 log_Z_upper=None,
                 ess=ess,
                 num_likelihood_evaluations=num_likelihood_evaluations,
@@ -557,9 +709,10 @@ class NestedSampler(object):
                                                              ),
                                             chunksize=num_parallel_samplers)
 
-        def body(body_state: Tuple[NestedSamplerState, jnp.ndarray]) -> Tuple[NestedSamplerState, jnp.ndarray]:
+        def body(body_state: Tuple[NestedSamplerState, jnp.ndarray, jnp.ndarray]) -> Tuple[
+            NestedSamplerState, jnp.ndarray, jnp.ndarray]:
             # Note: state enters with consistent definition, and exits with consistent definition.
-            (prev_state, num_slices_goal) = body_state
+            (prev_state, num_slices_goal, patience_steps) = body_state
 
             key, sample_key = random.split(prev_state.key, 2)
 
@@ -589,6 +742,8 @@ class NestedSampler(object):
                 # expects: key, point_U0, log_L0, log_L_constraint, num_slices
                 new_reservoir = get_samples_parallel(_sample_keys, points_U0_seed, log_L0_seed,
                                                      log_L_constraints_reinforce, extra_num_slices)
+                new_reservoir = new_reservoir._replace(points_X=self._filter_prior_chain(new_reservoir.points_X))
+
                 # aggregate statistics
                 slice_num_slices = get_index(sample_collection.num_slices,
                                              sample_idx, self.samples_per_step)
@@ -615,10 +770,12 @@ class NestedSampler(object):
                                               sample_body,
                                               (jnp.asarray(0, int_type), prev_state.sample_collection))
 
-            new_state = prev_state._replace(sample_collection=sample_collection)
+            new_state = prev_state._replace(sample_collection=sample_collection,
+                                            num_likelihood_evaluations=jnp.sum(
+                                                sample_collection.num_likelihood_evaluations))
             new_state = compute_evidence(new_state)
 
-            log_Z_mean, _ = linear_to_log_stats(
+            log_Z_mean, log_Z_var = linear_to_log_stats(
                 log_f_mean=new_state.evidence_calculation.log_Z_mean,
                 log_f2_mean=new_state.evidence_calculation.log_Z2_mean)
 
@@ -628,39 +785,47 @@ class NestedSampler(object):
             # next slice goal is incremented by U_ndims, but could be less or more.
             num_slices_goal = num_slices_goal + jnp.asarray(self.prior_chain.U_ndims, num_slices_goal.dtype)
             # stop when evidence changes very little between iterations.
-            small_enough_change = jnp.abs(log_Z_mean - prev_log_Z_mean) <= adaptive_evidence_stopping_threshold
+
+            if adaptive_evidence_stopping_threshold is None:
+                # force closure
+                _adaptive_evidence_stopping_threshold = 0.5 * jnp.sqrt(log_Z_var)
+            else:
+                _adaptive_evidence_stopping_threshold = adaptive_evidence_stopping_threshold
+
+            small_enough_change = jnp.abs(log_Z_mean - prev_log_Z_mean) <= _adaptive_evidence_stopping_threshold
             too_many_slices = num_slices_goal > max_num_slices
             if adaptive_evidence_patience is not None:
                 patience_steps = jnp.where(small_enough_change,
-                                           new_state.patience_steps + jnp.asarray(1, int_type),
+                                           patience_steps + jnp.asarray(1, int_type),
                                            jnp.asarray(0, int_type))
-                new_state = new_state._replace(patience_steps=patience_steps)
                 done = (patience_steps > adaptive_evidence_patience) | too_many_slices
             else:
                 done = small_enough_change | too_many_slices
             new_state = new_state._replace(key=key, done=done)
-            return (new_state, num_slices_goal)
+            return (new_state, num_slices_goal, patience_steps)
 
-        state, _ = while_loop(lambda body_state: jnp.bitwise_not(body_state[0].done),
-                              body,
-                              (
-                                  init_state,
-                                  min_num_slices + jnp.asarray(self.prior_chain.U_ndims, min_num_slices.dtype)))
+        (state, _, _) = while_loop(lambda body_state: jnp.bitwise_not(body_state[0].done),
+                                   body,
+                                   (
+                                       init_state,
+                                       min_num_slices + jnp.asarray(self.prior_chain.U_ndims, jnp.int_),
+                                       jnp.asarray(0, int_type)
+                                   ))
 
         return state
 
     def __call__(self, key,
-                 num_live_points: Union[float, int, jnp.ndarray] = None,
                  termination_ess: Union[float, int, jnp.ndarray] = None,
                  termination_evidence_uncert: Union[float, jnp.ndarray] = None,
                  termination_live_evidence_frac: Union[float, jnp.ndarray] = 1e-3,
                  termination_max_num_steps: Union[float, int, jnp.ndarray] = None,
                  termination_max_samples: Union[float, int, jnp.ndarray] = None,
                  termination_max_num_likelihood_evaluations: Union[float, int, jnp.ndarray] = None,
-                 adaptive_evidence_stopping_threshold: Union[float, jnp.ndarray] = 0.05,
-                 adaptive_evidence_patience: Union[float, jnp.ndarray] = 1,
+                 adaptive_evidence_patience: Union[int, jnp.ndarray] = 0,
+                 adaptive_evidence_stopping_threshold: Union[float, jnp.ndarray] = None,
                  G: Union[float, jnp.ndarray] = 0.,
                  *,
+                 num_live_points: int = None,
                  return_state: bool = False,
                  refine_state: NestedSamplerState = None,
                  ) -> Union[NestedSamplerResults, Tuple[NestedSamplerResults, NestedSamplerState]]:
@@ -677,7 +842,6 @@ class NestedSampler(object):
             termination_max_num_steps: terminate when this many steps taken.
             termination_max_samples: terminate when this many samples taken.
             termination_max_num_likelihood_evaluations: terinate when this many likelihood evalations made.
-            adaptive_evidence_stopping_threshold: Terminate refinement when log-evidence doesn't improve more than this much.
             adaptive_evidence_patience: If set then adaptive stopping condition should occur this many times in a row before stopping.
             G: dynamic goal parameter, interpolate between evidence accuracy goal (0.) and posterior accuracy goal (1.)
             return_state: bool, whether to return state with result
@@ -690,7 +854,9 @@ class NestedSampler(object):
         """
 
         if num_live_points is None:
-            num_live_points = self.prior_chain.U_ndims * 50
+            num_live_points = self.samples_per_step
+
+        assert isinstance(num_live_points, int), "num_live_points must be a static int"
 
         # if termination_evidence_uncert is not None:
         #     adaptive_evidence_stopping_threshold = termination_evidence_uncert / 3.
@@ -716,47 +882,61 @@ class NestedSampler(object):
                                                 max_num_steps)
 
         if refine_state is None:
-            # cover space with static space
+            # initialise with static sampling
             assert termination_live_evidence_frac is not None, \
                 "Need the static stopping condition"
-            state = self._static_loop(init_state=state,
-                                      num_slices=self.sampler_kwargs.get('min_num_slices'),
-                                      static_num_live_points=num_live_points,
-                                      num_parallel_samplers=1,
-                                      termination_ess=termination_ess,
-                                      termination_evidence_uncert=termination_evidence_uncert,
-                                      termination_live_evidence_frac=termination_live_evidence_frac,
-                                      termination_max_num_steps=termination_max_num_steps,
-                                      termination_max_samples=termination_max_samples,
-                                      termination_max_num_likelihood_evaluations=termination_max_num_likelihood_evaluations)
+            state = self._new_static_loop(
+                init_state=state,
+                num_slices=self.sampler_kwargs.get('min_num_slices'),
+                static_num_live_points=num_live_points,
+                num_parallel_samplers=self.num_parallel_samplers,
+                termination_ess=termination_ess,
+                termination_evidence_uncert=termination_evidence_uncert,
+                termination_live_evidence_frac=termination_live_evidence_frac,
+                termination_max_num_steps=termination_max_num_steps,
+                termination_max_samples=termination_max_samples,
+                termination_max_num_likelihood_evaluations=termination_max_num_likelihood_evaluations)
         if self.dynamic:
+            if not any([termination_ess is not None,
+                        termination_evidence_uncert is not None,
+                        termination_max_num_steps is not None,
+                        termination_max_samples is not None,
+                        termination_max_num_likelihood_evaluations is not None]):
+                # reduce uncertainty by half
+                _, log_Z_var = linear_to_log_stats(
+                    log_f_mean=state.evidence_calculation.log_Z_mean,
+                    log_f2_mean=state.evidence_calculation.log_Z2_mean)
+                termination_evidence_uncert = 0.5 * jnp.sqrt(log_Z_var)
+
             assert any([termination_ess is not None,
                         termination_evidence_uncert is not None,
                         termination_max_num_steps is not None,
                         termination_max_samples is not None,
                         termination_max_num_likelihood_evaluations is not None]), \
                 'Dynamic run needs at least one termination criterion'
+
             state = state._replace(done=jnp.asarray(False))
-            state = self._dynamic_loop(init_state=state,
-                                       num_slices=self.sampler_kwargs.get('min_num_slices'),
-                                       G=jnp.clip(G, 0., 1.),
-                                       num_parallel_samplers=self.num_parallel_samplers,
-                                       termination_ess=termination_ess,
-                                       termination_evidence_uncert=termination_evidence_uncert,
-                                       termination_max_num_steps=termination_max_num_steps,
-                                       termination_max_samples=termination_max_samples,
-                                       termination_max_num_likelihood_evaluations=termination_max_num_likelihood_evaluations)
-        if adaptive_evidence_stopping_threshold is not None:
+            state = self._dynamic_loop(
+                init_state=state,
+                num_slices=self.sampler_kwargs.get('min_num_slices'),
+                G=jnp.clip(G, 0., 1.),
+                num_parallel_samplers=self.num_parallel_samplers,
+                termination_ess=termination_ess,
+                termination_evidence_uncert=termination_evidence_uncert,
+                termination_max_num_steps=termination_max_num_steps,
+                termination_max_samples=termination_max_samples,
+                termination_max_num_likelihood_evaluations=termination_max_num_likelihood_evaluations)
+
+        if adaptive_evidence_patience is not None:
             # adaptively decrease auto-correlation of samples until evidence converges
-            state = state._replace(done=jnp.asarray(False),
-                                   patience_steps=jnp.asarray(0, int_type))
-            state = self._adaptive_refinement(init_state=state,
-                                              min_num_slices=self.sampler_kwargs.get('min_num_slices'),
-                                              max_num_slices=self.sampler_kwargs.get('max_num_slices'),
-                                              adaptive_evidence_stopping_threshold=adaptive_evidence_stopping_threshold,
-                                              adaptive_evidence_patience=adaptive_evidence_patience,
-                                              num_parallel_samplers=self.num_parallel_samplers
-                                              )
+            state = state._replace(done=jnp.asarray(False))
+            state = self._adaptive_refinement(
+                init_state=state,
+                min_num_slices=self.sampler_kwargs.get('min_num_slices'),
+                max_num_slices=self.sampler_kwargs.get('max_num_slices'),
+                adaptive_evidence_stopping_threshold=adaptive_evidence_stopping_threshold,
+                adaptive_evidence_patience=adaptive_evidence_patience,
+                num_parallel_samplers=self.num_parallel_samplers)
 
         # collect live-points, and to post-analysis
         results = self._finalise_results(state)
@@ -802,7 +982,7 @@ class NestedSampler(object):
             log_dp_mean=dp_mean.log_abs_val,
             # log(E[dZ]) of each sample, where dZ is how much it contributes to the total evidence.
             # log(StdDev[dZ]) of each sample, where dZ is how much it contributes to the total evidence.
-            log_X_mean=X_mean.log_abs_val,  # log(E[X]) of each sample
+            log_X_mean=X_mean.log_abs_val,  # log(E[U]) of each sample
             num_likelihood_evaluations_per_sample=num_likelihood_evaluations_per_sample,
             # how many likelihood evaluations were made per sample.
             num_live_points_per_sample=num_live_points_per_sample,

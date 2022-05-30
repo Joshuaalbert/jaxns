@@ -1,7 +1,7 @@
 from jax import numpy as jnp
 from jaxns.internals.types import int_type
 
-def termination_condition(num_samples, log_Z_var, log_Z_live_upper, log_Z_upper, ess, num_likelihood_evaluations,
+def termination_condition(num_samples, log_Z_var, log_Z_remaining_upper, log_Z_upper, ess, num_likelihood_evaluations,
                           num_steps, all_plateau,
                           *,
                           termination_live_evidence_frac=None,
@@ -51,8 +51,8 @@ def termination_condition(num_samples, log_Z_var, log_Z_live_upper, log_Z_upper,
                                                     done=done, termination_condition=termination_condition)
     if termination_live_evidence_frac is not None:
         # dynamic stopping condition, for stopping static run
-        # Z_live/(Z_live + Z_current) < delta
-        small_remaining_evidence = log_Z_live_upper - log_Z_upper < jnp.log(termination_live_evidence_frac)
+        # Z_remaining/(Z_remaining + Z_current) < delta
+        small_remaining_evidence = log_Z_remaining_upper - log_Z_upper < jnp.log(termination_live_evidence_frac)
         done, termination_condition = _set_done_bit(small_remaining_evidence, 2,
                                                     done=done, termination_condition=termination_condition)
     if termination_ess is not None:

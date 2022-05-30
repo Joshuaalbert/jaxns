@@ -25,7 +25,7 @@ def plot_diagnostics(results: NestedSamplerResults, save_name=None):
     fig, axs = plt.subplots(6, 1, sharex=True, figsize=(8, 12))
     log_X = results.log_X_mean[:results.total_num_samples]
     axs[0].plot(-log_X, results.num_live_points_per_sample[:results.total_num_samples])
-    axs[0].set_ylabel(r'$n_{\rm live}(X)$')
+    axs[0].set_ylabel(r'$n_{\rm live}(U)$')
     # detect if too small log likelihood
     log_likelihood = results.log_L_samples[:results.total_num_samples]
     max_log_likelihood = jnp.max(log_likelihood)
@@ -34,12 +34,12 @@ def plot_diagnostics(results: NestedSamplerResults, save_name=None):
     axs[1].hlines(1., jnp.min(-log_X),
                   jnp.max(-log_X), colors='black', ls='dashed',
                   label=r"$\log L_{{\rm max}}={:.1f}$".format(max_log_likelihood))
-    axs[1].set_ylabel(r'$L(X)/L_{\rm max}$')
+    axs[1].set_ylabel(r'$L(U)/L_{\rm max}$')
     axs[1].legend()
     axs[2].plot(-log_X, jnp.exp(results.log_dp_mean[:results.total_num_samples]))
     # axs[2].vlines(-results.H_mean, 0., jnp.exp(jnp.max(results.log_dp_mean[:results.total_num_samples])), colors='black', ls='dashed',
     #               label='-logX=-H={:.1f}'.format(-results.H_mean))
-    axs[2].set_ylabel(r'$Z^{-1}L(X) dX$')
+    axs[2].set_ylabel(r'$Z^{-1}L(U) dX$')
     axs[2].legend()
     log_cum_evidence = cumulative_logsumexp(results.log_dp_mean[:results.total_num_samples])
     cum_evidence = jnp.exp(log_cum_evidence)
@@ -47,7 +47,7 @@ def plot_diagnostics(results: NestedSamplerResults, save_name=None):
     axs[3].hlines(1., jnp.min(-log_X),
                   jnp.max(-log_X), colors='black', ls='dashed',
                   label=r"$\log Z={:.1f}$".format(results.log_Z_mean))
-    axs[3].set_ylabel(r'$Z(x > X)/Z$')
+    axs[3].set_ylabel(r'$Z(x > U)/Z$')
     axs[3].legend()
     axs[4].plot(-log_X, 1./results.num_likelihood_evaluations_per_sample[:results.total_num_samples])
     axs[4].hlines(jnp.exp(results.log_efficiency), jnp.min(-log_X),
@@ -59,7 +59,7 @@ def plot_diagnostics(results: NestedSamplerResults, save_name=None):
     num_slices = results.num_slices_per_sample[:results.total_num_samples]
     axs[5].plot(-log_X, num_slices)
     axs[5].set_ylabel("# slices")
-    axs[5].set_xlabel(r'$-\log X$')
+    axs[5].set_xlabel(r'$-\log U$')
     axs[5].set_ylim(jnp.nanmin(jnp.where(jnp.isfinite(num_slices), num_slices, jnp.nan)) - 1,
                     jnp.nanmax(jnp.where(jnp.isfinite(num_slices), num_slices, jnp.nan)) + 1)
     axs[5].legend()
@@ -181,8 +181,8 @@ def plot_cornerplot(results:NestedSamplerResults, vars=None, save_name=None):
                                   cmap=plt.cm.bone_r)
                         # ax.scatter(samples2_resampled[:, 1], samples2_resampled[:, 0], marker='+', c='black', alpha=0.5)
                         # binsy = jnp.linspace(*jnp.percentile(samples2_resampled[:, 1], [0, 100]), 2 * nbins)
-                        # X, Y = jnp.meshgrid(binsx, binsy, indexing='ij')
-                        # ax.contour(kde2(jnp.stack([X.flatten(), Y.flatten()], axis=0)).reshape((2 * nbins, 2 * nbins)),
+                        # U, Y = jnp.meshgrid(binsx, binsy, indexing='ij')
+                        # ax.contour(kde2(jnp.stack([U.flatten(), Y.flatten()], axis=0)).reshape((2 * nbins, 2 * nbins)),
                         #            extent=(binsy.min(), binsy.max(),
                         #                    binsx.min(), binsx.max()),
                         #            origin='lower')

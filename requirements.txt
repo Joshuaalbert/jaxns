@@ -4,4 +4,3 @@ matplotlib
 numpy
 pytest
 scipy
-

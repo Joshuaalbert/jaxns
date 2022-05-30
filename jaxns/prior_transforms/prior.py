@@ -100,11 +100,11 @@ class Prior(object):
         Args:
             name: name of the prior. Must be unique. Highly recommended not to prefix names with '_',
                 since we use this prefix to name some parameters unique.
-            shape: the shape of samples in X domain from the prior.
+            shape: the shape of samples in U domain from the prior.
             parents: a list of Priors that this one depends on.
-            tracked: bool, whether to collect these variables in X space
+            tracked: bool, whether to collect these variables in U space
             prior_base: the base RV for this prior
-            dtype: dtype of the prior in X domain. If None then assume the same as prior_base.dtype
+            dtype: dtype of the prior in U domain. If None then assume the same as prior_base.dtype
         """
         self._name = name
         self._parents = list(parents)
@@ -246,7 +246,7 @@ class Prior(object):
     @property
     def dtype(self):
         """
-        Dtype of the prior in X domain. Usually the same as prior base.
+        Dtype of the prior in U domain. Usually the same as prior base.
         """
         if not self.built:
             raise ValueError("Used outside a PriorChain context.")
@@ -294,7 +294,7 @@ class Prior(object):
     @property
     def shape(self):
         """
-        The shape of the prior in X space.
+        The shape of the prior in U space.
         """
         if not self.built:
             raise ValueError("Used outside a PriorChain context.")
@@ -317,7 +317,7 @@ class Prior(object):
 
         Example:
              Let
-             X ~ F, and
+             U ~ F, and
              Y ~ G, where F and G have the same support.
              Then, any expectation of any function f over F can be written in terms of an expectation over G according to,
              E_F[f] = int f(y) dF/dG
@@ -328,7 +328,7 @@ class Prior(object):
 
         Practical example:
 
-            X ~ Gamma distribution (has a difficult quantile function), with density (p_X)
+            U ~ Gamma distribution (has a difficult quantile function), with density (p_X)
             Y ~ Normal distribution (easy to sample from), with density (p_Y)
 
             dF/dG = p_X/p_Y, the ratio of the densities.
@@ -336,7 +336,7 @@ class Prior(object):
             log-homogeneous density would be log(p_X) - log(p_Y)
 
         Args:
-            **X: dict of X domain prior samples.
+            **X: dict of U domain prior samples.
 
         Returns: scalar, or None if constant homogeneous measure.
         """
@@ -352,7 +352,7 @@ class Prior(object):
             parents: list of RVs early in the chain.
             kwargs: dict of arbitrary extra parameters.
         Returns:
-            jnp.ndarray with correct shape in X domain.
+            jnp.ndarray with correct shape in U domain.
         """
         raise NotImplementedError()
 
@@ -371,7 +371,7 @@ class Prior(object):
 
 def maybe_binary_prior_op(binary_op, self, other, *, name=None, tracked=False):
     if isinstance(other, Prior):
-        return binary_prior_op(binary_op)(self, other, name=name)
+        return binary_prior_op(binary_op)(self, other, name=name, tracked=tracked)
     elif isinstance(other, (float, int, bool)):
         other = jnp.asarray(other)
         return unnary_prior_op(lambda x: binary_op(x, other))(self, name=name, tracked=tracked)

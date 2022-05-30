@@ -35,16 +35,16 @@ class StrictlyPositivePrior(ContinuousPrior):
 
     def _log_prob(self, X, *params):
         """
-        Returns the log-probability of X given the *params.
+        Returns the log-probability of U given the *params.
 
-            i.e. log(p(X | params))
+            i.e. log(p(U | params))
 
         Args:
-            X: Value of X
+            X: Value of U
             *params: parameters of distribution
 
         Returns:
-            log(p(X | params)) of event-size dimension. This will be reduced with a sum.
+            log(p(U | params)) of event-size dimension. This will be reduced with a sum.
         """
         raise NotImplementedError()
 
@@ -140,16 +140,16 @@ class RealPrior(ContinuousPrior):
 
     def _log_prob(self, X, *params):
         """
-        Returns the log-probability of X given the *params.
+        Returns the log-probability of U given the *params.
 
-            i.e. log(p(X | params))
+            i.e. log(p(U | params))
 
         Args:
-            X: Value of X
+            X: Value of U
             *params: parameters of distribution
 
         Returns:
-            log(p(X | params)) of event-size dimension. This will be reduced with a sum.
+            log(p(U | params)) of event-size dimension. This will be reduced with a sum.
         """
         raise NotImplementedError()
 
