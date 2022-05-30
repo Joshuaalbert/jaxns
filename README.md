@@ -32,18 +32,18 @@ This is shown in (https://arxiv.org/abs/2012.15286). With regards to how efficie
 
 9 April, 2022 -- JAXNS 1.0.0 released. Parallel sampling, dynamic search, and adaptive refinement. Global optimiser released.
 
-2 Jun, 2022 -- JAXNS 0.0.7 released.
+2 Jun, 2021 -- JAXNS 0.0.7 released.
 
-13 May, 2022 -- JAXNS 0.0.6 released.
+13 May, 2021 -- JAXNS 0.0.6 released.
 
-8 Mar, 2022 -- JAXNS 0.0.5 released.
+8 Mar, 2021 -- JAXNS 0.0.5 released.
 
-8 Mar, 2022 -- JAXNS 0.0.4 released.
+8 Mar, 2021 -- JAXNS 0.0.4 released.
 
-7 Mar, 2022 -- JAXNS 0.0.3 released. 
+7 Mar, 2021 -- JAXNS 0.0.3 released. 
 
-28 Feb, 2022 -- JAXNS 0.0.2 released. 
+28 Feb, 2021 -- JAXNS 0.0.2 released. 
 
-28 Feb, 2022 -- JAXNS 0.0.1 released. 
+28 Feb, 2021 -- JAXNS 0.0.1 released. 
 
 1 January, 2021 -- Paper submitted
