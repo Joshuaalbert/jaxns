@@ -30,6 +30,7 @@ This is shown in (https://arxiv.org/abs/2012.15286). With regards to how efficie
 
 # Change Log
 
+30 May, 2022 -- JAXNS 1.0.1 released. Improvements to speed, parallelisation, and structure of code.
 9 April, 2022 -- JAXNS 1.0.0 released. Parallel sampling, dynamic search, and adaptive refinement. Global optimiser released.
 
 2 Jun, 2021 -- JAXNS 0.0.7 released.
