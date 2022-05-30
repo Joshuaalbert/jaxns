@@ -1,6 +1,6 @@
 from jax import random, numpy as jnp
 
-from jaxns.internals.random import random_ortho_matrix, latin_hypercube
+from jaxns.internals.random import random_ortho_matrix
 
 
 def test_random_ortho_matrix():
@@ -9,22 +9,6 @@ def test_random_ortho_matrix():
     assert jnp.allclose(M.T @ M, M @ M.T, atol=1e-6)
     assert jnp.allclose(M.T @ M, jnp.eye(5), atol=1e-6)
     assert jnp.allclose(jnp.linalg.norm(M, axis=0), jnp.linalg.norm(M, axis=1))
-
-
-def test_latin_hyper_cube():
-    num_samples = 50
-    ndim = 2
-    samples = latin_hypercube(random.PRNGKey(442525), num_samples, ndim, 0.)
-    s = jnp.sort(samples, axis=0) * num_samples
-    assert jnp.all(s < jnp.arange(1, num_samples + 1)[:, None])
-    assert jnp.all(s > jnp.arange(0, num_samples)[:, None])
-
-    num_samples = 50
-    ndim = 2
-    samples = latin_hypercube(random.PRNGKey(442525), num_samples, ndim, 1.)
-    s = jnp.sort(samples, axis=0) * num_samples
-    assert jnp.all(s < jnp.arange(1, num_samples + 1)[:, None])
-    assert jnp.all(s > jnp.arange(0, num_samples)[:, None])
 
 
 def test_random_ortho_normal_matrix():

@@ -1,6 +1,7 @@
 from typing import Tuple, Callable
 
 from jax import numpy as jnp, random, tree_map, value_and_grad
+from jax.lax import scan
 from jax.lax import dynamic_update_slice
 from jax.lax import while_loop
 from jaxns.internals.log_semiring import LogSpace
@@ -16,7 +17,7 @@ from jaxns.internals.types import NestedSamplerState, EvidenceCalculation, Reser
 
 
 def build_get_sample(prior_chain: PriorChain, loglikelihood_from_U,
-                     midpoint_shrink: bool, destructive_shrink:bool, gradient_boost: bool) \
+                     midpoint_shrink: bool, destructive_shrink: bool, gradient_boost: bool) \
         -> Callable[..., Reservoir]:
     """
     Builds slice sampler that performs sampling from a given seed point.
@@ -42,6 +43,7 @@ def build_get_sample(prior_chain: PriorChain, loglikelihood_from_U,
         direction = sample_direction(n_key, point_U0.size)
         num_likelihood_evaluations = jnp.full((), 0, int_type)
         if gradient_boost:
+            # sets the initial direction of search up-hill (biasing away from uniform sampling, but pulling toward peak)
             _, grad_direction = value_and_grad(loglikelihood_from_U)(point_U0)
             grad_direction /= jnp.linalg.norm(grad_direction)
             direction = jnp.where(jnp.isnan(grad_direction), direction, grad_direction)
@@ -69,6 +71,7 @@ def build_get_sample(prior_chain: PriorChain, loglikelihood_from_U,
             log_L_point_U = loglikelihood_from_U(proposal_state.point_U)
             num_likelihood_evaluations = proposal_state.num_likelihood_evaluations + jnp.ones_like(
                 proposal_state.num_likelihood_evaluations)
+            # assumes that log_L0 > log_L_constraint
             good_proposal = jnp.greater(log_L_point_U, log_L_constraint)
             proposal_count = jnp.where(good_proposal,
                                        proposal_state.proposal_count + jnp.ones_like(proposal_state.proposal_count),
@@ -120,8 +123,9 @@ def build_get_sample(prior_chain: PriorChain, loglikelihood_from_U,
                                                     slice_sampler_body,
                                                     (init_proposal_state, -jnp.inf))
         # passthrough when num_slices==0
-        log_L_sample = jnp.where(num_slices == jnp.zeros_like(num_slices), log_L0, log_L_sample)
-        point_U = jnp.where(num_slices == jnp.zeros_like(num_slices), point_U0, proposal_state.point_U)
+        pass_through = num_slices == jnp.zeros_like(num_slices)
+        log_L_sample = jnp.where(pass_through, log_L0, log_L_sample)
+        point_U = jnp.where(pass_through, point_U0, proposal_state.point_U)
         reservoir = Reservoir(points_U=point_U,
                               points_X=prior_chain(point_U),
                               log_L_constraint=log_L_constraint,
@@ -178,7 +182,7 @@ def compute_remaining_evidence(sample_idx, log_dZ_mean):
         next_log_abs_val = dynamic_update_slice(log_abs_val, next_val.log_abs_val[None], [next_idx])
         return (next_log_abs_val, next_idx)
 
-    # Calculate remaining evidence, doing only the amount of work necessary.
+    # Calculate remaining evidence, doing only the minimal amount of work necessary.
 
     (log_Z_remaining, _) = while_loop(lambda _state: _state[1] > 0,
                                       logsumexp_cumsum_body,
@@ -213,50 +217,26 @@ def _get_dynamic_goal(state: NestedSamplerState, G: jnp.ndarray):
     return I_goal.log_abs_val
 
 
-def _get_static_goal(num_live_points: jnp.ndarray, static_num_live_points: jnp.ndarray,
-                     num_samples: int):
-    """
-    Set the goal to contours where there are not enough live points.
-    """
-    # This many samples needed in each contour, one at a time to make it smooth.
-    diff_from_goal = jnp.minimum(jnp.maximum(static_num_live_points - num_live_points,
-                                             jnp.zeros_like(static_num_live_points)),
-                                 jnp.ones_like(static_num_live_points)
-                                 )
-    indices_constraint_reinforce = jnp.repeat(jnp.arange(diff_from_goal.size),
-                                              diff_from_goal.astype(int_type),
-                                              total_repeat_length=num_samples)
 
-    return indices_constraint_reinforce
-
-
-def get_seed_goal(key, state: NestedSamplerState, num_samples: int, goal_type: str, G=None,
-                  static_num_live_points=None) -> Tuple[jnp.ndarray, jnp.ndarray]:
+def get_dynamic_goal(key, state: NestedSamplerState, num_samples: int, G:jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray]:
     """
     Determines what seed points to sample above.
     """
     goal_key, seed_key = random.split(key)
     contours = jnp.concatenate([state.sample_collection.log_L_constraint[0:1],
                                 state.sample_collection.log_L_samples])
-    if goal_type == 'static':
-        if static_num_live_points is None:
-            raise ValueError(f"goal_type={goal_type}. static_num_live_points should be a positive int.")
-        indices_constraint_reinforce = _get_static_goal(state.sample_collection.num_live_points, static_num_live_points,
-                                                        num_samples)
-        indices_constraint_reinforce = jnp.minimum(indices_constraint_reinforce, state.sample_idx-1)
-        log_L_constraints_reinforce = contours[indices_constraint_reinforce]
-        # now shift these to the infimum
-        indices_constraint_reinforce = jnp.searchsorted(contours, log_L_constraints_reinforce, side='left') - 1
-        log_L_constraints_reinforce = contours[indices_constraint_reinforce]
-    elif goal_type == 'dynamic':
-        if G is None:
-            raise ValueError(f"goal_type={goal_type}. G should be a float in [0,1].")
-        log_goal_weights = _get_dynamic_goal(state, G)
-        # Probabilistically sample the contours according to goal distribution
-        indices_constraint_reinforce = sample_goal_distribution(state.key, log_goal_weights, num_samples, replace=False)
-        log_L_constraints_reinforce = contours[indices_constraint_reinforce]
-    else:
-        raise ValueError(f"Invalid goal_type {goal_type}")
+    if G is None:
+        raise ValueError(f"G should be a float in [0,1].")
+    log_goal_weights = _get_dynamic_goal(state, G)
+    # Probabilistically sample the contours according to goal distribution
+    indices_constraint_reinforce = sample_goal_distribution(state.key, log_goal_weights, num_samples, replace=False)
+    log_X_reinforce = state.sample_collection.log_X_mean[indices_constraint_reinforce]
+    n_reinforce = state.sample_collection.num_live_points[indices_constraint_reinforce]
+    log_X_constraints_reinforce = LogSpace(log_X_reinforce) * LogSpace(jnp.log(n_reinforce+1.) - jnp.log(n_reinforce))
+    log_X_contours = jnp.concatenate([jnp.zeros((1,)),
+                                state.sample_collection.log_X_mean])
+    log_L_constraints_reinforce = jnp.interp(log_X_constraints_reinforce.log_abs_val, log_X_contours[::-1], contours[::-1])
+
     constraint_supremum_idx = jnp.clip(jnp.searchsorted(contours, log_L_constraints_reinforce, side='right'),
                                        1, state.sample_idx) - 1
     seed_idx = random.randint(seed_key,
@@ -291,14 +271,8 @@ def compute_evidence(state: NestedSamplerState):
     # The initial log_L_contour is L_min after lexigraphic sort, which is usually -inf, but not always.
     init_log_L_contour = sample_collection.log_L_constraint[0]
     # This contains the required information to compute Z and ZH
-    initial_evidence_calculation = EvidenceCalculation(
-        log_X_mean=jnp.asarray(0., sample_collection.log_L_samples.dtype),
-        log_X2_mean=jnp.asarray(0., sample_collection.log_L_samples.dtype),
-        log_Z_mean=jnp.asarray(-jnp.inf, sample_collection.log_L_samples.dtype),
-        log_ZX_mean=jnp.asarray(-jnp.inf, sample_collection.log_L_samples.dtype),
-        log_Z2_mean=jnp.asarray(-jnp.inf, sample_collection.log_L_samples.dtype),
-        log_dZ2_mean=jnp.asarray(-jnp.inf, sample_collection.log_L_samples.dtype)
-    )
+
+    initial_evidence_calculation = _init_evidence_calculation()
 
     def thread_cond(body_state: Tuple[EvidenceCalculation, jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]):
         (evidence_calculation, idx, log_L_contour, log_dZ_mean, log_X_mean) = body_state
@@ -315,7 +289,6 @@ def compute_evidence(state: NestedSamplerState):
                                                                  log_L=log_L_contour,
                                                                  next_log_L_contour=next_log_L,
                                                                  evidence_calculation=evidence_calculation)
-
 
         next_dZ_mean = (LogSpace(next_evidence_calculation.log_Z_mean)
                         - LogSpace(evidence_calculation.log_Z_mean)).abs()
@@ -356,7 +329,9 @@ def collect_samples(state: NestedSamplerState, new_reservoir: Reservoir) -> Nest
     sample_collection = state.sample_collection._replace(**reservoir._asdict())
     # Update the number of samples, and sample collection
     state = state._replace(sample_idx=state.sample_idx + new_reservoir.log_L_samples.size,
-                           sample_collection=sample_collection)
+                           sample_collection=sample_collection,
+                           num_likelihood_evaluations=state.num_likelihood_evaluations + jnp.sum(
+                               new_reservoir.num_likelihood_evaluations))
     # Recompute statistics
     state = compute_evidence(state)
     return state
@@ -389,12 +364,10 @@ def _update_evidence_calculation(num_live_points: jnp.ndarray,
                                  log_L: jnp.ndarray,
                                  next_log_L_contour: jnp.ndarray,
                                  evidence_calculation: EvidenceCalculation) -> EvidenceCalculation:
-    def ar(v):
-        return jnp.asarray(v, log_L.dtype)
-
+    num_live_points = num_live_points.astype(log_L.dtype)
     next_L = LogSpace(next_log_L_contour)
     L_contour = LogSpace(log_L)
-    midL = LogSpace(jnp.log(ar(0.5))) * (next_L + L_contour)
+    midL = LogSpace(jnp.log(0.5)) * (next_L + L_contour)
     X_mean = LogSpace(evidence_calculation.log_X_mean)
     X2_mean = LogSpace(evidence_calculation.log_X2_mean)
     Z_mean = LogSpace(evidence_calculation.log_Z_mean)
@@ -404,33 +377,34 @@ def _update_evidence_calculation(num_live_points: jnp.ndarray,
 
     # T_mean = LogSpace(jnp.log(num_live_points) - jnp.log(num_live_points + 1.))
     # T_mean = LogSpace(jnp.log(1.) - jnp.log(1. + 1./num_live_points))
-    T_mean = LogSpace(- jnp.logaddexp(ar(0.), -jnp.log(num_live_points)))
+    T_mean = LogSpace(- jnp.logaddexp(0., -jnp.log(num_live_points)))
     # T_mean = LogSpace(- jnp.logaddexp(0., -jnp.log(num_live_points)))
-    t_mean = LogSpace(- jnp.log(num_live_points + ar(1.)))
+    t_mean = LogSpace(- jnp.log(num_live_points + 1.))
     # T2_mean = LogSpace(jnp.log(num_live_points) - jnp.log( num_live_points + 2.))
     # T2_mean = LogSpace(jnp.log(1.) - jnp.log(1. + 2./num_live_points))
-    T2_mean = LogSpace(- jnp.logaddexp(ar(0.), jnp.log(ar(2.)) - jnp.log(num_live_points)))
+    T2_mean = LogSpace(- jnp.logaddexp((0.), jnp.log(2.) - jnp.log(num_live_points)))
     # T2_mean = LogSpace(- jnp.logaddexp(jnp.log(2.), -jnp.log(num_live_points)))
-    t2_mean = LogSpace(jnp.log(ar(2.)) - jnp.log(num_live_points + ar(1.)) - jnp.log(num_live_points + ar(2.)))
+    t2_mean = LogSpace(jnp.log(2.) - jnp.log(num_live_points + 1.) - jnp.log(num_live_points + 2.))
     # tT_mean = LogSpace(jnp.log(num_live_points) - jnp.log(num_live_points + 1.) - jnp.log(num_live_points + 2.))
     # tT_mean = LogSpace(jnp.log(1.) - jnp.log(1. + 1./num_live_points) - jnp.log(num_live_points + 2.))
-    tT_mean = LogSpace(- jnp.logaddexp(ar(0.), -jnp.log(num_live_points)) - jnp.log(num_live_points + ar(2.)))
+    tT_mean = LogSpace(- jnp.logaddexp(0., -jnp.log(num_live_points)) - jnp.log(num_live_points + 2.))
     # tT_mean = LogSpace(- jnp.logaddexp(0., -jnp.log(num_live_points)) - jnp.log(num_live_points + 2.))
 
     next_X_mean = X_mean * T_mean
     next_X2_mean = X2_mean * T2_mean
     next_Z_mean = Z_mean + X_mean * t_mean * midL
     next_ZX_mean = ZX_mean * T_mean + X2_mean * tT_mean * midL
-    next_Z2_mean = Z2_mean + LogSpace(jnp.log(ar(2.))) * ZX_mean * t_mean * midL + (X2_mean * t2_mean * midL ** 2)
+    next_Z2_mean = Z2_mean + LogSpace(jnp.log(2.)) * ZX_mean * t_mean * midL + (X2_mean * t2_mean * midL ** 2)
     next_dZ2_mean = dZ2_mean + (X2_mean * t2_mean * midL ** 2)
 
-    next_evidence_calculation = evidence_calculation._replace(log_X_mean=next_X_mean.log_abs_val,
-                                                              log_X2_mean=next_X2_mean.log_abs_val,
-                                                              log_Z_mean=next_Z_mean.log_abs_val,
-                                                              log_Z2_mean=next_Z2_mean.log_abs_val,
-                                                              log_ZX_mean=next_ZX_mean.log_abs_val,
-                                                              log_dZ2_mean=next_dZ2_mean.log_abs_val
-                                                              )
+    next_evidence_calculation = evidence_calculation._replace(
+        log_X_mean=next_X_mean.log_abs_val.astype(evidence_calculation.log_X_mean.dtype),
+        log_X2_mean=next_X2_mean.log_abs_val.astype(evidence_calculation.log_X2_mean.dtype),
+        log_Z_mean=next_Z_mean.log_abs_val.astype(evidence_calculation.log_Z_mean.dtype),
+        log_Z2_mean=next_Z2_mean.log_abs_val.astype(evidence_calculation.log_Z2_mean.dtype),
+        log_ZX_mean=next_ZX_mean.log_abs_val.astype(evidence_calculation.log_ZX_mean.dtype),
+        log_dZ2_mean=next_dZ2_mean.log_abs_val.astype(evidence_calculation.log_dZ2_mean.dtype)
+    )
     # log_Z_mean, log_Z_var = linear_to_log_stats(next_evidence_calculation.log_Z_mean, log_f2_mean=next_evidence_calculation.log_Z2_mean)
 
     # next_evidence_calculation = tree_map(lambda old, new: jnp.where(jnp.isnan(new), old, new),
@@ -495,6 +469,7 @@ def _update_thread_stats(state: NestedSamplerState):
                             state.thread_stats, thread_stats_update)
     return thread_stats
 
+
 def _sample_collection_to_reservoir(sample_collection: SampleCollection) -> Reservoir:
     reservoir = Reservoir(points_U=sample_collection.points_U,
                           points_X=sample_collection.points_X,
@@ -503,6 +478,7 @@ def _sample_collection_to_reservoir(sample_collection: SampleCollection) -> Rese
                           num_likelihood_evaluations=sample_collection.num_likelihood_evaluations,
                           num_slices=sample_collection.num_slices)
     return reservoir
+
 
 def _init_evidence_calculation():
     evidence_calculation = EvidenceCalculation(
@@ -514,52 +490,3 @@ def _init_evidence_calculation():
         log_dZ2_mean=jnp.asarray(-jnp.inf, float_type)
     )
     return evidence_calculation
-
-    def _init_reservoir(self, key, size: int) -> Reservoir:
-        # Some of the points might have log(L)=-inf, so we need to filter those out. Otherwise we could do:
-        # N = self.num_live_points + self.reservoir_size
-        # samples = vmap(lambda key: random.permutation(key, N) + 0.5)(random.split(key2, D)).T
-        # samples /= N
-
-        def single_sample(unused_state, key):
-            """
-            Produces a single sample from the joint-prior and computes the likelihood.
-
-            Args:
-                key: PRNG key
-
-            Returns:
-                U, X, log_L_samples
-            """
-
-            def body(state):
-                (_, key, _, _, _, num_likelihood_evals) = state
-                key, sample_key, break_plateau_key = random.split(key, 3)
-                U = self.prior_chain.sample_U_flat(sample_key)
-                X = self.prior_chain(U)
-                log_L = self.loglikelihood(**X)
-                done = ~jnp.isinf(log_L)
-                num_likelihood_evals += jnp.asarray(1, int_type)
-                return (done, key, U, self._filter_prior_chain(X), log_L, num_likelihood_evals)
-
-            (_, _, U, X, log_L, num_likelihood_evals) = while_loop(lambda s: jnp.bitwise_not(s[0]),
-                                                                   body,
-                                                                   (jnp.asarray(False), key,
-                                                                    self.prior_chain.U_flat_placeholder,
-                                                                    self._filter_prior_chain(
-                                                                        self.prior_chain.sample_placeholder),
-                                                                    jnp.zeros((), float_type),
-                                                                    jnp.asarray(0, int_type)))
-            log_L_constraint = -jnp.inf
-            sample = Reservoir(points_U=U,
-                               points_X=X,
-                               log_L_constraint=log_L_constraint,
-                               log_L_samples=log_L,
-                               num_likelihood_evaluations=num_likelihood_evals,
-                               num_slices=jnp.inf)
-            return (), sample
-
-        # generate initial reservoir of points, filtering out those -inf (forbidden zones)
-        (), reservoir = scan(single_sample, (), random.split(key, size))
-
-        return reservoir

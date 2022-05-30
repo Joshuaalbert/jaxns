@@ -169,7 +169,7 @@ class PriorChain(object):
     @property
     def shapes(self):
         """
-        Dict of shapes of prior in X domain.
+        Dict of shapes of prior in U domain.
         """
         shapes = {name: p.shape for name, p in self._prior_chain.items()}
         return self._order(shapes)
@@ -177,7 +177,7 @@ class PriorChain(object):
     @property
     def dtypes(self):
         """
-        Dict of dtypes of prior in X domain.
+        Dict of dtypes of prior in U domain.
         """
         dtypes = {name: p.dtype for name, p in self._prior_chain.items()}
         return self._order(dtypes)
@@ -188,7 +188,7 @@ class PriorChain(object):
         s = []
         for name in forward_topo_sort:
             s.append(
-                f"{name} ~ {self._prior_chain[name].dtype}{self._prior_chain[name].shape} : {self._prior_chain[name]}")
+                f"{'tracked ' if self._prior_chain[name].tracked else '        '}{name} ~ {self._prior_chain[name].dtype}{self._prior_chain[name].shape} : {self._prior_chain[name]}")
         return "\n".join(s)
 
     def log_homogeneous_measure(self, **X):
@@ -197,7 +197,7 @@ class PriorChain(object):
 
         Example:
              Let
-             X ~ F, and
+             U ~ F, and
              Y ~ G, where F and G have the same support.
              Then, any expectation of any function f over F can be written in terms of an expectation over G according to,
              E_F[f] = int f(y) dF/dG
@@ -208,7 +208,7 @@ class PriorChain(object):
 
         Practical example:
 
-            X ~ Gamma distribution (has a difficult quantile function), with density (p_X)
+            U ~ Gamma distribution (has a difficult quantile function), with density (p_X)
             Y ~ Normal distribution (easy to sample from), with density (p_Y)
 
             dF/dG = p_X/p_Y, the ratio of the densities.
@@ -216,7 +216,7 @@ class PriorChain(object):
             log-homogeneous density would be log(p_X) - log(p_Y)
 
         Args:
-            **X: dict of X domain prior samples.
+            **X: dict of U domain prior samples.
 
         Returns: scalar, or None if constant homogeneous measure.
         """
@@ -279,13 +279,13 @@ class PriorChain(object):
 
     def __call__(self, U_compact, **kwargs):
         """
-        Transforms a compact representation of prior bases samples in U domain to X domain.
+        Transforms a compact representation of prior bases samples in U domain to U domain.
 
         Args:
             U_compact: flat vector of prior bases samples
             **kwargs: kwargs to pass to all prior transforms.
 
-        Returns: dict of X domain priors.
+        Returns: dict of U domain priors.
         """
         if not self.built:
             raise AssertionError("PriorChain must be built before calling it. "

@@ -142,6 +142,6 @@ def _pad_extra(arg, chunksize):
         N = N + extra
     else:
         extra = 0
-    arg = jnp.reshape(arg, (chunksize, N // chunksize) + arg.shape[1:])
     T = N // chunksize
+    arg = jnp.reshape(arg, (chunksize, N // chunksize) + arg.shape[1:])
     return arg

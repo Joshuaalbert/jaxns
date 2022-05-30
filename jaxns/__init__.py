@@ -2,7 +2,7 @@ import logging
 logging.basicConfig(format='%(levelname)s[%(asctime)s]: %(message)s', level=logging.INFO)
 
 from jaxns.nested_sampler import *
-from jaxns.optimisation import *
+from jaxns.modules.optimisation import *
 from jaxns.prior_transforms import *
 from jaxns.nested_sampler.utils import (summary,
                                         resample,

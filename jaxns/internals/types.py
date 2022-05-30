@@ -30,8 +30,8 @@ class SampleCollection(NamedTuple):
     Arrays to hold samples taken from the reservoir.
     """
     # TODO: allow any pytree for points_X
-    points_U: jnp.ndarray  # [max_samples, U_ndims] -- The X-valued samples
-    points_X: Dict[str, jnp.ndarray]  # {RV_name:[max_samples] + RV_shape} -- The X-valued samples
+    points_U: jnp.ndarray  # [max_samples, U_ndims] -- The U-valued samples
+    points_X: Dict[str, jnp.ndarray]  # {RV_name:[max_samples] + RV_shape} -- The U-valued samples
     log_L_samples: jnp.ndarray  # [max_samples] -- The log-likelihood of sample.
     log_L_constraint: jnp.ndarray  # [max_samples] -- the log-likelihood constraint sampled within to acquire sample.
     num_likelihood_evaluations: jnp.ndarray  # [max_samples] -- How many likelihood evaluations were required to obtain sample
@@ -79,11 +79,10 @@ class NestedSamplerState(NamedTuple):
     sample_collection: SampleCollection  # Arrays to hold samples taken from the reservoir.
     evidence_calculation: EvidenceCalculation  # holds running calculation of evidence
     log_L_contour: jnp.ndarray  # the contour of the sampler
-    step_idx: jnp.ndarray  # the step index of the algorithm.
+    step_idx: jnp.ndarray  # the step index of the algorithm, corresponding to num_live_points being collected.
     num_likelihood_evaluations: jnp.ndarray # cumulative num likelihood evaluations
     sample_idx: jnp.ndarray  # the sample index, pointing to the next empty sample slot
     thread_stats: ThreadStats
-    patience_steps: jnp.ndarray  # how many steps since goal incremental improvement
     termination_reason: jnp.ndarray  # this will be an int reflecting the reason for termination
 
 
@@ -95,7 +94,7 @@ class NestedSamplerResults(NamedTuple):
     samples: Dict[str, jnp.ndarray]  # Dict of arrays with leading dimension num_samples
     log_L_samples: jnp.ndarray  # log(L) of each sample
     log_dp_mean: jnp.ndarray  # log(E[dZ]) of each sample, where dZ is how much it contributes to the total evidence.
-    log_X_mean: jnp.ndarray  # log(E[X]) of each sample
+    log_X_mean: jnp.ndarray  # log(E[U]) of each sample
     num_live_points_per_sample: jnp.ndarray  # how many live points were taken for the samples.
     num_likelihood_evaluations_per_sample: jnp.ndarray  # how many likelihood evaluations were made per sample.
     num_slices_per_sample: jnp.ndarray  # how many slices were taken

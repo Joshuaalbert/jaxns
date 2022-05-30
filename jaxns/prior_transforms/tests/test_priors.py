@@ -47,6 +47,13 @@ def test_discrete():
             random.split(random.PRNGKey(245263), 100000))
         assert jnp.abs(y['x'].mean() - p) < 0.01
 
+    with PriorChain() as chain:
+        x = BernoulliPrior('x', jnp.ones(2)*0.5)
+    chain.build()
+    y = vmap(lambda key: chain(chain.sample_U_flat(key)))(
+        random.split(random.PRNGKey(245263), 100000))
+    assert jnp.all(jnp.abs(y['x'].mean(0) - 0.5) < 0.01)
+
     p = jnp.array([0.1, 0.6, 0.1, 0.2])
     with PriorChain() as chain:
         x = GumbelCategoricalPrior('x', jnp.log(p))

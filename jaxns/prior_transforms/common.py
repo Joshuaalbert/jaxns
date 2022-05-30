@@ -77,8 +77,8 @@ class LogNormalPrior(ContinuousPrior):
         """
         Log-normal prior.
 
-        X ~ N[mu, sigma^2]
-        Y ~ exp(X)
+        U ~ N[mu, sigma^2]
+        Y ~ exp(U)
 
         Args:
             mu: mean of underlying
@@ -168,8 +168,8 @@ class HalfLaplacePrior(ContinuousPrior):
         """
         Half-Laplace distribution.
 
-        X ~ L[0,b]
-        Y = abs(X)
+        U ~ L[0,b]
+        Y = abs(U)
 
         Args:
             b: scale
@@ -188,7 +188,7 @@ class UniformPrior(ContinuousPrior):
         """
         Uniform distribution.
 
-        X ~ U[low, high]
+        U ~ U[low, high]
 
         Args:
             low: minimum value

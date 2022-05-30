@@ -3,9 +3,8 @@ from jax import numpy as jnp, random, jit
 from jax.scipy.linalg import solve_triangular
 from jax.scipy.special import gammaln
 
-from jaxns import NestedSampler, resample, summary, plot_diagnostics
-from jaxns.nested_sampler.nested_sampling import _get_static_goal, \
-    compute_remaining_evidence
+from jaxns import NestedSampler, resample, summary, plot_diagnostics, analytic_log_evidence
+from jaxns.nested_sampler.nested_sampling import compute_remaining_evidence
 from jaxns.nested_sampler.utils import evidence_posterior_samples
 from jaxns.prior_transforms import PriorChain, UniformPrior, MVNPrior, GammaPrior
 
@@ -44,18 +43,22 @@ def test_nested_sampling_basic():
         UniformPrior('x', 0., 1.)
 
     ns = NestedSampler(log_likelihood, prior_chain)
-    results = ns(key=random.PRNGKey(43), adaptive_evidence_stopping_threshold=0.01)
+    results = ns(key=random.PRNGKey(42))
     plot_diagnostics(results)
     summary(results)
+    ns.plot_cornerplot(results)
+
+    log_Z_true = analytic_log_evidence(prior_chain, log_likelihood, S=200)
 
     log_Z_samples = evidence_posterior_samples(random.PRNGKey(42),
                                                results.num_live_points_per_sample[:results.total_num_samples],
                                                results.log_L_samples[:results.total_num_samples], S=1000)
+
     assert jnp.isclose(results.log_Z_mean, jnp.mean(log_Z_samples), atol=1e-3)
     assert jnp.isclose(results.log_Z_uncert, jnp.std(log_Z_samples), atol=1e-3)
 
     assert jnp.bitwise_not(jnp.isnan(results.log_Z_mean))
-    assert jnp.isclose(results.log_Z_mean, -1. / 3., atol=1.75 * results.log_Z_uncert)
+    assert jnp.isclose(results.log_Z_mean, log_Z_true, atol=1.75 * results.log_Z_uncert)
 
 
 def test_nested_sampling_plateau():
@@ -70,6 +73,7 @@ def test_nested_sampling_plateau():
     results = ns(key=random.PRNGKey(43))
     plot_diagnostics(results)
     summary(results)
+    ns.plot_cornerplot(results)
 
     assert jnp.bitwise_not(jnp.isnan(results.log_Z_mean))
     assert jnp.isclose(results.log_Z_mean, 0., atol=1.75 * results.log_Z_uncert)
@@ -87,13 +91,61 @@ def test_nested_sampling_basic_parallel():
 
     ns = NestedSampler(log_likelihood, prior_chain, num_parallel_samplers=2)
     results = ns(key=random.PRNGKey(42))
+    ns.plot_diagnostics(results)
 
     ns_serial = NestedSampler(log_likelihood, prior_chain)
     results_serial = ns_serial(key=random.PRNGKey(42))
-    assert jnp.isclose(results_serial.log_Z_mean, results.log_Z_mean)
+    assert jnp.isclose(results_serial.log_Z_mean, results.log_Z_mean, atol=1e-3)
+
+
+def test_nested_sampling_mvn_static():
+    from jaxns import summary
+    def log_normal(x, mean, cov):
+        L = jnp.linalg.cholesky(cov)
+        dx = x - mean
+        dx = solve_triangular(L, dx, lower=True)
+        return -0.5 * x.size * jnp.log(2. * jnp.pi) - jnp.sum(jnp.log(jnp.diag(L))) \
+               - 0.5 * dx @ dx
+
+    ndims = 4
+    prior_mu = 2 * jnp.ones(ndims)
+    prior_cov = jnp.diag(jnp.ones(ndims)) ** 2
+
+    data_mu = jnp.zeros(ndims)
+    data_cov = jnp.diag(jnp.ones(ndims)) ** 2
+    data_cov = jnp.where(data_cov == 0., 0.95, data_cov)
+
+    true_logZ = log_normal(data_mu, prior_mu, prior_cov + data_cov)
+    # not super happy with this being 1.58 and being off by like 0.1. Probably related to the ESS.
+    post_mu = prior_cov @ jnp.linalg.inv(prior_cov + data_cov) @ data_mu + data_cov @ jnp.linalg.inv(
+        prior_cov + data_cov) @ prior_mu
+
+    print(f"True post mu:{post_mu}")
+    print(f"True log Z: {true_logZ}")
+
+    log_likelihood = lambda x, **kwargs: log_normal(x, data_mu, data_cov)
+
+    with PriorChain() as prior_chain:
+        MVNPrior('x', prior_mu, prior_cov)
+
+    ns = NestedSampler(log_likelihood, prior_chain)
+    results = ns(key=random.PRNGKey(42))
+    ns.summary(results)
+    ns.plot_diagnostics(results)
+    assert jnp.isclose(results.log_Z_mean, true_logZ, atol=1.75 * results.log_Z_uncert)
+
+    # evidence better with gradient boost
+    ns = NestedSampler(log_likelihood, prior_chain,
+                       sampler_kwargs=dict(gradient_boost=True
+                                           ))
+    results = ns(key=random.PRNGKey(42))
+    summary(results)
+    plot_diagnostics(results)
+    assert jnp.isclose(results.log_Z_mean, true_logZ, atol=1.75 * results.log_Z_uncert)
 
 
 def test_nested_sampling_mvn_dynamic():
+    # TODO: passing, but not with the correct results. Need to change the test.
     from jaxns import summary
     def log_normal(x, mean, cov):
         L = jnp.linalg.cholesky(cov)
@@ -124,13 +176,9 @@ def test_nested_sampling_mvn_dynamic():
         MVNPrior('x', prior_mu, prior_cov)
 
     ns = NestedSampler(log_likelihood, prior_chain, dynamic=True)
-    results = ns(key=random.PRNGKey(42),
-                 adaptive_evidence_stopping_threshold=0.01,
-                 adaptive_evidence_patience=1,
-                 termination_evidence_uncert=0.1,
-                 G=0.)
-    summary(results)
-    plot_diagnostics(results)
+    results = ns(key=random.PRNGKey(42), adaptive_evidence_patience=1, G=0.)
+    ns.summary(results)
+    ns.plot_diagnostics(results)
     assert jnp.isclose(results.log_Z_mean, true_logZ, atol=1.75 * results.log_Z_uncert)
 
     # evidence better with gradient boost
@@ -138,9 +186,7 @@ def test_nested_sampling_mvn_dynamic():
                        sampler_kwargs=dict(gradient_boost=True
                                            ))
     results = ns(key=random.PRNGKey(42),
-                 adaptive_evidence_stopping_threshold=0.01,
                  adaptive_evidence_patience=1,
-                 termination_evidence_uncert=0.1,
                  G=0.)
     summary(results)
     plot_diagnostics(results)
@@ -180,26 +226,6 @@ def test_gh21():
     true_mean = true_post_k * true_post_theta
 
     assert jnp.allclose(sample_mean, true_mean, atol=0.05)
-
-
-def test_static_goal():
-    static_num_live_points = 2
-    num_samples = 5
-    num_live_points = jnp.asarray([0, 0, 0, 0, 0])
-    expect = jnp.asarray([0, 1, 2, 3, 4])
-    assert jnp.allclose(_get_static_goal(num_live_points, static_num_live_points, num_samples), expect)
-
-    num_live_points = jnp.asarray([2, 0, 0, 0, 0])
-    expect = jnp.asarray([1, 2, 3, 4, 4])
-    assert jnp.allclose(_get_static_goal(num_live_points, static_num_live_points, num_samples), expect)
-
-    num_live_points = jnp.asarray([3, 0, 0, 0, 0])
-    expect = jnp.asarray([1, 2, 3, 4, 4])
-    assert jnp.allclose(_get_static_goal(num_live_points, static_num_live_points, num_samples), expect)
-
-    num_live_points = jnp.asarray([2, 2, 2, 2, 2])
-    expect = jnp.asarray([4, 4, 4, 4, 4])
-    assert jnp.allclose(_get_static_goal(num_live_points, static_num_live_points, num_samples), expect)
 
 
 def test_compute_remaining_evidence():

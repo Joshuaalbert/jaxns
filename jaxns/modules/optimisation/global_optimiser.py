@@ -6,12 +6,12 @@ from jax.lax import scan
 from jax.lax import while_loop
 
 from jaxns.internals.log_semiring import LogSpace
-from jaxns.internals.maps import chunked_pmap, replace_index
+from jaxns.internals.maps import replace_index
 from jaxns.internals.maps import prepare_func_args
 from jaxns.nested_sampler.nested_sampling import build_get_sample, sample_goal_distribution
-from jaxns.optimisation.global_optimisation import sort_reservoir
-from jaxns.optimisation.utils import summary
-from jaxns.optimisation.termination import termination_condition
+from jaxns.modules.optimisation.global_optimisation import sort_reservoir
+from jaxns.modules.optimisation.utils import summary
+from jaxns.modules.optimisation.termination import termination_condition
 from jaxns.prior_transforms import PriorChain
 from jaxns.internals.types import Reservoir, GlobalOptimiserState, GlobalOptimiserResults, float_type, int_type
 
@@ -55,8 +55,7 @@ class GlobalOptimiser(object):
             if sampler_kwargs['depth'] < 1:
                 raise ValueError(f"depth {sampler_kwargs['depth']} should be >= 1.")
         elif sampler_name == 'slice':
-            sampler_kwargs['num_slices'] = jnp.asarray(
-                sampler_kwargs.get('num_slices', prior_chain.U_ndims * 10))
+            sampler_kwargs['num_slices'] = sampler_kwargs.get('num_slices', prior_chain.U_ndims * 10)
             if sampler_kwargs['num_slices'] < 1:
                 raise ValueError(f"num_slices {sampler_kwargs['num_slices']} should be >= 1.")
             sampler_kwargs['midpoint_shrink'] = bool(sampler_kwargs.get('midpoint_shrink', False))
@@ -76,7 +75,7 @@ class GlobalOptimiser(object):
             Adds the log-homogeneous measure to the log-likelihood to account for the transform from a PriorBase.
 
             Args:
-                **x: dict of priors in X domain.
+                **x: dict of priors in U domain.
 
             Returns:
                 log-likelihood plus the log-homogeneous measure, and -inf if it is a nan.
@@ -146,7 +145,7 @@ class GlobalOptimiser(object):
                 key: PRNG key
 
             Returns:
-                U, X, log_L_samples
+                U, U, log_L_samples
             """
 
             def body(state):
