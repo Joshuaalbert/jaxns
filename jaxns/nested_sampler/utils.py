@@ -2,12 +2,12 @@ from typing import NamedTuple
 
 from jax import random, vmap, numpy as jnp, tree_map, jit
 from jax.lax import while_loop
-from jax.scipy.special import logsumexp
 import logging
 import numpy as np
 
 from jaxns.internals.maps import dict_multimap, prepare_func_args
-from jaxns.internals.log_semiring import cumulative_logsumexp, LogSpace
+from jaxns.internals.log_semiring import LogSpace
+from jaxns.internals.random import resample_indicies
 from jaxns.prior_transforms import PriorChain
 from jaxns.internals.types import NestedSamplerResults, ThreadStats, float_type
 
@@ -15,30 +15,8 @@ logger = logging.getLogger(__name__)
 
 
 def resample(key, samples, log_weights, S=None, replace=False):
-    """
-    resample the samples with weights which are interpreted as log_probabilities.
-    Args:
-        samples:
-        weights:
-
-    Returns: S samples of equal weight
-
-    """
-    if S is None:
-        # ESS = (sum w)^2 / sum w^2
-
-        S = int(jnp.exp(2. * logsumexp(log_weights) - logsumexp(2. * log_weights)))
-
-    if not replace:
-        # use cumulative_logsumexp because some log_weights could be really small
-        log_p_cuml = cumulative_logsumexp(log_weights)
-        log_r = log_p_cuml[-1] + jnp.log(1. - random.uniform(key, (S,)))
-        idx = jnp.searchsorted(log_p_cuml, log_r)
-    else:
-        g = -random.gumbel(key, shape=log_weights.shape) - log_weights
-        idx = jnp.argsort(g)[:S]
+    idx = resample_indicies(key, log_weights, S=S, replace=replace)
     return dict_multimap(lambda s: s[idx, ...], samples)
-
 
 def marginalise_static(key, samples, log_weights, ESS, fun):
     """
