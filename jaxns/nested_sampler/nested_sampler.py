@@ -817,7 +817,7 @@ class NestedSampler(object):
     def __call__(self, key,
                  termination_ess: Union[float, int, jnp.ndarray] = None,
                  termination_evidence_uncert: Union[float, jnp.ndarray] = None,
-                 termination_live_evidence_frac: Union[float, jnp.ndarray] = 1e-3,
+                 termination_live_evidence_frac: Union[float, jnp.ndarray] = 1e-4,
                  termination_max_num_steps: Union[float, int, jnp.ndarray] = None,
                  termination_max_samples: Union[float, int, jnp.ndarray] = None,
                  termination_max_num_likelihood_evaluations: Union[float, int, jnp.ndarray] = None,
