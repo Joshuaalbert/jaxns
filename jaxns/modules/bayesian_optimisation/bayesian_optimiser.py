@@ -3,7 +3,7 @@ from typing import List, Dict
 
 from jaxns import NestedSampler, PriorChain, UniformPrior, HalfLaplacePrior, GlobalOptimiser, \
     marginalise_static
-from jaxns.modules.gaussian_process.kernels import M52
+from jaxns.modules.gaussian_process.kernels import RBF
 from jaxns.modules.bayesian_optimisation.utils import latin_hypercube
 from jax.scipy.linalg import solve_triangular
 from jax.scipy.special import ndtr
@@ -138,7 +138,7 @@ class Observation:
 
 class BayesianOptimiser(object):
     def __init__(self, prior_chain: PriorChain, key=None, load_file: str = None,
-                 num_parallel_solvers: int = 1, kernel=M52()):
+                 num_parallel_solvers: int = 1, kernel=RBF()):
         self.prior_chain = prior_chain
         self.prior_chain.build()
         self.observations: Observation = None
