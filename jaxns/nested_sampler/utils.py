@@ -33,7 +33,7 @@ def marginalise_static(key, samples, log_weights, ESS, fun):
     """
     fun = prepare_func_args(fun)
     samples = resample(key, samples, log_weights, S=ESS, replace=True)
-    marginalised = tree_map(lambda marg: jnp.nanmean(marg, axis=0), vmap(lambda d: fun(**d))(samples))
+    marginalised = tree_map(lambda marg: jnp.nanmean(marg, axis=0), vmap(fun)(**samples))
     return marginalised
 
 
@@ -51,20 +51,26 @@ def marginalise_dynamic(key, samples, log_weights, ESS, fun):
     Returns: expectation over resampled samples.
     """
     fun = prepare_func_args(fun)
+    ESS = jnp.asarray(ESS)
 
     def body(state):
-        (key, i, marginalised) = state
+        (key, i, count, marginalised) = state
         key, resample_key = random.split(key, 2)
         _samples = resample(resample_key, samples, log_weights, S=1)
         _sample = tree_map(lambda v: v[0], _samples)
-        marginalised = tree_map(lambda x, y: x + y, marginalised, fun(**_sample))
-        return (key, i + jnp.ones_like(i), marginalised)
-
+        update = fun(**_sample)
+        count = tree_map(lambda y, c: jnp.where(jnp.any(jnp.isnan(y)), c, c+jnp.asarray(1, c.dtype)),
+                         update, count)
+        marginalised = tree_map(lambda x, y: jnp.where(jnp.isnan(y), x, x + y.astype(x.dtype)),
+                                marginalised, update)
+        return (key, i + jnp.ones_like(i), count, marginalised)
     test_output = fun(**tree_map(lambda v: v[0], samples))
-    (_, count, marginalised) = while_loop(lambda state: state[1] < ESS,
+    count = tree_map(lambda x: jnp.asarray(0, x.dtype), test_output)
+    init_marginalised = tree_map(lambda x: jnp.zeros_like(x), test_output)
+    (_, _, count, marginalised) = while_loop(lambda state: state[1] < ESS,
                                           body,
-                                          (key, jnp.array(0.), tree_map(lambda x: jnp.zeros_like(x), test_output)))
-    marginalised = tree_map(lambda x: x / count, marginalised)
+                                          (key, jnp.array(0, ESS.dtype), count, init_marginalised))
+    marginalised = tree_map(lambda x, c: x / c, marginalised, count)
     return marginalised
 
 

@@ -92,6 +92,20 @@ class PriorChain(object):
         global _PRIOR_CHAIN_INDEX_STACK
         _PRIOR_CHAIN_INDEX_STACK.pop()
 
+    def filter_sample(self, sample):
+        """
+        Filters a dict's keys to only those where prior variable of same name is tracked.
+        Used for removing untracked priors from a dict.
+
+        Args:
+            sample: dict
+
+        Returns:
+            dict with only keys that correspond to names being tracked.
+        """
+        assert self.built
+        return dict(filter(lambda item: self._prior_chain[item[0]].tracked, sample.items()))
+
     def build(self, **kwargs):
         """
         Run once before using to construct the unravel function.

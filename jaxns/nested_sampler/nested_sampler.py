@@ -166,7 +166,7 @@ class NestedSampler(object):
         Returns:
             dict with only keys that correspond to names being tracked.
         """
-        return {name: d[name] for name, prior in self.prior_chain._prior_chain.items() if prior.tracked}
+        return self.prior_chain.filter_sample(d)
 
     def _init_reservoir(self, key, size: int) -> Reservoir:
         # Some of the points might have log(L)=-inf, so we need to filter those out. Otherwise we could do:
