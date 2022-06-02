@@ -18,6 +18,7 @@ def resample(key, samples, log_weights, S=None, replace=False):
     idx = resample_indicies(key, log_weights, S=S, replace=replace)
     return dict_multimap(lambda s: s[idx, ...], samples)
 
+
 def marginalise_static(key, samples, log_weights, ESS, fun):
     """
     Marginalises function over posterior samples, where ESS is static.
@@ -59,17 +60,18 @@ def marginalise_dynamic(key, samples, log_weights, ESS, fun):
         _samples = resample(resample_key, samples, log_weights, S=1)
         _sample = tree_map(lambda v: v[0], _samples)
         update = fun(**_sample)
-        count = tree_map(lambda y, c: jnp.where(jnp.any(jnp.isnan(y)), c, c+jnp.asarray(1, c.dtype)),
+        count = tree_map(lambda y, c: jnp.where(jnp.any(jnp.isnan(y)), c, c + jnp.asarray(1, c.dtype)),
                          update, count)
         marginalised = tree_map(lambda x, y: jnp.where(jnp.isnan(y), x, x + y.astype(x.dtype)),
                                 marginalised, update)
         return (key, i + jnp.ones_like(i), count, marginalised)
+
     test_output = fun(**tree_map(lambda v: v[0], samples))
     count = tree_map(lambda x: jnp.asarray(0, x.dtype), test_output)
     init_marginalised = tree_map(lambda x: jnp.zeros_like(x), test_output)
     (_, _, count, marginalised) = while_loop(lambda state: state[1] < ESS,
-                                          body,
-                                          (key, jnp.array(0, ESS.dtype), count, init_marginalised))
+                                             body,
+                                             (key, jnp.array(0, ESS.dtype), count, init_marginalised))
     marginalised = tree_map(lambda x, c: x / c, marginalised, count)
     return marginalised
 
@@ -161,7 +163,7 @@ def summary(results: NestedSamplerResults) -> str:
             return float(v)
 
     _print("--------")
-    termination_bit_mask = _bit_mask(results.termination_reason, width=7)
+    termination_bit_mask = _bit_mask(results.termination_reason, width=8)
     _print("Termination Conditions:")
     for bit, condition in zip(termination_bit_mask, ['Reached max samples',
                                                      'Evidence uncertainty low enough',
@@ -169,7 +171,8 @@ def summary(results: NestedSamplerResults) -> str:
                                                      'Reached ESS',
                                                      "Used max num steps",
                                                      "Used max num likelihood evaluations",
-                                                     "All samples on plateau"]):
+                                                     "All samples on plateau",
+                                                     'likelihood contour reached']):
         if bit == 1:
             _print(condition)
     _print("--------")
@@ -227,6 +230,7 @@ def evidence_posterior_samples(key, num_live_points_per_sample, log_L_samples, S
     L = LogSpace(jnp.asarray([-jnp.inf], log_L_samples.dtype)).concatenate(
         LogSpace(log_L_samples))
     L_mid = (L[:-1] + L[1:]) * LogSpace(jnp.log(0.5))
+
     def evidence_chain(key):
         # T ~ Beta(n[i],1) <==> T ~ Kumaraswamy(n[i],1)
         log_T = jnp.log(random.uniform(key, n_i.shape, dtype=L_mid.dtype)) / n_i

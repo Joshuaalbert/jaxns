@@ -222,29 +222,19 @@ def get_dynamic_goal(key, state: NestedSamplerState, num_samples: int, G:jnp.nda
     """
     Determines what seed points to sample above.
     """
-    goal_key, seed_key = random.split(key)
     contours = jnp.concatenate([state.sample_collection.log_L_constraint[0:1],
                                 state.sample_collection.log_L_samples])
     if G is None:
         raise ValueError(f"G should be a float in [0,1].")
     log_goal_weights = _get_dynamic_goal(state, G)
     # Probabilistically sample the contours according to goal distribution
-    indices_constraint_reinforce = sample_goal_distribution(state.key, log_goal_weights, num_samples, replace=False)
-    log_X_reinforce = state.sample_collection.log_X_mean[indices_constraint_reinforce]
-    n_reinforce = state.sample_collection.num_live_points[indices_constraint_reinforce]
-    log_X_constraints_reinforce = LogSpace(log_X_reinforce) * LogSpace(jnp.log(n_reinforce+1.) - jnp.log(n_reinforce))
-    log_X_contours = jnp.concatenate([jnp.zeros((1,)),
-                                state.sample_collection.log_X_mean])
-    log_L_constraints_reinforce = jnp.interp(log_X_constraints_reinforce.log_abs_val, log_X_contours[::-1], contours[::-1])
+    indices_constraint_reinforce = sample_goal_distribution(key, log_goal_weights, num_samples, replace=True)
+    start_idx = indices_constraint_reinforce.min()
+    end_idx = indices_constraint_reinforce.max()
+    log_L_constraint_start = contours[start_idx]
+    log_L_constraint_end = contours[end_idx]
 
-    constraint_supremum_idx = jnp.clip(jnp.searchsorted(contours, log_L_constraints_reinforce, side='right'),
-                                       1, state.sample_idx) - 1
-    seed_idx = random.randint(seed_key,
-                              shape=log_L_constraints_reinforce.shape,
-                              minval=constraint_supremum_idx,
-                              maxval=state.sample_idx)
-
-    return log_L_constraints_reinforce, seed_idx
+    return log_L_constraint_start, log_L_constraint_end
 
 
 def compute_evidence(state: NestedSamplerState):

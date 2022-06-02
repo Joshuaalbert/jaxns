@@ -134,15 +134,6 @@ def test_nested_sampling_mvn_static():
     ns.plot_diagnostics(results)
     assert jnp.isclose(results.log_Z_mean, true_logZ, atol=1.75 * results.log_Z_uncert)
 
-    # evidence better with gradient boost
-    ns = NestedSampler(log_likelihood, prior_chain,
-                       sampler_kwargs=dict(gradient_boost=True
-                                           ))
-    results = ns(key=random.PRNGKey(42))
-    summary(results)
-    plot_diagnostics(results)
-    assert jnp.isclose(results.log_Z_mean, true_logZ, atol=1.75 * results.log_Z_uncert)
-
 
 def test_nested_sampling_mvn_dynamic():
     # TODO: passing, but not with the correct results. Need to change the test.
@@ -176,20 +167,13 @@ def test_nested_sampling_mvn_dynamic():
         MVNPrior('x', prior_mu, prior_cov)
 
     ns = NestedSampler(log_likelihood, prior_chain, dynamic=True)
-    results = ns(key=random.PRNGKey(42), adaptive_evidence_patience=1, G=0.)
-    ns.summary(results)
-    ns.plot_diagnostics(results)
-    assert jnp.isclose(results.log_Z_mean, true_logZ, atol=1.75 * results.log_Z_uncert)
-
-    # evidence better with gradient boost
-    ns = NestedSampler(log_likelihood, prior_chain, dynamic=True,
-                       sampler_kwargs=dict(gradient_boost=True
-                                           ))
     results = ns(key=random.PRNGKey(42),
                  adaptive_evidence_patience=1,
-                 G=0.)
-    summary(results)
-    plot_diagnostics(results)
+                 G=0.,
+                 termination_evidence_uncert=0.05,
+                 termination_max_num_steps=100)
+    ns.summary(results)
+    ns.plot_diagnostics(results)
     assert jnp.isclose(results.log_Z_mean, true_logZ, atol=1.75 * results.log_Z_uncert)
 
 

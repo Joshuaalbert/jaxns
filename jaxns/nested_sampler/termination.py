@@ -1,15 +1,17 @@
 from jax import numpy as jnp
 from jaxns.internals.types import int_type
 
+
 def termination_condition(num_samples, log_Z_var, log_Z_remaining_upper, log_Z_upper, ess, num_likelihood_evaluations,
-                          num_steps, all_plateau,
+                          num_steps, all_plateau, likelihood_contour,
                           *,
                           termination_live_evidence_frac=None,
                           termination_ess=None,
                           termination_evidence_uncert=None,
                           termination_max_num_steps=None,
                           termination_max_samples=None,
-                          termination_max_num_likelihood_evaluations=None
+                          termination_max_num_likelihood_evaluations=None,
+                          termination_likelihood_contour=None
                           ):
     """
 
@@ -71,6 +73,11 @@ def termination_condition(num_samples, log_Z_var, log_Z_remaining_upper, log_Z_u
 
     if all_plateau is not None:
         done, termination_condition = _set_done_bit(all_plateau, 6,
+                                                    done=done, termination_condition=termination_condition)
+
+    if termination_likelihood_contour is not None:
+        likeihood_contour_reached = likelihood_contour >= termination_likelihood_contour
+        done, termination_condition = _set_done_bit(likeihood_contour_reached, 7,
                                                     done=done, termination_condition=termination_condition)
 
     return done, termination_condition
