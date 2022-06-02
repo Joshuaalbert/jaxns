@@ -58,6 +58,9 @@ def prepare_func_args(f):
     Returns:
         callable(**kwargs) where **kwargs are the filtered for args of the original function.
     """
+    if hasattr(f, "__old_name__"):
+        raise ValueError(f"function {f.__old_name__} has already done prepare_func_args.")
+
     (args, varargs, varkw, defaults, kwonlyargs, kwonlydefaults, annotations) = \
         inspect.getfullargspec(f)
 
@@ -84,14 +87,14 @@ def prepare_func_args(f):
             args_with_values.update(kwonlydefaults)
         args_with_values.update(kwargs)
         args_with_values = dict(filter(lambda item: item[0] in expected_keys, args_with_values.items()))
-
         for key in expected_keys:
             if key not in args_with_values:
-                raise KeyError(f"Missing argument {key}")
+                raise KeyError(f"{f.__name__} is missing argument {key}")
 
         return f(**args_with_values)
 
     _f.__doc__ = f.__doc__
+    _f.__old_name__ = f.__name__
     return _f
 
 

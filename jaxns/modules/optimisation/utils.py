@@ -5,7 +5,7 @@ import logging
 import numpy as np
 
 from jaxns.internals.maps import dict_multimap
-from jaxns.internals.types import GlobalOptimiserResults
+from jaxns.modules.optimisation.types import GlobalOptimiserResults
 
 logger = logging.getLogger(__name__)
 

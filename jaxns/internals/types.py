@@ -5,6 +5,7 @@ from jax import numpy as jnp
 float_type = jnp.result_type(float)
 int_type = jnp.result_type(int)
 
+
 class SignedLog(NamedTuple):
     """
     Represents a signed value in log-space
@@ -80,7 +81,7 @@ class NestedSamplerState(NamedTuple):
     evidence_calculation: EvidenceCalculation  # holds running calculation of evidence
     log_L_contour: jnp.ndarray  # the contour of the sampler
     step_idx: jnp.ndarray  # the step index of the algorithm, corresponding to num_live_points being collected.
-    num_likelihood_evaluations: jnp.ndarray # cumulative num likelihood evaluations
+    num_likelihood_evaluations: jnp.ndarray  # cumulative num likelihood evaluations
     sample_idx: jnp.ndarray  # the sample index, pointing to the next empty sample slot
     thread_stats: ThreadStats
     termination_reason: jnp.ndarray  # this will be an int reflecting the reason for termination
@@ -104,25 +105,3 @@ class NestedSamplerResults(NamedTuple):
     log_efficiency: jnp.ndarray  # log(total_num_samples / total_num_likelihood_evaluations)
     termination_reason: jnp.ndarray  # this will be an int reflecting the reason for termination
     thread_stats: ThreadStats
-
-
-class GlobalOptimiserState(NamedTuple):
-    key: jnp.ndarray
-    done: jnp.ndarray
-    reservoir: Reservoir  # Arrays to hold samples taken from the reservoir.
-    num_steps: jnp.ndarray  # the step index of the algorithm, where one step is a single consumption step.
-    num_samples: jnp.ndarray  # how many samples have been drawn
-    num_likelihood_evaluations: jnp.ndarray  # how many times the likelihood has been evaluated
-    patience_steps: jnp.ndarray  # how many steps since goal incremental improvement
-    termination_reason: jnp.ndarray  # this will be an int reflecting the reason for termination
-
-
-class GlobalOptimiserResults(NamedTuple):
-    samples: Dict[str, jnp.ndarray]  # Dict of arrays with leading dimension num_samples
-    total_num_samples: jnp.ndarray  # int, the total number of samples collected.
-    log_L_samples: jnp.ndarray  # log(L) of each sample
-    total_num_likelihood_evaluations: jnp.ndarray  # how many likelihood evaluations were made in total,
-    log_efficiency: jnp.ndarray  # log(total_num_samples / total_num_likelihood_evaluations)
-    termination_reason: jnp.ndarray  # this will be an int reflecting the reason for termination
-    log_L_max: jnp.ndarray  # maximum likelihood value obtained
-    sample_L_max: Dict[str, jnp.ndarray]  # sample at the log_L_max point
