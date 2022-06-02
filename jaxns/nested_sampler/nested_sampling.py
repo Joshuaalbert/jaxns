@@ -200,7 +200,7 @@ def _get_dynamic_goal(state: NestedSamplerState, G: jnp.ndarray):
     dZ_mean = LogSpace(state.sample_collection.log_dZ_mean)
     # Calculate remaining evidence, doing only the amount of work necessary.
     Z_remaining = LogSpace(compute_remaining_evidence(state.sample_idx, state.sample_collection.log_dZ_mean))
-
+    # TODO: numerically compute goal using custome norm
     I_evidence = ((LogSpace(jnp.log(n_i + 1.)) * Z_remaining + LogSpace(jnp.log(n_i)) * dZ_mean) / (
             LogSpace(jnp.log(n_i + 1.)).sqrt() * LogSpace(jnp.log(n_i + 2.)) ** (1.5)))
     I_evidence = normalise_log_space(I_evidence)
