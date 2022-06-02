@@ -225,9 +225,12 @@ class GlobalOptimiser(object):
 
         key, init_reservoir_key = random.split(init_state.key, 2)
 
-        # initial uniformly sampled reservoir
-        init_reservoir = self._init_reservoir(init_reservoir_key, static_num_live_points)
-        init_state = init_state._replace(key=key, reservoir=init_reservoir)
+        if init_state.reservoir is None:
+            # initial uniformly sampled reservoir
+            init_reservoir = self._init_reservoir(init_reservoir_key, static_num_live_points)
+            init_state = init_state._replace(key=key, reservoir=init_reservoir)
+        else:
+            init_reservoir = init_state.reservoir
 
         def single_thread_sampler(key: jnp.ndarray, init_reservoir: Reservoir) -> Tuple[Reservoir, Reservoir]:
             """
