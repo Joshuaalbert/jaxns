@@ -188,11 +188,9 @@ def summary(results: NestedSamplerResults) -> str:
     _print("H={}".format(
         _round(results.H_mean, results.H_mean)))
     _print("ESS={}".format(int(results.ESS)))
-
     max_like_idx = jnp.argmax(results.log_L_samples[:results.total_num_samples])
     max_like_points = tree_map(lambda x: x[max_like_idx], results.samples)
-    samples = resample(random.PRNGKey(23426), results.samples, results.log_dp_mean, S=int(results.ESS), replace=True)
-
+    samples = resample(random.PRNGKey(23426), results.samples, results.log_dp_mean, S=max(10,int(results.ESS)), replace=True)
     map_points = maximum_a_posteriori_point(results)
 
     for name in samples.keys():
