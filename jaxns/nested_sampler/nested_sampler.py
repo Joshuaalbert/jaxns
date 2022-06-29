@@ -24,19 +24,6 @@ logger = logging.getLogger(__name__)
 class NestedSampler(object):
     """
     Runs the dynamic nested sampler algorithm.
-
-    The algorithm consists of two loops:
-
-    1. control _dynamic_loop -- determine a likelihood range and number of live points to use.
-    2. thread _dynamic_loop -- perform sampling and shrinkage over the likelihood range, and collect the threads samples using
-        the sample merging method proposed in [1]. We handle plateaus by assigning an equal weight to samples in the
-        same contour as discussed in [2].
-
-    References:
-        [1] "Dynamic nested sampling: an improved algorithm for parameter estimation and evidence calculation"
-            E. Higson et al. (2017), https://arxiv.org/pdf/1704.03459.pdf
-        [2] "Nested sampling with plateaus"
-            A. Fowlie et al. (2021), https://arxiv.org/abs/2010.13884
     """
     _available_samplers = ['slice']
 
@@ -688,7 +675,7 @@ class NestedSampler(object):
                                    body,
                                    (
                                        init_state,
-                                       min_num_slices + jnp.asarray(self.prior_chain.U_ndims, jnp.int_),
+                                       min_num_slices + jnp.asarray(self.prior_chain.U_ndims, min_num_slices.dtype),
                                        jnp.asarray(0, int_type)
                                    ))
 
