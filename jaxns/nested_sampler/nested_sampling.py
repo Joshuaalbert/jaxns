@@ -1,7 +1,6 @@
 from typing import Tuple, Callable
 
 from jax import numpy as jnp, random, tree_map, value_and_grad
-from jax.lax import scan
 from jax.lax import dynamic_update_slice
 from jax.lax import while_loop
 from jaxns.internals.log_semiring import LogSpace
@@ -321,7 +320,7 @@ def collect_samples(state: NestedSamplerState, new_reservoir: Reservoir) -> Nest
     state = state._replace(sample_idx=state.sample_idx + new_reservoir.log_L_samples.size,
                            sample_collection=sample_collection,
                            num_likelihood_evaluations=state.num_likelihood_evaluations + jnp.sum(
-                               new_reservoir.num_likelihood_evaluations))
+                               new_reservoir.num_likelihood_evaluations).astype(int_type))
     # Recompute statistics
     state = compute_evidence(state)
     return state
@@ -453,7 +452,7 @@ def _update_thread_stats(state: NestedSamplerState):
                     ess=ess,
                     evidence=log_Z_mean,
                     log_L_max=log_L_contour_max,
-                    num_likelihood_evaluations=jnp.sum(state.sample_collection.num_likelihood_evaluations)
+                    num_likelihood_evaluations=jnp.sum(state.sample_collection.num_likelihood_evaluations).astype(int_type)
                     )
     thread_stats = tree_map(lambda operand, update: replace_index(operand, update, state.step_idx),
                             state.thread_stats, thread_stats_update)

@@ -11,8 +11,8 @@ from jaxns.internals.stats import linear_to_log_stats, effective_sample_size
 from jaxns.internals.types import NestedSamplerState, Reservoir, SampleCollection, NestedSamplerResults, ThreadStats, \
     float_type, int_type
 from jaxns.nested_sampler.nested_sampling import build_get_sample, get_dynamic_goal, \
-    collect_samples, compute_evidence, _update_thread_stats, _sample_collection_to_reservoir, sample_goal_distribution, \
-    _update_evidence_calculation, _init_evidence_calculation
+    collect_samples, compute_evidence, _update_thread_stats, sample_goal_distribution, \
+    _init_evidence_calculation
 from jaxns.nested_sampler.termination import termination_condition
 from jaxns.nested_sampler.utils import summary, save_results, load_results
 from jaxns.nested_sampler.plotting import plot_diagnostics, plot_cornerplot
@@ -234,11 +234,11 @@ class NestedSampler(object):
         init_evidence_calculation = _init_evidence_calculation()
 
         max_num_steps = self.max_samples // self.samples_per_step
-        init_thread_stats = ThreadStats(evidence_uncert=jnp.zeros(max_num_steps),
-                                        ess=jnp.zeros(max_num_steps),
-                                        evidence=jnp.zeros(max_num_steps),
-                                        log_L_max=jnp.zeros(max_num_steps),
-                                        num_likelihood_evaluations=jnp.zeros(max_num_steps)
+        init_thread_stats = ThreadStats(evidence_uncert=jnp.zeros(max_num_steps, float_type),
+                                        ess=jnp.zeros(max_num_steps, float_type),
+                                        evidence=jnp.zeros(max_num_steps, float_type),
+                                        log_L_max=jnp.zeros(max_num_steps, float_type),
+                                        num_likelihood_evaluations=jnp.zeros(max_num_steps, int_type)
                                         )
 
         state = NestedSamplerState(
