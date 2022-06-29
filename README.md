@@ -1,4 +1,4 @@
-![https://img.shields.io/pypi/v/aioneo4j.svg](https://pypi.org/project/jaxns/)](https://img.shields.io/pypi/v/jaxns.svg)
+![https://pypi.org/project/jaxns/](https://img.shields.io/pypi/v/jaxns.svg)
 ![JAXNS](https://github.com/Joshuaalbert/jaxns/raw/master/jaxns_logo.png)
 
 [![build status](https://travis-ci.com/Joshuaalbert/jaxns.svg?branch=master)](https://travis-ci.com/github/Joshuaalbert/jaxns)
