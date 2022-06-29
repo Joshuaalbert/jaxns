@@ -1,7 +1,8 @@
 ![https://pypi.org/project/jaxns/](https://img.shields.io/pypi/v/jaxns.svg)
+[![build status](https://travis-ci.com/Joshuaalbert/jaxns.svg?branch=master)](https://travis-ci.com/github/Joshuaalbert/jaxns)
+
 ![JAXNS](https://github.com/Joshuaalbert/jaxns/raw/master/jaxns_logo.png)
 
-[![build status](https://travis-ci.com/Joshuaalbert/jaxns.svg?branch=master)](https://travis-ci.com/github/Joshuaalbert/jaxns)
 
 # What is it?
 Provides a probabilistic programming framework based on nested sampling. It's coded in JAX in a manner that allows lowering the entire inference algorithm to XLA primitives, which are JIT-compiled for high performance. You can read about it here: (https://arxiv.org/abs/2012.15286)
