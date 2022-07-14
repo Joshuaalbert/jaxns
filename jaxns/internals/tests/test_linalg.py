@@ -21,7 +21,7 @@ def test_cholesky_update():
         #     print(cholesky_update(jnp.linalg.cholesky(A), x))
         #     print(jnp.linalg.cholesky(A + x[:,None]*x[None,:]))
         assert jnp.allclose(cholesky_update(jnp.linalg.cholesky(A), x),
-                                   jnp.linalg.cholesky(A + x[:, None] * x[None, :]), atol=5e-5)
+                            jnp.linalg.cholesky(A + x[:, None] * x[None, :]), atol=5e-5)
 
 
 def test_inverse_update():

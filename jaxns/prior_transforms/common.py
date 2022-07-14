@@ -1,10 +1,10 @@
 from jax import numpy as jnp
 from jax.scipy.special import ndtri
 
-from jaxns.internals.types import float_type
-from jaxns.prior_transforms.prior import PriorBase, UniformBase, Prior, prior_docstring, get_shape
 from jaxns.internals.linalg import msqrt
 from jaxns.internals.shapes import broadcast_dtypes, convert_to_array, broadcast_shapes
+from jaxns.internals.types import float_type
+from jaxns.prior_transforms.prior import PriorBase, UniformBase, Prior, prior_docstring, get_shape
 
 
 class DeltaPrior(Prior):
@@ -70,6 +70,7 @@ class ContinuousPrior(HierarchicalPrior):
         if prior_base is None:
             prior_base = UniformBase(shape, broadcast_dtypes(float_type, *[p.dtype for p in parents]))
         super(ContinuousPrior, self).__init__(name, parents, tracked, prior_base)
+
 
 class LogNormalPrior(ContinuousPrior):
     @prior_docstring
@@ -235,5 +236,3 @@ class CauchyPrior(ContinuousPrior):
 
     def transform_U(self, U, mu, gamma, **kwargs):
         return jnp.tan(jnp.pi * (U - 0.5)) * gamma + mu
-
-

@@ -1,6 +1,7 @@
-from jaxns.modules.gaussian_process.utils import product_log
-from jaxns.internals.linalg import squared_norm
 import jax.numpy as jnp
+
+from jaxns.internals.linalg import squared_norm
+from jaxns.modules.gaussian_process.utils import product_log
 
 
 class Kernel(object):
@@ -56,7 +57,7 @@ class StationaryKernel(Kernel):
         raise NotImplemented()
 
     def __call__(self, x1, x2, l, *args):
-        r2 = squared_norm(x1/l, x2/l)
+        r2 = squared_norm(x1 / l, x2 / l)
         r2 = jnp.maximum(r2, 1e-36)
         return jnp.exp(self.act(r2, *args))
 

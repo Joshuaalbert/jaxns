@@ -1,4 +1,5 @@
 from jax import numpy as jnp
+
 from jaxns.internals.types import int_type
 
 

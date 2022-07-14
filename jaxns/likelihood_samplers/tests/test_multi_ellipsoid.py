@@ -1,4 +1,5 @@
 from jax import numpy as jnp
+
 from jaxns.likelihood_samplers.multi_ellipsoid import log_ellipsoid_volume
 
 

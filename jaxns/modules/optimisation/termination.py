@@ -1,5 +1,7 @@
 from jax import numpy as jnp
+
 from jaxns.internals.types import int_type
+
 
 def termination_condition(new_log_L_min, new_log_L_max, patience_steps, num_likelihood_evaluations, num_steps, *,
                           termination_patience=None,
@@ -58,6 +60,6 @@ def termination_condition(new_log_L_min, new_log_L_max, patience_steps, num_like
 
     on_plateau = new_log_L_max == new_log_L_min
     done, termination_condition = _set_done_bit(on_plateau, 5,
-                                                    done=done, termination_condition=termination_condition)
+                                                done=done, termination_condition=termination_condition)
 
     return done, termination_condition

@@ -1,8 +1,9 @@
 import inspect
-from jax import tree_map, pmap, numpy as jnp
-from jax.lax import scan
-from jax.lax import dynamic_update_slice, dynamic_slice
 import logging
+
+from jax import tree_map, pmap, numpy as jnp
+from jax.lax import dynamic_update_slice, dynamic_slice
+from jax.lax import scan
 
 from jaxns.internals.types import int_type
 

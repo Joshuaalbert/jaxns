@@ -33,7 +33,7 @@ class PiecewiseLinearPrior(ContinuousPrior):
 
 class FromSamplesPrior(ContinuousPrior):
     @prior_docstring
-    def __init__(self, name, samples:jnp.ndarray, log_weights=None, tracked=True):
+    def __init__(self, name, samples: jnp.ndarray, log_weights=None, tracked=True):
         """
         Construct a piecewise linear approximation to a distribution given by a set of samples.
 
@@ -52,11 +52,13 @@ class FromSamplesPrior(ContinuousPrior):
             samples = samples[idx]
         bins = max(10, int(jnp.sqrt(samples.size)))
         freq, bins = jnp.histogram(samples, bins=bins)
-        bin_centers = 0.5*(bins[1:] + bins[:-1])
+        bin_centers = 0.5 * (bins[1:] + bins[:-1])
         cum_freq = jnp.cumsum(freq)
         cum_freq /= cum_freq[-1]
+
         def icdf(u):
-            return jnp.interp(u,cum_freq, bin_centers)
+            return jnp.interp(u, cum_freq, bin_centers)
+
         self.icdf = icdf
         shape = ()
 

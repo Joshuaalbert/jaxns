@@ -50,11 +50,12 @@ def product_log(w):
     Returns:
 
     """
-    Q = jnp.array([0., 1., -1., 3./2., -8./3.])
+    Q = jnp.array([0., 1., -1., 3. / 2., -8. / 3.])
     E = jnp.exp(1.)
 
-    P = jnp.array([-1., jnp.sqrt(2*E), - (2*E)/3., (11*E**1.5)/(18.*jnp.sqrt(2)), - (43*E**2)/135.,
-                   + (769*E**2.5)/(2160.*jnp.sqrt(2)), -  (1768*E**3)/8505., (680863*E**3.5)/(2.7216e6*jnp.sqrt(2)),
-                   - (3926*E**4)/25515., (226287557*E**4.5)/(1.1757312e9*jnp.sqrt(2)), -  (23105476*E**5)/1.89448875e8])
-    return jnp.where(w > -0.5/E, jnp.polyval(Q[::-1], w), jnp.polyval(P[::-1], jnp.sqrt(jnp.exp(-1.) + w)))
-
+    P = jnp.array([-1., jnp.sqrt(2 * E), - (2 * E) / 3., (11 * E ** 1.5) / (18. * jnp.sqrt(2)), - (43 * E ** 2) / 135.,
+                   + (769 * E ** 2.5) / (2160. * jnp.sqrt(2)), -  (1768 * E ** 3) / 8505.,
+                   (680863 * E ** 3.5) / (2.7216e6 * jnp.sqrt(2)),
+                   - (3926 * E ** 4) / 25515., (226287557 * E ** 4.5) / (1.1757312e9 * jnp.sqrt(2)),
+                   -  (23105476 * E ** 5) / 1.89448875e8])
+    return jnp.where(w > -0.5 / E, jnp.polyval(Q[::-1], w), jnp.polyval(P[::-1], jnp.sqrt(jnp.exp(-1.) + w)))

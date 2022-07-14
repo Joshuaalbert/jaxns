@@ -1,10 +1,12 @@
-import pylab as plt
+import logging
+
 import jax.numpy as jnp
-from jax import random
 import numpy as np
+import pylab as plt
+from jax import random
 from matplotlib.animation import FuncAnimation
 from mpl_toolkits.axes_grid1 import make_axes_locatable
-import logging
+
 logger = logging.getLogger(__name__)
 
 from jaxns.internals.types import NestedSamplerResults
@@ -49,7 +51,7 @@ def plot_diagnostics(results: NestedSamplerResults, save_name=None):
                   label=r"$\log Z={:.1f}$".format(results.log_Z_mean))
     axs[3].set_ylabel(r'$Z(x > U)/Z$')
     axs[3].legend()
-    axs[4].plot(-log_X, 1./results.num_likelihood_evaluations_per_sample[:results.total_num_samples])
+    axs[4].plot(-log_X, 1. / results.num_likelihood_evaluations_per_sample[:results.total_num_samples])
     axs[4].hlines(jnp.exp(results.log_efficiency), jnp.min(-log_X),
                   jnp.max(-log_X), colors='black', ls='dashed',
                   label='avg. eff.={:.3f}'.format(jnp.exp(results.log_efficiency)))
@@ -68,7 +70,7 @@ def plot_diagnostics(results: NestedSamplerResults, save_name=None):
     plt.show()
 
 
-def plot_cornerplot(results:NestedSamplerResults, vars=None, save_name=None):
+def plot_cornerplot(results: NestedSamplerResults, vars=None, save_name=None):
     """
     Plots a cornerplot of the posterior samples.
 
@@ -88,7 +90,7 @@ def plot_cornerplot(results:NestedSamplerResults, vars=None, save_name=None):
     max_like_idx = jnp.argmax(results.log_L_samples[:results.total_num_samples])
     map_idx = jnp.argmax(results.log_dp_mean)
     log_p = results.log_dp_mean[:results.total_num_samples]
-    nbins = max(10,int(jnp.sqrt(results.ESS)) + 1)
+    nbins = max(10, int(jnp.sqrt(results.ESS)) + 1)
     lims = {}
     dim = 0
     for key in vars:  # sorted(results.samples.keys()):
@@ -104,7 +106,7 @@ def plot_cornerplot(results:NestedSamplerResults, vars=None, save_name=None):
             # kde1 = gaussian_kde(samples1, weights=weights, bw_method='silverman')
             # samples1_resampled = kde1.resample(size=int(results.ESS))
             rkey0, rkey = random.split(rkey0, 2)
-            samples1_resampled = resample(rkey, samples1, log_weights, S=max(10,int(results.ESS)), replace=True)
+            samples1_resampled = resample(rkey, samples1, log_weights, S=max(10, int(results.ESS)), replace=True)
             samples1_max_like = samples1[max_like_idx]
             samples1_map_point = samples1[map_idx]
             binsx = jnp.linspace(*jnp.percentile(samples1_resampled, jnp.asarray([0, 100])), 2 * nbins)
@@ -143,7 +145,8 @@ def plot_cornerplot(results:NestedSamplerResults, vars=None, save_name=None):
                         sample_mean = jnp.average(samples1, weights=weights)
                         sample_std = jnp.sqrt(jnp.average((samples1 - sample_mean) ** 2, weights=weights))
                         ax.set_title(
-                            r"${:.2f}_{{{:.2f}}}^{{{:.2f}}}$".format(*jnp.percentile(samples1_resampled, jnp.asarray([50, 5, 95]))) + \
+                            r"${:.2f}_{{{:.2f}}}^{{{:.2f}}}$".format(
+                                *jnp.percentile(samples1_resampled, jnp.asarray([50, 5, 95]))) + \
                             "\n" + r"${:.2f}\pm{:.2f}$".format(sample_mean, sample_std) + \
                             "\n" + r"MAP ${:.2f}$ | ML ${:.2f}$".format(samples1_map_point, samples1_max_like))
                         # ax.set_title(r"{}: ${:.2f}\pm{:.2f}$".format(title1, sample_mean, sample_std))
@@ -174,7 +177,7 @@ def plot_cornerplot(results:NestedSamplerResults, vars=None, save_name=None):
                         # samples2_resampled = kde2.resample(size=int(results.ESS))
                         rkey0, rkey = random.split(rkey0, 2)
                         samples2_resampled = resample(rkey, jnp.stack([samples1, samples2], axis=-1), log_weights,
-                                                      S=max(10,int(results.ESS)), replace=True)
+                                                      S=max(10, int(results.ESS)), replace=True)
                         # norm = plt.Normalize(log_weights.min(), log_weights.max())
                         # color = jnp.atleast_2d(plt.cm.jet(norm(log_weights)))
                         ax.hist2d(samples2_resampled[:, 1], samples2_resampled[:, 0], bins=(nbins, nbins), density=True,
@@ -350,7 +353,8 @@ def add_colorbar_to_axes(ax, cmap, norm=None, vmin=None, vmax=None, label=None):
     else:
         ax.figure.colorbar(sm, cax=cax, orientation='vertical', label=label)
 
-def corner_cornerplot(results:NestedSamplerResults):
+
+def corner_cornerplot(results: NestedSamplerResults):
     try:
         import corner
     except ImportError:

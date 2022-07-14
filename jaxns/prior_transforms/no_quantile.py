@@ -87,6 +87,7 @@ class StrictlyPositivePrior(ContinuousPrior):
         exponential = - b * jnp.sign(0.5 * U) * jnp.log(1. - 2. * jnp.abs(0.5 * U))
         return exponential
 
+
 class GammaPrior(StrictlyPositivePrior):
     @prior_docstring
     def __init__(self, name, k, theta, tracked=True):
@@ -111,6 +112,7 @@ class GammaPrior(StrictlyPositivePrior):
 
     def _log_prob(self, X, k, theta):
         return -gammaln(k) - k * jnp.log(theta) + (k - 1.) * jnp.log(X) - X / theta
+
 
 class RealPrior(ContinuousPrior):
     @prior_docstring
@@ -167,7 +169,7 @@ class RealPrior(ContinuousPrior):
         except NotImplementedError:
             width = jnp.asarray(1.)
         mu = center
-        sigma = width / (2. * np.sqrt(2.**(2./3.) - 1.))
+        sigma = width / (2. * np.sqrt(2. ** (2. / 3.) - 1.))
 
         log_prob_prior = self._log_prob(X, *params)
         log_prob_cauchy = gammaln(1.) - gammaln(0.5) - 0.5 * jnp.log(jnp.pi) - jnp.log(sigma) \
@@ -188,10 +190,11 @@ class RealPrior(ContinuousPrior):
         except NotImplementedError:
             width = jnp.asarray(1.)
         mu = center
-        sigma = width / (2. * np.sqrt(2.**(2./3.) - 1.))
+        sigma = width / (2. * np.sqrt(2. ** (2. / 3.) - 1.))
 
         cauchy = jnp.tan(jnp.pi * (U - 0.5)) * sigma + mu
         return cauchy
+
 
 class StudentT(RealPrior):
     @prior_docstring
@@ -220,7 +223,7 @@ class StudentT(RealPrior):
         """
         We use the FWHM of the student-T.
         """
-        fwhm = 2. * sigma * jnp.sqrt(nu * jnp.maximum(jnp.zeros_like(mu), jnp.power(2., 2./(nu+1)) - 1.))
+        fwhm = 2. * sigma * jnp.sqrt(nu * jnp.maximum(jnp.zeros_like(mu), jnp.power(2., 2. / (nu + 1)) - 1.))
         return fwhm
 
     def _log_prob(self, X, nu, mu, sigma):

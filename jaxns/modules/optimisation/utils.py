@@ -1,13 +1,14 @@
+import logging
 from typing import NamedTuple
 
-from jax import numpy as jnp, tree_map
-import logging
 import numpy as np
+from jax import numpy as jnp, tree_map
 
 from jaxns.internals.maps import dict_multimap
 from jaxns.modules.optimisation.types import GlobalOptimiserResults
 
 logger = logging.getLogger(__name__)
+
 
 def _bit_mask(int_mask, width=8):
     """
@@ -93,6 +94,7 @@ def summary(results: GlobalOptimiserResults) -> str:
             ))
     _print("--------")
     return "\n".join(main_s)
+
 
 def _isinstance_namedtuple(obj) -> bool:
     return (

@@ -73,5 +73,3 @@ def ifft_factor(*coords):
         log_factors = log_factors + _add_dims(log_factor, i)
     factor = jnp.exp(log_factors) * dx_factor
     return factor
-
-
