@@ -7,7 +7,7 @@ def test_coords_transformations():
     import numpy as np
     assert jnp.allclose(np.fft.fftfreq(10, 1.), jnp.fft.fftfreq(10, 1.))
     assert jnp.allclose(np.fft.fftfreq(11, 1.), jnp.fft.fftfreq(11, 1.))
-    #odd
+    # odd
     x = jnp.linspace(-10, 10, 101)
     (s,) = fft_freqs(x)
     print(s)

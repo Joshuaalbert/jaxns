@@ -13,9 +13,9 @@ from jaxns.internals.types import NestedSamplerState, Reservoir, SampleCollectio
 from jaxns.nested_sampler.nested_sampling import build_get_sample, get_dynamic_goal, \
     collect_samples, compute_evidence, _update_thread_stats, sample_goal_distribution, \
     _init_evidence_calculation
+from jaxns.nested_sampler.plotting import plot_diagnostics, plot_cornerplot
 from jaxns.nested_sampler.termination import termination_condition
 from jaxns.nested_sampler.utils import summary, save_results, load_results
-from jaxns.nested_sampler.plotting import plot_diagnostics, plot_cornerplot
 from jaxns.prior_transforms import PriorChain
 
 logger = logging.getLogger(__name__)

@@ -3,16 +3,17 @@ from typing import Tuple, Callable
 from jax import numpy as jnp, random, tree_map, value_and_grad
 from jax.lax import dynamic_update_slice
 from jax.lax import while_loop
+
 from jaxns.internals.log_semiring import LogSpace
 from jaxns.internals.maps import replace_index
 from jaxns.internals.stats import linear_to_log_stats, effective_sample_size
+from jaxns.internals.types import NestedSamplerState, EvidenceCalculation, Reservoir, ThreadStats, int_type, \
+    SampleCollection, float_type
 from jaxns.likelihood_samplers.parallel_slice_sampling import ProposalState, change_direction, shrink_interval, \
     sample_direction, \
     slice_bounds, pick_point_in_interval
 from jaxns.nested_sampler.live_points import compute_num_live_points_from_unit_threads, infimum_constraint
 from jaxns.prior_transforms import PriorChain
-from jaxns.internals.types import NestedSamplerState, EvidenceCalculation, Reservoir, ThreadStats, int_type, \
-    SampleCollection, float_type
 
 
 def build_get_sample(prior_chain: PriorChain, loglikelihood_from_U,
@@ -216,8 +217,8 @@ def _get_dynamic_goal(state: NestedSamplerState, G: jnp.ndarray):
     return I_goal.log_abs_val
 
 
-
-def get_dynamic_goal(key, state: NestedSamplerState, num_samples: int, G:jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray]:
+def get_dynamic_goal(key, state: NestedSamplerState, num_samples: int, G: jnp.ndarray) -> Tuple[
+    jnp.ndarray, jnp.ndarray]:
     """
     Determines what seed points to sample above.
     """
@@ -452,7 +453,8 @@ def _update_thread_stats(state: NestedSamplerState):
                     ess=ess,
                     evidence=log_Z_mean,
                     log_L_max=log_L_contour_max,
-                    num_likelihood_evaluations=jnp.sum(state.sample_collection.num_likelihood_evaluations).astype(int_type)
+                    num_likelihood_evaluations=jnp.sum(state.sample_collection.num_likelihood_evaluations).astype(
+                        int_type)
                     )
     thread_stats = tree_map(lambda operand, update: replace_index(operand, update, state.step_idx),
                             state.thread_stats, thread_stats_update)

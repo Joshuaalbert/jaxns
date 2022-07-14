@@ -40,8 +40,8 @@ def test_gh_20():
         prior_d = UniformPrior('d', -20., 20.)
         prior_sigma = HalfLaplacePrior('sigma', 1)
 
-    #shouldn't need to be built
-    assert prior_chain.U_ndims == 5 #should be 5
+    # shouldn't need to be built
+    assert prior_chain.U_ndims == 5  # should be 5
 
     prior_chain.build()
     assert prior_chain.U_ndims == 5  # should be 5

@@ -1,6 +1,7 @@
 from jax import numpy as jnp
 from jax.lax import scan
 from jax.scipy.special import logsumexp
+
 from jaxns.internals.types import SignedLog
 
 
@@ -53,7 +54,7 @@ def cumulative_logsumexp(u, sign=None, reverse=False, axis=0):
             (u, u_sign) = X
             (accumulant, accumulant_sign) = state
             new_accumulant, new_accumulant_sign = signed_logaddexp(accumulant, accumulant_sign, u, u_sign)
-            return (new_accumulant, accumulant_sign) , (new_accumulant, accumulant_sign)
+            return (new_accumulant, accumulant_sign), (new_accumulant, accumulant_sign)
         else:
             u = X
             accumulant = state
@@ -72,9 +73,9 @@ def cumulative_logsumexp(u, sign=None, reverse=False, axis=0):
         state = -jnp.inf * jnp.ones(u.shape[1:], dtype=u.dtype)
         X = u
     _, result = scan(body,
-                state,
-                X,
-                reverse=reverse)
+                     state,
+                     X,
+                     reverse=reverse)
     if sign is not None:
         v, v_sign = result
         if axis != 0:
@@ -89,7 +90,7 @@ def cumulative_logsumexp(u, sign=None, reverse=False, axis=0):
 
 
 class LogSpace(object):
-    def __init__(self, log_abs_val:jnp.ndarray, sign=None):
+    def __init__(self, log_abs_val: jnp.ndarray, sign=None):
         self._log_abs_val = log_abs_val
         if sign is None:
             self._sign = 1.
@@ -178,34 +179,34 @@ class LogSpace(object):
             return f"LogSpace({self.log_abs_val})"
         return f"LogSpace({self.log_abs_val}, {self.sign})"
 
-    def sum(self,axis=-1, keepdims=False):
+    def sum(self, axis=-1, keepdims=False):
         if not self._naked:  # no coefficients
             return LogSpace(*logsumexp(self.log_abs_val, b=self.sign, axis=axis, keepdims=keepdims, return_sign=True))
         return LogSpace(logsumexp(self._log_abs_val, axis=axis, keepdims=keepdims))
 
-    def nansum(self,axis=-1, keepdims=False):
+    def nansum(self, axis=-1, keepdims=False):
         log_abs_val = jnp.where(jnp.isnan(self.log_abs_val), -jnp.inf, self.log_abs_val)
         if not self._naked:  # no coefficients
             return LogSpace(*logsumexp(log_abs_val, b=self.sign, axis=axis, keepdims=keepdims, return_sign=True))
         return LogSpace(logsumexp(log_abs_val, axis=axis, keepdims=keepdims))
 
-    def cumsum(self,axis=0,reverse=False):
+    def cumsum(self, axis=0, reverse=False):
         if not self._naked:  # no coefficients
             return LogSpace(*cumulative_logsumexp(self.log_abs_val, sign=self.sign, axis=axis, reverse=reverse))
         return LogSpace(cumulative_logsumexp(self._log_abs_val, axis=axis, reverse=reverse))
 
-    def cumprod(self,axis=0):
+    def cumprod(self, axis=0):
         if not self._naked:  # no coefficients
             log_abs_val, sign = jnp.broadcast_arrays(self.log_abs_val, self.sign)
             return LogSpace(jnp.cumsum(log_abs_val, axis=axis), jnp.cumprod(sign, axis=axis))
         return LogSpace(jnp.cumsum(self._log_abs_val, axis=axis))
 
-    def mean(self,axis=-1,keepdims=False):
+    def mean(self, axis=-1, keepdims=False):
         N = self._log_abs_val.shape[axis]
-        return self.sum(axis=axis, keepdims=keepdims)/LogSpace(jnp.log(N))
+        return self.sum(axis=axis, keepdims=keepdims) / LogSpace(jnp.log(N))
 
     def var(self, axis=-1, keepdims=False):
-        return (self - self.mean(axis=axis,keepdims=True)).mean(axis=axis, keepdims=keepdims)
+        return (self - self.mean(axis=axis, keepdims=True)).mean(axis=axis, keepdims=keepdims)
 
     def log(self):
         assert self._naked
@@ -215,7 +216,7 @@ class LogSpace(object):
         return LogSpace(self.value)
 
     def sqrt(self):
-        return self**0.5
+        return self ** 0.5
 
     def abs(self):
         return LogSpace(self.log_abs_val)
@@ -227,10 +228,8 @@ class LogSpace(object):
         else:
             return LogSpace(self.log_abs_val[1:]) - LogSpace(self.log_abs_val[:-1])
 
-
-
     def square(self):
-        return self*self
+        return self * self
 
     def argmax(self):
         return jnp.argmax(self.log_abs_val)
@@ -256,7 +255,7 @@ class LogSpace(object):
             return LogSpace(jnp.concatenate([self.log_abs_val, other.log_abs_val], axis=axis))
         log_abs_val, sign = jnp.broadcast_arrays(self.log_abs_val, self.sign)
         _log_abs_val, _sign = jnp.broadcast_arrays(other.log_abs_val, other.sign)
-        return LogSpace(jnp.concatenate([log_abs_val, _log_abs_val],axis=axis),
+        return LogSpace(jnp.concatenate([log_abs_val, _log_abs_val], axis=axis),
                         jnp.concatenate([sign, _sign], axis=axis))
 
     def __getitem__(self, item):
@@ -321,7 +320,7 @@ class LogSpace(object):
         if self._naked:
             return LogSpace(n * self.log_abs_val)
         # complex values can occur if n is not even
-        return LogSpace(n * self.log_abs_val, sign=self.sign**n)
+        return LogSpace(n * self.log_abs_val, sign=self.sign ** n)
         # for _ in range(n-1):
         #     output = output * self
         # return output

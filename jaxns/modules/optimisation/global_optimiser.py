@@ -6,15 +6,14 @@ from jax.lax import scan
 from jax.lax import while_loop
 
 from jaxns.internals.log_semiring import LogSpace
-from jaxns.internals.maps import replace_index
 from jaxns.internals.maps import prepare_func_args
-from jaxns.nested_sampler.nested_sampling import build_get_sample, sample_goal_distribution
-from jaxns.modules.optimisation.global_optimisation import sort_reservoir
-from jaxns.modules.optimisation.utils import summary
-from jaxns.modules.optimisation.termination import termination_condition
-from jaxns.prior_transforms import PriorChain
+from jaxns.internals.maps import replace_index
 from jaxns.internals.types import Reservoir, float_type, int_type
+from jaxns.modules.optimisation.termination import termination_condition
 from jaxns.modules.optimisation.types import GlobalOptimiserState, GlobalOptimiserResults
+from jaxns.modules.optimisation.utils import summary
+from jaxns.nested_sampler.nested_sampling import build_get_sample, sample_goal_distribution
+from jaxns.prior_transforms import PriorChain
 
 logger = logging.getLogger(__name__)
 

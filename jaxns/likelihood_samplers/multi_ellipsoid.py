@@ -1,9 +1,10 @@
 from collections import namedtuple
+
 from jax import numpy as jnp, random, vmap
-from jax.lax import scan
 from jax.lax import dynamic_update_slice
-from jax.scipy.special import gammaln, logsumexp
+from jax.lax import scan
 from jax.lax import while_loop
+from jax.scipy.special import gammaln, logsumexp
 
 from jaxns.internals.linalg import rank_one_update_matrix_inv
 from jaxns.internals.types import int_type
@@ -17,7 +18,6 @@ def init_multi_ellipsoid_sampler_state(key, live_points_U, depth, log_X):
     num_k = jnp.bincount(cluster_id, minlength=0, length=mu.shape[0])
     return MultiEllipsoidSamplerState(cluster_id=cluster_id, mu=mu, radii=radii, rotation=rotation,
                                       num_k=num_k, num_fev_ma=jnp.asarray(live_points_U.shape[1] + 2.))
-
 
 
 def bounding_ellipsoid(points, mask):
@@ -762,7 +762,6 @@ def cluster_split(key, points, mask, log_VS, log_VE, kmeans_init=True):
     # no_intersection = jnp.exp(intersection_ratio) < 0.05
     no_intersection = (log_V_sum < log_VE)
 
-
     do_split = (no_intersection | (log_VE > log_VS + jnp.log(2.))) \
                & (~jnp.any(jnp.isnan(radii1))) \
                & (~jnp.any(jnp.isnan(radii2))) \
@@ -875,7 +874,6 @@ def ellipsoid_clustering(key, points, depth, log_VS):
 
         unsorted_cluster_id = jnp.where(unsorted_cluster_id == 0, child0, child1)
         cluster_id = jnp.where(mask, unsorted_cluster_id, cluster_id)
-
 
         # if no split we replace child0 with parent and child1 gets zero-size ellipsoid that has no members.
 

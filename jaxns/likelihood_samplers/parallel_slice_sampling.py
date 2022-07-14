@@ -1,6 +1,7 @@
-from jax import random, numpy as jnp
-from typing import NamedTuple
 import logging
+from typing import NamedTuple
+
+from jax import random, numpy as jnp
 
 from jaxns.internals.types import int_type
 
@@ -83,7 +84,7 @@ def sample_direction(n_key, ndim: int):
 
 
 def shrink_interval(from_proposal_state: ProposalState, log_L_proposal: jnp.ndarray, log_L_contour: jnp.ndarray,
-                    midpoint_shrink: bool, destructive_shrink:bool) -> ProposalState:
+                    midpoint_shrink: bool, destructive_shrink: bool) -> ProposalState:
     """
     Not successful proposal, so shrink, optionally apply exponential shrinkage.
     """

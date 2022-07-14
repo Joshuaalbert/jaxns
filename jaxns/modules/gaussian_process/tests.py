@@ -18,6 +18,5 @@ def test_squared_norm():
 def test_product_log():
     from scipy.special import lambertw
 
-    w = jnp.linspace(-1./jnp.exp(1)+0.001, 0., 100)
+    w = jnp.linspace(-1. / jnp.exp(1) + 0.001, 0., 100)
     assert jnp.all(jnp.isclose(vmap(product_log)(w), lambertw(w, 0), atol=1e-2))
-

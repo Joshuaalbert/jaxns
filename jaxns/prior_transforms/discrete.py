@@ -1,10 +1,11 @@
 from jax import numpy as jnp
-from jax.scipy.special import logsumexp
 from jax.lax import while_loop
+from jax.scipy.special import logsumexp
 
-from jaxns.internals.types import float_type, int_type
-from jaxns.prior_transforms import (DeterministicTransformPrior, prior_docstring, Gumbel, get_shape, UniformBase, HierarchicalPrior, UniformPrior)
 from jaxns.internals.shapes import broadcast_dtypes
+from jaxns.internals.types import float_type, int_type
+from jaxns.prior_transforms import (DeterministicTransformPrior, prior_docstring, Gumbel, get_shape, UniformBase,
+                                    HierarchicalPrior, UniformPrior)
 
 
 class PoissonPrior(HierarchicalPrior):
@@ -68,6 +69,7 @@ class PoissonPrior(HierarchicalPrior):
                                            (log_x, log_p, log_s))
         return jnp.exp(log_x).astype(int_type)
 
+
 class CategoricalPrior(DeterministicTransformPrior):
     @prior_docstring
     def __init__(self, name, logits, tracked=True):
@@ -79,7 +81,8 @@ class CategoricalPrior(DeterministicTransformPrior):
         """
         logits = self._prepare_parameter(name, 'logits', logits)
         shape = get_shape(logits)[:-1]
-        uniform = UniformPrior('_{}_uniform'.format(name), jnp.zeros(shape), jnp.ones(shape) , False)
+        uniform = UniformPrior('_{}_uniform'.format(name), jnp.zeros(shape), jnp.ones(shape), False)
+
         def _transform(u, logits):
             # normalise logits
             logits -= logsumexp(logits, axis=-1, keepdims=True)
@@ -91,17 +94,18 @@ class CategoricalPrior(DeterministicTransformPrior):
             # else:
             # logits [..., N]
             log_u = jnp.log(u)
+
             # parallel CDF sampling
             def body(state):
-                #done [...]
-                #accumulant [...]
-                #i []
-                #output [...]
-                #u [...]
+                # done [...]
+                # accumulant [...]
+                # i []
+                # output [...]
+                # u [...]
                 (_, accumulant, i, output) = state
-                new_accumulant = jnp.logaddexp(accumulant, logits[..., i]) #[...]
-                done = log_u < new_accumulant # [...]
-                output = jnp.where(done, output, i+1) # [...]
+                new_accumulant = jnp.logaddexp(accumulant, logits[..., i])  # [...]
+                done = log_u < new_accumulant  # [...]
+                output = jnp.where(done, output, i + 1)  # [...]
                 return (done, new_accumulant, i + 1, output)
 
             loop_vars = (
@@ -111,8 +115,8 @@ class CategoricalPrior(DeterministicTransformPrior):
                 jnp.zeros(logits.shape[:-1], dtype=int_type)
             )
             (_, _, _, output) = while_loop(lambda state: ~jnp.all(state[0]),
-                              body,
-                              loop_vars)
+                                           body,
+                                           loop_vars)
             return output
 
         super(CategoricalPrior, self).__init__(name, _transform, uniform, logits, tracked=tracked)
@@ -133,6 +137,7 @@ class BernoulliPrior(CategoricalPrior):
                                             lambda p: jnp.stack([jnp.log(1. - p), jnp.log(p)], axis=-1),
                                             p, tracked=False)
         super(BernoulliPrior, self).__init__(name, log_p, tracked)
+
 
 class GumbelCategoricalPrior(DeterministicTransformPrior):
     @prior_docstring

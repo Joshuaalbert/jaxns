@@ -1,7 +1,8 @@
 from jax import numpy as jnp
 
 
-def compute_num_live_points_from_unit_threads(log_L_constraints, log_L_samples, num_samples=None, return_sort_idx:bool=False):
+def compute_num_live_points_from_unit_threads(log_L_constraints, log_L_samples, num_samples=None,
+                                              return_sort_idx: bool = False):
     """
     Compute the number of live points of shrinkage distribution, from an arbitrary list of samples with
     corresponding sampling constraints.
@@ -49,6 +50,7 @@ def compute_num_live_points_from_unit_threads(log_L_constraints, log_L_samples, 
         return (n, idx_sort)
     return n
 
+
 def supremum_contour_idx(log_L_contours, log_L_samples, sort_idx=None):
     """
     For a contour l* find `i` such that log_L_samples[i] is a lowest strict upper bound of L*.
@@ -72,7 +74,8 @@ def supremum_contour_idx(log_L_contours, log_L_samples, sort_idx=None):
     contour_idx = jnp.searchsorted(log_L_samples, log_L_contours, side='right')
     return contour_idx
 
-def infimum_constraint(log_L_constraints, log_L_samples, sort_idx=None, return_contours:bool=False):
+
+def infimum_constraint(log_L_constraints, log_L_samples, sort_idx=None, return_contours: bool = False):
     """
     For a single sample find `i` such that log_L_contours[i] is the greatest strict lower bound of log_L_sample.
     E.g.
@@ -92,18 +95,18 @@ def infimum_constraint(log_L_constraints, log_L_samples, sort_idx=None, return_c
     # empty_mask = jnp.arange(log_L_samples.size) >= num_samples
     # log_L_constraints = jnp.where(empty_mask, jnp.inf, log_L_constraints)
     # log_L_samples = jnp.where(empty_mask, jnp.inf, log_L_samples)
-    log_L_contours = jnp.concatenate([log_L_constraints[0:1], log_L_samples[:-1]],axis=0)
+    log_L_contours = jnp.concatenate([log_L_constraints[0:1], log_L_samples[:-1]], axis=0)
     contour_idx = jnp.searchsorted(log_L_contours, log_L_samples, side='left') - 1
     if return_contours:
         # todo: consider clamping to (0, n-1) and avoid the where op
         constraints = jnp.where(contour_idx < 0,
-                            -jnp.inf,
-                            log_L_contours[contour_idx])
+                                -jnp.inf,
+                                log_L_contours[contour_idx])
         return contour_idx, constraints
     return contour_idx
 
 
-def infimum_contour(log_L_constraints, log_L_samples, sort_idx=None, return_contours:bool=False):
+def infimum_contour(log_L_constraints, log_L_samples, sort_idx=None, return_contours: bool = False):
     """
     For a single sample find `i` such that log_L_contours[i] is the greatest strict lower bound of log_L_sample.
     E.g.
@@ -123,14 +126,13 @@ def infimum_contour(log_L_constraints, log_L_samples, sort_idx=None, return_cont
     # empty_mask = jnp.arange(log_L_samples.size) >= num_samples
     # log_L_constraints = jnp.where(empty_mask, jnp.inf, log_L_constraints)
     # log_L_samples = jnp.where(empty_mask, jnp.inf, log_L_samples)
-    log_L_contours = jnp.concatenate([log_L_constraints[0:1], log_L_samples[:-1]],axis=0)
+    log_L_contours = jnp.concatenate([log_L_constraints[0:1], log_L_samples[:-1]], axis=0)
     # todo: use sort_idx as sort_key to avoid gather op
     contour_idx = jnp.searchsorted(log_L_contours, log_L_samples, side='left') - 1
     if return_contours:
         # todo: consider clamping to (0, n-1) and avoid the where op
         constraints = jnp.where(contour_idx < 0,
-                            -jnp.inf,
-                            log_L_contours[contour_idx])
+                                -jnp.inf,
+                                log_L_contours[contour_idx])
         return contour_idx, constraints
     return contour_idx
-

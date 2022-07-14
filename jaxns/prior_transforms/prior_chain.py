@@ -1,14 +1,15 @@
+import logging
 from typing import Union, Callable
+
 from jax import random, numpy as jnp, disable_jit
 from jax.flatten_util import ravel_pytree
+
 from jaxns.internals.maps import prepare_func_args
 from jaxns.prior_transforms import Prior
 from jaxns.prior_transforms.context import _PRIOR_CHAINS, _PRIOR_CHAIN_NEXT_INDEX, _PRIOR_CHAIN_INDEX_STACK
 import logging
 
 logger = logging.getLogger(__name__)
-
-
 
 
 def iterative_topological_sort(graph, start=None):
@@ -48,6 +49,7 @@ def iterative_topological_sort(graph, start=None):
             stack.append(v)
 
     return stack + order[::-1]  # new return value!
+
 
 class PriorChain(object):
     def __init__(self, *priors: Union[Prior, 'PriorChain']):

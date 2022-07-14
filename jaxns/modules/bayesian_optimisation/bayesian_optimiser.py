@@ -1,20 +1,20 @@
 import datetime
+from dataclasses import dataclass, field, asdict
+from timeit import default_timer
 from typing import List, Dict
+
+import numpy as np
+import pylab as plt
+from jax import numpy as jnp
+from jax import random, tree_map
+from jax.lax import cummax
+from jax.scipy.linalg import solve_triangular
+from jax.scipy.special import ndtr
 
 from jaxns import NestedSampler, PriorChain, UniformPrior, HalfLaplacePrior, GlobalOptimiser, \
     marginalise_static
-from jaxns.modules.gaussian_process.kernels import RBF
 from jaxns.modules.bayesian_optimisation.utils import latin_hypercube
-from jax.scipy.linalg import solve_triangular
-from jax.scipy.special import ndtr
-from jax import random, tree_map
-from jax import numpy as jnp, jit
-from jax.lax import cummax
-import pylab as plt
-import numpy as np
-from timeit import default_timer
-from dataclasses import dataclass, field, asdict
-from functools import partial
+from jaxns.modules.gaussian_process.kernels import RBF
 
 
 def log_normal(x, mean, cov):

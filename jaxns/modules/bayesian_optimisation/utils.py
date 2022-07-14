@@ -1,7 +1,6 @@
 from jax import random, numpy as jnp, vmap
 
 
-
 def latin_hypercube(key, num_samples, num_dim, cube_scale):
     """
     Sample from the latin-hypercube defined as the continuous analog of the discrete latin-hypercube.

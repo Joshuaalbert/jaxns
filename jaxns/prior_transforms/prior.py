@@ -1,6 +1,6 @@
+import logging
 import string
 from typing import List
-import logging
 
 import numpy as np
 
@@ -170,8 +170,10 @@ class Prior(object):
 
         This prior represents `x` in numpy syntax of interp(x,xp,fp).
         """
+
         def interp(x, xp, fp):
             return jnp.interp(x, xp, fp, left=left, right=right, period=period)
+
         return maybe_n_ary_prior_op(interp, [self, xp, fp], name=name, tracked=tracked)
 
     # binary ops
@@ -383,7 +385,7 @@ def maybe_binary_prior_op(binary_op, self, other, *, name=None, tracked=False):
 
 def binary_prior_op(binary_op):
     class PriorBinaryOp(Prior):
-        def __init__(self, prior_a: Prior, prior_b:Prior, *, name=None, tracked=False):
+        def __init__(self, prior_a: Prior, prior_b: Prior, *, name=None, tracked=False):
             """
             Prior for the binary op of two priors.
 
@@ -420,6 +422,7 @@ def unnary_prior_op(unary_op):
 
     return PriorUnaryOp
 
+
 def maybe_n_ary_prior_op(n_ary_op, priors, *, name=None, tracked=False):
     prior_args = []
     static_args = dict()
@@ -436,8 +439,8 @@ def maybe_n_ary_prior_op(n_ary_op, priors, *, name=None, tracked=False):
             raise ValueError(f"Invalid type {type(prior)}")
 
     def curried_n_ary_op(*priors):
-        #reconstruct input to op
-        args = [None]*num_inputs
+        # reconstruct input to op
+        args = [None] * num_inputs
         for static_arg, static_val in static_args.items():
             args[static_arg] = static_val
         for idx, prior in zip(prior_args, priors):
@@ -448,6 +451,7 @@ def maybe_n_ary_prior_op(n_ary_op, priors, *, name=None, tracked=False):
     # run filtered input on curried function
     filtered_priors = list(filter(lambda x: isinstance(x, Prior), priors))
     return n_ary_prior_op(curried_n_ary_op)(filtered_priors, name=name, tracked=tracked)
+
 
 def n_ary_prior_op(n_ary_op):
     class PriorNAryOp(Prior):
@@ -478,7 +482,7 @@ def prior_docstring(f):
     if f.__doc__ is None:
         logger.warning("{} has no docstring".format(f.__name__))
         f.__doc__ = ""
-    f.__doc__ = f.__doc__+"\n\nGeneral Prior documentation:\n\n"+Prior.__init__.__doc__
+    f.__doc__ = f.__doc__ + "\n\nGeneral Prior documentation:\n\n" + Prior.__init__.__doc__
     return f
 
 

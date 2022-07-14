@@ -3,12 +3,11 @@
 # config.update("jax_enable_x64", True)
 
 from jax import numpy as jnp, random
+
 from jaxns.internals.maps import prepare_func_args
+from jaxns.modules.bayesian_optimisation.bayesian_optimiser import BayesianOptimiser
 from jaxns.modules.bayesian_optimisation.utils import latin_hypercube
 from jaxns.prior_transforms import PriorChain, UniformPrior
-from jaxns.modules.bayesian_optimisation.bayesian_optimiser import BayesianOptimiser
-
-
 
 
 def test_bayesian_optimisation():

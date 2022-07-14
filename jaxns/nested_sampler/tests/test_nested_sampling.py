@@ -99,7 +99,6 @@ def test_nested_sampling_basic_parallel():
 
 
 def test_nested_sampling_mvn_static():
-    from jaxns import summary
     def log_normal(x, mean, cov):
         L = jnp.linalg.cholesky(cov)
         dx = x - mean
@@ -137,7 +136,6 @@ def test_nested_sampling_mvn_static():
 
 def test_nested_sampling_mvn_dynamic():
     # TODO: passing, but not with the correct results. Need to change the test.
-    from jaxns import summary
     def log_normal(x, mean, cov):
         L = jnp.linalg.cholesky(cov)
         dx = x - mean
