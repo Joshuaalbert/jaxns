@@ -1,6 +1,6 @@
 from jax import numpy as jnp, random
 
-from jaxns import ContinuousPrior, prior_docstring, ForcedIdentifiabilityPrior, broadcast_shapes, get_shape
+from jaxns.prior_transforms import ContinuousPrior, prior_docstring, ForcedIdentifiabilityPrior, broadcast_shapes, get_shape
 from jaxns.internals.random import resample_indicies
 
 

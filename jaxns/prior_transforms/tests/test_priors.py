@@ -2,7 +2,8 @@ from jax import random, numpy as jnp, vmap
 from jax.scipy.special import logsumexp
 
 from jaxns.prior_transforms import PriorChain, HalfLaplacePrior, GumbelBernoulliPrior, BernoulliPrior, \
-    GumbelCategoricalPrior, CategoricalPrior, PoissonPrior, ForcedIdentifiabilityPrior, PiecewiseLinearPrior
+    GumbelCategoricalPrior, CategoricalPrior, PoissonPrior, ForcedIdentifiabilityPrior, PiecewiseLinearPrior, \
+    UniformPrior, DeterministicTransformPrior
 
 
 def test_piecewise_linear():
@@ -13,6 +14,30 @@ def test_piecewise_linear():
     assert not jnp.any(jnp.isnan(samples['a']))
     assert jnp.all(samples['a'] <= 2.)
     assert jnp.all(samples['a'] >= -2.)
+    # bins = jnp.linspace(-2., 2., 100)
+    # f, _ = jnp.histogram(samples['a'], bins=bins)
+    # import pylab as plt
+    # plt.plot(samples['_a_x'][1], samples["_a_y"][1])
+    # plt.show()
+    # plt.scatter(bins[1:], f)
+    # plt.show()
+
+def test_pytree_shape():
+    with PriorChain() as prior_chain:
+        x = UniformPrior('x', 0., 1.)
+        def transform(x):
+            return dict(val=jnp.stack([x, x]))
+        y = DeterministicTransformPrior('y', transform, x)
+
+
+    prior_chain.build()
+    print(prior_chain)
+    sample = prior_chain(prior_chain.sample_U_flat(random.PRNGKey(42)))
+    assert isinstance(sample['y'], dict)
+    assert sample['y']['val'].shape == (2,)
+    # assert not jnp.any(jnp.isnan(samples['a']))
+    # assert jnp.all(samples['a'] <= 2.)
+    # assert jnp.all(samples['a'] >= -2.)
     # bins = jnp.linspace(-2., 2., 100)
     # f, _ = jnp.histogram(samples['a'], bins=bins)
     # import pylab as plt

@@ -1,8 +1,8 @@
-import logging
-from typing import Union, Callable
+from typing import Union, Callable, Dict
 
 from jax import random, numpy as jnp, disable_jit
 from jax.flatten_util import ravel_pytree
+from jax import tree_leaves
 
 from jaxns.internals.maps import prepare_func_args
 from jaxns.prior_transforms import Prior
@@ -144,6 +144,7 @@ class PriorChain(object):
     @property
     def built(self):
         return self._built
+
 
     def push(self, prior: Prior):
         """
@@ -343,8 +344,8 @@ class PriorChain(object):
                 U = self.sample_U_flat(key)
                 Y = self(U, **kwargs)
                 for k, v in Y.items():
-                    if jnp.any(jnp.isnan(v)):
-                        raise ValueError('nan in prior transform {}'.format(Y))
+                    if any(jnp.any(jnp.isnan(leaf)) for leaf in tree_leaves(v)):
+                        logger.warning('nan in prior transform {}'.format(Y))
                 log_homogeneous_measure = self.log_homogeneous_measure(**Y)
                 if log_homogeneous_measure is not None:
                     if jnp.isnan(log_homogeneous_measure):
