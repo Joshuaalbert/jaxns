@@ -6,7 +6,7 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
-from jax import random, numpy as jnp
+from jax import random, numpy as jnp, tree_map
 
 from jaxns.internals.shapes import tuple_prod
 
@@ -126,9 +126,11 @@ class Prior(object):
     def build(self, U, *parents, **kwargs) -> jnp.ndarray:
         if self.built:
             logger.warning(f"Trying to build a prior {self}, again.")
+            return
         output = self.transform_U(U, *parents, **kwargs)
-        self._shape = output.shape
-        self._dtype = output.dtype
+        # TODO: shape and dtype
+        self._shape = tree_map(lambda a: a.shape, output)
+        self._dtype = tree_map(lambda a: a.dtype, output)
         self._built = True
         return output
 
@@ -195,6 +197,12 @@ class Prior(object):
     def matmul(self, other, *, name=None, tracked=False):
         return maybe_binary_prior_op(jnp.matmul, self, other, name=name, tracked=tracked)
 
+    def replace_nans(self, other, *, name=None, tracked=False):
+        def replace_nans(param, fill_value):
+            return jnp.where(jnp.isnan(param), fill_value, param)
+
+        return maybe_binary_prior_op(replace_nans, self, other, name=name, tracked=tracked)
+
     # unary ops
 
     def getitem(self, item, *, name=None, tracked=False):
@@ -211,6 +219,18 @@ class Prior(object):
             return jnp.sum(x, axis=axis, keepdims=keepdims)
 
         return unnary_prior_op(sum)(self, name=name, tracked=tracked)
+
+    def cumsum(self, axis=-1, *, name=None, tracked=False):
+        def cumsum(x):
+            return jnp.cumsum(x, axis=axis)
+
+        return unnary_prior_op(cumsum)(self, name=name, tracked=tracked)
+
+    def diff(self, n=1, axis=-1, prepend=None, append=None, *, name=None, tracked=False):
+        def diff(x):
+            return jnp.diff(x, n=n, axis=axis, prepend=prepend, append=append)
+
+        return unnary_prior_op(diff)(self, name=name, tracked=tracked)
 
     def mean(self, axis=-1, keepdims=False, *, name=None, tracked=False):
         def mean(x):
@@ -364,9 +384,9 @@ class Prior(object):
         """
         assert self.built, "Must build prior first, i.e. feed PriorChain to a NestedSampler."
         transformed_prior = self.transform_U(U, *parents, **kwargs)
-        if transformed_prior.shape != self.shape:
+        if tree_map(lambda x: x.shape, transformed_prior) != self.shape:
             raise ValueError("Expected shape_dict {}, got {}.".format(self.shape, transformed_prior.shape))
-        if self.dtype != transformed_prior.dtype:
+        if tree_map(lambda x: x.dtype, transformed_prior) != self.dtype:
             raise ValueError("Expected dtype {} got {}.".format(self.dtype, transformed_prior.dtype))
         return transformed_prior
 

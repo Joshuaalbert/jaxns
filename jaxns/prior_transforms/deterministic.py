@@ -6,6 +6,19 @@ from jaxns.prior_transforms.common import HierarchicalPrior
 
 
 class DeterministicTransformPrior(HierarchicalPrior):
+    """
+    Used to create a RV as a deterministic transformation of previously defined RVs.
+
+    Example:
+         >>>from jaxns import PriorChain, UniformPrior, DeterministicTransformPrior
+         >>>from jax import numpy as jnp
+         >>>with PriorChain() as prior_chain:
+         >>>    x = UniformPrior('x', 0, 1)
+         >>>    def transform(x):
+         >>>        return x + 1
+         >>>    y = DeterministicTransformPrior('y', transform, x, tracked=False)
+    """
+
     @prior_docstring
     def __init__(self, name, transform, *params, tracked=True):
         """
@@ -43,3 +56,20 @@ class GaussianProcessKernelPrior(DeterministicTransformPrior):
             return kernel(X, X, *gp_params) + 1e-6 * jnp.eye(X.shape[0])
 
         super(GaussianProcessKernelPrior, self).__init__(name, _transform, *gp_params, tracked=tracked)
+
+
+class ReplaceNanPrior(DeterministicTransformPrior):
+    @prior_docstring
+    def __init__(self, name, param, fill_value, tracked=False):
+        """
+        Replaces all occurances of nan in `param` with fill_value.
+
+        Args:
+            param: parameter to replace nans in
+            fill_value: scalar value to fill.
+        """
+
+        def _transform(param, fill_value):
+            return jnp.where(jnp.isnan(param), fill_value, param)
+
+        super(ReplaceNanPrior, self).__init__(name, _transform, param, fill_value, tracked=tracked)

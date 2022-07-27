@@ -84,10 +84,10 @@ def build_get_sample(prior_chain: PriorChain, loglikelihood_from_U,
             # 2: unsuccessful proposal -> shrink interval
 
             process_step = jnp.where(good_proposal & enough_proposals,
-                                     jnp.full(good_proposal.shape, 0, proposal_state.process_step.dtype),
+                                     jnp.full(good_proposal.shape, 0, int_type),
                                      jnp.where(good_proposal & ~enough_proposals,
-                                               jnp.full(good_proposal.shape, 1, proposal_state.process_step.dtype),
-                                               jnp.full(good_proposal.shape, 2, proposal_state.process_step.dtype)
+                                               jnp.full(good_proposal.shape, 1, int_type),
+                                               jnp.full(good_proposal.shape, 2,int_type)
                                                )
                                      )
 
@@ -190,10 +190,49 @@ def compute_remaining_evidence(sample_idx, log_dZ_mean):
                                        sample_idx - jnp.ones_like(sample_idx)))
     return log_Z_remaining
 
+def evidence_goal(state:NestedSamplerState):
+    """
+    Estimates the impact of adding a sample at a certain likelihood contour by computing the impact of removing a point.
+
+    Args:
+        state:
+
+    Returns:
+
+    """
+    # evidence uncertainty minimising goal.
+    # remove points and see what increases uncertainty the most.
+
+    _, log_Z_var0 = linear_to_log_stats(log_f_mean=state.evidence_calculation.log_Z_mean,
+                                        log_f2_mean=state.evidence_calculation.log_Z2_mean)
+    num_shrinkages = -state.evidence_calculation.log_X_mean
+    delta_idx = state.sample_idx / (2. * num_shrinkages)
+
+    def body(body_state):
+        (remove_idx, inf_max_dvar, inf_max_dvar_idx, sup_max_dvar, sup_max_dvar_idx) = body_state
+        # removing a sample is equivalent to setting that n=inf at that point
+        perturbed_num_live_points = replace_index(state.sample_collection.num_live_points, jnp.inf,
+                                                  remove_idx.astype(int_type))
+        perturbed_sample_collection = state.sample_collection._replace(num_live_points=perturbed_num_live_points)
+        (evidence_calculation, _, _, _, _) = \
+            compute_evidence(num_samples=state.sample_idx, sample_collection=perturbed_sample_collection)
+        _, log_Z_var = linear_to_log_stats(log_f_mean=evidence_calculation.log_Z_mean,
+                                           log_f2_mean=evidence_calculation.log_Z2_mean)
+        dvar = log_Z_var - log_Z_var0
+
+        min_dvar, min_dvar_idx
+
+        return remove_idx + delta_idx, dvar
 
 def _get_dynamic_goal(state: NestedSamplerState, G: jnp.ndarray):
     """
-    Get contours that we'd like to reinforce.
+    Get contiguous contours that we'd like to reinforce.
+
+    We have two objectives, which can be mixed by setting `G`.
+    G=0: choose contours that decrease evidence uncertainty the most.
+    G=1: choose contours that increase ESS the most.
+
+    Note: This slightly departs from the Dynamic Nested Sampling paper.
     """
 
     n_i = state.sample_collection.num_live_points
@@ -236,37 +275,14 @@ def get_dynamic_goal(key, state: NestedSamplerState, num_samples: int, G: jnp.nd
 
     return log_L_constraint_start, log_L_constraint_end
 
-
-def compute_evidence(state: NestedSamplerState):
-    """
-    Computes the evidence and statistics.
-    """
-    # Sample collection has unsorted samples, and incorrect num_live_points.
-    sample_collection = state.sample_collection
-    num_live_points, sort_idx = compute_num_live_points_from_unit_threads(
-        log_L_constraints=sample_collection.log_L_constraint,
-        log_L_samples=sample_collection.log_L_samples,
-        num_samples=state.sample_idx,
-        return_sort_idx=True)
-
-    sample_collection = sample_collection._replace(num_live_points=num_live_points,
-                                                   log_L_samples=sample_collection.log_L_samples[sort_idx],
-                                                   log_L_constraint=sample_collection.log_L_constraint[sort_idx],
-                                                   points_X=tree_map(lambda x: x[sort_idx], sample_collection.points_X),
-                                                   points_U=sample_collection.points_U[sort_idx],
-                                                   num_likelihood_evaluations=
-                                                   sample_collection.num_likelihood_evaluations[sort_idx],
-                                                   num_slices=sample_collection.num_slices[sort_idx]
-                                                   )
-    # The initial log_L_contour is L_min after lexigraphic sort, which is usually -inf, but not always.
-    init_log_L_contour = sample_collection.log_L_constraint[0]
-    # This contains the required information to compute Z and ZH
-
+def compute_evidence(num_samples, sample_collection: SampleCollection):
     initial_evidence_calculation = _init_evidence_calculation()
+    init_log_L_contour = sample_collection.log_L_constraint[0]
+
 
     def thread_cond(body_state: Tuple[EvidenceCalculation, jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]):
         (evidence_calculation, idx, log_L_contour, log_dZ_mean, log_X_mean) = body_state
-        return idx < state.sample_idx
+        return idx < num_samples
 
     def thread_body(body_state: Tuple[EvidenceCalculation, jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]) \
             -> Tuple[EvidenceCalculation, jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
@@ -293,6 +309,32 @@ def compute_evidence(state: NestedSamplerState):
                    thread_body,
                    (initial_evidence_calculation, jnp.asarray(0, int_type), init_log_L_contour,
                     sample_collection.log_dZ_mean, sample_collection.log_X_mean))
+    return (final_evidence_calculation, final_idx, final_log_L_contour, final_log_dZ_mean, final_log_X_mean)
+
+def analyse_sample_collection(state: NestedSamplerState):
+    """
+    Computes the evidence and statistics.
+    """
+    # Sample collection has unsorted samples, and incorrect num_live_points.
+    sample_collection = state.sample_collection
+    num_live_points, sort_idx = compute_num_live_points_from_unit_threads(
+        log_L_constraints=sample_collection.log_L_constraint,
+        log_L_samples=sample_collection.log_L_samples,
+        num_samples=state.sample_idx,
+        return_sort_idx=True)
+
+    sample_collection = sample_collection._replace(num_live_points=num_live_points,
+                                                   log_L_samples=sample_collection.log_L_samples[sort_idx],
+                                                   log_L_constraint=sample_collection.log_L_constraint[sort_idx],
+                                                   points_X=tree_map(lambda x: x[sort_idx], sample_collection.points_X),
+                                                   points_U=sample_collection.points_U[sort_idx],
+                                                   num_likelihood_evaluations=
+                                                   sample_collection.num_likelihood_evaluations[sort_idx],
+                                                   num_slices=sample_collection.num_slices[sort_idx]
+                                                   )
+
+    (final_evidence_calculation, final_idx, final_log_L_contour, final_log_dZ_mean, final_log_X_mean) = \
+        compute_evidence(num_samples=state.sample_idx, sample_collection=sample_collection)
 
     final_sample_collection = sample_collection._replace(log_dZ_mean=final_log_dZ_mean, log_X_mean=final_log_X_mean)
     state = state._replace(evidence_calculation=final_evidence_calculation,
@@ -323,7 +365,7 @@ def collect_samples(state: NestedSamplerState, new_reservoir: Reservoir) -> Nest
                            num_likelihood_evaluations=state.num_likelihood_evaluations + jnp.sum(
                                new_reservoir.num_likelihood_evaluations).astype(int_type))
     # Recompute statistics
-    state = compute_evidence(state)
+    state = analyse_sample_collection(state)
     return state
 
 
@@ -346,7 +388,7 @@ def update_samples(state: NestedSamplerState, new_reservoir: Reservoir, update_i
     # Update the number of samples, and sample collection
     state = state._replace(sample_collection=sample_collection)
     # Recompute statistics
-    state = compute_evidence(state)
+    state = analyse_sample_collection(state)
     return state
 
 
@@ -354,7 +396,7 @@ def _update_evidence_calculation(num_live_points: jnp.ndarray,
                                  log_L: jnp.ndarray,
                                  next_log_L_contour: jnp.ndarray,
                                  evidence_calculation: EvidenceCalculation) -> EvidenceCalculation:
-    num_live_points = num_live_points.astype(log_L.dtype)
+    num_live_points = num_live_points.astype(float_type)
     next_L = LogSpace(next_log_L_contour)
     L_contour = LogSpace(log_L)
     midL = LogSpace(jnp.log(0.5)) * (next_L + L_contour)
@@ -388,12 +430,12 @@ def _update_evidence_calculation(num_live_points: jnp.ndarray,
     next_dZ2_mean = dZ2_mean + (X2_mean * t2_mean * midL ** 2)
 
     next_evidence_calculation = evidence_calculation._replace(
-        log_X_mean=next_X_mean.log_abs_val.astype(evidence_calculation.log_X_mean.dtype),
-        log_X2_mean=next_X2_mean.log_abs_val.astype(evidence_calculation.log_X2_mean.dtype),
-        log_Z_mean=next_Z_mean.log_abs_val.astype(evidence_calculation.log_Z_mean.dtype),
-        log_Z2_mean=next_Z2_mean.log_abs_val.astype(evidence_calculation.log_Z2_mean.dtype),
-        log_ZX_mean=next_ZX_mean.log_abs_val.astype(evidence_calculation.log_ZX_mean.dtype),
-        log_dZ2_mean=next_dZ2_mean.log_abs_val.astype(evidence_calculation.log_dZ2_mean.dtype)
+        log_X_mean=next_X_mean.log_abs_val.astype(float_type),
+        log_X2_mean=next_X2_mean.log_abs_val.astype(float_type),
+        log_Z_mean=next_Z_mean.log_abs_val.astype(float_type),
+        log_Z2_mean=next_Z2_mean.log_abs_val.astype(float_type),
+        log_ZX_mean=next_ZX_mean.log_abs_val.astype(float_type),
+        log_dZ2_mean=next_dZ2_mean.log_abs_val.astype(float_type)
     )
     # log_Z_mean, log_Z_var = linear_to_log_stats(next_evidence_calculation.log_Z_mean, log_f2_mean=next_evidence_calculation.log_Z2_mean)
 
@@ -438,7 +480,7 @@ def _single_sample_constraint_for_contour_and_idx(indices_contour_reinforce,
     return log_L_contraint_reinforce, constraint_supremum_idx
 
 
-def _update_thread_stats(state: NestedSamplerState):
+def _update_thread_stats(state: NestedSamplerState) -> ThreadStats:
     log_Z_mean, log_Z_var = linear_to_log_stats(
         log_f_mean=state.evidence_calculation.log_Z_mean,
         log_f2_mean=state.evidence_calculation.log_Z2_mean)
@@ -471,7 +513,13 @@ def _sample_collection_to_reservoir(sample_collection: SampleCollection) -> Rese
     return reservoir
 
 
-def _init_evidence_calculation():
+def _init_evidence_calculation() -> EvidenceCalculation:
+    """
+    Returns an initial evidence calculation object.
+
+    Returns:
+        EvidenceCalculation
+    """
     evidence_calculation = EvidenceCalculation(
         log_X_mean=jnp.asarray(0., float_type),
         log_X2_mean=jnp.asarray(0., float_type),
