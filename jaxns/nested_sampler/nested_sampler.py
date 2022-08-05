@@ -712,6 +712,9 @@ class NestedSampler(object):
             if adaptive_evidence_stopping_threshold is None:
                 # force closure
                 _adaptive_evidence_stopping_threshold = 0.5 * jnp.sqrt(log_Z_var)
+                _adaptive_evidence_stopping_threshold = jnp.where(jnp.isnan(_adaptive_evidence_stopping_threshold),
+                                                                  jnp.inf,
+                                                                  _adaptive_evidence_stopping_threshold)
             else:
                 _adaptive_evidence_stopping_threshold = adaptive_evidence_stopping_threshold
 

@@ -2,7 +2,7 @@ import logging
 from typing import NamedTuple
 
 import numpy as np
-from jax import random, vmap, numpy as jnp, tree_map, jit
+from jax import random, vmap, numpy as jnp, tree_map, jit, grad
 from jax.lax import while_loop
 
 from jaxns.internals.log_semiring import LogSpace
@@ -272,6 +272,31 @@ def analytic_log_evidence(prior_chain: PriorChain, log_likelihood, S: int = 60):
     Z_true = (LogSpace(jit(vmap(lambda arg: log_likelihood(**prior_chain(arg))))(args)).nansum() * LogSpace(
         jnp.log(du)) ** prior_chain.U_ndims)
     return Z_true.log_abs_val
+
+def analytic_posterior_samples(prior_chain: PriorChain, log_likelihood, S: int = 60):
+    """
+    Compute the evidence with brute-force over a regular grid.
+
+    Args:
+        prior_chain: PriorChain of model
+        log_likelihood: callable(**samples)
+        S: int, resolution of grid
+
+    Returns:
+        log(Z)
+    """
+    log_likelihood = prepare_func_args(log_likelihood)
+    if not prior_chain.built:
+        prior_chain.build()
+
+    u_vec = jnp.linspace(jnp.finfo(float_type).eps, 1. - jnp.finfo(float_type).eps, S)
+    du = u_vec[1] - u_vec[0]
+    args = jnp.stack([x.flatten() for x in jnp.meshgrid(*[u_vec] * prior_chain.U_ndims, indexing='ij')], axis=-1)
+
+    samples = jit(vmap(prior_chain))(args)
+    log_L = jit(vmap(log_likelihood))(**samples)
+    dZ = LogSpace(log_L) * LogSpace(jnp.log(du)) ** prior_chain.U_ndims
+    return samples, dZ.log_abs_val
 
 
 def _isinstance_namedtuple(obj) -> bool:
