@@ -8,9 +8,12 @@ from jaxns.prior_transforms import PriorChain, HalfLaplacePrior, GumbelBernoulli
 
 def test_piecewise_linear():
     with PriorChain() as prior_chain:
-        PiecewiseLinearPrior('a', 10, low=-2., high=2.)
+        u = jnp.linspace(0., 1., 20)
+        x = jnp.linspace(-2, 2., 20)
+        PiecewiseLinearPrior('a', u, x,sorted=True)
     prior_chain.build()
     samples = vmap(lambda key: prior_chain(prior_chain.sample_U_flat(key)))(random.split(random.PRNGKey(42), 10000))
+
     assert not jnp.any(jnp.isnan(samples['a']))
     assert jnp.all(samples['a'] <= 2.)
     assert jnp.all(samples['a'] >= -2.)

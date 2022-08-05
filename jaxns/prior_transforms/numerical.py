@@ -1,34 +1,40 @@
-from jax import numpy as jnp, random
+from jax import numpy as jnp, random, vmap
 
 from jaxns.prior_transforms import ContinuousPrior, prior_docstring, ForcedIdentifiabilityPrior, broadcast_shapes, get_shape
 from jaxns.internals.random import resample_indicies
 
 
+
 class PiecewiseLinearPrior(ContinuousPrior):
     @prior_docstring
-    def __init__(self, name, n, low, high, tracked=True):
+    def __init__(self, name, u, x, sorted:bool=False, *, tracked=True):
         """
         Sample from a piece-wise linear approximation to a prior when the quantile is given by
         a piecewise linear approximation.
 
         Args:
             name: str, name of prior
-            n: int, number of nodes in the piece wise linear approximation, excluding endpoints.
-                Thus, there are n + 1 linear segments defining the quantile.
-            low: Prior, the lower end of support
-            high: Prior, the upper end of support
+            u: [..., N] points along quantile domain
+            x: [..., N] points along quantile co-domain
+            sorted: bool, whether U can be assumed to be sorted (more efficient)
             tracked:
         """
-        low = self._prepare_parameter(name, 'low', low)
-        high = self._prepare_parameter(name, 'high', high)
-        x = ForcedIdentifiabilityPrior(f"_{name}_x", n, low, high, tracked=tracked)
-        y = ForcedIdentifiabilityPrior(f"_{name}_y", n, 0., 1., tracked=tracked)
-        shape = broadcast_shapes(get_shape(x), get_shape(y))[:-1]
+        self.sorted = sorted
 
-        super(PiecewiseLinearPrior, self).__init__(name, shape, [x, y, low, high], tracked=tracked)
+        u = self._prepare_parameter(name, 'u', u)
+        x = self._prepare_parameter(name, 'x', x)
+        shape = broadcast_shapes(get_shape(u), get_shape(x))[:-1]
 
-    def transform_U(self, U, x, y, low, high, **kwargs):
-        return jnp.interp(U, y, x, left=low, right=high)
+        super(PiecewiseLinearPrior, self).__init__(name, shape, [u, x], tracked=tracked)
+
+    def transform_U(self, U, u, x, **kwargs):
+        if not self.sorted:
+            idx = jnp.argsort(u,axis=-1)
+            u = u[...,idx]
+            x = x[...,idx]
+        if len(x.shape) > 1:
+            return vmap(lambda U, u, x: jnp.interp(U, u, x))(U,u,x)
+        return jnp.interp(U, u, x)
 
 
 class FromSamplesPrior(ContinuousPrior):
