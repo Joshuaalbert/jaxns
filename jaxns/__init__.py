@@ -10,6 +10,7 @@ from jaxns.nested_sampler.utils import (summary,
                                         marginalise_static,
                                         marginalise_dynamic,
                                         analytic_log_evidence,
+                                        analytic_posterior_samples,
                                         evidence_posterior_samples,
                                         save_results,
                                         load_results)

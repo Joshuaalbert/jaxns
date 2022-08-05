@@ -56,6 +56,9 @@ def test_chunked_pmap():
 
 
 def test_prepare_func_args():
+
+    prepare_func_args(lambda a: a)(a=1,b=2)
+
     def f(a, b=1):
         return a + b
 
