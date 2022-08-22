@@ -333,7 +333,7 @@ class PriorChain(object):
         Args:
             key: PRNG key
             num_samples: int, number of samples to check
-            log_likelihood: optional, callable(**prior, **kwargs)
+            log_likelihood: optional, :code:`callable(**prior, **kwargs)`
             **kwargs: optional, dict to pass to log-likelihood and prior generation.
         """
         log_likelihood = prepare_func_args(log_likelihood)

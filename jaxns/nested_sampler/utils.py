@@ -25,12 +25,13 @@ def marginalise_static(key, samples, log_weights, ESS, fun):
 
     Args:
         key: PRNG key
-        samples: dict of batched array of nested sampling samples
+        samples (dict): dict of batched array of nested sampling samples
         log_weights: log weights from nested sampling
         ESS: static effective sample size
-        fun: callable(**kwargs) to marginalise.
+        fun (:code:`callable(**kwargs)`): function to marginalise
 
-    Returns: expectation over resampled samples.
+    Returns:
+        expectation over resampled samples.
     """
     fun = prepare_func_args(fun)
     samples = resample(key, samples, log_weights, S=ESS, replace=True)
@@ -44,12 +45,13 @@ def marginalise_dynamic(key, samples, log_weights, ESS, fun):
 
     Args:
         key: PRNG key
-        samples: dict of batched array of nested sampling samples
+        samples (dict): dict of batched array of nested sampling samples
         log_weights: log weights from nested sampling
         ESS: dynamic effective sample size
-        fun: callable(**kwargs) to marginalise.
+        fun (:code:`callable(**kwargs)`): function to marginalise
 
-    Returns: expectation over resampled samples.
+    Returns:
+        expectation over resampled samples.
     """
     fun = prepare_func_args(fun)
     ESS = jnp.asarray(ESS)
@@ -81,10 +83,11 @@ def estimate_map(samples, ESS=None):
     Estimates MAP-point using a histogram of equally weighted samples.
 
     Args:
-        samples: dict, equally weighted samples
+        samples (dict): dict equally weighted samples
         ESS: int
 
-    Returns: dict of samples at MAP-point.
+    Returns:
+        dict of samples at MAP-point.
     """
 
     def _get_map(samples):
@@ -112,9 +115,10 @@ def maximum_a_posteriori_point(results: NestedSamplerResults):
     Does this by choosing the point with largest L(x) p(x).
 
     Args:
-        results: NestedSamplerResult
+        results (NestedSamplerResult): Nested sampler result
 
-    Returns: dict of samples at MAP-point.
+    Returns:
+        dict of samples at MAP-point.
     """
 
     map_idx = jnp.argmax(results.log_dp_mean)
@@ -147,7 +151,7 @@ def summary(results: NestedSamplerResults) -> str:
     Gives a summary of the results of a nested sampling run.
 
     Args:
-        results: NestedSamplerResults
+        results (NestedSamplerResults): Nested sampler result
     """
     main_s = []
 
@@ -256,8 +260,8 @@ def analytic_log_evidence(prior_chain: PriorChain, log_likelihood, S: int = 60):
 
     Args:
         prior_chain: PriorChain of model
-        log_likelihood: callable(**samples)
-        S: int, resolution of grid
+        log_likelihood (:code:`callable(**samples)`): log-likelihood function
+        S (int): resolution of grid
 
     Returns:
         log(Z)
@@ -278,9 +282,9 @@ def analytic_posterior_samples(prior_chain: PriorChain, log_likelihood, S: int =
     Compute the evidence with brute-force over a regular grid.
 
     Args:
-        prior_chain: PriorChain of model
-        log_likelihood: callable(**samples)
-        S: int, resolution of grid
+        prior_chain (jaxns.PriorChain): PriorChain of model
+        log_likelihood (:code:`callable(**samples)`): log-likelihood function
+        S (int): resolution of grid
 
     Returns:
         log(Z)
@@ -312,8 +316,8 @@ def save_pytree(pytree: NamedTuple, save_file: str):
     Saves results of nested sampler in a npz file.
 
     Args:
-        results: NestedSamplerResults
-        save_file: str, filename
+        results (NestedSamplerResults): Nested sampler result
+        save_file (str): filename
     """
     pytree_np = tree_map(lambda v: np.asarray(v) if v is not None else None, pytree)
 
@@ -338,8 +342,8 @@ def save_results(results: NestedSamplerResults, save_file: str):
     Saves results of nested sampler in a npz file.
 
     Args:
-        results: NestedSamplerResults
-        save_file: str, filename
+        results (NestedSamplerResults): Nested sampler result
+        save_file (str): filename
     """
     save_pytree(results, save_file)
 
@@ -349,7 +353,7 @@ def load_pytree(save_file: str):
     Loads saved nested sampler results from a npz file.
 
     Args:
-        save_file: str
+        save_file (str): filename
 
     Returns:
         NestedSamplerResults
@@ -373,7 +377,7 @@ def load_results(save_file: str) -> NestedSamplerResults:
     Loads saved nested sampler results from a npz file.
 
     Args:
-        save_file: str
+        save_file (str): filename
 
     Returns:
         NestedSamplerResults

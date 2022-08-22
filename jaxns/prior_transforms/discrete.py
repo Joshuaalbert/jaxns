@@ -25,16 +25,18 @@ class PoissonPrior(HierarchicalPrior):
 
     def transform_U(self, U, lamda, **kwargs):
         """
-        Algorithmic Poisson generator based upon the inversion by sequential search:
+        Algorithmic Poisson generator based upon the inversion by sequential search
+        
+        .. code-block::
 
-            init:
-                Let log_x ← -inf, log_p ← −λ, log_s ← log_p.
-                Generate uniform random number u in [0,1].
-            while log_u > log_s do:
-                log_x ← logaddexp(log_x, 0).
-                log_p ← log_p + log_λ - log_x.
-                log_s ← logaddexp(log_s, log_p).
-            return exp(log_x).
+                init:
+                    Let log_x ← -inf, log_p ← −λ, log_s ← log_p.
+                    Generate uniform random number u in [0,1].
+                while log_u > log_s do:
+                    log_x ← logaddexp(log_x, 0).
+                    log_p ← log_p + log_λ - log_x.
+                    log_s ← logaddexp(log_s, log_p).
+                return exp(log_x).
 
         Args:
             U:
@@ -42,7 +44,7 @@ class PoissonPrior(HierarchicalPrior):
             **kwargs:
 
         Returns:
-
+            jax.numpy.ndarray
         """
         U = jnp.clip(U, 1e-8, 1. - 1e-8)
         U, lamda = jnp.broadcast_arrays(U, lamda)

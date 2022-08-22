@@ -32,8 +32,8 @@ def dict_multimap(f, d, *args):
     Map function across key, value pairs in dicts.
 
     Args:
-        f: callable(d, *args)
-        d: dict
+        f (callable): :code:`callable(d, *args)`
+        d (dict): dictionary of key, value pairs
         *args: more dicts
 
     Returns: dict with same keys as d, with values result of `f`.
@@ -48,16 +48,16 @@ def dict_multimap(f, d, *args):
 
 def prepare_func_args(f):
     """
-    Takes a callable(a,b,...,z=Z) and prepares it into callable(**kwargs), such that only
-    a,b,...,z are taken from **kwargs and the rest ignored.
+    Takes a callable(a,b,...,z=Z) and prepares it into ``callable(**kwargs)``, such that only
+    a,b,...,z are taken from ``**kwargs`` and the rest ignored.
 
-    This allows f(**kwarg) to work even if f() is missing some keys from kwargs.
+    This allows ``f(**kwarg)`` to work even if ``f()`` is missing some keys from kwargs.
 
     Args:
-        f: callable(a,b,...,z=Z)
+        f: ``callable(a,b,...,z=Z)``
 
     Returns:
-        callable(**kwargs) where **kwargs are the filtered for args of the original function.
+        ``callable(**kwargs)`` where ``**kwargs`` are the filtered for args of the original function.
     """
     if hasattr(f, "__old_name__"):
         raise ValueError(f"function {f.__old_name__} has already done prepare_func_args.")
