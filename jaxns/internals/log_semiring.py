@@ -28,13 +28,13 @@ def signed_logaddexp(log_abs_val1, sign1, log_abs_val2, sign2):
     Broadcasting supported.
 
     Args:
-        log_abs_val1: log(|val1|)
-        sign1: sign(val1)
-        log_abs_val2: log(|val2|)
-        sign2: sign(val2)
+        log_abs_val1: Logarithm of absolute value of val1, :math:`\log(|x_1|)`
+        sign1: Sign of val1, :math:`\mathrm{sign}(x_1)`
+        log_abs_val2: Logarithm of absolute value of val2, :math:`\log(|x_2|)`
+        sign2: Sign of val2, :math:`\mathrm{sign}(x_2)`
 
     Returns:
-        (log(|val1+val2|), sign(val1+val2))
+        (:math:`\log(|x_1+x_2|)`, :math:`\mathrm{sign}(x_1+x_2)`)
     """
     amax = jnp.maximum(log_abs_val1, log_abs_val2)
     signmax = jnp.where(log_abs_val1 > log_abs_val2, sign1, sign2)

@@ -5,11 +5,30 @@ def fourier(a, *coords):
     """
     Evaluates
 
-    F[a](s) = int a(x) e^{-2pi i s x} dx
-    A(k ds) = sum_m a(x_m) e^{-2pi i k ds (x0 + corner_indices dx)} dx
-            = e^{-2pi i k ds x0} dx sum_m a(x_m) e^{-2pi i k ds corner_indices dx}
-    dx ds = 1/num_options => ds = 1/(dx num_options)
-    ds x0 = k ds x0 = k/num_options * x0/dx
+    .. math::
+    
+        F[a](s) = \int a(x) \exp(-2\pi i s x) dx,
+    
+    and,
+    
+    .. math::
+    
+        A(k ds) = \sum_m a(x_m) \exp(-2\pi i k ds (x_0 + corner_indices dx)) dx
+                = \exp(-2\pi i k ds x_0) dx \sum_m a(x_m) \exp(-2\pi i k ds corner_indices dx)
+        
+    where,
+    
+    .. math::
+        
+        dx ds = 1/N \\rightarrow ds = 1/(dx N)
+        
+    and,
+    
+    .. math::
+    
+        ds x_0 = k ds x_0 = k/N x_0/dx
+    
+    where :math:`N` is the number of options, and...
     """
 
     factor = fft_factor(*coords)
