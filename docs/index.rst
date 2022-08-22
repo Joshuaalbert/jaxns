@@ -4,8 +4,7 @@
 Welcome to jaxns's documentation!
 =================================
 
-.. note::
-
+.. warning::
    This documentation is a work in progress and not yet merged with the official
    codebase, please do not expect it to be complete or correct.
 
