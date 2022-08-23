@@ -33,6 +33,9 @@ extensions = [
 templates_path = ['_templates']
 exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
 
+suppress_warnings = [
+    "autoapi.python_import_resolution"  # E.g. cyclical imports
+]
 
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
@@ -46,19 +49,24 @@ html_theme_options = {
 # -- Options for AutoAPI -----------------------------------------------------
 
 autoapi_dirs = ['../jaxns']
-autoapi_root = 'api'
-autoapi_options =  [ 'members', 'undoc-members', 'show-inheritance', 'special-members', 'imported-members',]
-autoapi_member_order = 'bysource'
-autoapi_ignore = ["*/tests/*"]
+autoapi_root = 'api'  # where to put the generated files relative to root
+autoapi_options =  ['members', 'undoc-members', 'show-inheritance', 
+                    'special-members', 'imported-members']
+autoapi_member_order = 'bysource'  # order members by source code
+autoapi_ignore = ["*/tests/*"]  # ignore tests
 autoapi_template_dir = '_templates/autoapi'
+autoapi_python_class_content = "both"  # Use both class and __init__ docstrings
+autoapi_add_toctree_entry = False
 
 
 # -- Options for NBSphinx ----------------------------------------------------
 
-nbsphinx_execute = "never"
+nbsphinx_execute = "never"  # never execute notebooks (slow) during building
 
 
 # -- Copy notebooks to docs --------------------------------------------------
+# Copies the notebooks from the project directory to the docs directory so that
+# they can be parsed by nbsphinx.
 
 if not os.path.exists("examples"):
     os.makedirs("examples")
