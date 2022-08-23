@@ -40,6 +40,9 @@ suppress_warnings = [
     "autoapi.python_import_resolution"  # E.g. cyclical imports
 ]
 
+add_module_names = False
+modindex_common_prefix = ["jaxns."]  # So module index not all under "J"
+
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 
