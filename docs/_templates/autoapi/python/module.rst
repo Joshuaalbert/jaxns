@@ -6,6 +6,12 @@
 =========={{ "=" * obj.short_name|length }}
 
 .. py:module:: {{ obj.name }}
+   {% if obj.docstring %}
+   {% set lines = obj.docstring.split("\n") %}
+   :synopsis: {{ lines[0] }}
+   {% endif %}
+
+.. rubric:: :code:`{{ obj.name }}`
 
 {% if obj.docstring %}
 .. autoapi-nested-parse::
