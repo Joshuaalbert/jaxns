@@ -11,27 +11,30 @@ import os, glob, shutil, sphinx_rtd_theme
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
-project = 'jaxns'
-copyright = '2022, Joshua Albert'
-author = 'Joshua Albert'
-release = '1.1.1'
+project = "jaxns"
+copyright = "2022, Joshua Albert"
+author = "Joshua Albert"
+release = "1.1.1"
 
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 
 extensions = [
-    "sphinx_rtd_theme",
-    "autoapi.extension",
+    # Native Sphinx extensions:
     "sphinx.ext.autodoc",
     "sphinx.ext.autosummary",
-    'sphinx.ext.napoleon',
-    'sphinx.ext.mathjax',
-    'nbsphinx',
+    "sphinx.ext.napoleon",
+    "sphinx.ext.mathjax",
+    "sphinx.ext.intersphinx",
+    # Third-party extensions:
+    "sphinx_rtd_theme",
+    "autoapi.extension",
+    "nbsphinx",
 ]
 
-templates_path = ['_templates']
-exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
+templates_path = ["_templates"]
+exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
 
 suppress_warnings = [
     "autoapi.python_import_resolution"  # E.g. cyclical imports
@@ -41,20 +44,25 @@ suppress_warnings = [
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 
 html_theme = "sphinx_rtd_theme"
-html_static_path = ['_static']
+html_static_path = ["_static"]
 html_theme_options = {
     "navigation_depth": -1,
 }
 
+# -- Options for autodoc -----------------------------------------------------
+
+autodoc_typehints = "description"
+
+
 # -- Options for AutoAPI -----------------------------------------------------
 
-autoapi_dirs = ['../jaxns']
-autoapi_root = 'api'  # where to put the generated files relative to root
-autoapi_options =  ['members', 'undoc-members', 'show-inheritance', 
-                    'special-members', 'imported-members']
-autoapi_member_order = 'bysource'  # order members by source code
+autoapi_dirs = ["../jaxns"]
+autoapi_root = "api"  # where to put the generated files relative to root
+autoapi_options =  ["members", "undoc-members", "show-inheritance", 
+                    "special-members", "imported-members"]
+autoapi_member_order = "bysource"  # order members by source code
 autoapi_ignore = ["*/tests/*"]  # ignore tests
-autoapi_template_dir = '_templates/autoapi'
+autoapi_template_dir = "_templates/autoapi"
 autoapi_python_class_content = "both"  # Use both class and __init__ docstrings
 autoapi_add_toctree_entry = False
 
@@ -75,3 +83,12 @@ for file in glob.glob("../examples/*/*.ipynb"):
     # os.system("cp {} examples".format(file))
     # os.path.join("examples", os.path.basename(file))
     shutil.copy(file, "examples/")
+
+
+# -- Options for intersphinx -------------------------------------------------
+
+intersphinx_mapping = {
+    "python": ("https://docs.python.org/3/", None),
+    "numpy": ("http://docs.scipy.org/doc/numpy/", None),
+    "jax": ("https://jax.readthedocs.io/en/latest/", None),
+}
