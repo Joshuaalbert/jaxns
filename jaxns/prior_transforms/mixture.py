@@ -6,6 +6,10 @@ from jaxns.prior_transforms import prior_docstring, get_shape
 from jaxns.prior_transforms.common import ContinuousPrior
 from jaxns.prior_transforms.discrete import GumbelCategoricalPrior
 
+__all__ = [
+    "GMMDiagPrior",
+]
+
 
 class GMMDiagPrior(ContinuousPrior):
     """

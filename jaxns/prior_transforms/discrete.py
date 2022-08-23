@@ -7,6 +7,14 @@ from jaxns.internals.types import float_type, int_type
 from jaxns.prior_transforms import (DeterministicTransformPrior, prior_docstring, Gumbel, get_shape, UniformBase,
                                     HierarchicalPrior, UniformPrior)
 
+__all__ = [
+    "PoissonPrior",
+    "CatagoricalPrior",
+    "BernoulliPrior",
+    "GumbelCategoricalPrior",
+    "GumbelBernoulliPrior",
+]
+
 
 class PoissonPrior(HierarchicalPrior):
     @prior_docstring

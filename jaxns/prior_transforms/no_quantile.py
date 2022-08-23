@@ -5,6 +5,13 @@ from jax.scipy.special import gammaln
 from jaxns.internals.shapes import broadcast_shapes
 from jaxns.prior_transforms import ContinuousPrior, prior_docstring, get_shape, Prior
 
+__all__ = [
+    "StrictlyPositivePrior",
+    "GammaPrior",
+    "RealPrior",
+    "StudentT",
+]
+
 
 class StrictlyPositivePrior(ContinuousPrior):
     @prior_docstring
