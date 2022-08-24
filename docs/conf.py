@@ -27,6 +27,7 @@ extensions = [
     "sphinx.ext.napoleon",
     "sphinx.ext.mathjax",
     "sphinx.ext.intersphinx",
+    "sphinx.ext.viewcode",
     # Third-party extensions:
     "sphinx_rtd_theme",
     "autoapi.extension",
