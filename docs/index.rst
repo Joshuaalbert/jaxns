@@ -27,11 +27,44 @@ Welcome to jaxns's documentation!
 
 .. toctree::
    :maxdepth: 1
-   :caption: Examples
+   :caption: Simple Examples
    :glob:
-   :reversed:
 
-   examples/*
+   examples/simple/*
+
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Physics Examples
+   :glob:
+
+   examples/physics/*
+
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Discrete Examples
+   :glob:
+
+   examples/discrete/*
+
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Machine Learning Examples
+   :glob:
+
+   examples/gaussian_processes/*
+   examples/neural_networks/*
+
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Maximum Likelihood Examples
+   :glob:
+
+   examples/maximum_likelihood/*
+
 
 Indices and tables
 ==================
