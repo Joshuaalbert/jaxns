@@ -13,22 +13,26 @@ def fourier(a, *coords):
     
     .. math::
     
-        A(k ds) = \sum_m a(x_m) \exp(-2\pi i k ds (x_0 + corner_indices dx)) dx
-                = \exp(-2\pi i k ds x_0) dx \sum_m a(x_m) \exp(-2\pi i k ds corner_indices dx)
+        A(k ds) &= \sum_m a(x_m) \exp(-2\pi i k ds (x_0 + j dx)) dx \\\\
+                &= \exp(-2\pi i k ds x_0) dx \sum_m a(x_m) \exp(-2\pi i k ds j dx)
         
     where,
     
     .. math::
         
-        dx ds = 1/N \\rightarrow ds = 1/(dx N)
+        dx ds = \\frac{1}{N} \implies ds = \\frac{1}{N dx}
         
     and,
     
     .. math::
     
-        ds x_0 = k ds x_0 = k/N x_0/dx
+        ds x_0 = k ds x_0 = \\frac{k x_0}{N dx}
     
-    where :math:`N` is the number of options, and...
+    where :math:`N` is the number of options, and :math:`j` are the corner indices.
+    
+    .. note::
+    
+        The mathematical notation in this docstring needs checking.
     """
 
     factor = fft_factor(*coords)
