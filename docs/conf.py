@@ -80,14 +80,8 @@ nbsphinx_execute = "never"  # never execute notebooks (slow) during building
 # Copies the notebooks from the project directory to the docs directory so that
 # they can be parsed by nbsphinx.
 
-if not os.path.exists("examples"):
-    os.makedirs("examples")
-    
-for file in glob.glob("../examples/*/*.ipynb"):
-    # os.system("cp {} examples".format(file))
-    # os.path.join("examples", os.path.basename(file))
-    shutil.copy(file, "examples/")
-
+# Copy examples directory into docs source
+shutil.copytree("../examples", "examples", dirs_exist_ok=True)
 
 # -- Options for intersphinx -------------------------------------------------
 
