@@ -9,24 +9,27 @@ Welcome to jaxns's documentation!
    codebase, please do not expect it to be complete or correct.
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 1
    :caption: User Guide
    :glob:
 
    user-guide/*
    Change Log <https://github.com/Joshuaalbert/jaxns#change-log>
 
+
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 1
    :caption: API Reference
    :glob:
 
    api/jaxns/index
 
+
 .. toctree::
    :maxdepth: 1
    :caption: Examples
    :glob:
+   :reversed:
 
    examples/*
 
