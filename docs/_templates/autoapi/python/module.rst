@@ -23,8 +23,7 @@
 {% block subpackages %}
 {% set visible_subpackages = obj.subpackages|selectattr("display")|list %}
 {% if visible_subpackages %}
-Subpackages
------------
+.. rubric:: Subpackages
 
 .. toctree::
    :titlesonly:
@@ -40,8 +39,7 @@ Subpackages
 {% block submodules %}
 {% set visible_submodules = obj.submodules|selectattr("display")|list %}
 {% if visible_submodules %}
-Submodules
-----------
+.. rubric:: Submodules
 
 .. toctree::
    :titlesonly:
@@ -63,8 +61,7 @@ Submodules
 {% set visible_children = obj.children|selectattr("display")|rejectattr("imported")|list %}
 {% endif %}
 {% if visible_children %}
-{{ obj.type|title }} Contents
-{{ "-" * obj.type|length }}---------
+.. rubric:: {{ obj.type|title }} Contents
 
 {% set visible_classes = visible_children|selectattr("type", "equalto", "class")|list %}
 {% set visible_functions = visible_children|selectattr("type", "equalto", "function")|list %}
