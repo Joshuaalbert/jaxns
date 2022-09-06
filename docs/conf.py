@@ -3,7 +3,7 @@
 # For the full list of built-in configuration values, see the documentation:
 # https://www.sphinx-doc.org/en/master/usage/configuration.html
 
-import os, glob, shutil, sphinx_rtd_theme
+import sphinx_rtd_theme
 
 # sys.path.insert(0, os.path.abspath(".."))  # add project root to abs path
 
@@ -81,7 +81,8 @@ nbsphinx_execute = "never"  # never execute notebooks (slow) during building
 # they can be parsed by nbsphinx.
 
 # Copy examples directory into docs source
-shutil.copytree("../examples", "examples", dirs_exist_ok=True)
+# This has been replaced with a symlink
+# shutil.copytree("../examples", "examples", dirs_exist_ok=True)
 
 # -- Options for intersphinx -------------------------------------------------
 
