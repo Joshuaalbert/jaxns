@@ -25,6 +25,8 @@ Welcome to jaxns's documentation!
    api/jaxns/index
 
 
+.. TOC trees for example notebooks
+
 .. toctree::
    :maxdepth: 1
    :caption: Simple Examples
@@ -64,6 +66,14 @@ Welcome to jaxns's documentation!
    :glob:
 
    examples/maximum_likelihood/*
+
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Toy Model Examples
+   :glob:
+
+   examples/toy/*
 
 
 Indices and tables
