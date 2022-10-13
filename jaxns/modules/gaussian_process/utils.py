@@ -2,16 +2,18 @@ from jax import numpy as jnp
 
 
 def make_coord_array(*X, flat=True, coord_map=None):
-    """
-    Create the design matrix from a list of coordinates
-    :param X: list of length p of float, array [Ni, D]
-        Ni can be different for each coordinate array, but D must be the same.
-    :param flat: bool
-        Whether to return a flattened representation
-    :param coord_map: callable(coordinates), optional
-            If not None then get mapped over the coordinates
-    :return: float, array [N0,...,Np, D] if flat=False else [N0*...*Np, D]
-        The coordinate design matrix
+    """Create the design matrix from a list of coordinates
+
+    Args:
+        X (list): List of length p of float, array :code:`[Ni, D]`. :code:`Ni` can be different
+            for each coordinate array, but :code:`D` must be the same.
+        flat (bool): Whether to return a flattened representation
+        coord_map: (callable(coordinates), optional): If not None then get
+            mapped over the coordinates
+
+    Returns:
+        jax.numpy.ndarray: The coordinate design matrix, an array :code:`[N0,...,Np, D]`
+            if flat=False else :code:`[N0*...*Np, D]`
     """
 
     if coord_map is not None:

@@ -4,6 +4,12 @@ from jaxns.modules.gaussian_process.kernels import Kernel
 from jaxns.prior_transforms import prior_docstring, PriorBase
 from jaxns.prior_transforms.common import HierarchicalPrior
 
+__all__ = [
+    "DeterministicTransformPrior",
+    "GaussianProcessKernelPrior",
+    "ReplaceNanPrior",
+]
+
 
 class DeterministicTransformPrior(HierarchicalPrior):
     """

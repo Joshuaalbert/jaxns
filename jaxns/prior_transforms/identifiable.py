@@ -5,6 +5,10 @@ from jaxns.internals.shapes import broadcast_shapes
 from jaxns.prior_transforms import prior_docstring, get_shape
 from jaxns.prior_transforms.common import ContinuousPrior
 
+__all__ = [
+    "ForcedIdentifiabilityPrior",
+]
+
 
 class ForcedIdentifiabilityPrior(ContinuousPrior):
     @prior_docstring
