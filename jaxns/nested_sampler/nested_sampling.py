@@ -221,8 +221,6 @@ def evidence_goal(state: NestedSamplerState):
                                            log_f2_mean=evidence_calculation.log_Z2_mean)
         dvar = log_Z_var - log_Z_var0
 
-        min_dvar, min_dvar_idx
-
         return remove_idx + delta_idx, dvar
 
 
