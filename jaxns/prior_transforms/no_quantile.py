@@ -3,7 +3,8 @@ from jax import numpy as jnp
 from jax.scipy.special import gammaln
 
 from jaxns.internals.shapes import broadcast_shapes
-from jaxns.prior_transforms import ContinuousPrior, prior_docstring, get_shape, Prior
+from jaxns.prior_transforms.common import ContinuousPrior
+from jaxns.prior_transforms.prior import prior_docstring, Prior, get_shape
 
 __all__ = [
     "StrictlyPositivePrior",
@@ -11,6 +12,7 @@ __all__ = [
     "RealPrior",
     "StudentT",
 ]
+
 
 
 class StrictlyPositivePrior(ContinuousPrior):

@@ -1,7 +1,9 @@
 from jax import numpy as jnp, random, vmap
 
-from jaxns.prior_transforms import ContinuousPrior, prior_docstring, ForcedIdentifiabilityPrior, broadcast_shapes, get_shape
 from jaxns.internals.random import resample_indicies
+from jaxns.internals.shapes import broadcast_shapes
+from jaxns.prior_transforms.common import ContinuousPrior
+from jaxns.prior_transforms.prior import prior_docstring, get_shape
 
 __all__ = [
     "PiecewiseLinearPrior",
@@ -11,7 +13,7 @@ __all__ = [
 
 class PiecewiseLinearPrior(ContinuousPrior):
     @prior_docstring
-    def __init__(self, name, u, x, sorted:bool=False, *, tracked=True):
+    def __init__(self, name, u, x, sorted: bool = False, *, tracked=True):
         """
         Sample from a piece-wise linear approximation to a prior when the quantile is given by
         a piecewise linear approximation.
@@ -33,11 +35,11 @@ class PiecewiseLinearPrior(ContinuousPrior):
 
     def transform_U(self, U, u, x, **kwargs):
         if not self.sorted:
-            idx = jnp.argsort(u,axis=-1)
-            u = u[...,idx]
-            x = x[...,idx]
+            idx = jnp.argsort(u, axis=-1)
+            u = u[..., idx]
+            x = x[..., idx]
         if len(x.shape) > 1:
-            return vmap(lambda U, u, x: jnp.interp(U, u, x))(U,u,x)
+            return vmap(lambda U, u, x: jnp.interp(U, u, x))(U, u, x)
         return jnp.interp(U, u, x)
 
 

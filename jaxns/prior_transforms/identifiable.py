@@ -2,8 +2,8 @@ from jax import numpy as jnp
 from jax.lax import scan
 
 from jaxns.internals.shapes import broadcast_shapes
-from jaxns.prior_transforms import prior_docstring, get_shape
 from jaxns.prior_transforms.common import ContinuousPrior
+from jaxns.prior_transforms.prior import prior_docstring, get_shape
 
 __all__ = [
     "ForcedIdentifiabilityPrior",
