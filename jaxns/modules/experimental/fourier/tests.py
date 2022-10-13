@@ -14,7 +14,7 @@ def test_coords_transformations():
     _x = ifft_freqs(s)
     print(x)
     print(_x)
-    assert jnp.isclose(_x, x).all()
+    assert jnp.isclose(jnp.asarray(_x), x).all()
     # #even
     # x = jnp.linspace(-10, 10, 100)
     # (s,) = fft_freqs(x)
