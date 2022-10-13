@@ -7,7 +7,7 @@ from jax import numpy as jnp, random
 from jaxns.internals.maps import prepare_func_args
 from jaxns.modules.bayesian_optimisation.bayesian_optimiser import BayesianOptimiser
 from jaxns.modules.bayesian_optimisation.utils import latin_hypercube
-from jaxns.prior_transforms import PriorChain, UniformPrior
+from jaxns.prior_transforms.prior_chain import PriorChain, UniformPrior
 
 
 def test_bayesian_optimisation():

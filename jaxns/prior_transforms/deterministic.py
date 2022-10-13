@@ -1,8 +1,8 @@
 from jax import numpy as jnp
 
 from jaxns.modules.gaussian_process.kernels import Kernel
-from jaxns.prior_transforms import prior_docstring, PriorBase
 from jaxns.prior_transforms.common import HierarchicalPrior
+from jaxns.prior_transforms.prior import prior_docstring, PriorBase
 
 __all__ = [
     "DeterministicTransformPrior",
