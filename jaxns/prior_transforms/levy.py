@@ -6,6 +6,12 @@ from jaxns.prior_transforms import prior_docstring, get_shape
 from jaxns.prior_transforms.common import ContinuousPrior
 
 
+__all__ = [
+    "DiagGaussianWalkPrior",
+    "SymmetricUniformWalkPrior",
+]
+
+
 class DiagGaussianWalkPrior(ContinuousPrior):
     @prior_docstring
     def __init__(self, name, T, x0, omega, tracked=True):
