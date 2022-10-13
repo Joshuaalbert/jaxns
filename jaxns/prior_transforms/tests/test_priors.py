@@ -1,16 +1,20 @@
 from jax import random, numpy as jnp, vmap
 from jax.scipy.special import logsumexp
 
-from jaxns.prior_transforms import PriorChain, HalfLaplacePrior, GumbelBernoulliPrior, BernoulliPrior, \
-    GumbelCategoricalPrior, CategoricalPrior, PoissonPrior, ForcedIdentifiabilityPrior, PiecewiseLinearPrior, \
-    UniformPrior, DeterministicTransformPrior
+from jaxns.prior_transforms.common import UniformPrior, HalfLaplacePrior
+from jaxns.prior_transforms.deterministic import DeterministicTransformPrior
+from jaxns.prior_transforms.discrete import GumbelBernoulliPrior, BernoulliPrior, GumbelCategoricalPrior, \
+    CategoricalPrior, PoissonPrior
+from jaxns.prior_transforms.identifiable import ForcedIdentifiabilityPrior
+from jaxns.prior_transforms.numerical import PiecewiseLinearPrior
+from jaxns.prior_transforms.prior_chain import PriorChain
 
 
 def test_piecewise_linear():
     with PriorChain() as prior_chain:
         u = jnp.linspace(0., 1., 20)
         x = jnp.linspace(-2, 2., 20)
-        PiecewiseLinearPrior('a', u, x,sorted=True)
+        PiecewiseLinearPrior('a', u, x, sorted=True)
     prior_chain.build()
     samples = vmap(lambda key: prior_chain(prior_chain.sample_U_flat(key)))(random.split(random.PRNGKey(42), 10000))
 
@@ -25,13 +29,15 @@ def test_piecewise_linear():
     # plt.scatter(bins[1:], f)
     # plt.show()
 
+
 def test_pytree_shape():
     with PriorChain() as prior_chain:
         x = UniformPrior('x', 0., 1.)
+
         def transform(x):
             return dict(val=jnp.stack([x, x]))
-        y = DeterministicTransformPrior('y', transform, x)
 
+        y = DeterministicTransformPrior('y', transform, x)
 
     prior_chain.build()
     print(prior_chain)

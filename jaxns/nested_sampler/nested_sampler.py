@@ -16,7 +16,7 @@ from jaxns.nested_sampler.nested_sampling import build_get_sample, get_dynamic_g
 from jaxns.nested_sampler.plotting import plot_diagnostics, plot_cornerplot
 from jaxns.nested_sampler.termination import termination_condition
 from jaxns.nested_sampler.utils import summary, save_results, load_results
-from jaxns.prior_transforms import PriorChain
+from jaxns.prior_transforms.prior_chain import PriorChain
 
 logger = logging.getLogger(__name__)
 

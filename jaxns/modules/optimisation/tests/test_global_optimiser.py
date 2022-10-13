@@ -1,7 +1,7 @@
 from jax import numpy as jnp, random
 
 from jaxns import GlobalOptimiser
-from jaxns.prior_transforms import PriorChain, UniformPrior
+from jaxns.prior_transforms.prior_chain import PriorChain, UniformPrior
 
 
 def test_nested_sampling_max_likelihood():

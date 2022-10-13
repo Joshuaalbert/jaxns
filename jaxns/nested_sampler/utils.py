@@ -2,14 +2,14 @@ import logging
 from typing import NamedTuple
 
 import numpy as np
-from jax import random, vmap, numpy as jnp, tree_map, jit, grad
+from jax import random, vmap, numpy as jnp, tree_map, jit
 from jax.lax import while_loop
 
 from jaxns.internals.log_semiring import LogSpace
 from jaxns.internals.maps import dict_multimap, prepare_func_args
 from jaxns.internals.random import resample_indicies
 from jaxns.internals.types import NestedSamplerResults, ThreadStats, float_type
-from jaxns.prior_transforms import PriorChain
+from jaxns.prior_transforms.prior_chain import PriorChain
 
 logger = logging.getLogger(__name__)
 
@@ -276,6 +276,7 @@ def analytic_log_evidence(prior_chain: PriorChain, log_likelihood, S: int = 60):
     Z_true = (LogSpace(jit(vmap(lambda arg: log_likelihood(**prior_chain(arg))))(args)).nansum() * LogSpace(
         jnp.log(du)) ** prior_chain.U_ndims)
     return Z_true.log_abs_val
+
 
 def analytic_posterior_samples(prior_chain: PriorChain, log_likelihood, S: int = 60):
     """

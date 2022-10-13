@@ -13,7 +13,7 @@ from jaxns.likelihood_samplers.parallel_slice_sampling import ProposalState, cha
     sample_direction, \
     slice_bounds, pick_point_in_interval
 from jaxns.nested_sampler.live_points import compute_num_live_points_from_unit_threads, infimum_constraint
-from jaxns.prior_transforms import PriorChain
+from jaxns.prior_transforms.prior_chain import PriorChain
 
 
 def build_get_sample(prior_chain: PriorChain, loglikelihood_from_U,
@@ -87,7 +87,7 @@ def build_get_sample(prior_chain: PriorChain, loglikelihood_from_U,
                                      jnp.full(good_proposal.shape, 0, int_type),
                                      jnp.where(good_proposal & ~enough_proposals,
                                                jnp.full(good_proposal.shape, 1, int_type),
-                                               jnp.full(good_proposal.shape, 2,int_type)
+                                               jnp.full(good_proposal.shape, 2, int_type)
                                                )
                                      )
 
@@ -190,7 +190,8 @@ def compute_remaining_evidence(sample_idx, log_dZ_mean):
                                        sample_idx - jnp.ones_like(sample_idx)))
     return log_Z_remaining
 
-def evidence_goal(state:NestedSamplerState):
+
+def evidence_goal(state: NestedSamplerState):
     """
     Estimates the impact of adding a sample at a certain likelihood contour by computing the impact of removing a point.
 
@@ -223,6 +224,7 @@ def evidence_goal(state:NestedSamplerState):
         min_dvar, min_dvar_idx
 
         return remove_idx + delta_idx, dvar
+
 
 def _get_dynamic_goal(state: NestedSamplerState, G: jnp.ndarray):
     """
@@ -275,10 +277,10 @@ def get_dynamic_goal(key, state: NestedSamplerState, num_samples: int, G: jnp.nd
 
     return log_L_constraint_start, log_L_constraint_end
 
+
 def compute_evidence(num_samples, sample_collection: SampleCollection):
     initial_evidence_calculation = _init_evidence_calculation()
     init_log_L_contour = sample_collection.log_L_constraint[0]
-
 
     def thread_cond(body_state: Tuple[EvidenceCalculation, jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]):
         (evidence_calculation, idx, log_L_contour, log_dZ_mean, log_X_mean) = body_state
@@ -310,6 +312,7 @@ def compute_evidence(num_samples, sample_collection: SampleCollection):
                    (initial_evidence_calculation, jnp.asarray(0, int_type), init_log_L_contour,
                     sample_collection.log_dZ_mean, sample_collection.log_X_mean))
     return (final_evidence_calculation, final_idx, final_log_L_contour, final_log_dZ_mean, final_log_X_mean)
+
 
 def analyse_sample_collection(state: NestedSamplerState):
     """

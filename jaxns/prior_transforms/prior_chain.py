@@ -1,13 +1,14 @@
-from typing import Union, Callable, Dict
+from typing import Union, Callable
 
 from jax import random, numpy as jnp, disable_jit
+from jax._src.tree_util import tree_leaves
 from jax.flatten_util import ravel_pytree
-from jax import tree_leaves
 
 from jaxns.internals.maps import prepare_func_args
-from jaxns.prior_transforms import Prior
 from jaxns.prior_transforms.context import _PRIOR_CHAINS, _PRIOR_CHAIN_NEXT_INDEX, _PRIOR_CHAIN_INDEX_STACK
 import logging
+
+from jaxns.prior_transforms.prior import Prior
 
 logger = logging.getLogger(__name__)
 

@@ -1,6 +1,6 @@
 from jax import random, numpy as jnp
 
-from jaxns.prior_transforms import PriorChain, DeltaPrior, NormalPrior, UniformPrior, HalfLaplacePrior
+from jaxns.prior_transforms.prior_chain import PriorChain, DeltaPrior, NormalPrior, UniformPrior, HalfLaplacePrior
 from jaxns.prior_transforms.prior_chain import iterative_topological_sort
 
 

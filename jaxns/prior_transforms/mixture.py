@@ -2,13 +2,15 @@ from jax import numpy as jnp
 from jax.scipy.special import ndtri
 
 from jaxns.internals.shapes import broadcast_shapes
-from jaxns.prior_transforms import prior_docstring, get_shape
 from jaxns.prior_transforms.common import ContinuousPrior
 from jaxns.prior_transforms.discrete import GumbelCategoricalPrior
+from jaxns.prior_transforms.prior import prior_docstring
 
 __all__ = [
     "GMMDiagPrior",
 ]
+
+
 
 
 class GMMDiagPrior(ContinuousPrior):

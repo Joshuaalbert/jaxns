@@ -4,12 +4,12 @@ from jax.scipy.special import logsumexp
 
 from jaxns.internals.shapes import broadcast_dtypes
 from jaxns.internals.types import float_type, int_type
-from jaxns.prior_transforms import (DeterministicTransformPrior, prior_docstring, Gumbel, get_shape, UniformBase,
-                                    HierarchicalPrior, UniformPrior)
+from jaxns.prior_transforms.common import HierarchicalPrior, UniformPrior, Gumbel
+from jaxns.prior_transforms.deterministic import DeterministicTransformPrior
+from jaxns.prior_transforms.prior import prior_docstring, UniformBase, get_shape
 
 __all__ = [
     "PoissonPrior",
-    "CatagoricalPrior",
     "BernoulliPrior",
     "GumbelCategoricalPrior",
     "GumbelBernoulliPrior",

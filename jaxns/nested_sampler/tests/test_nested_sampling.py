@@ -6,7 +6,7 @@ from jax.scipy.special import gammaln
 from jaxns import NestedSampler, resample, summary, plot_diagnostics, analytic_log_evidence
 from jaxns.nested_sampler.nested_sampling import compute_remaining_evidence
 from jaxns.nested_sampler.utils import evidence_posterior_samples
-from jaxns.prior_transforms import PriorChain, UniformPrior, MVNPrior, GammaPrior
+from jaxns.prior_transforms.prior_chain import PriorChain, UniformPrior, MVNPrior, GammaPrior
 
 
 def test_shrinkage():
