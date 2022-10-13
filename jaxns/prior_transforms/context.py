@@ -1,4 +1,3 @@
-import traceback
 from typing import Dict
 
 _PRIOR_CHAINS: Dict[int, "PriorChain"] = dict()  # all the prior chains currently in existence

@@ -13,7 +13,7 @@ from jaxns.modules.optimisation.termination import termination_condition
 from jaxns.modules.optimisation.types import GlobalOptimiserState, GlobalOptimiserResults
 from jaxns.modules.optimisation.utils import summary
 from jaxns.nested_sampler.nested_sampling import build_get_sample, sample_goal_distribution
-from jaxns.prior_transforms import PriorChain
+from jaxns.prior_transforms.prior_chain import PriorChain
 
 logger = logging.getLogger(__name__)
 

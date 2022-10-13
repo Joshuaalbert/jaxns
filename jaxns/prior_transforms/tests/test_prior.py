@@ -1,6 +1,7 @@
 from jax import random, numpy as jnp
 
-from jaxns.prior_transforms import PriorChain, UniformPrior, DeltaPrior
+from jaxns import UniformPrior, DeltaPrior
+from jaxns.prior_transforms.prior_chain import PriorChain
 
 
 def test_builtins():
