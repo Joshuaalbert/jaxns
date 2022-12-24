@@ -1,5 +1,6 @@
 import inspect
 import logging
+from typing import TypeVar
 
 from jax import tree_map, pmap, numpy as jnp
 from jax.lax import dynamic_update_slice, dynamic_slice
@@ -99,7 +100,10 @@ def prepare_func_args(f):
     return _f
 
 
-def chunked_pmap(f, chunksize, *, batch_size=None):
+F = TypeVar('F')
+
+
+def chunked_pmap(f: F, chunksize, *, batch_size=None) -> F:
     def _f(*args, batch_size=batch_size, **kwargs):
         def queue(*args, **kwargs):
             """

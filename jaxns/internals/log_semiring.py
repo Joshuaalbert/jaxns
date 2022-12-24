@@ -346,3 +346,13 @@ class LogSpace(object):
 
 def is_complex(a):
     return a.dtype in [jnp.complex64, jnp.complex128]
+
+
+def normalise_log_space(x: LogSpace) -> LogSpace:
+    """
+    Safely normalise a LogSpace, accounting for zero-sum.
+    """
+    norm = x.sum()
+    x /= norm
+    x = LogSpace(jnp.where(jnp.isneginf(norm.log_abs_val), -jnp.inf, x.log_abs_val))
+    return x

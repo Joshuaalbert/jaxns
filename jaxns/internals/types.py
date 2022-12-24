@@ -1,5 +1,6 @@
 from typing import NamedTuple, Dict, Any, Union
 
+from etils.array_types import PRNGKey
 from jax import numpy as jnp
 
 float_type = jnp.result_type(float)
@@ -75,7 +76,7 @@ class TerminationStats(NamedTuple):
 
 
 class NestedSamplerState(NamedTuple):
-    key: jnp.ndarray
+    key: PRNGKey
     done: jnp.ndarray
     sample_collection: SampleCollection  # Arrays to hold samples taken from the reservoir.
     evidence_calculation: EvidenceCalculation  # holds running calculation of evidence

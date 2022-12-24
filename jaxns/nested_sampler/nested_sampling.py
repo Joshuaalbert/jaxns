@@ -4,7 +4,7 @@ from jax import numpy as jnp, random, tree_map, value_and_grad
 from jax.lax import dynamic_update_slice
 from jax.lax import while_loop
 
-from jaxns.internals.log_semiring import LogSpace
+from jaxns.internals.log_semiring import LogSpace, normalise_log_space
 from jaxns.internals.maps import replace_index
 from jaxns.internals.stats import linear_to_log_stats, effective_sample_size
 from jaxns.internals.types import NestedSamplerState, EvidenceCalculation, Reservoir, ThreadStats, int_type, \
@@ -12,7 +12,8 @@ from jaxns.internals.types import NestedSamplerState, EvidenceCalculation, Reser
 from jaxns.likelihood_samplers.parallel_slice_sampling import ProposalState, change_direction, shrink_interval, \
     sample_direction, \
     slice_bounds, pick_point_in_interval
-from jaxns.nested_sampler.live_points import compute_num_live_points_from_unit_threads, infimum_constraint
+from jaxns.nested_sampler.live_points import infimum_constraint
+from jaxns.new_code.statistics import compute_num_live_points_from_unit_threads
 from jaxns.prior_transforms.prior_chain import PriorChain
 
 
@@ -135,16 +136,6 @@ def build_get_sample(prior_chain: PriorChain, loglikelihood_from_U,
         return reservoir
 
     return get_sample
-
-
-def normalise_log_space(x: LogSpace) -> LogSpace:
-    """
-    Safely normalise a LogSpace, accounting for zero-sum.
-    """
-    norm = x.sum()
-    x /= norm
-    x = LogSpace(jnp.where(jnp.isneginf(norm.log_abs_val), -jnp.inf, x.log_abs_val))
-    return x
 
 
 def sample_goal_distribution(key, log_goal_weights, S: int, *, replace: bool = True):

@@ -1,5 +1,7 @@
 from collections import namedtuple
+from typing import NamedTuple
 
+from etils.array_types import ui64, IntArray, FloatArray
 from jax import numpy as jnp, random, vmap
 from jax.lax import dynamic_update_slice
 from jax.lax import scan
@@ -9,15 +11,19 @@ from jax.scipy.special import gammaln, logsumexp
 from jaxns.internals.linalg import rank_one_update_matrix_inv
 from jaxns.internals.types import int_type
 
-MultiEllipsoidSamplerState = namedtuple('MultiEllipsoidSamplerState',
-                                        ['cluster_id', 'mu', 'radii', 'rotation', 'num_k', 'num_fev_ma'])
+
+class MultiEllipsoidSamplerState(NamedTuple):
+    cluster_id: ui64
+    mu: FloatArray
+    radii: FloatArray
+    rotation: FloatArray
+    num_k: IntArray
 
 
 def init_multi_ellipsoid_sampler_state(key, live_points_U, depth, log_X):
     cluster_id, (mu, radii, rotation) = ellipsoid_clustering(key, live_points_U, depth, log_X)
     num_k = jnp.bincount(cluster_id, minlength=0, length=mu.shape[0])
-    return MultiEllipsoidSamplerState(cluster_id=cluster_id, mu=mu, radii=radii, rotation=rotation,
-                                      num_k=num_k, num_fev_ma=jnp.asarray(live_points_U.shape[1] + 2.))
+    return MultiEllipsoidSamplerState(cluster_id=cluster_id, mu=mu, radii=radii, rotation=rotation, num_k=num_k)
 
 
 def bounding_ellipsoid(points, mask):
