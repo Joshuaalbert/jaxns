@@ -1,8 +1,8 @@
 from jax import numpy as jnp, random
 from jax.lax import dynamic_update_slice
 
-from jaxns.nested_sampler.live_points import supremum_contour_idx, compute_num_live_points_from_unit_threads, \
-    infimum_constraint
+from jaxns.nested_sampler.live_points import supremum_contour_idx, infimum_constraint
+from jaxns.new_code.statistics import compute_num_live_points_from_unit_threads
 from jaxns.nested_sampler.nested_sampling import sample_goal_distribution
 
 
