@@ -1,5 +1,6 @@
 jax
 jaxlib
+etils
 matplotlib
 numpy
 pytest
