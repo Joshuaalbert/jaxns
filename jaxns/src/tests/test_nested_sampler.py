@@ -5,10 +5,10 @@ from jax import random, numpy as jnp
 from jax._src.scipy.linalg import solve_triangular
 
 from jaxns import evidence_posterior_samples, analytic_log_evidence
-from jaxns.new_code.model import Model
-from jaxns.new_code.nested_sampler import ApproximateNestedSampler, ExactNestedSampler
-from jaxns.new_code.prior import PriorModelGen, Prior
-from jaxns.new_code.types import TerminationCondition
+from jaxns.src.model import Model
+from jaxns.src.nested_sampler import ApproximateNestedSampler, ExactNestedSampler
+from jaxns.src.prior import PriorModelGen, Prior
+from jaxns.src.types import TerminationCondition
 
 tfpd = tfp.distributions
 tfpb = tfp.bijectors

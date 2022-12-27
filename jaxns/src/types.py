@@ -4,7 +4,7 @@ import jax.numpy as jnp
 from etils.array_types import FloatArray, IntArray, ui64, PRNGKey, BoolArray
 
 from jaxns.internals.types import int_type, float_type
-from jaxns.new_code.prior import UType, XType
+from jaxns.src.prior import UType, XType
 
 __all__ = ['Sample',
            'Reservoir',

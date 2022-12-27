@@ -5,7 +5,7 @@ from jax import numpy as jnp
 from jaxns.internals.log_semiring import LogSpace
 from jaxns.internals.stats import linear_to_log_stats, effective_sample_size
 from jaxns.internals.types import int_type
-from jaxns.new_code.types import TerminationCondition, SampleCollection, EvidenceCalculation, LivePoints
+from jaxns.src.types import TerminationCondition, SampleCollection, EvidenceCalculation, LivePoints
 
 __all__ = ['determine_termination']
 

@@ -7,8 +7,8 @@ from jax._src.lax.control_flow import while_loop
 from jaxns.internals.types import int_type
 from jaxns.likelihood_samplers.parallel_slice_sampling import sample_direction, slice_bounds, pick_point_in_interval, \
     ProposalState, change_direction, shrink_interval
-from jaxns.new_code.model import Model
-from jaxns.new_code.types import NestedSamplerState, LivePoints, Sample
+from jaxns.src.model import Model
+from jaxns.src.types import NestedSamplerState, LivePoints, Sample
 
 __all__ = ['SliceSampler']
 

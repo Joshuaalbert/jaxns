@@ -3,8 +3,8 @@ from jax import random, numpy as jnp
 from jax.lax import while_loop
 
 from jaxns.internals.types import int_type
-from jaxns.new_code.model import Model
-from jaxns.new_code.types import Sample
+from jaxns.src.model import Model
+from jaxns.src.types import Sample
 
 __all__ = ['UniformSampler']
 
