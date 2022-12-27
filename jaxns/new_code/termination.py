@@ -7,6 +7,7 @@ from jaxns.internals.stats import linear_to_log_stats, effective_sample_size
 from jaxns.internals.types import int_type
 from jaxns.new_code.types import TerminationCondition, SampleCollection, EvidenceCalculation, LivePoints
 
+__all__ = ['determine_termination']
 
 def determine_termination(term_cond: TerminationCondition,
                           sample_collection: Optional[SampleCollection] = None,
@@ -99,8 +100,9 @@ def determine_termination(term_cond: TerminationCondition,
             raise ValueError("sample_collections must not be None.")
         log_L_max = jnp.max(
             jnp.where(jnp.isinf(sample_collection.reservoir.log_L),
-                      sample_collection.reservoir.log_L,
-                      -jnp.inf)
+                      -jnp.inf,
+                      sample_collection.reservoir.log_L
+                      )
         )
         likeihood_contour_reached = log_L_max >= term_cond.log_L_contour
         done, termination_condition = _set_done_bit(likeihood_contour_reached, 5,

@@ -1,10 +1,21 @@
 from typing import NamedTuple, Optional
 
-from etils.array_types import FloatArray, IntArray, ui64, PRNGKey, BoolArray
-from jaxns.internals.types import int_type
-
-from jaxns.new_code.prior import UType, XType
 import jax.numpy as jnp
+from etils.array_types import FloatArray, IntArray, ui64, PRNGKey, BoolArray
+
+from jaxns.internals.types import int_type, float_type
+from jaxns.new_code.prior import UType, XType
+
+__all__ = ['Sample',
+           'Reservoir',
+           'SampleStatistics',
+           'SampleCollection',
+           'EvidenceCalculation',
+           'NestedSamplerState',
+           'LivePoints',
+           'TerminationCondition',
+           'NestedSamplerResults']
+
 
 class Sample(NamedTuple):
     """
@@ -12,7 +23,6 @@ class Sample(NamedTuple):
     """
     # TODO: allow any pytree for points_X
     point_U: UType  # [d] sample in U-space
-    point_X: XType
     log_L_constraint: FloatArray  # constraint that sample was sampled uniformly within
     log_L: FloatArray  # log likelihood of the sample
     num_likelihood_evaluations: IntArray  # how many times the likelihood was evaluated to produce this sample
@@ -26,7 +36,6 @@ class Reservoir(NamedTuple):
     """
     # TODO: allow any pytree for points_X
     point_U: UType  # [d] sample in U-space
-    point_X: XType
     log_L_constraint: FloatArray  # constraint that sample was sampled uniformly within
     log_L: FloatArray  # log likelihood of the sample
     num_likelihood_evaluations: ui64  # how many times the likelihood was evaluated to produce this sample
@@ -72,8 +81,8 @@ class LivePoints(NamedTuple):
 
 class TerminationCondition(NamedTuple):
     ess: Optional[FloatArray] = jnp.inf
-    evidence_uncert: Optional[FloatArray] = jnp.inf
-    live_evidence_frac: Optional[FloatArray] = 1e-4
+    evidence_uncert: Optional[FloatArray] = jnp.asarray(0., float_type)
+    live_evidence_frac: Optional[FloatArray] = jnp.asarray(1e-4, float_type)
     max_samples: Optional[IntArray] = jnp.iinfo(int_type).max
     max_num_likelihood_evaluations: Optional[IntArray] = jnp.iinfo(int_type).max
     log_L_contour: Optional[FloatArray] = jnp.inf
@@ -88,7 +97,7 @@ class NestedSamplerResults(NamedTuple):
     log_L_samples: FloatArray  # log(L) of each sample
     log_dp_mean: FloatArray  # log(E[dZ]) of each sample, where dZ is how much it contributes to the total evidence.
     log_X_mean: FloatArray  # log(E[U]) of each sample
-    log_posterior_density: FloatArray # log(P( theta | D )) log posteriori density
+    log_posterior_density: FloatArray  # log(P( theta | D )) log posteriori density
     num_live_points_per_sample: IntArray  # how many live points were taken for the samples.
     num_likelihood_evaluations_per_sample: IntArray  # how many likelihood evaluations were made per sample.
     num_slices: IntArray  # how many slices were taken for slice sampled points

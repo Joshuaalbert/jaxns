@@ -14,6 +14,7 @@ from jaxns.new_code.statistics import analyse_sample_collection
 from jaxns.new_code.types import NestedSamplerState, Reservoir
 from jaxns.new_code.utils import sort_samples
 
+__all__ = ['AdaptiveRefinement']
 
 class AdaptiveRefinement:
     def __init__(self, model: Model, uncert_improvement_patient: int, num_slices: int, num_parallel_samplers: int = 1):

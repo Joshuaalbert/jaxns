@@ -28,25 +28,6 @@ def get_index(operand, start_index, length):
                          (length,) + operand.shape[1:])
 
 
-def dict_multimap(f, d, *args):
-    """
-    Map function across key, value pairs in dicts.
-
-    Args:
-        f (callable): :code:`callable(d, *args)`
-        d (dict): dictionary of key, value pairs
-        *args: more dicts
-
-    Returns: dict with same keys as d, with values result of `f`.
-    """
-    if not isinstance(d, dict):
-        return f(d, *args)
-    mapped_results = dict()
-    for key in d.keys():
-        mapped_results[key] = f(d[key], *[arg[key] for arg in args])
-    return mapped_results
-
-
 def prepare_func_args(f):
     """
     Takes a callable(a,b,...,z=Z) and prepares it into ``callable(**kwargs)``, such that only

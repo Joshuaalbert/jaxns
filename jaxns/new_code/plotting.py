@@ -1,3 +1,8 @@
+import matplotlib
+
+from jaxns.new_code.types import NestedSamplerResults
+
+matplotlib.use('TkAgg')
 import logging
 
 import jax.numpy as jnp
@@ -7,13 +12,15 @@ from jax import random
 from matplotlib.animation import FuncAnimation
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
-logger = logging.getLogger(__name__)
-
-from jaxns.internals.types import NestedSamplerResults
 from jaxns.internals.log_semiring import cumulative_logsumexp
-from jaxns.nested_sampler.utils import resample
+from jaxns import resample
 from jaxns.internals.shapes import tuple_prod
 from jaxns.internals.types import int_type
+
+logger = logging.getLogger('jaxns')
+
+__all__ = ['plot_diagnostics',
+           'plot_cornerplot']
 
 
 def plot_diagnostics(results: NestedSamplerResults, save_name=None):
@@ -24,12 +31,12 @@ def plot_diagnostics(results: NestedSamplerResults, save_name=None):
         results: NestedSamplerResult
         save_name: file to save figure to.
     """
-    fig, axs = plt.subplots(6, 1, sharex=True, figsize=(8, 12))
-    log_X = results.log_X_mean[:results.total_num_samples]
-    axs[0].plot(-log_X, results.num_live_points_per_sample[:results.total_num_samples])
+    fig, axs = plt.subplots(5, 1, sharex=True, figsize=(8, 12))
+    log_X = results.log_X_mean
+    axs[0].plot(-log_X, results.num_live_points_per_sample)
     axs[0].set_ylabel(r'$n_{\rm live}(U)$')
     # detect if too small log likelihood
-    log_likelihood = results.log_L_samples[:results.total_num_samples]
+    log_likelihood = results.log_L_samples
     max_log_likelihood = jnp.max(log_likelihood)
     likelihood = jnp.exp(log_likelihood - max_log_likelihood)
     axs[1].plot(-log_X, likelihood)
@@ -38,12 +45,12 @@ def plot_diagnostics(results: NestedSamplerResults, save_name=None):
                   label=r"$\log L_{{\rm max}}={:.1f}$".format(max_log_likelihood))
     axs[1].set_ylabel(r'$L(U)/L_{\rm max}$')
     axs[1].legend()
-    axs[2].plot(-log_X, jnp.exp(results.log_dp_mean[:results.total_num_samples]))
-    # axs[2].vlines(-results.H_mean, 0., jnp.exp(jnp.max(results.log_dp_mean[:results.total_num_samples])), colors='black', ls='dashed',
+    axs[2].plot(-log_X, jnp.exp(results.log_dp_mean))
+    # axs[2].vlines(-results.H_mean, 0., jnp.exp(jnp.max(results.log_dp_mean)), colors='black', ls='dashed',
     #               label='-logX=-H={:.1f}'.format(-results.H_mean))
     axs[2].set_ylabel(r'$Z^{-1}L(U) dX$')
     axs[2].legend()
-    log_cum_evidence = cumulative_logsumexp(results.log_dp_mean[:results.total_num_samples])
+    log_cum_evidence = cumulative_logsumexp(results.log_dp_mean)
     cum_evidence = jnp.exp(log_cum_evidence)
     axs[3].plot(-log_X, cum_evidence)
     axs[3].hlines(1., jnp.min(-log_X),
@@ -51,20 +58,13 @@ def plot_diagnostics(results: NestedSamplerResults, save_name=None):
                   label=r"$\log Z={:.1f}$".format(results.log_Z_mean))
     axs[3].set_ylabel(r'$Z(x > U)/Z$')
     axs[3].legend()
-    axs[4].plot(-log_X, 1. / results.num_likelihood_evaluations_per_sample[:results.total_num_samples])
+    axs[4].plot(-log_X, 1. / results.num_likelihood_evaluations_per_sample)
     axs[4].hlines(jnp.exp(results.log_efficiency), jnp.min(-log_X),
                   jnp.max(-log_X), colors='black', ls='dashed',
                   label='avg. eff.={:.3f}'.format(jnp.exp(results.log_efficiency)))
     axs[4].set_ylabel("sampler efficiency")
     axs[4].set_ylim(0., 1.05)
     axs[4].legend()
-    num_slices = results.num_slices_per_sample[:results.total_num_samples]
-    axs[5].plot(-log_X, num_slices)
-    axs[5].set_ylabel("# slices")
-    axs[5].set_xlabel(r'$-\log U$')
-    axs[5].set_ylim(jnp.nanmin(jnp.where(jnp.isfinite(num_slices), num_slices, jnp.nan)) - 1,
-                    jnp.nanmax(jnp.where(jnp.isfinite(num_slices), num_slices, jnp.nan)) + 1)
-    axs[5].legend()
     if save_name is not None:
         fig.savefig(save_name)
     plt.show()
@@ -87,16 +87,16 @@ def plot_cornerplot(results: NestedSamplerResults, vars=None, save_name=None):
     if ndims == 1:
         axs = [[axs]]
     nsamples = results.total_num_samples
-    max_like_idx = jnp.argmax(results.log_L_samples[:results.total_num_samples])
-    map_idx = jnp.argmax(results.log_dp_mean)
-    log_p = results.log_dp_mean[:results.total_num_samples]
+    max_like_idx = jnp.argmax(results.log_L_samples)
+    map_idx = jnp.argmax(results.log_posterior_density)
+    log_p = results.log_dp_mean
     nbins = max(10, int(jnp.sqrt(results.ESS)) + 1)
     lims = {}
     dim = 0
     for key in vars:  # sorted(results.samples.keys()):
         n1 = tuple_prod(results.samples[key].shape[1:])
         for i in range(n1):
-            samples1 = results.samples[key][:results.total_num_samples, ...].reshape((nsamples, -1))[:, i]
+            samples1 = results.samples[key].reshape((nsamples, -1))[:, i]
             if jnp.std(samples1) == 0.:
                 dim += 1
                 continue
@@ -164,7 +164,7 @@ def plot_cornerplot(results: NestedSamplerResults, vars=None, save_name=None):
                         ax.set_yticklabels([])
                         lims[dim] = ax.get_xlim()
                     else:
-                        samples2 = results.samples[key2][:results.total_num_samples, ...].reshape((nsamples, -1))[:, i2]
+                        samples2 = results.samples[key2].reshape((nsamples, -1))[:, i2]
                         if jnp.std(samples2) == 0.:
                             dim2 += 1
                             continue

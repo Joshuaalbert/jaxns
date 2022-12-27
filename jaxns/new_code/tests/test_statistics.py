@@ -1,9 +1,7 @@
 from jax import numpy as jnp, random
 from jax.lax import dynamic_update_slice
 
-from jaxns.nested_sampler.live_points import supremum_contour_idx, infimum_constraint
 from jaxns.new_code.statistics import compute_num_live_points_from_unit_threads
-from jaxns.nested_sampler.nested_sampling import sample_goal_distribution
 
 
 def _sure_compute_num_live_points_from_unit_threads(log_L_constraints, log_L_samples, num_samples=None, debug=False):
@@ -76,16 +74,6 @@ def _sure_infimum_constraint(log_L_constraints, log_L_samples, sort_idx):
     return jnp.asarray(indices)
 
 
-def test_supremum_contour_idx():
-    def test_example(log_L_contour, log_L_samples, expect):
-        assert jnp.all(supremum_contour_idx(log_L_contour, log_L_samples, sort_idx=None) == expect)
-
-    log_L_contour = jnp.asarray([-jnp.inf, 1., 2.])
-    log_L_samples = jnp.asarray([0., 1., 1., 2., 2., 3., 4., jnp.inf])
-    expect = jnp.asarray([0, 3, 5])
-    test_example(log_L_contour, log_L_samples, expect)
-
-
 def test_compute_num_live_points():
     from jax import random
 
@@ -94,7 +82,7 @@ def test_compute_num_live_points():
                             _sure_compute_num_live_points_from_unit_threads(log_L_constraints, log_L_samples,
                                                                             num_samples, debug=debug))
         test_num_live_points, sort_idx = compute_num_live_points_from_unit_threads(log_L_constraints, log_L_samples,
-                                                                                   num_samples, return_sort_idx=True)
+                                                                                   num_samples, sorted_collection=False)
         assert jnp.all(test_num_live_points == num_live_points)
         assert jnp.all(infimum_constraint(log_L_constraints, log_L_samples, sort_idx) == _sure_infimum_constraint(
             log_L_constraints, log_L_samples, sort_idx))
@@ -202,17 +190,6 @@ def test_compute_num_live_points():
     # plt.show()
 
 
-def test_sample_goal_distribution():
-    key = random.PRNGKey(42)
-    log_goal_weights = jnp.asarray([-jnp.inf, 0., 1., 2.])
-    S = 400
-    samples = sample_goal_distribution(key, log_goal_weights, S, replace=True)
-    f, _ = jnp.histogram(samples, bins=jnp.arange(log_goal_weights.size))
-    assert f[0] == 0
-    S = log_goal_weights.size
-    assert jnp.all(jnp.isin(sample_goal_distribution(key, log_goal_weights, S, replace=False), jnp.arange(S)))
-
-
 def test_standard_nested_sampling():
     from jax import vmap
     from jaxns.internals.maps import replace_index
@@ -271,3 +248,34 @@ def test_standard_nested_sampling():
     n_check = _sure_compute_num_live_points_from_unit_threads(jnp.asarray(log_L_constraints),
                                                               jnp.asarray(log_L_samples))
     assert jnp.allclose(n, n_check)
+
+
+def infimum_constraint(log_L_constraints, log_L_samples, sort_idx=None, return_contours: bool = False):
+    """
+    For a single sample find `i` such that log_L_contours[i] is the greatest strict lower bound of log_L_sample.
+    E.g.
+
+    Args:
+        log_L_constraints:
+        log_L_samples:
+        sort_idx:
+        return_contours: if true also return the value of the contour at `i`, i.e. the constraint.
+    """
+    if sort_idx is not None:
+        log_L_constraints = log_L_constraints[sort_idx]
+        log_L_samples = log_L_samples[sort_idx]
+    # mask the non-samples, already done since they should be inf.
+    # if num_samples is None:
+    #       num_samples = log_L_samples.size
+    # empty_mask = jnp.arange(log_L_samples.size) >= num_samples
+    # log_L_constraints = jnp.where(empty_mask, jnp.inf, log_L_constraints)
+    # log_L_samples = jnp.where(empty_mask, jnp.inf, log_L_samples)
+    log_L_contours = jnp.concatenate([log_L_constraints[0:1], log_L_samples[:-1]], axis=0)
+    contour_idx = jnp.searchsorted(log_L_contours, log_L_samples, side='left') - 1
+    if return_contours:
+        # todo: consider clamping to (0, n-1) and avoid the where op
+        constraints = jnp.where(contour_idx < 0,
+                                -jnp.inf,
+                                log_L_contours[contour_idx])
+        return contour_idx, constraints
+    return contour_idx

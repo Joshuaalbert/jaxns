@@ -1,12 +1,17 @@
-from typing import Tuple
+import logging
 from uuid import uuid4
 
+import numpy as np
 from etils.array_types import PRNGKey, FloatArray
-from jax import random
+from jax import random, vmap, jit, numpy as jnp
 
 from jaxns.internals.types import float_type
-from jaxns.new_code.prior import PriorModelType, LikelihoodType, parse_prior, XType, compute_log_likelihood, UType, \
-    transform, log_prob_prior
+from jaxns.new_code.prior import PriorModelType, LikelihoodType, parse_prior, compute_log_likelihood, UType, \
+    transform, log_prob_prior, XType
+
+logger = logging.getLogger('jaxns')
+
+__all__ = ['Model']
 
 
 class Model:
@@ -59,27 +64,29 @@ class Model:
 
     def transform(self, U: UType) -> XType:
         """
-        Compute the X-space sample.
+        Compute the prior sample.
 
         Args:
             U: U-space sample
 
         Returns:
-            X-space sample
+            prior sample
         """
         return transform(U=U, prior_model=self.prior_model)
 
-    def forward(self, U: UType) -> Tuple[XType, FloatArray]:
+    def forward(self, U: UType, allow_nan: bool = False) -> FloatArray:
         """
-        Compute the X-space sample, and log-likelihood.
+        Compute the log-likelihood.
 
         Args:
             U: U-space sample
+            allow_nan: whether to allow nans in likelihood
 
         Returns:
-            X-space sample, and log likelihood at the sample
+            log likelihood at the sample
         """
-        return compute_log_likelihood(U=U, prior_model=self.prior_model, log_likelihood=self.log_likelihood)
+        return compute_log_likelihood(U=U, prior_model=self.prior_model, log_likelihood=self.log_likelihood,
+                                      allow_nan=allow_nan)
 
     def log_prob_prior(self, U: UType) -> FloatArray:
         """
@@ -92,3 +99,13 @@ class Model:
             the log probability of prior
         """
         return log_prob_prior(U=U, prior_model=self.prior_model)
+
+    def sanity_check(self, key: PRNGKey, S: int):
+        U = jit(vmap(self.sample_U))(random.split(key, S))
+        log_L = jit(vmap(lambda u: self.forward(u, allow_nan=True)))(U)
+        logger.info("Sanity check...")
+        for _U, _log_L in zip(U, log_L):
+            if jnp.isnan(_log_L):
+                logger.info(f"Found bad point: {_U} -> {self.transform(_U)}")
+        assert not any(np.isnan(log_L))
+        logger.info("Sanity check passed")

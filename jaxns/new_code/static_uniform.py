@@ -9,6 +9,8 @@ from jaxns.new_code.model import Model
 from jaxns.new_code.types import Sample, NestedSamplerState, LivePoints, Reservoir
 from jaxns.new_code.uniform_sampler import UniformSampler
 
+__all__ = ['StaticUniform']
+
 
 class StaticUniform:
     def __init__(self, model: Model, num_live_points: int, efficiency_threshold: float):
@@ -55,9 +57,9 @@ class StaticUniform:
             live_points = live_points._replace(reservoir=live_points_reservoir)
             state = state._replace(key=key,
                                    sample_collection=sample_collection)
-
             # done = sample.num_likelihood_evaluations >= 1. / self.efficiency_threshold
-            done = jnp.mean(live_points.reservoir.num_likelihood_evaluations) >= 1. / self.efficiency_threshold
+            # done = jnp.mean(live_points.reservoir.num_likelihood_evaluations) >= 1. / self.efficiency_threshold
+            done = sample_collection.sample_idx > self.num_live_points / self.efficiency_threshold  # log(X) = -N/n = 1/eff
             return (done, state, live_points)
 
         (_, state, live_points) = while_loop(lambda carry: jnp.bitwise_not(carry[0]),
