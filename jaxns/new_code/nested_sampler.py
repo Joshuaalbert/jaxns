@@ -6,13 +6,13 @@ import tensorflow_probability.substrates.jax as tfp
 from etils.array_types import PRNGKey, IntArray
 from jax import random, numpy as jnp, core, tree_map, vmap, jit
 
+from jaxns import summary, save_results, load_results
 from jaxns.internals.log_semiring import LogSpace, normalise_log_space
 from jaxns.internals.stats import linear_to_log_stats, effective_sample_size
-from jaxns.nested_sampler.plotting import plot_cornerplot, plot_diagnostics
-from jaxns.nested_sampler.utils import summary, load_results, save_results
 from jaxns.new_code.adaptive_refinement import AdaptiveRefinement
 from jaxns.new_code.initial_state import init_sample_collection, get_uniform_init_live_points
 from jaxns.new_code.model import Model
+from jaxns.new_code.plotting import plot_cornerplot, plot_diagnostics
 from jaxns.new_code.static_slice import StaticSlice
 from jaxns.new_code.static_uniform import StaticUniform
 from jaxns.new_code.statistics import analyse_sample_collection
@@ -22,6 +22,10 @@ from jaxns.new_code.utils import collect_samples
 tfpd = tfp.distributions
 
 logger = logging.getLogger('jaxns')
+
+__all__ = ['NestedSampler',
+           'ApproximateNestedSampler',
+           'ExactNestedSampler']
 
 
 class NestedSampler:
@@ -234,7 +238,7 @@ class ApproximateNestedSampler(NestedSampler):
         state, live_points = self.initialise(key=key)
         return self.approximate_shrinkage(state=state, live_points=live_points, term_cond=term_cond)
 
-    @partial(jit,static_argnums=0)
+    @partial(jit, static_argnums=0)
     def concat_run(self, state: NestedSamplerState, live_points: LivePoints,
                    term_cond: TerminationCondition) -> Tuple[IntArray, NestedSamplerState]:
         """

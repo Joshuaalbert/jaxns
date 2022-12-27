@@ -6,6 +6,9 @@ from jax._src.scipy.special import logsumexp
 
 from jaxns.internals.log_semiring import cumulative_logsumexp
 
+__all__ = ['random_ortho_matrix',
+           'resample_indicies']
+
 
 def random_ortho_matrix(key, n):
     """

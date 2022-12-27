@@ -6,6 +6,8 @@ from jaxns.internals.types import int_type
 from jaxns.new_code.model import Model
 from jaxns.new_code.types import Sample
 
+__all__ = ['UniformSampler']
+
 
 class UniformSampler:
     def __init__(self, model: Model):
@@ -24,24 +26,23 @@ class UniformSampler:
         """
         key, sample_key = random.split(key, 2)
         U = self.model.sample_U(key=sample_key)
-        X, log_L = self.model.forward(U=U)
+        log_L = self.model.forward(U=U)
         num_likelihood_evals = jnp.asarray(1, int_type)
         done = (log_L > log_L_constraint)
 
         def body(state):
-            (_, key, _, _, _, num_likelihood_evals) = state
+            (_, key, _, _, num_likelihood_evals) = state
             key, sample_key = random.split(key, 2)
             U = self.model.sample_U(key=sample_key)
-            X, log_L = self.model.forward(U=U)
+            log_L = self.model.forward(U=U)
             num_likelihood_evals += jnp.asarray(1, int_type)
             done = (log_L > log_L_constraint)
-            return (done, key, U, X, log_L, num_likelihood_evals)
+            return (done, key, U, log_L, num_likelihood_evals)
 
-        (_, _, U, X, log_L, num_likelihood_evals) = while_loop(lambda s: jnp.bitwise_not(s[0]),
-                                                               body,
-                                                               (done, key, U, X, log_L, num_likelihood_evals))
+        (_, _, U, log_L, num_likelihood_evals) = while_loop(lambda s: jnp.bitwise_not(s[0]),
+                                                            body,
+                                                            (done, key, U, log_L, num_likelihood_evals))
         sample = Sample(point_U=U,
-                        point_X=X,
                         log_L_constraint=log_L_constraint,
                         log_L=log_L,
                         num_likelihood_evaluations=num_likelihood_evals,

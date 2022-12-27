@@ -1,6 +1,7 @@
+import numpy as np
 from jax import random, numpy as jnp
 
-from jaxns.internals.random import random_ortho_matrix
+from jaxns.new_code.random import random_ortho_matrix, resample_indicies
 
 
 def test_random_ortho_matrix():
@@ -15,3 +16,14 @@ def test_random_ortho_normal_matrix():
     for i in range(100):
         H = random_ortho_matrix(random.PRNGKey(0), 3)
         assert jnp.all(jnp.isclose(H @ H.conj().T, jnp.eye(3), atol=1e-6))
+
+
+def test_resample_indicies():
+    n = 100
+    sample_key = random.PRNGKey(42)
+    log_weights = jnp.zeros(n)
+    indices = resample_indicies(key=sample_key,
+                                log_weights=log_weights,
+                                S=n,
+                                replace=False)
+    assert np.unique(indices).size == n

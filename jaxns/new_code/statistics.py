@@ -8,6 +8,10 @@ from jaxns.internals.log_semiring import LogSpace
 from jaxns.internals.types import float_type, int_type
 from jaxns.new_code.types import EvidenceCalculation, SampleCollection, SampleStatistics
 
+__all__ = ['compute_evidence',
+           'analyse_sample_collection',
+           'compute_num_live_points_from_unit_threads']
+
 
 def _init_evidence_calculation() -> EvidenceCalculation:
     """

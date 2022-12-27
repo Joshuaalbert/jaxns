@@ -5,14 +5,17 @@ from etils.array_types import PRNGKey, FloatArray
 from jax import tree_map, numpy as jnp, random
 from jax._src.lax.control_flow import scan
 
-from jaxns.internals.random import resample_indicies
 from jaxns.internals.types import float_type, int_type
 from jaxns.new_code.model import Model
+from jaxns.new_code.random import resample_indicies
 from jaxns.new_code.types import Reservoir, SampleCollection, LivePoints, NestedSamplerState
 from jaxns.new_code.uniform_sampler import UniformSampler
 from jaxns.new_code.utils import sort_samples
 
 logger = logging.getLogger('jaxns')
+
+__all__ = ['get_live_points_from_samples',
+           'get_uniform_init_live_points']
 
 
 def init_sample_collection(size: int, model: Model) -> SampleCollection:
@@ -31,7 +34,6 @@ def init_sample_collection(size: int, model: Model) -> SampleCollection:
 
     reservoir = Reservoir(
         point_U=_repeat(model.U_placeholder),
-        point_X=tree_map(_repeat, model.X_placeholder),
         log_L_constraint=jnp.full((size,), jnp.inf, dtype=float_type),
         log_L=jnp.full((size,), jnp.inf, dtype=float_type),
         num_likelihood_evaluations=jnp.full((size,), 0, dtype=int_type),

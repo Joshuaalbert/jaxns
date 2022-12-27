@@ -10,6 +10,8 @@ from jaxns.likelihood_samplers.parallel_slice_sampling import sample_direction, 
 from jaxns.new_code.model import Model
 from jaxns.new_code.types import NestedSamplerState, LivePoints, Sample
 
+__all__ = ['SliceSampler']
+
 
 class MultiEllipses(NamedTuple):
     cluster_id: ui64
@@ -86,7 +88,7 @@ class SliceSampler:
             the reservoir.
             """
             (proposal_state, _) = body_state
-            _, log_L_point_U = self.model.forward(proposal_state.point_U)
+            log_L_point_U = self.model.forward(proposal_state.point_U)
             num_likelihood_evaluations = proposal_state.num_likelihood_evaluations + jnp.ones_like(
                 proposal_state.num_likelihood_evaluations)
             # assumes that log_L0 > log_L_constraint
@@ -145,7 +147,6 @@ class SliceSampler:
         log_L = jnp.where(pass_through, seed_point.log_L0, log_L)
         point_U = jnp.where(pass_through, seed_point.U0, proposal_state.point_U)
         sample = Sample(point_U=point_U,
-                        point_X=self.model.transform(point_U),
                         log_L_constraint=log_L_constraint,
                         log_L=log_L,
                         num_likelihood_evaluations=proposal_state.num_likelihood_evaluations,

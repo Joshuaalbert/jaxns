@@ -15,6 +15,8 @@ from jaxns.new_code.utils import collect_samples
 
 logger = logging.getLogger('jaxns')
 
+__all__ = ['StaticSlice']
+
 
 class StaticSlice:
     """
