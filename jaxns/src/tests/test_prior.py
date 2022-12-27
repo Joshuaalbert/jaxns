@@ -4,9 +4,9 @@ import tensorflow_probability.substrates.jax as tfp
 from jax import random, numpy as jnp
 
 from jaxns.internals.types import float_type
-from jaxns.new_code.prior import PriorModelGen, Prior, parse_prior, compute_log_likelihood, InvalidDistribution, \
+from jaxns.src.prior import PriorModelGen, Prior, parse_prior, compute_log_likelihood, InvalidDistribution, \
     InvalidPriorName, prepare_input, distribution_chain
-from jaxns.new_code.special_priors import Bernoulli, Categorical, Poisson, Beta, ForcedIdentifiability
+from jaxns.src.special_priors import Bernoulli, Categorical, Poisson, Beta, ForcedIdentifiability
 
 logger = logging.getLogger('jaxns')
 tfpd = tfp.distributions

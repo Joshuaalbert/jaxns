@@ -6,12 +6,12 @@ from jax import tree_map, numpy as jnp, random, pmap
 from jax._src.lax.control_flow import scan, while_loop
 
 from jaxns.internals.types import int_type
-from jaxns.new_code.model import Model
-from jaxns.new_code.slice_sampler import PreprocessType, SliceSampler
-from jaxns.new_code.statistics import analyse_sample_collection
-from jaxns.new_code.termination import determine_termination
-from jaxns.new_code.types import NestedSamplerState, Reservoir, LivePoints, TerminationCondition
-from jaxns.new_code.utils import collect_samples
+from jaxns.src.model import Model
+from jaxns.src.slice_sampler import PreprocessType, SliceSampler
+from jaxns.src.statistics import analyse_sample_collection
+from jaxns.src.termination import determine_termination
+from jaxns.src.types import NestedSamplerState, Reservoir, LivePoints, TerminationCondition
+from jaxns.src.utils import collect_samples
 
 logger = logging.getLogger('jaxns')
 

@@ -9,7 +9,7 @@ from jax._src.scipy.special import logsumexp, gammaln
 from tensorflow_probability.substrates.jax.math import lbeta, betaincinv
 
 from jaxns.internals.types import float_type
-from jaxns.new_code.prior import AbstractPrior
+from jaxns.src.prior import AbstractPrior
 
 logger = logging.getLogger('jaxns')
 tfpd = tfp.distributions

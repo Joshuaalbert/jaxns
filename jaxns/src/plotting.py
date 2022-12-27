@@ -1,6 +1,6 @@
 import matplotlib
 
-from jaxns.new_code.types import NestedSamplerResults
+from jaxns.src.types import NestedSamplerResults
 
 matplotlib.use('TkAgg')
 import logging

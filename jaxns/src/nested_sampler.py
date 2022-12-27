@@ -9,15 +9,15 @@ from jax import random, numpy as jnp, core, tree_map, vmap, jit
 from jaxns import summary, save_results, load_results
 from jaxns.internals.log_semiring import LogSpace, normalise_log_space
 from jaxns.internals.stats import linear_to_log_stats, effective_sample_size
-from jaxns.new_code.adaptive_refinement import AdaptiveRefinement
-from jaxns.new_code.initial_state import init_sample_collection, get_uniform_init_live_points
-from jaxns.new_code.model import Model
-from jaxns.new_code.plotting import plot_cornerplot, plot_diagnostics
-from jaxns.new_code.static_slice import StaticSlice
-from jaxns.new_code.static_uniform import StaticUniform
-from jaxns.new_code.statistics import analyse_sample_collection
-from jaxns.new_code.types import TerminationCondition, NestedSamplerState, NestedSamplerResults, LivePoints
-from jaxns.new_code.utils import collect_samples
+from jaxns.src.adaptive_refinement import AdaptiveRefinement
+from jaxns.src.initial_state import init_sample_collection, get_uniform_init_live_points
+from jaxns.src.model import Model
+from jaxns.src.plotting import plot_cornerplot, plot_diagnostics
+from jaxns.src.static_slice import StaticSlice
+from jaxns.src.static_uniform import StaticUniform
+from jaxns.src.statistics import analyse_sample_collection
+from jaxns.src.types import TerminationCondition, NestedSamplerState, NestedSamplerResults, LivePoints
+from jaxns.src.utils import collect_samples
 
 tfpd = tfp.distributions
 

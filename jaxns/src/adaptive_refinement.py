@@ -8,11 +8,11 @@ from jax._src.lax.control_flow import while_loop
 from jaxns.internals.maps import chunked_pmap
 from jaxns.internals.stats import linear_to_log_stats
 from jaxns.internals.types import int_type
-from jaxns.new_code.model import Model
-from jaxns.new_code.slice_sampler import SliceSampler, SeedPoint, PreprocessType
-from jaxns.new_code.statistics import analyse_sample_collection
-from jaxns.new_code.types import NestedSamplerState, Reservoir
-from jaxns.new_code.utils import sort_samples
+from jaxns.src.model import Model
+from jaxns.src.slice_sampler import SliceSampler, SeedPoint, PreprocessType
+from jaxns.src.statistics import analyse_sample_collection
+from jaxns.src.types import NestedSamplerState, Reservoir
+from jaxns.src.utils import sort_samples
 
 __all__ = ['AdaptiveRefinement']
 

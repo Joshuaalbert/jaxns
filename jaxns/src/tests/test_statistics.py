@@ -1,7 +1,7 @@
 from jax import numpy as jnp, random
 from jax.lax import dynamic_update_slice
 
-from jaxns.new_code.statistics import compute_num_live_points_from_unit_threads, compute_remaining_evidence
+from jaxns.src.statistics import compute_num_live_points_from_unit_threads, compute_remaining_evidence
 
 
 def _sure_compute_num_live_points_from_unit_threads(log_L_constraints, log_L_samples, num_samples=None, debug=False):

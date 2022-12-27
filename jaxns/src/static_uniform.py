@@ -5,9 +5,9 @@ from jax import random, numpy as jnp, tree_map
 from jax.lax import while_loop
 
 from jaxns.internals.maps import replace_index
-from jaxns.new_code.model import Model
-from jaxns.new_code.types import Sample, NestedSamplerState, LivePoints, Reservoir
-from jaxns.new_code.uniform_sampler import UniformSampler
+from jaxns.src.model import Model
+from jaxns.src.types import Sample, NestedSamplerState, LivePoints, Reservoir
+from jaxns.src.uniform_sampler import UniformSampler
 
 __all__ = ['StaticUniform']
 

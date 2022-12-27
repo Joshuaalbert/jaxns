@@ -6,11 +6,11 @@ from jax import tree_map, numpy as jnp, random
 from jax._src.lax.control_flow import scan
 
 from jaxns.internals.types import float_type, int_type
-from jaxns.new_code.model import Model
-from jaxns.new_code.random import resample_indicies
-from jaxns.new_code.types import Reservoir, SampleCollection, LivePoints, NestedSamplerState
-from jaxns.new_code.uniform_sampler import UniformSampler
-from jaxns.new_code.utils import sort_samples
+from jaxns.src.model import Model
+from jaxns.src.random import resample_indicies
+from jaxns.src.types import Reservoir, SampleCollection, LivePoints, NestedSamplerState
+from jaxns.src.uniform_sampler import UniformSampler
+from jaxns.src.utils import sort_samples
 
 logger = logging.getLogger('jaxns')
 

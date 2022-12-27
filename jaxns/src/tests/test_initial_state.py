@@ -1,14 +1,14 @@
 import numpy as np
 from jax import numpy as jnp, vmap, random
 
-from jaxns.new_code.initial_state import init_sample_collection, get_uniform_init_live_points, \
+from jaxns.src.initial_state import init_sample_collection, get_uniform_init_live_points, \
     get_live_points_from_samples
-from jaxns.new_code.model import Model
+from jaxns.src.model import Model
 import tensorflow_probability.substrates.jax as tfp
 
-from jaxns.new_code.prior import PriorModelGen, Prior
-from jaxns.new_code.static_uniform import StaticUniform
-from jaxns.new_code.types import NestedSamplerState, SampleCollection
+from jaxns.src.prior import PriorModelGen, Prior
+from jaxns.src.static_uniform import StaticUniform
+from jaxns.src.types import NestedSamplerState, SampleCollection
 
 tfpd = tfp.distributions
 

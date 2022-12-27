@@ -9,7 +9,7 @@ from jaxns.internals.log_semiring import LogSpace, normalise_log_space
 from jaxns.internals.maps import replace_index
 from jaxns.internals.stats import linear_to_log_stats
 from jaxns.internals.types import float_type, int_type, NestedSamplerState
-from jaxns.new_code.types import EvidenceCalculation, SampleCollection, SampleStatistics
+from jaxns.src.types import EvidenceCalculation, SampleCollection, SampleStatistics
 
 __all__ = ['compute_evidence',
            'analyse_sample_collection',
