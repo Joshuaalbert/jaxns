@@ -1,6 +1,7 @@
 jax
 jaxlib
 etils
+typing_extensions
 matplotlib
 numpy
 pytest
