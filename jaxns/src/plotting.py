@@ -1,8 +1,3 @@
-import matplotlib
-
-from jaxns.src.types import NestedSamplerResults
-
-matplotlib.use('TkAgg')
 import logging
 
 import jax.numpy as jnp
@@ -12,10 +7,11 @@ from jax import random
 from matplotlib.animation import FuncAnimation
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
-from jaxns.internals.log_semiring import cumulative_logsumexp
 from jaxns import resample
+from jaxns.internals.log_semiring import cumulative_logsumexp
 from jaxns.internals.shapes import tuple_prod
 from jaxns.internals.types import int_type
+from jaxns.src.types import NestedSamplerResults
 
 logger = logging.getLogger('jaxns')
 
