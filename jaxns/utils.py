@@ -200,6 +200,7 @@ def summary(results: NestedSamplerResults) -> str:
     _print("--------")
     _print("# likelihood evals: {}".format(results.total_num_likelihood_evaluations))
     _print("# samples: {}".format(results.total_num_samples))
+    _print("# slices: {:.1f}".format(jnp.nanmean(jnp.where(results.num_slices>0, results.num_slices, jnp.nan))))
     _print("# likelihood evals / sample: {:.1f}".format(
         results.total_num_likelihood_evaluations / results.total_num_samples))
     _print("# likelihood evals / slice: {:.1f}".format(
