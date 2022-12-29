@@ -2,7 +2,7 @@ import logging
 from typing import Tuple
 
 from etils.array_types import PRNGKey, FloatArray
-from jax import tree_map, numpy as jnp, random
+from jax import tree_map, numpy as jnp, random, core
 from jax._src.lax.control_flow import scan
 
 from jaxns.model import Model
@@ -83,6 +83,8 @@ def get_live_points_from_samples(state: NestedSamplerState, log_L_constraint: Fl
     Returns:
         a new state, and live points
     """
+    if isinstance(state.sample_collection.reservoir.iid, core.Tracer):
+        raise RuntimeError("Tracer detected, but expected imperative context.")
     ###
     # We select from samples where sample.log_L_constraint <= log_L_constraint
     # 1. sort samples
@@ -100,6 +102,7 @@ def get_live_points_from_samples(state: NestedSamplerState, log_L_constraint: Fl
 
     # find the largest index, s, where sample.log_L_constraint[s] <= log_L_constraint
     idx_supremum = jnp.searchsorted(sample_collection.reservoir.log_L_constraint, log_L_constraint, side='right') - 1
+    idx_supremum = int(idx_supremum)
     key, sample_key = random.split(state.key)
     take_indices = resample_indicies(key=sample_key,
                                      log_weights=None,

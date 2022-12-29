@@ -35,11 +35,11 @@ class NestedSampler:
         if extra > 0:
             logger.warning(
                 f"Increasing max_samples ({num_live_points}) by {extra} to closest multiple of num_parallel_samplers.")
-        self.num_live_points = num_live_points + extra
-        self.num_parallel_samplers = num_parallel_samplers
+        self.num_live_points = int(num_live_points + extra)
+        self.num_parallel_samplers = int(num_parallel_samplers)
         self.model = model
 
-        self.max_samples = max_samples
+        self.max_samples = int(max_samples)
 
     def resize_state(self, state: NestedSamplerState, max_num_samples: int) -> NestedSamplerState:
         """
@@ -130,8 +130,7 @@ class NestedSampler:
 
         num_likelihood_evaluations_per_slice = jnp.nanmean(
             jnp.where(sample_collection.reservoir.num_slices > 0,
-                      sample_collection.reservoir.num_likelihood_evaluations / (
-                              sample_collection.reservoir.num_slices),
+                      sample_collection.reservoir.num_likelihood_evaluations / sample_collection.reservoir.num_slices,
                       jnp.nan)
         )
 
@@ -161,7 +160,7 @@ class NestedSampler:
             # total_num_samples / total_num_likelihood_evaluations
             termination_reason=termination_reason,  # termination condition as bit mask
             num_likelihood_evaluations_per_slice=num_likelihood_evaluations_per_slice,
-            num_slices=state.sample_collection.reservoir.num_slices,
+            num_slices=sample_collection.reservoir.num_slices,
             samples=samples)
 
 

@@ -1,6 +1,6 @@
 from typing import Optional
 
-from etils.array_types import FloatArray, PRNGKey
+from etils.array_types import FloatArray, PRNGKey, IntArray
 from jax import random, numpy as jnp
 from jax._src.scipy.special import logsumexp
 
@@ -28,15 +28,19 @@ def random_ortho_matrix(key, n):
 
 
 def resample_indicies(key: PRNGKey, log_weights: Optional[FloatArray] = None, S: Optional[int] = None,
-                      replace: bool = False, num_total: Optional[int] = None):
+                      replace: bool = False, num_total: Optional[int] = None) -> IntArray:
     """
-    resample the samples with weights which are interpreted as log_probabilities.
+    Get resample indicies according to a given weighting, with or without replacement.
+
     Args:
-        samples:
-        weights:
+        key: PRNGKey
+        log_weights: Optional log weights
+        S: Optional number of samples. Computes effective sample size from log weights if not given.
+        replace: whether to use replacement or not.
+        num_total: Optional total sample size to use, must be given if `replace=False` and `log_weights=None`
 
-    Returns: S samples of equal weight
-
+    Returns:
+        index array given the take indicies to resample at.
     """
     if S is None:
         if log_weights is None:
