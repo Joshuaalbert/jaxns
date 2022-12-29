@@ -14,7 +14,8 @@ logger = logging.getLogger('jaxns')
 tfpd = tfp.distributions
 
 __all__ = [
-    "Prior"
+    "Prior",
+    "PriorModelGen"
 ]
 
 

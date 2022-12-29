@@ -4,15 +4,13 @@ import tensorflow_probability.substrates.jax as tfp
 from jax import random, numpy as jnp
 from jax._src.scipy.linalg import solve_triangular
 
-from jaxns import evidence_posterior_samples, analytic_log_evidence
+from jaxns.utils import evidence_posterior_samples, analytic_log_evidence
 from jaxns.model import Model
 from jaxns.nested_sampler import ApproximateNestedSampler, ExactNestedSampler
 from jaxns.prior import PriorModelGen, Prior
 from jaxns.types import TerminationCondition
 
 tfpd = tfp.distributions
-tfpb = tfp.bijectors
-
 
 class Timer:
     def __enter__(self):
