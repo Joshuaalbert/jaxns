@@ -17,10 +17,10 @@ __all__ = ['AdaptiveRefinement']
 
 
 class AdaptiveRefinement:
-    def __init__(self, model: Model, uncert_improvement_patient: int, num_slices: int, num_parallel_samplers: int = 1):
-        if uncert_improvement_patient <= 0:
-            raise ValueError(f"uncert_improvement_patient should be > 0, got {uncert_improvement_patient}.")
-        self.uncert_improvement_patient = uncert_improvement_patient
+    def __init__(self, model: Model, uncert_improvement_patience: int, num_slices: int, num_parallel_samplers: int = 1):
+        if uncert_improvement_patience <= 0:
+            raise ValueError(f"uncert_improvement_patient should be > 0, got {uncert_improvement_patience}.")
+        self.uncert_improvement_patient = uncert_improvement_patience
         self.num_parallel_samplers = num_parallel_samplers
         self.slice_sampler = SliceSampler(model=model,
                                           midpoint_shrink=True,

@@ -131,7 +131,7 @@ class NestedSampler:
         num_likelihood_evaluations_per_slice = jnp.nanmean(
             jnp.where(sample_collection.reservoir.num_slices > 0,
                       sample_collection.reservoir.num_likelihood_evaluations / (
-                              sample_collection.reservoir.num_slices * self.model.U_ndims),
+                              sample_collection.reservoir.num_slices),
                       jnp.nan)
         )
 
@@ -218,7 +218,7 @@ class ApproximateNestedSampler(NestedSampler):
         # Low accuracy sampling
         termination_reason, state, live_points = self.static_slice(state=state,
                                                                    live_points=live_points,
-                                                                   num_slices=1,
+                                                                   num_slices=self.model.U_ndims,
                                                                    termination_cond=term_cond)
         state = collect_samples(state=state, new_reservoir=live_points.reservoir)
         return termination_reason, state
@@ -316,7 +316,7 @@ class ExactNestedSampler(NestedSampler):
                                                             max_samples=max_samples)
 
         self.adaptive_refinement = AdaptiveRefinement(model=self.model,
-                                                      uncert_improvement_patient=1,
+                                                      uncert_improvement_patience=2,
                                                       num_slices=self.model.U_ndims,
                                                       num_parallel_samplers=self.num_parallel_samplers)
 
