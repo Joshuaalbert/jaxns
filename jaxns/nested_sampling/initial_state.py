@@ -5,10 +5,10 @@ from etils.array_types import PRNGKey, FloatArray
 from jax import tree_map, numpy as jnp, random
 from jax._src.lax.control_flow import scan
 
-from jaxns.internals.types import float_type, int_type
 from jaxns.nested_sampling.model import Model
 from jaxns.nested_sampling.random import resample_indicies
-from jaxns.nested_sampling.types import Reservoir, SampleCollection, LivePoints, NestedSamplerState
+from jaxns.nested_sampling.types import Reservoir, SampleCollection, LivePoints, NestedSamplerState, float_type, \
+    int_type
 from jaxns.nested_sampling.uniform_sampler import UniformSampler
 from jaxns.nested_sampling.utils import sort_samples
 
@@ -42,7 +42,7 @@ def init_sample_collection(size: int, model: Model) -> SampleCollection:
     )
 
     sample_collection = SampleCollection(
-        sample_idx=jnp.zeros((), jnp.int64),
+        sample_idx=jnp.zeros((), int_type),
         reservoir=reservoir
     )
     return sample_collection

@@ -5,9 +5,8 @@ import numpy as np
 from etils.array_types import PRNGKey, FloatArray
 from jax import random, vmap, jit, numpy as jnp
 
-from jaxns.internals.types import float_type
-from jaxns.nested_sampling.prior import PriorModelType, LikelihoodType, parse_prior, compute_log_likelihood, UType, \
-    transform, log_prob_prior, XType
+from jaxns.nested_sampling.prior import PriorModelType, parse_prior, compute_log_likelihood, transform, log_prob_prior
+from jaxns.nested_sampling.types import float_type, LikelihoodType, UType, XType
 
 logger = logging.getLogger('jaxns')
 

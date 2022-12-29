@@ -1,10 +1,7 @@
-from typing import NamedTuple, Optional
+from typing import NamedTuple, Optional, Union, Any, Callable, Tuple, Dict
 
-import jax.numpy as jnp
-from etils.array_types import FloatArray, IntArray, ui64, PRNGKey, BoolArray
-
-from jaxns.internals.types import int_type, float_type
-from jaxns.nested_sampling.prior import UType, XType
+from etils.array_types import FloatArray, IntArray, PRNGKey, BoolArray
+from jax import numpy as jnp
 
 __all__ = ['Sample',
            'Reservoir',
@@ -16,6 +13,15 @@ __all__ = ['Sample',
            'TerminationCondition',
            'NestedSamplerResults']
 
+float_type = jnp.result_type(float)
+int_type = jnp.result_type(int)
+complex_type = jnp.result_type(complex)
+
+LikelihoodType = Callable[[jnp.ndarray, ...], FloatArray]
+LikelihoodInputType = Tuple[jnp.ndarray, ...]  # Likeihood conditional variables
+UType = FloatArray  # Homogeneous measure samples
+XType = Dict[str, jnp.ndarray]  # Prior sample
+
 
 class Sample(NamedTuple):
     """
@@ -26,7 +32,7 @@ class Sample(NamedTuple):
     log_L_constraint: FloatArray  # constraint that sample was sampled uniformly within
     log_L: FloatArray  # log likelihood of the sample
     num_likelihood_evaluations: IntArray  # how many times the likelihood was evaluated to produce this sample
-    num_slices: ui64  # the number of slices for sliced points.
+    num_slices: IntArray  # the number of slices for sliced points.
     iid: BoolArray  # whether the sample is exactly iid sampled from within the likelihood constraint
 
 
@@ -38,8 +44,8 @@ class Reservoir(NamedTuple):
     point_U: UType  # [d] sample in U-space
     log_L_constraint: FloatArray  # constraint that sample was sampled uniformly within
     log_L: FloatArray  # log likelihood of the sample
-    num_likelihood_evaluations: ui64  # how many times the likelihood was evaluated to produce this sample
-    num_slices: ui64  # the number of slices for sliced points.
+    num_likelihood_evaluations: IntArray  # how many times the likelihood was evaluated to produce this sample
+    num_slices: IntArray  # the number of slices for sliced points.
     iid: BoolArray  # whether the sample is exactly iid sampled from within the likelihood constraint
 
 
@@ -54,7 +60,7 @@ class SampleCollection(NamedTuple):
     Arrays to hold samples taken from the reservoir.
     """
 
-    sample_idx: ui64  # the sample index, pointing to the next empty sample slot
+    sample_idx: IntArray  # the sample index, pointing to the next empty sample slot
     reservoir: Reservoir  # reservoir of samples with leading dimension [max_samples]
 
 
@@ -107,3 +113,11 @@ class NestedSamplerResults(NamedTuple):
     # sum of num_likelihood_evaluations_per_sample.
     log_efficiency: FloatArray  # log(total_num_samples / total_num_likelihood_evaluations)
     termination_reason: IntArray  # this will be an int reflecting the reason for termination
+
+
+class SignedLog(NamedTuple):
+    """
+    Represents a signed value in log-space
+    """
+    log_abs_val: jnp.ndarray
+    sign: Union[jnp.ndarray, Any]

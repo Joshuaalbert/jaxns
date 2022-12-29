@@ -2,19 +2,19 @@ from functools import partial
 from typing import Tuple
 
 from etils.array_types import PRNGKey, FloatArray, IntArray, BoolArray
-from jax import core, numpy as jnp, tree_map, random, jit, disable_jit
+from jax import core, numpy as jnp, tree_map, random, jit
 from jax._src.lax.control_flow import while_loop
 
-from jaxns.internals.maps import chunked_pmap
-from jaxns.internals.stats import linear_to_log_stats
-from jaxns.internals.types import int_type
+from jaxns.nested_sampling.internals.maps import chunked_pmap
+from jaxns.nested_sampling.internals.stats import linear_to_log_stats
 from jaxns.nested_sampling.model import Model
 from jaxns.nested_sampling.slice_sampler import SliceSampler, SeedPoint, PreprocessType
 from jaxns.nested_sampling.statistics import analyse_sample_collection
-from jaxns.nested_sampling.types import NestedSamplerState, Reservoir
+from jaxns.nested_sampling.types import NestedSamplerState, Reservoir, int_type
 from jaxns.nested_sampling.utils import sort_samples
 
 __all__ = ['AdaptiveRefinement']
+
 
 class AdaptiveRefinement:
     def __init__(self, model: Model, uncert_improvement_patient: int, num_slices: int, num_parallel_samplers: int = 1):

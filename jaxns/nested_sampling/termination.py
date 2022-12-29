@@ -2,12 +2,13 @@ from typing import Optional
 
 from jax import numpy as jnp
 
-from jaxns.internals.log_semiring import LogSpace
-from jaxns.internals.stats import linear_to_log_stats, effective_sample_size
-from jaxns.internals.types import int_type
-from jaxns.nested_sampling.types import TerminationCondition, SampleCollection, EvidenceCalculation, LivePoints
+from jaxns.nested_sampling.internals.log_semiring import LogSpace
+from jaxns.nested_sampling.internals.stats import linear_to_log_stats, effective_sample_size
+from jaxns.nested_sampling.types import TerminationCondition, SampleCollection, EvidenceCalculation, LivePoints, \
+    int_type
 
 __all__ = ['determine_termination']
+
 
 def determine_termination(term_cond: TerminationCondition,
                           sample_collection: Optional[SampleCollection] = None,

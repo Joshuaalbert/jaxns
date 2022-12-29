@@ -4,7 +4,7 @@ from etils.array_types import BoolArray
 from jax import random, numpy as jnp, tree_map
 from jax.lax import while_loop
 
-from jaxns.internals.maps import replace_index
+from jaxns.nested_sampling.internals.maps import replace_index
 from jaxns.nested_sampling.model import Model
 from jaxns.nested_sampling.types import Sample, NestedSamplerState, LivePoints, Reservoir
 from jaxns.nested_sampling.uniform_sampler import UniformSampler

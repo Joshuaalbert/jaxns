@@ -8,10 +8,9 @@ from matplotlib.animation import FuncAnimation
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 from jaxns import resample
-from jaxns.internals.log_semiring import cumulative_logsumexp
-from jaxns.internals.shapes import tuple_prod
-from jaxns.internals.types import int_type
-from jaxns.nested_sampling.types import NestedSamplerResults
+from jaxns.nested_sampling.internals.log_semiring import cumulative_logsumexp
+from jaxns.nested_sampling.internals.shapes import tuple_prod
+from jaxns.nested_sampling.types import NestedSamplerResults, int_type
 
 logger = logging.getLogger('jaxns')
 

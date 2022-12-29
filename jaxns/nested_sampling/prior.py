@@ -1,14 +1,14 @@
 import logging
 from abc import abstractmethod, ABC
-from typing import Tuple, Generator, Callable, Optional, Dict, Union, List
+from typing import Tuple, Generator, Callable, Optional, Union, List
 
 import jax.numpy as jnp
 import numpy as np
 import tensorflow_probability.substrates.jax as tfp
 from etils.array_types import FloatArray, IntArray, BoolArray
 
-from jaxns.internals.shapes import tuple_prod
-from jaxns.internals.types import float_type
+from jaxns.nested_sampling.internals.shapes import tuple_prod
+from jaxns.nested_sampling.types import float_type, LikelihoodType, LikelihoodInputType, UType, XType
 
 logger = logging.getLogger('jaxns')
 tfpd = tfp.distributions
@@ -242,10 +242,6 @@ class Prior(AbstractPrior):
 
 PriorModelGen = Generator[Prior, jnp.ndarray, Tuple[jnp.ndarray, ...]]
 PriorModelType = Callable[[], PriorModelGen]
-LikelihoodType = Callable[[jnp.ndarray, ...], FloatArray]
-LikelihoodInputType = Tuple[jnp.ndarray, ...]  # Likeihood conditional variables
-UType = FloatArray  # Homogeneous measure samples
-XType = Dict[str, jnp.ndarray]  # Prior sample
 
 
 def parse_prior(prior_model: PriorModelType) -> Tuple[UType, XType]:

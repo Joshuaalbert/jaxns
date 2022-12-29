@@ -1,6 +1,6 @@
 from jax import numpy as jnp, vmap
 
-from jaxns.internals.log_semiring import LogSpace
+from jaxns.nested_sampling.internals.log_semiring import LogSpace
 
 
 def normal_to_lognormal(mu, std):

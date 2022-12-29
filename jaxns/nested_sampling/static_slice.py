@@ -1,16 +1,15 @@
 import logging
 from typing import Tuple
 
-from etils.array_types import PRNGKey, IntArray, ui64, BoolArray
+from etils.array_types import PRNGKey, IntArray, BoolArray
 from jax import tree_map, numpy as jnp, random, pmap
 from jax._src.lax.control_flow import scan, while_loop
 
-from jaxns.internals.types import int_type
 from jaxns.nested_sampling.model import Model
 from jaxns.nested_sampling.slice_sampler import PreprocessType, SliceSampler
 from jaxns.nested_sampling.statistics import analyse_sample_collection
 from jaxns.nested_sampling.termination import determine_termination
-from jaxns.nested_sampling.types import NestedSamplerState, Reservoir, LivePoints, TerminationCondition
+from jaxns.nested_sampling.types import NestedSamplerState, Reservoir, LivePoints, TerminationCondition, int_type
 from jaxns.nested_sampling.utils import collect_samples
 
 logger = logging.getLogger('jaxns')
@@ -98,7 +97,7 @@ class StaticSlice:
                  live_points: LivePoints,
                  num_slices: IntArray,
                  termination_cond: TerminationCondition
-                 ) -> Tuple[ui64, NestedSamplerState, LivePoints]:
+                 ) -> Tuple[IntArray, NestedSamplerState, LivePoints]:
         """
         Performs nested sampling from an initial state with a static number of live points at each shrinkage step, and
         terminating upon ANY of the terminiation criteria being met.
@@ -122,7 +121,7 @@ class StaticSlice:
                                                                                                  num_slices=num_slices,
                                                                                                  preprocess_data=preprocess_data)
 
-        CarryType = Tuple[BoolArray, ui64, NestedSamplerState, LivePoints]
+        CarryType = Tuple[BoolArray, IntArray, NestedSamplerState, LivePoints]
 
         def body(body_state: CarryType) -> CarryType:
             (_, _, state, live_points) = body_state

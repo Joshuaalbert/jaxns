@@ -1,6 +1,6 @@
 from jax import numpy as jnp
 
-from jaxns.internals.shapes import tuple_prod, broadcast_dtypes, broadcast_shapes
+from jaxns.nested_sampling.internals.shapes import tuple_prod, broadcast_dtypes, broadcast_shapes
 
 
 def test_tuple_prod():

@@ -1,16 +1,16 @@
 import numpy as np
+import tensorflow_probability.substrates.jax as tfp
 from jax import numpy as jnp, vmap, random
 
 from jaxns.nested_sampling.initial_state import init_sample_collection, get_uniform_init_live_points, \
     get_live_points_from_samples
 from jaxns.nested_sampling.model import Model
-import tensorflow_probability.substrates.jax as tfp
-
 from jaxns.nested_sampling.prior import PriorModelGen, Prior
 from jaxns.nested_sampling.static_uniform import StaticUniform
 from jaxns.nested_sampling.types import NestedSamplerState, SampleCollection
 
 tfpd = tfp.distributions
+
 
 def test_init_sample_collection():
     def prior_model() -> PriorModelGen:
