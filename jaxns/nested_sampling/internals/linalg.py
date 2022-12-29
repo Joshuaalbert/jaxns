@@ -63,34 +63,3 @@ def cholesky_update(L, x, alpha=1., beta=1.):
 
     (x, b), (Lt,) = scan(body, (x, b), (jnp.arange(n),))
     return Lt.T
-
-
-def rank_one_update_matrix_inv(Ainv, logdetAinv, u, v, add=True):
-    """
-    Uses the Woodbury matrix lemma to update a matrix inverse under either addition and subtraction.
-
-    Equivalent to,
-        (A + u v^T)^{-1} if add==True else (A - u v^T)^{-1}
-
-    Args:
-        Ainv: [N, N]
-        u: [N]
-        v: [N]
-        add: bool
-
-    Returns:
-
-    """
-    U = u[:, None]
-    V = v[None, :]
-    AinvU = Ainv @ U
-    if add:
-        S = 1. + V @ AinvU
-        Ainv_update = (jnp.eye(Ainv.shape[-1]) - (AinvU @ V) / S) @ Ainv
-        logdetAinv_update = logdetAinv - jnp.log(S[0, 0])
-        return Ainv_update, logdetAinv_update
-    else:
-        S = V @ AinvU - 1.
-        Ainv_update = (jnp.eye(Ainv.shape[-1]) - (AinvU @ V) / S) @ Ainv
-        logdetAinv_update = logdetAinv - jnp.log(-S[0, 0])
-        return Ainv_update, logdetAinv_update

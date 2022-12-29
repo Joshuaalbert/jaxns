@@ -7,3 +7,4 @@ numpy
 pytest
 scipy
 tensorflow_probability
+sphinx_rtd_theme

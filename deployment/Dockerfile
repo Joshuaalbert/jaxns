@@ -5,7 +5,7 @@ WORKDIR /code
 
 # requirements rarely change
 COPY ./requirements.txt /code/requirements.txt
-RUN pip install --no-cache-dir --upgrade -r /code/requirements.txt
+RUN pip install -r /code/requirements.txt
 
 # will change frequently
 COPY . /code

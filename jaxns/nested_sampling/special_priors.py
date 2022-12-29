@@ -8,8 +8,8 @@ from jax._src.lax.control_flow import while_loop, scan
 from jax._src.scipy.special import logsumexp, gammaln
 from tensorflow_probability.substrates.jax.math import lbeta, betaincinv
 
-from jaxns.internals.types import float_type
 from jaxns.nested_sampling.prior import AbstractPrior
+from jaxns.nested_sampling.types import float_type
 
 logger = logging.getLogger('jaxns')
 tfpd = tfp.distributions
@@ -21,6 +21,7 @@ __all__ = [
     "ForcedIdentifiability",
     "Poisson"
 ]
+
 
 class Bernoulli(AbstractPrior):
     def __init__(self, *, logits=None, probs=None, name: Optional[str] = None):

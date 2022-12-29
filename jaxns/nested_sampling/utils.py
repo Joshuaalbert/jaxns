@@ -5,12 +5,12 @@ import numpy as np
 from jax import numpy as jnp, tree_map, vmap, random, jit
 from jax._src.lax.control_flow import while_loop
 
-from jaxns.internals.log_semiring import LogSpace
-from jaxns.internals.maps import replace_index, prepare_func_args
-from jaxns.internals.types import float_type
+from jaxns.nested_sampling.internals.log_semiring import LogSpace
+from jaxns.nested_sampling.internals.maps import replace_index, prepare_func_args
 from jaxns.nested_sampling.model import Model
 from jaxns.nested_sampling.random import resample_indicies
-from jaxns.nested_sampling.types import SampleCollection, NestedSamplerState, Reservoir, NestedSamplerResults
+from jaxns.nested_sampling.types import SampleCollection, NestedSamplerState, Reservoir, NestedSamplerResults, \
+    float_type
 
 logger = logging.getLogger('jaxns')
 

@@ -3,14 +3,13 @@ import logging
 import tensorflow_probability.substrates.jax as tfp
 from jax import random, numpy as jnp
 
-from jaxns.internals.types import float_type
 from jaxns.nested_sampling.prior import PriorModelGen, Prior, parse_prior, compute_log_likelihood, InvalidDistribution, \
     InvalidPriorName, prepare_input, distribution_chain
 from jaxns.nested_sampling.special_priors import Bernoulli, Categorical, Poisson, Beta, ForcedIdentifiability
+from jaxns.nested_sampling.types import float_type
 
 logger = logging.getLogger('jaxns')
 tfpd = tfp.distributions
-tfpb = tfp.bijectors
 
 
 def test_single_prior():
@@ -49,7 +48,7 @@ def test_single_prior():
 
 def test_no_quantile_prior():
     def prior_model() -> PriorModelGen:
-        z = yield Prior(tfpd.StudentT(df=1, loc=0., scale=1.))
+        z = yield Prior(tfpd.VonMises(loc=0., concentration=1.))
         return z
 
     try:
@@ -98,6 +97,14 @@ def test_distribution_chain():
 
 
 def test_priors():
+    d = Prior(jnp.zeros(5))
+    print(d)
+    assert d.forward(jnp.ones(d.base_shape, float_type)).shape == d.shape
+    assert d.forward(jnp.zeros(d.base_shape, float_type)).shape == d.shape
+    assert d.base_shape == ()
+    assert d.shape == (5,)
+
+
     d = Prior(tfpd.Uniform(low=jnp.zeros(5), high=jnp.ones(5)))
     print(d)
     assert d.forward(jnp.ones(d.base_shape, float_type)).shape == d.shape
@@ -119,6 +126,20 @@ def test_priors():
     assert d.shape == (5,)
 
     d = Prior(tfpd.Cauchy(loc=jnp.zeros(5), scale=jnp.ones(5)))
+    print(d)
+    assert d.forward(jnp.ones(d.base_shape, float_type)).shape == d.shape
+    assert d.forward(jnp.zeros(d.base_shape, float_type)).shape == d.shape
+    assert d.base_shape == (5,)
+    assert d.shape == (5,)
+
+    d = Prior(tfpd.StudentT(df=1.5, loc=jnp.zeros(5), scale=jnp.ones(5)))
+    print(d)
+    assert d.forward(jnp.ones(d.base_shape, float_type)).shape == d.shape
+    assert d.forward(jnp.zeros(d.base_shape, float_type)).shape == d.shape
+    assert d.base_shape == (5,)
+    assert d.shape == (5,)
+
+    d = Prior(tfpd.Beta(concentration0=jnp.ones(5), concentration1=jnp.ones(5)))
     print(d)
     assert d.forward(jnp.ones(d.base_shape, float_type)).shape == d.shape
     assert d.forward(jnp.zeros(d.base_shape, float_type)).shape == d.shape
@@ -152,7 +173,6 @@ def test_priors():
     assert d.forward(jnp.zeros(d.base_shape, float_type)).shape == d.shape
     assert d.base_shape == ()
     assert d.shape == (5,)
-
 
     d = Prior(tfpd.MultivariateNormalTriL(loc=jnp.zeros(5), scale_tril=jnp.eye(5)))
     print(d)

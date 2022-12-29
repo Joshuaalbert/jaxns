@@ -6,7 +6,7 @@ from jax import tree_map, pmap, numpy as jnp
 from jax.lax import dynamic_update_slice, dynamic_slice
 from jax.lax import scan
 
-from jaxns.internals.types import int_type
+from jaxns.nested_sampling.types import int_type
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +18,7 @@ def replace_index(operand, update, start_index):
     """
     if len(operand.shape) != len(update.shape):
         update = update[None]
+    start_index = jnp.asarray(start_index, int_type)
     start_indices = [start_index] + [jnp.asarray(0, start_index.dtype)] * (len(update.shape) - 1)
     return dynamic_update_slice(operand, update.astype(operand.dtype), start_indices)
 

@@ -24,7 +24,7 @@ class Timer:
 
 def test_approximate_nested_sampler():
     def prior_model() -> PriorModelGen:
-        x = yield Prior(tfpd.Uniform(low=0, high=jnp.asarray([1.,1.])))
+        x = yield Prior(tfpd.Uniform(low=0, high=jnp.asarray([1., 1.])))
         y = yield Prior(tfpd.Normal(loc=2, scale=x))
         z = x + y
         return z
@@ -113,6 +113,7 @@ def test_nested_sampling_basic():
     assert jnp.bitwise_not(jnp.isnan(results.log_Z_mean))
     assert jnp.isclose(results.log_Z_mean, log_Z_true, atol=1.75 * results.log_Z_uncert)
 
+
 #
 # def test_nested_sampling_basic_parallel():
 #     def prior_model() -> PriorModelGen:
@@ -148,9 +149,7 @@ def test_nested_sampling_basic():
 #     assert jnp.isclose(results.log_Z_mean, log_Z_true, atol=1.75 * results.log_Z_uncert)
 
 
-
 def test_nested_sampling_mvn_static():
-
     def log_normal(x, mean, cov):
         L = jnp.linalg.cholesky(cov)
         dx = x - mean
@@ -175,23 +174,25 @@ def test_nested_sampling_mvn_static():
     print(f"True log Z: {true_logZ}")
 
     def prior_model() -> PriorModelGen:
-        x = yield Prior(tfpd.MultivariateNormalTriL(loc=jnp.zeros_like(prior_mu), scale_tril=jnp.linalg.cholesky(prior_cov)), name='x')
+        x = yield Prior(
+            tfpd.MultivariateNormalTriL(loc=prior_mu, scale_tril=jnp.linalg.cholesky(prior_cov)),
+            name='x')
         return x
 
     def log_likelihood(x):
         return log_normal(x, data_mu, data_cov)
 
-    model = Model(prior_model=prior_model,
-                  log_likelihood=log_likelihood)
+    model = Model(prior_model=prior_model, log_likelihood=log_likelihood)
+
     model.sanity_check(random.PRNGKey(52), S=100)
-    exact_ns = ExactNestedSampler(model=model, num_live_points=50, num_parallel_samplers=1,
-                                  max_samples=1000)
+    exact_ns = ExactNestedSampler(model=model, num_live_points=200, num_parallel_samplers=1,
+                                  max_samples=3000)
 
     termination_reason, state = exact_ns(random.PRNGKey(42),
                                          term_cond=TerminationCondition(live_evidence_frac=1e-4))
     results = exact_ns.to_results(state, termination_reason)
     exact_ns.summary(results)
-    # exact_ns.plot_diagnostics(results)
+    exact_ns.plot_diagnostics(results)
     assert jnp.isclose(results.log_Z_mean, true_logZ, atol=1.75 * results.log_Z_uncert)
 
 

@@ -1,15 +1,15 @@
 from typing import Tuple, Union
 
-from etils.array_types import FloatArray, ui64
+from etils.array_types import FloatArray, IntArray
 from jax import numpy as jnp, tree_map, random
 from jax._src.lax.control_flow import while_loop
 from jax._src.lax.slicing import dynamic_update_slice
 
-from jaxns.internals.log_semiring import LogSpace, normalise_log_space
-from jaxns.internals.maps import replace_index
-from jaxns.internals.stats import linear_to_log_stats
-from jaxns.internals.types import float_type, int_type, NestedSamplerState
-from jaxns.nested_sampling.types import EvidenceCalculation, SampleCollection, SampleStatistics
+from jaxns.nested_sampling.internals.log_semiring import LogSpace, normalise_log_space
+from jaxns.nested_sampling.internals.maps import replace_index
+from jaxns.nested_sampling.internals.stats import linear_to_log_stats
+from jaxns.nested_sampling.types import EvidenceCalculation, SampleCollection, SampleStatistics, float_type, int_type
+from jaxns.nested_sampling.types import NestedSamplerState
 
 __all__ = ['compute_evidence',
            'analyse_sample_collection',
@@ -111,7 +111,7 @@ def compute_evidence(sample_collection: SampleCollection, num_live_points: Float
     """
     num_samples = sample_collection.sample_idx
 
-    CarryType = Tuple[EvidenceCalculation, ui64, FloatArray, FloatArray, FloatArray]
+    CarryType = Tuple[EvidenceCalculation, IntArray, FloatArray, FloatArray, FloatArray]
 
     def thread_cond(body_state: CarryType):
         (evidence_calculation, idx, log_L_contour, log_dZ_mean, log_X_mean) = body_state
@@ -198,8 +198,8 @@ def analyse_sample_collection(sample_collection: SampleCollection, sorted_collec
 
 
 def compute_num_live_points_from_unit_threads(log_L_constraints: FloatArray, log_L_samples: FloatArray,
-                                              num_samples: ui64 = None, sorted_collection: bool = True) \
-        -> Union[FloatArray, Tuple[FloatArray, ui64]]:
+                                              num_samples: IntArray = None, sorted_collection: bool = True) \
+        -> Union[FloatArray, Tuple[FloatArray, IntArray]]:
     """
     Compute the number of live points of shrinkage distribution, from an arbitrary list of samples with
     corresponding sampling constraints.

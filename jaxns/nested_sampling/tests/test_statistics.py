@@ -1,6 +1,8 @@
 from jax import numpy as jnp, random
+from jax import vmap
 from jax.lax import dynamic_update_slice
 
+from jaxns.nested_sampling.internals.maps import replace_index
 from jaxns.nested_sampling.statistics import compute_num_live_points_from_unit_threads, compute_remaining_evidence
 
 
@@ -191,9 +193,6 @@ def test_compute_num_live_points():
 
 
 def test_standard_nested_sampling():
-    from jax import vmap
-    from jaxns.internals.maps import replace_index
-
     n = 0.5
 
     def log_likelihood(x):

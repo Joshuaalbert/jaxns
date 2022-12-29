@@ -2,9 +2,8 @@ from etils.array_types import PRNGKey, FloatArray
 from jax import random, numpy as jnp
 from jax.lax import while_loop
 
-from jaxns.internals.types import int_type
 from jaxns.nested_sampling.model import Model
-from jaxns.nested_sampling.types import Sample
+from jaxns.nested_sampling.types import Sample, int_type
 
 __all__ = ['UniformSampler']
 

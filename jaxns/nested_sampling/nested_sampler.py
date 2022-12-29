@@ -7,10 +7,10 @@ from etils.array_types import PRNGKey, IntArray
 from jax import random, numpy as jnp, core, tree_map, vmap, jit
 
 from jaxns import summary, save_results, load_results
-from jaxns.internals.log_semiring import LogSpace, normalise_log_space
-from jaxns.internals.stats import linear_to_log_stats, effective_sample_size
 from jaxns.nested_sampling.adaptive_refinement import AdaptiveRefinement
 from jaxns.nested_sampling.initial_state import init_sample_collection, get_uniform_init_live_points
+from jaxns.nested_sampling.internals.log_semiring import LogSpace, normalise_log_space
+from jaxns.nested_sampling.internals.stats import linear_to_log_stats, effective_sample_size
 from jaxns.nested_sampling.model import Model
 from jaxns.nested_sampling.plotting import plot_cornerplot, plot_diagnostics
 from jaxns.nested_sampling.static_slice import StaticSlice

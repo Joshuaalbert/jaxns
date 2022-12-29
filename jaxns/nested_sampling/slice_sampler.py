@@ -1,20 +1,20 @@
 from typing import NamedTuple, Optional, Union, Tuple
 
-from etils.array_types import ui64, FloatArray, IntArray, PRNGKey, BoolArray
+from etils.array_types import FloatArray, IntArray, PRNGKey, BoolArray
 from jax import random, numpy as jnp, value_and_grad, tree_map
 from jax._src.lax.control_flow import while_loop
 
-from jaxns.internals.types import int_type
-from jaxns.likelihood_samplers.parallel_slice_sampling import sample_direction, slice_bounds, pick_point_in_interval, \
+from jaxns.nested_sampling.likelihood_samplers.parallel_slice_sampling import sample_direction, slice_bounds, \
+    pick_point_in_interval, \
     ProposalState, change_direction, shrink_interval
 from jaxns.nested_sampling.model import Model
-from jaxns.nested_sampling.types import NestedSamplerState, LivePoints, Sample
+from jaxns.nested_sampling.types import NestedSamplerState, LivePoints, Sample, int_type
 
 __all__ = ['SliceSampler']
 
 
 class MultiEllipses(NamedTuple):
-    cluster_id: ui64
+    cluster_id: IntArray
     mu: FloatArray
     radii: FloatArray
     rotation: FloatArray

@@ -4,7 +4,7 @@ from etils.array_types import FloatArray, PRNGKey
 from jax import random, numpy as jnp
 from jax._src.scipy.special import logsumexp
 
-from jaxns.internals.log_semiring import cumulative_logsumexp
+from jaxns.nested_sampling.internals.log_semiring import cumulative_logsumexp
 
 __all__ = ['random_ortho_matrix',
            'resample_indicies']
