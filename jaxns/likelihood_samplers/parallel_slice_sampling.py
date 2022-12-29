@@ -3,7 +3,7 @@ from typing import NamedTuple
 
 from jax import random, numpy as jnp
 
-from jaxns.internals.types import int_type
+from jaxns.types import int_type
 
 logger = logging.getLogger(__name__)
 

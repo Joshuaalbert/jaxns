@@ -2,7 +2,7 @@ from jax import numpy as jnp
 from jax.lax import scan
 from jax.scipy.special import logsumexp
 
-from jaxns.internals.types import SignedLog
+from jaxns.types import SignedLog
 
 
 def logaddexp(x1, x2):
@@ -23,7 +23,7 @@ def logaddexp(x1, x2):
 
 
 def signed_logaddexp(log_abs_val1, sign1, log_abs_val2, sign2):
-    """
+    r"""
     Equivalent of logaddexp but for signed quantities too.
     Broadcasting supported.
 
@@ -142,16 +142,16 @@ class LogSpace(object):
 
     def __sub__(self, other):
         """
-                Implements addition in log space
+        Implements addition in log space
 
-                    log(exp(log_A) - exp(log_B))
+            log(exp(log_A) - exp(log_B))
 
-                Args:
-                    other: ndarray or LogSpace, if ndarray assumed to be log(B)
+        Args:
+            other: ndarray or LogSpace, if ndarray assumed to be log(B)
 
-                Returns:
-                     LogSpace
-                """
+        Returns:
+             LogSpace
+        """
         if not isinstance(other, LogSpace):
             raise TypeError(f"Expected type {type(self)} got {type(other)}")
         return LogSpace(*signed_logaddexp(self._log_abs_val, self._sign, other._log_abs_val, -other._sign))
@@ -346,3 +346,13 @@ class LogSpace(object):
 
 def is_complex(a):
     return a.dtype in [jnp.complex64, jnp.complex128]
+
+
+def normalise_log_space(x: LogSpace) -> LogSpace:
+    """
+    Safely normalise a LogSpace, accounting for zero-sum.
+    """
+    norm = x.sum()
+    x /= norm
+    x = LogSpace(jnp.where(jnp.isneginf(norm.log_abs_val), -jnp.inf, x.log_abs_val))
+    return x
