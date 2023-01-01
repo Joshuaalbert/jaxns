@@ -301,6 +301,20 @@ def sample_multi_ellipsoid(key: PRNGKey, mu: FloatArray, radii: FloatArray, rota
     return k, u_accept
 
 
+def log_coverage_scale(log_VE, log_VS, D):
+    """
+    Computes the required scaling relation such that
+    V(E) = max(V(E), V(S))
+    where the scaling is applied to each radius.
+    Args:
+        log_VE:
+        log_VS:
+        D:
+    Returns:
+    """
+    return jnp.maximum(0., (log_VS - log_VE) / D)
+
+
 def cluster_split(key: PRNGKey, points: FloatArray, mask: BoolArray, log_VS: FloatArray, log_VE: FloatArray,
                   kmeans_init: bool = True) \
         -> Tuple[IntArray, FloatArray, MultiEllipsoidParams, FloatArray, MultiEllipsoidParams, BoolArray]:

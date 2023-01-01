@@ -8,7 +8,7 @@ from jax._src.lax.control_flow import while_loop
 from jaxns.internals.maps import chunked_pmap
 from jaxns.internals.stats import linear_to_log_stats
 from jaxns.model import Model
-from jaxns.slice_sampler import SliceSampler, SeedPoint, PreprocessType
+from jaxns.slice_sampler import UniDimSliceSampler, SeedPoint, PreprocessType
 from jaxns.statistics import analyse_sample_collection
 from jaxns.types import NestedSamplerState, Reservoir, int_type
 from jaxns.utils import sort_samples
@@ -22,11 +22,9 @@ class AdaptiveRefinement:
             raise ValueError(f"uncert_improvement_patient should be > 0, got {uncert_improvement_patience}.")
         self.uncert_improvement_patience = uncert_improvement_patience
         self.num_parallel_samplers = num_parallel_samplers
-        self.slice_sampler = SliceSampler(model=model,
-                                          midpoint_shrink=True,
-                                          destructive_shrink=False,
-                                          gradient_boost=False,
-                                          multi_ellipse_bound=False)
+        self.slice_sampler = UniDimSliceSampler(model=model,
+                                                midpoint_shrink=True,
+                                                multi_ellipse_bound=False)
         self.num_slices = num_slices
 
     def split_state(self, state: NestedSamplerState) -> Tuple[NestedSamplerState, Reservoir]:
