@@ -6,6 +6,7 @@ import tensorflow_probability.substrates.jax as tfp
 from etils.array_types import PRNGKey, IntArray
 from jax import random, numpy as jnp, core, tree_map, vmap, jit
 
+from jaxns.slice_sampler import UniDimSliceSampler
 from jaxns.utils import summary, save_results, load_results
 from jaxns.adaptive_refinement import AdaptiveRefinement
 from jaxns.initial_state import init_sample_collection, get_uniform_init_live_points
@@ -173,9 +174,13 @@ class ApproximateNestedSampler(NestedSampler):
         self.static_uniform = StaticUniform(model=self.model,
                                             num_live_points=self.num_live_points,
                                             efficiency_threshold=0.1)
+        slice_sampler = UniDimSliceSampler(model=model,
+                                           midpoint_shrink=True,
+                                           multi_ellipse_bound=False)
         self.static_slice = StaticSlice(model=self.model,
                                         num_live_points=self.num_live_points,
-                                        num_parallel_samplers=self.num_parallel_samplers)
+                                        num_parallel_samplers=self.num_parallel_samplers,
+                                        slice_sampler=slice_sampler)
 
     def initialise(self, key: PRNGKey) -> Tuple[NestedSamplerState, LivePoints]:
         """
