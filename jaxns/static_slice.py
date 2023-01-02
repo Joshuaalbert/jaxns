@@ -6,7 +6,7 @@ from jax import tree_map, numpy as jnp, random, pmap
 from jax._src.lax.control_flow import scan, while_loop
 
 from jaxns.model import Model
-from jaxns.slice_sampler import PreprocessType, SliceSampler
+from jaxns.slice_sampler import PreprocessType, AbstractSliceSampler
 from jaxns.statistics import analyse_sample_collection
 from jaxns.termination import determine_termination
 from jaxns.types import NestedSamplerState, Reservoir, LivePoints, TerminationCondition, int_type
@@ -24,7 +24,8 @@ class StaticSlice:
     equivalent to a single nested sampler with N*M live points.
     """
 
-    def __init__(self, model: Model, num_live_points: int, num_parallel_samplers: int = 1):
+    def __init__(self, model: Model, slice_sampler: AbstractSliceSampler, num_live_points: int, num_slices: int,
+                 num_parallel_samplers: int = 1):
         # ensure we can split up request into equal parallel batches of work.
         remainder = num_live_points % num_parallel_samplers
         extra = (num_parallel_samplers - remainder) % num_parallel_samplers
@@ -34,9 +35,10 @@ class StaticSlice:
         self.num_live_points = num_live_points + extra
         self.num_parallel_samplers = num_parallel_samplers
         self.model = model
-        self.slice_sampler = SliceSampler(model=model, midpoint_shrink=True, destructive_shrink=False,
-                                          gradient_boost=False,
-                                          multi_ellipse_bound=False)
+        self.slice_sampler = slice_sampler
+        if num_slices < 1:
+            raise ValueError(f"num_slices should be > 0, got {num_slices}.")
+        self.num_slices = num_slices
 
     def _single_thread_ns(self,
                           key: PRNGKey,
@@ -95,7 +97,6 @@ class StaticSlice:
 
     def __call__(self, state: NestedSamplerState,
                  live_points: LivePoints,
-                 num_slices: IntArray,
                  termination_cond: TerminationCondition
                  ) -> Tuple[IntArray, NestedSamplerState, LivePoints]:
         """
@@ -114,12 +115,14 @@ class StaticSlice:
         if live_points.reservoir.log_L.size != self.num_live_points:
             raise ValueError(
                 f"live points reservoir is the wrong size. "
-                f"Got {live_points.reservoir.log_L.size} by expected {self.num_live_points}.")
+                f"Got {live_points.reservoir.log_L.size} but expected {self.num_live_points}.")
 
-        single_thread_sampler = lambda key, live_points, preprocess_data: self._single_thread_ns(key=key,
-                                                                                                 live_points=live_points,
-                                                                                                 num_slices=num_slices,
-                                                                                                 preprocess_data=preprocess_data)
+        single_thread_sampler = lambda key, live_points, preprocess_data: self._single_thread_ns(
+            key=key,
+            live_points=live_points,
+            num_slices=self.num_slices,
+            preprocess_data=preprocess_data
+        )
 
         CarryType = Tuple[BoolArray, IntArray, NestedSamplerState, LivePoints]
 

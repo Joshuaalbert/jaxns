@@ -53,7 +53,7 @@ def plot_diagnostics(results: NestedSamplerResults, save_name=None):
                   label=r"$\log Z={:.1f}$".format(results.log_Z_mean))
     axs[3].set_ylabel(r'$Z(x > U)/Z$')
     axs[3].legend()
-    axs[4].plot(-log_X, 1. / results.num_likelihood_evaluations_per_sample)
+    axs[4].plot(-log_X, 1./results.num_likelihood_evaluations_per_sample)
     axs[4].hlines(jnp.exp(results.log_efficiency), jnp.min(-log_X),
                   jnp.max(-log_X), colors='black', ls='dashed',
                   label='avg. eff.={:.3f}'.format(jnp.exp(results.log_efficiency)))
