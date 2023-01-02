@@ -6,19 +6,19 @@ import tensorflow_probability.substrates.jax as tfp
 from etils.array_types import PRNGKey, IntArray
 from jax import random, numpy as jnp, core, tree_map, vmap, jit
 
-from jaxns.slice_sampler import UniDimSliceSampler
-from jaxns.utils import summary, save_results, load_results
 from jaxns.adaptive_refinement import AdaptiveRefinement
 from jaxns.initial_state import init_sample_collection, get_uniform_init_live_points
 from jaxns.internals.log_semiring import LogSpace, normalise_log_space
 from jaxns.internals.stats import linear_to_log_stats, effective_sample_size
 from jaxns.model import Model
 from jaxns.plotting import plot_cornerplot, plot_diagnostics
+from jaxns.slice_sampler import UniDimSliceSampler, AbstractSliceSampler
 from jaxns.static_slice import StaticSlice
 from jaxns.static_uniform import StaticUniform
 from jaxns.statistics import analyse_sample_collection
 from jaxns.types import TerminationCondition, NestedSamplerState, NestedSamplerResults, LivePoints
 from jaxns.utils import collect_samples
+from jaxns.utils import summary, save_results, load_results
 
 tfpd = tfp.distributions
 
@@ -166,7 +166,8 @@ class NestedSampler:
 
 
 class ApproximateNestedSampler(NestedSampler):
-    def __init__(self, model: Model, num_live_points: int, num_parallel_samplers: int, max_samples: int):
+    def __init__(self, model: Model, num_live_points: int, num_parallel_samplers: int, max_samples: int,
+                 slice_sampler: Optional[AbstractSliceSampler] = None):
         super(ApproximateNestedSampler, self).__init__(model=model, num_live_points=num_live_points,
                                                        num_parallel_samplers=num_parallel_samplers,
                                                        max_samples=max_samples)
@@ -174,9 +175,10 @@ class ApproximateNestedSampler(NestedSampler):
         self.static_uniform = StaticUniform(model=self.model,
                                             num_live_points=self.num_live_points,
                                             efficiency_threshold=0.1)
-        slice_sampler = UniDimSliceSampler(model=model,
-                                           midpoint_shrink=True,
-                                           multi_ellipse_bound=False)
+        if slice_sampler is None:
+            slice_sampler = UniDimSliceSampler(model=model,
+                                               midpoint_shrink=True,
+                                               multi_ellipse_bound=False)
         self.static_slice = StaticSlice(model=self.model,
                                         num_live_points=self.num_live_points,
                                         num_parallel_samplers=self.num_parallel_samplers,
@@ -311,20 +313,23 @@ class ApproximateNestedSampler(NestedSampler):
 
 
 class ExactNestedSampler(NestedSampler):
-    def __init__(self, model: Model, num_live_points: int, num_parallel_samplers: int, max_samples: int):
+    def __init__(self, model: Model, num_live_points: int, num_parallel_samplers: int, max_samples: int,
+                 shrinkage_slice_sampler: Optional[AbstractSliceSampler] = None,
+                 refinement_slice_sampler: Optional[AbstractSliceSampler] = None):
         super(ExactNestedSampler, self).__init__(model=model, num_live_points=num_live_points,
-                                                 num_parallel_samplers=num_parallel_samplers, max_samples=max_samples)
+                                                 num_parallel_samplers=num_parallel_samplers,
+                                                 max_samples=max_samples)
 
         self.approximate_sampler = ApproximateNestedSampler(model=model, num_live_points=num_live_points,
                                                             num_parallel_samplers=num_parallel_samplers,
-                                                            max_samples=max_samples)
+                                                            max_samples=max_samples,
+                                                            slice_sampler=shrinkage_slice_sampler)
 
         self.adaptive_refinement = AdaptiveRefinement(model=self.model,
                                                       uncert_improvement_patience=2,
                                                       num_slices=self.model.U_ndims,
-                                                      num_parallel_samplers=self.num_parallel_samplers)
-
-        self.max_samples = max_samples
+                                                      num_parallel_samplers=self.num_parallel_samplers,
+                                                      slice_sampler=refinement_slice_sampler)
 
     def improvement(self, state: NestedSamplerState) -> NestedSamplerState:
         """
