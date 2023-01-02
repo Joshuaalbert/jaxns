@@ -283,7 +283,7 @@ class UniDimSliceSampler(AbstractSliceSampler):
             proposal_state_from_2 = self.shrink_interval(proposal_state, log_L_point_U,
                                                          log_L_contour=log_L_constraint,
                                                          midpoint_shrink=self.midpoint_shrink,
-                                                         destructive_shrink=self.destructive_shrink)
+                                                         destructive_shrink=False)
 
             # replace with the proposal state as appropriate
 
