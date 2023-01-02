@@ -200,11 +200,15 @@ def summary(results: NestedSamplerResults) -> str:
     _print("--------")
     _print("# likelihood evals: {}".format(results.total_num_likelihood_evaluations))
     _print("# samples: {}".format(results.total_num_samples))
-    _print("# slices: {:.1f}".format(jnp.nanmean(jnp.where(results.num_slices>0, results.num_slices, jnp.nan))))
+    _print("# slices: {:.1f}".format(results.total_num_slices))
+    _print(
+        "# slices / acceptance: {:.1f}".format(
+            jnp.nanmean(jnp.where(results.num_slices > 0, results.num_slices, jnp.nan))))
     _print("# likelihood evals / sample: {:.1f}".format(
         results.total_num_likelihood_evaluations / results.total_num_samples))
-    _print("# likelihood evals / slice: {:.1f}".format(
-        results.num_likelihood_evaluations_per_slice))
+    likelihood_evals_per_slice = jnp.sum(
+        jnp.where(results.num_slices > 0, results.num_likelihood_evaluations_per_sample, 0.)) / results.total_num_slices
+    _print("# likelihood evals / slice: {:.1f}".format(likelihood_evals_per_slice))
     _print("--------")
     _print("logZ={} +- {}".format(_round(results.log_Z_mean, results.log_Z_uncert),
                                   _round(results.log_Z_uncert, results.log_Z_uncert)))

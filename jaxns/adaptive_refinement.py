@@ -24,9 +24,11 @@ class AdaptiveRefinement:
         self.uncert_improvement_patience = uncert_improvement_patience
         self.num_parallel_samplers = num_parallel_samplers
         if slice_sampler is None:
-            slice_sampler = UniDimSliceSampler(model=model,
-                                                    midpoint_shrink=True,
-                                                    multi_ellipse_bound=False)
+            slice_sampler = UniDimSliceSampler(
+                model=model,
+                midpoint_shrink=True,
+                multi_ellipse_bound=False
+            )
         self.slice_sampler = slice_sampler
         self.num_slices = num_slices
 
@@ -116,6 +118,8 @@ class AdaptiveRefinement:
 
         Args:
             state: state to improve
+            iid_state: state with only the i.i.d. samples
+            non_iid_reservoir: samples that are not deemed i.i.d.
 
         Returns:
             state where all samples are considered i.i.d. sampled within their respective likelihood constraints
@@ -189,9 +193,9 @@ class AdaptiveRefinement:
 
         init_body_state: CarryType = (
             improve_key, non_iid_reservoir, init_log_Z_mean, jnp.asarray(0, int_type), preprocess_data)
-        (key, update_reservoir, _, _, _) = while_loop(cond,
-                                                      body,
-                                                      init_body_state)
+        (_, update_reservoir, _, _, _) = while_loop(cond,
+                                                    body,
+                                                    init_body_state)
 
         # mark as iid now <==> the evidence stopped changing
         update_reservoir = update_reservoir._replace(iid=jnp.ones_like(update_reservoir.iid))

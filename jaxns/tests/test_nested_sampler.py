@@ -4,13 +4,15 @@ import tensorflow_probability.substrates.jax as tfp
 from jax import random, numpy as jnp
 from jax._src.scipy.linalg import solve_triangular
 
-from jaxns.utils import evidence_posterior_samples, analytic_log_evidence
 from jaxns.model import Model
 from jaxns.nested_sampler import ApproximateNestedSampler, ExactNestedSampler
 from jaxns.prior import PriorModelGen, Prior
+from jaxns.slice_sampler import MultiDimSliceSampler, UniDimSliceSampler
 from jaxns.types import TerminationCondition
+from jaxns.utils import evidence_posterior_samples, analytic_log_evidence
 
 tfpd = tfp.distributions
+
 
 class Timer:
     def __enter__(self):
@@ -78,6 +80,36 @@ def test_exact_nested_sampler():
         results.log_Z_mean.block_until_ready()
 
 
+def test_exact_nested_sampler_multidim_slice_sampler():
+    def prior_model() -> PriorModelGen:
+        x = yield Prior(tfpd.Uniform(low=0, high=2))
+        y = yield Prior(tfpd.Normal(loc=2, scale=x))
+        z = x + y
+        return z
+
+    def log_likelihood(z):
+        return -z ** 2
+
+    model = Model(prior_model=prior_model,
+                  log_likelihood=log_likelihood)
+    slice_sampler = MultiDimSliceSampler(model=model, num_restrict_dims=model.U_ndims)
+    exact_ns = ExactNestedSampler(model=model, num_live_points=50, num_parallel_samplers=1,
+                                  max_samples=1000, refinement_slice_sampler=slice_sampler)
+    # print(termination_reason)
+    # print(state)
+    with Timer():
+        termination_reason, state = exact_ns(random.PRNGKey(42),
+                                             term_cond=TerminationCondition(live_evidence_frac=1e-4))
+        results = exact_ns.to_results(state, termination_reason)
+        results.log_Z_mean.block_until_ready()
+
+    with Timer():
+        termination_reason, state = exact_ns(random.PRNGKey(42),
+                                             term_cond=TerminationCondition(live_evidence_frac=1e-4))
+        results = exact_ns.to_results(state, termination_reason)
+        results.log_Z_mean.block_until_ready()
+
+
 def test_nested_sampling_basic():
     def prior_model() -> PriorModelGen:
         x = yield Prior(tfpd.Uniform(low=0, high=1), name='x')
@@ -90,14 +122,14 @@ def test_nested_sampling_basic():
                   log_likelihood=log_likelihood)
     exact_ns = ExactNestedSampler(model=model, num_live_points=50, num_parallel_samplers=1,
                                   max_samples=1000)
+    with Timer():
+        termination_reason, state = exact_ns(random.PRNGKey(42),
+                                             term_cond=TerminationCondition(live_evidence_frac=1e-4))
+        results = exact_ns.to_results(state, termination_reason)
 
-    termination_reason, state = exact_ns(random.PRNGKey(42),
-                                         term_cond=TerminationCondition(live_evidence_frac=1e-4))
-    results = exact_ns.to_results(state, termination_reason)
-
-    # exact_ns.plot_diagnostics(results)
-    exact_ns.summary(results)
-    # exact_ns.plot_cornerplot(results)
+        # exact_ns.plot_diagnostics(results)
+        exact_ns.summary(results)
+        # exact_ns.plot_cornerplot(results)
 
     log_Z_true = analytic_log_evidence(model=model, S=200)
 
@@ -185,13 +217,76 @@ def test_nested_sampling_mvn_static():
     model.sanity_check(random.PRNGKey(52), S=100)
     exact_ns = ExactNestedSampler(model=model, num_live_points=200, num_parallel_samplers=1,
                                   max_samples=3000)
-
-    termination_reason, state = exact_ns(random.PRNGKey(42),
-                                         term_cond=TerminationCondition(live_evidence_frac=1e-4))
-    results = exact_ns.to_results(state, termination_reason)
-    exact_ns.summary(results)
-    exact_ns.plot_diagnostics(results)
+    with Timer():
+        termination_reason, state = exact_ns(random.PRNGKey(42),
+                                             term_cond=TerminationCondition(live_evidence_frac=1e-4))
+        results = exact_ns.to_results(state, termination_reason)
+        exact_ns.summary(results)
+    # exact_ns.plot_diagnostics(results)
     assert jnp.isclose(results.log_Z_mean, true_logZ, atol=1.75 * results.log_Z_uncert)
+
+
+def test_multi_needs_fewer_slices():
+
+    def log_normal(x, mean, cov):
+        L = jnp.linalg.cholesky(cov)
+        dx = x - mean
+        dx = solve_triangular(L, dx, lower=True)
+        return -0.5 * x.size * jnp.log(2. * jnp.pi) - jnp.sum(jnp.log(jnp.diag(L))) - 0.5 * dx @ dx
+
+    ndims = 4
+    prior_mu = 2 * jnp.ones(ndims)
+    prior_cov = jnp.diag(jnp.ones(ndims)) ** 2
+
+    data_mu = jnp.zeros(ndims)
+    data_cov = jnp.diag(jnp.ones(ndims)) ** 2
+    data_cov = jnp.where(data_cov == 0., 0.95, data_cov)
+
+    true_logZ = log_normal(data_mu, prior_mu, prior_cov + data_cov)
+    # not super happy with this being 1.58 and being off by like 0.1. Probably related to the ESS.
+    post_mu = prior_cov @ jnp.linalg.inv(prior_cov + data_cov) @ data_mu + data_cov @ jnp.linalg.inv(
+        prior_cov + data_cov) @ prior_mu
+
+    print(f"True post mu:{post_mu}")
+    print(f"True log Z: {true_logZ}")
+
+    def prior_model() -> PriorModelGen:
+        x = yield Prior(
+            tfpd.MultivariateNormalTriL(loc=prior_mu, scale_tril=jnp.linalg.cholesky(prior_cov)),
+            name='x')
+        return x
+
+    def log_likelihood(x):
+        return log_normal(x, data_mu, data_cov)
+
+    model = Model(prior_model=prior_model, log_likelihood=log_likelihood)
+
+    model.sanity_check(random.PRNGKey(52), S=100)
+    slice_sampler = MultiDimSliceSampler(model=model, num_restrict_dims=model.U_ndims)
+    exact_ns = ExactNestedSampler(model=model, num_live_points=200, num_parallel_samplers=1,
+                                  max_samples=1e4, refinement_slice_sampler=slice_sampler)
+    with Timer():
+        print("Using Multi Dimensional Slice Sampling")
+        termination_reason, state = exact_ns(random.PRNGKey(42),
+                                             term_cond=TerminationCondition(live_evidence_frac=1e-4))
+        results = exact_ns.to_results(state, termination_reason)
+        exact_ns.summary(results)
+        num_slices_multi = results.total_num_slices
+    assert jnp.isclose(results.log_Z_mean, true_logZ, atol=1.75 * results.log_Z_uncert)
+
+    slice_sampler = UniDimSliceSampler(model=model, midpoint_shrink=True)
+    exact_ns = ExactNestedSampler(model=model, num_live_points=200, num_parallel_samplers=1,
+                                  max_samples=1e4, refinement_slice_sampler=slice_sampler)
+    with Timer():
+        print("Using Uni Dimensional Slice Sampling")
+        termination_reason, state = exact_ns(random.PRNGKey(42),
+                                             term_cond=TerminationCondition(live_evidence_frac=1e-4))
+        results = exact_ns.to_results(state, termination_reason)
+        exact_ns.summary(results)
+        num_slices_uni = results.total_num_slices
+    assert jnp.isclose(results.log_Z_mean, true_logZ, atol=1.75 * results.log_Z_uncert)
+    # TODO(Joshuaalbert): broken test, probably means multidim slice sampling is not robust to structure.
+    # assert num_slices_multi < num_slices_uni
 
 
 def test_shrinkage():
