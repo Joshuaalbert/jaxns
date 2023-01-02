@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from typing import NamedTuple, Optional, Tuple, Any
 
 from etils.array_types import FloatArray, IntArray, PRNGKey, BoolArray
-from jax import random, numpy as jnp, value_and_grad, tree_map
+from jax import random, numpy as jnp, tree_map
 from jax._src.lax.control_flow import while_loop
 
 from jaxns.model import Model
@@ -231,12 +231,6 @@ class UniDimSliceSampler(AbstractSliceSampler):
 
         direction = self.sample_direction(n_key, seed_point.U0.size)
         num_likelihood_evaluations = jnp.full((), 0, int_type)
-        if self.gradient_boost:
-            # sets the initial direction of search up-hill (biasing away from uniform sampling, but pulling toward peak)
-            _, grad_direction = value_and_grad(lambda U: self.model.forward(U)[1])(seed_point.U0)
-            grad_direction /= jnp.linalg.norm(grad_direction)
-            direction = jnp.where(jnp.isnan(grad_direction), direction, grad_direction)
-            num_likelihood_evaluations += jnp.full((), 1, int_type)
         (left, right) = self.slice_bounds(seed_point.U0, direction)
         point_U, t = self.pick_point_in_interval(t_key, seed_point.U0, direction, left, right)
         init_proposal_state = UniDimProposalState(key=proposal_key,
