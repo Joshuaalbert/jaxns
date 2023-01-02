@@ -330,7 +330,7 @@ def test_nested_sampling_plateau():
 
     model = Model(prior_model=prior_model,
                   log_likelihood=log_likelihood)
-    exact_ns = ExactNestedSampler(model=model, num_live_points=50, num_parallel_samplers=1,
+    exact_ns = ExactNestedSampler(model=model, num_live_points=50,
                                   max_samples=1000)
 
     termination_reason, state = exact_ns(random.PRNGKey(42),
