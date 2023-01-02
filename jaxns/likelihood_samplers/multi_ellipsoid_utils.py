@@ -47,6 +47,18 @@ def bounding_ellipsoid(points: UType, mask: FloatArray) -> Tuple[FloatArray, Flo
     return mu, cov
 
 
+def test_ellipsoid_params():
+    n = 1000
+    X = random.multivariate_normal(random.PRNGKey(42), mean=jnp.asarray([0., 0.]),
+                                   cov=jnp.asarray([[1., 0.4], [0.4, 1.]]), shape=(n,))
+    mu, radii, rotation = ellipsoid_params(points=X, mask=jnp.ones(n, jnp.bool_))
+    import pylab as plt
+    plt.scatter(X[:,0], X[:,1])
+    plot_ellipses(tree_map(lambda x: x[None], MultiEllipsoidParams(mu, radii, rotation)))
+    assert jnp.all(vmap(lambda x: point_in_ellipsoid(x, mu, radii, rotation))(X))
+
+
+
 def ellipsoid_params(points: UType, mask: FloatArray) -> Tuple[FloatArray, FloatArray, FloatArray]:
     """
     If the ellipsoid is defined by
@@ -66,14 +78,15 @@ def ellipsoid_params(points: UType, mask: FloatArray) -> Tuple[FloatArray, Float
     """
     # get ellipsoid mean and covariance
     mu, cov = bounding_ellipsoid(points=points, mask=mask)
-
     # compute factorisation
     u, s, vh = jnp.linalg.svd(cov)
     W, Q, Vh = vh.T, jnp.where(s > 1e-15, jnp.reciprocal(s), jnp.zeros_like(s)), u.T
     C = (W * Q) @ Vh
-    radii = jnp.reciprocal(jnp.sqrt(Q))
-    radii = jnp.where(jnp.isnan(radii), 0., radii)
-    rotation = u  # Vh.conj().T
+
+    print(jnp.linalg.inv(C))
+    radii = jnp.sqrt(Q)
+    print(radii, s)
+    rotation = u # Vh.conj().T
 
     # Compute scale factor for radii to enclose all points.
     # for all i (points[i] - f) @ inv(scale * cov) @ (points[i] - f) <= 1
@@ -381,7 +394,7 @@ def cluster_split(key: PRNGKey, points: FloatArray, mask: BoolArray, log_VS: Flo
         # reassign
         delta_F = LogSpace(log_h1) - LogSpace(log_h2)
         reassign_idx = jnp.argmax(delta_F.abs().log_abs_val)
-        new_id = jnp.asarray(delta_F[reassign_idx] > 0, int_type)
+        new_id = jnp.asarray(delta_F[reassign_idx] > LogSpace(-jnp.inf), int_type)
         new_cluster_id = cluster_id.at[reassign_idx].set(new_id)
 
         # new_cluster_k = jnp.where(log_h1 < log_h2, 0, 1)
@@ -450,21 +463,14 @@ def cluster_split(key: PRNGKey, points: FloatArray, mask: BoolArray, log_VS: Flo
     return cluster_id, log_VS1, params1, log_VS2, params2, do_split
 
 
-def _log_coverage_scale(log_VE, log_VS, D):
-    """
-    Computes the required scaling relation such that
-    V(E) = max(V(E), V(S))
-    where the scaling is applied to each radius.
-
-    Args:
-        log_VE:
-        log_VS:
-        D:
-
-    Returns:
-
-    """
-    return jnp.maximum(0., (log_VS - log_VE) / D)
+def plot_ellipses(params: MultiEllipsoidParams):
+    import pylab as plt
+    theta = jnp.linspace(0., 2 * jnp.pi, 100)
+    circle = jnp.stack([jnp.cos(theta), jnp.sin(theta)], axis=1)
+    for mu, radii, rotation in zip(params.mu, params.radii, params.rotation):
+        ellipse = vmap(lambda point: circle_to_ellipsoid(point, mu, radii, rotation))(circle)
+        plt.plot(ellipse[:, 0], ellipse[:, 1])
+    plt.show()
 
 
 def ellipsoid_clustering(key: PRNGKey, points: FloatArray, log_VS: FloatArray,
@@ -502,6 +508,10 @@ def ellipsoid_clustering(key: PRNGKey, points: FloatArray, log_VS: FloatArray,
         radii=params.radii.at[0].set(radii),
         rotation=params.rotation.at[0].set(rotation)
     )
+    import pylab as plt
+    plt.scatter(points[:, 0], points[:, 1])
+    plot_ellipses(params)
+
     state = MultEllipsoidState(cluster_id=cluster_id,
                                params=params)
 
@@ -513,6 +523,7 @@ def ellipsoid_clustering(key: PRNGKey, points: FloatArray, log_VS: FloatArray,
 
     def body(body_state: CarryType) -> CarryType:
         (key, next_k, state, done_splitting, split_depth, log_VS_subclusters) = body_state
+
         key, split_key = random.split(key, 2)
         # bread first selection
         select_split = jnp.argmin(jnp.where(done_splitting, jnp.iinfo(split_depth.dtype).max, split_depth))
