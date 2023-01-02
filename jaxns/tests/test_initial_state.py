@@ -92,4 +92,4 @@ def test_static_uniform():
     ns = StaticUniform(model=model, num_live_points=n, efficiency_threshold=efficiency_threshold)
     state, live_points = ns(state=state, live_points=live_points)
     assert state.sample_collection.sample_idx > 0
-    assert jnp.mean(live_points.reservoir.num_likelihood_evaluations) > 1 / efficiency_threshold
+    assert jnp.mean(1./live_points.reservoir.num_likelihood_evaluations) > efficiency_threshold
