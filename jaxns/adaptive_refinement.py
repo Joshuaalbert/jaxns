@@ -1,5 +1,5 @@
 from functools import partial
-from typing import Tuple
+from typing import Tuple, Optional
 
 from etils.array_types import PRNGKey, FloatArray, IntArray, BoolArray
 from jax import core, numpy as jnp, tree_map, random, jit
@@ -8,7 +8,7 @@ from jax._src.lax.control_flow import while_loop
 from jaxns.internals.maps import chunked_pmap
 from jaxns.internals.stats import linear_to_log_stats
 from jaxns.model import Model
-from jaxns.slice_sampler import SliceSampler, SeedPoint, PreprocessType
+from jaxns.slice_sampler import UniDimSliceSampler, SeedPoint, PreprocessType, AbstractSliceSampler
 from jaxns.statistics import analyse_sample_collection
 from jaxns.types import NestedSamplerState, Reservoir, int_type
 from jaxns.utils import sort_samples
@@ -17,16 +17,19 @@ __all__ = ['AdaptiveRefinement']
 
 
 class AdaptiveRefinement:
-    def __init__(self, model: Model, uncert_improvement_patience: int, num_slices: int, num_parallel_samplers: int = 1):
+    def __init__(self, model: Model, uncert_improvement_patience: int, num_slices: int, num_parallel_samplers: int = 1,
+                 slice_sampler: Optional[AbstractSliceSampler] = None):
         if uncert_improvement_patience <= 0:
             raise ValueError(f"uncert_improvement_patient should be > 0, got {uncert_improvement_patience}.")
-        self.uncert_improvement_patient = uncert_improvement_patience
+        self.uncert_improvement_patience = uncert_improvement_patience
         self.num_parallel_samplers = num_parallel_samplers
-        self.slice_sampler = SliceSampler(model=model,
-                                          midpoint_shrink=True,
-                                          destructive_shrink=False,
-                                          gradient_boost=False,
-                                          multi_ellipse_bound=False)
+        if slice_sampler is None:
+            slice_sampler = UniDimSliceSampler(
+                model=model,
+                midpoint_shrink=True,
+                multi_ellipse_bound=False
+            )
+        self.slice_sampler = slice_sampler
         self.num_slices = num_slices
 
     def split_state(self, state: NestedSamplerState) -> Tuple[NestedSamplerState, Reservoir]:
@@ -115,6 +118,8 @@ class AdaptiveRefinement:
 
         Args:
             state: state to improve
+            iid_state: state with only the i.i.d. samples
+            non_iid_reservoir: samples that are not deemed i.i.d.
 
         Returns:
             state where all samples are considered i.i.d. sampled within their respective likelihood constraints
@@ -125,7 +130,7 @@ class AdaptiveRefinement:
 
         def cond(body_state: CarryType) -> BoolArray:
             (_, _, _, patience, _) = body_state
-            done = jnp.greater_equal(patience, self.uncert_improvement_patient)
+            done = jnp.greater_equal(patience, self.uncert_improvement_patience)
             return jnp.bitwise_not(done)
 
         def body(body_state: CarryType) -> CarryType:
@@ -188,9 +193,9 @@ class AdaptiveRefinement:
 
         init_body_state: CarryType = (
             improve_key, non_iid_reservoir, init_log_Z_mean, jnp.asarray(0, int_type), preprocess_data)
-        (key, update_reservoir, _, _, _) = while_loop(cond,
-                                                      body,
-                                                      init_body_state)
+        (_, update_reservoir, _, _, _) = while_loop(cond,
+                                                    body,
+                                                    init_body_state)
 
         # mark as iid now <==> the evidence stopped changing
         update_reservoir = update_reservoir._replace(iid=jnp.ones_like(update_reservoir.iid))
