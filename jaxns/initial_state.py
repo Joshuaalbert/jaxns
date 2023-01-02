@@ -37,7 +37,7 @@ def init_sample_collection(size: int, model: Model) -> SampleCollection:
         log_L_constraint=jnp.full((size,), jnp.inf, dtype=float_type),
         log_L=jnp.full((size,), jnp.inf, dtype=float_type),
         num_likelihood_evaluations=jnp.full((size,), 0, dtype=int_type),
-        num_slices=jnp.full((size,), False, dtype=int_type),
+        num_slices=jnp.full((size,), 0, dtype=int_type),
         iid=jnp.full((size,), False, dtype=jnp.bool_)
     )
 

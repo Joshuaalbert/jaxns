@@ -59,7 +59,10 @@ class StaticUniform:
                                    sample_collection=sample_collection)
             # done = sample.num_likelihood_evaluations >= 1. / self.efficiency_threshold
             # done = jnp.mean(live_points.reservoir.num_likelihood_evaluations) >= 1. / self.efficiency_threshold
-            done = sample_collection.sample_idx > self.num_live_points / self.efficiency_threshold  # log(X) = -N/n = 1/eff
+            on_plateau = jnp.min(live_points_reservoir.log_L) == jnp.max(live_points_reservoir.log_L)
+            sufficient_compression = sample_collection.sample_idx / self.num_live_points > -jnp.log(
+                self.efficiency_threshold)  # -log(X) = num_samples/num_live_points = -log(eff)
+            done = on_plateau | sufficient_compression
             return (done, state, live_points)
 
         (_, state, live_points) = while_loop(lambda carry: jnp.bitwise_not(carry[0]),

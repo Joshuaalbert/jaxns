@@ -34,6 +34,14 @@ PreprocessType = Optional[Any]
 
 
 class AbstractSliceSampler(ABC):
+
+    def get_seed_point(self, key: PRNGKey, live_points: LivePoints, log_L_constraint: FloatArray) -> SeedPoint:
+        sample_idx = random.randint(key, (), minval=0, maxval=live_points.reservoir.log_L.size)
+        return SeedPoint(
+            U0=live_points.reservoir.point_U[sample_idx],
+            log_L0=live_points.reservoir.log_L[sample_idx]
+        )
+
     @abstractmethod
     def get_sample(self, key: PRNGKey, seed_point: SeedPoint, log_L_constraint: FloatArray, num_slices: IntArray,
                    preprocess_data: PreprocessType) -> Sample:
@@ -79,13 +87,6 @@ class UniDimSliceSampler(AbstractSliceSampler):
         if self.multi_ellipse_bound:
             return self.compute_multi_ellipse_bound(state=state)
         return None
-
-    def get_seed_point(self, key: PRNGKey, live_points: LivePoints, log_L_constraint: FloatArray) -> SeedPoint:
-        sample_idx = random.randint(key, (), minval=0, maxval=live_points.reservoir.log_L.size)
-        return SeedPoint(
-            U0=live_points.reservoir.point_U[sample_idx],
-            log_L0=live_points.reservoir.log_L[sample_idx]
-        )
 
     def sample_direction(self, n_key: PRNGKey, ndim: int) -> FloatArray:
         """
@@ -345,25 +346,19 @@ class MultiDimSliceSampler(AbstractSliceSampler):
     def preprocess(self, state: NestedSamplerState) -> PreprocessType:
         return None
 
-    def get_seed_point(self, key: PRNGKey, live_points: LivePoints, log_L_constraint: FloatArray) -> SeedPoint:
-        sample_idx = random.randint(key, (), minval=0, maxval=live_points.reservoir.log_L.size)
-        return SeedPoint(
-            U0=live_points.reservoir.point_U[sample_idx],
-            log_L0=live_points.reservoir.log_L[sample_idx]
-        )
-
-    def slice_bounds(self, slice_key: PRNGKey, point_U0: FloatArray) -> Tuple[FloatArray, FloatArray]:
+    def slice_bounds(self, key: PRNGKey, point_U0: FloatArray) -> Tuple[FloatArray, FloatArray]:
         """
-        Get the slice bounds
+        Get the slice bounds, randomly selecting which dimensions to slice in.
+
         Args:
-            slice_key:
-            point_U0:
+            key: PRNGKey
+            point_U0: the seed point
 
         Returns:
-
+            left, and right bounds of slice
         """
         if self.num_restrict_dims is not None:
-            slice_dims = random.choice(slice_key, point_U0.size, shape=(self.num_restrict_dims,), replace=False)
+            slice_dims = random.choice(key, point_U0.size, shape=(self.num_restrict_dims,), replace=False)
             left = point_U0.at[slice_dims].set(jnp.zeros(self.num_restrict_dims, point_U0.dtype))
             right = point_U0.at[slice_dims].set(jnp.ones(self.num_restrict_dims, point_U0.dtype))
         else:
@@ -372,10 +367,9 @@ class MultiDimSliceSampler(AbstractSliceSampler):
         return left, right
 
     def new_slice(self, proposal_state: MultiDimProposalState, log_L_U: FloatArray) -> MultiDimProposalState:
-        key, sample_key = random.split(proposal_state.key)
+        key, slice_key, sample_key = random.split(proposal_state.key, 3)
 
-        left = jnp.zeros_like(proposal_state.left)
-        right = jnp.ones_like(proposal_state.right)
+        left, right = self.slice_bounds(key=slice_key, point_U0=proposal_state.point_U0)
 
         point_U = random.uniform(key=sample_key, shape=left.shape, dtype=left.dtype, minval=left, maxval=right)
 
@@ -393,9 +387,14 @@ class MultiDimSliceSampler(AbstractSliceSampler):
         return next_proposal_state
 
     def shrink_region(self, proposal_state: MultiDimProposalState) -> MultiDimProposalState:
-        # witout exponential shrinkage, we shrink to failed proposal point, which is 100% correct.
-        left = jnp.minimum(jnp.maximum(proposal_state.left, proposal_state.point_U), proposal_state.point_U0)
-        right = jnp.maximum(jnp.minimum(proposal_state.right, proposal_state.point_U), proposal_state.point_U0)
+        # if point_U is on the 'right' side then we shrink the 'right' side to it.
+        # same of 'left'
+        left = jnp.where(proposal_state.point_U < proposal_state.point_U0,
+                         jnp.maximum(proposal_state.left, proposal_state.point_U),
+                         proposal_state.left)
+        right = jnp.where(proposal_state.point_U > proposal_state.point_U0,
+                          jnp.minimum(proposal_state.right, proposal_state.point_U),
+                          proposal_state.right)
 
         key, sample_key = random.split(proposal_state.key, 2)
 
@@ -413,12 +412,11 @@ class MultiDimSliceSampler(AbstractSliceSampler):
 
     def get_sample(self, key: PRNGKey, seed_point: SeedPoint, log_L_constraint: FloatArray, num_slices: IntArray,
                    preprocess_data: PreprocessType) -> Sample:
-        slice_sampler_key, sample_key, proposal_key = random.split(key, 3)
+        slice_key, sample_key, proposal_key = random.split(key, 3)
 
         num_likelihood_evaluations = jnp.full((), 0, int_type)
 
-        left = jnp.zeros_like(seed_point.U0)
-        right = jnp.ones_like(seed_point.U0)
+        left, right = self.slice_bounds(key=slice_key, point_U0=seed_point.U0)
 
         point_U = random.uniform(key=sample_key, shape=left.shape, dtype=left.dtype, minval=left, maxval=right)
 
@@ -489,6 +487,7 @@ class MultiDimSliceSampler(AbstractSliceSampler):
         (proposal_state, log_L) = while_loop(slice_sampler_cond,
                                              slice_sampler_body,
                                              (init_proposal_state, -jnp.inf))
+        # TODO(Joshuaalbert): consider removing pass_through as there is no case where num_slices is ever 0 now.
         # passthrough when num_slices==0
         pass_through = num_slices == jnp.zeros_like(num_slices)
         log_L = jnp.where(pass_through, seed_point.log_L0, log_L)

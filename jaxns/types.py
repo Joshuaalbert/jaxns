@@ -108,9 +108,8 @@ class NestedSamplerResults(NamedTuple):
     num_likelihood_evaluations_per_sample: IntArray  # how many likelihood evaluations were made per sample.
     num_slices: IntArray  # how many slices were taken for slice sampled points
     total_num_samples: IntArray  # int, the total number of samples collected.
+    total_num_slices: IntArray # int, how many slices in total were taken
     total_num_likelihood_evaluations: IntArray  # how many likelihood evaluations were made in total
-    num_likelihood_evaluations_per_slice: FloatArray  # how many likeihood evaluations required per slice (for slice samples)
-    # sum of num_likelihood_evaluations_per_sample.
     log_efficiency: FloatArray  # log(total_num_samples / total_num_likelihood_evaluations)
     termination_reason: IntArray  # this will be an int reflecting the reason for termination
 
