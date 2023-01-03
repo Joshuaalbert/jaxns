@@ -8,6 +8,10 @@ Provides a probabilistic programming framework based on nested sampling. It's co
 
 JAXNS uses a unique adaptive algorithm that enables arbitrary precision computing of evidence. Stay tuned for the paper that explains it.
 
+# Documentation
+
+You can check out the docs [here](https://jaxns.readthedocs.io/en/latest/#).
+
 # Install
 
 Note: JAXNS requires >= Python 3.9, and is tested on 3.9, 3.10, and 3.11.
