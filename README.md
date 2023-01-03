@@ -34,6 +34,8 @@ This is shown in (https://arxiv.org/abs/2012.15286). With regards to how efficie
 
 # Change Log
 
+3 January, 2023 -- JAXNS 2.0 released. Complete overhaul of components. New way to build models.
+
 5 August, 2022 -- JAXNS 1.1.1 released. Pytree shaped priors.
 
 2 June, 2022 -- JAXNS 1.1.0 released. Dynamic sampling takes advantage of adaptive refinement. Parallelisation. Bayesian opt and global opt modules.
