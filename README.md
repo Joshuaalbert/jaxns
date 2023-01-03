@@ -1,6 +1,6 @@
 ![https://pypi.org/project/jaxns/](https://img.shields.io/pypi/v/jaxns.svg)
 
-![JAXNS](https://github.com/Joshuaalbert/jaxns/raw/master/jaxns_logo.png)
+![JAXNS](https://github.com/Joshuaalbert/jaxns/raw/main/jaxns_logo.png)
 
 
 # What is it?
