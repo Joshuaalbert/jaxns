@@ -1,5 +1,4 @@
 ![https://pypi.org/project/jaxns/](https://img.shields.io/pypi/v/jaxns.svg)
-[![build status](https://travis-ci.com/Joshuaalbert/jaxns.svg?branch=master)](https://travis-ci.com/github/Joshuaalbert/jaxns)
 
 ![JAXNS](https://github.com/Joshuaalbert/jaxns/raw/master/jaxns_logo.png)
 
@@ -34,6 +33,8 @@ JAXNS is much faster than PolyChord, MultiNEST, and dynesty, typically achieving
 This is shown in (https://arxiv.org/abs/2012.15286). With regards to how efficiently JAXNS used likeihood evaluations, JAXNS prizes exactness over efficiency, however since it employs an adaptive strategy, users can control efficiency by controlling some precision parameters.
 
 # Change Log
+
+3 January, 2023 -- JAXNS 2.0 released. Complete overhaul of components. New way to build models.
 
 5 August, 2022 -- JAXNS 1.1.1 released. Pytree shaped priors.
 

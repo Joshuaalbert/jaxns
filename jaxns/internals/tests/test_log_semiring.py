@@ -1,6 +1,8 @@
 from jax import numpy as jnp, random
 
-from jaxns.internals.log_semiring import LogSpace, signed_logaddexp, cumulative_logsumexp, logaddexp, is_complex
+from jaxns.internals.log_semiring import LogSpace, signed_logaddexp, cumulative_logsumexp, logaddexp, \
+    is_complex
+from jaxns.types import complex_type
 
 
 def test_log_space():
@@ -179,4 +181,4 @@ def test_logaddexp():
 
 
 def test_is_complex():
-    assert is_complex(jnp.ones(1, dtype=jnp.complex_))
+    assert is_complex(jnp.ones(1, dtype=complex_type))
