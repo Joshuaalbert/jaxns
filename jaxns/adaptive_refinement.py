@@ -177,8 +177,8 @@ class AdaptiveRefinement:
             small_change = jnp.square(2. * diff_log_Z_mean) < log_Z_var
             decreasing_change = diff_log_Z_mean < last_diff_log_Z_mean
             stable = decreasing_change | small_change
-            patience = jnp.where(jnp.bitwise_not(stable) | (nan_log_Z_mean | nan_last_log_Z_mean | nan_log_Z_var),
-                                 jnp.zeros_like(patience), patience + jnp.ones_like(patience))
+            reset_patience = jnp.bitwise_not(stable) | (nan_log_Z_mean | nan_last_log_Z_mean | nan_log_Z_var)
+            patience = jnp.where(reset_patience, jnp.zeros_like(patience), patience + jnp.ones_like(patience))
             preprocess_data = self.slice_sampler.preprocess(updated_state)
             return (key, update_reservoir, log_Z_mean, diff_log_Z_mean, patience, preprocess_data)
 

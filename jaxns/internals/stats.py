@@ -58,7 +58,7 @@ def linear_to_log_stats(log_f_mean, *, log_f2_mean=None, log_f_var=None):
         f2_mean = LogSpace(log_f2_mean)
     mu = f_mean.square() / f2_mean.sqrt()
     sigma2 = f2_mean / f_mean.square()
-    return mu.log_abs_val, jnp.maximum(sigma2.log_abs_val, 10 * jnp.finfo(float_type).eps)
+    return mu.log_abs_val, jnp.maximum(sigma2.log_abs_val, jnp.finfo(float_type).eps)
 
 
 def effective_sample_size(log_Z_mean, log_dZ2_mean):
