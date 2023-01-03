@@ -61,23 +61,25 @@ def test_exact_nested_sampler():
     def log_likelihood(z):
         return -z ** 2
 
-    model = Model(prior_model=prior_model,
-                  log_likelihood=log_likelihood)
-    exact_ns = ExactNestedSampler(model=model, num_live_points=50, num_parallel_samplers=1,
-                                  max_samples=1000)
+    model = Model(prior_model=prior_model, log_likelihood=log_likelihood)
+    model.sanity_check(random.PRNGKey(0), S=100)
+
+    exact_ns = ExactNestedSampler(model=model, num_live_points=50, num_parallel_samplers=1, max_samples=1000,
+                                  uncert_improvement_patience=1)
     # print(termination_reason)
     # print(state)
     with Timer():
         termination_reason, state = exact_ns(random.PRNGKey(42),
                                              term_cond=TerminationCondition(live_evidence_frac=1e-4))
         results = exact_ns.to_results(state, termination_reason)
-        results.log_Z_mean.block_until_ready()
+        exact_ns.summary(results)
+        exact_ns.plot_diagnostics(results)
+
 
     with Timer():
         termination_reason, state = exact_ns(random.PRNGKey(42),
                                              term_cond=TerminationCondition(live_evidence_frac=1e-4))
         results = exact_ns.to_results(state, termination_reason)
-        results.log_Z_mean.block_until_ready()
 
 
 def test_exact_nested_sampler_multidim_slice_sampler():
@@ -330,7 +332,7 @@ def test_nested_sampling_plateau():
 
     model = Model(prior_model=prior_model,
                   log_likelihood=log_likelihood)
-    exact_ns = ExactNestedSampler(model=model, num_live_points=50, num_parallel_samplers=1,
+    exact_ns = ExactNestedSampler(model=model, num_live_points=50,
                                   max_samples=1000)
 
     termination_reason, state = exact_ns(random.PRNGKey(42),

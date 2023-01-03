@@ -1,6 +1,6 @@
 import logging
 from functools import partial
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple, Union, List
 
 import tensorflow_probability.substrates.jax as tfp
 from etils.array_types import PRNGKey, IntArray
@@ -69,8 +69,8 @@ class NestedSampler:
     def summary(self, results: NestedSamplerResults) -> str:
         return summary(results)
 
-    def plot_cornerplot(self, results: NestedSamplerResults):
-        plot_cornerplot(results)
+    def plot_cornerplot(self, results: NestedSamplerResults, vars: Optional[List[str]]=None):
+        plot_cornerplot(results, vars=vars)
 
     def plot_diagnostics(self, results: NestedSamplerResults):
         plot_diagnostics(results)
@@ -96,7 +96,7 @@ class NestedSampler:
         if isinstance(state.sample_collection.reservoir.iid, core.Tracer):
             raise RuntimeError("Tracer detected, but expected imperative context.")
 
-        num_samples = state.sample_collection.sample_idx
+        num_samples = jnp.minimum(state.sample_collection.sample_idx, state.sample_collection.reservoir.log_L.size)
 
         sample_collection = state.sample_collection._replace(
             reservoir=tree_map(lambda x: x[:num_samples], state.sample_collection.reservoir)
@@ -315,8 +315,10 @@ class ApproximateNestedSampler(NestedSampler):
 
 
 class ExactNestedSampler(NestedSampler):
-    def __init__(self, model: Model, num_live_points: Union[int, float], num_parallel_samplers: int,
+    def __init__(self, model: Model, num_live_points: Union[int, float],
                  max_samples: Union[int, float],
+                 num_parallel_samplers: int = 1,
+                 uncert_improvement_patience: int = 2,
                  shrinkage_slice_sampler: Optional[AbstractSliceSampler] = None,
                  refinement_slice_sampler: Optional[AbstractSliceSampler] = None):
         super(ExactNestedSampler, self).__init__(model=model, num_live_points=num_live_points,
@@ -333,8 +335,8 @@ class ExactNestedSampler(NestedSampler):
 
         self.adaptive_refinement = AdaptiveRefinement(
             model=self.model,
-            uncert_improvement_patience=2,
-            num_slices=1,
+            uncert_improvement_patience=uncert_improvement_patience,
+            num_slices=model.U_ndims,
             num_parallel_samplers=self.num_parallel_samplers,
             slice_sampler=refinement_slice_sampler
         )

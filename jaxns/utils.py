@@ -1,5 +1,6 @@
+import io
 import logging
-from typing import NamedTuple
+from typing import NamedTuple, TextIO, Union, Optional
 
 import numpy as np
 from jax import numpy as jnp, tree_map, vmap, random, jit
@@ -166,7 +167,7 @@ def _bit_mask(int_mask, width=8):
     return list(map(int, '{:0{size}b}'.format(int_mask, size=width)))[::-1]
 
 
-def summary(results: NestedSamplerResults) -> str:
+def summary(results: NestedSamplerResults, f_obj: Optional[Union[str, TextIO]] = None):
     """
     Gives a summary of the results of a nested sampling run.
 
@@ -252,7 +253,15 @@ def summary(results: NestedSamplerResults) -> str:
                 _round(_max_like_point)
             ))
     _print("--------")
-    return "\n".join(main_s)
+    if f_obj is not None:
+        out = "\n".join(main_s)
+        if isinstance(f_obj, str):
+            with open(f_obj, 'w') as f:
+                f.write(out)
+        elif isinstance(f_obj, io.TextIOBase):
+            f_obj.write(out)
+        else:
+            raise TypeError(f"Invalid f_obj: {type(f_obj)}")
 
 
 def evidence_posterior_samples(key, num_live_points_per_sample, log_L_samples, S: int = 100):

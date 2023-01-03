@@ -10,7 +10,7 @@ from jaxns.internals.stats import linear_to_log_stats
 from jaxns.model import Model
 from jaxns.slice_sampler import UniDimSliceSampler, SeedPoint, PreprocessType, AbstractSliceSampler
 from jaxns.statistics import analyse_sample_collection
-from jaxns.types import NestedSamplerState, Reservoir, int_type
+from jaxns.types import NestedSamplerState, Reservoir, int_type, float_type
 from jaxns.utils import sort_samples
 
 __all__ = ['AdaptiveRefinement']
@@ -126,15 +126,15 @@ class AdaptiveRefinement:
         """
         # update each sample one slice at a time until the stopping condition
 
-        CarryType = Tuple[PRNGKey, Reservoir, FloatArray, IntArray, PreprocessType]
+        CarryType = Tuple[PRNGKey, Reservoir, FloatArray, FloatArray, IntArray, PreprocessType]
 
         def cond(body_state: CarryType) -> BoolArray:
-            (_, _, _, patience, _) = body_state
+            (_, _, _, _, patience, _) = body_state
             done = jnp.greater_equal(patience, self.uncert_improvement_patience)
             return jnp.bitwise_not(done)
 
         def body(body_state: CarryType) -> CarryType:
-            (key, old_reservoir, last_log_Z_mean, patience, preprocess_data) = body_state
+            (key, old_reservoir, last_log_Z_mean, last_diff_log_Z_mean, patience, preprocess_data) = body_state
 
             batch_size = old_reservoir.iid.size
 
@@ -156,7 +156,8 @@ class AdaptiveRefinement:
 
             update_reservoir = update_reservoir._replace(
                 num_slices=update_reservoir.num_slices + old_reservoir.num_slices,
-                num_likelihood_evaluations=update_reservoir.num_likelihood_evaluations + old_reservoir.num_likelihood_evaluations
+                num_likelihood_evaluations=(update_reservoir.num_likelihood_evaluations
+                                            + old_reservoir.num_likelihood_evaluations)
             )
 
             updated_state = self.combine_state(state=iid_state, update_reservoir=update_reservoir)
@@ -173,11 +174,13 @@ class AdaptiveRefinement:
             nan_log_Z_mean = jnp.isnan(log_Z_mean)
 
             diff_log_Z_mean = jnp.abs(last_log_Z_mean - log_Z_mean)
-            improvement = jnp.square(2. * diff_log_Z_mean) >= log_Z_var
-            patience = jnp.where(improvement | (nan_log_Z_mean | nan_last_log_Z_mean | nan_log_Z_var),
-                                 jnp.zeros_like(patience), patience + jnp.ones_like(patience))
+            small_change = jnp.square(2. * diff_log_Z_mean) < log_Z_var
+            decreasing_change = diff_log_Z_mean < last_diff_log_Z_mean
+            stable = decreasing_change | small_change
+            reset_patience = jnp.bitwise_not(stable) | (nan_log_Z_mean | nan_last_log_Z_mean | nan_log_Z_var)
+            patience = jnp.where(reset_patience, jnp.zeros_like(patience), patience + jnp.ones_like(patience))
             preprocess_data = self.slice_sampler.preprocess(updated_state)
-            return (key, update_reservoir, log_Z_mean, patience, preprocess_data)
+            return (key, update_reservoir, log_Z_mean, diff_log_Z_mean, patience, preprocess_data)
 
         preprocess_data = self.slice_sampler.preprocess(state)
 
@@ -192,10 +195,11 @@ class AdaptiveRefinement:
         )
 
         init_body_state: CarryType = (
-            improve_key, non_iid_reservoir, init_log_Z_mean, jnp.asarray(0, int_type), preprocess_data)
-        (_, update_reservoir, _, _, _) = while_loop(cond,
-                                                    body,
-                                                    init_body_state)
+            improve_key, non_iid_reservoir, init_log_Z_mean, jnp.asarray(0., float_type), jnp.asarray(0, int_type),
+            preprocess_data)
+        (_, update_reservoir, _, _, _, _) = while_loop(cond,
+                                                       body,
+                                                       init_body_state)
 
         # mark as iid now <==> the evidence stopped changing
         update_reservoir = update_reservoir._replace(iid=jnp.ones_like(update_reservoir.iid))

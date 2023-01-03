@@ -6,7 +6,7 @@ from jax import random, numpy as jnp, tree_map
 from jax._src.lax.control_flow import while_loop
 
 from jaxns.model import Model
-from jaxns.types import NestedSamplerState, LivePoints, Sample, int_type
+from jaxns.types import NestedSamplerState, LivePoints, Sample, int_type, float_type
 
 __all__ = ['UniDimSliceSampler']
 
@@ -28,6 +28,7 @@ class UniDimProposalState(NamedTuple):
     right: jnp.ndarray  # the right bound of slice
     point_U: jnp.ndarray  # the point up for likelihood computation
     t: jnp.ndarray  # the parameter measuring between left and right bounds.
+    log_L_constraint: jnp.ndarray  # the constraint to sample within
 
 
 PreprocessType = Optional[Any]
@@ -101,7 +102,7 @@ class UniDimSliceSampler(AbstractSliceSampler):
         """
         if ndim == 1:
             return jnp.ones(())
-        direction = random.normal(n_key, shape=(ndim,))
+        direction = random.normal(n_key, shape=(ndim,), dtype=float_type)
         direction /= jnp.linalg.norm(direction)
         return direction
 
@@ -143,8 +144,11 @@ class UniDimSliceSampler(AbstractSliceSampler):
             point_U: [D]
             t: selection point between [left, right]
         """
-        t = random.uniform(t_key, minval=left, maxval=right)
+        t = random.uniform(t_key, minval=left, maxval=right, dtype=float_type)
         point_U = point_U0 + t * direction
+        # close_to_zero = (left >= -10*jnp.finfo(left.dtype).eps) & (right <= 10*jnp.finfo(right.dtype).eps)
+        # point_U = jnp.where(close_to_zero, point_U0, point_U)
+        # t = jnp.where(close_to_zero, jnp.zeros_like(t), t)
         return point_U, t
 
     def change_direction(self, from_proposal_state: UniDimProposalState,
@@ -159,7 +163,11 @@ class UniDimSliceSampler(AbstractSliceSampler):
         direction = self.sample_direction(n_key, point_U0.size)
         # project out the previous direction to sample in orthogonal slice
         if point_U0.size > 1:
+            _direction = direction
             direction = direction - direction * (direction @ from_proposal_state.direction)
+            direction = jnp.where(jnp.all(direction == jnp.zeros_like(direction)), _direction, direction)
+            direction /= jnp.linalg.norm(direction)
+
         (left, right) = self.slice_bounds(point_U0, direction)
         point_U, t = self.pick_point_in_interval(t_key, point_U0, direction, left, right)
 
@@ -244,7 +252,8 @@ class UniDimSliceSampler(AbstractSliceSampler):
                                                   left=left,
                                                   right=right,
                                                   point_U=point_U,
-                                                  t=t)
+                                                  t=t,
+                                                  log_L_constraint=log_L_constraint)
 
         CarryType = Tuple[UniDimProposalState, FloatArray]
 
@@ -258,7 +267,18 @@ class UniDimSliceSampler(AbstractSliceSampler):
             num_likelihood_evaluations = proposal_state.num_likelihood_evaluations + jnp.ones_like(
                 proposal_state.num_likelihood_evaluations)
             # assumes that log_L0 > log_L_constraint
-            good_proposal = jnp.greater(log_L_point_U, log_L_constraint)
+            good_proposal = jnp.greater(log_L_point_U, proposal_state.log_L_constraint)
+
+            # instability can occur if super close
+            potential_instability = jnp.abs(log_L_point_U - proposal_state.log_L_constraint) < jnp.finfo(float_type).eps
+
+            threshold_log_L_constraint = proposal_state.log_L_constraint - jnp.finfo(float_type).eps
+            safe_log_L_constraint = jnp.where(potential_instability,
+                                              threshold_log_L_constraint,
+                                              proposal_state.log_L_constraint)
+            proposal_state = proposal_state._replace(log_L_constraint=safe_log_L_constraint)
+            good_proposal = good_proposal | potential_instability
+
             proposal_count = jnp.where(good_proposal,
                                        proposal_state.proposal_count + jnp.ones_like(proposal_state.proposal_count),
                                        proposal_state.proposal_count)
@@ -269,7 +289,7 @@ class UniDimSliceSampler(AbstractSliceSampler):
             # 1: successful proposal & not enough proposals -> change direction
             # 2: unsuccessful proposal -> shrink interval
 
-            process_step = jnp.where(good_proposal & enough_proposals,
+            process_step = jnp.where(enough_proposals,
                                      jnp.full(good_proposal.shape, 0, int_type),
                                      jnp.where(good_proposal & ~enough_proposals,
                                                jnp.full(good_proposal.shape, 1, int_type),
@@ -282,7 +302,7 @@ class UniDimSliceSampler(AbstractSliceSampler):
 
             proposal_state_from_1 = self.change_direction(proposal_state, log_L_point_U)
             proposal_state_from_2 = self.shrink_interval(proposal_state, log_L_point_U,
-                                                         log_L_contour=log_L_constraint,
+                                                         log_L_contour=proposal_state.log_L_constraint,
                                                          midpoint_shrink=self.midpoint_shrink,
                                                          destructive_shrink=False)
 
@@ -303,7 +323,7 @@ class UniDimSliceSampler(AbstractSliceSampler):
             Stops when there have been enough proposals.
             """
             (proposal_state, _) = body_state
-            return jnp.bitwise_not(proposal_state.proposal_count >= num_slices)
+            return jnp.less(proposal_state.proposal_count, num_slices)
 
         (proposal_state, log_L) = while_loop(slice_sampler_cond,
                                              slice_sampler_body,
@@ -313,7 +333,7 @@ class UniDimSliceSampler(AbstractSliceSampler):
         log_L = jnp.where(pass_through, seed_point.log_L0, log_L)
         point_U = jnp.where(pass_through, seed_point.U0, proposal_state.point_U)
         sample = Sample(point_U=point_U,
-                        log_L_constraint=log_L_constraint,
+                        log_L_constraint=proposal_state.log_L_constraint,
                         log_L=log_L,
                         num_likelihood_evaluations=proposal_state.num_likelihood_evaluations,
                         num_slices=num_slices,
