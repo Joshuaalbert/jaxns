@@ -1,10 +1,3 @@
-import os
-
-os.environ["XLA_FLAGS"] = "--xla_force_host_platform_device_count=2"
-# Clear any cached backends so new CPU backend will pick up the env var.
-from jax.lib import xla_bridge
-
-xla_bridge.get_backend.cache_clear()
 from jax import numpy as jnp
 
 from jaxns.internals.maps import replace_index, chunked_pmap, prepare_func_args, get_index
@@ -56,8 +49,7 @@ def test_chunked_pmap():
 
 
 def test_prepare_func_args():
-
-    prepare_func_args(lambda a: a)(a=1,b=2)
+    prepare_func_args(lambda a: a)(a=1, b=2)
 
     def f(a, b=1):
         return a + b
