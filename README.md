@@ -1,12 +1,16 @@
 ![https://pypi.org/project/jaxns/](https://img.shields.io/pypi/v/jaxns.svg)
 
-![JAXNS](https://github.com/Joshuaalbert/jaxns/raw/master/jaxns_logo.png)
+![JAXNS](https://github.com/Joshuaalbert/jaxns/raw/main/jaxns_logo.png)
 
 
 # What is it?
 Provides a probabilistic programming framework based on nested sampling. It's coded in JAX in a manner that allows lowering the entire inference algorithm to XLA primitives, which are JIT-compiled for high performance. You can read about it here: (https://arxiv.org/abs/2012.15286)
 
 JAXNS uses a unique adaptive algorithm that enables arbitrary precision computing of evidence. Stay tuned for the paper that explains it.
+
+# Documentation
+
+You can check out the docs [here](https://jaxns.readthedocs.io/en/latest/#).
 
 # Install
 
@@ -33,6 +37,8 @@ JAXNS is much faster than PolyChord, MultiNEST, and dynesty, typically achieving
 This is shown in (https://arxiv.org/abs/2012.15286). With regards to how efficiently JAXNS used likeihood evaluations, JAXNS prizes exactness over efficiency, however since it employs an adaptive strategy, users can control efficiency by controlling some precision parameters.
 
 # Change Log
+
+3 January, 2023 -- JAXNS 2.0 released. Complete overhaul of components. New way to build models.
 
 5 August, 2022 -- JAXNS 1.1.1 released. Pytree shaped priors.
 
