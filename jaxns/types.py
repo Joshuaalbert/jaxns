@@ -17,7 +17,7 @@ float_type = jnp.result_type(float)
 int_type = jnp.result_type(int)
 complex_type = jnp.result_type(complex)
 
-LikelihoodType = Callable[[jnp.ndarray, ...], FloatArray]
+LikelihoodType = Callable[..., FloatArray]
 LikelihoodInputType = Tuple[jnp.ndarray, ...]  # Likeihood conditional variables
 UType = FloatArray  # Homogeneous measure samples
 XType = Dict[str, jnp.ndarray]  # Prior sample
