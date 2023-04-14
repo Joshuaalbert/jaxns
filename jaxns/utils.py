@@ -32,6 +32,15 @@ __all__ = ['sort_samples',
 
 
 def sort_samples(sample_collection: SampleCollection):
+    """
+    Sorts a sample collection lexigraphically, first on log_L then on log_L_constraint.
+
+    Args:
+        sample_collection: sample collection to sort
+
+    Returns:
+        sorted sample collection
+    """
     idx_sort = jnp.lexsort((sample_collection.reservoir.log_L_constraint,
                             sample_collection.reservoir.log_L))
     sample_collection = sample_collection._replace(
