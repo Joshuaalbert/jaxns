@@ -39,6 +39,7 @@ This is shown in (https://arxiv.org/abs/2012.15286). With regards to how efficie
 # Change Log
 
 8 March, 2023 -- JAXNS 2.0.1 released. Changed how we're doing annotations to support python 3.8 again.
+
 3 January, 2023 -- JAXNS 2.0 released. Complete overhaul of components. New way to build models.
 
 5 August, 2022 -- JAXNS 1.1.1 released. Pytree shaped priors.
