@@ -14,7 +14,7 @@ You can check out the docs [here](https://jaxns.readthedocs.io/en/latest/#).
 
 # Install
 
-Note: JAXNS requires >= Python 3.9, and is tested on 3.9, 3.10, and 3.11.
+Note: JAXNS requires >= Python 3.8, and is tested on 3.8, 3.9, 3.10, and 3.11.
 
 Make sure you have JAX and the usual suspects with `pip install jax jaxlib numpy matplotlib scipy`, optionally also `scikit-learn` and `haiku-dm` for some examples. 
 Install with `pip install jaxns` or `pip install git+http://github.com/Joshuaalbert/jaxns.git` for the (no promises) bleeding-edge.
