@@ -7,7 +7,7 @@ from etils.array_types import PRNGKey, IntArray
 from jax import random, numpy as jnp, core, tree_map, vmap, jit
 
 from jaxns.adaptive_refinement import AdaptiveRefinement
-from jaxns.initial_state import init_sample_collection, get_uniform_init_live_points
+from jaxns.initial_state import init_sample_collection, get_uniform_init_live_points, get_live_points_from_samples
 from jaxns.internals.log_semiring import LogSpace, normalise_log_space
 from jaxns.internals.stats import linear_to_log_stats, effective_sample_size
 from jaxns.model import Model
@@ -36,12 +36,17 @@ class NestedSampler:
         extra = (num_parallel_samplers - remainder) % num_parallel_samplers
         if extra > 0:
             logger.warning(
-                f"Increasing max_samples ({num_live_points}) by {extra} to closest multiple of num_parallel_samplers.")
+                f"Increasing num_live_points ({num_live_points}) by {extra} to closest multiple of num_parallel_samplers.")
         self.num_live_points = int(num_live_points + extra)
         self.num_parallel_samplers = int(num_parallel_samplers)
         self.model = model
 
-        self.max_samples = int(max_samples)
+        remainder = int(max_samples) % num_parallel_samplers
+        extra = (num_parallel_samplers - remainder) % num_parallel_samplers
+        if extra > 0:
+            logger.warning(
+                f"Increasing max_samples ({max_samples}) by {extra} to closest multiple of num_parallel_samplers.")
+        self.max_samples = int(max_samples + extra)
 
     def resize_state(self, state: NestedSamplerState, max_num_samples: int) -> NestedSamplerState:
         """
@@ -60,6 +65,8 @@ class NestedSampler:
                 f"expected max_num_samples larger than the current size {reservoir.log_L.size}")
             return state
         diff_size = max_num_samples - reservoir.log_L.size
+        if diff_size <= 0:
+            return state
         reservoir_extra = init_sample_collection(size=diff_size, model=self.model).reservoir
         reservoir = tree_map(lambda old, update: jnp.concatenate([old, update], axis=0),
                              reservoir,
@@ -69,7 +76,7 @@ class NestedSampler:
     def summary(self, results: NestedSamplerResults) -> str:
         return summary(results)
 
-    def plot_cornerplot(self, results: NestedSamplerResults, vars: Optional[List[str]]=None):
+    def plot_cornerplot(self, results: NestedSamplerResults, vars: Optional[List[str]] = None):
         plot_cornerplot(results, vars=vars)
 
     def plot_diagnostics(self, results: NestedSamplerResults):
@@ -163,6 +170,9 @@ class NestedSampler:
 
 
 class ApproximateNestedSampler(NestedSampler):
+    """
+    Performs nested sampling, producing only weakly i.i.d. samples during the shrinkage process.
+    """
     def __init__(self, model: Model, num_live_points: Union[int, float], num_parallel_samplers: int,
                  max_samples: Union[int, float],
                  slice_sampler: Optional[AbstractSliceSampler] = None):
@@ -352,6 +362,22 @@ class ExactNestedSampler(NestedSampler):
             state with samples considered iid sampled from the likelihood constraint
         """
         return self.adaptive_refinement(state)
+
+    def prepare_new_iteration(self, state: NestedSamplerState, log_L_constraint: float,
+                              sorted_collection: bool = True) -> Tuple[NestedSamplerState, LivePoints]:
+        """
+        Extract live points from the samples already collected.
+
+        Args:
+            state: the current state
+            log_L_constraint: the contour to sample above
+            sorted_collection: whether the sample collection is already sorted
+
+        Returns:
+            a new state, and live points
+        """
+        return get_live_points_from_samples(state=state, log_L_constraint=log_L_constraint,
+                                            num_live_points=self.num_live_points, sorted_collection=sorted_collection)
 
     def __call__(self, key: PRNGKey, term_cond: TerminationCondition, *,
                  init_state: Optional[NestedSamplerState] = None,
