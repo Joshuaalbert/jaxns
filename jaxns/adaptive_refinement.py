@@ -1,5 +1,5 @@
 from functools import partial
-from typing import Tuple, Optional
+from typing import Tuple, Optional, NamedTuple
 
 from etils.array_types import PRNGKey, FloatArray, IntArray, BoolArray
 from jax import core, numpy as jnp, tree_map, random, jit
@@ -124,9 +124,16 @@ class AdaptiveRefinement:
         Returns:
             state where all samples are considered i.i.d. sampled within their respective likelihood constraints
         """
+
         # update each sample one slice at a time until the stopping condition
 
-        CarryType = Tuple[PRNGKey, Reservoir, FloatArray, FloatArray, IntArray, PreprocessType]
+        class CarryType(NamedTuple):
+            key: PRNGKey
+            reservoir: Reservoir
+            last_log_Z_mean: FloatArray
+            last_diff_log_Z_mean: FloatArray
+            patience: IntArray
+            preprocess_data: PreprocessType
 
         def cond(body_state: CarryType) -> BoolArray:
             (_, _, _, _, patience, _) = body_state
@@ -134,30 +141,31 @@ class AdaptiveRefinement:
             return jnp.bitwise_not(done)
 
         def body(body_state: CarryType) -> CarryType:
-            (key, old_reservoir, last_log_Z_mean, last_diff_log_Z_mean, patience, preprocess_data) = body_state
+            batch_size = body_state.reservoir.iid.size
 
-            batch_size = old_reservoir.iid.size
-
-            key, combine_key, improve_key = random.split(key, 3)
+            key, combine_key, improve_key = random.split(body_state.key, 3)
 
             parallel_improvement = chunked_pmap(
-                lambda key, seed_point, log_L_constraint: self._single_improvement(key=key, seed_point=seed_point,
-                                                                                   log_L_constraint=log_L_constraint,
-                                                                                   preprocess_data=preprocess_data),
+                lambda key, seed_point, log_L_constraint: self._single_improvement(
+                    key=key,
+                    seed_point=seed_point,
+                    log_L_constraint=log_L_constraint,
+                    preprocess_data=body_state.preprocess_data
+                ),
                 chunksize=self.num_parallel_samplers,
                 batch_size=batch_size)
             seed_points = SeedPoint(
-                U0=old_reservoir.point_U,
-                log_L0=old_reservoir.log_L
+                U0=body_state.reservoir.point_U,
+                log_L0=body_state.reservoir.log_L
             )
             update_reservoir = parallel_improvement(random.split(improve_key, batch_size),
                                                     seed_points,
-                                                    old_reservoir.log_L_constraint)
+                                                    body_state.reservoir.log_L_constraint)
 
             update_reservoir = update_reservoir._replace(
-                num_slices=update_reservoir.num_slices + old_reservoir.num_slices,
+                num_slices=update_reservoir.num_slices + body_state.reservoir.num_slices,
                 num_likelihood_evaluations=(update_reservoir.num_likelihood_evaluations
-                                            + old_reservoir.num_likelihood_evaluations)
+                                            + body_state.reservoir.num_likelihood_evaluations)
             )
 
             updated_state = self.combine_state(state=iid_state, update_reservoir=update_reservoir)
@@ -169,18 +177,19 @@ class AdaptiveRefinement:
                 log_f_mean=evidence_calculation.log_Z_mean,
                 log_f2_mean=evidence_calculation.log_Z2_mean
             )
-            nan_last_log_Z_mean = jnp.isnan(last_log_Z_mean)
+            nan_last_log_Z_mean = jnp.isnan(body_state.last_log_Z_mean)
             nan_log_Z_var = jnp.isnan(log_Z_var)
             nan_log_Z_mean = jnp.isnan(log_Z_mean)
 
-            diff_log_Z_mean = jnp.abs(last_log_Z_mean - log_Z_mean)
+            diff_log_Z_mean = jnp.abs(body_state.last_log_Z_mean - log_Z_mean)
             small_change = jnp.square(2. * diff_log_Z_mean) < log_Z_var
-            decreasing_change = diff_log_Z_mean < last_diff_log_Z_mean
+            decreasing_change = diff_log_Z_mean < body_state.last_diff_log_Z_mean
             stable = decreasing_change | small_change
             reset_patience = jnp.bitwise_not(stable) | (nan_log_Z_mean | nan_last_log_Z_mean | nan_log_Z_var)
-            patience = jnp.where(reset_patience, jnp.zeros_like(patience), patience + jnp.ones_like(patience))
+            patience = jnp.where(reset_patience, jnp.zeros_like(body_state.patience),
+                                 body_state.patience + jnp.ones_like(body_state.patience))
             preprocess_data = self.slice_sampler.preprocess(updated_state)
-            return (key, update_reservoir, log_Z_mean, diff_log_Z_mean, patience, preprocess_data)
+            return CarryType(key, update_reservoir, log_Z_mean, diff_log_Z_mean, patience, preprocess_data)
 
         preprocess_data = self.slice_sampler.preprocess(state)
 
@@ -194,15 +203,15 @@ class AdaptiveRefinement:
             log_f2_mean=init_evidence_calculation.log_Z2_mean
         )
 
-        init_body_state: CarryType = (
+        init_body_state: CarryType = CarryType(
             improve_key, non_iid_reservoir, init_log_Z_mean, jnp.asarray(0., float_type), jnp.asarray(0, int_type),
             preprocess_data)
-        (_, update_reservoir, _, _, _, _) = while_loop(cond,
-                                                       body,
-                                                       init_body_state)
+        output_state = while_loop(cond,
+                                  body,
+                                  init_body_state)
 
         # mark as iid now <==> the evidence stopped changing
-        update_reservoir = update_reservoir._replace(iid=jnp.ones_like(update_reservoir.iid))
+        update_reservoir = output_state.reservoir._replace(iid=jnp.ones_like(output_state.reservoir.iid))
 
         updated_state = self.combine_state(state=iid_state, update_reservoir=update_reservoir)
 
