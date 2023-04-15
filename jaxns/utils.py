@@ -30,7 +30,6 @@ __all__ = ['sort_samples',
            'load_pytree',
            'load_results']
 
-
 def sort_samples(sample_collection: SampleCollection):
     """
     Sorts a sample collection lexigraphically, first on log_L then on log_L_constraint.
