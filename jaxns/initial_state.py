@@ -68,6 +68,24 @@ def get_uniform_init_live_points(key: PRNGKey, num_live_points: int, model: Mode
     return LivePoints(reservoir=reservoir)
 
 
+def sort_sample_collection(sample_collection: SampleCollection) -> SampleCollection:
+    """
+    Sort a sample collection lexigraphically.
+
+    Args:
+        sample_collection: sample collections
+
+    Returns:
+        sample collection sorted
+    """
+    idx_sort = jnp.lexsort((sample_collection.reservoir.log_L_constraint,
+                            sample_collection.reservoir.log_L))
+    sample_collection = sample_collection._replace(
+        reservoir=tree_map(lambda x: x[idx_sort], sample_collection.reservoir)
+    )
+    return sample_collection
+
+
 def get_live_points_from_samples(state: NestedSamplerState, log_L_constraint: FloatArray, num_live_points: int,
                                  sorted_collection: bool = True) \
         -> Tuple[NestedSamplerState, LivePoints]:
@@ -94,11 +112,7 @@ def get_live_points_from_samples(state: NestedSamplerState, log_L_constraint: Fl
 
     sample_collection = state.sample_collection
     if not sorted_collection:
-        idx_sort = jnp.lexsort((sample_collection.reservoir.log_L_constraint,
-                                sample_collection.reservoir.log_L))
-        sample_collection = sample_collection._replace(
-            reservoir=tree_map(lambda x: x[idx_sort], sample_collection.reservoir)
-        )
+        sample_collection = sort_sample_collection(sample_collection)
 
     # find the largest index, s, where sample.log_L_constraint[s] <= log_L_constraint
     idx_supremum = jnp.searchsorted(sample_collection.reservoir.log_L_constraint, log_L_constraint, side='right') - 1
@@ -107,7 +121,7 @@ def get_live_points_from_samples(state: NestedSamplerState, log_L_constraint: Fl
     take_indices = resample_indicies(key=sample_key,
                                      log_weights=None,
                                      S=num_live_points,
-                                     replace=False,
+                                     replace=True,
                                      num_total=idx_supremum + 1)
     reservoir = tree_map(lambda x: x[take_indices], sample_collection.reservoir)
     live_points = LivePoints(reservoir=reservoir)
