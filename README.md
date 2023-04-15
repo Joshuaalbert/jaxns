@@ -14,7 +14,7 @@ You can check out the docs [here](https://jaxns.readthedocs.io/en/latest/#).
 
 # Install
 
-Note: JAXNS requires >= Python 3.9, and is tested on 3.9, 3.10, and 3.11.
+Note: JAXNS requires >= Python 3.8, and is tested on 3.8, 3.9, 3.10, and 3.11.
 
 Make sure you have JAX and the usual suspects with `pip install jax jaxlib numpy matplotlib scipy`, optionally also `scikit-learn` and `haiku-dm` for some examples. 
 Install with `pip install jaxns` or `pip install git+http://github.com/Joshuaalbert/jaxns.git` for the (no promises) bleeding-edge.
@@ -37,6 +37,8 @@ JAXNS is much faster than PolyChord, MultiNEST, and dynesty, typically achieving
 This is shown in (https://arxiv.org/abs/2012.15286). With regards to how efficiently JAXNS used likeihood evaluations, JAXNS prizes exactness over efficiency, however since it employs an adaptive strategy, users can control efficiency by controlling some precision parameters.
 
 # Change Log
+
+8 March, 2023 -- JAXNS 2.0.1 released. Changed how we're doing annotations to support python 3.8 again.
 
 3 January, 2023 -- JAXNS 2.0 released. Complete overhaul of components. New way to build models.
 
