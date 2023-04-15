@@ -121,7 +121,7 @@ def get_live_points_from_samples(state: NestedSamplerState, log_L_constraint: Fl
     take_indices = resample_indicies(key=sample_key,
                                      log_weights=None,
                                      S=num_live_points,
-                                     replace=True,
+                                     replace=False,
                                      num_total=idx_supremum + 1)
     reservoir = tree_map(lambda x: x[take_indices], sample_collection.reservoir)
     live_points = LivePoints(reservoir=reservoir)
