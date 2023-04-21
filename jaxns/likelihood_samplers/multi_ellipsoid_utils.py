@@ -6,6 +6,7 @@ from jax._src.lax.control_flow import while_loop
 from jax._src.scipy.special import gammaln
 
 from jaxns.internals.log_semiring import LogSpace
+from jaxns.random import random_ortho_matrix
 from jaxns.types import UType, int_type, float_type
 
 __all__ = ['ellipsoid_clustering',
@@ -40,23 +41,69 @@ def bounding_ellipsoid(points: UType, mask: FloatArray) -> Tuple[FloatArray, Flo
     Returns:
         mu, cov
     """
-
     mu = jnp.average(points, weights=mask, axis=0)
     dx = points - mu
     cov = jnp.average(dx[:, :, None] * dx[:, None, :], weights=mask, axis=0)
     return mu, cov
 
 
-def test_ellipsoid_params():
-    n = 1000
-    X = random.multivariate_normal(random.PRNGKey(42), mean=jnp.asarray([0., 0.]),
-                                   cov=jnp.asarray([[1., 0.4], [0.4, 1.]]), shape=(n,))
-    mu, radii, rotation = ellipsoid_params(points=X, mask=jnp.ones(n, jnp.bool_))
-    import pylab as plt
-    plt.scatter(X[:,0], X[:,1])
-    plot_ellipses(tree_map(lambda x: x[None], MultiEllipsoidParams(mu, radii, rotation)))
-    assert jnp.all(vmap(lambda x: point_in_ellipsoid(x, mu, radii, rotation))(X))
+def test_bounding_ellipsoid():
+    n = 1_000_000
+    mean = jnp.asarray([0., 0.])
+    cov = jnp.asarray([[1., 0.4], [0.4, 1.]])
+    X = random.multivariate_normal(random.PRNGKey(42), mean=mean,
+                                   cov=cov, shape=(n,))
+    mask = jnp.ones(n, jnp.bool_)
+    mu, Sigma = bounding_ellipsoid(points=X, mask=mask)
+    assert jnp.allclose(mu, mean, atol=1e-2)
+    assert jnp.allclose(Sigma, cov, atol=1e-2)
 
+
+def covariance_to_rotational(cov: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray]:
+    """
+    (x - mu)^T inv(cov) (x - mu) = (x - mu)^T J @ J.T (x - mu)
+
+    where J.T is composed of un-rotation and un-scaling:
+
+    J.T = diag(1/radii) @ rotation.T <==> J = rotation @ diag(1/radii)
+
+    Now since, cov = U @ diag(s) @ V.H we have
+
+    J @ J.T = inv(U @ diag(s) @ V.H) = V @ diag(1/s) @ U.H
+
+    ==> J.T = diag(1/sqrt(s)) @ U.H
+    ==> radii = sqrt(s), rotation = U
+
+    Args:
+        cov:
+
+    Returns:
+        radii, rotation
+    """
+    u, s, vh = jnp.linalg.svd(cov)
+    radii_min = jnp.finfo(s.dtype).eps
+    radii = jnp.maximum(jnp.sqrt(s), radii_min)
+    rotation = u
+    return radii, rotation
+
+
+def test_covariance_to_rotational():
+    import numpy as np
+    n = 5
+    random_rotation = random_ortho_matrix(random.PRNGKey(0), n=n, special_orthogonal=True)
+    random_radii = random.uniform(random.PRNGKey(1), shape=(n,))
+
+    J = random_rotation @ jnp.diag(1 / random_radii)
+    cov_J = jnp.linalg.inv(J @ J.T)
+    cov = random_rotation @ jnp.diag(random_radii ** 2) @ random_rotation.T
+
+    np.testing.assert_allclose(cov, cov_J, atol=1e-6)
+
+    radii, rotation = covariance_to_rotational(cov)
+
+    _cov = rotation @ jnp.diag(radii ** 2) @ rotation.T
+
+    np.testing.assert_allclose(cov, _cov, atol=1e-6)
 
 
 def ellipsoid_params(points: UType, mask: FloatArray) -> Tuple[FloatArray, FloatArray, FloatArray]:
@@ -77,69 +124,44 @@ def ellipsoid_params(points: UType, mask: FloatArray) -> Tuple[FloatArray, Float
         mu [D], radii [D] rotation [D,D]
     """
     # get ellipsoid mean and covariance
-    mu, cov = bounding_ellipsoid(points=points, mask=mask)
-    # compute factorisation
-    u, s, vh = jnp.linalg.svd(cov)
-    W, Q, Vh = vh.T, jnp.where(s > 1e-15, jnp.reciprocal(s), jnp.zeros_like(s)), u.T
-    C = (W * Q) @ Vh
-
-    print(jnp.linalg.inv(C))
-    radii = jnp.sqrt(Q)
-    print(radii, s)
-    rotation = u # Vh.conj().T
+    mu, Sigma = bounding_ellipsoid(points=points, mask=mask)
+    radii, rotation = covariance_to_rotational(Sigma)
 
     # Compute scale factor for radii to enclose all points.
-    # for all i (points[i] - f) @ inv(scale * cov) @ (points[i] - f) <= 1
-    # for all i (points[i] - f) @ inv(cov) @ (points[i] - f) <= scale
-    # -> choose scale = max_i (points[i] - f) @ inv(cov) @ (points[i] - f)
-    dx = points - mu
-    maha = vmap(lambda dx: dx @ C @ dx)(dx)
-    scale = jnp.max(jnp.where(mask, maha, 0.))
-    radii /= scale
+    # for all i (points[i] - mu) @ inv(Sigma) / scale**2 @ (points[i] - mu) <= 1
+    # for all i (points[i] - mu) @ (L @ L.T) @ (points[i] - mu) <= scale**2
+    rho = vmap(lambda x: maha_ellipsoid(x=x, mu=mu, radii=radii, rotation=rotation))(points)
+
+    rho_max = jnp.max(jnp.where(mask, rho, 0.))
+    radii *= jnp.sqrt(rho_max)
 
     return mu, radii, rotation
 
 
-###
-# clustering
+def test_ellipsoid_params():
+    import pylab as plt
+    n = 1000
 
-def kmeans(key, points, mask, K=2):
-    """
-    Perform kmeans clustering with Euclidean metric.
+    import numpy as np
+    N = 2
+    random_rotation = random_ortho_matrix(random.PRNGKey(0), n=N, special_orthogonal=True)
+    random_radii = random.uniform(random.PRNGKey(1), shape=(N,))
+    cov = random_rotation @ jnp.diag(random_radii ** 2) @ random_rotation.T
 
-    Args:
-        key:
-        points: [N, D]
-        mask: [N] bool
-        K: int
+    X = random.multivariate_normal(random.PRNGKey(42),
+                                   mean=jnp.zeros(N),
+                                   cov=cov,
+                                   shape=(n,))
 
-    Returns: cluster_id [N], centers [K, D]
+    mu, radii, rotation = ellipsoid_params(points=X, mask=jnp.ones(n, jnp.bool_))
+    inside = vmap(lambda x: point_in_ellipsoid(x, mu, radii, rotation))(X)
+    plt.scatter(X[:, 0], X[:, 1], c=inside)
+    plot_ellipses(tree_map(lambda x: x[None], MultiEllipsoidParams(mu, radii, rotation)))
 
-    """
-    N, D = points.shape
+    assert np.all(inside)
 
-    def body(state):
-        (i, done, old_cluster_id, centers) = state
-        new_centers = vmap(lambda k: jnp.average(points, weights=(old_cluster_id == k) & mask, axis=0))(jnp.arange(K))
-        dx = points - new_centers[:, None, :]  # K, N, D
-        squared_norm = jnp.sum(jnp.square(dx), axis=-1)  # K, N
-        new_cluster_id = jnp.argmin(squared_norm, axis=0)  # N
-        done = jnp.all(new_cluster_id == old_cluster_id)
-        # print("kmeans reassigns", jnp.sum(old_cluster_id!=new_cluster_k))
-        return i + 1, done, new_cluster_id, new_centers
-
-    do_kmeans = jnp.sum(mask) > K
-    i, _, cluster_id, centers = while_loop(lambda state: ~state[1],
-                                           body,
-                                           (jnp.array(0), ~do_kmeans,
-                                            random.randint(key, shape=(N,), minval=jnp.asarray(0),
-                                                           maxval=jnp.asarray(2)),
-                                            jnp.zeros((K, D))))
-    return cluster_id, centers
-
-
-###
-# Sampling
+    rho_max = jnp.max(vmap(lambda x: maha_ellipsoid(x, mu, radii, rotation))(X))
+    assert jnp.isclose(rho_max, 1.)
 
 
 def ellipsoid_to_circle(point: FloatArray, mu: FloatArray, radii: FloatArray, rotation: FloatArray) -> FloatArray:
@@ -154,7 +176,7 @@ def ellipsoid_to_circle(point: FloatArray, mu: FloatArray, radii: FloatArray, ro
     Returns:
         a transformed point of shape [D]
     """
-    return (rotation.T / radii[:, None]) @ (point - mu)
+    return jnp.diag(jnp.reciprocal(radii)) @ rotation.T @ (point - mu)
 
 
 def circle_to_ellipsoid(point: FloatArray, mu: FloatArray, radii: FloatArray, rotation: FloatArray) -> FloatArray:
@@ -170,7 +192,27 @@ def circle_to_ellipsoid(point: FloatArray, mu: FloatArray, radii: FloatArray, ro
     Returns:
         a transformed point of shape [D]
     """
-    return (rotation * radii[None, :]) @ point + mu
+    return mu + (rotation @ jnp.diag(radii) @ point)
+
+
+def test_ellipsoid_transforms():
+    n = 1000
+
+    import numpy as np
+    N = 2
+    random_rotation = random_ortho_matrix(random.PRNGKey(0), n=N, special_orthogonal=True)
+    random_radii = random.uniform(random.PRNGKey(1), shape=(N,))
+    mu = jnp.zeros(N)
+    cov = random_rotation @ jnp.diag(random_radii ** 2) @ random_rotation.T
+
+    X = random.multivariate_normal(random.PRNGKey(42),
+                                   mean=jnp.zeros(N),
+                                   cov=cov,
+                                   shape=(n,))
+    X_out = vmap(lambda x: circle_to_ellipsoid(ellipsoid_to_circle(x, mu, random_radii, random_rotation),
+                                               mu, random_radii, random_rotation))(X)
+
+    np.testing.assert_allclose(X_out, X, atol=1e-6)
 
 
 def maha_ellipsoid(x: FloatArray, mu: FloatArray, radii: FloatArray, rotation: FloatArray) -> FloatArray:
@@ -465,11 +507,12 @@ def cluster_split(key: PRNGKey, points: FloatArray, mask: BoolArray, log_VS: Flo
 
 def plot_ellipses(params: MultiEllipsoidParams):
     import pylab as plt
+    import numpy as np
     theta = jnp.linspace(0., 2 * jnp.pi, 100)
     circle = jnp.stack([jnp.cos(theta), jnp.sin(theta)], axis=1)
     for mu, radii, rotation in zip(params.mu, params.radii, params.rotation):
         ellipse = vmap(lambda point: circle_to_ellipsoid(point, mu, radii, rotation))(circle)
-        plt.plot(ellipse[:, 0], ellipse[:, 1])
+        plt.plot(ellipse[:, 0], ellipse[:, 1], c=np.random.uniform(size=3))
     plt.show()
 
 
