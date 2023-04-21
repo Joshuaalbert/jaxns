@@ -2,12 +2,13 @@ import numpy as np
 import tensorflow_probability.substrates.jax as tfp
 from jax import numpy as jnp, vmap, random
 
+from jaxns import StaticNestedSampler, collect_samples
 from jaxns.initial_state import init_sample_collection, get_uniform_init_live_points, \
     get_live_points_from_samples
 from jaxns.model import Model
 from jaxns.prior import PriorModelGen, Prior
-from jaxns.static_uniform import StaticUniform
-from jaxns.types import NestedSamplerState, SampleCollection
+from jaxns.static_uniform import UniformSampler
+from jaxns.types import NestedSamplerState, SampleCollection, TerminationCondition
 
 tfpd = tfp.distributions
 
@@ -89,7 +90,11 @@ def test_static_uniform():
                                                num_live_points=n,
                                                model=model)
     efficiency_threshold = 0.1
-    ns = StaticUniform(model=model, num_live_points=n, efficiency_threshold=efficiency_threshold)
-    state, live_points = ns(state=state, live_points=live_points)
+    ns = StaticNestedSampler(
+        sampler=UniformSampler(model=model, efficiency_threshold=efficiency_threshold),
+        num_live_points=n, num_parallel_samplers=1)
+    _, state, live_points = ns(state=state, live_points=live_points,
+                               termination_cond=TerminationCondition(max_samples=0))
+    state = collect_samples(state=state, new_reservoir=live_points.reservoir)
     assert state.sample_collection.sample_idx > 0
-    assert jnp.mean(1./live_points.reservoir.num_likelihood_evaluations) > efficiency_threshold
+    assert jnp.mean(1. / live_points.reservoir.num_likelihood_evaluations) > efficiency_threshold

@@ -7,14 +7,14 @@ from etils.array_types import PRNGKey, IntArray
 from jax import random, numpy as jnp, core, tree_map, vmap, jit
 
 from jaxns.adaptive_refinement import AdaptiveRefinement
-from jaxns.initial_state import init_sample_collection, get_uniform_init_live_points, get_live_points_from_samples
+from jaxns.initial_state import init_sample_collection, get_uniform_init_live_points
 from jaxns.internals.log_semiring import LogSpace, normalise_log_space
 from jaxns.internals.stats import linear_to_log_stats, effective_sample_size
 from jaxns.model import Model
 from jaxns.plotting import plot_cornerplot, plot_diagnostics
-from jaxns.slice_sampler import UniDimSliceSampler, AbstractSliceSampler
-from jaxns.static_slice import StaticSlice
-from jaxns.static_uniform import StaticUniform
+from jaxns.static_nested_sampler import StaticNestedSampler
+from jaxns.static_slice import UniDimSliceSampler
+from jaxns.static_uniform import UniformSampler
 from jaxns.statistics import analyse_sample_collection
 from jaxns.types import TerminationCondition, NestedSamplerState, NestedSamplerResults, LivePoints
 from jaxns.utils import collect_samples
@@ -30,23 +30,29 @@ __all__ = ['NestedSampler',
 
 
 class NestedSampler:
-    def __init__(self, model: Model, num_live_points: Union[int, float], num_parallel_samplers: int,
-                 max_samples: Union[int, float]):
-        remainder = int(num_live_points) % num_parallel_samplers
-        extra = (num_parallel_samplers - remainder) % num_parallel_samplers
-        if extra > 0:
-            logger.warning(
-                f"Increasing num_live_points ({num_live_points}) by {extra} to closest multiple of num_parallel_samplers.")
-        self.num_live_points = int(num_live_points + extra)
-        self.num_parallel_samplers = int(num_parallel_samplers)
+    def __init__(self, model: Model, max_samples: int | float):
         self.model = model
+        self.max_samples = int(max_samples)
 
-        remainder = int(max_samples) % num_parallel_samplers
-        extra = (num_parallel_samplers - remainder) % num_parallel_samplers
-        if extra > 0:
-            logger.warning(
-                f"Increasing max_samples ({max_samples}) by {extra} to closest multiple of num_parallel_samplers.")
-        self.max_samples = int(max_samples + extra)
+    def initialise(self, key: PRNGKey, num_live_points: int) -> Tuple[NestedSamplerState, LivePoints]:
+        """
+        Creates initial live points from -inf contour and state.
+
+        Args:
+            key: PRNGKey
+
+        Returns:
+            initial state, and live points
+        """
+        state_key, live_points_key = random.split(key, 2)
+        init_state = NestedSamplerState(
+            key=state_key,
+            sample_collection=init_sample_collection(size=self.max_samples, model=self.model)
+        )
+        live_points = get_uniform_init_live_points(live_points_key,
+                                                   num_live_points=num_live_points,
+                                                   model=self.model)
+        return init_state, live_points
 
     def resize_state(self, state: NestedSamplerState, max_num_samples: int) -> NestedSamplerState:
         """
@@ -171,47 +177,39 @@ class NestedSampler:
 
 class ApproximateNestedSampler(NestedSampler):
     """
-    Performs nested sampling, producing only weakly i.i.d. samples during the shrinkage process.
+    Performs nested sampling, using a chain of nested samplers, producing only weakly i.i.d. samples during the
+    shrinkage process.
     """
+
     def __init__(self, model: Model, num_live_points: Union[int, float], num_parallel_samplers: int,
-                 max_samples: Union[int, float],
-                 slice_sampler: Optional[AbstractSliceSampler] = None):
-        super(ApproximateNestedSampler, self).__init__(model=model, num_live_points=num_live_points,
-                                                       num_parallel_samplers=num_parallel_samplers,
-                                                       max_samples=max_samples)
+                 max_samples: Union[int, float]):
+        super().__init__(model=model, max_samples=max_samples)
 
-        self.static_uniform = StaticUniform(model=self.model,
-                                            num_live_points=self.num_live_points,
-                                            efficiency_threshold=0.1)
-        if slice_sampler is None:
-            slice_sampler = UniDimSliceSampler(model=model,
-                                               midpoint_shrink=True,
-                                               multi_ellipse_bound=False)
-        self.static_slice = StaticSlice(model=self.model,
-                                        num_live_points=self.num_live_points,
-                                        num_parallel_samplers=self.num_parallel_samplers,
-                                        slice_sampler=slice_sampler,
-                                        num_slices=1)
+        sampler_chain = [
+            UniformSampler(model=model, efficiency_threshold=0.1),
+            UniDimSliceSampler(model=model, num_slices=model.U_ndims, midpoint_shrink=True, perfect=True)
+        ]
 
-    def initialise(self, key: PRNGKey) -> Tuple[NestedSamplerState, LivePoints]:
-        """
-        Creates initial live points from -inf contour and state.
+        self.nested_sampler_chain = list(map(
+            lambda sampler: StaticNestedSampler(sampler=sampler,
+                                                num_live_points=num_live_points,
+                                                num_parallel_samplers=num_parallel_samplers),
+            sampler_chain
+        ))
 
-        Args:
-            key: PRNGKey
+    @property
+    def num_live_points(self) -> int:
+        return self.nested_sampler_chain[0].num_live_points
 
-        Returns:
-            initial state, and live points
-        """
-        state_key, live_points_key = random.split(key, 2)
-        init_state = NestedSamplerState(
-            key=state_key,
-            sample_collection=init_sample_collection(size=self.max_samples, model=self.model)
-        )
-        live_points = get_uniform_init_live_points(live_points_key,
-                                                   num_live_points=self.num_live_points,
-                                                   model=self.model)
-        return init_state, live_points
+    def _run_chain(self, state: NestedSamplerState, live_points: LivePoints, term_cond: TerminationCondition) -> Tuple[
+        IntArray, NestedSamplerState, LivePoints]:
+        if len(self.nested_sampler_chain) == 0:
+            raise ValueError(f"Expected at least one sampler in chain.")
+
+        for nested_sampler in self.nested_sampler_chain:
+            termination_reason, state, live_points = nested_sampler(
+                state=state, live_points=live_points, termination_cond=term_cond)
+        return termination_reason, state, live_points
 
     def approximate_shrinkage(self, state: NestedSamplerState, live_points: LivePoints,
                               term_cond: TerminationCondition) -> Tuple[IntArray, NestedSamplerState]:
@@ -228,12 +226,8 @@ class ApproximateNestedSampler(NestedSampler):
         Returns:
             termination reason, and state
         """
-        # Perform uniform "perfect" sampling down to a given efficiency <==> Up to a given X(L)
-        state, live_points = self.static_uniform(state=state, live_points=live_points)
-        # Low accuracy sampling
-        termination_reason, state, live_points = self.static_slice(state=state,
-                                                                   live_points=live_points,
-                                                                   termination_cond=term_cond)
+        termination_reason, state, live_points = self._run_chain(state=state, live_points=live_points,
+                                                                 term_cond=term_cond)
         state = collect_samples(state=state, new_reservoir=live_points.reservoir)
         return termination_reason, state
 
@@ -249,26 +243,29 @@ class ApproximateNestedSampler(NestedSampler):
         Returns:
             termination reason, and state
         """
-        state, live_points = self.initialise(key=key)
+        state, live_points = self.initialise(key=key, num_live_points=self.num_live_points)
         return self.approximate_shrinkage(state=state, live_points=live_points, term_cond=term_cond)
 
     @partial(jit, static_argnums=0)
     def concat_run(self, state: NestedSamplerState, live_points: LivePoints,
-                   term_cond: TerminationCondition) -> Tuple[IntArray, NestedSamplerState]:
+                   term_cond: TerminationCondition) -> Tuple[IntArray, NestedSamplerState, LivePoints]:
         """
         Uses a given live points reservoir and performs approximate sampling until termination with a given initial
         state.
 
         Args:
             state: state to augment onto
+            live_points: live points to use
             term_cond: termination condition
 
         Returns:
-            termination reason, and state
+            termination reason, state, and live points
         """
-        return self.approximate_shrinkage(state=state, live_points=live_points, term_cond=term_cond)
+        termination_reason, state, live_points = self._run_chain(state=state, live_points=live_points,
+                                                                 term_cond=term_cond)
+        return termination_reason, state, live_points
 
-    @jit
+    @partial(jit, static_argnums=0)
     def augment_run(self, state: NestedSamplerState, term_cond: TerminationCondition) -> Tuple[
         IntArray, NestedSamplerState]:
         """
@@ -290,8 +287,7 @@ class ApproximateNestedSampler(NestedSampler):
         return self.approximate_shrinkage(state=state, live_points=live_points, term_cond=term_cond)
 
     def __call__(self, key: PRNGKey, term_cond: TerminationCondition, *,
-                 init_state: Optional[NestedSamplerState] = None,
-                 live_points: Optional[LivePoints] = None) -> Tuple[IntArray, NestedSamplerState]:
+                 init_state: Optional[NestedSamplerState] = None) -> Tuple[IntArray, NestedSamplerState]:
         """
         Performs approximate nested sampling.
 
@@ -299,89 +295,65 @@ class ApproximateNestedSampler(NestedSampler):
             key: PRNGKey
             term_cond: termination conditions
             init_state: optional initial state, resume from here if provided
-            live_points: optional initial live points, use if provided otherwise create one
 
         Returns:
             termination reason, state
         """
         if term_cond.max_samples is None:  # add a convenience termination condition for user
             term_cond = term_cond._replace(max_samples=self.max_samples)
-        else:
+        else:  # truncate for sanity
             term_cond = term_cond._replace(max_samples=jnp.minimum(self.max_samples, term_cond.max_samples))
         if init_state is None:
             # We create fresh live points and state
             termination_reason, state = self.fresh_run(key=key, term_cond=term_cond)
         else:
-            if live_points is None:
-                # We create a fresh set of live points from -inf contour and run on top of init_state
-                init_state = self.resize_state(init_state, max_num_samples=self.max_samples)
-                termination_reason, state = self.augment_run(state=init_state, term_cond=term_cond)
-            else:
-                # We use the input live points and run on top of init_state
-                init_state = self.resize_state(init_state, max_num_samples=self.max_samples)
-                termination_reason, state = self.concat_run(state=init_state, live_points=live_points,
-                                                            term_cond=term_cond)
+            # We use the input live points and run on top of init_state
+            init_state = self.resize_state(init_state, max_num_samples=self.max_samples)
+            termination_reason, state = self.augment_run(state=init_state, term_cond=term_cond)
         return termination_reason, state
 
 
 class ExactNestedSampler(NestedSampler):
+    """
+    A two stage nested sampler, where the first stage produces sample that are only weakly i.i.d., and the second stage
+    adaptively refines these samples until they are strongly i.i.d. (according to a stopping criterion).
+    """
+
     def __init__(self, model: Model, num_live_points: Union[int, float],
                  max_samples: Union[int, float],
                  num_parallel_samplers: int = 1,
-                 uncert_improvement_patience: int = 2,
-                 shrinkage_slice_sampler: Optional[AbstractSliceSampler] = None,
-                 refinement_slice_sampler: Optional[AbstractSliceSampler] = None):
-        super(ExactNestedSampler, self).__init__(model=model, num_live_points=num_live_points,
-                                                 num_parallel_samplers=num_parallel_samplers,
-                                                 max_samples=max_samples)
+                 patience: int = 1):
+        """
+        A two stage nested sampler, where the first stage produces sample that are only weakly i.i.d., and the
+        second stage adaptively refines these samples until they are strongly i.i.d. (according to a stopping
+        criterion).
+
+        Args:
+            model: model
+            num_live_points: the number of static live points
+            max_samples: maximum number of (non equally weighted) samples to allocate space for.
+                Note: to control stopping criterion related to a maximum number of samples, use TerminationCondition.
+            num_parallel_samplers: the number of parallel instances to run. This must be <= len(jax.devices())
+            patience: how many rounds of converged refinement to wait before stopping.
+                Values > 1 mean refinement will continue until `patience` consecutive rounds of convergence are
+                observed. Similar to famous patience parameter of early stopping in deep learning community.
+        """
+        super(ExactNestedSampler, self).__init__(model=model, max_samples=max_samples)
 
         self.approximate_sampler = ApproximateNestedSampler(
             model=model,
             num_live_points=num_live_points,
             num_parallel_samplers=num_parallel_samplers,
-            max_samples=max_samples,
-            slice_sampler=shrinkage_slice_sampler
+            max_samples=max_samples
         )
 
         self.adaptive_refinement = AdaptiveRefinement(
             model=self.model,
-            uncert_improvement_patience=uncert_improvement_patience,
-            num_slices=model.U_ndims,
-            num_parallel_samplers=self.num_parallel_samplers,
-            slice_sampler=refinement_slice_sampler
+            patience=patience
         )
 
-    def improvement(self, state: NestedSamplerState) -> NestedSamplerState:
-        """
-        Run adaptive refinement until evidence converges.
-
-        Args:
-            state: state (may be approximate, i.e. non-iid samples.)
-
-        Returns:
-            state with samples considered iid sampled from the likelihood constraint
-        """
-        return self.adaptive_refinement(state)
-
-    def prepare_new_iteration(self, state: NestedSamplerState, log_L_constraint: float,
-                              sorted_collection: bool = True) -> Tuple[NestedSamplerState, LivePoints]:
-        """
-        Extract live points from the samples already collected.
-
-        Args:
-            state: the current state
-            log_L_constraint: the contour to sample above
-            sorted_collection: whether the sample collection is already sorted
-
-        Returns:
-            a new state, and live points
-        """
-        return get_live_points_from_samples(state=state, log_L_constraint=log_L_constraint,
-                                            num_live_points=self.num_live_points, sorted_collection=sorted_collection)
-
     def __call__(self, key: PRNGKey, term_cond: TerminationCondition, *,
-                 init_state: Optional[NestedSamplerState] = None,
-                 live_points: Optional[LivePoints] = None) -> Tuple[IntArray, NestedSamplerState]:
+                 init_state: Optional[NestedSamplerState] = None) -> Tuple[IntArray, NestedSamplerState]:
         """
         Performs approximate nested sampling followed by adaptive refinement.
 
@@ -389,7 +361,6 @@ class ExactNestedSampler(NestedSampler):
             key: PRNGKey
             term_cond: termination condition
             init_state: optional initial state
-            live_points: optional initial live points
 
         Returns:
             termination reason, and exact state
@@ -397,8 +368,7 @@ class ExactNestedSampler(NestedSampler):
         if isinstance(key, core.Tracer):
             raise RuntimeError("Tracer detected, but expected imperative context.")
 
-        termination_reason, state = self.approximate_sampler(key=key, term_cond=term_cond, init_state=init_state,
-                                                             live_points=live_points)
-        state = self.improvement(state=state)
+        termination_reason, state = self.approximate_sampler(key=key, term_cond=term_cond, init_state=init_state)
+        state = self.adaptive_refinement(state=state)
 
         return termination_reason, state

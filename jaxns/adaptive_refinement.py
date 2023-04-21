@@ -1,14 +1,14 @@
-from functools import partial
-from typing import Tuple, Optional, NamedTuple
+from typing import Tuple, NamedTuple
 
 from etils.array_types import PRNGKey, FloatArray, IntArray, BoolArray
-from jax import core, numpy as jnp, tree_map, random, jit
-from jax._src.lax.control_flow import while_loop
+from jax import core, numpy as jnp, tree_map, random, pmap
+from jax._src.lax.control_flow import while_loop, scan
+from jax._src.lax.parallel import all_gather
 
-from jaxns.internals.maps import chunked_pmap
 from jaxns.internals.stats import linear_to_log_stats
 from jaxns.model import Model
-from jaxns.slice_sampler import UniDimSliceSampler, SeedPoint, PreprocessType, AbstractSliceSampler
+from jaxns.static_nested_sampler import PreProcessType, add_chunk_dim, remove_chunk_dim, SeedPoint
+from jaxns.static_slice import UniDimSliceSampler
 from jaxns.statistics import analyse_sample_collection
 from jaxns.types import NestedSamplerState, Reservoir, int_type, float_type
 from jaxns.utils import sort_samples
@@ -17,22 +17,14 @@ __all__ = ['AdaptiveRefinement']
 
 
 class AdaptiveRefinement:
-    def __init__(self, model: Model, uncert_improvement_patience: int, num_slices: int, num_parallel_samplers: int = 1,
-                 slice_sampler: Optional[AbstractSliceSampler] = None):
-        if uncert_improvement_patience <= 0:
-            raise ValueError(f"uncert_improvement_patient should be > 0, got {uncert_improvement_patience}.")
-        self.uncert_improvement_patience = uncert_improvement_patience
+    def __init__(self, model: Model, patience: int = 1, num_parallel_samplers: int = 1):
+        if patience < 1:
+            raise ValueError(f"patience should be >= 1, got {patience}.")
+        self.patience = patience
         self.num_parallel_samplers = num_parallel_samplers
-        if slice_sampler is None:
-            slice_sampler = UniDimSliceSampler(
-                model=model,
-                midpoint_shrink=True,
-                multi_ellipse_bound=False
-            )
-        self.slice_sampler = slice_sampler
-        self.num_slices = num_slices
+        self.sampler = UniDimSliceSampler(model=model, num_slices=model.U_ndims, midpoint_shrink=True, perfect=True)
 
-    def split_state(self, state: NestedSamplerState) -> Tuple[NestedSamplerState, Reservoir]:
+    def _split_state(self, state: NestedSamplerState) -> Tuple[NestedSamplerState, Reservoir]:
         """
         Splice a state into iid samples and non-iid samples.
 
@@ -65,7 +57,7 @@ class AdaptiveRefinement:
         )
         return state, update_reservoir
 
-    def combine_state(self, state: NestedSamplerState, update_reservoir: Reservoir) -> NestedSamplerState:
+    def _combine_state(self, state: NestedSamplerState, update_reservoir: Reservoir) -> NestedSamplerState:
         """
         Concatenates a state and reservoir and sorts the state.
 
@@ -90,7 +82,7 @@ class AdaptiveRefinement:
         return state
 
     def _single_improvement(self, key: PRNGKey, seed_point: SeedPoint, log_L_constraint: FloatArray,
-                            preprocess_data: PreprocessType) -> Reservoir:
+                            preprocess_data: PreProcessType) -> Reservoir:
         """
         Perform perfect slice sampling, thereby improving the sample.
 
@@ -103,15 +95,61 @@ class AdaptiveRefinement:
         Returns:
             a sample from the seed point sampled within the given constraint
         """
-        sample = self.slice_sampler.get_sample(key=key,
-                                               seed_point=seed_point,
-                                               log_L_constraint=log_L_constraint,
-                                               num_slices=self.num_slices,
-                                               preprocess_data=preprocess_data)
+        sample = self.sampler.get_sample_from_seed(key=key,
+                                                   seed_point=seed_point,
+                                                   log_L_constraint=log_L_constraint,
+                                                   preprocess_data=preprocess_data)
         return Reservoir(*sample)
 
-    @partial(jit, static_argnums=0)
-    def improve(self, state: NestedSamplerState, iid_state: NestedSamplerState, non_iid_reservoir: Reservoir):
+    def _single_improvement_batch(self,
+                                  key: PRNGKey,
+                                  non_iid_reservoir: Reservoir,
+                                  preprocess_data: PreProcessType) -> Reservoir:
+        """
+        Run nested sampling to replace an entire live point reservoir via shrinkage.
+
+        Args:
+            key: PRNGKey
+            non_iid_reservoir: reservoir to improve
+            preprocess_data: any data needed to shrink the replace the live point reservoir with i.i.d. samples.
+
+        Returns:
+            improved reservoir
+        """
+
+        class CarryType(NamedTuple):
+            key: PRNGKey
+
+        class XType(NamedTuple):
+            reservoir_point: Reservoir
+
+        ResultType = Reservoir
+
+        def body(carry: CarryType, X: XType) -> Tuple[CarryType, ResultType]:
+            key, improve_key = random.split(carry.key, 2)
+            seed_point = SeedPoint(U0=X.reservoir_point.point_U, log_L0=X.reservoir_point.log_L)
+            improved_point = self._single_improvement(
+                key=improve_key,
+                seed_point=seed_point,
+                log_L_constraint=X.reservoir_point.log_L_constraint,
+                preprocess_data=preprocess_data
+            )
+            # Update stats
+            improved_point = improved_point._replace(
+                num_slices=improved_point.num_slices + X.reservoir_point.num_slices,
+                num_likelihood_evaluations=(improved_point.num_likelihood_evaluations
+                                            + X.reservoir_point.num_likelihood_evaluations)
+            )
+
+            return CarryType(key=key), improved_point
+
+        _, improved_reservoir = scan(body,
+                                     CarryType(key),
+                                     XType(reservoir_point=non_iid_reservoir))
+        return improved_reservoir
+
+    def _single_improve_thread(self, state: NestedSamplerState, iid_state: NestedSamplerState,
+                               non_iid_reservoir: Reservoir) -> [NestedSamplerState, Reservoir]:
         """
         Performs perfect slice sampling on the set of samples that are not considered i.i.d. sampled within their
         respective likelihood constraint.
@@ -122,7 +160,7 @@ class AdaptiveRefinement:
             non_iid_reservoir: samples that are not deemed i.i.d.
 
         Returns:
-            state where all samples are considered i.i.d. sampled within their respective likelihood constraints
+            reservoir where all samples are considered i.i.d. sampled within their respective likelihood constraints
         """
 
         # update each sample one slice at a time until the stopping condition
@@ -132,45 +170,31 @@ class AdaptiveRefinement:
             reservoir: Reservoir
             last_log_Z_mean: FloatArray
             last_diff_log_Z_mean: FloatArray
-            patience: IntArray
-            preprocess_data: PreprocessType
+            converged_step_count: IntArray
+            state: NestedSamplerState
 
         def cond(body_state: CarryType) -> BoolArray:
-            (_, _, _, _, patience, _) = body_state
-            done = jnp.greater_equal(patience, self.uncert_improvement_patience)
+            done = jnp.greater_equal(body_state.converged_step_count, self.patience)
             return jnp.bitwise_not(done)
 
         def body(body_state: CarryType) -> CarryType:
-            batch_size = body_state.reservoir.iid.size
+            key, improve_key = random.split(body_state.state.key, 2)
+            state = body_state.state._replace(key=key)
 
-            key, combine_key, improve_key = random.split(body_state.key, 3)
+            preprocess_data = self.sampler.preprocess(state)
 
-            parallel_improvement = chunked_pmap(
-                lambda key, seed_point, log_L_constraint: self._single_improvement(
-                    key=key,
-                    seed_point=seed_point,
-                    log_L_constraint=log_L_constraint,
-                    preprocess_data=body_state.preprocess_data
-                ),
-                chunksize=self.num_parallel_samplers,
-                batch_size=batch_size)
-            seed_points = SeedPoint(
-                U0=body_state.reservoir.point_U,
-                log_L0=body_state.reservoir.log_L
-            )
-            update_reservoir = parallel_improvement(random.split(improve_key, batch_size),
-                                                    seed_points,
-                                                    body_state.reservoir.log_L_constraint)
-
-            update_reservoir = update_reservoir._replace(
-                num_slices=update_reservoir.num_slices + body_state.reservoir.num_slices,
-                num_likelihood_evaluations=(update_reservoir.num_likelihood_evaluations
-                                            + body_state.reservoir.num_likelihood_evaluations)
+            update_reservoir = self._single_improvement_batch(
+                key=improve_key,
+                non_iid_reservoir=body_state.reservoir,
+                preprocess_data=preprocess_data
             )
 
-            updated_state = self.combine_state(state=iid_state, update_reservoir=update_reservoir)
+            all_update_reservoir: Reservoir = remove_chunk_dim(all_gather(update_reservoir, 'i'))
+
+            all_state = self._combine_state(state=iid_state, update_reservoir=all_update_reservoir)
+
             evidence_calculation, sample_stats = analyse_sample_collection(
-                sample_collection=updated_state.sample_collection,
+                sample_collection=all_state.sample_collection,
                 sorted_collection=True
             )
             log_Z_mean, log_Z_var = linear_to_log_stats(
@@ -186,12 +210,9 @@ class AdaptiveRefinement:
             decreasing_change = diff_log_Z_mean < body_state.last_diff_log_Z_mean
             stable = decreasing_change | small_change
             reset_patience = jnp.bitwise_not(stable) | (nan_log_Z_mean | nan_last_log_Z_mean | nan_log_Z_var)
-            patience = jnp.where(reset_patience, jnp.zeros_like(body_state.patience),
-                                 body_state.patience + jnp.ones_like(body_state.patience))
-            preprocess_data = self.slice_sampler.preprocess(updated_state)
-            return CarryType(key, update_reservoir, log_Z_mean, diff_log_Z_mean, patience, preprocess_data)
-
-        preprocess_data = self.slice_sampler.preprocess(state)
+            converged_step_count = jnp.where(reset_patience, jnp.asarray(0, int_type),
+                                             body_state.converged_step_count + jnp.asarray(1, int_type))
+            return CarryType(key, update_reservoir, log_Z_mean, diff_log_Z_mean, converged_step_count, all_state)
 
         key, improve_key = random.split(state.key, 2)
         init_evidence_calculation, _ = analyse_sample_collection(
@@ -205,21 +226,37 @@ class AdaptiveRefinement:
 
         init_body_state: CarryType = CarryType(
             improve_key, non_iid_reservoir, init_log_Z_mean, jnp.asarray(0., float_type), jnp.asarray(0, int_type),
-            preprocess_data)
+            state)
         output_state = while_loop(cond,
                                   body,
                                   init_body_state)
 
-        # mark as iid now <==> the evidence stopped changing
-        update_reservoir = output_state.reservoir._replace(iid=jnp.ones_like(output_state.reservoir.iid))
-
-        updated_state = self.combine_state(state=iid_state, update_reservoir=update_reservoir)
-
-        updated_state = updated_state._replace(key=key)
-        return updated_state
+        return output_state.state
 
     def __call__(self, state: NestedSamplerState) -> NestedSamplerState:
-        if isinstance(state.sample_collection.reservoir.iid, core.Tracer):
-            raise RuntimeError("Tracer detected, but expected imperative context.")
-        iid_state, non_iid_reservoir = self.split_state(state)
-        return self.improve(state=state, iid_state=iid_state, non_iid_reservoir=non_iid_reservoir)
+        """
+        Adaptively refines the state until all samples are i.i.d. (according to a given stopping condition).
+
+        Args:
+            state: nested sampler state
+
+        Returns:
+            state after refinement
+        """
+        # Split state will give an error if this is a tracer context so don't JIT compile.
+        iid_state, non_iid_reservoir = self._split_state(state)
+
+        chunked_non_iid_reservoir = add_chunk_dim(non_iid_reservoir, self.num_parallel_samplers)
+
+        parallel_ar = pmap(lambda non_iid_reservoir: self._single_improve_thread(
+            state=state,
+            iid_state=iid_state,
+            non_iid_reservoir=non_iid_reservoir
+        ), axis_name='i')
+
+        chunked_updated_state = parallel_ar(chunked_non_iid_reservoir)
+
+        # Is there a better way to get only one out, since they are identical on each device?
+        updated_state = tree_map(lambda x: x[0], chunked_updated_state)
+
+        return updated_state

@@ -10,9 +10,9 @@ __all__ = ['random_ortho_matrix',
            'resample_indicies']
 
 
-def random_ortho_matrix(key, n):
+def random_ortho_matrix(key, n, special_orthogonal: bool = False):
     """
-    Samples a random orthonormal num_parent,num_parent matrix from Stiefels manifold.
+    Samples a random orthonormal n by n matrix from Stiefels manifold.
     From https://stackoverflow.com/a/38430739
 
     Args:
@@ -23,6 +23,8 @@ def random_ortho_matrix(key, n):
     """
     H = random.normal(key, shape=(n, n))
     Q, R = jnp.linalg.qr(H)
+    if special_orthogonal:
+        R *= jnp.sign(R)
     Q = Q @ jnp.diag(jnp.sign(jnp.diag(R)))
     return Q
 
