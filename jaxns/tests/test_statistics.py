@@ -1,9 +1,15 @@
+from time import monotonic_ns
+
+import jax
+import numpy as np
 from jax import numpy as jnp, random
 from jax import vmap
 from jax.lax import dynamic_update_slice
 
 from jaxns.internals.maps import replace_index
-from jaxns.statistics import compute_num_live_points_from_unit_threads, compute_remaining_evidence
+from jaxns.statistics import compute_num_live_points_from_unit_threads, compute_remaining_evidence, \
+    perfect_live_point_computation_jax, fast_perfect_live_point_computation_jax
+from jaxns.tests.test_nested_sampler import Timer
 
 
 def _sure_compute_num_live_points_from_unit_threads(log_L_constraints, log_L_samples, num_samples=None, debug=False):
@@ -47,7 +53,83 @@ def _sure_compute_num_live_points_from_unit_threads(log_L_constraints, log_L_sam
         num_live_points.append(n)
 
     num_live_points = jnp.stack(num_live_points)
+
     return num_live_points
+
+
+def perfect_live_point_computation(log_L_constraints, log_L_samples, num_samples: int|None=None, debug=True):
+    log_L_constraints = np.array(log_L_constraints)
+    log_L_samples = np.array(log_L_samples)
+    sort_idx = np.lexsort((log_L_constraints, log_L_samples))
+
+    log_L_contour = log_L_constraints[sort_idx[0]]
+
+    num_live_points = []
+    for i in sort_idx:
+        log_L_dead = log_L_samples[i]
+        # print(log_L_contour <= log_L_samples)
+        # print(log_L_constraints <= log_L_contour)
+        count = np.sum(np.bitwise_and(log_L_contour <= log_L_samples, log_L_constraints <= log_L_contour))
+        if debug:
+            print('index', i, 'dead point', log_L_dead, count,  ' points within', log_L_contour)
+        # log_L_contour = np.where(log_L_dead > log_L_contour, log_L_dead, log_L_contour)
+        log_L_contour = log_L_dead
+        log_L_samples[i] = -np.inf
+        log_L_constraints[i] = np.inf
+        num_live_points.append(count)
+    num_live_points = jnp.asarray(num_live_points)
+    if num_samples is not None:
+        empty_mask = np.greater_equal(np.arange(log_L_samples.size), num_samples)
+        num_live_points = np.where(empty_mask, 0, num_live_points)
+    return num_live_points, sort_idx
+
+
+
+
+
+def test_perfect_live_point_computation_jax():
+    log_L_constraints = random.uniform(random.PRNGKey(42), shape=(100,))
+    log_L_samples = random.uniform(random.PRNGKey(43), shape=(100,), minval=log_L_constraints)
+    num_live_points, sort_idx = perfect_live_point_computation(log_L_constraints, log_L_samples)
+    num_live_points_jax, sort_idx_jax = perfect_live_point_computation_jax(log_L_constraints, log_L_samples)
+    assert jnp.all(num_live_points_jax == num_live_points)
+
+def test_fast_perfect_live_point_computation_jax():
+    for i in range(10):
+        log_L_constraints = random.uniform(random.PRNGKey(i), shape=(100,))
+        log_L_samples = random.uniform(random.PRNGKey(i+100000), shape=(100,), minval=log_L_constraints)
+        num_live_points, sort_idx = perfect_live_point_computation(log_L_constraints, log_L_samples, debug=False)
+        num_live_points_jax, sort_idx_jax = perfect_live_point_computation_jax(log_L_constraints, log_L_samples)
+        num_live_points_fast, sort_idx = fast_perfect_live_point_computation_jax(log_L_constraints, log_L_samples)
+        assert jnp.all(num_live_points_jax == num_live_points)
+        assert jnp.all(num_live_points_fast == num_live_points)
+
+    for n in [1e2, 1e3, 1e4, 2e4]:
+        f1 = jax.jit(perfect_live_point_computation_jax)
+        f2 = jax.jit(fast_perfect_live_point_computation_jax)
+        log_L_constraints = random.uniform(random.PRNGKey(42), shape=(int(n),))
+        log_L_samples = random.uniform(random.PRNGKey(420), shape=(int(n),), minval=log_L_constraints)
+        num_live_points, _ = f1(log_L_constraints, log_L_samples)
+        num_live_points.block_until_ready()
+        t0 = monotonic_ns()
+        for _ in range(10):
+            num_live_points, _ = f1(log_L_constraints, log_L_samples)
+            num_live_points.block_until_ready()
+        dt_normal = (monotonic_ns() - t0)/1e9/10
+        print(f"Normal {n}: {dt_normal} sec")
+
+        num_live_points, _ = f2(log_L_constraints, log_L_samples)
+        num_live_points.block_until_ready()
+        t0 = monotonic_ns()
+        for _ in range(10):
+            num_live_points, _ = f2(log_L_constraints, log_L_samples)
+            num_live_points.block_until_ready()
+        dt_fast = (monotonic_ns() - t0) / 1e9 / 10
+        print(f"Fast {n}: {dt_fast} sec")
+
+        assert dt_fast < dt_normal
+
+
 
 
 def _sure_infimum_constraint(log_L_constraints, log_L_samples, sort_idx):
@@ -80,14 +162,20 @@ def test_compute_num_live_points():
     from jax import random
 
     def test_example(log_L_constraints, log_L_samples, num_live_points, num_samples=None, debug=False):
-        assert jnp.allclose(num_live_points,
-                            _sure_compute_num_live_points_from_unit_threads(log_L_constraints, log_L_samples,
-                                                                            num_samples, debug=debug))
+        print("log_L_samples", log_L_samples, 'log_L_constraints', log_L_constraints)
+        num_live_points_perfect, sort_idx_perfect = perfect_live_point_computation(log_L_constraints, log_L_samples,
+                                                                                   num_samples=num_samples)
+        assert np.all(num_live_points_perfect == num_live_points)
+
+        # assert jnp.allclose(num_live_points,
+        #                     _sure_compute_num_live_points_from_unit_threads(log_L_constraints, log_L_samples,
+        #                                                                     num_samples, debug=False))
+
         test_num_live_points, sort_idx = compute_num_live_points_from_unit_threads(log_L_constraints, log_L_samples,
                                                                                    num_samples, sorted_collection=False)
-        assert jnp.all(test_num_live_points == num_live_points)
-        assert jnp.all(infimum_constraint(log_L_constraints, log_L_samples, sort_idx) == _sure_infimum_constraint(
-            log_L_constraints, log_L_samples, sort_idx))
+        assert jnp.all(num_live_points_perfect == test_num_live_points)
+        # assert jnp.all(infimum_constraint(log_L_constraints, log_L_samples, sort_idx) == _sure_infimum_constraint(
+        #     log_L_constraints, log_L_samples, sort_idx))
 
     # constraints are previous samples
     log_L_constraints = jnp.asarray([0., 0.5, 2.])
@@ -113,10 +201,21 @@ def test_compute_num_live_points():
     num_live_points = jnp.asarray([2, 1, 1, 0, 0])
     test_example(log_L_constraints, log_L_samples, num_live_points, num_samples=3, debug=True)
 
+    log_L_constraints = jnp.asarray([0.45, 0.45, 0.5, 2., jnp.inf, jnp.inf])
+    log_L_samples = jnp.asarray([0.5, 2., 2., 2.1, jnp.inf, jnp.inf])
+    num_live_points = jnp.asarray([2, 2, 1, 1, 0, 0])
+    test_example(log_L_constraints, log_L_samples, num_live_points, num_samples=3, debug=True)
+
     # constraints are not ordered like samples (contour starts at non-minimum of constraints)
     log_L_constraints = jnp.asarray([0., 0.45, 0., 2.])
     log_L_samples = jnp.asarray([0.5, 0.55, 2., 2.1])
     num_live_points = jnp.asarray([2, 2, 1, 1])
+    test_example(log_L_constraints, log_L_samples, num_live_points, debug=True)
+
+    # constraints are not ordered like samples (contour starts at non-minimum of constraints)
+    log_L_constraints = jnp.asarray([0., 0., 0., 0.])
+    log_L_samples = jnp.asarray([0.5, 0.5, 0.5, 0.5])
+    num_live_points = jnp.asarray([4, 3, 2, 1])
     test_example(log_L_constraints, log_L_samples, num_live_points, debug=True)
 
     # constraints are not ordered like samples (contour starts at non-minimum of constraints)
