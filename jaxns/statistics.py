@@ -2,7 +2,7 @@ from typing import Tuple, Union
 
 from etils.array_types import FloatArray, IntArray
 from jax import numpy as jnp, tree_map, random
-from jax._src.lax.control_flow import while_loop, fori_loop
+from jax._src.lax.control_flow import while_loop
 from jax._src.lax.slicing import dynamic_update_slice
 
 from jaxns.internals.log_semiring import LogSpace, normalise_log_space
@@ -202,29 +202,62 @@ def perfect_live_point_computation_jax(log_L_constraints: jnp.ndarray, log_L_sam
     # log_L_constraints has shape [N]
     # log_L_samples has shape [N]
     sort_idx = jnp.lexsort((log_L_constraints, log_L_samples))
+    log_L_samples = log_L_samples[sort_idx]
+    log_L_constraints = log_L_constraints[sort_idx]
+    log_L_contour = log_L_constraints[0]
 
-    log_L_contour = log_L_constraints[sort_idx[0]]
+    def outer_cond(state):
+        (i, log_L_contour, log_L_samples, log_L_constraints, num_live_points) = state
+        return i < log_L_samples.size
 
-    def loop_body(j, carry):
-        log_L_dead, log_L_contour, log_L_samples, log_L_constraints, num_live_points = carry
-        i = sort_idx[j]
+    def outer_loop_body(state):
+        (i, log_L_contour, log_L_samples, log_L_constraints, num_live_points) = state
         log_L_dead = log_L_samples[i]
-        count = jnp.sum(jnp.bitwise_and(log_L_contour <= log_L_samples, log_L_constraints <= log_L_contour))
-        # log_L_contour = jnp.where(log_L_dead > log_L_contour, log_L_dead, log_L_contour)
+
+        def inner_cond(state):
+            (i, log_L_samples, log_L_constraints, num_live_points) = state
+            return jnp.bitwise_and(log_L_samples[i] == log_L_dead, i < log_L_constraints.size)
+
+        def inner_loop_body(state):
+            (i, log_L_samples, log_L_constraints, num_live_points) = state
+            count = jnp.sum(jnp.bitwise_and(log_L_contour < log_L_samples, log_L_constraints <= log_L_contour))
+            log_L_samples = log_L_samples.at[i].set(-jnp.inf)
+            log_L_constraints = log_L_constraints.at[i].set(jnp.inf)
+            num_live_points = num_live_points.at[i].set(count.astype(log_L_samples.dtype))
+            return (i + 1, log_L_samples, log_L_constraints, num_live_points)
+
+        (i, log_L_samples, log_L_constraints, num_live_points) = while_loop(
+            inner_cond,
+            inner_loop_body,
+            (i, log_L_samples, log_L_constraints, num_live_points)
+        )
         log_L_contour = log_L_dead
-        log_L_samples = log_L_samples.at[i].set(-jnp.inf)
-        log_L_constraints = log_L_constraints.at[i].set(jnp.inf)
-        num_live_points = num_live_points.at[j].set(count)
-        return log_L_dead, log_L_contour, log_L_samples, log_L_constraints, num_live_points
+        return (i, log_L_contour, log_L_samples, log_L_constraints, num_live_points)
 
-    carry = (0, log_L_contour, log_L_samples, log_L_constraints, jnp.zeros(len(log_L_samples), dtype=jnp.int32))
-    _, _, _, _, num_live_points = fori_loop(0, len(sort_idx), loop_body, carry)
-
+    (i, log_L_contour, log_L_samples, log_L_constraints, num_live_points) = while_loop(
+        outer_cond,
+        outer_loop_body,
+        (jnp.asarray(0, int_type), log_L_contour, log_L_samples, log_L_constraints, jnp.zeros_like(log_L_samples))
+    )
     if num_samples is not None:
         empty_mask = jnp.greater_equal(jnp.arange(log_L_samples.size), num_samples)
-        num_live_points = jnp.where(empty_mask, jnp.asarray(0., log_L_samples.dtype), num_live_points)
-
+        num_live_points = jnp.where(empty_mask, 0, num_live_points)
     return num_live_points, sort_idx
+
+
+def fast_triu_rowsum(a, b):
+    """
+    Computes a fast row sum of the upper triangular part of the outer product of a and b.
+
+    Args:
+        a: [N] array
+        b: [N] array
+
+    Returns:
+        [N] of the row sum of upper trianguarl part of outer product of a and b.
+    """
+    b_cumsum_rev = jnp.cumsum(b[::-1])[::-1]
+    return a * b_cumsum_rev
 
 
 def fast_perfect_live_point_computation_jax(log_L_constraints: jnp.ndarray, log_L_samples: jnp.ndarray,
@@ -232,29 +265,17 @@ def fast_perfect_live_point_computation_jax(log_L_constraints: jnp.ndarray, log_
     # log_L_constraints has shape [N]
     # log_L_samples has shape [N]
     sort_idx = jnp.lexsort((log_L_constraints, log_L_samples))
+    log_L_samples = log_L_samples[sort_idx]
+    log_L_constraints = log_L_constraints[sort_idx]
+    log_L_contour = log_L_constraints[0]
+    search_contours = jnp.concatenate([log_L_contour[None], log_L_samples], axis=0)
 
-    log_L_contour = log_L_constraints[sort_idx[0]]
-
-    # masking samples is already done, since they are inf by default.
-    # log_L_samples = jnp.where(empty_mask, jnp.inf, log_L_samples)
-    # log_L_constraints = jnp.where(empty_mask, jnp.inf, log_L_constraints)
-    # sort log_L_samples, breaking degeneracies on log_L_constraints
-
-    # n = jnp.sum(available & (log_L_samples >= contour) & (log_L_constraints <= contour))
-    # n = jnp.sum(available & (log_L_constraints <= contour))
-    # n = available.size - jnp.sum(jnp.bitwise_not(available) | jnp.bitwise_not(log_L_constraints <= contour))
-    # n = available.size - jnp.sum(jnp.bitwise_not(available)) - jnp.sum(jnp.bitwise_not(log_L_constraints <= contour)) + jnp.sum(jnp.bitwise_not(available) & jnp.bitwise_not(log_L_constraints <= contour))
-    # n = jnp.sum(available) - jnp.sum(log_L_constraints > contour) + jnp.sum(jnp.bitwise_not(available) & (log_L_constraints > contour))
-    # Since jnp.sum(jnp.bitwise_not(available) & (log_L_constraints > contour)) can be shown to be zero
-    # n = jnp.sum(available) - jnp.sum(log_L_constraints > contour)
-
-    _log_L_samples = jnp.concatenate([log_L_contour[None], log_L_samples[sort_idx]])
-    n_base = jnp.arange(1, log_L_samples.size + 1)[::-1]
-
-    u = jnp.searchsorted(_log_L_samples, log_L_constraints[sort_idx], side='left')
-    b = u.size - jnp.cumsum(jnp.bincount(u, length=u.size))
-    num_live_points = n_base - b
-    num_live_points = num_live_points.astype(log_L_samples.dtype)
+    contour_map_idx = jnp.searchsorted(search_contours, log_L_samples, side='left') - 1
+    log_L_contours = search_contours[contour_map_idx]
+    diag_i = jnp.arange(log_L_samples.size)
+    right_most_idx = jnp.searchsorted(jnp.sort(log_L_constraints), log_L_contours, side='right') - 1
+    left_most_idx = jnp.maximum(diag_i, jnp.searchsorted(log_L_samples, log_L_contours, side='right') - 1)
+    num_live_points = jnp.maximum(0, right_most_idx - left_most_idx + 1)
 
     if num_samples is not None:
         empty_mask = jnp.greater_equal(jnp.arange(log_L_samples.size), num_samples)

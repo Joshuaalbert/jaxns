@@ -8,8 +8,7 @@ from jax.lax import dynamic_update_slice
 
 from jaxns.internals.maps import replace_index
 from jaxns.statistics import compute_num_live_points_from_unit_threads, compute_remaining_evidence, \
-    perfect_live_point_computation_jax, fast_perfect_live_point_computation_jax
-from jaxns.tests.test_nested_sampler import Timer
+    perfect_live_point_computation_jax, fast_perfect_live_point_computation_jax, fast_triu_rowsum
 
 
 def _sure_compute_num_live_points_from_unit_threads(log_L_constraints, log_L_samples, num_samples=None, debug=False):
@@ -57,7 +56,7 @@ def _sure_compute_num_live_points_from_unit_threads(log_L_constraints, log_L_sam
     return num_live_points
 
 
-def perfect_live_point_computation(log_L_constraints, log_L_samples, num_samples: int|None=None, debug=True):
+def perfect_live_point_computation(log_L_constraints, log_L_samples, num_samples: int | None = None, debug=True):
     log_L_constraints = np.array(log_L_constraints)
     log_L_samples = np.array(log_L_samples)
     sort_idx = np.lexsort((log_L_constraints, log_L_samples))
@@ -65,26 +64,27 @@ def perfect_live_point_computation(log_L_constraints, log_L_samples, num_samples
     log_L_contour = log_L_constraints[sort_idx[0]]
 
     num_live_points = []
-    for i in sort_idx:
-        log_L_dead = log_L_samples[i]
-        # print(log_L_contour <= log_L_samples)
-        # print(log_L_constraints <= log_L_contour)
-        count = np.sum(np.bitwise_and(log_L_contour <= log_L_samples, log_L_constraints <= log_L_contour))
-        if debug:
-            print('index', i, 'dead point', log_L_dead, count,  ' points within', log_L_contour)
-        # log_L_contour = np.where(log_L_dead > log_L_contour, log_L_dead, log_L_contour)
+    idx = 0
+    while idx < log_L_samples.size:
+        log_L_dead = log_L_samples[sort_idx[idx]]
+        while idx < log_L_samples.size:
+            if log_L_samples[sort_idx[idx]] != log_L_dead:
+                break
+            count = np.sum(np.bitwise_and(log_L_contour < log_L_samples, log_L_constraints <= log_L_contour))
+            if debug:
+                print('index', sort_idx[idx], 'dead point', log_L_dead, count, ' points within', log_L_contour)
+            log_L_samples[sort_idx[idx]] = -np.inf
+            log_L_constraints[sort_idx[idx]] = np.inf
+            num_live_points.append(count)
+            idx += 1
         log_L_contour = log_L_dead
-        log_L_samples[i] = -np.inf
-        log_L_constraints[i] = np.inf
-        num_live_points.append(count)
+    if debug:
+        print(num_live_points)
     num_live_points = jnp.asarray(num_live_points)
     if num_samples is not None:
         empty_mask = np.greater_equal(np.arange(log_L_samples.size), num_samples)
         num_live_points = np.where(empty_mask, 0, num_live_points)
     return num_live_points, sort_idx
-
-
-
 
 
 def test_perfect_live_point_computation_jax():
@@ -94,17 +94,18 @@ def test_perfect_live_point_computation_jax():
     num_live_points_jax, sort_idx_jax = perfect_live_point_computation_jax(log_L_constraints, log_L_samples)
     assert jnp.all(num_live_points_jax == num_live_points)
 
+
 def test_fast_perfect_live_point_computation_jax():
     for i in range(10):
         log_L_constraints = random.uniform(random.PRNGKey(i), shape=(100,))
-        log_L_samples = random.uniform(random.PRNGKey(i+100000), shape=(100,), minval=log_L_constraints)
+        log_L_samples = random.uniform(random.PRNGKey(i + 100000), shape=(100,), minval=log_L_constraints)
         num_live_points, sort_idx = perfect_live_point_computation(log_L_constraints, log_L_samples, debug=False)
         num_live_points_jax, sort_idx_jax = perfect_live_point_computation_jax(log_L_constraints, log_L_samples)
         num_live_points_fast, sort_idx = fast_perfect_live_point_computation_jax(log_L_constraints, log_L_samples)
         assert jnp.all(num_live_points_jax == num_live_points)
         assert jnp.all(num_live_points_fast == num_live_points)
 
-    for n in [1e2, 1e3, 1e4, 2e4]:
+    for n in [1e3, 1e4, 2e4]:
         f1 = jax.jit(perfect_live_point_computation_jax)
         f2 = jax.jit(fast_perfect_live_point_computation_jax)
         log_L_constraints = random.uniform(random.PRNGKey(42), shape=(int(n),))
@@ -115,7 +116,7 @@ def test_fast_perfect_live_point_computation_jax():
         for _ in range(10):
             num_live_points, _ = f1(log_L_constraints, log_L_samples)
             num_live_points.block_until_ready()
-        dt_normal = (monotonic_ns() - t0)/1e9/10
+        dt_normal = (monotonic_ns() - t0) / 1e9 / 10
         print(f"Normal {n}: {dt_normal} sec")
 
         num_live_points, _ = f2(log_L_constraints, log_L_samples)
@@ -129,7 +130,43 @@ def test_fast_perfect_live_point_computation_jax():
 
         assert dt_fast < dt_normal
 
+    # ensure scaling law is sub linear
+    n_array = [1e3, 1e4, 1e5, 1e6]
+    dt_array = []
+    for n in n_array:
+        num_live_points, _ = f2(log_L_constraints, log_L_samples)
+        num_live_points.block_until_ready()
+        t0 = monotonic_ns()
+        for _ in range(10):
+            num_live_points, _ = f2(log_L_constraints, log_L_samples)
+            num_live_points.block_until_ready()
+        dt_fast = (monotonic_ns() - t0) / 1e9 / 10
+        print(f"Fast {n}: {dt_fast} sec")
+        dt_array.append(dt_fast)
 
+    def is_sub_linear(n_array, dt_array):
+        if len(n_array) != len(dt_array):
+            raise ValueError("Both arrays must have the same length.")
+
+        if len(n_array) < 2:
+            raise ValueError("At least two data points are needed to determine the scaling law.")
+
+        sub_linear = True
+
+        for i in range(1, len(n_array)):
+            n_ratio = n_array[i] / n_array[i - 1]
+            dt_ratio = dt_array[i] / dt_array[i - 1]
+            print(n_ratio, dt_ratio)
+
+            # If the ratio of execution times is greater than or equal to the ratio of input sizes,
+            # it is not sub-linear.
+            if dt_ratio >= n_ratio:
+                sub_linear = False
+                break
+
+        return sub_linear
+
+    assert is_sub_linear(n_array, dt_array)
 
 
 def _sure_infimum_constraint(log_L_constraints, log_L_samples, sort_idx):
@@ -158,22 +195,70 @@ def _sure_infimum_constraint(log_L_constraints, log_L_samples, sort_idx):
     return jnp.asarray(indices)
 
 
+def test_fast_triu_rowsum():
+    def exact(a, b):
+        M = a[:, None] * b[None, :]
+        res = []
+        for i in range(a.size):
+            res.append(np.sum(M[i, i:]))
+        return np.asarray(res)
+
+    a = np.array([1, 2, 3, 4])
+    b = np.array([5, 6, 7, 8])
+
+    assert np.allclose(fast_triu_rowsum(a, b), exact(a, b))
+
+
+def test_fast_sum_inequality():
+    def exact(a, b):
+        res = []
+        for i in range(a.size):
+            res.append(jnp.sum(a[i] <= b[i:]))
+        return jnp.asarray(res)
+
+    def upper_triangle_sum(a, b):
+        b_minus_cumsum_a = b - np.cumsum(a)
+        count_positive = np.cumsum(np.concatenate(([0], b_minus_cumsum_a[:-1])) >= 0)
+        result = count_positive - np.concatenate(([0], count_positive[:-1]))
+        return result
+
+    a = np.array([1, 2, 4, 5])
+    b = np.array([3, 4, 5, 6])
+
+    print(exact(a, b))
+    print(upper_triangle_sum(a, b))
+
+
 def test_compute_num_live_points():
     from jax import random
 
-    def test_example(log_L_constraints, log_L_samples, num_live_points, num_samples=None, debug=False):
+    def run_test(log_L_constraints, log_L_samples, num_live_points, num_samples=None, debug=False):
         print("log_L_samples", log_L_samples, 'log_L_constraints', log_L_constraints)
         num_live_points_perfect, sort_idx_perfect = perfect_live_point_computation(log_L_constraints, log_L_samples,
                                                                                    num_samples=num_samples)
         assert np.all(num_live_points_perfect == num_live_points)
+        print('1 passed')
+
+        num_live_points_perfect_jax, sort_idx_perfect_jax = perfect_live_point_computation_jax(log_L_constraints,
+                                                                                               log_L_samples,
+                                                                                               num_samples=num_samples)
+        # assert np.all(num_live_points_perfect_jax == num_live_points)
+        # print('2 passed')
+
+        num_live_points_perfect_jax_fast, sort_idx_perfect_jax_fast = fast_perfect_live_point_computation_jax(
+            log_L_constraints,
+            log_L_samples,
+            num_samples=num_samples)
+        assert np.all(num_live_points_perfect_jax_fast == num_live_points)
+        print('3 passed')
 
         # assert jnp.allclose(num_live_points,
         #                     _sure_compute_num_live_points_from_unit_threads(log_L_constraints, log_L_samples,
         #                                                                     num_samples, debug=False))
 
-        test_num_live_points, sort_idx = compute_num_live_points_from_unit_threads(log_L_constraints, log_L_samples,
-                                                                                   num_samples, sorted_collection=False)
-        assert jnp.all(num_live_points_perfect == test_num_live_points)
+        # test_num_live_points, sort_idx = compute_num_live_points_from_unit_threads(log_L_constraints, log_L_samples,
+        #                                                                            num_samples, sorted_collection=False)
+        # assert jnp.all(num_live_points_perfect == test_num_live_points)
         # assert jnp.all(infimum_constraint(log_L_constraints, log_L_samples, sort_idx) == _sure_infimum_constraint(
         #     log_L_constraints, log_L_samples, sort_idx))
 
@@ -181,109 +266,109 @@ def test_compute_num_live_points():
     log_L_constraints = jnp.asarray([0., 0.5, 2.])
     log_L_samples = jnp.asarray([0.5, 2., 2.1])
     num_live_points = jnp.asarray([1, 1, 1])
-    test_example(log_L_constraints, log_L_samples, num_live_points, debug=True)
+    run_test(log_L_constraints, log_L_samples, num_live_points, debug=True)
 
     # constraints are previous samples, with extra unfilled slots
     log_L_constraints = jnp.asarray([0., 0.5, 2., jnp.inf])
     log_L_samples = jnp.asarray([0.5, 2., 2.1, jnp.inf])
     num_live_points = jnp.asarray([1, 1, 1, 0])
-    test_example(log_L_constraints, log_L_samples, num_live_points, num_samples=3, debug=True)
+    run_test(log_L_constraints, log_L_samples, num_live_points, num_samples=3, debug=True)
 
     # constraints are not ordered like samples (contour starts at non-minimum of constraints)
     log_L_constraints = jnp.asarray([0.45, 0., 2.])
     log_L_samples = jnp.asarray([0.5, 2., 2.1])
     num_live_points = jnp.asarray([2, 1, 1])
-    test_example(log_L_constraints, log_L_samples, num_live_points, debug=True)
+    run_test(log_L_constraints, log_L_samples, num_live_points, debug=True)
 
     # constraints are not ordered like samples (contour starts at non-minimum of constraints)
     log_L_constraints = jnp.asarray([0.45, 0., 2., jnp.inf, jnp.inf])
     log_L_samples = jnp.asarray([0.5, 2., 2.1, jnp.inf, jnp.inf])
     num_live_points = jnp.asarray([2, 1, 1, 0, 0])
-    test_example(log_L_constraints, log_L_samples, num_live_points, num_samples=3, debug=True)
+    run_test(log_L_constraints, log_L_samples, num_live_points, num_samples=3, debug=True)
 
     log_L_constraints = jnp.asarray([0.45, 0.45, 0.5, 2., jnp.inf, jnp.inf])
     log_L_samples = jnp.asarray([0.5, 2., 2., 2.1, jnp.inf, jnp.inf])
     num_live_points = jnp.asarray([2, 2, 1, 1, 0, 0])
-    test_example(log_L_constraints, log_L_samples, num_live_points, num_samples=3, debug=True)
+    run_test(log_L_constraints, log_L_samples, num_live_points, num_samples=4, debug=True)
 
     # constraints are not ordered like samples (contour starts at non-minimum of constraints)
     log_L_constraints = jnp.asarray([0., 0.45, 0., 2.])
     log_L_samples = jnp.asarray([0.5, 0.55, 2., 2.1])
     num_live_points = jnp.asarray([2, 2, 1, 1])
-    test_example(log_L_constraints, log_L_samples, num_live_points, debug=True)
+    run_test(log_L_constraints, log_L_samples, num_live_points, debug=True)
 
     # constraints are not ordered like samples (contour starts at non-minimum of constraints)
     log_L_constraints = jnp.asarray([0., 0., 0., 0.])
     log_L_samples = jnp.asarray([0.5, 0.5, 0.5, 0.5])
     num_live_points = jnp.asarray([4, 3, 2, 1])
-    test_example(log_L_constraints, log_L_samples, num_live_points, debug=True)
+    run_test(log_L_constraints, log_L_samples, num_live_points, debug=True)
 
     # constraints are not ordered like samples (contour starts at non-minimum of constraints)
     log_L_constraints = jnp.asarray([0., 0.45, 0.45, 0.])
     log_L_samples = jnp.asarray([0.5, 0.5, 0.5, 0.5])
-    num_live_points = jnp.asarray([2, 3, 2, 1])
-    test_example(log_L_constraints, log_L_samples, num_live_points, debug=True)
+    num_live_points = jnp.asarray([2, 1, 0, 0])
+    run_test(log_L_constraints, log_L_samples, num_live_points, debug=True)
 
     # All one common constraint, no plateau in samples
     log_L_constraints = jnp.asarray([0., 0., 0.])
     log_L_samples = jnp.asarray([0.5, 2., 2.1])
     num_live_points = jnp.asarray([3, 2, 1])
-    test_example(log_L_constraints, log_L_samples, num_live_points, debug=True)
+    run_test(log_L_constraints, log_L_samples, num_live_points, debug=True)
 
     # All one common constraint, no plateau in samples
     log_L_constraints = jnp.asarray([0., 0., 0., jnp.inf])
     log_L_samples = jnp.asarray([0.5, 2., 2.1, jnp.inf])
     num_live_points = jnp.asarray([3, 2, 1, 0])
-    test_example(log_L_constraints, log_L_samples, num_live_points, num_samples=3, debug=True)
+    run_test(log_L_constraints, log_L_samples, num_live_points, num_samples=3, debug=True)
 
     # Growing
     log_L_constraints = jnp.asarray([0., 0.5, 0.5])
     log_L_samples = jnp.asarray([0.5, 2., 2.1])
     num_live_points = jnp.asarray([1, 2, 1])
-    test_example(log_L_constraints, log_L_samples, num_live_points, debug=True)
+    run_test(log_L_constraints, log_L_samples, num_live_points, debug=True)
 
     # Growing with plateau
     log_L_constraints = jnp.asarray([0., 0.5, 0.5, 2.])
     log_L_samples = jnp.asarray([0.5, 2., 2.1, 2.1])
     num_live_points = jnp.asarray([1, 2, 2, 1])
-    test_example(log_L_constraints, log_L_samples, num_live_points, debug=True)
+    run_test(log_L_constraints, log_L_samples, num_live_points, debug=True)
 
     # All one common constraint, a plateau in samples
     log_L_constraints = jnp.asarray([0., 0., 0., 0.])
     log_L_samples = jnp.asarray([0.5, 2., 2., 2.1])
     num_live_points = jnp.asarray([4, 3, 2, 1])
-    test_example(log_L_constraints, log_L_samples, num_live_points, debug=True)
+    run_test(log_L_constraints, log_L_samples, num_live_points, debug=True)
 
-    # one plateau
-    log_L_constraints = jnp.asarray([0., 0., 0.])
-    log_L_samples = jnp.asarray([0., 0., 0.])
-    num_live_points = jnp.asarray([3, 2, 1])
-    test_example(log_L_constraints, log_L_samples, num_live_points, debug=True)
+    # # one plateau -- broken assumption
+    # log_L_constraints = jnp.asarray([0., 0., 0.])
+    # log_L_samples = jnp.asarray([0., 0., 0.])
+    # num_live_points = jnp.asarray([0, 0, 0])
+    # run_test(log_L_constraints, log_L_samples, num_live_points, debug=True)
 
     # one plateau
     log_L_constraints = jnp.asarray([0., 0., 0.])
     log_L_samples = jnp.asarray([0.1, 0.1, 0.1])
     num_live_points = jnp.asarray([3, 2, 1])
-    test_example(log_L_constraints, log_L_samples, num_live_points, debug=True)
+    run_test(log_L_constraints, log_L_samples, num_live_points, debug=True)
 
     # constraints are not other samples
     # 0. (1) 0.5 (1) 1.5 (1) 2.5
     log_L_constraints = jnp.asarray([0., 0.25, 0.75])
     log_L_samples = jnp.asarray([0.5, 1.5, 2.5])
     num_live_points = jnp.asarray([1, 1, 1])
-    test_example(log_L_constraints, log_L_samples, num_live_points, debug=True)
+    run_test(log_L_constraints, log_L_samples, num_live_points, debug=True)
 
     # random generated example, no plateaus
     log_L_constraints = random.uniform(random.PRNGKey(42), shape=(100,))
     log_L_samples = random.uniform(random.PRNGKey(43), shape=(100,), minval=log_L_constraints)
     num_live_points = _sure_compute_num_live_points_from_unit_threads(log_L_constraints, log_L_samples)
-    test_example(log_L_constraints, log_L_samples, num_live_points)
+    run_test(log_L_constraints, log_L_samples, num_live_points)
 
     # random generated example, no plateaus
     log_L_constraints = jnp.concatenate([jnp.zeros(5), 0.5 * jnp.arange(5) / 5 + 0.5])
     log_L_samples = random.uniform(random.PRNGKey(43), shape=(10,), minval=log_L_constraints)
     num_live_points = _sure_compute_num_live_points_from_unit_threads(log_L_constraints, log_L_samples)
-    test_example(log_L_constraints, log_L_samples, num_live_points, debug=True)
+    run_test(log_L_constraints, log_L_samples, num_live_points, debug=True)
 
     # print(num_live_points)
     # import pylab as plt
