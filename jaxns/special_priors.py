@@ -198,22 +198,19 @@ class ForcedIdentifiability(AbstractPrior):
         return log_prob
 
     def _cdf(self, X):
-        log_theta = jnp.log((X - self.low) / (self.high - self.low))  # reverse of the scaling operation
+        log_theta = jnp.log((X - self.low) / (self.high - self.low))  # [n, ...]
 
-        # This function would need to perform the inverse of the scan operation, which seems non-trivial due to its cumulative nature.
-        # However, assuming such an operation is possible, it could look something like this:
         def inv_body(state, X):
-            (log_theta_prev,) = state # log(1)
-            (log_theta, i) = X # log(0.94)
-            log_x = i * (log_theta - log_theta_prev) #  log_x / i + log_theta == 1*U^1/i == 0.94 ==> (0.94/1)**i == i*(log(0.94) - log(1))
+            (log_theta_prev,) = state
+            (log_theta, i) = X
+            log_x = i * (log_theta - log_theta_prev)
             return (log_theta,), (log_x,)
 
         # Initial log_x value
-        log_init_x = jnp.zeros(self.shape[1:], self.dtype)  # [...] -- log(1)
+        log_init_x = jnp.zeros(self.shape[1:], self.dtype)  # [...]
         _, (log_x,) = scan(inv_body, (log_init_x,), (log_theta, jnp.arange(1, self.n + 1)), reverse=True)
         U = jnp.exp(log_x)
         return U.astype(self.dtype)
-
 
     def _quantile(self, U):
         log_x = jnp.log(U)  # [n, ...]
@@ -222,7 +219,7 @@ class ForcedIdentifiability(AbstractPrior):
         def body(state, X):
             (log_theta,) = state
             (log_x, i) = X
-            log_theta = log_x / i + log_theta # shrinkage
+            log_theta = log_x / i + log_theta  # shrinkage
             return (log_theta,), (log_theta,)
 
         log_init_theta = jnp.zeros(self.shape[1:], self.dtype)  # [...] -- log(1)
