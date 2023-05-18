@@ -12,7 +12,7 @@ from jaxns.internals.log_semiring import LogSpace, normalise_log_space
 from jaxns.internals.stats import linear_to_log_stats, effective_sample_size
 from jaxns.model import Model
 from jaxns.plotting import plot_cornerplot, plot_diagnostics
-from jaxns.static_nested_sampler import StaticNestedSampler
+from jaxns.static_nested_sampler import StaticNestedSampler, AbstractSampler
 from jaxns.static_slice import UniDimSliceSampler
 from jaxns.static_uniform import UniformSampler
 from jaxns.statistics import analyse_sample_collection
@@ -24,12 +24,12 @@ tfpd = tfp.distributions
 
 logger = logging.getLogger('jaxns')
 
-__all__ = ['NestedSampler',
+__all__ = ['BaseNestedSampler',
            'ApproximateNestedSampler',
            'ExactNestedSampler']
 
 
-class NestedSampler:
+class BaseNestedSampler:
     def __init__(self, model: Model, max_samples: int | float):
         self.model = model
         self.max_samples = int(max_samples)
@@ -174,41 +174,73 @@ class NestedSampler:
             num_slices=sample_collection.reservoir.num_slices,
             samples=samples)
 
+    def __call__(self, key: PRNGKey, term_cond: TerminationCondition, *,
+                 init_state: Optional[NestedSamplerState] = None) -> Tuple[IntArray, NestedSamplerState]:
+        """
+        Performs approximate nested sampling followed by adaptive refinement.
 
-class ApproximateNestedSampler(NestedSampler):
+        Args:
+            key: PRNGKey
+            term_cond: termination condition
+            init_state: optional initial state
+
+        Returns:
+            termination reason, and exact state
+        """
+        raise NotImplementedError()
+
+
+class ApproximateNestedSampler(BaseNestedSampler):
     """
     Performs nested sampling, using a chain of nested samplers, producing only weakly i.i.d. samples during the
     shrinkage process.
     """
 
     def __init__(self, model: Model, num_live_points: Union[int, float], num_parallel_samplers: int,
-                 max_samples: Union[int, float]):
+                 max_samples: Union[int, float],
+                 sampler_chain: Optional[List[AbstractSampler]] = None):
         super().__init__(model=model, max_samples=max_samples)
 
-        sampler_chain = [
-            UniformSampler(model=model, efficiency_threshold=0.1),
-            UniDimSliceSampler(model=model, num_slices=model.U_ndims, midpoint_shrink=True, perfect=True)
-        ]
+        if sampler_chain is None:
+            sampler_chain = [
+                UniformSampler(model=model, efficiency_threshold=0.1),
+                UniDimSliceSampler(model=model, num_slices=model.U_ndims*3, midpoint_shrink=True, perfect=True)
+            ]
 
-        self.nested_sampler_chain = list(map(
-            lambda sampler: StaticNestedSampler(sampler=sampler,
-                                                num_live_points=num_live_points,
-                                                num_parallel_samplers=num_parallel_samplers),
-            sampler_chain
-        ))
+        if sampler_chain[-1].efficiency_threshold is not None:
+            if sampler_chain[-1].efficiency_threshold > 0.:
+                logger.warning(
+                    f"Your sampler chain will stop prematurely at an efficiency of "
+                    f"{sampler_chain[-1].efficiency_threshold}. "
+                    f"To change this behaviour, you should ensure the last sampler in your sampler_chain has no "
+                    f"efficiency_threshold set."
+                )
+
+        remainder = int(num_live_points) % num_parallel_samplers
+        extra = (num_parallel_samplers - remainder) % num_parallel_samplers
+        if extra > 0:
+            logger.warning(
+                f"Increasing num_live_points ({num_live_points}) by {extra} to closest multiple of num_parallel_samplers.")
+        num_live_points = int(num_live_points + extra)
+        num_parallel_samplers = int(num_parallel_samplers)
+
+        self._nested_sampler = StaticNestedSampler(samplers=sampler_chain,
+                                                   num_live_points=num_live_points,
+                                                   num_parallel_samplers=num_parallel_samplers)
 
     @property
     def num_live_points(self) -> int:
-        return self.nested_sampler_chain[0].num_live_points
+        return self._nested_sampler.num_live_points
+
+    @property
+    def nested_sampler(self) -> StaticNestedSampler:
+        return self._nested_sampler
 
     def _run_chain(self, state: NestedSamplerState, live_points: LivePoints, term_cond: TerminationCondition) -> Tuple[
         IntArray, NestedSamplerState, LivePoints]:
-        if len(self.nested_sampler_chain) == 0:
-            raise ValueError(f"Expected at least one sampler in chain.")
 
-        for nested_sampler in self.nested_sampler_chain:
-            termination_reason, state, live_points = nested_sampler(
-                state=state, live_points=live_points, termination_cond=term_cond)
+        termination_reason, state, live_points = self._nested_sampler(
+            state=state, live_points=live_points, termination_cond=term_cond)
         return termination_reason, state, live_points
 
     def approximate_shrinkage(self, state: NestedSamplerState, live_points: LivePoints,
@@ -226,8 +258,8 @@ class ApproximateNestedSampler(NestedSampler):
         Returns:
             termination reason, and state
         """
-        termination_reason, state, live_points = self._run_chain(state=state, live_points=live_points,
-                                                                 term_cond=term_cond)
+        termination_reason, state, live_points = self._nested_sampler(
+            state=state, live_points=live_points, termination_cond=term_cond)
         state = collect_samples(state=state, new_reservoir=live_points.reservoir)
         return termination_reason, state
 
@@ -261,8 +293,8 @@ class ApproximateNestedSampler(NestedSampler):
         Returns:
             termination reason, state, and live points
         """
-        termination_reason, state, live_points = self._run_chain(state=state, live_points=live_points,
-                                                                 term_cond=term_cond)
+        termination_reason, state, live_points = self._nested_sampler(
+            state=state, live_points=live_points, termination_cond=term_cond)
         return termination_reason, state, live_points
 
     @partial(jit, static_argnums=0)
@@ -313,7 +345,7 @@ class ApproximateNestedSampler(NestedSampler):
         return termination_reason, state
 
 
-class ExactNestedSampler(NestedSampler):
+class ExactNestedSampler(BaseNestedSampler):
     """
     A two stage nested sampler, where the first stage produces sample that are only weakly i.i.d., and the second stage
     adaptively refines these samples until they are strongly i.i.d. (according to a stopping criterion).

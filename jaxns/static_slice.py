@@ -37,20 +37,21 @@ class UniDimSliceSampler(MarkovSampler):
     Slice sampler for a single dimension. Produces correlated (non-i.i.d.) samples.
     """
 
-    def __init__(self, model: Model, num_slices: int, midpoint_shrink: bool, perfect: bool):
+    def __init__(self, model: Model, num_slices: int, midpoint_shrink: bool, perfect: bool,
+                 efficiency_threshold: Optional[float] = None):
         """
         Unidimensional slice sampler.
 
         Args:
             model: Model
-            num_slices: number of slices between acceptance
+            num_slices: number of slices between acceptance, in units of 1, unlike other software which does it in units of prior dimension.
             midpoint_shrink: if true then contract to the midpoint of interval on rejection. Otherwise, contract to
                 rejection point.
             perfect: if true then perform exponential shrinkage from maximal bounds, requiring no step-out procedure.
                 Otherwise, uses a doubling procedure (exponentially finding bracket).
                 Note: Perfect is a misnomer, as perfection also depends on the number of slices between acceptance.
         """
-        super().__init__(model=model)
+        super().__init__(model=model, efficiency_threshold=efficiency_threshold)
         if num_slices < 1:
             raise ValueError(f"num_slices should be > 0, got {num_slices}.")
         self.num_slices = num_slices
@@ -58,7 +59,10 @@ class UniDimSliceSampler(MarkovSampler):
         self.perfect = perfect
 
     def preprocess(self, state: NestedSamplerState) -> PreProcessType:
-        return ()
+        if self.perfect: # nothing needed
+            return ()
+        # else: # step out with doubling
+        #     return multi_ellipsoidal_params()
 
     def _sample_direction(self, n_key: PRNGKey, ndim: int) -> FloatArray:
         """
@@ -324,7 +328,8 @@ class MultiDimProposalState(NamedTuple):
 
 
 class MultiDimSliceSampler(MarkovSampler):
-    def __init__(self, model: Model, num_slices: int, num_restrict_dims: Optional[int] = None):
+    def __init__(self, model: Model, num_slices: int, num_restrict_dims: Optional[int] = None,
+                 efficiency_threshold: Optional[float] = None):
         """
         Multi-dimensional slice sampler, with exponential shrinkage. Produces correlated (non-i.i.d.) samples.
 
@@ -332,11 +337,11 @@ class MultiDimSliceSampler(MarkovSampler):
 
         Args:
             model: Model
-            num_slices: number of slices between acceptance
+            num_slices: number of slices between acceptance, in units of 1, unlike other software which does it in units of prior dimension.
             num_restrict_dims: size of subspace to slice along. Setting to 1 would be like UniDimSliceSampler,
                 but far less efficient.
         """
-        super().__init__(model=model)
+        super().__init__(model=model, efficiency_threshold=efficiency_threshold)
         if num_slices < 1:
             raise ValueError(f"num_slices must be > 0.")
         self.num_slices = num_slices
