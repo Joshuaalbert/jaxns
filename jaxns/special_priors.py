@@ -3,11 +3,12 @@ from typing import Tuple, Union, Optional, Literal
 
 import tensorflow_probability.substrates.jax as tfp
 from etils.array_types import FloatArray, IntArray, BoolArray
-from jax import numpy as jnp
+from jax import numpy as jnp, vmap
 from jax._src.lax.control_flow import while_loop, scan
-from jax._src.scipy.special import logsumexp, gammaln
+from jax._src.scipy.special import gammaln, logsumexp
 from tensorflow_probability.substrates.jax.math import lbeta, betaincinv
 
+from jaxns.internals.log_semiring import cumulative_logsumexp
 from jaxns.prior import AbstractPrior
 from jaxns.types import float_type
 
@@ -83,6 +84,16 @@ class Beta(AbstractPrior):
 class Categorical(AbstractPrior):
     def __init__(self, parametrisation: Literal['gumbel_max', 'cdf'], *, logits=None, probs=None,
                  name: Optional[str] = None):
+        """
+        Initialised Categorical special prior.
+
+        Args:
+            parametrisation: 'cdf' is good for discrete params with correlation between neighbouring categories,
+                otherwise gumbel is better.
+            logits: log-prob of each category
+            probs: prob of each category
+            name: optional name
+        """
         super(Categorical, self).__init__(name=name)
         self.dist = tfpd.Categorical(logits=logits, probs=probs)
         self._parametrisation = parametrisation
@@ -116,30 +127,25 @@ class Categorical(AbstractPrior):
         return draws
 
     def _quantile_cdf(self, U):
+        """
+        The quantile for CDF parametrisation.
+
+        Args:
+            U: [...]
+
+        Returns:
+            [...]
+        """
         logits = self.dist._logits_parameter_no_checks()  # [..., N]
-        logits = jnp.swapaxes(logits, axis1=0, axis2=-1)  # [N, ...]
-        # normalise logits
-        logits -= logsumexp(logits, axis=0, keepdims=True)
-        log_u = jnp.log(U)
+        cum_logits = cumulative_logsumexp(logits, axis=-1)  # [..., N]
+        cum_logits -= cum_logits[..., -1:]
+        N = cum_logits.shape[-1]
+        cum_logits_flat = jnp.reshape(cum_logits, (-1, N))
+        log_U_flat = jnp.reshape(jnp.log(U), (-1,))
 
-        # parallel CDF sampling, imputing the done ones
-        def body(state):
-            (_, accumulant, i, output) = state
-            new_accumulant = jnp.logaddexp(accumulant, logits[i])
-            done = log_u < new_accumulant
-            output = jnp.where(done, output, i + 1)
-            return (done, new_accumulant, i + 1, output)
-
-        loop_vars = (
-            jnp.zeros(self.base_shape, dtype=jnp.bool_),
-            -jnp.inf * jnp.ones(self.base_shape, dtype=U.dtype),
-            jnp.asarray(0, self.dtype),
-            jnp.zeros(self.base_shape, dtype=self.dtype)
-        )
-        (_, _, _, output) = while_loop(lambda state: ~jnp.all(state[0]),
-                                       body,
-                                       loop_vars)
-        return output
+        category_flat = vmap(lambda a, v: jnp.searchsorted(a, v, side='left'))(cum_logits_flat, log_U_flat)
+        category = jnp.reshape(category_flat, U.shape)
+        return category
 
 
 class ForcedIdentifiability(AbstractPrior):
