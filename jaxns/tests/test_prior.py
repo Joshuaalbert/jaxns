@@ -242,3 +242,8 @@ def test_special_priors():
     assert d.forward(jnp.zeros(d.base_shape, float_type)).shape == d.shape
     assert d.base_shape == (10, 5)
     assert d.shape == (10, 5)
+
+    u_input = vmap(lambda key: random.uniform(key, shape=d.base_shape))(random.split(random.PRNGKey(42), 1))
+    x = vmap(lambda u: d.forward(u))(u_input)
+    u = vmap(lambda x: d.inverse(x))(x)
+    assert jnp.allclose(u, u_input)

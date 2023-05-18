@@ -5,7 +5,7 @@ import tensorflow_probability.substrates.jax as tfp
 from etils.array_types import FloatArray, IntArray, BoolArray
 from jax import numpy as jnp, vmap
 from jax._src.lax.control_flow import while_loop, scan
-from jax._src.scipy.special import gammaln, logsumexp
+from jax._src.scipy.special import gammaln
 from tensorflow_probability.substrates.jax.math import lbeta, betaincinv
 
 from jaxns.internals.log_semiring import cumulative_logsumexp
@@ -41,6 +41,9 @@ class Bernoulli(AbstractPrior):
     def _forward(self, U) -> Union[FloatArray, IntArray, BoolArray]:
         return self._quantile(U)
 
+    def _inverse(self, X) -> FloatArray:
+        return self.dist.cdf(X)
+
     def _log_prob(self, X) -> FloatArray:
         return self.dist.log_prob(X)
 
@@ -66,6 +69,9 @@ class Beta(AbstractPrior):
 
     def _forward(self, U) -> Union[FloatArray, IntArray, BoolArray]:
         return self._quantile(U)
+
+    def _inverse(self, X) -> FloatArray:
+        return self.dist.cdf(X)
 
     def _log_prob(self, X) -> FloatArray:
         return self.dist.log_prob(X)
@@ -115,6 +121,9 @@ class Categorical(AbstractPrior):
             return self._quantile_gumbelmax(U)
         elif self._parametrisation == 'cdf':
             return self._quantile_cdf(U)
+
+    def _inverse(self, X) -> FloatArray:
+        return self.dist.cdf(X)
 
     def _log_prob(self, X) -> FloatArray:
         return self.dist.log_prob(X)
@@ -178,12 +187,33 @@ class ForcedIdentifiability(AbstractPrior):
     def _forward(self, U) -> Union[FloatArray, IntArray, BoolArray]:
         return self._quantile(U)
 
+    def _inverse(self, X) -> FloatArray:
+        return self._cdf(X)
+
     def _log_prob(self, X) -> FloatArray:
         log_n_fac = gammaln(self.n + 1)
         diff = self.high - self.low
         log_prob = - log_n_fac - self.n * jnp.log(diff)
         # no check that X is inside high and low
         return log_prob
+
+    def _cdf(self, X):
+        log_theta = jnp.log((X - self.low) / (self.high - self.low))  # reverse of the scaling operation
+
+        # This function would need to perform the inverse of the scan operation, which seems non-trivial due to its cumulative nature.
+        # However, assuming such an operation is possible, it could look something like this:
+        def inv_body(state, X):
+            (log_theta_prev,) = state # log(1)
+            (log_theta, i) = X # log(0.94)
+            log_x = i * (log_theta - log_theta_prev) #  log_x / i + log_theta == 1*U^1/i == 0.94 ==> (0.94/1)**i == i*(log(0.94) - log(1))
+            return (log_theta,), (log_x,)
+
+        # Initial log_x value
+        log_init_x = jnp.zeros(self.shape[1:], self.dtype)  # [...] -- log(1)
+        _, (log_x,) = scan(inv_body, (log_init_x,), (log_theta, jnp.arange(1, self.n + 1)), reverse=True)
+        U = jnp.exp(log_x)
+        return U.astype(self.dtype)
+
 
     def _quantile(self, U):
         log_x = jnp.log(U)  # [n, ...]
@@ -192,10 +222,10 @@ class ForcedIdentifiability(AbstractPrior):
         def body(state, X):
             (log_theta,) = state
             (log_x, i) = X
-            log_theta = log_x / i + log_theta
+            log_theta = log_x / i + log_theta # shrinkage
             return (log_theta,), (log_theta,)
 
-        log_init_theta = jnp.zeros(self.shape[1:], self.dtype)  # [...]
+        log_init_theta = jnp.zeros(self.shape[1:], self.dtype)  # [...] -- log(1)
         _, (log_theta,) = scan(body, (log_init_theta,), (log_x, jnp.arange(1, self.n + 1)), reverse=True)
         theta = self.low + (self.high - self.low) * jnp.exp(log_theta)
         return theta.astype(self.dtype)
@@ -217,6 +247,9 @@ class Poisson(AbstractPrior):
 
     def _forward(self, U) -> Union[FloatArray, IntArray, BoolArray]:
         return self._quantile(U)
+
+    def _inverse(self, X) -> FloatArray:
+        return self.dist.cdf(X)
 
     def _log_prob(self, X) -> FloatArray:
         return self.dist.log_prob(X)
