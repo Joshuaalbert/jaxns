@@ -2,13 +2,20 @@ from time import monotonic_ns
 
 import jax
 import numpy as np
-from jax import numpy as jnp, random
+import tensorflow_probability.substrates.jax as tfp
+from etils.array_types import PRNGKey
+from jax import numpy as jnp, random, tree_map
 from jax import vmap
 from jax.lax import dynamic_update_slice
 
+from jaxns import TerminationCondition, Reservoir, ApproximateNestedSampler, Model, Prior, PriorModelGen
+from jaxns.internals.log_semiring import LogSpace
 from jaxns.internals.maps import replace_index
+from jaxns.static_uniform import BadUniformSampler
 from jaxns.statistics import compute_num_live_points_from_unit_threads, compute_remaining_evidence, \
-    perfect_live_point_computation_jax, fast_perfect_live_point_computation_jax, fast_triu_rowsum
+    perfect_live_point_computation_jax, fast_perfect_live_point_computation_jax, fast_triu_rowsum, combine_reservoirs
+
+tfpd = tfp.distributions
 
 
 def _sure_compute_num_live_points_from_unit_threads(log_L_constraints, log_L_samples, num_samples=None, debug=False):
@@ -476,3 +483,65 @@ def test_compute_remaining_evidence():
     sample_idx = 0
     expect = jnp.asarray([-jnp.inf, -jnp.inf - jnp.inf])
     assert jnp.allclose(compute_remaining_evidence(sample_idx, log_dZ_mean), expect)
+
+
+def _create_test_reservoir(key: PRNGKey, num_live_points: int) -> Reservoir:
+    n = 2
+
+    # Prior is uniform in U[0,1]
+    # Likelihood is 1 - x**n
+    # Z = 1 - 1/n+1
+
+    def prior_model() -> PriorModelGen:
+        x = yield Prior(tfpd.Uniform(low=0, high=1))
+        return x
+
+    def log_likelihood(x):
+        return (LogSpace(0.) - LogSpace(jnp.log(x)) ** n).log_abs_val
+
+    model = Model(prior_model=prior_model,
+                  log_likelihood=log_likelihood)
+    ns = ApproximateNestedSampler(
+        model=model,
+        num_live_points=num_live_points,
+        num_parallel_samplers=1,
+        max_samples=5,
+        sampler_chain=[
+            BadUniformSampler(mis_fraction=0., model=model)
+        ]
+    )
+
+    termination_reason, state = ns(key, term_cond=TerminationCondition(live_evidence_frac=1e-4))
+    return tree_map(lambda x: x[:state.sample_collection.sample_idx], state.sample_collection.reservoir)
+
+
+def _exact_reservoir_num_live_points(reservoir: Reservoir) -> jnp.ndarray:
+    num_live_points, _ = perfect_live_point_computation(reservoir.log_L_constraint, log_L_samples=reservoir.log_L)
+    return num_live_points
+
+
+def test_combine_reservoirs():
+    reservoir_1 = _create_test_reservoir(random.PRNGKey(42), num_live_points=2)
+    reservoir_2 = _create_test_reservoir(random.PRNGKey(43), num_live_points=2)
+    print(reservoir_1)
+
+    combined_reservoirs, num_live_points = combine_reservoirs(reservoir_1, reservoir_2)
+
+    # print(combined_reservoirs)
+    print(num_live_points)
+
+    def make_contours(log_L_constraints, log_L_samples):
+        sort_idx = jnp.lexsort((log_L_constraints, log_L_samples))
+        log_L_samples = log_L_samples[sort_idx]
+        log_L_constraints = log_L_constraints[sort_idx]
+        log_L_contour = log_L_constraints[0]
+        search_contours = jnp.concatenate([log_L_contour[None], log_L_samples], axis=0)
+
+        contour_map_idx = jnp.searchsorted(search_contours, log_L_samples, side='left') - 1
+        log_L_contours = search_contours[contour_map_idx]
+        return log_L_contours
+
+    print(compute_num_live_points_from_unit_threads(
+        make_contours(combined_reservoirs.log_L_constraint, combined_reservoirs.log_L),
+        combined_reservoirs.log_L,
+        sorted_collection=True))
