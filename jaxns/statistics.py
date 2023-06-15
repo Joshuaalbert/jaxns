@@ -1,15 +1,12 @@
-from typing import Tuple, Union
+from typing import Tuple, Union, List
 
 from etils.array_types import FloatArray, IntArray
-from jax import numpy as jnp, tree_map, random
+from jax import numpy as jnp, tree_map
 from jax._src.lax.control_flow import while_loop
 from jax._src.lax.slicing import dynamic_update_slice
 
-from jaxns.internals.log_semiring import LogSpace, normalise_log_space
-from jaxns.internals.maps import replace_index
-from jaxns.internals.stats import linear_to_log_stats
-from jaxns.types import EvidenceCalculation, SampleCollection, SampleStatistics, float_type, int_type
-from jaxns.types import NestedSamplerState
+from jaxns.internals.log_semiring import LogSpace
+from jaxns.types import EvidenceCalculation, SampleCollection, SampleStatistics, float_type, int_type, Reservoir
 
 __all__ = ['compute_evidence',
            'analyse_sample_collection',
@@ -197,6 +194,93 @@ def analyse_sample_collection(sample_collection: SampleCollection, sorted_collec
     return evidence_calculation, sample_stats
 
 
+def perfect_live_point_computation_jax(log_L_constraints: jnp.ndarray, log_L_samples: jnp.ndarray,
+                                       num_samples: Union[jnp.ndarray, None] = None):
+    # log_L_constraints has shape [N]
+    # log_L_samples has shape [N]
+    sort_idx = jnp.lexsort((log_L_constraints, log_L_samples))
+    log_L_samples = log_L_samples[sort_idx]
+    log_L_constraints = log_L_constraints[sort_idx]
+    log_L_contour = log_L_constraints[0]
+
+    def outer_cond(state):
+        (i, log_L_contour, log_L_samples, log_L_constraints, num_live_points) = state
+        return i < log_L_samples.size
+
+    def outer_loop_body(state):
+        (i, log_L_contour, log_L_samples, log_L_constraints, num_live_points) = state
+        log_L_dead = log_L_samples[i]
+
+        def inner_cond(state):
+            (i, log_L_samples, log_L_constraints, num_live_points) = state
+            return jnp.bitwise_and(log_L_samples[i] == log_L_dead, i < log_L_constraints.size)
+
+        def inner_loop_body(state):
+            (i, log_L_samples, log_L_constraints, num_live_points) = state
+            count = jnp.sum(jnp.bitwise_and(log_L_contour < log_L_samples, log_L_constraints <= log_L_contour))
+            log_L_samples = log_L_samples.at[i].set(-jnp.inf)
+            log_L_constraints = log_L_constraints.at[i].set(jnp.inf)
+            num_live_points = num_live_points.at[i].set(count.astype(log_L_samples.dtype))
+            return (i + 1, log_L_samples, log_L_constraints, num_live_points)
+
+        (i, log_L_samples, log_L_constraints, num_live_points) = while_loop(
+            inner_cond,
+            inner_loop_body,
+            (i, log_L_samples, log_L_constraints, num_live_points)
+        )
+        log_L_contour = log_L_dead
+        return (i, log_L_contour, log_L_samples, log_L_constraints, num_live_points)
+
+    (i, log_L_contour, log_L_samples, log_L_constraints, num_live_points) = while_loop(
+        outer_cond,
+        outer_loop_body,
+        (jnp.asarray(0, int_type), log_L_contour, log_L_samples, log_L_constraints, jnp.zeros_like(log_L_samples))
+    )
+    if num_samples is not None:
+        empty_mask = jnp.greater_equal(jnp.arange(log_L_samples.size), num_samples)
+        num_live_points = jnp.where(empty_mask, 0, num_live_points)
+    return num_live_points, sort_idx
+
+
+def fast_triu_rowsum(a, b):
+    """
+    Computes a fast row sum of the upper triangular part of the outer product of a and b.
+
+    Args:
+        a: [N] array
+        b: [N] array
+
+    Returns:
+        [N] of the row sum of upper trianguarl part of outer product of a and b.
+    """
+    b_cumsum_rev = jnp.cumsum(b[::-1])[::-1]
+    return a * b_cumsum_rev
+
+
+def fast_perfect_live_point_computation_jax(log_L_constraints: jnp.ndarray, log_L_samples: jnp.ndarray,
+                                            num_samples: Union[jnp.ndarray, None] = None):
+    # log_L_constraints has shape [N]
+    # log_L_samples has shape [N]
+    sort_idx = jnp.lexsort((log_L_constraints, log_L_samples))
+    log_L_samples = log_L_samples[sort_idx]
+    log_L_constraints = log_L_constraints[sort_idx]
+    log_L_contour = log_L_constraints[0]
+    search_contours = jnp.concatenate([log_L_contour[None], log_L_samples], axis=0)
+
+    contour_map_idx = jnp.searchsorted(search_contours, log_L_samples, side='left') - 1
+    log_L_contours = search_contours[contour_map_idx]
+    diag_i = jnp.arange(log_L_samples.size)
+    right_most_idx = jnp.searchsorted(jnp.sort(log_L_constraints), log_L_contours, side='right') - 1
+    left_most_idx = jnp.maximum(diag_i, jnp.searchsorted(log_L_samples, log_L_contours, side='right') - 1)
+    num_live_points = jnp.maximum(0, right_most_idx - left_most_idx + 1)
+
+    if num_samples is not None:
+        empty_mask = jnp.greater_equal(jnp.arange(log_L_samples.size), num_samples)
+        num_live_points = jnp.where(empty_mask, jnp.asarray(0., log_L_samples.dtype), num_live_points)
+
+    return num_live_points, sort_idx
+
+
 def compute_num_live_points_from_unit_threads(log_L_constraints: FloatArray, log_L_samples: FloatArray,
                                               num_samples: IntArray = None, sorted_collection: bool = True) \
         -> Union[FloatArray, Tuple[FloatArray, IntArray]]:
@@ -215,69 +299,14 @@ def compute_num_live_points_from_unit_threads(log_L_constraints: FloatArray, log
         otherwise:
             num_live_points for shrinkage distribution, and sort indicies
     """
-    # mask the samples that are not yet taken
-
-    if num_samples is None:
-        num_samples = log_L_samples.size
-    empty_mask = jnp.greater_equal(jnp.arange(log_L_samples.size), num_samples)
-
-    # masking samples is already done, since they are inf by default.
-    # log_L_samples = jnp.where(empty_mask, jnp.inf, log_L_samples)
-    # log_L_constraints = jnp.where(empty_mask, jnp.inf, log_L_constraints)
-    # sort log_L_samples, breaking degeneracies on log_L_constraints
+    num_live_points, sort_idx = fast_perfect_live_point_computation_jax(log_L_constraints=log_L_constraints,
+                                                                        log_L_samples=log_L_samples,
+                                                                        num_samples=num_samples)
 
     if not sorted_collection:
-        idx_sort = jnp.lexsort((log_L_constraints, log_L_samples))
-        log_L_samples = log_L_samples[idx_sort]
-        log_L_constraints = log_L_constraints[idx_sort]
-        empty_mask = empty_mask[idx_sort]
+        return num_live_points, sort_idx
 
-    # n = jnp.sum(available & (log_L_samples >= contour) & (log_L_constraints <= contour))
-    # n = jnp.sum(available & (log_L_constraints <= contour))
-    # n = available.size - jnp.sum(jnp.bitwise_not(available) | jnp.bitwise_not(log_L_constraints <= contour))
-    # n = available.size - jnp.sum(jnp.bitwise_not(available)) - jnp.sum(jnp.bitwise_not(log_L_constraints <= contour)) + jnp.sum(jnp.bitwise_not(available) & jnp.bitwise_not(log_L_constraints <= contour))
-    # n = jnp.sum(available) - jnp.sum(log_L_constraints > contour) + jnp.sum(jnp.bitwise_not(available) & (log_L_constraints > contour))
-    # Since jnp.sum(jnp.bitwise_not(available) & (log_L_constraints > contour)) can be shown to be zero
-    # n = jnp.sum(available) - jnp.sum(log_L_constraints > contour)
-
-    _log_L_samples = jnp.concatenate([log_L_constraints[0:1], log_L_samples])
-    n_base = jnp.arange(1, log_L_samples.size + 1)[::-1]
-
-    # jnp.sum(log_L_samples[idx-1] < log_L_constraints)
-
-    u = jnp.searchsorted(_log_L_samples, log_L_constraints, side='left')
-    b = u.size - jnp.cumsum(jnp.bincount(u, length=u.size))
-    n = n_base - b
-    n = jnp.where(empty_mask, 0, n)
-    n = jnp.asarray(n, log_L_samples.dtype)
-    if not sorted_collection:
-        return (n, idx_sort)
-    return n
-
-
-def sample_goal_distribution(key, log_goal_weights, S: int, *, replace: bool = True):
-    """
-    Sample indices that match unnormalised log_probabilities.
-
-    Args:
-        key: PRNG key
-        log_goal_weights: unnormalised log probabilities
-        S: number of samples
-        replace: bool, whether to sample with replacement
-
-    Returns:
-        indices that draw from target density
-    """
-    if replace:
-        p_cuml = LogSpace(log_goal_weights).cumsum()
-        # 1 - U in (0,1] instead of [0,1)
-        r = p_cuml[-1] * LogSpace(jnp.log(1 - random.uniform(key, (S,))))
-        idx = jnp.searchsorted(p_cuml.log_abs_val, r.log_abs_val)
-    else:
-        assert S <= log_goal_weights.size
-        g = -random.gumbel(key, shape=log_goal_weights.shape) - log_goal_weights
-        idx = jnp.argsort(g)[:S]
-    return idx
+    return num_live_points
 
 
 def compute_remaining_evidence(sample_idx, log_dZ_mean):
@@ -299,86 +328,50 @@ def compute_remaining_evidence(sample_idx, log_dZ_mean):
     return log_Z_remaining
 
 
-def evidence_goal(state: NestedSamplerState):
+def combine_reservoirs(*reservoirs: Reservoir) -> Tuple[Reservoir, jnp.ndarray]:
     """
-    Estimates the impact of adding a sample at a certain likelihood contour by computing the impact of removing a point.
+    Combine two reservoirs sorting, and updating the number of live points properly.
 
     Args:
-        state:
+        *reservoirs: Reservoirs to combine.
 
     Returns:
-
+        a sorted, updated reservoir
     """
-    # evidence uncertainty minimising goal.
-    # remove points and see what increases uncertainty the most.
+    if len(reservoirs) == 0:
+        raise ValueError(f"Need at least one reservoir to combine.")
+    if len(reservoirs) == 1:
+        return reservoirs[0]
 
-    _, log_Z_var0 = linear_to_log_stats(log_f_mean=state.evidence_calculation.log_Z_mean,
-                                        log_f2_mean=state.evidence_calculation.log_Z2_mean)
-    num_shrinkages = -state.evidence_calculation.log_X_mean
-    delta_idx = state.sample_idx / (2. * num_shrinkages)
+    def sort_reservoir(reservoir: Reservoir) -> Reservoir:
+        sort_idx = jnp.lexsort((reservoir.log_L_constraint, reservoir.log_L))
+        return tree_map(lambda x: x[sort_idx], reservoir)
 
-    def body(body_state):
-        (remove_idx, inf_max_dvar, inf_max_dvar_idx, sup_max_dvar, sup_max_dvar_idx) = body_state
-        # removing a sample is equivalent to setting that n=inf at that point
-        perturbed_num_live_points = replace_index(state.sample_collection.num_live_points, jnp.inf,
-                                                  remove_idx.astype(int_type))
-        perturbed_sample_collection = state.sample_collection._replace(num_live_points=perturbed_num_live_points)
-        (evidence_calculation, _, _, _, _) = \
-            compute_evidence(num_samples=state.sample_idx, sample_collection=perturbed_sample_collection)
-        _, log_Z_var = linear_to_log_stats(log_f_mean=evidence_calculation.log_Z_mean,
-                                           log_f2_mean=evidence_calculation.log_Z2_mean)
-        dvar = log_Z_var - log_Z_var0
+    reservoirs: List[Reservoir] = list(map(sort_reservoir, reservoirs))
 
-        return remove_idx + delta_idx, dvar
+    # point_U -> concatenate and sort
+    # log_L_constraint -> concatenate and sort
+    # log_L -> concatenate and sort
+    # num_likelihood_evaluations -> concatenate and sort
+    # num_live_points -> concatenate, sort, and sum
+    # num_slices -> concatenate and sort
+    # iid -> concatenate and sort
 
+    output_reservoir: Reservoir = tree_map(lambda *x: jnp.concatenate(x, axis=0), *reservoirs)
+    sort_idx = jnp.lexsort((output_reservoir.log_L_constraint, output_reservoir.log_L))
+    output_reservoir: Reservoir = tree_map(lambda x: x[sort_idx], output_reservoir)
 
-def _get_dynamic_goal(state: NestedSamplerState, G: jnp.ndarray):
-    """
-    Get contiguous contours that we'd like to reinforce.
+    # combine each reservoir iteratively
+    combined_num_live_points = jnp.zeros_like(output_reservoir.log_L)
 
-    We have two objectives, which can be mixed by setting `G`.
-    G=0: choose contours that decrease evidence uncertainty the most.
-    G=1: choose contours that increase ESS the most.
+    for r in reservoirs:
+        num_live_points = compute_num_live_points_from_unit_threads(r.log_L_constraint, r.log_L,
+                                                                    sorted_collection=True)
+        print(num_live_points)
+        j = 0
+        for i, log_L in enumerate(r.log_L):
+            while log_L > output_reservoir.log_L[j]:
+                j += 1
+            combined_num_live_points = combined_num_live_points.at[j].add(num_live_points[i])
 
-    Note: This slightly departs from the Dynamic Nested Sampling paper.
-    """
-
-    n_i = state.sample_collection.num_live_points
-    dZ_mean = LogSpace(state.sample_collection.log_dZ_mean)
-    # Calculate remaining evidence, doing only the amount of work necessary.
-    Z_remaining = LogSpace(compute_remaining_evidence(state.sample_idx, state.sample_collection.log_dZ_mean))
-    # TODO: numerically compute goal using custome norm
-    I_evidence = ((LogSpace(jnp.log(n_i + 1.)) * Z_remaining + LogSpace(jnp.log(n_i)) * dZ_mean) / (
-            LogSpace(jnp.log(n_i + 1.)).sqrt() * LogSpace(jnp.log(n_i + 2.)) ** (1.5)))
-    I_evidence = normalise_log_space(I_evidence)
-
-    I_posterior = dZ_mean
-    I_posterior = normalise_log_space(I_posterior)
-
-    I_goal = LogSpace(jnp.log(1. - G)) * I_evidence + LogSpace(jnp.log(G)) * I_posterior
-    # I_goal = normalise_log_space(I_goal) # unnecessary for sampling
-
-    mask = jnp.arange(I_goal.size) >= state.sample_idx
-    I_goal = LogSpace(jnp.where(mask, -jnp.inf, I_goal.log_abs_val))
-
-    return I_goal.log_abs_val
-
-
-def get_dynamic_goal(key, state: NestedSamplerState, num_samples: int, G: jnp.ndarray) -> Tuple[
-    jnp.ndarray, jnp.ndarray]:
-    """
-    Determines what seed points to sample above.
-    """
-    contours = jnp.concatenate([state.sample_collection.log_L_constraint[0:1],
-                                state.sample_collection.log_L_samples])
-    if G is None:
-        raise ValueError(f"G should be a float in [0,1].")
-    log_goal_weights = _get_dynamic_goal(state, G)
-    # Probabilistically sample the contours according to goal distribution
-    indices_constraint_reinforce = sample_goal_distribution(key, log_goal_weights, num_samples, replace=True)
-    start_idx = indices_constraint_reinforce.min()
-    end_idx = indices_constraint_reinforce.max()
-    log_L_constraint_start = contours[start_idx]
-    log_L_constraint_end = contours[end_idx]
-
-    return log_L_constraint_start, log_L_constraint_end
+    return output_reservoir, combined_num_live_points

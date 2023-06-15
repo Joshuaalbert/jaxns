@@ -19,8 +19,6 @@ def determine_termination(term_cond: TerminationCondition,
     Determine if termination should happen.
 
     Args:
-        evidence_calculation: evidence calculation
-        sample_stats: sample statistics
         term_cond: termination condition
 
     Returns:
@@ -33,6 +31,8 @@ def determine_termination(term_cond: TerminationCondition,
         3-bit -> 8: effective sample size big enough
         4-bit -> 16: used maxmimum allowed number of likelihood evaluations
         5-bit -> 32: maximum log-likelihood contour reached
+        6-bit -> 64: sampler efficiency too low
+        7-bit -> 128: entire live-points set is a single plateau
 
     Multiple flags are summed together
     """
@@ -100,13 +100,25 @@ def determine_termination(term_cond: TerminationCondition,
         if sample_collection is None:
             raise ValueError("sample_collections must not be None.")
         log_L_max = jnp.max(
-            jnp.where(jnp.isinf(sample_collection.reservoir.log_L),
-                      -jnp.inf,
-                      sample_collection.reservoir.log_L
+            jnp.where(jnp.arange(sample_collection.reservoir.log_L.size) < sample_collection.sample_idx,
+                      sample_collection.reservoir.log_L,
+                      -jnp.inf
                       )
         )
         likeihood_contour_reached = log_L_max >= term_cond.log_L_contour
         done, termination_condition = _set_done_bit(likeihood_contour_reached, 5,
+                                                    done=done, termination_condition=termination_condition)
+
+    if term_cond.efficiency_threshold is not None:
+        if live_points is None:
+            raise ValueError("live_points must be provided.")
+        efficiency = jnp.reciprocal(jnp.mean(live_points.reservoir.num_likelihood_evaluations))
+        efficiency_too_low = efficiency <= term_cond.efficiency_threshold
+        done, termination_condition = _set_done_bit(efficiency_too_low, 6,
+                                                    done=done, termination_condition=termination_condition)
+    if (live_points is not None) and (live_points.reservoir.log_L.size > 1):
+        all_plateau = jnp.min(live_points.reservoir.log_L) == jnp.max(live_points.reservoir.log_L)
+        done, termination_condition = _set_done_bit(all_plateau, 7,
                                                     done=done, termination_condition=termination_condition)
 
     return done, termination_condition

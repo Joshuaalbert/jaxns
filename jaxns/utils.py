@@ -1,8 +1,9 @@
 import io
 import logging
-from typing import NamedTuple, TextIO, Union, Optional
+from typing import NamedTuple, TextIO, Union, Optional, Tuple, TypeVar, Callable
 
 import numpy as np
+from etils.array_types import PRNGKey
 from jax import numpy as jnp, tree_map, vmap, random, jit
 from jax._src.lax.control_flow import while_loop
 
@@ -11,7 +12,8 @@ from jaxns.internals.maps import replace_index, prepare_func_args
 from jaxns.model import Model
 from jaxns.random import resample_indicies
 from jaxns.types import SampleCollection, NestedSamplerState, Reservoir, NestedSamplerResults, \
-    float_type
+    float_type, XType
+from jaxns.warnings import deprecated
 
 logger = logging.getLogger('jaxns')
 
@@ -22,9 +24,10 @@ __all__ = ['sort_samples',
            'marginalise_dynamic',
            'maximum_a_posteriori_point',
            'summary',
-           'evidence_posterior_samples',
            'analytic_posterior_samples',
-           'analytic_log_evidence',
+           'sample_evidence',
+           'bruteforce_posterior_samples',
+           'bruteforce_evidence',
            'save_pytree',
            'save_results',
            'load_pytree',
@@ -32,6 +35,15 @@ __all__ = ['sort_samples',
 
 
 def sort_samples(sample_collection: SampleCollection):
+    """
+    Sorts a sample collection lexigraphically, first on log_L then on log_L_constraint.
+
+    Args:
+        sample_collection: sample collection to sort
+
+    Returns:
+        sorted sample collection
+    """
     idx_sort = jnp.lexsort((sample_collection.reservoir.log_L_constraint,
                             sample_collection.reservoir.log_L))
     sample_collection = sample_collection._replace(
@@ -66,12 +78,28 @@ def collect_samples(state: NestedSamplerState, new_reservoir: Reservoir) -> Nest
     return state
 
 
-def resample(key, samples, log_weights, S=None, replace=False):
+def resample(key: PRNGKey, samples: XType, log_weights: jnp.ndarray, S: int = None, replace: bool = False) -> XType:
+    """
+    Resample the weighted samples into uniformly weighted samples.
+
+    Args:
+        key: PRNGKey
+        samples: samples from nested sampled results
+        log_weights: log-posterior weight
+        S: number of samples to generate. Will use Kish's estimate of ESS if None.
+        replace: whether to sample with replacement
+
+    Returns:
+        equally weighted samples
+    """
     idx = resample_indicies(key, log_weights, S=S, replace=replace)
     return tree_map(lambda s: s[idx, ...], samples)
 
 
-def marginalise_static(key, samples, log_weights, ESS, fun):
+_V = TypeVar('_V')
+
+
+def marginalise_static(key: PRNGKey, samples: XType, log_weights: jnp.ndarray, ESS: int, fun: Callable[..., _V]) -> _V:
     """
     Marginalises function over posterior samples, where ESS is static.
 
@@ -83,7 +111,7 @@ def marginalise_static(key, samples, log_weights, ESS, fun):
         fun (:code:`callable(**kwargs)`): function to marginalise
 
     Returns:
-        expectation over resampled samples.
+        expectation over resampled samples
     """
     fun = prepare_func_args(fun)
     samples = resample(key, samples, log_weights, S=ESS, replace=True)
@@ -91,7 +119,8 @@ def marginalise_static(key, samples, log_weights, ESS, fun):
     return marginalised
 
 
-def marginalise_dynamic(key, samples, log_weights, ESS, fun):
+def marginalise_dynamic(key: PRNGKey, samples: XType, log_weights: jnp.ndarray, ESS: jnp.ndarray,
+                        fun: Callable[..., _V]) -> _V:
     """
     Marginalises function over posterior samples, where ESS can be dynamic.
 
@@ -103,7 +132,7 @@ def marginalise_dynamic(key, samples, log_weights, ESS, fun):
         fun (:code:`callable(**kwargs)`): function to marginalise
 
     Returns:
-        expectation over resampled samples.
+        expectation of `func` over resampled samples.
     """
     fun = prepare_func_args(fun)
     ESS = jnp.asarray(ESS)
@@ -130,7 +159,7 @@ def marginalise_dynamic(key, samples, log_weights, ESS, fun):
     return marginalised
 
 
-def maximum_a_posteriori_point(results: NestedSamplerResults):
+def maximum_a_posteriori_point(results: NestedSamplerResults) -> XType:
     """
     Get the MAP point of a nested sampling result.
     Does this by choosing the point with largest L(x) p(x).
@@ -188,14 +217,16 @@ def summary(results: NestedSamplerResults, f_obj: Optional[Union[str, TextIO]] =
             return float(v)
 
     _print("--------")
-    termination_bit_mask = _bit_mask(results.termination_reason, width=6)
+    termination_bit_mask = _bit_mask(results.termination_reason, width=8)
     _print("Termination Conditions:")
     for bit, condition in zip(termination_bit_mask, ['Reached max samples',
                                                      'Evidence uncertainty low enough',
                                                      'Small remaining evidence',
                                                      'Reached ESS',
                                                      "Used max num likelihood evaluations",
-                                                     'likelihood contour reached']):
+                                                     'Likelihood contour reached',
+                                                     'Sampler efficiency too low',
+                                                     'All live-points are on a single plateau (potential numerical errors, consider 64-bit)']):
         if bit == 1:
             _print(condition)
     _print("--------")
@@ -264,7 +295,23 @@ def summary(results: NestedSamplerResults, f_obj: Optional[Union[str, TextIO]] =
             raise TypeError(f"Invalid f_obj: {type(f_obj)}")
 
 
-def evidence_posterior_samples(key, num_live_points_per_sample, log_L_samples, S: int = 100):
+def sample_evidence(key, num_live_points_per_sample, log_L_samples, S: int = 100) -> jnp.ndarray:
+    """
+    Sample the evidence distribution, but stochastically simulating the shrinkage distribution.
+
+    Note: this produces approximate samples, since there is also an uncertainty in the placement of the contours during
+    shrinkage. Incorporating this stochasticity into the simulation would require running an entire
+    nested sampling many times.
+
+    Args:
+        key: PRNGKey
+        num_live_points_per_sample: the number of live points for each sample
+        log_L_samples: the log-L of samples
+        S: The number of samples to produce
+
+    Returns:
+        samples of log(Z)
+    """
     n_i = num_live_points_per_sample
     L = LogSpace(jnp.asarray([-jnp.inf], log_L_samples.dtype)).concatenate(
         LogSpace(log_L_samples))
@@ -290,7 +337,28 @@ def evidence_posterior_samples(key, num_live_points_per_sample, log_L_samples, S
     return Z_chains.log_abs_val
 
 
-def analytic_log_evidence(model: Model, S: int = 60):
+def bruteforce_posterior_samples(model: Model, S: int = 60) -> Tuple[XType, jnp.ndarray]:
+    """
+    Compute the posterior with brute-force over a regular grid.
+
+    Args:
+        prior_chain (jaxns.PriorChain): PriorChain of model
+        log_likelihood (:code:`callable(**samples)`): log-likelihood function
+        S (int): resolution of grid
+
+    Returns:
+        samples, and log-weight
+    """
+    u_vec = jnp.linspace(jnp.finfo(float_type).eps, 1. - jnp.finfo(float_type).eps, S)
+    du = u_vec[1] - u_vec[0]
+    args = jnp.stack([x.flatten() for x in jnp.meshgrid(*[u_vec] * model.U_ndims, indexing='ij')], axis=-1)
+    samples = jit(vmap(model.transform))(args)
+    log_L = jit(vmap(model.forward))(args)
+    dZ = LogSpace(log_L) * LogSpace(jnp.log(du)) ** model.U_ndims
+    return samples, dZ.log_abs_val
+
+
+def bruteforce_evidence(model: Model, S: int = 60):
     """
     Compute the evidence with brute-force over a regular grid.
 
@@ -311,6 +379,7 @@ def analytic_log_evidence(model: Model, S: int = 60):
     return Z_true.log_abs_val
 
 
+@deprecated(bruteforce_posterior_samples)
 def analytic_posterior_samples(model: Model, S: int = 60):
     """
     Compute the evidence with brute-force over a regular grid.
@@ -323,6 +392,7 @@ def analytic_posterior_samples(model: Model, S: int = 60):
     Returns:
         log(Z)
     """
+    logger.warning(f"")
 
     u_vec = jnp.linspace(jnp.finfo(float_type).eps, 1. - jnp.finfo(float_type).eps, S)
     du = u_vec[1] - u_vec[0]

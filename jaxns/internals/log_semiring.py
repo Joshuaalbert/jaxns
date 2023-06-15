@@ -1,8 +1,10 @@
+from typing import Union
+
 from jax import numpy as jnp
 from jax.lax import scan
 from jax.scipy.special import logsumexp
 
-from jaxns.types import SignedLog
+from jaxns.types import SignedLog, float_type
 
 
 def logaddexp(x1, x2):
@@ -90,13 +92,13 @@ def cumulative_logsumexp(u, sign=None, reverse=False, axis=0):
 
 
 class LogSpace(object):
-    def __init__(self, log_abs_val: jnp.ndarray, sign=None):
-        self._log_abs_val = log_abs_val
+    def __init__(self, log_abs_val: Union[jnp.ndarray, float], sign: Union[jnp.ndarray, float] = None):
+        self._log_abs_val = jnp.asarray(log_abs_val, float_type)
         if sign is None:
-            self._sign = 1.
+            self._sign = jnp.asarray(1., float_type)
             self._naked = True
         else:
-            self._sign = sign
+            self._sign = jnp.asarray(sign, float_type)
             self._naked = False
 
     @property
@@ -315,8 +317,9 @@ class LogSpace(object):
         Returns:
              LogSpace
         """
-        if not isinstance(n, (int, float)):
+        if not isinstance(n, (int, float, jnp.ndarray)):
             raise NotImplementedError("Not implemented for non-int powers.")
+        n = jnp.asarray(n, float_type)
         if self._naked:
             return LogSpace(n * self.log_abs_val)
         # complex values can occur if n is not even

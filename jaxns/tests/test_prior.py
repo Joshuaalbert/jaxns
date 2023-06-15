@@ -1,7 +1,7 @@
 import logging
 
 import tensorflow_probability.substrates.jax as tfp
-from jax import random, numpy as jnp
+from jax import random, numpy as jnp, vmap
 
 from jaxns.prior import PriorModelGen, Prior, parse_prior, compute_log_likelihood, InvalidDistribution, \
     InvalidPriorName, prepare_input, distribution_chain
@@ -104,7 +104,6 @@ def test_priors():
     assert d.base_shape == ()
     assert d.shape == (5,)
 
-
     d = Prior(tfpd.Uniform(low=jnp.zeros(5), high=jnp.ones(5)))
     print(d)
     assert d.forward(jnp.ones(d.base_shape, float_type)).shape == d.shape
@@ -190,19 +189,38 @@ def test_special_priors():
     assert d.base_shape == (5,)
     assert d.shape == (5,)
 
-    d = Categorical(parametrisation='gumbel_max', probs=jnp.ones(5), name='x')
+    probs = jnp.asarray([1, 2, 3, 2, 1], float_type)
+    d = Categorical(parametrisation='gumbel_max', probs=probs, name='x')
     print(d)
     assert d.forward(jnp.ones(d.base_shape, float_type)).shape == d.shape
     assert d.forward(jnp.zeros(d.base_shape, float_type)).shape == d.shape
     assert d.base_shape == (5,)
     assert d.shape == ()
+    x = vmap(lambda key: d.forward(random.uniform(key, shape=d.base_shape)))(random.split(random.PRNGKey(42), 10000))
+    assert jnp.all(x >= 0)
+    assert jnp.all(x < 5)
+    assert jnp.any(x == 0)
+    assert jnp.any(x == 4)
+    count = jnp.bincount(x)
+    count /= jnp.sum(count)
+    assert jnp.allclose(count, probs / jnp.sum(probs), atol=1e-2)
 
-    d = Categorical(parametrisation='cdf', probs=jnp.ones(5), name='x')
+    probs = jnp.asarray([1, 2, 3, 2, 1], float_type)
+    d = Categorical(parametrisation='cdf', probs=probs, name='x')
     print(d)
     assert d.forward(jnp.ones(d.base_shape, float_type)).shape == d.shape
     assert d.forward(jnp.zeros(d.base_shape, float_type)).shape == d.shape
     assert d.base_shape == ()
     assert d.shape == ()
+    u_array = jnp.linspace(0., 1., 10000)
+    x = vmap(lambda u: d.forward(u))(u_array)
+    assert jnp.all(x >= 0)
+    assert jnp.all(x < 5)
+    assert jnp.any(x == 0)
+    assert jnp.any(x == 4)
+    count = jnp.bincount(x)
+    count /= jnp.sum(count)
+    assert jnp.allclose(count, probs / jnp.sum(probs), atol=1e-2)
 
     d = Poisson(rate=jnp.ones(5), name='x')
     print(d)
@@ -224,3 +242,8 @@ def test_special_priors():
     assert d.forward(jnp.zeros(d.base_shape, float_type)).shape == d.shape
     assert d.base_shape == (10, 5)
     assert d.shape == (10, 5)
+
+    u_input = vmap(lambda key: random.uniform(key, shape=d.base_shape))(random.split(random.PRNGKey(42), 1))
+    x = vmap(lambda u: d.forward(u))(u_input)
+    u = vmap(lambda x: d.inverse(x))(x)
+    assert jnp.allclose(u, u_input)

@@ -1,12 +1,12 @@
 .. jaxns documentation master file, created by
    sphinx-quickstart on Sat Aug 13 12:39:28 2022.
 
-Welcome to jaxns's documentation!
+Welcome to JAXNS's documentation!
 =================================
 
-.. warning::
-   This documentation is a work in progress and not yet merged with the official
-   codebase, please do not expect it to be complete or correct.
+JAXNS's Mission Statement
+-----------------------
+Our mission is to make nested sampling faster, easier, and more powerful.
 
 .. toctree::
    :maxdepth: 1
