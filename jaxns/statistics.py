@@ -195,7 +195,7 @@ def analyse_sample_collection(sample_collection: SampleCollection, sorted_collec
 
 
 def perfect_live_point_computation_jax(log_L_constraints: jnp.ndarray, log_L_samples: jnp.ndarray,
-                                       num_samples: jnp.ndarray | None = None):
+                                       num_samples: Union[jnp.ndarray, None] = None):
     # log_L_constraints has shape [N]
     # log_L_samples has shape [N]
     sort_idx = jnp.lexsort((log_L_constraints, log_L_samples))
@@ -256,8 +256,9 @@ def fast_triu_rowsum(a, b):
     b_cumsum_rev = jnp.cumsum(b[::-1])[::-1]
     return a * b_cumsum_rev
 
+
 def fast_perfect_live_point_computation_jax(log_L_constraints: jnp.ndarray, log_L_samples: jnp.ndarray,
-                                            num_samples: jnp.ndarray | None = None):
+                                            num_samples: Union[jnp.ndarray, None] = None):
     # log_L_constraints has shape [N]
     # log_L_samples has shape [N]
     sort_idx = jnp.lexsort((log_L_constraints, log_L_samples))

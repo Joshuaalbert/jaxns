@@ -1,4 +1,5 @@
 from time import monotonic_ns
+from typing import Union
 
 import jax
 import numpy as np
@@ -63,7 +64,7 @@ def _sure_compute_num_live_points_from_unit_threads(log_L_constraints, log_L_sam
     return num_live_points
 
 
-def perfect_live_point_computation(log_L_constraints, log_L_samples, num_samples: int | None = None, debug=True):
+def perfect_live_point_computation(log_L_constraints, log_L_samples, num_samples: Union[int, None] = None, debug=True):
     log_L_constraints = np.array(log_L_constraints)
     log_L_samples = np.array(log_L_samples)
     sort_idx = np.lexsort((log_L_constraints, log_L_samples))

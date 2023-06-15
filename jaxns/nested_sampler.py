@@ -30,7 +30,7 @@ __all__ = ['BaseNestedSampler',
 
 
 class BaseNestedSampler:
-    def __init__(self, model: Model, max_samples: int | float):
+    def __init__(self, model: Model, max_samples: Union[int, float]):
         self.model = model
         self.max_samples = int(max_samples)
 
@@ -204,7 +204,7 @@ class ApproximateNestedSampler(BaseNestedSampler):
         if sampler_chain is None:
             sampler_chain = [
                 UniformSampler(model=model, efficiency_threshold=0.1),
-                UniDimSliceSampler(model=model, num_slices=model.U_ndims*3, midpoint_shrink=True, perfect=True)
+                UniDimSliceSampler(model=model, num_slices=model.U_ndims * 3, midpoint_shrink=True, perfect=True)
             ]
 
         if sampler_chain[-1].efficiency_threshold is not None:

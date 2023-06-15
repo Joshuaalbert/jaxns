@@ -1,3 +1,5 @@
+from typing import Union
+
 import jax.numpy as jnp
 from jax import random, vmap
 from jax._src.lax.control_flow import while_loop
@@ -56,7 +58,7 @@ def m_step(data, log_responsibilities):
 
 
 # No invariance under jit...
-def em_gmm(key, data, n_components, mask: jnp.ndarray | None = None, n_iters=10, tol=1e-6):
+def em_gmm(key, data, n_components, mask: Union[jnp.ndarray, None] = None, n_iters=10, tol=1e-6):
     means, covariances, log_weights = initialize_params(key, data, n_components)
     params = (means, covariances, log_weights)
 
