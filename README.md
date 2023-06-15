@@ -88,7 +88,11 @@ controlling some precision parameters.
 
 # Change Log
 
-8 March, 2023 -- JAXNS 2.0.1 released. Changed how we're doing annotations to support python 3.8 again.
+15 June, 2023 -- JAXNS 2.2.0 released. Adding functionality to enable TFP bijectors to defined transformed distributions.
+
+15 April, 2023 -- JAXNS 2.1.0 released. Changed some parameter naming. Begun resolving bias in adaptive refinement.
+
+9 March, 2023 -- JAXNS 2.0.1 released. Changed how we're doing annotations to support python 3.8 again.
 
 3 January, 2023 -- JAXNS 2.0 released. Complete overhaul of components. New way to build models.
 
