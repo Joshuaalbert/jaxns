@@ -203,12 +203,12 @@ class Prior(AbstractPrior):
     def __init__(self, dist_or_value: Union[tfpd.Distribution, jnp.ndarray], name: Optional[str] = None):
         super(Prior, self).__init__(name=name)
         if isinstance(dist_or_value, tfpd.Distribution):
-            self._dist = Distribution(dist_or_value)
             self._type = 'dist'
+            self._dist = Distribution(dist_or_value)
 
         elif isinstance(dist_or_value, (jnp.ndarray, np.ndarray)):
-            self._value = jnp.asarray(dist_or_value)
             self._type = 'value'
+            self._value = jnp.asarray(dist_or_value)
         self.name = name
 
     @property

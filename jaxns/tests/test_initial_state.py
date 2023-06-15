@@ -91,7 +91,7 @@ def test_static_uniform():
                                                model=model)
     efficiency_threshold = 0.1
     ns = StaticNestedSampler(
-        sampler=UniformSampler(model=model, efficiency_threshold=efficiency_threshold),
+        samplers=[UniformSampler(model=model, efficiency_threshold=efficiency_threshold)],
         num_live_points=n, num_parallel_samplers=1)
     _, state, live_points = ns(state=state, live_points=live_points,
                                termination_cond=TerminationCondition(max_samples=0))
