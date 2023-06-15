@@ -1,70 +1,105 @@
-from typing import Tuple
+from typing import NamedTuple
 
-from etils.array_types import BoolArray
-from jax import random, numpy as jnp, tree_map
+from etils.array_types import BoolArray, IntArray
+from etils.array_types import PRNGKey, FloatArray
+from jax import random, numpy as jnp
 from jax.lax import while_loop
 
-from jaxns.internals.maps import replace_index
 from jaxns.model import Model
-from jaxns.types import Sample, NestedSamplerState, LivePoints, Reservoir
-from jaxns.uniform_sampler import UniformSampler
+from jaxns.static_nested_sampler import PreProcessType, RejectionSampler
+from jaxns.types import NestedSamplerState, LivePoints, Sample, int_type
 
-__all__ = ['StaticUniform']
+__all__ = ['UniformSampler']
 
 
-class StaticUniform:
-    def __init__(self, model: Model, num_live_points: int, efficiency_threshold: float):
-        self.uniform_sampler = UniformSampler(model=model)
-        self.model = model
-        self.num_live_points = num_live_points
-        if efficiency_threshold <= 0.:
-            raise ValueError(f"Efficiency threshold should be > 0, got {efficiency_threshold}.")
-        self.efficiency_threshold = efficiency_threshold
+class UniformSampler(RejectionSampler):
+    def preprocess(self, state: NestedSamplerState) -> PreProcessType:
+        return ()
 
-    def __call__(self, state: NestedSamplerState, live_points: LivePoints) -> Tuple[NestedSamplerState, LivePoints]:
-        if live_points.reservoir.log_L.size != self.num_live_points:
-            raise ValueError(
-                f"live points reservoir is the wrong size. "
-                f"Got {live_points.reservoir.log_L.size} by expected {self.num_live_points}.")
+    def get_sample(self, key: PRNGKey, log_L_constraint: FloatArray, live_points: LivePoints,
+                   preprocess_data: PreProcessType) -> Sample:
+        class CarryState(NamedTuple):
+            done: BoolArray
+            key: PRNGKey
+            U: FloatArray
+            log_L: FloatArray
+            log_L_constraint: FloatArray
+            num_likelihood_evals: IntArray
 
-        CarryType = Tuple[BoolArray, NestedSamplerState, LivePoints]
+        def body(carry_state: CarryState):
+            key, sample_key = random.split(carry_state.key, 2)
+            log_L = self.model.forward(U=carry_state.U)
+            num_likelihood_evals = carry_state.num_likelihood_evals + jnp.asarray(1, int_type)
+            # backoff by one e-fold per attempt after efficiency threshold reached
+            log_L_constraint = jnp.where(num_likelihood_evals > 1. / self.efficiency_threshold,
+                                         carry_state.log_L_constraint - 0.1, carry_state.log_L_constraint)
+            done = log_L > log_L_constraint
+            U = jnp.where(done, carry_state.U, self.model.sample_U(key=sample_key))
+            return CarryState(done=done, key=key, U=U, log_L=log_L, num_likelihood_evals=num_likelihood_evals,
+                              log_L_constraint=log_L_constraint)
 
-        def body(carry: CarryType) -> CarryType:
-            (_, state, live_points) = carry
-            idx_min = jnp.argmin(live_points.reservoir.log_L)
-            dead_point: Sample = tree_map(lambda x: x[idx_min], live_points.reservoir)
+        key, sample_key = random.split(key, 2)
+        init_carry_state = CarryState(done=jnp.asarray(False),
+                                      key=key,
+                                      U=self.model.sample_U(key=sample_key),
+                                      log_L=log_L_constraint,
+                                      log_L_constraint=log_L_constraint,
+                                      num_likelihood_evals=jnp.asarray(0, int_type))
 
-            sample_collection_reservoir = tree_map(
-                lambda old, update: replace_index(old, update, state.sample_collection.sample_idx),
-                state.sample_collection.reservoir, dead_point)
+        carry_state = while_loop(lambda s: jnp.bitwise_not(s.done), body, init_carry_state)
 
-            sample_collection = state.sample_collection._replace(reservoir=sample_collection_reservoir,
-                                                                 sample_idx=state.sample_collection.sample_idx + 1)
+        sample = Sample(point_U=carry_state.U,
+                        log_L_constraint=carry_state.log_L_constraint,
+                        log_L=carry_state.log_L,
+                        num_likelihood_evaluations=carry_state.num_likelihood_evals,
+                        num_slices=jnp.asarray(0, int_type),
+                        iid=jnp.asarray(True, jnp.bool_))
+        return sample
 
-            log_L_dead = dead_point.log_L
 
-            # contour becomes log_L_dead if log_L_dead is not supremum of live-points, else we choose the original
-            # constraint of dead point. Note: we are at liberty to choose any log_L level as a contour so long as we
-            # can sample within it uniformly.
-            on_supremum = jnp.equal(log_L_dead, jnp.max(live_points.reservoir.log_L))
-            log_L_contour = jnp.where(on_supremum, dead_point.log_L_constraint, log_L_dead)
+class BadUniformSampler(RejectionSampler):
+    def __init__(self, mis_fraction: float, model: Model):
+        super().__init__(model=model, efficiency_threshold=None)
+        self.mis_fraction = mis_fraction
 
-            # replace dead point with a new sample about contour
-            key, sample_key = random.split(state.key, 2)
-            sample = self.uniform_sampler.single_sample(key=sample_key, log_L_constraint=log_L_contour)
-            live_points_reservoir = tree_map(lambda old, update: replace_index(old, update, idx_min),
-                                             live_points.reservoir, Reservoir(*sample))
-            live_points = live_points._replace(reservoir=live_points_reservoir)
-            state = state._replace(key=key,
-                                   sample_collection=sample_collection)
-            # done = sample.num_likelihood_evaluations >= 1. / self.efficiency_threshold
-            # done = jnp.mean(live_points.reservoir.num_likelihood_evaluations) >= 1. / self.efficiency_threshold
-            on_plateau = jnp.min(live_points_reservoir.log_L) == jnp.max(live_points_reservoir.log_L)
-            sufficient_compression = sample_collection.sample_idx / self.num_live_points > -jnp.log(
-                self.efficiency_threshold)  # -log(X) = num_samples/num_live_points = -log(eff)
-            done = on_plateau | sufficient_compression
-            return (done, state, live_points)
+    def preprocess(self, state: NestedSamplerState) -> PreProcessType:
+        return ()
 
-        (_, state, live_points) = while_loop(lambda carry: jnp.bitwise_not(carry[0]),
-                                             body, (jnp.asarray(False, jnp.bool_), state, live_points))
-        return (state, live_points)
+    def get_sample(self, key: PRNGKey, log_L_constraint: FloatArray, live_points: LivePoints,
+                   preprocess_data: PreProcessType) -> Sample:
+        class CarryState(NamedTuple):
+            done: BoolArray
+            key: PRNGKey
+            U: FloatArray
+            log_L: FloatArray
+            log_L_constraint: FloatArray
+            num_likelihood_evals: IntArray
+
+        def body(carry_state: CarryState):
+            key, sample_key = random.split(carry_state.key, 2)
+            log_L = self.model.forward(U=carry_state.U)
+            num_likelihood_evals = carry_state.num_likelihood_evals + jnp.asarray(1, int_type)
+            bad_log_L_constraint = carry_state.log_L_constraint + jnp.log(1. + self.mis_fraction)
+            done = log_L > bad_log_L_constraint
+            U = jnp.where(done, carry_state.U, self.model.sample_U(key=sample_key))
+            return CarryState(done=done, key=key, U=U, log_L=log_L,
+                              num_likelihood_evals=num_likelihood_evals,
+                              log_L_constraint=carry_state.log_L_constraint)
+
+        key, sample_key = random.split(key, 2)
+        init_carry_state = CarryState(done=jnp.asarray(False),
+                                      key=key,
+                                      U=self.model.sample_U(key=sample_key),
+                                      log_L=log_L_constraint,
+                                      log_L_constraint=log_L_constraint,
+                                      num_likelihood_evals=jnp.asarray(0, int_type))
+
+        carry_state = while_loop(lambda s: jnp.bitwise_not(s.done), body, init_carry_state)
+
+        sample = Sample(point_U=carry_state.U,
+                        log_L_constraint=carry_state.log_L_constraint,
+                        log_L=carry_state.log_L,
+                        num_likelihood_evaluations=carry_state.num_likelihood_evals,
+                        num_slices=jnp.asarray(0, int_type),
+                        iid=jnp.asarray(self.mis_fraction == 0., jnp.bool_))
+        return sample

@@ -1,3 +1,4 @@
+import jax
 from jax import numpy as jnp
 
 from jaxns.internals.maps import replace_index, chunked_pmap, prepare_func_args, get_index
@@ -38,8 +39,9 @@ def test_chunked_pmap():
     assert chunked_f(x, y=x).shape == x.shape
     assert jnp.all(chunked_f(x, y=x) == x ** 2)
 
-    chunked_f = chunked_pmap(f, 2)
-    x = jnp.arange(2)
+    num_dev = len(jax.devices())
+    chunked_f = chunked_pmap(f, num_dev)
+    x = jnp.arange(num_dev)
     assert chunked_f(x, y=x).shape == x.shape
     assert jnp.all(chunked_f(x, y=x) == x ** 2)
 

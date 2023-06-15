@@ -7,7 +7,7 @@ Make sure you have JAX and the usual suspects with,
 
    pip install jax jaxlib numpy matplotlib scipy
    
-optionally include packages :code:`scikit-learn` and :code:`haiku-dm` if
+optionally include packages :code:`scikit-learn` and :code:`dm-haiku` if
 running some examples.
 
 Install the stable version with,

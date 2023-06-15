@@ -1,9 +1,14 @@
+import numpy as np
+import pylab as plt
 import tensorflow_probability.substrates.jax as tfp
-from jax import numpy as jnp, random, tree_map, disable_jit
+from jax import numpy as jnp, random, tree_map, disable_jit, vmap
 
 from jaxns import PriorModelGen, Prior, Model
 from jaxns.initial_state import get_uniform_init_live_points
-from jaxns.likelihood_samplers.multi_ellipsoid_utils import log_ellipsoid_volume, ellipsoid_clustering
+from jaxns.likelihood_samplers.multi_ellipsoid_utils import log_ellipsoid_volume, ellipsoid_clustering, \
+    bounding_ellipsoid, covariance_to_rotational, ellipsoid_params, point_in_ellipsoid, plot_ellipses, \
+    MultiEllipsoidParams, maha_ellipsoid, circle_to_ellipsoid, ellipsoid_to_circle
+from jaxns.random import random_ortho_matrix
 from jaxns.types import float_type
 
 tfpd = tfp.distributions
@@ -16,8 +21,10 @@ def test_ellipsoid_clustering():
 
         return x, y
 
-    def log_likelihood(x,y):
-        return jnp.log(jnp.exp(-0.5*((x-0.5)/0.1)**2-0.5*((y-0.5)/0.1)**2) + jnp.exp(-0.5*((x-1.5)/0.1)**2-0.5*((y-1.5)/0.1)**2))
+    def log_likelihood(x, y):
+        return jnp.log(jnp.exp(-0.5 * ((x - 0.5) / 0.1) ** 2 - 0.5 * ((y - 0.5) / 0.1) ** 2) + jnp.exp(
+            -0.5 * ((x - 1.5) / 0.1) ** 2 - 0.5 * ((y - 1.5) / 0.1) ** 2))
+
     model = Model(prior_model=prior_model,
                   log_likelihood=log_likelihood)
 
@@ -27,13 +34,14 @@ def test_ellipsoid_clustering():
                                                model=model)
     keep = live_points.reservoir.log_L > log_likelihood(1.1, 1.1)
     reservoir = tree_map(lambda x: x[keep], live_points.reservoir)
-    # import pylab as plt
-    # plt.scatter(reservoir.point_U[:,0], reservoir.point_U[:,1])
-    # plt.show()
+    plt.scatter(reservoir.point_U[:, 0], reservoir.point_U[:, 1])
     with disable_jit():
-        params = ellipsoid_clustering(random.PRNGKey(42), points=reservoir.point_U,
-                                  log_VS=jnp.asarray(0., float_type),
-                                  max_num_ellipsoids=10)
+        state = ellipsoid_clustering(random.PRNGKey(42), points=reservoir.point_U,
+                                     log_VS=jnp.asarray(0., float_type),
+                                     max_num_ellipsoids=10)
+        plot_ellipses(params=state.params)
+    # plt.show()
+    plt.close('all')
 
 
 def test_log_ellipsoid_volume():
@@ -41,3 +49,76 @@ def test_log_ellipsoid_volume():
     assert jnp.isclose(log_ellipsoid_volume(radii), jnp.log(jnp.pi))
     radii = jnp.ones(3)
     assert jnp.isclose(log_ellipsoid_volume(radii), jnp.log(4. * jnp.pi / 3.))
+
+
+def test_bounding_ellipsoid():
+    n = 1_000_000
+    mean = jnp.asarray([0., 0.])
+    cov = jnp.asarray([[1., 0.4], [0.4, 1.]])
+    X = random.multivariate_normal(random.PRNGKey(42), mean=mean,
+                                   cov=cov, shape=(n,))
+    mask = jnp.ones(n, jnp.bool_)
+    mu, Sigma = bounding_ellipsoid(points=X, mask=mask)
+    assert jnp.allclose(mu, mean, atol=1e-2)
+    assert jnp.allclose(Sigma, cov, atol=1e-2)
+
+
+def test_covariance_to_rotational():
+    n = 5
+    random_rotation = random_ortho_matrix(random.PRNGKey(0), n=n, special_orthogonal=True)
+    random_radii = random.uniform(random.PRNGKey(1), shape=(n,))
+
+    J = random_rotation @ jnp.diag(1 / random_radii)
+    cov_J = jnp.linalg.inv(J @ J.T)
+    cov = random_rotation @ jnp.diag(random_radii ** 2) @ random_rotation.T
+
+    np.testing.assert_allclose(cov, cov_J, atol=1e-6)
+
+    radii, rotation = covariance_to_rotational(cov)
+
+    _cov = rotation @ jnp.diag(radii ** 2) @ rotation.T
+
+    np.testing.assert_allclose(cov, _cov, atol=1e-6)
+
+
+def test_ellipsoid_params():
+    n = 1000
+
+    N = 2
+    random_rotation = random_ortho_matrix(random.PRNGKey(0), n=N, special_orthogonal=True)
+    random_radii = random.uniform(random.PRNGKey(1), shape=(N,))
+    cov = random_rotation @ jnp.diag(random_radii ** 2) @ random_rotation.T
+
+    X = random.multivariate_normal(random.PRNGKey(42),
+                                   mean=jnp.zeros(N),
+                                   cov=cov,
+                                   shape=(n,))
+
+    mu, radii, rotation = ellipsoid_params(points=X, mask=jnp.ones(n, jnp.bool_))
+    inside = vmap(lambda x: point_in_ellipsoid(x, mu, radii, rotation))(X)
+    plt.scatter(X[:, 0], X[:, 1], c=inside)
+    plot_ellipses(tree_map(lambda x: x[None], MultiEllipsoidParams(mu, radii, rotation)))
+
+    assert np.all(inside)
+
+    rho_max = jnp.max(vmap(lambda x: maha_ellipsoid(x, mu, radii, rotation))(X))
+    assert jnp.isclose(rho_max, 1.)
+
+
+def test_ellipsoid_transforms():
+    n = 1000
+
+    N = 2
+    random_rotation = random_ortho_matrix(random.PRNGKey(0), n=N, special_orthogonal=True)
+    random_radii = random.uniform(random.PRNGKey(1), shape=(N,))
+    mu = jnp.zeros(N)
+    cov = random_rotation @ jnp.diag(random_radii ** 2) @ random_rotation.T
+
+    X = random.multivariate_normal(random.PRNGKey(42),
+                                   mean=jnp.zeros(N),
+                                   cov=cov,
+                                   shape=(n,))
+    X_out = vmap(lambda x: circle_to_ellipsoid(ellipsoid_to_circle(x, mu, random_radii, random_rotation),
+                                               mu, random_radii, random_rotation))(X)
+
+    np.testing.assert_allclose(X_out, X, atol=1e-6)
