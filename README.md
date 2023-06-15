@@ -88,6 +88,8 @@ controlling some precision parameters.
 
 # Change Log
 
+15 April, 2023 -- JAXNS 2.1.0 released. pmap used on outer-most loops allowing efficient device-device communication during parallel runs.
+
 8 March, 2023 -- JAXNS 2.0.1 released. Changed how we're doing annotations to support python 3.8 again.
 
 3 January, 2023 -- JAXNS 2.0 released. Complete overhaul of components. New way to build models.
