@@ -1,7 +1,5 @@
-from functools import partial
-
 import jax.numpy as jnp
-from jax import random, vmap, jit
+from jax import random, vmap
 from jax._src.lax.control_flow import while_loop
 from jax._src.scipy.special import logsumexp
 from jax.scipy.stats import multivariate_normal
@@ -25,12 +23,14 @@ def initialize_params(key, data, n_components: int):
     return means, covariances, log_weights
 
 
-def e_step(data, means, covariances, log_weights):
+def e_step(data, means, covariances, log_weights, mask):
     n, d = data.shape
     n_components = means.shape[0]
 
     # Compute the probabilities of each data point belonging to each Gaussian
     logpdf = vmap(lambda m, c: multivariate_normal.logpdf(data, m, c))(means, covariances)  # num_clusters, num_data
+    if mask is not None:
+        logpdf = jnp.where(mask[None, :], logpdf, -jnp.inf)
     logpdf_weighted = logpdf + log_weights[:, None]
     # Normalize probabilities
     log_responsibilities = logpdf_weighted - logsumexp(logpdf_weighted, axis=0)
@@ -56,14 +56,13 @@ def m_step(data, log_responsibilities):
 
 
 # No invariance under jit...
-@partial(jit, static_argnames=['n_components', 'n_iters', 'tol'])
-def em_gmm(key, data, n_components, n_iters=10, tol=1e-6):
+def em_gmm(key, data, n_components, mask: jnp.ndarray | None = None, n_iters=10, tol=1e-6):
     means, covariances, log_weights = initialize_params(key, data, n_components)
     params = (means, covariances, log_weights)
 
     def body(state):
         _, i, params = state
-        log_responsibilities = e_step(data, *params)
+        log_responsibilities = e_step(data, *params, mask=mask)
         new_params = m_step(data, log_responsibilities)
         done = False
         for param, new_param in zip(params, new_params):
@@ -81,39 +80,9 @@ def em_gmm(key, data, n_components, n_iters=10, tol=1e-6):
         (jnp.asarray(False), jnp.asarray(0), params)
     )
 
-    cluster_id = jnp.argmax(e_step(data, *params), axis=0)
+    cluster_id = jnp.argmax(e_step(data, *params, mask=mask), axis=0)
     return cluster_id, params, total_iters
 
 
-# def test_em_gmm():
-#     data = jnp.array([[1.0, 1.0], [1.1, 1.1], [1.2, 1.2], [4.0, 4.0], [4.1, 4.1], [4.2, 4.2]])
-#     n_components = 2
-#     key = random.PRNGKey(42)
-#
-#     cluster_id, (means, covariances, log_weights), _ = em_gmm(key, data, n_components)
-#     assert jnp.all(cluster_id == jnp.asarray([1, 1, 1, 0, 0, 0]))
-
 def recursive_gmm(key, data, n_components, n_iters=10, tol=1e-6):
     pass
-
-
-if __name__ == '__main__':
-    from sklearn.datasets import make_blobs
-    from sklearn.metrics import adjusted_rand_score
-
-    key = random.PRNGKey(42)
-
-    d = 100
-    n_components = 10
-    n_data = 10000
-
-    X, y_true = make_blobs(n_samples=n_data, centers=n_components, n_features=d, cluster_std=1, random_state=42)
-    import pylab as plt
-
-    cluster_id, (means, covariances, log_weights), total_iters = em_gmm(key, X, n_components=n_components, n_iters=5)
-    print("Used", total_iters)
-    plt.scatter(X[:, 0], X[:, 1], c=cluster_id, cmap='jet')
-    plt.show()
-
-    accuracy = adjusted_rand_score(y_true, cluster_id)
-    print(accuracy)
