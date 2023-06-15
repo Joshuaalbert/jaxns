@@ -11,6 +11,14 @@ def test_random_ortho_matrix():
     assert jnp.allclose(M.T @ M, jnp.eye(5), atol=1e-6)
     assert jnp.allclose(jnp.linalg.norm(M, axis=0), jnp.linalg.norm(M, axis=1))
 
+    for i in range(100):
+        M = random_ortho_matrix(random.PRNGKey(i), 5)
+        np.testing.assert_allclose(jnp.abs(jnp.linalg.det(M)), 1, atol=1e-6)
+
+    for i in range(100):
+        M = random_ortho_matrix(random.PRNGKey(i), 5, special_orthogonal=True)
+        np.testing.assert_allclose(jnp.linalg.det(M), 1, atol=1e-6)
+
 
 def test_random_ortho_normal_matrix():
     for i in range(100):

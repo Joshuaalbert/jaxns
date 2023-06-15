@@ -3,11 +3,12 @@ from typing import Tuple, Union, Optional, Literal
 
 import tensorflow_probability.substrates.jax as tfp
 from etils.array_types import FloatArray, IntArray, BoolArray
-from jax import numpy as jnp
+from jax import numpy as jnp, vmap
 from jax._src.lax.control_flow import while_loop, scan
-from jax._src.scipy.special import logsumexp, gammaln
+from jax._src.scipy.special import gammaln
 from tensorflow_probability.substrates.jax.math import lbeta, betaincinv
 
+from jaxns.internals.log_semiring import cumulative_logsumexp
 from jaxns.prior import AbstractPrior
 from jaxns.types import float_type
 
@@ -40,6 +41,9 @@ class Bernoulli(AbstractPrior):
     def _forward(self, U) -> Union[FloatArray, IntArray, BoolArray]:
         return self._quantile(U)
 
+    def _inverse(self, X) -> FloatArray:
+        return self.dist.cdf(X)
+
     def _log_prob(self, X) -> FloatArray:
         return self.dist.log_prob(X)
 
@@ -66,6 +70,9 @@ class Beta(AbstractPrior):
     def _forward(self, U) -> Union[FloatArray, IntArray, BoolArray]:
         return self._quantile(U)
 
+    def _inverse(self, X) -> FloatArray:
+        return self.dist.cdf(X)
+
     def _log_prob(self, X) -> FloatArray:
         return self.dist.log_prob(X)
 
@@ -83,6 +90,16 @@ class Beta(AbstractPrior):
 class Categorical(AbstractPrior):
     def __init__(self, parametrisation: Literal['gumbel_max', 'cdf'], *, logits=None, probs=None,
                  name: Optional[str] = None):
+        """
+        Initialised Categorical special prior.
+
+        Args:
+            parametrisation: 'cdf' is good for discrete params with correlation between neighbouring categories,
+                otherwise gumbel is better.
+            logits: log-prob of each category
+            probs: prob of each category
+            name: optional name
+        """
         super(Categorical, self).__init__(name=name)
         self.dist = tfpd.Categorical(logits=logits, probs=probs)
         self._parametrisation = parametrisation
@@ -105,6 +122,9 @@ class Categorical(AbstractPrior):
         elif self._parametrisation == 'cdf':
             return self._quantile_cdf(U)
 
+    def _inverse(self, X) -> FloatArray:
+        return self.dist.cdf(X)
+
     def _log_prob(self, X) -> FloatArray:
         return self.dist.log_prob(X)
 
@@ -116,30 +136,25 @@ class Categorical(AbstractPrior):
         return draws
 
     def _quantile_cdf(self, U):
+        """
+        The quantile for CDF parametrisation.
+
+        Args:
+            U: [...]
+
+        Returns:
+            [...]
+        """
         logits = self.dist._logits_parameter_no_checks()  # [..., N]
-        logits = jnp.swapaxes(logits, axis1=0, axis2=-1)  # [N, ...]
-        # normalise logits
-        logits -= logsumexp(logits, axis=0, keepdims=True)
-        log_u = jnp.log(U)
+        cum_logits = cumulative_logsumexp(logits, axis=-1)  # [..., N]
+        cum_logits -= cum_logits[..., -1:]
+        N = cum_logits.shape[-1]
+        cum_logits_flat = jnp.reshape(cum_logits, (-1, N))
+        log_U_flat = jnp.reshape(jnp.log(U), (-1,))
 
-        # parallel CDF sampling, imputing the done ones
-        def body(state):
-            (_, accumulant, i, output) = state
-            new_accumulant = jnp.logaddexp(accumulant, logits[i])
-            done = log_u < new_accumulant
-            output = jnp.where(done, output, i + 1)
-            return (done, new_accumulant, i + 1, output)
-
-        loop_vars = (
-            jnp.zeros(self.base_shape, dtype=jnp.bool_),
-            -jnp.inf * jnp.ones(self.base_shape, dtype=U.dtype),
-            jnp.asarray(0, self.dtype),
-            jnp.zeros(self.base_shape, dtype=self.dtype)
-        )
-        (_, _, _, output) = while_loop(lambda state: ~jnp.all(state[0]),
-                                       body,
-                                       loop_vars)
-        return output
+        category_flat = vmap(lambda a, v: jnp.searchsorted(a, v, side='left'))(cum_logits_flat, log_U_flat)
+        category = jnp.reshape(category_flat, U.shape)
+        return category
 
 
 class ForcedIdentifiability(AbstractPrior):
@@ -172,12 +187,30 @@ class ForcedIdentifiability(AbstractPrior):
     def _forward(self, U) -> Union[FloatArray, IntArray, BoolArray]:
         return self._quantile(U)
 
+    def _inverse(self, X) -> FloatArray:
+        return self._cdf(X)
+
     def _log_prob(self, X) -> FloatArray:
         log_n_fac = gammaln(self.n + 1)
         diff = self.high - self.low
         log_prob = - log_n_fac - self.n * jnp.log(diff)
         # no check that X is inside high and low
         return log_prob
+
+    def _cdf(self, X):
+        log_theta = jnp.log((X - self.low) / (self.high - self.low))  # [n, ...]
+
+        def inv_body(state, X):
+            (log_theta_prev,) = state
+            (log_theta, i) = X
+            log_x = i * (log_theta - log_theta_prev)
+            return (log_theta,), (log_x,)
+
+        # Initial log_x value
+        log_init_x = jnp.zeros(self.shape[1:], self.dtype)  # [...]
+        _, (log_x,) = scan(inv_body, (log_init_x,), (log_theta, jnp.arange(1, self.n + 1)), reverse=True)
+        U = jnp.exp(log_x)
+        return U.astype(self.dtype)
 
     def _quantile(self, U):
         log_x = jnp.log(U)  # [n, ...]
@@ -186,10 +219,10 @@ class ForcedIdentifiability(AbstractPrior):
         def body(state, X):
             (log_theta,) = state
             (log_x, i) = X
-            log_theta = log_x / i + log_theta
+            log_theta = log_x / i + log_theta  # shrinkage
             return (log_theta,), (log_theta,)
 
-        log_init_theta = jnp.zeros(self.shape[1:], self.dtype)  # [...]
+        log_init_theta = jnp.zeros(self.shape[1:], self.dtype)  # [...] -- log(1)
         _, (log_theta,) = scan(body, (log_init_theta,), (log_x, jnp.arange(1, self.n + 1)), reverse=True)
         theta = self.low + (self.high - self.low) * jnp.exp(log_theta)
         return theta.astype(self.dtype)
@@ -211,6 +244,9 @@ class Poisson(AbstractPrior):
 
     def _forward(self, U) -> Union[FloatArray, IntArray, BoolArray]:
         return self._quantile(U)
+
+    def _inverse(self, X) -> FloatArray:
+        return self.dist.cdf(X)
 
     def _log_prob(self, X) -> FloatArray:
         return self.dist.log_prob(X)

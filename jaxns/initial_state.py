@@ -1,15 +1,14 @@
 import logging
-from typing import Tuple
+from typing import Tuple, NamedTuple
 
-from etils.array_types import PRNGKey, FloatArray
+from etils.array_types import PRNGKey, FloatArray, BoolArray, IntArray
 from jax import tree_map, numpy as jnp, random, core
-from jax._src.lax.control_flow import scan
+from jax._src.lax.control_flow import scan, while_loop
 
 from jaxns.model import Model
 from jaxns.random import resample_indicies
 from jaxns.types import Reservoir, SampleCollection, LivePoints, NestedSamplerState, float_type, \
-    int_type
-from jaxns.uniform_sampler import UniformSampler
+    int_type, Sample
 from jaxns.utils import sort_samples
 
 logger = logging.getLogger('jaxns')
@@ -48,6 +47,52 @@ def init_sample_collection(size: int, model: Model) -> SampleCollection:
     return sample_collection
 
 
+def _single_uniform_sample(key: PRNGKey, model: Model) -> Sample:
+    """
+    Gets a single sample strictly within -inf bound (the entire prior), i.e. all returned samples will have non-zero
+    likeihood.
+
+    Args:
+        key: PRNGKey
+        model: the model to use.
+
+    Returns:
+        a sample
+    """
+
+    class CarryState(NamedTuple):
+        done: BoolArray
+        key: PRNGKey
+        U: FloatArray
+        log_L: FloatArray
+        num_likelihood_evals: IntArray
+
+    def body(carry_state: CarryState):
+        key, sample_key = random.split(carry_state.key, 2)
+        log_L = model.forward(U=carry_state.U)
+        num_likelihood_evals = carry_state.num_likelihood_evals + jnp.asarray(1, int_type)
+        done = log_L > -jnp.inf
+        U = jnp.where(done, carry_state.U, model.sample_U(key=sample_key))
+        return CarryState(done=done, key=key, U=U, log_L=log_L, num_likelihood_evals=num_likelihood_evals)
+
+    key, sample_key = random.split(key, 2)
+    init_carry_state = CarryState(done=jnp.asarray(False),
+                                  key=key,
+                                  U=model.sample_U(key=sample_key),
+                                  log_L=-jnp.inf,
+                                  num_likelihood_evals=jnp.asarray(0, int_type))
+
+    carry_state = while_loop(lambda s: jnp.bitwise_not(s.done), body, init_carry_state)
+
+    sample = Sample(point_U=carry_state.U,
+                    log_L_constraint=-jnp.inf,
+                    log_L=carry_state.log_L,
+                    num_likelihood_evaluations=carry_state.num_likelihood_evals,
+                    num_slices=jnp.asarray(0, int_type),
+                    iid=jnp.asarray(True, jnp.bool_))
+    return sample
+
+
 def get_uniform_init_live_points(key: PRNGKey, num_live_points: int, model: Model) -> LivePoints:
     """
     Get initial live points from uniformly sampling the entire prior.
@@ -60,12 +105,29 @@ def get_uniform_init_live_points(key: PRNGKey, num_live_points: int, model: Mode
     Returns:
         live points
     """
-    sampler = UniformSampler(model=model)
-    _, samples = scan(lambda s, key: (s, sampler.single_sample(key=key, log_L_constraint=-jnp.inf)),
+    _, samples = scan(lambda s, key: (s, _single_uniform_sample(key=key, model=model)),
                       (),
                       random.split(key, num_live_points))
     reservoir = Reservoir(*samples)
     return LivePoints(reservoir=reservoir)
+
+
+def sort_sample_collection(sample_collection: SampleCollection) -> SampleCollection:
+    """
+    Sort a sample collection lexigraphically.
+
+    Args:
+        sample_collection: sample collections
+
+    Returns:
+        sample collection sorted
+    """
+    idx_sort = jnp.lexsort((sample_collection.reservoir.log_L_constraint,
+                            sample_collection.reservoir.log_L))
+    sample_collection = sample_collection._replace(
+        reservoir=tree_map(lambda x: x[idx_sort], sample_collection.reservoir)
+    )
+    return sample_collection
 
 
 def get_live_points_from_samples(state: NestedSamplerState, log_L_constraint: FloatArray, num_live_points: int,
@@ -94,11 +156,7 @@ def get_live_points_from_samples(state: NestedSamplerState, log_L_constraint: Fl
 
     sample_collection = state.sample_collection
     if not sorted_collection:
-        idx_sort = jnp.lexsort((sample_collection.reservoir.log_L_constraint,
-                                sample_collection.reservoir.log_L))
-        sample_collection = sample_collection._replace(
-            reservoir=tree_map(lambda x: x[idx_sort], sample_collection.reservoir)
-        )
+        sample_collection = sort_sample_collection(sample_collection)
 
     # find the largest index, s, where sample.log_L_constraint[s] <= log_L_constraint
     idx_supremum = jnp.searchsorted(sample_collection.reservoir.log_L_constraint, log_L_constraint, side='right') - 1

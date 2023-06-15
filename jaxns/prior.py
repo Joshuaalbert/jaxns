@@ -32,8 +32,8 @@ class InvalidPriorName(Exception):
 
 
 def distribution_chain(dist: tfpd.Distribution) -> List[Union[tfpd.TransformedDistribution,
-                                                              tfpd.Sample,
-                                                              tfpd.Distribution]]:
+tfpd.Sample,
+tfpd.Distribution]]:
     chain = []
     while True:
         chain.append(dist)
@@ -62,6 +62,10 @@ class AbstractDistribution(ABC):
         ...
 
     @abstractmethod
+    def _inverse(self, X):
+        ...
+
+    @abstractmethod
     def _log_prob(self, X):
         ...
 
@@ -79,6 +83,9 @@ class AbstractDistribution(ABC):
 
     def forward(self, U):
         return self._forward(U)
+
+    def inverse(self, X):
+        return self._inverse(X)
 
     def log_prob(self, X):
         return self._log_prob(X)
@@ -108,13 +115,22 @@ class Distribution(AbstractDistribution):
     def _shape(self) -> Tuple[int, ...]:
         return tuple(self.dist_chain[-1].batch_shape_tensor()) + tuple(self.dist_chain[-1].event_shape_tensor())
 
-    def _forward(self, U):
+    def _forward(self, U) -> Union[FloatArray, IntArray, BoolArray]:
         dist = self.dist_chain[0]
         if isinstance(dist, tfpd.Sample):
             dist = dist.distribution
         X = dist.quantile(U)
         for dist in self.dist_chain[1:]:
             X = dist.bijector.forward(X)
+        return X
+
+    def _inverse(self, X) -> FloatArray:
+        for dist in reversed(self.dist_chain[1:]):
+            X = dist.bijector.inverse(X)
+        dist = self.dist_chain[0]
+        if isinstance(dist, tfpd.Sample):
+            dist = dist.distribution
+        X = dist.cdf(X)
         return X
 
     def _log_prob(self, X):
@@ -145,6 +161,10 @@ class AbstractPrior(ABC):
         ...
 
     @abstractmethod
+    def _inverse(self, X) -> FloatArray:
+        ...
+
+    @abstractmethod
     def _log_prob(self, X) -> FloatArray:
         ...
 
@@ -167,6 +187,9 @@ class AbstractPrior(ABC):
     def forward(self, U) -> Union[FloatArray, IntArray, BoolArray]:
         return self._forward(U)
 
+    def inverse(self, X) -> FloatArray:
+        return self._inverse(X)
+
     def log_prob(self, X) -> FloatArray:
         log_prob = self._log_prob(X)
         if log_prob.size > 1:
@@ -180,12 +203,12 @@ class Prior(AbstractPrior):
     def __init__(self, dist_or_value: Union[tfpd.Distribution, jnp.ndarray], name: Optional[str] = None):
         super(Prior, self).__init__(name=name)
         if isinstance(dist_or_value, tfpd.Distribution):
-            self._dist = Distribution(dist_or_value)
             self._type = 'dist'
+            self._dist = Distribution(dist_or_value)
 
         elif isinstance(dist_or_value, (jnp.ndarray, np.ndarray)):
-            self._value = jnp.asarray(dist_or_value)
             self._type = 'value'
+            self._value = jnp.asarray(dist_or_value)
         self.name = name
 
     @property
@@ -229,6 +252,14 @@ class Prior(AbstractPrior):
             return self.value
         elif self._type == 'dist':
             return self.dist.forward(U)
+        else:
+            raise NotImplementedError()
+
+    def _inverse(self, X) -> FloatArray:
+        if self._type == 'value':
+            return jnp.asarray([], float_type)
+        elif self._type == 'dist':
+            return self.dist.inverse(X)
         else:
             raise NotImplementedError()
 

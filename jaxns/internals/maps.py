@@ -135,3 +135,6 @@ def _pad_extra(arg, chunksize):
     T = N // chunksize
     arg = jnp.reshape(arg, (chunksize, N // chunksize) + arg.shape[1:])
     return arg
+
+def prepad(a, chunksize: int):
+    return tree_map(lambda arg: _pad_extra(arg, chunksize), a)
