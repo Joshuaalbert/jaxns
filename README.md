@@ -29,7 +29,7 @@ You can read the documentation [here](https://jaxns.readthedocs.io/en/latest/#).
 
 **Notes:**
 
-1. JAXNS requires >= Python 3.7.
+1. JAXNS requires >= Python 3.8.
 2. It is always highly recommended to use a unique virtual environment for each project.
    To use `miniconda`, have it installed, and run
 
