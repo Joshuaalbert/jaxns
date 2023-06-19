@@ -8,9 +8,11 @@ from jax._src.lax.slicing import dynamic_update_slice
 from jaxns.internals.log_semiring import LogSpace
 from jaxns.types import EvidenceCalculation, SampleCollection, SampleStatistics, float_type, int_type, Reservoir
 
-__all__ = ['compute_evidence',
-           'analyse_sample_collection',
-           'compute_num_live_points_from_unit_threads']
+__all__ = [
+    'compute_evidence',
+    'analyse_sample_collection',
+    'compute_num_live_points_from_unit_threads'
+]
 
 
 def _init_evidence_calculation() -> EvidenceCalculation:
