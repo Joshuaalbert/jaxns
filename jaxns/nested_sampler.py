@@ -13,8 +13,8 @@ from jaxns.internals.stats import linear_to_log_stats, effective_sample_size
 from jaxns.model import Model
 from jaxns.plotting import plot_cornerplot, plot_diagnostics
 from jaxns.static_nested_sampler import StaticNestedSampler, AbstractSampler
-from jaxns.static_slice import UniDimSliceSampler
-from jaxns.static_uniform import UniformSampler
+from jaxns.slice_samplers import UniDimSliceSampler
+from jaxns.uniform_samplers import UniformSampler
 from jaxns.statistics import analyse_sample_collection
 from jaxns.types import TerminationCondition, NestedSamplerState, NestedSamplerResults, LivePoints
 from jaxns.utils import collect_samples

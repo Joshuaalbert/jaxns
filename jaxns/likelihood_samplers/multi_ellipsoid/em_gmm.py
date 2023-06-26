@@ -84,7 +84,3 @@ def em_gmm(key, data, n_components, mask: Union[jnp.ndarray, None] = None, n_ite
 
     cluster_id = jnp.argmax(e_step(data, *params, mask=mask), axis=0)
     return cluster_id, params, total_iters
-
-
-def recursive_gmm(key, data, n_components, n_iters=10, tol=1e-6):
-    pass

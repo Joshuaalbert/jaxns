@@ -13,7 +13,7 @@ __all__ = ['UniformSampler']
 
 
 class UniformSampler(RejectionSampler):
-    def preprocess(self, state: NestedSamplerState) -> PreProcessType:
+    def preprocess(self, state: NestedSamplerState, live_points: LivePoints) -> PreProcessType:
         return ()
 
     def get_sample(self, key: PRNGKey, log_L_constraint: FloatArray, live_points: LivePoints,
@@ -62,7 +62,7 @@ class BadUniformSampler(RejectionSampler):
         super().__init__(model=model, efficiency_threshold=None)
         self.mis_fraction = mis_fraction
 
-    def preprocess(self, state: NestedSamplerState) -> PreProcessType:
+    def preprocess(self, state: NestedSamplerState, live_points: LivePoints) -> PreProcessType:
         return ()
 
     def get_sample(self, key: PRNGKey, log_L_constraint: FloatArray, live_points: LivePoints,
