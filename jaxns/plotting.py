@@ -28,38 +28,39 @@ def plot_diagnostics(results: NestedSamplerResults, save_name=None):
     """
     fig, axs = plt.subplots(5, 1, sharex=True, figsize=(8, 12))
     log_X = results.log_X_mean
-    axs[0].plot(-log_X, results.num_live_points_per_sample)
+    axs[0].plot(-log_X, results.num_live_points_per_sample, c='black')
     axs[0].set_ylabel(r'$n_{\rm live}(U)$')
     # detect if too small log likelihood
     log_likelihood = results.log_L_samples
     max_log_likelihood = jnp.max(log_likelihood)
-    likelihood = jnp.exp(log_likelihood - max_log_likelihood)
-    axs[1].plot(-log_X, likelihood)
-    axs[1].hlines(1., jnp.min(-log_X),
+    rel_log_likelihood = log_likelihood - max_log_likelihood
+    axs[1].plot(-log_X, rel_log_likelihood, c='black')
+    axs[1].hlines(0., jnp.min(-log_X),
                   jnp.max(-log_X), colors='black', ls='dashed',
                   label=r"$\log L_{{\rm max}}={:.1f}$".format(max_log_likelihood))
-    axs[1].set_ylabel(r'$L(U)/L_{\rm max}$')
+    axs[1].set_ylabel(r'$\log \left(L(X)/L_{\rm max}\right)$')
     axs[1].legend()
-    axs[2].plot(-log_X, jnp.exp(results.log_dp_mean))
+    axs[2].plot(-log_X, jnp.exp(results.log_dp_mean), c='black')
     # axs[2].vlines(-results.H_mean, 0., jnp.exp(jnp.max(results.log_dp_mean)), colors='black', ls='dashed',
     #               label='-logX=-H={:.1f}'.format(-results.H_mean))
     axs[2].set_ylabel(r'$Z^{-1}L(U) dX$')
     axs[2].legend()
     log_cum_evidence = cumulative_logsumexp(results.log_dp_mean)
     cum_evidence = jnp.exp(log_cum_evidence)
-    axs[3].plot(-log_X, cum_evidence)
+    axs[3].plot(-log_X, cum_evidence, c='black')
     axs[3].hlines(1., jnp.min(-log_X),
                   jnp.max(-log_X), colors='black', ls='dashed',
                   label=r"$\log Z={:.1f}$".format(results.log_Z_mean))
     axs[3].set_ylabel(r'$Z(x > U)/Z$')
     axs[3].legend()
-    axs[4].plot(-log_X, 1./results.num_likelihood_evaluations_per_sample)
+    axs[4].scatter(-log_X, 1./results.num_likelihood_evaluations_per_sample, s=2, c='black')
     axs[4].hlines(jnp.exp(results.log_efficiency), jnp.min(-log_X),
                   jnp.max(-log_X), colors='black', ls='dashed',
                   label='avg. eff.={:.3f}'.format(jnp.exp(results.log_efficiency)))
     axs[4].set_ylabel("sampler efficiency")
     axs[4].set_ylim(0., 1.05)
     axs[4].legend()
+    axs[4].set_xlabel(r'$- \log X$')
     if save_name is not None:
         fig.savefig(save_name)
     plt.show()
