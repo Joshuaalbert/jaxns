@@ -7,6 +7,10 @@ logging.basicConfig(format='%(levelname)s[%(asctime)s]: %(message)s', level=logg
 
 from jaxns.nested_sampler import *
 from jaxns.static_nested_sampler import *
+from jaxns.adaptive_refinement import *
+from jaxns.multi_ellipsoidal_samplers import *
+from jaxns.uniform_samplers import *
+from jaxns.slice_samplers import *
 from jaxns.model import *
 from jaxns.types import *
 from jaxns.plotting import *

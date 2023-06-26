@@ -5,9 +5,9 @@ from jax import numpy as jnp, random, tree_map, disable_jit, vmap
 
 from jaxns import PriorModelGen, Prior, Model
 from jaxns.initial_state import get_uniform_init_live_points
-from jaxns.likelihood_samplers.multi_ellipsoid_utils import log_ellipsoid_volume, ellipsoid_clustering, \
+from jaxns.likelihood_samplers.multi_ellipsoid.multi_ellipsoid_utils import log_ellipsoid_volume, ellipsoid_clustering, \
     bounding_ellipsoid, covariance_to_rotational, ellipsoid_params, point_in_ellipsoid, plot_ellipses, \
-    MultiEllipsoidParams, maha_ellipsoid, circle_to_ellipsoid, ellipsoid_to_circle
+    EllipsoidParams, maha_ellipsoid, circle_to_ellipsoid, ellipsoid_to_circle
 from jaxns.random import random_ortho_matrix
 from jaxns.types import float_type
 
@@ -97,12 +97,24 @@ def test_ellipsoid_params():
     mu, radii, rotation = ellipsoid_params(points=X, mask=jnp.ones(n, jnp.bool_))
     inside = vmap(lambda x: point_in_ellipsoid(x, mu, radii, rotation))(X)
     plt.scatter(X[:, 0], X[:, 1], c=inside)
-    plot_ellipses(tree_map(lambda x: x[None], MultiEllipsoidParams(mu, radii, rotation)))
+    plot_ellipses(tree_map(lambda x: x[None], EllipsoidParams(mu, radii, rotation)))
 
     assert np.all(inside)
 
     rho_max = jnp.max(vmap(lambda x: maha_ellipsoid(x, mu, radii, rotation))(X))
     assert jnp.isclose(rho_max, 1.)
+
+    points = jnp.asarray([[0., 1.], [0., -1.], [1.5, 0.], [-1.5, 0.]])
+    mu, radii, rotation = ellipsoid_params(points=points, mask=jnp.ones(4, jnp.bool_))
+    # print(mu, radii, rotation)
+    mu_true = jnp.zeros(2)
+    radii_true = jnp.asarray([1.5, 1.])
+    rotation_true = jnp.eye(2)
+    assert jnp.allclose(mu, mu_true)
+    assert jnp.allclose(radii, radii_true)
+    assert jnp.allclose(rotation, rotation_true)
+
+
 
 
 def test_ellipsoid_transforms():
