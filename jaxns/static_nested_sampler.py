@@ -1,5 +1,5 @@
 import logging
-from typing import Tuple, NamedTuple, TypeVar, Optional, List
+from typing import Tuple, NamedTuple, TypeVar, Optional, List, Union
 
 from etils.array_types import PRNGKey, IntArray, BoolArray, FloatArray
 from jax import tree_map, numpy as jnp, random, pmap
@@ -58,7 +58,7 @@ class AbstractSampler:
     def __repr__(self):
         return self.__class__.__name__
 
-    def preprocess(self, state: NestedSamplerState, live_points: LivePoints | None = None) -> PreProcessType:
+    def preprocess(self, state: NestedSamplerState, live_points: Union[LivePoints, None] = None) -> PreProcessType:
         """
         Produces a data structure that is necessary for sampling to run.
         Typically this is where clustering happens.
