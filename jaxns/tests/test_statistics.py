@@ -12,7 +12,7 @@ from jax.lax import dynamic_update_slice
 from jaxns import TerminationCondition, Reservoir, ApproximateNestedSampler, Model, Prior, PriorModelGen
 from jaxns.internals.log_semiring import LogSpace
 from jaxns.internals.maps import replace_index
-from jaxns.static_uniform import BadUniformSampler
+from jaxns.uniform_samplers import BadUniformSampler
 from jaxns.statistics import compute_num_live_points_from_unit_threads, compute_remaining_evidence, \
     perfect_live_point_computation_jax, fast_perfect_live_point_computation_jax, fast_triu_rowsum, combine_reservoirs
 

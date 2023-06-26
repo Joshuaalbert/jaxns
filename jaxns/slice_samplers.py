@@ -7,7 +7,7 @@ from jax._src.lax.control_flow import while_loop
 
 from jaxns.model import Model
 from jaxns.static_nested_sampler import MarkovSampler, PreProcessType, SeedPoint
-from jaxns.types import Sample, NestedSamplerState
+from jaxns.types import Sample, NestedSamplerState, LivePoints
 from jaxns.types import float_type, int_type
 
 logger = logging.getLogger('jaxns')
@@ -58,7 +58,7 @@ class UniDimSliceSampler(MarkovSampler):
         self.midpoint_shrink = midpoint_shrink
         self.perfect = perfect
 
-    def preprocess(self, state: NestedSamplerState) -> PreProcessType:
+    def preprocess(self, state: NestedSamplerState, live_points: LivePoints) -> PreProcessType:
         if self.perfect: # nothing needed
             return ()
         # else: # step out with doubling
@@ -352,7 +352,7 @@ class MultiDimSliceSampler(MarkovSampler):
                 raise ValueError(f"Expected num_restriction dim in (1, {model.U_ndims}], got {num_restrict_dims}.")
         self.num_restrict_dims = num_restrict_dims
 
-    def preprocess(self, state: NestedSamplerState) -> PreProcessType:
+    def preprocess(self, state: NestedSamplerState, live_points: LivePoints) -> PreProcessType:
         return ()
 
     def _slice_bounds(self, key: PRNGKey, point_U0: FloatArray) -> Tuple[FloatArray, FloatArray]:

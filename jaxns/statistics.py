@@ -8,9 +8,11 @@ from jax._src.lax.slicing import dynamic_update_slice
 from jaxns.internals.log_semiring import LogSpace
 from jaxns.types import EvidenceCalculation, SampleCollection, SampleStatistics, float_type, int_type, Reservoir
 
-__all__ = ['compute_evidence',
-           'analyse_sample_collection',
-           'compute_num_live_points_from_unit_threads']
+__all__ = [
+    'compute_evidence',
+    'analyse_sample_collection',
+    'compute_num_live_points_from_unit_threads'
+]
 
 
 def _init_evidence_calculation() -> EvidenceCalculation:
@@ -92,6 +94,54 @@ def _update_evidence_calculation(num_live_points: FloatArray, log_L: FloatArray,
     #                                      evidence_calculation, next_evidence_calculation)
 
     return next_evidence_calculation
+
+
+def compute_evidence_no_stats(sample_collection: SampleCollection, num_live_points: FloatArray) \
+        -> EvidenceCalculation:
+    """
+    Compute the evidence by traversing the sample collection.
+
+    Args:
+        sample_collection: the sorted sample collection to use to calculate the evidence
+        num_live_points: the number of live points at each sample (see compute_num_live_points_from_unit_threads)
+
+    Returns:
+        evidence calculation
+    """
+    num_samples = sample_collection.sample_idx
+
+    CarryType = Tuple[EvidenceCalculation, IntArray, FloatArray]
+
+    def thread_cond(body_state: CarryType):
+        (evidence_calculation, idx, log_L_contour) = body_state
+        return idx < num_samples
+
+    def thread_body(body_state: CarryType) -> CarryType:
+        (evidence_calculation, idx, log_L_contour) = body_state
+        next_num_live_points = num_live_points[idx]
+        next_log_L = sample_collection.reservoir.log_L[idx]
+        next_log_L_contour = next_log_L
+        # Get log_dZ_mean, and log_X_mean
+        next_evidence_calculation = _update_evidence_calculation(
+            num_live_points=next_num_live_points,
+            log_L=log_L_contour,
+            next_log_L_contour=next_log_L,
+            evidence_calculation=evidence_calculation
+        )
+
+        next_idx = idx + jnp.ones_like(idx)
+        return (next_evidence_calculation, next_idx, next_log_L_contour)
+
+    initial_evidence_calculation = _init_evidence_calculation()
+    init_log_L_contour = sample_collection.reservoir.log_L_constraint[0]
+
+    (final_evidence_calculation, final_idx, final_log_L_contour) = while_loop(thread_cond,
+                                                                              thread_body,
+                                                                              (initial_evidence_calculation,
+                                                                               jnp.asarray(0, int_type),
+                                                                               init_log_L_contour))
+
+    return final_evidence_calculation
 
 
 def compute_evidence(sample_collection: SampleCollection, num_live_points: FloatArray) \

@@ -12,11 +12,11 @@ from jaxns.internals.log_semiring import LogSpace, normalise_log_space
 from jaxns.internals.stats import linear_to_log_stats, effective_sample_size
 from jaxns.model import Model
 from jaxns.plotting import plot_cornerplot, plot_diagnostics
+from jaxns.slice_samplers import UniDimSliceSampler
 from jaxns.static_nested_sampler import StaticNestedSampler, AbstractSampler
-from jaxns.static_slice import UniDimSliceSampler
-from jaxns.static_uniform import UniformSampler
 from jaxns.statistics import analyse_sample_collection
 from jaxns.types import TerminationCondition, NestedSamplerState, NestedSamplerResults, LivePoints
+from jaxns.uniform_samplers import UniformSampler
 from jaxns.utils import collect_samples
 from jaxns.utils import summary, save_results, load_results
 
@@ -376,7 +376,11 @@ class ExactNestedSampler(BaseNestedSampler):
             model=model,
             num_live_points=num_live_points,
             num_parallel_samplers=num_parallel_samplers,
-            max_samples=max_samples
+            max_samples=max_samples,
+            sampler_chain=[
+                UniformSampler(model=model, efficiency_threshold=0.1),
+                UniDimSliceSampler(model=model, num_slices=model.U_ndims * 3, midpoint_shrink=True, perfect=True)
+            ]
         )
 
         self.adaptive_refinement = AdaptiveRefinement(
@@ -401,6 +405,8 @@ class ExactNestedSampler(BaseNestedSampler):
             raise RuntimeError("Tracer detected, but expected imperative context.")
 
         termination_reason, state = self.approximate_sampler(key=key, term_cond=term_cond, init_state=init_state)
-        state = self.adaptive_refinement(state=state)
+        # TODO: Turn on adaptive refinement after fixing bias issue
+        # Note: for now exact here means that we ensure i.i.d. samples by choosing strong hyper parameters for samplers.
+        # state = self.adaptive_refinement(state=state)
 
         return termination_reason, state
