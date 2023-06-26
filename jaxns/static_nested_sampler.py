@@ -1,5 +1,5 @@
 import logging
-from typing import Tuple, NamedTuple, TypeVar, Optional, List
+from typing import Tuple, NamedTuple, TypeVar, Optional, List, Union
 
 from etils.array_types import PRNGKey, IntArray, BoolArray, FloatArray
 from jax import tree_map, numpy as jnp, random, pmap
@@ -58,7 +58,7 @@ class AbstractSampler:
     def __repr__(self):
         return self.__class__.__name__
 
-    def preprocess(self, state: NestedSamplerState) -> PreProcessType:
+    def preprocess(self, state: NestedSamplerState, live_points: Union[LivePoints, None] = None) -> PreProcessType:
         """
         Produces a data structure that is necessary for sampling to run.
         Typically this is where clustering happens.
@@ -299,7 +299,7 @@ class StaticNestedSampler(AbstractNestedSampler):
                 key, sample_key = random.split(body_state.state.key, 2)
                 state = body_state.state._replace(key=key)
 
-                preprocess_data = sampler.preprocess(state)
+                preprocess_data = sampler.preprocess(state=state, live_points=body_state.live_points)
 
                 (dead_reservoir, live_points, log_L_contour) = self._single_live_point_shrink(
                     key=sample_key,
@@ -313,7 +313,8 @@ class StaticNestedSampler(AbstractNestedSampler):
                 all_live_points: LivePoints = remove_chunk_dim(all_gather(live_points, 'i'))
                 new_state = collect_samples(state, all_dead_reservoir)
 
-                done, termination_reason = stopping_cond(state=new_state, live_points=all_live_points, term_cond=term_cond)
+                done, termination_reason = stopping_cond(state=new_state, live_points=all_live_points,
+                                                         term_cond=term_cond)
 
                 return CarryType(done=done, termination_reason=termination_reason, state=new_state,
                                  live_points=live_points, log_L_contour=log_L_contour)

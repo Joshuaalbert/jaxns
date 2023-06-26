@@ -7,7 +7,7 @@ from jaxns.initial_state import init_sample_collection, get_uniform_init_live_po
     get_live_points_from_samples
 from jaxns.model import Model
 from jaxns.prior import PriorModelGen, Prior
-from jaxns.static_uniform import UniformSampler
+from jaxns.uniform_samplers import UniformSampler
 from jaxns.types import NestedSamplerState, SampleCollection, TerminationCondition
 
 tfpd = tfp.distributions
