@@ -4,43 +4,22 @@ from jax import numpy as jnp, vmap, random
 
 from jaxns import StaticNestedSampler, collect_samples
 from jaxns.initial_state import init_sample_collection, get_uniform_init_live_points, \
-    get_live_points_from_samples
-from jaxns.model import Model
-from jaxns.prior import PriorModelGen, Prior
-from jaxns.uniform_samplers import UniformSampler
+    get_live_points_from_samples, find_first_true_indices
 from jaxns.types import NestedSamplerState, SampleCollection, TerminationCondition
+from jaxns.uniform_samplers import UniformSampler
 
 tfpd = tfp.distributions
 
 
-def test_init_sample_collection():
-    def prior_model() -> PriorModelGen:
-        x = yield Prior(tfpd.Uniform(low=0, high=2))
-        y = yield Prior(tfpd.Normal(loc=2, scale=x))
-        z = x + y
-        return z
-
-    def log_likelihood(z):
-        return -z ** 2
-
-    model = Model(prior_model=prior_model,
-                  log_likelihood=log_likelihood)
-
+def test_init_sample_collection(basic3_model):
+    model = basic3_model
     sample_collection = init_sample_collection(size=10, model=model)
+    assert sample_collection.sample_idx == 0
+    assert sample_collection.reservoir.log_L.size == 10
 
 
-def test_get_live_points_from_samples():
-    def prior_model() -> PriorModelGen:
-        x = yield Prior(tfpd.Uniform(low=0, high=2))
-        y = yield Prior(tfpd.Normal(loc=2, scale=x))
-        z = x + y
-        return z
-
-    def log_likelihood(z):
-        return -z ** 2
-
-    model = Model(prior_model=prior_model,
-                  log_likelihood=log_likelihood)
+def test_get_live_points_from_samples(basic3_model):
+    model = basic3_model
 
     U = jnp.stack(list(
         map(lambda x: x.flatten(), jnp.meshgrid(jnp.linspace(0., 1., 100), jnp.linspace(0., 1., 100), indexing='ij'))),
@@ -67,18 +46,8 @@ def test_get_live_points_from_samples():
     assert state.sample_collection.sample_idx == 1
 
 
-def test_static_uniform():
-    def prior_model() -> PriorModelGen:
-        x = yield Prior(tfpd.Uniform(low=0, high=2))
-        y = yield Prior(tfpd.Normal(loc=2, scale=x))
-        z = x + y
-        return z
-
-    def log_likelihood(z):
-        return -z ** 2
-
-    model = Model(prior_model=prior_model,
-                  log_likelihood=log_likelihood)
+def test_static_uniform(basic3_model):
+    model = basic3_model
 
     m = 1000
     sample_collection = init_sample_collection(size=m, model=model)
@@ -98,3 +67,10 @@ def test_static_uniform():
     state = collect_samples(state=state, new_reservoir=live_points.reservoir)
     assert state.sample_collection.sample_idx > 0
     assert jnp.mean(1. / live_points.reservoir.num_likelihood_evaluations) > efficiency_threshold
+
+
+def test_find_first_true_indices():
+    # Usage:
+    arr = jnp.array([False, True, False, True, True, False, True, False])
+    assert find_first_true_indices(arr, 3).tolist() == [1, 3, 4]
+    assert find_first_true_indices(arr, 1).tolist() == [1]

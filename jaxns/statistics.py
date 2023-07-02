@@ -2,7 +2,7 @@ from typing import Tuple, Union, List
 
 from etils.array_types import FloatArray, IntArray
 from jax import numpy as jnp, tree_map
-from jax._src.lax.control_flow import while_loop
+from jax._src.lax.control_flow import while_loop, scan
 from jax._src.lax.slicing import dynamic_update_slice
 
 from jaxns.internals.log_semiring import LogSpace
@@ -96,6 +96,69 @@ def _update_evidence_calculation(num_live_points: FloatArray, log_L: FloatArray,
     return next_evidence_calculation
 
 
+def _update_evidence_calculation_dual(num_live_points: FloatArray, log_L: FloatArray, next_log_L_contour: FloatArray,
+                                      evidence_calculation: EvidenceCalculation) -> EvidenceCalculation:
+    """
+    Update an evidence calculation with the next sample from the shrinkage distribution.
+
+    Dual representation:
+
+        Z_i = Z_i-1 + X_i * dL_i
+
+    Whereas the prime representation is Z_i = Z_i-1 + L_i * dX_i
+
+    Args:
+        num_live_points: number of live points at the current shrinkage step
+        log_L: the log likelihood of the current contour
+        next_log_L_contour: the log likelihood of the next contour after shrinkage
+        evidence_calculation: the evidence calculation to update
+
+    Returns:
+        an updated evidence calculation
+    """
+    # num_live_points = num_live_points.astype(float_type)
+    next_L = LogSpace(next_log_L_contour)
+    L_contour = LogSpace(log_L)
+
+    X_mean = LogSpace(evidence_calculation.log_X_mean)
+    X2_mean = LogSpace(evidence_calculation.log_X2_mean)
+    Z_mean = LogSpace(evidence_calculation.log_Z_mean)
+    ZX_mean = LogSpace(evidence_calculation.log_ZX_mean)
+    Z2_mean = LogSpace(evidence_calculation.log_Z2_mean)
+    dZ2_mean = LogSpace(evidence_calculation.log_dZ2_mean)
+
+    dL = (next_L - L_contour).abs()
+    one = LogSpace(0.)
+    two = LogSpace(jnp.log(2.))
+
+    # T ~ Beta[n, 1]
+    # T_mean = n / (n + 1) = 1 / (1 + 1/n)
+    # T2_mean = n / (n + 2) = 1 / (1 + 2/n)
+
+    # T_mean = LogSpace(jnp.log(1.) - jnp.log(1. + 1./num_live_points))
+    T_mean = LogSpace(- jnp.logaddexp(0., -jnp.log(num_live_points)))
+    # T2_mean = LogSpace(jnp.log(1.) - jnp.log(1. + 2./num_live_points))
+    T2_mean = LogSpace(- jnp.logaddexp(0., jnp.log(2.) - jnp.log(num_live_points)))
+
+    next_X_mean = X_mean * T_mean
+    next_X2_mean = X2_mean * T2_mean
+    next_Z_mean = Z_mean + (T_mean * X_mean) * dL
+    next_ZX_mean = ZX_mean * T_mean + T2_mean * X2_mean * dL
+    next_Z2_mean = Z2_mean + two * (ZX_mean * T_mean) * dL + (T2_mean * X2_mean) * dL ** 2
+    next_dZ2_mean = dZ2_mean + (T2_mean * X2_mean) * dL ** 2
+
+    next_evidence_calculation = evidence_calculation._replace(
+        log_X_mean=next_X_mean.log_abs_val.astype(float_type),
+        log_X2_mean=next_X2_mean.log_abs_val.astype(float_type),
+        log_Z_mean=next_Z_mean.log_abs_val.astype(float_type),
+        log_Z2_mean=next_Z2_mean.log_abs_val.astype(float_type),
+        log_ZX_mean=next_ZX_mean.log_abs_val.astype(float_type),
+        log_dZ2_mean=next_dZ2_mean.log_abs_val.astype(float_type)
+    )
+
+    return next_evidence_calculation
+
+
 def compute_evidence_no_stats(sample_collection: SampleCollection, num_live_points: FloatArray) \
         -> EvidenceCalculation:
     """
@@ -171,6 +234,68 @@ def compute_evidence(sample_collection: SampleCollection, num_live_points: Float
         next_log_L_contour = next_log_L
         # Get log_dZ_mean, and log_X_mean
         next_evidence_calculation = _update_evidence_calculation(
+            num_live_points=next_num_live_points,
+            log_L=log_L_contour,
+            next_log_L_contour=next_log_L,
+            evidence_calculation=evidence_calculation
+        )
+
+        next_dZ_mean = (LogSpace(next_evidence_calculation.log_Z_mean)
+                        - LogSpace(evidence_calculation.log_Z_mean)).abs()
+
+        next_log_dZ_mean = log_dZ_mean.at[idx].set(next_dZ_mean.log_abs_val)
+        next_log_X_mean = log_X_mean.at[idx].set(next_evidence_calculation.log_X_mean)
+        next_idx = idx + jnp.ones_like(idx)
+        return (next_evidence_calculation, next_idx, next_log_L_contour, next_log_dZ_mean, next_log_X_mean)
+
+    initial_evidence_calculation = _init_evidence_calculation()
+    init_log_L_contour = sample_collection.reservoir.log_L_constraint[0]
+    init_log_dZ_mean = jnp.full(num_live_points.shape, -jnp.inf, float_type)
+    init_log_X_mean = jnp.full(num_live_points.shape, -jnp.inf, float_type)
+
+    (final_evidence_calculation, final_idx, final_log_L_contour, final_log_dZ_mean, final_log_X_mean) = \
+        while_loop(thread_cond,
+                   thread_body,
+                   (initial_evidence_calculation, jnp.asarray(0, int_type), init_log_L_contour,
+                    init_log_dZ_mean, init_log_X_mean))
+
+    sample_stats = SampleStatistics(
+        num_live_points=num_live_points,
+        log_X_mean=final_log_X_mean,
+        log_dZ_mean=final_log_dZ_mean,
+    )
+    return final_evidence_calculation, sample_stats
+
+
+def compute_evidence_dual(sample_collection: SampleCollection, num_live_points: FloatArray) \
+        -> Tuple[EvidenceCalculation, SampleStatistics]:
+    """
+    Compute the evidence by traversing the sample collection, using dual representation.
+
+    Z = int_0^L_max (1 - X(L)) dL
+
+    Args:
+        sample_collection: the sorted sample collection to use to calculate the evidence
+        num_live_points: the number of live points at each sample (see compute_num_live_points_from_unit_threads)
+
+    Returns:
+        evidence calculation and the sample statistics
+    """
+    num_samples = sample_collection.sample_idx
+
+    CarryType = Tuple[EvidenceCalculation, IntArray, FloatArray, FloatArray, FloatArray]
+
+    def thread_cond(body_state: CarryType):
+        (evidence_calculation, idx, log_L_contour, log_dZ_mean, log_X_mean) = body_state
+        return idx < num_samples
+
+    def thread_body(body_state: CarryType) -> CarryType:
+        (evidence_calculation, idx, log_L_contour, log_dZ_mean, log_X_mean) = body_state
+        next_num_live_points = num_live_points[idx]
+        next_log_L = sample_collection.reservoir.log_L[idx]
+        next_log_L_contour = next_log_L
+        # Get log_dZ_mean, and log_X_mean
+        next_evidence_calculation = _update_evidence_calculation_dual(
             num_live_points=next_num_live_points,
             log_L=log_L_contour,
             next_log_L_contour=next_log_L,
@@ -425,3 +550,28 @@ def combine_reservoirs(*reservoirs: Reservoir) -> Tuple[Reservoir, jnp.ndarray]:
             combined_num_live_points = combined_num_live_points.at[j].add(num_live_points[i])
 
     return output_reservoir, combined_num_live_points
+
+
+def compute_shrinkage_stats(num_live_points):
+    def _update_stats(state, num_live_points):
+        X_mean = LogSpace(state['log_X_mean'])
+        X2_mean = LogSpace(state['log_X2_mean'])
+
+        T_mean = LogSpace(- jnp.logaddexp(0., -jnp.log(num_live_points)))
+        T2_mean = LogSpace(- jnp.logaddexp((0.), jnp.log(2.) - jnp.log(num_live_points)))
+
+        next_X_mean = X_mean * T_mean
+        next_X2_mean = X2_mean * T2_mean
+
+        return dict(log_X_mean=next_X_mean.log_abs_val, log_X2_mean=next_X2_mean.log_abs_val), dict(
+            log_X_mean=next_X_mean.log_abs_val, log_X2_mean=next_X2_mean.log_abs_val)
+
+    state = dict(
+        log_X_mean=jnp.asarray(0., float_type),
+        log_X2_mean=jnp.asarray(0., float_type),
+    )
+    _, stats = scan(_update_stats,
+                    state,
+                    num_live_points)
+    log_X_uncert = (LogSpace(stats['log_X2_mean']) - LogSpace(stats['log_X_mean']).square()).sqrt().log_abs_val
+    return stats['log_X_mean'], log_X_uncert
