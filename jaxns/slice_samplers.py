@@ -61,6 +61,7 @@ class UniDimSliceSampler(MarkovSampler):
     def preprocess(self, state: NestedSamplerState, live_points: LivePoints) -> PreProcessType:
         if self.perfect: # nothing needed
             return ()
+        return ()
         # else: # step out with doubling
         #     return multi_ellipsoidal_params()
 
