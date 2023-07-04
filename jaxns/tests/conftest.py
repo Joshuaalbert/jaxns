@@ -4,11 +4,11 @@ import pylab as plt
 import pytest
 from jax import numpy as jnp, random
 from jax._src.scipy.linalg import solve_triangular
-
 from tensorflow_probability.substrates import jax as tfp
 
 from jaxns import PriorModelGen, Prior, Model, ExactNestedSampler, TerminationCondition, bruteforce_evidence, \
     ApproximateNestedSampler, sample_evidence, UniformSampler, MultiellipsoidalSampler
+from jaxns.adaptive_refinement import AdaptiveRefinement
 
 tfpd = tfp.distributions
 
@@ -33,11 +33,12 @@ def basic_model():
     model = Model(prior_model=prior_model,
                   log_likelihood=log_likelihood)
     return model
-    
+
+
 @pytest.fixture(scope='package')
 def basic_run_results(basic_model):
     model = basic_model
-    
+
     exact_ns = ExactNestedSampler(model=model,
                                   num_live_points=50,
                                   num_parallel_samplers=1,
@@ -90,6 +91,7 @@ def basic2_results():
     X_exact = exact_X(jnp.exp(results.log_L_samples))
     return log_Z_true, state, results, X_exact
 
+
 @pytest.fixture(scope='package')
 def basic3_model():
     def prior_model() -> PriorModelGen:
@@ -104,6 +106,7 @@ def basic3_model():
     model = Model(prior_model=prior_model,
                   log_likelihood=log_likelihood)
     return model
+
 
 @pytest.fixture(scope='package')
 def plateau_run_results():
@@ -178,23 +181,44 @@ def basic_mvn_model():
         return log_normal(x, data_mu, data_cov)
 
     model = Model(prior_model=prior_model, log_likelihood=log_likelihood)
-    return true_logZ, model
+    ns = ApproximateNestedSampler(
+        model=model,
+        num_live_points=200,
+        num_parallel_samplers=1,
+        max_samples=40000
+    )
+
+    return true_logZ, model, ns
 
 
 @pytest.fixture(scope='package')
 def basic_mvn_run_results(basic_mvn_model):
-    true_logZ, model = basic_mvn_model
+    true_logZ, model, ns = basic_mvn_model
 
-    # model.sanity_check(random.PRNGKey(42), S=100)
-    exact_ns = ExactNestedSampler(model=model, num_live_points=100, num_parallel_samplers=1,
-                                  max_samples=40000, patience=20)
     with Timer():
-        termination_reason, state = exact_ns(random.PRNGKey(41),
-                                             term_cond=TerminationCondition(live_evidence_frac=1e-5))
-        results = exact_ns.to_results(state, termination_reason)
-        exact_ns.summary(results)
-    exact_ns.plot_diagnostics(results)
+        termination_reason, state = ns(random.PRNGKey(42),
+                                       term_cond=TerminationCondition(live_evidence_frac=1e-5))
+        results = ns.to_results(state, termination_reason)
+        ns.summary(results)
+    ns.plot_diagnostics(results)
     return true_logZ, state, results
+
+
+@pytest.fixture(scope='package')
+def basic_mvn_run_adaptive_refinement_results(basic_mvn_model, basic_mvn_run_results):
+    true_logZ, model, ns = basic_mvn_model
+    true_logZ, state, results = basic_mvn_run_results
+    ar = AdaptiveRefinement(model=model, patience=20, num_parallel_samplers=1)
+    with Timer():
+        ar_state = ar(state=state)
+        ar_results = ns.to_results(ar_state, 0)
+        ns.summary(ar_results)
+    ns.plot_diagnostics(ar_results)
+    print(jnp.mean(results.num_live_points_per_sample))
+    print(jnp.mean(ar_results.num_live_points_per_sample))
+    print(jnp.log(jnp.mean(results.num_live_points_per_sample)) - jnp.log(
+        jnp.mean(ar_results.num_live_points_per_sample)))
+    return true_logZ, state, ar_results
 
 
 @pytest.fixture(scope='package')

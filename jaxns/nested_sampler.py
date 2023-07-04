@@ -117,7 +117,8 @@ class BaseNestedSampler:
 
         evidence_calculation, sample_stats = analyse_sample_collection(
             sample_collection=sample_collection,
-            sorted_collection=True
+            sorted_collection=True,
+            dual=False
         )
 
         log_Z_mean, log_Z_var = linear_to_log_stats(

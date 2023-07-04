@@ -140,7 +140,9 @@ def find_first_true_indices(mask: jnp.ndarray, N: int) -> jnp.ndarray:
     return first_N_indices
 
 
-def get_live_points_from_samples(state: NestedSamplerState, log_L_constraint: FloatArray, num_live_points: int,
+def get_live_points_from_samples(state: NestedSamplerState,
+                                 log_L_constraint: FloatArray,
+                                 num_live_points: int,
                                  sorted_collection: bool = True) \
         -> Tuple[NestedSamplerState, LivePoints]:
     """

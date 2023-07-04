@@ -6,6 +6,7 @@ from jax import tree_map, numpy as jnp, random, pmap
 from jax._src.lax.control_flow import while_loop, scan
 from jax._src.lax.parallel import all_gather
 
+from jaxns.initial_state import find_first_true_indices
 from jaxns.model import Model
 from jaxns.statistics import analyse_sample_collection
 from jaxns.termination import determine_termination
@@ -114,6 +115,8 @@ class MarkovSampler(AbstractSampler):
         Returns:
             a seed point
         """
+        select_mask = live_points.reservoir.log_L > log_L_constraint
+        sample_idx = find_first_true_indices(select_mask, N=1)[0]
         sample_idx = random.randint(key, (), minval=0, maxval=live_points.reservoir.log_L.size)
         return SeedPoint(
             U0=live_points.reservoir.point_U[sample_idx],

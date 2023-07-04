@@ -329,7 +329,7 @@ def compute_evidence_dual(sample_collection: SampleCollection, num_live_points: 
     return final_evidence_calculation, sample_stats
 
 
-def analyse_sample_collection(sample_collection: SampleCollection, sorted_collection: bool = True) \
+def analyse_sample_collection(sample_collection: SampleCollection, sorted_collection: bool = True, dual: bool = False) \
         -> Tuple[EvidenceCalculation, SampleStatistics]:
     """
     Computes the evidence and statistics.
@@ -361,10 +361,16 @@ def analyse_sample_collection(sample_collection: SampleCollection, sorted_collec
             reservoir=tree_map(lambda x: x[sort_idx], sample_collection.reservoir)
         )
 
-    evidence_calculation, sample_stats = compute_evidence(
-        sample_collection=sample_collection,
-        num_live_points=num_live_points
-    )
+    if dual:
+        evidence_calculation, sample_stats = compute_evidence_dual(
+            sample_collection=sample_collection,
+            num_live_points=num_live_points
+        )
+    else:
+        evidence_calculation, sample_stats = compute_evidence(
+            sample_collection=sample_collection,
+            num_live_points=num_live_points
+        )
 
     return evidence_calculation, sample_stats
 
