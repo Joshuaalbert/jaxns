@@ -5,7 +5,7 @@ from typing import Tuple, Generator, Callable, Optional, Union, List
 import jax.numpy as jnp
 import numpy as np
 import tensorflow_probability.substrates.jax as tfp
-from etils.array_types import FloatArray, IntArray, BoolArray
+from jaxns.types import FloatArray, IntArray, BoolArray
 
 from jaxns.internals.shapes import tuple_prod
 from jaxns.types import float_type, LikelihoodType, LikelihoodInputType, UType, XType

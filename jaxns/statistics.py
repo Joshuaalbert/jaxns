@@ -1,12 +1,12 @@
 from typing import Tuple, Union, List
 
-from etils.array_types import FloatArray, IntArray
 from jax import numpy as jnp, tree_map
 from jax._src.lax.control_flow import while_loop, scan
 from jax._src.lax.slicing import dynamic_update_slice
 
 from jaxns.internals.log_semiring import LogSpace
 from jaxns.types import EvidenceCalculation, SampleCollection, SampleStatistics, float_type, int_type, Reservoir
+from jaxns.types import FloatArray, IntArray
 
 __all__ = [
     'compute_evidence',

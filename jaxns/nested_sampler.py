@@ -3,7 +3,7 @@ from functools import partial
 from typing import Optional, Tuple, Union, List
 
 import tensorflow_probability.substrates.jax as tfp
-from etils.array_types import PRNGKey, IntArray
+from jaxns.types import PRNGKey, IntArray
 from jax import random, numpy as jnp, core, tree_map, vmap, jit
 
 from jaxns.adaptive_refinement import AdaptiveRefinement

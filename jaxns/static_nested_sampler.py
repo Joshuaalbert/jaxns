@@ -1,7 +1,7 @@
 import logging
 from typing import Tuple, NamedTuple, TypeVar, Optional, List, Union
 
-from etils.array_types import PRNGKey, IntArray, BoolArray, FloatArray
+from jaxns.types import PRNGKey, IntArray, BoolArray, FloatArray
 from jax import tree_map, numpy as jnp, random, pmap
 from jax._src.lax.control_flow import while_loop, scan
 from jax._src.lax.parallel import all_gather

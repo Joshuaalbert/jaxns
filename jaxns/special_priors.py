@@ -2,7 +2,7 @@ import logging
 from typing import Tuple, Union, Optional, Literal
 
 import tensorflow_probability.substrates.jax as tfp
-from etils.array_types import FloatArray, IntArray, BoolArray
+from jaxns.types import FloatArray, IntArray, BoolArray
 from jax import numpy as jnp, vmap
 from jax._src.lax.control_flow import while_loop, scan
 from jax._src.scipy.special import gammaln
