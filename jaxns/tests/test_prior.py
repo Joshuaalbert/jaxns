@@ -102,7 +102,7 @@ def test_priors():
     print(d)
     assert d.forward(jnp.ones(d.base_shape, float_type)).shape == d.shape
     assert d.forward(jnp.zeros(d.base_shape, float_type)).shape == d.shape
-    assert d.base_shape == ()
+    assert d.base_shape == (0,)
     assert d.shape == (5,)
 
     d = Prior(tfpd.Uniform(low=jnp.zeros(5), high=jnp.ones(5)))
