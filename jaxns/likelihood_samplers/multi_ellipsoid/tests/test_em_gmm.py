@@ -3,7 +3,7 @@ from jax import numpy as jnp, random, jit
 from sklearn.datasets import make_blobs
 from sklearn.metrics import adjusted_rand_score
 
-from jaxns.likelihood_samplers.em_gmm import em_gmm
+from jaxns.likelihood_samplers.multi_ellipsoid.em_gmm import em_gmm
 
 
 def test_em_gmm():

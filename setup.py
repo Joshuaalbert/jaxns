@@ -5,13 +5,17 @@ from setuptools import setup
 
 __minimum_jax_version__ = '0.2.9'
 
-setup_requires = ['jax>=' + __minimum_jax_version__]
+setup_requires = [
+    'jax',
+    'jaxlib',
+    'tensorflow_probability'
+]
 
 with open("README.md", "r") as fh:
     long_description = fh.read()
 
 setup(name='jaxns',
-      version='2.2.0',
+      version='2.2.1',
       description='Nested Sampling in JAX',
       long_description=long_description,
       long_description_content_type="text/markdown",
