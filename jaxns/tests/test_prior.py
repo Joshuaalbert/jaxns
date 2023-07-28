@@ -3,6 +3,7 @@ import logging
 import tensorflow_probability.substrates.jax as tfp
 from jax import random, numpy as jnp, vmap
 
+from jaxns.model import Model
 from jaxns.prior import PriorModelGen, Prior, parse_prior, compute_log_likelihood, InvalidDistribution, \
     InvalidPriorName, prepare_input, distribution_chain
 from jaxns.special_priors import Bernoulli, Categorical, Poisson, Beta, ForcedIdentifiability
@@ -247,3 +248,15 @@ def test_special_priors():
     x = vmap(lambda u: d.forward(u))(u_input)
     u = vmap(lambda x: d.inverse(x))(x)
     assert jnp.allclose(u, u_input)
+
+
+def test_gh95():
+    def prior_model():
+        x = yield Prior(dist_or_value=jnp.asarray(0.))
+        return x
+
+    def log_likelihood(x):
+        return jnp.sum(x)
+
+    model = Model(prior_model=prior_model, log_likelihood=log_likelihood)
+    assert model.U_ndims == 0
