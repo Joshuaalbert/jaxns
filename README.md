@@ -90,6 +90,9 @@ controlling some precision parameters.
 
 # Change Log
 
+28 July, 2023 -- JAXNS 2.2.2 released. Bug fix for singular priors.
+
+
 26 June, 2023 -- JAXNS 2.2.1 released. Multi-ellipsoidal sampler added back in. Adaptive refinement disabled, as a bias
 has been detected in it.
 
