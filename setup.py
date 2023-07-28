@@ -3,6 +3,8 @@
 from setuptools import find_packages
 from setuptools import setup
 
+__minimum_jax_version__ = '0.2.9'
+
 setup_requires = [
     'jax',
     'jaxlib',
@@ -28,6 +30,7 @@ setup(name='jaxns',
       packages=find_packages('./'),
       classifiers=[
           "Programming Language :: Python :: 3",
+          "License :: OSI Approved :: Apache Software License",
           "Operating System :: OS Independent",
       ],
       python_requires='>=3.8',

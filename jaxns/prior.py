@@ -207,8 +207,7 @@ class Prior(AbstractPrior):
         if isinstance(dist_or_value, tfpd.Distribution):
             self._type = 'dist'
             self._dist = Distribution(dist_or_value)
-
-        elif isinstance(dist_or_value, (jnp.ndarray, np.ndarray)):
+        else:
             self._type = 'value'
             self._value = jnp.asarray(dist_or_value)
         self.name = name
@@ -227,7 +226,7 @@ class Prior(AbstractPrior):
 
     def _base_shape(self) -> Tuple[int, ...]:
         if self._type == 'value':
-            return ()
+            return (0,)
         elif self._type == 'dist':
             return self.dist.base_shape
         else:
