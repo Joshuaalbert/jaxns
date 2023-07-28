@@ -3,7 +3,7 @@ import logging
 from typing import NamedTuple, TextIO, Union, Optional, Tuple, TypeVar, Callable
 
 import numpy as np
-from etils.array_types import PRNGKey
+from jaxns.types import PRNGKey
 from jax import numpy as jnp, tree_map, vmap, random, jit
 from jax._src.lax.control_flow import while_loop
 

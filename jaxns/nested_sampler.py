@@ -3,7 +3,7 @@ from functools import partial
 from typing import Optional, Tuple, Union, List
 
 import tensorflow_probability.substrates.jax as tfp
-from etils.array_types import PRNGKey, IntArray
+from jaxns.types import PRNGKey, IntArray
 from jax import random, numpy as jnp, core, tree_map, vmap, jit
 
 from jaxns.adaptive_refinement import AdaptiveRefinement
@@ -117,7 +117,8 @@ class BaseNestedSampler:
 
         evidence_calculation, sample_stats = analyse_sample_collection(
             sample_collection=sample_collection,
-            sorted_collection=True
+            sorted_collection=True,
+            dual=False
         )
 
         log_Z_mean, log_Z_var = linear_to_log_stats(

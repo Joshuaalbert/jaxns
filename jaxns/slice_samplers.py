@@ -1,7 +1,7 @@
 import logging
 from typing import TypeVar, NamedTuple, Tuple, Optional
 
-from etils.array_types import PRNGKey, FloatArray, BoolArray
+from jaxns.types import PRNGKey, FloatArray, BoolArray
 from jax import numpy as jnp, random, tree_map
 from jax._src.lax.control_flow import while_loop
 
@@ -61,6 +61,7 @@ class UniDimSliceSampler(MarkovSampler):
     def preprocess(self, state: NestedSamplerState, live_points: LivePoints) -> PreProcessType:
         if self.perfect: # nothing needed
             return ()
+        return ()
         # else: # step out with doubling
         #     return multi_ellipsoidal_params()
 

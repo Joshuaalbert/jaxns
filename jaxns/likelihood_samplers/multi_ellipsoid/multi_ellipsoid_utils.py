@@ -2,7 +2,7 @@ from typing import NamedTuple, Tuple, Literal
 
 import numpy as np
 import pylab as plt
-from etils.array_types import IntArray, FloatArray, PRNGKey, BoolArray
+from jaxns.types import IntArray, FloatArray, PRNGKey, BoolArray
 from jax import numpy as jnp, vmap, random, tree_map
 from jax._src.lax.control_flow import while_loop
 from jax._src.scipy.special import gammaln

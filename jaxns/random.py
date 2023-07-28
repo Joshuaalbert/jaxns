@@ -1,6 +1,6 @@
 from typing import Optional
 
-from etils.array_types import FloatArray, PRNGKey, IntArray
+import chex
 from jax import random, numpy as jnp
 from jax._src.scipy.special import logsumexp
 
@@ -8,6 +8,7 @@ from jaxns.internals.log_semiring import cumulative_logsumexp
 
 __all__ = ['random_ortho_matrix',
            'resample_indicies']
+
 
 
 def random_ortho_matrix(key, n, special_orthogonal: bool = False):

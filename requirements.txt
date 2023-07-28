@@ -1,6 +1,6 @@
 jax
 jaxlib
-etils
+chex
 typing_extensions
 matplotlib
 numpy

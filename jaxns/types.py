@@ -1,6 +1,6 @@
-from typing import NamedTuple, Optional, Union, Any, Callable, Tuple, Dict
+from typing import NamedTuple, Optional, Union, Any, Callable, Tuple, Dict, List
 
-from etils.array_types import FloatArray, IntArray, PRNGKey, BoolArray
+import chex
 from jax import numpy as jnp
 
 __all__ = ['Sample',
@@ -16,6 +16,11 @@ __all__ = ['Sample',
 float_type = jnp.result_type(float)
 int_type = jnp.result_type(int)
 complex_type = jnp.result_type(complex)
+
+PRNGKey = chex.PRNGKey
+FloatArray = chex.Array
+IntArray = chex.Array
+BoolArray = chex.Array
 
 LikelihoodType = Callable[..., FloatArray]
 LikelihoodInputType = Tuple[jnp.ndarray, ...]  # Likeihood conditional variables
@@ -93,6 +98,20 @@ class TerminationCondition(NamedTuple):
     max_num_likelihood_evaluations: Optional[IntArray] = jnp.iinfo(int_type).max
     log_L_contour: Optional[FloatArray] = jnp.inf
     efficiency_threshold: Optional[FloatArray] = jnp.asarray(0., float_type)
+
+    def __and__(self, other):
+        return TerminationConditionConjunction(conds=[self, other])
+
+    def __or__(self, other):
+        return TerminationConditionDisjunction(conds=[self, other])
+
+
+class TerminationConditionConjunction(NamedTuple):
+    conds: List[Union['TerminationConditionDisjunction', 'TerminationConditionConjunction', TerminationCondition]]
+
+
+class TerminationConditionDisjunction(NamedTuple):
+    conds: List[Union['TerminationConditionDisjunction', TerminationConditionConjunction, TerminationCondition]]
 
 
 class NestedSamplerResults(NamedTuple):

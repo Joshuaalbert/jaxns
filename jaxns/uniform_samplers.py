@@ -1,7 +1,7 @@
 from typing import NamedTuple
 
-from etils.array_types import BoolArray, IntArray
-from etils.array_types import PRNGKey, FloatArray
+from jaxns.types import BoolArray, IntArray
+from jaxns.types import PRNGKey, FloatArray
 from jax import random, numpy as jnp
 from jax.lax import while_loop
 

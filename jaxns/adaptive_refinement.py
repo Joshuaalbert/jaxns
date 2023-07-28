@@ -1,22 +1,86 @@
 import logging
 from typing import Tuple, NamedTuple
 
-from etils.array_types import PRNGKey, FloatArray, IntArray, BoolArray
+from jaxns.types import PRNGKey, FloatArray, IntArray, BoolArray
 from jax import core, numpy as jnp, tree_map, random, pmap
 from jax._src.lax.control_flow import while_loop, scan
 from jax._src.lax.parallel import all_gather
 
+from jaxns.initial_state import sort_sample_collection, find_first_true_indices
 from jaxns.internals.stats import linear_to_log_stats
 from jaxns.model import Model
-from jaxns.static_nested_sampler import PreProcessType, add_chunk_dim, remove_chunk_dim, SeedPoint
 from jaxns.slice_samplers import UniDimSliceSampler
+from jaxns.static_nested_sampler import PreProcessType, add_chunk_dim, remove_chunk_dim, SeedPoint
 from jaxns.statistics import analyse_sample_collection
-from jaxns.types import NestedSamplerState, Reservoir, int_type, float_type
+from jaxns.types import NestedSamplerState, Reservoir, int_type, float_type, SampleCollection
 from jaxns.utils import sort_samples
 
 __all__ = ['AdaptiveRefinement']
 
 logger = logging.getLogger('jaxns')
+
+
+def revise_state(state: NestedSamplerState, sorted_collection: bool = True) -> NestedSamplerState:
+    sample_collection = state.sample_collection
+    if not sorted_collection:
+        sample_collection = sort_sample_collection(sample_collection)
+
+    # Pick the first num_live_points samples from the mask. The order of mask, determines which ones
+    # are selected
+    class CarryType(NamedTuple):
+        available: jnp.ndarray
+        sample_collection: SampleCollection
+        log_L_constraint: jnp.ndarray
+
+    def outer_body(outer_carry: CarryType) -> CarryType:
+        def body(carry: CarryType) -> CarryType:
+            sample_mask = jnp.bitwise_and(carry.available,
+                                          jnp.bitwise_and(
+                                              carry.sample_collection.reservoir.log_L_constraint <= carry.log_L_constraint,
+                                              carry.sample_collection.reservoir.log_L > carry.log_L_constraint)
+                                          )
+            sample_index = find_first_true_indices(mask=sample_mask, N=1)[0]
+            reservoir = carry.sample_collection.reservoir._replace(
+                log_L_constraint=carry.sample_collection.reservoir.log_L_constraint.at[sample_index].set(
+                    carry.log_L_constraint)
+            )
+            next_log_L_constraint = carry.sample_collection.reservoir.log_L[sample_index]
+            sample_collection = carry.sample_collection._replace(reservoir=reservoir)
+            available = carry.available.at[sample_index].set(jnp.asarray(False))
+            return CarryType(available=available,
+                             sample_collection=sample_collection,
+                             log_L_constraint=next_log_L_constraint)
+
+        def cond(carry: CarryType) -> jnp.ndarray:
+            sample_mask = jnp.bitwise_and(carry.available,
+                                          jnp.bitwise_and(
+                                              carry.sample_collection.reservoir.log_L_constraint <= carry.log_L_constraint,
+                                              carry.sample_collection.reservoir.log_L > carry.log_L_constraint)
+                                          )
+            return jnp.any(sample_mask)
+
+        init_carry = outer_carry._replace(
+            log_L_constraint=-jnp.inf
+        )
+        output_carry = while_loop(cond,
+                                  body,
+                                  init_carry)
+        return output_carry
+
+    def outer_cond(outer_carry: CarryType) -> jnp.ndarray:
+        done = jnp.any(outer_carry.available)
+        return jnp.bitwise_not(done)
+
+    init_carry = CarryType(
+        available=jnp.ones(sample_collection.reservoir.log_L.size, jnp.bool_),
+        sample_collection=sample_collection,
+        log_L_constraint=-jnp.inf
+    )
+    output_carry = while_loop(outer_cond,
+                              outer_body,
+                              init_carry)
+    state = state._replace(sample_collection=output_carry.sample_collection)
+    return state
 
 
 class AdaptiveRefinement:
@@ -37,7 +101,12 @@ class AdaptiveRefinement:
             raise ValueError(f"patience should be >= 1, got {patience}.")
         self.patience = patience
         self.num_parallel_samplers = num_parallel_samplers
-        self.sampler = UniDimSliceSampler(model=model, num_slices=model.U_ndims, midpoint_shrink=True, perfect=True)
+        self.sampler = UniDimSliceSampler(
+            model=model,
+            num_slices=model.U_ndims,
+            midpoint_shrink=True,
+            perfect=True
+        )
 
     def _split_state(self, state: NestedSamplerState) -> Tuple[NestedSamplerState, Reservoir]:
         """
@@ -195,14 +264,17 @@ class AdaptiveRefinement:
 
         def cond(body_state: CarryType) -> BoolArray:
             done = jnp.greater_equal(body_state.converged_step_count, self.patience)
-            done = body_state.iter_j >= 0  # TODO: remove
+            done = body_state.iter_j >= 20  # TODO: remove
             return jnp.bitwise_not(done)
 
         def body(body_state: CarryType) -> CarryType:
             key, improve_key = random.split(body_state.state.key, 2)
             state = body_state.state._replace(key=key)
 
-            preprocess_data = self.sampler.preprocess(state)
+            preprocess_data = self.sampler.preprocess(
+                state=state,
+                live_points=None
+            )
 
             update_reservoir = self._single_improvement_batch(
                 key=improve_key,
@@ -216,7 +288,8 @@ class AdaptiveRefinement:
 
             evidence_calculation, sample_stats = analyse_sample_collection(
                 sample_collection=all_state.sample_collection,
-                sorted_collection=True
+                sorted_collection=True,
+                dual=False
             )
             log_Z_mean, log_Z_var = linear_to_log_stats(
                 log_f_mean=evidence_calculation.log_Z_mean,
@@ -273,6 +346,11 @@ class AdaptiveRefinement:
         Returns:
             state after refinement
         """
+        # Current = (l*1, l1)
+        # Next = (l*2, l2)
+        # Case: l*2 <= l1
+        # If i.i.d. accept, else new sample
+        # Case: l*2 > l1 => l2 > l1 and new sample
         # Split state will give an error if this is a tracer context so don't JIT compile.
         iid_state, non_iid_reservoir = self._split_state(state)
 
@@ -301,8 +379,9 @@ class AdaptiveRefinement:
         # Is there a better way to get only one out, since they are identical on each device?
         (updated_state, output_log_Z) = tree_map(lambda x: x[0], (chunked_updated_state, chunked_output_log_Z))
 
-        # import pylab as plt
-        # plt.plot(output_log_Z)
-        # plt.show()
+        import pylab as plt
+        plt.plot(output_log_Z)
+        plt.show()
 
+        updated_state = revise_state(updated_state)
         return updated_state
