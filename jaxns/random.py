@@ -1,14 +1,13 @@
 from typing import Optional
 
-import chex
 from jax import random, numpy as jnp
 from jax._src.scipy.special import logsumexp
 
 from jaxns.internals.log_semiring import cumulative_logsumexp
+from jaxns.types import FloatArray, IntArray, PRNGKey
 
 __all__ = ['random_ortho_matrix',
            'resample_indicies']
-
 
 
 def random_ortho_matrix(key, n, special_orthogonal: bool = False):
