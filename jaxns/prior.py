@@ -178,8 +178,6 @@ class AbstractPrior(ABC):
 
     @property
     def base_ndims(self):
-        if len(self.base_shape) == 0:
-            return 0
         return tuple_prod(self.base_shape)
 
     @property
