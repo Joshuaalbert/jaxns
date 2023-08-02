@@ -3,7 +3,6 @@ import logging
 from typing import NamedTuple, TextIO, Union, Optional, Tuple, TypeVar, Callable
 
 import numpy as np
-from jaxns.types import PRNGKey
 from jax import numpy as jnp, tree_map, vmap, random, jit
 from jax._src.lax.control_flow import while_loop
 
@@ -11,6 +10,7 @@ from jaxns.internals.log_semiring import LogSpace
 from jaxns.internals.maps import replace_index, prepare_func_args
 from jaxns.model import Model
 from jaxns.random import resample_indicies
+from jaxns.types import PRNGKey
 from jaxns.types import SampleCollection, NestedSamplerState, Reservoir, NestedSamplerResults, \
     float_type, XType
 from jaxns.warnings import deprecated
@@ -23,6 +23,7 @@ __all__ = ['sort_samples',
            'marginalise_static',
            'marginalise_dynamic',
            'maximum_a_posteriori_point',
+           'evaluate_map_estimate',
            'summary',
            'analytic_posterior_samples',
            'sample_evidence',
@@ -174,6 +175,22 @@ def maximum_a_posteriori_point(results: NestedSamplerResults) -> XType:
     map_idx = jnp.argmax(results.log_posterior_density)
     map_points = tree_map(lambda x: x[map_idx], results.samples)
     return map_points
+
+
+def evaluate_map_estimate(results: NestedSamplerResults, fun: Callable[..., _V]) -> _V:
+    """
+    Marginalises function over posterior samples, where ESS is static.
+
+    Args:
+        results: results from run
+        fun (:code:`callable(**kwargs)`): function to marginalise
+
+    Returns:
+        estimate at MAP sample point
+    """
+    fun = prepare_func_args(fun)
+    map_sample = maximum_a_posteriori_point(results=results)
+    return fun(**map_sample)
 
 
 def _bit_mask(int_mask, width=8):
