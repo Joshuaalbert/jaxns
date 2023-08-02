@@ -6,7 +6,7 @@ from jax import random, numpy as jnp, vmap
 from jaxns.model import Model
 from jaxns.prior import PriorModelGen, Prior, parse_prior, compute_log_likelihood, InvalidDistribution, \
     InvalidPriorName, prepare_input, distribution_chain
-from jaxns.special_priors import Bernoulli, Categorical, Poisson, Beta, ForcedIdentifiability
+from jaxns.special_priors import Bernoulli, Categorical, Poisson, Beta, ForcedIdentifiability, UnnormalisedDirichlet
 from jaxns.types import float_type
 
 logger = logging.getLogger('jaxns')
@@ -246,6 +246,32 @@ def test_special_priors():
 
     u_input = vmap(lambda key: random.uniform(key, shape=d.base_shape))(random.split(random.PRNGKey(42), 1))
     x = vmap(lambda u: d.forward(u))(u_input)
+    u = vmap(lambda x: d.inverse(x))(x)
+    assert jnp.allclose(u, u_input)
+
+    d = UnnormalisedDirichlet(concentration=jnp.ones(5), name='x')
+    print(d)
+    assert d.base_shape == (5,)
+    assert d.shape == (5,)
+    assert d.forward(jnp.ones(d.base_shape, float_type)).shape == d.shape
+    assert d.forward(jnp.zeros(d.base_shape, float_type)).shape == d.shape
+
+    u_input = vmap(lambda key: random.uniform(key, shape=d.base_shape))(random.split(random.PRNGKey(42), 10))
+    x = vmap(lambda u: d.forward(u))(u_input)
+    assert jnp.all(x > 0.)
+    u = vmap(lambda x: d.inverse(x))(x)
+    assert jnp.allclose(u, u_input)
+
+    d = UnnormalisedDirichlet(concentration=jnp.ones((3, 5)), name='x')
+    print(d)
+    assert d.base_shape == (3, 5)
+    assert d.shape == (3, 5)
+    assert d.forward(jnp.ones(d.base_shape, float_type)).shape == d.shape
+    assert d.forward(jnp.zeros(d.base_shape, float_type)).shape == d.shape
+
+    u_input = vmap(lambda key: random.uniform(key, shape=d.base_shape))(random.split(random.PRNGKey(42), 10))
+    x = vmap(lambda u: d.forward(u))(u_input)
+    assert jnp.all(x > 0.)
     u = vmap(lambda x: d.inverse(x))(x)
     assert jnp.allclose(u, u_input)
 

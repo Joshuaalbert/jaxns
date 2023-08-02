@@ -2,7 +2,6 @@ import logging
 from typing import Tuple, Union, Optional, Literal
 
 import tensorflow_probability.substrates.jax as tfp
-from jaxns.types import FloatArray, IntArray, BoolArray
 from jax import numpy as jnp, vmap
 from jax._src.lax.control_flow import while_loop, scan
 from jax._src.scipy.special import gammaln
@@ -10,6 +9,7 @@ from tensorflow_probability.substrates.jax.math import lbeta, betaincinv
 
 from jaxns.internals.log_semiring import cumulative_logsumexp
 from jaxns.prior import AbstractPrior
+from jaxns.types import FloatArray, IntArray, BoolArray
 from jaxns.types import float_type
 
 logger = logging.getLogger('jaxns')
@@ -20,7 +20,8 @@ __all__ = [
     "Beta",
     "Categorical",
     "ForcedIdentifiability",
-    "Poisson"
+    "Poisson",
+    "UnnormalisedDirichlet"
 ]
 
 
@@ -292,3 +293,40 @@ class Poisson(AbstractPrior):
                                            body,
                                            (log_x, log_p, log_s))
         return jnp.exp(log_x).astype(self.dtype)
+
+
+class UnnormalisedDirichlet(AbstractPrior):
+    """
+    Represents an unnormalised dirichlet distribution of K classes.
+    That is, the output is related to the K-simplex via normalisation.
+
+    X ~ UnnormalisedDirichlet(alpha)
+    Y = X / sum(X) ==> Y ~ Dirichlet(alpha)
+    """
+
+    def __init__(self, *, concentration, name: Optional[str] = None):
+        super(UnnormalisedDirichlet, self).__init__(name=name)
+        self._dirichlet_dist = tfpd.Dirichlet(concentration=concentration)
+        self._gamma_dist = tfpd.Gamma(concentration=concentration, log_rate=0.)
+
+    def _dtype(self):
+        return self._dirichlet_dist.dtype
+
+    def _base_shape(self) -> Tuple[int, ...]:
+        return self._shape()
+
+    def _shape(self) -> Tuple[int, ...]:
+        return tuple(self._dirichlet_dist.batch_shape_tensor()) + tuple(self._dirichlet_dist.event_shape_tensor())
+
+    def _forward(self, U) -> Union[FloatArray, IntArray, BoolArray]:
+        return self._quantile(U)
+
+    def _inverse(self, X) -> FloatArray:
+        return self._gamma_dist.cdf(X)
+
+    def _log_prob(self, X) -> FloatArray:
+        return jnp.sum(self._gamma_dist.log_prob(X), axis=-1)
+
+    def _quantile(self, U):
+        gamma = self._gamma_dist.quantile(U).astype(self.dtype)
+        return gamma
