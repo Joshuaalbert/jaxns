@@ -21,6 +21,8 @@ logger = logging.getLogger('jaxns')
 __all__ = ['sort_samples',
            'collect_samples',
            'resample',
+           'marginalise_static_from_U',
+           'marginalise_dynamic_from_U',
            'marginalise_static',
            'marginalise_dynamic',
            'maximum_a_posteriori_point',
