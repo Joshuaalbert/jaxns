@@ -172,7 +172,9 @@ class BaseNestedSampler:
             # total_num_samples / total_num_likelihood_evaluations
             termination_reason=termination_reason,  # termination condition as bit mask
             num_slices=sample_collection.reservoir.num_slices,
-            samples=samples)
+            samples=samples,
+            U_samples=sample_collection.reservoir.point_U
+        )
 
     def __call__(self, key: PRNGKey, term_cond: TerminationCondition, *,
                  init_state: Optional[NestedSamplerState] = None) -> Tuple[IntArray, NestedSamplerState]:
