@@ -3,7 +3,6 @@ from functools import partial
 from typing import Optional, Tuple, Union, List
 
 import tensorflow_probability.substrates.jax as tfp
-from jaxns.types import PRNGKey, IntArray
 from jax import random, numpy as jnp, core, tree_map, vmap, jit
 
 from jaxns.adaptive_refinement import AdaptiveRefinement
@@ -15,6 +14,7 @@ from jaxns.plotting import plot_cornerplot, plot_diagnostics
 from jaxns.slice_samplers import UniDimSliceSampler
 from jaxns.static_nested_sampler import StaticNestedSampler, AbstractSampler
 from jaxns.statistics import analyse_sample_collection
+from jaxns.types import PRNGKey, IntArray
 from jaxns.types import TerminationCondition, NestedSamplerState, NestedSamplerResults, LivePoints
 from jaxns.uniform_samplers import UniformSampler
 from jaxns.utils import collect_samples
@@ -173,7 +173,9 @@ class BaseNestedSampler:
             # total_num_samples / total_num_likelihood_evaluations
             termination_reason=termination_reason,  # termination condition as bit mask
             num_slices=sample_collection.reservoir.num_slices,
-            samples=samples)
+            samples=samples,
+            U_samples=sample_collection.reservoir.point_U
+        )
 
     def __call__(self, key: PRNGKey, term_cond: TerminationCondition, *,
                  init_state: Optional[NestedSamplerState] = None) -> Tuple[IntArray, NestedSamplerState]:
