@@ -10,9 +10,10 @@ from jax._src.lax.control_flow import while_loop
 from jaxns.internals.log_semiring import LogSpace
 from jaxns.internals.maps import replace_index, prepare_func_args
 from jaxns.model import Model
+from jaxns.prior import prepare_input
 from jaxns.random import resample_indicies
 from jaxns.types import SampleCollection, NestedSamplerState, Reservoir, NestedSamplerResults, \
-    float_type, XType
+    float_type, XType, UType
 from jaxns.warnings import deprecated
 
 logger = logging.getLogger('jaxns')
@@ -97,6 +98,78 @@ def resample(key: PRNGKey, samples: XType, log_weights: jnp.ndarray, S: int = No
 
 
 _V = TypeVar('_V')
+
+
+def marginalise_static_from_U(key: PRNGKey, U_samples: UType, model: Model, log_weights: jnp.ndarray, ESS: int,
+                              fun: Callable[..., _V]) -> _V:
+    """
+    Marginalises function over posterior samples, where ESS is static.
+
+    Args:
+        key: PRNG key
+        U_samples: array of U samples
+        model: model
+        log_weights: log weights from nested sampling
+        ESS: static effective sample size
+        fun (:code:`callable(**kwargs)`): function to marginalise
+
+    Returns:
+        expectation over resampled samples
+    """
+    fun = prepare_func_args(fun)
+    U_samples = resample(key, U_samples, log_weights, S=ESS, replace=True)
+
+    def eval(U):
+        V = prepare_input(U=U, prior_model=model.prior_model)
+        return fun(*V)
+
+    marginalised = tree_map(lambda marg: jnp.nanmean(marg, axis=0), vmap(eval)(U_samples))
+    return marginalised
+
+
+def marginalise_dynamic_from_U(key: PRNGKey, U_samples: UType, model: Model, log_weights: jnp.ndarray, ESS: jnp.ndarray,
+                               fun: Callable[..., _V]) -> _V:
+    """
+    Marginalises function over posterior samples, where ESS can be dynamic.
+
+    Args:
+        key: PRNG key
+        U_samples: array of U samples
+        model: model
+        log_weights: log weights from nested sampling
+        ESS: dynamic effective sample size
+        fun (:code:`callable(**kwargs)`): function to marginalise
+
+    Returns:
+        expectation of `func` over resampled samples.
+    """
+    fun = prepare_func_args(fun)
+    ESS = jnp.asarray(ESS)
+
+    def eval(U):
+        V = prepare_input(U=U, prior_model=model.prior_model)
+        return fun(*V)
+
+    def body(state):
+        (key, i, count, marginalised) = state
+        key, resample_key = random.split(key, 2)
+        _samples = resample(resample_key, U_samples, log_weights, S=1)
+        _sample = tree_map(lambda v: v[0], _samples)
+        update = eval(_sample)
+        count = tree_map(lambda y, c: jnp.where(jnp.any(jnp.isnan(y)), c, c + jnp.asarray(1, c.dtype)),
+                         update, count)
+        marginalised = tree_map(lambda x, y: jnp.where(jnp.isnan(y), x, x + y.astype(x.dtype)),
+                                marginalised, update)
+        return (key, i + jnp.ones_like(i), count, marginalised)
+
+    test_output = fun(**tree_map(lambda v: v[0], U_samples))
+    count = tree_map(lambda x: jnp.asarray(0, x.dtype), test_output)
+    init_marginalised = tree_map(lambda x: jnp.zeros_like(x), test_output)
+    (_, _, count, marginalised) = while_loop(lambda state: state[1] < ESS,
+                                             body,
+                                             (key, jnp.array(0, ESS.dtype), count, init_marginalised))
+    marginalised = tree_map(lambda x, c: x / c, marginalised, count)
+    return marginalised
 
 
 def marginalise_static(key: PRNGKey, samples: XType, log_weights: jnp.ndarray, ESS: int, fun: Callable[..., _V]) -> _V:
