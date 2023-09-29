@@ -3,6 +3,7 @@ import pylab as plt
 import tensorflow_probability.substrates.jax as tfp
 from jax import numpy as jnp, random, tree_map, disable_jit, vmap
 
+import jaxns.common
 from jaxns import PriorModelGen, Prior, Model
 from jaxns.initial_state import get_uniform_init_live_points
 from jaxns.likelihood_samplers.multi_ellipsoid.multi_ellipsoid_utils import log_ellipsoid_volume, ellipsoid_clustering, \
@@ -69,8 +70,8 @@ def test_covariance_to_rotational():
     random_radii = random.uniform(random.PRNGKey(1), shape=(n,))
 
     J = random_rotation @ jnp.diag(1 / random_radii)
-    cov_J = jnp.linalg.inv(J @ J.T)
-    cov = random_rotation @ jnp.diag(random_radii ** 2) @ random_rotation.T
+    cov_J = jnp.linalg.inv(J @ jaxns.common.T)
+    cov = random_rotation @ jnp.diag(random_radii ** 2) @ jaxns.common.T
 
     np.testing.assert_allclose(cov, cov_J, atol=1e-6)
 
@@ -87,7 +88,7 @@ def test_ellipsoid_params():
     N = 2
     random_rotation = random_ortho_matrix(random.PRNGKey(0), n=N, special_orthogonal=True)
     random_radii = random.uniform(random.PRNGKey(1), shape=(N,))
-    cov = random_rotation @ jnp.diag(random_radii ** 2) @ random_rotation.T
+    cov = random_rotation @ jnp.diag(random_radii ** 2) @ jaxns.common.T
 
     X = random.multivariate_normal(random.PRNGKey(42),
                                    mean=jnp.zeros(N),
@@ -124,7 +125,7 @@ def test_ellipsoid_transforms():
     random_rotation = random_ortho_matrix(random.PRNGKey(0), n=N, special_orthogonal=True)
     random_radii = random.uniform(random.PRNGKey(1), shape=(N,))
     mu = jnp.zeros(N)
-    cov = random_rotation @ jnp.diag(random_radii ** 2) @ random_rotation.T
+    cov = random_rotation @ jnp.diag(random_radii ** 2) @ jaxns.common.T
 
     X = random.multivariate_normal(random.PRNGKey(42),
                                    mean=jnp.zeros(N),

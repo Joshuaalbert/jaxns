@@ -9,8 +9,9 @@ from jax._src.lax.parallel import all_gather
 from jaxns.initial_state import sort_sample_collection, find_first_true_indices
 from jaxns.internals.stats import linear_to_log_stats
 from jaxns.model import Model
-from jaxns.slice_samplers import UniDimSliceSampler
-from jaxns.static_nested_sampler import PreProcessType, add_chunk_dim, remove_chunk_dim, SeedPoint
+from jaxns.likelihood_samplers.slice_samplers import UniDimSliceSampler
+from jaxns.common import remove_chunk_dim, add_chunk_dim
+from jaxns.abc import PreProcessType, SeedPoint
 from jaxns.statistics import analyse_sample_collection
 from jaxns.types import NestedSamplerState, Reservoir, int_type, float_type, SampleCollection
 from jaxns.utils import sort_samples

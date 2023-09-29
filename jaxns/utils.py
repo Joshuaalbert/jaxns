@@ -102,6 +102,20 @@ def resample(key: PRNGKey, samples: XType, log_weights: jnp.ndarray, S: int = No
 
 _V = TypeVar('_V')
 
+def evaluate_map_estimate_from_U(results: NestedSamplerResults, model: Model, fun: Callable[..., _V]) -> _V:
+    """
+    Marginalises function over posterior samples, where ESS is static.
+
+    Args:
+        results: results from run
+        fun (:code:`callable(**kwargs)`): function to marginalise
+
+    Returns:
+        estimate at MAP sample point
+    """
+    map_sample_U = maximum_a_posteriori_point_U(results=results)
+    V = prepare_input(U=map_sample_U, prior_model=model.prior_model)
+    return fun(*V)
 
 def marginalise_static_from_U(key: PRNGKey, U_samples: UType, model: Model, log_weights: jnp.ndarray, ESS: int,
                               fun: Callable[..., _V]) -> _V:
@@ -119,7 +133,6 @@ def marginalise_static_from_U(key: PRNGKey, U_samples: UType, model: Model, log_
     Returns:
         expectation over resampled samples
     """
-    fun = prepare_func_args(fun)
     U_samples = resample(key, U_samples, log_weights, S=ESS, replace=True)
 
     def eval(U):
@@ -146,7 +159,6 @@ def marginalise_dynamic_from_U(key: PRNGKey, U_samples: UType, model: Model, log
     Returns:
         expectation of `func` over resampled samples.
     """
-    fun = prepare_func_args(fun)
     ESS = jnp.asarray(ESS)
 
     def eval(U):
@@ -249,6 +261,22 @@ def maximum_a_posteriori_point(results: NestedSamplerResults) -> XType:
 
     map_idx = jnp.argmax(results.log_posterior_density)
     map_points = tree_map(lambda x: x[map_idx], results.samples)
+    return map_points
+
+def maximum_a_posteriori_point_U(results: NestedSamplerResults) -> UType:
+    """
+    Get the MAP point of a nested sampling result.
+    Does this by choosing the point with largest L(x) p(x).
+
+    Args:
+        results (NestedSamplerResult): Nested sampler result
+
+    Returns:
+        dict of samples at MAP-point.
+    """
+
+    map_idx = jnp.argmax(results.log_posterior_density)
+    map_points = tree_map(lambda x: x[map_idx], results.U_samples)
     return map_points
 
 

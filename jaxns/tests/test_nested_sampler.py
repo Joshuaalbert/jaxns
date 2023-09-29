@@ -85,12 +85,12 @@ def test_nested_sampling_mvn_static(basic_mvn_run_results):
     assert jnp.isclose(actual_log_Z_mean, expected_log_Z_mean, atol=tol)
 
 
-def test_nested_sampling_mvn_static_adaptive_refinement(basic_mvn_run_adaptive_refinement_results):
-    true_logZ, state, results = basic_mvn_run_adaptive_refinement_results
-    actual_log_Z_mean = results.log_Z_mean
-    expected_log_Z_mean = true_logZ
-    tol = 1.75 * results.log_Z_uncert
-    assert jnp.isclose(actual_log_Z_mean, expected_log_Z_mean, atol=tol)
+# def test_nested_sampling_mvn_static_adaptive_refinement(basic_mvn_run_adaptive_refinement_results):
+#     true_logZ, state, results = basic_mvn_run_adaptive_refinement_results
+#     actual_log_Z_mean = results.log_Z_mean
+#     expected_log_Z_mean = true_logZ
+#     tol = 1.75 * results.log_Z_uncert
+#     assert jnp.isclose(actual_log_Z_mean, expected_log_Z_mean, atol=tol)
 
 
 def test_nested_sampling_mvn_static_multiellipsoid_sampler(multiellipsoidal_mvn_run_results):

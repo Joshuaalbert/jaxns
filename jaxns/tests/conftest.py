@@ -223,7 +223,7 @@ def basic_mvn_run_adaptive_refinement_results(basic_mvn_model, basic_mvn_run_res
 
 @pytest.fixture(scope='package')
 def multiellipsoidal_mvn_run_results(basic_mvn_model):
-    true_logZ, model = basic_mvn_model
+    true_logZ, model, ns = basic_mvn_model
 
     # model.sanity_check(random.PRNGKey(42), S=100)
     ns = ApproximateNestedSampler(

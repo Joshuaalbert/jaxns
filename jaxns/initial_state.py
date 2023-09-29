@@ -1,19 +1,22 @@
 import logging
 from typing import Tuple, NamedTuple
 
-from jaxns.types import PRNGKey, FloatArray, BoolArray, IntArray
 from jax import tree_map, numpy as jnp, random
 from jax._src.lax.control_flow import scan, while_loop
 
 from jaxns.model import Model
 from jaxns.random import resample_indicies
+from jaxns.types import PRNGKey, FloatArray, BoolArray, IntArray
 from jaxns.types import Reservoir, SampleCollection, LivePoints, NestedSamplerState, float_type, \
     int_type, Sample
 
-logger = logging.getLogger('jaxns')
+__all__ = [
+    'get_live_points_from_samples',
+    'get_uniform_init_live_points',
+    'init_sample_collection'
+]
 
-__all__ = ['get_live_points_from_samples',
-           'get_uniform_init_live_points']
+logger = logging.getLogger('jaxns')
 
 
 def init_sample_collection(size: int, model: Model) -> SampleCollection:

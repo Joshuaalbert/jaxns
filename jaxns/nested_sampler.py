@@ -5,18 +5,19 @@ from typing import Optional, Tuple, Union, List
 import tensorflow_probability.substrates.jax as tfp
 from jax import random, numpy as jnp, core, tree_map, vmap, jit
 
+from jaxns.abc import AbstractSampler, AbstractNestedSampler
 from jaxns.adaptive_refinement import AdaptiveRefinement
 from jaxns.initial_state import init_sample_collection, get_uniform_init_live_points
 from jaxns.internals.log_semiring import LogSpace, normalise_log_space
 from jaxns.internals.stats import linear_to_log_stats, effective_sample_size
+from jaxns.likelihood_samplers.slice_samplers import UniDimSliceSampler
 from jaxns.model import Model
 from jaxns.plotting import plot_cornerplot, plot_diagnostics
-from jaxns.slice_samplers import UniDimSliceSampler
-from jaxns.static_nested_sampler import StaticNestedSampler, AbstractSampler
+from jaxns.static_nested_sampler import StaticNestedSampling
 from jaxns.statistics import analyse_sample_collection
 from jaxns.types import PRNGKey, IntArray
 from jaxns.types import TerminationCondition, NestedSamplerState, NestedSamplerResults, LivePoints
-from jaxns.uniform_samplers import UniformSampler
+from jaxns.likelihood_samplers.uniform_samplers import UniformSampler
 from jaxns.utils import collect_samples
 from jaxns.utils import summary, save_results, load_results
 
@@ -24,12 +25,13 @@ tfpd = tfp.distributions
 
 logger = logging.getLogger('jaxns')
 
-__all__ = ['BaseNestedSampler',
-           'ApproximateNestedSampler',
-           'ExactNestedSampler']
+__all__ = [
+    'ApproximateNestedSampler',
+    'ExactNestedSampler'
+]
 
 
-class BaseNestedSampler:
+class BaseNestedSampler(AbstractNestedSampler):
     def __init__(self, model: Model, max_samples: Union[int, float]):
         self.model = model
         self.max_samples = int(max_samples)
@@ -177,21 +179,6 @@ class BaseNestedSampler:
             U_samples=sample_collection.reservoir.point_U
         )
 
-    def __call__(self, key: PRNGKey, term_cond: TerminationCondition, *,
-                 init_state: Optional[NestedSamplerState] = None) -> Tuple[IntArray, NestedSamplerState]:
-        """
-        Performs approximate nested sampling followed by adaptive refinement.
-
-        Args:
-            key: PRNGKey
-            term_cond: termination condition
-            init_state: optional initial state
-
-        Returns:
-            termination reason, and exact state
-        """
-        raise NotImplementedError()
-
 
 class ApproximateNestedSampler(BaseNestedSampler):
     """
@@ -227,16 +214,16 @@ class ApproximateNestedSampler(BaseNestedSampler):
         num_live_points = int(num_live_points + extra)
         num_parallel_samplers = int(num_parallel_samplers)
 
-        self._nested_sampler = StaticNestedSampler(samplers=sampler_chain,
-                                                   num_live_points=num_live_points,
-                                                   num_parallel_samplers=num_parallel_samplers)
+        self._nested_sampler = StaticNestedSampling(samplers=sampler_chain,
+                                                    num_live_points=num_live_points,
+                                                    num_parallel_samplers=num_parallel_samplers)
 
     @property
     def num_live_points(self) -> int:
         return self._nested_sampler.num_live_points
 
     @property
-    def nested_sampler(self) -> StaticNestedSampler:
+    def nested_sampler(self) -> StaticNestedSampling:
         return self._nested_sampler
 
     def _run_chain(self, state: NestedSamplerState, live_points: LivePoints, term_cond: TerminationCondition) -> Tuple[

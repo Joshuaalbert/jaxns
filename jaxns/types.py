@@ -3,15 +3,21 @@ from typing import NamedTuple, Optional, Union, Any, Callable, Tuple, Dict, List
 import chex
 from jax import numpy as jnp
 
-__all__ = ['Sample',
-           'Reservoir',
-           'SampleStatistics',
-           'SampleCollection',
-           'EvidenceCalculation',
-           'NestedSamplerState',
-           'LivePoints',
-           'TerminationCondition',
-           'NestedSamplerResults']
+__all__ = [
+    'Sample',
+    'Reservoir',
+    'SampleStatistics',
+    'SampleCollection',
+    'EvidenceCalculation',
+    'NestedSamplerState',
+    'LivePoints',
+    'TerminationCondition',
+    'NestedSamplerResults',
+    'PRNGKey',
+    'IntArray',
+    'FloatArray',
+    'BoolArray'
+]
 
 float_type = jnp.result_type(float)
 int_type = jnp.result_type(int)

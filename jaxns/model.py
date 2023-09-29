@@ -2,15 +2,14 @@ import logging
 from uuid import uuid4
 
 import numpy as np
-from jaxns.types import PRNGKey, FloatArray
 from jax import random, vmap, jit, numpy as jnp
 
 from jaxns.prior import PriorModelType, parse_prior, compute_log_likelihood, transform, log_prob_prior
-from jaxns.types import float_type, LikelihoodType, UType, XType
-
-logger = logging.getLogger('jaxns')
+from jaxns.types import PRNGKey, FloatArray, float_type, LikelihoodType, UType, XType
 
 __all__ = ['Model']
+
+logger = logging.getLogger('jaxns')
 
 
 class Model:

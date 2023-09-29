@@ -2,11 +2,11 @@ import numpy as np
 import tensorflow_probability.substrates.jax as tfp
 from jax import numpy as jnp, vmap, random
 
-from jaxns import StaticNestedSampler, collect_samples
+from jaxns import StaticNestedSampling, collect_samples
 from jaxns.initial_state import init_sample_collection, get_uniform_init_live_points, \
     get_live_points_from_samples, find_first_true_indices
 from jaxns.types import NestedSamplerState, SampleCollection, TerminationCondition
-from jaxns.uniform_samplers import UniformSampler
+from jaxns.likelihood_samplers.uniform_samplers import UniformSampler
 
 tfpd = tfp.distributions
 
@@ -59,7 +59,7 @@ def test_static_uniform(basic3_model):
                                                num_live_points=n,
                                                model=model)
     efficiency_threshold = 0.1
-    ns = StaticNestedSampler(
+    ns = StaticNestedSampling(
         samplers=[UniformSampler(model=model, efficiency_threshold=efficiency_threshold)],
         num_live_points=n, num_parallel_samplers=1)
     _, state, live_points = ns(state=state, live_points=live_points,
