@@ -29,14 +29,14 @@ class Model(AbstractModel):
 
     def __init__(self, prior_model: PriorModelType, log_likelihood: LikelihoodType):
         self._id = str(uuid4())
-        self._prior_model = prior_model
-        self._log_likelihood = log_likelihood
+        self.__prior_model = prior_model
+        self.__log_likelihood = log_likelihood
 
     def _prior_model(self) -> PriorModelType:
-        return self._prior_model
+        return self.__prior_model
 
     def _log_likelihood(self) -> LikelihoodType:
-        return self._log_likelihood
+        return self.__log_likelihood
 
     def _parsed_prior(self) -> Tuple[UType, XType]:
         return parse_prior(prior_model=self.prior_model)

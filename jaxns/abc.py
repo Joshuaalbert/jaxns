@@ -115,14 +115,14 @@ class AbstractModel(ABC):
         ...
 
     @property
-    def prior_model(self):
+    def prior_model(self) -> PriorModelType:
         """
         The prior model.
         """
         return self._prior_model()
 
     @property
-    def log_likelihood(self):
+    def log_likelihood(self) -> LikelihoodType:
         """
         The log likelihood function.
 
