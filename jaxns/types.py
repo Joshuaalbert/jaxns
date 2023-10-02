@@ -16,7 +16,14 @@ __all__ = [
     'PRNGKey',
     'IntArray',
     'FloatArray',
-    'BoolArray'
+    'BoolArray',
+    'float_type',
+    'int_type',
+    'complex_type',
+    'LikelihoodType',
+    'UType',
+    'XType',
+    'LikelihoodInputType'
 ]
 
 float_type = jnp.result_type(float)

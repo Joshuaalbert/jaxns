@@ -4,7 +4,7 @@ from typing import Tuple, NamedTuple
 from jax import tree_map, numpy as jnp, random
 from jax._src.lax.control_flow import scan, while_loop
 
-from jaxns.model import Model
+from jaxns.abc import AbstractModel
 from jaxns.random import resample_indicies
 from jaxns.types import PRNGKey, FloatArray, BoolArray, IntArray
 from jaxns.types import Reservoir, SampleCollection, LivePoints, NestedSamplerState, float_type, \
@@ -19,7 +19,7 @@ __all__ = [
 logger = logging.getLogger('jaxns')
 
 
-def init_sample_collection(size: int, model: Model) -> SampleCollection:
+def init_sample_collection(size: int, model: AbstractModel) -> SampleCollection:
     """
     Return an initial sample collection, that will be incremented by the sampler.
 
@@ -49,7 +49,7 @@ def init_sample_collection(size: int, model: Model) -> SampleCollection:
     return sample_collection
 
 
-def _single_uniform_sample(key: PRNGKey, model: Model) -> Sample:
+def _single_uniform_sample(key: PRNGKey, model: AbstractModel) -> Sample:
     """
     Gets a single sample strictly within -inf bound (the entire prior), i.e. all returned samples will have non-zero
     likeihood.
@@ -95,7 +95,7 @@ def _single_uniform_sample(key: PRNGKey, model: Model) -> Sample:
     return sample
 
 
-def get_uniform_init_live_points(key: PRNGKey, num_live_points: int, model: Model) -> LivePoints:
+def get_uniform_init_live_points(key: PRNGKey, num_live_points: int, model: AbstractModel) -> LivePoints:
     """
     Get initial live points from uniformly sampling the entire prior.
 

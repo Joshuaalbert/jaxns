@@ -7,3 +7,6 @@ numpy
 pytest
 scipy
 tensorflow_probability
+tqdm
+dm-haiku
+optax

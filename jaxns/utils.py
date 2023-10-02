@@ -8,7 +8,7 @@ from jax._src.lax.control_flow import while_loop
 
 from jaxns.internals.log_semiring import LogSpace
 from jaxns.internals.maps import replace_index, prepare_func_args
-from jaxns.model import Model
+from jaxns.abc import AbstractModel
 from jaxns.prior import prepare_input
 from jaxns.random import resample_indicies
 from jaxns.types import PRNGKey
@@ -102,7 +102,8 @@ def resample(key: PRNGKey, samples: XType, log_weights: jnp.ndarray, S: int = No
 
 _V = TypeVar('_V')
 
-def evaluate_map_estimate_from_U(results: NestedSamplerResults, model: Model, fun: Callable[..., _V]) -> _V:
+
+def evaluate_map_estimate_from_U(results: NestedSamplerResults, model: AbstractModel, fun: Callable[..., _V]) -> _V:
     """
     Marginalises function over posterior samples, where ESS is static.
 
@@ -117,7 +118,8 @@ def evaluate_map_estimate_from_U(results: NestedSamplerResults, model: Model, fu
     V = prepare_input(U=map_sample_U, prior_model=model.prior_model)
     return fun(*V)
 
-def marginalise_static_from_U(key: PRNGKey, U_samples: UType, model: Model, log_weights: jnp.ndarray, ESS: int,
+
+def marginalise_static_from_U(key: PRNGKey, U_samples: UType, model: AbstractModel, log_weights: jnp.ndarray, ESS: int,
                               fun: Callable[..., _V]) -> _V:
     """
     Marginalises function over posterior samples, where ESS is static.
@@ -143,7 +145,8 @@ def marginalise_static_from_U(key: PRNGKey, U_samples: UType, model: Model, log_
     return marginalised
 
 
-def marginalise_dynamic_from_U(key: PRNGKey, U_samples: UType, model: Model, log_weights: jnp.ndarray, ESS: jnp.ndarray,
+def marginalise_dynamic_from_U(key: PRNGKey, U_samples: UType, model: AbstractModel, log_weights: jnp.ndarray,
+                               ESS: jnp.ndarray,
                                fun: Callable[..., _V]) -> _V:
     """
     Marginalises function over posterior samples, where ESS can be dynamic.
@@ -262,6 +265,7 @@ def maximum_a_posteriori_point(results: NestedSamplerResults) -> XType:
     map_idx = jnp.argmax(results.log_posterior_density)
     map_points = tree_map(lambda x: x[map_idx], results.samples)
     return map_points
+
 
 def maximum_a_posteriori_point_U(results: NestedSamplerResults) -> UType:
     """
@@ -457,7 +461,7 @@ def sample_evidence(key, num_live_points_per_sample, log_L_samples, S: int = 100
     return Z_chains.log_abs_val
 
 
-def bruteforce_posterior_samples(model: Model, S: int = 60) -> Tuple[XType, jnp.ndarray]:
+def bruteforce_posterior_samples(model: AbstractModel, S: int = 60) -> Tuple[XType, jnp.ndarray]:
     """
     Compute the posterior with brute-force over a regular grid.
 
@@ -478,7 +482,7 @@ def bruteforce_posterior_samples(model: Model, S: int = 60) -> Tuple[XType, jnp.
     return samples, dZ.log_abs_val
 
 
-def bruteforce_evidence(model: Model, S: int = 60):
+def bruteforce_evidence(model: AbstractModel, S: int = 60):
     """
     Compute the evidence with brute-force over a regular grid.
 
@@ -500,7 +504,7 @@ def bruteforce_evidence(model: Model, S: int = 60):
 
 
 @deprecated(bruteforce_posterior_samples)
-def analytic_posterior_samples(model: Model, S: int = 60):
+def analytic_posterior_samples(model: AbstractModel, S: int = 60):
     """
     Compute the evidence with brute-force over a regular grid.
 

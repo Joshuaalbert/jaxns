@@ -1,12 +1,21 @@
 from abc import ABC, abstractmethod
+from functools import cached_property
 from typing import TypeVar, NamedTuple, Optional, Union, Tuple
 
-from jax import numpy as jnp, random
+from jax import numpy as jnp
 
-from jaxns.initial_state import find_first_true_indices
-from jaxns.model import Model
 from jaxns.types import FloatArray, float_type, PRNGKey, IntArray, NestedSamplerState, LivePoints, Sample, \
-    TerminationCondition
+    TerminationCondition, UType, XType
+
+__all__ = [
+    'AbstractModel',
+    'AbstractSampler',
+    'AbstractRejectionSampler',
+    'AbstractMarkovSampler',
+    'AbstractNestedSampler',
+    'PreProcessType',
+    'SeedPoint'
+]
 
 PreProcessType = TypeVar('PreProcessType')
 
@@ -16,8 +25,129 @@ class SeedPoint(NamedTuple):
     log_L0: FloatArray
 
 
+class AbstractModel(ABC):
+    """
+        Represents a Bayesian model in terms of a generative prior, and likelihood function.
+        """
+
+    @property
+    def U_placeholder(self) -> UType:
+        """
+        A placeholder for U-space sample.
+        """
+        return self.parsed_prior[0]
+
+    @property
+    def X_placeholder(self) -> XType:
+        """
+        A placeholder for X-space sample.
+        """
+        return self.parsed_prior[1]
+
+    @property
+    def U_ndims(self) -> int:
+        """
+        The prior dimensionality.
+        """
+        return self.U_placeholder.size
+
+    @abstractmethod
+    def _parsed_prior(self) -> Tuple[UType, XType]:
+        """
+        The parsed prior.
+
+        Returns:
+            U-space sample, X-space sample
+        """
+        ...
+
+    @cached_property
+    def parsed_prior(self) -> Tuple[UType, XType]:
+        """
+        The parsed prior.
+
+        Returns:
+            U-space sample, X-space sample
+        """
+        return self._parsed_prior()
+
+    @abstractmethod
+    def __hash__(self):
+        """
+        Hash of the model.
+        """
+        ...
+
+    @abstractmethod
+    def sample_U(self, key: PRNGKey) -> FloatArray:
+        """
+        Sample uniformly from the prior in U-space.
+
+        Args:
+            key: PRNGKey
+
+        Returns:
+            U-space sample
+        """
+        ...
+
+    @abstractmethod
+    def transform(self, U: UType) -> XType:
+        """
+        Compute the prior sample.
+
+        Args:
+            U: U-space sample
+
+        Returns:
+            prior sample
+        """
+        ...
+
+    @abstractmethod
+    def forward(self, U: UType, allow_nan: bool = False) -> FloatArray:
+        """
+        Compute the log-likelihood.
+
+        Args:
+            U: U-space sample
+            allow_nan: whether to allow nans in likelihood
+
+        Returns:
+            log likelihood at the sample
+        """
+        ...
+
+    @abstractmethod
+    def log_prob_prior(self, U: UType) -> FloatArray:
+        """
+        Computes the log-probability of the prior.
+
+        Args:
+            U: The U-space sample
+
+        Returns:
+            the log probability of prior
+        """
+        ...
+
+    @abstractmethod
+    def sanity_check(self, key: PRNGKey, S: int):
+        """
+        Performs a sanity check on the model.
+
+        Args:
+            key: PRNGKey
+            S: number of samples to check
+
+        Raises:
+            AssertionError: if any of the samples are nan.
+        """
+        ...
+
+
 class AbstractSampler(ABC):
-    def __init__(self, model: Model, efficiency_threshold: Optional[FloatArray] = None):
+    def __init__(self, model: AbstractModel, efficiency_threshold: Optional[FloatArray] = None):
         self.model = model
         if efficiency_threshold is None:
             efficiency_threshold = 0.
@@ -74,27 +204,6 @@ class AbstractMarkovSampler(AbstractSampler):
     A sampler that conditions off a known satisfying point, e.g. a seed point.
     """
 
-    def get_seed_point(self, key: PRNGKey, live_points: LivePoints, log_L_constraint: FloatArray) -> SeedPoint:
-        """
-        Samples a seed point from the live points.
-
-        Args:
-            key: PRNGKey
-            live_points: the current live point set. All points satisfy the log-L constraint
-            log_L_constraint: a log-L constraint to sample within. Note: Currently, redundant because we assume live
-                points satisfies the constraint, but in the future, some points may not and this will be used.
-
-        Returns:
-            a seed point
-        """
-        select_mask = live_points.reservoir.log_L > log_L_constraint
-        sample_idx = find_first_true_indices(select_mask, N=1)[0]
-        sample_idx = random.randint(key, (), minval=0, maxval=live_points.reservoir.log_L.size)
-        return SeedPoint(
-            U0=live_points.reservoir.point_U[sample_idx],
-            log_L0=live_points.reservoir.log_L[sample_idx]
-        )
-
     @abstractmethod
     def get_sample_from_seed(self, key: PRNGKey, seed_point: SeedPoint, log_L_constraint: FloatArray,
                              preprocess_data: PreProcessType) -> Sample:
@@ -111,25 +220,6 @@ class AbstractMarkovSampler(AbstractSampler):
             an i.i.d. sample
         """
         ...
-
-    def get_sample(self, key: PRNGKey, log_L_constraint: FloatArray, live_points: LivePoints,
-                   preprocess_data: PreProcessType) -> Sample:
-        """
-        Produce a single i.i.d. sample from the model within the log_L_constraint.
-
-        Args:
-            key: PRNGkey
-            log_L_constraint: the constraint to sample within
-            live_points: the current live points reservoir
-            preprocess_data: the data pytree needed and produced by the sampler
-
-        Returns:
-            an i.i.d. sample
-        """
-        key, seed_key = random.split(key, 2)
-        seed_point = self.get_seed_point(key=seed_key, live_points=live_points, log_L_constraint=log_L_constraint)
-        return self.get_sample_from_seed(key=key, seed_point=seed_point, log_L_constraint=log_L_constraint,
-                                         preprocess_data=preprocess_data)
 
 
 class AbstractNestedSampler(ABC):

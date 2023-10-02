@@ -1,19 +1,18 @@
 import logging
 from typing import Tuple, NamedTuple
 
-from jaxns.types import PRNGKey, FloatArray, IntArray, BoolArray
 from jax import core, numpy as jnp, tree_map, random, pmap
 from jax._src.lax.control_flow import while_loop, scan
 from jax._src.lax.parallel import all_gather
 
+from jaxns.abc import PreProcessType, SeedPoint, AbstractModel
+from jaxns.common import remove_chunk_dim, add_chunk_dim
 from jaxns.initial_state import sort_sample_collection, find_first_true_indices
 from jaxns.internals.stats import linear_to_log_stats
-from jaxns.model import Model
 from jaxns.likelihood_samplers.slice_samplers import UniDimSliceSampler
-from jaxns.common import remove_chunk_dim, add_chunk_dim
-from jaxns.abc import PreProcessType, SeedPoint
 from jaxns.statistics import analyse_sample_collection
 from jaxns.types import NestedSamplerState, Reservoir, int_type, float_type, SampleCollection
+from jaxns.types import PRNGKey, FloatArray, IntArray, BoolArray
 from jaxns.utils import sort_samples
 
 __all__ = ['AdaptiveRefinement']
@@ -89,12 +88,12 @@ class AdaptiveRefinement:
     Class for adaptive refinement.
     """
 
-    def __init__(self, model: Model, patience: int = 1, num_parallel_samplers: int = 1):
+    def __init__(self, model: AbstractModel, patience: int = 1, num_parallel_samplers: int = 1):
         """
         Initialised adaptive refinement.
 
         Args:
-            model: Model
+            model: AbstractModel
             patience: how many steps with stopping condition met before stopping
             num_parallel_samplers: how many parallel samplers to use.
         """

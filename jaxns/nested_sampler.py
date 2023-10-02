@@ -5,19 +5,18 @@ from typing import Optional, Tuple, Union, List
 import tensorflow_probability.substrates.jax as tfp
 from jax import random, numpy as jnp, core, tree_map, vmap, jit
 
-from jaxns.abc import AbstractSampler, AbstractNestedSampler
+from jaxns.abc import AbstractSampler, AbstractNestedSampler, AbstractModel
 from jaxns.adaptive_refinement import AdaptiveRefinement
 from jaxns.initial_state import init_sample_collection, get_uniform_init_live_points
 from jaxns.internals.log_semiring import LogSpace, normalise_log_space
 from jaxns.internals.stats import linear_to_log_stats, effective_sample_size
 from jaxns.likelihood_samplers.slice_samplers import UniDimSliceSampler
-from jaxns.model import Model
+from jaxns.likelihood_samplers.uniform_samplers import UniformSampler
 from jaxns.plotting import plot_cornerplot, plot_diagnostics
 from jaxns.static_nested_sampler import StaticNestedSampling
 from jaxns.statistics import analyse_sample_collection
 from jaxns.types import PRNGKey, IntArray
 from jaxns.types import TerminationCondition, NestedSamplerState, NestedSamplerResults, LivePoints
-from jaxns.likelihood_samplers.uniform_samplers import UniformSampler
 from jaxns.utils import collect_samples
 from jaxns.utils import summary, save_results, load_results
 
@@ -32,7 +31,7 @@ __all__ = [
 
 
 class BaseNestedSampler(AbstractNestedSampler):
-    def __init__(self, model: Model, max_samples: Union[int, float]):
+    def __init__(self, model: AbstractModel, max_samples: Union[int, float]):
         self.model = model
         self.max_samples = int(max_samples)
 
@@ -186,7 +185,7 @@ class ApproximateNestedSampler(BaseNestedSampler):
     shrinkage process.
     """
 
-    def __init__(self, model: Model, num_live_points: Union[int, float], num_parallel_samplers: int,
+    def __init__(self, model: AbstractModel, num_live_points: Union[int, float], num_parallel_samplers: int,
                  max_samples: Union[int, float],
                  sampler_chain: Optional[List[AbstractSampler]] = None):
         super().__init__(model=model, max_samples=max_samples)
@@ -341,7 +340,7 @@ class ExactNestedSampler(BaseNestedSampler):
     adaptively refines these samples until they are strongly i.i.d. (according to a stopping criterion).
     """
 
-    def __init__(self, model: Model, num_live_points: Union[int, float],
+    def __init__(self, model: AbstractModel, num_live_points: Union[int, float],
                  max_samples: Union[int, float],
                  num_parallel_samplers: int = 1,
                  patience: int = 1):

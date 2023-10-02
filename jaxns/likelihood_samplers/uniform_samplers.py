@@ -3,8 +3,7 @@ from typing import NamedTuple, Union
 from jax import random, numpy as jnp
 from jax.lax import while_loop
 
-from jaxns.abc import PreProcessType, AbstractRejectionSampler
-from jaxns.model import Model
+from jaxns.abc import PreProcessType, AbstractRejectionSampler, AbstractModel
 from jaxns.types import BoolArray, IntArray
 from jaxns.types import NestedSamplerState, LivePoints, Sample, int_type
 from jaxns.types import PRNGKey, FloatArray
@@ -59,7 +58,7 @@ class UniformSampler(AbstractRejectionSampler):
 
 
 class BadUniformSampler(AbstractRejectionSampler):
-    def __init__(self, mis_fraction: float, model: Model):
+    def __init__(self, mis_fraction: float, model: AbstractModel):
         super().__init__(model=model, efficiency_threshold=None)
         self.mis_fraction = mis_fraction
 

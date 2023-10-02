@@ -3,11 +3,10 @@ from abc import abstractmethod, ABC
 from typing import Tuple, Generator, Callable, Optional, Union, List
 
 import jax.numpy as jnp
-import numpy as np
 import tensorflow_probability.substrates.jax as tfp
-from jaxns.types import FloatArray, IntArray, BoolArray
 
 from jaxns.internals.shapes import tuple_prod
+from jaxns.types import FloatArray, IntArray, BoolArray
 from jaxns.types import float_type, LikelihoodType, LikelihoodInputType, UType, XType
 
 logger = logging.getLogger('jaxns')
@@ -15,7 +14,13 @@ tfpd = tfp.distributions
 
 __all__ = [
     "Prior",
-    "PriorModelGen"
+    "PriorModelGen",
+    "PriorModelType",
+    "Distribution",
+    "parse_prior",
+    "compute_log_likelihood",
+    "transform",
+    "log_prob_prior"
 ]
 
 
@@ -137,6 +142,33 @@ class Distribution(AbstractDistribution):
         return self.dist_chain[-1].log_prob(X)
 
 
+class SingularDistribution(AbstractDistribution):
+    def __init__(self, value: jnp.ndarray, dist: Distribution):
+        self.value = value
+        self.dist = dist
+
+    def __repr__(self):
+        return f"{self.value} -> {self.dist}"
+
+    def _dtype(self):
+        return self.dist.dtype
+
+    def _base_shape(self) -> Tuple[int, ...]:
+        return ()
+
+    def _shape(self) -> Tuple[int, ...]:
+        return self.dist.shape
+
+    def _forward(self, U) -> Union[FloatArray, IntArray, BoolArray]:
+        return self.value
+
+    def _inverse(self, X) -> FloatArray:
+        return jnp.asarray([], float_type)
+
+    def _log_prob(self, X):
+        return self.dist.log_prob(X)
+
+
 class AbstractPrior(ABC):
     def __init__(self, name: Optional[str] = None):
         self.name = name
@@ -200,11 +232,15 @@ class AbstractPrior(ABC):
 
 
 class Prior(AbstractPrior):
-    def __init__(self, dist_or_value: Union[tfpd.Distribution, jnp.ndarray], name: Optional[str] = None):
+    def __init__(self, dist_or_value: Union[tfpd.Distribution, AbstractDistribution, jnp.ndarray],
+                 name: Optional[str] = None):
         super(Prior, self).__init__(name=name)
         if isinstance(dist_or_value, tfpd.Distribution):
             self._type = 'dist'
             self._dist = Distribution(dist_or_value)
+        elif isinstance(dist_or_value, AbstractDistribution):
+            self._type = 'dist'
+            self._dist = dist_or_value
         else:
             self._type = 'value'
             self._value = jnp.asarray(dist_or_value)

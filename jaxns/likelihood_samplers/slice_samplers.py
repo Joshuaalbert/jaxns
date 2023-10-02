@@ -4,8 +4,8 @@ from typing import TypeVar, NamedTuple, Tuple, Optional, Union
 from jax import numpy as jnp, random, tree_map
 from jax._src.lax.control_flow import while_loop
 
-from jaxns.abc import PreProcessType, SeedPoint, AbstractMarkovSampler
-from jaxns.model import Model
+from jaxns.abc import PreProcessType, SeedPoint, AbstractModel
+from jaxns.base_samplers import BaseMarkovSampler
 from jaxns.types import PRNGKey, FloatArray, BoolArray
 from jaxns.types import Sample, NestedSamplerState, LivePoints
 from jaxns.types import float_type, int_type
@@ -32,18 +32,18 @@ class UniDimProposalState(NamedTuple):
     log_L_constraint: jnp.ndarray  # the constraint to sample within
 
 
-class UniDimSliceSampler(AbstractMarkovSampler):
+class UniDimSliceSampler(BaseMarkovSampler):
     """
     Slice sampler for a single dimension. Produces correlated (non-i.i.d.) samples.
     """
 
-    def __init__(self, model: Model, num_slices: int, midpoint_shrink: bool, perfect: bool,
+    def __init__(self, model: AbstractModel, num_slices: int, midpoint_shrink: bool, perfect: bool,
                  efficiency_threshold: Optional[float] = None):
         """
         Unidimensional slice sampler.
 
         Args:
-            model: Model
+            model: AbstractModel
             num_slices: number of slices between acceptance, in units of 1, unlike other software which does it in units of prior dimension.
             midpoint_shrink: if true then contract to the midpoint of interval on rejection. Otherwise, contract to
                 rejection point.
@@ -329,8 +329,8 @@ class MultiDimProposalState(NamedTuple):
     point_U: jnp.ndarray  # the point up for likelihood computation
 
 
-class MultiDimSliceSampler(AbstractMarkovSampler):
-    def __init__(self, model: Model, num_slices: int, num_restrict_dims: Optional[int] = None,
+class MultiDimSliceSampler(BaseMarkovSampler):
+    def __init__(self, model: AbstractModel, num_slices: int, num_restrict_dims: Optional[int] = None,
                  efficiency_threshold: Optional[float] = None):
         """
         Multi-dimensional slice sampler, with exponential shrinkage. Produces correlated (non-i.i.d.) samples.
@@ -338,7 +338,7 @@ class MultiDimSliceSampler(AbstractMarkovSampler):
         Notes: Not very efficient.
 
         Args:
-            model: Model
+            model: AbstractModel
             num_slices: number of slices between acceptance, in units of 1, unlike other software which does it in units of prior dimension.
             num_restrict_dims: size of subspace to slice along. Setting to 1 would be like UniDimSliceSampler,
                 but far less efficient.
