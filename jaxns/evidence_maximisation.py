@@ -154,8 +154,7 @@ class ParametrisedModel(AbstractModel):
     def prepare_input(self, U: UType) -> LikelihoodInputType:
         if self._params is None:
             raise RuntimeError("Model has not been initialised")
-        return hk.transform(self.base_model.prepare_input).apply(params=self._params, rng=None, U=U,
-                                                                 prior_model=self.prior_model)
+        return hk.transform(self.base_model.prepare_input).apply(params=self._params, rng=None, U=U)
 
     def init_params(self, rng: PRNGKey) -> hk.MutableParams:
         """

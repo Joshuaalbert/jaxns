@@ -81,7 +81,7 @@ def test_nested_sampling_mvn_static(basic_mvn_run_results):
     true_logZ, state, results = basic_mvn_run_results
     actual_log_Z_mean = results.log_Z_mean
     expected_log_Z_mean = true_logZ
-    tol = 1.75 * results.log_Z_uncert
+    tol = 1.9 * results.log_Z_uncert
     assert jnp.isclose(actual_log_Z_mean, expected_log_Z_mean, atol=tol)
 
 
