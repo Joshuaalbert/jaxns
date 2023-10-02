@@ -270,7 +270,8 @@ class EM:
 
         return params
 
-    def train(self, num_steps: int = 10, params: hk.MutableParams | None = None) -> hk.MutableParams:
+    def train(self, num_steps: int = 10, params: hk.MutableParams | None = None) -> Tuple[
+        NestedSamplerResults, hk.MutableParams]:
         """
         Train the model using EM for num_steps.
 
@@ -308,8 +309,6 @@ class EM:
             # Execute the m_step
             params = self.m_step(results, params)
 
-        if results is not None:
-            summary(results)
-            plot_diagnostics(results)
-            plot_cornerplot(results)
-        return params
+        if results is None:
+            raise RuntimeError("No results were computed.")
+        return results, params

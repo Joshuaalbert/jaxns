@@ -3,12 +3,19 @@
 from setuptools import find_packages
 from setuptools import setup
 
-__minimum_jax_version__ = '0.2.9'
-
 setup_requires = [
     'jax',
     'jaxlib',
-    'tensorflow_probability'
+    'chex',
+    'typing_extensions',
+    'matplotlib',
+    'numpy',
+    'pytest',
+    'scipy',
+    'tensorflow_probability',
+    'tqdm',
+    'haiku',
+    'optax'
 ]
 
 with open("README.md", "r") as fh:
