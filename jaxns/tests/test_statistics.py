@@ -4,15 +4,16 @@ from typing import Union
 import jax
 import numpy as np
 import tensorflow_probability.substrates.jax as tfp
-from etils.array_types import PRNGKey
+from jaxns.types import PRNGKey
 from jax import numpy as jnp, random, tree_map
 from jax import vmap
 from jax.lax import dynamic_update_slice
 
-from jaxns import TerminationCondition, Reservoir, ApproximateNestedSampler, Model, Prior, PriorModelGen
+from jaxns import TerminationCondition, Reservoir, ApproximateNestedSampler, Model, Prior
+from jaxns.abc import PriorModelGen
 from jaxns.internals.log_semiring import LogSpace
 from jaxns.internals.maps import replace_index
-from jaxns.uniform_samplers import BadUniformSampler
+from jaxns.likelihood_samplers.uniform_samplers import BadUniformSampler
 from jaxns.statistics import compute_num_live_points_from_unit_threads, compute_remaining_evidence, \
     perfect_live_point_computation_jax, fast_perfect_live_point_computation_jax, fast_triu_rowsum, combine_reservoirs
 

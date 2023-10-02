@@ -1,19 +1,19 @@
-from typing import NamedTuple
+from typing import NamedTuple, Union
 
-from etils.array_types import BoolArray, IntArray
-from etils.array_types import PRNGKey, FloatArray
 from jax import random, numpy as jnp
 from jax.lax import while_loop
 
-from jaxns.model import Model
-from jaxns.static_nested_sampler import PreProcessType, RejectionSampler
+from jaxns.abc import PreProcessType, AbstractRejectionSampler, AbstractModel
+from jaxns.types import BoolArray, IntArray
 from jaxns.types import NestedSamplerState, LivePoints, Sample, int_type
+from jaxns.types import PRNGKey, FloatArray
 
 __all__ = ['UniformSampler']
 
 
-class UniformSampler(RejectionSampler):
-    def preprocess(self, state: NestedSamplerState, live_points: LivePoints) -> PreProcessType:
+class UniformSampler(AbstractRejectionSampler):
+
+    def preprocess(self, state: NestedSamplerState, live_points: Union[LivePoints, None] = None) -> PreProcessType:
         return ()
 
     def get_sample(self, key: PRNGKey, log_L_constraint: FloatArray, live_points: LivePoints,
@@ -57,8 +57,8 @@ class UniformSampler(RejectionSampler):
         return sample
 
 
-class BadUniformSampler(RejectionSampler):
-    def __init__(self, mis_fraction: float, model: Model):
+class BadUniformSampler(AbstractRejectionSampler):
+    def __init__(self, mis_fraction: float, model: AbstractModel):
         super().__init__(model=model, efficiency_threshold=None)
         self.mis_fraction = mis_fraction
 

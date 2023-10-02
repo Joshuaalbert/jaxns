@@ -1,20 +1,20 @@
 from typing import NamedTuple
 
-from etils.array_types import BoolArray, IntArray
-from etils.array_types import PRNGKey, FloatArray
+from jaxns.types import BoolArray, IntArray
+from jaxns.types import PRNGKey, FloatArray
 from jax import random, numpy as jnp
 from jax.lax import while_loop
 
 from jaxns.likelihood_samplers.multi_ellipsoid.multi_ellipsoid_utils import ellipsoid_clustering, MultEllipsoidState
 from jaxns.likelihood_samplers.multi_ellipsoid.multi_ellipsoid_utils import sample_multi_ellipsoid
-from jaxns.static_nested_sampler import RejectionSampler
+from jaxns.abc import AbstractRejectionSampler
 from jaxns.statistics import compute_num_live_points_from_unit_threads, compute_evidence_no_stats
 from jaxns.types import NestedSamplerState, LivePoints, Sample, int_type
 
 __all__ = ['MultiellipsoidalSampler']
 
 
-class MultiellipsoidalSampler(RejectionSampler):
+class MultiellipsoidalSampler(AbstractRejectionSampler):
     def __init__(self, depth: int, *args, **kwargs):
         self._depth = depth
         super().__init__(*args, **kwargs)

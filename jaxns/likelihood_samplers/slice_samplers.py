@@ -1,18 +1,18 @@
 import logging
-from typing import TypeVar, NamedTuple, Tuple, Optional
+from typing import TypeVar, NamedTuple, Tuple, Optional, Union
 
-from etils.array_types import PRNGKey, FloatArray, BoolArray
 from jax import numpy as jnp, random, tree_map
 from jax._src.lax.control_flow import while_loop
 
-from jaxns.model import Model
-from jaxns.static_nested_sampler import MarkovSampler, PreProcessType, SeedPoint
+from jaxns.abc import PreProcessType, SeedPoint, AbstractModel
+from jaxns.base_samplers import BaseMarkovSampler
+from jaxns.types import PRNGKey, FloatArray, BoolArray
 from jaxns.types import Sample, NestedSamplerState, LivePoints
 from jaxns.types import float_type, int_type
 
-logger = logging.getLogger('jaxns')
-
 __all__ = ['UniDimSliceSampler', 'MultiDimSliceSampler']
+
+logger = logging.getLogger('jaxns')
 
 T = TypeVar('T')
 
@@ -32,18 +32,18 @@ class UniDimProposalState(NamedTuple):
     log_L_constraint: jnp.ndarray  # the constraint to sample within
 
 
-class UniDimSliceSampler(MarkovSampler):
+class UniDimSliceSampler(BaseMarkovSampler):
     """
     Slice sampler for a single dimension. Produces correlated (non-i.i.d.) samples.
     """
 
-    def __init__(self, model: Model, num_slices: int, midpoint_shrink: bool, perfect: bool,
+    def __init__(self, model: AbstractModel, num_slices: int, midpoint_shrink: bool, perfect: bool,
                  efficiency_threshold: Optional[float] = None):
         """
         Unidimensional slice sampler.
 
         Args:
-            model: Model
+            model: AbstractModel
             num_slices: number of slices between acceptance, in units of 1, unlike other software which does it in units of prior dimension.
             midpoint_shrink: if true then contract to the midpoint of interval on rejection. Otherwise, contract to
                 rejection point.
@@ -58,9 +58,11 @@ class UniDimSliceSampler(MarkovSampler):
         self.midpoint_shrink = midpoint_shrink
         self.perfect = perfect
 
-    def preprocess(self, state: NestedSamplerState, live_points: LivePoints) -> PreProcessType:
-        if self.perfect: # nothing needed
+    def preprocess(self, state: NestedSamplerState, live_points: Union[LivePoints, None] = None) -> PreProcessType:
+
+        if self.perfect:  # nothing needed
             return ()
+        return ()
         # else: # step out with doubling
         #     return multi_ellipsoidal_params()
 
@@ -327,8 +329,8 @@ class MultiDimProposalState(NamedTuple):
     point_U: jnp.ndarray  # the point up for likelihood computation
 
 
-class MultiDimSliceSampler(MarkovSampler):
-    def __init__(self, model: Model, num_slices: int, num_restrict_dims: Optional[int] = None,
+class MultiDimSliceSampler(BaseMarkovSampler):
+    def __init__(self, model: AbstractModel, num_slices: int, num_restrict_dims: Optional[int] = None,
                  efficiency_threshold: Optional[float] = None):
         """
         Multi-dimensional slice sampler, with exponential shrinkage. Produces correlated (non-i.i.d.) samples.
@@ -336,7 +338,7 @@ class MultiDimSliceSampler(MarkovSampler):
         Notes: Not very efficient.
 
         Args:
-            model: Model
+            model: AbstractModel
             num_slices: number of slices between acceptance, in units of 1, unlike other software which does it in units of prior dimension.
             num_restrict_dims: size of subspace to slice along. Setting to 1 would be like UniDimSliceSampler,
                 but far less efficient.
@@ -352,7 +354,7 @@ class MultiDimSliceSampler(MarkovSampler):
                 raise ValueError(f"Expected num_restriction dim in (1, {model.U_ndims}], got {num_restrict_dims}.")
         self.num_restrict_dims = num_restrict_dims
 
-    def preprocess(self, state: NestedSamplerState, live_points: LivePoints) -> PreProcessType:
+    def preprocess(self, state: NestedSamplerState, live_points: Union[LivePoints, None] = None) -> PreProcessType:
         return ()
 
     def _slice_bounds(self, key: PRNGKey, point_U0: FloatArray) -> Tuple[FloatArray, FloatArray]:

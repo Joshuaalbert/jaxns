@@ -1,23 +1,25 @@
 import logging
 from typing import Tuple, NamedTuple
 
-from etils.array_types import PRNGKey, FloatArray, BoolArray, IntArray
-from jax import tree_map, numpy as jnp, random, core
+from jax import tree_map, numpy as jnp, random
 from jax._src.lax.control_flow import scan, while_loop
 
-from jaxns.model import Model
+from jaxns.abc import AbstractModel
 from jaxns.random import resample_indicies
+from jaxns.types import PRNGKey, FloatArray, BoolArray, IntArray
 from jaxns.types import Reservoir, SampleCollection, LivePoints, NestedSamplerState, float_type, \
     int_type, Sample
-from jaxns.utils import sort_samples
+
+__all__ = [
+    'get_live_points_from_samples',
+    'get_uniform_init_live_points',
+    'init_sample_collection'
+]
 
 logger = logging.getLogger('jaxns')
 
-__all__ = ['get_live_points_from_samples',
-           'get_uniform_init_live_points']
 
-
-def init_sample_collection(size: int, model: Model) -> SampleCollection:
+def init_sample_collection(size: int, model: AbstractModel) -> SampleCollection:
     """
     Return an initial sample collection, that will be incremented by the sampler.
 
@@ -47,7 +49,7 @@ def init_sample_collection(size: int, model: Model) -> SampleCollection:
     return sample_collection
 
 
-def _single_uniform_sample(key: PRNGKey, model: Model) -> Sample:
+def _single_uniform_sample(key: PRNGKey, model: AbstractModel) -> Sample:
     """
     Gets a single sample strictly within -inf bound (the entire prior), i.e. all returned samples will have non-zero
     likeihood.
@@ -93,7 +95,7 @@ def _single_uniform_sample(key: PRNGKey, model: Model) -> Sample:
     return sample
 
 
-def get_uniform_init_live_points(key: PRNGKey, num_live_points: int, model: Model) -> LivePoints:
+def get_uniform_init_live_points(key: PRNGKey, num_live_points: int, model: AbstractModel) -> LivePoints:
     """
     Get initial live points from uniformly sampling the entire prior.
 
@@ -130,7 +132,20 @@ def sort_sample_collection(sample_collection: SampleCollection) -> SampleCollect
     return sample_collection
 
 
-def get_live_points_from_samples(state: NestedSamplerState, log_L_constraint: FloatArray, num_live_points: int,
+def find_first_true_indices(mask: jnp.ndarray, N: int) -> jnp.ndarray:
+    # Find the sorted indices of the boolean array.
+    # True values (casted to 1) will come first, followed by False values (casted to 0).
+    if N == 1:
+        return jnp.argmax(mask)[None]
+    sorted_indices = jnp.argsort(jnp.where(mask, -1, 0))
+    # Select the first N indices.
+    first_N_indices = sorted_indices[:N]
+    return first_N_indices
+
+
+def get_live_points_from_samples(state: NestedSamplerState,
+                                 log_L_constraint: FloatArray,
+                                 num_live_points: int,
                                  sorted_collection: bool = True) \
         -> Tuple[NestedSamplerState, LivePoints]:
     """
@@ -145,40 +160,40 @@ def get_live_points_from_samples(state: NestedSamplerState, log_L_constraint: Fl
     Returns:
         a new state, and live points
     """
-    if isinstance(state.sample_collection.reservoir.iid, core.Tracer):
-        raise RuntimeError("Tracer detected, but expected imperative context.")
-    ###
-    # We select from samples where sample.log_L_constraint <= log_L_constraint
-    # 1. sort samples
-    # 2. find the largest index, s, where sample.log_L_constraint[s] <= log_L_constraint
-    # 3. select without replacement `num_live_points` indices from 0..s (inclusive)
-    # 4. replace those indices with an empty sample
 
     sample_collection = state.sample_collection
     if not sorted_collection:
         sample_collection = sort_sample_collection(sample_collection)
 
-    # find the largest index, s, where sample.log_L_constraint[s] <= log_L_constraint
-    idx_supremum = jnp.searchsorted(sample_collection.reservoir.log_L_constraint, log_L_constraint, side='right') - 1
-    idx_supremum = int(idx_supremum)
+    # Pick the first num_live_points samples from the mask. The order of mask, determines which ones
+    # are selected
+    sample_mask = jnp.bitwise_and(sample_collection.reservoir.log_L_constraint <= log_L_constraint,
+                                  sample_collection.reservoir.log_L > log_L_constraint)
+    sample_indicies = find_first_true_indices(mask=sample_mask, N=num_live_points)
+
+    log_weights = jnp.where(sample_mask, 0., -jnp.inf)
     key, sample_key = random.split(state.key)
-    take_indices = resample_indicies(key=sample_key,
-                                     log_weights=None,
-                                     S=num_live_points,
-                                     replace=False,
-                                     num_total=idx_supremum + 1)
-    reservoir = tree_map(lambda x: x[take_indices], sample_collection.reservoir)
-    live_points = LivePoints(reservoir=reservoir)
-
-    # replace the taken indicies
-    empty_sample: Reservoir = tree_map(lambda x: jnp.zeros_like(x[-1]), sample_collection.reservoir)
-    empty_sample = empty_sample._replace(log_L_constraint=jnp.inf, log_L=jnp.inf)
-
-    sample_collection = sample_collection._replace(
-        reservoir=tree_map(lambda x, y: x.at[take_indices].set(y), sample_collection.reservoir, empty_sample),
-        sample_idx=sample_collection.sample_idx - num_live_points
+    sample_indicies = resample_indicies(
+        key=key,
+        log_weights=log_weights,
+        S=num_live_points,
+        replace=False
     )
-    # sort the return
-    sample_collection = sort_samples(sample_collection=sample_collection)
-    state = state._replace(key=key, sample_collection=sample_collection)
+
+    live_points = LivePoints(reservoir=tree_map(lambda x: x[sample_indicies], sample_collection.reservoir))
+
+    state = state._replace(
+        key=key,
+        sample_collection=sample_collection._replace(
+            sample_idx=sample_collection.sample_idx - num_live_points,
+            reservoir=sample_collection.reservoir._replace(
+                log_L=sample_collection.reservoir.log_L.at[sample_indicies].set(jnp.inf),
+                log_L_constraint=sample_collection.reservoir.log_L_constraint.at[sample_indicies].set(jnp.inf),
+                num_slices=sample_collection.reservoir.num_slices.at[sample_indicies].set(0.),
+                num_likelihood_evaluations=sample_collection.reservoir.num_likelihood_evaluations.at[
+                    sample_indicies].set(0.),
+                iid=sample_collection.reservoir.iid.at[sample_indicies].set(False)
+            )
+        )
+    )
     return state, live_points

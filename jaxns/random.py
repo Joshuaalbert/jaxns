@@ -1,10 +1,10 @@
 from typing import Optional
 
-from etils.array_types import FloatArray, PRNGKey, IntArray
 from jax import random, numpy as jnp
 from jax._src.scipy.special import logsumexp
 
 from jaxns.internals.log_semiring import cumulative_logsumexp
+from jaxns.types import FloatArray, IntArray, PRNGKey
 
 __all__ = ['random_ortho_matrix',
            'resample_indicies']

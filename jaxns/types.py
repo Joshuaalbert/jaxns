@@ -1,21 +1,39 @@
-from typing import NamedTuple, Optional, Union, Any, Callable, Tuple, Dict
+from typing import NamedTuple, Optional, Union, Any, Callable, Tuple, Dict, List
 
-from etils.array_types import FloatArray, IntArray, PRNGKey, BoolArray
+import chex
 from jax import numpy as jnp
 
-__all__ = ['Sample',
-           'Reservoir',
-           'SampleStatistics',
-           'SampleCollection',
-           'EvidenceCalculation',
-           'NestedSamplerState',
-           'LivePoints',
-           'TerminationCondition',
-           'NestedSamplerResults']
+__all__ = [
+    'Sample',
+    'Reservoir',
+    'SampleStatistics',
+    'SampleCollection',
+    'EvidenceCalculation',
+    'NestedSamplerState',
+    'LivePoints',
+    'TerminationCondition',
+    'NestedSamplerResults',
+    'PRNGKey',
+    'IntArray',
+    'FloatArray',
+    'BoolArray',
+    'float_type',
+    'int_type',
+    'complex_type',
+    'LikelihoodType',
+    'UType',
+    'XType',
+    'LikelihoodInputType'
+]
 
 float_type = jnp.result_type(float)
 int_type = jnp.result_type(int)
 complex_type = jnp.result_type(complex)
+
+PRNGKey = chex.PRNGKey
+FloatArray = chex.Array
+IntArray = chex.Array
+BoolArray = chex.Array
 
 LikelihoodType = Callable[..., FloatArray]
 LikelihoodInputType = Tuple[jnp.ndarray, ...]  # Likeihood conditional variables
@@ -94,6 +112,20 @@ class TerminationCondition(NamedTuple):
     log_L_contour: Optional[FloatArray] = jnp.inf
     efficiency_threshold: Optional[FloatArray] = jnp.asarray(0., float_type)
 
+    def __and__(self, other):
+        return TerminationConditionConjunction(conds=[self, other])
+
+    def __or__(self, other):
+        return TerminationConditionDisjunction(conds=[self, other])
+
+
+class TerminationConditionConjunction(NamedTuple):
+    conds: List[Union['TerminationConditionDisjunction', 'TerminationConditionConjunction', TerminationCondition]]
+
+
+class TerminationConditionDisjunction(NamedTuple):
+    conds: List[Union['TerminationConditionDisjunction', TerminationConditionConjunction, TerminationCondition]]
+
 
 class NestedSamplerResults(NamedTuple):
     log_Z_mean: FloatArray  # estimate of E[log(Z)]
@@ -101,6 +133,7 @@ class NestedSamplerResults(NamedTuple):
     ESS: FloatArray  # estimate of Kish's effective sample size
     H_mean: FloatArray  # estimate of E[int log(L) L dp/Z]
     samples: XType  # Dict of arrays with leading dimension num_samples
+    U_samples: UType  # Dict of arrays with leading dimension num_samples
     log_L_samples: FloatArray  # log(L) of each sample
     log_dp_mean: FloatArray  # log(E[dZ]) of each sample, where dZ is how much it contributes to the total evidence.
     log_X_mean: FloatArray  # log(E[U]) of each sample

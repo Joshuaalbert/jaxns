@@ -3,16 +3,16 @@ import logging
 from typing import NamedTuple, TextIO, Union, Optional, Tuple, TypeVar, Callable
 
 import numpy as np
-from etils.array_types import PRNGKey
 from jax import numpy as jnp, tree_map, vmap, random, jit
 from jax._src.lax.control_flow import while_loop
 
+from jaxns.abc import AbstractModel
 from jaxns.internals.log_semiring import LogSpace
 from jaxns.internals.maps import replace_index, prepare_func_args
-from jaxns.model import Model
 from jaxns.random import resample_indicies
+from jaxns.types import PRNGKey
 from jaxns.types import SampleCollection, NestedSamplerState, Reservoir, NestedSamplerResults, \
-    float_type, XType
+    float_type, XType, UType
 from jaxns.warnings import deprecated
 
 logger = logging.getLogger('jaxns')
@@ -20,9 +20,12 @@ logger = logging.getLogger('jaxns')
 __all__ = ['sort_samples',
            'collect_samples',
            'resample',
+           'marginalise_static_from_U',
+           'marginalise_dynamic_from_U',
            'marginalise_static',
            'marginalise_dynamic',
            'maximum_a_posteriori_point',
+           'evaluate_map_estimate',
            'summary',
            'analytic_posterior_samples',
            'sample_evidence',
@@ -97,6 +100,93 @@ def resample(key: PRNGKey, samples: XType, log_weights: jnp.ndarray, S: int = No
 
 
 _V = TypeVar('_V')
+
+
+def evaluate_map_estimate_from_U(results: NestedSamplerResults, model: AbstractModel, fun: Callable[..., _V]) -> _V:
+    """
+    Marginalises function over posterior samples, where ESS is static.
+
+    Args:
+        results: results from run
+        fun (:code:`callable(**kwargs)`): function to marginalise
+
+    Returns:
+        estimate at MAP sample point
+    """
+    map_sample_U = maximum_a_posteriori_point_U(results=results)
+    V = model.prepare_input(U=map_sample_U)
+    return fun(*V)
+
+
+def marginalise_static_from_U(key: PRNGKey, U_samples: UType, model: AbstractModel, log_weights: jnp.ndarray, ESS: int,
+                              fun: Callable[..., _V]) -> _V:
+    """
+    Marginalises function over posterior samples, where ESS is static.
+
+    Args:
+        key: PRNG key
+        U_samples: array of U samples
+        model: model
+        log_weights: log weights from nested sampling
+        ESS: static effective sample size
+        fun (:code:`callable(**kwargs)`): function to marginalise
+
+    Returns:
+        expectation over resampled samples
+    """
+    U_samples = resample(key, U_samples, log_weights, S=ESS, replace=True)
+
+    def eval(U):
+        V = model.prepare_input(U=U)
+        return fun(*V)
+
+    marginalised = tree_map(lambda marg: jnp.nanmean(marg, axis=0), vmap(eval)(U_samples))
+    return marginalised
+
+
+def marginalise_dynamic_from_U(key: PRNGKey, U_samples: UType, model: AbstractModel, log_weights: jnp.ndarray,
+                               ESS: jnp.ndarray,
+                               fun: Callable[..., _V]) -> _V:
+    """
+    Marginalises function over posterior samples, where ESS can be dynamic.
+
+    Args:
+        key: PRNG key
+        U_samples: array of U samples
+        model: model
+        log_weights: log weights from nested sampling
+        ESS: dynamic effective sample size
+        fun (:code:`callable(**kwargs)`): function to marginalise
+
+    Returns:
+        expectation of `func` over resampled samples.
+    """
+    ESS = jnp.asarray(ESS)
+
+    def eval(U):
+        V = model.prepare_input(U=U)
+        return fun(*V)
+
+    def body(state):
+        (key, i, count, marginalised) = state
+        key, resample_key = random.split(key, 2)
+        _samples = resample(resample_key, U_samples, log_weights, S=1)
+        _sample = tree_map(lambda v: v[0], _samples)
+        update = eval(_sample)
+        count = tree_map(lambda y, c: jnp.where(jnp.any(jnp.isnan(y)), c, c + jnp.asarray(1, c.dtype)),
+                         update, count)
+        marginalised = tree_map(lambda x, y: jnp.where(jnp.isnan(y), x, x + y.astype(x.dtype)),
+                                marginalised, update)
+        return (key, i + jnp.ones_like(i), count, marginalised)
+
+    test_output = fun(**tree_map(lambda v: v[0], U_samples))
+    count = tree_map(lambda x: jnp.asarray(0, x.dtype), test_output)
+    init_marginalised = tree_map(lambda x: jnp.zeros_like(x), test_output)
+    (_, _, count, marginalised) = while_loop(lambda state: state[1] < ESS,
+                                             body,
+                                             (key, jnp.array(0, ESS.dtype), count, init_marginalised))
+    marginalised = tree_map(lambda x, c: x / c, marginalised, count)
+    return marginalised
 
 
 def marginalise_static(key: PRNGKey, samples: XType, log_weights: jnp.ndarray, ESS: int, fun: Callable[..., _V]) -> _V:
@@ -174,6 +264,39 @@ def maximum_a_posteriori_point(results: NestedSamplerResults) -> XType:
     map_idx = jnp.argmax(results.log_posterior_density)
     map_points = tree_map(lambda x: x[map_idx], results.samples)
     return map_points
+
+
+def maximum_a_posteriori_point_U(results: NestedSamplerResults) -> UType:
+    """
+    Get the MAP point of a nested sampling result.
+    Does this by choosing the point with largest L(x) p(x).
+
+    Args:
+        results (NestedSamplerResult): Nested sampler result
+
+    Returns:
+        dict of samples at MAP-point.
+    """
+
+    map_idx = jnp.argmax(results.log_posterior_density)
+    map_points = tree_map(lambda x: x[map_idx], results.U_samples)
+    return map_points
+
+
+def evaluate_map_estimate(results: NestedSamplerResults, fun: Callable[..., _V]) -> _V:
+    """
+    Marginalises function over posterior samples, where ESS is static.
+
+    Args:
+        results: results from run
+        fun (:code:`callable(**kwargs)`): function to marginalise
+
+    Returns:
+        estimate at MAP sample point
+    """
+    fun = prepare_func_args(fun)
+    map_sample = maximum_a_posteriori_point(results=results)
+    return fun(**map_sample)
 
 
 def _bit_mask(int_mask, width=8):
@@ -337,7 +460,7 @@ def sample_evidence(key, num_live_points_per_sample, log_L_samples, S: int = 100
     return Z_chains.log_abs_val
 
 
-def bruteforce_posterior_samples(model: Model, S: int = 60) -> Tuple[XType, jnp.ndarray]:
+def bruteforce_posterior_samples(model: AbstractModel, S: int = 60) -> Tuple[XType, jnp.ndarray]:
     """
     Compute the posterior with brute-force over a regular grid.
 
@@ -358,7 +481,7 @@ def bruteforce_posterior_samples(model: Model, S: int = 60) -> Tuple[XType, jnp.
     return samples, dZ.log_abs_val
 
 
-def bruteforce_evidence(model: Model, S: int = 60):
+def bruteforce_evidence(model: AbstractModel, S: int = 60):
     """
     Compute the evidence with brute-force over a regular grid.
 
@@ -380,7 +503,7 @@ def bruteforce_evidence(model: Model, S: int = 60):
 
 
 @deprecated(bruteforce_posterior_samples)
-def analytic_posterior_samples(model: Model, S: int = 60):
+def analytic_posterior_samples(model: AbstractModel, S: int = 60):
     """
     Compute the evidence with brute-force over a regular grid.
 

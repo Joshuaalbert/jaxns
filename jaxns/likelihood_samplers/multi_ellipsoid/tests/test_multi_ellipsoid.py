@@ -3,7 +3,9 @@ import pylab as plt
 import tensorflow_probability.substrates.jax as tfp
 from jax import numpy as jnp, random, tree_map, disable_jit, vmap
 
-from jaxns import PriorModelGen, Prior, Model
+import jaxns.common
+from jaxns import Prior, Model
+from jaxns.abc import PriorModelGen
 from jaxns.initial_state import get_uniform_init_live_points
 from jaxns.likelihood_samplers.multi_ellipsoid.multi_ellipsoid_utils import log_ellipsoid_volume, ellipsoid_clustering, \
     bounding_ellipsoid, covariance_to_rotational, ellipsoid_params, point_in_ellipsoid, plot_ellipses, \
