@@ -1,11 +1,10 @@
 import logging
-from abc import abstractmethod, ABC
-from typing import Tuple, Generator, Callable, Optional, Union, List
+from typing import Tuple, Optional, Union, List
 
 import jax.numpy as jnp
 import tensorflow_probability.substrates.jax as tfp
 
-from jaxns.internals.shapes import tuple_prod
+from jaxns.abc import AbstractDistribution, AbstractPrior, PriorModelType
 from jaxns.types import FloatArray, IntArray, BoolArray
 from jaxns.types import float_type, LikelihoodType, LikelihoodInputType, UType, XType
 
@@ -14,8 +13,6 @@ tfpd = tfp.distributions
 
 __all__ = [
     "Prior",
-    "PriorModelGen",
-    "PriorModelType",
     "Distribution",
     "parse_prior",
     "compute_log_likelihood",
@@ -47,53 +44,6 @@ tfpd.Distribution]]:
             continue
         break
     return chain[::-1]
-
-
-class AbstractDistribution(ABC):
-    @abstractmethod
-    def _dtype(self):
-        ...
-
-    @abstractmethod
-    def _base_shape(self) -> Tuple[int, ...]:
-        ...
-
-    @abstractmethod
-    def _shape(self) -> Tuple[int, ...]:
-        ...
-
-    @abstractmethod
-    def _forward(self, U):
-        ...
-
-    @abstractmethod
-    def _inverse(self, X):
-        ...
-
-    @abstractmethod
-    def _log_prob(self, X):
-        ...
-
-    @property
-    def dtype(self):
-        return self._dtype()
-
-    @property
-    def base_shape(self) -> Tuple[int, ...]:
-        return self._base_shape()
-
-    @property
-    def shape(self) -> Tuple[int, ...]:
-        return self._shape()
-
-    def forward(self, U):
-        return self._forward(U)
-
-    def inverse(self, X):
-        return self._inverse(X)
-
-    def log_prob(self, X):
-        return self._log_prob(X)
 
 
 class Distribution(AbstractDistribution):
@@ -167,68 +117,6 @@ class SingularDistribution(AbstractDistribution):
 
     def _log_prob(self, X):
         return self.dist.log_prob(X)
-
-
-class AbstractPrior(ABC):
-    def __init__(self, name: Optional[str] = None):
-        self.name = name
-
-    def __repr__(self):
-        return f"{self.name if self.name is not None else '*'}\t{self.base_shape} -> {self.shape} {self.dtype}"
-
-    @abstractmethod
-    def _dtype(self):
-        ...
-
-    @abstractmethod
-    def _base_shape(self) -> Tuple[int, ...]:
-        ...
-
-    @abstractmethod
-    def _shape(self) -> Tuple[int, ...]:
-        ...
-
-    @abstractmethod
-    def _forward(self, U) -> Union[FloatArray, IntArray, BoolArray]:
-        ...
-
-    @abstractmethod
-    def _inverse(self, X) -> FloatArray:
-        ...
-
-    @abstractmethod
-    def _log_prob(self, X) -> FloatArray:
-        ...
-
-    @property
-    def dtype(self):
-        return self._dtype()
-
-    @property
-    def base_shape(self) -> Tuple[int, ...]:
-        return self._base_shape()
-
-    @property
-    def base_ndims(self):
-        return tuple_prod(self.base_shape)
-
-    @property
-    def shape(self) -> Tuple[int, ...]:
-        return self._shape()
-
-    def forward(self, U) -> Union[FloatArray, IntArray, BoolArray]:
-        return self._forward(U)
-
-    def inverse(self, X) -> FloatArray:
-        return self._inverse(X)
-
-    def log_prob(self, X) -> FloatArray:
-        log_prob = self._log_prob(X)
-        if log_prob.size > 1:
-            log_prob = jnp.sum(log_prob)
-        if log_prob.shape != ():
-            log_prob = log_prob.reshape(())
-        return log_prob
 
 
 class Prior(AbstractPrior):
@@ -305,10 +193,6 @@ class Prior(AbstractPrior):
             return self.dist.log_prob(X=X)
         else:
             raise NotImplementedError()
-
-
-PriorModelGen = Generator[Prior, jnp.ndarray, Tuple[jnp.ndarray, ...]]
-PriorModelType = Callable[[], PriorModelGen]
 
 
 def parse_prior(prior_model: PriorModelType) -> Tuple[UType, XType]:

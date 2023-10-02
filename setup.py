@@ -3,7 +3,7 @@
 from setuptools import find_packages
 from setuptools import setup
 
-setup_requires = [
+install_requires = [
     'jax',
     'jaxlib',
     'chex',
@@ -14,7 +14,7 @@ setup_requires = [
     'scipy',
     'tensorflow_probability',
     'tqdm',
-    'haiku',
+    'dm-haiku',
     'optax'
 ]
 
@@ -29,7 +29,7 @@ setup(name='jaxns',
       url="https://github.com/joshuaalbert/jaxns",
       author='Joshua G. Albert',
       author_email='albert@strw.leidenuniv.nl',
-      setup_requires=setup_requires,
+      install_requires=install_requires,
       tests_require=[
           'pytest>=2.8',
       ],

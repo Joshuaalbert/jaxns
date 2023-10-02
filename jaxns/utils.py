@@ -6,10 +6,9 @@ import numpy as np
 from jax import numpy as jnp, tree_map, vmap, random, jit
 from jax._src.lax.control_flow import while_loop
 
+from jaxns.abc import AbstractModel
 from jaxns.internals.log_semiring import LogSpace
 from jaxns.internals.maps import replace_index, prepare_func_args
-from jaxns.abc import AbstractModel
-from jaxns.prior import prepare_input
 from jaxns.random import resample_indicies
 from jaxns.types import PRNGKey
 from jaxns.types import SampleCollection, NestedSamplerState, Reservoir, NestedSamplerResults, \
@@ -115,7 +114,7 @@ def evaluate_map_estimate_from_U(results: NestedSamplerResults, model: AbstractM
         estimate at MAP sample point
     """
     map_sample_U = maximum_a_posteriori_point_U(results=results)
-    V = prepare_input(U=map_sample_U, prior_model=model.prior_model)
+    V = model.prepare_input(U=map_sample_U)
     return fun(*V)
 
 
@@ -138,7 +137,7 @@ def marginalise_static_from_U(key: PRNGKey, U_samples: UType, model: AbstractMod
     U_samples = resample(key, U_samples, log_weights, S=ESS, replace=True)
 
     def eval(U):
-        V = prepare_input(U=U, prior_model=model.prior_model)
+        V = model.prepare_input(U=U)
         return fun(*V)
 
     marginalised = tree_map(lambda marg: jnp.nanmean(marg, axis=0), vmap(eval)(U_samples))
@@ -165,7 +164,7 @@ def marginalise_dynamic_from_U(key: PRNGKey, U_samples: UType, model: AbstractMo
     ESS = jnp.asarray(ESS)
 
     def eval(U):
-        V = prepare_input(U=U, prior_model=model.prior_model)
+        V = model.prepare_input(U=U)
         return fun(*V)
 
     def body(state):

@@ -11,8 +11,8 @@ from jax._src.scipy.special import logsumexp, ndtr
 from tqdm import tqdm
 
 from jaxns import ExactNestedSampler, TerminationCondition, NestedSamplerResults, UType, XType, PRNGKey, FloatArray, \
-    float_type, summary, plot_diagnostics, plot_cornerplot
-from jaxns.abc import AbstractModel
+    float_type, LikelihoodType, LikelihoodInputType
+from jaxns.abc import AbstractModel, PriorModelType
 from jaxns.prior import Prior, SingularDistribution
 
 try:
@@ -86,6 +86,12 @@ class ParametrisedModel(AbstractModel):
             params = self.init_params(rng=random.PRNGKey(0))
         self._params = params
 
+    def _prior_model(self) -> PriorModelType:
+        return self.base_model.prior_model
+
+    def _log_likelihood(self) -> LikelihoodType:
+        return self.base_model.log_likelihood
+
     @property
     def params(self):
         if self._params is None:
@@ -144,6 +150,12 @@ class ParametrisedModel(AbstractModel):
         if self._params is None:
             raise RuntimeError("Model has not been initialised")
         return hk.transform(self.base_model.log_prob_prior).apply(params=self._params, rng=None, U=U)
+
+    def prepare_input(self, U: UType) -> LikelihoodInputType:
+        if self._params is None:
+            raise RuntimeError("Model has not been initialised")
+        return hk.transform(self.base_model.prepare_input).apply(params=self._params, rng=None, U=U,
+                                                                 prior_model=self.prior_model)
 
     def init_params(self, rng: PRNGKey) -> hk.MutableParams:
         """
@@ -256,17 +268,15 @@ class EM:
             return val, l_oo_grad, new_params, new_opt_state
 
         p_bar = tqdm(range(self.max_num_epochs), desc="Training Progress", dynamic_ncols=True)
-        log_Z = -jnp.inf
         for epoch in p_bar:
             neg_log_Z, l_oo, params, opt_state = train_step(params, opt_state)
             p_bar.set_description(f"Step {epoch}: log Z = {-neg_log_Z:.4f}, l_oo = {l_oo}")
             p_bar.refresh()
             # Flatten l_oo pytree and get term condition
-            l_oo_small = jnp.any(jnp.asarray(jax.tree_leaves(l_oo)) < self.gtol)
+            l_oo_small = jnp.all(jnp.asarray(jax.tree_leaves(l_oo)) < self.gtol)
             if l_oo_small:
                 print(f"Terminating at step {epoch} due to l(inf) small enough.")
                 break
-            log_Z = -neg_log_Z
 
         return params
 

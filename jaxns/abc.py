@@ -1,11 +1,12 @@
 from abc import ABC, abstractmethod
 from functools import cached_property
-from typing import TypeVar, NamedTuple, Optional, Union, Tuple
+from typing import TypeVar, NamedTuple, Optional, Union, Tuple, Generator, Callable
 
 from jax import numpy as jnp
 
+from jaxns.internals.shapes import tuple_prod
 from jaxns.types import FloatArray, float_type, PRNGKey, IntArray, NestedSamplerState, LivePoints, Sample, \
-    TerminationCondition, UType, XType
+    TerminationCondition, UType, XType, LikelihoodType, LikelihoodInputType, BoolArray
 
 __all__ = [
     'AbstractModel',
@@ -25,10 +26,110 @@ class SeedPoint(NamedTuple):
     log_L0: FloatArray
 
 
+class AbstractPrior(ABC):
+    def __init__(self, name: Optional[str] = None):
+        self.name = name
+
+    def __repr__(self):
+        return f"{self.name if self.name is not None else '*'}\t{self.base_shape} -> {self.shape} {self.dtype}"
+
+    @abstractmethod
+    def _dtype(self):
+        ...
+
+    @abstractmethod
+    def _base_shape(self) -> Tuple[int, ...]:
+        ...
+
+    @abstractmethod
+    def _shape(self) -> Tuple[int, ...]:
+        ...
+
+    @abstractmethod
+    def _forward(self, U) -> Union[FloatArray, IntArray, BoolArray]:
+        ...
+
+    @abstractmethod
+    def _inverse(self, X) -> FloatArray:
+        ...
+
+    @abstractmethod
+    def _log_prob(self, X) -> FloatArray:
+        ...
+
+    @property
+    def dtype(self):
+        return self._dtype()
+
+    @property
+    def base_shape(self) -> Tuple[int, ...]:
+        return self._base_shape()
+
+    @property
+    def base_ndims(self):
+        return tuple_prod(self.base_shape)
+
+    @property
+    def shape(self) -> Tuple[int, ...]:
+        return self._shape()
+
+    def forward(self, U) -> Union[FloatArray, IntArray, BoolArray]:
+        return self._forward(U)
+
+    def inverse(self, X) -> FloatArray:
+        return self._inverse(X)
+
+    def log_prob(self, X) -> FloatArray:
+        log_prob = self._log_prob(X)
+        if log_prob.size > 1:
+            log_prob = jnp.sum(log_prob)
+        if log_prob.shape != ():
+            log_prob = log_prob.reshape(())
+        return log_prob
+
+
+PriorModelGen = Generator[AbstractPrior, jnp.ndarray, Tuple[jnp.ndarray, ...]]
+PriorModelType = Callable[[], PriorModelGen]
+
+
 class AbstractModel(ABC):
     """
-        Represents a Bayesian model in terms of a generative prior, and likelihood function.
+    Represents a Bayesian model in terms of a generative prior, and likelihood function.
+    """
+
+    @abstractmethod
+    def _prior_model(self) -> PriorModelType:
         """
+        The prior model.
+        """
+        ...
+
+    @abstractmethod
+    def _log_likelihood(self) -> LikelihoodType:
+        """
+        The log likelihood function.
+
+        Returns:
+            log likelihood function
+        """
+        ...
+
+    @property
+    def prior_model(self):
+        """
+        The prior model.
+        """
+        return self._prior_model()
+
+    @property
+    def log_likelihood(self):
+        """
+        The log likelihood function.
+
+        Returns:
+            log likelihood function
+        """
+        return self._log_likelihood()
 
     @property
     def U_placeholder(self) -> UType:
@@ -128,6 +229,19 @@ class AbstractModel(ABC):
 
         Returns:
             the log probability of prior
+        """
+        ...
+
+    @abstractmethod
+    def prepare_input(self, U: UType) -> LikelihoodInputType:
+        """
+        Prepares the input for the likelihood function.
+
+        Args:
+            U: The U-space sample
+
+        Returns:
+            the input to the likelihood function
         """
         ...
 
@@ -238,3 +352,50 @@ class AbstractNestedSampler(ABC):
             termination reason, and exact state
         """
         ...
+
+
+class AbstractDistribution(ABC):
+    @abstractmethod
+    def _dtype(self):
+        ...
+
+    @abstractmethod
+    def _base_shape(self) -> Tuple[int, ...]:
+        ...
+
+    @abstractmethod
+    def _shape(self) -> Tuple[int, ...]:
+        ...
+
+    @abstractmethod
+    def _forward(self, U):
+        ...
+
+    @abstractmethod
+    def _inverse(self, X):
+        ...
+
+    @abstractmethod
+    def _log_prob(self, X):
+        ...
+
+    @property
+    def dtype(self):
+        return self._dtype()
+
+    @property
+    def base_shape(self) -> Tuple[int, ...]:
+        return self._base_shape()
+
+    @property
+    def shape(self) -> Tuple[int, ...]:
+        return self._shape()
+
+    def forward(self, U):
+        return self._forward(U)
+
+    def inverse(self, X):
+        return self._inverse(X)
+
+    def log_prob(self, X):
+        return self._log_prob(X)

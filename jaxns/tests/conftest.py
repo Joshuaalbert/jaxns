@@ -6,8 +6,9 @@ from jax import numpy as jnp, random
 from jax._src.scipy.linalg import solve_triangular
 from tensorflow_probability.substrates import jax as tfp
 
-from jaxns import PriorModelGen, Prior, Model, ExactNestedSampler, TerminationCondition, bruteforce_evidence, \
+from jaxns import Prior, Model, ExactNestedSampler, TerminationCondition, bruteforce_evidence, \
     ApproximateNestedSampler, sample_evidence, UniformSampler, MultiellipsoidalSampler
+from jaxns.abc import PriorModelGen
 from jaxns.adaptive_refinement import AdaptiveRefinement
 
 tfpd = tfp.distributions

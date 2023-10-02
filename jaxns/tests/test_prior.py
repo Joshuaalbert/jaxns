@@ -4,8 +4,9 @@ import tensorflow_probability.substrates.jax as tfp
 from jax import random, numpy as jnp, vmap
 
 from jaxns.model import Model
-from jaxns.prior import PriorModelGen, Prior, parse_prior, compute_log_likelihood, InvalidDistribution, \
+from jaxns.prior import Prior, parse_prior, compute_log_likelihood, InvalidDistribution, \
     InvalidPriorName, prepare_input, distribution_chain
+from jaxns.abc import PriorModelGen
 from jaxns.special_priors import Bernoulli, Categorical, Poisson, Beta, ForcedIdentifiability, UnnormalisedDirichlet
 from jaxns.types import float_type
 

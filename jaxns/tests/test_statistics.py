@@ -9,7 +9,8 @@ from jax import numpy as jnp, random, tree_map
 from jax import vmap
 from jax.lax import dynamic_update_slice
 
-from jaxns import TerminationCondition, Reservoir, ApproximateNestedSampler, Model, Prior, PriorModelGen
+from jaxns import TerminationCondition, Reservoir, ApproximateNestedSampler, Model, Prior
+from jaxns.abc import PriorModelGen
 from jaxns.internals.log_semiring import LogSpace
 from jaxns.internals.maps import replace_index
 from jaxns.likelihood_samplers.uniform_samplers import BadUniformSampler

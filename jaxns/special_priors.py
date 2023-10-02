@@ -8,7 +8,7 @@ from jax._src.scipy.special import gammaln
 from tensorflow_probability.substrates.jax.math import lbeta, betaincinv
 
 from jaxns.internals.log_semiring import cumulative_logsumexp
-from jaxns.prior import AbstractPrior
+from jaxns.abc import AbstractPrior
 from jaxns.types import FloatArray, IntArray, BoolArray
 from jaxns.types import float_type
 
