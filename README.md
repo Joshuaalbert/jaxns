@@ -90,6 +90,10 @@ controlling some precision parameters.
 
 # Change Log
 
+5 Oct, 2023 -- JAXNS 2.2.6 released. Minor update to evidence maximisation.
+
+3 Oct, 2023 -- JAXNS 2.2.5 released. Parametrised priors, and evidence maximisation added.
+
 24 Sept, 2023 -- JAXNS 2.2.4 released. Add marginalising from saved U samples.
 
 28 July, 2023 -- JAXNS 2.2.3 released. Bug fix for singular priors.
