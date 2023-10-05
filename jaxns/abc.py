@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from functools import cached_property
-from typing import TypeVar, NamedTuple, Optional, Union, Tuple, Generator, Callable
+from typing import TypeVar, NamedTuple, Optional, Union, Tuple, Generator, Callable, Any
 
 from jax import numpy as jnp
 
@@ -88,7 +88,7 @@ class AbstractPrior(ABC):
         return log_prob
 
 
-PriorModelGen = Generator[AbstractPrior, jnp.ndarray, Tuple[jnp.ndarray, ...]]
+PriorModelGen = Generator[AbstractPrior, jnp.ndarray, Tuple[Any, ...]]
 PriorModelType = Callable[[], PriorModelGen]
 
 

@@ -1,5 +1,5 @@
 import logging
-from typing import Tuple
+from typing import Tuple, Dict, Any
 
 import jax
 import numpy as np
@@ -184,7 +184,9 @@ class EM:
     """
 
     def __init__(self, model: ParametrisedModel, learning_rate: float = 1e-2, max_num_epochs: int = 100, gtol=1e-4,
-                 log_Z_ftol=1., log_Z_atol=1e-4):
+                 log_Z_ftol=1., log_Z_atol=1e-4, ns_kwargs: Dict[str, Any] | None = None,
+                 termination_cond: TerminationCondition | None = None):
+
         """
         Initialise the EM class.
 
@@ -195,6 +197,7 @@ class EM:
             gtol: The gradient tolerance for the M-step.
             log_Z_ftol: The tolerance for the change in the evidence as function of log_Z_uncert.
             log_Z_atol: The absolute tolerance for the change in the evidence.
+            ns_kwargs: The keyword arguments to pass to the nested sampler.
         """
         if not isinstance(model, ParametrisedModel):
             raise ValueError("model must be an instance of ParametrisedModel")
@@ -204,6 +207,8 @@ class EM:
         self.gtol = gtol
         self.log_Z_ftol = log_Z_ftol
         self.log_Z_atol = log_Z_atol
+        self.ns_kwargs = ns_kwargs
+        self.termination_cond = termination_cond
 
     def e_step(self, params: hk.MutableParams) -> NestedSamplerResults:
         """
@@ -219,10 +224,19 @@ class EM:
         # The E-step is just nested sampling
         model = self.model.new(params=params)
         # Create the nested sampler class. In this case without any tuning.
-        exact_ns = ExactNestedSampler(model=model, num_live_points=model.U_ndims * 20, max_samples=1e6)
-
+        if self.ns_kwargs is None:
+            kwargs = dict()
+        else:
+            kwargs = self.ns_kwargs.copy()
+        kwargs['num_live_points'] = kwargs.get('num_live_points', model.U_ndims * 20)
+        kwargs['max_samples'] = kwargs.get('max_samples', 1e5)
+        if self.termination_cond is None:
+            termination_cond = TerminationCondition(live_evidence_frac=1e-5)
+        else:
+            termination_cond = self.termination_cond
+        exact_ns = ExactNestedSampler(model=model, **kwargs)
         termination_reason, state = exact_ns(random.PRNGKey(42),
-                                             term_cond=TerminationCondition(live_evidence_frac=1e-5))
+                                             term_cond=termination_cond)
         results = exact_ns.to_results(state, termination_reason)
         # exact_ns.summary(results)
         # exact_ns.plot_diagnostics(results)
