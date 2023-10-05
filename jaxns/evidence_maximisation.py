@@ -293,14 +293,16 @@ class EM:
 
         return params
 
-    def train(self, num_steps: int = 10, params: hk.MutableParams | None = None) -> Tuple[
-        NestedSamplerResults, hk.MutableParams]:
+    def train(self, num_steps: int = 10, params: hk.MutableParams | None = None, do_final_e_step: bool = False) -> \
+            Tuple[
+                NestedSamplerResults, hk.MutableParams]:
         """
         Train the model using EM for num_steps.
 
         Args:
             num_steps: The number of steps to train for, or until convergence.
             params: The initial parameters to use. If None, then the model's params are used.
+            do_final_e_step: Whether to do a final E-step after training, for updated evidence.
 
         Returns:
             The trained parameters.
@@ -331,6 +333,9 @@ class EM:
 
             # Execute the m_step
             params = self.m_step(results, params)
+
+        if do_final_e_step:
+            results = self.e_step(params=params)
 
         if results is None:
             raise RuntimeError("No results were computed.")
