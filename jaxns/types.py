@@ -41,6 +41,22 @@ UType = FloatArray  # Homogeneous measure samples
 XType = Dict[str, jnp.ndarray]  # Prior sample
 
 
+class SampleTree(NamedTuple):
+    """
+    Represents tree structure of samples.
+    There are N+1 nodes, and N edges.
+    Each node has exactly 1 sender (except the root node).
+    Each node has zero or more receivers.
+    The root is always node 0.
+    """
+    point_U: UType  # [d] sample in U-space
+    sender_idx: jnp.ndarray  # [N] with values in [0, N]
+    log_L: jnp.ndarray  # [1+N]
+    num_likelihood_evaluations: IntArray  # how many times the likelihood was evaluated to produce this sample
+    num_slices: IntArray  # the number of slices for sliced points.
+    iid: BoolArray  # whether the sample is exactly iid sampled from within the likelihood constraint
+
+
 class Sample(NamedTuple):
     """
     Holds the reservoir of new samples before merging.

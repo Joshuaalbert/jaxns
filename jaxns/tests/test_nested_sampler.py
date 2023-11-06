@@ -1,5 +1,9 @@
+from timeit import default_timer
+
+import jax
 from jax import random, numpy as jnp
 
+from jaxns import ExactNestedSampler, TerminationCondition
 from jaxns.statistics import compute_evidence_dual, compute_num_live_points_from_unit_threads, compute_evidence, \
     compute_shrinkage_stats
 from jaxns.utils import sample_evidence
@@ -192,3 +196,40 @@ def test_shrinkage(basic2_results):
     rel_diff = jnp.abs(jnp.exp(log_X_mean) - X_exact) / jnp.exp(log_X_std)
     print("Relative shrinkage errors", jnp.percentile(rel_diff, jnp.asarray([50, 75, 90, 95])))
     # assert jnp.all(jnp.percentile(rel_diff, jnp.asarray([50, 75, 90, 95])) < jnp.asarray([0.9, 1.1, 1.4, 1.5]))
+
+
+def test_compilation_only_once(basic_model):
+    model = basic_model
+
+    exact_ns = ExactNestedSampler(model=model,
+                                  num_live_points=50,
+                                  num_parallel_samplers=1,
+                                  max_samples=1000)
+
+    lowered = jax.jit(exact_ns).lower(random.PRNGKey(42),
+                                      term_cond=TerminationCondition(live_evidence_frac=1e-4))
+    # print(lowered.as_text())
+    print(lowered.cost_analysis())
+    compiled = lowered.compile()
+    print(compiled.cost_analysis())
+    t0 = default_timer()
+    termination_reason, state = compiled(random.PRNGKey(42),
+                                         term_cond=TerminationCondition(live_evidence_frac=1e-4))
+    termination_reason.block_until_ready()
+    dt0 = default_timer() - t0
+    print(dt0)
+
+    t0 = default_timer()
+    termination_reason, state = exact_ns(random.PRNGKey(42),
+                                         term_cond=TerminationCondition(live_evidence_frac=1e-4))
+    termination_reason.block_until_ready()
+    dt1 = default_timer() - t0
+
+    t0 = default_timer()
+    termination_reason, state = exact_ns(random.PRNGKey(42),
+                                         term_cond=TerminationCondition(live_evidence_frac=1e-4))
+    termination_reason.block_until_ready()
+    dt2 = default_timer() - t0
+    print(dt1, dt2)
+
+    assert dt2 < dt1

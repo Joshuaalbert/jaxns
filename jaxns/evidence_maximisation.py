@@ -319,13 +319,21 @@ class EM:
             # Execute the e_step
             results = self.e_step(params=params)
             # Update progress bar description
-            p_bar.set_description(f"Step {step}: log Z = {results.log_Z_mean:.4f} +- {results.log_Z_uncert:.4f}")
+            p_bar.set_description(
+                f"Step {step}: log Z = {results.log_Z_mean:.4f} +- {results.log_Z_uncert:.4f}"
+            )
             p_bar.refresh()
 
             # Check termination condition
             log_Z_change = jnp.abs(results.log_Z_mean - log_Z)
             if log_Z_change < max(self.log_Z_ftol * results.log_Z_uncert, self.log_Z_atol):
                 print(f"Convergence achieved at step {step}.")
+                if do_final_e_step:
+                    results = self.e_step(params=params)
+                    p_bar.set_description(
+                        f"Step {step}: log Z = {results.log_Z_mean:.4f} +- {results.log_Z_uncert:.4f}"
+                    )
+                    p_bar.refresh()
                 break
 
             # Update log_Z and log_Z_uncert values
@@ -333,9 +341,6 @@ class EM:
 
             # Execute the m_step
             params = self.m_step(results, params)
-
-        if do_final_e_step:
-            results = self.e_step(params=params)
 
         if results is None:
             raise RuntimeError("No results were computed.")

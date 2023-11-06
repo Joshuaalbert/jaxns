@@ -390,8 +390,8 @@ class ExactNestedSampler(BaseNestedSampler):
         Returns:
             termination reason, and exact state
         """
-        if isinstance(key, core.Tracer):
-            raise RuntimeError("Tracer detected, but expected imperative context.")
+        # if isinstance(key, core.Tracer):
+        #     raise RuntimeError("Tracer detected, but expected imperative context.")
 
         termination_reason, state = self.approximate_sampler(key=key, term_cond=term_cond, init_state=init_state)
         # TODO: Turn on adaptive refinement after fixing bias issue
