@@ -1,6 +1,6 @@
 from typing import Union
 
-from jax import numpy as jnp
+from jax import numpy as jnp, lax
 from jax.scipy.special import logsumexp
 
 from jaxns.types import SignedLog, float_type
@@ -73,10 +73,10 @@ def cumulative_logsumexp(u, sign=None, reverse=False, axis=0):
             u = jnp.swapaxes(u, axis, 0)
         state = -jnp.inf * jnp.ones(u.shape[1:], dtype=u.dtype)
         X = u
-    _, result = scan(body,
-                     state,
-                     X,
-                     reverse=reverse)
+    _, result = lax.scan(body,
+                         state,
+                         X,
+                         reverse=reverse)
     if sign is not None:
         v, v_sign = result
         if axis != 0:
@@ -179,6 +179,7 @@ class LogSpace(object):
         if self._naked:
             return f"LogSpace({self.log_abs_val})"
         return f"LogSpace({self.log_abs_val}, {self.sign})"
+
 
     def sum(self, axis=-1, keepdims=False):
         if not self._naked:  # no coefficients
@@ -311,7 +312,7 @@ class LogSpace(object):
             log(exp(log_A)**n)
 
         Args:
-            other: ndarray or LogSpace, if ndarray assumed to be log(B)
+            n: int or float
 
         Returns:
              LogSpace

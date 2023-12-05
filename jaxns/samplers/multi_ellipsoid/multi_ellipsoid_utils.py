@@ -2,12 +2,12 @@ from typing import NamedTuple, Tuple, Literal
 
 import numpy as np
 import pylab as plt
-from jaxns.types import IntArray, FloatArray, PRNGKey, BoolArray
-from jax import numpy as jnp, vmap, random, tree_map
+from jax import numpy as jnp, vmap, random, tree_map, lax
 from jax._src.scipy.special import gammaln
 
 from jaxns.internals.log_semiring import LogSpace
 from jaxns.samplers.multi_ellipsoid.em_gmm import em_gmm
+from jaxns.types import IntArray, FloatArray, PRNGKey, BoolArray
 from jaxns.types import UType, int_type, float_type
 
 __all__ = [
@@ -208,9 +208,9 @@ def sample_ellipsoid(key: PRNGKey, mu: FloatArray, radii: FloatArray, rotation: 
         return (key, done, u)
 
     if unit_cube_constraint:
-        (_, _, u) = while_loop(lambda s: ~s[1],
-                               body,
-                               (key, jnp.asarray(False), mu))
+        (_, _, u) = lax.while_loop(lambda s: ~s[1],
+                                   body,
+                                   (key, jnp.asarray(False), mu))
     else:
         u = _single_sample(key)
     return u
@@ -276,9 +276,9 @@ def sample_multi_ellipsoid(key: PRNGKey, mu: FloatArray, radii: FloatArray, rota
         done = random.uniform(accept_key) < jnp.reciprocal(depth)
         return (i + 1, k, key, done, u_test)
 
-    _, k, _, _, u_accept = while_loop(lambda state: ~state[3],
-                                      body,
-                                      (jnp.array(0), jnp.array(0), key, jnp.array(False), jnp.zeros(D)))
+    _, k, _, _, u_accept = lax.while_loop(lambda state: ~state[3],
+                                          body,
+                                          (jnp.array(0), jnp.array(0), key, jnp.array(False), jnp.zeros(D)))
     return k, u_accept
 
 
@@ -460,9 +460,9 @@ def _multinest_split(key: PRNGKey, params: EllipsoidParams, points: FloatArray, 
         iters_no_improvement=jnp.asarray(0, int_type)
     )
 
-    output_state: CarryState = while_loop(lambda state: ~state.done,
-                                          body,
-                                          init_state)
+    output_state: CarryState = lax.while_loop(lambda state: ~state.done,
+                                              body,
+                                              init_state)
     return output_state.cluster_id, output_state.log_VS0, output_state.params0, output_state.log_VS1, output_state.params1
 
 
@@ -775,6 +775,6 @@ def ellipsoid_clustering(key: PRNGKey, points: FloatArray, log_VS: FloatArray,
         log_VS_subclusters=log_VS_subclusters
     )
 
-    output_state = while_loop(cond, body, init_body_state)
+    output_state = lax.while_loop(cond, body, init_body_state)
 
     return output_state.state

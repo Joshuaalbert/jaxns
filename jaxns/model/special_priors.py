@@ -1,7 +1,7 @@
 from typing import Tuple, Union, Optional, Literal
 
 import tensorflow_probability.substrates.jax as tfp
-from jax import numpy as jnp, vmap
+from jax import numpy as jnp, vmap, lax
 from jax._src.scipy.special import gammaln
 from tensorflow_probability.substrates.jax.math import lbeta, betaincinv
 
@@ -205,7 +205,7 @@ class ForcedIdentifiability(BaseAbstractPrior):
 
         # Initial log_x value
         log_init_x = jnp.zeros(self.shape[1:], self.dtype)  # [...]
-        _, (log_x,) = scan(inv_body, (log_init_x,), (log_theta, jnp.arange(1, self.n + 1)), reverse=True)
+        _, (log_x,) = lax.scan(inv_body, (log_init_x,), (log_theta, jnp.arange(1, self.n + 1)), reverse=True)
         U = jnp.exp(log_x)
         return U.astype(self.dtype)
 
@@ -220,7 +220,7 @@ class ForcedIdentifiability(BaseAbstractPrior):
             return (log_theta,), (log_theta,)
 
         log_init_theta = jnp.zeros(self.shape[1:], self.dtype)  # [...] -- log(1)
-        _, (log_theta,) = scan(body, (log_init_theta,), (log_x, jnp.arange(1, self.n + 1)), reverse=True)
+        _, (log_theta,) = lax.scan(body, (log_init_theta,), (log_x, jnp.arange(1, self.n + 1)), reverse=True)
         theta = self.low + (self.high - self.low) * jnp.exp(log_theta)
         return theta.astype(self.dtype)
 
@@ -285,9 +285,9 @@ class Poisson(BaseAbstractPrior):
 
             return (log_x, log_p, log_s)
 
-        (log_x, log_p, log_s) = while_loop(lambda s: jnp.any(log_u > s[2]),
-                                           body,
-                                           (log_x, log_p, log_s))
+        (log_x, log_p, log_s) = lax.while_loop(lambda s: jnp.any(log_u > s[2]),
+                                               body,
+                                               (log_x, log_p, log_s))
         return jnp.exp(log_x).astype(self.dtype)
 
 

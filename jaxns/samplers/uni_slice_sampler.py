@@ -228,7 +228,8 @@ class UniDimSliceSampler(BaseAbstractMarkovSampler):
     Slice sampler for a single dimension. Produces correlated (non-i.i.d.) samples.
     """
 
-    def __init__(self, model: BaseAbstractModel, num_slices: int, midpoint_shrink: bool, perfect: bool):
+    def __init__(self, model: BaseAbstractModel, num_slices: int, num_phantom_save: int, midpoint_shrink: bool,
+                 perfect: bool):
         """
         Unidimensional slice sampler.
 
@@ -237,6 +238,8 @@ class UniDimSliceSampler(BaseAbstractMarkovSampler):
             num_slices: number of slices between acceptance. Note: some other software use units of prior dimension.
             midpoint_shrink: if true then contract to the midpoint of interval on rejection. Otherwise, contract to
                 rejection point. Speeds up convergence, but introduces minor auto-correlation.
+            num_phantom_save: number of phantom samples to save. Phantom samples are samples that meeting the constraint
+                but are not accepted. They can be used for numerous things, e.g. to estimate the evidence uncertainty.
             perfect: if true then perform exponential shrinkage from maximal bounds, requiring no step-out procedure.
                 Otherwise, uses a doubling procedure (exponentially finding bracket).
                 Note: Perfect is a misnomer, as perfection also depends on the number of slices between acceptance.
@@ -244,7 +247,12 @@ class UniDimSliceSampler(BaseAbstractMarkovSampler):
         super().__init__(model=model)
         if num_slices < 1:
             raise ValueError(f"num_slices should be >= 1, got {num_slices}.")
+        if num_phantom_save < 0:
+            raise ValueError(f"num_phantom_save should be >= 0, got {num_phantom_save}.")
+        if num_phantom_save >= num_slices:
+            raise ValueError(f"num_phantom_save should be < num_slices, got {num_phantom_save} >= {num_slices}.")
         self.num_slices = int(num_slices)
+        self.num_phantom_save = int(num_phantom_save)
         self.midpoint_shrink = bool(midpoint_shrink)
         self.perfect = bool(perfect)
         if not self.perfect:
@@ -252,15 +260,31 @@ class UniDimSliceSampler(BaseAbstractMarkovSampler):
 
     def pre_process(self, state: StaticStandardNestedSamplerState) -> SamplerState:
         if self.perfect:  # nothing needed
-            return ()
+            return (state,)
         else:  # TODO: step out with doubling, using ellipsoidal clustering
-            return ()  # multi_ellipsoidal_params()
+            return (state,)  # multi_ellipsoidal_params()
 
     def post_process(self, state: StaticStandardNestedSamplerState, sampler_state: SamplerState) -> SamplerState:
         if self.perfect:  # nothing needed
-            return sampler_state
+            return (state,)
         else:  # TODO: step out with doubling, using ellipsoidal clustering, could shrink ellipsoids
-            return sampler_state
+            return (state,)
+
+    def get_seed_point(self, key: PRNGKey, sampler_state: SamplerState,
+                       log_L_constraint: FloatArray) -> SeedPoint:
+
+        state: StaticStandardNestedSamplerState
+        (state,) = sampler_state
+
+        unnorm_select_prob = (state.sample_collection.log_L[state.front_idx] > log_L_constraint).astype(float_type)
+        # Choose randomly where mask is True
+        g = random.gumbel(key, shape=unnorm_select_prob.shape)
+        sample_idx = state.front_idx[jnp.argmax(g + jnp.log(unnorm_select_prob))]
+
+        return SeedPoint(
+            U0=state.sample_collection.U_samples[sample_idx],
+            log_L0=state.sample_collection.log_L[sample_idx]
+        )
 
     def get_sample_from_seed(self, key: PRNGKey, seed_point: SeedPoint, log_L_constraint: FloatArray,
                              sampler_state: SamplerState) -> Tuple[Sample, Sample]:
@@ -297,7 +321,8 @@ class UniDimSliceSampler(BaseAbstractMarkovSampler):
             unroll=1
         )
 
-        # Last sample is the final sample, the rest are phantom samples
-        phantom_samples = tree_map(lambda x: x[:-1], cumulative_samples)
+        # Last sample is the final sample, the rest are potential phantom samples
+        # Take only the last num_phantom_save phantom samples
+        phantom_samples: Sample = tree_map(lambda x: x[-(self.num_phantom_save + 1):-1], cumulative_samples)
 
         return final_sample, phantom_samples

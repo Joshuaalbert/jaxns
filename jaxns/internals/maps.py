@@ -2,7 +2,7 @@ import inspect
 import logging
 from typing import TypeVar
 
-from jax import tree_map, pmap, numpy as jnp
+from jax import tree_map, pmap, numpy as jnp, lax
 
 from jaxns.types import int_type
 
@@ -18,13 +18,29 @@ def replace_index(operand, update, start_index):
         update = update[None]
     start_index = jnp.asarray(start_index, int_type)
     start_indices = [start_index] + [jnp.asarray(0, start_index.dtype)] * (len(update.shape) - 1)
-    return dynamic_update_slice(operand, update.astype(operand.dtype), start_indices)
+    return lax.dynamic_update_slice(operand, update.astype(operand.dtype), start_indices)
 
+def test_replace_index():
+    # Test simple case
+    operand = jnp.arange(10)
+    update = jnp.arange(5)
+    start_index = 3
+    expected = jnp.array([0, 1, 2, 0, 1, 2, 3, 4, 8, 9])
+    actual = replace_index(operand, update, start_index)
+    assert jnp.allclose(actual, expected)
+    # Test edge case
+    operand = jnp.arange(10)
+    update = jnp.arange(5)
+    start_index = 8
+    # expected = jnp.array([0, 1, 2, 3, 4, 5, 6, 7, 0, 1])
+    expected = jnp.array([0, 1, 2, 3, 4, 0, 1, 2, 3, 4]) # Shifted to fit!
+    actual = replace_index(operand, update, start_index)
+    assert jnp.allclose(actual, expected)
 
 def get_index(operand, start_index, length):
-    return dynamic_slice(operand,
-                         [start_index] + [jnp.asarray(0, int_type)] * (len(operand.shape) - 1),
-                         (length,) + operand.shape[1:])
+    return lax.dynamic_slice(operand,
+                             [start_index] + [jnp.asarray(0, int_type)] * (len(operand.shape) - 1),
+                             (length,) + operand.shape[1:])
 
 
 def prepare_func_args(f):
@@ -96,7 +112,7 @@ def chunked_pmap(f: F, chunksize, *, batch_size=None) -> F:
                 (args, kwargs) = X
                 return state, f(*args, **kwargs)
 
-            _, result = scan(body, (), (args, kwargs))
+            _, result = lax.scan(body, (), (args, kwargs))
             return result
 
         if chunksize > 1:
@@ -133,6 +149,7 @@ def _pad_extra(arg, chunksize):
     T = N // chunksize
     arg = jnp.reshape(arg, (chunksize, N // chunksize) + arg.shape[1:])
     return arg
+
 
 def prepad(a, chunksize: int):
     return tree_map(lambda arg: _pad_extra(arg, chunksize), a)

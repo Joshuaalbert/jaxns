@@ -1,4 +1,8 @@
+import os
 from time import monotonic_ns
+
+# Force 2 jax  hosts
+os.environ["XLA_FLAGS"] = "--xla_force_host_platform_device_count=2"
 
 import pylab as plt
 import pytest
@@ -6,14 +10,16 @@ from jax import numpy as jnp, random
 from jax._src.scipy.linalg import solve_triangular
 from tensorflow_probability.substrates import jax as tfp
 
-from jaxns.samplers.multi_ellipsoidal_samplers import MultiEllipsoidalSampler
-from jaxns.samplers.uniform_samplers import UniformSampler
+from jaxns.model.bases import PriorModelGen
 from jaxns.model.model import Model
 from jaxns.model.prior import Prior
-from jaxns.model.bases import PriorModelGen
-from jaxns.adaptive_refinement import AdaptiveRefinement
+from jaxns.nested_sampler.standard_static import StandardStaticNestedSampler
+from jaxns.plotting import plot_diagnostics
+from jaxns.public import BaseNestedSampler
+from jaxns.samplers.multi_ellipsoidal_samplers import MultiEllipsoidalSampler
 from jaxns.types import TerminationCondition
-from jaxns.utils import bruteforce_evidence, sample_evidence
+from jaxns.utils import bruteforce_evidence, sample_evidence, summary
+
 # from jaxns.nested_sampler import ApproximateNestedSampler, ExactNestedSampler
 
 tfpd = tfp.distributions
@@ -45,14 +51,16 @@ def basic_model():
 def basic_run_results(basic_model):
     model = basic_model
 
-    exact_ns = ExactNestedSampler(model=model,
-                                  num_live_points=50,
-                                  num_parallel_samplers=1,
-                                  max_samples=1000)
+    exact_ns = BaseNestedSampler(
+        model=model,
+        num_live_points=50,
+        num_parallel_workers=1,
+        max_samples=1000
+    )
     with Timer():
         termination_reason, state = exact_ns(random.PRNGKey(42),
                                              term_cond=TerminationCondition(live_evidence_frac=1e-4))
-        results = exact_ns.to_results(state, termination_reason)
+        results = exact_ns.to_results(termination_reason=termination_reason, state=state)
 
         # exact_ns.plot_diagnostics(results)
         exact_ns.summary(results)
@@ -84,16 +92,16 @@ def basic2_results():
 
     model = Model(prior_model=prior_model,
                   log_likelihood=log_likelihood)
-    ns = ApproximateNestedSampler(
+    ns = BaseNestedSampler(
         model=model,
         num_live_points=50,
-        num_parallel_samplers=1,
+        num_parallel_workers=1,
         max_samples=1000
     )
 
     termination_reason, state = ns(random.PRNGKey(42),
                                    term_cond=TerminationCondition(live_evidence_frac=1e-4))
-    results = ns.to_results(state, termination_reason)
+    results = ns.to_results(termination_reason=termination_reason, state=state)
     X_exact = exact_X(jnp.exp(results.log_L_samples))
     return log_Z_true, state, results, X_exact
 
@@ -125,7 +133,7 @@ def plateau_run_results():
 
     model = Model(prior_model=prior_model,
                   log_likelihood=log_likelihood)
-    exact_ns = ExactNestedSampler(
+    exact_ns = BaseNestedSampler(
         model=model,
         num_live_points=50,
         max_samples=1000
@@ -136,7 +144,7 @@ def plateau_run_results():
         term_cond=TerminationCondition(live_evidence_frac=1e-4)
     )
 
-    results = exact_ns.to_results(state, termination_reason)
+    results = exact_ns.to_results(termination_reason=termination_reason, state=state)
     exact_ns.summary(results)
     exact_ns.plot_diagnostics(results)
 
@@ -187,10 +195,10 @@ def basic_mvn_model():
         return log_normal(x, data_mu, data_cov)
 
     model = Model(prior_model=prior_model, log_likelihood=log_likelihood)
-    ns = ApproximateNestedSampler(
+    ns = BaseNestedSampler(
         model=model,
         num_live_points=200,
-        num_parallel_samplers=1,
+        num_parallel_workers=1,
         max_samples=40000
     )
 
@@ -204,27 +212,29 @@ def basic_mvn_run_results(basic_mvn_model):
     with Timer():
         termination_reason, state = ns(random.PRNGKey(42),
                                        term_cond=TerminationCondition(live_evidence_frac=1e-5))
-        results = ns.to_results(state, termination_reason)
+        results = ns.to_results(termination_reason=termination_reason, state=state)
         ns.summary(results)
     ns.plot_diagnostics(results)
     return true_logZ, state, results
 
 
 @pytest.fixture(scope='package')
-def basic_mvn_run_adaptive_refinement_results(basic_mvn_model, basic_mvn_run_results):
-    true_logZ, model, ns = basic_mvn_model
-    true_logZ, state, results = basic_mvn_run_results
-    ar = AdaptiveRefinement(model=model, patience=20, num_parallel_samplers=1)
+def basic_mvn_run_results_parallel(basic_mvn_model):
+    true_logZ, model, _ = basic_mvn_model
+
+    ns = BaseNestedSampler(
+        model=model,
+        num_live_points=100,
+        num_parallel_workers=2,
+        max_samples=20000
+    )
+
     with Timer():
-        ar_state = ar(state=state)
-        ar_results = ns.to_results(ar_state, 0)
-        ns.summary(ar_results)
-    ns.plot_diagnostics(ar_results)
-    print(jnp.mean(results.num_live_points_per_sample))
-    print(jnp.mean(ar_results.num_live_points_per_sample))
-    print(jnp.log(jnp.mean(results.num_live_points_per_sample)) - jnp.log(
-        jnp.mean(ar_results.num_live_points_per_sample)))
-    return true_logZ, state, ar_results
+        termination_reason, state = ns(key=random.PRNGKey(42), term_cond=TerminationCondition())
+        results = ns.to_results(termination_reason=termination_reason, state=state)
+        ns.summary(results)
+    ns.plot_diagnostics(results)
+    return true_logZ, state, results
 
 
 @pytest.fixture(scope='package')
@@ -232,20 +242,18 @@ def multiellipsoidal_mvn_run_results(basic_mvn_model):
     true_logZ, model, ns = basic_mvn_model
 
     # model.sanity_check(random.PRNGKey(42), S=100)
-    ns = ApproximateNestedSampler(
+    ns = StandardStaticNestedSampler(
+        init_efficiency_threshold=0.1,
         model=model,
         num_live_points=100,
-        num_parallel_samplers=1,
+        num_parallel_workers=1,
         max_samples=40000,
-        sampler_chain=[
-            UniformSampler(model=model, efficiency_threshold=0.1),
-            MultiEllipsoidalSampler(model=model, efficiency_threshold=None, depth=0)
-        ]
+        sampler=MultiEllipsoidalSampler(model=model, depth=0)
     )
     with Timer():
-        termination_reason, state = ns(random.PRNGKey(41),
-                                       term_cond=TerminationCondition(live_evidence_frac=1e-5))
-        results = ns.to_results(state, termination_reason)
-        ns.summary(results)
-    ns.plot_diagnostics(results)
+        termination_reason, state = ns._run(random.PRNGKey(41),
+                                            term_cond=TerminationCondition(live_evidence_frac=1e-5))
+        results = ns._to_results(termination_reason=termination_reason, state=state, trim=True)
+        summary(results)
+    plot_diagnostics(results)
     return true_logZ, state, results

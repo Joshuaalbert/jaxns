@@ -91,11 +91,11 @@ def marginalise_static_from_U(key: PRNGKey, U_samples: UType, model: BaseAbstrac
     """
     U_samples = resample(key, U_samples, log_weights, S=ESS, replace=True)
 
-    def eval(U):
+    def _eval(U):
         V = model.prepare_input(U=U)
         return fun(*V)
 
-    marginalised = tree_map(lambda marg: jnp.nanmean(marg, axis=0), vmap(eval)(U_samples))
+    marginalised = tree_map(lambda marg: jnp.nanmean(marg, axis=0), vmap(_eval)(U_samples))
     return marginalised
 
 
@@ -118,7 +118,7 @@ def marginalise_dynamic_from_U(key: PRNGKey, U_samples: UType, model: BaseAbstra
     """
     ESS = jnp.asarray(ESS)
 
-    def eval(U):
+    def _eval(U):
         V = model.prepare_input(U=U)
         return fun(*V)
 
@@ -127,7 +127,7 @@ def marginalise_dynamic_from_U(key: PRNGKey, U_samples: UType, model: BaseAbstra
         key, resample_key = random.split(key, 2)
         _samples = resample(resample_key, U_samples, log_weights, S=1)
         _sample = tree_map(lambda v: v[0], _samples)
-        update = eval(_sample)
+        update = _eval(_sample)
         count = tree_map(lambda y, c: jnp.where(jnp.any(jnp.isnan(y)), c, c + jnp.asarray(1, c.dtype)),
                          update, count)
         marginalised = tree_map(lambda x, y: jnp.where(jnp.isnan(y), x, x + y.astype(x.dtype)),
@@ -138,8 +138,8 @@ def marginalise_dynamic_from_U(key: PRNGKey, U_samples: UType, model: BaseAbstra
     count = tree_map(lambda x: jnp.asarray(0, x.dtype), test_output)
     init_marginalised = tree_map(lambda x: jnp.zeros_like(x), test_output)
     (_, _, count, marginalised) = lax.while_loop(lambda state: state[1] < ESS,
-                                             body,
-                                             (key, jnp.array(0, ESS.dtype), count, init_marginalised))
+                                                 body,
+                                                 (key, jnp.array(0, ESS.dtype), count, init_marginalised))
     marginalised = tree_map(lambda x, c: x / c, marginalised, count)
     return marginalised
 
@@ -198,8 +198,8 @@ def marginalise_dynamic(key: PRNGKey, samples: XType, log_weights: jnp.ndarray, 
     count = tree_map(lambda x: jnp.asarray(0, x.dtype), test_output)
     init_marginalised = tree_map(lambda x: jnp.zeros_like(x), test_output)
     (_, _, count, marginalised) = lax.while_loop(lambda state: state[1] < ESS,
-                                             body,
-                                             (key, jnp.array(0, ESS.dtype), count, init_marginalised))
+                                                 body,
+                                                 (key, jnp.array(0, ESS.dtype), count, init_marginalised))
     marginalised = tree_map(lambda x, c: x / c, marginalised, count)
     return marginalised
 
@@ -288,6 +288,8 @@ def summary(results: NestedSamplerResults, f_obj: Optional[Union[str, TextIO]] =
         main_s.append(s)
 
     def _round(v, uncert_v):
+        v = float(v)
+        uncert_v = float(uncert_v)
         try:
             sig_figs = -int("{:e}".format(uncert_v).split('e')[1]) + 1
             return round(float(v), sig_figs)
@@ -295,7 +297,7 @@ def summary(results: NestedSamplerResults, f_obj: Optional[Union[str, TextIO]] =
             return float(v)
 
     _print("--------")
-    termination_bit_mask = _bit_mask(results.termination_reason, width=8)
+    termination_bit_mask = _bit_mask(int(results.termination_reason), width=8)
     _print("Termination Conditions:")
     for bit, condition in zip(termination_bit_mask, ['Reached max samples',
                                                      'Evidence uncertainty low enough',
@@ -308,25 +310,27 @@ def summary(results: NestedSamplerResults, f_obj: Optional[Union[str, TextIO]] =
         if bit == 1:
             _print(condition)
     _print("--------")
-    _print("# likelihood evals: {}".format(results.total_num_likelihood_evaluations))
-    _print("# samples: {}".format(results.total_num_samples))
-    _print("# slices: {:.1f}".format(results.total_num_slices))
+    _print(f"# likelihood evals: {results.total_num_likelihood_evaluations}")
+    _print(f"# samples: {results.total_num_samples}")
+    _print(f"# phantom samples: {float(results.total_phantom_samples):.1f}")
     _print(
-        "# slices / acceptance: {:.1f}".format(
-            jnp.nanmean(jnp.where(results.num_slices > 0, results.num_slices, jnp.nan))))
-    _print("# likelihood evals / sample: {:.1f}".format(
-        results.total_num_likelihood_evaluations / results.total_num_samples))
-    likelihood_evals_per_slice = jnp.sum(
-        jnp.where(results.num_slices > 0, results.num_likelihood_evaluations_per_sample, 0.)) / results.total_num_slices
-    _print("# likelihood evals / slice: {:.1f}".format(likelihood_evals_per_slice))
+        f"# likelihood evals / sample: {float(results.total_num_likelihood_evaluations / results.total_num_samples):.1f}"
+    )
+    _print(
+        f"# phantom samples / sample: {float(results.total_phantom_samples / results.total_phantom_samples):.2f}"
+    )
     _print("--------")
-    _print("logZ={} +- {}".format(_round(results.log_Z_mean, results.log_Z_uncert),
-                                  _round(results.log_Z_uncert, results.log_Z_uncert)))
+    _print(
+        f"logZ={_round(results.log_Z_mean, results.log_Z_uncert)} +- {_round(results.log_Z_uncert, results.log_Z_uncert)}"
+    )
     # _print("H={} +- {}".format(
     #     _round(results.H_mean, results.H_uncert), _round(results.H_uncert, results.H_uncert)))
-    _print("H={}".format(
-        _round(results.H_mean, results.H_mean)))
-    _print("ESS={}".format(int(results.ESS)))
+    _print(
+        f"H={_round(results.H_mean, results.H_mean)}"
+    )
+    _print(
+        f"ESS={float(results.ESS)}"
+    )
     max_like_idx = jnp.argmax(results.log_L_samples)
     max_like_points = tree_map(lambda x: x[max_like_idx], results.samples)
     samples = resample(random.PRNGKey(23426), results.samples, results.log_dp_mean, S=max(10, int(results.ESS)),
@@ -341,8 +345,10 @@ def summary(results: NestedSamplerResults, f_obj: Optional[Union[str, TextIO]] =
         _map_points = map_points[name].reshape((-1,))
         ndims = _samples.shape[1]
         _print("--------")
-        _print("{}: mean +- std.dev. | 10%ile / 50%ile / 90%ile | MAP est. | max(L) est.".format(
-            name if ndims == 1 else "{}[#]".format(name), ))
+        var_name = name if ndims == 1 else "{}[#]".format(name)
+        _print(
+            f"{var_name}: mean +- std.dev. | 10%ile / 50%ile / 90%ile | MAP est. | max(L) est."
+        )
         for dim in range(ndims):
             _uncert = jnp.std(_samples[:, dim])
             _max_like_point = _max_like_points[dim]

@@ -1,7 +1,7 @@
 from typing import Union
 
 import jax.numpy as jnp
-from jax import random, vmap
+from jax import random, vmap, lax
 from jax._src.scipy.special import logsumexp
 from jax.scipy.stats import multivariate_normal
 
@@ -75,7 +75,7 @@ def em_gmm(key, data, n_components, mask: Union[jnp.ndarray, None] = None, n_ite
         done, _, params = state
         return jnp.bitwise_not(done)
 
-    _, total_iters, params = while_loop(
+    _, total_iters, params = lax.while_loop(
         cond,
         body,
         (jnp.asarray(False), jnp.asarray(0), params)

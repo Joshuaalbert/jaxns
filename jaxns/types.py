@@ -54,12 +54,12 @@ class EvidenceCalculation(NamedTuple):
 
 
 class TerminationCondition(NamedTuple):
-    ess: Optional[FloatArray] = jnp.inf
+    ess: Optional[FloatArray] = jnp.asarray(jnp.inf, float_type)
     evidence_uncert: Optional[FloatArray] = jnp.asarray(0., float_type)
-    live_evidence_frac: Optional[FloatArray] = jnp.asarray(1e-4, float_type)
-    max_samples: Optional[IntArray] = jnp.iinfo(int_type).max
-    max_num_likelihood_evaluations: Optional[IntArray] = jnp.iinfo(int_type).max
-    log_L_contour: Optional[FloatArray] = jnp.inf
+    live_evidence_frac: Optional[FloatArray] = jnp.asarray(1e-5, float_type)
+    max_samples: Optional[IntArray] = jnp.asarray(jnp.iinfo(int_type).max, int_type)
+    max_num_likelihood_evaluations: Optional[IntArray] = jnp.asarray(jnp.iinfo(int_type).max, int_type)
+    log_L_contour: Optional[FloatArray] = jnp.asarray(jnp.inf, float_type)
     efficiency_threshold: Optional[FloatArray] = jnp.asarray(0., float_type)
 
     def __and__(self, other):
@@ -93,9 +93,8 @@ class NestedSamplerResults(NamedTuple):
     log_posterior_density: FloatArray  # log(P( theta | D )) log posteriori density
     num_live_points_per_sample: IntArray  # how many live points were taken for the samples.
     num_likelihood_evaluations_per_sample: IntArray  # how many likelihood evaluations were made per sample.
-    num_slices: IntArray  # how many slices were taken for slice sampled points
     total_num_samples: IntArray  # int, the total number of samples collected.
-    total_num_slices: IntArray  # int, how many slices in total were taken
+    total_phantom_samples: IntArray  # int, the total number of phantom samples collected.
     total_num_likelihood_evaluations: IntArray  # how many likelihood evaluations were made in total
     log_efficiency: FloatArray  # log(total_num_samples / total_num_likelihood_evaluations)
     termination_reason: IntArray  # this will be an int reflecting the reason for termination

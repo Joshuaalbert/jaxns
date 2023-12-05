@@ -1,3 +1,4 @@
+import logging
 from typing import Tuple
 
 import numpy as np
@@ -9,12 +10,14 @@ except ImportError:
     print("You must `pip install dm-haiku` first.")
     raise
 
-from jaxns import UType, XType, PRNGKey, FloatArray, LikelihoodInputType
+from jaxns.types import UType, XType, PRNGKey, FloatArray, LikelihoodInputType
 from jaxns.model.bases import BaseAbstractModel
 
 __all__ = [
     'ParametrisedModel'
 ]
+
+logger = logging.getLogger('jaxns')
 
 
 class ParametrisedModel(BaseAbstractModel):

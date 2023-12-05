@@ -1,23 +1,23 @@
 import logging
-from typing import Tuple, NamedTuple, Union, Any
+from typing import Tuple, NamedTuple, Any, Union
 
-from jax import random, pmap, tree_map, numpy as jnp, lax, tree_leaves, core, vmap
+from jax import random, pmap, tree_map, numpy as jnp, lax, core, vmap
 from jax._src.lax import parallel
 
-from jaxns.common import remove_chunk_dim
 from jaxns.internals.log_semiring import LogSpace, normalise_log_space
+from jaxns.internals.maps import replace_index
 from jaxns.internals.stats import linear_to_log_stats, effective_sample_size
-from jaxns.samplers.uniform_samplers import UniformSampler
 from jaxns.model.bases import BaseAbstractModel
 from jaxns.nested_sampler.bases import BaseAbstractNestedSampler
 from jaxns.samplers.abc import SamplerState
 from jaxns.samplers.bases import BaseAbstractSampler
+from jaxns.samplers.uniform_samplers import UniformSampler
 from jaxns.shrinkage_statistics import compute_evidence_stats
-from jaxns.tree_structure import SampleTreeGraph, count_crossed_edges
-from jaxns.types import TerminationCondition, IntArray, PRNGKey, FloatArray, \
-    BoolArray, int_type, UType, MeasureType, float_type, TerminationConditionDisjunction, \
-    TerminationConditionConjunction, EvidenceCalculation, Sample, StaticStandardSampleCollection, \
-    StaticStandardNestedSamplerState, NestedSamplerResults
+from jaxns.tree_structure import SampleTreeGraph, count_crossed_edges, unbatch_state
+from jaxns.types import TerminationCondition, IntArray, PRNGKey, BoolArray, int_type, UType, MeasureType, float_type, \
+    TerminationConditionDisjunction, \
+    TerminationConditionConjunction, Sample, StaticStandardSampleCollection, \
+    StaticStandardNestedSamplerState, NestedSamplerResults, EvidenceCalculation, FloatArray
 
 logger = logging.getLogger('jaxns')
 
@@ -83,26 +83,43 @@ def _inter_sync_shrinkage_process(
         # Set phantom samples, whose sender nodes are all the dead point. These do not get set on the front.
         num_phantom = phantom_samples.log_L.size
         sample_collection = sample_collection._replace(
-            sender_node_idx=sample_collection.sender_node_idx.at[next_sample_idx:next_sample_idx + num_phantom].set(
-                dead_node_idx),
-            log_L=sample_collection.log_L.at[next_sample_idx:next_sample_idx + num_phantom].set(
-                phantom_samples.log_L),
-            U_samples=sample_collection.U_samples.at[next_sample_idx:next_sample_idx + num_phantom].set(
-                phantom_samples.U_sample),
-            num_likelihood_evaluations=sample_collection.num_likelihood_evaluations.at[
-                                       next_sample_idx:next_sample_idx + num_phantom].set(
-                phantom_samples.num_likelihood_evaluations),
-            phantom=sample_collection.phantom.at[next_sample_idx:next_sample_idx + num_phantom].set(
-                jnp.ones(num_phantom, dtype=jnp.bool_))
+            sender_node_idx=replace_index(
+                sample_collection.sender_node_idx,
+                jnp.full((num_phantom,), dead_node_idx),
+                next_sample_idx
+            ),
+            log_L=replace_index(
+                sample_collection.log_L,
+                phantom_samples.log_L,
+                next_sample_idx
+            ),
+            U_samples=replace_index(
+                sample_collection.U_samples,
+                phantom_samples.U_sample,
+                next_sample_idx
+            ),
+            num_likelihood_evaluations=replace_index(
+                sample_collection.num_likelihood_evaluations,
+                phantom_samples.num_likelihood_evaluations,
+                next_sample_idx
+            ),
+            phantom=replace_index(
+                sample_collection.phantom,
+                jnp.ones(num_phantom, dtype=jnp.bool_),
+                next_sample_idx
+            )
+
         )
+
         next_sample_idx = state.next_sample_idx + num_phantom
         state = state._replace(
             next_sample_idx=next_sample_idx,
             sample_collection=sample_collection
+
         )
 
         # Fast update of sampler state given this state
-        state, sampler_state = sampler.post_process(state, carry.sampler_state)
+        sampler_state = sampler.post_process(state, carry.sampler_state)
         return CarryType(state=state, sampler_state=sampler_state), ()
 
     # Sampler state is created before all this work. Quickly updated during shrinkage.
@@ -150,7 +167,7 @@ def _single_thread_ns(init_state: StaticStandardNestedSamplerState,
 
         # Synchronise
         batched_all_state: StaticStandardNestedSamplerState = parallel.all_gather(state, 'i')
-        all_state = unbatch_state(state=batched_all_state)
+        all_state = unbatch_state(batched_state=batched_all_state)
 
         # Use synchronised state to determine termination ==> same stopping time on all devices
         done, termination_reason = compute_termination(state=all_state, termination_cond=termination_cond)
@@ -167,12 +184,6 @@ def _single_thread_ns(init_state: StaticStandardNestedSamplerState,
         cond_fun=cond,
         body_fun=body,
         init_val=init_carry_state
-    )
-
-    # TODO: perhaps we need to do a final sampling run to make all the chains consistent,
-    #  e.g. to at least a likelihood contour (i.e. standardise on L(X)). Would mean that some workers are idle.
-    target_log_L_contour = jnp.max(
-        parallel.all_gather(jnp.max(carry_state.state.sample_collection.log_L), 'i')
     )
 
     return carry_state.termination_reason, carry_state.state
@@ -205,8 +216,9 @@ def compute_termination(state: StaticStandardNestedSamplerState, termination_con
     )
 
     # Check rate of change of likelihood
-    dL = LogSpace(per_sample_evidence_stats.log_L[-1]) - LogSpace(per_sample_evidence_stats.log_L[-num_live_points])
-    dX = LogSpace(per_sample_evidence_stats.log_X_mean[-num_live_points]) - LogSpace(
+    front_size = state.front_idx.size
+    dL = LogSpace(per_sample_evidence_stats.log_L[-1]) - LogSpace(per_sample_evidence_stats.log_L[-front_size])
+    dX = LogSpace(per_sample_evidence_stats.log_X_mean[-front_size]) - LogSpace(
         per_sample_evidence_stats.log_X_mean[-1])
     log_L_slope = dL.log_abs_val - dX.log_abs_val
 
@@ -225,7 +237,8 @@ def compute_termination(state: StaticStandardNestedSamplerState, termination_con
         sample_collection=state.sample_collection,
         num_samples=state.next_sample_idx,
         evidence_calculation=final_evidence_stats,
-        log_L=final_evidence_stats.log_L,
+        log_L=jnp.min(front_log_L),
+        log_L_max=final_evidence_stats.log_L,
         log_L_slope=log_L_slope,
         efficiency=efficiency,
         plateau=plateau
@@ -238,6 +251,7 @@ def determine_termination(
         num_samples: IntArray,
         evidence_calculation: EvidenceCalculation,
         log_L: FloatArray,
+        log_L_max: FloatArray,
         log_L_slope: FloatArray,
         efficiency: FloatArray,
         plateau: BoolArray
@@ -266,6 +280,8 @@ def determine_termination(
     done = jnp.asarray(False, jnp.bool_)
 
     def _set_done_bit(bit_done, bit_reason, done, termination_reason):
+        if bit_done.size > 1:
+            raise RuntimeError("bit_done must be a scalar.")
         done = jnp.bitwise_or(bit_done, done)
         termination_reason += jnp.where(bit_done,
                                         jnp.asarray(2 ** bit_reason, int_type),
@@ -280,6 +296,7 @@ def determine_termination(
                 num_samples=num_samples,
                 evidence_calculation=evidence_calculation,
                 log_L=log_L,
+                log_L_max=log_L_max,
                 log_L_slope=log_L_slope,
                 efficiency=efficiency,
                 plateau=plateau
@@ -296,6 +313,7 @@ def determine_termination(
                 num_samples=num_samples,
                 evidence_calculation=evidence_calculation,
                 log_L=log_L,
+                log_L_max=log_L_max,
                 log_L_slope=log_L_slope,
                 efficiency=efficiency,
                 plateau=plateau
@@ -318,10 +336,11 @@ def determine_termination(
                                                  done=done, termination_reason=termination_reason)
     if term_cond.live_evidence_frac is not None:
         # Z_remaining/(Z_remaining + Z_current) < delta
-        L_max_estimate = LogSpace(log_L) + LogSpace(log_L_slope) * LogSpace(evidence_calculation.log_X_mean)
+        L_max_estimate = LogSpace(log_L_max)  # + LogSpace(log_L_slope) * LogSpace(evidence_calculation.log_X_mean)
         Z_remaining_upper_bound_estimate = L_max_estimate * LogSpace(evidence_calculation.log_X_mean)
+
         Z_upper = LogSpace(evidence_calculation.log_Z_mean) + Z_remaining_upper_bound_estimate
-        delta = LogSpace(term_cond.live_evidence_frac)
+        delta = LogSpace(jnp.log(term_cond.live_evidence_frac))
         small_remaining_evidence = (
                 Z_remaining_upper_bound_estimate.log_abs_val - Z_upper.log_abs_val < delta.log_abs_val
         )
@@ -467,80 +486,8 @@ def create_init_state(key: PRNGKey, num_live_points: int, max_samples: int,
         key=key,
         next_sample_idx=jnp.asarray(num_live_points, int_type),
         sample_collection=sample_collection,
-        front_idx=jnp.arange(num_live_points, int_type)
+        front_idx=jnp.arange(num_live_points, dtype=int_type)
     )
-
-
-def unbatch_state(state: StaticStandardNestedSamplerState) -> StaticStandardNestedSamplerState:
-    """
-    Remove the batch dimension from the state.
-
-    Args:
-        state: the state with batch dimension
-
-    Returns:
-        the state without batch dimension
-    """
-    if len(state.next_sample_idx.shape) == 1:
-        return state
-
-    key = state.key[0]  # Take first key
-    next_sample_idx = jnp.sum(state.next_sample_idx)  # Next insert will be sum
-    # Shifts are the cumulative sum of the number of samples per batch dimension
-    shifts = jnp.concatenate([jnp.asarray([0], int_type), jnp.cumsum(state.next_sample_idx[:-1])])
-    sender_node_idx = jnp.where(
-        state.sample_collection.sender_node_idx.astype(jnp.bool_),
-        state.sample_collection.sender_node_idx + shifts[:, None],
-        state.sample_collection.sender_node_idx
-    )
-    # Front indices are shifted like senders
-    front_idx = remove_chunk_dim(
-        state.front_idx + shifts[:, None]
-    )
-    return StaticStandardNestedSamplerState(
-        key=key,
-        next_sample_idx=next_sample_idx,
-        sample_collection=remove_chunk_dim(
-            state.sample_collection._replace(sender_node_idx=sender_node_idx)
-        ),
-        front_idx=front_idx
-    )
-
-
-def test_unbatch_state():
-    # Example of two batched states, first dimension is has 1 sample, second has 2 samples. Max samples is 2 for both.
-    # num_live_points=1 for both.
-    batched_state = StaticStandardNestedSamplerState(
-        key=random.split(random.PRNGKey(42), 2),
-        next_sample_idx=jnp.asarray([1, 2]),
-        sample_collection=StaticStandardSampleCollection(
-            sender_node_idx=jnp.asarray([[0, 0], [0, 1]]),
-            log_L=jnp.asarray([[1., jnp.inf], [2., 3.]]),
-            U_samples=jnp.asarray([[[1., 1.], [0., 0.]], [[2., 2.], [3., 3.]]]),
-            num_likelihood_evaluations=jnp.asarray([[1, 0], [3, 4]]),
-            phantom=jnp.asarray([[True, False], [True, True]])
-        ),
-        front_idx=jnp.asarray([[0], [1]])
-    )
-
-    unbatched_state = unbatch_state(batched_state)
-
-    # The second element of first batch is not measure so it should be at end of unbatched
-    expected_state = StaticStandardNestedSamplerState(
-        key=batched_state.key[0],
-        next_sample_idx=jnp.asarray(3, int_type),
-        sample_collection=StaticStandardSampleCollection(
-            sender_node_idx=jnp.asarray([0, 0, 2, 0]),
-            log_L=jnp.asarray([1., 2., 3., jnp.inf]),
-            U_samples=jnp.asarray([[1., 1.], [2., 2.], [3., 3.], [0., 0.]]),
-            num_likelihood_evaluations=jnp.asarray([1, 3, 4, 0]),
-            phantom=jnp.asarray([True, True, True, False])
-        ),
-        front_idx=jnp.asarray([0, 2])
-    )
-    # compare pytrees
-    for a, b in zip(tree_leaves(unbatched_state), tree_leaves(expected_state)):
-        assert jnp.all(a == b)
 
 
 class StandardStaticNestedSampler(BaseAbstractNestedSampler):
@@ -623,24 +570,24 @@ class StandardStaticNestedSampler(BaseAbstractNestedSampler):
         # Kish's ESS = [sum dZ]^2 / [sum dZ^2]
         ESS = effective_sample_size(final_evidence_stats.log_Z_mean, final_evidence_stats.log_dZ2_mean)
 
-        samples = vmap(self.model.transform)(sample_collection.reservoir.point_U)
+        samples = vmap(self.model.transform)(sample_collection.U_samples)
 
-        log_L_samples = sample_collection.reservoir.log_L
+        log_L_samples = sample_collection.log_L
         dp_mean = LogSpace(per_sample_evidence_stats.log_dZ_mean)
         dp_mean = normalise_log_space(dp_mean)
         H_mean = LogSpace(jnp.where(jnp.isneginf(dp_mean.log_abs_val),
                                     -jnp.inf,
                                     dp_mean.log_abs_val + log_L_samples)).sum().value - log_Z_mean
         X_mean = LogSpace(per_sample_evidence_stats.log_X_mean)
-        num_likelihood_evaluations_per_sample = sample_collection.reservoir.num_likelihood_evaluations
+        num_likelihood_evaluations_per_sample = sample_collection.num_likelihood_evaluations
         total_num_likelihood_evaluations = jnp.sum(num_likelihood_evaluations_per_sample)
         num_live_points_per_sample = num_live_points
         efficiency = LogSpace(jnp.log(num_samples) - jnp.log(total_num_likelihood_evaluations))
 
-        log_posterior_density = sample_collection.reservoir.log_L + vmap(self.model.log_prob_prior)(
-            sample_collection.reservoir.point_U)
+        log_posterior_density = sample_collection.log_L + vmap(self.model.log_prob_prior)(
+            sample_collection.U_samples)
 
-        total_num_slices = jnp.sum(sample_collection.reservoir.num_slices)
+        total_phantom_samples = jnp.sum(sample_collection.phantom.astype(int_type))
 
         return NestedSamplerResults(
             log_Z_mean=log_Z_mean,  # estimate of log(E[Z])
@@ -648,6 +595,7 @@ class StandardStaticNestedSampler(BaseAbstractNestedSampler):
             ESS=ESS,  # estimate of Kish's effective sample size
             H_mean=H_mean,  # estimate of E[int log(L) L dp/Z]
             total_num_samples=num_samples,  # int, the total number of samples collected.
+            total_phantom_samples=total_phantom_samples,  # int, the total number of phantom samples collected.
             log_L_samples=log_L_samples,  # log(L) of each sample
             log_dp_mean=dp_mean.log_abs_val,
             log_posterior_density=log_posterior_density,
@@ -661,13 +609,11 @@ class StandardStaticNestedSampler(BaseAbstractNestedSampler):
             total_num_likelihood_evaluations=total_num_likelihood_evaluations,
             # how many likelihood evaluations were made in total,
             # sum of num_likelihood_evaluations_per_sample.
-            total_num_slices=total_num_slices,
             log_efficiency=efficiency.log_abs_val,
             # total_num_samples / total_num_likelihood_evaluations
             termination_reason=termination_reason,  # termination condition as bit mask
-            num_slices=sample_collection.reservoir.num_slices,
             samples=samples,
-            U_samples=sample_collection.reservoir.point_U
+            U_samples=sample_collection.U_samples
         )
 
     def _run(self, key: PRNGKey, term_cond: TerminationCondition) -> Tuple[IntArray, StaticStandardNestedSamplerState]:
@@ -700,6 +646,22 @@ class StandardStaticNestedSampler(BaseAbstractNestedSampler):
                 sampler=self.sampler,
                 num_samples_per_sync=self.num_live_points
             )
+            if self.num_parallel_workers > 1:
+                # We need to do a final sampling run to make all the chains consistent,
+                #  to a likelihood contour (i.e. standardise on L(X)). Would mean that some workers are idle.
+                target_log_L_contour = jnp.max(
+                    parallel.all_gather(jnp.min(state.sample_collection.log_L[state.front_idx]), 'i')
+                )
+                termination_reason, state = _single_thread_ns(
+                    init_state=state,
+                    termination_cond=TerminationCondition(
+                        live_evidence_frac=jnp.asarray(0., float_type),
+                        log_L_contour=target_log_L_contour,
+                        max_samples=jnp.asarray(self.max_samples)
+                    ),
+                    sampler=self.sampler,
+                    num_samples_per_sync=self.num_live_points
+                )
 
             return termination_reason, state
 
@@ -707,6 +669,7 @@ class StandardStaticNestedSampler(BaseAbstractNestedSampler):
 
         keys = random.split(key, self.num_parallel_workers)
         batched_termination_reason, batched_state = parallel_ns(keys)
-        state = unbatch_state(state=batched_state)
+        state = unbatch_state(batched_state=batched_state)
+        termination_reason = batched_termination_reason[0]
 
-        return batched_termination_reason, state
+        return termination_reason, state

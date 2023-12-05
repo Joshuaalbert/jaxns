@@ -7,12 +7,13 @@ from jaxns.types import float_type
 def normal_to_lognormal(mu, std):
     """
     Convert normal parameters to log-normal parameters.
+
     Args:
-        mu:
-        var:
+        mu: mean of normal RV
+        std: standard deviation of normal RV
 
     Returns:
-
+        mu, sigma of log-normal RV
     """
     var = std ** 2
     ln_mu = 2. * jnp.log(mu) - 0.5 * jnp.log(var)
@@ -21,6 +22,18 @@ def normal_to_lognormal(mu, std):
 
 
 def density_estimation(xstar, x, alpha=1. / 3., order=1):
+    """
+    Estimates the density of xstar given x using a trick.
+
+    Args:
+        xstar: array of points to estimate density at
+        x: array of points to estimate density from
+        alpha: power law exponent
+        order: order of norm to use
+
+    Returns:
+        density at xstar
+    """
     assert len(x.shape) == 2
 
     N = x.shape[0]

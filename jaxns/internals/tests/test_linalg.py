@@ -1,6 +1,5 @@
 from jax import numpy as jnp, random
 
-import jaxns.common
 from jaxns.internals.linalg import msqrt
 
 
@@ -10,4 +9,3 @@ def test_msqrt():
         B = A @ A.T
         L = msqrt(B)
         assert jnp.allclose(B, L @ L.T, atol=2e-4)
-

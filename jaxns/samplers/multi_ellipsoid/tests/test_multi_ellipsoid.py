@@ -3,14 +3,15 @@ import pylab as plt
 import tensorflow_probability.substrates.jax as tfp
 from jax import numpy as jnp, random, tree_map, disable_jit, vmap
 
-from jaxns import Prior, Model
 from jaxns.model.bases import PriorModelGen
-from jaxns.initial_state import get_uniform_init_live_points
+from jaxns.model.model import Model
+from jaxns.model.prior import Prior
+from jaxns.nested_sampler.standard_static import draw_uniform_samples
+from jaxns.random import random_ortho_matrix
 from jaxns.samplers.multi_ellipsoid.multi_ellipsoid_utils import log_ellipsoid_volume, ellipsoid_clustering, \
     bounding_ellipsoid, covariance_to_rotational, ellipsoid_params, point_in_ellipsoid, plot_ellipses, \
     EllipsoidParams, maha_ellipsoid, circle_to_ellipsoid, ellipsoid_to_circle
-from jaxns.random import random_ortho_matrix
-from jaxns.types import float_type
+from jaxns.types import float_type, Sample
 
 tfpd = tfp.distributions
 
@@ -30,14 +31,14 @@ def test_ellipsoid_clustering():
                   log_likelihood=log_likelihood)
 
     n = 1000
-    live_points = get_uniform_init_live_points(random.PRNGKey(43),
-                                               num_live_points=n,
-                                               model=model)
-    keep = live_points.reservoir.log_L > log_likelihood(1.1, 1.1)
-    reservoir = tree_map(lambda x: x[keep], live_points.reservoir)
-    plt.scatter(reservoir.point_U[:, 0], reservoir.point_U[:, 1])
+    live_points = draw_uniform_samples(random.PRNGKey(43),
+                                       num_live_points=n,
+                                       model=model)
+    keep = live_points.log_L > log_likelihood(1.1, 1.1)
+    reservoir: Sample = tree_map(lambda x: x[keep], live_points)
+    plt.scatter(reservoir.U_sample[:, 0], reservoir.U_sample[:, 1])
     with disable_jit():
-        state = ellipsoid_clustering(random.PRNGKey(42), points=reservoir.point_U,
+        state = ellipsoid_clustering(random.PRNGKey(42), points=reservoir.U_sample,
                                      log_VS=jnp.asarray(0., float_type),
                                      max_num_ellipsoids=10)
         plot_ellipses(params=state.params)
@@ -114,8 +115,6 @@ def test_ellipsoid_params():
     assert jnp.allclose(mu, mu_true)
     assert jnp.allclose(radii, radii_true)
     assert jnp.allclose(rotation, rotation_true)
-
-
 
 
 def test_ellipsoid_transforms():

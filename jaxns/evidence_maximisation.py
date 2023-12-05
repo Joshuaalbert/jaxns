@@ -7,6 +7,8 @@ from jax import numpy as jnp, random, vmap, tree_map
 from jax._src.scipy.special import logsumexp, ndtr
 from tqdm import tqdm
 
+from jaxns.nested_sampler.standard_static import StandardStaticNestedSampler
+
 try:
     import haiku as hk
 except ImportError:
@@ -123,10 +125,10 @@ class EM:
             termination_cond = TerminationCondition(live_evidence_frac=1e-5)
         else:
             termination_cond = self.termination_cond
-        exact_ns = ExactNestedSampler(model=model, **kwargs)
-        termination_reason, state = exact_ns(random.PRNGKey(42),
+        exact_ns = StandardStaticNestedSampler(model=model, **kwargs)
+        termination_reason, state = exact_ns._run(random.PRNGKey(42),
                                              term_cond=termination_cond)
-        results = exact_ns.to_results(state, termination_reason)
+        results = exact_ns._to_results(termination_reason, state, trim=True)
         # exact_ns.summary(results)
         # exact_ns.plot_diagnostics(results)
         # exact_ns.plot_cornerplot(results)
