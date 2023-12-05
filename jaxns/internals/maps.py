@@ -3,8 +3,6 @@ import logging
 from typing import TypeVar
 
 from jax import tree_map, pmap, numpy as jnp
-from jax.lax import dynamic_update_slice, dynamic_slice
-from jax.lax import scan
 
 from jaxns.types import int_type
 

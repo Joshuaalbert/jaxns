@@ -3,82 +3,36 @@ import logging
 from typing import NamedTuple, TextIO, Union, Optional, Tuple, TypeVar, Callable
 
 import numpy as np
-from jax import numpy as jnp, tree_map, vmap, random, jit
-from jax._src.lax.control_flow import while_loop
+from jax import numpy as jnp, tree_map, vmap, random, jit, lax
 
-from jaxns.abc import AbstractModel
 from jaxns.internals.log_semiring import LogSpace
-from jaxns.internals.maps import replace_index, prepare_func_args
+from jaxns.internals.maps import prepare_func_args
+from jaxns.model.bases import BaseAbstractModel
 from jaxns.random import resample_indicies
+from jaxns.types import NestedSamplerResults, float_type, XType, UType
 from jaxns.types import PRNGKey
-from jaxns.types import SampleCollection, NestedSamplerState, Reservoir, NestedSamplerResults, \
-    float_type, XType, UType
 from jaxns.warnings import deprecated
 
 logger = logging.getLogger('jaxns')
 
-__all__ = ['sort_samples',
-           'collect_samples',
-           'resample',
-           'marginalise_static_from_U',
-           'marginalise_dynamic_from_U',
-           'marginalise_static',
-           'marginalise_dynamic',
-           'maximum_a_posteriori_point',
-           'evaluate_map_estimate',
-           'summary',
-           'analytic_posterior_samples',
-           'sample_evidence',
-           'bruteforce_posterior_samples',
-           'bruteforce_evidence',
-           'save_pytree',
-           'save_results',
-           'load_pytree',
-           'load_results']
-
-
-def sort_samples(sample_collection: SampleCollection):
-    """
-    Sorts a sample collection lexigraphically, first on log_L then on log_L_constraint.
-
-    Args:
-        sample_collection: sample collection to sort
-
-    Returns:
-        sorted sample collection
-    """
-    idx_sort = jnp.lexsort((sample_collection.reservoir.log_L_constraint,
-                            sample_collection.reservoir.log_L))
-    sample_collection = sample_collection._replace(
-        reservoir=tree_map(lambda x: x[idx_sort], sample_collection.reservoir)
-    )
-    return sample_collection
-
-
-def collect_samples(state: NestedSamplerState, new_reservoir: Reservoir) -> NestedSamplerState:
-    """
-    Merge samples from new reservoir into sample collection
-
-    Args:
-        state: state
-        new_reservoir: reservoir to add to sample collection
-
-    Returns:
-        state with sorted sample collection
-    """
-    old_reservoir = state.sample_collection.reservoir
-    # Insert the new samples with a slice update
-    reservoir = tree_map(lambda old, new: replace_index(old, new, state.sample_collection.sample_idx),
-                         old_reservoir, new_reservoir)
-    # Update the sample collection
-    sample_collection = state.sample_collection._replace(
-        reservoir=reservoir,
-        sample_idx=state.sample_collection.sample_idx + new_reservoir.log_L.size
-    )
-    # Sort
-    sample_collection = sort_samples(sample_collection)
-    state = state._replace(sample_collection=sample_collection)
-    return state
+__all__ = [
+    'resample',
+    'marginalise_static_from_U',
+    'marginalise_dynamic_from_U',
+    'marginalise_static',
+    'marginalise_dynamic',
+    'maximum_a_posteriori_point',
+    'evaluate_map_estimate',
+    'summary',
+    'analytic_posterior_samples',
+    'sample_evidence',
+    'bruteforce_posterior_samples',
+    'bruteforce_evidence',
+    'save_pytree',
+    'save_results',
+    'load_pytree',
+    'load_results'
+]
 
 
 def resample(key: PRNGKey, samples: XType, log_weights: jnp.ndarray, S: int = None, replace: bool = False) -> XType:
@@ -102,7 +56,7 @@ def resample(key: PRNGKey, samples: XType, log_weights: jnp.ndarray, S: int = No
 _V = TypeVar('_V')
 
 
-def evaluate_map_estimate_from_U(results: NestedSamplerResults, model: AbstractModel, fun: Callable[..., _V]) -> _V:
+def evaluate_map_estimate_from_U(results: NestedSamplerResults, model: BaseAbstractModel, fun: Callable[..., _V]) -> _V:
     """
     Marginalises function over posterior samples, where ESS is static.
 
@@ -118,7 +72,8 @@ def evaluate_map_estimate_from_U(results: NestedSamplerResults, model: AbstractM
     return fun(*V)
 
 
-def marginalise_static_from_U(key: PRNGKey, U_samples: UType, model: AbstractModel, log_weights: jnp.ndarray, ESS: int,
+def marginalise_static_from_U(key: PRNGKey, U_samples: UType, model: BaseAbstractModel, log_weights: jnp.ndarray,
+                              ESS: int,
                               fun: Callable[..., _V]) -> _V:
     """
     Marginalises function over posterior samples, where ESS is static.
@@ -144,7 +99,7 @@ def marginalise_static_from_U(key: PRNGKey, U_samples: UType, model: AbstractMod
     return marginalised
 
 
-def marginalise_dynamic_from_U(key: PRNGKey, U_samples: UType, model: AbstractModel, log_weights: jnp.ndarray,
+def marginalise_dynamic_from_U(key: PRNGKey, U_samples: UType, model: BaseAbstractModel, log_weights: jnp.ndarray,
                                ESS: jnp.ndarray,
                                fun: Callable[..., _V]) -> _V:
     """
@@ -182,7 +137,7 @@ def marginalise_dynamic_from_U(key: PRNGKey, U_samples: UType, model: AbstractMo
     test_output = fun(**tree_map(lambda v: v[0], U_samples))
     count = tree_map(lambda x: jnp.asarray(0, x.dtype), test_output)
     init_marginalised = tree_map(lambda x: jnp.zeros_like(x), test_output)
-    (_, _, count, marginalised) = while_loop(lambda state: state[1] < ESS,
+    (_, _, count, marginalised) = lax.while_loop(lambda state: state[1] < ESS,
                                              body,
                                              (key, jnp.array(0, ESS.dtype), count, init_marginalised))
     marginalised = tree_map(lambda x, c: x / c, marginalised, count)
@@ -242,7 +197,7 @@ def marginalise_dynamic(key: PRNGKey, samples: XType, log_weights: jnp.ndarray, 
     test_output = fun(**tree_map(lambda v: v[0], samples))
     count = tree_map(lambda x: jnp.asarray(0, x.dtype), test_output)
     init_marginalised = tree_map(lambda x: jnp.zeros_like(x), test_output)
-    (_, _, count, marginalised) = while_loop(lambda state: state[1] < ESS,
+    (_, _, count, marginalised) = lax.while_loop(lambda state: state[1] < ESS,
                                              body,
                                              (key, jnp.array(0, ESS.dtype), count, init_marginalised))
     marginalised = tree_map(lambda x, c: x / c, marginalised, count)
@@ -460,14 +415,13 @@ def sample_evidence(key, num_live_points_per_sample, log_L_samples, S: int = 100
     return Z_chains.log_abs_val
 
 
-def bruteforce_posterior_samples(model: AbstractModel, S: int = 60) -> Tuple[XType, jnp.ndarray]:
+def bruteforce_posterior_samples(model: BaseAbstractModel, S: int = 60) -> Tuple[XType, jnp.ndarray]:
     """
     Compute the posterior with brute-force over a regular grid.
 
     Args:
-        prior_chain (jaxns.PriorChain): PriorChain of model
-        log_likelihood (:code:`callable(**samples)`): log-likelihood function
-        S (int): resolution of grid
+        model: model
+        S: resolution of grid
 
     Returns:
         samples, and log-weight
@@ -481,14 +435,13 @@ def bruteforce_posterior_samples(model: AbstractModel, S: int = 60) -> Tuple[XTy
     return samples, dZ.log_abs_val
 
 
-def bruteforce_evidence(model: AbstractModel, S: int = 60):
+def bruteforce_evidence(model: BaseAbstractModel, S: int = 60):
     """
     Compute the evidence with brute-force over a regular grid.
 
     Args:
-        prior_chain: PriorChain of model
-        log_likelihood (:code:`callable(**samples)`): log-likelihood function
-        S (int): resolution of grid
+        model: model
+        S: resolution of grid
 
     Returns:
         log(Z)
@@ -503,14 +456,13 @@ def bruteforce_evidence(model: AbstractModel, S: int = 60):
 
 
 @deprecated(bruteforce_posterior_samples)
-def analytic_posterior_samples(model: AbstractModel, S: int = 60):
+def analytic_posterior_samples(model: BaseAbstractModel, S: int = 60):
     """
     Compute the evidence with brute-force over a regular grid.
 
     Args:
-        prior_chain (jaxns.PriorChain): PriorChain of model
-        log_likelihood (:code:`callable(**samples)`): log-likelihood function
-        S (int): resolution of grid
+        model: model
+        S: resolution of grid
 
     Returns:
         log(Z)
@@ -539,8 +491,8 @@ def save_pytree(pytree: NamedTuple, save_file: str):
     Saves results of nested sampler in a npz file.
 
     Args:
-        results (NestedSamplerResults): Nested sampler result
-        save_file (str): filename
+        pytree: Nested sampler result
+        save_file: filename
     """
     pytree_np = tree_map(lambda v: np.asarray(v) if v is not None else None, pytree)
 

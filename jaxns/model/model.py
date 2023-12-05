@@ -5,15 +5,9 @@ from uuid import uuid4
 import numpy as np
 from jax import random, vmap, jit, numpy as jnp
 
-from jaxns.abc import AbstractModel, PriorModelType
-from jaxns.prior import parse_prior, compute_log_likelihood, transform, log_prob_prior, prepare_input
+from jaxns.model.bases import BaseAbstractModel, PriorModelType
+from jaxns.model.ops import parse_prior, transform, prepare_input, log_prob_prior, compute_log_likelihood
 from jaxns.types import PRNGKey, FloatArray, float_type, LikelihoodType, UType, XType, LikelihoodInputType
-
-try:
-    import haiku as hk
-except ImportError:
-    print("You must `pip install dm-haiku` first.")
-    raise
 
 __all__ = [
     'Model'
@@ -22,27 +16,24 @@ __all__ = [
 logger = logging.getLogger('jaxns')
 
 
-class Model(AbstractModel):
+class Model(BaseAbstractModel):
     """
     Represents a Bayesian model in terms of a generative prior, and likelihood function.
     """
 
     def __init__(self, prior_model: PriorModelType, log_likelihood: LikelihoodType):
-        self._id = str(uuid4())
-        self.__prior_model = prior_model
-        self.__log_likelihood = log_likelihood
-
-    def _prior_model(self) -> PriorModelType:
-        return self.__prior_model
-
-    def _log_likelihood(self) -> LikelihoodType:
-        return self.__log_likelihood
+        super().__init__(prior_model=prior_model, log_likelihood=log_likelihood)
+        self._id = str(uuid4())  # Used for making sure it's hashable, so it can be used as a key in a dict.
 
     def _parsed_prior(self) -> Tuple[UType, XType]:
         return parse_prior(prior_model=self.prior_model)
 
     def __hash__(self):
         return hash(self._id)
+
+    def __repr__(self):
+        # TODO(Joshuaalbert): Pretty print the model
+        return f""
 
     def sample_U(self, key: PRNGKey) -> FloatArray:
         return random.uniform(key=key, shape=(self.U_ndims,), dtype=float_type)

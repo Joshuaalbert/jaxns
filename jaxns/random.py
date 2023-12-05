@@ -1,7 +1,7 @@
 from typing import Optional
 
 from jax import random, numpy as jnp
-from jax._src.scipy.special import logsumexp
+from jax.scipy import special
 
 from jaxns.internals.log_semiring import cumulative_logsumexp
 from jaxns.types import FloatArray, IntArray, PRNGKey
@@ -48,7 +48,7 @@ def resample_indicies(key: PRNGKey, log_weights: Optional[FloatArray] = None, S:
         if log_weights is None:
             raise ValueError("Need log_weights if S is not given.")
         # ESS = (sum w)^2 / sum w^2
-        S = int(jnp.exp(2. * logsumexp(log_weights) - logsumexp(2. * log_weights)))
+        S = int(jnp.exp(2. * special.logsumexp(log_weights) - special.logsumexp(2. * log_weights)))
 
     if replace:
         if log_weights is not None:

@@ -1,7 +1,6 @@
 from typing import Union
 
 from jax import numpy as jnp
-from jax.lax import scan
 from jax.scipy.special import logsumexp
 
 from jaxns.types import SignedLog, float_type

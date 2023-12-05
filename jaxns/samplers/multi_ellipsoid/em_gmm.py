@@ -2,7 +2,6 @@ from typing import Union
 
 import jax.numpy as jnp
 from jax import random, vmap
-from jax._src.lax.control_flow import while_loop
 from jax._src.scipy.special import logsumexp
 from jax.scipy.stats import multivariate_normal
 

@@ -2,18 +2,10 @@ import logging
 from typing import Tuple, Dict, Any
 
 import jax
-import numpy as np
 import tensorflow_probability.substrates.jax as tfp
-from jax import numpy as jnp, jit
-from jax import random
-from jax import vmap, tree_map
+from jax import numpy as jnp, random, vmap, tree_map
 from jax._src.scipy.special import logsumexp, ndtr
 from tqdm import tqdm
-
-from jaxns import ExactNestedSampler, TerminationCondition, NestedSamplerResults, UType, XType, PRNGKey, FloatArray, \
-    float_type, LikelihoodType, LikelihoodInputType
-from jaxns.abc import AbstractModel, PriorModelType
-from jaxns.prior import Prior, SingularDistribution
 
 try:
     import haiku as hk
@@ -27,9 +19,13 @@ except ImportError:
     print("You must `pip install optax` first.")
     raise
 
+from jaxns.types import TerminationCondition, NestedSamplerResults, float_type
+from jaxns.model.parametrised_model import ParametrisedModel
+from jaxns.model.prior import Prior
+from jaxns.model.distribution import SingularDistribution
+
 __all__ = [
     'EM',
-    'ParametrisedModel',
     'prior_to_parametrised_singular'
 ]
 
@@ -41,7 +37,11 @@ logger = logging.getLogger('jaxns')
 
 def prior_to_parametrised_singular(prior: Prior) -> Prior:
     """
-    We use a Normal parameter with centre on unit cube, and scale covering the whole cube, as the base representation.
+    Convert a prior into a non-Bayesian parameter, that takes a single value in the model, but still has an associated
+    log_prob. The parameter is registered as a `hk.Parameter` with added `_param` name suffix.
+
+    To constrain the parameter we use a Normal parameter with centre on unit cube, and scale covering the whole cube,
+    as the base representation. This base representation covers the whole real line and be reliably used with SGD, etc.
 
     Args:
         prior: any prior
@@ -60,122 +60,11 @@ def prior_to_parametrised_singular(prior: Prior) -> Prior:
     # transform norm_base_param with normal cdf.
     mu = 0.5
     scale = 0.5
+    # TODO(Joshuaalbert): consider something faster than ndtr to save FLOPs
     U_base_param = ndtr((norm_U_base_param - mu) / scale)
     param = prior.forward(U_base_param)
     dist = SingularDistribution(value=param, dist=prior.dist)
     return Prior(dist_or_value=dist, name=prior.name)
-
-
-class ParametrisedModel(AbstractModel):
-    """
-    A parametrised model, which is a wrapper around a model and its parameters.
-    """
-
-    def __init__(self, base_model: AbstractModel, params: hk.MutableParams | None = None):
-        """
-        Initialise the parametrised model. This means you can use hk.get_parameter anywhere within the prior or
-        likelihood definitions.
-
-        Args:
-            base_model: The base model to wrap.
-            params: The parameters to use. If None, then you must call init_params and set params
-                before using the model.
-        """
-        self.base_model = base_model
-        if params is None:
-            params = self.init_params(rng=random.PRNGKey(0))
-        self._params = params
-
-    def _prior_model(self) -> PriorModelType:
-        return self.base_model.prior_model
-
-    def _log_likelihood(self) -> LikelihoodType:
-        return self.base_model.log_likelihood
-
-    @property
-    def params(self):
-        if self._params is None:
-            raise RuntimeError("Model has not been initialised")
-        return self._params
-
-    def new(self, params: hk.MutableParams) -> 'ParametrisedModel':
-        """
-        Create a new parametrised model with the given parameters.
-
-        **This is (and must be) a pure function.**
-
-        Args:
-            params: The parameters to use.
-
-        Returns:
-            The new parametrised model.
-        """
-        return ParametrisedModel(base_model=self.base_model, params=params)
-
-    def __hash__(self):
-        return self.base_model.__hash__()
-
-    def _parsed_prior(self) -> Tuple[UType, XType]:
-        if self._params is None:
-            raise RuntimeError("Model has not been initialised")
-        return hk.transform(self.base_model._parsed_prior).apply(params=self._params, rng=None)
-
-    def sanity_check(self, key: PRNGKey, S: int):
-        U = jit(vmap(self.sample_U))(random.split(key, S))
-        log_L = jit(vmap(lambda u: self.forward(u, allow_nan=True)))(U)
-        logger.info("Sanity check...")
-        for _U, _log_L in zip(U, log_L):
-            if jnp.isnan(_log_L):
-                logger.info(f"Found bad point: {_U} -> {self.transform(_U)}")
-        assert not any(np.isnan(log_L))
-        logger.info("Sanity check passed")
-
-    def sample_U(self, key: PRNGKey) -> FloatArray:
-        if self._params is None:
-            raise RuntimeError("Model has not been initialised")
-        return hk.transform(self.base_model.sample_U).apply(params=self._params, rng=None, key=key)
-
-    def transform(self, U: UType) -> XType:
-        if self._params is None:
-            raise RuntimeError("Model has not been initialised")
-        return hk.transform(self.base_model.transform).apply(params=self._params, rng=None, U=U)
-
-    def forward(self, U: UType, allow_nan: bool = False) -> FloatArray:
-        if self._params is None:
-            raise RuntimeError("Model has not been initialised")
-        return hk.transform(self.base_model.forward).apply(params=self._params, rng=None, U=U,
-                                                           allow_nan=allow_nan)
-
-    def log_prob_prior(self, U: UType) -> FloatArray:
-        if self._params is None:
-            raise RuntimeError("Model has not been initialised")
-        return hk.transform(self.base_model.log_prob_prior).apply(params=self._params, rng=None, U=U)
-
-    def prepare_input(self, U: UType) -> LikelihoodInputType:
-        if self._params is None:
-            raise RuntimeError("Model has not been initialised")
-        return hk.transform(self.base_model.prepare_input).apply(params=self._params, rng=None, U=U)
-
-    def init_params(self, rng: PRNGKey) -> hk.MutableParams:
-        """
-        Initialise the parameters of the model.
-
-        Args:
-            rng: PRNGkey to initialise the parameters.
-
-        Returns:
-            The initialised parameters.
-        """
-
-        def log_joint_prob():
-            # A pure function that returns the log joint of model.
-            U = self.base_model.sample_U(key=random.PRNGKey(0))
-            log_L = self.base_model.forward(U=U)
-            log_prior_prob = self.base_model.log_prob_prior(U=U)
-            return log_L + log_prior_prob
-
-        params = hk.transform(log_joint_prob).init(rng)
-        return params
 
 
 class EM:

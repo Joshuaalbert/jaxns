@@ -3,9 +3,6 @@ from timeit import default_timer
 import jax
 from jax import random, numpy as jnp
 
-from jaxns import ExactNestedSampler, TerminationCondition
-from jaxns.statistics import compute_evidence_dual, compute_num_live_points_from_unit_threads, compute_evidence, \
-    compute_shrinkage_stats
 from jaxns.utils import sample_evidence
 
 
@@ -57,29 +54,6 @@ def test_sample_evidence(basic_run_results):
 #
 #     assert jnp.bitwise_not(jnp.isnan(results.log_Z_mean))
 #     assert jnp.isclose(results.log_Z_mean, log_Z_true, atol=1.75 * results.log_Z_uncert)
-
-def test_compute_evidence_dual(basic_mvn_run_results):
-    true_logZ, state, results = basic_mvn_run_results
-
-    num_live_points = compute_num_live_points_from_unit_threads(
-        log_L_samples=state.sample_collection.reservoir.log_L,
-        log_L_constraints=state.sample_collection.reservoir.log_L_constraint,
-        num_samples=state.sample_collection.sample_idx,
-        sorted_collection=True
-    )
-    evidence_calculation_dual, stats = compute_evidence_dual(
-        sample_collection=state.sample_collection,
-        num_live_points=num_live_points
-    )
-    print('Dual', evidence_calculation_dual)
-    evidence_calculation, stats = compute_evidence(
-        sample_collection=state.sample_collection,
-        num_live_points=num_live_points
-    )
-    print('Primal', evidence_calculation)
-
-    assert jnp.isclose(evidence_calculation_dual.log_Z_mean, evidence_calculation.log_Z_mean, atol=0.05)
-
 
 def test_nested_sampling_mvn_static(basic_mvn_run_results):
     true_logZ, state, results = basic_mvn_run_results

@@ -1,7 +1,5 @@
 from jax import numpy as jnp
-from jax.lax import scan
 
-import jaxns.common
 
 
 def msqrt(A):

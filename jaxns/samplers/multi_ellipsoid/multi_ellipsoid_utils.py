@@ -4,11 +4,10 @@ import numpy as np
 import pylab as plt
 from jaxns.types import IntArray, FloatArray, PRNGKey, BoolArray
 from jax import numpy as jnp, vmap, random, tree_map
-from jax._src.lax.control_flow import while_loop
 from jax._src.scipy.special import gammaln
 
 from jaxns.internals.log_semiring import LogSpace
-from jaxns.likelihood_samplers.multi_ellipsoid.em_gmm import em_gmm
+from jaxns.samplers.multi_ellipsoid.em_gmm import em_gmm
 from jaxns.types import UType, int_type, float_type
 
 __all__ = [

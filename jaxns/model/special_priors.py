@@ -1,18 +1,14 @@
-import logging
 from typing import Tuple, Union, Optional, Literal
 
 import tensorflow_probability.substrates.jax as tfp
 from jax import numpy as jnp, vmap
-from jax._src.lax.control_flow import while_loop, scan
 from jax._src.scipy.special import gammaln
 from tensorflow_probability.substrates.jax.math import lbeta, betaincinv
 
 from jaxns.internals.log_semiring import cumulative_logsumexp
-from jaxns.abc import AbstractPrior
-from jaxns.types import FloatArray, IntArray, BoolArray
-from jaxns.types import float_type
+from jaxns.model.bases import BaseAbstractPrior
+from jaxns.types import FloatArray, IntArray, BoolArray, float_type
 
-logger = logging.getLogger('jaxns')
 tfpd = tfp.distributions
 
 __all__ = [
@@ -25,7 +21,7 @@ __all__ = [
 ]
 
 
-class Bernoulli(AbstractPrior):
+class Bernoulli(BaseAbstractPrior):
     def __init__(self, *, logits=None, probs=None, name: Optional[str] = None):
         super(Bernoulli, self).__init__(name=name)
         self.dist = tfpd.Bernoulli(logits=logits, probs=probs)
@@ -54,7 +50,7 @@ class Bernoulli(AbstractPrior):
         return sample.astype(self.dtype)
 
 
-class Beta(AbstractPrior):
+class Beta(BaseAbstractPrior):
     def __init__(self, *, concentration0=None, concentration1=None, name: Optional[str] = None):
         super(Beta, self).__init__(name=name)
         self.dist = tfpd.Beta(concentration0=concentration0, concentration1=concentration1)
@@ -88,7 +84,7 @@ class Beta(AbstractPrior):
         return X.astype(self.dtype)
 
 
-class Categorical(AbstractPrior):
+class Categorical(BaseAbstractPrior):
     def __init__(self, parametrisation: Literal['gumbel_max', 'cdf'], *, logits=None, probs=None,
                  name: Optional[str] = None):
         """
@@ -158,7 +154,7 @@ class Categorical(AbstractPrior):
         return category
 
 
-class ForcedIdentifiability(AbstractPrior):
+class ForcedIdentifiability(BaseAbstractPrior):
     """
     Prior for a sequence of `n` random variables uniformly distributed on U[low, high] such that U[i,...] <= U[i+1,...].
     For broadcasting the resulting random variable is sorted on the first dimension elementwise.
@@ -229,7 +225,7 @@ class ForcedIdentifiability(AbstractPrior):
         return theta.astype(self.dtype)
 
 
-class Poisson(AbstractPrior):
+class Poisson(BaseAbstractPrior):
     def __init__(self, *, rate=None, log_rate=None, name: Optional[str] = None):
         super(Poisson, self).__init__(name=name)
         self.dist = tfpd.Poisson(rate=rate, log_rate=log_rate)
@@ -295,7 +291,7 @@ class Poisson(AbstractPrior):
         return jnp.exp(log_x).astype(self.dtype)
 
 
-class UnnormalisedDirichlet(AbstractPrior):
+class UnnormalisedDirichlet(BaseAbstractPrior):
     """
     Represents an unnormalised dirichlet distribution of K classes.
     That is, the output is related to the K-simplex via normalisation.

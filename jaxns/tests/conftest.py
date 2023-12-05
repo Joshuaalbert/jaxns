@@ -6,10 +6,15 @@ from jax import numpy as jnp, random
 from jax._src.scipy.linalg import solve_triangular
 from tensorflow_probability.substrates import jax as tfp
 
-from jaxns import Prior, Model, ExactNestedSampler, TerminationCondition, bruteforce_evidence, \
-    ApproximateNestedSampler, sample_evidence, UniformSampler, MultiellipsoidalSampler
-from jaxns.abc import PriorModelGen
+from jaxns.samplers.multi_ellipsoidal_samplers import MultiEllipsoidalSampler
+from jaxns.samplers.uniform_samplers import UniformSampler
+from jaxns.model.model import Model
+from jaxns.model.prior import Prior
+from jaxns.model.bases import PriorModelGen
 from jaxns.adaptive_refinement import AdaptiveRefinement
+from jaxns.types import TerminationCondition
+from jaxns.utils import bruteforce_evidence, sample_evidence
+# from jaxns.nested_sampler import ApproximateNestedSampler, ExactNestedSampler
 
 tfpd = tfp.distributions
 
@@ -234,7 +239,7 @@ def multiellipsoidal_mvn_run_results(basic_mvn_model):
         max_samples=40000,
         sampler_chain=[
             UniformSampler(model=model, efficiency_threshold=0.1),
-            MultiellipsoidalSampler(model=model, efficiency_threshold=None, depth=0)
+            MultiEllipsoidalSampler(model=model, efficiency_threshold=None, depth=0)
         ]
     )
     with Timer():

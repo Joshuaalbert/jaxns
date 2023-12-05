@@ -1,16 +1,10 @@
-from typing import NamedTuple, Optional, Union, Any, Callable, Tuple, Dict, List
+from typing import NamedTuple, Optional, Union, Any, Callable, Tuple, Dict, List, TypeVar
 
 import chex
 from jax import numpy as jnp
 
 __all__ = [
-    'Sample',
-    'Reservoir',
-    'SampleStatistics',
-    'SampleCollection',
     'EvidenceCalculation',
-    'NestedSamplerState',
-    'LivePoints',
     'TerminationCondition',
     'NestedSamplerResults',
     'PRNGKey',
@@ -23,7 +17,9 @@ __all__ = [
     'LikelihoodType',
     'UType',
     'XType',
-    'LikelihoodInputType'
+    'LikelihoodInputType',
+    'RandomVariableType',
+    'MeasureType'
 ]
 
 float_type = jnp.result_type(float)
@@ -36,87 +32,25 @@ IntArray = chex.Array
 BoolArray = chex.Array
 
 LikelihoodType = Callable[..., FloatArray]
-LikelihoodInputType = Tuple[jnp.ndarray, ...]  # Likeihood conditional variables
-UType = FloatArray  # Homogeneous measure samples
-XType = Dict[str, jnp.ndarray]  # Prior sample
-
-
-class SampleTree(NamedTuple):
-    """
-    Represents tree structure of samples.
-    There are N+1 nodes, and N edges.
-    Each node has exactly 1 sender (except the root node).
-    Each node has zero or more receivers.
-    The root is always node 0.
-    """
-    point_U: UType  # [d] sample in U-space
-    sender_idx: jnp.ndarray  # [N] with values in [0, N]
-    log_L: jnp.ndarray  # [1+N]
-    num_likelihood_evaluations: IntArray  # how many times the likelihood was evaluated to produce this sample
-    num_slices: IntArray  # the number of slices for sliced points.
-    iid: BoolArray  # whether the sample is exactly iid sampled from within the likelihood constraint
-
-
-class Sample(NamedTuple):
-    """
-    Holds the reservoir of new samples before merging.
-    """
-    # TODO: allow any pytree for points_X
-    point_U: UType  # [d] sample in U-space
-    log_L_constraint: FloatArray  # constraint that sample was sampled uniformly within
-    log_L: FloatArray  # log likelihood of the sample
-    num_likelihood_evaluations: IntArray  # how many times the likelihood was evaluated to produce this sample
-    num_slices: IntArray  # the number of slices for sliced points.
-    iid: BoolArray  # whether the sample is exactly iid sampled from within the likelihood constraint
-
-
-class Reservoir(NamedTuple):
-    """
-    Holds the reservoir samples, has a leading [n] dimension.
-    """
-    # TODO: allow any pytree for points_X
-    point_U: UType  # [d] sample in U-space
-    log_L_constraint: FloatArray  # constraint that sample was sampled uniformly within
-    log_L: FloatArray  # log likelihood of the sample
-    num_likelihood_evaluations: IntArray  # how many times the likelihood was evaluated to produce this sample
-    num_slices: IntArray  # the number of slices for sliced points.
-    iid: BoolArray  # whether the sample is exactly iid sampled from within the likelihood constraint
-
-
-class SampleStatistics(NamedTuple):
-    num_live_points: IntArray  # [max_samples] How many live points were taken for the samples.
-    log_dZ_mean: FloatArray  # [max_samples] The log mean evidence difference of the sample
-    log_X_mean: FloatArray  # [max_samples] The log mean enclosed prior volume of sample
-
-
-class SampleCollection(NamedTuple):
-    """
-    Arrays to hold samples taken from the reservoir.
-    """
-
-    sample_idx: IntArray  # the sample index, pointing to the next empty sample slot
-    reservoir: Reservoir  # reservoir of samples with leading dimension [max_samples]
+RandomVariableType = TypeVar('RandomVariableType')
+MeasureType = TypeVar('MeasureType')
+LikelihoodInputType = Tuple[RandomVariableType, ...]  # Likelihood conditional variables
+UType = FloatArray  # Sample space type
+XType = Dict[str, RandomVariableType]  # Prior variable type
 
 
 class EvidenceCalculation(NamedTuple):
     """
     Contains a running estimate of evidence and related quantities.
     """
+    log_L: FloatArray
     log_X_mean: FloatArray
     log_X2_mean: FloatArray
     log_Z_mean: FloatArray
     log_ZX_mean: FloatArray
     log_Z2_mean: FloatArray
+    log_dZ_mean: FloatArray
     log_dZ2_mean: FloatArray
-
-
-class NestedSamplerState(NamedTuple):
-    key: PRNGKey
-    sample_collection: SampleCollection  # Holds all collected samples so far.
-
-
-class LivePoints(NamedTuple):
-    reservoir: Reservoir
 
 
 class TerminationCondition(NamedTuple):
@@ -144,6 +78,9 @@ class TerminationConditionDisjunction(NamedTuple):
 
 
 class NestedSamplerResults(NamedTuple):
+    """
+    Results of the nested sampling run.
+    """
     log_Z_mean: FloatArray  # estimate of E[log(Z)]
     log_Z_uncert: FloatArray  # estimate of StdDev[log(Z)]
     ESS: FloatArray  # estimate of Kish's effective sample size
@@ -170,3 +107,25 @@ class SignedLog(NamedTuple):
     """
     log_abs_val: jnp.ndarray
     sign: Union[jnp.ndarray, Any]
+
+
+class Sample(NamedTuple):
+    U_sample: UType  # [..., D] sample in U-space
+    log_L_constraint: FloatArray  # [...,] log(L) constraint
+    log_L: FloatArray  # [...,] log(L) of sample
+    num_likelihood_evaluations: IntArray  # [...,] number of likelihood evaluations
+
+
+class StaticStandardSampleCollection(NamedTuple):
+    sender_node_idx: IntArray  # [N] with values in [0, N]
+    log_L: MeasureType  # [N] log(L) of each sample
+    U_samples: UType  # [N, D] samples in U-space
+    num_likelihood_evaluations: IntArray  # [N] number of likelihood evaluations for each sample
+    phantom: BoolArray  # [N] whether the sample is a phantom sample
+
+
+class StaticStandardNestedSamplerState(NamedTuple):
+    key: PRNGKey
+    next_sample_idx: IntArray  # the next sample insert index <==> the number of samples
+    sample_collection: StaticStandardSampleCollection
+    front_idx: IntArray  # the index of the front of the live points within sample collection

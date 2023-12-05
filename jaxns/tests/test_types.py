@@ -1,5 +1,4 @@
-from jaxns import TerminationCondition
-from jaxns.types import TerminationConditionDisjunction, TerminationConditionConjunction
+from jaxns.types import TerminationConditionDisjunction, TerminationConditionConjunction, TerminationCondition
 
 
 def test_termination_condition():
