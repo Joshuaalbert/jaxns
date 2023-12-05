@@ -33,6 +33,9 @@ class UniformSampler(BaseAbstractRejectionSampler):
             raise ValueError("max_likelihood_evals must be >= 1")
         self.max_likelihood_evals = int(max_likelihood_evals)
 
+    def num_phantom(self) -> int:
+        return 0
+
     def pre_process(self, state: StaticStandardNestedSamplerState) -> SamplerState:
         return ()
 

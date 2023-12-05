@@ -72,7 +72,7 @@ def _inter_sync_shrinkage_process(
             # phantom stays default of False
         )
         front_idx = state.front_idx.at[front_loc].set(state.next_sample_idx)
-        next_sample_idx = state.next_sample_idx + 1
+        next_sample_idx = jnp.minimum(state.next_sample_idx + 1, state.sample_collection.log_L.size)
         state = state._replace(
             key=key,
             next_sample_idx=next_sample_idx,
@@ -108,10 +108,9 @@ def _inter_sync_shrinkage_process(
                 jnp.ones(num_phantom, dtype=jnp.bool_),
                 next_sample_idx
             )
-
         )
 
-        next_sample_idx = state.next_sample_idx + num_phantom
+        next_sample_idx = jnp.minimum(state.next_sample_idx + num_phantom, state.sample_collection.log_L.size)
         state = state._replace(
             next_sample_idx=next_sample_idx,
             sample_collection=sample_collection
@@ -132,7 +131,7 @@ def _inter_sync_shrinkage_process(
 def _single_thread_ns(init_state: StaticStandardNestedSamplerState,
                       termination_cond: TerminationCondition,
                       sampler: BaseAbstractSampler,
-                      num_samples_per_sync: int) -> Tuple[IntArray, StaticStandardNestedSamplerState]:
+                      num_samples_per_sync: int) -> StaticStandardNestedSamplerState:
     """
     Runs a single thread of static nested sampling, using all-gather to compute stopping after each live-point
     set shrinkage, which is approximately equivalent to one e-fold decrease in enclosed prior volume. This
@@ -146,16 +145,30 @@ def _single_thread_ns(init_state: StaticStandardNestedSamplerState,
         num_samples_per_sync: number of samples to take per all-gather
 
     Returns:
-        termination_reason, final sampler state
+        final sampler state
     """
 
+    # Update the termination condition to stop before going over the maximum number of samples.
+    space_needed_per_sync = num_samples_per_sync * (sampler.num_phantom() + 1)
+    termination_cond = termination_cond._replace(
+        max_samples=jnp.minimum(
+            termination_cond.max_samples,
+            init_state.sample_collection.log_L.size - space_needed_per_sync
+        )
+    )
+
     class CarryType(NamedTuple):
-        done: BoolArray
-        termination_reason: IntArray
         state: StaticStandardNestedSamplerState
 
     def cond(carry: CarryType) -> BoolArray:
-        return jnp.bitwise_not(carry.done)
+        # Synchronise
+        batched_all_state: StaticStandardNestedSamplerState = parallel.all_gather(carry.state, 'i')
+        all_state = unbatch_state(batched_state=batched_all_state)
+
+        # Use synchronised state to determine termination ==> same stopping time on all devices
+        done, termination_reason = compute_termination(state=all_state, termination_cond=termination_cond)
+
+        return jnp.bitwise_not(done)
 
     def body(carry: CarryType) -> CarryType:
         # Devices are independent, i.e. expect no communication between them in sampler.
@@ -165,18 +178,9 @@ def _single_thread_ns(init_state: StaticStandardNestedSamplerState,
             num_samples=num_samples_per_sync
         )
 
-        # Synchronise
-        batched_all_state: StaticStandardNestedSamplerState = parallel.all_gather(state, 'i')
-        all_state = unbatch_state(batched_state=batched_all_state)
-
-        # Use synchronised state to determine termination ==> same stopping time on all devices
-        done, termination_reason = compute_termination(state=all_state, termination_cond=termination_cond)
-
-        return CarryType(done=done, termination_reason=termination_reason, state=state)
+        return CarryType(state=state)
 
     init_carry_state = CarryType(
-        done=jnp.asarray(False, jnp.bool_),
-        termination_reason=jnp.asarray(-1, int_type),
         state=init_state
     )
 
@@ -186,7 +190,7 @@ def _single_thread_ns(init_state: StaticStandardNestedSamplerState,
         init_val=init_carry_state
     )
 
-    return carry_state.termination_reason, carry_state.state
+    return carry_state.state
 
 
 def compute_termination(state: StaticStandardNestedSamplerState, termination_cond: TerminationCondition) -> Tuple[
@@ -215,13 +219,6 @@ def compute_termination(state: StaticStandardNestedSamplerState, termination_con
         num_samples=state.next_sample_idx
     )
 
-    # Check rate of change of likelihood
-    front_size = state.front_idx.size
-    dL = LogSpace(per_sample_evidence_stats.log_L[-1]) - LogSpace(per_sample_evidence_stats.log_L[-front_size])
-    dX = LogSpace(per_sample_evidence_stats.log_X_mean[-front_size]) - LogSpace(
-        per_sample_evidence_stats.log_X_mean[-1])
-    log_L_slope = dL.log_abs_val - dX.log_abs_val
-
     # Check efficiency
     num_likelihood_evals_front_mean = jnp.mean(
         state.sample_collection.num_likelihood_evaluations[state.front_idx]
@@ -232,14 +229,16 @@ def compute_termination(state: StaticStandardNestedSamplerState, termination_con
     front_log_L = state.sample_collection.log_L[state.front_idx]
     plateau = jnp.all(jnp.equal(front_log_L, front_log_L[0]))
 
+    # Check contour
+    log_L_contour = jnp.min(front_log_L)
+
     return determine_termination(
         term_cond=termination_cond,
         sample_collection=state.sample_collection,
         num_samples=state.next_sample_idx,
         evidence_calculation=final_evidence_stats,
-        log_L=jnp.min(front_log_L),
+        log_L_contour=log_L_contour,
         log_L_max=final_evidence_stats.log_L,
-        log_L_slope=log_L_slope,
         efficiency=efficiency,
         plateau=plateau
     )
@@ -247,15 +246,9 @@ def compute_termination(state: StaticStandardNestedSamplerState, termination_con
 
 def determine_termination(
         term_cond: Union[TerminationConditionDisjunction, TerminationConditionConjunction, TerminationCondition],
-        sample_collection: StaticStandardSampleCollection,
-        num_samples: IntArray,
-        evidence_calculation: EvidenceCalculation,
-        log_L: FloatArray,
-        log_L_max: FloatArray,
-        log_L_slope: FloatArray,
-        efficiency: FloatArray,
-        plateau: BoolArray
-):
+        sample_collection: StaticStandardSampleCollection, num_samples: IntArray,
+        evidence_calculation: EvidenceCalculation, log_L_contour: FloatArray, log_L_max: FloatArray,
+        efficiency: FloatArray, plateau: BoolArray) -> Tuple[BoolArray, IntArray]:
     """
     Determine if termination should happen. Termination Flags are bits:
         0-bit -> 1: used maximum allowed number of samples
@@ -271,6 +264,13 @@ def determine_termination(
 
     Args:
         term_cond: termination condition
+        sample_collection: the sample collection
+        num_samples: number of samples
+        evidence_calculation: evidence calculation
+        log_L_contour: log-likelihood contour
+        log_L_max: maximum log-likelihood
+        efficiency: sampler efficiency
+        plateau: whether the entire live-points set is a single plateau
 
     Returns:
         boolean done signal, and termination reason
@@ -290,34 +290,20 @@ def determine_termination(
 
     if isinstance(term_cond, TerminationConditionConjunction):
         for c in term_cond.conds:
-            _done, _reason = determine_termination(
-                term_cond=c,
-                sample_collection=sample_collection,
-                num_samples=num_samples,
-                evidence_calculation=evidence_calculation,
-                log_L=log_L,
-                log_L_max=log_L_max,
-                log_L_slope=log_L_slope,
-                efficiency=efficiency,
-                plateau=plateau
-            )
+            _done, _reason = determine_termination(term_cond=c, sample_collection=sample_collection,
+                                                   num_samples=num_samples, evidence_calculation=evidence_calculation,
+                                                   log_L_contour=log_L_contour, log_L_max=log_L_max,
+                                                   efficiency=efficiency, plateau=plateau)
             done = jnp.bitwise_and(_done, done)
             termination_reason = jnp.bitwise_and(_reason, termination_reason)
         return done, termination_reason
 
     if isinstance(term_cond, TerminationConditionDisjunction):
         for c in term_cond.conds:
-            _done, _reason = determine_termination(
-                term_cond=c,
-                sample_collection=sample_collection,
-                num_samples=num_samples,
-                evidence_calculation=evidence_calculation,
-                log_L=log_L,
-                log_L_max=log_L_max,
-                log_L_slope=log_L_slope,
-                efficiency=efficiency,
-                plateau=plateau
-            )
+            _done, _reason = determine_termination(term_cond=c, sample_collection=sample_collection,
+                                                   num_samples=num_samples, evidence_calculation=evidence_calculation,
+                                                   log_L_contour=log_L_contour, log_L_max=log_L_max,
+                                                   efficiency=efficiency, plateau=plateau)
             done = jnp.bitwise_or(_done, done)
             termination_reason = jnp.bitwise_or(_reason, termination_reason)
         return done, termination_reason
@@ -327,6 +313,7 @@ def determine_termination(
         reached_max_samples = num_samples >= term_cond.max_samples
         done, termination_reason = _set_done_bit(reached_max_samples, 0,
                                                  done=done, termination_reason=termination_reason)
+
     if term_cond.evidence_uncert is not None:
         _, log_Z_var = linear_to_log_stats(
             log_f_mean=evidence_calculation.log_Z_mean,
@@ -334,6 +321,7 @@ def determine_termination(
         evidence_uncert_low_enough = log_Z_var <= jnp.square(term_cond.evidence_uncert)
         done, termination_reason = _set_done_bit(evidence_uncert_low_enough, 1,
                                                  done=done, termination_reason=termination_reason)
+
     if term_cond.live_evidence_frac is not None:
         # Z_remaining/(Z_remaining + Z_current) < delta
         L_max_estimate = LogSpace(log_L_max)  # + LogSpace(log_L_slope) * LogSpace(evidence_calculation.log_X_mean)
@@ -341,11 +329,12 @@ def determine_termination(
 
         Z_upper = LogSpace(evidence_calculation.log_Z_mean) + Z_remaining_upper_bound_estimate
         delta = LogSpace(jnp.log(term_cond.live_evidence_frac))
-        small_remaining_evidence = (
-                Z_remaining_upper_bound_estimate.log_abs_val - Z_upper.log_abs_val < delta.log_abs_val
+        small_remaining_evidence = jnp.less(
+            Z_remaining_upper_bound_estimate.log_abs_val - Z_upper.log_abs_val, delta.log_abs_val
         )
         done, termination_reason = _set_done_bit(small_remaining_evidence, 2,
                                                  done=done, termination_reason=termination_reason)
+
     if term_cond.ess is not None:
         # Kish's ESS = [sum weights]^2 / [sum weights^2]
         ess = effective_sample_size(evidence_calculation.log_Z_mean,
@@ -353,6 +342,7 @@ def determine_termination(
         ess_reached = ess >= term_cond.ess
         done, termination_reason = _set_done_bit(ess_reached, 3,
                                                  done=done, termination_reason=termination_reason)
+
     if term_cond.max_num_likelihood_evaluations is not None:
         num_likelihood_evaluations = jnp.sum(sample_collection.num_likelihood_evaluations)
         too_max_likelihood_evaluations = num_likelihood_evaluations >= term_cond.max_num_likelihood_evaluations
@@ -360,7 +350,7 @@ def determine_termination(
                                                  done=done, termination_reason=termination_reason)
 
     if term_cond.log_L_contour is not None:
-        likelihood_contour_reached = log_L >= term_cond.log_L_contour
+        likelihood_contour_reached = log_L_contour >= term_cond.log_L_contour
         done, termination_reason = _set_done_bit(likelihood_contour_reached, 5,
                                                  done=done, termination_reason=termination_reason)
 
@@ -619,7 +609,7 @@ class StandardStaticNestedSampler(BaseAbstractNestedSampler):
     def _run(self, key: PRNGKey, term_cond: TerminationCondition) -> Tuple[IntArray, StaticStandardNestedSamplerState]:
         # Create sampler threads.
 
-        def thread(key: PRNGKey):
+        def thread(key: PRNGKey) -> StaticStandardNestedSamplerState:
             state = create_init_state(
                 key=key,
                 num_live_points=self.num_live_points,
@@ -629,10 +619,11 @@ class StandardStaticNestedSampler(BaseAbstractNestedSampler):
 
             # Uniform sampling down to a given mean efficiency
             uniform_sampler = UniformSampler(model=self.model)
-            termination_reason, state = _single_thread_ns(
+            state = _single_thread_ns(
                 init_state=state,
                 termination_cond=TerminationCondition(
                     efficiency_threshold=jnp.asarray(self.init_efficiency_threshold),
+                    live_evidence_frac=jnp.asarray(0., float_type),
                     max_samples=jnp.asarray(self.max_samples)
                 ),
                 sampler=uniform_sampler,
@@ -640,7 +631,7 @@ class StandardStaticNestedSampler(BaseAbstractNestedSampler):
             )
 
             # Continue sampling with provided sampler until user-defined termination condition is met
-            termination_reason, state = _single_thread_ns(
+            state = _single_thread_ns(
                 init_state=state,
                 termination_cond=term_cond,
                 sampler=self.sampler,
@@ -652,7 +643,7 @@ class StandardStaticNestedSampler(BaseAbstractNestedSampler):
                 target_log_L_contour = jnp.max(
                     parallel.all_gather(jnp.min(state.sample_collection.log_L[state.front_idx]), 'i')
                 )
-                termination_reason, state = _single_thread_ns(
+                state = _single_thread_ns(
                     init_state=state,
                     termination_cond=TerminationCondition(
                         live_evidence_frac=jnp.asarray(0., float_type),
@@ -663,13 +654,13 @@ class StandardStaticNestedSampler(BaseAbstractNestedSampler):
                     num_samples_per_sync=self.num_live_points
                 )
 
-            return termination_reason, state
+            return state
 
         parallel_ns = pmap(thread, axis_name='i')
 
         keys = random.split(key, self.num_parallel_workers)
-        batched_termination_reason, batched_state = parallel_ns(keys)
+        batched_state = parallel_ns(keys)
         state = unbatch_state(batched_state=batched_state)
-        termination_reason = batched_termination_reason[0]
+        _, termination_reason = compute_termination(state=state, termination_cond=term_cond)
 
         return termination_reason, state

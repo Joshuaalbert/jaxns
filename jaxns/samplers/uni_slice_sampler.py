@@ -258,6 +258,10 @@ class UniDimSliceSampler(BaseAbstractMarkovSampler):
         if not self.perfect:
             raise ValueError("Only perfect slice sampler is implemented.")
 
+
+    def num_phantom(self) -> int:
+        return self.num_phantom_save
+
     def pre_process(self, state: StaticStandardNestedSamplerState) -> SamplerState:
         if self.perfect:  # nothing needed
             return (state,)

@@ -188,6 +188,9 @@ class MultiDimSliceSampler(BaseAbstractMarkovSampler):
                 raise ValueError(f"Expected num_restriction dim in (1, {model.U_ndims}], got {num_restrict_dims}.")
         self.num_restrict_dims = int(num_restrict_dims)
 
+    def num_phantom(self) -> int:
+        return self.num_phantom_save
+
     def pre_process(self, state: StaticStandardNestedSamplerState) -> SamplerState:
         return (state,)
 

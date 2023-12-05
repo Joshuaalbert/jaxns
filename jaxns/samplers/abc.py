@@ -51,3 +51,13 @@ class AbstractSampler(ABC):
             an i.i.d. sample, and batched phantom samples
         """
         ...
+
+    @abstractmethod
+    def num_phantom(self) -> int:
+        """
+        The number of phantom samples produced by the sampler.
+
+        Returns:
+            number of phantom samples
+        """
+        ...

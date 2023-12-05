@@ -28,6 +28,9 @@ class MultiEllipsoidalSampler(BaseAbstractRejectionSampler):
         self._depth = depth
         super().__init__(*args, **kwargs)
 
+    def num_phantom(self) -> int:
+        return 0
+
     def pre_process(self, state: StaticStandardNestedSamplerState) -> SamplerState:
         key, sampler_key = random.split(state.key)
 

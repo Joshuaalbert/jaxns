@@ -226,7 +226,7 @@ def basic_mvn_run_results_parallel(basic_mvn_model):
         model=model,
         num_live_points=100,
         num_parallel_workers=2,
-        max_samples=20000
+        max_samples=30000
     )
 
     with Timer():
