@@ -1,5 +1,5 @@
 import logging
-from typing import Tuple
+from typing import Tuple, Optional
 
 import numpy as np
 from jax import random, jit, vmap, numpy as jnp
@@ -25,7 +25,7 @@ class ParametrisedModel(BaseAbstractModel):
     A parametrised model, which is a wrapper around a model and its parameters.
     """
 
-    def __init__(self, base_model: BaseAbstractModel, params: hk.MutableParams | None = None):
+    def __init__(self, base_model: BaseAbstractModel, params: Optional[hk.MutableParams] = None):
         """
         Initialise the parametrised model. This means you can use hk.get_parameter anywhere within the prior or
         likelihood definitions.

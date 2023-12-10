@@ -1,4 +1,4 @@
-from typing import TypeVar, Callable, Tuple
+from typing import TypeVar, Callable, Tuple, Optional
 
 import jax.numpy as jnp
 from jax import tree_map, tree_util, lax
@@ -154,7 +154,7 @@ def compute_enclosed_prior_volume(sample_tree: SampleTreeGraph) -> MeasureType:
     return log_X
 
 
-def compute_evidence_stats(log_L: MeasureType, num_live_points: FloatArray, num_samples: IntArray | None = None) -> \
+def compute_evidence_stats(log_L: MeasureType, num_live_points: FloatArray, num_samples: Optional[IntArray] = None) -> \
 Tuple[EvidenceCalculation, EvidenceCalculation]:
     """
     Compute the evidence statistics along the shrinkage process.

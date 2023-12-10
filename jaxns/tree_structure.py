@@ -23,7 +23,7 @@ class SampleLivePointCounts(NamedTuple):
     num_live_points: IntArray  # [N] with values in [0, N], number of live points that the sample represents.
 
 
-def count_crossed_edges(sample_tree: SampleTreeGraph, num_samples: IntArray | None = None) -> SampleLivePointCounts:
+def count_crossed_edges(sample_tree: SampleTreeGraph, num_samples: Optional[IntArray] = None) -> SampleLivePointCounts:
     N = sample_tree.sender_node_idx.size
 
     if num_samples is not None:

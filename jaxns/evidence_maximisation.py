@@ -1,5 +1,5 @@
 import logging
-from typing import Tuple, Dict, Any
+from typing import Tuple, Dict, Any, Optional
 
 import jax
 import tensorflow_probability.substrates.jax as tfp
@@ -75,8 +75,8 @@ class EM:
     """
 
     def __init__(self, model: ParametrisedModel, learning_rate: float = 1e-2, max_num_epochs: int = 100, gtol=1e-4,
-                 log_Z_ftol=1., log_Z_atol=1e-4, ns_kwargs: Dict[str, Any] | None = None,
-                 termination_cond: TerminationCondition | None = None):
+                 log_Z_ftol=1., log_Z_atol=1e-4, ns_kwargs: Optional[Dict[str, Any]] = None,
+                 termination_cond: Optional[TerminationCondition] = None):
 
         """
         Initialise the EM class.
@@ -127,7 +127,7 @@ class EM:
             termination_cond = self.termination_cond
         exact_ns = StandardStaticNestedSampler(model=model, **kwargs)
         termination_reason, state = exact_ns._run(random.PRNGKey(42),
-                                             term_cond=termination_cond)
+                                                  term_cond=termination_cond)
         results = exact_ns._to_results(termination_reason, state, trim=True)
         # exact_ns.summary(results)
         # exact_ns.plot_diagnostics(results)
@@ -184,7 +184,7 @@ class EM:
 
         return params
 
-    def train(self, num_steps: int = 10, params: hk.MutableParams | None = None, do_final_e_step: bool = False) -> \
+    def train(self, num_steps: int = 10, params: Optional[hk.MutableParams] = None, do_final_e_step: bool = False) -> \
             Tuple[
                 NestedSamplerResults, hk.MutableParams]:
         """
