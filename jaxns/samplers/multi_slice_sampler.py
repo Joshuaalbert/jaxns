@@ -98,7 +98,8 @@ def _new_proposal(key: PRNGKey, seed_point: SeedPoint, num_restrict_dims: int, l
         num_likelihood_evaluations: IntArray
 
     def cond(carry: Carry) -> BoolArray:
-        return carry.log_L <= log_L_constraint
+        not_close_to_zero = jnp.any((carry.right - carry.left) > 2 * jnp.finfo(carry.right.dtype).eps)
+        return jnp.bitwise_and(carry.log_L <= log_L_constraint, not_close_to_zero)
 
     def body(carry: Carry) -> Carry:
         key, t_key, shrink_key = random.split(carry.key, 3)

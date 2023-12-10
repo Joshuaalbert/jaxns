@@ -56,7 +56,7 @@ class EvidenceCalculation(NamedTuple):
 class TerminationCondition(NamedTuple):
     ess: Optional[FloatArray] = jnp.asarray(jnp.inf, float_type)
     evidence_uncert: Optional[FloatArray] = jnp.asarray(0., float_type)
-    live_evidence_frac: Optional[FloatArray] = jnp.asarray(1e-5, float_type)
+    live_evidence_frac: Optional[FloatArray] = jnp.asarray(1e-6, float_type)
     max_samples: Optional[IntArray] = jnp.asarray(jnp.iinfo(int_type).max, int_type)
     max_num_likelihood_evaluations: Optional[IntArray] = jnp.asarray(jnp.iinfo(int_type).max, int_type)
     log_L_contour: Optional[FloatArray] = jnp.asarray(jnp.inf, float_type)

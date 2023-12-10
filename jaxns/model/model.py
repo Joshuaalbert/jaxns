@@ -60,3 +60,5 @@ class Model(BaseAbstractModel):
                 logger.info(f"Found bad point: {_U} -> {self.transform(_U)}")
         assert not any(np.isnan(log_L))
         logger.info("Sanity check passed")
+        if 'parsed_prior' in self.__dict__:
+            del self.__dict__['parsed_prior']

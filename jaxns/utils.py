@@ -9,7 +9,8 @@ from jaxns.internals.log_semiring import LogSpace
 from jaxns.internals.maps import prepare_func_args
 from jaxns.model.bases import BaseAbstractModel
 from jaxns.random import resample_indicies
-from jaxns.types import NestedSamplerResults, float_type, XType, UType
+from jaxns.shrinkage_statistics import _cumulative_op_static
+from jaxns.types import NestedSamplerResults, float_type, XType, UType, FloatArray, IntArray
 from jaxns.types import PRNGKey
 from jaxns.warnings import deprecated
 
@@ -310,14 +311,14 @@ def summary(results: NestedSamplerResults, f_obj: Optional[Union[str, TextIO]] =
         if bit == 1:
             _print(condition)
     _print("--------")
-    _print(f"# likelihood evals: {results.total_num_likelihood_evaluations}")
-    _print(f"# samples: {results.total_num_samples}")
-    _print(f"# phantom samples: {float(results.total_phantom_samples):.1f}")
+    _print(f"likelihood evals: {results.total_num_likelihood_evaluations}")
+    _print(f"samples: {results.total_num_samples}")
+    _print(f"phantom samples: {float(results.total_phantom_samples):.1f}")
     _print(
-        f"# likelihood evals / sample: {float(results.total_num_likelihood_evaluations / results.total_num_samples):.1f}"
+        f"likelihood evals / sample: {float(results.total_num_likelihood_evaluations / results.total_num_samples):.1f}"
     )
     _print(
-        f"# phantom samples / sample: {float(results.total_phantom_samples / results.total_phantom_samples):.2f}"
+        f"phantom fraction (%): {100 * float(results.total_phantom_samples / results.total_num_samples):.1f}%"
     )
     _print("--------")
     _print(
@@ -379,7 +380,8 @@ def summary(results: NestedSamplerResults, f_obj: Optional[Union[str, TextIO]] =
             raise TypeError(f"Invalid f_obj: {type(f_obj)}")
 
 
-def sample_evidence(key, num_live_points_per_sample, log_L_samples, S: int = 100) -> jnp.ndarray:
+def sample_evidence(key: PRNGKey, num_live_points_per_sample: IntArray, log_L_samples: FloatArray,
+                    S: int = 100) -> FloatArray:
     """
     Sample the evidence distribution, but stochastically simulating the shrinkage distribution.
 
@@ -396,29 +398,32 @@ def sample_evidence(key, num_live_points_per_sample, log_L_samples, S: int = 100
     Returns:
         samples of log(Z)
     """
-    n_i = num_live_points_per_sample
-    L = LogSpace(jnp.asarray([-jnp.inf], log_L_samples.dtype)).concatenate(
-        LogSpace(log_L_samples))
-    L_mid = (L[:-1] + L[1:]) * LogSpace(jnp.log(0.5))
 
-    def evidence_chain(key):
+    def accumulate_op(accumulate, y):
         # T ~ Beta(n[i],1) <==> T ~ Kumaraswamy(n[i],1)
-        log_T = jnp.log(random.uniform(key, n_i.shape, dtype=L_mid.dtype)) / n_i
-        # log_T = jnp.where(n_i == 0., -jnp.inf, log_T)
-        # log_T = jnp.log(random.beta(key, state.sample_collection.num_live_points, 1.))
+        (key, num_live_points, log_L) = y
+        (log_Z, log_X) = accumulate
+        log_T = jnp.log(random.uniform(key, num_live_points.shape, dtype=log_L.dtype)) / num_live_points
+        # log_T = jnp.where(num_live_points == 0., -jnp.inf, log_T)
+        # log_T = jnp.log(random.beta(key, num_live_points, 1.))
         T = LogSpace(log_T)
-        X = LogSpace(jnp.asarray([0.], log_L_samples.dtype)).concatenate(T).cumprod()
-        dX = (X[:-1] - X[1:]).abs()
-        dZ = dX * L_mid
-        dZ = LogSpace(jnp.where(n_i == 0., -jnp.inf, dZ.log_abs_val))
-        # dZ = LogSpace(jnp.where(jnp.isnan(dZ.log_abs_val), -jnp.inf, dZ.log_abs_val))
-        Z = dZ.sum()
-        # ESS = Z.square() / dZ.square().sum()
-        return Z.log_abs_val
+        X = LogSpace(log_X)
+        Z = LogSpace(log_Z)
+        L = LogSpace(log_L)
+        next_X = X * T
+        dZ = (X - next_X) * L
+        next_Z = Z + dZ
+        return (next_Z.log_abs_val, next_X.log_abs_val)
 
-    log_Z_chains = vmap(evidence_chain)(random.split(key, S))
-    Z_chains = LogSpace(log_Z_chains)
-    return Z_chains.log_abs_val
+    def single_log_Z_sample(key: PRNGKey) -> FloatArray:
+        init = (jnp.asarray(-jnp.inf, log_L_samples.dtype), jnp.asarray(0., log_L_samples.dtype))
+        xs = (random.split(key, num_live_points_per_sample.shape[0]), num_live_points_per_sample, log_L_samples)
+        final_accumulate, _ = _cumulative_op_static(accumulate_op, init=init, xs=xs)
+        (log_Z, _) = final_accumulate
+        return log_Z
+
+    log_Z_samples = vmap(single_log_Z_sample)(random.split(key, S))
+    return log_Z_samples
 
 
 def bruteforce_posterior_samples(model: BaseAbstractModel, S: int = 60) -> Tuple[XType, jnp.ndarray]:

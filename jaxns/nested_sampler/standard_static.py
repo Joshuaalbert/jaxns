@@ -528,8 +528,10 @@ class StandardStaticNestedSampler(BaseAbstractNestedSampler):
             )
 
             live_point_counts = count_crossed_edges(sample_tree=sample_tree)
-            log_L = sample_tree.log_L[live_point_counts.samples_indices]
             num_live_points = live_point_counts.num_live_points
+            log_L = sample_tree.log_L[live_point_counts.samples_indices]
+            U_samples = sample_collection.U_samples[live_point_counts.samples_indices]
+            num_likelihood_evaluations = sample_collection.num_likelihood_evaluations[live_point_counts.samples_indices]
 
             final_evidence_stats, per_sample_evidence_stats = compute_evidence_stats(
                 log_L=log_L,
@@ -542,8 +544,10 @@ class StandardStaticNestedSampler(BaseAbstractNestedSampler):
             )
 
             live_point_counts = count_crossed_edges(sample_tree=sample_tree, num_samples=num_samples)
-            log_L = sample_tree.log_L[live_point_counts.samples_indices]
             num_live_points = live_point_counts.num_live_points
+            log_L = sample_tree.log_L[live_point_counts.samples_indices]
+            U_samples = sample_collection.U_samples[live_point_counts.samples_indices]
+            num_likelihood_evaluations = sample_collection.num_likelihood_evaluations[live_point_counts.samples_indices]
 
             final_evidence_stats, per_sample_evidence_stats = compute_evidence_stats(
                 log_L=log_L,
@@ -560,22 +564,22 @@ class StandardStaticNestedSampler(BaseAbstractNestedSampler):
         # Kish's ESS = [sum dZ]^2 / [sum dZ^2]
         ESS = effective_sample_size(final_evidence_stats.log_Z_mean, final_evidence_stats.log_dZ2_mean)
 
-        samples = vmap(self.model.transform)(sample_collection.U_samples)
+        samples = vmap(self.model.transform)(U_samples)
 
-        log_L_samples = sample_collection.log_L
+        log_L_samples = log_L
         dp_mean = LogSpace(per_sample_evidence_stats.log_dZ_mean)
         dp_mean = normalise_log_space(dp_mean)
         H_mean = LogSpace(jnp.where(jnp.isneginf(dp_mean.log_abs_val),
                                     -jnp.inf,
                                     dp_mean.log_abs_val + log_L_samples)).sum().value - log_Z_mean
         X_mean = LogSpace(per_sample_evidence_stats.log_X_mean)
-        num_likelihood_evaluations_per_sample = sample_collection.num_likelihood_evaluations
+        num_likelihood_evaluations_per_sample = num_likelihood_evaluations
         total_num_likelihood_evaluations = jnp.sum(num_likelihood_evaluations_per_sample)
         num_live_points_per_sample = num_live_points
         efficiency = LogSpace(jnp.log(num_samples) - jnp.log(total_num_likelihood_evaluations))
 
-        log_posterior_density = sample_collection.log_L + vmap(self.model.log_prob_prior)(
-            sample_collection.U_samples)
+        log_posterior_density = log_L + vmap(self.model.log_prob_prior)(
+            U_samples)
 
         total_phantom_samples = jnp.sum(sample_collection.phantom.astype(int_type))
 
@@ -603,7 +607,7 @@ class StandardStaticNestedSampler(BaseAbstractNestedSampler):
             # total_num_samples / total_num_likelihood_evaluations
             termination_reason=termination_reason,  # termination condition as bit mask
             samples=samples,
-            U_samples=sample_collection.U_samples
+            U_samples=U_samples
         )
 
     def _run(self, key: PRNGKey, term_cond: TerminationCondition) -> Tuple[IntArray, StaticStandardNestedSamplerState]:
@@ -641,7 +645,7 @@ class StandardStaticNestedSampler(BaseAbstractNestedSampler):
                 # We need to do a final sampling run to make all the chains consistent,
                 #  to a likelihood contour (i.e. standardise on L(X)). Would mean that some workers are idle.
                 target_log_L_contour = jnp.max(
-                    parallel.all_gather(jnp.min(state.sample_collection.log_L[state.front_idx]), 'i')
+                    parallel.all_gather(jnp.max(state.sample_collection.log_L[state.front_idx]), 'i')
                 )
                 state = _single_thread_ns(
                     init_state=state,

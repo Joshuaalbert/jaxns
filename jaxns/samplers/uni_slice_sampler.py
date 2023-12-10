@@ -151,7 +151,8 @@ def _new_proposal(key: PRNGKey, seed_point: SeedPoint, midpoint_shrink: bool, pe
         num_likelihood_evaluations: IntArray
 
     def cond(carry: Carry) -> BoolArray:
-        return carry.log_L <= log_L_constraint
+        not_close_to_zero = (carry.right - carry.left) > 2 * jnp.finfo(carry.right.dtype).eps
+        return jnp.bitwise_and(carry.log_L <= log_L_constraint, not_close_to_zero)
 
     def body(carry: Carry) -> Carry:
         key, t_key, shrink_key = random.split(carry.key, 3)
@@ -258,7 +259,6 @@ class UniDimSliceSampler(BaseAbstractMarkovSampler):
         if not self.perfect:
             raise ValueError("Only perfect slice sampler is implemented.")
 
-
     def num_phantom(self) -> int:
         return self.num_phantom_save
 
@@ -329,4 +329,17 @@ class UniDimSliceSampler(BaseAbstractMarkovSampler):
         # Take only the last num_phantom_save phantom samples
         phantom_samples: Sample = tree_map(lambda x: x[-(self.num_phantom_save + 1):-1], cumulative_samples)
 
+        # Due to the cumulative nature of the sampler, the final number of likelihood evaluations should be divided
+        # equally among the accepted sample and retained phantom samples.
+        num_likelihood_evaluations_per_sample = final_sample.num_likelihood_evaluations / (self.num_phantom_save + 1)
+        final_sample = final_sample._replace(
+            num_likelihood_evaluations=num_likelihood_evaluations_per_sample
+        )
+        phantom_samples = phantom_samples._replace(
+            num_likelihood_evaluations=jnp.full(
+                phantom_samples.num_likelihood_evaluations.shape,
+                num_likelihood_evaluations_per_sample,
+                phantom_samples.num_likelihood_evaluations.dtype
+            )
+        )
         return final_sample, phantom_samples

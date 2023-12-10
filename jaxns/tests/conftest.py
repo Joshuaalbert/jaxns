@@ -1,10 +1,11 @@
 import os
 from time import monotonic_ns
 
+import jax
+
 # Force 2 jax  hosts
 os.environ["XLA_FLAGS"] = "--xla_force_host_platform_device_count=2"
 
-import pylab as plt
 import pytest
 from jax import numpy as jnp, random
 from jax._src.scipy.linalg import solve_triangular
@@ -14,11 +15,10 @@ from jaxns.model.bases import PriorModelGen
 from jaxns.model.model import Model
 from jaxns.model.prior import Prior
 from jaxns.nested_sampler.standard_static import StandardStaticNestedSampler
-from jaxns.plotting import plot_diagnostics
-from jaxns.public import BaseNestedSampler
+from jaxns.public import DefaultNestedSampler
 from jaxns.samplers.multi_ellipsoidal_samplers import MultiEllipsoidalSampler
 from jaxns.types import TerminationCondition
-from jaxns.utils import bruteforce_evidence, sample_evidence, summary
+from jaxns.utils import bruteforce_evidence, summary
 
 # from jaxns.nested_sampler import ApproximateNestedSampler, ExactNestedSampler
 
@@ -44,34 +44,30 @@ def basic_model():
 
     model = Model(prior_model=prior_model,
                   log_likelihood=log_likelihood)
-    return model
+
+    log_Z_true = bruteforce_evidence(model=model, S=200)
+    return model, log_Z_true
 
 
 @pytest.fixture(scope='package')
 def basic_run_results(basic_model):
-    model = basic_model
+    model, log_Z_true = basic_model
 
-    exact_ns = BaseNestedSampler(
-        model=model,
-        num_live_points=50,
-        num_parallel_workers=1,
-        max_samples=1000
-    )
+    ns = DefaultNestedSampler(model=model, max_samples=1000)
+    ns_jit = jax.jit(lambda key: ns(key))
+    ns_compiled = ns_jit.lower(random.PRNGKey(42)).compile()
     with Timer():
-        termination_reason, state = exact_ns(random.PRNGKey(42),
-                                             term_cond=TerminationCondition(live_evidence_frac=1e-4))
-        results = exact_ns.to_results(termination_reason=termination_reason, state=state)
-
-        # exact_ns.plot_diagnostics(results)
-        exact_ns.summary(results)
-        # exact_ns.plot_cornerplot(results)
-
-    log_Z_true = bruteforce_evidence(model=model, S=200)
-    return log_Z_true, state, results
+        termination_reason, state = ns_compiled(random.PRNGKey(42))
+        termination_reason.block_until_ready()
+    results = ns.to_results(termination_reason=termination_reason, state=state)
+    # exact_ns.plot_diagnostics(results)
+    ns.summary(results)
+    # exact_ns.plot_cornerplot(results)
+    return log_Z_true, results
 
 
 @pytest.fixture(scope='package')
-def basic2_results():
+def basic2_model():
     n = 2
 
     # Prior is uniform in U[0,1]
@@ -87,23 +83,27 @@ def basic2_results():
     def log_likelihood(x):
         return jnp.log(1. - x ** n)
 
-    def exact_X(L):
-        return (1. - L) ** (1. / n)
-
     model = Model(prior_model=prior_model,
                   log_likelihood=log_likelihood)
-    ns = BaseNestedSampler(
-        model=model,
-        num_live_points=50,
-        num_parallel_workers=1,
-        max_samples=1000
-    )
+    return model, log_Z_true
 
-    termination_reason, state = ns(random.PRNGKey(42),
-                                   term_cond=TerminationCondition(live_evidence_frac=1e-4))
+
+@pytest.fixture(scope='package')
+def basic2_run_results(basic2_model):
+    model, log_Z_true = basic2_model
+
+    ns = DefaultNestedSampler(model=model, max_samples=1000)
+
+    ns_jit = jax.jit(lambda key: ns(key))
+    ns_compiled = ns_jit.lower(random.PRNGKey(42)).compile()
+    with Timer():
+        termination_reason, state = ns_compiled(random.PRNGKey(42))
+        termination_reason.block_until_ready()
     results = ns.to_results(termination_reason=termination_reason, state=state)
-    X_exact = exact_X(jnp.exp(results.log_L_samples))
-    return log_Z_true, state, results, X_exact
+    # exact_ns.plot_diagnostics(results)
+    ns.summary(results)
+    # exact_ns.plot_cornerplot(results)
+    return log_Z_true, results
 
 
 @pytest.fixture(scope='package')
@@ -119,45 +119,64 @@ def basic3_model():
 
     model = Model(prior_model=prior_model,
                   log_likelihood=log_likelihood)
-    return model
+
+    log_Z_true = bruteforce_evidence(model=model, S=200)
+    return model, log_Z_true
 
 
 @pytest.fixture(scope='package')
-def plateau_run_results():
-    def log_likelihood(x):
-        return 0.
+def basic3_run_results(basic3_model):
+    model, log_Z_true = basic3_model
 
+    ns = DefaultNestedSampler(model=model, max_samples=1000)
+
+    ns_jit = jax.jit(lambda key: ns(key))
+    ns_compiled = ns_jit.lower(random.PRNGKey(42)).compile()
+    with Timer():
+        termination_reason, state = ns_compiled(random.PRNGKey(42))
+        termination_reason.block_until_ready()
+    results = ns.to_results(termination_reason=termination_reason, state=state)
+    # exact_ns.plot_diagnostics(results)
+    ns.summary(results)
+    # exact_ns.plot_cornerplot(results)
+    return log_Z_true, results
+
+
+@pytest.fixture(scope='package')
+def plateau_model():
     def prior_model() -> PriorModelGen:
         x = yield Prior(tfpd.Uniform(low=0, high=1))
         return x
 
+    def log_likelihood(x):
+        return 0.
+
     model = Model(prior_model=prior_model,
                   log_likelihood=log_likelihood)
-    exact_ns = BaseNestedSampler(
+
+    log_Z_true = jnp.asarray(0.)
+    return model, log_Z_true
+
+
+@pytest.fixture(scope='package')
+def plateau_run_results(plateau_model):
+    model, log_Z_true = plateau_model
+    ns = DefaultNestedSampler(
         model=model,
-        num_live_points=50,
         max_samples=1000
     )
 
-    termination_reason, state = exact_ns(
-        random.PRNGKey(42),
-        term_cond=TerminationCondition(live_evidence_frac=1e-4)
-    )
+    ns_jit = jax.jit(lambda key: ns(key))
+    ns_compiled = ns_jit.lower(random.PRNGKey(42)).compile()
+    with Timer():
+        termination_reason, state = ns_compiled(random.PRNGKey(42))
+        termination_reason.block_until_ready()
+    results = ns.to_results(termination_reason=termination_reason, state=state)
+    # exact_ns.plot_diagnostics(results)
+    ns.summary(results)
+    # exact_ns.plot_cornerplot(results)
 
-    results = exact_ns.to_results(termination_reason=termination_reason, state=state)
-    exact_ns.summary(results)
-    exact_ns.plot_diagnostics(results)
-
-    log_Z_samples = sample_evidence(random.PRNGKey(42),
-                                    results.num_live_points_per_sample,
-                                    results.log_L_samples, S=1000)
-    plt.hist(log_Z_samples, bins='auto')
-    plt.show()
-
-    true_log_Z_uncert = jnp.std(log_Z_samples)
-    print(f"true logZ uncert: {true_log_Z_uncert}")
-    log_Z_true = 0.
-    return log_Z_true, true_log_Z_uncert, state, results
+    return log_Z_true, results
 
 
 @pytest.fixture(scope='package')
@@ -177,13 +196,13 @@ def basic_mvn_model():
     data_cov = jnp.diag(jnp.ones(ndims)) ** 2
     data_cov = jnp.where(data_cov == 0., 0.99, data_cov)
 
-    true_logZ = log_normal(data_mu, prior_mu, prior_cov + data_cov)
+    log_Z_true = log_normal(data_mu, prior_mu, prior_cov + data_cov)
     # not super happy with this being 1.58 and being off by like 0.1. Probably related to the ESS.
     post_mu = prior_cov @ jnp.linalg.inv(prior_cov + data_cov) @ data_mu + data_cov @ jnp.linalg.inv(
         prior_cov + data_cov) @ prior_mu
 
     print(f"True post mu:{post_mu}")
-    print(f"True log Z: {true_logZ}")
+    print(f"True log Z: {log_Z_true}")
 
     def prior_model() -> PriorModelGen:
         x = yield Prior(
@@ -192,68 +211,93 @@ def basic_mvn_model():
         return x
 
     def log_likelihood(x):
-        return log_normal(x, data_mu, data_cov)
+        return tfpd.MultivariateNormalTriL(loc=data_mu, scale_tril=jnp.linalg.cholesky(data_cov)).log_prob(x)
 
     model = Model(prior_model=prior_model, log_likelihood=log_likelihood)
-    ns = BaseNestedSampler(
-        model=model,
-        num_live_points=200,
-        num_parallel_workers=1,
-        max_samples=40000
-    )
-
-    return true_logZ, model, ns
+    return log_Z_true, model
 
 
 @pytest.fixture(scope='package')
 def basic_mvn_run_results(basic_mvn_model):
-    true_logZ, model, ns = basic_mvn_model
+    log_Z_true, model = basic_mvn_model
 
+    ns = DefaultNestedSampler(model=model, max_samples=50000)
+
+    ns_jit = jax.jit(lambda key: ns(key))
+    ns_compiled = ns_jit.lower(random.PRNGKey(42)).compile()
     with Timer():
-        termination_reason, state = ns(random.PRNGKey(42),
-                                       term_cond=TerminationCondition(live_evidence_frac=1e-5))
-        results = ns.to_results(termination_reason=termination_reason, state=state)
-        ns.summary(results)
-    ns.plot_diagnostics(results)
-    return true_logZ, state, results
+        termination_reason, state = ns_compiled(random.PRNGKey(42))
+        termination_reason.block_until_ready()
+    results = ns.to_results(termination_reason=termination_reason, state=state)
+    # exact_ns.plot_diagnostics(results)
+    ns.summary(results)
+    # exact_ns.plot_cornerplot(results)
+
+    return log_Z_true, results
 
 
 @pytest.fixture(scope='package')
 def basic_mvn_run_results_parallel(basic_mvn_model):
-    true_logZ, model, _ = basic_mvn_model
+    log_Z_true, model = basic_mvn_model
 
-    ns = BaseNestedSampler(
-        model=model,
-        num_live_points=100,
-        num_parallel_workers=2,
-        max_samples=30000
-    )
+    ns = DefaultNestedSampler(model=model, max_samples=50000, num_parallel_workers=2)
 
+    ns_jit = jax.jit(lambda key: ns(key))
+    ns_compiled = ns_jit.lower(random.PRNGKey(42)).compile()
     with Timer():
-        termination_reason, state = ns(key=random.PRNGKey(42), term_cond=TerminationCondition())
-        results = ns.to_results(termination_reason=termination_reason, state=state)
-        ns.summary(results)
+        termination_reason, state = ns_compiled(random.PRNGKey(42))
+        termination_reason.block_until_ready()
+    results = ns.to_results(termination_reason=termination_reason, state=state)
     ns.plot_diagnostics(results)
-    return true_logZ, state, results
+    ns.summary(results)
+    # exact_ns.plot_cornerplot(results)
+
+    return log_Z_true, results
 
 
 @pytest.fixture(scope='package')
 def multiellipsoidal_mvn_run_results(basic_mvn_model):
-    true_logZ, model, ns = basic_mvn_model
+    log_Z_true, model = basic_mvn_model
 
     # model.sanity_check(random.PRNGKey(42), S=100)
     ns = StandardStaticNestedSampler(
         init_efficiency_threshold=0.1,
         model=model,
-        num_live_points=100,
+        num_live_points=model.U_ndims * 20,
         num_parallel_workers=1,
-        max_samples=40000,
+        max_samples=50000,
         sampler=MultiEllipsoidalSampler(model=model, depth=0)
     )
+    ns_jit = jax.jit(lambda key: ns._run(key, term_cond=TerminationCondition()))
+    ns_compiled = ns_jit.lower(random.PRNGKey(42)).compile()
     with Timer():
-        termination_reason, state = ns._run(random.PRNGKey(41),
-                                            term_cond=TerminationCondition(live_evidence_frac=1e-5))
-        results = ns._to_results(termination_reason=termination_reason, state=state, trim=True)
-        summary(results)
-    plot_diagnostics(results)
-    return true_logZ, state, results
+        termination_reason, state = ns_compiled(random.PRNGKey(42))
+        termination_reason.block_until_ready()
+    results = ns._to_results(termination_reason=termination_reason, state=state, trim=True)
+    # plot_diagnostics(results)
+    summary(results)
+    # plot_cornerplot(results)
+
+    return log_Z_true, results
+
+
+@pytest.fixture(scope='package')
+def all_run_results(
+        basic_run_results,
+        basic2_run_results,
+        basic3_run_results,
+        plateau_run_results,
+        basic_mvn_run_results,
+        # basic_mvn_run_results_parallel,
+        multiellipsoidal_mvn_run_results
+):
+    # Return tuples with names
+    return [
+        ('basic', basic_run_results),
+        ('basic2', basic2_run_results),
+        ('basic3', basic3_run_results),
+        ('plateau', plateau_run_results),
+        ('basic_mvn', basic_mvn_run_results),
+        # ('basic_mvn_parallel', basic_mvn_run_results_parallel),
+        ('multiellipsoidal_mvn', multiellipsoidal_mvn_run_results)
+    ]
