@@ -95,7 +95,6 @@ class EvidenceMaximisation:
         if not isinstance(model, ParametrisedModel):
             raise ValueError("model must be an instance of ParametrisedModel")
         self.model = model
-        self._e_step = self._create_e_step(init_params=model.params)
         self.learning_rate = learning_rate
         self.max_num_epochs = max_num_epochs
         self.gtol = gtol
@@ -103,6 +102,7 @@ class EvidenceMaximisation:
         self.log_Z_atol = log_Z_atol
         self.ns_kwargs = ns_kwargs
         self.termination_cond = termination_cond or TerminationCondition()
+        self._e_step = self._create_e_step(init_params=model.params)
 
     def _create_e_step(self, init_params: hk.MutableParams) -> Callable[
         [hk.MutableParams, PRNGKey], NestedSamplerResults]:
