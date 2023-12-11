@@ -1,8 +1,8 @@
 import logging
 
-import jax.numpy as jnp
 import numpy as np
 import pylab as plt
+import jax.numpy as jnp
 from jax import random
 from matplotlib.animation import FuncAnimation
 from mpl_toolkits.axes_grid1 import make_axes_locatable
@@ -10,7 +10,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from jaxns.utils import resample
 from jaxns.internals.log_semiring import cumulative_logsumexp
 from jaxns.internals.shapes import tuple_prod
-from jaxns.types import NestedSamplerResults, int_type
+from jaxns.internals.types import NestedSamplerResults, int_type
 
 logger = logging.getLogger('jaxns')
 
@@ -53,7 +53,7 @@ def plot_diagnostics(results: NestedSamplerResults, save_name=None):
                   label=r"$\log Z={:.1f}$".format(results.log_Z_mean))
     axs[3].set_ylabel(r'$Z(x > U)/Z$')
     axs[3].legend()
-    axs[4].scatter(-log_X, 1./results.num_likelihood_evaluations_per_sample, s=2, c='black')
+    axs[4].scatter(-log_X, 1. / results.num_likelihood_evaluations_per_sample, s=2, c='black')
     axs[4].hlines(jnp.exp(results.log_efficiency), jnp.min(-log_X),
                   jnp.max(-log_X), colors='black', ls='dashed',
                   label='avg. eff.={:.3f}'.format(jnp.exp(results.log_efficiency)))

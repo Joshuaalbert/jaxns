@@ -4,12 +4,13 @@ from typing import Optional, Tuple, Union, List
 import jax.numpy as jnp
 import tensorflow_probability.substrates.jax as tfp
 
-from jaxns.model.bases import BaseAbstractModel
+from jaxns.framework.bases import BaseAbstractModel
+from jaxns.internals.types import PRNGKey, IntArray, StaticStandardNestedSamplerState, TerminationCondition, \
+    NestedSamplerResults
 from jaxns.nested_sampler.bases import BaseAbstractNestedSampler
 from jaxns.nested_sampler.standard_static import StandardStaticNestedSampler
 from jaxns.plotting import plot_cornerplot, plot_diagnostics
 from jaxns.samplers.uni_slice_sampler import UniDimSliceSampler
-from jaxns.types import PRNGKey, IntArray, StaticStandardNestedSamplerState, TerminationCondition, NestedSamplerResults
 from jaxns.utils import summary, save_results, load_results
 
 tfpd = tfp.distributions
@@ -19,7 +20,8 @@ logger = logging.getLogger('jaxns')
 __all__ = [
     'DefaultNestedSampler',
     'ApproximateNestedSampler',
-    'ExactNestedSampler'
+    'ExactNestedSampler',
+    'TerminationCondition'
 ]
 
 
@@ -41,8 +43,8 @@ class DefaultNestedSampler:
             num_parallel_workers: number of parallel workers to use. Defaults to 1.
         """
         s = 4
-        k = model.U_ndims
-        num_live_points = num_live_points or model.U_ndims * 50
+        k = model.U_ndims//2
+        num_live_points = num_live_points or model.U_ndims * 64
         c = max(1, int(num_live_points / (k + 1) / num_parallel_workers))
         self._nested_sampler = StandardStaticNestedSampler(
             model=model,
@@ -145,7 +147,8 @@ class DefaultNestedSampler:
             term_cond=term_cond
         )
 
-    def to_results(self, termination_reason: IntArray, state: StaticStandardNestedSamplerState) -> NestedSamplerResults:
+    def to_results(self, termination_reason: IntArray, state: StaticStandardNestedSamplerState,
+                   trim: bool = True) -> NestedSamplerResults:
         """
         Convert the state to results.
 
@@ -154,6 +157,7 @@ class DefaultNestedSampler:
         Args:
             termination_reason: termination reason
             state: state to convert
+            trim: if True, trims the results to the number of samples taken, requires static context.
 
         Returns:
             results
@@ -161,7 +165,7 @@ class DefaultNestedSampler:
         return self._nested_sampler._to_results(
             termination_reason=termination_reason,
             state=state,
-            trim=True
+            trim=trim
         )
 
 

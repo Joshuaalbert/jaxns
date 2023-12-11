@@ -6,8 +6,8 @@ from jax._src.scipy.special import gammaln
 from tensorflow_probability.substrates.jax.math import lbeta, betaincinv
 
 from jaxns.internals.log_semiring import cumulative_logsumexp
-from jaxns.model.bases import BaseAbstractPrior
-from jaxns.types import FloatArray, IntArray, BoolArray, float_type
+from jaxns.framework.bases import BaseAbstractPrior
+from jaxns.internals.types import FloatArray, IntArray, BoolArray, float_type
 
 tfpd = tfp.distributions
 

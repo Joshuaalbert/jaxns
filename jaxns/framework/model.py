@@ -5,9 +5,9 @@ from uuid import uuid4
 import numpy as np
 from jax import random, vmap, jit, numpy as jnp
 
-from jaxns.model.bases import BaseAbstractModel, PriorModelType
-from jaxns.model.ops import parse_prior, transform, prepare_input, log_prob_prior, compute_log_likelihood
-from jaxns.types import PRNGKey, FloatArray, float_type, LikelihoodType, UType, XType, LikelihoodInputType
+from jaxns.framework.bases import BaseAbstractModel, PriorModelType
+from jaxns.framework.ops import parse_prior, transform, prepare_input, log_prob_prior, compute_log_likelihood
+from jaxns.internals.types import PRNGKey, FloatArray, float_type, LikelihoodType, UType, XType, LikelihoodInputType
 
 __all__ = [
     'Model'

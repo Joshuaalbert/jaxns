@@ -7,11 +7,11 @@ from jax import numpy as jnp, tree_map, vmap, random, jit, lax
 
 from jaxns.internals.log_semiring import LogSpace
 from jaxns.internals.maps import prepare_func_args
-from jaxns.model.bases import BaseAbstractModel
-from jaxns.random import resample_indicies
-from jaxns.shrinkage_statistics import _cumulative_op_static
-from jaxns.types import NestedSamplerResults, float_type, XType, UType, FloatArray, IntArray
-from jaxns.types import PRNGKey
+from jaxns.framework.bases import BaseAbstractModel
+from jaxns.internals.random import resample_indicies
+from jaxns.internals.shrinkage_statistics import _cumulative_op_static
+from jaxns.internals.types import NestedSamplerResults, float_type, XType, UType, FloatArray, IntArray
+from jaxns.internals.types import PRNGKey
 from jaxns.warnings import deprecated
 
 logger = logging.getLogger('jaxns')

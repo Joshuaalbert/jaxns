@@ -2,12 +2,12 @@ from typing import NamedTuple, Tuple
 
 from jax import random, numpy as jnp, lax, tree_map
 
-from jaxns.model.bases import BaseAbstractModel
+from jaxns.framework.bases import BaseAbstractModel
 from jaxns.samplers.abc import SamplerState
 from jaxns.samplers.bases import BaseAbstractRejectionSampler
-from jaxns.types import IntArray, StaticStandardNestedSamplerState, UType, MeasureType
-from jaxns.types import PRNGKey, FloatArray
-from jaxns.types import Sample, int_type
+from jaxns.internals.types import IntArray, StaticStandardNestedSamplerState, UType, MeasureType
+from jaxns.internals.types import PRNGKey, FloatArray
+from jaxns.internals.types import Sample, int_type
 
 __all__ = [
     'UniformSampler'

@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Tuple
 
-from jaxns.types import PRNGKey, IntArray, NestedSamplerResults, TerminationCondition, StaticStandardNestedSamplerState
+from jaxns.internals.types import PRNGKey, IntArray, NestedSamplerResults, TerminationCondition, StaticStandardNestedSamplerState
 
 
 class AbstractNestedSampler(ABC):

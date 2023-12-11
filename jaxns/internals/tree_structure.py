@@ -2,8 +2,8 @@ from typing import NamedTuple, List, Tuple, Union, Optional
 
 from jax import numpy as jnp, lax, tree_map
 
-from jaxns.common import remove_chunk_dim
-from jaxns.types import MeasureType, IntArray, float_type, FloatArray, StaticStandardNestedSamplerState, int_type
+from jaxns.internals.maps import remove_chunk_dim
+from jaxns.internals.types import MeasureType, IntArray, float_type, FloatArray, StaticStandardNestedSamplerState, int_type
 
 
 class SampleTreeGraph(NamedTuple):

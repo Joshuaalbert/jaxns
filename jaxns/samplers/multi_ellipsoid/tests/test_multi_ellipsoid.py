@@ -3,15 +3,16 @@ import pylab as plt
 import tensorflow_probability.substrates.jax as tfp
 from jax import numpy as jnp, random, tree_map, disable_jit, vmap
 
-from jaxns.model.bases import PriorModelGen
-from jaxns.model.model import Model
-from jaxns.model.prior import Prior
+import jaxns.internals.maps
+from jaxns.framework.bases import PriorModelGen
+from jaxns.framework.model import Model
+from jaxns.framework.prior import Prior
 from jaxns.nested_sampler.standard_static import draw_uniform_samples
-from jaxns.random import random_ortho_matrix
+from jaxns.internals.random import random_ortho_matrix
 from jaxns.samplers.multi_ellipsoid.multi_ellipsoid_utils import log_ellipsoid_volume, ellipsoid_clustering, \
     bounding_ellipsoid, covariance_to_rotational, ellipsoid_params, point_in_ellipsoid, plot_ellipses, \
     EllipsoidParams, maha_ellipsoid, circle_to_ellipsoid, ellipsoid_to_circle
-from jaxns.types import float_type, Sample
+from jaxns.internals.types import float_type, Sample
 
 tfpd = tfp.distributions
 
@@ -72,7 +73,7 @@ def test_covariance_to_rotational():
 
     J = random_rotation @ jnp.diag(1 / random_radii)
     cov_J = jnp.linalg.inv(J @ J.T)
-    cov = random_rotation @ jnp.diag(random_radii ** 2) @ random_rotation.T
+    cov = random_rotation @ jnp.diag(random_radii ** 2) @ jaxns.internals.maps.T
 
     np.testing.assert_allclose(cov, cov_J, atol=1e-6)
 
@@ -89,7 +90,7 @@ def test_ellipsoid_params():
     N = 2
     random_rotation = random_ortho_matrix(random.PRNGKey(0), n=N, special_orthogonal=True)
     random_radii = random.uniform(random.PRNGKey(1), shape=(N,))
-    cov = random_rotation @ jnp.diag(random_radii ** 2) @ random_rotation.T
+    cov = random_rotation @ jnp.diag(random_radii ** 2) @ jaxns.internals.maps.T
 
     X = random.multivariate_normal(random.PRNGKey(42),
                                    mean=jnp.zeros(N),
@@ -124,7 +125,7 @@ def test_ellipsoid_transforms():
     random_rotation = random_ortho_matrix(random.PRNGKey(0), n=N, special_orthogonal=True)
     random_radii = random.uniform(random.PRNGKey(1), shape=(N,))
     mu = jnp.zeros(N)
-    cov = random_rotation @ jnp.diag(random_radii ** 2) @ random_rotation.T
+    cov = random_rotation @ jnp.diag(random_radii ** 2) @ jaxns.internals.maps.T
 
     X = random.multivariate_normal(random.PRNGKey(42),
                                    mean=jnp.zeros(N),

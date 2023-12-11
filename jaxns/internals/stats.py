@@ -1,7 +1,7 @@
 from jax import numpy as jnp, vmap
 
 from jaxns.internals.log_semiring import LogSpace
-from jaxns.types import float_type
+from jaxns.internals.types import float_type
 
 
 def normal_to_lognormal(mu, std):

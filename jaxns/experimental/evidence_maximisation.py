@@ -1,5 +1,5 @@
 import logging
-from typing import Tuple, Dict, Any, Optional
+from typing import Tuple, Dict, Any, Optional, Callable
 
 import jax
 import tensorflow_probability.substrates.jax as tfp
@@ -7,7 +7,7 @@ from jax import numpy as jnp, random, vmap, tree_map
 from jax._src.scipy.special import logsumexp, ndtr
 from tqdm import tqdm
 
-from jaxns.nested_sampler.standard_static import StandardStaticNestedSampler
+from jaxns import DefaultNestedSampler
 
 try:
     import haiku as hk
@@ -21,13 +21,14 @@ except ImportError:
     print("You must `pip install optax` first.")
     raise
 
-from jaxns.types import TerminationCondition, NestedSamplerResults, float_type
-from jaxns.model.parametrised_model import ParametrisedModel
-from jaxns.model.prior import Prior
-from jaxns.model.distribution import SingularDistribution
+from jaxns.internals.types import TerminationCondition, NestedSamplerResults, float_type, \
+    StaticStandardNestedSamplerState, IntArray, PRNGKey
+from jaxns.experimental.parametrised_model import ParametrisedModel
+from jaxns.framework.prior import Prior
+from jaxns.framework.distribution import SingularDistribution
 
 __all__ = [
-    'EM',
+    'EvidenceMaximisation',
     'prior_to_parametrised_singular'
 ]
 
@@ -69,13 +70,14 @@ def prior_to_parametrised_singular(prior: Prior) -> Prior:
     return Prior(dist_or_value=dist, name=prior.name)
 
 
-class EM:
+class EvidenceMaximisation:
     """
     Evidence Maximisation class, that implements the E and M steps. Iteratively computes the evidence and maximises it.
     """
 
-    def __init__(self, model: ParametrisedModel, learning_rate: float = 1e-2, max_num_epochs: int = 100, gtol=1e-4,
-                 log_Z_ftol=1., log_Z_atol=1e-4, ns_kwargs: Optional[Dict[str, Any]] = None,
+    def __init__(self, model: ParametrisedModel, ns_kwargs: Dict[str, Any],
+                 learning_rate: float = 1e-2, max_num_epochs: int = 100, gtol=1e-4,
+                 log_Z_ftol=1., log_Z_atol=1e-4,
                  termination_cond: Optional[TerminationCondition] = None):
 
         """
@@ -93,15 +95,46 @@ class EM:
         if not isinstance(model, ParametrisedModel):
             raise ValueError("model must be an instance of ParametrisedModel")
         self.model = model
+        self._e_step = self._create_e_step(init_params=model.params)
         self.learning_rate = learning_rate
         self.max_num_epochs = max_num_epochs
         self.gtol = gtol
         self.log_Z_ftol = log_Z_ftol
         self.log_Z_atol = log_Z_atol
         self.ns_kwargs = ns_kwargs
-        self.termination_cond = termination_cond
+        self.termination_cond = termination_cond or TerminationCondition()
 
-    def e_step(self, params: hk.MutableParams) -> NestedSamplerResults:
+    def _create_e_step(self, init_params: hk.MutableParams) -> Callable[
+        [hk.MutableParams, PRNGKey], NestedSamplerResults]:
+        """
+        Create a compiled function that runs nested sampling and returns trimmed results.
+
+        Args:
+            init_params: The initial parameters to use.
+
+        Returns:
+            A compiled function that runs nested sampling and returns trimmed results.
+        """
+
+        def _ns_solve(params: hk.MutableParams, rng: random.PRNGKey) -> Tuple[
+            IntArray, StaticStandardNestedSamplerState]:
+            model = self.model.new(params=params)
+            ns = DefaultNestedSampler(model=model, **self.ns_kwargs)
+            termination_reason, state = ns(rng)
+            return termination_reason, state
+
+        # Ahead of time compile the function
+        ns_compiled = jax.jit(_ns_solve).lower(init_params, random.PRNGKey(42)).compile()
+
+        def _processed_ns_solve(params: hk.MutableParams, rng: random.PRNGKey) -> NestedSamplerResults:
+            termination_reason, state = ns_compiled(params, rng)
+            ns = DefaultNestedSampler(model=self.model.new(params=params), **self.ns_kwargs)
+            # Trim now
+            return ns.to_results(termination_reason=termination_reason, state=state, trim=True)
+
+        return _processed_ns_solve
+
+    def e_step(self, params: hk.MutableParams, rng: PRNGKey) -> NestedSamplerResults:
         """
         The E-step is just nested sampling.
 
@@ -113,27 +146,7 @@ class EM:
         """
 
         # The E-step is just nested sampling
-        model = self.model.new(params=params)
-        # Create the nested sampler class. In this case without any tuning.
-        if self.ns_kwargs is None:
-            kwargs = dict()
-        else:
-            kwargs = self.ns_kwargs.copy()
-        kwargs['num_live_points'] = kwargs.get('num_live_points', model.U_ndims * 20)
-        kwargs['max_samples'] = kwargs.get('max_samples', 1e5)
-        if self.termination_cond is None:
-            termination_cond = TerminationCondition(live_evidence_frac=1e-5)
-        else:
-            termination_cond = self.termination_cond
-        exact_ns = StandardStaticNestedSampler(model=model, **kwargs)
-        termination_reason, state = exact_ns._run(random.PRNGKey(42),
-                                                  term_cond=termination_cond)
-        results = exact_ns._to_results(termination_reason, state, trim=True)
-        # exact_ns.summary(results)
-        # exact_ns.plot_diagnostics(results)
-        # exact_ns.plot_cornerplot(results)
-
-        return results
+        return self._e_step(params=params, rng=rng)
 
     def m_step(self, results: NestedSamplerResults, params: hk.MutableParams) -> hk.MutableParams:
         """
@@ -208,7 +221,7 @@ class EM:
         results = None
         for step in p_bar:
             # Execute the e_step
-            results = self.e_step(params=params)
+            results = self.e_step(params=params, rng=random.PRNGKey(step))
             # Update progress bar description
             p_bar.set_description(
                 f"Step {step}: log Z = {results.log_Z_mean:.4f} +- {results.log_Z_uncert:.4f}"
@@ -220,7 +233,7 @@ class EM:
             if log_Z_change < max(self.log_Z_ftol * results.log_Z_uncert, self.log_Z_atol):
                 print(f"Convergence achieved at step {step}.")
                 if do_final_e_step:
-                    results = self.e_step(params=params)
+                    results = self.e_step(params=params, rng=random.PRNGKey(step))
                     p_bar.set_description(
                         f"Step {step}: log Z = {results.log_Z_mean:.4f} +- {results.log_Z_uncert:.4f}"
                     )

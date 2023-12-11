@@ -3,10 +3,10 @@ from typing import Tuple, Optional, Generator, Callable
 
 import jax.numpy as jnp
 
-from jaxns.types import LikelihoodInputType
+from jaxns.internals.types import LikelihoodInputType
 from jaxns.internals.shapes import tuple_prod
-from jaxns.model.abc import AbstractModel, AbstractPrior, AbstractDistribution
-from jaxns.types import LikelihoodType, UType, XType, RandomVariableType, MeasureType
+from jaxns.framework.abc import AbstractModel, AbstractPrior, AbstractDistribution
+from jaxns.internals.types import LikelihoodType, UType, XType, RandomVariableType, MeasureType
 
 __all__ = [
     'BaseAbstractModel',

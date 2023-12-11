@@ -10,8 +10,8 @@ except ImportError:
     print("You must `pip install dm-haiku` first.")
     raise
 
-from jaxns.types import UType, XType, PRNGKey, FloatArray, LikelihoodInputType
-from jaxns.model.bases import BaseAbstractModel
+from jaxns.internals.types import UType, XType, PRNGKey, FloatArray, LikelihoodInputType
+from jaxns.framework.bases import BaseAbstractModel
 
 __all__ = [
     'ParametrisedModel'

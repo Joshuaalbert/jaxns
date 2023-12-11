@@ -3,11 +3,11 @@ from typing import TypeVar, NamedTuple, Tuple, Optional
 
 from jax import numpy as jnp, random, tree_map, lax
 
-from jaxns.model.bases import BaseAbstractModel
+from jaxns.framework.bases import BaseAbstractModel
 from jaxns.samplers.abc import SamplerState
 from jaxns.samplers.bases import SeedPoint, BaseAbstractMarkovSampler
-from jaxns.shrinkage_statistics import _cumulative_op_static
-from jaxns.types import PRNGKey, FloatArray, BoolArray, Sample, int_type, StaticStandardNestedSamplerState, UType, \
+from jaxns.internals.shrinkage_statistics import _cumulative_op_static
+from jaxns.internals.types import PRNGKey, FloatArray, BoolArray, Sample, int_type, StaticStandardNestedSamplerState, UType, \
     IntArray, float_type
 
 __all__ = [

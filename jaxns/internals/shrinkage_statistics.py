@@ -4,8 +4,8 @@ import jax.numpy as jnp
 from jax import tree_map, tree_util, lax
 
 from jaxns.internals.log_semiring import LogSpace
-from jaxns.tree_structure import SampleTreeGraph, count_crossed_edges
-from jaxns.types import MeasureType, EvidenceCalculation, float_type, IntArray, FloatArray
+from jaxns.internals.tree_structure import SampleTreeGraph, count_crossed_edges
+from jaxns.internals.types import MeasureType, EvidenceCalculation, float_type, IntArray, FloatArray
 
 V = TypeVar('V')
 Y = TypeVar('Y')

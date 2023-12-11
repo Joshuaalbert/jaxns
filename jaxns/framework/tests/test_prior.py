@@ -1,13 +1,13 @@
 import tensorflow_probability.substrates.jax as tfp
 from jax import random, numpy as jnp, vmap
 
-from jaxns.model.bases import PriorModelGen
-from jaxns.model.distribution import InvalidDistribution, distribution_chain
-from jaxns.model.ops import parse_prior, prepare_input, compute_log_likelihood
-from jaxns.model.prior import Prior, InvalidPriorName
-from jaxns.model.special_priors import Bernoulli, Categorical, Poisson, Beta, ForcedIdentifiability, \
+from jaxns.framework.bases import PriorModelGen
+from jaxns.framework.distribution import InvalidDistribution, distribution_chain
+from jaxns.framework.ops import parse_prior, prepare_input, compute_log_likelihood
+from jaxns.framework.prior import Prior, InvalidPriorName
+from jaxns.framework.special_priors import Bernoulli, Categorical, Poisson, Beta, ForcedIdentifiability, \
     UnnormalisedDirichlet
-from jaxns.types import float_type
+from jaxns.internals.types import float_type
 
 tfpd = tfp.distributions
 

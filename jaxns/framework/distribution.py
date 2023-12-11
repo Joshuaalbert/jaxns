@@ -3,8 +3,8 @@ from typing import Optional, List, Union, Tuple
 import tensorflow_probability.substrates.jax as tfp
 from jax import numpy as jnp
 
-from jaxns.model.bases import BaseAbstractDistribution
-from jaxns.types import FloatArray, IntArray, BoolArray, float_type
+from jaxns.framework.bases import BaseAbstractDistribution
+from jaxns.internals.types import FloatArray, IntArray, BoolArray, float_type
 
 __all__ = [
     "Distribution",

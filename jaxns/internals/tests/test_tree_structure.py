@@ -4,9 +4,9 @@ import jax
 import numpy as np
 from jax import tree_map, numpy as jnp, random, tree_leaves
 
-from jaxns.tree_structure import SampleTreeGraph, SampleLivePointCounts, count_crossed_edges, count_intervals_naive, \
+from jaxns.internals.tree_structure import SampleTreeGraph, SampleLivePointCounts, count_crossed_edges, count_intervals_naive, \
     plot_tree, count_old, count_crossed_edges_less_fast, concatenate_sample_trees, unbatch_state
-from jaxns.types import StaticStandardNestedSamplerState, StaticStandardSampleCollection
+from jaxns.internals.types import StaticStandardNestedSamplerState, StaticStandardSampleCollection
 
 
 def test_naive():

@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import TypeVar, Tuple
 
-from jaxns.types import PRNGKey, FloatArray, Sample, StaticStandardNestedSamplerState
+from jaxns.internals.types import PRNGKey, FloatArray, Sample, StaticStandardNestedSamplerState
 
 SamplerState = TypeVar('SamplerState')
 

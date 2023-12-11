@@ -7,8 +7,8 @@ from jax._src.scipy.special import gammaln
 
 from jaxns.internals.log_semiring import LogSpace
 from jaxns.samplers.multi_ellipsoid.em_gmm import em_gmm
-from jaxns.types import IntArray, FloatArray, PRNGKey, BoolArray
-from jaxns.types import UType, int_type, float_type
+from jaxns.internals.types import IntArray, FloatArray, PRNGKey, BoolArray
+from jaxns.internals.types import UType, int_type, float_type
 
 __all__ = [
     'ellipsoid_clustering',

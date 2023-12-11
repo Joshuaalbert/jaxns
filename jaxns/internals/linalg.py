@@ -1,5 +1,6 @@
 from jax import numpy as jnp
 
+import jaxns.internals.maps
 
 
 def msqrt(A):
@@ -27,6 +28,6 @@ def squared_norm(x1, x2):
     x1 = x1
     x2 = x2
     r2 = jnp.sum(jnp.square(x1), axis=1)[:, None] + jnp.sum(jnp.square(x2), axis=1)[None, :]
-    r2 = r2 - 2. * (x1 @ x2.T)
+    r2 = r2 - 2. * (x1 @ jaxns.internals.maps.T)
     return r2
 
