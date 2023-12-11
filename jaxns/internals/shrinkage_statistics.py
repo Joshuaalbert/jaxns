@@ -5,7 +5,7 @@ from jax import tree_map, tree_util, lax
 
 from jaxns.internals.log_semiring import LogSpace
 from jaxns.internals.tree_structure import SampleTreeGraph, count_crossed_edges
-from jaxns.internals.types import MeasureType, EvidenceCalculation, float_type, IntArray, FloatArray
+from jaxns.internals.types import MeasureType, EvidenceCalculation, float_type, IntArray, FloatArray, int_type
 
 V = TypeVar('V')
 Y = TypeVar('Y')
@@ -93,7 +93,7 @@ def _cumulative_op_dynamic(op: Callable[[V, Y], V], init: V, xs: Y, stop_idx: In
 
     output = tree_map(lambda x: jnp.tile(x[None], [length] + [1] * len(x.shape)), init)
 
-    w_init = (init, jnp.asarray(0, jnp.int_), output)
+    w_init = (init, jnp.asarray(0, int_type), output)
 
     (final_accumulate, _, final_output) = lax.while_loop(
         cond_fun=cond,
