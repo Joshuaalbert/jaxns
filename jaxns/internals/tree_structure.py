@@ -191,7 +191,7 @@ def count_old(S: SampleTreeGraph) -> SampleLivePointCounts:
 
 
 def plot_tree(S: SampleTreeGraph):
-    """
+    r"""
     Plots the tree where x-position is log_L and y-position is a unique integer for each branch such that no edges
     cross. The y-position should be the same as it's sender's y-position, unless that would make an edge cross,
     in which case, an addition should be made so that no edges cross.
