@@ -3,9 +3,9 @@ from typing import Tuple, Optional, Union
 import jax.numpy as jnp
 import tensorflow_probability.substrates.jax as tfp
 
-from jaxns.model.bases import BaseAbstractPrior, BaseAbstractDistribution
-from jaxns.model.distribution import Distribution
-from jaxns.types import FloatArray, IntArray, BoolArray, XType, UType, float_type
+from jaxns.framework.bases import BaseAbstractPrior, BaseAbstractDistribution
+from jaxns.framework.distribution import Distribution
+from jaxns.internals.types import FloatArray, IntArray, BoolArray, XType, UType, float_type
 
 tfpd = tfp.distributions
 

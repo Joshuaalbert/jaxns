@@ -6,9 +6,9 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null && pwd)"
 echo "Script dir $SCRIPT_DIR"
 
-pip install -r "$SCRIPT_DIR"/../requirements.txt
-pip install -r "$SCRIPT_DIR"/../requirements-examples.txt
-pip install "$SCRIPT_DIR"/..
+pip install -r "$SCRIPT_DIR"/../../requirements.txt
+pip install -r "$SCRIPT_DIR"/../../requirements-examples.txt
+pip install "$SCRIPT_DIR"/../..
 
 # Convert each notebook if no change since last run (stored variable)
 for file in *.ipynb; do
@@ -19,8 +19,10 @@ for file in *.ipynb; do
     last_timestamp=$(cat "$timestamp_file")
   fi
   if [ "$current_timestamp" -gt "$last_timestamp" ]; then
+    echo "Converting $file"
     jupyter nbconvert --execute --inplace --ExecutePreprocessor.timeout=3600 "$file"
-    # --to notebook  --stdout > /dev/null
-    echo "$current_timestamp" >"$timestamp_file"
+    post_run_timestamp=$(stat -c %Y "$file")
+    # Save the captured timestamp, not the post-run timestamp
+    echo "$post_run_timestamp" >"$timestamp_file"
   fi
 done

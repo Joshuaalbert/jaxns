@@ -6,11 +6,11 @@ from jaxns.samplers.abc import SamplerState
 from jaxns.samplers.bases import BaseAbstractRejectionSampler
 from jaxns.samplers.multi_ellipsoid.multi_ellipsoid_utils import ellipsoid_clustering, MultEllipsoidState
 from jaxns.samplers.multi_ellipsoid.multi_ellipsoid_utils import sample_multi_ellipsoid
-from jaxns.shrinkage_statistics import compute_evidence_stats
-from jaxns.tree_structure import SampleTreeGraph, count_crossed_edges
-from jaxns.types import IntArray, StaticStandardNestedSamplerState, UType
-from jaxns.types import PRNGKey, FloatArray
-from jaxns.types import Sample, int_type
+from jaxns.internals.shrinkage_statistics import compute_evidence_stats
+from jaxns.internals.tree_structure import SampleTreeGraph, count_crossed_edges
+from jaxns.internals.types import IntArray, StaticStandardNestedSamplerState, UType
+from jaxns.internals.types import PRNGKey, FloatArray
+from jaxns.internals.types import Sample, int_type
 
 __all__ = [
     'MultiEllipsoidalSampler'

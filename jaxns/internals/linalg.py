@@ -1,5 +1,6 @@
 from jax import numpy as jnp
 
+import jaxns.internals.maps
 
 
 def msqrt(A):

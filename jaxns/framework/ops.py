@@ -2,9 +2,9 @@ from typing import Tuple
 
 from jax import numpy as jnp
 
-from jaxns.types import UType, XType, float_type, LikelihoodInputType, FloatArray, LikelihoodType
-from jaxns.model.bases import PriorModelType, BaseAbstractPrior
-from jaxns.model.prior import InvalidPriorName
+from jaxns.internals.types import UType, XType, float_type, LikelihoodInputType, FloatArray, LikelihoodType
+from jaxns.framework.bases import PriorModelType, BaseAbstractPrior
+from jaxns.framework.prior import InvalidPriorName
 
 
 def parse_prior(prior_model: PriorModelType) -> Tuple[UType, XType]:

@@ -1,7 +1,7 @@
 from jax import numpy as jnp
 
-from jaxns.model.prior import Prior
-from jaxns.model.model import Model
+from jaxns.framework.prior import Prior
+from jaxns.framework.model import Model
 
 
 def test_gh95():

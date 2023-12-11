@@ -3,15 +3,16 @@ import pylab as plt
 import tensorflow_probability.substrates.jax as tfp
 from jax import numpy as jnp, random, tree_map, disable_jit, vmap
 
-from jaxns.model.bases import PriorModelGen
-from jaxns.model.model import Model
-from jaxns.model.prior import Prior
+import jaxns.internals.maps
+from jaxns.framework.bases import PriorModelGen
+from jaxns.framework.model import Model
+from jaxns.framework.prior import Prior
 from jaxns.nested_sampler.standard_static import draw_uniform_samples
-from jaxns.random import random_ortho_matrix
+from jaxns.internals.random import random_ortho_matrix
 from jaxns.samplers.multi_ellipsoid.multi_ellipsoid_utils import log_ellipsoid_volume, ellipsoid_clustering, \
     bounding_ellipsoid, covariance_to_rotational, ellipsoid_params, point_in_ellipsoid, plot_ellipses, \
     EllipsoidParams, maha_ellipsoid, circle_to_ellipsoid, ellipsoid_to_circle
-from jaxns.types import float_type, Sample
+from jaxns.internals.types import float_type, Sample
 
 tfpd = tfp.distributions
 

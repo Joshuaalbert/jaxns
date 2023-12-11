@@ -3,10 +3,10 @@ from typing import NamedTuple, Tuple
 
 from jax import random
 
-from jaxns.model.bases import BaseAbstractModel
+from jaxns.framework.bases import BaseAbstractModel
 from jaxns.samplers.abc import AbstractSampler, SamplerState
-from jaxns.types import FloatArray, Sample
-from jaxns.types import PRNGKey
+from jaxns.internals.types import FloatArray, Sample
+from jaxns.internals.types import PRNGKey
 
 
 class BaseAbstractSampler(AbstractSampler):

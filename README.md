@@ -90,6 +90,8 @@ controlling some precision parameters.
 
 # Change Log
 
+11 Dec, 2023 -- JAXNS 2.3.0 released. Released of Phantom-Powered Nested Sampling algorithm.
+
 5 Oct, 2023 -- JAXNS 2.2.6 released. Minor update to evidence maximisation.
 
 3 Oct, 2023 -- JAXNS 2.2.5 released. Parametrised priors, and evidence maximisation added.
@@ -136,3 +138,14 @@ released.
 28 Feb, 2021 -- JAXNS 0.0.1 released.
 
 1 January, 2021 -- Paper submitted
+
+
+## Star History
+
+<a href="https://star-history.com/#joshuaalbert/jaxns&Date">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=joshuaalbert/jaxns&type=Date&theme=dark" />
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=joshuaalbert/jaxns&type=Date" />
+    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=joshuaalbert/jaxns&type=Date" />
+  </picture>
+</a>

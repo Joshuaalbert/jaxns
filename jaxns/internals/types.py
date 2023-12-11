@@ -6,6 +6,7 @@ from jax import numpy as jnp
 __all__ = [
     'EvidenceCalculation',
     'TerminationCondition',
+    'StaticStandardNestedSamplerState',
     'NestedSamplerResults',
     'PRNGKey',
     'IntArray',

@@ -1,5 +1,6 @@
 from jax import numpy as jnp, random
 
+import jaxns.internals.maps
 from jaxns.internals.linalg import msqrt
 
 

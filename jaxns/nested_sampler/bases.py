@@ -1,4 +1,4 @@
-from jaxns.model.bases import BaseAbstractModel
+from jaxns.framework.bases import BaseAbstractModel
 from jaxns.nested_sampler.abc import AbstractNestedSampler
 
 

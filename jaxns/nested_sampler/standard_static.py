@@ -4,20 +4,26 @@ from typing import Tuple, NamedTuple, Any, Union
 from jax import random, pmap, tree_map, numpy as jnp, lax, core, vmap
 from jax._src.lax import parallel
 
+from jaxns.framework.bases import BaseAbstractModel
 from jaxns.internals.log_semiring import LogSpace, normalise_log_space
 from jaxns.internals.maps import replace_index
+from jaxns.internals.shrinkage_statistics import compute_evidence_stats
 from jaxns.internals.stats import linear_to_log_stats, effective_sample_size
-from jaxns.model.bases import BaseAbstractModel
+from jaxns.internals.tree_structure import SampleTreeGraph, count_crossed_edges, unbatch_state
+from jaxns.internals.types import TerminationCondition, IntArray, PRNGKey, BoolArray, int_type, UType, MeasureType, \
+    float_type, \
+    TerminationConditionDisjunction, \
+    TerminationConditionConjunction, Sample, StaticStandardSampleCollection, \
+    StaticStandardNestedSamplerState, NestedSamplerResults, EvidenceCalculation, FloatArray
 from jaxns.nested_sampler.bases import BaseAbstractNestedSampler
 from jaxns.samplers.abc import SamplerState
 from jaxns.samplers.bases import BaseAbstractSampler
 from jaxns.samplers.uniform_samplers import UniformSampler
-from jaxns.shrinkage_statistics import compute_evidence_stats
-from jaxns.tree_structure import SampleTreeGraph, count_crossed_edges, unbatch_state
-from jaxns.types import TerminationCondition, IntArray, PRNGKey, BoolArray, int_type, UType, MeasureType, float_type, \
-    TerminationConditionDisjunction, \
-    TerminationConditionConjunction, Sample, StaticStandardSampleCollection, \
-    StaticStandardNestedSamplerState, NestedSamplerResults, EvidenceCalculation, FloatArray
+
+__all__ = [
+    'TerminationCondition',
+    'StandardStaticNestedSampler'
+]
 
 logger = logging.getLogger('jaxns')
 

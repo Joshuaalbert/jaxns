@@ -1,7 +1,8 @@
 import numpy as np
 from jax import random, numpy as jnp
 
-from jaxns.random import random_ortho_matrix, resample_indicies
+import jaxns.internals.maps
+from jaxns.internals.random import random_ortho_matrix, resample_indicies
 
 
 def test_random_ortho_matrix():
