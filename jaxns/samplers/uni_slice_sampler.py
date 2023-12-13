@@ -4,11 +4,12 @@ from typing import TypeVar, NamedTuple, Tuple
 from jax import numpy as jnp, random, lax, tree_map
 
 from jaxns.framework.bases import BaseAbstractModel
+from jaxns.internals.shrinkage_statistics import _cumulative_op_static
+from jaxns.internals.types import PRNGKey, FloatArray, BoolArray, Sample, float_type, int_type, \
+    StaticStandardNestedSamplerState, \
+    IntArray, UType
 from jaxns.samplers.abc import SamplerState
 from jaxns.samplers.bases import SeedPoint, BaseAbstractMarkovSampler
-from jaxns.internals.shrinkage_statistics import _cumulative_op_static
-from jaxns.internals.types import PRNGKey, FloatArray, BoolArray, Sample, float_type, int_type, StaticStandardNestedSamplerState, \
-    IntArray, UType
 
 __all__ = [
     'UniDimSliceSampler'
@@ -331,14 +332,19 @@ class UniDimSliceSampler(BaseAbstractMarkovSampler):
 
         # Due to the cumulative nature of the sampler, the final number of likelihood evaluations should be divided
         # equally among the accepted sample and retained phantom samples.
-        num_likelihood_evaluations_per_sample = final_sample.num_likelihood_evaluations / (self.num_phantom_save + 1)
+        num_likelihood_evaluations_per_phantom_sample = (
+                final_sample.num_likelihood_evaluations / (self.num_phantom_save + 1)
+        ).astype(int_type)
+        num_likelihood_evaluations_per_accepted_sample = (
+                final_sample.num_likelihood_evaluations - num_likelihood_evaluations_per_phantom_sample * self.num_phantom_save
+        )
         final_sample = final_sample._replace(
-            num_likelihood_evaluations=num_likelihood_evaluations_per_sample
+            num_likelihood_evaluations=num_likelihood_evaluations_per_accepted_sample
         )
         phantom_samples = phantom_samples._replace(
             num_likelihood_evaluations=jnp.full(
                 phantom_samples.num_likelihood_evaluations.shape,
-                num_likelihood_evaluations_per_sample,
+                num_likelihood_evaluations_per_phantom_sample,
                 phantom_samples.num_likelihood_evaluations.dtype
             )
         )
