@@ -2,7 +2,6 @@
 [![PyPI](https://badge.fury.io/py/jaxns.svg)](https://badge.fury.io/py/jaxns)
 [![Documentation Status](https://readthedocs.org/projects/jaxns/badge/?version=latest)](https://jaxns.readthedocs.io/en/latest/?badge=latest)
 
-
 Main
 Status: ![Workflow name](https://github.com/JoshuaAlbert/jaxns/actions/workflows/unittests.yml/badge.svg?branch=main)
 
@@ -83,10 +82,29 @@ If you're unfamiliar, take a quick tour of JAX (https://jax.readthedocs.io/en/la
 
 JAXNS is really fast because it uses JAX.
 JAXNS is much faster than PolyChord, MultiNEST, and dynesty, typically achieving two to three orders of magnitude
-improvement in speed on cheap likelihood evaluations.
-This is shown in (https://arxiv.org/abs/2012.15286). With regards to how efficiently JAXNS used likelihood evaluations,
-JAXNS prizes exactness over efficiency, however since it employs an adaptive strategy, users can control efficiency by
-controlling some precision parameters.
+improvement in run time, for models with cheap likelihood evaluations.
+This is shown in (https://arxiv.org/abs/2012.15286). 
+
+Recently JAXNS has implemented Phantom-Powered Nested Sampling, which significantly reduces the number of required 
+likelihood evaluations. This is shown in (https://arxiv.org/abs/). 
+
+# Note on performance with parallelisation
+
+__Note, that this is an experimental feature.__
+
+If you set `num_parallel_workers > 1` you will use `jax.pmap` under the hood for parallelisation.
+This is a very powerful feature, but it is important to understand how it works.
+It runs identical copies of the nested sampling algorithm on multiple devices.
+There is a two-part stopping condition.
+First, each copy goes until the user defined stopping condition is met __per device__.
+Then, it performs an all-gather and finds at the highest likelihood contour among all copies, and continues all copies
+hit this likelihood contour.
+This ensures consistency of depth across all copies.
+We then merge the copies and compute the final results.
+
+The algorithm is fairly memory bound, so running parallelisation over multiple CPUs on the same machine may not yield
+the expected speed up, and depends how expensive the likelihood evaluations are. Running over separate physical devices 
+is the best way to achieve speed up.
 
 # Change Log
 
@@ -138,7 +156,6 @@ released.
 28 Feb, 2021 -- JAXNS 0.0.1 released.
 
 1 January, 2021 -- Paper submitted
-
 
 ## Star History
 

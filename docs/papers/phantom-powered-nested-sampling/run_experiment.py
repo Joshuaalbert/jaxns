@@ -1,3 +1,4 @@
+import os
 import time
 
 import numpy as np
@@ -12,10 +13,13 @@ except ImportError:
 
 @ray.remote(num_cpus=1, num_gpus=0)
 def run(ndims, ensemble_size, input_queue: Queue, output_queue: Queue):
-    from jax.config import config
-    config.update("jax_enable_x64", True)
+    # from jax.config import config
+    # config.update("jax_enable_x64", True)
+
     from jaxns import Prior, Model
     from jaxns import TerminationCondition
+    from jaxns import summary
+    from jaxns import plot_diagnostics
     from jaxns.samplers import UniDimSliceSampler
     from jaxns.nested_sampler import StandardStaticNestedSampler
     import jax
@@ -53,7 +57,6 @@ def run(ndims, ensemble_size, input_queue: Queue, output_queue: Queue):
         scale_tril=jnp.linalg.cholesky(prior_cov + data_cov)
     ).log_prob(data_mu)
 
-    # not super happy with this being 1.58 and being off by like 0.1. Probably related to the ESS.
     post_mu = prior_cov @ jnp.linalg.inv(prior_cov + data_cov) @ data_mu + data_cov @ jnp.linalg.inv(
         prior_cov + data_cov) @ prior_mu
 
@@ -65,10 +68,11 @@ def run(ndims, ensemble_size, input_queue: Queue, output_queue: Queue):
         if input_data is None:  # poison pill
             break
         (s, k, c, store_indices) = input_data
+
         nested_sampler = StandardStaticNestedSampler(
             model=model,
             num_live_points=c,
-            max_samples=100000,
+            max_samples=500000,
             sampler=UniDimSliceSampler(
                 model=model,
                 num_slices=model.U_ndims * s,
@@ -80,21 +84,24 @@ def run(ndims, ensemble_size, input_queue: Queue, output_queue: Queue):
             num_parallel_workers=1
         )
 
-        @jax.jit
         def ns_run(key):
             termination_reason, state = nested_sampler._run(key=key, term_cond=TerminationCondition())
             results = nested_sampler._to_results(termination_reason=termination_reason, state=state, trim=False)
-            return results.log_Z_mean, results.log_Z_uncert, results.total_num_likelihood_evaluations, results.total_num_samples, results.total_phantom_samples
+            # summary(results)
+            # plot_diagnostics(results)
+            return (results.log_Z_mean, results.log_Z_uncert, results.total_num_likelihood_evaluations,
+                    results.total_num_samples, results.total_phantom_samples)
 
-        run_compiled = ns_run.lower(random.PRNGKey(0)).compile()
-
+        run_compiled = jax.jit(ns_run).lower(random.PRNGKey(0)).compile()
         dt = []
         results = []
-        for _ in range(ensemble_size):
+        print(f"Running s={s} k={k} c={c}")
+        for i in range(ensemble_size):
             t0 = time.time()
             results.append(run_compiled(random.PRNGKey(i)))
             results[-1][0].block_until_ready()
             dt.append(time.time() - t0)
+            print(dt[-1])
         dt = np.asarray(dt)  # [m]
         print(f"Time taken s={s} k={k} c={c}: {sum(dt)}")
         log_Z_mean, log_Z_uncert, num_likelihood_evals, total_num_samples, total_phantom_samples = np.asarray(
@@ -108,17 +115,18 @@ def run(ndims, ensemble_size, input_queue: Queue, output_queue: Queue):
 
 
 if __name__ == '__main__':
+
     ray.init('auto')
-    save_file = "experiment_results.npz"
-    ndims = 8
-    num_workers = 10
-    ensemble_size = 100
+    save_file = "experiment_results_16D.npz"
+    ndims = 16
+    num_workers = 2
+    ensemble_size = 30
     input_queue = Queue()
     output_queue = Queue()
 
-    k_array = np.asarray([0, 1, 2, 3, 4, 5, 7])
-    s_array = np.asarray([1, 2, 3, 4, 5, 6, 7])
-    c_array = np.asarray([16, 32, 64, 128, 256]) * ndims
+    k_array = np.asarray([0, 1, 2, 3, 4, 5])
+    s_array = np.asarray([1, 2, 3, 4, 5, 6])
+    c_array = np.asarray([10, 20, 30, 40]) * ndims
 
     Ns = len(s_array)
     Nk = len(k_array)
