@@ -97,8 +97,9 @@ def run(ndims, ensemble_size, input_queue: Queue, output_queue: Queue):
         results = []
         print(f"Running s={s} k={k} c={c}")
         for i in range(ensemble_size):
+            key = 2**i * 3**c * 5**k * 7**s
             t0 = time.time()
-            results.append(run_compiled(random.PRNGKey(i)))
+            results.append(run_compiled(random.PRNGKey(key)))
             results[-1][0].block_until_ready()
             dt.append(time.time() - t0)
             print(dt[-1])
@@ -117,8 +118,8 @@ def run(ndims, ensemble_size, input_queue: Queue, output_queue: Queue):
 if __name__ == '__main__':
 
     ray.init('auto')
-    save_file = "experiment_results_16D.npz"
     ndims = 16
+    save_file = f"experiment_results_{ndims}D.npz"
     num_workers = 2
     ensemble_size = 30
     input_queue = Queue()
