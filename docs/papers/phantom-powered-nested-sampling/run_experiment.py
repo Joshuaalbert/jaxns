@@ -1,25 +1,16 @@
-import os
+import threading
 import time
+from queue import Queue
 
 import numpy as np
 
-try:
-    import ray
-    from ray.util.queue import Queue
-except ImportError:
-    print("Install ray first with `pip install ray`")
-    raise
 
-
-@ray.remote(num_cpus=1, num_gpus=0)
 def run(ndims, ensemble_size, input_queue: Queue, output_queue: Queue):
     # from jax.config import config
     # config.update("jax_enable_x64", True)
 
     from jaxns import Prior, Model
     from jaxns import TerminationCondition
-    from jaxns import summary
-    from jaxns import plot_diagnostics
     from jaxns.samplers import UniDimSliceSampler
     from jaxns.nested_sampler import StandardStaticNestedSampler
     import jax
@@ -122,7 +113,6 @@ def run(ndims, ensemble_size, input_queue: Queue, output_queue: Queue):
 
 if __name__ == '__main__':
 
-    ray.init('auto')
     ndims = 16
     save_file = f"experiment_results_{ndims}D.npz"
     num_workers = 2
@@ -158,7 +148,9 @@ if __name__ == '__main__':
 
     workers = []
     for _ in range(num_workers):
-        workers.append(run.remote(ndims, ensemble_size, input_queue, output_queue))
+        worker_thread = threading.Thread(target=run, args=(ndims, ensemble_size, input_queue, output_queue))
+        worker_thread.start()
+        workers.append(worker_thread)
 
     num_poison_pills = 0
     true_logZ = None
