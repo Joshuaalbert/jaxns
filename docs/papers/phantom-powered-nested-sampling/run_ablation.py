@@ -88,8 +88,14 @@ def run(ndims, ensemble_size, input_queue: Queue, output_queue: Queue):
         results = []
         print(f"Running s={s} k={k} c={c}")
         for i in range(ensemble_size):
+            modulus = 2 ** 32 - 1
+            key = 1
+            key = (key * pow(2, int(i), modulus)) % modulus
+            key = (key * pow(3, int(c), modulus)) % modulus
+            key = (key * pow(5, int(k), modulus)) % modulus
+            key = (key * pow(7, int(s), modulus)) % modulus
             t0 = time.time()
-            results.append(run_compiled(random.PRNGKey(i)))
+            results.append(run_compiled(random.PRNGKey(key)))
             results[-1][0].block_until_ready()
             dt.append(time.time() - t0)
             print(dt[-1])
@@ -179,3 +185,6 @@ if __name__ == '__main__':
         c_array=np.asarray(c_array),
         true_logZ=true_logZ
     )
+
+    for worker in workers:
+        worker.join()

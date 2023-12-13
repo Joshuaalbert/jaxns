@@ -186,3 +186,6 @@ if __name__ == '__main__':
         c_array=np.asarray(c_array),
         true_logZ=true_logZ
     )
+
+    for worker in workers:
+        worker.join()
