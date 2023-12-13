@@ -97,7 +97,12 @@ def run(ndims, ensemble_size, input_queue: Queue, output_queue: Queue):
         results = []
         print(f"Running s={s} k={k} c={c}")
         for i in range(ensemble_size):
-            key = 2**i * 3**c * 5**k * 7**s
+            modulus = 2 ** 32 - 1
+            key = 1
+            key = (key * pow(2, i, modulus)) % modulus
+            key = (key * pow(3, c, modulus)) % modulus
+            key = (key * pow(5, k, modulus)) % modulus
+            key = (key * pow(7, s, modulus)) % modulus
             t0 = time.time()
             results.append(run_compiled(random.PRNGKey(key)))
             results[-1][0].block_until_ready()
