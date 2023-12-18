@@ -2,15 +2,15 @@ from typing import NamedTuple, Tuple
 
 from jax import random, numpy as jnp, lax, tree_map
 
-from jaxns.samplers.abc import SamplerState
-from jaxns.samplers.bases import BaseAbstractRejectionSampler
-from jaxns.samplers.multi_ellipsoid.multi_ellipsoid_utils import ellipsoid_clustering, MultEllipsoidState
-from jaxns.samplers.multi_ellipsoid.multi_ellipsoid_utils import sample_multi_ellipsoid
 from jaxns.internals.shrinkage_statistics import compute_evidence_stats
 from jaxns.internals.tree_structure import SampleTreeGraph, count_crossed_edges
 from jaxns.internals.types import IntArray, StaticStandardNestedSamplerState, UType
 from jaxns.internals.types import PRNGKey, FloatArray
 from jaxns.internals.types import Sample, int_type
+from jaxns.samplers.abc import SamplerState
+from jaxns.samplers.bases import BaseAbstractRejectionSampler
+from jaxns.samplers.multi_ellipsoid.multi_ellipsoid_utils import ellipsoid_clustering, MultEllipsoidState
+from jaxns.samplers.multi_ellipsoid.multi_ellipsoid_utils import sample_multi_ellipsoid
 
 __all__ = [
     'MultiEllipsoidalSampler'
@@ -24,8 +24,9 @@ class MultiEllipsoidalSampler(BaseAbstractRejectionSampler):
     Inefficient for high dimensional problems, but can be very efficient for low dimensional problems.
     """
 
-    def __init__(self, depth: int, *args, **kwargs):
+    def __init__(self, depth: int, expansion_factor: float, *args, **kwargs):
         self._depth = depth
+        self._expansion_factor = expansion_factor
         super().__init__(*args, **kwargs)
 
     def num_phantom(self) -> int:
@@ -71,7 +72,7 @@ class MultiEllipsoidalSampler(BaseAbstractRejectionSampler):
             _, U = sample_multi_ellipsoid(
                 key=key,
                 mu=sampler_state.params.mu,
-                radii=sampler_state.params.radii,
+                radii=sampler_state.params.radii * self._expansion_factor,
                 rotation=sampler_state.params.rotation,
                 unit_cube_constraint=True
             )
