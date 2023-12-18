@@ -266,7 +266,7 @@ def multiellipsoidal_mvn_run_results(basic_mvn_model):
         num_live_points=model.U_ndims * 20,
         num_parallel_workers=1,
         max_samples=50000,
-        sampler=MultiEllipsoidalSampler(model=model, depth=1, expansion_factor=1.5)
+        sampler=MultiEllipsoidalSampler(model=model, depth=0, expansion_factor=2.0)
     )
     ns_jit = jax.jit(lambda key: ns._run(key, term_cond=TerminationCondition()))
     ns_compiled = ns_jit.lower(random.PRNGKey(42)).compile()
