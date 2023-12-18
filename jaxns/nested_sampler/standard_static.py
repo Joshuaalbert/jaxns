@@ -33,7 +33,7 @@ def _inter_sync_shrinkage_process(
         sampler: BaseAbstractSampler,
         num_samples: int) -> StaticStandardNestedSamplerState:
     """
-    Run nested sampling to replace an entire live point reservoir via shrinkage.
+    Run nested sampling until `num_samples` samples are collected.
 
     Args:
         init_state: the state of the nested sampler at the start
@@ -41,13 +41,15 @@ def _inter_sync_shrinkage_process(
         num_samples: number of samples to take, i.e. work to do
 
     Returns:
-        dead point reservoir, live points, the final log-L contour of live points
+        sampler state with samples added
     """
 
     class CarryType(NamedTuple):
         state: StaticStandardNestedSamplerState
         sampler_state: SamplerState
 
+    # TODO(Joshuaalbert): Could make much faster by passing just the front, rather than whole state. Would need to
+    #  recombine later, and handle sender_idx correctly.
     def body(carry: CarryType, unused_X: IntArray) -> Tuple[CarryType, Any]:
         state = carry.state
 
@@ -139,10 +141,8 @@ def _single_thread_ns(init_state: StaticStandardNestedSamplerState,
                       sampler: BaseAbstractSampler,
                       num_samples_per_sync: int) -> StaticStandardNestedSamplerState:
     """
-    Runs a single thread of static nested sampling, using all-gather to compute stopping after each live-point
-    set shrinkage, which is approximately equivalent to one e-fold decrease in enclosed prior volume. This
-    continues until a stopping condition is reached. Due to the all-gather this stopping condition is based on
-    all the data across all devices, and is the same on all devices.
+    Runs a single thread of static nested sampling until a stopping condition is reached. Runs `num_samples_per_sync`
+    between updating samples to limit memory ops.
 
     Args:
         init_state: the state of the nested sampler at the start
@@ -167,13 +167,7 @@ def _single_thread_ns(init_state: StaticStandardNestedSamplerState,
         state: StaticStandardNestedSamplerState
 
     def cond(carry: CarryType) -> BoolArray:
-        # Synchronise
-        batched_all_state: StaticStandardNestedSamplerState = parallel.all_gather(carry.state, 'i')
-        all_state = unbatch_state(batched_state=batched_all_state)
-
-        # Use synchronised state to determine termination ==> same stopping time on all devices
-        done, termination_reason = compute_termination(state=all_state, termination_cond=termination_cond)
-
+        done, termination_reason = compute_termination(state=carry.state, termination_cond=termination_cond)
         return jnp.bitwise_not(done)
 
     def body(carry: CarryType) -> CarryType:
@@ -640,7 +634,7 @@ class StandardStaticNestedSampler(BaseAbstractNestedSampler):
                 num_samples_per_sync=self.num_live_points
             )
 
-            # Continue sampling with provided sampler until user-defined termination condition is met
+            # Continue sampling with provided sampler until user-defined termination condition is met.
             state = _single_thread_ns(
                 init_state=state,
                 termination_cond=term_cond,
@@ -666,11 +660,15 @@ class StandardStaticNestedSampler(BaseAbstractNestedSampler):
 
             return state
 
-        parallel_ns = pmap(thread, axis_name='i')
+        if self.num_parallel_workers > 1:
+            parallel_ns = pmap(thread, axis_name='i')
 
-        keys = random.split(key, self.num_parallel_workers)
-        batched_state = parallel_ns(keys)
-        state = unbatch_state(batched_state=batched_state)
+            keys = random.split(key, self.num_parallel_workers)
+            batched_state = parallel_ns(keys)
+            state = unbatch_state(batched_state=batched_state)
+        else:
+            state = thread(key)
+
         _, termination_reason = compute_termination(state=state, termination_cond=term_cond)
 
         return termination_reason, state

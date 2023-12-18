@@ -34,6 +34,13 @@ Our mission is to make nested sampling faster, easier, and more powerful.
 
    examples/*
 
+.. toctree::
+   :maxdepth: 2
+   :caption: Papers
+   :glob:
+
+   papers/*
+
 
 Indices and tables
 ==================

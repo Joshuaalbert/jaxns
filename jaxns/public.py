@@ -39,27 +39,32 @@ class DefaultNestedSampler:
         Args:
             model: a model to perform nested sampling on
             max_samples: maximum number of samples to take
-            num_live_points: number of live points to use. If not given, defaults to `50 * model.U_ndims`.
+            num_live_points: number of live points to use. Defaults is 20 * D * (D/2 + 1).
             num_parallel_workers: number of parallel workers to use. Defaults to 1.
         """
-        s = 4
-        k = model.U_ndims//2
-        num_live_points = num_live_points or model.U_ndims * 64
-        c = max(1, int(num_live_points / (k + 1) / num_parallel_workers))
+        self._k = model.U_ndims // 2
+        self._s = 4
+        if num_live_points is not None:
+            self._c = max(1, int(num_live_points / (self._k + 1)))
+        else:
+            self._c = 20 * model.U_ndims
         self._nested_sampler = StandardStaticNestedSampler(
             model=model,
-            num_live_points=c,
+            num_live_points=self._c,
             max_samples=max_samples,
             sampler=UniDimSliceSampler(
                 model=model,
-                num_slices=model.U_ndims * s,
-                num_phantom_save=k,
+                num_slices=model.U_ndims * self._s,
+                num_phantom_save=self._k,
                 midpoint_shrink=True,
                 perfect=True
             ),
             init_efficiency_threshold=0.1,
             num_parallel_workers=num_parallel_workers
         )
+
+    def __repr__(self):
+        return f"DefaultNestedSampler(s={self._s}, c={self._c},  k={self._k})"
 
     @property
     def num_live_points(self) -> int:
