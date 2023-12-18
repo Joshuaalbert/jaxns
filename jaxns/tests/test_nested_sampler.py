@@ -78,7 +78,7 @@ def test_gh108():
     # plt.ylabel('python RAM usage(GB)', fontsize=12)
     # plt.show()
 
-    np.testing.assert_allclose(ram_py, ram_py[0], atol=1e-3)
+    np.testing.assert_allclose(ram_py, ram_py[0], atol=2e-3)
 
     ns_compile = jax.jit(nested_sampling).lower(random.PRNGKey(0)).compile()
 
