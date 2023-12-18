@@ -108,6 +108,8 @@ is the best way to achieve speed up.
 
 # Change Log
 
+18 Dec, 2023 -- JAXNS 2.3.1 released. Paper open science release. Default parameters from paper.
+
 11 Dec, 2023 -- JAXNS 2.3.0 released. Released of Phantom-Powered Nested Sampling algorithm.
 
 5 Oct, 2023 -- JAXNS 2.2.6 released. Minor update to evidence maximisation.
