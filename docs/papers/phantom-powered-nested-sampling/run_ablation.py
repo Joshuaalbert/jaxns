@@ -112,10 +112,10 @@ def run(ndims, ensemble_size, input_queue: Queue, output_queue: Queue):
 
 
 if __name__ == '__main__':
-    save_file = "ablation_results.npz"
     ndims = 8
+    save_file = f"ablation_results_{ndims}D.npz"
     num_workers = 2
-    ensemble_size = 30
+    ensemble_size = 100
     input_queue = Queue()
     output_queue = Queue()
 

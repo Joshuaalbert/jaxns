@@ -116,7 +116,7 @@ if __name__ == '__main__':
     ndims = 8
     save_file = f"experiment_results_{ndims}D.npz"
     num_workers = 2
-    ensemble_size = 30
+    ensemble_size = 100
     input_queue = Queue()
     output_queue = Queue()
 
