@@ -3,6 +3,7 @@ from typing import Optional, Tuple, Union, List
 
 import jax.numpy as jnp
 import tensorflow_probability.substrates.jax as tfp
+from jax import tree_map, core
 
 from jaxns.framework.bases import BaseAbstractModel
 from jaxns.internals.types import PRNGKey, IntArray, StaticStandardNestedSamplerState, TerminationCondition, \
@@ -32,22 +33,34 @@ class DefaultNestedSampler:
     """
 
     def __init__(self, model: BaseAbstractModel, max_samples: Union[int, float], num_live_points: Optional[int] = None,
-                 num_parallel_workers: int = 1):
+                 s: int = 4, k: Optional[int] = None, c: Optional[int] = None, num_parallel_workers: int = 1):
         """
         Initialises the nested sampler.
+
+        s,k,c are defined in the paper: https://arxiv.org/abs/2312.11330
 
         Args:
             model: a model to perform nested sampling on
             max_samples: maximum number of samples to take
-            num_live_points: number of live points to use. Defaults is 20 * D * (D/2 + 1).
-            num_parallel_workers: number of parallel workers to use. Defaults to 1.
+            num_live_points: approximate number of live points to use. Defaults is c * (k + 1).
+            s: number of slices to use per dimension. Defaults to 4.
+            k: number of phantom samples to use. Defaults to D/2.
+            c: number of parallel Markov-chains to use. Defaults to 20 * D.
+            num_parallel_workers: number of parallel workers to use. Defaults to 1. Experimental feature.
         """
-        self._k = model.U_ndims // 2
-        self._s = 4
+        self._s = int(s)
+        if self._s <= 0:
+            raise ValueError(f"Expected s > 0, got s={self._s}")
+        self._k = model.U_ndims // 2 if k is None else int(k)
+        if not (0 <= self._k < self._s * model.U_ndims):
+            raise ValueError(f"Expected 0 <= k < s * U_ndims, got k={self._k}, s={self._s}, U_ndims={model.U_ndims}")
         if num_live_points is not None:
             self._c = max(1, int(num_live_points / (self._k + 1)))
+            logger.info(f"Number of parallel Markov-chains set to: {self._c}")
         else:
-            self._c = 20 * model.U_ndims
+            self._c = 20 * model.U_ndims if c is None else int(c)
+        if self._c <= 0:
+            raise ValueError(f"Expected c > 0, got c={self._c}")
         self._nested_sampler = StandardStaticNestedSampler(
             model=model,
             num_live_points=self._c,
@@ -172,6 +185,29 @@ class DefaultNestedSampler:
             state=state,
             trim=trim
         )
+
+    @staticmethod
+    def trim_results(results: NestedSamplerResults) -> NestedSamplerResults:
+        """
+        Trims the results to the number of samples taken. Requires static context.
+
+        Args:
+            results: results to trim
+
+        Returns:
+            trimmed results
+        """
+
+        if isinstance(results.total_num_samples, core.Tracer):
+            raise RuntimeError("Tracer detected, but expected imperative context.")
+
+        def trim(x):
+            if x.size > 1:
+                return x[:results.total_num_samples]
+            return x
+
+        results = tree_map(trim, results)
+        return results
 
 
 class ApproximateNestedSampler(DefaultNestedSampler):
