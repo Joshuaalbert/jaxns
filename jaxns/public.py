@@ -3,6 +3,7 @@ from typing import Optional, Tuple, Union, List
 
 import jax.numpy as jnp
 import tensorflow_probability.substrates.jax as tfp
+from jax import tree_map, core
 
 from jaxns.framework.bases import BaseAbstractModel
 from jaxns.internals.types import PRNGKey, IntArray, StaticStandardNestedSamplerState, TerminationCondition, \
@@ -41,7 +42,7 @@ class DefaultNestedSampler:
         Args:
             model: a model to perform nested sampling on
             max_samples: maximum number of samples to take
-            num_live_points: number of live points to use. Defaults is c * (k + 1).
+            num_live_points: approximate number of live points to use. Defaults is c * (k + 1).
             s: number of slices to use per dimension. Defaults to 4.
             k: number of phantom samples to use. Defaults to D/2.
             c: number of parallel Markov-chains to use. Defaults to 20 * D.
@@ -184,6 +185,29 @@ class DefaultNestedSampler:
             state=state,
             trim=trim
         )
+
+    @staticmethod
+    def trim_results(results: NestedSamplerResults) -> NestedSamplerResults:
+        """
+        Trims the results to the number of samples taken. Requires static context.
+
+        Args:
+            results: results to trim
+
+        Returns:
+            trimmed results
+        """
+
+        if isinstance(results.total_num_samples, core.Tracer):
+            raise RuntimeError("Tracer detected, but expected imperative context.")
+
+        def trim(x):
+            if x.size > 1:
+                return x[:results.total_num_samples]
+            return x
+
+        results = tree_map(trim, results)
+        return results
 
 
 class ApproximateNestedSampler(DefaultNestedSampler):
