@@ -4,7 +4,6 @@ chex
 typing_extensions
 matplotlib
 numpy
-pytest
 scipy
 tensorflow_probability
 tqdm
