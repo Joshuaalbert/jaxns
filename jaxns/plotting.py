@@ -1,16 +1,18 @@
 import logging
+from typing import Optional, List
 
+import jax.numpy as jnp
 import numpy as np
 import pylab as plt
-import jax.numpy as jnp
 from jax import random
 from matplotlib.animation import FuncAnimation
 from mpl_toolkits.axes_grid1 import make_axes_locatable
+from scipy.stats import gaussian_kde
 
-from jaxns.utils import resample
-from jaxns.internals.log_semiring import cumulative_logsumexp
+from jaxns.internals.log_semiring import cumulative_logsumexp, LogSpace, normalise_log_space
 from jaxns.internals.shapes import tuple_prod
 from jaxns.internals.types import NestedSamplerResults, int_type
+from jaxns.utils import resample
 
 logger = logging.getLogger('jaxns')
 
@@ -26,200 +28,272 @@ def plot_diagnostics(results: NestedSamplerResults, save_name=None):
         results: NestedSamplerResult
         save_name: file to save figure to.
     """
+
+    num_samples = int(results.total_num_samples)
+    if results.log_L_samples.shape[0] != num_samples:
+        raise ValueError(f"Expected all samples to have the same number of samples, "
+                         f"got log_L_samples with {results.log_L_samples.shape[0]} samples, "
+                         f"expected {num_samples} samples.")
     fig, axs = plt.subplots(5, 1, sharex=True, figsize=(8, 12))
-    log_X = results.log_X_mean
-    axs[0].plot(-log_X, results.num_live_points_per_sample, c='black')
-    axs[0].set_ylabel(r'$n_{\rm live}(U)$')
+    log_X = np.asarray(results.log_X_mean)
+    num_live_points_per_sample = np.asarray(results.num_live_points_per_sample)
+    log_L = np.asarray(results.log_L_samples)
+    max_log_likelihood = np.max(log_L)
+    log_dp_mean = np.asarray(results.log_dp_mean)
+    log_cum_evidence = cumulative_logsumexp(log_dp_mean)
+    cum_evidence = np.exp(log_cum_evidence)
+    log_Z_mean = np.asarray(results.log_Z_mean)
+    num_likelihood_evaluations_per_sample = np.asarray(results.num_likelihood_evaluations_per_sample)
+    efficiency = 1. / num_likelihood_evaluations_per_sample
+    mean_efficiency = np.exp(results.log_efficiency)
+    # Plot the number of live points
+    axs[0].plot(-log_X, num_live_points_per_sample, c='black')
+    axs[0].set_ylabel(r'$n_{\rm live}$')
     # detect if too small log likelihood
-    log_likelihood = results.log_L_samples
-    max_log_likelihood = jnp.max(log_likelihood)
-    rel_log_likelihood = log_likelihood - max_log_likelihood
-    axs[1].plot(-log_X, rel_log_likelihood, c='black')
-    axs[1].hlines(0., jnp.min(-log_X),
-                  jnp.max(-log_X), colors='black', ls='dashed',
-                  label=r"$\log L_{{\rm max}}={:.1f}$".format(max_log_likelihood))
-    axs[1].set_ylabel(r'$\log \left(L(X)/L_{\rm max}\right)$')
+    rel_log_L = log_L - max_log_likelihood
+    axs[1].plot(-log_X, np.exp(rel_log_L), c='black')
+    axs[1].axhline(1., color='black', ls='dashed',
+                   label=rf"$\log L_{{\rm max}}={max_log_likelihood:.1f}$")
+    axs[1].set_ylabel(r'$L/L_{\rm max}$')
     axs[1].legend()
-    axs[2].plot(-log_X, jnp.exp(results.log_dp_mean), c='black')
-    # axs[2].vlines(-results.H_mean, 0., jnp.exp(jnp.max(results.log_dp_mean)), colors='black', ls='dashed',
-    #               label='-logX=-H={:.1f}'.format(-results.H_mean))
-    axs[2].set_ylabel(r'$Z^{-1}L(U) dX$')
+    axs[2].plot(-log_X, np.exp(log_dp_mean), c='black')
+    axs[2].axvline(-results.H_mean, color='black', ls='dashed',
+                   label=rf'$-H={-results.H_mean:.1f}$')
+    axs[2].set_ylabel(r'$Z^{-1}L dX$')
     axs[2].legend()
-    log_cum_evidence = cumulative_logsumexp(results.log_dp_mean)
-    cum_evidence = jnp.exp(log_cum_evidence)
     axs[3].plot(-log_X, cum_evidence, c='black')
-    axs[3].hlines(1., jnp.min(-log_X),
-                  jnp.max(-log_X), colors='black', ls='dashed',
-                  label=r"$\log Z={:.1f}$".format(results.log_Z_mean))
-    axs[3].set_ylabel(r'$Z(x > U)/Z$')
+    axs[3].axhline(1., color='black', ls='dashed',
+                   label=rf"$\log Z={log_Z_mean:.1f}$")
+    axs[3].set_ylabel(r'$Z(\lambda > L)/Z$')
     axs[3].legend()
-    axs[4].scatter(-log_X, 1. / results.num_likelihood_evaluations_per_sample, s=2, c='black')
-    axs[4].hlines(jnp.exp(results.log_efficiency), jnp.min(-log_X),
-                  jnp.max(-log_X), colors='black', ls='dashed',
-                  label='avg. eff.={:.3f}'.format(jnp.exp(results.log_efficiency)))
+    axs[4].scatter(-log_X, efficiency, s=2, c='black')
+
+    axs[4].axhline(mean_efficiency, color='black', ls='dashed',
+                   label=f'avg. eff.={mean_efficiency:.3f}')
     axs[4].set_ylabel("sampler efficiency")
     axs[4].set_ylim(0., 1.05)
     axs[4].legend()
     axs[4].set_xlabel(r'$- \log X$')
     if save_name is not None:
-        fig.savefig(save_name)
+        fig.savefig(save_name, bbox_inches='tight', dpi=300, pad_inches=0.0)
     plt.show()
 
 
-def plot_cornerplot(results: NestedSamplerResults, vars=None, save_name=None):
+def plot_cornerplot(results: NestedSamplerResults, variables: Optional[List[str]] = None,
+                    save_name: Optional[str] = None, kde_overlay: bool = False):
     """
     Plots a cornerplot of the posterior samples.
 
     Args:
         results: NestedSamplerResult
-        vars: list of variable names to plot, or None.
+        variables: list of variable names to plot. Plots all collected samples by default.
         save_name: file to save result to.
+        kde_overlay: whether to overlay a KDE on the histograms.
     """
-    rkey0 = random.PRNGKey(123496)
-    vars = _get_vars(results, vars)
-    ndims = _get_ndims(results, vars)
+    # Plot all variables by default
+    if variables is None:
+        variables = list(results.samples.keys())
+    variables = sorted(filter(lambda v: v in results.samples, variables))
+    ndims = sum([tuple_prod(results.samples[key].shape[1:]) for key in variables], 0)
+
+    num_samples = int(results.total_num_samples)
+    for key in variables:
+        if results.samples[key].shape[0] != num_samples:
+            raise ValueError(f"Expected all samples to have the same number of samples, "
+                             f"got {key} with {results.samples[key].shape[0]} samples, "
+                             f"expected {num_samples} samples.")
+
+    # Get the leaves of the tree, and concatenate into [num_samples, ndims] shape
+    leaves = np.concatenate(
+        [np.asarray(results.samples[key]).reshape((num_samples, -1)) for key in variables],
+        axis=-1
+    )
+
+    # Create a parameter for each column. For scalar parameters, we just use the name of the parameter.
+    # For vector we use name[i,j,...] etc.
+    parameters = []
+    for key in variables:
+        shape = results.samples[key].shape[1:]
+        if tuple_prod(shape) == 1:
+            parameters.append(key)
+        else:
+            # Loop over each dimension of the parameter, and create a parameter for each index
+            for i in range(tuple_prod(shape)):
+                indices = np.unravel_index(i, shape)
+                parameters.append(f"{key}[{','.join([str(j) for j in indices])}]")
+
+    # Get the maximum likelihood and MAP samples
+    log_L_samples = np.asarray(results.log_L_samples)
+    log_posterior_density = np.asarray(results.log_posterior_density)
+    max_like_idx = np.argmax(log_L_samples)
+    map_idx = np.argmax(log_posterior_density)
+    max_like_sample = leaves[max_like_idx]
+    map_sample = leaves[map_idx]
+
+    # Get the weight of each sample
+    log_weights = np.asarray(normalise_log_space(LogSpace(results.log_dp_mean), norm_type='max').log_abs_val)
+
     figsize = min(20, max(4, int(2 * ndims)))
-    fig, axs = plt.subplots(ndims, ndims, figsize=(figsize, figsize))
-    if ndims == 1:
-        axs = [[axs]]
-    nsamples = results.total_num_samples
-    max_like_idx = jnp.argmax(results.log_L_samples)
-    map_idx = jnp.argmax(results.log_posterior_density)
-    log_p = results.log_dp_mean
-    nbins = max(10, int(jnp.sqrt(results.ESS)) + 1)
-    lims = {}
-    dim = 0
-    for key in vars:  # sorted(results.samples.keys()):
-        n1 = tuple_prod(results.samples[key].shape[1:])
-        for i in range(n1):
-            samples1 = results.samples[key].reshape((nsamples, -1))[:, i]
-            if jnp.std(samples1) == 0.:
-                dim += 1
-                continue
-            weights = jnp.where(jnp.isfinite(samples1), jnp.exp(log_p), 0.)
-            log_weights = jnp.where(jnp.isfinite(samples1), log_p, -jnp.inf)
-            samples1 = jnp.where(jnp.isfinite(samples1), samples1, 0.)
-            # kde1 = gaussian_kde(samples1, weights=weights, bw_method='silverman')
-            # samples1_resampled = kde1.resample(size=int(results.ESS))
-            rkey0, rkey = random.split(rkey0, 2)
-            samples1_resampled = resample(rkey, samples1, log_weights, S=max(10, int(results.ESS)), replace=True)
-            samples1_max_like = samples1[max_like_idx]
-            samples1_map_point = samples1[map_idx]
-            binsx = jnp.linspace(*jnp.percentile(samples1_resampled, jnp.asarray([0, 100])), 2 * nbins)
-            dim2 = 0
-            for key2 in vars:  # sorted(results.samples.keys()):
-                n2 = tuple_prod(results.samples[key2].shape[1:])
-                for i2 in range(n2):
-                    ax = axs[dim][dim2]
-                    if dim2 > dim:
-                        dim2 += 1
-                        ax.set_xticks([])
-                        ax.set_xticklabels([])
-                        ax.set_yticks([])
-                        ax.set_yticklabels([])
-                        ax.remove()
-                        continue
-                    if dim < ndims - 1:
-                        ax.set_xticks([])
-                        ax.set_xticklabels([])
-                    if dim2 > 0:
-                        ax.set_yticks([])
-                        ax.set_yticklabels([])
-                    if n2 > 1:
-                        title2 = "{}[{}]".format(key2, i2)
-                    else:
-                        title2 = "{}".format(key2)
-                    if n1 > 1:
-                        title1 = "{}[{}]".format(key, i)
-                    else:
-                        title1 = "{}".format(key)
-                    # ax.set_title('{} {}'.format(title1, title2))
-                    if dim == dim2:
-                        # ax.plot(binsx, kde1(binsx))
-                        ax.hist(np.asarray(samples1_resampled), bins='auto', fc='None', edgecolor='black', density=True)
-                        ax.axvline(samples1_max_like, color='green')
-                        sample_mean = jnp.average(samples1, weights=weights)
-                        sample_std = jnp.sqrt(jnp.average((samples1 - sample_mean) ** 2, weights=weights))
-                        ax.set_title(
-                            r"${:.2f}_{{{:.2f}}}^{{{:.2f}}}$".format(
-                                *jnp.percentile(samples1_resampled, jnp.asarray([50, 5, 95]))) + \
-                            "\n" + r"${:.2f}\pm{:.2f}$".format(sample_mean, sample_std) + \
-                            "\n" + r"MAP ${:.2f}$ | ML ${:.2f}$".format(samples1_map_point, samples1_max_like))
-                        # ax.set_title(r"{}: ${:.2f}\pm{:.2f}$".format(title1, sample_mean, sample_std))
-                        # ax.text(0., 1., r"${:.2f}_{{{:.2f}}}^{{{:.2f}}}$".format(*jnp.percentile(samples1_resampled, [50, 5, 95])),
-                        #      verticalalignment = 'top', horizontalalignment='left', transform = ax.transAxes,
-                        #         bbox=dict(facecolor='grey', alpha=0.5))
+    fig, axs = plt.subplots(ndims, ndims, figsize=(figsize, figsize), squeeze=False)
 
-                        ax.axvline(sample_mean, linestyle='dashed', color='red')
-                        ax.axvline(sample_mean + sample_std,
-                                   linestyle='dotted', color='red')
-                        ax.axvline(sample_mean - sample_std,
-                                   linestyle='dotted', color='red')
-                        ax.set_xlim(binsx.min(), binsx.max())
-                        ax.set_yticks([])
-                        ax.set_yticklabels([])
-                        lims[dim] = ax.get_xlim()
-                    else:
-                        samples2 = results.samples[key2].reshape((nsamples, -1))[:, i2]
-                        if jnp.std(samples2) == 0.:
-                            dim2 += 1
-                            continue
-                        weights = jnp.where(jnp.isfinite(samples2), jnp.exp(log_p), 0.)
-                        log_weights = jnp.where(jnp.isfinite(samples2), log_p, -jnp.inf)
-                        samples2 = jnp.where(jnp.isfinite(samples2), samples2, 0.)
-                        # kde2 = gaussian_kde(jnp.stack([samples1, samples2], axis=0),
-                        #                     weights=weights,
-                        #                     bw_method='silverman')
-                        # samples2_resampled = kde2.resample(size=int(results.ESS))
-                        rkey0, rkey = random.split(rkey0, 2)
-                        samples2_resampled = resample(rkey, jnp.stack([samples1, samples2], axis=-1), log_weights,
-                                                      S=max(10, int(results.ESS)), replace=True)
-                        # norm = plt.Normalize(log_weights.min(), log_weights.max())
-                        # color = jnp.atleast_2d(plt.cm.jet(norm(log_weights)))
-                        ax.hist2d(samples2_resampled[:, 1], samples2_resampled[:, 0], bins=(nbins, nbins), density=True,
-                                  cmap=plt.cm.bone_r)
-                        # ax.scatter(samples2_resampled[:, 1], samples2_resampled[:, 0], marker='+', c='black', alpha=0.5)
-                        # binsy = jnp.linspace(*jnp.percentile(samples2_resampled[:, 1], [0, 100]), 2 * nbins)
-                        # U, Y = jnp.meshgrid(binsx, binsy, indexing='ij')
-                        # ax.contour(kde2(jnp.stack([U.flatten(), Y.flatten()], axis=0)).reshape((2 * nbins, 2 * nbins)),
-                        #            extent=(binsy.min(), binsy.max(),
-                        #                    binsx.min(), binsx.max()),
-                        #            origin='lower')
-                    if dim == ndims - 1:
-                        ax.set_xlabel("{}".format(title2))
-                    if dim2 == 0:
-                        ax.set_ylabel("{}".format(title1))
+    # Get the number of bins for the histograms based on the effective sample size
+    nbins = max(10, int(jnp.sqrt(results.ESS)))
 
-                    dim2 += 1
-            dim += 1
-    for dim in range(ndims):
-        for dim2 in range(ndims):
-            if dim == dim2:
+    # Loop over the variables, and plot the marginal distributions on the diagonal setting a title above
+    # each plot with the mean+-stddev, 5%/50%/95%, and MAP
+    param_limits = dict()  # Store the 1_per and 99_per for each parameter
+    for row in range(ndims):
+        for col in range(ndims):
+            ax = axs[row][col]
+            if row != col:  # i == j ==> plot the marginal distribution
                 continue
-            ax = axs[dim][dim2] if ndims > 1 else axs[0]
-            if dim in lims.keys():
-                ax.set_ylim(lims[dim])
-            if dim2 in lims.keys():
-                ax.set_xlim(lims[dim2])
+            # Plot the marginal distribution
+            _samples = leaves[:, row]  # [num_samples]
+            _parameter = parameters[row]
+            _log_weights = log_weights
+            is_finite = np.isfinite(_samples)
+            if np.bitwise_not(np.all(is_finite)):
+                logger.warning(f"Found {np.sum(np.bitwise_not(is_finite))} non-finite samples for {_parameter}")
+                _samples = _samples[is_finite]
+                _log_weights = _log_weights[is_finite]
+            _weights = np.exp(_log_weights)
+            # Percentiles
+            per_1, per_5, per_50, per_95, per_99 = weighted_percentile(_samples, _log_weights,
+                                                                       [1, 5, 50, 95, 99])
+            # Plot the histogram, from 1_per to 99_per
+            ax.hist(_samples, bins=nbins, fc='None', edgecolor='black', density=True, weights=_weights,
+                    range=(per_1, per_99))
+            # Plot the maximum likelihood and MAP samples
+            ax.axvline(max_like_sample[row], color='green')
+            ax.axvline(map_sample[row], color='red')
+            # Plot the mean and standard deviation
+            sample_mean = np.average(_samples, weights=_weights)
+            sample_std = np.sqrt(np.average((_samples - sample_mean) ** 2, weights=_weights))
+            ax.axvline(sample_mean, linestyle='dashed', color='red')
+            ax.axvline(sample_mean + sample_std, linestyle='dotted', color='red')
+            ax.axvline(sample_mean - sample_std, linestyle='dotted', color='red')
+
+            # Set the title
+            title = [
+                rf"${per_50:.2f}_{{{per_5:.2f}}}^{{{per_95:.2f}}}$",
+                rf"${sample_mean:.2f}\pm{sample_std:.2f}$",
+                rf"MAP ${map_sample[row]:.2f}$ | ML ${max_like_sample[row]:.2f}$"
+            ]
+            ax.set_title("\n".join(title))
+            # Set the limits to 1 to 99 percentiles
+            ax.set_xlim(per_1, per_99)
+            param_limits[_parameter] = (per_1, per_99)
+
+    # Plot the 2D histograms on lower-diagonal.
+    for row in range(ndims):
+        for col in range(ndims):
+            ax = axs[row][col]
+            if col >= row:
+                continue
+
+            # Get the samples for the 2D histogram
+            _samples = leaves[:, [row, col]]  # [num_samples, 2]
+            _log_weights = log_weights
+            is_finite = np.all(np.isfinite(_samples), axis=-1)  # [num_samples]
+            if np.bitwise_not(np.all(is_finite)):
+                logger.warning(
+                    f"Found {np.sum(np.bitwise_not(is_finite))} non-finite samples for {parameters[row]} and {parameters[col]}")
+                _samples = _samples[is_finite]
+                _log_weights = _log_weights[is_finite]
+            _weights = np.exp(_log_weights)
+
+            # Plot the 2D histogram, over ranges set by the 1_per and 99_per of each parameter
+            ranges = [param_limits[parameters[col]], param_limits[parameters[row]]]
+            ax.hist2d(_samples[:, 1], _samples[:, 0], bins=(nbins, nbins), density=True,
+                      cmap=plt.cm.get_cmap('bone_r'),
+                      weights=_weights, range=ranges)
+
+            if kde_overlay:  # Put KDE contour on the 2D histograms
+
+                # Calculate the point density
+                x = _samples[:, 1]
+                y = _samples[:, 0]
+                xy = np.vstack([x, y])
+
+                x_array = np.linspace(*param_limits[parameters[col]], 128)
+                y_array = np.linspace(*param_limits[parameters[row]], 128)
+                X, Y = np.meshgrid(x_array, y_array)
+                xy_eval = np.vstack([X.ravel(), Y.ravel()])
+
+                z = gaussian_kde(xy, weights=_weights)(xy_eval)
+                z = z.reshape(X.shape)
+                ax.contour(X, Y, z, levels=6, alpha=0.5)
+
+            # Plot the maximum likelihood and MAP samples
+            ax.scatter(max_like_sample[col], max_like_sample[row], color='green', marker='x')
+            ax.scatter(map_sample[col], map_sample[row], color='red', marker='x')
+
+            # Set the limits to 1 to 99 percentiles
+            ax.set_xlim(param_limits[parameters[col]])
+            ax.set_ylim(param_limits[parameters[row]])
+    # Remove spacing
+    plt.subplots_adjust(wspace=0.0, hspace=0.0)
+    # Remove x ticks for all but bottom row
+    for row in range(ndims - 1):
+        for col in range(ndims):
+            axs[row][col].set_xticks([])
+            axs[row][col].set_xticklabels([])
+    # Remove y ticks for all but left column
+    for row in range(ndims):
+        for col in range(1, ndims):
+            axs[row][col].set_yticks([])
+            axs[row][col].set_yticklabels([])
+    # Set the labels on the bottom row and left column
+    for i in range(ndims):
+        axs[-1][i].set_xlabel(parameters[i])
+        axs[i][0].set_ylabel(parameters[i])
+    # Remove upper diagonal
+    for row in range(ndims):
+        for col in range(ndims):
+            if col <= row:
+                continue
+            axs[row][col].remove()
+    # Save the figure
     if save_name is not None:
-        fig.savefig(save_name)
+        fig.savefig(save_name, bbox_inches='tight', dpi=300, pad_inches=0.0)
     plt.show()
 
 
-def _get_ndims(results, vars):
-    ndims = int(sum([tuple_prod(v.shape[1:]) for k, v in results.samples.items() if (k in vars)]))
-    return ndims
+def weighted_percentile(samples: np.ndarray, log_weights: np.ndarray, percentiles: List[float | int]) -> np.ndarray:
+    """
+    Compute weighted percentiles of a set of samples.
+
+    Args:
+        samples: weighted samples
+        log_weights: log weights of samples
+        percentiles: list of percentiles to compute
+
+    Returns:
+        weighted percentiles
+    """
+    if len(percentiles) == 0:
+        raise ValueError("percentiles must be a non-empty list")
+    # Convert log weights to actual weights
+    weights = LogSpace(log_weights - np.max(log_weights))  # Subtract max to avoid overflow
+    weights = normalise_log_space(weights, norm_type='sum')  # Normalize weights
+
+    # Sort samples and weights
+    sorted_indices = np.argsort(samples)
+    sorted_samples = samples[sorted_indices]
+    sorted_weights = weights[sorted_indices]
+
+    # Compute cumulative weights
+    cumulative_weights = sorted_weights.cumsum()
+    cumulative_weights = cumulative_weights - cumulative_weights[0]
+    cumulative_weights = cumulative_weights / cumulative_weights[-1]
+    # Add zero to start of cumulative weights
+
+    # Compute weighted percentiles
+    percentile_values = np.interp(np.asarray(percentiles) / 100.0, cumulative_weights.value, sorted_samples)
+    return percentile_values
 
 
-def _get_vars(results, vars):
-    if vars is None:
-        vars = [k for k, v in results.samples.items()]
-    vars = [v for v in vars if v in results.samples.keys()]
-    vars = sorted(vars)
-    return vars
-
-
-def plot_samples_development(results, vars=None, save_name=None):
+def plot_samples_development(results, variables=None, save_name=None):
     """
     Animate the live points in a corner plot, visualising how the algorithm proceeds.
     Caution, this can be very slow as it plots a frame per sample.
@@ -231,8 +305,11 @@ def plot_samples_development(results, vars=None, save_name=None):
     """
     if save_name is None:
         raise ValueError("In order to plot the animation we must save it.")
-    vars = _get_vars(results, vars)
-    ndims = _get_ndims(results, vars)
+    # Plot all variables by default
+    if variables is None:
+        variables = list(results.samples.keys())
+    variables = sorted(filter(lambda v: v in results.samples, variables))
+    ndims = sum([tuple_prod(results.samples[key].shape[1:]) for key in variables], 0)
     figsize = min(20, max(4, int(2 * ndims)))
     fig, axs = plt.subplots(ndims, ndims, figsize=(figsize, figsize))
     if ndims == 1:
@@ -245,13 +322,13 @@ def plot_samples_development(results, vars=None, save_name=None):
     def _get_artists(artists, start, stop):
         lims = {}
         dim = 0
-        for key in vars:  # sorted(results.samples.keys()):
+        for key in variables:  # sorted(results.samples.keys()):
             n1 = tuple_prod(results.samples[key].shape[1:])
             for i in range(n1):
                 samples1 = results.samples[key].reshape((max_samples, -1))[:, i]
                 samples1 = samples1[start:stop]
                 dim2 = 0
-                for key2 in vars:  # sorted(results.samples.keys()):
+                for key2 in variables:  # sorted(results.samples.keys()):
                     n2 = tuple_prod(results.samples[key2].shape[1:])
                     for i2 in range(n2):
                         ax = axs[dim][dim2]
