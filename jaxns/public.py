@@ -35,7 +35,8 @@ class DefaultNestedSampler:
     def __init__(self, model: BaseAbstractModel, max_samples: Union[int, float], num_live_points: Optional[int] = None,
                  s: Optional[int] = None, k: Optional[int] = None, c: Optional[int] = None,
                  num_parallel_workers: int = 1,
-                 difficult_model: bool = False):
+                 difficult_model: bool = False,
+                 parameter_estimation: bool = False):
         """
         Initialises the nested sampler.
 
@@ -50,14 +51,15 @@ class DefaultNestedSampler:
             c: number of parallel Markov-chains to use. Defaults to 20 * D.
             num_parallel_workers: number of parallel workers to use. Defaults to 1. Experimental feature.
             difficult_model: if True, uses more robust default settings. Defaults to False.
+            parameter_estimation: if True, uses more robust default settings for parameter estimation. Defaults to False.
         """
         if difficult_model:
             self._s = 10 if s is None else int(s)
         else:
-            self._s = 4 if s is None else int(s)
+            self._s = 5 if s is None else int(s)
         if self._s <= 0:
             raise ValueError(f"Expected s > 0, got s={self._s}")
-        if difficult_model:
+        if parameter_estimation:
             self._k = model.U_ndims if k is None else int(k)
         else:
             self._k = model.U_ndims // 2 if k is None else int(k)
@@ -70,7 +72,7 @@ class DefaultNestedSampler:
             if difficult_model:
                 self._c = 50 * model.U_ndims if c is None else int(c)
             else:
-                self._c = 20 * model.U_ndims if c is None else int(c)
+                self._c = 30 * model.U_ndims if c is None else int(c)
         if self._c <= 0:
             raise ValueError(f"Expected c > 0, got c={self._c}")
         # Sanity check for max_samples (should be able to at least do one shrinkage)
