@@ -311,9 +311,9 @@ def summary(results: NestedSamplerResults, f_obj: Optional[Union[str, TextIO]] =
         if bit == 1:
             _print(condition)
     _print("--------")
-    _print(f"likelihood evals: {results.total_num_likelihood_evaluations}")
-    _print(f"samples: {results.total_num_samples}")
-    _print(f"phantom samples: {float(results.total_phantom_samples):.1f}")
+    _print(f"likelihood evals: {int(results.total_num_likelihood_evaluations):d}")
+    _print(f"samples: {int(results.total_num_samples):d}")
+    _print(f"phantom samples: {int(results.total_phantom_samples):d}")
     _print(
         f"likelihood evals / sample: {float(results.total_num_likelihood_evaluations / results.total_num_samples):.1f}"
     )
@@ -327,17 +327,17 @@ def summary(results: NestedSamplerResults, f_obj: Optional[Union[str, TextIO]] =
     # _print("H={} +- {}".format(
     #     _round(results.H_mean, results.H_uncert), _round(results.H_uncert, results.H_uncert)))
     _print(
-        f"H={_round(results.H_mean, results.H_mean)}"
+        f"H={_round(results.H_mean, 0.1)}"
     )
     _print(
-        f"ESS={float(results.ESS)}"
+        f"ESS={int(results.ESS):d}"
     )
-    max_like_idx = jnp.argmax(results.log_L_samples)
+    max_like_idx = np.argmax(results.log_L_samples)
     max_like_points = tree_map(lambda x: x[max_like_idx], results.samples)
     samples = resample(random.PRNGKey(23426), results.samples, results.log_dp_mean, S=max(10, int(results.ESS)),
                        replace=True)
 
-    max_map_idx = jnp.argmax(results.log_posterior_density)
+    max_map_idx = np.argmax(results.log_posterior_density)
     map_points = tree_map(lambda x: x[max_map_idx], results.samples)
 
     for name in samples.keys():
@@ -351,7 +351,7 @@ def summary(results: NestedSamplerResults, f_obj: Optional[Union[str, TextIO]] =
             f"{var_name}: mean +- std.dev. | 10%ile / 50%ile / 90%ile | MAP est. | max(L) est."
         )
         for dim in range(ndims):
-            _uncert = jnp.std(_samples[:, dim])
+            _uncert = np.std(_samples[:, dim])
             _max_like_point = _max_like_points[dim]
             _map_point = _map_points[dim]
             # two sig-figs based on uncert
@@ -363,8 +363,8 @@ def summary(results: NestedSamplerResults, f_obj: Optional[Union[str, TextIO]] =
             _uncert = _round(_uncert)
             _print("{}: {} +- {} | {} / {} / {} | {} | {}".format(
                 name if ndims == 1 else "{}[{}]".format(name, dim),
-                _round(jnp.mean(_samples[:, dim])), _uncert,
-                *[_round(a) for a in jnp.percentile(_samples[:, dim], jnp.asarray([10, 50, 90]))],
+                _round(np.mean(_samples[:, dim])), _uncert,
+                *[_round(a) for a in np.percentile(_samples[:, dim], np.asarray([10, 50, 90]))],
                 _round(_map_point),
                 _round(_max_like_point)
             ))
