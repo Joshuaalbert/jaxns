@@ -10,7 +10,6 @@ install_requires = [
     'typing_extensions',
     'matplotlib',
     'numpy',
-    'pytest',
     'scipy',
     'tensorflow_probability',
     'tqdm',
@@ -22,7 +21,7 @@ with open("README.md", "r") as fh:
     long_description = fh.read()
 
 setup(name='jaxns',
-      version='2.3.1',
+      version='2.3.3',
       description='Nested Sampling in JAX',
       long_description=long_description,
       long_description_content_type="text/markdown",

@@ -1,4 +1,4 @@
-from typing import Union
+from typing import Union, Literal
 
 from jax import numpy as jnp, lax
 from jax.scipy.special import logsumexp
@@ -180,7 +180,6 @@ class LogSpace(object):
             return f"LogSpace({self.log_abs_val})"
         return f"LogSpace({self.log_abs_val}, {self.sign})"
 
-
     def sum(self, axis=-1, keepdims=False):
         if not self._naked:  # no coefficients
             return LogSpace(*logsumexp(self.log_abs_val, b=self.sign, axis=axis, keepdims=keepdims, return_sign=True))
@@ -351,11 +350,23 @@ def is_complex(a):
     return a.dtype in [jnp.complex64, jnp.complex128]
 
 
-def normalise_log_space(x: LogSpace) -> LogSpace:
+def normalise_log_space(x: LogSpace, norm_type: Literal['sum', 'max'] = 'sum') -> LogSpace:
     """
     Safely normalise a LogSpace, accounting for zero-sum.
+
+    Args:
+        x: LogSpace to normalise
+        norm_type: 'sum' or 'max' normalisation
+
+    Returns:
+        normalised LogSpace
     """
-    norm = x.sum()
+    if norm_type == 'sum':
+        norm = x.sum()
+    elif norm_type == 'max':
+        norm = x.max()
+    else:
+        raise ValueError(f"Unknown norm_type {norm_type}")
     x /= norm
     x = LogSpace(jnp.where(jnp.isneginf(norm.log_abs_val), -jnp.inf, x.log_abs_val))
     return x

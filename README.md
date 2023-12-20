@@ -108,6 +108,8 @@ is the best way to achieve speed up.
 
 # Change Log
 
+20 Dec, 2023 -- JAXNS 2.3.2/3 released. Improved default parameters. `difficult_model` mode. Improve plotting. 
+
 18 Dec, 2023 -- JAXNS 2.3.1 released. Paper open science release. Default parameters from paper.
 
 11 Dec, 2023 -- JAXNS 2.3.0 released. Released of Phantom-Powered Nested Sampling algorithm.
