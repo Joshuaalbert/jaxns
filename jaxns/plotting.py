@@ -1,5 +1,5 @@
 import logging
-from typing import Optional, List
+from typing import Optional, List, Union
 
 import jax.numpy as jnp
 import numpy as np
@@ -259,7 +259,8 @@ def plot_cornerplot(results: NestedSamplerResults, variables: Optional[List[str]
     plt.show()
 
 
-def weighted_percentile(samples: np.ndarray, log_weights: np.ndarray, percentiles: List[float | int]) -> np.ndarray:
+def weighted_percentile(samples: np.ndarray, log_weights: np.ndarray,
+                        percentiles: List[Union[float, int]]) -> np.ndarray:
     """
     Compute weighted percentiles of a set of samples.
 
