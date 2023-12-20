@@ -561,15 +561,23 @@ class StandardStaticNestedSampler(BaseAbstractNestedSampler):
         )
         log_Z_uncert = jnp.sqrt(log_Z_var)
 
+        # Correction by sqrt(k+1)
+        total_phantom_samples = jnp.sum(sample_collection.phantom.astype(int_type))
+        phantom_fraction = total_phantom_samples / num_samples  # k / (k+1)
+        k = phantom_fraction / (1. - phantom_fraction)
+        log_Z_uncert = log_Z_uncert * jnp.sqrt(1. + k)
+
         # Kish's ESS = [sum dZ]^2 / [sum dZ^2]
         ESS = effective_sample_size(final_evidence_stats.log_Z_mean, final_evidence_stats.log_dZ2_mean)
+        ESS = ESS / (1. + k)
 
         samples = vmap(self.model.transform)(U_samples)
 
         log_L_samples = log_L
         dp_mean = LogSpace(per_sample_evidence_stats.log_dZ_mean)
         dp_mean = normalise_log_space(dp_mean)
-        H_mean_instable = -((dp_mean * LogSpace(jnp.log(jnp.abs(log_L_samples)), jnp.sign(log_L_samples))).sum().value - log_Z_mean)
+        H_mean_instable = -((dp_mean * LogSpace(jnp.log(jnp.abs(log_L_samples)),
+                                                jnp.sign(log_L_samples))).sum().value - log_Z_mean)
         # H \approx E[-log(compression)] = E[-log(X)] (More stable than E[log(L) - log(Z)]
         H_mean_stable = -((dp_mean * LogSpace(jnp.log(-per_sample_evidence_stats.log_X_mean))).sum().value)
         H_mean = jnp.where(jnp.isfinite(H_mean_instable), H_mean_instable, H_mean_stable)
@@ -581,8 +589,6 @@ class StandardStaticNestedSampler(BaseAbstractNestedSampler):
 
         log_posterior_density = log_L + vmap(self.model.log_prob_prior)(
             U_samples)
-
-        total_phantom_samples = jnp.sum(sample_collection.phantom.astype(int_type))
 
         return NestedSamplerResults(
             log_Z_mean=log_Z_mean,  # estimate of log(E[Z])
