@@ -1,3 +1,5 @@
+import time
+
 import jax
 import tensorflow_probability.substrates.jax as tfp
 from jax import random
@@ -12,7 +14,7 @@ def run_model(max_samples: int):
         return 0.
 
     def prior_model():
-        x = yield Prior(tfpd.Uniform(0., 1.), name='x')
+        x = yield Prior(tfpd.Uniform(0., 1.))  # , name='x')
         return x
 
     model = Model(prior_model=prior_model,
@@ -28,9 +30,14 @@ def run_model(max_samples: int):
 
 
 def performance_benchmark():
-    with jax.profiler.trace("/tmp/jax-trace", create_perfetto_link=True):
-        termination_reason = run_model(max_samples=100000000)
+    max_samples = int(1e7)
+    m = 3
+    run_model_aot = jax.jit(lambda: run_model(max_samples=max_samples)).lower().compile()
+    t0 = time.time()
+    for _ in range(m):
+        termination_reason = run_model_aot()
         termination_reason.block_until_ready()
+    print(f"Time taken: {(time.time() - t0) / m:.5f} seconds.")
 
 
 if __name__ == '__main__':
