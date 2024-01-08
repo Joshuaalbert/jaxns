@@ -1,7 +1,8 @@
 from abc import ABC, abstractmethod
 from typing import TypeVar, Tuple
 
-from jaxns.internals.types import PRNGKey, FloatArray, Sample, StaticStandardNestedSamplerState
+from jaxns.internals.types import PRNGKey, FloatArray, Sample, StaticStandardSampleCollection, \
+    StaticStandardNestedSamplerState
 
 SamplerState = TypeVar('SamplerState')
 
@@ -15,7 +16,7 @@ class AbstractSampler(ABC):
         updated quickly.
 
         Args:
-            state: nested sampler state
+            state: the current state of the sampler
 
         Returns:
             any valid pytree
@@ -23,12 +24,13 @@ class AbstractSampler(ABC):
         ...
 
     @abstractmethod
-    def post_process(self, state: StaticStandardNestedSamplerState, sampler_state: SamplerState) -> SamplerState:
+    def post_process(self, sample_collection: StaticStandardSampleCollection,
+                     sampler_state: SamplerState) -> SamplerState:
         """
         Post process the sampler state, after the sampler has been run. Should be quick.
 
         Args:
-            state: the state after successful sampling
+            sample_collection: a sample collection post sample step
             sampler_state: data pytree produced by the sampler
 
         Returns:

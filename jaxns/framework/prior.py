@@ -1,3 +1,4 @@
+import logging
 from typing import Tuple, Optional, Union
 
 import haiku as hk
@@ -16,6 +17,8 @@ __all__ = [
     "InvalidPriorName"
 ]
 
+logger = logging.getLogger('jaxns')
+
 
 class InvalidPriorName(Exception):
     """
@@ -32,7 +35,7 @@ class SingularPrior(BaseAbstractPrior):
         (at the singular value).
     """
 
-    def __init__(self, value: jnp.ndarray, dist: BaseAbstractDistribution, name: str):
+    def __init__(self, value: jnp.ndarray, dist: BaseAbstractDistribution, name: Optional[str] = None):
         super().__init__(name=name)
         self.value = value
         self.dist = dist
@@ -165,6 +168,8 @@ def prior_to_parametrised_singular(prior: Prior) -> SingularPrior:
     Returns:
         A parameter representing the prior.
     """
+    if prior.name is None:
+        raise ValueError("Prior must have a name to be parametrised.")
     name = f"{prior.name}_param"
     # Initialises at median of distribution.
     init_value = jnp.zeros(prior.base_shape, dtype=float_type)
@@ -179,4 +184,4 @@ def prior_to_parametrised_singular(prior: Prior) -> SingularPrior:
     # U_base_param = ndtr(norm_U_base_param)
     U_base_param = jax.nn.sigmoid(norm_U_base_param)
     param = prior.forward(U_base_param)
-    return SingularPrior(value=param, dist=prior.dist, name=prior.name)
+    return SingularPrior(value=param, dist=prior.dist, name=None)

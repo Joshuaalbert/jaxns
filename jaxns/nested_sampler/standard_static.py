@@ -6,7 +6,6 @@ from jax._src.lax import parallel
 
 from jaxns.framework.bases import BaseAbstractModel
 from jaxns.internals.log_semiring import LogSpace, normalise_log_space
-from jaxns.internals.maps import replace_index
 from jaxns.internals.shrinkage_statistics import compute_evidence_stats
 from jaxns.internals.stats import linear_to_log_stats, effective_sample_size
 from jaxns.internals.tree_structure import SampleTreeGraph, count_crossed_edges, unbatch_state
@@ -38,102 +37,161 @@ def _inter_sync_shrinkage_process(
     Args:
         init_state: the state of the nested sampler at the start
         sampler: sampler to use
-        num_samples: number of samples to take, i.e. work to do
+        num_samples: number of samples to take, i.e. work to do, must be >= front_size
 
     Returns:
         sampler state with samples added
     """
 
+    front_size = init_state.front_idx.size
+    if num_samples < front_size:
+        raise RuntimeError(f"num_samples ({num_samples}) must be >= front_size ({front_size})")
+
+    max_num_samples = init_state.sample_collection.log_L.size
+
     class CarryType(NamedTuple):
-        state: StaticStandardNestedSamplerState
+        front_sample_collection: StaticStandardSampleCollection
         sampler_state: SamplerState
+        key: PRNGKey
+        front_idx: IntArray
+        next_sample_idx: IntArray
+
+    class ResultType(NamedTuple):
+        replace_idx: IntArray
+        sample_collection: StaticStandardSampleCollection
 
     # TODO(Joshuaalbert): Could make much faster by passing just the front, rather than whole state. Would need to
     #  recombine later, and handle sender_idx correctly.
-    def body(carry: CarryType, unused_X: IntArray) -> Tuple[CarryType, Any]:
-        state = carry.state
-
-        front_loc = jnp.argmin(state.sample_collection.log_L[state.front_idx])
-        dead_idx = state.front_idx[front_loc]
+    def body(carry: CarryType, unused_X: IntArray) -> Tuple[CarryType, ResultType]:
+        front_loc = jnp.argmin(carry.front_sample_collection.log_L)
+        dead_idx = carry.front_idx[front_loc]
 
         # Node index is based on root of 0, so sample-nodes are 1-indexed
         dead_node_idx = dead_idx + 1
 
-        log_L_contour = state.sample_collection.log_L[dead_idx]
+        log_L_contour = carry.front_sample_collection.log_L[front_loc]
 
-        key, sample_key = random.split(state.key, 2)
+        key, sample_key = random.split(carry.key, 2)
 
         sample, phantom_samples = sampler.get_sample(
             key=sample_key,
             log_L_constraint=log_L_contour,
             sampler_state=carry.sampler_state
         )
+        # Replace in front_sample_collection
+        front_sample_collection = carry.front_sample_collection._replace(
+            sender_node_idx=carry.front_sample_collection.sender_node_idx.at[front_loc].set(dead_node_idx),
+            log_L=carry.front_sample_collection.log_L.at[front_loc].set(sample.log_L),
+            U_samples=carry.front_sample_collection.U_samples.at[front_loc].set(sample.U_sample),
+            num_likelihood_evaluations=carry.front_sample_collection.num_likelihood_evaluations.at[front_loc].set(
+                sample.num_likelihood_evaluations),
+            # Phantom samples are not on the front, so don't need to be updated from default of False
+        )
+        front_idx = carry.front_idx.at[front_loc].set(carry.next_sample_idx)
+
         # Set (non-phantom) sample as the next sample
 
-        sample_collection = state.sample_collection
-        sample_collection = sample_collection._replace(
-            sender_node_idx=sample_collection.sender_node_idx.at[state.next_sample_idx].set(dead_node_idx),
-            log_L=sample_collection.log_L.at[state.next_sample_idx].set(sample.log_L),
-            U_samples=sample_collection.U_samples.at[state.next_sample_idx].set(sample.U_sample),
-            num_likelihood_evaluations=sample_collection.num_likelihood_evaluations.at[state.next_sample_idx].set(
-                sample.num_likelihood_evaluations)
-            # phantom stays default of False
-        )
-        front_idx = state.front_idx.at[front_loc].set(state.next_sample_idx)
-        next_sample_idx = jnp.minimum(state.next_sample_idx + 1, state.sample_collection.log_L.size)
-        state = state._replace(
-            key=key,
-            next_sample_idx=next_sample_idx,
-            sample_collection=sample_collection,
-            front_idx=front_idx
-        )
+        new_replace_idx = [
+            carry.next_sample_idx[None]
+        ]
+        new_sender_node_idx = [
+            dead_node_idx[None]
+        ]
+        new_log_L = [
+            sample.log_L[None]
+        ]
+        new_U_samples = [
+            sample.U_sample[None]
+        ]
+        new_num_likelihood_evaluations = [
+            sample.num_likelihood_evaluations[None]
+        ]
+        new_phantom = [
+            jnp.zeros((1,), jnp.bool_)
+        ]
+
+        next_sample_idx = jnp.minimum(carry.next_sample_idx + 1, max_num_samples)
 
         # Set phantom samples, whose sender nodes are all the dead point. These do not get set on the front.
+
         num_phantom = phantom_samples.log_L.size
-        sample_collection = sample_collection._replace(
-            sender_node_idx=replace_index(
-                sample_collection.sender_node_idx,
-                jnp.full((num_phantom,), dead_node_idx),
-                next_sample_idx
-            ),
-            log_L=replace_index(
-                sample_collection.log_L,
-                phantom_samples.log_L,
-                next_sample_idx
-            ),
-            U_samples=replace_index(
-                sample_collection.U_samples,
-                phantom_samples.U_sample,
-                next_sample_idx
-            ),
-            num_likelihood_evaluations=replace_index(
-                sample_collection.num_likelihood_evaluations,
-                phantom_samples.num_likelihood_evaluations,
-                next_sample_idx
-            ),
-            phantom=replace_index(
-                sample_collection.phantom,
-                jnp.ones(num_phantom, dtype=jnp.bool_),
-                next_sample_idx
-            )
+        new_replace_idx.append(
+            (next_sample_idx + jnp.arange(num_phantom)).astype(next_sample_idx.dtype)
+        )
+        new_sender_node_idx.append(
+            jnp.full((num_phantom,), dead_node_idx)
+        )
+        new_log_L.append(
+            phantom_samples.log_L
+        )
+        new_U_samples.append(
+            phantom_samples.U_sample
+        )
+        new_num_likelihood_evaluations.append(
+            phantom_samples.num_likelihood_evaluations
+        )
+        new_phantom.append(
+            jnp.ones((num_phantom,), dtype=jnp.bool_)
         )
 
-        next_sample_idx = jnp.minimum(state.next_sample_idx + num_phantom, state.sample_collection.log_L.size)
-        state = state._replace(
-            next_sample_idx=next_sample_idx,
-            sample_collection=sample_collection
+        next_sample_idx = jnp.minimum(next_sample_idx + num_phantom, max_num_samples)
 
+        new_sample_collection = StaticStandardSampleCollection(
+            sender_node_idx=jnp.concatenate(new_sender_node_idx, axis=0),
+            log_L=jnp.concatenate(new_log_L, axis=0),
+            U_samples=jnp.concatenate(new_U_samples, axis=0),
+            num_likelihood_evaluations=jnp.concatenate(new_num_likelihood_evaluations, axis=0),
+            phantom=jnp.concatenate(new_phantom, axis=0)
         )
+        new_replace_idx = jnp.concatenate(new_replace_idx, axis=0)
 
         # Fast update of sampler state given this state
-        sampler_state = sampler.post_process(state, carry.sampler_state)
-        return CarryType(state=state, sampler_state=sampler_state), ()
+        sampler_state = sampler.post_process(sample_collection=new_sample_collection, sampler_state=carry.sampler_state)
+
+        new_carry = CarryType(
+            front_sample_collection=front_sample_collection,
+            sampler_state=sampler_state,
+            key=key,
+            front_idx=front_idx,
+            next_sample_idx=next_sample_idx
+        )
+
+        new_return = ResultType(
+            replace_idx=new_replace_idx,
+            sample_collection=new_sample_collection
+        )
+
+        return new_carry, new_return
 
     # Sampler state is created before all this work. Quickly updated during shrinkage.
     init_sampler_state = sampler.pre_process(state=init_state)
-    init_carry = CarryType(state=init_state, sampler_state=init_sampler_state)
-    out_carry, _ = lax.scan(body, init_carry, jnp.arange(num_samples))
-    return out_carry.state
+    init_front_sample_collection = tree_map(lambda x: x[init_state.front_idx], init_state.sample_collection)
+    key, carry_key = random.split(init_state.key)
+    init_carry = CarryType(
+        sampler_state=init_sampler_state,
+        key=carry_key,
+        front_idx=init_state.front_idx,
+        front_sample_collection=init_front_sample_collection,
+        next_sample_idx=init_state.next_sample_idx
+    )
+    out_carry, out_return = lax.scan(body, init_carry, jnp.arange(num_samples))
+
+    # Replace the samples in the sample collection with out_return counterparts.
+    sample_collection = tree_map(
+        lambda x, y: x.at[out_return.replace_idx].set(y),
+        init_state.sample_collection,
+        out_return.sample_collection
+    )
+    # Note, discard front_sample_collection since it's already in out_return, and we've replaced the whole front.
+
+    # Take front_idx and next_sample_idx from carry, which have been kept up-to-date at every iteration.
+    state = StaticStandardNestedSamplerState(
+        key=key,
+        next_sample_idx=out_carry.next_sample_idx,
+        sample_collection=sample_collection,
+        front_idx=out_carry.front_idx
+    )
+    return state
 
 
 def _single_thread_ns(init_state: StaticStandardNestedSamplerState,
