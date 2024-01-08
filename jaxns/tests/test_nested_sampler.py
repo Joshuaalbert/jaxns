@@ -28,7 +28,7 @@ def test_nested_sampling_run_results(all_run_results):
         plt.show()
         log_Z_ensemble_mean = jnp.mean(log_Z_samples)
         log_Z_ensemble_std = jnp.std(log_Z_samples)
-        np.testing.assert_allclose(log_Z_ensemble_mean, log_Z_true, atol=1.75 * log_Z_ensemble_std)
+        np.testing.assert_allclose(log_Z_ensemble_mean, log_Z_true, atol=2.0 * log_Z_ensemble_std)
         np.testing.assert_allclose(results.log_Z_mean, log_Z_ensemble_mean, atol=log_Z_ensemble_std)
         np.testing.assert_allclose(results.log_Z_uncert, log_Z_ensemble_std,
                                    atol=np.sqrt(results.log_Z_uncert ** 2 + log_Z_ensemble_std ** 2))

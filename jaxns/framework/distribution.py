@@ -1,14 +1,12 @@
 from typing import Optional, List, Union, Tuple
 
 import tensorflow_probability.substrates.jax as tfp
-from jax import numpy as jnp
 
 from jaxns.framework.bases import BaseAbstractDistribution
-from jaxns.internals.types import FloatArray, IntArray, BoolArray, float_type
+from jaxns.internals.types import FloatArray, IntArray, BoolArray
 
 __all__ = [
     "Distribution",
-    "SingularDistribution",
     "InvalidDistribution"
 ]
 
@@ -96,37 +94,3 @@ class Distribution(BaseAbstractDistribution):
 
     def _log_prob(self, X):
         return self.dist_chain[-1].log_prob(X)
-
-
-class SingularDistribution(BaseAbstractDistribution):
-    """
-    Represents a singular distribution, which has no inverse transformation, but does have a log_prob
-        (at the singular value).
-    """
-
-    # TODO(Joshuaalbert): Perhaps this should become a SingularPrior because it is not a distribution.
-    #  See note in bases.py
-    def __init__(self, value: jnp.ndarray, dist: Distribution):
-        self.value = value
-        self.dist = dist
-
-    def __repr__(self):
-        return f"{self.value} -> {self.dist}"
-
-    def _dtype(self):
-        return self.dist.dtype
-
-    def _base_shape(self) -> Tuple[int, ...]:
-        return ()
-
-    def _shape(self) -> Tuple[int, ...]:
-        return self.dist.shape
-
-    def _forward(self, U) -> Union[FloatArray, IntArray, BoolArray]:
-        return self.value
-
-    def _inverse(self, X) -> FloatArray:
-        return jnp.asarray([], float_type)
-
-    def _log_prob(self, X):
-        return self.dist.log_prob(X)

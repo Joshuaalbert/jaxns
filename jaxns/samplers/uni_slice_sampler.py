@@ -7,7 +7,7 @@ from jaxns.framework.bases import BaseAbstractModel
 from jaxns.internals.shrinkage_statistics import _cumulative_op_static
 from jaxns.internals.types import PRNGKey, FloatArray, BoolArray, Sample, float_type, int_type, \
     StaticStandardNestedSamplerState, \
-    IntArray, UType
+    IntArray, UType, StaticStandardSampleCollection
 from jaxns.samplers.abc import SamplerState
 from jaxns.samplers.bases import SeedPoint, BaseAbstractMarkovSampler
 
@@ -264,31 +264,32 @@ class UniDimSliceSampler(BaseAbstractMarkovSampler):
         return self.num_phantom_save
 
     def pre_process(self, state: StaticStandardNestedSamplerState) -> SamplerState:
+        sample_collection = tree_map(lambda x: x[state.front_idx], state.sample_collection)
         if self.perfect:  # nothing needed
-            return (state,)
+            return (sample_collection,)
         else:  # TODO: step out with doubling, using ellipsoidal clustering
-            return (state,)  # multi_ellipsoidal_params()
+            return (sample_collection,)  # multi_ellipsoidal_params()
 
-    def post_process(self, state: StaticStandardNestedSamplerState, sampler_state: SamplerState) -> SamplerState:
+    def post_process(self, sample_collection: StaticStandardSampleCollection, sampler_state: SamplerState) -> SamplerState:
         if self.perfect:  # nothing needed
-            return (state,)
+            return sampler_state
         else:  # TODO: step out with doubling, using ellipsoidal clustering, could shrink ellipsoids
-            return (state,)
+            return sampler_state
 
     def get_seed_point(self, key: PRNGKey, sampler_state: SamplerState,
                        log_L_constraint: FloatArray) -> SeedPoint:
 
-        state: StaticStandardNestedSamplerState
-        (state,) = sampler_state
+        sample_collection: StaticStandardSampleCollection
+        (sample_collection,) = sampler_state
 
-        unnorm_select_prob = (state.sample_collection.log_L[state.front_idx] > log_L_constraint).astype(float_type)
+        unnorm_select_prob = (sample_collection.log_L > log_L_constraint).astype(float_type)
         # Choose randomly where mask is True
         g = random.gumbel(key, shape=unnorm_select_prob.shape)
-        sample_idx = state.front_idx[jnp.argmax(g + jnp.log(unnorm_select_prob))]
+        sample_idx = jnp.argmax(g + jnp.log(unnorm_select_prob))
 
         return SeedPoint(
-            U0=state.sample_collection.U_samples[sample_idx],
-            log_L0=state.sample_collection.log_L[sample_idx]
+            U0=sample_collection.U_samples[sample_idx],
+            log_L0=sample_collection.log_L[sample_idx]
         )
 
     def get_sample_from_seed(self, key: PRNGKey, seed_point: SeedPoint, log_L_constraint: FloatArray,

@@ -4,7 +4,7 @@ from jax import random, numpy as jnp, lax, tree_map
 
 from jaxns.internals.shrinkage_statistics import compute_evidence_stats
 from jaxns.internals.tree_structure import SampleTreeGraph, count_crossed_edges
-from jaxns.internals.types import IntArray, StaticStandardNestedSamplerState, UType
+from jaxns.internals.types import IntArray, StaticStandardNestedSamplerState, UType, StaticStandardSampleCollection
 from jaxns.internals.types import PRNGKey, FloatArray
 from jaxns.internals.types import Sample, int_type
 from jaxns.samplers.abc import SamplerState
@@ -59,7 +59,7 @@ class MultiEllipsoidalSampler(BaseAbstractRejectionSampler):
             method='em_gmm'
         )
 
-    def post_process(self, state: StaticStandardNestedSamplerState, sampler_state: SamplerState) -> SamplerState:
+    def post_process(self, sample_collection: StaticStandardSampleCollection, sampler_state: SamplerState) -> SamplerState:
         return sampler_state
 
     @property
