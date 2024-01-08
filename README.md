@@ -108,6 +108,9 @@ is the best way to achieve speed up.
 
 # Change Log
 
+8 Jan, 2024 -- JAXNS 2.4.0 released. Migrate parametrised models to stable. All models are now default able to be 
+parametrised, so you can use hk.Parameter anywhere in the model.
+
 21 Dec, 2023 -- JAXNS 2.3.4 released. Correction for ESS and logZ uncert. `parameter_estimation` mode.
 
 20 Dec, 2023 -- JAXNS 2.3.2/3 released. Improved default parameters. `difficult_model` mode. Improve plotting. 

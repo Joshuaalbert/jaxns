@@ -82,15 +82,6 @@ class AbstractModel(ABC):
     Represents a Bayesian model in terms of a generative prior, and likelihood function.
     """
 
-    @abstractmethod
-    def _parsed_prior(self) -> Tuple[UType, XType]:
-        """
-        The parsed prior.
-
-        Returns:
-            U-space sample, X-space sample
-        """
-        ...
 
     @abstractmethod
     def __hash__(self):
@@ -139,6 +130,19 @@ class AbstractModel(ABC):
         """
         ...
 
+    def log_prob_likelihood(self, U: UType, allow_nan: bool = False) -> MeasureType:
+        """
+        Compute the log-likelihood.
+
+        Args:
+            U: U-space sample
+            allow_nan: whether to allow nans in likelihood
+
+        Returns:
+            log likelihood at the sample
+        """
+        return self.forward(U=U, allow_nan=allow_nan)
+
     @abstractmethod
     def log_prob_prior(self, U: UType) -> MeasureType:
         """
@@ -151,6 +155,19 @@ class AbstractModel(ABC):
             the log probability of prior
         """
         ...
+
+    def log_prob_joint(self, U: UType, allow_nan: bool) -> MeasureType:
+        """
+        Computes the log-joint probability of the model.
+
+        Args:
+            U: The U-space sample
+            allow_nan: whether to allow nans in likelihood
+
+        Returns:
+            the log joint probability of the model
+        """
+        return self.log_prob_prior(U=U) + self.log_prob_likelihood(U=U, allow_nan=allow_nan)
 
     @abstractmethod
     def prepare_input(self, U: UType) -> LikelihoodInputType:
