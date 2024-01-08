@@ -4,10 +4,8 @@ from typing import Tuple, Dict, Any, Optional, Callable
 import jax
 import tensorflow_probability.substrates.jax as tfp
 from jax import numpy as jnp, random, vmap, tree_map
-from jax._src.scipy.special import logsumexp, ndtr
+from jax._src.scipy.special import logsumexp
 from tqdm import tqdm
-
-from jaxns import DefaultNestedSampler
 
 try:
     import haiku as hk
@@ -21,15 +19,12 @@ except ImportError:
     print("You must `pip install optax` first.")
     raise
 
-from jaxns.internals.types import TerminationCondition, NestedSamplerResults, float_type, \
-    StaticStandardNestedSamplerState, IntArray, PRNGKey
-from jaxns.experimental.parametrised_model import ParametrisedModel
-from jaxns.framework.prior import Prior
-from jaxns.framework.distribution import SingularDistribution
+from jaxns import DefaultNestedSampler, Model
+from jaxns.internals.types import TerminationCondition, NestedSamplerResults, StaticStandardNestedSamplerState, \
+    IntArray, PRNGKey
 
 __all__ = [
-    'EvidenceMaximisation',
-    'prior_to_parametrised_singular'
+    'EvidenceMaximisation'
 ]
 
 tfpd = tfp.distributions
@@ -38,44 +33,12 @@ tfpk = tfp.math.psd_kernels
 logger = logging.getLogger('jaxns')
 
 
-def prior_to_parametrised_singular(prior: Prior) -> Prior:
-    """
-    Convert a prior into a non-Bayesian parameter, that takes a single value in the model, but still has an associated
-    log_prob. The parameter is registered as a `hk.Parameter` with added `_param` name suffix.
-
-    To constrain the parameter we use a Normal parameter with centre on unit cube, and scale covering the whole cube,
-    as the base representation. This base representation covers the whole real line and be reliably used with SGD, etc.
-
-    Args:
-        prior: any prior
-
-    Returns:
-        A parameter representing the prior.
-    """
-    name = f"{prior.name}_param"
-    init_value = 0.5 * jnp.ones(prior.base_shape, dtype=float_type)
-    norm_U_base_param = hk.get_parameter(
-        name=name,
-        shape=prior.base_shape,
-        dtype=float_type,
-        init=hk.initializers.Constant(init_value)
-    )
-    # transform norm_base_param with normal cdf.
-    mu = 0.5
-    scale = 0.5
-    # TODO(Joshuaalbert): consider something faster than ndtr to save FLOPs
-    U_base_param = ndtr((norm_U_base_param - mu) / scale)
-    param = prior.forward(U_base_param)
-    dist = SingularDistribution(value=param, dist=prior.dist)
-    return Prior(dist_or_value=dist, name=prior.name)
-
-
 class EvidenceMaximisation:
     """
     Evidence Maximisation class, that implements the E and M steps. Iteratively computes the evidence and maximises it.
     """
 
-    def __init__(self, model: ParametrisedModel, ns_kwargs: Dict[str, Any],
+    def __init__(self, model: Model, ns_kwargs: Dict[str, Any],
                  learning_rate: float = 1e-2, max_num_epochs: int = 100, gtol=1e-4,
                  log_Z_ftol=1., log_Z_atol=1e-4,
                  termination_cond: Optional[TerminationCondition] = None):
@@ -92,7 +55,7 @@ class EvidenceMaximisation:
             log_Z_atol: The absolute tolerance for the change in the evidence.
             ns_kwargs: The keyword arguments to pass to the nested sampler.
         """
-        if not isinstance(model, ParametrisedModel):
+        if not isinstance(model, Model):
             raise ValueError("model must be an instance of ParametrisedModel")
         self.model = model
         self.learning_rate = learning_rate
@@ -118,7 +81,7 @@ class EvidenceMaximisation:
 
         def _ns_solve(params: hk.MutableParams, rng: random.PRNGKey) -> Tuple[
             IntArray, StaticStandardNestedSamplerState]:
-            model = self.model.new(params=params)
+            model = self.model(params=params)
             ns = DefaultNestedSampler(model=model, **self.ns_kwargs)
             termination_reason, state = ns(rng)
             return termination_reason, state
@@ -128,7 +91,7 @@ class EvidenceMaximisation:
 
         def _processed_ns_solve(params: hk.MutableParams, rng: random.PRNGKey) -> NestedSamplerResults:
             termination_reason, state = ns_compiled(params, rng)
-            ns = DefaultNestedSampler(model=self.model.new(params=params), **self.ns_kwargs)
+            ns = DefaultNestedSampler(model=self.model(params=params), **self.ns_kwargs)
             # Trim now
             return ns.to_results(termination_reason=termination_reason, state=state, trim=True)
 
@@ -140,13 +103,14 @@ class EvidenceMaximisation:
 
         Args:
             params: The parameters to use.
+            rng: The random number generator key.
 
         Returns:
             The nested sampling results.
         """
 
         # The E-step is just nested sampling
-        return self._e_step(params=params, rng=rng)
+        return self._e_step(params, rng)
 
     def m_step(self, results: NestedSamplerResults, params: hk.MutableParams) -> hk.MutableParams:
         """
@@ -164,7 +128,7 @@ class EvidenceMaximisation:
 
         def neg_log_evidence(params: hk.MutableParams):
             # Compute the log evidence
-            model = self.model.new(params=params)
+            model = self.model(params=params)
             # To make manageable, we could do chunked_pmap
             log_L_samples = vmap(model.forward)(results.U_samples)
             # We add the log_Z_mean because log_dp_mean is normalised

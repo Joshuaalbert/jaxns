@@ -38,6 +38,42 @@ def parse_prior(prior_model: PriorModelType) -> Tuple[UType, XType]:
     return U_placeholder, X_placeholder
 
 
+def parse_joint(prior_model: PriorModelType, log_likelihood: LikelihoodType) -> Tuple[UType, XType, LikelihoodInputType, FloatArray]:
+    """
+    Computes placeholders of model.
+
+    Args:
+        prior_model: a callable that produces a prior model generator
+
+    Returns:
+        U placeholder, X placeholder
+    """
+    U_ndims = 0
+    gen = prior_model()
+    prior_response = None
+    X_placeholder: XType = dict()
+    while True:
+        try:
+            prior: BaseAbstractPrior = gen.send(prior_response)
+            d = prior.base_ndims
+            U_ndims += d
+            u = jnp.zeros(prior.base_shape, float_type)
+            prior_response = prior.forward(u)
+            if prior.name is not None:
+                if prior.name in X_placeholder:
+                    raise InvalidPriorName(name=prior.name)
+                X_placeholder[prior.name] = prior_response
+        except StopIteration as e:
+            output = e.value
+            if not isinstance(output, tuple):
+                output = (output,)
+            break
+    likelihood_input_placeholder = output
+    log_L_placeholder = jnp.asarray(log_likelihood(*output), float_type)
+    U_placeholder = jnp.zeros((U_ndims,), float_type)
+    return U_placeholder, X_placeholder, likelihood_input_placeholder, log_L_placeholder
+
+
 def transform(U: UType, prior_model: PriorModelType) -> XType:
     """
     Transforms a flat array of `U_ndims` i.i.d. samples of U[0,1] into the target prior.
@@ -100,7 +136,7 @@ def prepare_input(U: UType, prior_model: PriorModelType) -> LikelihoodInputType:
     return output
 
 
-def log_prob_prior(U: UType, prior_model: PriorModelType) -> FloatArray:
+def compute_log_prob_prior(U: UType, prior_model: PriorModelType) -> FloatArray:
     """
     Computes the prior log-density from a U-space sample.
 

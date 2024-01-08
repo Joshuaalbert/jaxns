@@ -1,11 +1,11 @@
-from functools import cached_property
+from abc import abstractmethod
 from typing import Tuple, Optional, Generator, Callable
 
 import jax.numpy as jnp
 
-from jaxns.internals.types import LikelihoodInputType
-from jaxns.internals.shapes import tuple_prod
 from jaxns.framework.abc import AbstractModel, AbstractPrior, AbstractDistribution
+from jaxns.internals.shapes import tuple_prod
+from jaxns.internals.types import LikelihoodInputType
 from jaxns.internals.types import LikelihoodType, UType, XType, RandomVariableType, MeasureType
 
 __all__ = [
@@ -128,19 +128,27 @@ class BaseAbstractModel(AbstractModel):
         """
         return self._log_likelihood
 
+    @abstractmethod
+    def _U_placeholder(self) -> UType:
+        ...
+
+    @abstractmethod
+    def _X_placeholder(self) -> XType:
+        ...
+
     @property
     def U_placeholder(self) -> UType:
         """
         A placeholder for U-space sample.
         """
-        return self.parsed_prior[0]
+        return self._U_placeholder()
 
     @property
     def X_placeholder(self) -> XType:
         """
         A placeholder for X-space sample.
         """
-        return self.parsed_prior[1]
+        return self._X_placeholder()
 
     @property
     def U_ndims(self) -> int:
@@ -148,16 +156,6 @@ class BaseAbstractModel(AbstractModel):
         The prior dimensionality.
         """
         return self.U_placeholder.size
-
-    @cached_property
-    def parsed_prior(self) -> Tuple[UType, XType]:
-        """
-        The parsed prior.
-
-        Returns:
-            U-space sample, X-space sample
-        """
-        return self._parsed_prior()
 
 
 # TODO(Joshuaalbert): distribution is too similar to prior, where we only need to be able to extract the log_prob and
