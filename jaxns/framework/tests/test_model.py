@@ -22,7 +22,7 @@ def test_gh95():
 
 def test_parametrised_singular():
     def prior_model():
-        x = yield Prior(dist_or_value=jnp.asarray(0.)).parametrised()
+        x = yield Prior(dist_or_value=jnp.asarray(0.), name='x').parametrised()
         return x
 
     def log_likelihood(x):
@@ -34,7 +34,7 @@ def test_parametrised_singular():
 
 def test_parametrised():
     def prior_model():
-        x = yield Prior(tfpd.Uniform()).parametrised()
+        x = yield Prior(tfpd.Uniform(),name='x').parametrised()
         return x
 
     def log_likelihood(x):
