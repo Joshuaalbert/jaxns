@@ -131,7 +131,7 @@ class Model(BaseAbstractModel):
         def _sample_U():
             return random.uniform(key=hk.next_rng_key(), shape=(self.U_ndims,), dtype=float_type)
 
-        return hk.transform(_sample_U).apply(params=self._params, rng=None)
+        return hk.transform(_sample_U).apply(params=self._params, rng=key)
 
     def transform(self, U: UType) -> XType:
         def _transform():
