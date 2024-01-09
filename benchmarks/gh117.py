@@ -31,13 +31,36 @@ def run_model(max_samples: int):
 
 def performance_benchmark():
     max_samples = int(1e7)
-    m = 3
+    m = 10
     run_model_aot = jax.jit(lambda: run_model(max_samples=max_samples)).lower().compile()
-    t0 = time.time()
+    dt = []
+
     for _ in range(m):
+        t0 = time.time()
         termination_reason = run_model_aot()
         termination_reason.block_until_ready()
-    print(f"Time taken: {(time.time() - t0) / m:.5f} seconds.")
+        t1 = time.time()
+        dt.append(t1 - t0)
+    total_time = sum(dt)
+    print(f"Avg. time taken: {total_time / m:.5f} seconds.")
+    best_3 = sum(sorted(dt)[:3]) / 3.
+    print(f"The best 3 of {m} runs took {best_3:.5f} seconds.")
+
+
+# _inter_sync_shrinkage_process unroll=1
+# get_sample_from_seed unroll=1
+# Avg. time taken: 4.79353 seconds.
+# The best 3 of 10 runs took 4.63075 seconds.
+
+# _inter_sync_shrinkage_process unroll=2
+# get_sample_from_seed unroll=1
+# Avg. time taken: 5.04382 seconds.
+# The best 3 of 10 runs took 4.74833 seconds.
+
+# _inter_sync_shrinkage_process unroll=1
+# get_sample_from_seed unroll=2
+# Avg. time taken: 4.40303 seconds.
+# The best 3 of 10 runs took 4.37935 seconds.
 
 
 if __name__ == '__main__':
