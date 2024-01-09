@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Array of jaxns versions to be installed
-declare -a jaxns_versions=("2.3.0" "2.3.1" "2.3.2" "2.3.4" "2.4.0")
+declare -a jaxns_versions=("2.3.0" "2.3.1" "2.3.2" "2.3.4" "2.4.0" "2.4.1")
 
 # Path to your benchmark script
 benchmark_script="gh117.py"
