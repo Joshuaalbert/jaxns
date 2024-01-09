@@ -145,8 +145,9 @@ def _inter_sync_shrinkage_process(
         )
         new_replace_idx = jnp.concatenate(new_replace_idx, axis=0)
 
-        # Fast update of sampler state given this state
-        sampler_state = sampler.post_process(sample_collection=new_sample_collection, sampler_state=carry.sampler_state)
+        # Fast update of sampler state given a new sample collection that satisfies the front
+        sampler_state = sampler.post_process(sample_collection=front_sample_collection,
+                                             sampler_state=carry.sampler_state)
 
         new_carry = CarryType(
             front_sample_collection=front_sample_collection,
@@ -174,7 +175,7 @@ def _inter_sync_shrinkage_process(
         front_sample_collection=init_front_sample_collection,
         next_sample_idx=init_state.next_sample_idx
     )
-    out_carry, out_return = lax.scan(body, init_carry, jnp.arange(num_samples))
+    out_carry, out_return = lax.scan(body, init_carry, jnp.arange(num_samples), unroll=1)
 
     # Replace the samples in the sample collection with out_return counterparts.
     sample_collection = tree_map(
