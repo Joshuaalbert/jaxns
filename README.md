@@ -8,7 +8,7 @@ Status: ![Workflow name](https://github.com/JoshuaAlbert/jaxns/actions/workflows
 Develop
 Status: ![Workflow name](https://github.com/JoshuaAlbert/jaxns/actions/workflows/unittests.yml/badge.svg?branch=develop)
 
-![JAXNS](https://github.com/Joshuaalbert/jaxns/raw/main/jaxns_logo.png)
+![JAXNS](https://github.com/JoshuaAlbert/jaxns/raw/main/jaxns_logo.png)
 
 ## Mission: _To make nested sampling **faster, easier, and more powerful**_
 
@@ -20,7 +20,7 @@ JAXNS is:
 2) coded in JAX in a manner that allows lowering the entire inference algorithm to XLA primitives, which are
    JIT-compiled for high performance;
 3) continuously improving on its mission of making nested sampling faster, easier, and more powerful; and
-4) citable, use the (old) pre-print here: (https://arxiv.org/abs/2012.15286).
+4) citable, use the [(old) pre-print here](https://arxiv.org/abs/2012.15286).
 
 ## JAXNS Probabilistic Programming Framework
 
@@ -36,7 +36,7 @@ in [docs/examples/intro_example.ipynb](docs/examples/intro_example.ipynb).
 
 ### Defining a probabilistic model
 
-Prior models are functios that produce generators of `Prior` objects.
+Prior models are functions that produce generators of `Prior` objects.
 The function must eventually return the inputs to the likelihood function.
 The returned values of a yielded `Prior` is a simple JAX array, i.e. you can do anything you want to it with JAX ops.
 The rules of static programming apply, i.e. you cannot dynamically allocate arrays.
@@ -44,7 +44,7 @@ The rules of static programming apply, i.e. you cannot dynamically allocate arra
 JAXNS makes use of the Tensorflow Probability library for defining prior distributions, thus you can use __almost__
 any of the TFP distributions. You can also use any of the TFP bijectors to define transformed distributions.
 
-Distributions does have some requirements to be valid for use in JAXNS.
+Distributions do have some requirements to be valid for use in JAXNS.
 
 1. They must have a quantile function, i.e. `dist.quantile(dist.cdf(x)) == x`.
 2. They must have a `log_prob` method that returns the log-probability of the distribution at a given value.
@@ -223,8 +223,8 @@ samples = resample(
 
 You can read the documentation [here](https://jaxns.readthedocs.io/en/latest/#). In addition, JAXNS is partially
 described in the
-original paper (https://arxiv.org/abs/2012.15286), as well as the paper on Phantom-Powered Nested
-Sampling (https://arxiv.org/abs/2312.11330).
+[original paper](https://arxiv.org/abs/2012.15286), as well as the paper on [Phantom-Powered Nested
+Sampling paper](https://arxiv.org/abs/2312.11330).
 
 # Install
 
@@ -232,7 +232,7 @@ Sampling (https://arxiv.org/abs/2312.11330).
 
 1. JAXNS requires >= Python 3.9. It is always highly recommended to use the latest version of Python.
 2. It is always highly recommended to use a unique virtual environment for each project.
-   To use `miniconda`, have it installed, and run
+   To use **miniconda**, ensure it is installed on your system, then run the following commands:
 
 ```bash
 # To create a new env, if necessary
@@ -265,7 +265,7 @@ pip install .
 Do you have a neat Bayesian problem, and want to solve it with JAXNS?
 I'm really encourage anyone in either the scientific community or industry to get involved and join the discussion
 forum.
-Please use the [github discussion forum](https://github.com/Joshuaalbert/jaxns/discussions) for getting help, or
+Please use the [github discussion forum](https://github.com/JoshuaAlbert/jaxns/discussions) for getting help, or
 contributing examples/neat use cases.
 
 # Quick start
@@ -303,10 +303,14 @@ This ensures consistency of depth across all copies.
 We then merge the copies and compute the final results.
 
 The algorithm is fairly memory bound, so running parallelisation over multiple CPUs on the same machine may not yield
-the expected speed up, and depends how expensive the likelihood evaluations are. Running over separate physical devices
+the expected speed up, and depends on how expensive the likelihood evaluations are. Running over separate physical devices
 is the best way to achieve speed up.
 
 # Change Log
+
+10 Jan, 2024 -- JAXNS 2.4.2/3 released. Another performance boost, and experimental global optimiser.
+
+9 Jan, 2024 -- JAXNS 2.4.1 released. Improve performance slightly for larger `max_samples`, still a performance issue.
 
 8 Jan, 2024 -- JAXNS 2.4.0 released. Python 3.9+ becomes supported. Migrate parametrised models to stable.
 All models are now default able to be parametrised, so you can use hk.Parameter anywhere in the model.
@@ -317,7 +321,7 @@ All models are now default able to be parametrised, so you can use hk.Parameter 
 
 18 Dec, 2023 -- JAXNS 2.3.1 released. Paper open science release. Default parameters from paper.
 
-11 Dec, 2023 -- JAXNS 2.3.0 released. Released of Phantom-Powered Nested Sampling algorithm.
+11 Dec, 2023 -- JAXNS 2.3.0 released. Release of Phantom-Powered Nested Sampling algorithm.
 
 5 Oct, 2023 -- JAXNS 2.2.6 released. Minor update to evidence maximisation.
 

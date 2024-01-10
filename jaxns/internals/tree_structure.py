@@ -1,9 +1,12 @@
 from typing import NamedTuple, List, Tuple, Union, Optional
 
-from jax import numpy as jnp, lax, tree_map
+from jax import numpy as jnp, lax, tree_map, core
+from jax._src.numpy import lax_numpy
 
 from jaxns.internals.maps import remove_chunk_dim
-from jaxns.internals.types import MeasureType, IntArray, float_type, FloatArray, StaticStandardNestedSamplerState, int_type
+from jaxns.internals.cumulative_ops import cumulative_op_static, cumulative_op_dynamic
+from jaxns.internals.types import MeasureType, IntArray, float_type, FloatArray, StaticStandardNestedSamplerState, \
+    int_type
 
 
 class SampleTreeGraph(NamedTuple):
@@ -24,45 +27,71 @@ class SampleLivePointCounts(NamedTuple):
 
 
 def count_crossed_edges(sample_tree: SampleTreeGraph, num_samples: Optional[IntArray] = None) -> SampleLivePointCounts:
+    def _argsort(
+            a: jnp.ndarray
+    ):
+        arr = jnp.asarray(a)
+        axis_num = 0
+        use_64bit_index = not core.is_constant_dim(arr.shape[axis_num]) or arr.shape[axis_num] >= (1 << 31)
+        iota = lax.broadcasted_iota(lax_numpy.int64 if use_64bit_index else lax_numpy.int_, arr.shape, axis_num)
+        _, perm = lax.sort_key_val(arr, iota, dimension=axis_num)
+        return perm
+
     N = sample_tree.sender_node_idx.size
 
+    fake_edges = 0
     if num_samples is not None:
         # We put edges from root to +inf for the indices that are not used.
         # Since all lines will cross these injected edges, we subtract them from the total.
+        # Note: these values are set by default, so we don't need to do anything.
+        # Leave this here as a reminder of what's going on.
+        # mask = jnp.arange(N) < num_samples
+        # sample_tree = SampleTreeGraph(
+        #     sender_node_idx=jnp.where(mask, sample_tree.sender_node_idx, 0),
+        #     log_L=jnp.where(mask, sample_tree.log_L, jnp.inf)
+        # )
 
-        mask = jnp.arange(N) < num_samples
-        sample_tree = SampleTreeGraph(
-            sender_node_idx=jnp.where(mask, sample_tree.sender_node_idx, 0),
-            log_L=jnp.where(mask, sample_tree.log_L, jnp.inf)
-        )
+        fake_edges = N - num_samples
 
     # Construct N edges from N+1 nodes
 
     log_L_nodes = jnp.concatenate([jnp.asarray([-jnp.inf], float_type), sample_tree.log_L])  # [N+1]
 
     sender = sample_tree.sender_node_idx  # [N]
-    sort_idx = jnp.argsort(log_L_nodes)  # [N+1]
+    sort_idx = _argsort(log_L_nodes)  # [N+1]
 
     # Count out-degree of each node, how many nodes have parent_idx==idx.
     # At least one node will have zero, but we don't know which.
     # Could just use sender (unsorted)
     out_degree = jnp.bincount(sender, length=N + 1)  # [N+1]
 
-    def body(crossed_edges, last_node):
+    def op(crossed_edges, last_node):
         # init = 1
         # delta = degree(nodes[last_node]) - 1
         crossed_edges += out_degree[last_node] - 1
-        return crossed_edges, crossed_edges
+        return crossed_edges
 
-    _, crossed_edges_sorted = lax.scan(
-        body,
-        jnp.asarray(1, out_degree.dtype),
-        sort_idx
-    )
+
 
     if num_samples is not None:
-        substract_edges = N - num_samples
-        crossed_edges_sorted -= substract_edges
+        _, crossed_edges_sorted = cumulative_op_dynamic(
+            op=op,
+            init=jnp.asarray(1, out_degree.dtype),
+            xs=sort_idx,
+            stop_idx=num_samples,
+            pre_op=False,
+            empty_fill=jnp.asarray(fake_edges, out_degree.dtype)
+        )
+    else:
+        _, crossed_edges_sorted = cumulative_op_static(
+            op=op,
+            init=jnp.asarray(1, out_degree.dtype),
+            xs=sort_idx,
+            pre_op=False
+        )
+
+    if num_samples is not None:
+        crossed_edges_sorted -= fake_edges
 
     # Since the root node is always 0, we need to slice and subtract 1 to get the sample index.
     samples_indices = sort_idx[1:] - 1  # [N]

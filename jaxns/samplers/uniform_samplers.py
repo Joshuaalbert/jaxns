@@ -40,7 +40,8 @@ class UniformSampler(BaseAbstractRejectionSampler):
     def pre_process(self, state: StaticStandardNestedSamplerState) -> SamplerState:
         return ()
 
-    def post_process(self, sample_collection: StaticStandardSampleCollection, sampler_state: SamplerState) -> SamplerState:
+    def post_process(self, sample_collection: StaticStandardSampleCollection,
+                     sampler_state: SamplerState) -> SamplerState:
         return sampler_state
 
     def get_sample(self, key: PRNGKey, log_L_constraint: FloatArray, sampler_state: SamplerState) -> Tuple[
@@ -52,8 +53,13 @@ class UniformSampler(BaseAbstractRejectionSampler):
             num_likelihood_evals: IntArray
 
         def cond(carry_state: CarryState):
-            return jnp.bitwise_and(carry_state.log_L <= log_L_constraint,
-                                   carry_state.num_likelihood_evals < self.max_likelihood_evals)
+            done_1 = carry_state.log_L > log_L_constraint
+            done_2 = jnp.bitwise_or(
+                carry_state.log_L == log_L_constraint,
+                carry_state.num_likelihood_evals >= self.max_likelihood_evals
+            )
+            done = jnp.bitwise_or(done_1, done_2)
+            return jnp.bitwise_not(done)
 
         def body(carry_state: CarryState) -> CarryState:
             key, sample_key = random.split(carry_state.key, 2)

@@ -4,7 +4,7 @@ from typing import TypeVar, NamedTuple, Tuple
 from jax import numpy as jnp, random, lax, tree_map
 
 from jaxns.framework.bases import BaseAbstractModel
-from jaxns.internals.shrinkage_statistics import _cumulative_op_static
+from jaxns.internals.cumulative_ops import cumulative_op_static
 from jaxns.internals.types import PRNGKey, FloatArray, BoolArray, Sample, float_type, int_type, \
     StaticStandardNestedSamplerState, \
     IntArray, UType, StaticStandardSampleCollection
@@ -152,8 +152,12 @@ def _new_proposal(key: PRNGKey, seed_point: SeedPoint, midpoint_shrink: bool, pe
         num_likelihood_evaluations: IntArray
 
     def cond(carry: Carry) -> BoolArray:
-        not_close_to_zero = (carry.right - carry.left) > 2 * jnp.finfo(carry.right.dtype).eps
-        return jnp.bitwise_and(carry.log_L <= log_L_constraint, not_close_to_zero)
+        close_to_zero_interval = (carry.right - carry.left) <= 2 * jnp.finfo(carry.right.dtype).eps
+        satisfaction = carry.log_L > log_L_constraint
+        # Allow if on plateau to fly around the plateau for a while
+        lesser_satisfaction = jnp.bitwise_and(seed_point.log_L0 == log_L_constraint, carry.log_L == log_L_constraint)
+        done = jnp.bitwise_or(jnp.bitwise_or(close_to_zero_interval, satisfaction), lesser_satisfaction)
+        return jnp.bitwise_not(done)
 
     def body(carry: Carry) -> Carry:
         key, t_key, shrink_key = random.split(carry.key, 3)
@@ -270,11 +274,12 @@ class UniDimSliceSampler(BaseAbstractMarkovSampler):
         else:  # TODO: step out with doubling, using ellipsoidal clustering
             return (sample_collection,)  # multi_ellipsoidal_params()
 
-    def post_process(self, sample_collection: StaticStandardSampleCollection, sampler_state: SamplerState) -> SamplerState:
+    def post_process(self, sample_collection: StaticStandardSampleCollection,
+                     sampler_state: SamplerState) -> SamplerState:
         if self.perfect:  # nothing needed
-            return sampler_state
+            return (sample_collection,)
         else:  # TODO: step out with doubling, using ellipsoidal clustering, could shrink ellipsoids
-            return sampler_state
+            return (sample_collection,)
 
     def get_seed_point(self, key: PRNGKey, sampler_state: SamplerState,
                        log_L_constraint: FloatArray) -> SeedPoint:
@@ -282,10 +287,19 @@ class UniDimSliceSampler(BaseAbstractMarkovSampler):
         sample_collection: StaticStandardSampleCollection
         (sample_collection,) = sampler_state
 
-        unnorm_select_prob = (sample_collection.log_L > log_L_constraint).astype(float_type)
+        select_mask = sample_collection.log_L > log_L_constraint
+        # If non satisfied samples, then choose randomly from them.
+        any_satisfied = jnp.any(select_mask)
+        yes_ = jnp.asarray(0., float_type)
+        no_ = jnp.asarray(-jnp.inf, float_type)
+        unnorm_select_log_prob = jnp.where(
+            any_satisfied,
+            jnp.where(select_mask, yes_, no_),
+            yes_
+        )
         # Choose randomly where mask is True
-        g = random.gumbel(key, shape=unnorm_select_prob.shape)
-        sample_idx = jnp.argmax(g + jnp.log(unnorm_select_prob))
+        g = random.gumbel(key, shape=unnorm_select_log_prob.shape)
+        sample_idx = jnp.argmax(g + unnorm_select_log_prob)
 
         return SeedPoint(
             U0=sample_collection.U_samples[sample_idx],
@@ -320,11 +334,11 @@ class UniDimSliceSampler(BaseAbstractMarkovSampler):
             log_L=seed_point.log_L0,
             num_likelihood_evaluations=jnp.asarray(0, int_type)
         )
-        final_sample, cumulative_samples = _cumulative_op_static(
+        final_sample, cumulative_samples = cumulative_op_static(
             op=propose_op,
             init=init_sample,
             xs=random.split(key, self.num_slices),
-            unroll=1
+            unroll=2
         )
 
         # Last sample is the final sample, the rest are potential phantom samples
