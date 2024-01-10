@@ -4,7 +4,7 @@ from typing import TypeVar, NamedTuple, Tuple
 from jax import numpy as jnp, random, lax, tree_map
 
 from jaxns.framework.bases import BaseAbstractModel
-from jaxns.internals.shrinkage_statistics import _cumulative_op_static
+from jaxns.internals.cumulative_ops import cumulative_op_static
 from jaxns.internals.types import PRNGKey, FloatArray, BoolArray, Sample, float_type, int_type, \
     StaticStandardNestedSamplerState, \
     IntArray, UType, StaticStandardSampleCollection
@@ -334,7 +334,7 @@ class UniDimSliceSampler(BaseAbstractMarkovSampler):
             log_L=seed_point.log_L0,
             num_likelihood_evaluations=jnp.asarray(0, int_type)
         )
-        final_sample, cumulative_samples = _cumulative_op_static(
+        final_sample, cumulative_samples = cumulative_op_static(
             op=propose_op,
             init=init_sample,
             xs=random.split(key, self.num_slices),
