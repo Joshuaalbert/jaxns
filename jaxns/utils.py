@@ -9,7 +9,7 @@ from jaxns.internals.log_semiring import LogSpace
 from jaxns.internals.maps import prepare_func_args
 from jaxns.framework.bases import BaseAbstractModel
 from jaxns.internals.random import resample_indicies
-from jaxns.internals.shrinkage_statistics import _cumulative_op_static
+from jaxns.internals.cumulative_ops import cumulative_op_static
 from jaxns.internals.types import NestedSamplerResults, float_type, XType, UType, FloatArray, IntArray
 from jaxns.internals.types import PRNGKey
 from jaxns.warnings import deprecated
@@ -418,7 +418,7 @@ def sample_evidence(key: PRNGKey, num_live_points_per_sample: IntArray, log_L_sa
     def single_log_Z_sample(key: PRNGKey) -> FloatArray:
         init = (jnp.asarray(-jnp.inf, log_L_samples.dtype), jnp.asarray(0., log_L_samples.dtype))
         xs = (random.split(key, num_live_points_per_sample.shape[0]), num_live_points_per_sample, log_L_samples)
-        final_accumulate, _ = _cumulative_op_static(accumulate_op, init=init, xs=xs)
+        final_accumulate, _ = cumulative_op_static(accumulate_op, init=init, xs=xs)
         (log_Z, _) = final_accumulate
         return log_Z
 

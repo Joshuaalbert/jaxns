@@ -679,7 +679,7 @@ class StandardStaticNestedSampler(BaseAbstractNestedSampler):
     def _run(self, key: PRNGKey, term_cond: TerminationCondition) -> Tuple[IntArray, StaticStandardNestedSamplerState]:
         # Create sampler threads.
 
-        def thread(key: PRNGKey) -> StaticStandardNestedSamplerState:
+        def replica(key: PRNGKey) -> StaticStandardNestedSamplerState:
             state = create_init_state(
                 key=key,
                 num_live_points=self.num_live_points,
@@ -727,13 +727,13 @@ class StandardStaticNestedSampler(BaseAbstractNestedSampler):
             return state
 
         if self.num_parallel_workers > 1:
-            parallel_ns = pmap(thread, axis_name='i')
+            parallel_ns = pmap(replica, axis_name='i')
 
             keys = random.split(key, self.num_parallel_workers)
             batched_state = parallel_ns(keys)
             state = unbatch_state(batched_state=batched_state)
         else:
-            state = thread(key)
+            state = replica(key)
 
         _, termination_reason = compute_termination(state=state, termination_cond=term_cond)
 

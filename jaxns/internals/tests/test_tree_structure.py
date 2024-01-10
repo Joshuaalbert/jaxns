@@ -44,8 +44,8 @@ def test_basic():
 
 def test_with_num_samples():
     S1 = SampleTreeGraph(
-        sender_node_idx=jnp.asarray([0, 0, 0, 1, 2, 3, 4, 5, 0]),
-        log_L=jnp.asarray([1, 2, 3, 4, 5, 6, 7, 8, -jnp.inf])
+        sender_node_idx=jnp.asarray([0, 0, 0, 1, 2, 3, 4, 5, 0, 0]),
+        log_L=jnp.asarray([1, 2, 3, 4, 5, 6, 7, 8, -jnp.inf, -jnp.inf])
     )
     num_samples = 8
 
@@ -58,6 +58,9 @@ def test_with_num_samples():
                         count_crossed_edges(S1, num_samples),
                         count_crossed_edges(S2)))
 
+    output = count_crossed_edges(S1, num_samples)
+    print(output)
+    np.testing.assert_array_equal(output.num_live_points[num_samples:], 0)
 
 def test_random_tree():
     np.random.seed(42)
