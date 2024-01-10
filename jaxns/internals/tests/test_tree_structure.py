@@ -45,7 +45,7 @@ def test_basic():
 def test_with_num_samples():
     S1 = SampleTreeGraph(
         sender_node_idx=jnp.asarray([0, 0, 0, 1, 2, 3, 4, 5, 0, 0]),
-        log_L=jnp.asarray([1, 2, 3, 4, 5, 6, 7, 8, -jnp.inf, -jnp.inf])
+        log_L=jnp.asarray([1, 2, 3, 4, 5, 6, 7, 8, jnp.inf, jnp.inf])
     )
     num_samples = 8
 
