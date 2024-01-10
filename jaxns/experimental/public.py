@@ -57,7 +57,8 @@ class DefaultGlobalOptimisation:
             num_parallel_workers=num_parallel_workers
         )
 
-    def __call__(self, key: PRNGKey, term_cond: GlobalOptimisationTerminationCondition) -> GlobalOptimisationResults:
+    def __call__(self, key: PRNGKey,
+                 term_cond: Optional[GlobalOptimisationTerminationCondition] = None) -> GlobalOptimisationResults:
         """
         Runs the global optimisation.
 
@@ -68,6 +69,10 @@ class DefaultGlobalOptimisation:
         Returns:
             results of the global optimisation
         """
+        if term_cond is None:
+            term_cond = GlobalOptimisationTerminationCondition(
+                min_efficiency=3e-2
+            )
         termination_reason, state = self._global_optimiser._run(key, term_cond)
         return self._global_optimiser._to_results(termination_reason, state)
 
