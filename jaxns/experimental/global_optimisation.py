@@ -48,7 +48,7 @@ class GlobalOptimisationTerminationCondition(NamedTuple):
     log_likelihood_contour: Union[FloatArray, float] = jnp.asarray(jnp.finfo(float_type).max, float_type)
     rtol: Union[FloatArray, float] = jnp.asarray(0., float_type)
     atol: Union[FloatArray, float] = jnp.asarray(0., float_type)
-    min_efficiency: Union[FloatArray, float] = jnp.asarray(1e-2, float_type)
+    min_efficiency: Union[FloatArray, float] = jnp.asarray(0., float_type)
 
     def __and__(self, other):
         return TerminationConditionConjunction(conds=[self, other])
