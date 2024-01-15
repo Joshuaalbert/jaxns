@@ -229,7 +229,7 @@ def basic_mvn_run_results(basic_mvn_model):
         termination_reason, state = ns_compiled(random.PRNGKey(42))
         termination_reason.block_until_ready()
     results = ns.to_results(termination_reason=termination_reason, state=state)
-    # exact_ns.plot_diagnostics(results)
+    ns.plot_diagnostics(results)
     ns.summary(results)
     # exact_ns.plot_cornerplot(results)
 
