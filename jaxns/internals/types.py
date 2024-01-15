@@ -1,6 +1,7 @@
 from typing import NamedTuple, Optional, Union, Any, Callable, Tuple, Dict, List, TypeVar
 
 import chex
+import numpy as np
 from jax import numpy as jnp
 
 __all__ = [
@@ -55,9 +56,25 @@ class EvidenceCalculation(NamedTuple):
 
 
 class TerminationCondition(NamedTuple):
+    """
+    Contains the termination conditions for the nested sampling run.
+
+    Args:
+        ess: The effective sample size, if the ESS (Kish's estimate) is greater than this the run will terminate.
+        evidence_uncert: The uncertainty in the evidence, if the uncertainty is less than this the run will terminate.
+        live_evidence_frac: Depreceated use dlogZ.
+        dlogZ: Terminate if log(Z_current + Z_remaining) - log(Z_current) < dlogZ. Default log(1 + 1e-2)
+        max_samples: Terminate if the number of samples exceeds this.
+        max_num_likelihood_evaluations: Terminate if the number of likelihood evaluations exceeds this.
+        log_L_contour: Terminate if this log(L) contour is reached. A contour is reached if any dead point
+            has log(L) > log_L_contour. Uncollected live points are not considered.
+        efficiency_threshold: Terminate if the efficiency (num_samples / num_likelihood_evaluations) is less than this,
+            for the last shrinkage iteration.
+    """
     ess: Optional[FloatArray] = jnp.asarray(jnp.inf, float_type)
     evidence_uncert: Optional[FloatArray] = jnp.asarray(0., float_type)
-    live_evidence_frac: Optional[FloatArray] = jnp.asarray(1e-6, float_type)
+    live_evidence_frac: Optional[FloatArray] = None # Depreceated use dlogZ
+    dlogZ: Optional[FloatArray] = jnp.asarray(np.log(1. + 1e-3), float_type) #
     max_samples: Optional[IntArray] = jnp.asarray(jnp.iinfo(int_type).max, int_type)
     max_num_likelihood_evaluations: Optional[IntArray] = jnp.asarray(jnp.iinfo(int_type).max, int_type)
     log_L_contour: Optional[FloatArray] = jnp.asarray(jnp.inf, float_type)
@@ -71,10 +88,16 @@ class TerminationCondition(NamedTuple):
 
 
 class TerminationConditionConjunction(NamedTuple):
+    """
+    A conjunction of termination conditions, e.g. term_cond1 & term_cond2
+    """
     conds: List[Union['TerminationConditionDisjunction', 'TerminationConditionConjunction', TerminationCondition]]
 
 
 class TerminationConditionDisjunction(NamedTuple):
+    """
+    A disjunction of termination conditions, e.g. term_cond1 | term_cond2
+    """
     conds: List[Union['TerminationConditionDisjunction', TerminationConditionConjunction, TerminationCondition]]
 
 
@@ -123,6 +146,14 @@ class StaticStandardSampleCollection(NamedTuple):
     num_likelihood_evaluations: IntArray  # [N] number of likelihood evaluations for each sample
     phantom: BoolArray  # [N] whether the sample is a phantom sample
 
+class TerminationRegister(NamedTuple):
+    num_samples_used: IntArray
+    evidence_calc: EvidenceCalculation
+    evidence_calc_with_remaining: EvidenceCalculation
+    num_likelihood_evaluations: IntArray
+    log_L_contour: FloatArray
+    efficiency: FloatArray
+    plateau: BoolArray
 
 class StaticStandardNestedSamplerState(NamedTuple):
     key: PRNGKey

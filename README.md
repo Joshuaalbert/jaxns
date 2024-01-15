@@ -303,10 +303,14 @@ This ensures consistency of depth across all copies.
 We then merge the copies and compute the final results.
 
 The algorithm is fairly memory bound, so running parallelisation over multiple CPUs on the same machine may not yield
-the expected speed up, and depends on how expensive the likelihood evaluations are. Running over separate physical devices
+the expected speed up, and depends on how expensive the likelihood evaluations are. Running over separate physical
+devices
 is the best way to achieve speed up.
 
 # Change Log
+
+15 Jan, 2024 -- JAXNS 2.4.4 released. Fix performance issue for larger `max_samples`. Fixed bug in termination
+conditions. Improved parallel performance.
 
 10 Jan, 2024 -- JAXNS 2.4.2/3 released. Another performance boost, and experimental global optimiser.
 

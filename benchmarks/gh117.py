@@ -62,6 +62,10 @@ def performance_benchmark():
 # Avg. time taken: 4.40303 seconds.
 # The best 3 of 10 runs took 4.37935 seconds.
 
+# With fix
+# Avg. time taken: 0.00562 seconds.
+# The best 3 of 10 runs took 0.00478 seconds.
+
 
 if __name__ == '__main__':
     performance_benchmark()
