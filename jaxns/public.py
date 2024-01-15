@@ -32,8 +32,12 @@ class DefaultNestedSampler:
     Uses the phantom-powered algorithm. A robust default choice is provided for all parameters.
     """
 
-    def __init__(self, model: BaseAbstractModel, max_samples: Union[int, float], num_live_points: Optional[int] = None,
-                 s: Optional[int] = None, k: Optional[int] = None, c: Optional[int] = None,
+    def __init__(self, model: BaseAbstractModel,
+                 max_samples: Union[int, float],
+                 num_live_points: Optional[int] = None,
+                 s: Optional[int] = None,
+                 k: Optional[int] = None,
+                 c: Optional[int] = None,
                  num_parallel_workers: int = 1,
                  difficult_model: bool = False,
                  parameter_estimation: bool = False):
@@ -47,7 +51,7 @@ class DefaultNestedSampler:
             max_samples: maximum number of samples to take
             num_live_points: approximate number of live points to use. Defaults is c * (k + 1).
             s: number of slices to use per dimension. Defaults to 4.
-            k: number of phantom samples to use. Defaults to D/2.
+            k: number of phantom samples to use. Defaults to 0.
             c: number of parallel Markov-chains to use. Defaults to 20 * D.
             num_parallel_workers: number of parallel workers to use. Defaults to 1. Experimental feature.
             difficult_model: if True, uses more robust default settings. Defaults to False.
@@ -62,7 +66,7 @@ class DefaultNestedSampler:
         if parameter_estimation:
             self._k = model.U_ndims if k is None else int(k)
         else:
-            self._k = model.U_ndims // 2 if k is None else int(k)
+            self._k = 0 if k is None else int(k)
         if not (0 <= self._k < self._s * model.U_ndims):
             raise ValueError(f"Expected 0 <= k < s * U_ndims, got k={self._k}, s={self._s}, U_ndims={model.U_ndims}")
         if num_live_points is not None:
