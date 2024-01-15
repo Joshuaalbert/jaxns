@@ -98,7 +98,7 @@ def test_all_global_optimisation(all_global_optimisation_problems):
         go = DefaultGlobalOptimisation(model)
         results = jax.jit(go)(
             key=jax.random.PRNGKey(0),
-            term_cond=GlobalOptimisationTerminationCondition(min_efficiency=0., log_likelihood_contour=log_L_tol)
+            term_cond=GlobalOptimisationTerminationCondition(log_likelihood_contour=log_L_tol)
         )
         assert len(results.X_solution) > 0
         # print(results)

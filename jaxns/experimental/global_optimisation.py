@@ -1,6 +1,7 @@
 import io
 import logging
 from typing import NamedTuple, Optional, Union, TextIO, Tuple, List
+import numpy as np
 
 import jax.numpy as jnp
 from jax import lax, random, pmap, tree_map
@@ -10,7 +11,8 @@ from jaxns.framework.bases import BaseAbstractModel
 from jaxns.internals.maps import remove_chunk_dim
 from jaxns.internals.types import PRNGKey, StaticStandardNestedSamplerState, BoolArray, StaticStandardSampleCollection, \
     int_type, Sample, IntArray, UType, FloatArray, LikelihoodInputType, XType, float_type
-from jaxns.nested_sampler.standard_static import draw_uniform_samples, _inter_sync_shrinkage_process
+from jaxns.nested_sampler.standard_static import draw_uniform_samples, _inter_sync_shrinkage_process, \
+    create_init_termination_register
 from jaxns.samplers.bases import BaseAbstractSampler
 from jaxns.utils import _bit_mask
 
@@ -161,7 +163,7 @@ def determine_termination(term_cond: GlobalOptimisationTerminationCondition,
 
 def _single_thread_global_optimisation(init_state: GlobalOptimisationState,
                                        termination_cond: GlobalOptimisationTerminationCondition,
-                                       sampler: BaseAbstractSampler) -> GlobalOptimisationState:
+                                       sampler: BaseAbstractSampler) -> Tuple[GlobalOptimisationState, IntArray]:
     """
     Runs a single thread of global optimisation. Sequentially samples until termination condition is met,
     replacing the worst sample with a new one in groups of num_samples.
@@ -172,7 +174,7 @@ def _single_thread_global_optimisation(init_state: GlobalOptimisationState,
         sampler: sampler
 
     Returns:
-        final state of the global optimisation
+        final state of the global optimisation and termination reason
     """
 
     class CarryType(NamedTuple):
@@ -210,10 +212,11 @@ def _single_thread_global_optimisation(init_state: GlobalOptimisationState,
                 sample_collection=tree_map(_repeat, fake_state.sample_collection)
             )
 
-        fake_state = _inter_sync_shrinkage_process(
+        fake_state, fake_termination_register = _inter_sync_shrinkage_process(
             init_state=fake_state,
             sampler=sampler,
-            num_samples=num_samples * (1 + k)
+            num_samples=num_samples * (1 + k),
+            init_termination_register=create_init_termination_register()
         )
 
         num_likelihood_evaluations = carry.state.num_likelihood_evaluations + jnp.sum(
@@ -264,7 +267,9 @@ def _single_thread_global_optimisation(init_state: GlobalOptimisationState,
         init_val=init_carry_state
     )
 
-    return carry_state.state
+    _, termination_reason = determine_termination(term_cond=termination_cond, state=carry_state.state)
+
+    return carry_state.state, termination_reason
 
 
 def create_init_state(key: PRNGKey, num_search_chains: int,
@@ -349,7 +354,7 @@ class SimpleGlobalOptimisation:
             the termination reason and final state of the global optimisation
         """
 
-        def replica(key: PRNGKey) -> GlobalOptimisationState:
+        def replica(key: PRNGKey) -> Tuple[GlobalOptimisationState, IntArray]:
             state = create_init_state(
                 key=key,
                 num_search_chains=self.num_search_chains,
@@ -357,7 +362,7 @@ class SimpleGlobalOptimisation:
             )
 
             # Continue sampling with provided sampler until user-defined termination condition is met.
-            state = _single_thread_global_optimisation(
+            state, termination_reason = _single_thread_global_optimisation(
                 init_state=state,
                 termination_cond=term_cond,
                 sampler=self.sampler
@@ -366,24 +371,22 @@ class SimpleGlobalOptimisation:
                 target_log_L_contour = jnp.max(
                     parallel.all_gather(jnp.max(state.samples.log_L), 'i')
                 )
-                state = _single_thread_global_optimisation(
+                state, termination_reason = _single_thread_global_optimisation(
                     init_state=state,
                     termination_cond=term_cond._replace(log_likelihood_contour=target_log_L_contour),
                     sampler=self.sampler
                 )
 
-            return state
+            return state, termination_reason
 
         if self.num_parallel_workers > 1:
             parallel_ns = pmap(replica, axis_name='i')
             keys = random.split(key, self.num_parallel_workers)
-            batched_state = parallel_ns(keys)
+            batched_state, termination_reason = parallel_ns(keys)
             state = remove_chunk_dim(batched_state)
             state = state._replace(key=state.key[0])
         else:
-            state = replica(key)
-
-        _, termination_reason = determine_termination(term_cond=term_cond, state=state)
+            state, termination_reason = replica(key)
 
         return termination_reason, state
 
@@ -410,26 +413,33 @@ def summary(results: GlobalOptimisationResults, f_obj: Optional[Union[str, TextI
         except:
             return float(v)
 
-    _print("--------")
-    termination_bit_mask = _bit_mask(int(results.termination_reason), width=8)
-    _print("Termination Conditions:")
+    def _print_termination_condition(_termination_reason:int):
+        termination_bit_mask = _bit_mask(int(_termination_reason), width=8)
+        # 0-bit -> 1: used maximum allowed number of likelihood evaluations
+        #         1-bit -> 2: reached goal log-likelihood contour
+        #         2-bit -> 4: relative spread of log-likelihood values below threshold
+        #         3-bit -> 8: absolute spread of log-likelihood values below threshold
+        #         4-bit -> 16: efficiency below threshold
+        #         5-bit -> 32: on a plateau (possibly local minimum, or due to numerical issues)
+        for bit, condition in zip(termination_bit_mask, [
+            'Reached max num likelihood evaluations',
+            'Reached goal log-likelihood contour',
+            'Small relative spread of log-likelihood values',
+            'Small absolute spread of log-likelihood values',
+            'Sampler efficiency too low',
+            'On plateau (possibly local minimum, or due to numerical issues)'
+        ]):
+            if bit == 1:
+                _print(condition)
 
-    # 0-bit -> 1: used maximum allowed number of likelihood evaluations
-    #         1-bit -> 2: reached goal log-likelihood contour
-    #         2-bit -> 4: relative spread of log-likelihood values below threshold
-    #         3-bit -> 8: absolute spread of log-likelihood values below threshold
-    #         4-bit -> 16: efficiency below threshold
-    #         5-bit -> 32: on a plateau (possibly local minimum, or due to numerical issues)
-    for bit, condition in zip(termination_bit_mask, [
-        'Reached max num likelihood evaluations',
-        'Reached goal log-likelihood contour',
-        'Small relative spread of log-likelihood values',
-        'Small absolute spread of log-likelihood values',
-        'Sampler efficiency too low',
-        'On plateau (possibly local minimum, or due to numerical issues)'
-    ]):
-        if bit == 1:
-            _print(condition)
+    _print("--------")
+    _print("Termination Conditions:")
+    if np.size(results.termination_reason) > 1:
+        for replica_idx in range(np.size(results.termination_reason)):
+            _print(f"Replica {replica_idx}:")
+            _print_termination_condition(int(results.termination_reason[replica_idx]))
+    else:
+        _print_termination_condition(int(results.termination_reason))
     _print("--------")
     _print(f"likelihood evals: {int(results.num_likelihood_evaluations):d}")
     _print(f"samples: {int(results.num_samples):d}")

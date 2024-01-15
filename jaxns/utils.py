@@ -5,11 +5,11 @@ from typing import NamedTuple, TextIO, Union, Optional, Tuple, TypeVar, Callable
 import numpy as np
 from jax import numpy as jnp, tree_map, vmap, random, jit, lax
 
+from jaxns.framework.bases import BaseAbstractModel
+from jaxns.internals.cumulative_ops import cumulative_op_static
 from jaxns.internals.log_semiring import LogSpace
 from jaxns.internals.maps import prepare_func_args
-from jaxns.framework.bases import BaseAbstractModel
 from jaxns.internals.random import resample_indicies
-from jaxns.internals.cumulative_ops import cumulative_op_static
 from jaxns.internals.types import NestedSamplerResults, float_type, XType, UType, FloatArray, IntArray
 from jaxns.internals.types import PRNGKey
 from jaxns.warnings import deprecated
@@ -36,7 +36,8 @@ __all__ = [
 ]
 
 
-def resample(key: PRNGKey, samples: Union[XType, UType], log_weights: jnp.ndarray, S: int = None, replace: bool = False) -> XType:
+def resample(key: PRNGKey, samples: Union[XType, UType], log_weights: jnp.ndarray, S: int = None,
+             replace: bool = False) -> XType:
     """
     Resample the weighted samples into uniformly weighted samples.
 
@@ -297,19 +298,31 @@ def summary(results: NestedSamplerResults, f_obj: Optional[Union[str, TextIO]] =
         except:
             return float(v)
 
+    def _print_termination_reason(_termination_reason: int):
+        termination_bit_mask = _bit_mask(int(_termination_reason), width=8)
+
+        for bit, condition in zip(termination_bit_mask, [
+            'Reached max samples',
+            'Evidence uncertainty low enough',
+            'Small remaining evidence',
+            'Reached ESS',
+            "Used max num likelihood evaluations",
+            'Likelihood contour reached',
+            'Sampler efficiency too low',
+            'All live-points are on a single plateau (potential numerical errors, consider 64-bit)'
+        ]):
+            if bit == 1:
+                _print(condition)
+
     _print("--------")
-    termination_bit_mask = _bit_mask(int(results.termination_reason), width=8)
     _print("Termination Conditions:")
-    for bit, condition in zip(termination_bit_mask, ['Reached max samples',
-                                                     'Evidence uncertainty low enough',
-                                                     'Small remaining evidence',
-                                                     'Reached ESS',
-                                                     "Used max num likelihood evaluations",
-                                                     'Likelihood contour reached',
-                                                     'Sampler efficiency too low',
-                                                     'All live-points are on a single plateau (potential numerical errors, consider 64-bit)']):
-        if bit == 1:
-            _print(condition)
+    if np.size(results.termination_reason) > 1:  # Reasons for each parallel sampler
+        print(results.termination_reason)
+        for sampler_idx in range(np.size(results.termination_reason)):
+            _print(f"Sampler {sampler_idx}:")
+            _print_termination_reason(int(results.termination_reason[sampler_idx]))
+    else:
+        _print_termination_reason(int(results.termination_reason))
     _print("--------")
     _print(f"likelihood evals: {int(results.total_num_likelihood_evaluations):d}")
     _print(f"samples: {int(results.total_num_samples):d}")
