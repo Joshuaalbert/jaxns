@@ -3,11 +3,11 @@ import os
 import jax
 from jax import random, numpy as jnp
 
-from jaxns import TerminationCondition
 
 # Force 2 jax  hosts
 os.environ["XLA_FLAGS"] = "--xla_force_host_platform_device_count=2"
 
+from jaxns import TerminationCondition
 from jaxns.utils import sample_evidence
 import numpy as np
 

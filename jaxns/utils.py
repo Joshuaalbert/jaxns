@@ -317,6 +317,7 @@ def summary(results: NestedSamplerResults, f_obj: Optional[Union[str, TextIO]] =
     _print("--------")
     _print("Termination Conditions:")
     if np.size(results.termination_reason) > 1:  # Reasons for each parallel sampler
+        print(results.termination_reason)
         for sampler_idx in range(np.size(results.termination_reason)):
             _print(f"Sampler {sampler_idx}:")
             _print_termination_reason(int(results.termination_reason[sampler_idx]))

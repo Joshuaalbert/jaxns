@@ -237,7 +237,8 @@ def _single_thread_ns(init_state: StaticStandardNestedSamplerState,
                       init_termination_register: TerminationRegister,
                       termination_cond: TerminationCondition,
                       sampler: BaseAbstractSampler,
-                      num_samples_per_sync: int) -> Tuple[StaticStandardNestedSamplerState, TerminationRegister]:
+                      num_samples_per_sync: int) -> Tuple[
+    StaticStandardNestedSamplerState, TerminationRegister, IntArray]:
     """
     Runs a single thread of static nested sampling until a stopping condition is reached. Runs `num_samples_per_sync`
     between updating samples to limit memory ops.
@@ -294,7 +295,12 @@ def _single_thread_ns(init_state: StaticStandardNestedSamplerState,
         init_val=init_carry_state
     )
 
-    return carry_state.state, carry_state.termination_register
+    _, termination_reason = determine_termination(
+        term_cond=termination_cond,
+        termination_register=carry_state.termination_register
+    )
+
+    return carry_state.state, carry_state.termination_register, termination_reason
 
 
 def create_init_termination_register() -> TerminationRegister:
@@ -383,7 +389,7 @@ def determine_termination(
                                                  done=done, termination_reason=termination_reason)
 
     if term_cond.dlogZ is not None:
-        # Z_remaining/(Z_remaining + Z_current) < delta == exp(dlogz) for comparison with other algos
+        # (Z_remaining + Z_current) / Z_remaining < exp(dlogZ)
         log_Z_mean_1, log_Z_var_1 = linear_to_log_stats(
             log_f_mean=termination_register.evidence_calc_with_remaining.log_Z_mean,
             log_f2_mean=termination_register.evidence_calc_with_remaining.log_Z2_mean)
@@ -393,7 +399,7 @@ def determine_termination(
             log_f2_mean=termination_register.evidence_calc.log_Z2_mean)
 
         small_remaining_evidence = jnp.less(
-            log_Z_mean_1 - log_Z_mean_0, jnp.log(term_cond.dlogZ)
+            log_Z_mean_1 - log_Z_mean_0, term_cond.dlogZ
         )
         done, termination_reason = _set_done_bit(small_remaining_evidence, 2,
                                                  done=done, termination_reason=termination_reason)
@@ -552,6 +558,18 @@ class StandardStaticNestedSampler(BaseAbstractNestedSampler):
 
     def __init__(self, init_efficiency_threshold: float, sampler: BaseAbstractSampler, num_live_points: int,
                  model: BaseAbstractModel, max_samples: int, num_parallel_workers: int = 1):
+        """
+        Initialise the static nested sampler.
+
+        Args:
+            init_efficiency_threshold: the efficiency threshold to use for the initial uniform sampling. If 0 then
+                turns it off.
+            sampler: the sampler to use after the initial uniform sampling.
+            num_live_points: the number of live points to use.
+            model: the model to use.
+            max_samples: the maximum number of samples to take.
+            num_parallel_workers: number of parallel workers to use. Defaults to 1. Experimental feature.
+        """
         self.init_efficiency_threshold = init_efficiency_threshold
         self.sampler = sampler
         self.num_live_points = int(num_live_points)
@@ -692,22 +710,24 @@ class StandardStaticNestedSampler(BaseAbstractNestedSampler):
             )
             termination_register = create_init_termination_register()
 
-            # Uniform sampling down to a given mean efficiency
-            uniform_sampler = UniformSampler(model=self.model)
-            state, termination_register = _single_thread_ns(
-                init_state=state,
-                init_termination_register=termination_register,
-                termination_cond=TerminationCondition(
+            if self.init_efficiency_threshold > 0.:
+                # Uniform sampling down to a given mean efficiency
+                uniform_sampler = UniformSampler(model=self.model)
+                termination_cond = TerminationCondition(
                     efficiency_threshold=jnp.asarray(self.init_efficiency_threshold),
-                    live_evidence_frac=jnp.asarray(0., float_type),
+                    dlogZ=jnp.asarray(0., float_type),
                     max_samples=jnp.asarray(self.max_samples)
-                ),
-                sampler=uniform_sampler,
-                num_samples_per_sync=self.num_live_points
-            )
+                )
+                state, termination_register, termination_reason = _single_thread_ns(
+                    init_state=state,
+                    init_termination_register=termination_register,
+                    termination_cond=termination_cond,
+                    sampler=uniform_sampler,
+                    num_samples_per_sync=self.num_live_points
+                )
 
             # Continue sampling with provided sampler until user-defined termination condition is met.
-            state, termination_register = _single_thread_ns(
+            state, termination_register, termination_reason = _single_thread_ns(
                 init_state=state,
                 init_termination_register=termination_register,
                 termination_cond=term_cond,
@@ -718,22 +738,20 @@ class StandardStaticNestedSampler(BaseAbstractNestedSampler):
                 # We need to do a final sampling run to make all the chains consistent,
                 #  to a likelihood contour (i.e. standardise on L(X)). Would mean that some workers are idle.
                 target_log_L_contour = jnp.max(
-                    parallel.all_gather(jnp.max(state.sample_collection.log_L[state.front_idx]), 'i')
+                    parallel.all_gather(termination_register.log_L_contour, 'i')
                 )
-                state, termination_register = _single_thread_ns(
+                termination_cond = TerminationCondition(
+                    dlogZ=jnp.asarray(0., float_type),
+                    log_L_contour=target_log_L_contour,
+                    max_samples=jnp.asarray(self.max_samples)
+                )
+                state, termination_register, termination_reason = _single_thread_ns(
                     init_state=state,
                     init_termination_register=termination_register,
-                    termination_cond=TerminationCondition(
-                        live_evidence_frac=jnp.asarray(0., float_type),
-                        log_L_contour=target_log_L_contour,
-                        max_samples=jnp.asarray(self.max_samples)
-                    ),
+                    termination_cond=termination_cond,
                     sampler=self.sampler,
                     num_samples_per_sync=self.num_live_points
                 )
-
-            _, termination_reason = determine_termination(term_cond=term_cond,
-                                                          termination_register=termination_register)
 
             return state, termination_reason
 
