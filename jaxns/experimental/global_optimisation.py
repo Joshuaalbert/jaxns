@@ -180,7 +180,7 @@ def gradient_based_optimisation(model: BaseAbstractModel, init_U_point: UType) -
     )
 
     results = solver.run(init_params=logit(init_U_point))
-    return results.params, results.state.value, results.state.num_fun_eval
+    return jax.nn.sigmoid(results.params), results.state.value, results.state.num_fun_eval
 
 
 def _single_thread_global_optimisation(init_state: GlobalOptimisationState,
