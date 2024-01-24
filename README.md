@@ -309,6 +309,9 @@ is the best way to achieve speed up.
 
 # Change Log
 
+24 Jan, 2024 -- JAXNS 2.4.5 released. Gradient based finetuning global optimisation using L-BFGS. Added ability to
+simulate prior models without bulding model (for data generation.)
+
 15 Jan, 2024 -- JAXNS 2.4.4 released. Fix performance issue for larger `max_samples`. Fixed bug in termination
 conditions. Improved parallel performance.
 
