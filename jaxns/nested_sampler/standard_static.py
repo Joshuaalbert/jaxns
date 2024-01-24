@@ -71,7 +71,7 @@ def _inter_sync_shrinkage_process(
         dead_idx = carry.front_idx[front_loc]
 
         # Node index is based on root of 0, so sample-nodes are 1-indexed
-        dead_node_idx = dead_idx + 1
+        dead_node_idx = dead_idx + jnp.asarray(1, int_type)
 
         log_L_contour = carry.front_sample_collection.log_L[front_loc]
 
