@@ -8,7 +8,7 @@ import numpy as np
 from jax import lax, random, pmap, tree_map
 from jax._src.lax import parallel
 from jax._src.scipy.special import logit
-from jaxopt import LBFGS
+from jaxopt import LBFGS, NonlinearCG
 
 from jaxns.framework.bases import BaseAbstractModel
 from jaxns.internals.maps import remove_chunk_dim
@@ -172,7 +172,7 @@ def gradient_based_optimisation(model: BaseAbstractModel, init_U_point: UType) -
 
     # TODO(JoshuaAlbert): Compare using LBFGSB with [0,1]^D bounds instead of sigmoid/logit maps.
 
-    solver = LBFGS(
+    solver = NonlinearCG(
         fun=loss,
         jit=True,
         unroll=False,
