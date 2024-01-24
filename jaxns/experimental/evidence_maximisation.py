@@ -5,6 +5,7 @@ import jax
 import tensorflow_probability.substrates.jax as tfp
 from jax import numpy as jnp, random, vmap, tree_map
 from jax._src.scipy.special import logsumexp
+from jaxopt import LBFGS
 from tqdm import tqdm
 
 try:
@@ -136,28 +137,39 @@ class EvidenceMaximisation:
             log_Z = logsumexp(log_L_samples + log_weights)
             return -log_Z
 
-        optimizer = optax.adam(self.learning_rate)
-        opt_state = optimizer.init(params)
+        solver = LBFGS(
+            fun=neg_log_evidence,
+            jit=True,
+            unroll=False,
+            verbose=False
+        )
+        solver_results = jax.jit(solver.run)(init_params=params)
+        params = solver_results.params
 
-        @jax.jit
-        def train_step(params, opt_state):
-            val, grads = jax.value_and_grad(neg_log_evidence)(params)
-            updates, new_opt_state = optimizer.update(grads, opt_state)
-            new_params = optax.apply_updates(params, updates)
-            # Get L2 of grads
-            l_oo_grad = tree_map(lambda x: jnp.max(jnp.abs(x)), grads)
-            return val, l_oo_grad, new_params, new_opt_state
+        estimated_log_Z = solver_results.state.value
 
-        p_bar = tqdm(range(self.max_num_epochs), desc="Training Progress", dynamic_ncols=True)
-        for epoch in p_bar:
-            neg_log_Z, l_oo, params, opt_state = train_step(params, opt_state)
-            p_bar.set_description(f"Step {epoch}: log Z = {-neg_log_Z:.4f}, l_oo = {l_oo}")
-            p_bar.refresh()
-            # Flatten l_oo pytree and get term condition
-            l_oo_small = jnp.all(jnp.asarray(jax.tree_leaves(l_oo)) < self.gtol)
-            if l_oo_small:
-                print(f"Terminating at step {epoch} due to l(inf) small enough.")
-                break
+        # optimizer = optax.adam(self.learning_rate)
+        # opt_state = optimizer.init(params)
+        #
+        # @jax.jit
+        # def train_step(params, opt_state):
+        #     val, grads = jax.value_and_grad(neg_log_evidence)(params)
+        #     updates, new_opt_state = optimizer.update(grads, opt_state)
+        #     new_params = optax.apply_updates(params, updates)
+        #     # Get L2 of grads
+        #     l_oo_grad = tree_map(lambda x: jnp.max(jnp.abs(x)), grads)
+        #     return val, l_oo_grad, new_params, new_opt_state
+        #
+        # p_bar = tqdm(range(self.max_num_epochs), desc="Training Progress", dynamic_ncols=True)
+        # for epoch in p_bar:
+        #     neg_log_Z, l_oo, params, opt_state = train_step(params, opt_state)
+        #     p_bar.set_description(f"Step {epoch}: log Z = {-neg_log_Z:.4f}, l_oo = {l_oo}")
+        #     p_bar.refresh()
+        #     # Flatten l_oo pytree and get term condition
+        #     l_oo_small = jnp.all(jnp.asarray(jax.tree_leaves(l_oo)) < self.gtol)
+        #     if l_oo_small:
+        #         print(f"Terminating at step {epoch} due to l(inf) small enough.")
+        #         break
 
         return params
 
