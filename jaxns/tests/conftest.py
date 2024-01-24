@@ -53,7 +53,7 @@ def basic_model():
 def basic_run_results(basic_model):
     model, log_Z_true = basic_model
 
-    ns = DefaultNestedSampler(model=model, max_samples=1000)
+    ns = DefaultNestedSampler(model=model, max_samples=1000, verbose=True)
     ns_jit = jax.jit(lambda key: ns(key))
     ns_compiled = ns_jit.lower(random.PRNGKey(42)).compile()
     with Timer():
@@ -92,7 +92,7 @@ def basic2_model():
 def basic2_run_results(basic2_model):
     model, log_Z_true = basic2_model
 
-    ns = DefaultNestedSampler(model=model, max_samples=1000)
+    ns = DefaultNestedSampler(model=model, max_samples=1000, verbose=True)
 
     ns_jit = jax.jit(lambda key: ns(key))
     ns_compiled = ns_jit.lower(random.PRNGKey(42)).compile()
@@ -128,7 +128,7 @@ def basic3_model():
 def basic3_run_results(basic3_model):
     model, log_Z_true = basic3_model
 
-    ns = DefaultNestedSampler(model=model, max_samples=2000, k=0)
+    ns = DefaultNestedSampler(model=model, max_samples=2000, k=0, verbose=True)
 
     ns_jit = jax.jit(lambda key: ns(key))
     ns_compiled = ns_jit.lower(random.PRNGKey(42)).compile()
@@ -163,7 +163,7 @@ def plateau_run_results(plateau_model):
     model, log_Z_true = plateau_model
     ns = DefaultNestedSampler(
         model=model,
-        max_samples=1000
+        max_samples=1000, verbose=True
     )
 
     ns_jit = jax.jit(lambda key: ns(key))
@@ -221,7 +221,7 @@ def basic_mvn_model():
 def basic_mvn_run_results(basic_mvn_model):
     log_Z_true, model = basic_mvn_model
 
-    ns = DefaultNestedSampler(model=model, max_samples=100000)
+    ns = DefaultNestedSampler(model=model, max_samples=100000, verbose=True)
 
     ns_jit = jax.jit(lambda key: ns(key))
     ns_compiled = ns_jit.lower(random.PRNGKey(42)).compile()
@@ -240,7 +240,7 @@ def basic_mvn_run_results(basic_mvn_model):
 def basic_mvn_run_results_parallel(basic_mvn_model):
     log_Z_true, model = basic_mvn_model
 
-    ns = DefaultNestedSampler(model=model, max_samples=1e5, num_parallel_workers=2)
+    ns = DefaultNestedSampler(model=model, max_samples=1e5, num_parallel_workers=2, verbose=True)
 
     ns_jit = jax.jit(lambda key: ns(key))
     ns_compiled = ns_jit.lower(random.PRNGKey(42)).compile()
@@ -266,7 +266,8 @@ def multiellipsoidal_mvn_run_results(basic_mvn_model):
         num_live_points=model.U_ndims * 20,
         num_parallel_workers=1,
         max_samples=50000,
-        sampler=MultiEllipsoidalSampler(model=model, depth=0, expansion_factor=2.0)
+        sampler=MultiEllipsoidalSampler(model=model, depth=0, expansion_factor=2.0),
+        verbose=True
     )
     ns_jit = jax.jit(lambda key: ns._run(key, term_cond=TerminationCondition()))
     ns_compiled = ns_jit.lower(random.PRNGKey(42)).compile()

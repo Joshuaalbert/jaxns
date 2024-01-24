@@ -286,7 +286,7 @@ improvement in run time, for models with cheap likelihood evaluations.
 This is shown in (https://arxiv.org/abs/2012.15286).
 
 Recently JAXNS has implemented Phantom-Powered Nested Sampling, which significantly reduces the number of required
-likelihood evaluations. This is shown in (https://arxiv.org/abs/2312.11330).
+likelihood evaluations for inferring the posterior. This is shown in (https://arxiv.org/abs/2312.11330).
 
 # Note on performance with parallelisation
 
@@ -308,6 +308,8 @@ devices
 is the best way to achieve speed up.
 
 # Change Log
+
+25 Jan, 2024 -- JAXNS 2.4.6 released. Added logging. Use L-BFGS for Evidence Maximisation M-step.
 
 24 Jan, 2024 -- JAXNS 2.4.5 released. Gradient based finetuning global optimisation using L-BFGS. Added ability to
 simulate prior models without bulding model (for data generation.)
