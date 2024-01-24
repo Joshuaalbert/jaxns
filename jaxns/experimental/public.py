@@ -58,13 +58,15 @@ class DefaultGlobalOptimisation:
         )
 
     def __call__(self, key: PRNGKey,
-                 term_cond: Optional[GlobalOptimisationTerminationCondition] = None) -> GlobalOptimisationResults:
+                 term_cond: Optional[GlobalOptimisationTerminationCondition] = None,
+                 finetune: bool = False) -> GlobalOptimisationResults:
         """
         Runs the global optimisation.
 
         Args:
             key: PRNGKey
             term_cond: termination condition
+            finetune: whether to use gradient-based fine-tune. Default False because not all models have gradients.
 
         Returns:
             results of the global optimisation
@@ -74,7 +76,10 @@ class DefaultGlobalOptimisation:
                 min_efficiency=3e-2
             )
         termination_reason, state = self._global_optimiser._run(key, term_cond)
-        return self._global_optimiser._to_results(termination_reason, state)
+        results = self._global_optimiser._to_results(termination_reason, state)
+        if finetune:
+            results = self._global_optimiser._gradient_descent(results=results)
+        return results
 
     def summary(self, results: GlobalOptimisationResults, f_obj: Optional[Union[str, TextIO]] = None):
         summary(results, f_obj=f_obj)

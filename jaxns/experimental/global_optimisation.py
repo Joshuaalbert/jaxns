@@ -1,16 +1,17 @@
 import io
 import logging
 from typing import NamedTuple, Optional, Union, TextIO, Tuple, List
-import numpy as np
 
 import jax.numpy as jnp
+import numpy as np
 from jax import lax, random, pmap, tree_map
 from jax._src.lax import parallel
+from jaxopt import LBFGS
 
 from jaxns.framework.bases import BaseAbstractModel
 from jaxns.internals.maps import remove_chunk_dim
 from jaxns.internals.types import PRNGKey, StaticStandardNestedSamplerState, BoolArray, StaticStandardSampleCollection, \
-    int_type, Sample, IntArray, UType, FloatArray, LikelihoodInputType, XType, float_type
+    int_type, Sample, IntArray, UType, FloatArray, LikelihoodInputType, XType
 from jaxns.nested_sampler.standard_static import draw_uniform_samples, _inter_sync_shrinkage_process, \
     create_init_termination_register
 from jaxns.samplers.bases import BaseAbstractSampler
@@ -46,11 +47,12 @@ class GlobalOptimisationResults(NamedTuple):
 
 
 class GlobalOptimisationTerminationCondition(NamedTuple):
-    max_likelihood_evaluations: Union[IntArray, int] = jnp.asarray(jnp.iinfo(int_type).max, int_type)
-    log_likelihood_contour: Union[FloatArray, float] = jnp.asarray(jnp.finfo(float_type).max, float_type)
-    rtol: Union[FloatArray, float] = jnp.asarray(0., float_type)
-    atol: Union[FloatArray, float] = jnp.asarray(0., float_type)
-    min_efficiency: Union[FloatArray, float] = jnp.asarray(0., float_type)
+    max_likelihood_evaluations: Optional[Union[IntArray, int]] = None  # jnp.asarray(jnp.iinfo(int_type).max, int_type)
+    log_likelihood_contour: Optional[
+        Union[FloatArray, float]] = None  # jnp.asarray(jnp.finfo(float_type).max, float_type)
+    rtol: Optional[Union[FloatArray, float]] = None  # jnp.asarray(0., float_type)
+    atol: Optional[Union[FloatArray, float]] = None  # jnp.asarray(0., float_type)
+    min_efficiency: Optional[Union[FloatArray, float]] = None  # jnp.asarray(0., float_type)
 
     def __and__(self, other):
         return TerminationConditionConjunction(conds=[self, other])
@@ -159,6 +161,20 @@ def determine_termination(term_cond: GlobalOptimisationTerminationCondition,
                                              done=done, termination_reason=termination_reason)
 
     return done, termination_reason
+
+
+def gradient_based_optimisation(model: BaseAbstractModel, init_U_point: UType) -> Tuple[UType, FloatArray, IntArray]:
+    def loss(U: UType):
+        return -model.log_prob_likelihood(U, allow_nan=False)
+
+    solver = LBFGS(
+        fun=loss,
+        jit=True,
+        unroll=False,
+        verbose=False
+    )
+    results = solver.run(init_params=init_U_point)
+    return results.params, results.state.value, results.state.num_fun_eval
 
 
 def _single_thread_global_optimisation(init_state: GlobalOptimisationState,
@@ -304,6 +320,8 @@ class SimpleGlobalOptimisation:
     def __init__(self, sampler: BaseAbstractSampler, num_search_chains: int,
                  model: BaseAbstractModel, num_parallel_workers: int = 1):
         self.sampler = sampler
+        if num_search_chains < 1:
+            raise ValueError("num_search_chains must be >= 1.")
         self.num_search_chains = int(num_search_chains)
         self.num_parallel_workers = int(num_parallel_workers)
 
@@ -311,6 +329,20 @@ class SimpleGlobalOptimisation:
             logger.info(f"Using {self.num_parallel_workers} parallel workers, each running identical samplers.")
         self.model = model
         self.num_search_chains = num_search_chains
+
+    def _gradient_descent(self, results: GlobalOptimisationResults) -> GlobalOptimisationResults:
+        U_solution, log_L_solution, _num_likelihood_evals = gradient_based_optimisation(self.model,
+                                                                                        init_U_point=results.U_solution)
+        X_solution = self.model.transform(U_solution)
+        solution = self.model.prepare_input(U_solution)
+        num_likelihood_evals = results.num_likelihood_evaluations + _num_likelihood_evals
+        return results._replace(
+            U_solution=U_solution,
+            log_L_solution=log_L_solution,
+            X_solution=X_solution,
+            solution=solution,
+            num_likelihood_evaluations=num_likelihood_evals
+        )
 
     def _to_results(self, termination_reason: IntArray, state: GlobalOptimisationState) -> GlobalOptimisationResults:
         """
@@ -326,9 +358,10 @@ class SimpleGlobalOptimisation:
         U_solution = state.samples.U_sample[best_idx]
         X_solution = self.model.transform(U_solution)
         solution = self.model.prepare_input(U_solution)
-        relative_spread = jnp.abs(jnp.max(state.samples.log_L) - jnp.min(state.samples.log_L)) / jnp.abs(
-            jnp.mean(state.samples.log_L))
-        absolute_spread = jnp.abs(jnp.max(state.samples.log_L) - jnp.min(state.samples.log_L))
+        max_log_L = state.samples.log_L[best_idx]
+        min_log_L = jnp.min(state.samples.log_L)
+        relative_spread = 2. * jnp.abs(max_log_L - min_log_L) / jnp.abs(max_log_L + min_log_L)
+        absolute_spread = jnp.abs(max_log_L - min_log_L)
         return GlobalOptimisationResults(
             U_solution=state.samples.U_sample[best_idx],
             X_solution=X_solution,
@@ -413,7 +446,7 @@ def summary(results: GlobalOptimisationResults, f_obj: Optional[Union[str, TextI
         except:
             return float(v)
 
-    def _print_termination_condition(_termination_reason:int):
+    def _print_termination_condition(_termination_reason: int):
         termination_bit_mask = _bit_mask(int(_termination_reason), width=8)
         # 0-bit -> 1: used maximum allowed number of likelihood evaluations
         #         1-bit -> 2: reached goal log-likelihood contour

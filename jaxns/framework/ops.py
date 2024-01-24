@@ -1,10 +1,61 @@
 from typing import Tuple
 
+import jax
 from jax import numpy as jnp
 
-from jaxns.internals.types import UType, XType, float_type, LikelihoodInputType, FloatArray, LikelihoodType
 from jaxns.framework.bases import PriorModelType, BaseAbstractPrior
 from jaxns.framework.prior import InvalidPriorName
+from jaxns.internals.types import UType, XType, float_type, LikelihoodInputType, FloatArray, LikelihoodType, PRNGKey
+
+__all__ = [
+    'simulate_prior_model'
+]
+
+
+def compute_U_ndims(prior_model: PriorModelType) -> int:
+    """
+    Computes placeholders of model.
+
+    Args:
+        prior_model: a callable that produces a prior model generator
+
+    Returns:
+        number of U dims
+    """
+    U_ndims = 0
+    gen = prior_model()
+    prior_response = None
+    X_placeholder: XType = dict()
+    while True:
+        try:
+            prior: BaseAbstractPrior = gen.send(prior_response)
+            d = prior.base_ndims
+            U_ndims += d
+            u = jnp.zeros(prior.base_shape, float_type)
+            prior_response = prior.forward(u)
+            if prior.name is not None:
+                if prior.name in X_placeholder:
+                    raise InvalidPriorName(name=prior.name)
+                X_placeholder[prior.name] = prior_response
+        except StopIteration:
+            break
+    return U_ndims
+
+
+def simulate_prior_model(key: PRNGKey, prior_model: PriorModelType) -> Tuple[LikelihoodInputType, XType]:
+    """
+    Simulate a prior model.
+
+    Args:
+        key: PRNGKey
+        prior_model: A prior model
+
+    Returns:
+        a tuple of the likelihood input variables, and dict of non-hidden (named) prior variables.
+    """
+    U_ndims = compute_U_ndims(prior_model=prior_model)
+    U = jax.random.uniform(key, shape=(U_ndims,), dtype=float_type)
+    return prepare_input(U=U, prior_model=prior_model), transform(U=U, prior_model=prior_model)
 
 
 def parse_prior(prior_model: PriorModelType) -> Tuple[UType, XType]:
@@ -38,7 +89,8 @@ def parse_prior(prior_model: PriorModelType) -> Tuple[UType, XType]:
     return U_placeholder, X_placeholder
 
 
-def parse_joint(prior_model: PriorModelType, log_likelihood: LikelihoodType) -> Tuple[UType, XType, LikelihoodInputType, FloatArray]:
+def parse_joint(prior_model: PriorModelType, log_likelihood: LikelihoodType) -> Tuple[
+    UType, XType, LikelihoodInputType, FloatArray]:
     """
     Computes placeholders of model.
 
