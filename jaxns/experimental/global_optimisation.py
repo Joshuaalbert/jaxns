@@ -2,10 +2,12 @@ import io
 import logging
 from typing import NamedTuple, Optional, Union, TextIO, Tuple, List
 
+import jax.nn
 import jax.numpy as jnp
 import numpy as np
 from jax import lax, random, pmap, tree_map
 from jax._src.lax import parallel
+from jax._src.scipy.special import logit
 from jaxopt import LBFGS
 
 from jaxns.framework.bases import BaseAbstractModel
@@ -164,8 +166,11 @@ def determine_termination(term_cond: GlobalOptimisationTerminationCondition,
 
 
 def gradient_based_optimisation(model: BaseAbstractModel, init_U_point: UType) -> Tuple[UType, FloatArray, IntArray]:
-    def loss(U: UType):
+    def loss(U_unconstrained: UType):
+        U = jax.nn.sigmoid(U_unconstrained)
         return -model.log_prob_likelihood(U, allow_nan=False)
+
+    # TODO(JoshuaAlbert): Compare using LBFGSB with [0,1]^D bounds instead of sigmoid/logit maps.
 
     solver = LBFGS(
         fun=loss,
@@ -173,7 +178,8 @@ def gradient_based_optimisation(model: BaseAbstractModel, init_U_point: UType) -
         unroll=False,
         verbose=False
     )
-    results = solver.run(init_params=init_U_point)
+
+    results = solver.run(init_params=logit(init_U_point))
     return results.params, results.state.value, results.state.num_fun_eval
 
 
