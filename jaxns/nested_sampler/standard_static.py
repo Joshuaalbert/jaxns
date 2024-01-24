@@ -1,6 +1,7 @@
 import logging
 from typing import Tuple, NamedTuple, Any, Union
 
+import jax
 from jax import random, pmap, tree_map, numpy as jnp, lax, core, vmap
 from jax._src.lax import parallel
 
@@ -237,7 +238,8 @@ def _single_thread_ns(init_state: StaticStandardNestedSamplerState,
                       init_termination_register: TerminationRegister,
                       termination_cond: TerminationCondition,
                       sampler: BaseAbstractSampler,
-                      num_samples_per_sync: int) -> Tuple[
+                      num_samples_per_sync: int,
+                      verbose: bool = False) -> Tuple[
     StaticStandardNestedSamplerState, TerminationRegister, IntArray]:
     """
     Runs a single thread of static nested sampling until a stopping condition is reached. Runs `num_samples_per_sync`
@@ -248,6 +250,7 @@ def _single_thread_ns(init_state: StaticStandardNestedSamplerState,
         termination_cond: the termination condition
         sampler: the sampler to use
         num_samples_per_sync: number of samples to take per all-gather
+        verbose: whether to log debug messages.
 
     Returns:
         final sampler state
@@ -281,6 +284,25 @@ def _single_thread_ns(init_state: StaticStandardNestedSamplerState,
             num_samples=num_samples_per_sync,
             init_termination_register=carry.termination_register
         )
+        if verbose:
+            log_Z_mean, log_Z_var = linear_to_log_stats(
+                log_f_mean=termination_register.evidence_calc_with_remaining.log_Z_mean,
+                log_f2_mean=termination_register.evidence_calc_with_remaining.log_Z2_mean)
+            log_Z_uncert = jnp.sqrt(log_Z_var)
+            jax.debug.print(
+                "-------\n"
+                "Num samples: {num_samples}\n"
+                "Num likelihood evals: {num_likelihood_evals}\n"
+                "Efficiency: {efficiency}\n"
+                "log(L) contour: {log_L_contour}\n"
+                "log(Z) est.: {log_Z_mean} +- {log_Z_uncert}",
+                num_samples=termination_register.num_samples_used,
+                num_likelihood_evals=termination_register.num_likelihood_evaluations,
+                efficiency=termination_register.efficiency,
+                log_L_contour=termination_register.log_L_contour,
+                log_Z_mean=log_Z_mean,
+                log_Z_uncert=log_Z_uncert
+            )
 
         return CarryType(state=state, termination_register=termination_register)
 
@@ -557,7 +579,7 @@ class StandardStaticNestedSampler(BaseAbstractNestedSampler):
     """
 
     def __init__(self, init_efficiency_threshold: float, sampler: BaseAbstractSampler, num_live_points: int,
-                 model: BaseAbstractModel, max_samples: int, num_parallel_workers: int = 1):
+                 model: BaseAbstractModel, max_samples: int, num_parallel_workers: int = 1, verbose: bool = False):
         """
         Initialise the static nested sampler.
 
@@ -569,11 +591,13 @@ class StandardStaticNestedSampler(BaseAbstractNestedSampler):
             model: the model to use.
             max_samples: the maximum number of samples to take.
             num_parallel_workers: number of parallel workers to use. Defaults to 1. Experimental feature.
+            verbose: whether to log as we go.
         """
         self.init_efficiency_threshold = init_efficiency_threshold
         self.sampler = sampler
         self.num_live_points = int(num_live_points)
         self.num_parallel_workers = int(num_parallel_workers)
+        self.verbose = bool(verbose)
         remainder = max_samples % self.num_live_points
         extra = (max_samples - remainder) % self.num_live_points
         if extra > 0:
@@ -723,7 +747,8 @@ class StandardStaticNestedSampler(BaseAbstractNestedSampler):
                     init_termination_register=termination_register,
                     termination_cond=termination_cond,
                     sampler=uniform_sampler,
-                    num_samples_per_sync=self.num_live_points
+                    num_samples_per_sync=self.num_live_points,
+                    verbose=self.verbose
                 )
 
             # Continue sampling with provided sampler until user-defined termination condition is met.
@@ -732,7 +757,8 @@ class StandardStaticNestedSampler(BaseAbstractNestedSampler):
                 init_termination_register=termination_register,
                 termination_cond=term_cond,
                 sampler=self.sampler,
-                num_samples_per_sync=self.num_live_points
+                num_samples_per_sync=self.num_live_points,
+                verbose=self.verbose
             )
             if self.num_parallel_workers > 1:
                 # We need to do a final sampling run to make all the chains consistent,
@@ -750,7 +776,8 @@ class StandardStaticNestedSampler(BaseAbstractNestedSampler):
                     init_termination_register=termination_register,
                     termination_cond=termination_cond,
                     sampler=self.sampler,
-                    num_samples_per_sync=self.num_live_points
+                    num_samples_per_sync=self.num_live_points,
+                    verbose=self.verbose
                 )
 
             return state, termination_reason

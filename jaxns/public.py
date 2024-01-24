@@ -40,7 +40,8 @@ class DefaultNestedSampler:
                  c: Optional[int] = None,
                  num_parallel_workers: int = 1,
                  difficult_model: bool = False,
-                 parameter_estimation: bool = False):
+                 parameter_estimation: bool = False,
+                 verbose:bool=False):
         """
         Initialises the nested sampler.
 
@@ -56,6 +57,7 @@ class DefaultNestedSampler:
             num_parallel_workers: number of parallel workers to use. Defaults to 1. Experimental feature.
             difficult_model: if True, uses more robust default settings. Defaults to False.
             parameter_estimation: if True, uses more robust default settings for parameter estimation. Defaults to False.
+            verbose: whether to use JAX printing
         """
         if difficult_model:
             self._s = 10 if s is None else int(s)
@@ -94,7 +96,8 @@ class DefaultNestedSampler:
                 perfect=True
             ),
             init_efficiency_threshold=0.1,
-            num_parallel_workers=num_parallel_workers
+            num_parallel_workers=num_parallel_workers,
+            verbose=verbose
         )
 
     def __repr__(self):
