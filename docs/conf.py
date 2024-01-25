@@ -14,7 +14,7 @@ import sphinx_rtd_theme
 project = "jaxns"
 copyright = "2022, Joshua Albert"
 author = "Joshua Albert"
-release = "2.4.6"
+release = "2.4.7"
 
 
 # -- General configuration ---------------------------------------------------

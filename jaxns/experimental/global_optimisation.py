@@ -8,7 +8,7 @@ import numpy as np
 from jax import lax, random, pmap, tree_map
 from jax._src.lax import parallel
 from jax._src.scipy.special import logit
-from jaxopt import LBFGS, NonlinearCG
+from jaxopt import NonlinearCG
 
 from jaxns.framework.bases import BaseAbstractModel
 from jaxns.internals.maps import remove_chunk_dim
@@ -180,7 +180,7 @@ def gradient_based_optimisation(model: BaseAbstractModel, init_U_point: UType) -
     )
 
     results = solver.run(init_params=logit(init_U_point))
-    return jax.nn.sigmoid(results.params), results.state.value, results.state.num_fun_eval
+    return jax.nn.sigmoid(results.params), -results.state.value, results.state.num_fun_eval
 
 
 def _single_thread_global_optimisation(init_state: GlobalOptimisationState,
