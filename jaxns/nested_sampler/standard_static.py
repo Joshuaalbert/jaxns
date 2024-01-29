@@ -507,7 +507,7 @@ def _single_uniform_sample(key: PRNGKey, model: BaseAbstractModel) -> Sample:
     return sample
 
 
-def draw_uniform_samples(key: PRNGKey, num_live_points: int, model: BaseAbstractModel) -> Sample:
+def draw_uniform_samples(key: PRNGKey, num_live_points: int, model: BaseAbstractModel, method: str = 'vmap') -> Sample:
     """
     Get initial live points from uniformly sampling the entire prior.
 
@@ -515,16 +515,25 @@ def draw_uniform_samples(key: PRNGKey, num_live_points: int, model: BaseAbstract
         key: PRNGKey
         num_live_points: the number of live points
         model: the model
+        method: which way to draw the init points. vmap is vectorised, and for performant but uses more memory.
 
     Returns:
         uniformly drawn samples within -inf bound
     """
 
-    def body(carry_unused: Any, key: PRNGKey) -> Tuple[Any, Sample]:
-        return carry_unused, _single_uniform_sample(key=key, model=model)
+    keys = random.split(key, num_live_points)
+    if method == 'vmap':
+        return jax.vmap(lambda _key: _single_uniform_sample(key=_key, model=model))(keys)
+    elif method == 'scan':
 
-    _, samples = lax.scan(body, (), random.split(key, num_live_points))
-    return samples
+        def body(carry_unused: Any, key: PRNGKey) -> Tuple[Any, Sample]:
+            return carry_unused, _single_uniform_sample(key=key, model=model)
+
+        _, samples = lax.scan(body, (), keys)
+
+        return samples
+    else:
+        raise ValueError(f'Invalid method {method}')
 
 
 def create_init_state(key: PRNGKey, num_live_points: int, max_samples: int,

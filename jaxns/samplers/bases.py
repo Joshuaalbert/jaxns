@@ -4,9 +4,9 @@ from typing import NamedTuple, Tuple
 from jax import random
 
 from jaxns.framework.bases import BaseAbstractModel
-from jaxns.samplers.abc import AbstractSampler, SamplerState
 from jaxns.internals.types import FloatArray, Sample
 from jaxns.internals.types import PRNGKey
+from jaxns.samplers.abc import AbstractSampler, SamplerState
 
 
 class BaseAbstractSampler(AbstractSampler):
