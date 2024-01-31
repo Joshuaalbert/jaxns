@@ -1,7 +1,8 @@
 import inspect
 import logging
-from typing import TypeVar
+from typing import TypeVar, Callable, Optional
 
+import jax
 from jax import tree_map, pmap, numpy as jnp, lax, tree_util
 
 from jaxns.internals.types import int_type
@@ -20,22 +21,6 @@ def replace_index(operand, update, start_index):
     start_indices = [start_index] + [jnp.asarray(0, start_index.dtype)] * (len(update.shape) - 1)
     return lax.dynamic_update_slice(operand, update.astype(operand.dtype), start_indices)
 
-def test_replace_index():
-    # Test simple case
-    operand = jnp.arange(10)
-    update = jnp.arange(5)
-    start_index = 3
-    expected = jnp.array([0, 1, 2, 0, 1, 2, 3, 4, 8, 9])
-    actual = replace_index(operand, update, start_index)
-    assert jnp.allclose(actual, expected)
-    # Test edge case
-    operand = jnp.arange(10)
-    update = jnp.arange(5)
-    start_index = 8
-    # expected = jnp.array([0, 1, 2, 3, 4, 5, 6, 7, 0, 1])
-    expected = jnp.array([0, 1, 2, 3, 4, 0, 1, 2, 3, 4]) # Shifted to fit!
-    actual = replace_index(operand, update, start_index)
-    assert jnp.allclose(actual, expected)
 
 def get_index(operand, start_index, length):
     return lax.dynamic_slice(operand,
@@ -97,10 +82,25 @@ def prepare_func_args(f):
 
 
 F = TypeVar('F')
+FV = TypeVar('FV')
 
 
-def chunked_pmap(f: F, chunksize, *, batch_size=None) -> F:
-    def _f(*args, batch_size=batch_size, **kwargs):
+def chunked_pmap(f: Callable[..., FV], chunk_size: int | None = None, unroll: int = 1) -> Callable[..., FV]:
+    """
+    A version of pmap which chunks the input into smaller pieces to avoid memory issues.
+
+    Args:
+        f: callable
+        chunk_size: the size of the chunks. Default is len(devices())
+        unroll: the number of times to unroll the computation
+
+    Returns:
+        a chunked version of f
+    """
+    if chunk_size is None:
+        chunk_size = len(jax.devices())
+
+    def _f(*args, **kwargs):
         def queue(*args, **kwargs):
             """
             Distributes the computation in queues which are computed with scan.
@@ -112,19 +112,25 @@ def chunked_pmap(f: F, chunksize, *, batch_size=None) -> F:
                 (args, kwargs) = X
                 return state, f(*args, **kwargs)
 
-            _, result = lax.scan(body, (), (args, kwargs))
+            _, result = lax.scan(body, (), (args, kwargs), unroll=unroll)
             return result
 
-        if chunksize > 1:
-            if batch_size is None:
-                batch_size = args[0].shape[0] if len(args) > 0 else None
-            assert batch_size is not None, "Couldn't get batch_size, please provide explicitly"
-            remainder = batch_size % chunksize
-            extra = (chunksize - remainder) % chunksize
-            args = tree_map(lambda arg: _pad_extra(arg, chunksize), args)
-            kwargs = tree_map(lambda arg: _pad_extra(arg, chunksize), kwargs)
-            result = pmap(queue)(*args, **kwargs)
-            result = tree_map(lambda arg: jnp.reshape(arg, (-1,) + arg.shape[2:]), result)
+        if chunk_size > 1:
+            # Get from first leaf
+            if len(args) > 0:
+                batch_size = tree_util.tree_leaves(args)[0].shape[0]
+            else:
+                batch_size = tree_util.tree_leaves(kwargs)[0].shape[0]
+            remainder = batch_size % chunk_size
+            extra = (chunk_size - remainder) % chunk_size
+            if extra > 0:
+                (args, kwargs) = tree_map(lambda x: _pad_extra(x, chunk_size), (args, kwargs))
+            (args, kwargs) = tree_map(
+                lambda x: jnp.reshape(x, (chunk_size, x.shape[0] // chunk_size) + x.shape[1:]),
+                (args, kwargs)
+            )
+            result = pmap(queue)(*args, **kwargs)  # [chunksize, batch_size // chunksize, ...]
+            result = tree_map(lambda x: jnp.reshape(x, (-1,) + x.shape[2:]), result)
             if extra > 0:
                 result = tree_map(lambda x: x[:-extra], result)
         else:
@@ -147,7 +153,7 @@ def _pad_extra(arg, chunksize):
     else:
         extra = 0
     T = N // chunksize
-    arg = jnp.reshape(arg, (chunksize, N // chunksize) + arg.shape[1:])
+    # arg = jnp.reshape(arg, (chunksize, N // chunksize) + arg.shape[1:])
     return arg
 
 
@@ -207,3 +213,60 @@ def add_chunk_dim(py_tree: T, chunk_size: int) -> T:
         return jnp.reshape(a, shape)
 
     return tree_map(_add_chunk_dim, py_tree)
+
+
+def chunked_vmap(f, chunk_size: Optional[int] = None, unroll: int = 1):
+    """
+    A version of vmap which chunks the input into smaller pieces to avoid memory issues.
+
+    Args:
+        f: the function to be mapped
+        chunk_size: the size of the chunks. Default is len(devices())
+        unroll: the number of times to unroll the computation
+
+    Returns:
+
+    """
+    if chunk_size is None:
+        chunk_size = len(jax.devices())
+
+    def _f(*args, **kwargs):
+        def queue(*args, **kwargs):
+            """
+            Distributes the computation in queues which are computed with scan.
+            Args:
+                *args:
+            """
+
+            def body(state, X):
+                (args, kwargs) = X
+                return state, f(*args, **kwargs)
+
+            _, result = lax.scan(f=body, init=(), xs=(args, kwargs), unroll=unroll)
+            return result
+
+        if chunk_size > 1:
+            # Get from first leaf
+            if len(args) > 0:
+                batch_size = tree_util.tree_leaves(args)[0].shape[0]
+            else:
+                batch_size = tree_util.tree_leaves(kwargs)[0].shape[0]
+            remainder = batch_size % chunk_size
+            extra = (chunk_size - remainder) % chunk_size
+            if extra > 0:
+                (args, kwargs) = tree_map(lambda x: _pad_extra(x, chunk_size), (args, kwargs))
+            (args, kwargs) = tree_map(
+                lambda x: jnp.reshape(x, (chunk_size, x.shape[0] // chunk_size) + x.shape[1:]),
+                (args, kwargs)
+            )
+            result = jax.vmap(queue)(*args, **kwargs)  # [chunksize, batch_size // chunksize, ...]
+            result = tree_map(lambda x: jnp.reshape(x, (-1,) + x.shape[2:]), result)
+            if extra > 0:
+                result = tree_map(lambda x: x[:-extra], result)
+        else:
+            result = queue(*args, **kwargs)
+        return result
+
+    _f.__doc__ = f.__doc__
+    _f.__annotations__ = f.__annotations__
+    return _f

@@ -1,7 +1,7 @@
 import jax
 from jax import numpy as jnp
 
-from jaxns.internals.maps import replace_index, chunked_pmap, prepare_func_args, get_index
+from jaxns.internals.maps import replace_index, chunked_pmap, prepare_func_args, get_index, chunked_vmap
 
 
 def test_replace_index():
@@ -96,3 +96,28 @@ def test_get_index():
     length = 1
     expect = jnp.asarray([[4, 5, 6]])
     assert jnp.allclose(get_index(operand, start_index, length), expect)
+
+
+def test_chunked_vmap():
+    def f(x, y):
+        return x * y
+
+    chunked_f = chunked_vmap(f, chunk_size=2)
+    x = jnp.arange(3)
+    assert chunked_f(x, y=x).shape == x.shape
+    assert jnp.all(chunked_f(x, y=x) == x ** 2)
+
+    chunked_f = chunked_vmap(f, chunk_size=1)
+    x = jnp.arange(3)
+    assert chunked_f(x, y=x).shape == x.shape
+    assert jnp.all(chunked_f(x, y=x) == x ** 2)
+
+    chunked_f = chunked_vmap(f, chunk_size=2)
+    x = jnp.arange(6)
+    assert chunked_f(x, y=x).shape == x.shape
+    assert jnp.all(chunked_f(x, y=x) == x ** 2)
+
+    chunked_f = chunked_vmap(f, chunk_size=1)
+    x = jnp.arange(6)
+    assert chunked_f(x, y=x).shape == x.shape
+    assert jnp.all(chunked_f(x, y=x) == x ** 2)
