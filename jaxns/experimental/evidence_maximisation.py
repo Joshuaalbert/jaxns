@@ -66,7 +66,7 @@ class EvidenceMaximisation:
     """
 
     def __init__(self, model: Model, ns_kwargs: Dict[str, Any],
-                 max_num_epochs: int = 100, gtol=1e-4,
+                 max_num_epochs: int = 50, gtol=1e-2, momentum=0.9,
                  log_Z_ftol=1., log_Z_atol=1e-4,
                  batch_size: int = 128,
                  termination_cond: Optional[TerminationCondition] = None,
@@ -89,6 +89,7 @@ class EvidenceMaximisation:
         self.model = model
         self.max_num_epochs = max_num_epochs
         self.gtol = gtol
+        self.momentum = momentum
         self.log_Z_ftol = log_Z_ftol
         self.log_Z_atol = log_Z_atol
         self._verbose = bool(verbose)
@@ -182,7 +183,8 @@ class EvidenceMaximisation:
             value_and_grad=True,
             jit=True,
             unroll=False,
-            verbose=self._verbose
+            verbose=self._verbose,
+            momentum=self.momentum
         )
 
         def _m_step_stochastic(key: PRNGKey, params: hk.MutableParams, data: MStepData) -> Tuple[hk.MutableParams, Any]:
@@ -291,7 +293,7 @@ class EvidenceMaximisation:
             params, (log_Z,) = self._m_step(key=key, params=params, data=data)
             l_oo = jax.tree_map(lambda x, y: jnp.max(jnp.abs(x - y)), last_params, params)
             last_params = params
-            p_bar.set_description(f"{desc}: Epoch {epoch}: l_oo={l_oo}")
+            p_bar.set_description(f"{desc}: Epoch {epoch}: log_Z={log_Z}, l_oo={l_oo}")
             if all(_l_oo < self.gtol for _l_oo in jax.tree_leaves(l_oo)):
                 break
             epoch += 1
