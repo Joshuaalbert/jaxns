@@ -85,7 +85,7 @@ F = TypeVar('F')
 FV = TypeVar('FV')
 
 
-def chunked_pmap(f: Callable[..., FV], chunk_size: int | None = None, unroll: int = 1) -> Callable[..., FV]:
+def chunked_pmap(f: Callable[..., FV], chunk_size: Optional[int] = None, unroll: int = 1) -> Callable[..., FV]:
     """
     A version of pmap which chunks the input into smaller pieces to avoid memory issues.
 
