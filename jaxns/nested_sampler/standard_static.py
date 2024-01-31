@@ -686,6 +686,7 @@ class StandardStaticNestedSampler(BaseAbstractNestedSampler):
         ESS = ESS / (1. + k)
 
         samples = vmap(self.model.transform)(U_samples)
+        parametrised_samples = vmap(self.model.transform_parametrised)(U_samples)
 
         log_L_samples = log_L
         dp_mean = LogSpace(per_sample_evidence_stats.log_dZ_mean)
@@ -728,6 +729,7 @@ class StandardStaticNestedSampler(BaseAbstractNestedSampler):
             # total_num_samples / total_num_likelihood_evaluations
             termination_reason=termination_reason,  # termination condition as bit mask
             samples=samples,
+            parametrised_samples=parametrised_samples,
             U_samples=U_samples
         )
 

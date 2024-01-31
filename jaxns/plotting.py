@@ -80,6 +80,7 @@ def plot_diagnostics(results: NestedSamplerResults, save_name=None):
 
 
 def plot_cornerplot(results: NestedSamplerResults, variables: Optional[List[str]] = None,
+                    with_parametrised:bool=False,
                     save_name: Optional[str] = None, kde_overlay: bool = False):
     """
     Plots a cornerplot of the posterior samples.
@@ -90,22 +91,25 @@ def plot_cornerplot(results: NestedSamplerResults, variables: Optional[List[str]
         save_name: file to save result to.
         kde_overlay: whether to overlay a KDE on the histograms.
     """
+    samples = results.samples
+    if with_parametrised:
+        samples.update(results.parametrised_samples)
     # Plot all variables by default
     if variables is None:
-        variables = list(results.samples.keys())
-    variables = sorted(filter(lambda v: v in results.samples, variables))
-    ndims = sum([tuple_prod(results.samples[key].shape[1:]) for key in variables], 0)
+        variables = list(samples.keys())
+    variables = sorted(filter(lambda v: v in samples, variables))
+    ndims = sum([tuple_prod(samples[key].shape[1:]) for key in variables], 0)
 
     num_samples = int(results.total_num_samples)
     for key in variables:
-        if results.samples[key].shape[0] != num_samples:
+        if samples[key].shape[0] != num_samples:
             raise ValueError(f"Expected all samples to have the same number of samples, "
-                             f"got {key} with {results.samples[key].shape[0]} samples, "
+                             f"got {key} with {samples[key].shape[0]} samples, "
                              f"expected {num_samples} samples.")
 
     # Get the leaves of the tree, and concatenate into [num_samples, ndims] shape
     leaves = np.concatenate(
-        [np.asarray(results.samples[key]).reshape((num_samples, -1)) for key in variables],
+        [np.asarray(samples[key]).reshape((num_samples, -1)) for key in variables],
         axis=-1
     )
 
@@ -113,7 +117,7 @@ def plot_cornerplot(results: NestedSamplerResults, variables: Optional[List[str]
     # For vector we use name[i,j,...] etc.
     parameters = []
     for key in variables:
-        shape = results.samples[key].shape[1:]
+        shape = samples[key].shape[1:]
         if tuple_prod(shape) == 1:
             parameters.append(key)
         else:
