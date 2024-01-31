@@ -12,9 +12,9 @@ import sphinx_rtd_theme
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
 project = "jaxns"
-copyright = "2022, Joshua Albert"
-author = "Joshua Albert"
-release = "2.4.7"
+copyright = "2022, Joshua G. Albert"
+author = "Joshua G. Albert"
+release = "2.4.8"
 
 
 # -- General configuration ---------------------------------------------------
