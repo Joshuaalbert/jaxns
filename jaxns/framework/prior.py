@@ -173,6 +173,8 @@ def prior_to_parametrised_singular(prior: Prior) -> SingularPrior:
     name = f"{prior.name}_param"
     # Initialises at median of distribution.
     init_value = jnp.zeros(prior.base_shape, dtype=float_type)
+    if init_value.size == 0:
+        logger.warning(f"Creating a zero-sized parameter for {prior.name}. Probably unintended.")
     norm_U_base_param = hk.get_parameter(
         name=name,
         shape=prior.base_shape,
@@ -184,4 +186,4 @@ def prior_to_parametrised_singular(prior: Prior) -> SingularPrior:
     # U_base_param = ndtr(norm_U_base_param)
     U_base_param = jax.nn.sigmoid(norm_U_base_param)
     param = prior.forward(U_base_param)
-    return SingularPrior(value=param, dist=prior.dist, name=None)
+    return SingularPrior(value=param, dist=prior.dist, name=prior.name)

@@ -276,12 +276,14 @@ def _bit_mask(int_mask, width=8):
     return list(map(int, '{:0{size}b}'.format(int_mask, size=width)))[::-1]
 
 
-def summary(results: NestedSamplerResults, f_obj: Optional[Union[str, TextIO]] = None):
+def summary(results: NestedSamplerResults, with_parametrised: bool = False, f_obj: Optional[Union[str, TextIO]] = None):
     """
     Gives a summary of the results of a nested sampling run.
 
     Args:
         results (NestedSamplerResults): Nested sampler result
+        with_parametrised: whether to include parametrised samples
+        f_obj: file-like object to write summary to. If None, prints to stdout.
     """
     main_s = []
 
@@ -345,16 +347,25 @@ def summary(results: NestedSamplerResults, f_obj: Optional[Union[str, TextIO]] =
     _print(
         f"ESS={int(results.ESS):d}"
     )
+
+    samples = results.samples
+    if with_parametrised:
+        samples.update(results.parametrised_samples)
+
     max_like_idx = np.argmax(results.log_L_samples)
-    max_like_points = tree_map(lambda x: x[max_like_idx], results.samples)
-    samples = resample(random.PRNGKey(23426), results.samples, results.log_dp_mean, S=max(10, int(results.ESS)),
-                       replace=True)
+    max_like_points = tree_map(lambda x: x[max_like_idx], samples)
+
+    uniform_samples = resample(random.PRNGKey(23426),
+                               samples,
+                               results.log_dp_mean,
+                               S=max(100, int(results.ESS)),
+                               replace=True)
 
     max_map_idx = np.argmax(results.log_posterior_density)
     map_points = tree_map(lambda x: x[max_map_idx], results.samples)
 
-    for name in samples.keys():
-        _samples = samples[name].reshape((samples[name].shape[0], -1))
+    for name in uniform_samples.keys():
+        _samples = uniform_samples[name].reshape((uniform_samples[name].shape[0], -1))
         _max_like_points = max_like_points[name].reshape((-1,))
         _map_points = map_points[name].reshape((-1,))
         ndims = _samples.shape[1]

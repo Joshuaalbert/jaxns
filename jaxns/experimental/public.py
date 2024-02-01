@@ -22,6 +22,7 @@ class DefaultGlobalOptimisation:
                  num_parallel_workers: int = 1,
                  s: Optional[int] = None,
                  k: Optional[int] = None,
+                 gradient_slice: bool = False
                  ):
         """
         A global optimisation class that uses 1-dimensional slice sampler for the sampling step and decent default
@@ -34,6 +35,7 @@ class DefaultGlobalOptimisation:
                 If set creates a pool of identical workers and runs them in parallel.
             s: number of slices to use per dimension. Defaults to 1.
             k: number of phantom samples to use. Defaults to 0.
+            gradient_slice: if true use gradient information to improve.
         """
         if num_search_chains is None:
             num_search_chains = model.U_ndims * 20
@@ -47,7 +49,8 @@ class DefaultGlobalOptimisation:
             num_slices=model.U_ndims * int(s),
             num_phantom_save=int(k),
             midpoint_shrink=True,
-            perfect=True
+            perfect=True,
+            gradient_slice=gradient_slice
         )
 
         self._global_optimiser = SimpleGlobalOptimisation(
@@ -58,13 +61,15 @@ class DefaultGlobalOptimisation:
         )
 
     def __call__(self, key: PRNGKey,
-                 term_cond: Optional[GlobalOptimisationTerminationCondition] = None) -> GlobalOptimisationResults:
+                 term_cond: Optional[GlobalOptimisationTerminationCondition] = None,
+                 finetune: bool = False) -> GlobalOptimisationResults:
         """
         Runs the global optimisation.
 
         Args:
             key: PRNGKey
             term_cond: termination condition
+            finetune: whether to use gradient-based fine-tune. Default False because not all models have gradients.
 
         Returns:
             results of the global optimisation
@@ -74,7 +79,10 @@ class DefaultGlobalOptimisation:
                 min_efficiency=3e-2
             )
         termination_reason, state = self._global_optimiser._run(key, term_cond)
-        return self._global_optimiser._to_results(termination_reason, state)
+        results = self._global_optimiser._to_results(termination_reason, state)
+        if finetune:
+            results = self._global_optimiser._gradient_descent(results=results)
+        return results
 
     def summary(self, results: GlobalOptimisationResults, f_obj: Optional[Union[str, TextIO]] = None):
         summary(results, f_obj=f_obj)

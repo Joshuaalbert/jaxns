@@ -1,10 +1,61 @@
 from typing import Tuple
 
+import jax
 from jax import numpy as jnp
 
-from jaxns.internals.types import UType, XType, float_type, LikelihoodInputType, FloatArray, LikelihoodType
 from jaxns.framework.bases import PriorModelType, BaseAbstractPrior
-from jaxns.framework.prior import InvalidPriorName
+from jaxns.framework.prior import InvalidPriorName, SingularPrior
+from jaxns.internals.types import UType, XType, float_type, LikelihoodInputType, FloatArray, LikelihoodType, PRNGKey
+
+__all__ = [
+    'simulate_prior_model'
+]
+
+
+def compute_U_ndims(prior_model: PriorModelType) -> int:
+    """
+    Computes placeholders of model.
+
+    Args:
+        prior_model: a callable that produces a prior model generator
+
+    Returns:
+        number of U dims
+    """
+    U_ndims = 0
+    gen = prior_model()
+    prior_response = None
+    names = set()
+    while True:
+        try:
+            prior: BaseAbstractPrior = gen.send(prior_response)
+            d = prior.base_ndims
+            U_ndims += d
+            u = jnp.zeros(prior.base_shape, float_type)
+            prior_response = prior.forward(u)
+            if prior.name is not None:
+                if prior.name in names:
+                    raise InvalidPriorName(name=prior.name)
+                names.add(prior.name)
+        except StopIteration:
+            break
+    return U_ndims
+
+
+def simulate_prior_model(key: PRNGKey, prior_model: PriorModelType) -> Tuple[LikelihoodInputType, XType]:
+    """
+    Simulate a prior model.
+
+    Args:
+        key: PRNGKey
+        prior_model: A prior model
+
+    Returns:
+        a tuple of the likelihood input variables, and dict of non-hidden (named) prior variables.
+    """
+    U_ndims = compute_U_ndims(prior_model=prior_model)
+    U = jax.random.uniform(key, shape=(U_ndims,), dtype=float_type)
+    return prepare_input(U=U, prior_model=prior_model), transform(U=U, prior_model=prior_model)
 
 
 def parse_prior(prior_model: PriorModelType) -> Tuple[UType, XType]:
@@ -20,6 +71,7 @@ def parse_prior(prior_model: PriorModelType) -> Tuple[UType, XType]:
     U_ndims = 0
     gen = prior_model()
     prior_response = None
+    names = set()
     X_placeholder: XType = dict()
     while True:
         try:
@@ -29,16 +81,19 @@ def parse_prior(prior_model: PriorModelType) -> Tuple[UType, XType]:
             u = jnp.zeros(prior.base_shape, float_type)
             prior_response = prior.forward(u)
             if prior.name is not None:
-                if prior.name in X_placeholder:
+                if prior.name in names:
                     raise InvalidPriorName(name=prior.name)
-                X_placeholder[prior.name] = prior_response
+                names.add(prior.name)
+                if not isinstance(prior, SingularPrior):
+                    X_placeholder[prior.name] = prior_response
         except StopIteration:
             break
     U_placeholder = jnp.zeros((U_ndims,), float_type)
     return U_placeholder, X_placeholder
 
 
-def parse_joint(prior_model: PriorModelType, log_likelihood: LikelihoodType) -> Tuple[UType, XType, LikelihoodInputType, FloatArray]:
+def parse_joint(prior_model: PriorModelType, log_likelihood: LikelihoodType) -> Tuple[
+    UType, XType, LikelihoodInputType, FloatArray]:
     """
     Computes placeholders of model.
 
@@ -51,6 +106,7 @@ def parse_joint(prior_model: PriorModelType, log_likelihood: LikelihoodType) -> 
     U_ndims = 0
     gen = prior_model()
     prior_response = None
+    names = set()
     X_placeholder: XType = dict()
     while True:
         try:
@@ -60,9 +116,11 @@ def parse_joint(prior_model: PriorModelType, log_likelihood: LikelihoodType) -> 
             u = jnp.zeros(prior.base_shape, float_type)
             prior_response = prior.forward(u)
             if prior.name is not None:
-                if prior.name in X_placeholder:
+                if prior.name in names:
                     raise InvalidPriorName(name=prior.name)
-                X_placeholder[prior.name] = prior_response
+                names.add(prior.name)
+                if not isinstance(prior, SingularPrior):
+                    X_placeholder[prior.name] = prior_response
         except StopIteration as e:
             output = e.value
             if not isinstance(output, tuple):
@@ -88,7 +146,8 @@ def transform(U: UType, prior_model: PriorModelType) -> XType:
 
     gen = prior_model()
     prior_response = None
-    collection = dict()
+    names = set()
+    X_collection = dict()
     idx = 0
     while True:
         try:
@@ -98,12 +157,49 @@ def transform(U: UType, prior_model: PriorModelType) -> XType:
             idx += d
             prior_response = prior.forward(u)
             if prior.name is not None:
-                if prior.name in collection:
+                if prior.name in names:
                     raise InvalidPriorName(name=prior.name)
-                collection[prior.name] = prior_response
+                names.add(prior.name)
+                if not isinstance(prior, SingularPrior):
+                    X_collection[prior.name] = prior_response
         except StopIteration:
             break
-    return collection
+    return X_collection
+
+
+def transform_parametrised(U: UType, prior_model: PriorModelType) -> XType:
+    """
+    Transforms a flat array of `U_ndims` i.i.d. samples of U[0,1] into the the parametrised prior variables.
+
+    Args:
+        U: [U_ndims] a flat array of i.i.d. samples of U[0,1]
+        prior_model: a callable that produces a prior model generator
+
+    Returns:
+        the parametrised prior variables
+    """
+
+    gen = prior_model()
+    prior_response = None
+    names = set()
+    Y_collection = dict()
+    idx = 0
+    while True:
+        try:
+            prior: BaseAbstractPrior = gen.send(prior_response)
+            d = prior.base_ndims
+            u = jnp.reshape(U[idx:idx + d], prior.base_shape)
+            idx += d
+            prior_response = prior.forward(u)
+            if prior.name is not None:
+                if prior.name in names:
+                    raise InvalidPriorName(name=prior.name)
+                names.add(prior.name)
+                if isinstance(prior, SingularPrior):
+                    Y_collection[prior.name] = prior_response
+        except StopIteration:
+            break
+    return Y_collection
 
 
 def prepare_input(U: UType, prior_model: PriorModelType) -> LikelihoodInputType:

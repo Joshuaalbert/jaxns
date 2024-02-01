@@ -5,7 +5,7 @@ import pytest
 import tensorflow_probability.substrates.jax as tfp
 
 from jaxns import Prior, Model
-from jaxns.experimental.global_optimisation import GlobalOptimisationTerminationCondition
+from jaxns.experimental.global_optimisation import GlobalOptimisationTerminationCondition, gradient_based_optimisation
 from jaxns.experimental.public import DefaultGlobalOptimisation
 
 tfpd = tfp.distributions
@@ -92,13 +92,23 @@ def all_global_optimisation_problems(
     ]
 
 
+def test_gradient_based_optimisation(all_global_optimisation_problems):
+    for name, (model, optimum, a_tol, log_L_tol) in all_global_optimisation_problems:
+        print(f"Checking {name}")
+        U_init = model.sample_U(jax.random.PRNGKey(42))
+        log_L_init = model.log_prob_likelihood(U_init, allow_nan=False)
+        U_opt, log_L_solution, num_likelihood_evals = gradient_based_optimisation(model=model, init_U_point=U_init)
+        assert log_L_solution >= log_L_init
+
+
 def test_all_global_optimisation(all_global_optimisation_problems):
     for name, (model, optimum, a_tol, log_L_tol) in all_global_optimisation_problems:
         print(f"Checking {name}")
-        go = DefaultGlobalOptimisation(model)
-        results = jax.jit(go)(
+        go = DefaultGlobalOptimisation(model, gradient_slice=True)
+        results = jax.jit(go, static_argnames=['finetune'])(
             key=jax.random.PRNGKey(0),
-            term_cond=GlobalOptimisationTerminationCondition(log_likelihood_contour=log_L_tol)
+            term_cond=GlobalOptimisationTerminationCondition(log_likelihood_contour=log_L_tol),
+            finetune=True
         )
         assert len(results.X_solution) > 0
         # print(results)

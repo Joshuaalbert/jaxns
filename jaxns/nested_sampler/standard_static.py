@@ -1,6 +1,7 @@
 import logging
 from typing import Tuple, NamedTuple, Any, Union
 
+import jax
 from jax import random, pmap, tree_map, numpy as jnp, lax, core, vmap
 from jax._src.lax import parallel
 
@@ -70,7 +71,7 @@ def _inter_sync_shrinkage_process(
         dead_idx = carry.front_idx[front_loc]
 
         # Node index is based on root of 0, so sample-nodes are 1-indexed
-        dead_node_idx = dead_idx + 1
+        dead_node_idx = dead_idx + jnp.asarray(1, int_type)
 
         log_L_contour = carry.front_sample_collection.log_L[front_loc]
 
@@ -237,7 +238,8 @@ def _single_thread_ns(init_state: StaticStandardNestedSamplerState,
                       init_termination_register: TerminationRegister,
                       termination_cond: TerminationCondition,
                       sampler: BaseAbstractSampler,
-                      num_samples_per_sync: int) -> Tuple[
+                      num_samples_per_sync: int,
+                      verbose: bool = False) -> Tuple[
     StaticStandardNestedSamplerState, TerminationRegister, IntArray]:
     """
     Runs a single thread of static nested sampling until a stopping condition is reached. Runs `num_samples_per_sync`
@@ -248,6 +250,7 @@ def _single_thread_ns(init_state: StaticStandardNestedSamplerState,
         termination_cond: the termination condition
         sampler: the sampler to use
         num_samples_per_sync: number of samples to take per all-gather
+        verbose: whether to log debug messages.
 
     Returns:
         final sampler state
@@ -281,6 +284,25 @@ def _single_thread_ns(init_state: StaticStandardNestedSamplerState,
             num_samples=num_samples_per_sync,
             init_termination_register=carry.termination_register
         )
+        if verbose:
+            log_Z_mean, log_Z_var = linear_to_log_stats(
+                log_f_mean=termination_register.evidence_calc_with_remaining.log_Z_mean,
+                log_f2_mean=termination_register.evidence_calc_with_remaining.log_Z2_mean)
+            log_Z_uncert = jnp.sqrt(log_Z_var)
+            jax.debug.print(
+                "-------\n"
+                "Num samples: {num_samples}\n"
+                "Num likelihood evals: {num_likelihood_evals}\n"
+                "Efficiency: {efficiency}\n"
+                "log(L) contour: {log_L_contour}\n"
+                "log(Z) est.: {log_Z_mean} +- {log_Z_uncert}",
+                num_samples=termination_register.num_samples_used,
+                num_likelihood_evals=termination_register.num_likelihood_evaluations,
+                efficiency=termination_register.efficiency,
+                log_L_contour=termination_register.log_L_contour,
+                log_Z_mean=log_Z_mean,
+                log_Z_uncert=log_Z_uncert
+            )
 
         return CarryType(state=state, termination_register=termination_register)
 
@@ -485,7 +507,7 @@ def _single_uniform_sample(key: PRNGKey, model: BaseAbstractModel) -> Sample:
     return sample
 
 
-def draw_uniform_samples(key: PRNGKey, num_live_points: int, model: BaseAbstractModel) -> Sample:
+def draw_uniform_samples(key: PRNGKey, num_live_points: int, model: BaseAbstractModel, method: str = 'vmap') -> Sample:
     """
     Get initial live points from uniformly sampling the entire prior.
 
@@ -493,16 +515,25 @@ def draw_uniform_samples(key: PRNGKey, num_live_points: int, model: BaseAbstract
         key: PRNGKey
         num_live_points: the number of live points
         model: the model
+        method: which way to draw the init points. vmap is vectorised, and for performant but uses more memory.
 
     Returns:
         uniformly drawn samples within -inf bound
     """
 
-    def body(carry_unused: Any, key: PRNGKey) -> Tuple[Any, Sample]:
-        return carry_unused, _single_uniform_sample(key=key, model=model)
+    keys = random.split(key, num_live_points)
+    if method == 'vmap':
+        return jax.vmap(lambda _key: _single_uniform_sample(key=_key, model=model))(keys)
+    elif method == 'scan':
 
-    _, samples = lax.scan(body, (), random.split(key, num_live_points))
-    return samples
+        def body(carry_unused: Any, key: PRNGKey) -> Tuple[Any, Sample]:
+            return carry_unused, _single_uniform_sample(key=key, model=model)
+
+        _, samples = lax.scan(body, (), keys)
+
+        return samples
+    else:
+        raise ValueError(f'Invalid method {method}')
 
 
 def create_init_state(key: PRNGKey, num_live_points: int, max_samples: int,
@@ -557,7 +588,7 @@ class StandardStaticNestedSampler(BaseAbstractNestedSampler):
     """
 
     def __init__(self, init_efficiency_threshold: float, sampler: BaseAbstractSampler, num_live_points: int,
-                 model: BaseAbstractModel, max_samples: int, num_parallel_workers: int = 1):
+                 model: BaseAbstractModel, max_samples: int, num_parallel_workers: int = 1, verbose: bool = False):
         """
         Initialise the static nested sampler.
 
@@ -569,11 +600,13 @@ class StandardStaticNestedSampler(BaseAbstractNestedSampler):
             model: the model to use.
             max_samples: the maximum number of samples to take.
             num_parallel_workers: number of parallel workers to use. Defaults to 1. Experimental feature.
+            verbose: whether to log as we go.
         """
         self.init_efficiency_threshold = init_efficiency_threshold
         self.sampler = sampler
         self.num_live_points = int(num_live_points)
         self.num_parallel_workers = int(num_parallel_workers)
+        self.verbose = bool(verbose)
         remainder = max_samples % self.num_live_points
         extra = (max_samples - remainder) % self.num_live_points
         if extra > 0:
@@ -653,6 +686,7 @@ class StandardStaticNestedSampler(BaseAbstractNestedSampler):
         ESS = ESS / (1. + k)
 
         samples = vmap(self.model.transform)(U_samples)
+        parametrised_samples = vmap(self.model.transform_parametrised)(U_samples)
 
         log_L_samples = log_L
         dp_mean = LogSpace(per_sample_evidence_stats.log_dZ_mean)
@@ -695,6 +729,7 @@ class StandardStaticNestedSampler(BaseAbstractNestedSampler):
             # total_num_samples / total_num_likelihood_evaluations
             termination_reason=termination_reason,  # termination condition as bit mask
             samples=samples,
+            parametrised_samples=parametrised_samples,
             U_samples=U_samples
         )
 
@@ -723,7 +758,8 @@ class StandardStaticNestedSampler(BaseAbstractNestedSampler):
                     init_termination_register=termination_register,
                     termination_cond=termination_cond,
                     sampler=uniform_sampler,
-                    num_samples_per_sync=self.num_live_points
+                    num_samples_per_sync=self.num_live_points,
+                    verbose=self.verbose
                 )
 
             # Continue sampling with provided sampler until user-defined termination condition is met.
@@ -732,7 +768,8 @@ class StandardStaticNestedSampler(BaseAbstractNestedSampler):
                 init_termination_register=termination_register,
                 termination_cond=term_cond,
                 sampler=self.sampler,
-                num_samples_per_sync=self.num_live_points
+                num_samples_per_sync=self.num_live_points,
+                verbose=self.verbose
             )
             if self.num_parallel_workers > 1:
                 # We need to do a final sampling run to make all the chains consistent,
@@ -750,7 +787,8 @@ class StandardStaticNestedSampler(BaseAbstractNestedSampler):
                     init_termination_register=termination_register,
                     termination_cond=termination_cond,
                     sampler=self.sampler,
-                    num_samples_per_sync=self.num_live_points
+                    num_samples_per_sync=self.num_live_points,
+                    verbose=self.verbose
                 )
 
             return state, termination_reason

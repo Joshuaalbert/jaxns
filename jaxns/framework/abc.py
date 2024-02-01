@@ -117,6 +117,19 @@ class AbstractModel(ABC):
         ...
 
     @abstractmethod
+    def transform_parametrised(self, U: UType) -> XType:
+        """
+        Compute the parametrised prior variables.
+
+        Args:
+            U: U-space sample
+
+        Returns:
+            prior sample
+        """
+        ...
+
+    @abstractmethod
     def forward(self, U: UType, allow_nan: bool = False) -> MeasureType:
         """
         Compute the log-likelihood.
