@@ -13,7 +13,7 @@ except ImportError:
 
 from jaxns.framework.bases import BaseAbstractModel, PriorModelType
 from jaxns.framework.ops import transform, prepare_input, compute_log_prob_prior, compute_log_likelihood, parse_prior, \
-    parse_joint
+    parse_joint, transform_parametrised
 from jaxns.internals.types import PRNGKey, FloatArray, float_type, LikelihoodType, UType, XType, LikelihoodInputType
 
 __all__ = [
@@ -136,6 +136,12 @@ class Model(BaseAbstractModel):
     def transform(self, U: UType) -> XType:
         def _transform():
             return transform(U=U, prior_model=self.prior_model)
+
+        return hk.transform(_transform).apply(params=self._params, rng=None)
+
+    def transform_parametrised(self, U: UType) -> XType:
+        def _transform():
+            return transform_parametrised(U=U, prior_model=self.prior_model)
 
         return hk.transform(_transform).apply(params=self._params, rng=None)
 

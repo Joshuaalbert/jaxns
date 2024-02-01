@@ -309,6 +309,9 @@ is the best way to achieve speed up.
 
 # Change Log
 
+31 Jan, 2024 -- JAXNS 2.4.8 released. Improved global optimisation performance using gradient slicing. 
+Improved evidence maximisation.
+
 25 Jan, 2024 -- JAXNS 2.4.6/7 released. Added logging. Use L-BFGS for Evidence Maximisation M-step. Fix bug in finetune.
 
 24 Jan, 2024 -- JAXNS 2.4.5 released. Gradient based finetuning global optimisation using L-BFGS. Added ability to

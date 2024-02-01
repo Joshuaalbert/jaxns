@@ -22,6 +22,7 @@ class DefaultGlobalOptimisation:
                  num_parallel_workers: int = 1,
                  s: Optional[int] = None,
                  k: Optional[int] = None,
+                 gradient_slice: bool = False
                  ):
         """
         A global optimisation class that uses 1-dimensional slice sampler for the sampling step and decent default
@@ -34,6 +35,7 @@ class DefaultGlobalOptimisation:
                 If set creates a pool of identical workers and runs them in parallel.
             s: number of slices to use per dimension. Defaults to 1.
             k: number of phantom samples to use. Defaults to 0.
+            gradient_slice: if true use gradient information to improve.
         """
         if num_search_chains is None:
             num_search_chains = model.U_ndims * 20
@@ -47,7 +49,8 @@ class DefaultGlobalOptimisation:
             num_slices=model.U_ndims * int(s),
             num_phantom_save=int(k),
             midpoint_shrink=True,
-            perfect=True
+            perfect=True,
+            gradient_slice=gradient_slice
         )
 
         self._global_optimiser = SimpleGlobalOptimisation(

@@ -110,6 +110,7 @@ class NestedSamplerResults(NamedTuple):
     ESS: FloatArray  # estimate of Kish's effective sample size
     H_mean: FloatArray  # estimate of E[int log(L) L dp/Z]
     samples: XType  # Dict of arrays with leading dimension num_samples
+    parametrised_samples: XType  # Dict of arrays with leading dimension num_samples
     U_samples: UType  # Dict of arrays with leading dimension num_samples
     log_L_samples: FloatArray  # log(L) of each sample
     log_dp_mean: FloatArray  # log(E[dZ]) of each sample, where dZ is how much it contributes to the total evidence.

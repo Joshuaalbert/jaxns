@@ -1,5 +1,5 @@
 import logging
-from typing import Optional, Tuple, Union, List
+from typing import Optional, Tuple, Union
 
 import jax.numpy as jnp
 import tensorflow_probability.substrates.jax as tfp
@@ -41,7 +41,8 @@ class DefaultNestedSampler:
                  num_parallel_workers: int = 1,
                  difficult_model: bool = False,
                  parameter_estimation: bool = False,
-                 verbose:bool=False):
+                 init_efficiency_threshold: float = 0.1,
+                 verbose: bool = False):
         """
         Initialises the nested sampler.
 
@@ -57,6 +58,8 @@ class DefaultNestedSampler:
             num_parallel_workers: number of parallel workers to use. Defaults to 1. Experimental feature.
             difficult_model: if True, uses more robust default settings. Defaults to False.
             parameter_estimation: if True, uses more robust default settings for parameter estimation. Defaults to False.
+            init_efficiency_threshold: if > 0 then use uniform sampling first down to this acceptance efficiency.
+                0 turns it off.
             verbose: whether to use JAX printing
         """
         if difficult_model:
@@ -95,10 +98,17 @@ class DefaultNestedSampler:
                 midpoint_shrink=True,
                 perfect=True
             ),
-            init_efficiency_threshold=0.1,
+            init_efficiency_threshold=init_efficiency_threshold,
             num_parallel_workers=num_parallel_workers,
             verbose=verbose
         )
+
+        # Post-analysis utilities
+        self.summary = summary
+        self.plot_cornerplot = plot_cornerplot
+        self.plot_diagnostics = plot_diagnostics
+        self.save_results = save_results
+        self.load_results = load_results
 
     def __repr__(self):
         return f"DefaultNestedSampler(s={self._s}, c={self._c},  k={self._k})"
@@ -110,63 +120,6 @@ class DefaultNestedSampler:
     @property
     def nested_sampler(self) -> BaseAbstractNestedSampler:
         return self._nested_sampler
-
-    def summary(self, results: NestedSamplerResults) -> str:
-        """
-        Prints a summary of the results of the nested sampling run.
-
-        Args:
-            results: results of the nested sampling run
-
-        Returns:
-            the summary as a string
-        """
-        return summary(results)
-
-    def plot_cornerplot(self, results: NestedSamplerResults, variables: Optional[List[str]] = None,
-                        save_name: Optional[str] = None, kde_overlay: bool = False):
-        """
-        Plots a corner plot of the samples.
-
-        Args:
-            results: results of the nested sampling run
-            variables: variables to plot. If not given, defaults to all variables.
-            save_name: if given, saves the plot to the given file name
-            kde_overlay: if True, overlays a KDE plot on the 1D histograms
-        """
-        plot_cornerplot(results, variables=variables, save_name=save_name, kde_overlay=kde_overlay)
-
-    def plot_diagnostics(self, results: NestedSamplerResults, save_name: Optional[str] = None):
-        """
-        Plots diagnostic plots of the results of the nested sampling run.
-
-        Args:
-            results: results of the nested sampling run
-            save_name: if given, saves the plot to the given file name
-        """
-        plot_diagnostics(results, save_name=save_name)
-
-    def save_results(self, results: NestedSamplerResults, save_file: str):
-        """
-        Saves the results of the nested sampling run to a file.
-
-        Args:
-            results: results of the nested sampling run
-            save_file: file to save the results to
-        """
-        save_results(results, save_file)
-
-    def load_results(self, save_file: str) -> NestedSamplerResults:
-        """
-        Loads the results of a nested sampling run from a file.
-
-        Args:
-            save_file: file to load the results from
-
-        Returns:
-            results
-        """
-        return load_results(save_file)
 
     def __call__(self, key: PRNGKey, term_cond: Optional[TerminationCondition] = None) -> Tuple[
         IntArray, StaticStandardNestedSamplerState]:

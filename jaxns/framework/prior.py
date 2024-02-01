@@ -186,4 +186,4 @@ def prior_to_parametrised_singular(prior: Prior) -> SingularPrior:
     # U_base_param = ndtr(norm_U_base_param)
     U_base_param = jax.nn.sigmoid(norm_U_base_param)
     param = prior.forward(U_base_param)
-    return SingularPrior(value=param, dist=prior.dist, name=None)
+    return SingularPrior(value=param, dist=prior.dist, name=prior.name)

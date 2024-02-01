@@ -170,8 +170,6 @@ def gradient_based_optimisation(model: BaseAbstractModel, init_U_point: UType) -
         U = jax.nn.sigmoid(U_unconstrained)
         return -model.log_prob_likelihood(U, allow_nan=False)
 
-    # TODO(JoshuaAlbert): Compare using LBFGSB with [0,1]^D bounds instead of sigmoid/logit maps.
-
     solver = NonlinearCG(
         fun=loss,
         jit=True,

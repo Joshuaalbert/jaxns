@@ -104,7 +104,7 @@ def test_gradient_based_optimisation(all_global_optimisation_problems):
 def test_all_global_optimisation(all_global_optimisation_problems):
     for name, (model, optimum, a_tol, log_L_tol) in all_global_optimisation_problems:
         print(f"Checking {name}")
-        go = DefaultGlobalOptimisation(model)
+        go = DefaultGlobalOptimisation(model, gradient_slice=True)
         results = jax.jit(go, static_argnames=['finetune'])(
             key=jax.random.PRNGKey(0),
             term_cond=GlobalOptimisationTerminationCondition(log_likelihood_contour=log_L_tol),

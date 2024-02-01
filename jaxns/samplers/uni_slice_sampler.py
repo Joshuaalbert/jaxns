@@ -1,6 +1,7 @@
 import logging
 from typing import TypeVar, NamedTuple, Tuple
 
+import jax
 from jax import numpy as jnp, random, lax, tree_map
 
 from jaxns.framework.bases import BaseAbstractModel
@@ -122,6 +123,7 @@ def _shrink_interval(key: PRNGKey, t: FloatArray, left: FloatArray, right: Float
 
 
 def _new_proposal(key: PRNGKey, seed_point: SeedPoint, midpoint_shrink: bool, perfect: bool,
+                  gradient_slice: bool,
                   log_L_constraint: FloatArray,
                   model: BaseAbstractModel) -> Tuple[FloatArray, FloatArray, IntArray]:
     """
@@ -132,6 +134,7 @@ def _new_proposal(key: PRNGKey, seed_point: SeedPoint, midpoint_shrink: bool, pe
         seed_point: the seed point to sample from
         midpoint_shrink: if true then contract to the midpoint of interval on rejection. Otherwise, normal contract
         perfect: if true then perform exponential shrinkage from maximal bounds, requiring no step-out procedure.
+        gradient_slice: if true the slice along gradient direction
         log_L_constraint: the constraint to sample within
         model: the model to sample from
 
@@ -192,16 +195,32 @@ def _new_proposal(key: PRNGKey, seed_point: SeedPoint, midpoint_shrink: bool, pe
         )
 
     key, n_key, t_key = random.split(key, 3)
-    direction = _sample_direction(n_key, seed_point.U0.size)
-    num_likelihood_evaluations = jnp.full((), 0, int_type)
-    if perfect:
+    if gradient_slice:
+        direction = jax.grad(model.forward)(seed_point.U0)
+        norm = jnp.linalg.norm(direction)
+        direction /= norm
+        direction = jnp.where(
+            jnp.bitwise_or(jnp.equal(norm, jnp.zeros_like(norm)), ~jnp.isfinite(norm)),
+            _sample_direction(n_key, seed_point.U0.size),
+            direction
+        )
+        num_likelihood_evaluations = jnp.full((), 1, int_type)
         (left, right) = _slice_bounds(
             point_U0=seed_point.U0,
             direction=direction
         )
+        left = jnp.zeros_like(left)
     else:
-        # TODO: implement doubling step out
-        raise NotImplementedError("TODO: implement doubling step out")
+        direction = _sample_direction(n_key, seed_point.U0.size)
+        num_likelihood_evaluations = jnp.full((), 0, int_type)
+        if perfect:
+            (left, right) = _slice_bounds(
+                point_U0=seed_point.U0,
+                direction=direction
+            )
+        else:
+            # TODO: implement doubling step out
+            raise NotImplementedError("TODO: implement doubling step out")
     point_U, t = _pick_point_in_interval(
         key=t_key,
         point_U0=seed_point.U0,
@@ -235,7 +254,7 @@ class UniDimSliceSampler(BaseAbstractMarkovSampler):
     """
 
     def __init__(self, model: BaseAbstractModel, num_slices: int, num_phantom_save: int, midpoint_shrink: bool,
-                 perfect: bool):
+                 perfect: bool, gradient_slice: bool = False):
         """
         Unidimensional slice sampler.
 
@@ -249,6 +268,7 @@ class UniDimSliceSampler(BaseAbstractMarkovSampler):
             perfect: if true then perform exponential shrinkage from maximal bounds, requiring no step-out procedure.
                 Otherwise, uses a doubling procedure (exponentially finding bracket).
                 Note: Perfect is a misnomer, as perfection also depends on the number of slices between acceptance.
+            gradient_slice: if true then always slice along gradient direction.
         """
         super().__init__(model=model)
         if num_slices < 1:
@@ -261,6 +281,7 @@ class UniDimSliceSampler(BaseAbstractMarkovSampler):
         self.num_phantom_save = int(num_phantom_save)
         self.midpoint_shrink = bool(midpoint_shrink)
         self.perfect = bool(perfect)
+        self.gradient_slice = bool(gradient_slice)
         if not self.perfect:
             raise ValueError("Only perfect slice sampler is implemented.")
 
@@ -318,6 +339,7 @@ class UniDimSliceSampler(BaseAbstractMarkovSampler):
                 ),
                 midpoint_shrink=self.midpoint_shrink,
                 perfect=self.perfect,
+                gradient_slice=self.gradient_slice,
                 log_L_constraint=log_L_constraint,
                 model=self.model
             )

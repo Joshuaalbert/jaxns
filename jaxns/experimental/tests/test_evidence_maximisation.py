@@ -19,4 +19,4 @@ def test_basic():
     model = Model(prior_model=prior_model, log_likelihood=log_likelihood)
 
     em = EvidenceMaximisation(model=model, ns_kwargs=dict(max_samples=1e5))
-    params = em.train(num_steps=10)
+    ns_results, params = em.train(num_steps=10)
