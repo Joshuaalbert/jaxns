@@ -161,3 +161,20 @@ class StaticStandardNestedSamplerState(NamedTuple):
     next_sample_idx: IntArray  # the next sample insert index <==> the number of samples
     sample_collection: StaticStandardSampleCollection
     front_idx: IntArray  # the index of the front of the live points within sample collection
+
+
+def isinstance_namedtuple(obj) -> bool:
+    """
+    Check if object is a namedtuple.
+
+    Args:
+        obj: object
+
+    Returns:
+        bool
+    """
+    return (
+            isinstance(obj, tuple) and
+            hasattr(obj, '_asdict') and
+            hasattr(obj, '_fields')
+    )
