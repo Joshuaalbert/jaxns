@@ -1,12 +1,13 @@
 from typing import Tuple, Union, Optional, Literal
 
+import numpy as np
 import tensorflow_probability.substrates.jax as tfp
 from jax import numpy as jnp, vmap, lax
 from jax._src.scipy.special import gammaln
 from tensorflow_probability.substrates.jax.math import lbeta, betaincinv
 
-from jaxns.internals.log_semiring import cumulative_logsumexp
 from jaxns.framework.bases import BaseAbstractPrior
+from jaxns.internals.log_semiring import cumulative_logsumexp
 from jaxns.internals.types import FloatArray, IntArray, BoolArray, float_type
 
 tfpd = tfp.distributions
@@ -176,10 +177,10 @@ class ForcedIdentifiability(BaseAbstractPrior):
         return float_type
 
     def _base_shape(self) -> Tuple[int, ...]:
-        return (self.n,) + jnp.shape(self.low)
+        return (self.n,) + np.shape(self.low)
 
     def _shape(self) -> Tuple[int, ...]:
-        return (self.n,) + jnp.shape(self.low)
+        return (self.n,) + np.shape(self.low)
 
     def _forward(self, U) -> Union[FloatArray, IntArray, BoolArray]:
         return self._quantile(U)
@@ -195,34 +196,27 @@ class ForcedIdentifiability(BaseAbstractPrior):
         return log_prob
 
     def _cdf(self, X):
-        log_theta = jnp.log((X - self.low) / (self.high - self.low))  # [n, ...]
+        log_output = jnp.log((X - self.low) / (self.high - self.low))
 
-        def inv_body(state, X):
-            (log_theta_prev,) = state
-            (log_theta, i) = X
-            log_x = i * (log_theta - log_theta_prev)
-            return (log_theta,), (log_x,)
+        # Step 2: Undo cumulative sum operation
+        inner = jnp.diff(log_output[::-1], prepend=0, axis=0)[::-1]
 
-        # Initial log_x value
-        log_init_x = jnp.zeros(self.shape[1:], self.dtype)  # [...]
-        _, (log_x,) = lax.scan(inv_body, (log_init_x,), (log_theta, jnp.arange(1, self.n + 1)), reverse=True)
+        # Step 3: Undo reshaping and division
+        k = jnp.arange(self.n) + 1
+        log_x = inner * jnp.reshape(k, (self.n,) + (1,) * (len(self.shape) - 1))
+
+        # Step 4: Find U by exponentiating log_x
         U = jnp.exp(log_x)
+
         return U.astype(self.dtype)
 
     def _quantile(self, U):
         log_x = jnp.log(U)  # [n, ...]
-
-        # theta[i] = theta[i-1] * (1 - x[i]) + theta_max * x[i]
-        def body(state, X):
-            (log_theta,) = state
-            (log_x, i) = X
-            log_theta = log_x / i + log_theta  # shrinkage
-            return (log_theta,), (log_theta,)
-
-        log_init_theta = jnp.zeros(self.shape[1:], self.dtype)  # [...] -- log(1)
-        _, (log_theta,) = lax.scan(body, (log_init_theta,), (log_x, jnp.arange(1, self.n + 1)), reverse=True)
-        theta = self.low + (self.high - self.low) * jnp.exp(log_theta)
-        return theta.astype(self.dtype)
+        k = jnp.arange(self.n) + 1
+        inner = log_x / jnp.reshape(k, (self.n,) + (1,) * (len(self.shape) - 1))
+        log_output = jnp.cumsum(inner[::-1], axis=0)[::-1]
+        output = self.low + (self.high - self.low) * jnp.exp(log_output)
+        return output.astype(self.dtype)
 
 
 class Poisson(BaseAbstractPrior):
