@@ -352,6 +352,8 @@ class Poisson(BaseAbstractPrior):
                 return exp(log_x).
         """
         rate = self.dist.rate_parameter()
+        if np.size(rate) > 1:
+            return jax.vmap(lambda u, r: _poisson_quantile(u, r))(U.ravel(), rate.ravel()).reshape(self.shape)
         return _poisson_quantile(U, rate)
 
 
