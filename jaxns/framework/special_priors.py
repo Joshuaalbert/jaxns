@@ -1,13 +1,17 @@
+from functools import partial
 from typing import Tuple, Union, Optional, Literal
 
+import jax
+import numpy as np
+import pytest
 import tensorflow_probability.substrates.jax as tfp
 from jax import numpy as jnp, vmap, lax
 from jax._src.scipy.special import gammaln
 from tensorflow_probability.substrates.jax.math import lbeta, betaincinv
 
-from jaxns.internals.log_semiring import cumulative_logsumexp
 from jaxns.framework.bases import BaseAbstractPrior
-from jaxns.internals.types import FloatArray, IntArray, BoolArray, float_type
+from jaxns.internals.log_semiring import cumulative_logsumexp
+from jaxns.internals.types import FloatArray, IntArray, BoolArray, float_type, int_type
 
 tfpd = tfp.distributions
 
@@ -176,10 +180,10 @@ class ForcedIdentifiability(BaseAbstractPrior):
         return float_type
 
     def _base_shape(self) -> Tuple[int, ...]:
-        return (self.n,) + jnp.shape(self.low)
+        return (self.n,) + np.shape(self.low)
 
     def _shape(self) -> Tuple[int, ...]:
-        return (self.n,) + jnp.shape(self.low)
+        return (self.n,) + np.shape(self.low)
 
     def _forward(self, U) -> Union[FloatArray, IntArray, BoolArray]:
         return self._quantile(U)
@@ -195,34 +199,118 @@ class ForcedIdentifiability(BaseAbstractPrior):
         return log_prob
 
     def _cdf(self, X):
-        log_theta = jnp.log((X - self.low) / (self.high - self.low))  # [n, ...]
+        log_output = jnp.log((X - self.low) / (self.high - self.low))
 
-        def inv_body(state, X):
-            (log_theta_prev,) = state
-            (log_theta, i) = X
-            log_x = i * (log_theta - log_theta_prev)
-            return (log_theta,), (log_x,)
+        # Step 2: Undo cumulative sum operation
+        inner = jnp.diff(log_output[::-1], prepend=0, axis=0)[::-1]
 
-        # Initial log_x value
-        log_init_x = jnp.zeros(self.shape[1:], self.dtype)  # [...]
-        _, (log_x,) = lax.scan(inv_body, (log_init_x,), (log_theta, jnp.arange(1, self.n + 1)), reverse=True)
+        # Step 3: Undo reshaping and division
+        k = jnp.arange(self.n) + 1
+        log_x = inner * jnp.reshape(k, (self.n,) + (1,) * (len(self.shape) - 1))
+
+        # Step 4: Find U by exponentiating log_x
         U = jnp.exp(log_x)
+
         return U.astype(self.dtype)
 
     def _quantile(self, U):
         log_x = jnp.log(U)  # [n, ...]
+        k = jnp.arange(self.n) + 1
+        inner = log_x / jnp.reshape(k, (self.n,) + (1,) * (len(self.shape) - 1))
+        log_output = jnp.cumsum(inner[::-1], axis=0)[::-1]
+        output = self.low + (self.high - self.low) * jnp.exp(log_output)
+        return output.astype(self.dtype)
 
-        # theta[i] = theta[i-1] * (1 - x[i]) + theta_max * x[i]
-        def body(state, X):
-            (log_theta,) = state
-            (log_x, i) = X
-            log_theta = log_x / i + log_theta  # shrinkage
-            return (log_theta,), (log_theta,)
 
-        log_init_theta = jnp.zeros(self.shape[1:], self.dtype)  # [...] -- log(1)
-        _, (log_theta,) = lax.scan(body, (log_init_theta,), (log_x, jnp.arange(1, self.n + 1)), reverse=True)
-        theta = self.low + (self.high - self.low) * jnp.exp(log_theta)
-        return theta.astype(self.dtype)
+def _poisson_quantile_bisection(U, rate, max_iter=15, unroll: bool = True):
+    # max_iter is set so that error < 1 up to rate of 1e4
+    rate = jnp.maximum(jnp.asarray(rate), 1e-5)
+    if np.size(rate) > 1:
+        raise ValueError("Rate must be a scalar")
+
+    if np.size(U) > 1:
+        U_flat = U.ravel()
+        x_final, x_results = vmap(lambda u: _poisson_quantile_bisection(u, rate, max_iter, unroll))(U_flat)
+        return x_final.reshape(U.shape), x_results.reshape(U.shape + (max_iter,))
+
+    def smooth_cdf(x, rate):
+        return lax.igammac(x + 1., rate)
+
+    def fixed_point_update(x, args):
+        (a, b, f_a, f_b) = x
+
+        c = 0.5 * (a + b)
+        f_c = smooth_cdf(c, rate)
+
+        left = f_c > U
+        a1 = jnp.where(left, a, c)
+        f_a1 = jnp.where(left, f_a, f_c)
+        b1 = jnp.where(left, c, b)
+        f_b1 = jnp.where(left, f_c, f_b)
+
+        a2 = a
+        f_a2 = f_a
+        b2 = b * 2.
+        f_b2 = smooth_cdf(b2, rate)
+
+        bounded = f_b >= U  # a already bounds.
+
+        a = jnp.where(bounded, a1, a2)
+        b = jnp.where(bounded, b1, b2)
+        f_a = jnp.where(bounded, f_a1, f_a2)
+        f_b = jnp.where(bounded, f_b1, f_b2)
+
+        new_x = (a, b, f_a, f_b)
+
+        return new_x, 0.5 * (a + b)
+
+    a = jnp.asarray(0.)
+    b = jnp.asarray(rate)
+    f_a = jnp.asarray(0.)
+    f_b = smooth_cdf(b, rate)
+    init = (a, b, f_a, f_b)
+
+    # Dummy array to facilitate using scan for a fixed number of iterations
+    (a, b, f_a, f_b), x_results = lax.scan(
+        fixed_point_update,
+        init,
+        jnp.arange(max_iter),
+        unroll=max_iter if unroll else 1
+    )
+
+    c = 0.5 * (a + b)
+
+    return c, x_results
+
+
+@partial(jax.jit, static_argnames=("unroll",))
+def _poisson_quantile(U, rate, unroll: bool = False):
+    x, _ = _poisson_quantile_bisection(U, rate, unroll=unroll)
+    return x.astype(int_type)
+
+
+@pytest.mark.parametrize("rate, error", (
+        [2.0, 1.],
+        [10., 1.],
+        [100., 1.],
+        [1000., 1.],
+        [10000., 1.]
+)
+                         )
+def test_poisson_quantile_bisection(rate, error):
+    U = jnp.linspace(0., 1. - np.spacing(1.), 1000)
+    x, x_results = _poisson_quantile_bisection(U, rate, unroll=False)
+    diff_last_two = jnp.abs(x_results[..., -1] - x_results[..., -2])
+
+    # Make sure less than 1 apart
+    assert jnp.all(diff_last_two <= error)
+
+
+@pytest.mark.parametrize("rate", [2.0, 10., 100., 1000., 10000.])
+def test_poisson_quantile(rate):
+    U = jnp.linspace(0., 1. - np.spacing(1.), 10000)
+    x = _poisson_quantile(U, rate)
+    assert jnp.all(jnp.isfinite(x))
 
 
 class Poisson(BaseAbstractPrior):
@@ -263,32 +351,10 @@ class Poisson(BaseAbstractPrior):
                     log_s ← logaddexp(log_s, log_p).
                 return exp(log_x).
         """
-        log_rate = self.dist.log_rate_parameter()
         rate = self.dist.rate_parameter()
-        tiny = 1e-7  # For anything smaller it never terminates
-        U = jnp.minimum(U, jnp.asarray(1., U.dtype) - tiny)
-        log_u = jnp.log(U)
-        log_x = jnp.full(log_u.shape, -jnp.inf)
-        log_p = -rate
-        log_s = log_p
-
-        def body(state):
-            (_log_x, _log_p, _log_s) = state
-            impute = log_u <= _log_s
-            log_x = jnp.logaddexp(_log_x, 0.)
-            log_p = _log_p + log_rate - log_x
-            log_s = jnp.logaddexp(_log_s, log_p)
-
-            log_x = jnp.where(impute, _log_x, log_x)
-            log_p = jnp.where(impute, _log_p, log_p)
-            log_x = jnp.where(impute, _log_x, log_x)
-
-            return (log_x, log_p, log_s)
-
-        (log_x, log_p, log_s) = lax.while_loop(lambda s: jnp.any(log_u > s[2]),
-                                               body,
-                                               (log_x, log_p, log_s))
-        return jnp.exp(log_x).astype(self.dtype)
+        if np.size(rate) > 1:
+            return jax.vmap(lambda u, r: _poisson_quantile(u, r))(U.ravel(), rate.ravel()).reshape(self.shape)
+        return _poisson_quantile(U, rate)
 
 
 class UnnormalisedDirichlet(BaseAbstractPrior):

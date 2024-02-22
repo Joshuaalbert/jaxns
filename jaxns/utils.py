@@ -10,7 +10,8 @@ from jaxns.internals.cumulative_ops import cumulative_op_static
 from jaxns.internals.log_semiring import LogSpace
 from jaxns.internals.maps import prepare_func_args
 from jaxns.internals.random import resample_indicies
-from jaxns.internals.types import NestedSamplerResults, float_type, XType, UType, FloatArray, IntArray
+from jaxns.internals.types import NestedSamplerResults, float_type, XType, UType, FloatArray, IntArray, \
+    isinstance_namedtuple
 from jaxns.internals.types import PRNGKey
 from jaxns.warnings import deprecated
 
@@ -513,14 +514,6 @@ def analytic_posterior_samples(model: BaseAbstractModel, S: int = 60):
     return samples, dZ.log_abs_val
 
 
-def _isinstance_namedtuple(obj) -> bool:
-    return (
-            isinstance(obj, tuple) and
-            hasattr(obj, '_asdict') and
-            hasattr(obj, '_fields')
-    )
-
-
 def save_pytree(pytree: NamedTuple, save_file: str):
     """
     Saves results of nested sampler in a npz file.
@@ -535,7 +528,7 @@ def save_pytree(pytree: NamedTuple, save_file: str):
         _data_dict = pytree._asdict()
         data_dict = {}
         for k, v in _data_dict.items():
-            if _isinstance_namedtuple(v):
+            if isinstance_namedtuple(v):
                 data_dict[k] = _pytree_asdict(v)
             elif isinstance(v, (dict, np.ndarray, None.__class__)):
                 data_dict[k] = v
