@@ -124,7 +124,7 @@ def parse_joint(prior_model: PriorModelType, log_likelihood: LikelihoodType) -> 
                     X_placeholder[prior.name] = prior_response
         except StopIteration as e:
             output = e.value
-            if (not isinstance(output, tuple)) and (not isinstance_namedtuple(output)):
+            if (not isinstance(output, tuple)) or isinstance_namedtuple(output):
                 output = (output,)
             break
     likelihood_input_placeholder = output
@@ -227,7 +227,7 @@ def prepare_input(U: UType, prior_model: PriorModelType) -> LikelihoodInputType:
             prior_response = prior.forward(u)
         except StopIteration as e:
             output = e.value
-            if (not isinstance(output, tuple)) and (not isinstance_namedtuple(output)):
+            if (not isinstance(output, tuple)) or isinstance_namedtuple(output):
                 output = (output,)
             break
     return output
