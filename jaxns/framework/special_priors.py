@@ -3,7 +3,6 @@ from typing import Tuple, Union, Optional, Literal
 
 import jax
 import numpy as np
-import pytest
 import tensorflow_probability.substrates.jax as tfp
 from jax import numpy as jnp, vmap, lax
 from jax._src.scipy.special import gammaln
@@ -287,30 +286,6 @@ def _poisson_quantile_bisection(U, rate, max_iter=15, unroll: bool = True):
 def _poisson_quantile(U, rate, unroll: bool = False):
     x, _ = _poisson_quantile_bisection(U, rate, unroll=unroll)
     return x.astype(int_type)
-
-
-@pytest.mark.parametrize("rate, error", (
-        [2.0, 1.],
-        [10., 1.],
-        [100., 1.],
-        [1000., 1.],
-        [10000., 1.]
-)
-                         )
-def test_poisson_quantile_bisection(rate, error):
-    U = jnp.linspace(0., 1. - np.spacing(1.), 1000)
-    x, x_results = _poisson_quantile_bisection(U, rate, unroll=False)
-    diff_last_two = jnp.abs(x_results[..., -1] - x_results[..., -2])
-
-    # Make sure less than 1 apart
-    assert jnp.all(diff_last_two <= error)
-
-
-@pytest.mark.parametrize("rate", [2.0, 10., 100., 1000., 10000.])
-def test_poisson_quantile(rate):
-    U = jnp.linspace(0., 1. - np.spacing(1.), 10000)
-    x = _poisson_quantile(U, rate)
-    assert jnp.all(jnp.isfinite(x))
 
 
 class Poisson(BaseAbstractPrior):

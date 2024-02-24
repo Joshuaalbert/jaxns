@@ -7,6 +7,17 @@ from jax.scipy.stats import multivariate_normal
 
 
 def initialize_params(key, data, n_components: int):
+    """
+    Initialize the parameters of a Gaussian Mixture Model.
+
+    Args:
+        key: the random key
+        data: [n, d] array of data
+        n_components: number of components
+
+    Returns:
+        means: [num_clusters, d] array of means
+    """
     n, d = data.shape
 
     # Initialize means by selecting random data points
@@ -25,6 +36,19 @@ def initialize_params(key, data, n_components: int):
 
 
 def e_step(data, means, covariances, log_weights, mask):
+    """
+    Compute the responsibilities of each Gaussian for each data point.
+
+    Args:
+        data: [n, d] array of data
+        means: [num_clusters, d] array of means
+        covariances: [num_clusters, d, d] array of covariances
+        log_weights: [num_clusters] array of log weights
+        mask: [n] boolean array indicating which data points to use
+
+    Returns:
+        log_responsibilities: [num_clusters, n] array of log responsibilities
+    """
     n, d = data.shape
     n_components = means.shape[0]
 
@@ -39,6 +63,16 @@ def e_step(data, means, covariances, log_weights, mask):
 
 
 def m_step(data, log_responsibilities):
+    """
+    Update the parameters of the Gaussian Mixture Model.
+
+    Args:
+        data: [n, d] array of data
+        log_responsibilities: [num_clusters, n] array of log responsibilities
+
+    Returns:
+        means: [num_clusters, d] array of means
+    """
     n_components, num_data = log_responsibilities.shape
     _, d = data.shape
 
@@ -58,6 +92,22 @@ def m_step(data, log_responsibilities):
 
 # No invariance under jit...
 def em_gmm(key, data, n_components, mask: Union[jnp.ndarray, None] = None, n_iters=10, tol=1e-6):
+    """
+    Fit a Gaussian Mixture Model to the data using the Expectation-Maximization algorithm.
+
+    Args:
+        key: the random key
+        data: [n, d] array of data
+        n_components: number of components
+        mask: [n] boolean array indicating which data points to use
+        n_iters: maximum number of iterations
+        tol: convergence tolerance
+
+    Returns:
+        cluster_id: [n] array of cluster assignments
+        params: tuple of (means, covariances, log_weights)
+        total_iters: total number of iterations use
+    """
     means, covariances, log_weights = initialize_params(key, data, n_components)
     params = (means, covariances, log_weights)
 
