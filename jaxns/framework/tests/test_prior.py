@@ -1,3 +1,5 @@
+import numpy as np
+import pytest
 import tensorflow_probability.substrates.jax as tfp
 from jax import random, numpy as jnp, vmap
 
@@ -6,7 +8,7 @@ from jaxns.framework.distribution import InvalidDistribution, distribution_chain
 from jaxns.framework.ops import parse_prior, prepare_input, compute_log_likelihood
 from jaxns.framework.prior import Prior, InvalidPriorName
 from jaxns.framework.special_priors import Bernoulli, Categorical, Poisson, Beta, ForcedIdentifiability, \
-    UnnormalisedDirichlet
+    UnnormalisedDirichlet, _poisson_quantile_bisection, _poisson_quantile
 from jaxns.internals.types import float_type
 
 tfpd = tfp.distributions
@@ -274,3 +276,27 @@ def test_special_priors():
     assert jnp.all(x > 0.)
     u = vmap(lambda x: d.inverse(x))(x)
     assert jnp.allclose(u, u_input)
+
+
+@pytest.mark.parametrize("rate, error", (
+        [2.0, 1.],
+        [10., 1.],
+        [100., 1.],
+        [1000., 1.],
+        [10000., 1.]
+)
+                         )
+def test_poisson_quantile_bisection(rate, error):
+    U = jnp.linspace(0., 1. - np.spacing(1.), 1000)
+    x, x_results = _poisson_quantile_bisection(U, rate, unroll=False)
+    diff_last_two = jnp.abs(x_results[..., -1] - x_results[..., -2])
+
+    # Make sure less than 1 apart
+    assert jnp.all(diff_last_two <= error)
+
+
+@pytest.mark.parametrize("rate", [2.0, 10., 100., 1000., 10000.])
+def test_poisson_quantile(rate):
+    U = jnp.linspace(0., 1. - np.spacing(1.), 10000)
+    x = _poisson_quantile(U, rate)
+    assert jnp.all(jnp.isfinite(x))

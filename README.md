@@ -309,6 +309,8 @@ is the best way to achieve speed up.
 
 # Change Log
 
+23 Feb, 2024 -- JAXNS 2.4.10 released. Hotfix for import error. 
+
 21 Feb, 2024 -- JAXNS 2.4.9 released. Minor improvements to some priors, and bug fixes.
 
 31 Jan, 2024 -- JAXNS 2.4.8 released. Improved global optimisation performance using gradient slicing. 
