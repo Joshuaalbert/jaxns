@@ -66,7 +66,7 @@ class EvidenceMaximisation:
     """
 
     def __init__(self, model: Model, ns_kwargs: Dict[str, Any],
-                 max_num_epochs: int = 50, gtol=1e-2, momentum=0.9,
+                 max_num_epochs: int = 50, gtol=1e-2,
                  log_Z_ftol=1., log_Z_atol=1e-4,
                  batch_size: int = 128,
                  termination_cond: Optional[TerminationCondition] = None,
@@ -89,13 +89,12 @@ class EvidenceMaximisation:
         self.model = model
         self.max_num_epochs = max_num_epochs
         self.gtol = gtol
-        self.momentum = momentum
         self.log_Z_ftol = log_Z_ftol
         self.log_Z_atol = log_Z_atol
         self._verbose = bool(verbose)
         self._ns_kwargs = ns_kwargs
         self._batch_size = batch_size
-        self._termination_cond = termination_cond or TerminationCondition()
+        self._termination_cond = termination_cond
         self._e_step = self._create_e_step()
         self._m_step = self._create_m_step_stochastic()
 
@@ -111,7 +110,7 @@ class EvidenceMaximisation:
             IntArray, StaticStandardNestedSamplerState]:
             model = self.model(params=params)
             ns = DefaultNestedSampler(model=model, **self._ns_kwargs)
-            termination_reason, state = ns(key)
+            termination_reason, state = ns(key, self._termination_cond)
             return termination_reason, state
 
         # Ahead of time compile the function
