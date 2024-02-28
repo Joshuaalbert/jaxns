@@ -219,6 +219,55 @@ samples = resample(
 )
 ```
 
+### Maximising the evidence
+
+The Bayesian evidence is the ultimate model selection density, and choosing a model that maximises the evidence is
+the best way to select a model. We can use the evidence maximisation algorithm to optimise the parametrised variables
+of the model, in the manner that maximises the evidence. Below `EvidenceMaximisation` does this for the model we defined
+above, where the parametrised variables are
+automatically constrained to be in the right range, and numerical stability is ensured with proper scaling.
+
+We see that the evidence maximisation chooses a `sigma` the is very small.
+
+```python
+from jaxns.experimental import EvidenceMaximisation
+
+# Let's train the sigma parameter to maximise the evidence
+
+em = EvidenceMaximisation(model, ns_kwargs=dict(max_samples=1e4))
+results, params = em.train(num_steps=5)
+
+summary(results, with_parametrised=True)
+```
+
+Output:
+
+```
+--------
+Termination Conditions:
+Small remaining evidence
+--------
+likelihood evals: 72466
+samples: 1440
+phantom samples: 0
+likelihood evals / sample: 50.3
+phantom fraction (%): 0.0%
+--------
+logZ=-1.119 +- 0.098
+H=-0.93
+ESS=241
+--------
+sigma: mean +- std.dev. | 10%ile / 50%ile / 90%ile | MAP est. | max(L) est.
+sigma: 5.40077599e-05 +- 3.6e-12 | 5.40077563e-05 / 5.40077563e-05 / 5.40077563e-05 | 5.40077563e-05 | 5.40077563e-05
+--------
+uncert: mean +- std.dev. | 10%ile / 50%ile / 90%ile | MAP est. | max(L) est.
+uncert: 0.6 +- 0.54 | 0.05 / 0.45 / 1.37 | 0.0 | 0.0
+--------
+x: mean +- std.dev. | 10%ile / 50%ile / 90%ile | MAP est. | max(L) est.
+x: 0.01 +- 0.56 | -0.6 / -0.0 / 0.69 | 0.0 | -0.0
+--------
+```
+
 # Documentation
 
 You can read the documentation [here](https://jaxns.readthedocs.io/en/latest/#). In addition, JAXNS is partially
@@ -309,11 +358,11 @@ is the best way to achieve speed up.
 
 # Change Log
 
-23 Feb, 2024 -- JAXNS 2.4.10 released. Hotfix for import error. 
+23 Feb, 2024 -- JAXNS 2.4.10 released. Hotfix for import error.
 
 21 Feb, 2024 -- JAXNS 2.4.9 released. Minor improvements to some priors, and bug fixes.
 
-31 Jan, 2024 -- JAXNS 2.4.8 released. Improved global optimisation performance using gradient slicing. 
+31 Jan, 2024 -- JAXNS 2.4.8 released. Improved global optimisation performance using gradient slicing.
 Improved evidence maximisation.
 
 25 Jan, 2024 -- JAXNS 2.4.6/7 released. Added logging. Use L-BFGS for Evidence Maximisation M-step. Fix bug in finetune.
