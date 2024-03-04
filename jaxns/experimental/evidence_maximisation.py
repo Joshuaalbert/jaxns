@@ -308,7 +308,6 @@ class EvidenceMaximisation:
         Args:
             num_steps: The number of steps to train for, or until convergence.
             params: The initial parameters to use. If None, then the model's params are used.
-            do_final_e_step: Whether to do a final E-step after training, for updated evidence.
 
         Returns:
             The trained parameters.
