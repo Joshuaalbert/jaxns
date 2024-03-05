@@ -6,7 +6,6 @@ import numpy as np
 import tensorflow_probability.substrates.jax as tfp
 from jax import numpy as jnp, vmap, lax
 from jax._src.scipy.special import gammaln
-from tensorflow_probability.substrates.jax.math import lbeta, betaincinv
 
 from jaxns.framework.bases import BaseAbstractPrior
 from jaxns.internals.log_semiring import cumulative_logsumexp
@@ -56,7 +55,17 @@ class Bernoulli(BaseAbstractPrior):
 class Beta(BaseAbstractPrior):
     def __init__(self, *, concentration0=None, concentration1=None, name: Optional[str] = None):
         super(Beta, self).__init__(name=name)
-        self.dist = tfpd.Beta(concentration0=concentration0, concentration1=concentration1)
+        # Special cases for Beta that are faster use the Kumaraswamy distribution
+        if isinstance(concentration0, (float, int)) and concentration0 == 1:
+            self.dist = tfpd.Kumaraswamy(concentration0=concentration0, concentration1=concentration1)
+        elif isinstance(concentration1, (float, int)) and concentration1 == 1:
+            self.dist = tfpd.Kumaraswamy(concentration0=concentration0, concentration1=concentration1)
+        elif isinstance(concentration0, np.ndarray) and np.all(concentration0 == 1):
+            self.dist = tfpd.Kumaraswamy(concentration0=concentration0, concentration1=concentration1)
+        elif isinstance(concentration1, np.ndarray) and np.all(concentration1 == 1):
+            self.dist = tfpd.Kumaraswamy(concentration0=concentration0, concentration1=concentration1)
+        else:
+            self.dist = tfpd.Beta(concentration0=concentration0, concentration1=concentration1)
 
     def _dtype(self):
         return self.dist.dtype
@@ -77,13 +86,7 @@ class Beta(BaseAbstractPrior):
         return self.dist.log_prob(X)
 
     def _quantile(self, U):
-        alpha = self.dist.concentration0
-        beta = self.dist.concentration1
-        # cdf(x, a, b) = I(x,a,b) = B(x,a,b)/B(a,b)
-        # G = B(a,b) cdf(x, a, b) = B(a,b) I(x,a,b) = B(x,a,b)
-        # quantile(u, a, b) = B^{-1}(B(a,b) U, a, b)
-        Y = jnp.exp(lbeta(alpha, beta) + jnp.log(U))
-        X = betaincinv(alpha, beta, Y)
+        X = self.dist.quantile(U)
         return X.astype(self.dtype)
 
 
@@ -123,7 +126,9 @@ class Categorical(BaseAbstractPrior):
             return self._quantile_cdf(U)
 
     def _inverse(self, X) -> FloatArray:
-        return self.dist.cdf(X)
+        if self._parametrisation == 'cdf':
+            return self.dist.cdf(X)
+        raise NotImplementedError()
 
     def _log_prob(self, X) -> FloatArray:
         return self.dist.log_prob(X)
@@ -134,6 +139,12 @@ class Categorical(BaseAbstractPrior):
         z = -jnp.log(-jnp.log(U))  # gumbel
         draws = jnp.argmax(logits + z, axis=-1).astype(sample_dtype)
         return draws
+
+    def _cdf_gumbelmax(self, X):
+        logits = self.dist._logits_parameter_no_checks()
+        z = jnp.max(logits, axis=-1, keepdims=True)
+        logits -= z
+        return jnp.exp(logits) / jnp.sum(jnp.exp(logits), axis=-1, keepdims=True)
 
     def _quantile_cdf(self, U):
         """
@@ -166,20 +177,33 @@ class ForcedIdentifiability(BaseAbstractPrior):
         n: number of samples within [low,high]
         low: minimum of distribution
         high: maximum of distribution
+        fix_left: if True, the leftmost value is fixed to `low`
+        fix_right: if True, the rightmost value is fixed to `high`
     """
 
-    def __init__(self, *, n: int, low=None, high=None, name: Optional[str] = None):
+    def __init__(self, *, n: int, low=None, high=None, fix_left: bool = False, fix_right: bool = False,
+                 name: Optional[str] = None):
         super(ForcedIdentifiability, self).__init__(name=name)
+        n_min = (1 if fix_left else 0) + (1 if fix_right else 0)
+        if n < n_min:
+            raise ValueError(f'`n` too small for fix_left={fix_left} and fix_right={fix_right}')
         self.n = n
         low, high = jnp.broadcast_arrays(low, high)
         self.low = low
         self.high = high
+        self.fix_left = fix_left
+        self.fix_right = fix_right
 
     def _dtype(self):
         return float_type
 
     def _base_shape(self) -> Tuple[int, ...]:
-        return (self.n,) + np.shape(self.low)
+        num_base = self.n
+        if self.fix_left:
+            num_base -= 1
+        if self.fix_right:
+            num_base -= 1
+        return (num_base,) + np.shape(self.low)
 
     def _shape(self) -> Tuple[int, ...]:
         return (self.n,) + np.shape(self.low)
@@ -191,21 +215,37 @@ class ForcedIdentifiability(BaseAbstractPrior):
         return self._cdf(X)
 
     def _log_prob(self, X) -> FloatArray:
-        log_n_fac = gammaln(self.n + 1)
+        n = self.n
+        if self.fix_left:
+            n -= 1
+        if self.fix_right:
+            n -= 1
+        log_n_fac = gammaln(n + 1)
         diff = self.high - self.low
-        log_prob = - log_n_fac - self.n * jnp.log(diff)
+        log_prob = - log_n_fac - n * jnp.log(diff)
         # no check that X is inside high and low
         return log_prob
 
     def _cdf(self, X):
+        if self.fix_left:
+            X = X[1:]
+        if self.fix_right:
+            X = X[:-1]
+
+        n = self.n
+        if self.fix_left:
+            n -= 1
+        if self.fix_right:
+            n -= 1
+
         log_output = jnp.log((X - self.low) / (self.high - self.low))
 
         # Step 2: Undo cumulative sum operation
         inner = jnp.diff(log_output[::-1], prepend=0, axis=0)[::-1]
 
         # Step 3: Undo reshaping and division
-        k = jnp.arange(self.n) + 1
-        log_x = inner * jnp.reshape(k, (self.n,) + (1,) * (len(self.shape) - 1))
+        k = jnp.arange(n) + 1
+        log_x = inner * jnp.reshape(k, (n,) + (1,) * (len(self.shape) - 1))
 
         # Step 4: Find U by exponentiating log_x
         U = jnp.exp(log_x)
@@ -213,11 +253,20 @@ class ForcedIdentifiability(BaseAbstractPrior):
         return U.astype(self.dtype)
 
     def _quantile(self, U):
+        n = self.n
+        if self.fix_left:
+            n -= 1
+        if self.fix_right:
+            n -= 1
         log_x = jnp.log(U)  # [n, ...]
-        k = jnp.arange(self.n) + 1
-        inner = log_x / jnp.reshape(k, (self.n,) + (1,) * (len(self.shape) - 1))
+        k = jnp.arange(n) + 1
+        inner = log_x / lax.reshape(k, (n,) + (1,) * (len(self.shape) - 1))
         log_output = jnp.cumsum(inner[::-1], axis=0)[::-1]
         output = self.low + (self.high - self.low) * jnp.exp(log_output)
+        if self.fix_left:
+            output = jnp.concatenate([self.low[None], output], axis=0)
+        if self.fix_right:
+            output = jnp.concatenate([output, self.high[None]], axis=0)
         return output.astype(self.dtype)
 
 
@@ -294,7 +343,7 @@ class Poisson(BaseAbstractPrior):
         self.dist = tfpd.Poisson(rate=rate, log_rate=log_rate)
 
     def _dtype(self):
-        return self.dist.dtype
+        return int_type
 
     def _base_shape(self) -> Tuple[int, ...]:
         return self._shape()

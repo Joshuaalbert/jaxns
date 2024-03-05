@@ -59,7 +59,7 @@ def test_parametrised():
         return x
 
     def log_likelihood(x):
-        return jnp.sum(x)
+        return x
 
     model = Model(prior_model=prior_model, log_likelihood=log_likelihood)
     assert model.num_params == 1
@@ -68,3 +68,30 @@ def test_parametrised():
     log_prob_joint = model.log_prob_joint(model.U_placeholder, allow_nan=True)
     assert log_prob_joint.shape == ()
     assert log_prob_joint == 0.5, "Didn't init at median of uniform"
+
+
+def test_parametrised_randomised():
+    def prior_model():
+        x = yield Prior(tfpd.Uniform(), name='x').parametrised(random_init=True)
+        y = yield Prior(tfpd.Uniform(), name='y')
+        return x, y
+
+    def log_likelihood(x, y):
+        return x - y
+
+    model = Model(prior_model=prior_model, log_likelihood=log_likelihood)
+    assert model.num_params == 1
+    assert model.U_ndims == 1
+
+    log_prob_joint = model.log_prob_joint(model.U_placeholder, allow_nan=True)
+    assert log_prob_joint.shape == ()
+
+    model.sanity_check(key=jax.random.PRNGKey(0), S=10)
+
+    model.prepare_input(model.U_placeholder)
+    model.transform_parametrised(model.U_placeholder)
+    model.forward(model.U_placeholder, allow_nan=True)
+    model.sample_U(jax.random.PRNGKey(0))
+    model.log_prob_prior(model.U_placeholder)
+    model.log_prob_joint(model.U_placeholder, allow_nan=True)
+    model.transform(model.U_placeholder)

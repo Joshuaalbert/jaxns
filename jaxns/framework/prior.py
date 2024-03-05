@@ -141,20 +141,23 @@ class Prior(BaseAbstractPrior):
         else:
             raise NotImplementedError()
 
-    def parametrised(self) -> SingularPrior:
+    def parametrised(self, random_init: bool = False) -> SingularPrior:
         """
         Convert this prior into a non-Bayesian parameter, that takes a single value in the model, but still has an associated
         log_prob. The parameter is registered as a `hk.Parameter` with added `_param` name suffix.
+
+        Args:
+            random_init: whether to initialise the parameter randomly or at the median of the distribution.
 
         Returns:
             A singular prior.
         """
         if self._type == 'value':
             raise ValueError("Cannot parametrise a prior without distribution.")
-        return prior_to_parametrised_singular(self)
+        return prior_to_parametrised_singular(self, random_init=random_init)
 
 
-def prior_to_parametrised_singular(prior: Prior) -> SingularPrior:
+def prior_to_parametrised_singular(prior: Prior, random_init: bool = False) -> SingularPrior:
     """
     Convert a prior into a non-Bayesian parameter, that takes a single value in the model, but still has an associated
     log_prob. The parameter is registered as a `hk.Parameter` with added `_param` name suffix.
@@ -164,6 +167,7 @@ def prior_to_parametrised_singular(prior: Prior) -> SingularPrior:
 
     Args:
         prior: any prior
+        random_init: whether to initialise the parameter randomly or at the median of the distribution.
 
     Returns:
         A parameter representing the prior.
@@ -172,7 +176,10 @@ def prior_to_parametrised_singular(prior: Prior) -> SingularPrior:
         raise ValueError("Prior must have a name to be parametrised.")
     name = f"{prior.name}_param"
     # Initialises at median of distribution.
-    init_value = jnp.zeros(prior.base_shape, dtype=float_type)
+    if random_init:
+        init_value = jax.random.normal(hk.next_rng_key(), shape=prior.base_shape, dtype=float_type)
+    else:
+        init_value = jnp.zeros(prior.base_shape, dtype=float_type)
     if init_value.size == 0:
         logger.warning(f"Creating a zero-sized parameter for {prior.name}. Probably unintended.")
     norm_U_base_param = hk.get_parameter(
