@@ -67,6 +67,43 @@ def basic_run_results(basic_model):
 
 
 @pytest.fixture(scope='package')
+def basic_model_with_obj():
+    class Obj:
+        def __init__(self, x):
+            self.x = x
+
+    def prior_model() -> PriorModelGen:
+        x = yield Prior(tfpd.Uniform(low=0, high=1), name='x')
+        return Obj(x)
+
+    def log_likelihood(obj: Obj):
+        return - jnp.sum(obj.x ** 2)
+
+    model = Model(prior_model=prior_model,
+                  log_likelihood=log_likelihood)
+
+    log_Z_true = bruteforce_evidence(model=model, S=200)
+    return model, log_Z_true
+
+
+@pytest.fixture(scope='package')
+def basic_with_obj_run_results(basic_model_with_obj):
+    model, log_Z_true = basic_model_with_obj
+
+    ns = DefaultNestedSampler(model=model, max_samples=1000, verbose=True)
+    ns_jit = jax.jit(lambda key: ns(key))
+    ns_compiled = ns_jit.lower(random.PRNGKey(42)).compile()
+    with Timer():
+        termination_reason, state = ns_compiled(random.PRNGKey(42))
+        termination_reason.block_until_ready()
+    results = ns.to_results(termination_reason=termination_reason, state=state)
+    ns.plot_diagnostics(results)
+    ns.summary(results)
+    # exact_ns.plot_cornerplot(results)
+    return log_Z_true, results
+
+
+@pytest.fixture(scope='package')
 def basic2_model():
     n = 2
 
@@ -284,21 +321,23 @@ def multiellipsoidal_mvn_run_results(basic_mvn_model):
 
 @pytest.fixture(scope='package')
 def all_run_results(
-        basic_run_results,
-        basic2_run_results,
-        basic3_run_results,
-        plateau_run_results,
-        basic_mvn_run_results,
-        basic_mvn_run_results_parallel,
-        multiellipsoidal_mvn_run_results
+        # basic_run_results,
+        basic_with_obj_run_results,
+        # basic2_run_results,
+        # basic3_run_results,
+        # plateau_run_results,
+        # basic_mvn_run_results,
+        # basic_mvn_run_results_parallel,
+        # multiellipsoidal_mvn_run_results
 ):
     # Return tuples with names
     return [
-        ('basic', basic_run_results),
-        ('basic2', basic2_run_results),
-        ('basic3', basic3_run_results),
-        ('plateau', plateau_run_results),
-        ('basic_mvn', basic_mvn_run_results),
-        ('basic_mvn_parallel', basic_mvn_run_results_parallel),
-        ('multiellipsoidal_mvn', multiellipsoidal_mvn_run_results)
+        # ('basic', basic_run_results),
+        ('basic_with_obj', basic_with_obj_run_results),
+        # ('basic2', basic2_run_results),
+        # ('basic3', basic3_run_results),
+        # ('plateau', plateau_run_results),
+        # ('basic_mvn', basic_mvn_run_results),
+        # ('basic_mvn_parallel', basic_mvn_run_results_parallel),
+        # ('multiellipsoidal_mvn', multiellipsoidal_mvn_run_results)
     ]

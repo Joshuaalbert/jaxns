@@ -1,7 +1,6 @@
 from typing import NamedTuple
 
 import jax.random
-import pytest
 import tensorflow_probability.substrates.jax as tfp
 from jax import numpy as jnp
 
@@ -122,3 +121,22 @@ def test_parametrised_randomised_special():
     model.log_prob_prior(model.U_placeholder)
     model.log_prob_joint(model.U_placeholder, allow_nan=True)
     model.transform(model.U_placeholder)
+
+
+def test_objects_as_likelihood_input():
+    class Obj:
+        def __init__(self, x):
+            self.x = x
+
+    def prior_model():
+        x = yield Prior(dist_or_value=jnp.asarray(0.), name='x').parametrised()
+        return Obj(x)
+
+    def log_likelihood(obj: Obj):
+        return jnp.sum(obj.x)
+
+    model = Model(prior_model=prior_model, log_likelihood=log_likelihood)
+    model.sanity_check(key=jax.random.PRNGKey(0), S=10)
+
+
+
