@@ -1,3 +1,4 @@
+import dataclasses
 import logging
 from functools import partial
 from typing import Tuple, Dict, Any, Optional, NamedTuple
@@ -60,41 +61,35 @@ def next_power_2(x: int) -> int:
     return int(2 ** np.ceil(np.log2(x)))
 
 
+@dataclasses.dataclass(eq=False)
 class EvidenceMaximisation:
     """
     Evidence Maximisation class, that implements the E and M steps. Iteratively computes the evidence and maximises it.
+
+    Args:
+        model: The model to train.
+        ns_kwargs: The keyword arguments to pass to the nested sampler. Needs at least `max_samples`.
+        max_num_epochs: The maximum number of epochs to run M-step for.
+        gtol: The parameter tolerance for the M-step. End when all parameters change by less than gtol.
+        log_Z_ftol, log_Z_atol: The tolerances for the change in the evidence as function of log_Z_uncert.
+            Terminate if the change in log_Z is less than max(log_Z_ftol * log_Z_uncert, log_Z_atol).
+        batch_size: The batch size to use for the M-step.
+        momentum: The momentum to use for the M-step.
+        termination_cond: The termination condition to use for the nested sampler.
+        verbose: Whether to print progress verbosely.
     """
+    model: Model
+    ns_kwargs: Dict[str, Any]
+    max_num_epochs: int = 50
+    gtol: float = 1e-2
+    log_Z_ftol: float = 1.
+    log_Z_atol: float = 1e-4
+    batch_size: int = 128
+    momentum: float = 0.0
+    termination_cond: Optional[TerminationCondition] = None
+    verbose: bool = False
 
-    def __init__(self, model: Model, ns_kwargs: Dict[str, Any],
-                 max_num_epochs: int = 50, gtol=1e-2,
-                 log_Z_ftol=1., log_Z_atol=1e-4,
-                 batch_size: int = 128,
-                 termination_cond: Optional[TerminationCondition] = None,
-                 verbose: bool = False):
-
-        """
-        Initialise the EM class.
-
-        Args:
-            model: The model to train.
-            max_num_epochs: The maximum number of epochs to run M-step for.
-            gtol: The parameter tolerance for the M-step. End when all parameters change by less than gtol.
-            log_Z_ftol, log_Z_atol: The tolerances for the change in the evidence as function of log_Z_uncert.
-                Terminate if the change in log_Z is less than max(log_Z_ftol * log_Z_uncert, log_Z_atol).
-            ns_kwargs: The keyword arguments to pass to the nested sampler. Needs at least `max_samples`.
-            verbose: Whether to print progress verbosely.
-        """
-        if not isinstance(model, Model):
-            raise ValueError("model must be an instance of ParametrisedModel")
-        self.model = model
-        self.max_num_epochs = max_num_epochs
-        self.gtol = gtol
-        self.log_Z_ftol = log_Z_ftol
-        self.log_Z_atol = log_Z_atol
-        self._verbose = bool(verbose)
-        self._ns_kwargs = ns_kwargs
-        self._batch_size = batch_size
-        self._termination_cond = termination_cond
+    def __post_init__(self):
         self._e_step = self._create_e_step()
         self._m_step = self._create_m_step_stochastic()
 
@@ -109,8 +104,8 @@ class EvidenceMaximisation:
         def _ns_solve(params: hk.MutableParams, key: random.PRNGKey) -> Tuple[
             IntArray, StaticStandardNestedSamplerState]:
             model = self.model(params=params)
-            ns = DefaultNestedSampler(model=model, **self._ns_kwargs)
-            termination_reason, state = ns(key, self._termination_cond)
+            ns = DefaultNestedSampler(model=model, **self.ns_kwargs)
+            termination_reason, state = ns(key, self.termination_cond)
             return termination_reason, state
 
         # Ahead of time compile the function
@@ -119,7 +114,7 @@ class EvidenceMaximisation:
         def _e_step(key: PRNGKey, params: hk.MutableParams, p_bar: tqdm) -> NestedSamplerResults:
             p_bar.set_description(f"Running E-step... {p_bar.desc}")
             termination_reason, state = ns_compiled(params, key)
-            ns = DefaultNestedSampler(model=self.model(params=params), **self._ns_kwargs)
+            ns = DefaultNestedSampler(model=self.model(params=params), **self.ns_kwargs)
             # Trim now
             return ns.to_results(termination_reason=termination_reason, state=state, trim=True)
 
@@ -144,11 +139,11 @@ class EvidenceMaximisation:
     def _m_step_iterator(self, key: PRNGKey, data: MStepData):
         num_samples = int(data.U_samples.shape[0])
         permutation = jax.random.permutation(key, num_samples)
-        num_batches = num_samples // self._batch_size
+        num_batches = num_samples // self.batch_size
         if num_batches == 0:
             raise RuntimeError("Batch size is too large for number of samples.")
         for i in range(num_batches):
-            perm = permutation[i * self._batch_size:(i + 1) * self._batch_size]
+            perm = permutation[i * self.batch_size:(i + 1) * self.batch_size]
             batch = MStepData(
                 U_samples=data.U_samples[perm],
                 log_weights=data.log_weights[perm]
@@ -172,7 +167,7 @@ class EvidenceMaximisation:
             obj = -log_Z
             grad = jax.tree_map(jnp.negative, grad)
             aux = (log_Z,)
-            if self._verbose:
+            if self.verbose:
                 jax.debug.print("log_Z={log_Z}", log_Z=log_Z)
             return (obj, aux), grad
 
@@ -182,7 +177,7 @@ class EvidenceMaximisation:
             value_and_grad=True,
             jit=True,
             unroll=False,
-            verbose=self._verbose,
+            verbose=self.verbose,
             momentum=self.momentum
         )
 
@@ -225,7 +220,7 @@ class EvidenceMaximisation:
             obj = -log_Z
             grad = jax.tree_map(jnp.negative, grad)
             aux = (log_Z,)
-            if self._verbose:
+            if self.verbose:
                 jax.debug.print("log_Z={log_Z}", log_Z=log_Z)
             return (obj, aux), grad
 
@@ -235,7 +230,7 @@ class EvidenceMaximisation:
             value_and_grad=True,
             jit=True,
             unroll=False,
-            verbose=self._verbose
+            verbose=self.verbose
         )
 
         @partial(jax.jit, static_argnums=(0,))
