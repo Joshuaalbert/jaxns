@@ -1,7 +1,5 @@
 jax
 jaxlib
-chex
-typing_extensions
 matplotlib
 numpy
 scipy

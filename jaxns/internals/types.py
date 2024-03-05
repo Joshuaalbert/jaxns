@@ -1,6 +1,6 @@
 from typing import NamedTuple, Optional, Union, Any, Callable, Tuple, Dict, List, TypeVar
 
-import chex
+import jax
 import numpy as np
 from jax import numpy as jnp
 
@@ -28,10 +28,10 @@ float_type = jnp.result_type(float)
 int_type = jnp.result_type(int)
 complex_type = jnp.result_type(complex)
 
-PRNGKey = chex.PRNGKey
-FloatArray = chex.Array
-IntArray = chex.Array
-BoolArray = chex.Array
+PRNGKey = jax.Array
+FloatArray = jax.Array
+IntArray = jax.Array
+BoolArray = jax.Array
 
 LikelihoodType = Callable[..., FloatArray]
 RandomVariableType = TypeVar('RandomVariableType')
@@ -73,8 +73,8 @@ class TerminationCondition(NamedTuple):
     """
     ess: Optional[FloatArray] = jnp.asarray(jnp.inf, float_type)
     evidence_uncert: Optional[FloatArray] = jnp.asarray(0., float_type)
-    live_evidence_frac: Optional[FloatArray] = None # Depreceated use dlogZ
-    dlogZ: Optional[FloatArray] = jnp.asarray(np.log(1. + 1e-3), float_type) #
+    live_evidence_frac: Optional[FloatArray] = None  # Depreceated use dlogZ
+    dlogZ: Optional[FloatArray] = jnp.asarray(np.log(1. + 1e-3), float_type)  #
     max_samples: Optional[IntArray] = jnp.asarray(jnp.iinfo(int_type).max, int_type)
     max_num_likelihood_evaluations: Optional[IntArray] = jnp.asarray(jnp.iinfo(int_type).max, int_type)
     log_L_contour: Optional[FloatArray] = jnp.asarray(jnp.inf, float_type)
@@ -147,6 +147,7 @@ class StaticStandardSampleCollection(NamedTuple):
     num_likelihood_evaluations: IntArray  # [N] number of likelihood evaluations for each sample
     phantom: BoolArray  # [N] whether the sample is a phantom sample
 
+
 class TerminationRegister(NamedTuple):
     num_samples_used: IntArray
     evidence_calc: EvidenceCalculation
@@ -155,6 +156,7 @@ class TerminationRegister(NamedTuple):
     log_L_contour: FloatArray
     efficiency: FloatArray
     plateau: BoolArray
+
 
 class StaticStandardNestedSamplerState(NamedTuple):
     key: PRNGKey

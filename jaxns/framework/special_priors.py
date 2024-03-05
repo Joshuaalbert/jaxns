@@ -8,6 +8,7 @@ from jax import numpy as jnp, vmap, lax
 from jax._src.scipy.special import gammaln
 
 from jaxns.framework.bases import BaseAbstractPrior
+from jaxns.framework.prior import SingularPrior, prior_to_parametrised_singular
 from jaxns.internals.log_semiring import cumulative_logsumexp
 from jaxns.internals.types import FloatArray, IntArray, BoolArray, float_type, int_type
 
@@ -22,8 +23,21 @@ __all__ = [
     "UnnormalisedDirichlet"
 ]
 
+class SpecialPrior(BaseAbstractPrior):
+    def parametrised(self, random_init: bool = False) -> SingularPrior:
+        """
+        Convert this prior into a non-Bayesian parameter, that takes a single value in the model, but still has an associated
+        log_prob. The parameter is registered as a `hk.Parameter` with added `_param` name suffix.
 
-class Bernoulli(BaseAbstractPrior):
+        Args:
+            random_init: whether to initialise the parameter randomly or at the median of the distribution.
+
+        Returns:
+            A singular prior.
+        """
+        return prior_to_parametrised_singular(self, random_init=random_init)
+
+class Bernoulli(SpecialPrior):
     def __init__(self, *, logits=None, probs=None, name: Optional[str] = None):
         super(Bernoulli, self).__init__(name=name)
         self.dist = tfpd.Bernoulli(logits=logits, probs=probs)
@@ -52,7 +66,7 @@ class Bernoulli(BaseAbstractPrior):
         return sample.astype(self.dtype)
 
 
-class Beta(BaseAbstractPrior):
+class Beta(SpecialPrior):
     def __init__(self, *, concentration0=None, concentration1=None, name: Optional[str] = None):
         super(Beta, self).__init__(name=name)
         # Special cases for Beta that are faster use the Kumaraswamy distribution
@@ -90,7 +104,7 @@ class Beta(BaseAbstractPrior):
         return X.astype(self.dtype)
 
 
-class Categorical(BaseAbstractPrior):
+class Categorical(SpecialPrior):
     def __init__(self, parametrisation: Literal['gumbel_max', 'cdf'], *, logits=None, probs=None,
                  name: Optional[str] = None):
         """
@@ -168,7 +182,7 @@ class Categorical(BaseAbstractPrior):
         return category
 
 
-class ForcedIdentifiability(BaseAbstractPrior):
+class ForcedIdentifiability(SpecialPrior):
     """
     Prior for a sequence of `n` random variables uniformly distributed on U[low, high] such that U[i,...] <= U[i+1,...].
     For broadcasting the resulting random variable is sorted on the first dimension elementwise.
@@ -337,7 +351,7 @@ def _poisson_quantile(U, rate, unroll: bool = False):
     return x.astype(int_type)
 
 
-class Poisson(BaseAbstractPrior):
+class Poisson(SpecialPrior):
     def __init__(self, *, rate=None, log_rate=None, name: Optional[str] = None):
         super(Poisson, self).__init__(name=name)
         self.dist = tfpd.Poisson(rate=rate, log_rate=log_rate)
@@ -381,7 +395,7 @@ class Poisson(BaseAbstractPrior):
         return _poisson_quantile(U, rate)
 
 
-class UnnormalisedDirichlet(BaseAbstractPrior):
+class UnnormalisedDirichlet(SpecialPrior):
     """
     Represents an unnormalised dirichlet distribution of K classes.
     That is, the output is related to the K-simplex via normalisation.

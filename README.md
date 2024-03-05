@@ -358,7 +358,8 @@ is the best way to achieve speed up.
 
 # Change Log
 
-5 Mar, 2024 -- JAXNS 2.4.11 released. Add `random_init` to parametrised variables.
+5 Mar, 2024 -- JAXNS 2.4.11/b released. Add `random_init` to parametrised variables. Enable special priors to be
+parametrised.
 
 23 Feb, 2024 -- JAXNS 2.4.10 released. Hotfix for import error.
 

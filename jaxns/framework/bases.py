@@ -2,6 +2,8 @@ from abc import abstractmethod
 from typing import Tuple, Optional, Generator, Callable
 
 import jax.numpy as jnp
+import numpy as np
+from jax import lax
 
 from jaxns.framework.abc import AbstractModel, AbstractPrior, AbstractDistribution
 from jaxns.internals.shapes import tuple_prod
@@ -91,10 +93,10 @@ class BaseAbstractPrior(AbstractPrior):
             log probability of the prior
         """
         log_prob = self._log_prob(X)
-        if log_prob.size > 1:
+        if np.size(log_prob) > 1:
             log_prob = jnp.sum(log_prob)
         if log_prob.shape != ():
-            log_prob = log_prob.reshape(())
+            log_prob = lax.reshape(log_prob, ())
         return log_prob
 
 
