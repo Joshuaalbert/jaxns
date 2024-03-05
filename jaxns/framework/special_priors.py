@@ -55,7 +55,17 @@ class Bernoulli(BaseAbstractPrior):
 class Beta(BaseAbstractPrior):
     def __init__(self, *, concentration0=None, concentration1=None, name: Optional[str] = None):
         super(Beta, self).__init__(name=name)
-        self.dist = tfpd.Beta(concentration0=concentration0, concentration1=concentration1)
+        # Special cases for Beta that are faster use the Kumaraswamy distribution
+        if isinstance(concentration0, (float, int)) and concentration0 == 1:
+            self.dist = tfpd.Kumaraswamy(concentration0=concentration0, concentration1=concentration1)
+        elif isinstance(concentration1, (float, int)) and concentration1 == 1:
+            self.dist = tfpd.Kumaraswamy(concentration0=concentration0, concentration1=concentration1)
+        elif isinstance(concentration0, np.ndarray) and np.all(concentration0 == 1):
+            self.dist = tfpd.Kumaraswamy(concentration0=concentration0, concentration1=concentration1)
+        elif isinstance(concentration1, np.ndarray) and np.all(concentration1 == 1):
+            self.dist = tfpd.Kumaraswamy(concentration0=concentration0, concentration1=concentration1)
+        else:
+            self.dist = tfpd.Beta(concentration0=concentration0, concentration1=concentration1)
 
     def _dtype(self):
         return self.dist.dtype
@@ -77,13 +87,6 @@ class Beta(BaseAbstractPrior):
 
     def _quantile(self, U):
         X = self.dist.quantile(U)
-        # alpha = self.dist.concentration0
-        # beta = self.dist.concentration1
-        # # cdf(x, a, b) = I(x,a,b) = B(x,a,b)/B(a,b)
-        # # G = B(a,b) cdf(x, a, b) = B(a,b) I(x,a,b) = B(x,a,b)
-        # # quantile(u, a, b) = B^{-1}(B(a,b) U, a, b)
-        # Y = jnp.exp(lbeta(alpha, beta) + jnp.log(U))
-        # X = betaincinv(alpha, beta, Y)
         return X.astype(self.dtype)
 
 
@@ -257,7 +260,7 @@ class ForcedIdentifiability(BaseAbstractPrior):
             n -= 1
         log_x = jnp.log(U)  # [n, ...]
         k = jnp.arange(n) + 1
-        inner = log_x / jnp.reshape(k, (n,) + (1,) * (len(self.shape) - 1))
+        inner = log_x / lax.reshape(k, (n,) + (1,) * (len(self.shape) - 1))
         log_output = jnp.cumsum(inner[::-1], axis=0)[::-1]
         output = self.low + (self.high - self.low) * jnp.exp(log_output)
         if self.fix_left:
