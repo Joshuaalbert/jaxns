@@ -28,7 +28,7 @@ float_type = jnp.result_type(float)
 int_type = jnp.result_type(int)
 complex_type = jnp.result_type(complex)
 
-PRNGKey = jax.PRNGKey
+PRNGKey = jax.random.PRNGKeyArray
 FloatArray = jax.Array
 IntArray = jax.Array
 BoolArray = jax.Array
