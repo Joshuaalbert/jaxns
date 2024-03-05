@@ -40,7 +40,7 @@ class Model(BaseAbstractModel):
         # Parse the prior model to get place holders
         self.__U_placeholder, self.__X_placeholder = hk.transform(
             lambda: parse_prior(prior_model=self.prior_model)
-        ).apply(params=self._params, rng=None)
+        ).apply(params=self._params, rng=random.PRNGKey(0))
         self._id = str(uuid4())  # Used for making sure it's hashable, so it can be used as a key in a dict.
 
     @property
@@ -137,13 +137,13 @@ class Model(BaseAbstractModel):
         def _transform():
             return transform(U=U, prior_model=self.prior_model)
 
-        return hk.transform(_transform).apply(params=self._params, rng=None)
+        return hk.transform(_transform).apply(params=self._params, rng=random.PRNGKey(0))
 
     def transform_parametrised(self, U: UType) -> XType:
         def _transform():
             return transform_parametrised(U=U, prior_model=self.prior_model)
 
-        return hk.transform(_transform).apply(params=self._params, rng=None)
+        return hk.transform(_transform).apply(params=self._params, rng=random.PRNGKey(0))
 
     def forward(self, U: UType, allow_nan: bool = False) -> FloatArray:
         if self._params is None:
@@ -153,7 +153,7 @@ class Model(BaseAbstractModel):
             return compute_log_likelihood(U=U, prior_model=self.prior_model, log_likelihood=self.log_likelihood,
                                           allow_nan=allow_nan)
 
-        return hk.transform(_forward).apply(params=self._params, rng=None)
+        return hk.transform(_forward).apply(params=self._params, rng=random.PRNGKey(0))
 
     def log_prob_prior(self, U: UType) -> FloatArray:
         if self._params is None:
@@ -162,7 +162,7 @@ class Model(BaseAbstractModel):
         def _log_prob_prior():
             return compute_log_prob_prior(U=U, prior_model=self.prior_model)
 
-        return hk.transform(_log_prob_prior).apply(params=self._params, rng=None)
+        return hk.transform(_log_prob_prior).apply(params=self._params, rng=random.PRNGKey(0))
 
     def prepare_input(self, U: UType) -> LikelihoodInputType:
         if self._params is None:
@@ -171,7 +171,7 @@ class Model(BaseAbstractModel):
         def _prepare_input():
             return prepare_input(U=U, prior_model=self.prior_model)
 
-        return hk.transform(_prepare_input).apply(params=self._params, rng=None)
+        return hk.transform(_prepare_input).apply(params=self._params, rng=random.PRNGKey(0))
 
     def sanity_check(self, key: PRNGKey, S: int):
         U = jit(vmap(self.sample_U))(random.split(key, S))
