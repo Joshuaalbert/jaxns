@@ -1,7 +1,7 @@
 from typing import Tuple
 
 import jax
-from jax import numpy as jnp
+from jax import numpy as jnp, lax
 
 from jaxns.framework.bases import PriorModelType, BaseAbstractPrior
 from jaxns.framework.prior import InvalidPriorName, SingularPrior
@@ -279,10 +279,11 @@ def compute_log_likelihood(U: UType, prior_model: PriorModelType, log_likelihood
 
     V = prepare_input(U=U, prior_model=prior_model)
     log_L = jnp.asarray(log_likelihood(*V), float_type)
-    if not allow_nan:
-        log_L = jnp.where(jnp.isnan(log_L), -jnp.inf, log_L)
     if log_L.size != 1:
         raise ValueError(f"Log likelihood should be scalar, but got {log_L.shape}.")
     if log_L.shape != ():
-        log_L = jnp.reshape(log_L, ())
+        log_L = lax.reshape(log_L, ())
+    if not allow_nan:
+        is_nan = lax.ne(log_L, log_L)
+        log_L = lax.select(is_nan, -jnp.inf, log_L)
     return log_L

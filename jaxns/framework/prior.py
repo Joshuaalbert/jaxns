@@ -35,31 +35,31 @@ class SingularPrior(BaseAbstractPrior):
         (at the singular value).
     """
 
-    def __init__(self, value: jnp.ndarray, dist: BaseAbstractDistribution, name: Optional[str] = None):
+    def __init__(self, value: jnp.ndarray, base_prior: BaseAbstractPrior, name: Optional[str] = None):
         super().__init__(name=name)
         self.value = value
-        self.dist = dist
+        self.base_prior = base_prior
 
     def __repr__(self):
-        return f"{self.value} -> {self.dist}"
+        return f"{self.value} -> {self.base_prior}"
 
     def _dtype(self):
-        return self.dist.dtype
+        return self.base_prior.dtype
 
     def _base_shape(self) -> Tuple[int, ...]:
         return (0,)  # Singular prior has no base shape
 
     def _shape(self) -> Tuple[int, ...]:
-        return self.dist.shape
+        return self.base_prior.shape
 
     def _forward(self, U: UType) -> Union[FloatArray, IntArray, BoolArray]:
         return self.value
 
-    def _inverse(self, X: XType) -> FloatArray:
+    def _inverse(self, X: XType) -> UType:
         return jnp.asarray([], float_type)
 
     def _log_prob(self, X: XType) -> FloatArray:
-        return self.dist.log_prob(X)
+        return self.base_prior.log_prob(X)
 
 
 class Prior(BaseAbstractPrior):
@@ -152,12 +152,10 @@ class Prior(BaseAbstractPrior):
         Returns:
             A singular prior.
         """
-        if self._type == 'value':
-            raise ValueError("Cannot parametrise a prior without distribution.")
         return prior_to_parametrised_singular(self, random_init=random_init)
 
 
-def prior_to_parametrised_singular(prior: Prior, random_init: bool = False) -> SingularPrior:
+def prior_to_parametrised_singular(prior: BaseAbstractPrior, random_init: bool = False) -> SingularPrior:
     """
     Convert a prior into a non-Bayesian parameter, that takes a single value in the model, but still has an associated
     log_prob. The parameter is registered as a `hk.Parameter` with added `_param` name suffix.
@@ -193,4 +191,4 @@ def prior_to_parametrised_singular(prior: Prior, random_init: bool = False) -> S
     # U_base_param = ndtr(norm_U_base_param)
     U_base_param = jax.nn.sigmoid(norm_U_base_param)
     param = prior.forward(U_base_param)
-    return SingularPrior(value=param, dist=prior.dist, name=prior.name)
+    return SingularPrior(value=param, base_prior=prior, name=prior.name)
