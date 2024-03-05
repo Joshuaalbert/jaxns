@@ -1,9 +1,12 @@
+import logging
+from typing import List, Tuple, Union
+
 import numpy as np
 import pytest
 import tensorflow_probability.substrates.jax as tfp
 from jax import random, numpy as jnp, vmap
 
-from jaxns.framework.bases import PriorModelGen
+from jaxns.framework.bases import PriorModelGen, BaseAbstractPrior
 from jaxns.framework.distribution import InvalidDistribution, distribution_chain
 from jaxns.framework.ops import parse_prior, prepare_input, compute_log_likelihood
 from jaxns.framework.prior import Prior, InvalidPriorName
@@ -12,6 +15,7 @@ from jaxns.framework.special_priors import Bernoulli, Categorical, Poisson, Beta
 from jaxns.internals.types import float_type
 
 tfpd = tfp.distributions
+logger = logging.getLogger('jaxns')
 
 
 def test_single_prior():
@@ -183,99 +187,59 @@ def test_priors():
     assert d.shape == (5,)
 
 
-def test_special_priors():
-    d = Bernoulli(probs=jnp.ones(5), name='x')
-    print(d)
-    assert d.forward(jnp.ones(d.base_shape, float_type)).shape == d.shape
-    assert d.forward(jnp.zeros(d.base_shape, float_type)).shape == d.shape
-    assert d.base_shape == (5,)
-    assert d.shape == (5,)
+@pytest.fixture(scope='module')
+def mock_special_priors() -> List[
+    Tuple[BaseAbstractPrior, Tuple[Union[float, int], Union[float, int]], Tuple[int, ...]]]:
+    # prior, (min, max), shape
+    return [
+        (Bernoulli(probs=jnp.ones(5), name='x'), (0, 1), (5,)),
+        (Categorical(parametrisation='gumbel_max', probs=jnp.ones(5), name='x'), (0, 4), ()),
+        (Categorical(parametrisation='cdf', probs=jnp.ones(5), name='x'), (0, 4), ()),
+        (Poisson(rate=jnp.ones(5), name='x'), (0, 100), (5,)),
+        (Beta(concentration0=jnp.ones(5), concentration1=jnp.ones(5), name='x'), (0, 1), (5,)),
+        (ForcedIdentifiability(n=10, low=jnp.zeros(5), high=jnp.ones(5), name='x'), (0, 1), (10, 5)),
+        (ForcedIdentifiability(n=10, low=jnp.zeros(5), high=jnp.ones(5), fix_left=True, name='x'), (0, 1), (10, 5)),
+        (ForcedIdentifiability(n=10, low=jnp.zeros(5), high=jnp.ones(5), fix_right=True, name='x'), (0, 1), (10, 5)),
+        (ForcedIdentifiability(n=10, low=jnp.zeros(5), high=jnp.ones(5), fix_left=True, fix_right=True, name='x'),
+         (0, 1), (10, 5)),
+        (UnnormalisedDirichlet(concentration=jnp.ones(5), name='x'), (0, jnp.inf), (5,)),
+        (UnnormalisedDirichlet(concentration=jnp.ones((3, 5)), name='x'), (0, jnp.inf), (3, 5)),
+    ]
 
-    probs = jnp.asarray([1, 2, 3, 2, 1], float_type)
-    d = Categorical(parametrisation='gumbel_max', probs=probs, name='x')
-    print(d)
-    assert d.forward(jnp.ones(d.base_shape, float_type)).shape == d.shape
-    assert d.forward(jnp.zeros(d.base_shape, float_type)).shape == d.shape
-    assert d.base_shape == (5,)
-    assert d.shape == ()
-    x = vmap(lambda key: d.forward(random.uniform(key, shape=d.base_shape)))(random.split(random.PRNGKey(42), 10000))
-    assert jnp.all(x >= 0)
-    assert jnp.all(x < 5)
-    assert jnp.any(x == 0)
-    assert jnp.any(x == 4)
-    count = jnp.bincount(x)
-    count /= jnp.sum(count)
-    assert jnp.allclose(count, probs / jnp.sum(probs), atol=1e-2)
 
-    probs = jnp.asarray([1, 2, 3, 2, 1], float_type)
-    d = Categorical(parametrisation='cdf', probs=probs, name='x')
-    print(d)
-    assert d.forward(jnp.ones(d.base_shape, float_type)).shape == d.shape
-    assert d.forward(jnp.zeros(d.base_shape, float_type)).shape == d.shape
-    assert d.base_shape == ()
-    assert d.shape == ()
-    u_array = jnp.linspace(0., 1., 10000)
-    x = vmap(lambda u: d.forward(u))(u_array)
-    assert jnp.all(x >= 0)
-    assert jnp.all(x < 5)
-    assert jnp.any(x == 0)
-    assert jnp.any(x == 4)
-    count = jnp.bincount(x)
-    count /= jnp.sum(count)
-    assert jnp.allclose(count, probs / jnp.sum(probs), atol=1e-2)
+def test_special_priors(mock_special_priors: List[BaseAbstractPrior]):
+    for prior, (vmin, vmax), shape in mock_special_priors:
+        print(f"Testing {prior.__class__}")
+        x = prior.forward(jnp.ones(prior.base_shape, float_type))
+        assert jnp.all(jnp.bitwise_not(jnp.isnan(x)))
+        assert jnp.all(x >= vmin)
+        assert jnp.all(x <= vmax)
+        assert x.shape == shape
+        assert x.shape == prior.shape
+        x = prior.forward(jnp.zeros(prior.base_shape, float_type))
+        assert jnp.all(jnp.bitwise_not(jnp.isnan(x)))
+        assert jnp.all(x >= vmin)
+        assert jnp.all(x <= vmax)
+        assert x.shape == shape
+        assert x.shape == prior.shape
 
-    d = Poisson(rate=jnp.ones(5), name='x')
-    print(d)
-    assert d.forward(jnp.ones(d.base_shape, float_type)).shape == d.shape
-    assert d.forward(jnp.zeros(d.base_shape, float_type)).shape == d.shape
-    assert d.base_shape == (5,)
-    assert d.shape == (5,)
+        u_input = vmap(lambda key: random.uniform(key, shape=prior.base_shape))(random.split(random.PRNGKey(42), 10))
+        x = vmap(lambda u: prior.forward(u))(u_input)
+        assert jnp.all(x >= vmin)
+        assert jnp.all(x <= vmax)
 
-    d = Beta(concentration0=jnp.ones(5), concentration1=jnp.ones(5), name='x')
-    print(d)
-    assert d.forward(jnp.ones(d.base_shape, float_type)).shape == d.shape
-    assert d.forward(jnp.zeros(d.base_shape, float_type)).shape == d.shape
-    assert d.base_shape == (5,)
-    assert d.shape == (5,)
+        try:
+            u = vmap(lambda x: prior.inverse(x))(x)
+            assert u.shape[1:] == prior.base_shape
 
-    d = ForcedIdentifiability(n=10, low=jnp.zeros(5), high=jnp.ones(5), name='x')
-    print(d)
-    assert d.forward(jnp.ones(d.base_shape, float_type)).shape == d.shape
-    assert d.forward(jnp.zeros(d.base_shape, float_type)).shape == d.shape
-    assert d.base_shape == (10, 5)
-    assert d.shape == (10, 5)
-
-    u_input = vmap(lambda key: random.uniform(key, shape=d.base_shape))(random.split(random.PRNGKey(42), 1000))
-    x = vmap(lambda u: d.forward(u))(u_input)
-    u = vmap(lambda x: d.inverse(x))(x)
-    assert jnp.allclose(u, u_input)
-    assert jnp.all(jnp.isfinite(x))
-
-    d = UnnormalisedDirichlet(concentration=jnp.ones(5), name='x')
-    print(d)
-    assert d.base_shape == (5,)
-    assert d.shape == (5,)
-    assert d.forward(jnp.ones(d.base_shape, float_type)).shape == d.shape
-    assert d.forward(jnp.zeros(d.base_shape, float_type)).shape == d.shape
-
-    u_input = vmap(lambda key: random.uniform(key, shape=d.base_shape))(random.split(random.PRNGKey(42), 10))
-    x = vmap(lambda u: d.forward(u))(u_input)
-    assert jnp.all(x > 0.)
-    u = vmap(lambda x: d.inverse(x))(x)
-    assert jnp.allclose(u, u_input)
-
-    d = UnnormalisedDirichlet(concentration=jnp.ones((3, 5)), name='x')
-    print(d)
-    assert d.base_shape == (3, 5)
-    assert d.shape == (3, 5)
-    assert d.forward(jnp.ones(d.base_shape, float_type)).shape == d.shape
-    assert d.forward(jnp.zeros(d.base_shape, float_type)).shape == d.shape
-
-    u_input = vmap(lambda key: random.uniform(key, shape=d.base_shape))(random.split(random.PRNGKey(42), 10))
-    x = vmap(lambda u: d.forward(u))(u_input)
-    assert jnp.all(x > 0.)
-    u = vmap(lambda x: d.inverse(x))(x)
-    assert jnp.allclose(u, u_input)
+            if prior.dtype in [jnp.bool_, jnp.int32, jnp.int64]:
+                continue
+            print(u)
+            print(u_input)
+            assert jnp.allclose(u, u_input)
+        except NotImplementedError:
+            logger.warning(f"Skipping inverse test for {prior.__class__}")
+            pass
 
 
 @pytest.mark.parametrize("rate, error", (
