@@ -1,5 +1,4 @@
-.. jaxns documentation master file, created by
-sphinx-quickstart on Sat Aug 13 12:39:28 2022.
+.. jaxns documentation master file, created by sphinx-quickstart on Sat Aug 13 12:39:28 2022.
 
 Welcome to JAXNS's documentation!
 =================================
