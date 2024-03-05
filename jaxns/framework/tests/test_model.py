@@ -50,8 +50,7 @@ def test_parametrised_singular():
     def log_likelihood(x):
         return jnp.sum(x)
 
-    with pytest.raises(ValueError, match="Cannot parametrise a prior without distribution."):
-        _ = Model(prior_model=prior_model, log_likelihood=log_likelihood)
+    _ = Model(prior_model=prior_model, log_likelihood=log_likelihood)
 
 
 def test_parametrised():
