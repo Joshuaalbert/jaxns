@@ -7,7 +7,7 @@ import tensorflow_probability.substrates.jax as tfp
 from jax import numpy as jnp
 
 from jaxns.framework.bases import BaseAbstractPrior, BaseAbstractDistribution
-from jaxns.framework.distribution import Distribution
+from jaxns.framework.wrapped_tfp_distribution import WrappedTFPDistribution
 from jaxns.internals.types import FloatArray, IntArray, BoolArray, XType, UType, float_type
 
 tfpd = tfp.distributions
@@ -72,7 +72,7 @@ class Prior(BaseAbstractPrior):
         super(Prior, self).__init__(name=name)
         if isinstance(dist_or_value, tfpd.Distribution):
             self._type = 'dist'
-            self._dist = Distribution(dist_or_value)
+            self._dist = WrappedTFPDistribution(dist_or_value)
         elif isinstance(dist_or_value, BaseAbstractDistribution):
             self._type = 'dist'
             self._dist = dist_or_value

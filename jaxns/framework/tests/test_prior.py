@@ -7,7 +7,7 @@ import tensorflow_probability.substrates.jax as tfp
 from jax import random, numpy as jnp, vmap
 
 from jaxns.framework.bases import PriorModelGen, BaseAbstractPrior
-from jaxns.framework.distribution import InvalidDistribution, distribution_chain
+from jaxns.framework.wrapped_tfp_distribution import InvalidDistribution, distribution_chain
 from jaxns.framework.ops import parse_prior, prepare_input, compute_log_likelihood
 from jaxns.framework.prior import Prior, InvalidPriorName
 from jaxns.framework.special_priors import Bernoulli, Categorical, Poisson, Beta, ForcedIdentifiability, \
