@@ -175,6 +175,13 @@ class EvidenceMaximisation:
             log_Z, grad = jax.value_and_grad(log_evidence, argnums=0)(params, data)
             obj = -log_Z
             grad = jax.tree_map(jnp.negative, grad)
+
+            # If objective is -+inf, or nan, then the gradient is nan
+            grad = jax.tree_map(lambda x: jnp.where(jnp.isfinite(obj), x, jnp.zeros_like(x)), grad)
+
+            # Clip the gradient
+            grad = jax.tree_map(lambda x: jnp.clip(x, -10, 10), grad)
+
             aux = (log_Z,)
             if self.verbose:
                 jax.debug.print("(minibatch) log_Z={log_Z}", log_Z=log_Z)
