@@ -285,5 +285,5 @@ def compute_log_likelihood(U: UType, prior_model: PriorModelType, log_likelihood
         log_L = lax.reshape(log_L, ())
     if not allow_nan:
         is_nan = lax.ne(log_L, log_L)
-        log_L = lax.select(is_nan, -jnp.inf, log_L)
+        log_L = lax.select(is_nan, jnp.asarray(-jnp.inf, log_L.dtype), log_L)
     return log_L
