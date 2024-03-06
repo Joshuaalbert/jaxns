@@ -179,7 +179,9 @@ class Model(BaseAbstractModel):
         logger.info("Sanity check...")
         for _U, _log_L in zip(U, log_L):
             if jnp.isnan(_log_L):
-                logger.info(f"Found bad point: {_U} -> {self.transform(_U)}")
+                logger.info(f"Found bad point:"
+                            f"\n{_U} -> {self.transform(_U)}"
+                            f"\n -> {self.transform_parametrised(_U)}")
         assert not any(np.isnan(log_L))
         logger.info("Sanity check passed")
         if 'parsed_prior' in self.__dict__:
