@@ -1,9 +1,11 @@
 import dataclasses
 import logging
+import time
 from functools import partial
 from typing import Tuple, Dict, Any, Optional, NamedTuple
 
 import jax
+import jaxopt
 import numpy as np
 import tensorflow_probability.substrates.jax as tfp
 from jax import numpy as jnp, random
@@ -64,7 +66,8 @@ def next_power_2(x: int) -> int:
 @dataclasses.dataclass(eq=False)
 class EvidenceMaximisation:
     """
-    Evidence Maximisation class, that implements the E and M steps. Iteratively computes the evidence and maximises it.
+    Evidence Maximisation class, that implements the E and M steps. Iteratively computes the evidence and maximises it
+    using stochastic minibatching over samples from E-step.
 
     Args:
         model: The model to train.
@@ -76,6 +79,7 @@ class EvidenceMaximisation:
         batch_size: The batch size to use for the M-step.
         momentum: The momentum to use for the M-step.
         termination_cond: The termination condition to use for the nested sampler.
+        solver: The solver to use for the M-step. Either 'adam' or 'armijo'.
         verbose: Whether to print progress verbosely.
     """
     model: Model
@@ -85,11 +89,13 @@ class EvidenceMaximisation:
     log_Z_ftol: float = 1.
     log_Z_atol: float = 1e-4
     batch_size: int = 128
-    momentum: float = 0.0
     termination_cond: Optional[TerminationCondition] = None
+    solver: str = 'armijo'
     verbose: bool = False
 
     def __post_init__(self):
+        if 'max_samples' not in self.ns_kwargs:
+            raise ValueError("ns_kwargs must contain 'max_samples'.")
         self._e_step = self._create_e_step()
         self._m_step = self._create_m_step_stochastic()
 
@@ -109,13 +115,16 @@ class EvidenceMaximisation:
             return termination_reason, state
 
         # Ahead of time compile the function
-        ns_compiled = jax.jit(_ns_solve).lower(self.model.params, random.PRNGKey(42)).compile()
+        t0 = time.time()
+        ns_solve_compiled = jax.jit(_ns_solve).lower(self.model.params, random.PRNGKey(42)).compile()
+        if self.verbose:
+            logger.info(f"E-step compilation time: {time.time() - t0:.2f}s")
+        ns = DefaultNestedSampler(model=self.model(params=self.model.params), **self.ns_kwargs)
 
         def _e_step(key: PRNGKey, params: hk.MutableParams, p_bar: tqdm) -> NestedSamplerResults:
             p_bar.set_description(f"Running E-step... {p_bar.desc}")
-            termination_reason, state = ns_compiled(params, key)
-            ns = DefaultNestedSampler(model=self.model(params=params), **self.ns_kwargs)
-            # Trim now
+            termination_reason, state = ns_solve_compiled(params, key)
+            # Trim results
             return ns.to_results(termination_reason=termination_reason, state=state, trim=True)
 
         return _e_step
@@ -168,18 +177,33 @@ class EvidenceMaximisation:
             grad = jax.tree_map(jnp.negative, grad)
             aux = (log_Z,)
             if self.verbose:
-                jax.debug.print("log_Z={log_Z}", log_Z=log_Z)
+                jax.debug.print("(minibatch) log_Z={log_Z}", log_Z=log_Z)
             return (obj, aux), grad
 
-        solver = ArmijoSGD(
-            fun=loss,
-            has_aux=True,
-            value_and_grad=True,
-            jit=True,
-            unroll=False,
-            verbose=self.verbose,
-            momentum=self.momentum
-        )
+        if self.solver == 'adam':
+            solver = jaxopt.OptaxSolver(
+                fun=loss,
+                opt=optax.adam(learning_rate=1e-2),
+                has_aux=True,
+                value_and_grad=True,
+                jit=True,
+                unroll=False,
+                verbose=self.verbose,
+                maxiter=1000
+            )
+        elif self.solver == 'armijo':
+            solver = ArmijoSGD(
+                fun=loss,
+                has_aux=True,
+                value_and_grad=True,
+                jit=True,
+                unroll=False,
+                verbose=self.verbose,
+                momentum=0.,  # momentum does not help
+                maxiter=1000
+            )
+        else:
+            raise ValueError(f"Unknown solver {self.solver}")
 
         def _m_step_stochastic(key: PRNGKey, params: hk.MutableParams, data: MStepData) -> Tuple[hk.MutableParams, Any]:
             """
@@ -272,6 +296,8 @@ class EvidenceMaximisation:
         p_bar.set_description(f"Running M-step ({num_samples} samples padded to {n})... {p_bar.desc}")
 
         def _pad_to_n(x, fill_value, dtype):
+            if x.shape[0] == n:
+                return x
             return jnp.concatenate([x, jnp.full((n - x.shape[0],) + x.shape[1:], fill_value, dtype)], axis=0)
 
         log_weights = ns_results.log_dp_mean - ns_results.log_L_samples + ns_results.log_Z_mean
@@ -285,7 +311,8 @@ class EvidenceMaximisation:
         log_Z = None
         while epoch < self.max_num_epochs:
             params, (log_Z,) = self._m_step(key=key, params=params, data=data)
-            l_oo = jax.tree_map(lambda x, y: jnp.max(jnp.abs(x - y)), last_params, params)
+            l_oo = jax.tree_map(lambda x, y: jnp.max(jnp.abs(x - y)) if np.size(x) > 0 else 0.,
+                                last_params, params)
             last_params = params
             p_bar.set_description(f"{desc}: Epoch {epoch}: log_Z={log_Z}, l_oo={l_oo}")
             if all(_l_oo < self.gtol for _l_oo in jax.tree_leaves(l_oo)):
@@ -331,7 +358,7 @@ class EvidenceMaximisation:
 
             # Check termination condition
             log_Z_change = jnp.abs(ns_results.log_Z_mean - log_Z)
-            if log_Z_change < max(self.log_Z_ftol * ns_results.log_Z_uncert, self.log_Z_atol):
+            if log_Z_change < max(float(self.log_Z_ftol * ns_results.log_Z_uncert), self.log_Z_atol):
                 p_bar.set_description(f"Convergence achieved at step {step}.")
                 break
 
