@@ -3,7 +3,6 @@ from typing import Tuple, Optional, Union
 
 import haiku as hk
 import jax.nn
-import numpy as np
 import tensorflow_probability.substrates.jax as tfp
 from jax import numpy as jnp
 
@@ -146,14 +145,18 @@ class Prior(BaseAbstractPrior):
 
     def parametrised(self, random_init: bool = False) -> SingularPrior:
         """
-        Convert this prior into a non-Bayesian parameter, that takes a single value in the model, but still has an associated
-        log_prob. The parameter is registered as a `hk.Parameter` with added `_param` name suffix.
+        Convert this prior into a non-Bayesian parameter, that takes a single value in the model, but still has an
+        associated log_prob. The parameter is registered as a `hk.Parameter` with added `_param` name suffix. Prior
+        must have a name.
 
         Args:
             random_init: whether to initialise the parameter randomly or at the median of the distribution.
 
         Returns:
             A singular prior.
+
+        Raises:
+            ValueError: if the prior has no name.
         """
         return prior_to_parametrised_singular(self, random_init=random_init)
 
