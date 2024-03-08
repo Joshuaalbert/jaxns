@@ -3,6 +3,7 @@ from typing import Tuple, Optional, Union
 
 import haiku as hk
 import jax.nn
+import numpy as np
 import tensorflow_probability.substrates.jax as tfp
 from jax import numpy as jnp
 
@@ -67,18 +68,20 @@ class Prior(BaseAbstractPrior):
     Represents a generative prior.
     """
 
-    def __init__(self, dist_or_value: Union[tfpd.Distribution, BaseAbstractDistribution, jnp.ndarray],
+    def __init__(self, dist_or_value: Union[tfpd.Distribution, FloatArray, IntArray, BoolArray],
                  name: Optional[str] = None):
         super(Prior, self).__init__(name=name)
         if isinstance(dist_or_value, tfpd.Distribution):
-            self._type = 'dist'
             self._dist = WrappedTFPDistribution(dist_or_value)
-        elif isinstance(dist_or_value, BaseAbstractDistribution):
             self._type = 'dist'
-            self._dist = dist_or_value
         else:
+            try:
+                self._value = jnp.asarray(dist_or_value)
+            except TypeError:
+                raise ValueError(f"Could not convert {dist_or_value} to array.")
+            except Exception as e:
+                raise e
             self._type = 'value'
-            self._value = jnp.asarray(dist_or_value)
         self.name = name
 
     @property
