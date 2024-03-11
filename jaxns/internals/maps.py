@@ -7,7 +7,7 @@ from jax import tree_map, pmap, numpy as jnp, lax, tree_util
 
 from jaxns.internals.types import int_type
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('jaxns')
 
 
 def replace_index(operand, update, start_index):
