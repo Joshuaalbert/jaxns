@@ -29,9 +29,9 @@ int_type = jnp.result_type(int)
 complex_type = jnp.result_type(complex)
 
 PRNGKey = jax.Array
-FloatArray = jax.Array
-IntArray = jax.Array
-BoolArray = jax.Array
+FloatArray = jax.Array | float
+IntArray = jax.Array | int
+BoolArray = jax.Array | bool
 
 LikelihoodType = Callable[..., FloatArray]
 RandomVariableType = TypeVar('RandomVariableType')
