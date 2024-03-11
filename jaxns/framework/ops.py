@@ -1,16 +1,36 @@
+import inspect
+import logging
 from typing import Tuple
 
 import jax
 from jax import numpy as jnp, lax
 
-from jaxns.framework.bases import PriorModelType, BaseAbstractPrior
-from jaxns.framework.prior import InvalidPriorName, SingularPrior
+from jaxns.framework.bases import PriorModelType, BaseAbstractPrior, PriorModelGen
+from jaxns.framework.prior import InvalidPriorName, SingularPrior, Prior
 from jaxns.internals.types import UType, XType, float_type, LikelihoodInputType, FloatArray, LikelihoodType, PRNGKey, \
     isinstance_namedtuple
 
 __all__ = [
     'simulate_prior_model'
 ]
+
+logger = logging.getLogger('jaxns')
+
+
+def _get_prior_model_gen(prior_model: PriorModelType) -> PriorModelGen:
+    gen = prior_model()
+    # Check if gen is a generator
+    if not inspect.isgenerator(gen):
+        logger.warning("The provided prior_model is not a generator, this may mean you forget `yield` statements. "
+                       "This means there are no Bayesian variables.")
+
+        def dummy_prior_model(output):
+            _ = yield Prior(0.)
+            return output
+
+        # Make an empty generator that returns the output.
+        gen = dummy_prior_model(gen)
+    return gen
 
 
 def compute_U_ndims(prior_model: PriorModelType) -> int:
@@ -24,7 +44,8 @@ def compute_U_ndims(prior_model: PriorModelType) -> int:
         number of U dims
     """
     U_ndims = 0
-    gen = prior_model()
+    gen = _get_prior_model_gen(prior_model=prior_model)
+
     prior_response = None
     names = set()
     while True:
@@ -70,7 +91,8 @@ def parse_prior(prior_model: PriorModelType) -> Tuple[UType, XType]:
         U placeholder, X placeholder
     """
     U_ndims = 0
-    gen = prior_model()
+    gen = _get_prior_model_gen(prior_model=prior_model)
+
     prior_response = None
     names = set()
     X_placeholder: XType = dict()
@@ -105,7 +127,8 @@ def parse_joint(prior_model: PriorModelType, log_likelihood: LikelihoodType) -> 
         U placeholder, X placeholder
     """
     U_ndims = 0
-    gen = prior_model()
+    gen = _get_prior_model_gen(prior_model=prior_model)
+
     prior_response = None
     names = set()
     X_placeholder: XType = dict()
@@ -145,7 +168,8 @@ def transform(U: UType, prior_model: PriorModelType) -> XType:
         the prior variables
     """
 
-    gen = prior_model()
+    gen = _get_prior_model_gen(prior_model=prior_model)
+
     prior_response = None
     names = set()
     X_collection = dict()
@@ -180,7 +204,8 @@ def transform_parametrised(U: UType, prior_model: PriorModelType) -> XType:
         the parametrised prior variables
     """
 
-    gen = prior_model()
+    gen = _get_prior_model_gen(prior_model=prior_model)
+
     prior_response = None
     names = set()
     Y_collection = dict()
@@ -215,7 +240,8 @@ def prepare_input(U: UType, prior_model: PriorModelType) -> LikelihoodInputType:
         the conditional variables of likelihood model
     """
 
-    gen = prior_model()
+    gen = _get_prior_model_gen(prior_model=prior_model)
+
     prior_response = None
     idx = 0
     while True:
@@ -245,7 +271,8 @@ def compute_log_prob_prior(U: UType, prior_model: PriorModelType) -> FloatArray:
         prior log-density
     """
 
-    gen = prior_model()
+    gen = _get_prior_model_gen(prior_model=prior_model)
+
     prior_response = None
     log_prob = []
     idx = 0

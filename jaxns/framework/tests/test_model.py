@@ -138,5 +138,16 @@ def test_objects_as_likelihood_input():
     model = Model(prior_model=prior_model, log_likelihood=log_likelihood)
     model.sanity_check(key=jax.random.PRNGKey(0), S=10)
 
+def test_empty_prior_models():
+
+    def prior_model():
+        return 1.
+
+    def log_likelihood(x):
+        return x
+
+    model = Model(prior_model=prior_model, log_likelihood=log_likelihood)
+    model.sanity_check(key=jax.random.PRNGKey(0), S=10)
+
 
 
