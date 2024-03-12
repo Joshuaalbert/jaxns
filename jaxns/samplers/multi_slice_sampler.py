@@ -1,4 +1,3 @@
-import logging
 from typing import TypeVar, NamedTuple, Tuple, Optional
 
 from jax import numpy as jnp, random, tree_map, lax
@@ -14,8 +13,6 @@ from jaxns.samplers.bases import SeedPoint, BaseAbstractMarkovSampler
 __all__ = [
     'MultiDimSliceSampler'
 ]
-
-logger = logging.getLogger('jaxns')
 
 T = TypeVar('T')
 
