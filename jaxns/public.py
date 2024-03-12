@@ -1,14 +1,12 @@
 import warnings
 from typing import Optional, Tuple, Union
 
-import warnings
-from typing import Optional, Tuple, Union
-
 import jax.numpy as jnp
 import tensorflow_probability.substrates.jax as tfp
 from jax import tree_map, core
 
 from jaxns.framework.bases import BaseAbstractModel
+from jaxns.internals.logging import logger
 from jaxns.internals.types import PRNGKey, IntArray, StaticStandardNestedSamplerState, TerminationCondition, \
     NestedSamplerResults
 from jaxns.nested_sampler.bases import BaseAbstractNestedSampler

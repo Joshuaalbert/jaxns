@@ -5,6 +5,8 @@ from uuid import uuid4
 import numpy as np
 from jax import random, vmap, jit, numpy as jnp
 
+from jaxns.internals.logging import logger
+
 try:
     import haiku as hk
 except ImportError:
@@ -172,17 +174,15 @@ class Model(BaseAbstractModel):
         return hk.transform(_prepare_input).apply(params=self._params, rng=random.PRNGKey(0))
 
     def sanity_check(self, key: PRNGKey, S: int):
-        import logging
-        logging.basicConfig(level=logging.INFO)
         U = jit(vmap(self.sample_U))(random.split(key, S))
         log_L = jit(vmap(lambda u: self.forward(u, allow_nan=True)))(U)
-        logging.info("Sanity check...")
+        logger.info("Sanity check...")
         for _U, _log_L in zip(U, log_L):
             if jnp.isnan(_log_L):
-                logging.info(f"Found bad point:"
+                logger.info(f"Found bad point:"
                              f"\n{_U} -> {self.transform(_U)}"
                              f"\n -> {self.transform_parametrised(_U)}")
         assert not any(np.isnan(log_L))
-        logging.info("Sanity check passed")
+        logger.info("Sanity check passed")
         if 'parsed_prior' in self.__dict__:
             del self.__dict__['parsed_prior']

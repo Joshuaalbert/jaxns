@@ -1,5 +1,4 @@
 import dataclasses
-import logging
 import time
 from functools import partial
 from typing import Tuple, Dict, Any, Optional, NamedTuple
@@ -15,6 +14,7 @@ from tqdm import tqdm
 
 from jaxns.internals.cumulative_ops import cumulative_op_static
 from jaxns.internals.log_semiring import LogSpace
+from jaxns.internals.logging import logger
 
 try:
     import haiku as hk
@@ -38,8 +38,6 @@ __all__ = [
 
 tfpd = tfp.distributions
 tfpk = tfp.math.psd_kernels
-
-logger = logging.getLogger('jaxns')
 
 
 class MStepData(NamedTuple):

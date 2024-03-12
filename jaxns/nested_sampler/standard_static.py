@@ -8,10 +8,12 @@ from jax._src.lax import parallel
 from jaxns.framework.bases import BaseAbstractModel
 from jaxns.internals.cumulative_ops import cumulative_op_static
 from jaxns.internals.log_semiring import LogSpace, normalise_log_space
+from jaxns.internals.logging import logger
 from jaxns.internals.shrinkage_statistics import compute_evidence_stats, init_evidence_calc, \
     update_evicence_calculation, EvidenceUpdateVariables, _update_evidence_calc_op
 from jaxns.internals.stats import linear_to_log_stats, effective_sample_size
 from jaxns.internals.tree_structure import SampleTreeGraph, count_crossed_edges, unbatch_state
+from jaxns.internals.types import TerminationCondition
 from jaxns.internals.types import TerminationCondition
 from jaxns.internals.types import TerminationCondition, IntArray, PRNGKey, BoolArray, int_type, UType, MeasureType, \
     float_type, \
