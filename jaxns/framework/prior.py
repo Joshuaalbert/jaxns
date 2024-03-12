@@ -1,4 +1,4 @@
-import logging
+import warnings
 from typing import Tuple, Optional, Union
 
 import haiku as hk
@@ -16,8 +16,6 @@ __all__ = [
     "Prior",
     "InvalidPriorName"
 ]
-
-logger = logging.getLogger('jaxns')
 
 
 class InvalidPriorName(Exception):
@@ -185,7 +183,7 @@ def prior_to_parametrised_singular(prior: BaseAbstractPrior, random_init: bool =
     else:
         init_value = jnp.zeros(prior.base_shape, dtype=float_type)
     if init_value.size == 0:
-        logger.warning(f"Creating a zero-sized parameter for {prior.name}. Probably unintended.")
+        warnings.warn(f"Creating a zero-sized parameter for {prior.name}. Probably unintended.")
     norm_U_base_param = hk.get_parameter(
         name=name,
         shape=prior.base_shape,

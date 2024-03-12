@@ -1,4 +1,4 @@
-import logging
+import warnings
 from typing import Optional, List, Union
 
 import jax.numpy as jnp
@@ -13,8 +13,6 @@ from jaxns.internals.log_semiring import cumulative_logsumexp, LogSpace, normali
 from jaxns.internals.shapes import tuple_prod
 from jaxns.internals.types import NestedSamplerResults, int_type
 from jaxns.utils import resample
-
-logger = logging.getLogger('jaxns')
 
 __all__ = ['plot_diagnostics',
            'plot_cornerplot']
@@ -80,7 +78,7 @@ def plot_diagnostics(results: NestedSamplerResults, save_name=None):
 
 
 def plot_cornerplot(results: NestedSamplerResults, variables: Optional[List[str]] = None,
-                    with_parametrised:bool=False,
+                    with_parametrised: bool = False,
                     save_name: Optional[str] = None, kde_overlay: bool = False):
     """
     Plots a cornerplot of the posterior samples.
@@ -157,7 +155,7 @@ def plot_cornerplot(results: NestedSamplerResults, variables: Optional[List[str]
             _log_weights = log_weights
             is_finite = np.isfinite(_samples)
             if np.bitwise_not(np.all(is_finite)):
-                logger.warning(f"Found {np.sum(np.bitwise_not(is_finite))} non-finite samples for {_parameter}")
+                warnings.warn(f"Found {np.sum(np.bitwise_not(is_finite))} non-finite samples for {_parameter}")
                 _samples = _samples[is_finite]
                 _log_weights = _log_weights[is_finite]
             _weights = np.exp(_log_weights)
@@ -200,7 +198,7 @@ def plot_cornerplot(results: NestedSamplerResults, variables: Optional[List[str]
             _log_weights = log_weights
             is_finite = np.all(np.isfinite(_samples), axis=-1)  # [num_samples]
             if np.bitwise_not(np.all(is_finite)):
-                logger.warning(
+                warnings.warn(
                     f"Found {np.sum(np.bitwise_not(is_finite))} non-finite samples for {parameters[row]} and {parameters[col]}")
                 _samples = _samples[is_finite]
                 _log_weights = _log_weights[is_finite]
@@ -436,12 +434,12 @@ def corner_cornerplot(results: NestedSamplerResults):
     try:
         import corner
     except ImportError:
-        logger.warning("You must run `pip install corner`")
+        warnings.warn("You must run `pip install corner`")
         exit(0)
     try:
         import arviz as az
     except ImportError:
-        logger.warning("You must run `pip install arviz`")
+        warnings.warn("You must run `pip install arviz`")
         exit(0)
     from jax import tree_map
     samples = resample(random.PRNGKey(42), results.samples, results.log_dp_mean, S=int(results.ESS))

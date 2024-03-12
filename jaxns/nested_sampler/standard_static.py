@@ -1,4 +1,4 @@
-import logging
+import warnings
 from typing import Tuple, NamedTuple, Any, Union
 
 import jax
@@ -12,6 +12,7 @@ from jaxns.internals.shrinkage_statistics import compute_evidence_stats, init_ev
     update_evicence_calculation, EvidenceUpdateVariables, _update_evidence_calc_op
 from jaxns.internals.stats import linear_to_log_stats, effective_sample_size
 from jaxns.internals.tree_structure import SampleTreeGraph, count_crossed_edges, unbatch_state
+from jaxns.internals.types import TerminationCondition
 from jaxns.internals.types import TerminationCondition, IntArray, PRNGKey, BoolArray, int_type, UType, MeasureType, \
     float_type, \
     TerminationConditionDisjunction, \
@@ -26,8 +27,6 @@ __all__ = [
     'TerminationCondition',
     'StandardStaticNestedSampler'
 ]
-
-logger = logging.getLogger('jaxns')
 
 
 def _inter_sync_shrinkage_process(
@@ -394,7 +393,7 @@ def determine_termination(
         return done, termination_reason
 
     if term_cond.live_evidence_frac is not None:
-        logger.warning("live_evidence_frac is deprecated, use dlogZ instead.")
+        warnings.warn("live_evidence_frac is deprecated, use dlogZ instead.")
 
     if term_cond.max_samples is not None:
         # used all points
@@ -610,7 +609,7 @@ class StandardStaticNestedSampler(BaseAbstractNestedSampler):
         remainder = max_samples % self.num_live_points
         extra = (max_samples - remainder) % self.num_live_points
         if extra > 0:
-            logger.warning(
+            warnings.warn(
                 f"Increasing max_samples ({max_samples}) by {extra} to closest multiple of "
                 f"num_live_points {self.num_live_points}."
             )

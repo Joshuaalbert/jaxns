@@ -1,4 +1,4 @@
-import logging
+import warnings
 from typing import List, Tuple, Union
 
 import numpy as np
@@ -7,15 +7,14 @@ import tensorflow_probability.substrates.jax as tfp
 from jax import random, numpy as jnp, vmap
 
 from jaxns.framework.bases import PriorModelGen, BaseAbstractPrior
-from jaxns.framework.wrapped_tfp_distribution import InvalidDistribution, distribution_chain
 from jaxns.framework.ops import parse_prior, prepare_input, compute_log_likelihood
 from jaxns.framework.prior import Prior, InvalidPriorName
 from jaxns.framework.special_priors import Bernoulli, Categorical, Poisson, Beta, ForcedIdentifiability, \
     UnnormalisedDirichlet, _poisson_quantile_bisection, _poisson_quantile
+from jaxns.framework.wrapped_tfp_distribution import InvalidDistribution, distribution_chain
 from jaxns.internals.types import float_type
 
 tfpd = tfp.distributions
-logger = logging.getLogger('jaxns')
 
 
 def test_single_prior():
@@ -238,7 +237,7 @@ def test_special_priors(mock_special_priors: List[BaseAbstractPrior]):
             print(u_input)
             assert jnp.allclose(u, u_input)
         except NotImplementedError:
-            logger.warning(f"Skipping inverse test for {prior.__class__}")
+            warnings.warn(f"Skipping inverse test for {prior.__class__}")
             pass
 
 

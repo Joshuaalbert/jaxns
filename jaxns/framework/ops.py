@@ -1,5 +1,5 @@
 import inspect
-import logging
+import warnings
 from typing import Tuple
 
 import jax
@@ -14,15 +14,13 @@ __all__ = [
     'simulate_prior_model'
 ]
 
-logger = logging.getLogger('jaxns')
-
 
 def _get_prior_model_gen(prior_model: PriorModelType) -> PriorModelGen:
     gen = prior_model()
     # Check if gen is a generator
     if not inspect.isgenerator(gen):
-        logger.warning("The provided prior_model is not a generator, this may mean you forget `yield` statements. "
-                       "This means there are no Bayesian variables.")
+        warnings.warn("The provided prior_model is not a generator, this may mean you forget `yield` statements. "
+                      "This means there are no Bayesian variables.")
 
         def dummy_prior_model(output):
             _ = yield Prior(0.)
