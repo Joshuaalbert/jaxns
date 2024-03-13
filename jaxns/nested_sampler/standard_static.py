@@ -219,9 +219,9 @@ def _inter_sync_shrinkage_process(
             log_L_next=jnp.sort(out_carry.front_sample_collection.log_L)
         ),
     )
-    num_likelihood_evaluations = init_termination_register.num_likelihood_evaluations + jnp.sum(
-        out_return.sample_collection.num_likelihood_evaluations)
-    efficiency = out_return.sample_collection.log_L.size / num_likelihood_evaluations
+    num_likelihood_evaluations = jnp.asarray(init_termination_register.num_likelihood_evaluations + jnp.sum(
+        out_return.sample_collection.num_likelihood_evaluations), int_type)
+    efficiency = jnp.asarray(out_return.sample_collection.log_L.size / num_likelihood_evaluations, float_type)
     plateau = jnp.all(jnp.equal(out_carry.front_sample_collection.log_L, out_carry.front_sample_collection.log_L[0]))
     termination_register = TerminationRegister(
         num_samples_used=out_carry.next_sample_idx,
