@@ -1,29 +1,40 @@
-Academic and Non-Commercial Use License
+**Academic and Non-Commercial Use License**
 
-Copyright (c) 2023, Joshua G. Albert
+Copyright (c) 2023 Joshua G. Albert
 
 All rights reserved.
 
-Definitions:
+**Definitions:**
 
-1. "Academic Use" refers to use by students, teachers, or researchers at an educational or research institution for the purpose of education or research.
+- **Academic Use:** Use by individuals at educational or research institutions for the purpose of education or research.
+- **Non-Commercial Use:** Use that is not for commercial advantage or monetary compensation.
+- **Commercial Use:** Use primarily for commercial advantage or monetary compensation.
 
-2. "Non-commercial use" refers to use that is not primarily intended for or directed towards commercial advantage or monetary compensation.
+**Grant of License:**
 
-3. "Commercial use" refers to any use of the software that is primarily intended for or directed towards commercial advantage or monetary compensation.
+This license permits use, modification, and redistribution of the software provided the following conditions are met:
 
-Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
+1. The use is for Academic or Non-Commercial purposes.
+2. Redistribution of source or binary forms of the software includes the copyright notice, this list of conditions, and the disclaimer.
 
-1. Redistributions of the source code must retain the above copyright notice, this list of conditions, and the following disclaimer.
+**Redistribution Conditions:**
 
-2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions, and the following disclaimer in the documentation and/or other materials provided with the distribution.
+- Source code must retain the above copyright notice, this list of conditions, and the following disclaimer.
+- Binary form must reproduce the above copyright notice, this list of conditions, and the following disclaimer in the documentation and/or other materials provided with the distribution.
+- Any derivative works must be licensed under the same terms as this license.
 
-3. Any derivative works that are distributed or used must also be licensed under the same terms and conditions of this license.
+**Disclaimer of Warranty:**
 
-4. The software is used for Academic Use or Non-commercial use. Any Commercial Use is not permitted without the explicit permission of the copyright holder.
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-This software is provided by the copyright holders and contributors "as is" and any express or implied warranties, including, but not limited to, the implied warranties of merchantability and fitness for a particular purpose are disclaimed. In no event shall the copyright holder or contributors be liable for any direct, indirect, incidental, special, exemplary, or consequential damages (including, but not limited to, procurement of substitute goods or services; loss of use, data, or profits; or business interruption) however caused and on any theory of liability, whether in contract, strict liability, or tort (including negligence or otherwise) arising in any way out of the use of this software, even if advised of the possibility of such damage.
+**Commercial Licensing:**
 
-For commercial licensing options, please contact Joshua G. Albert at albert@strw.leidenuniv.nl. Infringement of these terms will result in legal action. Any disputes arising from this license will be resolved under the laws of The Netherlands.
+Use of the software in a commercial setting requires a separate license agreement. Please contact Joshua G. Albert at albert@strw.leidenuniv.nl for commercial licensing inquiries.
 
-The user of the software agrees to indemnify and hold harmless the copyright owner from any claims, damages, liabilities, costs and fees (including reasonable attorney fees) arising from their use of the software.
+**Governing Law:**
+
+This license and the use of the software are governed by the laws of The Netherlands.
+
+**Indemnification:**
+
+The user agrees to indemnify and hold harmless the copyright owner and contributors from any and all claims, liabilities, damages, costs, and expenses (including reasonable attorney's fees) arising out of the use of the software.
