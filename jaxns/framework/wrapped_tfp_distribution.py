@@ -6,7 +6,7 @@ from jaxns.framework.bases import BaseAbstractDistribution
 from jaxns.internals.types import FloatArray, IntArray, BoolArray
 
 __all__ = [
-    "Distribution",
+    "WrappedTFPDistribution",
     "InvalidDistribution"
 ]
 
@@ -46,9 +46,9 @@ def distribution_chain(dist: tfpd.Distribution) -> List[
     return chain[::-1]
 
 
-class Distribution(BaseAbstractDistribution):
+class WrappedTFPDistribution(BaseAbstractDistribution):
     """
-    Represents a distribution, which must have defined forward and inverse transformations, and a log_prob.
+    Represents a wrapped TFP distribution.
     """
 
     def __init__(self, dist: tfpd.Distribution):

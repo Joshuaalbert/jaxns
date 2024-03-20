@@ -1,4 +1,4 @@
-import logging
+import warnings
 from typing import Tuple, Optional, Union
 
 import haiku as hk
@@ -7,7 +7,7 @@ import tensorflow_probability.substrates.jax as tfp
 from jax import numpy as jnp
 
 from jaxns.framework.bases import BaseAbstractPrior, BaseAbstractDistribution
-from jaxns.framework.distribution import Distribution
+from jaxns.framework.wrapped_tfp_distribution import WrappedTFPDistribution
 from jaxns.internals.types import FloatArray, IntArray, BoolArray, XType, UType, float_type
 
 tfpd = tfp.distributions
@@ -16,8 +16,6 @@ __all__ = [
     "Prior",
     "InvalidPriorName"
 ]
-
-logger = logging.getLogger('jaxns')
 
 
 class InvalidPriorName(Exception):
@@ -67,18 +65,20 @@ class Prior(BaseAbstractPrior):
     Represents a generative prior.
     """
 
-    def __init__(self, dist_or_value: Union[tfpd.Distribution, BaseAbstractDistribution, jnp.ndarray],
+    def __init__(self, dist_or_value: Union[tfpd.Distribution, FloatArray, IntArray, BoolArray],
                  name: Optional[str] = None):
         super(Prior, self).__init__(name=name)
         if isinstance(dist_or_value, tfpd.Distribution):
+            self._dist = WrappedTFPDistribution(dist_or_value)
             self._type = 'dist'
-            self._dist = Distribution(dist_or_value)
-        elif isinstance(dist_or_value, BaseAbstractDistribution):
-            self._type = 'dist'
-            self._dist = dist_or_value
         else:
+            try:
+                self._value = jnp.asarray(dist_or_value)
+            except TypeError:
+                raise ValueError(f"Could not convert {dist_or_value} to array.")
+            except Exception as e:
+                raise e
             self._type = 'value'
-            self._value = jnp.asarray(dist_or_value)
         self.name = name
 
     @property
@@ -143,14 +143,18 @@ class Prior(BaseAbstractPrior):
 
     def parametrised(self, random_init: bool = False) -> SingularPrior:
         """
-        Convert this prior into a non-Bayesian parameter, that takes a single value in the model, but still has an associated
-        log_prob. The parameter is registered as a `hk.Parameter` with added `_param` name suffix.
+        Convert this prior into a non-Bayesian parameter, that takes a single value in the model, but still has an
+        associated log_prob. The parameter is registered as a `hk.Parameter` with added `_param` name suffix. Prior
+        must have a name.
 
         Args:
             random_init: whether to initialise the parameter randomly or at the median of the distribution.
 
         Returns:
             A singular prior.
+
+        Raises:
+            ValueError: if the prior has no name.
         """
         return prior_to_parametrised_singular(self, random_init=random_init)
 
@@ -179,7 +183,7 @@ def prior_to_parametrised_singular(prior: BaseAbstractPrior, random_init: bool =
     else:
         init_value = jnp.zeros(prior.base_shape, dtype=float_type)
     if init_value.size == 0:
-        logger.warning(f"Creating a zero-sized parameter for {prior.name}. Probably unintended.")
+        warnings.warn(f"Creating a zero-sized parameter for {prior.name}. Probably unintended.")
     norm_U_base_param = hk.get_parameter(
         name=name,
         shape=prior.base_shape,

@@ -1,5 +1,4 @@
 import io
-import logging
 from typing import NamedTuple, Optional, Union, TextIO, Tuple, List
 
 import jax.nn
@@ -11,6 +10,7 @@ from jax._src.scipy.special import logit
 from jaxopt import NonlinearCG
 
 from jaxns.framework.bases import BaseAbstractModel
+from jaxns.internals.logging import logger
 from jaxns.internals.maps import remove_chunk_dim
 from jaxns.internals.types import PRNGKey, StaticStandardNestedSamplerState, BoolArray, StaticStandardSampleCollection, \
     int_type, Sample, IntArray, UType, FloatArray, LikelihoodInputType, XType
@@ -18,8 +18,6 @@ from jaxns.nested_sampler.standard_static import draw_uniform_samples, _inter_sy
     create_init_termination_register
 from jaxns.samplers.bases import BaseAbstractSampler
 from jaxns.utils import _bit_mask
-
-logger = logging.getLogger('jaxns')
 
 __all__ = [
     'GlobalOptimisationResults',

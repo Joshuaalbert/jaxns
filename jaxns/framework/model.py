@@ -1,14 +1,16 @@
-import logging
+import warnings
 from typing import Optional
 from uuid import uuid4
 
 import numpy as np
 from jax import random, vmap, jit, numpy as jnp
 
+from jaxns.internals.logging import logger
+
 try:
     import haiku as hk
 except ImportError:
-    print("You must `pip install dm-haiku` first.")
+    warnings.warn("You must `pip install dm-haiku` first.")
     raise
 
 from jaxns.framework.bases import BaseAbstractModel, PriorModelType
@@ -19,8 +21,6 @@ from jaxns.internals.types import PRNGKey, FloatArray, float_type, LikelihoodTyp
 __all__ = [
     'Model'
 ]
-
-logger = logging.getLogger('jaxns')
 
 
 class Model(BaseAbstractModel):
@@ -179,7 +179,9 @@ class Model(BaseAbstractModel):
         logger.info("Sanity check...")
         for _U, _log_L in zip(U, log_L):
             if jnp.isnan(_log_L):
-                logger.info(f"Found bad point: {_U} -> {self.transform(_U)}")
+                logger.info(f"Found bad point:"
+                             f"\n{_U} -> {self.transform(_U)}"
+                             f"\n -> {self.transform_parametrised(_U)}")
         assert not any(np.isnan(log_L))
         logger.info("Sanity check passed")
         if 'parsed_prior' in self.__dict__:

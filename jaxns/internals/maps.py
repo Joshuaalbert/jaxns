@@ -1,13 +1,11 @@
 import inspect
-import logging
+import warnings
 from typing import TypeVar, Callable, Optional
 
 import jax
 from jax import tree_map, pmap, numpy as jnp, lax, tree_util
 
 from jaxns.internals.types import int_type
-
-logger = logging.getLogger(__name__)
 
 
 def replace_index(operand, update, start_index):
@@ -49,9 +47,9 @@ def prepare_func_args(f):
 
     # TODO: this gets displayed each time we prepare a function. Using a cache would be cleaner for user.
     if varargs is not None:
-        logger.warning(f"Function {f.__name__} has *varargs parameter ({varargs}), and is being dropped.")
+        warnings.warn(f"Function {f.__name__} has *varargs parameter ({varargs}), and is being dropped.")
     if varkw is not None:
-        logger.warning(f"Function {f.__name__} has **varkw parameter ({varkw}), and is being dropped.")
+        warnings.warn(f"Function {f.__name__} has **varkw parameter ({varkw}), and is being dropped.")
 
     expected_keys = set(args + kwonlyargs)
 

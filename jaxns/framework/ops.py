@@ -1,16 +1,34 @@
-from typing import Tuple
+import inspect
+import warnings
+from typing import Tuple, Callable
 
 import jax
 from jax import numpy as jnp, lax
 
-from jaxns.framework.bases import PriorModelType, BaseAbstractPrior
-from jaxns.framework.prior import InvalidPriorName, SingularPrior
+from jaxns.framework.bases import PriorModelType, BaseAbstractPrior, PriorModelGen
+from jaxns.framework.prior import InvalidPriorName, SingularPrior, Prior
 from jaxns.internals.types import UType, XType, float_type, LikelihoodInputType, FloatArray, LikelihoodType, PRNGKey, \
     isinstance_namedtuple
 
 __all__ = [
     'simulate_prior_model'
 ]
+
+
+def _get_prior_model_gen(prior_model: PriorModelType) -> PriorModelGen:
+    gen = prior_model()
+    # Check if gen is a generator
+    if not inspect.isgenerator(gen):
+        warnings.warn("The provided prior_model is not a generator, this may mean you forget `yield` statements. "
+                      "This means there are no Bayesian variables.")
+
+        def dummy_prior_model(output):
+            _ = yield Prior(0.)
+            return output
+
+        # Make an empty generator that returns the output.
+        gen = dummy_prior_model(gen)
+    return gen
 
 
 def compute_U_ndims(prior_model: PriorModelType) -> int:
@@ -24,7 +42,8 @@ def compute_U_ndims(prior_model: PriorModelType) -> int:
         number of U dims
     """
     U_ndims = 0
-    gen = prior_model()
+    gen = _get_prior_model_gen(prior_model=prior_model)
+
     prior_response = None
     names = set()
     while True:
@@ -70,7 +89,8 @@ def parse_prior(prior_model: PriorModelType) -> Tuple[UType, XType]:
         U placeholder, X placeholder
     """
     U_ndims = 0
-    gen = prior_model()
+    gen = _get_prior_model_gen(prior_model=prior_model)
+
     prior_response = None
     names = set()
     X_placeholder: XType = dict()
@@ -105,7 +125,8 @@ def parse_joint(prior_model: PriorModelType, log_likelihood: LikelihoodType) -> 
         U placeholder, X placeholder
     """
     U_ndims = 0
-    gen = prior_model()
+    gen = _get_prior_model_gen(prior_model=prior_model)
+
     prior_response = None
     names = set()
     X_placeholder: XType = dict()
@@ -145,7 +166,8 @@ def transform(U: UType, prior_model: PriorModelType) -> XType:
         the prior variables
     """
 
-    gen = prior_model()
+    gen = _get_prior_model_gen(prior_model=prior_model)
+
     prior_response = None
     names = set()
     X_collection = dict()
@@ -180,7 +202,8 @@ def transform_parametrised(U: UType, prior_model: PriorModelType) -> XType:
         the parametrised prior variables
     """
 
-    gen = prior_model()
+    gen = _get_prior_model_gen(prior_model=prior_model)
+
     prior_response = None
     names = set()
     Y_collection = dict()
@@ -215,7 +238,8 @@ def prepare_input(U: UType, prior_model: PriorModelType) -> LikelihoodInputType:
         the conditional variables of likelihood model
     """
 
-    gen = prior_model()
+    gen = _get_prior_model_gen(prior_model=prior_model)
+
     prior_response = None
     idx = 0
     while True:
@@ -245,7 +269,8 @@ def compute_log_prob_prior(U: UType, prior_model: PriorModelType) -> FloatArray:
         prior log-density
     """
 
-    gen = prior_model()
+    gen = _get_prior_model_gen(prior_model=prior_model)
+
     prior_response = None
     log_prob = []
     idx = 0
@@ -285,5 +310,46 @@ def compute_log_likelihood(U: UType, prior_model: PriorModelType, log_likelihood
         log_L = lax.reshape(log_L, ())
     if not allow_nan:
         is_nan = lax.ne(log_L, log_L)
-        log_L = lax.select(is_nan, -jnp.inf, log_L)
+        log_L = lax.select(is_nan, jnp.asarray(-jnp.inf, log_L.dtype), log_L)
     return log_L
+
+
+def memoize_prior_model(prior_model: PriorModelType, *args, **kwargs) -> Callable:
+    """
+    Memoize the prior model into a pure function. This can be used, e.g. to compute jacobians, or gradients inside a
+    prior model.
+
+    Args:
+        prior_model: a prior model
+        *args: inputs
+        **kwargs: inputs
+
+    Returns:
+        a pure function that takes the inputs and passes the prior values appropriately at execution time.
+    """
+    gen = prior_model(*args, **kwargs)
+    prior_response = None
+    stack = []
+    while True:
+        try:
+            prior: BaseAbstractPrior = gen.send(prior_response)
+            prior_response = yield prior
+            stack.append(prior_response)
+        except StopIteration as e:
+            # output = e.value
+            break
+
+    def _pure_fn(*args, **kwargs):
+        gen = prior_model(*args, **kwargs)
+        stack_iter = iter(stack)
+        prior_response = None
+        while True:
+            try:
+                _ = gen.send(prior_response)
+                prior_response = next(stack_iter)
+            except StopIteration as e:
+                output = e.value
+                break
+        return output
+
+    return _pure_fn

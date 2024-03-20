@@ -1,8 +1,6 @@
-import logging
+import warnings
 from functools import wraps
 from typing import Callable, Optional
-
-logger = logging.getLogger('jaxns')
 
 
 def deprecated(other: Optional[Callable]) -> Callable:
@@ -10,9 +8,9 @@ def deprecated(other: Optional[Callable]) -> Callable:
         @wraps
         def g(*args, **kwargs):
             if other is not None:
-                logger.warning(f"{f.__name__} is deprecated, use `{other.__name__}`.")
+                warnings.warn(f"{f.__name__} is deprecated, use `{other.__name__}`.")
             else:
-                logger.warning(f"{f.__name__} is deprecated.")
+                warnings.warn(f"{f.__name__} is deprecated.")
             return f(*args, **kwargs)
 
         if other is not None:
