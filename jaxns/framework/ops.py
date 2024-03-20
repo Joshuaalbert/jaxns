@@ -1,6 +1,6 @@
 import inspect
 import warnings
-from typing import Tuple
+from typing import Tuple, Callable
 
 import jax
 from jax import numpy as jnp, lax
@@ -312,3 +312,44 @@ def compute_log_likelihood(U: UType, prior_model: PriorModelType, log_likelihood
         is_nan = lax.ne(log_L, log_L)
         log_L = lax.select(is_nan, jnp.asarray(-jnp.inf, log_L.dtype), log_L)
     return log_L
+
+
+def memoize_prior_model(prior_model: PriorModelType, *args, **kwargs) -> Callable:
+    """
+    Memoize the prior model into a pure function. This can be used, e.g. to compute jacobians, or gradients inside a
+    prior model.
+
+    Args:
+        prior_model: a prior model
+        *args: inputs
+        **kwargs: inputs
+
+    Returns:
+        a pure function that takes the inputs and passes the prior values appropriately at execution time.
+    """
+    gen = prior_model(*args, **kwargs)
+    prior_response = None
+    stack = []
+    while True:
+        try:
+            prior: BaseAbstractPrior = gen.send(prior_response)
+            prior_response = yield prior
+            stack.append(prior_response)
+        except StopIteration as e:
+            # output = e.value
+            break
+
+    def _pure_fn(*args, **kwargs):
+        gen = prior_model(*args, **kwargs)
+        stack_iter = iter(stack)
+        prior_response = None
+        while True:
+            try:
+                _ = gen.send(prior_response)
+                prior_response = next(stack_iter)
+            except StopIteration as e:
+                output = e.value
+                break
+        return output
+
+    return _pure_fn
