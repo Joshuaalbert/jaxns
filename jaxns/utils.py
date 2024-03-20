@@ -36,7 +36,7 @@ __all__ = [
 
 
 def resample(key: PRNGKey, samples: Union[XType, UType], log_weights: jnp.ndarray, S: int = None,
-             replace: bool = False) -> XType:
+             replace: bool = True) -> XType:
     """
     Resample the weighted samples into uniformly weighted samples.
 
