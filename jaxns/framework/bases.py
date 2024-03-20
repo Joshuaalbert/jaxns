@@ -101,7 +101,7 @@ class BaseAbstractPrior(AbstractPrior):
 
 
 PriorModelGen = Generator[BaseAbstractPrior, RandomVariableType, LikelihoodInputType]
-PriorModelType = Callable[[], PriorModelGen]
+PriorModelType = Callable[[...], PriorModelGen]
 
 
 class BaseAbstractModel(AbstractModel):

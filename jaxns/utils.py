@@ -1,5 +1,5 @@
 import io
-import logging
+import warnings
 from typing import NamedTuple, TextIO, Union, Optional, Tuple, TypeVar, Callable
 
 import numpy as np
@@ -14,8 +14,6 @@ from jaxns.internals.types import NestedSamplerResults, float_type, XType, UType
     isinstance_namedtuple
 from jaxns.internals.types import PRNGKey
 from jaxns.warnings import deprecated
-
-logger = logging.getLogger('jaxns')
 
 __all__ = [
     'resample',
@@ -38,7 +36,7 @@ __all__ = [
 
 
 def resample(key: PRNGKey, samples: Union[XType, UType], log_weights: jnp.ndarray, S: int = None,
-             replace: bool = False) -> XType:
+             replace: bool = True) -> XType:
     """
     Resample the weighted samples into uniformly weighted samples.
 
@@ -503,7 +501,7 @@ def analytic_posterior_samples(model: BaseAbstractModel, S: int = 60):
     Returns:
         log(Z)
     """
-    logger.warning(f"")
+    warnings.warn(f"")
 
     u_vec = jnp.linspace(jnp.finfo(float_type).eps, 1. - jnp.finfo(float_type).eps, S)
     du = u_vec[1] - u_vec[0]

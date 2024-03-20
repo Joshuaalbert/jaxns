@@ -29,14 +29,14 @@ int_type = jnp.result_type(int)
 complex_type = jnp.result_type(complex)
 
 PRNGKey = jax.Array
-FloatArray = jax.Array
-IntArray = jax.Array
-BoolArray = jax.Array
+FloatArray = Union[jax.Array, float]
+IntArray = Union[jax.Array, int]
+BoolArray = Union[jax.Array, bool]
 
 LikelihoodType = Callable[..., FloatArray]
 RandomVariableType = TypeVar('RandomVariableType')
 MeasureType = TypeVar('MeasureType')
-LikelihoodInputType = Tuple[RandomVariableType, ...]  # Likelihood conditional variables
+LikelihoodInputType = Union[Tuple[RandomVariableType, ...], RandomVariableType]  # Likelihood conditional variables
 UType = FloatArray  # Sample space type
 XType = Dict[str, RandomVariableType]  # Prior variable type
 

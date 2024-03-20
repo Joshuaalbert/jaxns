@@ -1,4 +1,4 @@
-import logging
+import warnings
 from typing import Optional, Tuple, Union
 
 import jax.numpy as jnp
@@ -6,6 +6,7 @@ import tensorflow_probability.substrates.jax as tfp
 from jax import tree_map, core
 
 from jaxns.framework.bases import BaseAbstractModel
+from jaxns.internals.logging import logger
 from jaxns.internals.types import PRNGKey, IntArray, StaticStandardNestedSamplerState, TerminationCondition, \
     NestedSamplerResults
 from jaxns.nested_sampler.bases import BaseAbstractNestedSampler
@@ -15,8 +16,6 @@ from jaxns.samplers.uni_slice_sampler import UniDimSliceSampler
 from jaxns.utils import summary, save_results, load_results
 
 tfpd = tfp.distributions
-
-logger = logging.getLogger('jaxns')
 
 __all__ = [
     'DefaultNestedSampler',
@@ -86,7 +85,7 @@ class DefaultNestedSampler:
             raise ValueError(f"Expected c > 0, got c={self._c}")
         # Sanity check for max_samples (should be able to at least do one shrinkage)
         if max_samples < self._c * (self._k + 1):
-            logger.warning(f"max_samples={max_samples} is likely too small!")
+            warnings.warn(f"max_samples={max_samples} is likely too small!")
         self._nested_sampler = StandardStaticNestedSampler(
             model=model,
             num_live_points=self._c,
@@ -190,11 +189,11 @@ class DefaultNestedSampler:
 
 class ApproximateNestedSampler(DefaultNestedSampler):
     def __init__(self, *args, **kwargs):
-        logger.warning(f"ApproximateNestedSampler is deprecated. Use DefaultNestedSampler instead.")
+        warnings.warn(f"ApproximateNestedSampler is deprecated. Use DefaultNestedSampler instead.")
         super().__init__(*args, **kwargs)
 
 
 class ExactNestedSampler(ApproximateNestedSampler):
     def __init__(self, *args, **kwargs):
-        logger.warning(f"ExactNestedSampler is deprecated. Use DefaultNestedSampler instead.")
+        warnings.warn(f"ExactNestedSampler is deprecated. Use DefaultNestedSampler instead.")
         super().__init__(*args, **kwargs)

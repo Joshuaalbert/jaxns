@@ -1,4 +1,3 @@
-import logging
 from typing import TypeVar, NamedTuple, Tuple
 
 import jax
@@ -15,8 +14,6 @@ from jaxns.samplers.bases import SeedPoint, BaseAbstractMarkovSampler
 __all__ = [
     'UniDimSliceSampler'
 ]
-
-logger = logging.getLogger('jaxns')
 
 T = TypeVar('T')
 

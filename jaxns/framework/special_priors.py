@@ -23,6 +23,7 @@ __all__ = [
     "UnnormalisedDirichlet"
 ]
 
+
 class SpecialPrior(BaseAbstractPrior):
     def parametrised(self, random_init: bool = False) -> SingularPrior:
         """
@@ -36,6 +37,7 @@ class SpecialPrior(BaseAbstractPrior):
             A singular prior.
         """
         return prior_to_parametrised_singular(self, random_init=random_init)
+
 
 class Bernoulli(SpecialPrior):
     def __init__(self, *, logits=None, probs=None, name: Optional[str] = None):
@@ -430,3 +432,63 @@ class UnnormalisedDirichlet(SpecialPrior):
     def _quantile(self, U):
         gamma = self._gamma_dist.quantile(U).astype(self.dtype)
         return gamma
+
+
+class Empirical(SpecialPrior):
+    """
+    Represents the empirical distribution of a set of 1D samples, with arbitrary batch dimension.
+    """
+
+    def __init__(self, *, samples: jax.Array, resolution: int = 100, name: Optional[str] = None):
+        super(Empirical, self).__init__(name=name)
+        if len(np.shape(samples)) < 1:
+            raise ValueError("Samples must have at least one dimension")
+        if np.size(samples) == 0:
+            raise ValueError("Samples must have at least one element")
+        if resolution < 1:
+            raise ValueError("Resolution must be at least 1")
+        samples = jnp.asarray(samples)
+        self._q = jnp.linspace(0., 100., resolution + 1)
+        self._percentiles = jnp.reshape(jnp.percentile(samples, self._q, axis=-1), (resolution + 1, -1))
+
+        self._batch_shape = np.shape(samples)[:-1]
+        self._samples_dtype = samples.dtype
+
+    def _dtype(self):
+        return self._samples_dtype
+
+    def _base_shape(self) -> Tuple[int, ...]:
+        return self._batch_shape
+
+    def _shape(self) -> Tuple[int, ...]:
+        return self._batch_shape
+
+    def _forward(self, U) -> Union[FloatArray, IntArray, BoolArray]:
+        return self._quantile(U)
+
+    def _inverse(self, X) -> FloatArray:
+        return self._cdf(X)
+
+    def _cdf(self, X) -> FloatArray:
+        X_flat = jnp.ravel(X)
+        u = jax.vmap(lambda x, per: jnp.interp(x, per, self._q * 1e-2), in_axes=(0, 1))(X_flat, self._percentiles)
+        u = lax.reshape(u, X.shape)
+        return u
+
+    def _log_prob(self, X) -> FloatArray:
+        X_flat = jnp.ravel(X)
+
+        def _cdf(x):
+            return self._cdf(x)
+
+        def log_pdf(x):
+            return jnp.log(jax.grad(_cdf)(x))
+
+        log_prob = lax.reshape(jax.vmap(log_pdf)(X_flat), X.shape)
+        return log_prob
+
+    def _quantile(self, U):
+        U_flat = jnp.ravel(U)
+        x = jax.vmap(lambda u, per: jnp.interp(u * 100., self._q, per), in_axes=(0, 1))(U_flat, self._percentiles)
+        x = lax.reshape(x, U.shape)
+        return x

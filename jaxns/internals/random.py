@@ -30,7 +30,7 @@ def random_ortho_matrix(key, n, special_orthogonal: bool = False):
 
 
 def resample_indicies(key: PRNGKey, log_weights: Optional[FloatArray] = None, S: Optional[int] = None,
-                      replace: bool = False, num_total: Optional[int] = None) -> IntArray:
+                      replace: bool = True, num_total: Optional[int] = None) -> IntArray:
     """
     Get resample indicies according to a given weighting, with or without replacement.
 

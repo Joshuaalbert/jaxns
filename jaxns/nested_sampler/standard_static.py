@@ -1,4 +1,4 @@
-import logging
+import warnings
 from typing import Tuple, NamedTuple, Any, Union
 
 import jax
@@ -8,10 +8,13 @@ from jax._src.lax import parallel
 from jaxns.framework.bases import BaseAbstractModel
 from jaxns.internals.cumulative_ops import cumulative_op_static
 from jaxns.internals.log_semiring import LogSpace, normalise_log_space
+from jaxns.internals.logging import logger
 from jaxns.internals.shrinkage_statistics import compute_evidence_stats, init_evidence_calc, \
     update_evicence_calculation, EvidenceUpdateVariables, _update_evidence_calc_op
 from jaxns.internals.stats import linear_to_log_stats, effective_sample_size
 from jaxns.internals.tree_structure import SampleTreeGraph, count_crossed_edges, unbatch_state
+from jaxns.internals.types import TerminationCondition
+from jaxns.internals.types import TerminationCondition
 from jaxns.internals.types import TerminationCondition, IntArray, PRNGKey, BoolArray, int_type, UType, MeasureType, \
     float_type, \
     TerminationConditionDisjunction, \
@@ -26,8 +29,6 @@ __all__ = [
     'TerminationCondition',
     'StandardStaticNestedSampler'
 ]
-
-logger = logging.getLogger('jaxns')
 
 
 def _inter_sync_shrinkage_process(
@@ -218,9 +219,9 @@ def _inter_sync_shrinkage_process(
             log_L_next=jnp.sort(out_carry.front_sample_collection.log_L)
         ),
     )
-    num_likelihood_evaluations = init_termination_register.num_likelihood_evaluations + jnp.sum(
-        out_return.sample_collection.num_likelihood_evaluations)
-    efficiency = out_return.sample_collection.log_L.size / num_likelihood_evaluations
+    num_likelihood_evaluations = jnp.asarray(init_termination_register.num_likelihood_evaluations + jnp.sum(
+        out_return.sample_collection.num_likelihood_evaluations), int_type)
+    efficiency = jnp.asarray(out_return.sample_collection.log_L.size / num_likelihood_evaluations, float_type)
     plateau = jnp.all(jnp.equal(out_carry.front_sample_collection.log_L, out_carry.front_sample_collection.log_L[0]))
     termination_register = TerminationRegister(
         num_samples_used=out_carry.next_sample_idx,
@@ -394,7 +395,7 @@ def determine_termination(
         return done, termination_reason
 
     if term_cond.live_evidence_frac is not None:
-        logger.warning("live_evidence_frac is deprecated, use dlogZ instead.")
+        warnings.warn("live_evidence_frac is deprecated, use dlogZ instead.")
 
     if term_cond.max_samples is not None:
         # used all points
@@ -610,7 +611,7 @@ class StandardStaticNestedSampler(BaseAbstractNestedSampler):
         remainder = max_samples % self.num_live_points
         extra = (max_samples - remainder) % self.num_live_points
         if extra > 0:
-            logger.warning(
+            warnings.warn(
                 f"Increasing max_samples ({max_samples}) by {extra} to closest multiple of "
                 f"num_live_points {self.num_live_points}."
             )
