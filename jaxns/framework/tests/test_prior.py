@@ -1,6 +1,7 @@
 import warnings
 from typing import List, Tuple, Union
 
+import jax.random
 import numpy as np
 import pytest
 import tensorflow_probability.substrates.jax as tfp
@@ -10,7 +11,7 @@ from jaxns.framework.bases import PriorModelGen, BaseAbstractPrior
 from jaxns.framework.ops import parse_prior, prepare_input, compute_log_likelihood
 from jaxns.framework.prior import Prior, InvalidPriorName
 from jaxns.framework.special_priors import Bernoulli, Categorical, Poisson, Beta, ForcedIdentifiability, \
-    UnnormalisedDirichlet, _poisson_quantile_bisection, _poisson_quantile
+    UnnormalisedDirichlet, _poisson_quantile_bisection, _poisson_quantile, Empirical
 from jaxns.framework.wrapped_tfp_distribution import InvalidDistribution, distribution_chain
 from jaxns.internals.types import float_type
 
@@ -263,3 +264,82 @@ def test_poisson_quantile(rate):
     U = jnp.linspace(0., 1. - np.spacing(1.), 10000)
     x = _poisson_quantile(U, rate)
     assert jnp.all(jnp.isfinite(x))
+
+
+def test_forced_identifiability():
+    x = jnp.asarray([0., 0.1, 0.2, 1.])
+    prior = ForcedIdentifiability(n=4, low=0., high=1., name='x')
+    u = prior.inverse(x)
+    print(u)
+    assert jnp.allclose(prior.forward(u), x)
+
+    x = jnp.asarray([0., 0.11, 0.1, 1.])
+    prior = ForcedIdentifiability(n=4, low=0., high=1., name='x')
+    u = prior.inverse(x)
+    print(u)
+    print(prior.forward(u))
+    assert jnp.allclose(prior.forward(u), x)
+
+    x = jnp.asarray([0., 0.1, 0.2, 1.])
+    prior = ForcedIdentifiability(n=4, low=0., high=1., fix_right=True, name='x')
+    u = prior.inverse(x)
+    print(u)
+    assert jnp.allclose(prior.forward(u), x)
+
+    x = jnp.asarray([0., 0.11, 0.1, 1.])
+    prior = ForcedIdentifiability(n=4, low=0., high=1., fix_right=True, name='x')
+    u = prior.inverse(x)
+    print(u)
+    print(prior.forward(u))
+    assert jnp.allclose(prior.forward(u), x)
+
+    x = jnp.asarray([0., 0.1, 0.2, 1.])
+    prior = ForcedIdentifiability(n=4, low=0., high=1., fix_left=True, name='x')
+    u = prior.inverse(x)
+    print(u)
+    assert jnp.allclose(prior.forward(u), x)
+
+    x = jnp.asarray([0., 0.11, 0.11, 1.])
+    prior = ForcedIdentifiability(n=4, low=0., high=1., fix_left=True, name='x')
+    u = prior.inverse(x)
+    print(u)
+    print(prior.forward(u))
+    assert jnp.allclose(prior.forward(u), x)
+
+    x = jnp.asarray([0., 0.1, 0.2, 1.])
+    prior = ForcedIdentifiability(n=4, low=0., high=1., fix_left=True, fix_right=True, name='x')
+    u = prior.inverse(x)
+    print(u)
+    assert jnp.allclose(prior.forward(u), x)
+
+    x = jnp.asarray([0., 0.11, 0.1, 1.])
+    prior = ForcedIdentifiability(n=4, low=0., high=1., fix_left=True, fix_right=True, name='x')
+    u = prior.inverse(x)
+    print(u)
+    print(prior.forward(u))
+    assert jnp.allclose(prior.forward(u), x)
+
+
+def test_empirical():
+    samples = jax.random.normal(jax.random.PRNGKey(42), shape=(5, 1000))
+    prior = Empirical(samples=samples, resolution=100, name='x')
+    assert prior._percentiles.shape == (101, 5)
+
+    x = prior.forward(jnp.ones(prior.base_shape, float_type))
+    assert x.shape == (5,)
+    assert jnp.all(jnp.bitwise_not(jnp.isnan(x)))
+    x = prior.forward(jnp.zeros(prior.base_shape, float_type))
+    assert x.shape == (5,)
+    assert jnp.all(jnp.bitwise_not(jnp.isnan(x)))
+
+    x = prior.forward(0.5 * jnp.ones(prior.base_shape, float_type))
+    assert jnp.allclose(x, 0., atol=0.05)
+
+    u_input = vmap(lambda key: random.uniform(key, shape=prior.base_shape))(random.split(random.PRNGKey(42), 1000))
+    x = vmap(lambda u: prior.forward(u))(u_input)
+    assert jnp.all(jnp.bitwise_not(jnp.isnan(x)))
+
+    u = vmap(lambda x: prior.inverse(x))(x)
+    # print(u)
+    assert jnp.allclose(u, u_input)
+    assert u.shape[1:] == prior.base_shape
