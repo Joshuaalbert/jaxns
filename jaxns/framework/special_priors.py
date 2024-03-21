@@ -520,13 +520,17 @@ class TruncationWrapper(SpecialPrior):
         self.cdf_diff = self.prior._inverse(self.high) - self.prior._inverse(self.low)
 
     def _inverse(self, X: RandomVariableType) -> UType:
-        return (self.prior._inverse(X) - self.cdf_low) / jnp.maximum(self.cdf_diff, 1e-6)
+        return jnp.clip((self.prior._inverse(X) - self.cdf_low) / jnp.maximum(self.cdf_diff, 1e-6),
+                        0., 1.)
 
     def _forward(self, U: UType) -> RandomVariableType:
-        return self.prior._forward(jnp.clip(U * self.cdf_diff + self.cdf_low, 0., 1.))
+        return jnp.clip(self.prior._forward(jnp.clip(U * self.cdf_diff + self.cdf_low,
+                                                     0., 1.)),
+                        self.low, self.high)
 
     def _log_prob(self, X: RandomVariableType) -> MeasureType:
-        return self.prior._log_prob(X) - jnp.log(self.cdf_diff)
+        outside_mask = jnp.bitwise_or(X < self.low, X > self.high)
+        return jnp.where(outside_mask, -jnp.inf, self.prior._log_prob(X) - jnp.log(self.cdf_diff))
 
     def _base_shape(self) -> Tuple[int, ...]:
         return self.prior._base_shape()
