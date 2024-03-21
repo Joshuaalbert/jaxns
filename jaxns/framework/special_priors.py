@@ -510,7 +510,7 @@ class TruncationWrapper(SpecialPrior):
         F_truncated(x) = (F_untruncated(x) - F_untruncated(low)) / (F_untruncated(high) - F_untruncated(low))
     """
 
-    def __init__(self, prior: BaseAbstractPrior, low: jax.Array | float, high: jax.Array | float,
+    def __init__(self, prior: BaseAbstractPrior, low: Union[jax.Array, float], high: Union[jax.Array, float],
                  name: Optional[str] = None):
         super(TruncationWrapper, self).__init__(name=name)
         self.prior = prior
