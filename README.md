@@ -167,7 +167,12 @@ ns_jit = jax.jit(ns)
 You can inspect the results, and plot them.
 
 ```python
-from jaxns import summary, plot_diagnostics, plot_cornerplot
+from jaxns import summary, plot_diagnostics, plot_cornerplot, save_results, load_results
+
+# Optionally save the results to file
+save_results(results, 'results.json')
+# To load the results back use this
+results = load_results('results.json')
 
 summary(results)
 plot_diagnostics(results)

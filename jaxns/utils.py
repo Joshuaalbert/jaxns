@@ -1,4 +1,5 @@
 import io
+import json
 import warnings
 from typing import NamedTuple, TextIO, Union, Optional, Tuple, TypeVar, Callable
 
@@ -9,6 +10,7 @@ from jaxns.framework.bases import BaseAbstractModel
 from jaxns.internals.cumulative_ops import cumulative_op_static
 from jaxns.internals.log_semiring import LogSpace
 from jaxns.internals.maps import prepare_func_args
+from jaxns.internals.namedtuple_utils import serialise_namedtuple, deserialise_namedtuple
 from jaxns.internals.random import resample_indicies
 from jaxns.internals.types import NestedSamplerResults, float_type, XType, UType, FloatArray, IntArray, \
     isinstance_namedtuple
@@ -514,44 +516,35 @@ def analytic_posterior_samples(model: BaseAbstractModel, S: int = 60):
 
 def save_pytree(pytree: NamedTuple, save_file: str):
     """
-    Saves results of nested sampler in a npz file.
+    Saves results of nested sampler in a json file.
 
     Args:
         pytree: Nested sampler result
         save_file: filename
     """
-    pytree_np = tree_map(lambda v: np.asarray(v) if v is not None else None, pytree)
-
-    def _pytree_asdict(pytree):
-        _data_dict = pytree._asdict()
-        data_dict = {}
-        for k, v in _data_dict.items():
-            if isinstance_namedtuple(v):
-                data_dict[k] = _pytree_asdict(v)
-            elif isinstance(v, (dict, np.ndarray, None.__class__)):
-                data_dict[k] = v
-            else:
-                raise ValueError("key, value pair {}, {} unknown".format(k, v))
-        return data_dict
-
-    data_dict = _pytree_asdict(pytree_np)
-    np.savez(save_file, **data_dict)
+    if not isinstance_namedtuple(pytree):
+        raise ValueError(f"Expected NamedTuple, got {type(pytree)}")
+    with open(save_file, 'w') as fp:
+        json.dump(serialise_namedtuple(pytree), fp, indent=2)
 
 
 def save_results(results: NestedSamplerResults, save_file: str):
     """
-    Saves results of nested sampler in a npz file.
+    Saves results of nested sampler in a json file.
 
     Args:
         results (NestedSamplerResults): Nested sampler result
         save_file (str): filename
     """
+    if not save_file.lower().endswith('.json'):
+        warnings.warn(f"Filename {save_file} does not end with .json. "
+                      f"We let this pass, but you should consider using a .json file extension.")
     save_pytree(results, save_file)
 
 
 def load_pytree(save_file: str):
     """
-    Loads saved nested sampler results from a npz file.
+    Loads saved nested sampler results from a json file.
 
     Args:
         save_file (str): filename
@@ -559,23 +552,14 @@ def load_pytree(save_file: str):
     Returns:
         NestedSamplerResults
     """
-    _data_dict = np.load(save_file, allow_pickle=True)
-    data_dict = {}
-    for k, v in _data_dict.items():
-        if v.size == 1:
-            if v.item() is None:
-                data_dict[k] = None
-            else:
-                data_dict[k] = tree_map(lambda v: jnp.asarray(v), v.item())
-        else:
-            data_dict[k] = jnp.asarray(v)
-
-    return data_dict
+    with open(save_file, 'r') as fp:
+        data_dict = json.load(fp)
+    return deserialise_namedtuple(data_dict)
 
 
 def load_results(save_file: str) -> NestedSamplerResults:
     """
-    Loads saved nested sampler results from a npz file.
+    Loads saved nested sampler results from a json file.
 
     Args:
         save_file (str): filename
@@ -583,5 +567,4 @@ def load_results(save_file: str) -> NestedSamplerResults:
     Returns:
         NestedSamplerResults
     """
-    data_dict = load_pytree(save_file)
-    return NestedSamplerResults(**data_dict)
+    return load_pytree(save_file)

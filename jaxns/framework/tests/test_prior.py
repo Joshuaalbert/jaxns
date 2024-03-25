@@ -11,7 +11,7 @@ from jaxns.framework.bases import PriorModelGen, BaseAbstractPrior
 from jaxns.framework.ops import parse_prior, prepare_input, compute_log_likelihood
 from jaxns.framework.prior import Prior, InvalidPriorName
 from jaxns.framework.special_priors import Bernoulli, Categorical, Poisson, Beta, ForcedIdentifiability, \
-    UnnormalisedDirichlet, _poisson_quantile_bisection, _poisson_quantile, Empirical
+    UnnormalisedDirichlet, _poisson_quantile_bisection, _poisson_quantile, Empirical, TruncationWrapper
 from jaxns.framework.wrapped_tfp_distribution import InvalidDistribution, distribution_chain
 from jaxns.internals.types import float_type
 
@@ -343,3 +343,78 @@ def test_empirical():
     # print(u)
     assert jnp.allclose(u, u_input)
     assert u.shape[1:] == prior.base_shape
+
+def test_truncation_wrapper():
+    prior = Prior(tfpd.Normal(loc=jnp.zeros(5), scale=jnp.ones(5)))
+    trancated_prior = TruncationWrapper(prior=prior, low=0., high=1.)
+
+    x = trancated_prior.forward(jnp.ones(trancated_prior.base_shape, float_type))
+    assert jnp.all(jnp.bitwise_not(jnp.isnan(x)))
+    assert jnp.all(x >= 0.)
+    assert jnp.all(x <= 1.)
+    assert x.shape == (5,)
+
+    x = trancated_prior.forward(jnp.zeros(trancated_prior.base_shape, float_type))
+    assert jnp.all(jnp.bitwise_not(jnp.isnan(x)))
+    assert jnp.all(x >= 0.)
+    assert jnp.all(x <= 1.)
+    assert x.shape == (5,)
+
+    u_input = vmap(lambda key: random.uniform(key, shape=trancated_prior.base_shape))(random.split(random.PRNGKey(42), 1000))
+    x = vmap(lambda u: trancated_prior.forward(u))(u_input)
+    assert jnp.all(jnp.bitwise_not(jnp.isnan(x)))
+    assert jnp.all(x >= 0.)
+    assert jnp.all(x <= 1.)
+
+    u = vmap(lambda x: trancated_prior.inverse(x))(x)
+    np.testing.assert_allclose(u, u_input, atol=5e-7)
+
+    prior = Prior(tfpd.Normal(loc=jnp.zeros(5), scale=jnp.ones(5)))
+    trancated_prior = TruncationWrapper(prior=prior, low=-jnp.inf, high=1.)
+
+    x = trancated_prior.forward(jnp.ones(trancated_prior.base_shape, float_type))
+    assert jnp.all(jnp.bitwise_not(jnp.isnan(x)))
+    assert jnp.all(x >= -jnp.inf)
+    assert jnp.all(x <= 1.)
+    assert x.shape == (5,)
+
+    x = trancated_prior.forward(jnp.zeros(trancated_prior.base_shape, float_type))
+    assert jnp.all(jnp.bitwise_not(jnp.isnan(x)))
+    assert jnp.all(x >= -jnp.inf)
+    assert jnp.all(x <= 1.)
+    assert x.shape == (5,)
+
+    u_input = vmap(lambda key: random.uniform(key, shape=trancated_prior.base_shape))(
+        random.split(random.PRNGKey(42), 1000))
+    x = vmap(lambda u: trancated_prior.forward(u))(u_input)
+    assert jnp.all(jnp.bitwise_not(jnp.isnan(x)))
+    assert jnp.all(x >= -jnp.inf)
+    assert jnp.all(x <= 1.)
+
+    u = vmap(lambda x: trancated_prior.inverse(x))(x)
+    np.testing.assert_allclose(u, u_input, atol=5e-7)
+
+    prior = Prior(tfpd.Normal(loc=jnp.zeros(5), scale=0.01*jnp.ones(5)))
+    trancated_prior = TruncationWrapper(prior=prior, low=0., high=1.)
+
+    x = trancated_prior.forward(jnp.ones(trancated_prior.base_shape, float_type))
+    assert jnp.all(jnp.bitwise_not(jnp.isnan(x)))
+    assert jnp.all(x >= 0.)
+    assert jnp.all(x <= 1.)
+    assert x.shape == (5,)
+
+    x = trancated_prior.forward(jnp.zeros(trancated_prior.base_shape, float_type))
+    assert jnp.all(jnp.bitwise_not(jnp.isnan(x)))
+    assert jnp.all(x >= 0.)
+    assert jnp.all(x <= 1.)
+    assert x.shape == (5,)
+
+    u_input = vmap(lambda key: random.uniform(key, shape=trancated_prior.base_shape))(
+        random.split(random.PRNGKey(42), 1000))
+    x = vmap(lambda u: trancated_prior.forward(u))(u_input)
+    assert jnp.all(jnp.bitwise_not(jnp.isnan(x)))
+    assert jnp.all(x >= 0.)
+    assert jnp.all(x <= 1.)
+
+    u = vmap(lambda x: trancated_prior.inverse(x))(x)
+    np.testing.assert_allclose(u, u_input, atol=5e-7)
