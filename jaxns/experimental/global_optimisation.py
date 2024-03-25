@@ -134,8 +134,11 @@ def determine_termination(term_cond: GlobalOptimisationTerminationCondition,
         # relative spread of log-likelihood values below threshold
         max_log_L = jnp.max(state.samples.log_L)
         min_log_L = jnp.min(state.samples.log_L)
-        diff_log_L = jnp.abs(max_log_L - min_log_L)
-        reached_rtol = diff_log_L <= 0.5 * term_cond.rtol * jnp.abs(max_log_L + min_log_L)
+        diff_log_L = jnp.abs(max_log_L - min_log_L)  # NaN = inf - inf
+        diff_log_L = jnp.where(jnp.isnan(diff_log_L), jnp.inf, diff_log_L)
+        mean_log_L = 0.5 * jnp.abs(max_log_L + min_log_L)  # = inf - inf
+        mean_log_L = jnp.where(jnp.isnan(mean_log_L), jnp.inf, mean_log_L)
+        reached_rtol = diff_log_L <= term_cond.rtol * mean_log_L
         done, termination_reason = _set_done_bit(reached_rtol, 2,
                                                  done=done, termination_reason=termination_reason)
 
@@ -143,7 +146,8 @@ def determine_termination(term_cond: GlobalOptimisationTerminationCondition,
         # absolute spread of log-likelihood values below threshold
         max_log_L = jnp.max(state.samples.log_L)
         min_log_L = jnp.min(state.samples.log_L)
-        diff_log_L = jnp.abs(max_log_L - min_log_L)
+        diff_log_L = jnp.abs(max_log_L - min_log_L)  # NaN = inf - inf
+        diff_log_L = jnp.where(jnp.isnan(diff_log_L), jnp.inf, diff_log_L)
         reached_atol = diff_log_L <= term_cond.atol
         done, termination_reason = _set_done_bit(reached_atol, 3,
                                                  done=done, termination_reason=termination_reason)
@@ -363,7 +367,17 @@ class SimpleGlobalOptimisation:
         max_log_L = state.samples.log_L[best_idx]
         min_log_L = jnp.min(state.samples.log_L)
         relative_spread = 2. * jnp.abs(max_log_L - min_log_L) / jnp.abs(max_log_L + min_log_L)
+        relative_spread = jnp.where(
+            jnp.isnan(relative_spread),
+            jnp.asarray(jnp.inf, relative_spread.dtype),
+            relative_spread
+        )
         absolute_spread = jnp.abs(max_log_L - min_log_L)
+        absolute_spread = jnp.where(
+            jnp.isnan(absolute_spread),
+            jnp.asarray(jnp.inf, absolute_spread.dtype),
+            absolute_spread
+        )
         return GlobalOptimisationResults(
             U_solution=state.samples.U_sample[best_idx],
             X_solution=X_solution,
