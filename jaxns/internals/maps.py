@@ -3,7 +3,7 @@ import warnings
 from typing import TypeVar, Callable, Optional
 
 import jax
-from jax import pmap, numpy as jnp, lax, tree_util
+from jax import pmap, numpy as jnp, lax
 
 from jaxns.internals.types import int_type
 
@@ -116,9 +116,9 @@ def chunked_pmap(f: Callable[..., FV], chunk_size: Optional[int] = None, unroll:
         if chunk_size > 1:
             # Get from first leaf
             if len(args) > 0:
-                batch_size = tree_util.tree_leaves(args)[0].shape[0]
+                batch_size = jax.tree.leaves(args)[0].shape[0]
             else:
-                batch_size = tree_util.tree_leaves(kwargs)[0].shape[0]
+                batch_size = jax.tree.leaves(kwargs)[0].shape[0]
             remainder = batch_size % chunk_size
             extra = (chunk_size - remainder) % chunk_size
             if extra > 0:
@@ -172,7 +172,7 @@ def remove_chunk_dim(py_tree: T) -> T:
     Returns:
         pytree with chunk dimension removed
     """
-    leaves = tree_util.tree_leaves(py_tree)
+    leaves = jax.tree.leaves(py_tree)
 
     # Check consistency
     for leaf in leaves:
@@ -246,9 +246,9 @@ def chunked_vmap(f, chunk_size: Optional[int] = None, unroll: int = 1):
         if chunk_size > 1:
             # Get from first leaf
             if len(args) > 0:
-                batch_size = tree_util.tree_leaves(args)[0].shape[0]
+                batch_size = jax.tree.leaves(args)[0].shape[0]
             else:
-                batch_size = tree_util.tree_leaves(kwargs)[0].shape[0]
+                batch_size = jax.tree.leaves(kwargs)[0].shape[0]
             remainder = batch_size % chunk_size
             extra = (chunk_size - remainder) % chunk_size
             if extra > 0:

@@ -320,7 +320,7 @@ class EvidenceMaximisation:
                                 last_params, params)
             last_params = params
             p_bar.set_description(f"{desc}: Epoch {epoch}: log_Z={log_Z}, l_oo={l_oo}")
-            if all(_l_oo < self.gtol for _l_oo in jax.tree_leaves(l_oo)):
+            if all(_l_oo < self.gtol for _l_oo in jax.tree.leaves(l_oo)):
                 break
             epoch += 1
 

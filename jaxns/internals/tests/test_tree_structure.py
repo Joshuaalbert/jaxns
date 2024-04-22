@@ -220,5 +220,5 @@ def test_unbatch_state():
     )
 
     # compare pytrees
-    for a, b in zip(jax.tree_util.tree_leaves(unbatched_state), jax.tree_util.tree_leaves(expected_state)):
+    for a, b in zip(jax.tree.leaves(unbatched_state), jax.tree.leaves(expected_state)):
         assert jnp.all(a == b)
