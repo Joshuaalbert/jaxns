@@ -1,6 +1,7 @@
 from typing import TypeVar, NamedTuple, Tuple, Optional
 
-from jax import numpy as jnp, random, tree_map, lax
+import jax
+from jax import numpy as jnp, random, lax
 
 from jaxns.framework.bases import BaseAbstractModel
 from jaxns.internals.cumulative_ops import cumulative_op_static
@@ -195,7 +196,7 @@ class MultiDimSliceSampler(BaseAbstractMarkovSampler):
         return self.num_phantom_save
 
     def pre_process(self, state: StaticStandardNestedSamplerState) -> SamplerState:
-        sample_collection = tree_map(lambda x: x[state.front_idx], state.sample_collection)
+        sample_collection = jax.tree.map(lambda x: x[state.front_idx], state.sample_collection)
         return (sample_collection,)
 
     def post_process(self, sample_collection: StaticStandardSampleCollection,
@@ -263,6 +264,6 @@ class MultiDimSliceSampler(BaseAbstractMarkovSampler):
 
         # Last sample is the final sample, the rest are potential phantom samples
         # Take only the last num_phantom_save phantom samples
-        phantom_samples: Sample = tree_map(lambda x: x[-(self.num_phantom_save + 1):-1], cumulative_samples)
+        phantom_samples: Sample = jax.tree.map(lambda x: x[-(self.num_phantom_save + 1):-1], cumulative_samples)
 
         return final_sample, phantom_samples

@@ -10,7 +10,8 @@ from jax._src.scipy.special import gammaln
 from jaxns.framework.bases import BaseAbstractPrior
 from jaxns.framework.prior import SingularPrior, prior_to_parametrised_singular
 from jaxns.internals.log_semiring import cumulative_logsumexp
-from jaxns.internals.types import FloatArray, IntArray, BoolArray, float_type, int_type
+from jaxns.internals.types import FloatArray, IntArray, BoolArray, float_type, int_type, UType, RandomVariableType, \
+    MeasureType
 
 tfpd = tfp.distributions
 
@@ -20,7 +21,9 @@ __all__ = [
     "Categorical",
     "ForcedIdentifiability",
     "Poisson",
-    "UnnormalisedDirichlet"
+    "UnnormalisedDirichlet",
+    "Empirical",
+    "TruncationWrapper"
 ]
 
 
@@ -492,3 +495,48 @@ class Empirical(SpecialPrior):
         x = jax.vmap(lambda u, per: jnp.interp(u * 100., self._q, per), in_axes=(0, 1))(U_flat, self._percentiles)
         x = lax.reshape(x, U.shape)
         return x
+
+
+class TruncationWrapper(SpecialPrior):
+    """
+    Wraps another prior to make it truncated.
+
+    For truncated distribution the quantile transforms to:
+
+        Q_truncated(p) = Q_untruncated( p * (F_truncated(high) - F_truncated(low)) + F_truncated(low))
+
+    And the CDF transforms to:
+
+        F_truncated(x) = (F_untruncated(x) - F_untruncated(low)) / (F_untruncated(high) - F_untruncated(low))
+    """
+
+    def __init__(self, prior: BaseAbstractPrior, low: Union[jax.Array, float], high: Union[jax.Array, float],
+                 name: Optional[str] = None):
+        super(TruncationWrapper, self).__init__(name=name)
+        self.prior = prior
+        self.low = jnp.minimum(low, high)
+        self.high = jnp.maximum(low, high)
+        self.cdf_low = self.prior._inverse(self.low)
+        self.cdf_diff = self.prior._inverse(self.high) - self.prior._inverse(self.low)
+
+    def _inverse(self, X: RandomVariableType) -> UType:
+        return jnp.clip((self.prior._inverse(X) - self.cdf_low) / jnp.maximum(self.cdf_diff, 1e-6),
+                        0., 1.)
+
+    def _forward(self, U: UType) -> RandomVariableType:
+        return jnp.clip(self.prior._forward(jnp.clip(U * self.cdf_diff + self.cdf_low,
+                                                     0., 1.)),
+                        self.low, self.high)
+
+    def _log_prob(self, X: RandomVariableType) -> MeasureType:
+        outside_mask = jnp.bitwise_or(X < self.low, X > self.high)
+        return jnp.where(outside_mask, -jnp.inf, self.prior._log_prob(X) - jnp.log(self.cdf_diff))
+
+    def _base_shape(self) -> Tuple[int, ...]:
+        return self.prior._base_shape()
+
+    def _shape(self) -> Tuple[int, ...]:
+        return self.prior._shape()
+
+    def _dtype(self) -> jnp.dtype:
+        return self.prior._dtype()

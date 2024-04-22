@@ -3,8 +3,6 @@
 # For the full list of built-in configuration values, see the documentation:
 # https://www.sphinx-doc.org/en/master/usage/configuration.html
 
-import sphinx_rtd_theme
-
 # sys.path.insert(0, os.path.abspath(".."))  # add project root to abs path
 
 
@@ -14,8 +12,7 @@ import sphinx_rtd_theme
 project = "jaxns"
 copyright = "2022, Joshua G. Albert"
 author = "Joshua G. Albert"
-release = "2.4.12"
-
+release = "2.4.13"
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
@@ -57,24 +54,21 @@ html_theme_options = {
 
 autodoc_typehints = "description"
 
-
 # -- Options for AutoAPI -----------------------------------------------------
 
 autoapi_dirs = ["../jaxns"]
 autoapi_root = "api"  # where to put the generated files relative to root
-autoapi_options =  ["members", "undoc-members", "show-inheritance", 
-                    "special-members", "imported-members"]
+autoapi_options = ["members", "undoc-members", "show-inheritance",
+                   "special-members", "imported-members"]
 autoapi_member_order = "bysource"  # order members by source code
 autoapi_ignore = ["*/tests/*"]  # ignore tests
 autoapi_template_dir = "_templates/autoapi"
 autoapi_python_class_content = "both"  # Use both class and __init__ docstrings
 autoapi_add_toctree_entry = False
 
-
 # -- Options for NBSphinx ----------------------------------------------------
 
 nbsphinx_execute = "never"  # never execute notebooks (slow) during building
-
 
 # -- Copy notebooks to docs --------------------------------------------------
 # Copies the notebooks from the project directory to the docs directory so that

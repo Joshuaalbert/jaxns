@@ -1,18 +1,18 @@
+import jax
 import numpy as np
 import pylab as plt
 import tensorflow_probability.substrates.jax as tfp
-from jax import numpy as jnp, random, tree_map, disable_jit, vmap
+from jax import numpy as jnp, random, disable_jit, vmap
 
-import jaxns.internals.maps
 from jaxns.framework.bases import PriorModelGen
 from jaxns.framework.model import Model
 from jaxns.framework.prior import Prior
-from jaxns.nested_sampler.standard_static import draw_uniform_samples
 from jaxns.internals.random import random_ortho_matrix
+from jaxns.internals.types import float_type, Sample
+from jaxns.nested_sampler.standard_static import draw_uniform_samples
 from jaxns.samplers.multi_ellipsoid.multi_ellipsoid_utils import log_ellipsoid_volume, ellipsoid_clustering, \
     bounding_ellipsoid, covariance_to_rotational, ellipsoid_params, point_in_ellipsoid, plot_ellipses, \
     EllipsoidParams, maha_ellipsoid, circle_to_ellipsoid, ellipsoid_to_circle
-from jaxns.internals.types import float_type, Sample
 
 tfpd = tfp.distributions
 
@@ -36,7 +36,7 @@ def test_ellipsoid_clustering():
                                        num_live_points=n,
                                        model=model)
     keep = live_points.log_L > log_likelihood(1.1, 1.1)
-    reservoir: Sample = tree_map(lambda x: x[keep], live_points)
+    reservoir: Sample = jax.tree.map(lambda x: x[keep], live_points)
     plt.scatter(reservoir.U_sample[:, 0], reservoir.U_sample[:, 1])
     with disable_jit():
         state = ellipsoid_clustering(random.PRNGKey(42), points=reservoir.U_sample,
@@ -100,7 +100,7 @@ def test_ellipsoid_params():
     mu, radii, rotation = ellipsoid_params(points=X, mask=jnp.ones(n, jnp.bool_))
     inside = vmap(lambda x: point_in_ellipsoid(x, mu, radii, rotation))(X)
     plt.scatter(X[:, 0], X[:, 1], c=inside)
-    plot_ellipses(tree_map(lambda x: x[None], EllipsoidParams(mu, radii, rotation)))
+    plot_ellipses(jax.tree.map(lambda x: x[None], EllipsoidParams(mu, radii, rotation)))
 
     assert np.all(inside)
 

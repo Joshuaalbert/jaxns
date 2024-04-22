@@ -172,13 +172,13 @@ class EvidenceMaximisation:
         def loss(params: hk.MutableParams, data: MStepData):
             log_Z, grad = jax.value_and_grad(log_evidence, argnums=0)(params, data)
             obj = -log_Z
-            grad = jax.tree_map(jnp.negative, grad)
+            grad = jax.tree.map(jnp.negative, grad)
 
             # If objective is -+inf, or nan, then the gradient is nan
-            grad = jax.tree_map(lambda x: jnp.where(jnp.isfinite(obj), x, jnp.zeros_like(x)), grad)
+            grad = jax.tree.map(lambda x: jnp.where(jnp.isfinite(obj), x, jnp.zeros_like(x)), grad)
 
             # Clip the gradient
-            grad = jax.tree_map(lambda x: jnp.clip(x, -10, 10), grad)
+            grad = jax.tree.map(lambda x: jnp.clip(x, -10, 10), grad)
 
             aux = (log_Z,)
             if self.verbose:
@@ -247,7 +247,7 @@ class EvidenceMaximisation:
         def loss(params: hk.MutableParams, data: MStepData):
             log_Z, grad = jax.value_and_grad(log_evidence, argnums=0)(params, data)
             obj = -log_Z
-            grad = jax.tree_map(jnp.negative, grad)
+            grad = jax.tree.map(jnp.negative, grad)
             aux = (log_Z,)
             if self.verbose:
                 jax.debug.print("log_Z={log_Z}", log_Z=log_Z)
@@ -316,11 +316,11 @@ class EvidenceMaximisation:
         log_Z = None
         while epoch < self.max_num_epochs:
             params, (log_Z,) = self._m_step(key=key, params=params, data=data)
-            l_oo = jax.tree_map(lambda x, y: jnp.max(jnp.abs(x - y)) if np.size(x) > 0 else 0.,
+            l_oo = jax.tree.map(lambda x, y: jnp.max(jnp.abs(x - y)) if np.size(x) > 0 else 0.,
                                 last_params, params)
             last_params = params
             p_bar.set_description(f"{desc}: Epoch {epoch}: log_Z={log_Z}, l_oo={l_oo}")
-            if all(_l_oo < self.gtol for _l_oo in jax.tree_leaves(l_oo)):
+            if all(_l_oo < self.gtol for _l_oo in jax.tree.leaves(l_oo)):
                 break
             epoch += 1
 

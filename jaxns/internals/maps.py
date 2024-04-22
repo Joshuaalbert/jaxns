@@ -3,7 +3,7 @@ import warnings
 from typing import TypeVar, Callable, Optional
 
 import jax
-from jax import tree_map, pmap, numpy as jnp, lax, tree_util
+from jax import pmap, numpy as jnp, lax
 
 from jaxns.internals.types import int_type
 
@@ -116,21 +116,21 @@ def chunked_pmap(f: Callable[..., FV], chunk_size: Optional[int] = None, unroll:
         if chunk_size > 1:
             # Get from first leaf
             if len(args) > 0:
-                batch_size = tree_util.tree_leaves(args)[0].shape[0]
+                batch_size = jax.tree.leaves(args)[0].shape[0]
             else:
-                batch_size = tree_util.tree_leaves(kwargs)[0].shape[0]
+                batch_size = jax.tree.leaves(kwargs)[0].shape[0]
             remainder = batch_size % chunk_size
             extra = (chunk_size - remainder) % chunk_size
             if extra > 0:
-                (args, kwargs) = tree_map(lambda x: _pad_extra(x, chunk_size), (args, kwargs))
-            (args, kwargs) = tree_map(
+                (args, kwargs) = jax.tree.map(lambda x: _pad_extra(x, chunk_size), (args, kwargs))
+            (args, kwargs) = jax.tree.map(
                 lambda x: jnp.reshape(x, (chunk_size, x.shape[0] // chunk_size) + x.shape[1:]),
                 (args, kwargs)
             )
             result = pmap(queue)(*args, **kwargs)  # [chunksize, batch_size // chunksize, ...]
-            result = tree_map(lambda x: jnp.reshape(x, (-1,) + x.shape[2:]), result)
+            result = jax.tree.map(lambda x: jnp.reshape(x, (-1,) + x.shape[2:]), result)
             if extra > 0:
-                result = tree_map(lambda x: x[:-extra], result)
+                result = jax.tree.map(lambda x: x[:-extra], result)
         else:
             result = queue(*args, **kwargs)
         return result
@@ -156,7 +156,7 @@ def _pad_extra(arg, chunksize):
 
 
 def prepad(a, chunksize: int):
-    return tree_map(lambda arg: _pad_extra(arg, chunksize), a)
+    return jax.tree.map(lambda arg: _pad_extra(arg, chunksize), a)
 
 
 T = TypeVar('T')
@@ -172,7 +172,7 @@ def remove_chunk_dim(py_tree: T) -> T:
     Returns:
         pytree with chunk dimension removed
     """
-    leaves = tree_util.tree_leaves(py_tree)
+    leaves = jax.tree.leaves(py_tree)
 
     # Check consistency
     for leaf in leaves:
@@ -190,7 +190,7 @@ def remove_chunk_dim(py_tree: T) -> T:
         shape = [shape[0] * shape[1]] + shape[2:]
         return jnp.reshape(a, shape)
 
-    return tree_map(_remove_chunk_dim, py_tree)
+    return jax.tree.map(_remove_chunk_dim, py_tree)
 
 
 def add_chunk_dim(py_tree: T, chunk_size: int) -> T:
@@ -210,7 +210,7 @@ def add_chunk_dim(py_tree: T, chunk_size: int) -> T:
         shape = [chunk_size, shape[0] // chunk_size] + shape[1:]
         return jnp.reshape(a, shape)
 
-    return tree_map(_add_chunk_dim, py_tree)
+    return jax.tree.map(_add_chunk_dim, py_tree)
 
 
 def chunked_vmap(f, chunk_size: Optional[int] = None, unroll: int = 1):
@@ -246,21 +246,21 @@ def chunked_vmap(f, chunk_size: Optional[int] = None, unroll: int = 1):
         if chunk_size > 1:
             # Get from first leaf
             if len(args) > 0:
-                batch_size = tree_util.tree_leaves(args)[0].shape[0]
+                batch_size = jax.tree.leaves(args)[0].shape[0]
             else:
-                batch_size = tree_util.tree_leaves(kwargs)[0].shape[0]
+                batch_size = jax.tree.leaves(kwargs)[0].shape[0]
             remainder = batch_size % chunk_size
             extra = (chunk_size - remainder) % chunk_size
             if extra > 0:
-                (args, kwargs) = tree_map(lambda x: _pad_extra(x, chunk_size), (args, kwargs))
-            (args, kwargs) = tree_map(
+                (args, kwargs) = jax.tree.map(lambda x: _pad_extra(x, chunk_size), (args, kwargs))
+            (args, kwargs) = jax.tree.map(
                 lambda x: jnp.reshape(x, (chunk_size, x.shape[0] // chunk_size) + x.shape[1:]),
                 (args, kwargs)
             )
             result = jax.vmap(queue)(*args, **kwargs)  # [chunksize, batch_size // chunksize, ...]
-            result = tree_map(lambda x: jnp.reshape(x, (-1,) + x.shape[2:]), result)
+            result = jax.tree.map(lambda x: jnp.reshape(x, (-1,) + x.shape[2:]), result)
             if extra > 0:
-                result = tree_map(lambda x: x[:-extra], result)
+                result = jax.tree.map(lambda x: x[:-extra], result)
         else:
             result = queue(*args, **kwargs)
         return result

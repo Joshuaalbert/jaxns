@@ -4,7 +4,7 @@ from setuptools import find_packages
 from setuptools import setup
 
 install_requires = [
-    'jax',
+    'jax>=0.4.25',
     'jaxlib',
     'matplotlib',
     'numpy',
@@ -20,7 +20,7 @@ with open("README.md", "r") as fh:
     long_description = fh.read()
 
 setup(name='jaxns',
-      version='2.4.12',
+      version='2.4.13',
       description='Nested Sampling in JAX',
       long_description=long_description,
       long_description_content_type="text/markdown",
