@@ -4,7 +4,7 @@ from setuptools import find_packages
 from setuptools import setup
 
 install_requires = [
-    'jax',
+    'jax>=0.4.25',
     'jaxlib',
     'matplotlib',
     'numpy',
