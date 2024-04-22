@@ -1,6 +1,7 @@
 import warnings
 from typing import Optional, List, Union
 
+import jax
 import jax.numpy as jnp
 import numpy as np
 import pylab as plt
@@ -42,7 +43,15 @@ def plot_diagnostics(results: NestedSamplerResults, save_name=None):
     cum_evidence = np.exp(log_cum_evidence)
     log_Z_mean = np.asarray(results.log_Z_mean)
     num_likelihood_evaluations_per_sample = np.asarray(results.num_likelihood_evaluations_per_sample)
-    efficiency = 1. / num_likelihood_evaluations_per_sample
+    if np.any(num_likelihood_evaluations_per_sample == 0):
+        warnings.warn("Found samples with zero likelihood evaluations.")
+        efficiency = np.where(
+            num_likelihood_evaluations_per_sample == 0,
+            np.nan,
+            1. / num_likelihood_evaluations_per_sample
+        )
+    else:
+        efficiency = 1. / num_likelihood_evaluations_per_sample
     mean_efficiency = np.exp(results.log_efficiency)
     # Plot the number of live points
     axs[0].plot(-log_X, num_live_points_per_sample, c='black')
@@ -441,7 +450,6 @@ def corner_cornerplot(results: NestedSamplerResults):
     except ImportError:
         warnings.warn("You must run `pip install arviz`")
         exit(0)
-    from jax import tree_map
     samples = resample(random.PRNGKey(42), results.samples, results.log_dp_mean, S=int(results.ESS))
-    corner.corner(az.from_dict(posterior=tree_map(lambda x: x[None], samples)), )
+    corner.corner(az.from_dict(posterior=jax.tree.map(lambda x: x[None], samples)), )
     plt.show()

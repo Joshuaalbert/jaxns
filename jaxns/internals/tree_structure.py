@@ -1,10 +1,11 @@
 from typing import NamedTuple, List, Tuple, Union, Optional
 
-from jax import numpy as jnp, lax, tree_map, core
+import jax
+from jax import numpy as jnp, lax, core
 from jax._src.numpy import lax_numpy
 
-from jaxns.internals.maps import remove_chunk_dim
 from jaxns.internals.cumulative_ops import cumulative_op_static, cumulative_op_dynamic
+from jaxns.internals.maps import remove_chunk_dim
 from jaxns.internals.types import MeasureType, IntArray, float_type, FloatArray, StaticStandardNestedSamplerState, \
     int_type
 
@@ -70,8 +71,6 @@ def count_crossed_edges(sample_tree: SampleTreeGraph, num_samples: Optional[IntA
         # delta = degree(nodes[last_node]) - 1
         crossed_edges += out_degree[last_node] - 1
         return crossed_edges
-
-
 
     if num_samples is not None:
         _, crossed_edges_sorted = cumulative_op_dynamic(
@@ -414,7 +413,7 @@ def unbatch_state(batched_state: StaticStandardNestedSamplerState) -> StaticStan
 
     # Rearrange the samples
     unbatched_state = unbatched_state._replace(
-        sample_collection=tree_map(lambda x: x[sort_idx], unbatched_state.sample_collection),
+        sample_collection=jax.tree.map(lambda x: x[sort_idx], unbatched_state.sample_collection),
         front_idx=front_idx
     )
     return unbatched_state

@@ -1,14 +1,15 @@
 from typing import NamedTuple, Tuple, Literal
 
+import jax
 import numpy as np
 import pylab as plt
-from jax import numpy as jnp, vmap, random, tree_map, lax
+from jax import numpy as jnp, vmap, random, lax
 from jax._src.scipy.special import gammaln
 
 from jaxns.internals.log_semiring import LogSpace
-from jaxns.samplers.multi_ellipsoid.em_gmm import em_gmm
 from jaxns.internals.types import IntArray, FloatArray, PRNGKey, BoolArray
 from jaxns.internals.types import UType, int_type, float_type
+from jaxns.samplers.multi_ellipsoid.em_gmm import em_gmm
 
 __all__ = [
     'ellipsoid_clustering',
@@ -664,7 +665,7 @@ def ellipsoid_clustering(key: PRNGKey, points: FloatArray, log_VS: FloatArray,
         radii=jnp.zeros((K, D), float_type),
         rotation=jnp.zeros((K, D, D), float_type)
     )
-    params: EllipsoidParams = tree_map(lambda x, y: x.at[0].set(y), params, init_ellipsoid)
+    params: EllipsoidParams = jax.tree.map(lambda x, y: x.at[0].set(y), params, init_ellipsoid)
     state = MultEllipsoidState(
         cluster_id=cluster_id,
         params=params
@@ -696,7 +697,7 @@ def ellipsoid_clustering(key: PRNGKey, points: FloatArray, log_VS: FloatArray,
         log_VS = body_state.log_VS_subclusters[select_split]
 
         # params of ellipsoid
-        params = tree_map(lambda x: x[select_split], body_state.state.params)
+        params = jax.tree.map(lambda x: x[select_split], body_state.state.params)
 
         # Perform a split on points in the given mask
         # Strategy: if no split we replace child0 with parent and child1 gets zero-size ellipsoid that has no members.
@@ -710,11 +711,12 @@ def ellipsoid_clustering(key: PRNGKey, points: FloatArray, log_VS: FloatArray,
         )
 
         # Update the parameters in given component that is being split with child 0
-        params = tree_map(lambda x, y: jnp.where(cluster_split_result.successful_split, x.at[select_split].set(y), x),
-                          body_state.state.params,
-                          cluster_split_result.params0)
+        params = jax.tree.map(
+            lambda x, y: jnp.where(cluster_split_result.successful_split, x.at[select_split].set(y), x),
+            body_state.state.params,
+            cluster_split_result.params0)
         # Update the parameters in `next_k` with child 1
-        params = tree_map(
+        params = jax.tree.map(
             lambda x, y: jnp.where(cluster_split_result.successful_split, x.at[body_state.next_k].set(y), x),
             params,
             cluster_split_result.params1)

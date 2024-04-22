@@ -35,7 +35,7 @@ def test_basic(solver):
         return True
 
     assert all(
-        change(p, p_) for p, p_ in zip(jax.tree_util.tree_leaves(model.params), jax.tree_util.tree_leaves(params)))
+        change(p, p_) for p, p_ in zip(jax.tree.leaves(model.params), jax.tree.leaves(params)))
 
 
 def test_basic_zero_size_param():
@@ -52,7 +52,7 @@ def test_basic_zero_size_param():
     model = Model(prior_model=prior_model, log_likelihood=log_likelihood)
 
     em = EvidenceMaximisation(model=model, ns_kwargs=dict(max_samples=1e5))
-    assert any(np.size(p) == 0 for p in jax.tree_util.tree_leaves(model.params))
+    assert any(np.size(p) == 0 for p in jax.tree.leaves(model.params))
 
     ns_results, params = em.train(num_steps=1)
 
@@ -62,4 +62,4 @@ def test_basic_zero_size_param():
         return True
 
     assert all(
-        change(p, p_) for p, p_ in zip(jax.tree_util.tree_leaves(model.params), jax.tree_util.tree_leaves(params)))
+        change(p, p_) for p, p_ in zip(jax.tree.leaves(model.params), jax.tree.leaves(params)))

@@ -1,7 +1,7 @@
 from typing import TypeVar, NamedTuple, Tuple
 
 import jax
-from jax import numpy as jnp, random, lax, tree_map
+from jax import numpy as jnp, random, lax
 
 from jaxns.framework.bases import BaseAbstractModel
 from jaxns.internals.cumulative_ops import cumulative_op_static
@@ -92,30 +92,15 @@ def _shrink_interval(key: PRNGKey, t: FloatArray, left: FloatArray, right: Float
     # witout exponential shrinkage, we shrink to failed proposal point, which is 100% correct.
     left = jnp.where(t < 0., t, left)
     right = jnp.where(t > 0., t, right)
-    key, t_key, midpoint_key = random.split(key, 3)
 
     if midpoint_shrink:
-        # we take two points along lines from origin:
-        #  - alpha: one from a satisfying point (t=0) to non-satisfying proposal,
-        #  - beta: and, one from non-satisfying proposal to the constraint.
-        # We shrink to alpha point if beta point is above alpha point.
-        # Intuitively, the tangent from constraint is more accurate than proposal and should be a supremum of heights
-        # in reasonable cases.
-        # An extension is to make alpha shrink to constraint line, which would shrink very fast, but introduce
-        # auto-correlation which must be later refined away.
-        # Line logic:
-        # logL(t) = m * t + b
-        # logL(0) = b
-        # (logL(t_R) - logL(0))/t_R
-        # logL(t_R*alpha) = (logL(t_R) - logL(0))*alpha + logL(0)
-        alpha_key, beta_key = random.split(midpoint_key, 2)
-        alpha = random.uniform(alpha_key)
-        beta = random.uniform(beta_key)
-        logL_alpha = log_L0 + alpha * (log_L_proposal - log_L0)
-        logL_beta = log_L_proposal + beta * (log_L_constraint - log_L_proposal)
-        do_mid_point_shrink = logL_alpha < logL_beta
-        left = jnp.where((t < 0.) & do_mid_point_shrink, alpha * left, left)
-        right = jnp.where((t > 0.) & do_mid_point_shrink, alpha * right, right)
+        # For this to be correct it must be invariant to monotonic rescaling of the likelihood.
+        # Therefore, it must only use the knowledge of ordering of the likelihoods.
+        # Basic version: shrink to midpoint of interval, i.e. alpha = 0.5.
+        # Extended version: shrink to random point in interval.
+        alpha = random.uniform(key)
+        left = jnp.where((t < 0.), alpha * left, left)
+        right = jnp.where((t > 0.), alpha * right, right)
     return left, right
 
 
@@ -286,7 +271,7 @@ class UniDimSliceSampler(BaseAbstractMarkovSampler):
         return self.num_phantom_save
 
     def pre_process(self, state: StaticStandardNestedSamplerState) -> SamplerState:
-        sample_collection = tree_map(lambda x: x[state.front_idx], state.sample_collection)
+        sample_collection = jax.tree.map(lambda x: x[state.front_idx], state.sample_collection)
         if self.perfect:  # nothing needed
             return (sample_collection,)
         else:  # TODO: step out with doubling, using ellipsoidal clustering
@@ -362,7 +347,7 @@ class UniDimSliceSampler(BaseAbstractMarkovSampler):
 
         # Last sample is the final sample, the rest are potential phantom samples
         # Take only the last num_phantom_save phantom samples
-        phantom_samples: Sample = tree_map(lambda x: x[-(self.num_phantom_save + 1):-1], cumulative_samples)
+        phantom_samples: Sample = jax.tree.map(lambda x: x[-(self.num_phantom_save + 1):-1], cumulative_samples)
 
         # Due to the cumulative nature of the sampler, the final number of likelihood evaluations should be divided
         # equally among the accepted sample and retained phantom samples.

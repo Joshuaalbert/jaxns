@@ -1,9 +1,10 @@
 import warnings
 from typing import Optional, Tuple, Union
 
+import jax
 import jax.numpy as jnp
 import tensorflow_probability.substrates.jax as tfp
-from jax import tree_map, core
+from jax import core
 
 from jaxns.framework.bases import BaseAbstractModel
 from jaxns.internals.logging import logger
@@ -183,7 +184,7 @@ class DefaultNestedSampler:
                 return x[:results.total_num_samples]
             return x
 
-        results = tree_map(trim, results)
+        results = jax.tree.map(trim, results)
         return results
 
 

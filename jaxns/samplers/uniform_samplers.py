@@ -1,6 +1,7 @@
 from typing import NamedTuple, Tuple
 
-from jax import random, numpy as jnp, lax, tree_map
+import jax
+from jax import random, numpy as jnp, lax
 
 from jaxns.framework.bases import BaseAbstractModel
 from jaxns.internals.types import IntArray, StaticStandardNestedSamplerState, UType, MeasureType, \
@@ -86,5 +87,5 @@ class UniformSampler(BaseAbstractRejectionSampler):
             log_L=carry_state.log_L,
             num_likelihood_evaluations=carry_state.num_likelihood_evals
         )
-        phantom_samples = tree_map(lambda x: jnp.zeros((0,) + x.shape, x.dtype), sample)
+        phantom_samples = jax.tree.map(lambda x: jnp.zeros((0,) + x.shape, x.dtype), sample)
         return sample, phantom_samples

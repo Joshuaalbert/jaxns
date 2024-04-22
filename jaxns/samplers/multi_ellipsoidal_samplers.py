@@ -1,6 +1,7 @@
 from typing import NamedTuple, Tuple
 
-from jax import random, numpy as jnp, lax, tree_map
+import jax
+from jax import random, numpy as jnp, lax
 
 from jaxns.internals.shrinkage_statistics import compute_evidence_stats
 from jaxns.internals.tree_structure import SampleTreeGraph, count_crossed_edges
@@ -59,7 +60,8 @@ class MultiEllipsoidalSampler(BaseAbstractRejectionSampler):
             method='em_gmm'
         )
 
-    def post_process(self, sample_collection: StaticStandardSampleCollection, sampler_state: SamplerState) -> SamplerState:
+    def post_process(self, sample_collection: StaticStandardSampleCollection,
+                     sampler_state: SamplerState) -> SamplerState:
         return sampler_state
 
     @property
@@ -122,5 +124,5 @@ class MultiEllipsoidalSampler(BaseAbstractRejectionSampler):
             num_likelihood_evaluations=final_carry.num_likelihood_evals
         )
 
-        phantom_samples = tree_map(lambda x: jnp.zeros((0,) + x.shape, x.dtype), sample)
+        phantom_samples = jax.tree.map(lambda x: jnp.zeros((0,) + x.shape, x.dtype), sample)
         return sample, phantom_samples
