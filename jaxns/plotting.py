@@ -1,6 +1,7 @@
 import warnings
 from typing import Optional, List, Union
 
+import jax
 import jax.numpy as jnp
 import numpy as np
 import pylab as plt
@@ -441,7 +442,6 @@ def corner_cornerplot(results: NestedSamplerResults):
     except ImportError:
         warnings.warn("You must run `pip install arviz`")
         exit(0)
-    from jax import tree_map
     samples = resample(random.PRNGKey(42), results.samples, results.log_dp_mean, S=int(results.ESS))
-    corner.corner(az.from_dict(posterior=tree_map(lambda x: x[None], samples)), )
+    corner.corner(az.from_dict(posterior=jax.tree.map(lambda x: x[None], samples)), )
     plt.show()

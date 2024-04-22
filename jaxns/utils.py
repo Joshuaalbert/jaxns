@@ -3,8 +3,9 @@ import json
 import warnings
 from typing import NamedTuple, TextIO, Union, Optional, Tuple, TypeVar, Callable
 
+import jax
 import numpy as np
-from jax import numpy as jnp, tree_map, vmap, random, jit, lax
+from jax import numpy as jnp, vmap, random, jit, lax
 
 from jaxns.framework.bases import BaseAbstractModel
 from jaxns.internals.cumulative_ops import cumulative_op_static
@@ -53,7 +54,7 @@ def resample(key: PRNGKey, samples: Union[XType, UType], log_weights: jnp.ndarra
         equally weighted samples
     """
     idx = resample_indicies(key, log_weights, S=S, replace=replace)
-    return tree_map(lambda s: s[idx, ...], samples)
+    return jax.tree.map(lambda s: s[idx, ...], samples)
 
 
 _V = TypeVar('_V')
@@ -98,7 +99,7 @@ def marginalise_static_from_U(key: PRNGKey, U_samples: UType, model: BaseAbstrac
         V = model.prepare_input(U=U)
         return fun(*V)
 
-    marginalised = tree_map(lambda marg: jnp.nanmean(marg, axis=0), vmap(_eval)(U_samples))
+    marginalised = jax.tree.map(lambda marg: jnp.nanmean(marg, axis=0), vmap(_eval)(U_samples))
     return marginalised
 
 
@@ -129,21 +130,21 @@ def marginalise_dynamic_from_U(key: PRNGKey, U_samples: UType, model: BaseAbstra
         (key, i, count, marginalised) = state
         key, resample_key = random.split(key, 2)
         _samples = resample(resample_key, U_samples, log_weights, S=1)
-        _sample = tree_map(lambda v: v[0], _samples)
+        _sample = jax.tree.map(lambda v: v[0], _samples)
         update = _eval(_sample)
-        count = tree_map(lambda y, c: jnp.where(jnp.any(jnp.isnan(y)), c, c + jnp.asarray(1, c.dtype)),
-                         update, count)
-        marginalised = tree_map(lambda x, y: jnp.where(jnp.isnan(y), x, x + y.astype(x.dtype)),
-                                marginalised, update)
+        count = jax.tree.map(lambda y, c: jnp.where(jnp.any(jnp.isnan(y)), c, c + jnp.asarray(1, c.dtype)),
+                             update, count)
+        marginalised = jax.tree.map(lambda x, y: jnp.where(jnp.isnan(y), x, x + y.astype(x.dtype)),
+                                    marginalised, update)
         return (key, i + jnp.ones_like(i), count, marginalised)
 
-    test_output = fun(**tree_map(lambda v: v[0], U_samples))
-    count = tree_map(lambda x: jnp.asarray(0, x.dtype), test_output)
-    init_marginalised = tree_map(lambda x: jnp.zeros_like(x), test_output)
+    test_output = fun(**jax.tree.map(lambda v: v[0], U_samples))
+    count = jax.tree.map(lambda x: jnp.asarray(0, x.dtype), test_output)
+    init_marginalised = jax.tree.map(lambda x: jnp.zeros_like(x), test_output)
     (_, _, count, marginalised) = lax.while_loop(lambda state: state[1] < ESS,
                                                  body,
                                                  (key, jnp.array(0, ESS.dtype), count, init_marginalised))
-    marginalised = tree_map(lambda x, c: x / c, marginalised, count)
+    marginalised = jax.tree.map(lambda x, c: x / c, marginalised, count)
     return marginalised
 
 
@@ -163,7 +164,7 @@ def marginalise_static(key: PRNGKey, samples: XType, log_weights: jnp.ndarray, E
     """
     fun = prepare_func_args(fun)
     samples = resample(key, samples, log_weights, S=ESS, replace=True)
-    marginalised = tree_map(lambda marg: jnp.nanmean(marg, axis=0), vmap(fun)(**samples))
+    marginalised = jax.tree.map(lambda marg: jnp.nanmean(marg, axis=0), vmap(fun)(**samples))
     return marginalised
 
 
@@ -189,21 +190,21 @@ def marginalise_dynamic(key: PRNGKey, samples: XType, log_weights: jnp.ndarray, 
         (key, i, count, marginalised) = state
         key, resample_key = random.split(key, 2)
         _samples = resample(resample_key, samples, log_weights, S=1)
-        _sample = tree_map(lambda v: v[0], _samples)
+        _sample = jax.tree.map(lambda v: v[0], _samples)
         update = fun(**_sample)
-        count = tree_map(lambda y, c: jnp.where(jnp.any(jnp.isnan(y)), c, c + jnp.asarray(1, c.dtype)),
-                         update, count)
-        marginalised = tree_map(lambda x, y: jnp.where(jnp.isnan(y), x, x + y.astype(x.dtype)),
-                                marginalised, update)
+        count = jax.tree.map(lambda y, c: jnp.where(jnp.any(jnp.isnan(y)), c, c + jnp.asarray(1, c.dtype)),
+                             update, count)
+        marginalised = jax.tree.map(lambda x, y: jnp.where(jnp.isnan(y), x, x + y.astype(x.dtype)),
+                                    marginalised, update)
         return (key, i + jnp.ones_like(i), count, marginalised)
 
-    test_output = fun(**tree_map(lambda v: v[0], samples))
-    count = tree_map(lambda x: jnp.asarray(0, x.dtype), test_output)
-    init_marginalised = tree_map(lambda x: jnp.zeros_like(x), test_output)
+    test_output = fun(**jax.tree.map(lambda v: v[0], samples))
+    count = jax.tree.map(lambda x: jnp.asarray(0, x.dtype), test_output)
+    init_marginalised = jax.tree.map(lambda x: jnp.zeros_like(x), test_output)
     (_, _, count, marginalised) = lax.while_loop(lambda state: state[1] < ESS,
                                                  body,
                                                  (key, jnp.array(0, ESS.dtype), count, init_marginalised))
-    marginalised = tree_map(lambda x, c: x / c, marginalised, count)
+    marginalised = jax.tree.map(lambda x, c: x / c, marginalised, count)
     return marginalised
 
 
@@ -220,7 +221,7 @@ def maximum_a_posteriori_point(results: NestedSamplerResults) -> XType:
     """
 
     map_idx = jnp.argmax(results.log_posterior_density)
-    map_points = tree_map(lambda x: x[map_idx], results.samples)
+    map_points = jax.tree.map(lambda x: x[map_idx], results.samples)
     return map_points
 
 
@@ -237,7 +238,7 @@ def maximum_a_posteriori_point_U(results: NestedSamplerResults) -> UType:
     """
 
     map_idx = jnp.argmax(results.log_posterior_density)
-    map_points = tree_map(lambda x: x[map_idx], results.U_samples)
+    map_points = jax.tree.map(lambda x: x[map_idx], results.U_samples)
     return map_points
 
 
@@ -354,7 +355,7 @@ def summary(results: NestedSamplerResults, with_parametrised: bool = False, f_ob
         samples.update(results.parametrised_samples)
 
     max_like_idx = np.argmax(results.log_L_samples)
-    max_like_points = tree_map(lambda x: x[max_like_idx], samples)
+    max_like_points = jax.tree.map(lambda x: x[max_like_idx], samples)
 
     uniform_samples = resample(random.PRNGKey(23426),
                                samples,
@@ -363,7 +364,7 @@ def summary(results: NestedSamplerResults, with_parametrised: bool = False, f_ob
                                replace=True)
 
     max_map_idx = np.argmax(results.log_posterior_density)
-    map_points = tree_map(lambda x: x[max_map_idx], results.samples)
+    map_points = jax.tree.map(lambda x: x[max_map_idx], results.samples)
 
     for name in uniform_samples.keys():
         _samples = uniform_samples[name].reshape((uniform_samples[name].shape[0], -1))

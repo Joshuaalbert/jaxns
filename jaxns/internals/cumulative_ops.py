@@ -1,6 +1,7 @@
 from typing import TypeVar, Callable, Tuple, Optional
 
-from jax import lax, numpy as jnp, tree_map, tree_util
+import jax
+from jax import lax, numpy as jnp, tree_util
 
 from jaxns.internals.types import IntArray, int_type
 
@@ -64,18 +65,18 @@ def cumulative_op_dynamic(op: Callable[[V, Y], V], init: V, xs: Y, stop_idx: Int
 
     def body(carry: Tuple[V, IntArray, V]):
         (accumulate, i, output) = carry
-        y = tree_map(lambda x: x[i], xs)
+        y = jax.tree.map(lambda x: x[i], xs)
         next_accumulate = op(accumulate, y)
         next_i = i + jnp.ones_like(i)
         if pre_op:
-            next_output = tree_map(lambda a, b: a.at[i].set(b), output, accumulate)
+            next_output = jax.tree.map(lambda a, b: a.at[i].set(b), output, accumulate)
             return (next_accumulate, next_i, next_output)
-        next_output = tree_map(lambda a, b: a.at[i].set(b), output, next_accumulate)
+        next_output = jax.tree.map(lambda a, b: a.at[i].set(b), output, next_accumulate)
         return (next_accumulate, next_i, next_output)
 
     length = tree_util.tree_flatten(xs)[0][0].shape[0]
 
-    output = tree_map(
+    output = jax.tree.map(
         lambda x: jnp.tile(x[None], [length] + [1] * len(x.shape)),
         empty_fill if empty_fill is not None else init
     )

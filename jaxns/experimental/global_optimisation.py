@@ -1,10 +1,11 @@
 import io
 from typing import NamedTuple, Optional, Union, TextIO, Tuple, List
 
+import jax
 import jax.nn
 import jax.numpy as jnp
 import numpy as np
-from jax import lax, random, pmap, tree_map
+from jax import lax, random, pmap
 from jax._src.lax import parallel
 from jax._src.scipy.special import logit
 from jaxopt import NonlinearCG
@@ -231,7 +232,7 @@ def _single_thread_global_optimisation(init_state: GlobalOptimisationState,
                 return jnp.repeat(x, (k + 1), axis=0)
 
             fake_state = fake_state._replace(
-                sample_collection=tree_map(_repeat, fake_state.sample_collection)
+                sample_collection=jax.tree.map(_repeat, fake_state.sample_collection)
             )
 
         fake_state, fake_termination_register = _inter_sync_shrinkage_process(
@@ -257,7 +258,7 @@ def _single_thread_global_optimisation(init_state: GlobalOptimisationState,
                 return x[choose_idx, jnp.arange(num_samples)]  # [N, ...]
 
             fake_state = fake_state._replace(
-                sample_collection=tree_map(
+                sample_collection=jax.tree.map(
                     _select,
                     fake_state.sample_collection
                 )

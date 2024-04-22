@@ -1,7 +1,7 @@
 from typing import TypeVar, NamedTuple, Tuple
 
 import jax
-from jax import numpy as jnp, random, lax, tree_map
+from jax import numpy as jnp, random, lax
 
 from jaxns.framework.bases import BaseAbstractModel
 from jaxns.internals.cumulative_ops import cumulative_op_static
@@ -271,7 +271,7 @@ class UniDimSliceSampler(BaseAbstractMarkovSampler):
         return self.num_phantom_save
 
     def pre_process(self, state: StaticStandardNestedSamplerState) -> SamplerState:
-        sample_collection = tree_map(lambda x: x[state.front_idx], state.sample_collection)
+        sample_collection = jax.tree.map(lambda x: x[state.front_idx], state.sample_collection)
         if self.perfect:  # nothing needed
             return (sample_collection,)
         else:  # TODO: step out with doubling, using ellipsoidal clustering
@@ -347,7 +347,7 @@ class UniDimSliceSampler(BaseAbstractMarkovSampler):
 
         # Last sample is the final sample, the rest are potential phantom samples
         # Take only the last num_phantom_save phantom samples
-        phantom_samples: Sample = tree_map(lambda x: x[-(self.num_phantom_save + 1):-1], cumulative_samples)
+        phantom_samples: Sample = jax.tree.map(lambda x: x[-(self.num_phantom_save + 1):-1], cumulative_samples)
 
         # Due to the cumulative nature of the sampler, the final number of likelihood evaluations should be divided
         # equally among the accepted sample and retained phantom samples.

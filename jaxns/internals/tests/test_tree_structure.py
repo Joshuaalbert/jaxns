@@ -2,7 +2,7 @@ from timeit import default_timer
 
 import jax
 import numpy as np
-from jax import tree_map, numpy as jnp, random
+from jax import numpy as jnp, random
 
 from jaxns.internals.tree_structure import SampleTreeGraph, SampleLivePointCounts, count_crossed_edges, \
     count_intervals_naive, \
@@ -20,8 +20,8 @@ def test_naive():
         samples_indices=jnp.asarray([0, 1, 2, 3, 4, 5]),
         num_live_points=jnp.asarray([3, 3, 3, 3, 2, 1])
     )
-    assert all(tree_map(lambda x, y: np.array_equal(x, y), count_intervals_naive(S), expected))
-    assert all(tree_map(lambda x, y: np.array_equal(x, y), count_intervals_naive(S), count_old(S)))
+    assert all(jax.tree.map(lambda x, y: np.array_equal(x, y), count_intervals_naive(S), expected))
+    assert all(jax.tree.map(lambda x, y: np.array_equal(x, y), count_intervals_naive(S), count_old(S)))
 
 
 def test_basic():
@@ -29,18 +29,20 @@ def test_basic():
         sender_node_idx=jnp.asarray([0, 0, 0, 1, 2, 3]),
         log_L=jnp.asarray([1, 2, 3, 4, 5, 6])
     )
-    assert all(tree_map(lambda x, y: np.array_equal(x, y), count_crossed_edges(S), count_intervals_naive(S)))
-    assert all(tree_map(lambda x, y: np.array_equal(x, y), count_crossed_edges(S), count_old(S)))
-    assert all(tree_map(lambda x, y: np.array_equal(x, y), count_crossed_edges(S), count_crossed_edges_less_fast(S)))
+    assert all(jax.tree.map(lambda x, y: np.array_equal(x, y), count_crossed_edges(S), count_intervals_naive(S)))
+    assert all(jax.tree.map(lambda x, y: np.array_equal(x, y), count_crossed_edges(S), count_old(S)))
+    assert all(
+        jax.tree.map(lambda x, y: np.array_equal(x, y), count_crossed_edges(S), count_crossed_edges_less_fast(S)))
 
     S = SampleTreeGraph(
         sender_node_idx=jnp.asarray([0, 0, 0, 1, 3, 2]),
         log_L=jnp.asarray([1, 2, 3, 4, 6, 5])
     )
 
-    assert all(tree_map(lambda x, y: np.array_equal(x, y), count_crossed_edges(S), count_intervals_naive(S)))
-    assert all(tree_map(lambda x, y: np.array_equal(x, y), count_crossed_edges(S), count_old(S)))
-    assert all(tree_map(lambda x, y: np.array_equal(x, y), count_crossed_edges(S), count_crossed_edges_less_fast(S)))
+    assert all(jax.tree.map(lambda x, y: np.array_equal(x, y), count_crossed_edges(S), count_intervals_naive(S)))
+    assert all(jax.tree.map(lambda x, y: np.array_equal(x, y), count_crossed_edges(S), count_old(S)))
+    assert all(
+        jax.tree.map(lambda x, y: np.array_equal(x, y), count_crossed_edges(S), count_crossed_edges_less_fast(S)))
 
 
 def test_with_num_samples():
@@ -55,9 +57,9 @@ def test_with_num_samples():
         log_L=jnp.asarray([1, 2, 3, 4, 5, 6, 7, 8])
     )
 
-    assert all(tree_map(lambda x, y: np.array_equal(x[:num_samples], y),
-                        count_crossed_edges(S1, num_samples),
-                        count_crossed_edges(S2)))
+    assert all(jax.tree.map(lambda x, y: np.array_equal(x[:num_samples], y),
+                            count_crossed_edges(S1, num_samples),
+                            count_crossed_edges(S2)))
 
     output = count_crossed_edges(S1, num_samples)
     print(output)
@@ -87,9 +89,10 @@ def test_random_tree():
 
     plot_tree(S)
 
-    assert all(tree_map(lambda x, y: np.array_equal(x, y), count_crossed_edges(S), count_intervals_naive(S)))
-    assert all(tree_map(lambda x, y: np.array_equal(x, y), count_crossed_edges(S), count_old(S)))
-    assert all(tree_map(lambda x, y: np.array_equal(x, y), count_crossed_edges(S), count_crossed_edges_less_fast(S)))
+    assert all(jax.tree.map(lambda x, y: np.array_equal(x, y), count_crossed_edges(S), count_intervals_naive(S)))
+    assert all(jax.tree.map(lambda x, y: np.array_equal(x, y), count_crossed_edges(S), count_old(S)))
+    assert all(
+        jax.tree.map(lambda x, y: np.array_equal(x, y), count_crossed_edges(S), count_crossed_edges_less_fast(S)))
 
     T = count_crossed_edges_less_fast(S)
     import pylab as plt
@@ -183,7 +186,7 @@ def test_unbatch_state():
         front_idx=jnp.asarray([1])
     )
 
-    batched_state = tree_map(lambda x, y: jnp.stack([x, y], axis=0), single_state_1, single_state_2)
+    batched_state = jax.tree.map(lambda x, y: jnp.stack([x, y], axis=0), single_state_1, single_state_2)
 
     unbatched_state = unbatch_state(batched_state)
 

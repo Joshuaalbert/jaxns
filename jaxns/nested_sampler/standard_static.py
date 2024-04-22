@@ -2,7 +2,7 @@ import warnings
 from typing import Tuple, NamedTuple, Any, Union
 
 import jax
-from jax import random, pmap, tree_map, numpy as jnp, lax, core, vmap
+from jax import random, pmap, numpy as jnp, lax, core, vmap
 from jax._src.lax import parallel
 
 from jaxns.framework.bases import BaseAbstractModel
@@ -181,7 +181,7 @@ def _inter_sync_shrinkage_process(
 
     # Sampler state is created before all this work. Quickly updated during shrinkage.
     init_sampler_state = sampler.pre_process(state=init_state)
-    init_front_sample_collection = tree_map(lambda x: x[init_state.front_idx], init_state.sample_collection)
+    init_front_sample_collection = jax.tree.map(lambda x: x[init_state.front_idx], init_state.sample_collection)
     key, carry_key = random.split(init_state.key)
     init_carry = CarryType(
         sampler_state=init_sampler_state,
@@ -194,7 +194,7 @@ def _inter_sync_shrinkage_process(
     out_carry, out_return = lax.scan(body, init_carry, jnp.arange(num_samples), unroll=1)
 
     # Replace the samples in the sample collection with out_return counterparts.
-    sample_collection = tree_map(
+    sample_collection = jax.tree.map(
         lambda x, y: x.at[out_return.replace_idx].set(y),
         init_state.sample_collection,
         out_return.sample_collection
@@ -635,7 +635,7 @@ class StandardStaticNestedSampler(BaseAbstractNestedSampler):
         if trim:
             if isinstance(num_samples, core.Tracer):
                 raise RuntimeError("Tracer detected, but expected imperative context.")
-            sample_collection = tree_map(lambda x: x[:num_samples], sample_collection)
+            sample_collection = jax.tree.map(lambda x: x[:num_samples], sample_collection)
 
             sample_tree = SampleTreeGraph(
                 sender_node_idx=sample_collection.sender_node_idx,
