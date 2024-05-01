@@ -33,12 +33,12 @@ def scan_associative_cumulative_op(op: Callable[[V, Y], V], init: V, xs: Y, pre_
     scanned_results = tfp_math.scan_associative(associative_op, full_input)
 
     # The final accumulated value is the last element in the results
-    final_accumulate = scanned_results[-1]
+    final_accumulate = jax.tree.map(lambda x: x[-1], scanned_results)
 
     if pre_op:
-        scanned_results = scanned_results[:-1]
+        scanned_results = jax.tree.map(lambda x: x[:-1], scanned_results)
     else:
-        scanned_results = scanned_results[1:]
+        scanned_results = jax.tree.map(lambda x: x[1:], scanned_results)
 
     return final_accumulate, scanned_results
 
