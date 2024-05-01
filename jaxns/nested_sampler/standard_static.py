@@ -6,7 +6,7 @@ from jax import random, pmap, numpy as jnp, lax, core, vmap
 from jax._src.lax import parallel
 
 from jaxns.framework.bases import BaseAbstractModel
-from jaxns.internals.cumulative_ops import cumulative_op_static
+from jaxns.internals.cumulative_ops import scan_associative_cumulative_op
 from jaxns.internals.log_semiring import LogSpace, normalise_log_space
 from jaxns.internals.logging import logger
 from jaxns.internals.shrinkage_statistics import compute_evidence_stats, init_evidence_calc, \
@@ -211,7 +211,7 @@ def _inter_sync_shrinkage_process(
     # Update termination register
     _n = init_state.front_idx.size
     _num_samples = _n
-    evidence_calc_with_remaining, _ = cumulative_op_static(
+    evidence_calc_with_remaining, _ = scan_associative_cumulative_op(
         op=_update_evidence_calc_op,
         init=out_carry.evidence_calc,
         xs=EvidenceUpdateVariables(

@@ -2,7 +2,7 @@ from typing import Tuple, Optional, NamedTuple
 
 import jax.numpy as jnp
 
-from jaxns.internals.cumulative_ops import cumulative_op_static, cumulative_op_dynamic
+from jaxns.internals.cumulative_ops import cumulative_op_dynamic, scan_associative_cumulative_op
 from jaxns.internals.log_semiring import LogSpace
 from jaxns.internals.tree_structure import SampleTreeGraph, count_crossed_edges
 from jaxns.internals.types import MeasureType, EvidenceCalculation, float_type, IntArray, FloatArray
@@ -28,8 +28,8 @@ def compute_enclosed_prior_volume(sample_tree: SampleTreeGraph) -> MeasureType:
         next_X_mean = X_mean * T_mean
         return next_X_mean.log_abs_val
 
-    _, log_X = cumulative_op_static(op=op, init=jnp.asarray(-jnp.inf, float_type),
-                                    xs=live_point_counts.num_live_points)
+    _, log_X = scan_associative_cumulative_op(op=op, init=jnp.asarray(-jnp.inf, float_type),
+                                              xs=live_point_counts.num_live_points)
     return log_X
 
 
@@ -141,9 +141,10 @@ def compute_evidence_stats(log_L: MeasureType, num_live_points: FloatArray, num_
     )
     if num_samples is not None:
         stop_idx = num_samples
-        final_accumulate, result = cumulative_op_dynamic(op=_update_evidence_calc_op, init=init, xs=xs, stop_idx=stop_idx)
+        final_accumulate, result = cumulative_op_dynamic(op=_update_evidence_calc_op, init=init, xs=xs,
+                                                         stop_idx=stop_idx)
     else:
-        final_accumulate, result = cumulative_op_static(op=_update_evidence_calc_op, init=init, xs=xs)
+        final_accumulate, result = scan_associative_cumulative_op(op=_update_evidence_calc_op, init=init, xs=xs)
     final_evidence_calculation = final_accumulate
     per_sample_evidence_calculation = result
     return final_evidence_calculation, per_sample_evidence_calculation

@@ -4,7 +4,7 @@ import jax
 from jax import numpy as jnp, random, lax
 
 from jaxns.framework.bases import BaseAbstractModel
-from jaxns.internals.cumulative_ops import cumulative_op_static
+from jaxns.internals.cumulative_ops import scan_associative_cumulative_op
 from jaxns.internals.types import PRNGKey, FloatArray, BoolArray, Sample, float_type, int_type, \
     StaticStandardNestedSamplerState, \
     IntArray, UType, StaticStandardSampleCollection
@@ -83,8 +83,7 @@ def _pick_point_in_interval(key: PRNGKey, point_U0: FloatArray, direction: Float
     return point_U, t
 
 
-def _shrink_interval(key: PRNGKey, t: FloatArray, left: FloatArray, right: FloatArray, log_L_proposal: FloatArray,
-                     log_L_constraint: FloatArray, log_L0: FloatArray,
+def _shrink_interval(key: PRNGKey, t: FloatArray, left: FloatArray, right: FloatArray,
                      midpoint_shrink: bool) -> Tuple[FloatArray, FloatArray]:
     """
     Not successful proposal, so shrink, optionally apply exponential shrinkage.
@@ -151,9 +150,6 @@ def _new_proposal(key: PRNGKey, seed_point: SeedPoint, midpoint_shrink: bool, pe
             t=carry.t,
             left=carry.left,
             right=carry.right,
-            log_L_proposal=carry.log_L,
-            log_L_constraint=log_L_constraint,
-            log_L0=seed_point.log_L0,
             midpoint_shrink=midpoint_shrink
         )
         point_U, t = _pick_point_in_interval(
@@ -232,11 +228,11 @@ def _new_proposal(key: PRNGKey, seed_point: SeedPoint, midpoint_shrink: bool, pe
 
 class UniDimSliceSampler(BaseAbstractMarkovSampler):
     """
-    Slice sampler for a single dimension. Produces correlated (non-i.i.d.) samples.
+    Slice sampler for a single dimension. Produces correlated samples.
     """
 
     def __init__(self, model: BaseAbstractModel, num_slices: int, num_phantom_save: int, midpoint_shrink: bool,
-                 perfect: bool, gradient_slice: bool = False):
+                 perfect: bool, gradient_slice: bool = False, adaptive_shrink: bool = False):
         """
         Unidimensional slice sampler.
 
@@ -250,7 +246,8 @@ class UniDimSliceSampler(BaseAbstractMarkovSampler):
             perfect: if true then perform exponential shrinkage from maximal bounds, requiring no step-out procedure.
                 Otherwise, uses a doubling procedure (exponentially finding bracket).
                 Note: Perfect is a misnomer, as perfection also depends on the number of slices between acceptance.
-            gradient_slice: if true then always slice along gradient direction.
+            gradient_slice: if true then always slice along increasing gradient direction.
+            adaptive_shrink: if true then shrink interval to random point in interval, rather than midpoint.
         """
         super().__init__(model=model)
         if num_slices < 1:
@@ -264,6 +261,9 @@ class UniDimSliceSampler(BaseAbstractMarkovSampler):
         self.midpoint_shrink = bool(midpoint_shrink)
         self.perfect = bool(perfect)
         self.gradient_slice = bool(gradient_slice)
+        self.adaptive_shrink = bool(adaptive_shrink)
+        if self.adaptive_shrink:
+            raise NotImplementedError("Adaptive shrinkage not implemented.")
         if not self.perfect:
             raise ValueError("Only perfect slice sampler is implemented.")
 
@@ -338,11 +338,10 @@ class UniDimSliceSampler(BaseAbstractMarkovSampler):
             log_L=seed_point.log_L0,
             num_likelihood_evaluations=jnp.asarray(0, int_type)
         )
-        final_sample, cumulative_samples = cumulative_op_static(
+        final_sample, cumulative_samples = scan_associative_cumulative_op(
             op=propose_op,
             init=init_sample,
-            xs=random.split(key, self.num_slices),
-            unroll=2
+            xs=random.split(key, self.num_slices)
         )
 
         # Last sample is the final sample, the rest are potential phantom samples

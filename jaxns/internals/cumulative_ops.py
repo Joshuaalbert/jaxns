@@ -2,11 +2,45 @@ from typing import TypeVar, Callable, Tuple, Optional
 
 import jax
 from jax import lax, numpy as jnp, tree_util
+from tensorflow_probability.substrates.jax import math as tfp_math
 
 from jaxns.internals.types import IntArray, int_type
 
 V = TypeVar('V')
 Y = TypeVar('Y')
+
+
+def scan_associative_cumulative_op(op: Callable[[V, Y], V], init: V, xs: Y, pre_op: bool = False) -> Tuple[V, V]:
+    """
+    Compute a cumulative operation on an array of values using scan_associative.
+
+    Args:
+        op: the operation to perform, must be associative.
+        init: the initial value.
+        xs: the array of values.
+
+    Returns:
+        the final accumulated value, and the result of the cumulative operation applied on input
+    """
+
+    def associative_op(a, b):
+        return op(a, b)
+
+    # Prepare the input array by prepending the initial value
+    full_input = jax.tree.map(lambda x, y: jnp.concatenate([x[None], y], axis=0), init, xs)
+
+    # Apply the operation to accumulate results using scan_associative
+    scanned_results = tfp_math.scan_associative(associative_op, full_input)
+
+    # The final accumulated value is the last element in the results
+    final_accumulate = scanned_results[-1]
+
+    if pre_op:
+        scanned_results = scanned_results[:-1]
+    else:
+        scanned_results = scanned_results[1:]
+
+    return final_accumulate, scanned_results
 
 
 def cumulative_op_static(op: Callable[[V, Y], V], init: V, xs: Y, pre_op: bool = False, unroll: int = 1) -> Tuple[

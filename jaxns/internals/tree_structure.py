@@ -4,7 +4,7 @@ import jax
 from jax import numpy as jnp, lax, core
 from jax._src.numpy import lax_numpy
 
-from jaxns.internals.cumulative_ops import cumulative_op_static, cumulative_op_dynamic
+from jaxns.internals.cumulative_ops import cumulative_op_dynamic, scan_associative_cumulative_op
 from jaxns.internals.maps import remove_chunk_dim
 from jaxns.internals.types import MeasureType, IntArray, float_type, FloatArray, StaticStandardNestedSamplerState, \
     int_type
@@ -82,7 +82,7 @@ def count_crossed_edges(sample_tree: SampleTreeGraph, num_samples: Optional[IntA
             empty_fill=jnp.asarray(fake_edges, out_degree.dtype)
         )
     else:
-        _, crossed_edges_sorted = cumulative_op_static(
+        _, crossed_edges_sorted = scan_associative_cumulative_op(
             op=op,
             init=jnp.asarray(1, out_degree.dtype),
             xs=sort_idx,

@@ -4,7 +4,7 @@ import jax
 from jax import numpy as jnp, random, lax
 
 from jaxns.framework.bases import BaseAbstractModel
-from jaxns.internals.cumulative_ops import cumulative_op_static
+from jaxns.internals.cumulative_ops import scan_associative_cumulative_op
 from jaxns.internals.types import PRNGKey, FloatArray, BoolArray, Sample, int_type, StaticStandardNestedSamplerState, \
     UType, \
     IntArray, float_type, StaticStandardSampleCollection
@@ -255,11 +255,10 @@ class MultiDimSliceSampler(BaseAbstractMarkovSampler):
             log_L=seed_point.log_L0,
             num_likelihood_evaluations=jnp.asarray(0, int_type)
         )
-        final_sample, cumulative_samples = cumulative_op_static(
+        final_sample, cumulative_samples = scan_associative_cumulative_op(
             op=propose_op,
             init=init_sample,
-            xs=random.split(key, self.num_slices),
-            unroll=2
+            xs=random.split(key, self.num_slices)
         )
 
         # Last sample is the final sample, the rest are potential phantom samples
