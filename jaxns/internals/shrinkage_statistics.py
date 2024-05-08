@@ -2,7 +2,7 @@ from typing import Tuple, Optional, NamedTuple
 
 import jax.numpy as jnp
 
-from jaxns.internals.cumulative_ops import cumulative_op_dynamic, scan_associative_cumulative_op
+from jaxns.internals.cumulative_ops import cumulative_op_dynamic, scan_associative_cumulative_op, cumulative_op_static
 from jaxns.internals.log_semiring import LogSpace
 from jaxns.internals.tree_structure import SampleTreeGraph, count_crossed_edges
 from jaxns.internals.types import MeasureType, EvidenceCalculation, float_type, IntArray, FloatArray
@@ -144,7 +144,7 @@ def compute_evidence_stats(log_L: MeasureType, num_live_points: FloatArray, num_
         final_accumulate, result = cumulative_op_dynamic(op=_update_evidence_calc_op, init=init, xs=xs,
                                                          stop_idx=stop_idx)
     else:
-        final_accumulate, result = scan_associative_cumulative_op(op=_update_evidence_calc_op, init=init, xs=xs)
+        final_accumulate, result = cumulative_op_static(op=_update_evidence_calc_op, init=init, xs=xs)
     final_evidence_calculation = final_accumulate
     per_sample_evidence_calculation = result
     return final_evidence_calculation, per_sample_evidence_calculation

@@ -10,6 +10,13 @@ from jaxns.internals.tree_structure import SampleTreeGraph, SampleLivePointCount
 from jaxns.internals.types import StaticStandardNestedSamplerState, StaticStandardSampleCollection
 
 
+def pytree_assert_equal(a, b):
+    print(a)
+    print(b)
+    for x, y in zip(jax.tree.leaves(a), jax.tree.leaves(b)):
+        np.testing.assert_allclose(x, y)
+
+
 def test_naive():
     S = SampleTreeGraph(
         sender_node_idx=jnp.asarray([0, 0, 0, 1, 2, 3]),
@@ -29,20 +36,18 @@ def test_basic():
         sender_node_idx=jnp.asarray([0, 0, 0, 1, 2, 3]),
         log_L=jnp.asarray([1, 2, 3, 4, 5, 6])
     )
-    assert all(jax.tree.map(lambda x, y: np.array_equal(x, y), count_crossed_edges(S), count_intervals_naive(S)))
-    assert all(jax.tree.map(lambda x, y: np.array_equal(x, y), count_crossed_edges(S), count_old(S)))
-    assert all(
-        jax.tree.map(lambda x, y: np.array_equal(x, y), count_crossed_edges(S), count_crossed_edges_less_fast(S)))
+    pytree_assert_equal(count_crossed_edges(S), count_intervals_naive(S))
+    pytree_assert_equal(count_crossed_edges(S), count_old(S))
+    pytree_assert_equal(count_crossed_edges(S), count_crossed_edges_less_fast(S))
 
     S = SampleTreeGraph(
         sender_node_idx=jnp.asarray([0, 0, 0, 1, 3, 2]),
         log_L=jnp.asarray([1, 2, 3, 4, 6, 5])
     )
 
-    assert all(jax.tree.map(lambda x, y: np.array_equal(x, y), count_crossed_edges(S), count_intervals_naive(S)))
-    assert all(jax.tree.map(lambda x, y: np.array_equal(x, y), count_crossed_edges(S), count_old(S)))
-    assert all(
-        jax.tree.map(lambda x, y: np.array_equal(x, y), count_crossed_edges(S), count_crossed_edges_less_fast(S)))
+    pytree_assert_equal(count_crossed_edges(S), count_intervals_naive(S))
+    pytree_assert_equal(count_crossed_edges(S), count_old(S))
+    pytree_assert_equal(count_crossed_edges(S), count_crossed_edges_less_fast(S))
 
 
 def test_with_num_samples():
@@ -57,9 +62,9 @@ def test_with_num_samples():
         log_L=jnp.asarray([1, 2, 3, 4, 5, 6, 7, 8])
     )
 
-    assert all(jax.tree.map(lambda x, y: np.array_equal(x[:num_samples], y),
-                            count_crossed_edges(S1, num_samples),
-                            count_crossed_edges(S2)))
+    x = jax.tree.map(lambda x: x[:num_samples], count_crossed_edges(S1, num_samples))
+
+    pytree_assert_equal(x, count_crossed_edges(S2))
 
     output = count_crossed_edges(S1, num_samples)
     print(output)
@@ -89,10 +94,9 @@ def test_random_tree():
 
     plot_tree(S)
 
-    assert all(jax.tree.map(lambda x, y: np.array_equal(x, y), count_crossed_edges(S), count_intervals_naive(S)))
-    assert all(jax.tree.map(lambda x, y: np.array_equal(x, y), count_crossed_edges(S), count_old(S)))
-    assert all(
-        jax.tree.map(lambda x, y: np.array_equal(x, y), count_crossed_edges(S), count_crossed_edges_less_fast(S)))
+    pytree_assert_equal(count_crossed_edges(S), count_intervals_naive(S))
+    pytree_assert_equal(count_crossed_edges(S), count_old(S))
+    pytree_assert_equal(count_crossed_edges(S), count_crossed_edges_less_fast(S))
 
     T = count_crossed_edges_less_fast(S)
     import pylab as plt

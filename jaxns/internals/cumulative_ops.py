@@ -6,11 +6,12 @@ from tensorflow_probability.substrates.jax import math as tfp_math
 
 from jaxns.internals.types import IntArray, int_type
 
+X = TypeVar('X')
 V = TypeVar('V')
 Y = TypeVar('Y')
 
 
-def scan_associative_cumulative_op(op: Callable[[V, Y], V], init: V, xs: Y, pre_op: bool = False) -> Tuple[V, V]:
+def scan_associative_cumulative_op(op: Callable[[X, X], X], init: X, xs: X, pre_op: bool = False) -> Tuple[X, X]:
     """
     Compute a cumulative operation on an array of values using scan_associative.
 

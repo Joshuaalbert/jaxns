@@ -12,7 +12,7 @@ from jax._src.scipy.special import logsumexp
 from jaxopt import NonlinearCG, ArmijoSGD
 from tqdm import tqdm
 
-from jaxns.internals.cumulative_ops import scan_associative_cumulative_op
+from jaxns.internals.cumulative_ops import cumulative_op_static
 from jaxns.internals.log_semiring import LogSpace
 from jaxns.internals.logging import logger
 
@@ -241,7 +241,7 @@ class EvidenceMaximisation:
                 log_dZ = model.forward(data.U_samples) + data.log_weights
                 return (LogSpace(log_Z) + LogSpace(log_dZ)).log_abs_val
 
-            log_Z, _ = scan_associative_cumulative_op(op=op, init=jnp.asarray(-jnp.inf, float_type), xs=data)
+            log_Z, _ = cumulative_op_static(op=op, init=jnp.asarray(-jnp.inf, float_type), xs=data)
             return log_Z
 
         def loss(params: hk.MutableParams, data: MStepData):
