@@ -258,8 +258,7 @@ class MultiDimSliceSampler(BaseAbstractMarkovSampler):
         final_sample, cumulative_samples = cumulative_op_static(
             op=propose_op,
             init=init_sample,
-            xs=random.split(key, self.num_slices),
-            unroll=2
+            xs=random.split(key, self.num_slices)
         )
 
         # Last sample is the final sample, the rest are potential phantom samples
