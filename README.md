@@ -363,7 +363,11 @@ is the best way to achieve speed up.
 
 # Change Log
 
-22 Apr, 2024 -- JAXNS 2.4.13 released. Fixes bug where slice sampling not invariant to monotonic transforms of likelihod. 
+15 May, 2024 -- JAXNS 2.5.0 released. Added ability to handle non-JAX likelihoods, e.g. if you have a simulation
+framework with python bindings you can now use it for likelihoods in JAXNS. Small performance improvements.
+
+22 Apr, 2024 -- JAXNS 2.4.13 released. Fixes bug where slice sampling not invariant to monotonic transforms of
+likelihod.
 
 20 Mar, 2024 -- JAXNS 2.4.12 released. Minor bug fixes, and readability improvements. Added Empirial special prior.
 

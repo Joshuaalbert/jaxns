@@ -4,7 +4,7 @@ import jax
 from jax import numpy as jnp, lax, core
 from jax._src.numpy import lax_numpy
 
-from jaxns.internals.cumulative_ops import cumulative_op_static, cumulative_op_dynamic
+from jaxns.internals.cumulative_ops import cumulative_op_dynamic, scan_associative_cumulative_op, cumulative_op_static
 from jaxns.internals.maps import remove_chunk_dim
 from jaxns.internals.types import MeasureType, IntArray, float_type, FloatArray, StaticStandardNestedSamplerState, \
     int_type
