@@ -216,7 +216,7 @@ def plot_cornerplot(results: NestedSamplerResults, variables: Optional[List[str]
             # Plot the 2D histogram, over ranges set by the 1_per and 99_per of each parameter
             ranges = [param_limits[parameters[col]], param_limits[parameters[row]]]
             ax.hist2d(_samples[:, 1], _samples[:, 0], bins=(nbins, nbins), density=True,
-                      cmap=plt.cm.get_cmap('bone_r'),
+                      cmap="bone_r",
                       weights=_weights, range=ranges)
 
             if kde_overlay:  # Put KDE contour on the 2D histograms
@@ -432,7 +432,7 @@ def add_colorbar_to_axes(ax, cmap, norm=None, vmin=None, vmax=None, label=None):
     cax = divider.append_axes('right', size='5%', pad=0.05)
     if norm is None:
         norm = plt.Normalize(vmin=vmin, vmax=vmax)
-    sm = plt.cm.ScalarMappable(norm, cmap=plt.cm.get_cmap(cmap))
+    sm = plt.cm.ScalarMappable(norm, cmap=plt.colormaps.get_cmap(cmap))
     if label is None:
         ax.figure.colorbar(sm, cax=cax, orientation='vertical')
     else:
