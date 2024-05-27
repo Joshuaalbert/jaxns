@@ -29,7 +29,7 @@ def run_model(max_samples: int):
     return termination_reason
 
 
-def performance_benchmark():
+def main():
     max_samples = int(1e7)
     m = 10
     run_model_aot = jax.jit(lambda: run_model(max_samples=max_samples)).lower().compile()
@@ -47,25 +47,14 @@ def performance_benchmark():
     print(f"The best 3 of {m} runs took {best_3:.5f} seconds.")
 
 
-# _inter_sync_shrinkage_process unroll=1
-# get_sample_from_seed unroll=1
-# Avg. time taken: 4.79353 seconds.
-# The best 3 of 10 runs took 4.63075 seconds.
-
-# _inter_sync_shrinkage_process unroll=2
-# get_sample_from_seed unroll=1
-# Avg. time taken: 5.04382 seconds.
-# The best 3 of 10 runs took 4.74833 seconds.
-
-# _inter_sync_shrinkage_process unroll=1
-# get_sample_from_seed unroll=2
+# Before fix
 # Avg. time taken: 4.40303 seconds.
 # The best 3 of 10 runs took 4.37935 seconds.
 
-# With fix
+# After fix
 # Avg. time taken: 0.00562 seconds.
 # The best 3 of 10 runs took 0.00478 seconds.
 
 
 if __name__ == '__main__':
-    performance_benchmark()
+    main()

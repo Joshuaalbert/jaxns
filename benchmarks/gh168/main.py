@@ -84,6 +84,10 @@ def main():
     with open('results', 'a') as fp:
         fp.write(f"{jaxns_version},{np.mean(errors)},{np.mean(uncerts)},{total_time / m},{best_3}\n")
 
+# Before fix
+# 2.5.0,2.851858615875244,0.3351728320121765,0.7272443532943725,0.7075355052947998
 
+# After fix
+# 2.4.12,0.42119064927101135,0.3309990465641022,1.001870584487915,0.9800511995951334
 if __name__ == '__main__':
     main()
