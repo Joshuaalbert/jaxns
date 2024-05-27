@@ -321,23 +321,23 @@ def multiellipsoidal_mvn_run_results(basic_mvn_model):
 
 @pytest.fixture(scope='package')
 def all_run_results(
-        # basic_run_results,
+        basic_run_results,
         basic_with_obj_run_results,
-        # basic2_run_results,
-        # basic3_run_results,
-        # plateau_run_results,
-        # basic_mvn_run_results,
+        basic2_run_results,
+        basic3_run_results,
+        plateau_run_results,
+        basic_mvn_run_results,
         # basic_mvn_run_results_parallel,
-        # multiellipsoidal_mvn_run_results
+        multiellipsoidal_mvn_run_results
 ):
     # Return tuples with names
     return [
-        # ('basic', basic_run_results),
+        ('basic', basic_run_results),
         ('basic_with_obj', basic_with_obj_run_results),
-        # ('basic2', basic2_run_results),
-        # ('basic3', basic3_run_results),
-        # ('plateau', plateau_run_results),
-        # ('basic_mvn', basic_mvn_run_results),
+        ('basic2', basic2_run_results),
+        ('basic3', basic3_run_results),
+        ('plateau', plateau_run_results),
+        ('basic_mvn', basic_mvn_run_results),
         # ('basic_mvn_parallel', basic_mvn_run_results_parallel),
-        # ('multiellipsoidal_mvn', multiellipsoidal_mvn_run_results)
+        ('multiellipsoidal_mvn', multiellipsoidal_mvn_run_results)
     ]
