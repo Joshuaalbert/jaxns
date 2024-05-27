@@ -79,7 +79,7 @@ class DefaultNestedSampler:
             logger.info(f"Number of parallel Markov-chains set to: {self._c}")
         else:
             if difficult_model:
-                self._c = 50 * model.U_ndims if c is None else int(c)
+                self._c = 100 * model.U_ndims if c is None else int(c)
             else:
                 self._c = 30 * model.U_ndims if c is None else int(c)
         if self._c <= 0:
