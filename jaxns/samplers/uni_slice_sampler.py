@@ -75,7 +75,8 @@ def _pick_point_in_interval(key: PRNGKey, point_U0: FloatArray, direction: Float
         point_U: [D]
         t: selection point between [left, right]
     """
-    t = random.uniform(key, minval=left, maxval=right, dtype=float_type)
+    u = random.uniform(key, dtype=float_type)
+    t = left + u * (right - left)
     point_U = point_U0 + t * direction
     # close_to_zero = (left >= -10*jnp.finfo(left.dtype).eps) & (right <= 10*jnp.finfo(right.dtype).eps)
     # point_U = jnp.where(close_to_zero, point_U0, point_U)
@@ -84,7 +85,7 @@ def _pick_point_in_interval(key: PRNGKey, point_U0: FloatArray, direction: Float
 
 
 def _shrink_interval(key: PRNGKey, t: FloatArray, left: FloatArray, right: FloatArray,
-                     midpoint_shrink: bool) -> Tuple[FloatArray, FloatArray]:
+                     midpoint_shrink: bool, alpha: jax.Array) -> Tuple[FloatArray, FloatArray]:
     """
     Not successful proposal, so shrink, optionally apply exponential shrinkage.
     """
@@ -97,13 +98,15 @@ def _shrink_interval(key: PRNGKey, t: FloatArray, left: FloatArray, right: Float
         # Therefore, it must only use the knowledge of ordering of the likelihoods.
         # Basic version: shrink to midpoint of interval, i.e. alpha = 0.5.
         # Extended version: shrink to random point in interval.
-        alpha = random.uniform(key)
+        # do_midpoint_shrink = random.uniform(key) < 0.5
+        # alpha = 1  # 0.8  # random.uniform(key)
         left = jnp.where((t < 0.), alpha * left, left)
         right = jnp.where((t > 0.), alpha * right, right)
     return left, right
 
 
-def _new_proposal(key: PRNGKey, seed_point: SeedPoint, midpoint_shrink: bool, perfect: bool,
+def _new_proposal(key: PRNGKey, seed_point: SeedPoint, midpoint_shrink: bool, alpha: jax.Array,
+                  perfect: bool,
                   gradient_slice: bool,
                   log_L_constraint: FloatArray,
                   model: BaseAbstractModel) -> Tuple[FloatArray, FloatArray, IntArray]:
@@ -150,7 +153,8 @@ def _new_proposal(key: PRNGKey, seed_point: SeedPoint, midpoint_shrink: bool, pe
             t=carry.t,
             left=carry.left,
             right=carry.right,
-            midpoint_shrink=midpoint_shrink
+            midpoint_shrink=midpoint_shrink,
+            alpha=alpha
         )
         point_U, t = _pick_point_in_interval(
             key=t_key,
@@ -312,14 +316,19 @@ class UniDimSliceSampler(BaseAbstractMarkovSampler):
     def get_sample_from_seed(self, key: PRNGKey, seed_point: SeedPoint, log_L_constraint: FloatArray,
                              sampler_state: SamplerState) -> Tuple[Sample, Sample]:
 
-        def propose_op(sample: Sample, key: PRNGKey) -> Sample:
+        class XType(NamedTuple):
+            key: jax.Array
+            alpha: jax.Array
+
+        def propose_op(sample: Sample, x: XType) -> Sample:
             U_sample, log_L, num_likelihood_evaluations = _new_proposal(
-                key=key,
+                key=x.key,
                 seed_point=SeedPoint(
                     U0=sample.U_sample,
                     log_L0=sample.log_L
                 ),
                 midpoint_shrink=self.midpoint_shrink,
+                alpha=x.alpha,
                 perfect=self.perfect,
                 gradient_slice=self.gradient_slice,
                 log_L_constraint=log_L_constraint,
@@ -338,10 +347,14 @@ class UniDimSliceSampler(BaseAbstractMarkovSampler):
             log_L=seed_point.log_L0,
             num_likelihood_evaluations=jnp.asarray(0, int_type)
         )
+        xs = XType(
+            key=random.split(key, self.num_slices),
+            alpha=jnp.linspace(0.5, 1., self.num_slices)
+        )
         final_sample, cumulative_samples = cumulative_op_static(
             op=propose_op,
             init=init_sample,
-            xs=random.split(key, self.num_slices)
+            xs=xs
         )
 
         # Last sample is the final sample, the rest are potential phantom samples

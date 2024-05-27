@@ -95,7 +95,7 @@ class DefaultNestedSampler:
                 model=model,
                 num_slices=model.U_ndims * self._s,
                 num_phantom_save=self._k,
-                midpoint_shrink=True,
+                midpoint_shrink=not difficult_model,
                 perfect=True
             ),
             init_efficiency_threshold=init_efficiency_threshold,

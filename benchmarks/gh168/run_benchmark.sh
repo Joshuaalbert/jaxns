@@ -1,10 +1,10 @@
 #!/bin/bash
 
 # Array of jaxns versions to be installed
-declare -a jaxns_versions=("2.3.0" "2.3.1" "2.3.2" "2.3.4" "2.4.0" "2.4.1")
+declare -a jaxns_versions=("2.3.0" "2.3.1" "2.3.2" "2.3.4" "2.4.0" "2.4.1" "2.4.2" "2.4.3" "2.4.4" "2.4.5" "2.4.6" "2.4.7" "2.4.8" "2.4.9" "2.4.10" "2.4.11" "2.4.12" "2.4.13" "2.5.0")
 
 # Path to your benchmark script
-benchmark_script="gh117.py"
+benchmark_script="main.py"
 
 # Name for the conda environment
 conda_env_name="jaxns_benchmarks_env"
