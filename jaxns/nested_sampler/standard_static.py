@@ -775,9 +775,8 @@ class StandardStaticNestedSampler(BaseAbstractNestedSampler):
             if self.num_parallel_workers > 1:
                 # We need to do a final sampling run to make all the chains consistent,
                 #  to a likelihood contour (i.e. standardise on L(X)). Would mean that some workers are idle.
-                target_log_L_contour = jnp.max(
-                    parallel.all_gather(termination_register.log_L_contour, 'i')
-                )
+                target_log_L_contour = parallel.pmax(termination_register.log_L_contour, 'i')
+
                 termination_cond = TerminationCondition(
                     dlogZ=jnp.asarray(0., float_type),
                     log_L_contour=target_log_L_contour,
