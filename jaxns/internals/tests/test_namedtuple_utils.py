@@ -1,29 +1,29 @@
-import json
 from typing import NamedTuple
 
+import jax.numpy as jnp
 import numpy as np
 
-from jaxns.internals.namedtuple_utils import issubclass_namedtuple, serialise_namedtuple, deserialise_namedtuple
+from jaxns.internals.namedtuple_utils import serialise_namedtuple, \
+    deserialise_namedtuple, issubclass_namedtuple, serialise_ndarray
 
 
-# Example NamedTuple
-class MockAge(NamedTuple):
+class TestAge(NamedTuple):
     years: int
-    months: np.ndarray
+    months: int
 
 
-class MockPerson(NamedTuple):
+class TestPerson(NamedTuple):
     name: str
-    age: MockAge
+    age: TestAge
 
 
 def test_isinstance_namedtuple():
     # Example NamedTuple
-    data = MockPerson('Alice', MockAge(25, np.asarray(6)))
-    assert isinstance(data, MockPerson)
+    data = TestPerson('Alice', TestAge(25, 6))
+    assert isinstance(data, TestPerson)
 
     data = ()
-    assert not isinstance(data, MockPerson)
+    assert not isinstance(data, TestPerson)
 
 
 def test_issubclass_namedtuple():
@@ -44,16 +44,8 @@ def test_issubclass_namedtuple():
 
 
 def test_serialise_namedtuple():
-    class MockAge(NamedTuple):
-        years: int
-        months: np.ndarray
-
-    class MockPerson(NamedTuple):
-        name: str
-        age: MockAge
-
     # Example NamedTuple
-    data = MockPerson('Alice', MockAge(25, np.array(6)))
+    data = TestPerson('Alice', TestAge(25, 6))
     # Serialise
     serialized_data = serialise_namedtuple(data)
     print(serialized_data)
@@ -65,18 +57,21 @@ def test_serialise_namedtuple():
     assert data == restored_data
 
 
-def test_to_json():
-    class MockAge(NamedTuple):
-        years: int
-        months: np.ndarray
-
-    class MockPerson(NamedTuple):
-        name: str
-        age: MockAge
-
-    data = MockPerson('Alice', MockAge(25, np.array(6)))
-    s = json.dumps(serialise_namedtuple(data), indent=2)
-    print(s)
-    restored_data = deserialise_namedtuple(json.loads(s))
+def test_serialise_ndarray():
+    array = np.array([1, 2, 3])
+    serialized_data = serialise_ndarray(array)
+    print(serialized_data)
+    restored_data = deserialise_namedtuple(serialized_data)
     print(restored_data)
-    assert data == restored_data
+
+    np.testing.assert_allclose(array, restored_data)
+
+
+def test_serialise_jax_ndarray():
+    array = jnp.array([1, 2, 3])
+    serialized_data = serialise_ndarray(array)
+    print(serialized_data)
+    restored_data = deserialise_namedtuple(serialized_data)
+    print(restored_data)
+
+    np.testing.assert_allclose(array, restored_data)
