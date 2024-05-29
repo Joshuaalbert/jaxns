@@ -1,11 +1,6 @@
-import os
 from time import monotonic_ns
 
 import jax
-
-# Force 2 jax  hosts
-os.environ["XLA_FLAGS"] = "--xla_force_host_platform_device_count=2"
-
 import pytest
 from jax import numpy as jnp, random
 from jax._src.scipy.linalg import solve_triangular
@@ -14,10 +9,10 @@ from tensorflow_probability.substrates import jax as tfp
 from jaxns.framework.bases import PriorModelGen
 from jaxns.framework.model import Model
 from jaxns.framework.prior import Prior
+from jaxns.internals.types import TerminationCondition
 from jaxns.nested_sampler.standard_static import StandardStaticNestedSampler
 from jaxns.public import DefaultNestedSampler
 from jaxns.samplers.multi_ellipsoidal_samplers import MultiEllipsoidalSampler
-from jaxns.internals.types import TerminationCondition
 from jaxns.utils import bruteforce_evidence, summary
 
 # from jaxns.nested_sampler import ApproximateNestedSampler, ExactNestedSampler

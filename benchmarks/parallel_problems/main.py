@@ -61,7 +61,7 @@ def run_model(key):
 def main():
     num_devices = len(jax.devices())
     jaxns_version = pkg_resources.get_distribution("jaxns").version
-    m = 10
+    m = 1
     run_model_aot = jax.jit(run_model).lower(jax.random.PRNGKey(0)).compile()
     dt = []
 
@@ -77,7 +77,7 @@ def main():
         errors.append(log_Z_error)
         uncerts.append(log_Z_uncert)
     total_time = sum(dt)
-    best_3 = sum(sorted(dt)[:3]) / 3.
+    best_3 = sum(sorted(dt)[:min(3, m)]) / 3.
     # print(f"Errors: {errors}")
     # print(f"Uncerts: {uncerts}")
     print(f"JAXNS {jaxns_version}\n"
