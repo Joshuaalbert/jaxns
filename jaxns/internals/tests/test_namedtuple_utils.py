@@ -7,23 +7,23 @@ from jaxns.internals.namedtuple_utils import serialise_namedtuple, \
     deserialise_namedtuple, issubclass_namedtuple, serialise_ndarray
 
 
-class TestAge(NamedTuple):
+class MockAge(NamedTuple):
     years: int
     months: int
 
 
-class TestPerson(NamedTuple):
+class MockPerson(NamedTuple):
     name: str
-    age: TestAge
+    age: MockAge
 
 
 def test_isinstance_namedtuple():
     # Example NamedTuple
-    data = TestPerson('Alice', TestAge(25, 6))
-    assert isinstance(data, TestPerson)
+    data = MockPerson('Alice', MockAge(25, 6))
+    assert isinstance(data, MockPerson)
 
     data = ()
-    assert not isinstance(data, TestPerson)
+    assert not isinstance(data, MockPerson)
 
 
 def test_issubclass_namedtuple():
@@ -45,7 +45,7 @@ def test_issubclass_namedtuple():
 
 def test_serialise_namedtuple():
     # Example NamedTuple
-    data = TestPerson('Alice', TestAge(25, 6))
+    data = MockPerson('Alice', MockAge(25, 6))
     # Serialise
     serialized_data = serialise_namedtuple(data)
     print(serialized_data)
