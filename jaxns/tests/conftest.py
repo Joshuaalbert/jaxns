@@ -296,7 +296,7 @@ def multiellipsoidal_mvn_run_results(basic_mvn_model):
         init_efficiency_threshold=0.1,
         model=model,
         num_live_points=model.U_ndims * 20,
-        num_parallel_workers=1,
+        devices=None,
         max_samples=50000,
         sampler=MultiEllipsoidalSampler(model=model, depth=0, expansion_factor=2.0),
         verbose=True
