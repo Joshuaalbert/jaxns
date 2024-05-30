@@ -39,7 +39,7 @@ class DefaultNestedSampler:
                  s: Optional[int] = None,
                  k: Optional[int] = None,
                  c: Optional[int] = None,
-                 num_parallel_workers: int | None = None,
+                 num_parallel_workers: Optional[int] = None,
                  devices: Optional[xla_client.Device] = None,
                  difficult_model: bool = False,
                  parameter_estimation: bool = False,
