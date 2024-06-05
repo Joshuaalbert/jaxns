@@ -1,4 +1,5 @@
 import functools
+from typing import TypeVar, Callable
 
 import jax
 import jax.numpy as jnp
@@ -47,29 +48,20 @@ def _compute_max_num_levels(batch_size: int) -> int:
     return max(0, int(np.ceil(np.log2(batch_size + 1) - 1)))
 
 
-def scan_associative(fn,
-                     elems,
-                     axis=0):
+X = TypeVar('X')
+
+
+def scan_associative(fn: Callable[[X, X], X], elems: X, axis: int = 0) -> X:
     """
     Perform a scan with an associative binary operation, in parallel.
+
+    Suitable for fn: (X, X) -> X where (f o f) o f == f o (f o f)
 
     The associative scan operation computes the cumulative sum, or
     [all-prefix sum](https://en.wikipedia.org/wiki/Prefix_sum), of a set of
     elements under an associative binary operation [1]. For example, using the
     ordinary addition operator `fn = lambda a, b: a + b`, this is equivalent to
-    the ordinary cumulative sum `tf.math.cumsum` along axis 0. This method
-    supports the general case of arbitrary associative binary operations operating
-    on `Tensor`s or structures of `Tensor`s:
-
-    ```python
-    scan_associative(fn, elems) = tf.stack([
-      elems[0],
-      fn(elems[0], elems[1]),
-      fn(elems[0], fn(elems[1], elems[2])),
-      ...
-      fn(elems[0], fn(elems[1], fn(..., fn(elems[-2], elems[-1]))),
-    ], axis=0)
-    ```
+    the ordinary cumulative sum.
 
     The associative structure allows the computation to be decomposed
     and executed by parallel reduction. Where a naive sequential
@@ -89,12 +81,12 @@ def scan_associative(fn,
         Carnegie Mellon University, 1990.
 
     Args:
-        fn:
-        elems:
-        axis:
+        fn: the associative binary operation to perform.
+        elems: [..., N, ...] the input elements to scan over.
+        axis: the axis to scan over.
 
     Returns:
-
+        [..., N, ...] cumulative operation applied on input.
     """
 
     _num_elements = np.shape(jax.tree.leaves(elems)[0])[axis]

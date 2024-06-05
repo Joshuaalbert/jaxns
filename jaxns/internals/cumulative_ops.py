@@ -3,7 +3,7 @@ from typing import TypeVar, Callable, Tuple, Optional
 import jax
 from jax import lax, numpy as jnp, tree_util
 
-from jaxns.internals.scan_associative import scan_associative
+from jaxns.internals.prefix_sum import scan_associative
 from jaxns.internals.types import IntArray, int_type
 
 X = TypeVar('X')

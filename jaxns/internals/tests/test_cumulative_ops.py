@@ -1,11 +1,9 @@
 import jax
 import numpy as np
 import pytest
-import tensorflow_probability.substrates.jax as tfp
 from jax import numpy as jnp
 
 from jaxns.internals.cumulative_ops import cumulative_op_static, cumulative_op_dynamic, scan_associative_cumulative_op
-from jaxns.internals.scan_associative import scan_associative
 from jaxns.internals.types import float_type, int_type
 
 
@@ -22,11 +20,6 @@ def test_cumulative_op_static():
     final_accumulate, result = cumulative_op_static(op=op, init=init, xs=xs, pre_op=True)
     assert final_accumulate == 6
     assert all(result == jnp.asarray([0, 1, 3], float_type))
-
-
-
-
-
 
 
 def test_scan_associative_cumulative_op_likelihoods():

@@ -6,7 +6,7 @@ import pytest
 from jax import numpy as jnp
 from tensorflow_probability.substrates import jax as tfp
 
-from jaxns.internals.scan_associative import _slice_along_axis, _interleave, _compute_max_num_levels, scan_associative
+from jaxns.internals.prefix_sum import _slice_along_axis, _interleave, _compute_max_num_levels, scan_associative
 
 
 def test__slice_along_axis():
