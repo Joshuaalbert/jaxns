@@ -133,8 +133,8 @@ def test_scan_associative_rank_reducing():
     _ = scan_associative(associative_op, xs)
 
 
-@pytest.mark.parametrize('N', [10, 100, 1000])
-@pytest.mark.parametrize('M', [10, 100, 1000])
+@pytest.mark.parametrize('N', [32, 128, 512])
+@pytest.mark.parametrize('M', [32, 128, 512])
 def test_performance(N: int, M: int):
     import tensorflow_probability.substrates.jax as tfp
     inputs = jnp.ones((N, M, M))
