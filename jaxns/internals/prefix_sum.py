@@ -89,6 +89,12 @@ def scan_associative(fn: Callable[[X, X], X], elems: X, axis: int = 0) -> X:
         [..., N, ...] cumulative operation applied on input.
     """
 
+    # This is a rewrite of tfp.math.scan_associative, which relies on broadcasting, to better handle vectorisation.
+    # This tends to be more performant for smaller ops,
+    # and TFP's version tends to be more performant for larger ops by about 10%.
+    # Equivalent performance for 100 matmuls of 100x100 matrices
+    # (See test_performance for more on performance.)
+
     _num_elements = np.shape(jax.tree.leaves(elems)[0])[axis]
     if _num_elements < 2:
         raise ValueError(f"Must be at least 2 elements, got {_num_elements}.")
@@ -99,6 +105,18 @@ def scan_associative(fn: Callable[[X, X], X], elems: X, axis: int = 0) -> X:
     pretrim_slice = functools.partial(_slice_along_axis, start=1, stop=None, step=1, axis=axis)
     zero_slice = functools.partial(_slice_along_axis, start=0, stop=1, step=1, axis=axis)
     last_slice = functools.partial(_slice_along_axis, start=-1, stop=None, step=1, axis=axis)
+
+    # The basic idea of the algorithm is as follows, using "sum" to represent the associative operation:
+    # 1. The cumulative sum is: y0=x0, y1=x0+x1, y2=x0+x1+x2, y3=x0+x1+x2+x3
+    # 2. Thus odd indices are equivalent to a two part process:
+    #       a. Sum even+odd inputs: (x0+x1), (x2+x3)
+    #       b. recursively apply `_scan` on the result to give: y1=x0+x1, y3=x0+x1+x2+x3
+    # 3. The even indices are then found by:
+    #       a. adding even indices (ignoring x0 in this step): y2=y1+x2
+    #       b. preconcatenating x0: y0=x0
+    # 4. The result of a single `_scan` is then interleaving the above: _interleave([y0, y1, y2], [y1, y2, y3])
+
+    # TODO: If the associative identity, `id`, was provided then we could combine 3b into 3a via: y0=id+x0
 
     def _scan(elems):
         """Perform scan on `elems`."""
@@ -138,9 +156,10 @@ def scan_associative(fn: Callable[[X, X], X], elems: X, axis: int = 0) -> X:
             elems_odd  # x1, x3, x5
         )  # x0+x1, x2+x3, x4+x5
         result_odd = _scan(consecutive_sum)  # x0+x1, x0+x1+x2+x3, x0+x1+x2+x3+x4+x5
+
         result_even = jax.vmap(fn, in_axes=axis, out_axes=axis)(
             result_odd,
-            pretrim_slice(elems_even)
+            jax.tree.map(pretrim_slice, elems_even)
         )  # x0+x1+x2, x0+x1+x2+x3+x4, x0+x1+x2+x3+x4+x5+x6
 
         partial_results = _interleave(
@@ -167,4 +186,6 @@ def scan_associative(fn: Callable[[X, X], X], elems: X, axis: int = 0) -> X:
 
         return results
 
-    return _scan(elems)
+    result = _scan(elems)
+
+    return result

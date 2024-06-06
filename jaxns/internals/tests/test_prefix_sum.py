@@ -1,3 +1,5 @@
+import time
+from functools import partial
 from typing import NamedTuple
 
 import jax
@@ -129,3 +131,36 @@ def test_scan_associative_rank_reducing():
 
     xs = jnp.arange(10)
     _ = scan_associative(associative_op, xs)
+
+
+@pytest.mark.parametrize('N', [10, 100, 1000])
+@pytest.mark.parametrize('M', [10, 100, 1000])
+def test_performance(N: int, M: int):
+    import tensorflow_probability.substrates.jax as tfp
+    inputs = jnp.ones((N, M, M))
+    op = jnp.linalg.matmul
+
+    fn_compiled = jax.jit(partial(tfp.math.scan_associative, fn=op), donate_argnums=0).lower(elems=inputs).compile()
+
+    m = 3
+
+    t0 = time.time()
+    for _ in range(m):
+        fn_compiled(elems=inputs).block_until_ready()
+    t1 = time.time()
+    tfp_runtime = (t1 - t0) / m
+
+    fn_compiled = jax.jit(partial(scan_associative, fn=op), donate_argnums=0).lower(elems=inputs).compile()
+
+    t0 = time.time()
+    for _ in range(m):
+        fn_compiled(elems=inputs).block_until_ready()
+    t1 = time.time()
+    internal_runtime = (t1 - t0) / m
+    print(f"sequence length {N}, matrix mul {M}x{M} @ {M}x{M}:")
+    print(f"\tRun time tfp.math.scan_associative {tfp_runtime}")
+    print(f"\tRun time internal scan_associative {internal_runtime}")
+    if internal_runtime < tfp_runtime:
+        print(f"Internal faster by {100. * (1. - internal_runtime / tfp_runtime)} %")
+    else:
+        print(f"tfp.math.scan_associative faster by {100. * (1. - tfp_runtime / internal_runtime)} %")
