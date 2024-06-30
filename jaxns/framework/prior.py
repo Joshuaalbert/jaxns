@@ -33,7 +33,7 @@ class SingularPrior(BaseAbstractPrior):
         (at the singular value).
     """
 
-    def __init__(self, value: jnp.ndarray, base_prior: BaseAbstractPrior, name: Optional[str] = None):
+    def __init__(self, value: jax.Array, base_prior: BaseAbstractPrior, name: Optional[str] = None):
         super().__init__(name=name)
         self.value = value
         self.base_prior = base_prior
@@ -88,7 +88,7 @@ class Prior(BaseAbstractPrior):
         return self._dist
 
     @property
-    def value(self) -> jnp.ndarray:
+    def value(self) -> jax.Array:
         if self._type != 'value':
             raise ValueError(f"Wrong type, got {self._type}")
         return self._value

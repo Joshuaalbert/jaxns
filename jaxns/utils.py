@@ -38,7 +38,7 @@ __all__ = [
 ]
 
 
-def resample(key: PRNGKey, samples: Union[XType, UType], log_weights: jnp.ndarray, S: int = None,
+def resample(key: PRNGKey, samples: Union[XType, UType], log_weights: jax.Array, S: int = None,
              replace: bool = True) -> XType:
     """
     Resample the weighted samples into uniformly weighted samples.
@@ -76,7 +76,7 @@ def evaluate_map_estimate_from_U(results: NestedSamplerResults, model: BaseAbstr
     return fun(*V)
 
 
-def marginalise_static_from_U(key: PRNGKey, U_samples: UType, model: BaseAbstractModel, log_weights: jnp.ndarray,
+def marginalise_static_from_U(key: PRNGKey, U_samples: UType, model: BaseAbstractModel, log_weights: jax.Array,
                               ESS: int,
                               fun: Callable[..., _V]) -> _V:
     """
@@ -103,8 +103,8 @@ def marginalise_static_from_U(key: PRNGKey, U_samples: UType, model: BaseAbstrac
     return marginalised
 
 
-def marginalise_dynamic_from_U(key: PRNGKey, U_samples: UType, model: BaseAbstractModel, log_weights: jnp.ndarray,
-                               ESS: jnp.ndarray,
+def marginalise_dynamic_from_U(key: PRNGKey, U_samples: UType, model: BaseAbstractModel, log_weights: jax.Array,
+                               ESS: jax.Array,
                                fun: Callable[..., _V]) -> _V:
     """
     Marginalises function over posterior samples, where ESS can be dynamic.
@@ -148,7 +148,7 @@ def marginalise_dynamic_from_U(key: PRNGKey, U_samples: UType, model: BaseAbstra
     return marginalised
 
 
-def marginalise_static(key: PRNGKey, samples: XType, log_weights: jnp.ndarray, ESS: int, fun: Callable[..., _V]) -> _V:
+def marginalise_static(key: PRNGKey, samples: XType, log_weights: jax.Array, ESS: int, fun: Callable[..., _V]) -> _V:
     """
     Marginalises function over posterior samples, where ESS is static.
 
@@ -168,7 +168,7 @@ def marginalise_static(key: PRNGKey, samples: XType, log_weights: jnp.ndarray, E
     return marginalised
 
 
-def marginalise_dynamic(key: PRNGKey, samples: XType, log_weights: jnp.ndarray, ESS: jnp.ndarray,
+def marginalise_dynamic(key: PRNGKey, samples: XType, log_weights: jax.Array, ESS: jax.Array,
                         fun: Callable[..., _V]) -> _V:
     """
     Marginalises function over posterior samples, where ESS can be dynamic.
@@ -452,7 +452,7 @@ def sample_evidence(key: PRNGKey, num_live_points_per_sample: IntArray, log_L_sa
     return log_Z_samples
 
 
-def bruteforce_posterior_samples(model: BaseAbstractModel, S: int = 60) -> Tuple[XType, jnp.ndarray]:
+def bruteforce_posterior_samples(model: BaseAbstractModel, S: int = 60) -> Tuple[XType, jax.Array]:
     """
     Compute the posterior with brute-force over a regular grid.
 

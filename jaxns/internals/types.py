@@ -129,8 +129,8 @@ class SignedLog(NamedTuple):
     """
     Represents a signed value in log-space
     """
-    log_abs_val: jnp.ndarray
-    sign: Union[jnp.ndarray, Any]
+    log_abs_val: jax.Array
+    sign: Union[jax.Array, Any]
 
 
 class Sample(NamedTuple):

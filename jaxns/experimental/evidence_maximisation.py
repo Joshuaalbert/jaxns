@@ -41,11 +41,11 @@ tfpk = tfp.math.psd_kernels
 
 
 class MStepData(NamedTuple):
-    U_samples: jnp.ndarray
-    log_weights: jnp.ndarray
-    # log_dp_mean: jnp.ndarray
-    # log_L_samples: jnp.ndarray
-    # log_Z_mean: jnp.ndarray
+    U_samples: jax.Array
+    log_weights: jax.Array
+    # log_dp_mean: jax.Array
+    # log_L_samples: jax.Array
+    # log_Z_mean: jax.Array
 
 
 def next_power_2(x: int) -> int:
