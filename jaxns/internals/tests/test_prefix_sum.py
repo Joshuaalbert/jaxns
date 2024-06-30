@@ -140,7 +140,7 @@ def test_performance(N: int, M: int):
     inputs = jnp.ones((N, M, M))
     op = jnp.linalg.matmul
 
-    fn_compiled = jax.jit(partial(tfp.math.scan_associative, fn=op), donate_argnums=0).lower(elems=inputs).compile()
+    fn_compiled = jax.jit(partial(tfp.math.scan_associative, fn=op)).lower(elems=inputs).compile()
 
     m = 3
 
@@ -150,7 +150,7 @@ def test_performance(N: int, M: int):
     t1 = time.time()
     tfp_runtime = (t1 - t0) / m
 
-    fn_compiled = jax.jit(partial(scan_associative, fn=op), donate_argnums=0).lower(elems=inputs).compile()
+    fn_compiled = jax.jit(partial(scan_associative, fn=op)).lower(elems=inputs).compile()
 
     t0 = time.time()
     for _ in range(m):
