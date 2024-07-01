@@ -6,7 +6,7 @@ import numpy as np
 
 
 def run(ndims, ensemble_size, input_queue: Queue, output_queue: Queue):
-    # from jax.config import config
+    # from jax import config
     # config.update("jax_enable_x64", True)
 
     from jaxns import Prior, Model
