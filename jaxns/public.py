@@ -5,6 +5,7 @@ import jax
 import jax.numpy as jnp
 import tensorflow_probability.substrates.jax as tfp
 from jax import core
+from jaxlib import xla_client
 
 from jaxns.framework.bases import BaseAbstractModel
 from jaxns.internals.logging import logger
@@ -38,7 +39,8 @@ class DefaultNestedSampler:
                  s: Optional[int] = None,
                  k: Optional[int] = None,
                  c: Optional[int] = None,
-                 num_parallel_workers: int = 1,
+                 num_parallel_workers: Optional[int] = None,
+                 devices: Optional[xla_client.Device] = None,
                  difficult_model: bool = False,
                  parameter_estimation: bool = False,
                  init_efficiency_threshold: float = 0.1,
@@ -79,7 +81,7 @@ class DefaultNestedSampler:
             logger.info(f"Number of parallel Markov-chains set to: {self._c}")
         else:
             if difficult_model:
-                self._c = 50 * model.U_ndims if c is None else int(c)
+                self._c = 100 * model.U_ndims if c is None else int(c)
             else:
                 self._c = 30 * model.U_ndims if c is None else int(c)
         if self._c <= 0:
@@ -87,6 +89,12 @@ class DefaultNestedSampler:
         # Sanity check for max_samples (should be able to at least do one shrinkage)
         if max_samples < self._c * (self._k + 1):
             warnings.warn(f"max_samples={max_samples} is likely too small!")
+        if num_parallel_workers is not None:
+            warnings.warn("`num_parallel_workers` is depreciated. Use `devices` instead.")
+            if devices is None:
+                devices = jax.devices()[:num_parallel_workers]
+            else:
+                devices = devices[:num_parallel_workers]
         self._nested_sampler = StandardStaticNestedSampler(
             model=model,
             num_live_points=self._c,
@@ -99,7 +107,7 @@ class DefaultNestedSampler:
                 perfect=True
             ),
             init_efficiency_threshold=init_efficiency_threshold,
-            num_parallel_workers=num_parallel_workers,
+            devices=devices,
             verbose=verbose
         )
 
@@ -111,7 +119,7 @@ class DefaultNestedSampler:
         self.load_results = load_results
 
     def __repr__(self):
-        return f"DefaultNestedSampler(s={self._s}, c={self._c},  k={self._k})"
+        return f"DefaultNestedSampler(s={self._s}, c={self._c}, k={self._k}, devices={self._nested_sampler.devices})"
 
     @property
     def num_live_points(self) -> int:

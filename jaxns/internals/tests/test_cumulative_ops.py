@@ -22,6 +22,24 @@ def test_cumulative_op_static():
     assert all(result == jnp.asarray([0, 1, 3], float_type))
 
 
+def test_scan_associative_cumulative_op_likelihoods():
+    def log_likelihood(x) -> jax.Array:
+        return jnp.sum(x)
+
+    def add_log_probs(x, y):
+        print(x, y)
+        return log_likelihood(x) + log_likelihood(y)
+
+    init = jnp.asarray(0, float_type)
+    xs = jnp.arange(1, 11, dtype=float_type)
+    final_accumulate, result = scan_associative_cumulative_op(op=add_log_probs, init=init, xs=xs)
+    final_accumulate_expected, result_expected = cumulative_op_static(op=add_log_probs, init=init, xs=xs)
+    # print(final_accumulate, final_accumulate_expected)
+    # print(result, result_expected)
+    assert final_accumulate == final_accumulate_expected
+    np.testing.assert_allclose(result, result_expected)
+
+
 @pytest.mark.parametrize("binary_op", [jnp.add, jnp.multiply, jnp.minimum, jnp.maximum])
 def test_scan_associative_cumulative_op(binary_op):
     def op(accumulate, y):
@@ -41,7 +59,7 @@ def test_scan_associative_cumulative_op(binary_op):
 
 
 @pytest.mark.parametrize("binary_op", [jnp.subtract, jnp.true_divide])
-def test_scan_associative_cumulative_op(binary_op):
+def test_scan_associative_cumulative_not_associative_op(binary_op):
     def op(accumulate, y):
         return binary_op(accumulate, y)
 

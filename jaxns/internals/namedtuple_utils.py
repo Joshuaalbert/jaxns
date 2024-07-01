@@ -1,5 +1,7 @@
 import importlib
 
+import jax
+import jax.numpy as jnp
 import numpy as np
 
 
@@ -35,6 +37,8 @@ def serialise_namedtuple(obj):
                 '__data__': {k: serialise_namedtuple(v) for k, v in obj._asdict().items()}}
     elif isinstance(obj, np.ndarray):
         return serialise_ndarray(obj)
+    elif isinstance(obj, jax.Array):
+        return serialise_jax_ndarray(obj)
     elif isinstance(obj, (list, tuple)):
         return [serialise_namedtuple(v) for v in obj]
     elif isinstance(obj, dict):
@@ -52,8 +56,12 @@ def deserialise_namedtuple(obj):
         return class_(**{k: deserialise_namedtuple(v) for k, v in obj['__data__'].items()})
     elif isinstance(obj, dict) and 'type' in obj and obj['type'] == '__ndarray__':
         return deserialise_ndarray(obj)
-    elif isinstance(obj, (list, tuple)):
+    elif isinstance(obj, dict) and 'type' in obj and obj['type'] == '__jax_ndarray__':
+        return deserialise_jax_ndarray(obj)
+    elif isinstance(obj, list):
         return [deserialise_namedtuple(v) for v in obj]
+    elif isinstance(obj, tuple):
+        return tuple(deserialise_namedtuple(v) for v in obj)
     elif isinstance(obj, dict):
         return {k: deserialise_namedtuple(v) for k, v in obj.items()}
     return obj
@@ -68,4 +76,16 @@ def serialise_ndarray(obj):
 def deserialise_ndarray(obj):
     if isinstance(obj, dict) and obj.get('type') == '__ndarray__':
         return np.array(obj['__data__'], dtype=obj['__dtype__'])
+    return obj
+
+
+def serialise_jax_ndarray(obj):
+    if isinstance(obj, jax.Array):
+        return {'type': '__jax_ndarray__', '__dtype__': str(obj.dtype), '__data__': np.asarray(obj).tolist()}
+    return obj
+
+
+def deserialise_jax_ndarray(obj):
+    if isinstance(obj, dict) and obj.get('type') == '__jax_ndarray__':
+        return jnp.array(np.array(obj['__data__'], dtype=obj['__dtype__']))
     return obj

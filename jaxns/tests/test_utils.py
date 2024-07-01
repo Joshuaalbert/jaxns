@@ -1,8 +1,11 @@
+from typing import NamedTuple
+
+import jax
 import numpy as np
 from jax import random, numpy as jnp
 
 from jaxns.plotting import weighted_percentile
-from jaxns.utils import resample, _bit_mask
+from jaxns.utils import resample, _bit_mask, save_pytree, load_pytree
 
 
 def test_resample():
@@ -24,3 +27,14 @@ def test_weighted_percentile():
     log_weights = np.asarray([0, 0, 0, 0, 0])
     percentiles = [50]
     assert np.allclose(weighted_percentile(samples, log_weights, percentiles), 3.0)
+
+
+class MockPyTree171(NamedTuple):
+    x: jax.Array
+
+
+def test_gh171(tmp_path):
+    pytree = MockPyTree171(jnp.array([1., 2., 3.]))
+    save_pytree(pytree, str(tmp_path / "results.json"))
+    loaded_pytree = load_pytree(str(tmp_path / "results.json"))
+    np.testing.assert_allclose(loaded_pytree.x, pytree.x)

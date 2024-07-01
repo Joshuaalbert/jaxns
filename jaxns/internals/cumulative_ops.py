@@ -2,8 +2,8 @@ from typing import TypeVar, Callable, Tuple, Optional
 
 import jax
 from jax import lax, numpy as jnp, tree_util
-from tensorflow_probability.substrates.jax import math as tfp_math
 
+from jaxns.internals.prefix_sum import scan_associative
 from jaxns.internals.types import IntArray, int_type
 
 X = TypeVar('X')
@@ -31,7 +31,9 @@ def scan_associative_cumulative_op(op: Callable[[X, X], X], init: X, xs: X, pre_
     full_input = jax.tree.map(lambda x, y: jnp.concatenate([x[None], y], axis=0), init, xs)
 
     # Apply the operation to accumulate results using scan_associative
-    scanned_results = tfp_math.scan_associative(associative_op, full_input)
+    scanned_results = scan_associative(
+        associative_op, full_input
+    )
 
     # The final accumulated value is the last element in the results
     final_accumulate = jax.tree.map(lambda x: x[-1], scanned_results)

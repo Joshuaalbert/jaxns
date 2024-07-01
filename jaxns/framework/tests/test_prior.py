@@ -11,7 +11,8 @@ from jaxns.framework.bases import PriorModelGen, BaseAbstractPrior
 from jaxns.framework.ops import parse_prior, prepare_input, compute_log_likelihood
 from jaxns.framework.prior import Prior, InvalidPriorName
 from jaxns.framework.special_priors import Bernoulli, Categorical, Poisson, Beta, ForcedIdentifiability, \
-    UnnormalisedDirichlet, _poisson_quantile_bisection, _poisson_quantile, Empirical, TruncationWrapper
+    UnnormalisedDirichlet, _poisson_quantile_bisection, _poisson_quantile, Empirical, TruncationWrapper, \
+    ExplicitDensityPrior
 from jaxns.framework.wrapped_tfp_distribution import InvalidDistribution, distribution_chain
 from jaxns.internals.types import float_type
 
@@ -344,6 +345,7 @@ def test_empirical():
     assert jnp.allclose(u, u_input)
     assert u.shape[1:] == prior.base_shape
 
+
 def test_truncation_wrapper():
     prior = Prior(tfpd.Normal(loc=jnp.zeros(5), scale=jnp.ones(5)))
     trancated_prior = TruncationWrapper(prior=prior, low=0., high=1.)
@@ -360,7 +362,8 @@ def test_truncation_wrapper():
     assert jnp.all(x <= 1.)
     assert x.shape == (5,)
 
-    u_input = vmap(lambda key: random.uniform(key, shape=trancated_prior.base_shape))(random.split(random.PRNGKey(42), 1000))
+    u_input = vmap(lambda key: random.uniform(key, shape=trancated_prior.base_shape))(
+        random.split(random.PRNGKey(42), 1000))
     x = vmap(lambda u: trancated_prior.forward(u))(u_input)
     assert jnp.all(jnp.bitwise_not(jnp.isnan(x)))
     assert jnp.all(x >= 0.)
@@ -394,7 +397,7 @@ def test_truncation_wrapper():
     u = vmap(lambda x: trancated_prior.inverse(x))(x)
     np.testing.assert_allclose(u, u_input, atol=5e-7)
 
-    prior = Prior(tfpd.Normal(loc=jnp.zeros(5), scale=0.01*jnp.ones(5)))
+    prior = Prior(tfpd.Normal(loc=jnp.zeros(5), scale=0.01 * jnp.ones(5)))
     trancated_prior = TruncationWrapper(prior=prior, low=0., high=1.)
 
     x = trancated_prior.forward(jnp.ones(trancated_prior.base_shape, float_type))
@@ -418,3 +421,31 @@ def test_truncation_wrapper():
 
     u = vmap(lambda x: trancated_prior.inverse(x))(x)
     np.testing.assert_allclose(u, u_input, atol=5e-7)
+
+
+def test_explicit_density_prior():
+    resolution = 10
+    density = jnp.ones((resolution + 1, resolution))
+    axes = (jnp.linspace(0, 1, resolution + 1), jnp.linspace(0, 1, resolution))
+    prior = ExplicitDensityPrior(axes=axes, density=density, regular_grid=True)
+
+    x = prior.forward(jnp.ones(prior.base_shape, float_type))
+    assert jnp.all(jnp.bitwise_not(jnp.isnan(x)))
+    assert jnp.all(x == 1.)
+    assert x.shape == (2,)
+
+    x = prior.forward(jnp.zeros(prior.base_shape, float_type))
+    assert jnp.all(jnp.bitwise_not(jnp.isnan(x)))
+    assert jnp.all(x == 0.)
+    assert x.shape == (2,)
+
+    u_input = vmap(lambda key: random.uniform(key, shape=prior.base_shape))(random.split(random.PRNGKey(42), 1000))
+    x = vmap(lambda u: prior.forward(u))(u_input)
+    assert jnp.all(jnp.bitwise_not(jnp.isnan(x)))
+    assert jnp.all(x >= 0.)
+    assert jnp.all(x <= 1.)
+
+    u = vmap(lambda x: prior.inverse(x))(x)
+    np.testing.assert_allclose(u, u_input, atol=5e-7)
+
+    assert jnp.all(jnp.isfinite(jax.vmap(prior.log_prob)(x)))

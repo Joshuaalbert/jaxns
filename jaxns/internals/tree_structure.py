@@ -29,7 +29,7 @@ class SampleLivePointCounts(NamedTuple):
 
 def count_crossed_edges(sample_tree: SampleTreeGraph, num_samples: Optional[IntArray] = None) -> SampleLivePointCounts:
     def _argsort(
-            a: jnp.ndarray
+            a: jax.Array
     ):
         arr = jnp.asarray(a)
         axis_num = 0
@@ -149,8 +149,8 @@ def count_intervals_naive(S: SampleTreeGraph) -> SampleLivePointCounts:
     )
 
 
-def fast_perfect_live_point_computation_jax(log_L_constraints: jnp.ndarray, log_L_samples: jnp.ndarray,
-                                            num_samples: Union[jnp.ndarray, None] = None):
+def fast_perfect_live_point_computation_jax(log_L_constraints: jax.Array, log_L_samples: jax.Array,
+                                            num_samples: Union[jax.Array, None] = None):
     # log_L_constraints has shape [N]
     # log_L_samples has shape [N]
     sort_idx = jnp.lexsort((log_L_constraints, log_L_samples))

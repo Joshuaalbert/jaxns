@@ -22,13 +22,13 @@ def broadcast_dtypes(*dtypes):
 
 def convert_to_array(v):
     """
-    If necessary convert v to a jnp.ndarray.
+    If necessary convert v to a jax.Array.
     Passes through Prior.
 
     Args:
         v: array-like or scalar
 
-    Returns: jnp.ndarray
+    Returns: jax.Array
     """
     if isinstance(v, (list, tuple, np.ndarray, float, int, bool, complex)):
         return jnp.asarray(v)
