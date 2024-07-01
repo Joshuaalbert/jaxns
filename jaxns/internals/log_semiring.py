@@ -1,5 +1,6 @@
 from typing import Union, Literal
 
+import jax
 from jax import numpy as jnp, lax
 from jax.scipy.special import logsumexp
 
