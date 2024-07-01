@@ -51,7 +51,7 @@ def bounding_ellipsoid(points: UType, mask: FloatArray) -> Tuple[FloatArray, Flo
     return mu, cov
 
 
-def covariance_to_rotational(cov: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray]:
+def covariance_to_rotational(cov: jax.Array) -> Tuple[jax.Array, jax.Array]:
     """
     (x - mu)^T inv(cov) (x - mu) = (x - mu)^T J @ J.T (x - mu)
 

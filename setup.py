@@ -7,7 +7,7 @@ install_requires = [
     'jax>=0.4.25',
     'jaxlib',
     'matplotlib',
-    'numpy',
+    'numpy<2',
     'scipy',
     'tensorflow_probability',
     'tqdm',

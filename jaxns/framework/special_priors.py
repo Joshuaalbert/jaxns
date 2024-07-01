@@ -9,6 +9,7 @@ from jax._src.scipy.special import gammaln
 
 from jaxns.framework.bases import BaseAbstractPrior
 from jaxns.framework.prior import SingularPrior, prior_to_parametrised_singular
+from jaxns.internals.interp_utils import InterpolatedArray
 from jaxns.internals.log_semiring import cumulative_logsumexp
 from jaxns.internals.types import FloatArray, IntArray, BoolArray, float_type, int_type, UType, RandomVariableType, \
     MeasureType
@@ -540,3 +541,117 @@ class TruncationWrapper(SpecialPrior):
 
     def _dtype(self) -> jnp.dtype:
         return self.prior._dtype()
+
+
+class ExplicitDensityPrior(SpecialPrior):
+    def __init__(self, *, axes: Tuple[jax.Array, ...], density: jax.Array, regular_grid: bool = False,
+                 name: Optional[str] = None):
+        super(ExplicitDensityPrior, self).__init__(name=name)
+        self._num_dims = num_dims = len(np.shape(density))
+        for i in range(num_dims):
+            if len(np.shape(axes[i])) != 1:
+                raise ValueError(f"Each axis must be 1D, got {np.shape(axes[i])}")
+            if np.shape(density)[i] < 2:
+                raise ValueError(f"Each dimension of density must have at least 2 elements, got {np.shape(density)}")
+            if np.shape(density)[i] != np.size(axes[i]):
+                raise ValueError(
+                    f"Each dimension of density must have the same number of elements as the corresponding axis, "
+                    f"got {np.shape(density)} and {np.shape(axes[i])}"
+                )
+
+        norm = density
+        for i in range(num_dims)[::-1]:
+            axis = axes[i]
+            d = axis[1:] - axis[:-1]
+            norm = 0.5 * jnp.sum((norm[..., :-1] + norm[..., 1:]) * d, axis=-1)
+
+        self._density = density / norm
+        self._axes = axes
+        self._regular_grid = regular_grid
+
+    def _dtype(self):
+        return self._density.dtype
+
+    def _base_shape(self) -> Tuple[int, ...]:
+        return (self._num_dims,)
+
+    def _shape(self) -> Tuple[int, ...]:
+        return (self._num_dims,)
+
+    def _forward(self, U) -> Union[FloatArray, IntArray, BoolArray]:
+        return self._quantile(U)
+
+    def _inverse(self, X) -> FloatArray:
+        return self._cdf(X)
+
+    def _cdf(self, X) -> FloatArray:
+        U = []
+        for i in range(self._num_dims):
+            # Marginalise the last dims
+            density = self._density
+            for j in range(i + 1, self._num_dims)[::-1]:
+                axis = self._axes[j]
+                d = axis[1:] - axis[:-1]
+                density = 0.5 * jnp.sum((density[..., :-1] + density[..., 1:]) * d, axis=-1)
+
+            # Now we have P(X_0, ..., X_i), interpolate to get norm * P(X_i | X_0, ...)
+
+            for j in range(i):
+                P = InterpolatedArray(
+                    x=self._axes[j],
+                    values=density,
+                    axis=0,
+                    regular_grid=self._regular_grid
+                )
+                density = P(X[j])  # P(X_1, ..., X_i)   [N1, ..., Ni]
+            # Now we have P(X_i | X_0, ...), and we compute percentiles
+            d = self._axes[i][1:] - self._axes[i][:-1]
+            norm = 0.5 * jnp.sum((density[1:] + density[:-1]) * d)
+            density /= norm
+            percentiles = jnp.concatenate([jnp.asarray([0.]), jnp.cumsum(0.5 * (density[1:] + density[:-1]) * d)])
+            u_i = jnp.interp(X[i], self._axes[i], percentiles)
+            U.append(u_i)
+        return jnp.stack(U, axis=-1)
+
+    def _log_prob(self, X) -> FloatArray:
+        density = self._density
+        for i in range(self._num_dims):
+            P = InterpolatedArray(
+                x=self._axes[i],
+                values=density,
+                axis=0,
+                regular_grid=self._regular_grid
+            )
+            density = P(X[i])
+        return jnp.log(density)
+
+    def _quantile(self, U):
+        # Sequentially sample from: P(X_0), P(X_1 | X_0), P(X_2 | X_0, X_1), ...
+        # P(A| B) = P(A, B) / sum_A P(B, A)
+        X = []
+        for i in range(self._num_dims):
+            # Marginalise the last dims
+            density = self._density
+            for j in range(i + 1, self._num_dims)[::-1]:
+                axis = self._axes[j]
+                d = axis[1:] - axis[:-1]
+                density = 0.5 * jnp.sum((density[..., :-1] + density[..., 1:]) * d, axis=-1)
+
+            # Now we have P(X_0, ..., X_i), interpolate to get norm * P(X_i | X_0, ...)
+
+            for j in range(i):
+                P = InterpolatedArray(
+                    x=self._axes[j],
+                    values=density,
+                    axis=0,
+                    regular_grid=self._regular_grid
+                )
+                density = P(X[j])  # P(X_1, ..., X_i)   [N1, ..., Ni]
+            # Now we have P(X_i | X_0, ...), and we compute percentiles
+            d = self._axes[i][1:] - self._axes[i][:-1]
+            norm = 0.5 * jnp.sum((density[1:] + density[:-1]) * d)
+            density /= norm
+            percentiles = jnp.concatenate([jnp.asarray([0.]), jnp.cumsum(0.5 * (density[1:] + density[:-1]) * d)])
+            x_i = jnp.interp(U[i], percentiles, self._axes[i])
+            X.append(x_i)
+        return jnp.stack(X, axis=-1)
