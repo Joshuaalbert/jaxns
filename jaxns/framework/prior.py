@@ -8,6 +8,7 @@ from jax import numpy as jnp
 
 from jaxns.framework.bases import BaseAbstractPrior, BaseAbstractDistribution
 from jaxns.framework.wrapped_tfp_distribution import WrappedTFPDistribution
+from jaxns.internals.constraint_bijections import quick_unit
 from jaxns.internals.types import FloatArray, IntArray, BoolArray, XType, UType, float_type
 
 tfpd = tfp.distributions
@@ -191,8 +192,6 @@ def prior_to_parametrised_singular(prior: BaseAbstractPrior, random_init: bool =
         init=hk.initializers.Constant(init_value)
     )
     # transform [-inf, inf] -> [0,1]
-    # Sigmoid is faster than ndtr to save FLOPs
-    # U_base_param = ndtr(norm_U_base_param)
-    U_base_param = jax.nn.sigmoid(norm_U_base_param)
+    U_base_param = quick_unit(norm_U_base_param)
     param = prior.forward(U_base_param)
     return SingularPrior(value=param, base_prior=prior, name=prior.name)
