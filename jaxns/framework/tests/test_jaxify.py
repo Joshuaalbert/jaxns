@@ -16,8 +16,10 @@ def test_jaxify_likelihood():
 
     vmaped_wrapped_ll = jax.vmap(jaxify_likelihood(log_likelihood, vectorised=True))
 
-    np.testing.assert_allclose(vmaped_wrapped_ll(np.array([[1, 2], [2, 2]]), np.array([[3, 4], [4, 4]])),
-                               np.array([10, 12]))
+    np.testing.assert_allclose(
+        vmaped_wrapped_ll(np.array([[1, 2], [2, 2]]), np.array([[3, 4], [4, 4]])),
+        np.array([10, 12])
+    )
 
 
 def test_jaxify():

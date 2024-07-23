@@ -11,6 +11,7 @@ from jax._src.scipy.special import logit
 from jaxopt import NonlinearCG
 
 from jaxns.framework.bases import BaseAbstractModel
+from jaxns.internals.constraint_bijections import quick_unit, quick_unit_inverse
 from jaxns.internals.logging import logger
 from jaxns.internals.maps import remove_chunk_dim
 from jaxns.internals.types import PRNGKey, StaticStandardNestedSamplerState, BoolArray, StaticStandardSampleCollection, \
@@ -170,7 +171,7 @@ def determine_termination(term_cond: GlobalOptimisationTerminationCondition,
 
 def gradient_based_optimisation(model: BaseAbstractModel, init_U_point: UType) -> Tuple[UType, FloatArray, IntArray]:
     def loss(U_unconstrained: UType):
-        U = jax.nn.sigmoid(U_unconstrained)
+        U = quick_unit(U_unconstrained)
         return -model.log_prob_likelihood(U, allow_nan=False)
 
     solver = NonlinearCG(
@@ -180,8 +181,8 @@ def gradient_based_optimisation(model: BaseAbstractModel, init_U_point: UType) -
         verbose=False
     )
 
-    results = solver.run(init_params=logit(init_U_point))
-    return jax.nn.sigmoid(results.params), -results.state.value, results.state.num_fun_eval
+    results = solver.run(init_params=quick_unit_inverse(init_U_point))
+    return quick_unit(results.params), -results.state.value, results.state.num_fun_eval
 
 
 def _single_thread_global_optimisation(init_state: GlobalOptimisationState,

@@ -1,5 +1,6 @@
 from typing import Union
 
+import jax
 import jax.numpy as jnp
 from jax import random, vmap, lax
 from jax._src.scipy.special import logsumexp
@@ -91,7 +92,7 @@ def m_step(data, log_responsibilities):
 
 
 # No invariance under jit...
-def em_gmm(key, data, n_components, mask: Union[jnp.ndarray, None] = None, n_iters=10, tol=1e-6):
+def em_gmm(key, data, n_components, mask: Union[jax.Array, None] = None, n_iters=10, tol=1e-6):
     """
     Fit a Gaussian Mixture Model to the data using the Expectation-Maximization algorithm.
 

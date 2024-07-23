@@ -1,9 +1,11 @@
+import dataclasses
 import warnings
-from typing import Tuple, NamedTuple, Any, Union
+from typing import Tuple, NamedTuple, Any, Union, List, Optional
 
 import jax
-from jax import random, pmap, numpy as jnp, lax, core, vmap
+from jax import random, numpy as jnp, lax, core, vmap, pmap
 from jax._src.lax import parallel
+from jaxlib import xla_client
 
 from jaxns.framework.bases import BaseAbstractModel
 from jaxns.internals.cumulative_ops import cumulative_op_static
@@ -581,49 +583,51 @@ def create_init_state(key: PRNGKey, num_live_points: int, max_samples: int,
     )
 
 
+@dataclasses.dataclass(eq=False)
 class StandardStaticNestedSampler(BaseAbstractNestedSampler):
     """
     A static nested sampler that uses a fixed number of live points. This uses a uniform sampler to generate the
     initial set of samples down to an efficiency threshold, then uses a provided sampler to generate the rest of the
     samples until the termination condition is met.
+
+    Args:
+        init_efficiency_threshold: the efficiency threshold to use for the initial uniform sampling. If 0 then
+            turns it off.
+        sampler: the sampler to use after the initial uniform sampling.
+        num_live_points: the number of live points to use.
+        model: the model to use.
+        max_samples: the maximum number of samples to take.
+        devices: the devices to use, default is 1.
+        verbose: whether to log as we go.
     """
+    init_efficiency_threshold: float
+    sampler: BaseAbstractSampler
+    num_live_points: int
+    model: BaseAbstractModel
+    max_samples: int
+    devices: Optional[List[xla_client.Device]] = None
+    verbose: bool = False
 
-    def __init__(self, init_efficiency_threshold: float, sampler: BaseAbstractSampler, num_live_points: int,
-                 model: BaseAbstractModel, max_samples: int, num_parallel_workers: int = 1, verbose: bool = False):
-        """
-        Initialise the static nested sampler.
+    def __post_init__(self):
+        if self.devices is None:
+            self.devices = jax.devices()[:1]
 
-        Args:
-            init_efficiency_threshold: the efficiency threshold to use for the initial uniform sampling. If 0 then
-                turns it off.
-            sampler: the sampler to use after the initial uniform sampling.
-            num_live_points: the number of live points to use.
-            model: the model to use.
-            max_samples: the maximum number of samples to take.
-            num_parallel_workers: number of parallel workers to use. Defaults to 1. Experimental feature.
-            verbose: whether to log as we go.
-        """
-        self.init_efficiency_threshold = init_efficiency_threshold
-        self.sampler = sampler
-        self.num_live_points = int(num_live_points)
-        self.num_parallel_workers = int(num_parallel_workers)
-        self.verbose = bool(verbose)
-        remainder = max_samples % self.num_live_points
-        extra = (max_samples - remainder) % self.num_live_points
+        remainder = self.max_samples % self.num_live_points
+        extra = (self.max_samples - remainder) % self.num_live_points
         if extra > 0:
             warnings.warn(
-                f"Increasing max_samples ({max_samples}) by {extra} to closest multiple of "
+                f"Increasing max_samples ({self.max_samples}) by {extra} to closest multiple of "
                 f"num_live_points {self.num_live_points}."
             )
-        max_samples = int(max_samples + extra)
-        if self.num_parallel_workers > 1:
-            logger.info(f"Using {self.num_parallel_workers} parallel workers, each running identical samplers.")
-        super().__init__(model=model, max_samples=max_samples)
+        self.max_samples = int(self.max_samples + extra)
+        if len(self.devices) > 1:
+            logger.info(f"Using {len(self.devices)} parallel workers, each running identical samplers.")
+        BaseAbstractNestedSampler.__init__(self, model=self.model, max_samples=self.max_samples)
 
     def __repr__(self):
         return f"StandardStaticNestedSampler(init_efficiency_threshold={self.init_efficiency_threshold}, " \
                f"sampler={self.sampler}, num_live_points={self.num_live_points}, model={self.model}, " \
-               f"max_samples={self.max_samples}, num_parallel_workers={self.num_parallel_workers})"
+               f"max_samples={self.max_samples}, devices={self.devices})"
 
     def _to_results(self, termination_reason: IntArray, state: StaticStandardNestedSamplerState,
                     trim: bool) -> NestedSamplerResults:
@@ -772,10 +776,10 @@ class StandardStaticNestedSampler(BaseAbstractNestedSampler):
                 num_samples_per_sync=self.num_live_points,
                 verbose=self.verbose
             )
-            if self.num_parallel_workers > 1:
+            if len(self.devices) > 1:
                 # We need to do a final sampling run to make all the chains consistent,
                 #  to a likelihood contour (i.e. standardise on L(X)). Would mean that some workers are idle.
-                target_log_L_contour = parallel.pmax(termination_register.log_L_contour, 'i')
+                target_log_L_contour = parallel.pmax(termination_register.log_L_contour, 'markov_chain')
 
                 termination_cond = TerminationCondition(
                     dlogZ=jnp.asarray(0., float_type),
@@ -793,10 +797,10 @@ class StandardStaticNestedSampler(BaseAbstractNestedSampler):
 
             return state, termination_reason
 
-        if self.num_parallel_workers > 1:
-            parallel_ns = pmap(replica, axis_name='i')
+        if len(self.devices) > 1:
+            parallel_ns = pmap(replica, axis_name='markov_chain')
 
-            keys = random.split(key, self.num_parallel_workers)
+            keys = random.split(key, len(self.devices))
             batched_state, termination_reason = parallel_ns(keys)
             state = unbatch_state(batched_state=batched_state)
         else:

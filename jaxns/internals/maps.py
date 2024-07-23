@@ -1,6 +1,6 @@
 import inspect
 import warnings
-from typing import TypeVar, Callable, Optional
+from typing import TypeVar, Callable, Optional, Tuple, List
 
 import jax
 from jax import pmap, numpy as jnp, lax
@@ -268,3 +268,46 @@ def chunked_vmap(f, chunk_size: Optional[int] = None, unroll: int = 1):
     _f.__doc__ = f.__doc__
     _f.__annotations__ = f.__annotations__
     return _f
+
+
+PT = TypeVar('PT')
+
+
+def pytree_unravel(example_tree: PT) -> Tuple[Callable[[PT], jax.Array], Callable[[jax.Array], PT]]:
+    """
+    Returns functions to ravel and unravel a pytree.
+    """
+    leaf_list, tree_def = jax.tree.flatten(example_tree)
+
+    sizes = [leaf.size for leaf in leaf_list]
+    shapes = [leaf.shape for leaf in leaf_list]
+
+    def ravel_fun(pytree: PT) -> jax.Array:
+        leaf_list, tree_def = jax.tree.flatten(pytree)
+        return jnp.concatenate([lax.reshape(leaf, (size,)) for leaf, size in zip(leaf_list, sizes)])
+
+    def unravel_fun(flat_array: jax.Array) -> PT:
+        leaf_list = []
+        start = 0
+        for size, shape in zip(sizes, shapes):
+            leaf_list.append(lax.reshape(flat_array[start:start + size], shape))
+            start += size
+        return jax.tree.unflatten(tree_def, leaf_list)
+
+    return ravel_fun, unravel_fun
+
+
+def pytree_unpack(example_tree: PT) -> Tuple[Callable[[PT], List[jax.Array]], Callable[[List[jax.Array]], PT]]:
+    """
+    Returns functions to ravel and unravel a pytree.
+    """
+    leaf_list, tree_def = jax.tree.flatten(example_tree)
+
+    def pack_fun(pytree: PT) -> List[jax.Array]:
+        leaf_list, tree_def = jax.tree.flatten(pytree)
+        return leaf_list
+
+    def unpack_fun(leaf_list: List[jax.Array]) -> PT:
+        return jax.tree.unflatten(tree_def, leaf_list)
+
+    return pack_fun, unpack_fun

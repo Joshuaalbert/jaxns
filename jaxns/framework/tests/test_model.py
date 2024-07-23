@@ -13,8 +13,8 @@ tfpd = tfp.distributions
 
 def test_gh144():
     class Output(NamedTuple):
-        x: jnp.ndarray
-        y: jnp.ndarray
+        x: jax.Array
+        y: jax.Array
 
     def prior_model():
         x = yield Prior(dist_or_value=jnp.asarray(0.))

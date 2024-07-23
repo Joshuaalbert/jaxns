@@ -9,7 +9,7 @@ import numpy as np
 import tensorflow_probability.substrates.jax as tfp
 from jax import numpy as jnp, random
 from jax._src.scipy.special import logsumexp
-from jaxopt import NonlinearCG, ArmijoSGD
+from jaxopt import ArmijoSGD, BFGS
 from tqdm import tqdm
 
 from jaxns.internals.cumulative_ops import cumulative_op_static
@@ -41,11 +41,11 @@ tfpk = tfp.math.psd_kernels
 
 
 class MStepData(NamedTuple):
-    U_samples: jnp.ndarray
-    log_weights: jnp.ndarray
-    # log_dp_mean: jnp.ndarray
-    # log_L_samples: jnp.ndarray
-    # log_Z_mean: jnp.ndarray
+    U_samples: jax.Array
+    log_weights: jax.Array
+    # log_dp_mean: jax.Array
+    # log_L_samples: jax.Array
+    # log_Z_mean: jax.Array
 
 
 def next_power_2(x: int) -> int:
@@ -95,6 +95,7 @@ class EvidenceMaximisation:
         if 'max_samples' not in self.ns_kwargs:
             raise ValueError("ns_kwargs must contain 'max_samples'.")
         self._e_step = self._create_e_step()
+        # self._m_step = self._create_m_step()
         self._m_step = self._create_m_step_stochastic()
 
     def _create_e_step(self):
@@ -146,11 +147,15 @@ class EvidenceMaximisation:
     def _m_step_iterator(self, key: PRNGKey, data: MStepData):
         num_samples = int(data.U_samples.shape[0])
         permutation = jax.random.permutation(key, num_samples)
-        num_batches = num_samples // self.batch_size
+        if self.batch_size is None:
+            batch_size = num_samples
+        else:
+            batch_size = self.batch_size
+        num_batches = num_samples // batch_size
         if num_batches == 0:
             raise RuntimeError("Batch size is too large for number of samples.")
         for i in range(num_batches):
-            perm = permutation[i * self.batch_size:(i + 1) * self.batch_size]
+            perm = permutation[i * batch_size:(i + 1) * batch_size]
             batch = MStepData(
                 U_samples=data.U_samples[perm],
                 log_weights=data.log_weights[perm]
@@ -253,16 +258,16 @@ class EvidenceMaximisation:
                 jax.debug.print("log_Z={log_Z}", log_Z=log_Z)
             return (obj, aux), grad
 
-        solver = NonlinearCG(
+        solver = BFGS(
             fun=loss,
             has_aux=True,
             value_and_grad=True,
             jit=True,
             unroll=False,
-            verbose=self.verbose
+            verbose=False
         )
 
-        @partial(jax.jit, static_argnums=(0,))
+        @partial(jax.jit)
         def _m_step(key: PRNGKey, params: hk.MutableParams, data: MStepData) -> Tuple[hk.MutableParams, Any]:
             """
             The M-step is just evidence maximisation.
@@ -316,7 +321,7 @@ class EvidenceMaximisation:
         log_Z = None
         while epoch < self.max_num_epochs:
             params, (log_Z,) = self._m_step(key=key, params=params, data=data)
-            l_oo = jax.tree.map(lambda x, y: jnp.max(jnp.abs(x - y)) if np.size(x) > 0 else 0.,
+            l_oo = jax.tree.map(lambda x, y: float(jnp.max(jnp.abs(x - y))) if np.size(x) > 0 else 0.,
                                 last_params, params)
             last_params = params
             p_bar.set_description(f"{desc}: Epoch {epoch}: log_Z={log_Z}, l_oo={l_oo}")
@@ -349,7 +354,7 @@ class EvidenceMaximisation:
 
         ns_results = None
         for step in p_bar:
-            key_e_stek, key_m_step = random.split(random.PRNGKey(step), 2)
+            key_e_step, key_m_step = random.split(random.PRNGKey(step), 2)
 
             # Execute the e_step
             if ns_results is None:
@@ -358,13 +363,25 @@ class EvidenceMaximisation:
                 p_bar.set_description(
                     f"Step {step}: log Z = {ns_results.log_Z_mean:.4f} +- {ns_results.log_Z_uncert:.4f}"
                 )
-            ns_results = self.e_step(key=key_e_stek, params=params, p_bar=p_bar)
+            ns_results = self.e_step(key=key_e_step, params=params, p_bar=p_bar)
             # Update progress bar description
 
             # Check termination condition
             log_Z_change = jnp.abs(ns_results.log_Z_mean - log_Z)
-            if log_Z_change < max(float(self.log_Z_ftol * ns_results.log_Z_uncert), self.log_Z_atol):
-                p_bar.set_description(f"Convergence achieved at step {step}.")
+
+            if log_Z_change < self.log_Z_atol:
+                p_bar.set_description(
+                    f"Convergence achieved at step {step}, "
+                    f"due to delta log_Z {log_Z_change} < log_Z_atol {self.log_Z_atol}."
+                )
+                break
+
+            relative_atol = float(self.log_Z_ftol * ns_results.log_Z_uncert)
+            if log_Z_change < relative_atol:
+                p_bar.set_description(
+                    f"Convergence achieved at step {step}, "
+                    f"due to log_Z {log_Z_change} < log_Z_ftol * log_Z_uncert {relative_atol}."
+                )
                 break
 
             # Update log_Z and log_Z_uncert values

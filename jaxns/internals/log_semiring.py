@@ -1,5 +1,6 @@
 from typing import Union, Literal
 
+import jax
 from jax import numpy as jnp, lax
 from jax.scipy.special import logsumexp
 
@@ -91,7 +92,7 @@ def cumulative_logsumexp(u, sign=None, reverse=False, axis=0):
 
 
 class LogSpace(object):
-    def __init__(self, log_abs_val: Union[jnp.ndarray, float], sign: Union[jnp.ndarray, float] = None):
+    def __init__(self, log_abs_val: Union[jax.Array, float], sign: Union[jax.Array, float] = None):
         self._log_abs_val = jnp.asarray(log_abs_val, float_type)
         if sign is None:
             self._sign = jnp.asarray(1., float_type)
@@ -316,7 +317,7 @@ class LogSpace(object):
         Returns:
              LogSpace
         """
-        if not isinstance(n, (int, float, jnp.ndarray)):
+        if not isinstance(n, (int, float, jax.Array)):
             raise NotImplementedError("Not implemented for non-int powers.")
         n = jnp.asarray(n, float_type)
         if self._naked:
