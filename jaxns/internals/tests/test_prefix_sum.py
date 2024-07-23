@@ -8,7 +8,7 @@ import pytest
 from jax import numpy as jnp
 from tensorflow_probability.substrates import jax as tfp
 
-from jaxns.internals.prefix_sum import _slice_along_axis, _interleave, _compute_max_num_levels, scan_associative
+from jaxns.internals.prefix_sum import _slice_along_axis, _interleave, scan_associative
 
 
 def test__slice_along_axis():
@@ -61,14 +61,6 @@ def test__interleave():
     )
     np.testing.assert_allclose(_interleave(a, b, axis=1), expected_interleaved_1)
     np.testing.assert_allclose(_interleave(a, b, axis=0), expected_interleaved_0)
-
-
-def test_compute_max_num_levels():
-    for batch_size in range(1, 1000):
-        max_num_levels = _compute_max_num_levels(batch_size)
-        print(batch_size, max_num_levels)
-        assert batch_size < 2 ** (max_num_levels + 1)
-        assert batch_size >= 2 ** (max_num_levels)
 
 
 @pytest.mark.parametrize('num_elems', [10, 11])

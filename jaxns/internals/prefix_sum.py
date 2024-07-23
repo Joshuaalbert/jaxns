@@ -37,17 +37,6 @@ def _interleave(a, b, axis):
     return jax.tree.map(_op, a, b)
 
 
-def _compute_max_num_levels(batch_size: int) -> int:
-    if batch_size <= 0:
-        raise ValueError("batch_size must be positive")
-    # max_num_levels: Python `int`. The `axis` of the tensors in `elems` must have
-    # size less than `2**(max_num_levels + 1)`
-    # max_num_levels = inf{L : batch_size < 2**(L + 1)}
-    # batch_size == 2**(max_num_levels + 1) - 1
-    # ==> max_num_levels = log2(batch_size + 1) - 1
-    return max(0, int(np.ceil(np.log2(batch_size + 1) - 1)))
-
-
 X = TypeVar('X')
 
 
