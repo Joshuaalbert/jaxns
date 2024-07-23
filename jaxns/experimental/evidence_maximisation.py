@@ -147,11 +147,15 @@ class EvidenceMaximisation:
     def _m_step_iterator(self, key: PRNGKey, data: MStepData):
         num_samples = int(data.U_samples.shape[0])
         permutation = jax.random.permutation(key, num_samples)
-        num_batches = num_samples // self.batch_size
+        if self.batch_size is None:
+            batch_size = num_samples
+        else:
+            batch_size = self.batch_size
+        num_batches = num_samples // batch_size
         if num_batches == 0:
             raise RuntimeError("Batch size is too large for number of samples.")
         for i in range(num_batches):
-            perm = permutation[i * self.batch_size:(i + 1) * self.batch_size]
+            perm = permutation[i * batch_size:(i + 1) * batch_size]
             batch = MStepData(
                 U_samples=data.U_samples[perm],
                 log_weights=data.log_weights[perm]
