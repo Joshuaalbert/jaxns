@@ -38,11 +38,12 @@ def test_single_prior():
         z = x + y
         return z
 
-    U, X = parse_prior(prior_model)
+    U, X, W = parse_prior(prior_model)
     U_ndims = U.shape[0]
     assert isinstance(X, dict)
     assert len(X) == 2
     assert U_ndims == 2
+    assert sum([np.size(w) for w in W]) == U_ndims
 
     U = random.uniform(random.PRNGKey(42), shape=(U_ndims,), dtype=float_type)
 
@@ -72,11 +73,12 @@ def test_prior_model_basic():
         z = x + y
         return z, z ** 2
 
-    U, X = parse_prior(prior_model)
+    U, X, W = parse_prior(prior_model)
     U_ndims = U.shape[0]
     assert isinstance(X, dict)
     assert len(X) == 0
     assert U_ndims == 2
+    assert sum([np.size(w) for w in W]) == U_ndims
 
     U = random.uniform(random.PRNGKey(42), shape=(U_ndims,), dtype=float_type)
     output = prepare_input(U, prior_model)

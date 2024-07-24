@@ -37,7 +37,8 @@ LikelihoodType = Callable[..., FloatArray]
 RandomVariableType = TypeVar('RandomVariableType')
 MeasureType = TypeVar('MeasureType')
 LikelihoodInputType = Union[Tuple[RandomVariableType, ...], RandomVariableType]  # Likelihood conditional variables
-UType = FloatArray  # Sample space type
+UType = jax.Array  # Sample space type
+WType = Tuple[jax.Array, ...]
 XType = Dict[str, RandomVariableType]  # Prior variable type
 
 

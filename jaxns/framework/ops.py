@@ -8,7 +8,7 @@ from jax import numpy as jnp, lax
 from jaxns.framework.bases import PriorModelType, BaseAbstractPrior, PriorModelGen
 from jaxns.framework.prior import InvalidPriorName, SingularPrior, Prior
 from jaxns.internals.types import UType, XType, float_type, LikelihoodInputType, FloatArray, LikelihoodType, PRNGKey, \
-    isinstance_namedtuple
+    isinstance_namedtuple, WType
 
 __all__ = [
     'simulate_prior_model'
@@ -78,7 +78,7 @@ def simulate_prior_model(key: PRNGKey, prior_model: PriorModelType) -> Tuple[Lik
     return prepare_input(U=U, prior_model=prior_model), transform(U=U, prior_model=prior_model)
 
 
-def parse_prior(prior_model: PriorModelType) -> Tuple[UType, XType]:
+def parse_prior(prior_model: PriorModelType) -> Tuple[UType, XType, WType]:
     """
     Computes placeholders of model.
 
@@ -86,7 +86,7 @@ def parse_prior(prior_model: PriorModelType) -> Tuple[UType, XType]:
         prior_model: a callable that produces a prior model generator
 
     Returns:
-        U placeholder, X placeholder
+        U placeholder, X placeholder, W placeholder
     """
     U_ndims = 0
     gen = _get_prior_model_gen(prior_model=prior_model)
@@ -94,12 +94,14 @@ def parse_prior(prior_model: PriorModelType) -> Tuple[UType, XType]:
     prior_response = None
     names = set()
     X_placeholder: XType = dict()
+    W_placeholder: WType = ()
     while True:
         try:
             prior: BaseAbstractPrior = gen.send(prior_response)
             d = prior.base_ndims
             U_ndims += d
             u = jnp.zeros(prior.base_shape, float_type)
+            W_placeholder += (u,)
             prior_response = prior.forward(u)
             if prior.name is not None:
                 if prior.name in names:
@@ -110,7 +112,7 @@ def parse_prior(prior_model: PriorModelType) -> Tuple[UType, XType]:
         except StopIteration:
             break
     U_placeholder = jnp.zeros((U_ndims,), float_type)
-    return U_placeholder, X_placeholder
+    return U_placeholder, X_placeholder, W_placeholder
 
 
 def parse_joint(prior_model: PriorModelType, log_likelihood: LikelihoodType) -> Tuple[

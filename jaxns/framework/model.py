@@ -38,7 +38,7 @@ class Model(BaseAbstractModel):
             params = self.init_params(rng=random.PRNGKey(0))
         self._params = params
         # Parse the prior model to get place holders
-        self.__U_placeholder, self.__X_placeholder = hk.transform(
+        self.__U_placeholder, self.__X_placeholder, self.__W_placeholder = hk.transform(
             lambda: parse_prior(prior_model=self.prior_model)
         ).apply(params=self._params, rng=random.PRNGKey(0))
         self._id = str(uuid4())  # Used for making sure it's hashable, so it can be used as a key in a dict.
