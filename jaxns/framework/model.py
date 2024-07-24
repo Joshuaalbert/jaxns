@@ -120,10 +120,6 @@ class Model(BaseAbstractModel):
     def __hash__(self):
         return hash(self._id)
 
-    def __repr__(self):
-        # TODO(Joshuaalbert): Pretty print the model
-        return f""
-
     def sample_U(self, key: PRNGKey) -> FloatArray:
         if self._params is None:
             raise RuntimeError("Model has not been initialised")
@@ -180,8 +176,8 @@ class Model(BaseAbstractModel):
         for _U, _log_L in zip(U, log_L):
             if jnp.isnan(_log_L):
                 logger.info(f"Found bad point:"
-                             f"\n{_U} -> {self.transform(_U)}"
-                             f"\n -> {self.transform_parametrised(_U)}")
+                            f"\n{_U} -> {self.transform(_U)}"
+                            f"\n -> {self.transform_parametrised(_U)}")
         assert not any(np.isnan(log_L))
         logger.info("Sanity check passed")
         if 'parsed_prior' in self.__dict__:
