@@ -38,18 +38,17 @@ def test_single_prior():
         z = x + y
         return z
 
-    U, X = parse_prior(prior_model)
+    U, X, W = parse_prior(prior_model)
     U_ndims = U.shape[0]
     assert isinstance(X, dict)
     assert len(X) == 2
     assert U_ndims == 2
-
-    U = random.uniform(random.PRNGKey(42), shape=(U_ndims,), dtype=float_type)
+    assert sum([np.size(w) for w in W]) == U_ndims
 
     def log_likelihood(Z):
         return Z - jnp.sum(Z ** 2)
 
-    log_L = compute_log_likelihood(U, prior_model, log_likelihood=log_likelihood)
+    log_L = compute_log_likelihood(W, prior_model, log_likelihood=log_likelihood)
     assert not jnp.isnan(log_L)
 
 
@@ -72,14 +71,14 @@ def test_prior_model_basic():
         z = x + y
         return z, z ** 2
 
-    U, X = parse_prior(prior_model)
+    U, X, W = parse_prior(prior_model)
     U_ndims = U.shape[0]
     assert isinstance(X, dict)
     assert len(X) == 0
     assert U_ndims == 2
+    assert sum([np.size(w) for w in W]) == U_ndims
 
-    U = random.uniform(random.PRNGKey(42), shape=(U_ndims,), dtype=float_type)
-    output = prepare_input(U, prior_model)
+    output = prepare_input(W, prior_model)
     assert isinstance(output, tuple)
     assert len(output) == 2
     assert jnp.allclose(output[1], output[0] ** 2)
@@ -87,7 +86,7 @@ def test_prior_model_basic():
     def log_likelihood(Z, Z2):
         return Z - jnp.sum(Z2)
 
-    log_L = compute_log_likelihood(U, prior_model, log_likelihood=log_likelihood)
+    log_L = compute_log_likelihood(W, prior_model, log_likelihood=log_likelihood)
     assert not jnp.isnan(log_L)
 
 

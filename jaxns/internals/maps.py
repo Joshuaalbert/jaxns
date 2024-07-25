@@ -3,6 +3,7 @@ import warnings
 from typing import TypeVar, Callable, Optional, Tuple, List
 
 import jax
+import numpy as np
 from jax import pmap, numpy as jnp, lax
 
 from jaxns.internals.types import int_type
@@ -276,21 +277,32 @@ PT = TypeVar('PT')
 def pytree_unravel(example_tree: PT) -> Tuple[Callable[[PT], jax.Array], Callable[[jax.Array], PT]]:
     """
     Returns functions to ravel and unravel a pytree.
+
+    Args:
+        example_tree: a pytree to be unravelled
+
+    Returns:
+        ravel_fun: a function to ravel the pytree
+        unravel_fun: a function to unravel
     """
     leaf_list, tree_def = jax.tree.flatten(example_tree)
 
-    sizes = [leaf.size for leaf in leaf_list]
-    shapes = [leaf.shape for leaf in leaf_list]
+    sizes = [np.size(leaf) for leaf in leaf_list]
+    shapes = [np.shape(leaf) for leaf in leaf_list]
+    dtypes = [leaf.dtype for leaf in leaf_list]
 
     def ravel_fun(pytree: PT) -> jax.Array:
         leaf_list, tree_def = jax.tree.flatten(pytree)
+        # promote types to common one
+        common_dtype = jnp.result_type(*dtypes)
+        leaf_list = [leaf.astype(common_dtype) for leaf in leaf_list]
         return jnp.concatenate([lax.reshape(leaf, (size,)) for leaf, size in zip(leaf_list, sizes)])
 
     def unravel_fun(flat_array: jax.Array) -> PT:
         leaf_list = []
         start = 0
-        for size, shape in zip(sizes, shapes):
-            leaf_list.append(lax.reshape(flat_array[start:start + size], shape))
+        for size, shape, dtype in zip(sizes, shapes, dtypes):
+            leaf_list.append(lax.reshape(flat_array[start:start + size], shape).astype(dtype))
             start += size
         return jax.tree.unflatten(tree_def, leaf_list)
 
@@ -311,3 +323,33 @@ def pytree_unpack(example_tree: PT) -> Tuple[Callable[[PT], List[jax.Array]], Ca
         return jax.tree.unflatten(tree_def, leaf_list)
 
     return pack_fun, unpack_fun
+
+
+PV = TypeVar('PV')
+
+
+class PyTree:
+    """
+    For acting on W space.
+    """
+
+    def __init__(self, tree: PV):
+        self.tree = tree
+
+    def __add__(self, other: PV) -> PV:
+        return jax.tree.map(lambda x, y: x + y, self.tree, other)
+
+    def __sub__(self, other: PV) -> PV:
+        return jax.tree.map(lambda x, y: x - y, self.tree, other)
+
+    def __mul__(self, other: PV) -> PV:
+        return jax.tree.map(lambda x, y: x * y, self.tree, other)
+
+    def __truediv__(self, other: PV) -> PV:
+        return jax.tree.map(lambda x, y: x / y, self.tree, other)
+
+    def __pow__(self, other: PV) -> PV:
+        return jax.tree.map(lambda x, y: x ** y, self.tree, other)
+
+    def __neg__(self):
+        return jax.tree.map(lambda x: -x, self.tree)

@@ -1,6 +1,7 @@
 from typing import NamedTuple
 
 import jax.random
+import numpy as np
 import tensorflow_probability.substrates.jax as tfp
 from jax import numpy as jnp
 
@@ -148,3 +149,20 @@ def test_empty_prior_models():
 
     model = Model(prior_model=prior_model, log_likelihood=log_likelihood)
     model.sanity_check(key=jax.random.PRNGKey(0), S=10)
+
+
+def test_ravel_fn():
+    def prior_model():
+        x = yield Prior(tfpd.Uniform(), name='x')
+        y = yield Prior(tfpd.Uniform(), name='y')
+        return x, y
+
+    def log_likelihood(x, y):
+        return x - y
+
+    model = Model(prior_model=prior_model, log_likelihood=log_likelihood)
+
+    U = model.sample_U(jax.random.PRNGKey(0))
+    W = model.sample_W(jax.random.PRNGKey(0))
+    np.testing.assert_allclose(model.unravel_fn(U), W)
+    np.testing.assert_allclose(model.ravel_fn(W), U)
