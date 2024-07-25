@@ -2,6 +2,11 @@ import jax
 import jax.numpy as jnp
 from jax import lax
 
+__all__ = [
+    "quick_unit",
+    "quick_unit_inverse"
+]
+
 
 def quick_unit(x: jax.Array) -> jax.Array:
     """
