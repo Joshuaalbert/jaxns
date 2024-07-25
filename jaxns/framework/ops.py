@@ -54,7 +54,7 @@ def compute_U_ndims(prior_model: PriorModelType) -> int:
             prior: BaseAbstractPrior = gen.send(prior_response)
             d = prior.base_ndims
             U_ndims += d
-            u = jnp.zeros(prior.base_shape, float_type)
+            u = jnp.full(prior.base_shape, 0.5, float_type)
             prior_response = prior.forward(u)
             if prior.name is not None:
                 if prior.name in names:
@@ -81,7 +81,7 @@ def simulate_prior_model(key: PRNGKey, prior_model: PriorModelType) -> Tuple[Lik
     _, unravel_fn = pytree_unravel(W_placeholder)
     U = jax.random.uniform(key, shape=U_placeholder.shape, dtype=U_placeholder.dtype)
     W = unravel_fn(U)
-    return prepare_input(W=U, prior_model=prior_model), transform(W=W, prior_model=prior_model)
+    return prepare_input(W=W, prior_model=prior_model), transform(W=W, prior_model=prior_model)
 
 
 def parse_prior(prior_model: PriorModelType) -> Tuple[UType, XType, WType]:
@@ -106,7 +106,7 @@ def parse_prior(prior_model: PriorModelType) -> Tuple[UType, XType, WType]:
             prior: BaseAbstractPrior = gen.send(prior_response)
             d = prior.base_ndims
             U_ndims += d
-            u = jnp.zeros(prior.base_shape, float_type)
+            u = jnp.full(prior.base_shape, 0.5, float_type)
             W_placeholder += (u,)
             prior_response = prior.forward(u)
             if prior.name is not None:
@@ -145,7 +145,7 @@ def parse_joint(prior_model: PriorModelType, log_likelihood: LikelihoodType) -> 
             prior: BaseAbstractPrior = gen.send(prior_response)
             d = prior.base_ndims
             U_ndims += d
-            u = jnp.zeros(prior.base_shape, float_type)
+            u = jnp.full(prior.base_shape, 0.5, float_type)
             W_placeholder += (u,)
             prior_response = prior.forward(u)
             if prior.name is not None:
