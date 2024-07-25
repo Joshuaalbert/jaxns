@@ -45,12 +45,10 @@ def test_single_prior():
     assert U_ndims == 2
     assert sum([np.size(w) for w in W]) == U_ndims
 
-    U = random.uniform(random.PRNGKey(42), shape=(U_ndims,), dtype=float_type)
-
     def log_likelihood(Z):
         return Z - jnp.sum(Z ** 2)
 
-    log_L = compute_log_likelihood(U, prior_model, log_likelihood=log_likelihood)
+    log_L = compute_log_likelihood(W, prior_model, log_likelihood=log_likelihood)
     assert not jnp.isnan(log_L)
 
 
@@ -80,8 +78,7 @@ def test_prior_model_basic():
     assert U_ndims == 2
     assert sum([np.size(w) for w in W]) == U_ndims
 
-    U = random.uniform(random.PRNGKey(42), shape=(U_ndims,), dtype=float_type)
-    output = prepare_input(U, prior_model)
+    output = prepare_input(W, prior_model)
     assert isinstance(output, tuple)
     assert len(output) == 2
     assert jnp.allclose(output[1], output[0] ** 2)
@@ -89,7 +86,7 @@ def test_prior_model_basic():
     def log_likelihood(Z, Z2):
         return Z - jnp.sum(Z2)
 
-    log_L = compute_log_likelihood(U, prior_model, log_likelihood=log_likelihood)
+    log_L = compute_log_likelihood(W, prior_model, log_likelihood=log_likelihood)
     assert not jnp.isnan(log_L)
 
 

@@ -1,7 +1,7 @@
 import jax
 from jax import numpy as jnp
 
-from jaxns.internals.maps import replace_index, chunked_pmap, prepare_func_args, get_index, chunked_vmap
+from jaxns.internals.maps import replace_index, chunked_pmap, prepare_func_args, get_index, chunked_vmap, pytree_unravel
 
 
 def test_replace_index():
@@ -121,3 +121,18 @@ def test_chunked_vmap():
     x = jnp.arange(6)
     assert chunked_f(x, y=x).shape == x.shape
     assert jnp.all(chunked_f(x, y=x) == x ** 2)
+
+
+def test_pytree_unravel():
+    x = (
+        jnp.asarray([]),
+        jnp.ones((2, 2), jnp.bool_),
+        jnp.ones((2, 2), jnp.float_),
+        jnp.ones((2, 2), jnp.int_)
+    )
+    ravel_fn, unravel_fn = pytree_unravel(x)
+    y = ravel_fn(x)
+    print(y)
+    print(unravel_fn(y))
+    for xi, xi_ in zip(unravel_fn(y), x):
+        assert jnp.all(xi == xi_)
