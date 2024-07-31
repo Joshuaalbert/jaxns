@@ -3,9 +3,12 @@ import jax.random
 import numpy as np
 import pytest
 import tensorflow_probability.substrates.jax as tfp
+from jax import numpy as jnp
 
 from jaxns import Prior, Model
-from jaxns.experimental.global_optimisation import GlobalOptimisationTerminationCondition, gradient_based_optimisation
+from jaxns.experimental import GlobalOptimisationResults
+from jaxns.experimental.global_optimisation import GlobalOptimisationTerminationCondition, gradient_based_optimisation, \
+    summary
 from jaxns.experimental.public import DefaultGlobalOptimisation
 
 tfpd = tfp.distributions
@@ -115,3 +118,24 @@ def test_all_global_optimisation(all_global_optimisation_problems):
         go.summary(results)
 
         np.testing.assert_allclose(results.solution[0], optimum, atol=a_tol)
+
+
+def test_summary():
+    mock_results = GlobalOptimisationResults(
+        U_solution=jnp.array([1., 2.]),
+        X_solution={
+            'x': jnp.array([1., 2.]),
+            'y': jnp.array(1.),
+            'z': jnp.array([]),
+            'w': jnp.ones((2, 0, 2)),
+            't': jnp.ones((2, 1, 3))
+        },
+        solution=jnp.array([1., 2.]),
+        log_L_solution=jnp.array(1.),
+        num_likelihood_evaluations=jnp.array(1),
+        num_samples=jnp.array(1),
+        termination_reason=jnp.array(1),
+        relative_spread=jnp.array(1.),
+        absolute_spread=jnp.array(1.)
+    )
+    summary(mock_results)
