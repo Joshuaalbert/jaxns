@@ -7,7 +7,6 @@ import jax.numpy as jnp
 import numpy as np
 from jax import lax, random, pmap
 from jax._src.lax import parallel
-from jax._src.scipy.special import logit
 from jaxopt import NonlinearCG
 
 from jaxns.framework.bases import BaseAbstractModel
@@ -510,25 +509,26 @@ def summary(results: GlobalOptimisationResults, f_obj: Optional[Union[str, TextI
 
     X_solution = results.X_solution
     for name in X_solution.keys():
-        _sample = X_solution[name].reshape((-1,))
-        ndims = _sample.size
         _print("--------")
-        var_name = name if ndims == 1 else "{}[#]".format(name)
+        # For shaped arrays, we want to print "{name}[{i0, i1, ..., in}]" for all valid indices.
+        shape = np.shape(X_solution[name])
+        num_dims = len(shape)
+        is_shaped = num_dims > 0
+
+        var_name = f"{name}[{'#'.join(',')}]" if is_shaped else name
         _print(
             f"{var_name}: max(L) est."
         )
-        for dim in range(ndims):
-            _max_like_point = _sample[dim]
-            # two sig-figs based on uncert
-            sig_figs = -int("{:e}".format(_max_like_point * 0.1).split('e')[1]) + 1
 
-            def _round(ar):
-                return round(float(ar), sig_figs)
+        if is_shaped:
+            indices = np.indices(shape).reshape((num_dims, -1)).T
+            for inds in indices:
+                _max_like_point = X_solution[name][inds]
+                _print(f"{name}[{','.join(str(i) for i in inds)}]: {_round(_max_like_point, 0.1 * _max_like_point)}")
+        else:
+            _max_like_point = X_solution[name]
+            _print(f"{name}: {_round(_max_like_point, 0.1 * _max_like_point)}")
 
-            _print("{}: {}".format(
-                name if ndims == 1 else "{}[{}]".format(name, dim),
-                _round(_max_like_point)
-            ))
     _print("--------")
     if f_obj is not None:
         out = "\n".join(main_s)
