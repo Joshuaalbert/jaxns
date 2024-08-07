@@ -7,7 +7,7 @@ from jax import lax
 
 from jaxns.framework.abc import AbstractModel, AbstractPrior, AbstractDistribution
 from jaxns.internals.shapes import tuple_prod
-from jaxns.internals.types import LikelihoodInputType
+from jaxns.internals.types import LikelihoodInputType, WType
 from jaxns.internals.types import LikelihoodType, UType, XType, RandomVariableType, MeasureType
 
 __all__ = [
@@ -137,6 +137,17 @@ class BaseAbstractModel(AbstractModel):
     @abstractmethod
     def _X_placeholder(self) -> XType:
         ...
+
+    @abstractmethod
+    def _W_placeholder(self) -> WType:
+        ...
+
+    @property
+    def W_placeholder(self) -> WType:
+        """
+        A placeholder for W-space sample.
+        """
+        return self._W_placeholder()
 
     @property
     def U_placeholder(self) -> UType:
