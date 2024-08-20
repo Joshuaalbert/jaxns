@@ -10,6 +10,7 @@ __all__ = [
     'jaxify_likelihood'
 ]
 
+
 def jaxify_likelihood(log_likelihood: Callable[..., np.ndarray], vectorised: bool = False) -> LikelihoodType:
     """
     Wraps a non-JAX log likelihood function.
@@ -31,6 +32,7 @@ def jaxify_likelihood(log_likelihood: Callable[..., np.ndarray], vectorised: boo
     )
 
     def _casted_log_likelihood(*args) -> np.ndarray:
+        args = jax.tree.map(np.asarray, args)  # Convert all arguments to numpy arrays, as they now pass jax.Array
         return np.asarray(log_likelihood(*args), dtype=float_type)
 
     def _log_likelihood(*args) -> jax.Array:
