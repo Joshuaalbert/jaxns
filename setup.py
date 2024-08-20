@@ -11,7 +11,6 @@ install_requires = [
     'scipy',
     'tensorflow_probability',
     'tqdm',
-    'dm-haiku',
     'optax',
     'jaxopt'
 ]

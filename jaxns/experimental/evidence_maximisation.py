@@ -12,23 +12,11 @@ from jax._src.scipy.special import logsumexp
 from jaxopt import ArmijoSGD, BFGS
 from tqdm import tqdm
 
+from jaxns import DefaultNestedSampler, Model
+from jaxns.framework.context import MutableParams
 from jaxns.internals.cumulative_ops import cumulative_op_static
 from jaxns.internals.log_semiring import LogSpace
 from jaxns.internals.logging import logger
-
-try:
-    import haiku as hk
-except ImportError:
-    print("You must `pip install dm-haiku` first.")
-    raise
-
-try:
-    import optax
-except ImportError:
-    print("You must `pip install optax` first.")
-    raise
-
-from jaxns import DefaultNestedSampler, Model
 from jaxns.internals.types import TerminationCondition, NestedSamplerResults, StaticStandardNestedSamplerState, \
     IntArray, PRNGKey, float_type
 
@@ -106,7 +94,7 @@ class EvidenceMaximisation:
             A compiled function that runs nested sampling and returns trimmed results.
         """
 
-        def _ns_solve(params: hk.MutableParams, key: random.PRNGKey) -> Tuple[
+        def _ns_solve(params: MutableParams, key: random.PRNGKey) -> Tuple[
             IntArray, StaticStandardNestedSamplerState]:
             model = self.model(params=params)
             ns = DefaultNestedSampler(model=model, **self.ns_kwargs)
@@ -120,7 +108,7 @@ class EvidenceMaximisation:
             logger.info(f"E-step compilation time: {time.time() - t0:.2f}s")
         ns = DefaultNestedSampler(model=self.model(params=self.model.params), **self.ns_kwargs)
 
-        def _e_step(key: PRNGKey, params: hk.MutableParams, p_bar: tqdm) -> NestedSamplerResults:
+        def _e_step(key: PRNGKey, params: MutableParams, p_bar: tqdm) -> NestedSamplerResults:
             p_bar.set_description(f"Running E-step... {p_bar.desc}")
             termination_reason, state = ns_solve_compiled(params, key)
             # Trim results
@@ -128,7 +116,7 @@ class EvidenceMaximisation:
 
         return _e_step
 
-    def e_step(self, key: PRNGKey, params: hk.MutableParams, p_bar: tqdm) -> NestedSamplerResults:
+    def e_step(self, key: PRNGKey, params: MutableParams, p_bar: tqdm) -> NestedSamplerResults:
         """
         The E-step is just nested sampling.
 
@@ -163,7 +151,7 @@ class EvidenceMaximisation:
             yield batch
 
     def _create_m_step_stochastic(self):
-        def log_evidence(params: hk.MutableParams, data: MStepData):
+        def log_evidence(params: MutableParams, data: MStepData):
             # Compute the log evidence
             model = self.model(params=params)
             # To make manageable, we could do chunked_pmap
@@ -174,7 +162,7 @@ class EvidenceMaximisation:
             log_Z = logsumexp(log_dZ)
             return log_Z
 
-        def loss(params: hk.MutableParams, data: MStepData):
+        def loss(params: MutableParams, data: MStepData):
             log_Z, grad = jax.value_and_grad(log_evidence, argnums=0)(params, data)
             obj = -log_Z
             grad = jax.tree.map(jnp.negative, grad)
@@ -191,6 +179,11 @@ class EvidenceMaximisation:
             return (obj, aux), grad
 
         if self.solver == 'adam':
+            try:
+                import optax
+            except ImportError:
+                raise ImportError("optax must be installed to use the 'adam' solver")
+
             solver = jaxopt.OptaxSolver(
                 fun=loss,
                 opt=optax.adam(learning_rate=1e-2),
@@ -215,7 +208,7 @@ class EvidenceMaximisation:
         else:
             raise ValueError(f"Unknown solver {self.solver}")
 
-        def _m_step_stochastic(key: PRNGKey, params: hk.MutableParams, data: MStepData) -> Tuple[hk.MutableParams, Any]:
+        def _m_step_stochastic(key: PRNGKey, params: MutableParams, data: MStepData) -> Tuple[MutableParams, Any]:
             """
             The M-step is just evidence maximisation.
 
@@ -238,7 +231,7 @@ class EvidenceMaximisation:
 
     def _create_m_step(self):
 
-        def log_evidence(params: hk.MutableParams, data: MStepData):
+        def log_evidence(params: MutableParams, data: MStepData):
             # Compute the log evidence
             model = self.model(params=params)
 
@@ -249,7 +242,7 @@ class EvidenceMaximisation:
             log_Z, _ = cumulative_op_static(op=op, init=jnp.asarray(-jnp.inf, float_type), xs=data)
             return log_Z
 
-        def loss(params: hk.MutableParams, data: MStepData):
+        def loss(params: MutableParams, data: MStepData):
             log_Z, grad = jax.value_and_grad(log_evidence, argnums=0)(params, data)
             obj = -log_Z
             grad = jax.tree.map(jnp.negative, grad)
@@ -268,7 +261,7 @@ class EvidenceMaximisation:
         )
 
         @partial(jax.jit)
-        def _m_step(key: PRNGKey, params: hk.MutableParams, data: MStepData) -> Tuple[hk.MutableParams, Any]:
+        def _m_step(key: PRNGKey, params: MutableParams, data: MStepData) -> Tuple[MutableParams, Any]:
             """
             The M-step is just evidence maximisation.
 
@@ -284,8 +277,8 @@ class EvidenceMaximisation:
 
         return _m_step
 
-    def m_step(self, key: PRNGKey, params: hk.MutableParams, ns_results: NestedSamplerResults, p_bar: tqdm) -> Tuple[
-        hk.MutableParams, Any]:
+    def m_step(self, key: PRNGKey, params: MutableParams, ns_results: NestedSamplerResults, p_bar: tqdm) -> Tuple[
+        MutableParams, Any]:
         """
         The M-step is just evidence maximisation. We pad the data to the next power of 2, to make JIT compilation
         happen less frequently.
@@ -331,9 +324,9 @@ class EvidenceMaximisation:
 
         return params, log_Z
 
-    def train(self, num_steps: int = 10, params: Optional[hk.MutableParams] = None) -> \
+    def train(self, num_steps: int = 10, params: Optional[MutableParams] = None) -> \
             Tuple[
-                NestedSamplerResults, hk.MutableParams]:
+                NestedSamplerResults, MutableParams]:
         """
         Train the model using EM for num_steps.
 

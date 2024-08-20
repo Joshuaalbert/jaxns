@@ -1,3 +1,2 @@
 scikit-learn
-dm-haiku
 optax

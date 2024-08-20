@@ -5,6 +5,5 @@ numpy<2
 scipy
 tensorflow_probability
 tqdm
-dm-haiku
 optax
 jaxopt
