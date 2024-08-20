@@ -1,5 +1,5 @@
 from functools import wraps
-from typing import Callable, Tuple, Dict, NamedTuple, Any
+from typing import Callable, Tuple, Dict, NamedTuple, Any, Optional, Union
 
 import jax
 import jax.numpy as jnp
@@ -38,7 +38,7 @@ class Ctx:
 
 
 class GlobalContext:
-    def __init__(self, rng: jax.Array | int | None = None):
+    def __init__(self, rng: Optional[jax.Array] = None):
         self.stack = []
 
     def new(self, rng):
@@ -66,10 +66,10 @@ class GlobalContext:
 
 global_context = GlobalContext()
 
-InitType = Callable[[Tuple[int, ...], SupportsDType], jax.Array] | jax.Array
+InitType = Union[Callable[[Tuple[int, ...], SupportsDType], jax.Array], jax.Array]
 
 
-def get_parameter(name: str, shape: Tuple[int, ...] | None = None, dtype: SupportsDType | None = jnp.float32, *,
+def get_parameter(name: str, shape: Optional[Tuple[int, ...]] = None, dtype: Optional[SupportsDType] = jnp.float32, *,
                   init: InitType) -> jax.Array:
     """
     Get a parameter variable.
@@ -112,7 +112,7 @@ def wrap_random(f):
     return wrapped
 
 
-def get_state(name: str, shape: Tuple[int, ...] | None = None, dtype: SupportsDType | None = None, *,
+def get_state(name: str, shape: Optional[Tuple[int, ...]] = None, dtype: Optional[SupportsDType] = None, *,
               init: InitType) -> jax.Array:
     """
     Get a state variable.
