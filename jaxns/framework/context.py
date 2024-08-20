@@ -25,7 +25,7 @@ class Ctx:
         self._rng = rng
         self._stack = stack
 
-    def next_rng(self):
+    def next_rng_key(self):
         self._rng, new_rng = jax.random.split(self._rng)
         return new_rng
 
@@ -197,7 +197,7 @@ def transform_with_state(f: Callable) -> TransformedWithStateFn:
                                        states=global_context.states)
 
     @wraps(f)
-    def apply(params:MutableParams, states:ImmutableParams, rng:jax.Array, *args, **kwargs) -> ApplyWithStateReturn:
+    def apply(params: MutableParams, states: ImmutableParams, rng: jax.Array, *args, **kwargs) -> ApplyWithStateReturn:
         """
         Apply the function with given parameters and states.
 
