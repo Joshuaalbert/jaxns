@@ -141,7 +141,8 @@ class EvidenceMaximisation:
             batch_size = self.batch_size
         num_batches = num_samples // batch_size
         if num_batches == 0:
-            raise RuntimeError("Batch size is too large for number of samples.")
+            raise RuntimeError(
+                f"Batch size {batch_size} is too large for number of samples, number of samples {num_samples}.")
         for i in range(num_batches):
             perm = permutation[i * batch_size:(i + 1) * batch_size]
             batch = MStepData(
@@ -318,6 +319,7 @@ class EvidenceMaximisation:
                                 last_params, params)
             last_params = params
             p_bar.set_description(f"{desc}: Epoch {epoch}: log_Z={log_Z}, l_oo={l_oo}")
+
             if all(_l_oo < self.gtol for _l_oo in jax.tree.leaves(l_oo)):
                 break
             epoch += 1
@@ -352,10 +354,12 @@ class EvidenceMaximisation:
             # Execute the e_step
             if ns_results is None:
                 p_bar.set_description(f"Step {step}: Initial run")
+
             else:
                 p_bar.set_description(
                     f"Step {step}: log Z = {ns_results.log_Z_mean:.4f} +- {ns_results.log_Z_uncert:.4f}"
                 )
+
             ns_results = self.e_step(key=key_e_step, params=params, p_bar=p_bar)
             # Update progress bar description
 
@@ -367,6 +371,7 @@ class EvidenceMaximisation:
                     f"Convergence achieved at step {step}, "
                     f"due to delta log_Z {log_Z_change} < log_Z_atol {self.log_Z_atol}."
                 )
+
                 break
 
             relative_atol = float(self.log_Z_ftol * ns_results.log_Z_uncert)
@@ -375,6 +380,7 @@ class EvidenceMaximisation:
                     f"Convergence achieved at step {step}, "
                     f"due to log_Z {log_Z_change} < log_Z_ftol * log_Z_uncert {relative_atol}."
                 )
+
                 break
 
             # Update log_Z and log_Z_uncert values
@@ -384,6 +390,7 @@ class EvidenceMaximisation:
             p_bar.set_description(
                 f"Step {step}: log Z = {ns_results.log_Z_mean:.4f} +- {ns_results.log_Z_uncert:.4f}"
             )
+
             params, log_Z_opt = self.m_step(key=key_m_step, params=params, ns_results=ns_results, p_bar=p_bar)
 
         if ns_results is None:

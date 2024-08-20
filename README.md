@@ -363,8 +363,8 @@ is the best way to achieve speed up.
 
 # Change Log
 
-20 Aug, 2024 -- JAXNS 2.6.0 released. Removed haiku dependency. Implemented our own context,
-see `jaxns.framework.context`. Uses this context for internals of framework, providing alternative to yielding `Prior`.
+20 Aug, 2024 -- JAXNS 2.6.0 released. Removed haiku dependency. Implemented our own
+context. `jaxns.framework.context.convert_external_params` enables interfacing with any external NN libary.
 
 24 Jul, 2024 -- JAXNS 2.5.3 released. Replacing framework U-space with W-space. Maintained external API in U space.
 

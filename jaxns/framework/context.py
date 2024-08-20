@@ -1,5 +1,5 @@
 from functools import wraps
-from typing import Callable, Tuple, Dict, NamedTuple, Any, Optional, Union
+from typing import Callable, Tuple, Dict, NamedTuple, Any, Optional, Union, TypeVar
 
 import jax
 import jax.numpy as jnp
@@ -10,6 +10,8 @@ __all__ = [
     'get_state',
     'set_state',
     'transform_with_state',
+    'transform',
+    'convert_external_params',
     'wrap_random',
     'next_rng_key'
 ]
@@ -88,9 +90,33 @@ def get_parameter(name: str, shape: Optional[Tuple[int, ...]] = None, dtype: Opt
             global_context.params[name] = init
         else:
             if shape is None or dtype is None:
-                raise ValueError("shape and dtype must be provided if init is not a jax.Array")
+                raise ValueError(f"shape and dtype must be provided if init is not a jax.Array, got {init}")
             global_context.params[name] = init(shape, dtype)
     return global_context.params[name]
+
+
+ExtParam = TypeVar('ExtParam')
+
+
+def convert_external_params(external_params: ExtParam, prefix: str) -> ExtParam:
+    """
+    Convert external parameters to context parameters. This can be used to convert haiku or flax parameters to
+    jaxns parameters for using in models.
+
+    Args:
+        external_params: map of name -> value
+
+    Returns:
+        The context parameters
+    """
+    leaf_list, tree_def = jax.tree.flatten(external_params)
+
+    def _unique_name(idx):
+        return f"__{prefix}_{idx}"
+
+    ctx_params = [get_parameter(_unique_name(idx), init=leaf) for idx, leaf in enumerate(leaf_list)]
+    external_params_ctx = jax.tree_unflatten(tree_def, ctx_params)
+    return external_params_ctx
 
 
 def wrap_random(f):
