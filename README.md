@@ -363,9 +363,13 @@ is the best way to achieve speed up.
 
 # Change Log
 
+20 Aug, 2024 -- JAXNS 2.6.0 released. Removed haiku dependency. Implemented our own
+context. `jaxns.framework.context.convert_external_params` enables interfacing with any external NN libary.
+
 24 Jul, 2024 -- JAXNS 2.5.3 released. Replacing framework U-space with W-space. Maintained external API in U space.
 
-23 Jul, 2024 -- JAXNS 2.5.2 released. Added explicit density prior. Sped up parametrisation. Scan associative implemented.
+23 Jul, 2024 -- JAXNS 2.5.2 released. Added explicit density prior. Sped up parametrisation. Scan associative
+implemented.
 
 27 May, 2024 -- JAXS 2.5.1 released. Fixed minor accuracy degradation introduced in 2.4.13.
 

@@ -32,7 +32,7 @@ class SpecialPrior(BaseAbstractPrior):
     def parametrised(self, random_init: bool = False) -> SingularPrior:
         """
         Convert this prior into a non-Bayesian parameter, that takes a single value in the model, but still has an associated
-        log_prob. The parameter is registered as a `hk.Parameter` with added `_param` name suffix.
+        log_prob. The parameter is registered as a `jaxns.get_parameter` with added `_param` name suffix.
 
         Args:
             random_init: whether to initialise the parameter randomly or at the median of the distribution.

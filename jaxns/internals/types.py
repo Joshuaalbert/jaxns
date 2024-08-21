@@ -29,14 +29,39 @@ int_type = jnp.result_type(int)
 complex_type = jnp.result_type(complex)
 
 PRNGKey = jax.Array
-FloatArray = Union[jax.Array, float]
-IntArray = Union[jax.Array, int]
-BoolArray = Union[jax.Array, bool]
+
+Array = Union[
+    jax.Array,  # JAX array type
+    np.ndarray,  # NumPy array type
+]
+FloatArray = Union[
+    jax.Array,  # JAX array type
+    np.ndarray,  # NumPy array type
+    float,  # valid scalars
+]
+IntArray = Union[
+    jax.Array,  # JAX array type
+    np.ndarray,  # NumPy array type
+    int,  # valid scalars
+]
+BoolArray = Union[
+    jax.Array,  # JAX array type
+    np.ndarray,  # NumPy array type
+    np.bool_, bool,  # valid scalars
+]
+
+Array.__doc__ = "Type annotation for JAX array-like objects, with no scalar types."
+
+FloatArray.__doc__ = "Type annotation for JAX array-like objects, with float scalar types."
+
+IntArray.__doc__ = "Type annotation for JAX array-like objects, with int scalar types."
+
+BoolArray.__doc__ = "Type annotation for JAX array-like objects, with bool scalar types."
 
 LikelihoodType = Callable[..., FloatArray]
 RandomVariableType = TypeVar('RandomVariableType')
 MeasureType = TypeVar('MeasureType')
-LikelihoodInputType = Union[Tuple[RandomVariableType, ...], RandomVariableType, float, int, bool]  # Likelihood conditional variables
+LikelihoodInputType = Union[Tuple[Any, ...], Any]  # Likelihood conditional variables
 UType = jax.Array  # Sample space type
 WType = Tuple[jax.Array, ...]
 XType = Dict[str, RandomVariableType]  # Prior variable type

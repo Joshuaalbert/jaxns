@@ -1,11 +1,11 @@
 import warnings
 from typing import Tuple, Optional, Union
 
-import haiku as hk
 import jax.nn
 import tensorflow_probability.substrates.jax as tfp
 from jax import numpy as jnp
 
+import jaxns.framework.context as ctx
 from jaxns.framework.bases import BaseAbstractPrior, BaseAbstractDistribution
 from jaxns.framework.wrapped_tfp_distribution import WrappedTFPDistribution
 from jaxns.internals.constraint_bijections import quick_unit
@@ -145,7 +145,7 @@ class Prior(BaseAbstractPrior):
     def parametrised(self, random_init: bool = False) -> SingularPrior:
         """
         Convert this prior into a non-Bayesian parameter, that takes a single value in the model, but still has an
-        associated log_prob. The parameter is registered as a `hk.Parameter` with added `_param` name suffix. Prior
+        associated log_prob. The parameter is registered as a `get_parameter` with added `_param` name suffix. Prior
         must have a name.
 
         Args:
@@ -163,7 +163,7 @@ class Prior(BaseAbstractPrior):
 def prior_to_parametrised_singular(prior: BaseAbstractPrior, random_init: bool = False) -> SingularPrior:
     """
     Convert a prior into a non-Bayesian parameter, that takes a single value in the model, but still has an associated
-    log_prob. The parameter is registered as a `hk.Parameter` with added `_param` name suffix.
+    log_prob. The parameter is registered as a `jaxns.get_parameter` with added `_param` name suffix.
 
     To constrain the parameter we use a Normal parameter with centre on unit cube, and scale covering the whole cube,
     as the base representation. This base representation covers the whole real line and be reliably used with SGD, etc.
@@ -178,18 +178,18 @@ def prior_to_parametrised_singular(prior: BaseAbstractPrior, random_init: bool =
     if prior.name is None:
         raise ValueError("Prior must have a name to be parametrised.")
     name = f"{prior.name}_param"
-    # Initialises at median of distribution.
+    # Initialises at median of distribution using zeros, else unit-normal.
     if random_init:
-        init_value = jax.random.normal(hk.next_rng_key(), shape=prior.base_shape, dtype=float_type)
+        initaliser = ctx.wrap_random(jax.random.normal)
     else:
-        init_value = jnp.zeros(prior.base_shape, dtype=float_type)
-    if init_value.size == 0:
+        initaliser = jnp.zeros
+    if prior.base_ndims == 0:
         warnings.warn(f"Creating a zero-sized parameter for {prior.name}. Probably unintended.")
-    norm_U_base_param = hk.get_parameter(
+    norm_U_base_param = ctx.get_parameter(
         name=name,
         shape=prior.base_shape,
         dtype=float_type,
-        init=hk.initializers.Constant(init_value)
+        init=initaliser
     )
     # transform [-inf, inf] -> [0,1]
     U_base_param = quick_unit(norm_U_base_param)

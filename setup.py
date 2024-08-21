@@ -11,7 +11,6 @@ install_requires = [
     'scipy',
     'tensorflow_probability',
     'tqdm',
-    'dm-haiku',
     'optax',
     'jaxopt'
 ]
@@ -20,7 +19,7 @@ with open("README.md", "r") as fh:
     long_description = fh.read()
 
 setup(name='jaxns',
-      version='2.5.3',
+      version='2.6.0',
       description='Nested Sampling in JAX',
       long_description=long_description,
       long_description_content_type="text/markdown",
