@@ -101,6 +101,10 @@ class LogSpace(object):
             self._sign = jnp.asarray(sign, float_type)
             self._naked = False
 
+    @staticmethod
+    def from_signed_value(value: jax.Array) -> 'LogSpace':
+        return LogSpace(jnp.log(jnp.abs(value)), jnp.sign(value))
+
     @property
     def dtype(self):
         return self.log_abs_val.dtype

@@ -341,6 +341,9 @@ def summary(results: NestedSamplerResults, with_parametrised: bool = False, f_ob
     _print(
         f"logZ={_round(results.log_Z_mean, results.log_Z_uncert)} +- {_round(results.log_Z_uncert, results.log_Z_uncert)}"
     )
+    _print(
+        f"max(logL)={_round(np.max(results.log_L_samples), results.log_Z_uncert)}"
+    )
     # _print("H={} +- {}".format(
     #     _round(results.H_mean, results.H_uncert), _round(results.H_uncert, results.H_uncert)))
     _print(
