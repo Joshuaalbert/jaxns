@@ -6,6 +6,7 @@ from typing import NamedTuple, TextIO, Union, Optional, Tuple, TypeVar, Callable
 import jax
 import numpy as np
 from jax import numpy as jnp, vmap, random, jit, lax
+from scipy.stats import kstwobign
 
 from jaxns.framework.bases import BaseAbstractModel
 from jaxns.internals.cumulative_ops import cumulative_op_static
@@ -493,6 +494,52 @@ def bruteforce_evidence(model: BaseAbstractModel, S: int = 60):
     Z_true = (LogSpace(jit(vmap(model.forward))(args)).nansum() * LogSpace(
         jnp.log(du)) ** model.U_ndims)
     return Z_true.log_abs_val
+
+
+def insert_index_diagnostic(insert_indices: IntArray, num_live_points: int) -> np.ndarray:
+    """
+    Compute the insert index diagnostic of Fowlie et al. (2020).
+
+    Args:
+        insert_indices: [N] array of insert indices
+        num_live_points: number of live points, must be constant over run.
+
+    Returns:
+        p-value of the insert index being uniformly distributed.
+    """
+    insert_indices = jax.tree.map(np.asarray, insert_indices)
+    if len(np.shape(insert_indices)) != 1:
+        raise ValueError(f"Expected 1D array, got {np.shape(insert_indices)}")
+
+    def _get_p_value(indices):
+        N = np.size(indices)
+        # Get expected CDF
+        expected_cdf = np.arange(num_live_points) / num_live_points
+        # Get observed CDF
+        observed_cdf = np.bincount(indices, minlength=num_live_points) / num_live_points
+        observed_cdf = np.cumsum(observed_cdf)
+        observed_cdf = observed_cdf[:num_live_points]
+        observed_cdf /= observed_cdf[-1]
+        # Compute KS statistic
+        ks_statistic = np.max(jnp.abs(observed_cdf - expected_cdf))
+        #  We convert the test-statistic into a p-value using an asymptotic approximation of the Kolmogorov distribution
+        # P(KS > ks_statistic) = 1 - CDF(ks_statistic)
+        p_value = kstwobign.sf(ks_statistic * np.sqrt(num_live_points))
+        return p_value
+
+    # Break into chunks
+    chunk_size = num_live_points
+    # For each chunk compute p-value
+    p_values = []
+    for i in range(0, np.size(insert_indices), chunk_size):
+        # Compute p-value
+        p_value = _get_p_value(indices=insert_indices[i:i + chunk_size])  # []
+        p_values.append(p_value)
+    # Compute minimum p-value adjusted for multiple tests
+    min_p_value = np.min(np.stack(p_values))
+    num_chunks = len(p_values)
+    # Return adjusted p-value
+    return 1. - (1. - min_p_value) ** num_chunks
 
 
 @deprecated(bruteforce_posterior_samples)
