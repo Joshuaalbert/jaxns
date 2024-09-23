@@ -14,7 +14,7 @@ from jaxns.framework.special_priors import Bernoulli, Categorical, Poisson, Beta
     UnnormalisedDirichlet, _poisson_quantile_bisection, _poisson_quantile, Empirical, TruncationWrapper, \
     ExplicitDensityPrior
 from jaxns.framework.wrapped_tfp_distribution import InvalidDistribution, distribution_chain
-from jaxns.internals.mixed_precision import float_type
+from jaxns.internals.mixed_precision import float_type, mp_policy
 
 tfpd = tfp.distributions
 
@@ -321,27 +321,28 @@ def test_forced_identifiability():
 
 
 def test_empirical():
-    samples = jax.random.normal(jax.random.PRNGKey(42), shape=(5, 1000))
+    samples = jax.random.normal(jax.random.PRNGKey(42), shape=(5, 2000), dtype=mp_policy.measure_dtype)
     prior = Empirical(samples=samples, resolution=100, name='x')
     assert prior._percentiles.shape == (101, 5)
 
-    x = prior.forward(jnp.ones(prior.base_shape, float_type))
+    x = prior.forward(jnp.ones(prior.base_shape, mp_policy.measure_dtype))
     assert x.shape == (5,)
     assert jnp.all(jnp.bitwise_not(jnp.isnan(x)))
-    x = prior.forward(jnp.zeros(prior.base_shape, float_type))
+    x = prior.forward(jnp.zeros(prior.base_shape, mp_policy.measure_dtype))
     assert x.shape == (5,)
     assert jnp.all(jnp.bitwise_not(jnp.isnan(x)))
 
-    x = prior.forward(0.5 * jnp.ones(prior.base_shape, float_type))
-    assert jnp.allclose(x, 0., atol=0.05)
+    x = prior.forward(0.5 * jnp.ones(prior.base_shape, mp_policy.measure_dtype))
+    np.testing.assert_allclose(x, 0., atol=0.05)
 
-    u_input = vmap(lambda key: random.uniform(key, shape=prior.base_shape))(random.split(random.PRNGKey(42), 1000))
+    u_input = vmap(lambda key: random.uniform(key, shape=prior.base_shape, dtype=mp_policy.measure_dtype))(
+        random.split(random.PRNGKey(42), 1000))
     x = vmap(lambda u: prior.forward(u))(u_input)
     assert jnp.all(jnp.bitwise_not(jnp.isnan(x)))
 
     u = vmap(lambda x: prior.inverse(x))(x)
     # print(u)
-    assert jnp.allclose(u, u_input)
+    np.testing.assert_allclose(u, u_input)
     assert u.shape[1:] == prior.base_shape
 
 
