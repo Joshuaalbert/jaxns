@@ -5,10 +5,8 @@ import numpy as np
 from jax import numpy as jnp, lax
 
 from jaxns.internals.cumulative_ops import cumulative_op_dynamic, cumulative_op_static
-from jaxns.internals.maps import remove_chunk_dim
-from jaxns.internals.mixed_precision import int_type, mp_policy
+from jaxns.internals.mixed_precision import mp_policy
 from jaxns.internals.types import MeasureType, IntArray, FloatArray
-from jaxns.nested_samplers.common.types import StaticStandardNestedSamplerState
 
 
 class SampleTreeGraph(NamedTuple):
@@ -351,76 +349,3 @@ def concatenate_sample_trees(trees: List[SampleTreeGraph],
         log_L=jnp.concatenate([t.log_L for t in shifted_trees])
     )
     return output
-
-
-def unbatch_state(batched_state: StaticStandardNestedSamplerState) -> StaticStandardNestedSamplerState:
-    """
-    Remove the batch dimension from the state. The returned samples will be sorted by log_L,
-    so assumes,
-
-        log_L[i]==+inf ==> i is not a sample
-
-    Args:
-        batched_state: the state with batch dimension
-
-    Returns:
-        the state without batch dimension
-    """
-    if len(batched_state.sample_collection.log_L.shape) == 1:
-        # Already unbatched
-        return batched_state
-
-    if batched_state.sample_collection.log_L.shape[0] == 1:
-        # Remove batch dimension is all that's needed
-        return remove_chunk_dim(batched_state)
-
-    key = batched_state.key[0]  # Take first key
-    next_sample_idx = jnp.sum(batched_state.next_sample_idx)  # Next insert will be sum
-    # Shifts are the cumulative sum of the number of samples per batch dimension
-    shifts = [0]
-    for i in range(len(batched_state.next_sample_idx) - 1):
-        shifts.append(shifts[-1] + batched_state.sample_collection.log_L.shape[1])
-    shifts = jnp.asarray(shifts, int_type)
-
-    # shifts = jnp.concatenate([jnp.asarray([0], int_type), jnp.cumsum(batched_state.next_sample_idx[:-1])])
-    sender_node_idx = jnp.where(
-        batched_state.sample_collection.sender_node_idx.astype(jnp.bool_),
-        batched_state.sample_collection.sender_node_idx + shifts[:, None],
-        batched_state.sample_collection.sender_node_idx
-    )
-    # Front indices are shifted like senders
-    front_idx = remove_chunk_dim(
-        batched_state.front_idx + shifts[:, None]
-    )
-
-    unbatched_state = StaticStandardNestedSamplerState(
-        key=key,
-        next_sample_idx=next_sample_idx,
-        sample_collection=remove_chunk_dim(
-            batched_state.sample_collection._replace(sender_node_idx=sender_node_idx)
-        ),
-        front_idx=front_idx
-    )
-
-    # Some non-samples will interleave samples, so we sort by log_L, carefully adjusting sender_node_idx to match.
-
-    sort_idx = jnp.argsort(unbatched_state.sample_collection.log_L)
-    inverse_idx = jnp.argsort(sort_idx)
-
-    # Shift the front_idx and sender idx
-    front_idx = inverse_idx[unbatched_state.front_idx]
-    sender_node_idx = jnp.where(
-        unbatched_state.sample_collection.sender_node_idx.astype(jnp.bool_),
-        inverse_idx[unbatched_state.sample_collection.sender_node_idx - 1] + 1,
-        jnp.zeros_like(unbatched_state.sample_collection.sender_node_idx)
-    )
-    unbatched_state = unbatched_state._replace(
-        sample_collection=unbatched_state.sample_collection._replace(sender_node_idx=sender_node_idx)
-    )
-
-    # Rearrange the samples
-    unbatched_state = unbatched_state._replace(
-        sample_collection=jax.tree.map(lambda x: x[sort_idx], unbatched_state.sample_collection),
-        front_idx=front_idx
-    )
-    return unbatched_state
