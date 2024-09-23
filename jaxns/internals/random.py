@@ -4,6 +4,7 @@ from jax import random, numpy as jnp
 from jax.scipy import special
 
 from jaxns.internals.log_semiring import cumulative_logsumexp
+from jaxns.internals.mixed_precision import mp_policy
 from jaxns.internals.types import FloatArray, IntArray, PRNGKey
 
 __all__ = ['random_ortho_matrix',
@@ -21,7 +22,7 @@ def random_ortho_matrix(key, n, special_orthogonal: bool = False):
 
     Returns: random [num_options,num_options] matrix with determinant = +-1
     """
-    H = random.normal(key, shape=(n, n))
+    H = random.normal(key, shape=(n, n), dtype=mp_policy.measure_dtype)
     Q, R = jnp.linalg.qr(H)
     if special_orthogonal:
         R *= jnp.sign(R)

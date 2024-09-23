@@ -14,7 +14,7 @@ from jaxns.framework.special_priors import Bernoulli, Categorical, Poisson, Beta
     UnnormalisedDirichlet, _poisson_quantile_bisection, _poisson_quantile, Empirical, TruncationWrapper, \
     ExplicitDensityPrior
 from jaxns.framework.wrapped_tfp_distribution import InvalidDistribution, distribution_chain
-from jaxns.internals.types import float_type
+from jaxns.internals.mixed_precision import float_type
 
 tfpd = tfp.distributions
 

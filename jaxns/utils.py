@@ -12,11 +12,13 @@ from jaxns.framework.bases import BaseAbstractModel
 from jaxns.internals.cumulative_ops import cumulative_op_static
 from jaxns.internals.log_semiring import LogSpace
 from jaxns.internals.maps import prepare_func_args
+from jaxns.internals.mixed_precision import mp_policy
 from jaxns.internals.namedtuple_utils import serialise_namedtuple, deserialise_namedtuple
 from jaxns.internals.random import resample_indicies
-from jaxns.internals.types import NestedSamplerResults, float_type, XType, UType, FloatArray, IntArray, \
-    isinstance_namedtuple
 from jaxns.internals.types import PRNGKey
+from jaxns.internals.types import XType, UType, FloatArray, IntArray, \
+    isinstance_namedtuple
+from jaxns.nested_samplers.common.types import NestedSamplerResults
 from jaxns.warnings import deprecated
 
 __all__ = [
@@ -304,7 +306,7 @@ def summary(results: NestedSamplerResults, with_parametrised: bool = False, f_ob
             return float(v)
 
     def _print_termination_reason(_termination_reason: int):
-        termination_bit_mask = _bit_mask(int(_termination_reason), width=8)
+        termination_bit_mask = _bit_mask(int(_termination_reason), width=10)
 
         for bit, condition in zip(termination_bit_mask, [
             'Reached max samples',
@@ -314,7 +316,9 @@ def summary(results: NestedSamplerResults, with_parametrised: bool = False, f_ob
             "Used max num likelihood evaluations",
             'Likelihood contour reached',
             'Sampler efficiency too low',
-            'All live-points are on a single plateau (potential numerical errors, consider 64-bit)'
+            'All live-points are on a single plateau (potential numerical errors, consider 64-bit)',
+            'relative spread of live points < rtol',
+            'absolute spread of live points < atol'
         ]):
             if bit == 1:
                 _print(condition)
@@ -467,7 +471,7 @@ def bruteforce_posterior_samples(model: BaseAbstractModel, S: int = 60) -> Tuple
     Returns:
         samples, and log-weight
     """
-    u_vec = jnp.linspace(jnp.finfo(float_type).eps, 1. - jnp.finfo(float_type).eps, S)
+    u_vec = jnp.linspace(jnp.finfo(mp_policy.measure_dtype).eps, 1. - jnp.finfo(mp_policy.measure_dtype).eps, S)
     du = u_vec[1] - u_vec[0]
     args = jnp.stack([x.flatten() for x in jnp.meshgrid(*[u_vec] * model.U_ndims, indexing='ij')], axis=-1)
     samples = jit(vmap(model.transform))(args)
@@ -488,7 +492,7 @@ def bruteforce_evidence(model: BaseAbstractModel, S: int = 60):
         log(Z)
     """
 
-    u_vec = jnp.linspace(jnp.finfo(float_type).eps, 1. - jnp.finfo(float_type).eps, S)
+    u_vec = jnp.linspace(jnp.finfo(mp_policy.measure_dtype).eps, 1. - jnp.finfo(mp_policy.measure_dtype).eps, S)
     du = u_vec[1] - u_vec[0]
     args = jnp.stack([x.flatten() for x in jnp.meshgrid(*[u_vec] * model.U_ndims, indexing='ij')], axis=-1)
     Z_true = (LogSpace(jit(vmap(model.forward))(args)).nansum() * LogSpace(
@@ -556,7 +560,7 @@ def analytic_posterior_samples(model: BaseAbstractModel, S: int = 60):
     """
     warnings.warn(f"")
 
-    u_vec = jnp.linspace(jnp.finfo(float_type).eps, 1. - jnp.finfo(float_type).eps, S)
+    u_vec = jnp.linspace(jnp.finfo(mp_policy.measure_dtype).eps, 1. - jnp.finfo(mp_policy.measure_dtype).eps, S)
     du = u_vec[1] - u_vec[0]
     args = jnp.stack([x.flatten() for x in jnp.meshgrid(*[u_vec] * model.U_ndims, indexing='ij')], axis=-1)
     samples = jit(vmap(model.transform))(args)

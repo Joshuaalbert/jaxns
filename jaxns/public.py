@@ -3,16 +3,19 @@ from typing import Optional, Tuple, Union
 
 import jax
 import jax.numpy as jnp
+import numpy as np
 import tensorflow_probability.substrates.jax as tfp
 from jax import core
 from jaxlib import xla_client
 
 from jaxns.framework.bases import BaseAbstractModel
 from jaxns.internals.logging import logger
-from jaxns.internals.types import PRNGKey, IntArray, StaticStandardNestedSamplerState, TerminationCondition, \
-    NestedSamplerResults
-from jaxns.nested_sampler.bases import BaseAbstractNestedSampler
-from jaxns.nested_sampler.standard_static import StandardStaticNestedSampler
+from jaxns.internals.mixed_precision import mp_policy
+from jaxns.internals.types import PRNGKey, IntArray
+from jaxns.nested_samplers.abc import AbstractNestedSampler
+from jaxns.nested_samplers.common.types import TerminationCondition, NestedSamplerResults, \
+    NestedSamplerState
+from jaxns.nested_samplers.sharded import ShardedStaticNestedSampler
 from jaxns.plotting import plot_cornerplot, plot_diagnostics
 from jaxns.samplers.uni_slice_sampler import UniDimSliceSampler
 from jaxns.utils import summary, save_results, load_results
@@ -22,8 +25,7 @@ tfpd = tfp.distributions
 __all__ = [
     'DefaultNestedSampler',
     'ApproximateNestedSampler',
-    'ExactNestedSampler',
-    'TerminationCondition'
+    'ExactNestedSampler'
 ]
 
 
@@ -95,7 +97,7 @@ class DefaultNestedSampler:
                 devices = jax.devices()[:num_parallel_workers]
             else:
                 devices = devices[:num_parallel_workers]
-        self._nested_sampler = StandardStaticNestedSampler(
+        self._nested_sampler = ShardedStaticNestedSampler(
             model=model,
             num_live_points=self._c,
             max_samples=max_samples,
@@ -126,11 +128,11 @@ class DefaultNestedSampler:
         return self._nested_sampler.num_live_points
 
     @property
-    def nested_sampler(self) -> BaseAbstractNestedSampler:
+    def nested_sampler(self) -> AbstractNestedSampler:
         return self._nested_sampler
 
     def __call__(self, key: PRNGKey, term_cond: Optional[TerminationCondition] = None) -> Tuple[
-        IntArray, StaticStandardNestedSamplerState]:
+        IntArray, NestedSamplerState]:
         """
         Performs nested sampling with the given termination conditions.
 
@@ -142,16 +144,24 @@ class DefaultNestedSampler:
             termination reason, state
         """
         if term_cond is None:
-            term_cond = TerminationCondition()
+            term_cond = TerminationCondition(
+                dlogZ=jnp.asarray(np.log(1. + 1e-3), mp_policy.measure_dtype),
+                max_samples=jnp.asarray(jnp.iinfo(mp_policy.count_dtype).max, mp_policy.count_dtype)
+            )
         term_cond = term_cond._replace(
-            max_samples=jnp.minimum(term_cond.max_samples, self._nested_sampler.max_samples)
+            max_samples=(
+                jnp.minimum(term_cond.max_samples, jnp.asarray(self._nested_sampler.max_samples, mp_policy.count_dtype))
+                if term_cond.max_samples is not None
+                else jnp.asarray(self._nested_sampler.max_samples, mp_policy.count_dtype)
+            )
         )
-        return self._nested_sampler._run(
+        termination_reason, termination_register, state = self._nested_sampler._run(
             key=key,
             term_cond=term_cond
         )
+        return termination_reason, state
 
-    def to_results(self, termination_reason: IntArray, state: StaticStandardNestedSamplerState,
+    def to_results(self, termination_reason: IntArray, state: NestedSamplerState,
                    trim: bool = True) -> NestedSamplerResults:
         """
         Convert the state to results.

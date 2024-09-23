@@ -7,7 +7,7 @@ from jax import numpy as jnp, random
 from jaxns.internals.tree_structure import SampleTreeGraph, SampleLivePointCounts, count_crossed_edges, \
     count_intervals_naive, \
     plot_tree, count_old, count_crossed_edges_less_fast, concatenate_sample_trees, unbatch_state
-from jaxns.internals.types import StaticStandardNestedSamplerState, StaticStandardSampleCollection
+from jaxns.nested_samplers.common.types import StaticStandardSampleCollection, StaticStandardNestedSamplerState
 
 
 def pytree_assert_equal(a, b):

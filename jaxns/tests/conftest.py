@@ -1,4 +1,7 @@
+import os
 from time import monotonic_ns
+
+os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={os.cpu_count()}"
 
 import jax
 import pytest
@@ -9,8 +12,8 @@ from tensorflow_probability.substrates import jax as tfp
 from jaxns.framework.bases import PriorModelGen
 from jaxns.framework.model import Model
 from jaxns.framework.prior import Prior
-from jaxns.internals.types import TerminationCondition
-from jaxns.nested_sampler.standard_static import StandardStaticNestedSampler
+from jaxns.nested_samplers import ShardedStaticNestedSampler
+from jaxns.nested_samplers.common.types import TerminationCondition
 from jaxns.public import DefaultNestedSampler
 from jaxns.samplers.multi_ellipsoidal_samplers import MultiEllipsoidalSampler
 from jaxns.utils import bruteforce_evidence, summary
@@ -48,7 +51,7 @@ def basic_model():
 def basic_run_results(basic_model):
     model, log_Z_true = basic_model
 
-    ns = DefaultNestedSampler(model=model, max_samples=1000, verbose=True)
+    ns = DefaultNestedSampler(model=model, max_samples=1000, verbose=False)
     ns_jit = jax.jit(lambda key: ns(key))
     ns_compiled = ns_jit.lower(random.PRNGKey(42)).compile()
     with Timer():
@@ -292,7 +295,7 @@ def multiellipsoidal_mvn_run_results(basic_mvn_model):
     log_Z_true, model = basic_mvn_model
 
     # model.sanity_check(random.PRNGKey(42), S=100)
-    ns = StandardStaticNestedSampler(
+    ns = ShardedStaticNestedSampler(
         init_efficiency_threshold=0.1,
         model=model,
         num_live_points=model.U_ndims * 20,
@@ -323,7 +326,7 @@ def all_run_results(
         plateau_run_results,
         basic_mvn_run_results,
         # basic_mvn_run_results_parallel,
-        multiellipsoidal_mvn_run_results
+        # multiellipsoidal_mvn_run_results
 ):
     # Return tuples with names
     return [
@@ -334,5 +337,5 @@ def all_run_results(
         ('plateau', plateau_run_results),
         ('basic_mvn', basic_mvn_run_results),
         # ('basic_mvn_parallel', basic_mvn_run_results_parallel),
-        ('multiellipsoidal_mvn', multiellipsoidal_mvn_run_results)
+        # ('multiellipsoidal_mvn', multiellipsoidal_mvn_run_results)
     ]

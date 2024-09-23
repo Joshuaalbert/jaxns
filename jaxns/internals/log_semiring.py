@@ -4,7 +4,8 @@ import jax
 from jax import numpy as jnp, lax
 from jax.scipy.special import logsumexp
 
-from jaxns.internals.types import SignedLog, float_type
+from jaxns.internals.types import SignedLog
+from jaxns.internals.mixed_precision import float_type
 
 
 def logaddexp(x1, x2):

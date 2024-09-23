@@ -10,9 +10,9 @@ def run(ndims, ensemble_size, input_queue: Queue, output_queue: Queue):
     # config.update("jax_enable_x64", True)
 
     from jaxns import Prior, Model
-    from jaxns import TerminationCondition
+    from jaxns.nested_samplers.common.types import TerminationCondition
     from jaxns.samplers import UniDimSliceSampler
-    from jaxns.nested_sampler import StandardStaticNestedSampler
+    from jaxns.nested_samplers import StandardStaticNestedSampler
     import jax
     from jax import random, numpy as jnp
     import numpy as np

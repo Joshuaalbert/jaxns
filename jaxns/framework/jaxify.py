@@ -4,7 +4,8 @@ from typing import Callable
 import jax
 import numpy as np
 
-from jaxns.internals.types import float_type, LikelihoodType
+from jaxns.internals.mixed_precision import mp_policy
+from jaxns.internals.types import LikelihoodType
 
 __all__ = [
     'jaxify_likelihood'
@@ -31,15 +32,20 @@ def jaxify_likelihood(log_likelihood: Callable[..., np.ndarray], vectorised: boo
         "Also, you cannot use learnable parameters in the likelihood call."
     )
 
+    def _cond_cast(x):
+        if isinstance(x, (jax.Array, np.ndarray)):
+            return np.asarray(x)
+        return x
+
     def _casted_log_likelihood(*args) -> np.ndarray:
-        args = jax.tree.map(np.asarray, args)  # Convert all arguments to numpy arrays, as they now pass jax.Array
-        return np.asarray(log_likelihood(*args), dtype=float_type)
+        args = jax.tree.map(_cond_cast, args)  # Convert all arguments to numpy arrays, as they now pass jax.Array
+        return mp_policy.cast_to_measure(log_likelihood(*args))
 
     def _log_likelihood(*args) -> jax.Array:
         # Define the expected shape & dtype of output.
         result_shape_dtype = jax.ShapeDtypeStruct(
             shape=(),
-            dtype=float_type
+            dtype=mp_policy.measure_dtype
         )
         return jax.pure_callback(_casted_log_likelihood, result_shape_dtype, *args, vectorized=vectorised)
 

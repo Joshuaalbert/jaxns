@@ -2,7 +2,7 @@ import jax
 import numpy as np
 from jax import random, numpy as jnp
 
-from jaxns import TerminationCondition
+from jaxns.nested_samplers.common.types import TerminationCondition
 from jaxns.utils import sample_evidence
 
 

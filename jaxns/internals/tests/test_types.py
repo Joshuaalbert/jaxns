@@ -1,5 +1,6 @@
-from jaxns.internals.types import TerminationConditionDisjunction, TerminationConditionConjunction, \
-    TerminationCondition, isinstance_namedtuple
+from jaxns.internals.types import isinstance_namedtuple
+from jaxns.nested_samplers.common.types import TerminationCondition, TerminationConditionConjunction, \
+    TerminationConditionDisjunction
 
 
 def test_termination_condition():

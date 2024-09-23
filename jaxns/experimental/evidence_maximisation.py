@@ -17,8 +17,10 @@ from jaxns.framework.context import MutableParams
 from jaxns.internals.cumulative_ops import cumulative_op_static
 from jaxns.internals.log_semiring import LogSpace
 from jaxns.internals.logging import logger
-from jaxns.internals.types import TerminationCondition, NestedSamplerResults, StaticStandardNestedSamplerState, \
-    IntArray, PRNGKey, float_type
+from jaxns.internals.types import IntArray, PRNGKey
+from jaxns.nested_samplers.common.types import TerminationCondition, NestedSamplerResults, \
+    StaticStandardNestedSamplerState
+from jaxns.internals.mixed_precision import float_type
 
 __all__ = [
     'EvidenceMaximisation'
