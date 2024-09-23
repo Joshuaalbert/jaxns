@@ -4,6 +4,8 @@ from queue import Queue
 
 import numpy as np
 
+from jaxns.nested_samplers import ShardedStaticNestedSampler
+
 
 def run(ndims, ensemble_size, input_queue: Queue, output_queue: Queue):
     # from jax import config
@@ -12,7 +14,6 @@ def run(ndims, ensemble_size, input_queue: Queue, output_queue: Queue):
     from jaxns import Prior, Model
     from jaxns.nested_samplers.common.types import TerminationCondition
     from jaxns.samplers import UniDimSliceSampler
-    from jaxns.nested_samplers import StandardStaticNestedSampler
     import jax
     from jax import random, numpy as jnp
     import numpy as np
@@ -60,7 +61,7 @@ def run(ndims, ensemble_size, input_queue: Queue, output_queue: Queue):
             break
         (s, k, c, store_indices) = input_data
 
-        nested_sampler = StandardStaticNestedSampler(
+        nested_sampler = ShardedStaticNestedSampler(
             model=model,
             num_live_points=c,
             max_samples=150000,

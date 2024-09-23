@@ -5,7 +5,7 @@ import jax
 import jax.numpy as jnp
 import tensorflow_probability.substrates.jax as tfp
 
-from jaxns import Model, Prior, DefaultNestedSampler
+from jaxns import Model, Prior, NestedSampler
 
 tfpd = tfp.distributions
 
@@ -152,7 +152,7 @@ def main():
     for model_name, model in all_models().items():
         print(f"Testing model {model_name}")
         model.sanity_check(jax.random.PRNGKey(0), 1000)
-        ns = DefaultNestedSampler(model=model,
+        ns = NestedSampler(model=model,
                                   max_samples=1000000,
                                   verbose=True,
                                   difficult_model=True,

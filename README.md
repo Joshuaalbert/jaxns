@@ -144,9 +144,9 @@ Given a probabilistic model, JAXNS can perform nested sampling on it. This allow
 posterior samples.
 
 ```python
-from jaxns import DefaultNestedSampler
+from jaxns import NestedSampler
 
-ns = DefaultNestedSampler(model=model, max_samples=1e5)
+ns = NestedSampler(model=model, max_samples=1e5)
 
 # Run the sampler
 termination_reason, state = ns(jax.random.PRNGKey(42))

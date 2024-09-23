@@ -11,7 +11,7 @@ import pkg_resources
 import tensorflow_probability.substrates.jax as tfp
 from jax._src.scipy.linalg import solve_triangular
 
-from jaxns import Model, Prior, DefaultNestedSampler
+from jaxns import Model, Prior, NestedSampler, jaxify_likelihood
 
 tfpd = tfp.distributions
 
@@ -46,12 +46,13 @@ def run_model(key):
             name='x')
         return x
 
+    @jaxify_likelihood
     def log_likelihood(x):
         return tfpd.MultivariateNormalTriL(loc=data_mu, scale_tril=jnp.linalg.cholesky(data_cov)).log_prob(x)
 
     model = Model(prior_model=prior_model, log_likelihood=log_likelihood)
 
-    ns = DefaultNestedSampler(model=model, max_samples=100000, verbose=False)
+    ns = NestedSampler(model=model, max_samples=100000, verbose=False)
 
     termination_reason, state = ns(key)
     results = ns.to_results(termination_reason=termination_reason, state=state, trim=False)
@@ -61,7 +62,7 @@ def run_model(key):
 def main():
     num_devices = len(jax.devices())
     jaxns_version = pkg_resources.get_distribution("jaxns").version
-    m = 10
+    m = 3
     run_model_aot = jax.jit(run_model).lower(jax.random.PRNGKey(0)).compile()
     dt = []
 

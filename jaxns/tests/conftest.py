@@ -14,7 +14,7 @@ from jaxns.framework.model import Model
 from jaxns.framework.prior import Prior
 from jaxns.nested_samplers import ShardedStaticNestedSampler
 from jaxns.nested_samplers.common.types import TerminationCondition
-from jaxns.public import DefaultNestedSampler
+from jaxns.public import NestedSampler
 from jaxns.samplers.multi_ellipsoidal_samplers import MultiEllipsoidalSampler
 from jaxns.utils import bruteforce_evidence, summary
 
@@ -51,7 +51,7 @@ def basic_model():
 def basic_run_results(basic_model):
     model, log_Z_true = basic_model
 
-    ns = DefaultNestedSampler(model=model, max_samples=1000, verbose=False)
+    ns = NestedSampler(model=model, max_samples=1000, verbose=False)
     ns_jit = jax.jit(lambda key: ns(key))
     ns_compiled = ns_jit.lower(random.PRNGKey(42)).compile()
     with Timer():
@@ -88,7 +88,7 @@ def basic_model_with_obj():
 def basic_with_obj_run_results(basic_model_with_obj):
     model, log_Z_true = basic_model_with_obj
 
-    ns = DefaultNestedSampler(model=model, max_samples=1000, verbose=True)
+    ns = NestedSampler(model=model, max_samples=1000, verbose=True)
     ns_jit = jax.jit(lambda key: ns(key))
     ns_compiled = ns_jit.lower(random.PRNGKey(42)).compile()
     with Timer():
@@ -127,7 +127,7 @@ def basic2_model():
 def basic2_run_results(basic2_model):
     model, log_Z_true = basic2_model
 
-    ns = DefaultNestedSampler(model=model, max_samples=1000, verbose=True)
+    ns = NestedSampler(model=model, max_samples=1000, verbose=True)
 
     ns_jit = jax.jit(lambda key: ns(key))
     ns_compiled = ns_jit.lower(random.PRNGKey(42)).compile()
@@ -163,7 +163,7 @@ def basic3_model():
 def basic3_run_results(basic3_model):
     model, log_Z_true = basic3_model
 
-    ns = DefaultNestedSampler(model=model, max_samples=2000, k=0, verbose=True)
+    ns = NestedSampler(model=model, max_samples=2000, k=0, verbose=True)
 
     ns_jit = jax.jit(lambda key: ns(key))
     ns_compiled = ns_jit.lower(random.PRNGKey(42)).compile()
@@ -196,7 +196,7 @@ def plateau_model():
 @pytest.fixture(scope='package')
 def plateau_run_results(plateau_model):
     model, log_Z_true = plateau_model
-    ns = DefaultNestedSampler(
+    ns = NestedSampler(
         model=model,
         max_samples=1000, verbose=True
     )
@@ -256,7 +256,7 @@ def basic_mvn_model():
 def basic_mvn_run_results(basic_mvn_model):
     log_Z_true, model = basic_mvn_model
 
-    ns = DefaultNestedSampler(model=model, max_samples=100000, verbose=True)
+    ns = NestedSampler(model=model, max_samples=100000, verbose=True)
 
     ns_jit = jax.jit(lambda key: ns(key))
     ns_compiled = ns_jit.lower(random.PRNGKey(42)).compile()
@@ -275,7 +275,7 @@ def basic_mvn_run_results(basic_mvn_model):
 def basic_mvn_run_results_parallel(basic_mvn_model):
     log_Z_true, model = basic_mvn_model
 
-    ns = DefaultNestedSampler(model=model, max_samples=1e5, num_parallel_workers=2, verbose=True)
+    ns = NestedSampler(model=model, max_samples=1e5, num_parallel_workers=2, verbose=True)
 
     ns_jit = jax.jit(lambda key: ns(key))
     ns_compiled = ns_jit.lower(random.PRNGKey(42)).compile()

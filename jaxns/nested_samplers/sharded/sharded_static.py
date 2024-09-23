@@ -472,7 +472,7 @@ class ShardedStaticNestedSampler(AbstractNestedSampler):
         log_Z_uncert = jnp.sqrt(log_Z_var)
 
         # Correction by sqrt(k+1)
-        total_phantom_samples = jnp.sum(mp_policy.cast_to_count(sample_collection.phantom))
+        total_phantom_samples = jnp.sum(mp_policy.cast_to_count(sample_collection.phantom, quiet=True))
         phantom_fraction = total_phantom_samples / num_samples  # k / (k+1)
         k = phantom_fraction / (1. - phantom_fraction)
         log_Z_uncert = log_Z_uncert * jnp.sqrt(1. + k)

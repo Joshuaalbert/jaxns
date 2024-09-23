@@ -1,5 +1,6 @@
+import dataclasses
 import warnings
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple, Union, List
 
 import jax
 import jax.numpy as jnp
@@ -23,93 +24,98 @@ from jaxns.utils import summary, save_results, load_results
 tfpd = tfp.distributions
 
 __all__ = [
-    'DefaultNestedSampler'
+    'NestedSampler'
 ]
 
 
+@dataclasses.dataclass(eq=False)
 class NestedSampler:
     """
     A static nested sampler that uses 1-dimensional slice sampler for the sampling step.
     Uses the phantom-powered algorithm. A robust default choice is provided for all parameters.
+
+    s,k,c are defined in the paper: https://arxiv.org/abs/2312.11330
+
+    Args:
+        model: a model to perform nested sampling on
+        max_samples: maximum number of samples to take
+        num_live_points: approximate number of live points to use. Defaults is c * (k + 1).
+        s: number of slices to use per dimension. Defaults to 4.
+        k: number of phantom samples to use. Defaults to 0.
+        c: number of parallel Markov-chains to use. Defaults to 20 * D.
+        num_parallel_workers: number of parallel workers to use. Defaults to 1. Experimental feature.
+        devices: devices to use. Defaults to all available devices.
+        difficult_model: if True, uses more robust default settings. Defaults to False.
+        parameter_estimation: if True, uses more robust default settings for parameter estimation. Defaults to False.
+        init_efficiency_threshold: if > 0 then use uniform sampling first down to this acceptance efficiency.
+            0 turns it off.
+        verbose: whether to use JAX
     """
+    model: BaseAbstractModel
+    max_samples: Optional[Union[int, float]] = None
+    num_live_points: Optional[int] = None
+    s: Optional[int] = None
+    k: Optional[int] = None
+    c: Optional[int] = None
+    num_parallel_workers: Optional[int] = None
+    devices: Optional[List[xla_client.Device]] = None
+    difficult_model: bool = False
+    parameter_estimation: bool = False
+    init_efficiency_threshold: float = 0.1
+    verbose: bool = False
 
-    def __init__(self, model: BaseAbstractModel,
-                 max_samples: Union[int, float],
-                 num_live_points: Optional[int] = None,
-                 s: Optional[int] = None,
-                 k: Optional[int] = None,
-                 c: Optional[int] = None,
-                 num_parallel_workers: Optional[int] = None,
-                 devices: Optional[xla_client.Device] = None,
-                 difficult_model: bool = False,
-                 parameter_estimation: bool = False,
-                 init_efficiency_threshold: float = 0.1,
-                 verbose: bool = False):
-        """
-        Initialises the nested sampler.
-
-        s,k,c are defined in the paper: https://arxiv.org/abs/2312.11330
-
-        Args:
-            model: a model to perform nested sampling on
-            max_samples: maximum number of samples to take
-            num_live_points: approximate number of live points to use. Defaults is c * (k + 1).
-            s: number of slices to use per dimension. Defaults to 4.
-            k: number of phantom samples to use. Defaults to 0.
-            c: number of parallel Markov-chains to use. Defaults to 20 * D.
-            num_parallel_workers: number of parallel workers to use. Defaults to 1. Experimental feature.
-            difficult_model: if True, uses more robust default settings. Defaults to False.
-            parameter_estimation: if True, uses more robust default settings for parameter estimation. Defaults to False.
-            init_efficiency_threshold: if > 0 then use uniform sampling first down to this acceptance efficiency.
-                0 turns it off.
-            verbose: whether to use JAX printing
-        """
-        if difficult_model:
-            self._s = 10 if s is None else int(s)
+    def __post_init__(self):
+        if self.max_samples is None:
+            self.max_samples = self.model.U_ndims * 10000
+        self.max_samples = int(self.max_samples)
+        if self.difficult_model:
+            self.s = 10 if self.s is None else int(self.s)
         else:
-            self._s = 5 if s is None else int(s)
-        if self._s <= 0:
-            raise ValueError(f"Expected s > 0, got s={self._s}")
-        if parameter_estimation:
-            self._k = model.U_ndims if k is None else int(k)
+            self.s = 5 if self.s is None else int(self.s)
+        if self.s <= 0:
+            raise ValueError(f"Expected s > 0, got s={self.s}")
+        if self.parameter_estimation:
+            self.k = self.model.U_ndims if self.k is None else int(self.k)
         else:
-            self._k = 0 if k is None else int(k)
-        if not (0 <= self._k < self._s * model.U_ndims):
-            raise ValueError(f"Expected 0 <= k < s * U_ndims, got k={self._k}, s={self._s}, U_ndims={model.U_ndims}")
-        if num_live_points is not None:
-            self._c = max(1, int(num_live_points / (self._k + 1)))
-            logger.info(f"Number of parallel Markov-chains set to: {self._c}")
+            self.k = 0 if self.k is None else int(self.k)
+        if not (0 <= self.k < self.s * self.model.U_ndims):
+            raise ValueError(f"Expected 0 <= k < s * U_ndims, got k={self.k}, s={self.s}, U_ndims={self.model.U_ndims}")
+        if self.num_live_points is not None:
+            self.c = max(1, int(self.num_live_points / (self.k + 1)))
+            logger.info(f"Number of parallel Markov-chains set to: {self.c}")
         else:
-            if difficult_model:
-                self._c = 100 * model.U_ndims if c is None else int(c)
+            if self.difficult_model:
+                self.c = 100 * self.model.U_ndims if self.c is None else int(self.c)
             else:
-                self._c = 30 * model.U_ndims if c is None else int(c)
-        if self._c <= 0:
-            raise ValueError(f"Expected c > 0, got c={self._c}")
+                self.c = 30 * self.model.U_ndims if self.c is None else int(self.c)
+        if self.c <= 0:
+            raise ValueError(f"Expected c > 0, got c={self.c}")
         # Sanity check for max_samples (should be able to at least do one shrinkage)
-        if max_samples < self._c * (self._k + 1):
-            warnings.warn(f"max_samples={max_samples} is likely too small!")
-        if num_parallel_workers is not None:
+        if self.max_samples < self.c * (self.k + 1):
+            warnings.warn(f"max_samples={self.max_samples} is likely too small!")
+        if self.num_parallel_workers is not None:
             warnings.warn("`num_parallel_workers` is depreciated. Use `devices` instead.")
-            if devices is None:
-                devices = jax.devices()[:num_parallel_workers]
+            if self.devices is None:
+                self.devices = jax.devices()[:self.num_parallel_workers]
             else:
-                devices = devices[:num_parallel_workers]
+                self.devices = self.devices[:self.num_parallel_workers]
         self._nested_sampler = ShardedStaticNestedSampler(
-            model=model,
-            num_live_points=self._c,
-            max_samples=max_samples,
+            model=self.model,
+            num_live_points=self.c,
+            max_samples=self.max_samples,
             sampler=UniDimSliceSampler(
-                model=model,
-                num_slices=model.U_ndims * self._s,
-                num_phantom_save=self._k,
-                midpoint_shrink=not difficult_model,
+                model=self.model,
+                num_slices=self.model.U_ndims * self.s,
+                num_phantom_save=self.k,
+                midpoint_shrink=not self.difficult_model,
                 perfect=True
             ),
-            init_efficiency_threshold=init_efficiency_threshold,
-            devices=devices,
-            verbose=verbose
+            init_efficiency_threshold=self.init_efficiency_threshold,
+            devices=self.devices,
+            verbose=self.verbose
         )
+        # Back propagate any updates here
+        self.num_live_points = self._nested_sampler.num_live_points
 
         # Post-analysis utilities
         self.summary = summary
@@ -117,13 +123,6 @@ class NestedSampler:
         self.plot_diagnostics = plot_diagnostics
         self.save_results = save_results
         self.load_results = load_results
-
-    def __repr__(self):
-        return f"DefaultNestedSampler(s={self._s}, c={self._c}, k={self._k}, devices={self._nested_sampler.devices})"
-
-    @property
-    def num_live_points(self) -> int:
-        return self._nested_sampler.num_live_points
 
     @property
     def nested_sampler(self) -> AbstractNestedSampler:

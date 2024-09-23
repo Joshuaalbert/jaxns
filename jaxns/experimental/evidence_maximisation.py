@@ -12,7 +12,7 @@ from jax._src.scipy.special import logsumexp
 from jaxopt import ArmijoSGD, BFGS
 from tqdm import tqdm
 
-from jaxns import DefaultNestedSampler, Model
+from jaxns import NestedSampler, Model
 from jaxns.framework.context import MutableParams
 from jaxns.internals.cumulative_ops import cumulative_op_static
 from jaxns.internals.log_semiring import LogSpace
@@ -99,7 +99,7 @@ class EvidenceMaximisation:
         def _ns_solve(params: MutableParams, key: random.PRNGKey) -> Tuple[
             IntArray, StaticStandardNestedSamplerState]:
             model = self.model(params=params)
-            ns = DefaultNestedSampler(model=model, **self.ns_kwargs)
+            ns = NestedSampler(model=model, **self.ns_kwargs)
             termination_reason, state = ns(key, self.termination_cond)
             return termination_reason, state
 
@@ -108,7 +108,7 @@ class EvidenceMaximisation:
         ns_solve_compiled = jax.jit(_ns_solve).lower(self.model.params, random.PRNGKey(42)).compile()
         if self.verbose:
             logger.info(f"E-step compilation time: {time.time() - t0:.2f}s")
-        ns = DefaultNestedSampler(model=self.model(params=self.model.params), **self.ns_kwargs)
+        ns = NestedSampler(model=self.model(params=self.model.params), **self.ns_kwargs)
 
         def _e_step(key: PRNGKey, params: MutableParams, p_bar: tqdm) -> NestedSamplerResults:
             p_bar.set_description(f"Running E-step... {p_bar.desc}")

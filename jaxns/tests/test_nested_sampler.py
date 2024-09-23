@@ -41,7 +41,7 @@ def test_gh108():
     import tensorflow_probability.substrates.jax as tfp
     from jax import random
 
-    from jaxns import DefaultNestedSampler
+    from jaxns import NestedSampler
     from jaxns import Model
     from jaxns import Prior
 
@@ -60,7 +60,7 @@ def test_gh108():
 
         model = Model(prior_model=prior_model, log_likelihood=log_likelihood)
 
-        ns = DefaultNestedSampler(model=model, max_samples=1e4)
+        ns = NestedSampler(model=model, max_samples=1e4)
 
         termination_reason, state = ns(key, term_cond=TerminationCondition())
         results = ns.to_results(termination_reason=termination_reason, state=state, trim=False)
