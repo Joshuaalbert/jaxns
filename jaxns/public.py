@@ -23,9 +23,7 @@ from jaxns.utils import summary, save_results, load_results
 tfpd = tfp.distributions
 
 __all__ = [
-    'DefaultNestedSampler',
-    'ApproximateNestedSampler',
-    'ExactNestedSampler'
+    'DefaultNestedSampler'
 ]
 
 
