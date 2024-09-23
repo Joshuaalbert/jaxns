@@ -290,7 +290,7 @@ Sampling paper](https://arxiv.org/abs/2312.11330).
 
 ```bash
 # To create a new env, if necessary
-conda create -n jaxns_py python=3.11
+conda create -n jaxns_py python=3.12
 conda activate jaxns_py
 ```
 
@@ -328,9 +328,8 @@ Checkout the examples [here](https://jaxns.readthedocs.io/en/latest/#).
 
 ## Caveats
 
-The caveat is that you need to be able to define your likelihood function with JAX. This is usually no big deal because
-JAX is just a replacement for NumPy and many likelihoods can be expressed such.
-If you're unfamiliar, take a quick tour of JAX (https://jax.readthedocs.io/en/latest/notebooks/quickstart.html).
+The caveat is that you need to be able to define your likelihood function with JAX. UPDATE: now you can just
+use the `@jaxify_likelihood` decorator to run with arbitrary pythonic likelihoods.
 
 # Speed test comparison with other nested sampling packages
 
@@ -339,27 +338,15 @@ JAXNS is much faster than PolyChord, MultiNEST, and dynesty, typically achieving
 improvement in run time, for models with cheap likelihood evaluations.
 This is shown in (https://arxiv.org/abs/2012.15286).
 
-Recently JAXNS has implemented Phantom-Powered Nested Sampling, which significantly reduces the number of required
-likelihood evaluations for inferring the posterior. This is shown in (https://arxiv.org/abs/2312.11330).
+Recently JAXNS has implemented Phantom-Powered Nested Sampling, which helps for parameter inference. This is shown
+in (https://arxiv.org/abs/2312.11330).
 
-# Note on performance with parallelisation
+# Note on performance with parallelisation and GPUS
 
-__Note, that this is an experimental feature.__
-
-If you set `num_parallel_workers > 1` you will use `jax.pmap` under the hood for parallelisation.
-This is a very powerful feature, but it is important to understand how it works.
-It runs identical copies of the nested sampling algorithm on multiple devices.
-There is a two-part stopping condition.
-First, each copy goes until the user defined stopping condition is met __per device__.
-Then, it performs an all-gather and finds at the highest likelihood contour among all copies, and continues all copies
-hit this likelihood contour.
-This ensures consistency of depth across all copies.
-We then merge the copies and compute the final results.
-
-The algorithm is fairly memory bound, so running parallelisation over multiple CPUs on the same machine may not yield
-the expected speed up, and depends on how expensive the likelihood evaluations are. Running over separate physical
-devices
-is the best way to achieve speed up.
+To use parallel computing, you can simply pass `devices` to the `NestedSampler` constructor. This will distributed
+sampling over the devices. To use GPUs you can pass `jax.devices('gpu')` to the `devices` argument. You can also se all
+your CPUs by placing `os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={os.cpu_count()}"`
+before importing JAXNS.
 
 # Change Log
 
