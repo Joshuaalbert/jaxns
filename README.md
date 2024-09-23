@@ -350,7 +350,7 @@ before importing JAXNS.
 
 # Change Log
 
-24 Sep, 2024 -- JAXNS 2.6.0 released. Sharded parallel JAXNS. Rewrite of internals to support sharded parallelisation.
+24 Sep, 2024 -- JAXNS 2.6.1 released. Sharded parallel JAXNS. Rewrite of internals to support sharded parallelisation.
 
 20 Aug, 2024 -- JAXNS 2.6.0 released. Removed haiku dependency. Implemented our own
 context. `jaxns.framework.context.convert_external_params` enables interfacing with any external NN libary.
