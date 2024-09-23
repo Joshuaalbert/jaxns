@@ -51,7 +51,7 @@ def run_model(key):
 
     model = Model(prior_model=prior_model, log_likelihood=log_likelihood)
 
-    ns = DefaultNestedSampler(model=model, max_samples=100000, verbose=False, num_parallel_workers=len(jax.devices()))
+    ns = DefaultNestedSampler(model=model, max_samples=100000, verbose=False)
 
     termination_reason, state = ns(key)
     results = ns.to_results(termination_reason=termination_reason, state=state, trim=False)
@@ -61,7 +61,7 @@ def run_model(key):
 def main():
     num_devices = len(jax.devices())
     jaxns_version = pkg_resources.get_distribution("jaxns").version
-    m = 1
+    m = 10
     run_model_aot = jax.jit(run_model).lower(jax.random.PRNGKey(0)).compile()
     dt = []
 
@@ -70,14 +70,13 @@ def main():
 
     for i in range(m):
         t0 = time.time()
-        log_Z_error, log_Z_uncert = run_model_aot(jax.random.PRNGKey(i))
-        log_Z_error.block_until_ready()
+        log_Z_error, log_Z_uncert = jax.block_until_ready(run_model_aot(jax.random.PRNGKey(i)))
         t1 = time.time()
         dt.append(t1 - t0)
         errors.append(log_Z_error)
         uncerts.append(log_Z_uncert)
     total_time = sum(dt)
-    best_3 = sum(sorted(dt)[:min(3, m)]) / 3.
+    best_3 = sum(sorted(dt)[:3]) / 3.
     # print(f"Errors: {errors}")
     # print(f"Uncerts: {uncerts}")
     print(f"JAXNS {jaxns_version}\n"
