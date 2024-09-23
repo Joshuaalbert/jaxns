@@ -4,7 +4,8 @@ import jax
 from jax import lax, numpy as jnp, tree_util
 
 from jaxns.internals.prefix_sum import scan_associative
-from jaxns.internals.types import IntArray, int_type
+from jaxns.internals.types import IntArray
+from jaxns.internals.mixed_precision import int_type
 
 X = TypeVar('X')
 V = TypeVar('V')

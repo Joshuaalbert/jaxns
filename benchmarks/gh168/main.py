@@ -7,7 +7,7 @@ import pkg_resources
 import tensorflow_probability.substrates.jax as tfp
 from jax._src.scipy.linalg import solve_triangular
 
-from jaxns import Model, Prior, DefaultNestedSampler
+from jaxns import Model, Prior, NestedSampler
 
 tfpd = tfp.distributions
 
@@ -47,7 +47,7 @@ def run_model(key):
 
     model = Model(prior_model=prior_model, log_likelihood=log_likelihood)
 
-    ns = DefaultNestedSampler(model=model, max_samples=100000, verbose=False)
+    ns = NestedSampler(model=model, max_samples=100000, verbose=False)
 
     termination_reason, state = ns(key)
     results = ns.to_results(termination_reason=termination_reason, state=state, trim=False)

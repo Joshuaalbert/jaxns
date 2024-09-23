@@ -12,7 +12,8 @@ from scipy.stats import gaussian_kde
 
 from jaxns.internals.log_semiring import cumulative_logsumexp, LogSpace, normalise_log_space
 from jaxns.internals.shapes import tuple_prod
-from jaxns.internals.types import NestedSamplerResults, int_type
+from jaxns.nested_samplers.common.types import NestedSamplerResults
+from jaxns.internals.mixed_precision import int_type
 from jaxns.utils import resample
 
 __all__ = ['plot_diagnostics',

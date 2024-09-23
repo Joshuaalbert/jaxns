@@ -2,10 +2,11 @@ from typing import NamedTuple
 
 import jax
 import numpy as np
+import pytest
 from jax import random, numpy as jnp
 
 from jaxns.plotting import weighted_percentile
-from jaxns.utils import resample, _bit_mask, save_pytree, load_pytree
+from jaxns.utils import resample, _bit_mask, save_pytree, load_pytree, insert_index_diagnostic
 
 
 def test_resample():
@@ -38,3 +39,25 @@ def test_gh171(tmp_path):
     save_pytree(pytree, str(tmp_path / "results.json"))
     loaded_pytree = load_pytree(str(tmp_path / "results.json"))
     np.testing.assert_allclose(loaded_pytree.x, pytree.x)
+
+
+@pytest.mark.parametrize('seed', [42, 45, 46, 47, 48, 49])
+def test_insert_index_diagnostic_uniform(seed):
+    np.random.seed(seed)
+    indices = np.random.randint(0, 100, 10000)
+    p_value = insert_index_diagnostic(indices, num_live_points=100)
+    print('Should be big', p_value)
+    assert p_value > 0.01
+
+
+@pytest.mark.parametrize('seed', [42, 45, 46, 47, 48, 49])
+def test_insert_index_diagnostic_nonuniform(seed):
+    np.random.seed(seed)
+    indices = np.random.normal(0, 100, 10000)
+    indices -= np.min(indices)
+    indices /= np.max(indices)
+    indices *= 100
+    indices = indices.astype(int)
+    p_value = insert_index_diagnostic(indices, num_live_points=100)
+    print('Should be small', p_value)
+    assert p_value < 0.01

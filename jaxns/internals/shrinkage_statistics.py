@@ -4,8 +4,10 @@ import jax.numpy as jnp
 
 from jaxns.internals.cumulative_ops import cumulative_op_dynamic, scan_associative_cumulative_op, cumulative_op_static
 from jaxns.internals.log_semiring import LogSpace
+from jaxns.internals.mixed_precision import float_type, mp_policy
 from jaxns.internals.tree_structure import SampleTreeGraph, count_crossed_edges
-from jaxns.internals.types import MeasureType, EvidenceCalculation, float_type, IntArray, FloatArray
+from jaxns.internals.types import MeasureType, IntArray, FloatArray
+from jaxns.nested_samplers.common.types import EvidenceCalculation
 
 
 def compute_enclosed_prior_volume(sample_tree: SampleTreeGraph) -> MeasureType:
@@ -74,17 +76,17 @@ def _update_evidence_calc_op(carry: EvidenceCalculation, y: EvidenceUpdateVariab
     next_dZ2_mean = dZ2_mean + (X2_mean * t2_mean * midL ** 2)
 
     next_evidence_calculation = EvidenceCalculation(
-        log_L=y.log_L_next.astype(float_type),
-        log_X_mean=next_X_mean.log_abs_val.astype(float_type),
-        log_X2_mean=next_X2_mean.log_abs_val.astype(float_type),
-        log_Z_mean=next_Z_mean.log_abs_val.astype(float_type),
-        log_Z2_mean=next_Z2_mean.log_abs_val.astype(float_type),
-        log_ZX_mean=next_ZX_mean.log_abs_val.astype(float_type),
-        log_dZ_mean=dZ_mean.log_abs_val.astype(float_type),
-        log_dZ2_mean=next_dZ2_mean.log_abs_val.astype(float_type)
+        log_L=y.log_L_next,
+        log_X_mean=next_X_mean.log_abs_val,
+        log_X2_mean=next_X2_mean.log_abs_val,
+        log_Z_mean=next_Z_mean.log_abs_val,
+        log_Z2_mean=next_Z2_mean.log_abs_val,
+        log_ZX_mean=next_ZX_mean.log_abs_val,
+        log_dZ_mean=dZ_mean.log_abs_val,
+        log_dZ2_mean=next_dZ2_mean.log_abs_val
     )
 
-    return next_evidence_calculation
+    return mp_policy.cast_to_measure(next_evidence_calculation)
 
 
 def update_evicence_calculation(evidence_calculation: EvidenceCalculation,
@@ -102,7 +104,7 @@ def update_evicence_calculation(evidence_calculation: EvidenceCalculation,
     return _update_evidence_calc_op(evidence_calculation, update)
 
 
-def init_evidence_calc() -> EvidenceCalculation:
+def create_init_evidence_calc() -> EvidenceCalculation:
     """
     Initialise the evidence statistics.
 
@@ -110,14 +112,14 @@ def init_evidence_calc() -> EvidenceCalculation:
         The initial evidence statistics.
     """
     return EvidenceCalculation(
-        log_L=jnp.asarray(-jnp.inf, float_type),
-        log_X_mean=jnp.asarray(0., float_type),
-        log_X2_mean=jnp.asarray(0., float_type),
-        log_Z_mean=jnp.asarray(-jnp.inf, float_type),
-        log_ZX_mean=jnp.asarray(-jnp.inf, float_type),
-        log_Z2_mean=jnp.asarray(-jnp.inf, float_type),
-        log_dZ_mean=jnp.asarray(-jnp.inf, float_type),
-        log_dZ2_mean=jnp.asarray(-jnp.inf, float_type)
+        log_L=jnp.asarray(-jnp.inf, mp_policy.measure_dtype),
+        log_X_mean=jnp.asarray(0., mp_policy.measure_dtype),
+        log_X2_mean=jnp.asarray(0., mp_policy.measure_dtype),
+        log_Z_mean=jnp.asarray(-jnp.inf, mp_policy.measure_dtype),
+        log_ZX_mean=jnp.asarray(-jnp.inf, mp_policy.measure_dtype),
+        log_Z2_mean=jnp.asarray(-jnp.inf, mp_policy.measure_dtype),
+        log_dZ_mean=jnp.asarray(-jnp.inf, mp_policy.measure_dtype),
+        log_dZ2_mean=jnp.asarray(-jnp.inf, mp_policy.measure_dtype)
     )
 
 
@@ -134,17 +136,17 @@ def compute_evidence_stats(log_L: MeasureType, num_live_points: FloatArray, num_
     Returns:
         The final evidence statistics, and the evidence statistics for each sample.
     """
-    init = init_evidence_calc()
+    init_evidence_calc = create_init_evidence_calc()
     xs = EvidenceUpdateVariables(
         num_live_points=num_live_points.astype(float_type),
         log_L_next=log_L
     )
     if num_samples is not None:
         stop_idx = num_samples
-        final_accumulate, result = cumulative_op_dynamic(op=_update_evidence_calc_op, init=init, xs=xs,
+        final_accumulate, result = cumulative_op_dynamic(op=_update_evidence_calc_op, init=init_evidence_calc, xs=xs,
                                                          stop_idx=stop_idx)
     else:
-        final_accumulate, result = cumulative_op_static(op=_update_evidence_calc_op, init=init, xs=xs)
+        final_accumulate, result = cumulative_op_static(op=_update_evidence_calc_op, init=init_evidence_calc, xs=xs)
     final_evidence_calculation = final_accumulate
     per_sample_evidence_calculation = result
     return final_evidence_calculation, per_sample_evidence_calculation

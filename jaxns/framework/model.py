@@ -11,8 +11,9 @@ from jaxns.framework.ops import transform, prepare_input, compute_log_prob_prior
     parse_joint, transform_parametrised
 from jaxns.internals.logging import logger
 from jaxns.internals.maps import pytree_unravel
-from jaxns.internals.types import PRNGKey, FloatArray, float_type, LikelihoodType, UType, XType, LikelihoodInputType, \
+from jaxns.internals.types import PRNGKey, FloatArray, LikelihoodType, UType, XType, LikelihoodInputType, \
     WType
+from jaxns.internals.mixed_precision import float_type
 
 __all__ = [
     'Model'

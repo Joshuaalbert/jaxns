@@ -12,7 +12,7 @@ def test_replace_index():
     assert jnp.all(replace_index(operand, update, start_idx) == expect)
 
     operand = jnp.asarray([0, 1, 2, 3, 4])
-    update = jnp.asarray(5)
+    update = jnp.asarray([5])
     start_idx = 0
     expect = jnp.asarray([5, 1, 2, 3, 4])
     assert jnp.all(replace_index(operand, update, start_idx) == expect)
@@ -24,7 +24,7 @@ def test_replace_index():
     assert jnp.all(replace_index(operand, update, start_idx) == expect)
 
     operand = jnp.asarray([0, 1, 2, 3, 4])
-    update = jnp.asarray(5)
+    update = jnp.asarray([5])
     start_idx = 4
     expect = jnp.asarray([0, 1, 2, 3, 5])
     assert jnp.all(replace_index(operand, update, start_idx) == expect)

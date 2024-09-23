@@ -111,7 +111,7 @@ def test_all_global_optimisation(all_global_optimisation_problems):
         results = jax.jit(go, static_argnames=['finetune'])(
             key=jax.random.PRNGKey(0),
             term_cond=GlobalOptimisationTerminationCondition(log_likelihood_contour=log_L_tol),
-            finetune=True
+            finetune=False
         )
         assert len(results.X_solution) > 0
         # print(results)

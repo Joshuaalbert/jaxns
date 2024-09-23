@@ -11,9 +11,6 @@ from jaxns.internals.types import LikelihoodInputType
 from jaxns.internals.types import LikelihoodType, UType, XType, RandomVariableType, MeasureType
 
 __all__ = [
-    'BaseAbstractModel',
-    "BaseAbstractPrior",
-    "BaseAbstractDistribution",
     "PriorModelGen",
     "PriorModelType"
 ]

@@ -4,7 +4,7 @@ import jax
 import tensorflow_probability.substrates.jax as tfp
 from jax import random
 
-from jaxns import Model, Prior, DefaultNestedSampler
+from jaxns import Model, Prior, NestedSampler
 
 
 tfpd = tfp.distributions
@@ -23,7 +23,7 @@ def run_model(max_samples: int):
 
 
     # Create the nested sampler class. In this case without any tuning.
-    exact_ns = DefaultNestedSampler(model=model, max_samples=max_samples)
+    exact_ns = NestedSampler(model=model, max_samples=max_samples)
 
     termination_reason, state = exact_ns(random.PRNGKey(42))
     return termination_reason

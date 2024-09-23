@@ -144,9 +144,9 @@ Given a probabilistic model, JAXNS can perform nested sampling on it. This allow
 posterior samples.
 
 ```python
-from jaxns import DefaultNestedSampler
+from jaxns import NestedSampler
 
-ns = DefaultNestedSampler(model=model, max_samples=1e5)
+ns = NestedSampler(model=model, max_samples=1e5)
 
 # Run the sampler
 termination_reason, state = ns(jax.random.PRNGKey(42))
@@ -362,6 +362,8 @@ devices
 is the best way to achieve speed up.
 
 # Change Log
+
+24 Sep, 2024 -- JAXNS 2.6.0 released. Sharded parallel JAXNS. Rewrite of internals to support sharded parallelisation.
 
 20 Aug, 2024 -- JAXNS 2.6.0 released. Removed haiku dependency. Implemented our own
 context. `jaxns.framework.context.convert_external_params` enables interfacing with any external NN libary.

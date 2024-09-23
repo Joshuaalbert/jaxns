@@ -27,7 +27,7 @@ Here are some of the things you can do with JAXNS:
 
 
 JAXNS's Mission Statement
------------------------
+-------------------------
 Our mission is to make nested sampling faster, easier, and more powerful.
 
 .. toctree::

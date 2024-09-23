@@ -2,12 +2,11 @@ from timeit import default_timer
 
 import jax
 import numpy as np
-from jax import numpy as jnp, random
+from jax import numpy as jnp
 
 from jaxns.internals.tree_structure import SampleTreeGraph, SampleLivePointCounts, count_crossed_edges, \
     count_intervals_naive, \
-    plot_tree, count_old, count_crossed_edges_less_fast, concatenate_sample_trees, unbatch_state
-from jaxns.internals.types import StaticStandardNestedSamplerState, StaticStandardSampleCollection
+    plot_tree, count_old, count_crossed_edges_less_fast, concatenate_sample_trees
 
 
 def pytree_assert_equal(a, b):
@@ -159,70 +158,3 @@ def test_concatenate_sample_trees():
     )
     assert all(S.sender_node_idx == expect.sender_node_idx)
     assert all(S.log_L == expect.log_L)
-
-
-def test_unbatch_state():
-    # Example of two batched states, first dimension is has 1 sample, second has 2 samples. Max samples is 2 for both.
-    # num_live_points=1 for both.
-    single_state_1 = StaticStandardNestedSamplerState(
-        key=random.PRNGKey(42),
-        next_sample_idx=jnp.asarray(2),
-        sample_collection=StaticStandardSampleCollection(
-            sender_node_idx=jnp.asarray([0, 1, 0]),
-            log_L=jnp.asarray([1., 2., jnp.inf]),
-            U_samples=jnp.asarray([1., 1., 0.])[:, None],
-            num_likelihood_evaluations=jnp.asarray([1, 2, 0]),
-            phantom=jnp.asarray([True, False, False])
-        ),
-        front_idx=jnp.asarray([1])
-    )
-
-    single_state_2 = StaticStandardNestedSamplerState(
-        key=random.PRNGKey(42),
-        next_sample_idx=jnp.asarray(2),
-        sample_collection=StaticStandardSampleCollection(
-            sender_node_idx=jnp.asarray([0, 1, 0]),
-            log_L=jnp.asarray([1.1, 2.1, jnp.inf]),
-            U_samples=jnp.asarray([1., 1., 0.])[:, None],
-            num_likelihood_evaluations=jnp.asarray([1, 2, 0]),
-            phantom=jnp.asarray([True, False, False])
-        ),
-        front_idx=jnp.asarray([1])
-    )
-
-    batched_state = jax.tree.map(lambda x, y: jnp.stack([x, y], axis=0), single_state_1, single_state_2)
-
-    unbatched_state = unbatch_state(batched_state)
-
-    print(unbatched_state)
-
-    # The second element of first batch is not measure so it should be at end of unbatched
-    expected_state = StaticStandardNestedSamplerState(
-        key=random.PRNGKey(42),
-        next_sample_idx=jnp.asarray(4),
-        sample_collection=StaticStandardSampleCollection(
-            sender_node_idx=jnp.asarray([0, 1, 0, 0, 4, 0]),
-            log_L=jnp.asarray([1., 2., jnp.inf, 1.1, 2.1, jnp.inf]),
-            U_samples=jnp.asarray([1., 1., 0., 1., 1., 0.])[:, None],
-            num_likelihood_evaluations=jnp.asarray([1, 2, 0, 1, 2, 0]),
-            phantom=jnp.asarray([True, False, False, True, False, False])
-        ),
-        front_idx=jnp.asarray([1, 4])
-    )
-
-    expected_state = StaticStandardNestedSamplerState(
-        key=random.PRNGKey(42),
-        next_sample_idx=jnp.asarray(4),
-        sample_collection=StaticStandardSampleCollection(
-            sender_node_idx=jnp.asarray([0, 0, 1, 2, 0, 0]),
-            log_L=jnp.asarray([1., 1.1, 2., 2.1, jnp.inf, jnp.inf]),
-            U_samples=jnp.asarray([1., 1., 1., 1., 0., 0.])[:, None],
-            num_likelihood_evaluations=jnp.asarray([1, 1, 2, 2, 0, 0]),
-            phantom=jnp.asarray([True, True, False, False, False, False])
-        ),
-        front_idx=jnp.asarray([2, 3])
-    )
-
-    # compare pytrees
-    for a, b in zip(jax.tree.leaves(unbatched_state), jax.tree.leaves(expected_state)):
-        assert jnp.all(a == b)

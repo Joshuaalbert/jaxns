@@ -1,7 +1,7 @@
 from jax import numpy as jnp, vmap
 
 from jaxns.internals.log_semiring import LogSpace
-from jaxns.internals.types import float_type
+from jaxns.internals.mixed_precision import float_type
 
 
 def normal_to_lognormal(mu, std):
@@ -74,7 +74,7 @@ def linear_to_log_stats(log_f_mean, *, log_f2_mean=None, log_f_var=None):
     return mu.log_abs_val, jnp.maximum(sigma2.log_abs_val, jnp.finfo(float_type).eps)
 
 
-def effective_sample_size(log_Z_mean, log_dZ2_mean):
+def effective_sample_size_kish(log_Z_mean, log_dZ2_mean):
     """
     Computes Kish's ESS = [sum dZ]^2 / [sum dZ^2]
 

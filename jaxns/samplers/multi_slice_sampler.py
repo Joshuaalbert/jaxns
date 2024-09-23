@@ -1,21 +1,20 @@
-from typing import TypeVar, NamedTuple, Tuple, Optional
+import dataclasses
+from typing import NamedTuple, Tuple, Optional, Any
 
 import jax
 from jax import numpy as jnp, random, lax
 
 from jaxns.framework.bases import BaseAbstractModel
 from jaxns.internals.cumulative_ops import cumulative_op_static
-from jaxns.internals.types import PRNGKey, FloatArray, BoolArray, Sample, int_type, StaticStandardNestedSamplerState, \
-    UType, \
-    IntArray, float_type, StaticStandardSampleCollection
-from jaxns.samplers.abc import SamplerState
+from jaxns.internals.mixed_precision import mp_policy
+from jaxns.internals.types import PRNGKey, FloatArray, BoolArray, UType, IntArray
+from jaxns.nested_samplers.common.types import Sample, SampleCollection, LivePointCollection
+from jaxns.samplers.abc import EphemeralState
 from jaxns.samplers.bases import SeedPoint, BaseAbstractMarkovSampler
 
 __all__ = [
     'MultiDimSliceSampler'
 ]
-
-T = TypeVar('T')
 
 
 def _slice_bounds(key: PRNGKey, point_U0: FloatArray, num_restrict_dims: int) -> Tuple[FloatArray, FloatArray]:
@@ -129,7 +128,7 @@ def _new_proposal(key: PRNGKey, seed_point: SeedPoint, num_restrict_dims: int, l
         )
 
     key, slice_key, t_key = random.split(key, 3)
-    num_likelihood_evaluations = jnp.full((), 0, int_type)
+    num_likelihood_evaluations = jnp.full((), 0, mp_policy.count_dtype)
     (left, right) = _slice_bounds(
         key=slice_key,
         point_U0=seed_point.U0,
@@ -158,62 +157,68 @@ def _new_proposal(key: PRNGKey, seed_point: SeedPoint, num_restrict_dims: int, l
     return carry.point_U, carry.log_L, carry.num_likelihood_evaluations
 
 
-class MultiDimSliceSampler(BaseAbstractMarkovSampler):
+@dataclasses.dataclass(eq=False)
+class MultiDimSliceSampler(BaseAbstractMarkovSampler[SampleCollection]):
+    """
+    Multi-dimensional slice sampler, with exponential shrinkage. Produces correlated (non-i.i.d.) samples.
 
-    def __init__(self, model: BaseAbstractModel, num_slices: int, num_phantom_save: int,
-                 num_restrict_dims: Optional[int] = None):
+    Notes: Not very efficient.
+
+    Args:
+        model: AbstractModel
+        num_slices: number of slices between acceptance, in units of 1, unlike other software which does it in
+            units of prior dimension.
+        num_phantom_save: number of phantom samples to save. Phantom samples are samples that meeting the constraint
+            but are not accepted. They can be used for numerous things, e.g. to estimate the evidence uncertainty.
+        num_restrict_dims: size of subspace to slice along. Setting to 1 would be like UniDimSliceSampler,
+            but far less efficient.
+    """
+    model: BaseAbstractModel
+    num_slices: int
+    num_phantom_save: int
+    num_restrict_dims: Optional[int] = None
+
+    def __post_init__(self):
         """
-        Multi-dimensional slice sampler, with exponential shrinkage. Produces correlated (non-i.i.d.) samples.
 
-        Notes: Not very efficient.
-
-        Args:
-            model: AbstractModel
-            num_slices: number of slices between acceptance, in units of 1, unlike other software which does it in
-                units of prior dimension.
-            num_phantom_save: number of phantom samples to save. Phantom samples are samples that meeting the constraint
-                but are not accepted. They can be used for numerous things, e.g. to estimate the evidence uncertainty.
-            num_restrict_dims: size of subspace to slice along. Setting to 1 would be like UniDimSliceSampler,
-                but far less efficient.
         """
-        super().__init__(model=model)
-        if num_slices < 1:
+        if self.num_slices < 1:
             raise ValueError(f"num_slices must be > 0.")
-        if num_phantom_save < 0:
-            raise ValueError(f"num_phantom_save should be >= 0, got {num_phantom_save}.")
-        if num_phantom_save >= num_slices:
-            raise ValueError(f"num_phantom_save should be < num_slices, got {num_phantom_save} >= {num_slices}.")
-        self.num_slices = int(num_slices)
-        self.num_phantom_save = int(num_phantom_save)
-        if num_restrict_dims is not None:
-            if num_restrict_dims == 1:
+        if self.num_phantom_save < 0:
+            raise ValueError(f"num_phantom_save should be >= 0, got {self.num_phantom_save}.")
+        if self.num_phantom_save >= self.num_slices:
+            raise ValueError(
+                f"num_phantom_save should be < num_slices, got {self.num_phantom_save} >= {self.num_slices}.")
+        self.num_slices = int(self.num_slices)
+        self.num_phantom_save = int(self.num_phantom_save)
+        if self.num_restrict_dims is not None:
+            if self.num_restrict_dims == 1:
                 raise ValueError(f"If restricting to 1 dimension, then you should use UniDimSliceSampler.")
-            if not (1 < num_restrict_dims <= model.U_ndims):
-                raise ValueError(f"Expected num_restriction dim in (1, {model.U_ndims}], got {num_restrict_dims}.")
-        self.num_restrict_dims = int(num_restrict_dims)
+            if not (1 < self.num_restrict_dims <= self.model.U_ndims):
+                raise ValueError(
+                    f"Expected num_restriction dim in (1, {self.model.U_ndims}], got {self.num_restrict_dims}.")
+        self.num_restrict_dims = int(self.num_restrict_dims)
 
     def num_phantom(self) -> int:
         return self.num_phantom_save
 
-    def pre_process(self, state: StaticStandardNestedSamplerState) -> SamplerState:
-        sample_collection = jax.tree.map(lambda x: x[state.front_idx], state.sample_collection)
-        return (sample_collection,)
+    def _pre_process(self, ephemeral_state: EphemeralState) -> Any:
+        return ephemeral_state.live_points_collection
 
-    def post_process(self, sample_collection: StaticStandardSampleCollection,
-                     sampler_state: SamplerState) -> SamplerState:
-        return (sample_collection,)
+    def _post_process(self, ephemeral_state: EphemeralState,
+                      sampler_state: Any) -> Any:
+        return ephemeral_state.live_points_collection
 
-    def get_seed_point(self, key: PRNGKey, sampler_state: SamplerState,
+    def get_seed_point(self, key: PRNGKey, sampler_state: LivePointCollection,
                        log_L_constraint: FloatArray) -> SeedPoint:
 
-        sample_collection: StaticStandardSampleCollection
-        (sample_collection,) = sampler_state
+        sample_collection = sampler_state
 
         select_mask = sample_collection.log_L > log_L_constraint
         # If non satisfied samples, then choose randomly from them.
         any_satisfied = jnp.any(select_mask)
-        yes_ = jnp.asarray(0., float_type)
-        no_ = jnp.asarray(-jnp.inf, float_type)
+        yes_ = jnp.asarray(0., jnp.float32)
+        no_ = jnp.asarray(-jnp.inf, jnp.float32)
         unnorm_select_log_prob = jnp.where(
             any_satisfied,
             jnp.where(select_mask, yes_, no_),
@@ -224,12 +229,12 @@ class MultiDimSliceSampler(BaseAbstractMarkovSampler):
         sample_idx = jnp.argmax(g + unnorm_select_log_prob)
 
         return SeedPoint(
-            U0=sample_collection.U_samples[sample_idx],
+            U0=sample_collection.U_sample[sample_idx],
             log_L0=sample_collection.log_L[sample_idx]
         )
 
     def get_sample_from_seed(self, key: PRNGKey, seed_point: SeedPoint, log_L_constraint: FloatArray,
-                             sampler_state: SamplerState) -> Tuple[Sample, Sample]:
+                             sampler_state: SampleCollection) -> Tuple[Sample, Sample]:
 
         def propose_op(sample: Sample, key: PRNGKey) -> Sample:
             U_sample, log_L, num_likelihood_evaluations = _new_proposal(
@@ -253,7 +258,7 @@ class MultiDimSliceSampler(BaseAbstractMarkovSampler):
             U_sample=seed_point.U0,
             log_L_constraint=log_L_constraint,
             log_L=seed_point.log_L0,
-            num_likelihood_evaluations=jnp.asarray(0, int_type)
+            num_likelihood_evaluations=jnp.asarray(0, mp_policy.count_dtype)
         )
         final_sample, cumulative_samples = cumulative_op_static(
             op=propose_op,
