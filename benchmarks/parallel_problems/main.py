@@ -46,7 +46,6 @@ def run_model(key):
             name='x')
         return x
 
-    @jaxify_likelihood
     def log_likelihood(x):
         return tfpd.MultivariateNormalTriL(loc=data_mu, scale_tril=jnp.linalg.cholesky(data_cov)).log_prob(x)
 
