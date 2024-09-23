@@ -29,7 +29,7 @@ __all__ = [
 ]
 
 
-class DefaultNestedSampler:
+class NestedSampler:
     """
     A static nested sampler that uses 1-dimensional slice sampler for the sampling step.
     Uses the phantom-powered algorithm. A robust default choice is provided for all parameters.
@@ -206,13 +206,4 @@ class DefaultNestedSampler:
         return results
 
 
-class ApproximateNestedSampler(DefaultNestedSampler):
-    def __init__(self, *args, **kwargs):
-        warnings.warn(f"ApproximateNestedSampler is deprecated. Use DefaultNestedSampler instead.")
-        super().__init__(*args, **kwargs)
-
-
-class ExactNestedSampler(ApproximateNestedSampler):
-    def __init__(self, *args, **kwargs):
-        warnings.warn(f"ExactNestedSampler is deprecated. Use DefaultNestedSampler instead.")
-        super().__init__(*args, **kwargs)
+DefaultNestedSampler = NestedSampler
