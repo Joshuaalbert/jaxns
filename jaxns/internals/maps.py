@@ -19,7 +19,8 @@ def replace_index(operand, update, start_index):
     If update is too big to respect start_index then start_index is shifted, which will give non-intuitive results.
     """
     if len(np.shape(operand)) != len(np.shape(update)):
-        raise ValueError(f"Operand and update must have the same number of dimensions, got {len(np.shape(operand))} and {len(np.shape(update))}")
+        raise ValueError(
+            f"Operand and update must have the same number of dimensions, got {len(np.shape(operand))} and {len(np.shape(update))}")
     start_index = jnp.asarray(start_index, mp_policy.index_dtype)
     start_indices = [start_index] + [jnp.asarray(0, start_index.dtype)] * (len(update.shape) - 1)
     return lax.dynamic_update_slice(operand, update.astype(operand.dtype), start_indices)
@@ -388,7 +389,7 @@ def create_mesh(shape, axis_names, devices=None):
 SPT = TypeVar('SPT')
 
 
-def tree_device_put(tree: SPT, mesh: Mesh, axis_names: Tuple[str | None, ...]) -> SPT:
+def tree_device_put(tree: SPT, mesh: Mesh, axis_names: Tuple[Union[str, None], ...]) -> SPT:
     """
     Put a pytree on a device.
 
