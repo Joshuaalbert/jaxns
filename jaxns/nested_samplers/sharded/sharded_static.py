@@ -1,5 +1,4 @@
 import dataclasses
-import warnings
 from functools import partial
 from typing import List, Optional, Tuple, NamedTuple, Any
 
@@ -359,6 +358,26 @@ def _main_ns_thread(
     return carry.live_point_collection, carry.state, carry.termination_register, termination_reason
 
 
+def round_up_num_live_points(init_num_live_points, shell_frac, num_devices):
+    num_live_points = int(init_num_live_points)
+    while True:
+        shell_size = int(num_live_points * shell_frac)
+        if shell_size % num_devices == 0:
+            break
+        num_live_points += 1
+    return num_live_points
+
+
+def round_up_max_samples(init_max_samples, num_live_points, num_phantom_points):
+    max_samples = int(init_max_samples)
+    while True:
+        block_size = num_live_points * (1 + num_phantom_points)
+        if max_samples % block_size == 0:
+            break
+        max_samples += 1
+    return max_samples
+
+
 @dataclasses.dataclass(eq=False)
 class ShardedStaticNestedSampler(AbstractNestedSampler):
     """
@@ -381,35 +400,30 @@ class ShardedStaticNestedSampler(AbstractNestedSampler):
     init_efficiency_threshold: float
     sampler: AbstractSampler
     num_live_points: int
+    shell_fraction: Optional[float] = None
     devices: Optional[List[xla_client.Device]] = None
     verbose: bool = False
 
     def __post_init__(self):
+        if self.shell_fraction is None:
+            self.shell_fraction = 0.5
+        if (self.shell_fraction <= 0.) or (self.shell_fraction >= 1.):
+            raise ValueError(f"Expected 0 < shell_fraction < 1, got {self.shell_fraction}. Best to keep it around 0.5.")
         if self.devices is None:
             self.devices = jax.devices()
         if len(self.devices) > 1:
             print(f"Running over {len(self.devices)} devices.")
         # Make sure num_live_points // 2 is a multiple of the number of devices
-        if self.num_live_points % 2 != 0:
-            raise ValueError("num_live_points must be even.")
-        remainder = (self.num_live_points // 2) % len(self.devices)
-        extra = 2 * ((self.num_live_points // 2 - remainder) % len(self.devices))
-        if extra > 0:
-            warnings.warn(
-                f"Increasing num_live_points ({self.num_live_points}) by {extra} to closest multiple of "
-                f"num_devices {len(self.devices)}."
-            )
-            self.num_live_points += extra
-
-        block_size = self.num_live_points * (1 + self.sampler.num_phantom())
-        remainder = self.max_samples % block_size
-        extra = (self.max_samples - remainder) % block_size
-        if extra > 0:
-            warnings.warn(
-                f"Increasing max_samples ({self.max_samples}) by {extra} to closest multiple of "
-                f"{block_size}."
-            )
-        self.max_samples = int(self.max_samples + extra)
+        self.num_live_points = round_up_num_live_points(
+            init_num_live_points=self.num_live_points,
+            shell_frac=self.shell_fraction,
+            num_devices=len(self.devices)
+        )
+        self.max_samples = round_up_max_samples(
+            init_max_samples=self.max_samples,
+            num_live_points=self.num_live_points,
+            num_phantom_points=self.sampler.num_phantom()
+        )
 
     def _to_results(self, termination_reason: IntArray, state: NestedSamplerState,
                     trim: bool) -> NestedSamplerResults:

@@ -95,10 +95,6 @@ class NestedSampler:
             warnings.warn(f"max_samples={self.max_samples} is likely too small!")
         if self.num_parallel_workers is not None:
             warnings.warn("`num_parallel_workers` is depreciated. Use `devices` instead.")
-            if self.devices is None:
-                self.devices = jax.devices()[:self.num_parallel_workers]
-            else:
-                self.devices = self.devices[:self.num_parallel_workers]
         self._nested_sampler = ShardedStaticNestedSampler(
             model=self.model,
             num_live_points=self.c,

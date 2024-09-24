@@ -87,7 +87,7 @@ class SimpleGlobalOptimisation:
 
         self._nested_sampler = ShardedStaticNestedSampler(
             model=self.model,
-            max_samples=self.num_search_chains,
+            max_samples=self.num_search_chains * 10,
             init_efficiency_threshold=0.,
             sampler=self.sampler,
             num_live_points=self.num_search_chains,
