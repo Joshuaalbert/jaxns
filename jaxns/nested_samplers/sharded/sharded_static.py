@@ -317,19 +317,31 @@ def _main_ns_thread(
                 log_f_mean=termination_register.evidence_calc_with_remaining.log_Z_mean,
                 log_f2_mean=termination_register.evidence_calc_with_remaining.log_Z2_mean)
             log_Z_uncert = jnp.sqrt(log_Z_var)
+            log_Z_mean0, log_Z_var0 = linear_to_log_stats(
+                log_f_mean=termination_register.evidence_calc.log_Z_mean,
+                log_f2_mean=termination_register.evidence_calc.log_Z2_mean)
+            log_Z_remaining = log_Z_mean - log_Z_mean0
+            log_Z_remaining_error = jnp.sqrt(log_Z_var + log_Z_var0)
+            ess = effective_sample_size_kish(termination_register.evidence_calc_with_remaining.log_Z_mean,
+                                         termination_register.evidence_calc_with_remaining.log_dZ2_mean)
             jax.debug.print(
                 "-------\n"
                 "Num samples: {num_samples}\n"
                 "Num likelihood evals: {num_likelihood_evals}\n"
                 "Efficiency: {efficiency}\n"
                 "log(L) contour: {log_L_contour}\n"
-                "log(Z) est.: {log_Z_mean} +- {log_Z_uncert}",
+                "log(Z) est.: {log_Z_mean} +- {log_Z_uncert}\n"
+                "log(Z | remaining) est.: {log_Z_remaining} +- {log_Z_remaining_error}\n"
+                "ESS: {ess}\n",
                 num_samples=termination_register.num_samples_used,
                 num_likelihood_evals=termination_register.num_likelihood_evaluations,
                 efficiency=termination_register.efficiency,
                 log_L_contour=termination_register.log_L_contour,
                 log_Z_mean=log_Z_mean,
-                log_Z_uncert=log_Z_uncert
+                log_Z_uncert=log_Z_uncert,
+                log_Z_remaining=log_Z_remaining,
+                log_Z_remaining_error=log_Z_remaining_error,
+                ess=ess
             )
 
         return CarryType(

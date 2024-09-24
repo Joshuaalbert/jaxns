@@ -290,6 +290,7 @@ def summary(results: NestedSamplerResults, with_parametrised: bool = False, f_ob
         with_parametrised: whether to include parametrised samples
         f_obj: file-like object to write summary to. If None, prints to stdout.
     """
+
     main_s = []
 
     def _print(s):
@@ -355,24 +356,35 @@ def summary(results: NestedSamplerResults, with_parametrised: bool = False, f_ob
         f"H={_round(results.H_mean, 0.1)}"
     )
     _print(
-        f"ESS={int(results.ESS):d}"
+        f"ESS={np.asarray(results.ESS, np.int64)}"
     )
 
     samples = results.samples
     if with_parametrised:
         samples.update(results.parametrised_samples)
+    log_L_samples = results.log_L_samples
+    log_dp_mean = results.log_dp_mean
+    num_samples = int(results.total_num_samples)
+    if np.isnan(results.ESS):
+        ESS = 100
+    else:
+        ESS = int(results.ESS)
+    # Trim
+    samples = jax.tree.map(lambda x: x[:num_samples], samples)
+    log_L_samples = log_L_samples[:num_samples]
+    log_dp_mean = log_dp_mean[:num_samples]
 
-    max_like_idx = np.argmax(results.log_L_samples)
+    max_like_idx = np.argmax(log_L_samples)
     max_like_points = jax.tree.map(lambda x: x[max_like_idx], samples)
 
     uniform_samples = resample(random.PRNGKey(23426),
                                samples,
-                               results.log_dp_mean,
-                               S=max(100, int(results.ESS)),
+                               log_dp_mean,
+                               S=max(100, ESS),
                                replace=True)
 
     max_map_idx = np.argmax(results.log_posterior_density)
-    map_points = jax.tree.map(lambda x: x[max_map_idx], results.samples)
+    map_points = jax.tree.map(lambda x: x[max_map_idx], samples)
 
     for name in uniform_samples.keys():
         _samples = uniform_samples[name].reshape((uniform_samples[name].shape[0], -1))
