@@ -4,7 +4,7 @@ import pytest
 from jax import numpy as jnp
 
 from jaxns.internals.cumulative_ops import cumulative_op_static, cumulative_op_dynamic, scan_associative_cumulative_op
-from jaxns.internals.types import float_type, int_type
+from jaxns.internals.mixed_precision import float_type, int_type
 
 
 def test_cumulative_op_static():

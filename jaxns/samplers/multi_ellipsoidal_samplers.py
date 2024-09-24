@@ -1,14 +1,16 @@
-from typing import NamedTuple, Tuple
+import dataclasses
+import warnings
+from typing import NamedTuple, Tuple, Any
 
 import jax
 from jax import random, numpy as jnp, lax
 
-from jaxns.internals.shrinkage_statistics import compute_evidence_stats
-from jaxns.internals.tree_structure import SampleTreeGraph, count_crossed_edges
-from jaxns.internals.types import IntArray, StaticStandardNestedSamplerState, UType, StaticStandardSampleCollection
+from jaxns.framework.bases import BaseAbstractModel
+from jaxns.internals.mixed_precision import mp_policy
+from jaxns.internals.types import IntArray, UType
 from jaxns.internals.types import PRNGKey, FloatArray
-from jaxns.internals.types import Sample, int_type
-from jaxns.samplers.abc import SamplerState
+from jaxns.nested_samplers.common.types import Sample
+from jaxns.samplers.abc import EphemeralState
 from jaxns.samplers.bases import BaseAbstractRejectionSampler
 from jaxns.samplers.multi_ellipsoid.multi_ellipsoid_utils import ellipsoid_clustering, MultEllipsoidState
 from jaxns.samplers.multi_ellipsoid.multi_ellipsoid_utils import sample_multi_ellipsoid
@@ -18,63 +20,52 @@ __all__ = [
 ]
 
 
-class MultiEllipsoidalSampler(BaseAbstractRejectionSampler):
+@dataclasses.dataclass(eq=False)
+class MultiEllipsoidalSampler(BaseAbstractRejectionSampler[MultEllipsoidState]):
     """
     Uses a multi-ellipsoidal decomposition of the live points to create a bound around regions to sample from.
 
     Inefficient for high dimensional problems, but can be very efficient for low dimensional problems.
     """
+    model: BaseAbstractModel
+    depth: int
+    expansion_factor: float
 
-    def __init__(self, depth: int, expansion_factor: float, *args, **kwargs):
-        self._depth = depth
-        self._expansion_factor = expansion_factor
-        super().__init__(*args, **kwargs)
+    def __post_init__(self):
+        warnings.warn(
+            "MultiEllipsoidalSampler does not give consistent results/performance. Consider `UniDimSliceSampler`.")
+        if self.depth < 0:
+            raise ValueError(f"depth {self.depth} must be >= 0")
+        if self.expansion_factor <= 0.:
+            raise ValueError(f"expansion_factor {self.expansion_factor} must be > 0")
 
     def num_phantom(self) -> int:
         return 0
 
-    def pre_process(self, state: StaticStandardNestedSamplerState) -> SamplerState:
-        key, sampler_key = random.split(state.key)
-
-        sample_tree = SampleTreeGraph(
-            sender_node_idx=state.sample_collection.sender_node_idx,
-            log_L=state.sample_collection.log_L
-        )
-
-        live_point_counts = count_crossed_edges(sample_tree=sample_tree, num_samples=state.next_sample_idx)
-        log_L = sample_tree.log_L[live_point_counts.samples_indices]
-        num_live_points = live_point_counts.num_live_points
-
-        final_evidence_stats, _ = compute_evidence_stats(
-            log_L=log_L,
-            num_live_points=num_live_points,
-            num_samples=state.next_sample_idx
-        )
-
-        points = state.sample_collection.U_samples[state.front_idx]
+    def _pre_process(self, ephemeral_state: EphemeralState) -> Any:
         return ellipsoid_clustering(
-            key=sampler_key,
-            points=points,
-            log_VS=final_evidence_stats.log_X_mean,
+            key=ephemeral_state.key,
+            points=ephemeral_state.live_points_collection.U_sample,
+            log_VS=ephemeral_state.termination_register.evidence_calc_with_remaining.log_X_mean,
             max_num_ellipsoids=self.max_num_ellipsoids,
             method='em_gmm'
         )
 
-    def post_process(self, sample_collection: StaticStandardSampleCollection,
-                     sampler_state: SamplerState) -> SamplerState:
+    def _post_process(self, ephemeral_state: EphemeralState,
+                      sampler_state: Any) -> Any:
         return sampler_state
 
     @property
     def max_num_ellipsoids(self):
-        return 2 ** self._depth
+        return 2 ** self.depth
 
-    def get_sample(self, key: PRNGKey, log_L_constraint: FloatArray,
-                   sampler_state: MultEllipsoidState) -> Tuple[Sample, Sample]:
+    def _get_sample(self, key: PRNGKey, log_L_constraint: FloatArray, sampler_state: MultEllipsoidState) -> Tuple[
+        Sample, Sample]:
         def _sample_multi_ellipsoid(key: PRNGKey) -> UType:
             _, U = sample_multi_ellipsoid(
                 key=key,
                 mu=sampler_state.params.mu,
-                radii=sampler_state.params.radii * self._expansion_factor,
+                radii=sampler_state.params.radii * jnp.asarray(self.expansion_factor, mp_policy.measure_dtype),
                 rotation=sampler_state.params.rotation,
                 unit_cube_constraint=True
             )
@@ -108,7 +99,7 @@ class MultiEllipsoidalSampler(BaseAbstractRejectionSampler):
             key=key,
             U=point_U,
             log_L=self.model.forward(point_U),
-            num_likelihood_evals=jnp.asarray(1, int_type)
+            num_likelihood_evals=jnp.asarray(1, mp_policy.count_dtype)
         )
 
         final_carry = lax.while_loop(
@@ -123,6 +114,6 @@ class MultiEllipsoidalSampler(BaseAbstractRejectionSampler):
             log_L=final_carry.log_L,
             num_likelihood_evaluations=final_carry.num_likelihood_evals
         )
-
-        phantom_samples = jax.tree.map(lambda x: jnp.zeros((0,) + x.shape, x.dtype), sample)
+        # TODO: could use rejected samples, not as phantom because they don't satisfy constraint, but for ML apps
+        phantom_samples = jax.tree.map(lambda x: jnp.zeros((0,) + x.shape, x.dtype), sample)  # [k, D]
         return sample, phantom_samples

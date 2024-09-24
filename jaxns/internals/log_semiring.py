@@ -4,7 +4,8 @@ import jax
 from jax import numpy as jnp, lax
 from jax.scipy.special import logsumexp
 
-from jaxns.internals.types import SignedLog, float_type
+from jaxns.internals.types import SignedLog
+from jaxns.internals.mixed_precision import float_type
 
 
 def logaddexp(x1, x2):
@@ -100,6 +101,10 @@ class LogSpace(object):
         else:
             self._sign = jnp.asarray(sign, float_type)
             self._naked = False
+
+    @staticmethod
+    def from_signed_value(value: jax.Array) -> 'LogSpace':
+        return LogSpace(jnp.log(jnp.abs(value)), jnp.sign(value))
 
     @property
     def dtype(self):

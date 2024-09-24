@@ -19,7 +19,6 @@ class DefaultGlobalOptimisation:
 
     def __init__(self, model: BaseAbstractModel,
                  num_search_chains: Optional[int] = None,
-                 num_parallel_workers: int = 1,
                  s: Optional[int] = None,
                  k: Optional[int] = None,
                  gradient_slice: bool = False
@@ -56,8 +55,7 @@ class DefaultGlobalOptimisation:
         self._global_optimiser = SimpleGlobalOptimisation(
             sampler=sampler,
             num_search_chains=int(num_search_chains),
-            model=model,
-            num_parallel_workers=num_parallel_workers
+            model=model
         )
 
     def __call__(self, key: PRNGKey,

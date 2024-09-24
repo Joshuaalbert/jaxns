@@ -7,9 +7,10 @@ from jax import numpy as jnp, random, disable_jit, vmap
 from jaxns.framework.bases import PriorModelGen
 from jaxns.framework.model import Model
 from jaxns.framework.prior import Prior
+from jaxns.internals.mixed_precision import float_type, mp_policy
 from jaxns.internals.random import random_ortho_matrix
-from jaxns.internals.types import float_type, Sample
-from jaxns.nested_sampler.standard_static import draw_uniform_samples
+from jaxns.nested_samplers.common.types import Sample
+from jaxns.nested_samplers.common.uniform_sample import draw_uniform_samples
 from jaxns.samplers.multi_ellipsoid.multi_ellipsoid_utils import log_ellipsoid_volume, ellipsoid_clustering, \
     bounding_ellipsoid, covariance_to_rotational, ellipsoid_params, point_in_ellipsoid, plot_ellipses, \
     EllipsoidParams, maha_ellipsoid, circle_to_ellipsoid, ellipsoid_to_circle
@@ -32,9 +33,11 @@ def test_ellipsoid_clustering():
                   log_likelihood=log_likelihood)
 
     n = 1000
-    live_points = draw_uniform_samples(random.PRNGKey(43),
-                                       num_live_points=n,
-                                       model=model)
+    keys = random.split(random.PRNGKey(42), n)
+    live_points = draw_uniform_samples(
+        keys=keys,
+        model=model
+    )
     keep = live_points.log_L > log_likelihood(1.1, 1.1)
     reservoir: Sample = jax.tree.map(lambda x: x[keep], live_points)
     plt.scatter(reservoir.U_sample[:, 0], reservoir.U_sample[:, 1])
@@ -89,13 +92,16 @@ def test_ellipsoid_params():
 
     N = 2
     random_rotation = random_ortho_matrix(random.PRNGKey(0), n=N, special_orthogonal=True)
-    random_radii = random.uniform(random.PRNGKey(1), shape=(N,))
+    random_radii = random.uniform(random.PRNGKey(1), shape=(N,), dtype=mp_policy.measure_dtype)
     cov = random_rotation @ jnp.diag(random_radii ** 2) @ random_rotation.T
 
-    X = random.multivariate_normal(random.PRNGKey(42),
-                                   mean=jnp.zeros(N),
-                                   cov=cov,
-                                   shape=(n,))
+    X = random.multivariate_normal(
+        random.PRNGKey(42),
+        mean=jnp.zeros(N),
+        cov=cov,
+        shape=(n,),
+        dtype=mp_policy.measure_dtype
+    )
 
     mu, radii, rotation = ellipsoid_params(points=X, mask=jnp.ones(n, jnp.bool_))
     inside = vmap(lambda x: point_in_ellipsoid(x, mu, radii, rotation))(X)

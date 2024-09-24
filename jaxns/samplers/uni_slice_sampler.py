@@ -1,21 +1,20 @@
-from typing import TypeVar, NamedTuple, Tuple
+import dataclasses
+from typing import NamedTuple, Tuple, Any
 
 import jax
 from jax import numpy as jnp, random, lax
 
 from jaxns.framework.bases import BaseAbstractModel
 from jaxns.internals.cumulative_ops import cumulative_op_static
-from jaxns.internals.types import PRNGKey, FloatArray, BoolArray, Sample, float_type, int_type, \
-    StaticStandardNestedSamplerState, \
-    IntArray, UType, StaticStandardSampleCollection
-from jaxns.samplers.abc import SamplerState
+from jaxns.internals.mixed_precision import mp_policy
+from jaxns.internals.types import PRNGKey, FloatArray, BoolArray, IntArray, UType
+from jaxns.nested_samplers.common.types import Sample, SampleCollection, LivePointCollection
+from jaxns.samplers.abc import EphemeralState
 from jaxns.samplers.bases import SeedPoint, BaseAbstractMarkovSampler
 
 __all__ = [
     'UniDimSliceSampler'
 ]
-
-T = TypeVar('T')
 
 
 def _sample_direction(n_key: PRNGKey, ndim: int) -> FloatArray:
@@ -30,8 +29,8 @@ def _sample_direction(n_key: PRNGKey, ndim: int) -> FloatArray:
         direction: [D] direction from S^(D-1)
     """
     if ndim == 1:
-        return jnp.ones(())
-    direction = random.normal(n_key, shape=(ndim,), dtype=float_type)
+        return jnp.ones((), mp_policy.measure_dtype)
+    direction = random.normal(n_key, shape=(ndim,), dtype=mp_policy.measure_dtype)
     direction /= jnp.linalg.norm(direction)
     return direction
 
@@ -48,12 +47,15 @@ def _slice_bounds(point_U0: FloatArray, direction: FloatArray) -> Tuple[FloatArr
         left_bound: left most point (<= 0).
         right_bound: right most point (>= 0).
     """
-    t1 = (1. - point_U0) / direction
-    t1_right = jnp.min(jnp.where(t1 >= 0., t1, jnp.inf))
-    t1_left = jnp.max(jnp.where(t1 <= 0., t1, -jnp.inf))
+    zero = jnp.zeros((), mp_policy.measure_dtype)
+    one = jnp.ones((), mp_policy.measure_dtype)
+    inf = jnp.full((), jnp.inf, mp_policy.measure_dtype)
+    t1 = (one - point_U0) / direction
+    t1_right = jnp.min(jnp.where(t1 >= zero, t1, inf))
+    t1_left = jnp.max(jnp.where(t1 <= zero, t1, -inf))
     t0 = -point_U0 / direction
-    t0_right = jnp.min(jnp.where(t0 >= 0., t0, jnp.inf))
-    t0_left = jnp.max(jnp.where(t0 <= 0., t0, -jnp.inf))
+    t0_right = jnp.min(jnp.where(t0 >= zero, t0, inf))
+    t0_left = jnp.max(jnp.where(t0 <= zero, t0, -inf))
     right_bound = jnp.minimum(t0_right, t1_right)
     left_bound = jnp.maximum(t0_left, t1_left)
     return left_bound, right_bound
@@ -75,7 +77,7 @@ def _pick_point_in_interval(key: PRNGKey, point_U0: FloatArray, direction: Float
         point_U: [D]
         t: selection point between [left, right]
     """
-    u = random.uniform(key, dtype=float_type)
+    u = random.uniform(key, dtype=mp_policy.measure_dtype)
     t = left + u * (right - left)
     point_U = point_U0 + t * direction
     # close_to_zero = (left >= -10*jnp.finfo(left.dtype).eps) & (right <= 10*jnp.finfo(right.dtype).eps)
@@ -89,9 +91,10 @@ def _shrink_interval(key: PRNGKey, t: FloatArray, left: FloatArray, right: Float
     """
     Not successful proposal, so shrink, optionally apply exponential shrinkage.
     """
+    zero = jnp.zeros_like(t)
     # witout exponential shrinkage, we shrink to failed proposal point, which is 100% correct.
-    left = jnp.where(t < 0., t, left)
-    right = jnp.where(t > 0., t, right)
+    left = jnp.where(t < zero, t, left)
+    right = jnp.where(t > zero, t, right)
 
     if midpoint_shrink:
         # For this to be correct it must be invariant to monotonic rescaling of the likelihood.
@@ -100,8 +103,8 @@ def _shrink_interval(key: PRNGKey, t: FloatArray, left: FloatArray, right: Float
         # Extended version: shrink to random point in interval.
         # do_midpoint_shrink = random.uniform(key) < 0.5
         # alpha = 1  # 0.8  # random.uniform(key)
-        left = jnp.where((t < 0.), alpha * left, left)
-        right = jnp.where((t > 0.), alpha * right, right)
+        left = jnp.where((t < zero), alpha * left, left)
+        right = jnp.where((t > zero), alpha * right, right)
     return left, right
 
 
@@ -186,7 +189,7 @@ def _new_proposal(key: PRNGKey, seed_point: SeedPoint, midpoint_shrink: bool, al
             _sample_direction(n_key, seed_point.U0.size),
             direction
         )
-        num_likelihood_evaluations = jnp.full((), 1, int_type)
+        num_likelihood_evaluations = jnp.full((), 1, mp_policy.count_dtype)
         (left, right) = _slice_bounds(
             point_U0=seed_point.U0,
             direction=direction
@@ -194,7 +197,7 @@ def _new_proposal(key: PRNGKey, seed_point: SeedPoint, midpoint_shrink: bool, al
         left = jnp.zeros_like(left)
     else:
         direction = _sample_direction(n_key, seed_point.U0.size)
-        num_likelihood_evaluations = jnp.full((), 0, int_type)
+        num_likelihood_evaluations = jnp.full((), 0, mp_policy.count_dtype)
         if perfect:
             (left, right) = _slice_bounds(
                 point_U0=seed_point.U0,
@@ -230,42 +233,47 @@ def _new_proposal(key: PRNGKey, seed_point: SeedPoint, midpoint_shrink: bool, al
     return carry.point_U, carry.log_L, carry.num_likelihood_evaluations
 
 
-class UniDimSliceSampler(BaseAbstractMarkovSampler):
+@dataclasses.dataclass(eq=False)
+class UniDimSliceSampler(BaseAbstractMarkovSampler[SampleCollection]):
     """
-    Slice sampler for a single dimension. Produces correlated samples.
+    Slice sampler for a single dimension.
+
+    Args:
+        model: AbstractModel
+        num_slices: number of slices between acceptance. Note: some other software use units of prior dimension.
+        midpoint_shrink: if true then contract to the midpoint of interval on rejection. Otherwise, contract to
+            rejection point. Speeds up convergence, but introduces minor auto-correlation.
+        num_phantom_save: number of phantom samples to save. Phantom samples are samples that meeting the constraint
+            but are not accepted. They can be used for numerous things, e.g. to estimate the evidence uncertainty.
+        perfect: if true then perform exponential shrinkage from maximal bounds, requiring no step-out procedure.
+            Otherwise, uses a doubling procedure (exponentially finding bracket).
+            Note: Perfect is a misnomer, as perfection also depends on the number of slices between acceptance.
+        gradient_slice: if true then always slice along increasing gradient direction.
+        adaptive_shrink: if true then shrink interval to random point in interval, rather than midpoint.
     """
 
-    def __init__(self, model: BaseAbstractModel, num_slices: int, num_phantom_save: int, midpoint_shrink: bool,
-                 perfect: bool, gradient_slice: bool = False, adaptive_shrink: bool = False):
-        """
-        Unidimensional slice sampler.
+    model: BaseAbstractModel
+    num_slices: int
+    num_phantom_save: int
+    midpoint_shrink: bool
+    perfect: bool
+    gradient_slice: bool = False
+    adaptive_shrink: bool = False
 
-        Args:
-            model: AbstractModel
-            num_slices: number of slices between acceptance. Note: some other software use units of prior dimension.
-            midpoint_shrink: if true then contract to the midpoint of interval on rejection. Otherwise, contract to
-                rejection point. Speeds up convergence, but introduces minor auto-correlation.
-            num_phantom_save: number of phantom samples to save. Phantom samples are samples that meeting the constraint
-                but are not accepted. They can be used for numerous things, e.g. to estimate the evidence uncertainty.
-            perfect: if true then perform exponential shrinkage from maximal bounds, requiring no step-out procedure.
-                Otherwise, uses a doubling procedure (exponentially finding bracket).
-                Note: Perfect is a misnomer, as perfection also depends on the number of slices between acceptance.
-            gradient_slice: if true then always slice along increasing gradient direction.
-            adaptive_shrink: if true then shrink interval to random point in interval, rather than midpoint.
-        """
-        super().__init__(model=model)
-        if num_slices < 1:
-            raise ValueError(f"num_slices should be >= 1, got {num_slices}.")
-        if num_phantom_save < 0:
-            raise ValueError(f"num_phantom_save should be >= 0, got {num_phantom_save}.")
-        if num_phantom_save >= num_slices:
-            raise ValueError(f"num_phantom_save should be < num_slices, got {num_phantom_save} >= {num_slices}.")
-        self.num_slices = int(num_slices)
-        self.num_phantom_save = int(num_phantom_save)
-        self.midpoint_shrink = bool(midpoint_shrink)
-        self.perfect = bool(perfect)
-        self.gradient_slice = bool(gradient_slice)
-        self.adaptive_shrink = bool(adaptive_shrink)
+    def __post_init__(self):
+        if self.num_slices < 1:
+            raise ValueError(f"num_slices should be >= 1, got {self.num_slices}.")
+        if self.num_phantom_save < 0:
+            raise ValueError(f"num_phantom_save should be >= 0, got {self.num_phantom_save}.")
+        if self.num_phantom_save >= self.num_slices:
+            raise ValueError(
+                f"num_phantom_save should be < num_slices, got {self.num_phantom_save} >= {self.num_slices}.")
+        self.num_slices = int(self.num_slices)
+        self.num_phantom_save = int(self.num_phantom_save)
+        self.midpoint_shrink = bool(self.midpoint_shrink)
+        self.perfect = bool(self.perfect)
+        self.gradient_slice = bool(self.gradient_slice)
+        self.adaptive_shrink = bool(self.adaptive_shrink)
         if self.adaptive_shrink:
             raise NotImplementedError("Adaptive shrinkage not implemented.")
         if not self.perfect:
@@ -274,31 +282,29 @@ class UniDimSliceSampler(BaseAbstractMarkovSampler):
     def num_phantom(self) -> int:
         return self.num_phantom_save
 
-    def pre_process(self, state: StaticStandardNestedSamplerState) -> SamplerState:
-        sample_collection = jax.tree.map(lambda x: x[state.front_idx], state.sample_collection)
+    def _pre_process(self, ephemeral_state: EphemeralState) -> Any:
         if self.perfect:  # nothing needed
-            return (sample_collection,)
+            return ephemeral_state.live_points_collection
         else:  # TODO: step out with doubling, using ellipsoidal clustering
-            return (sample_collection,)  # multi_ellipsoidal_params()
+            return ephemeral_state.live_points_collection
 
-    def post_process(self, sample_collection: StaticStandardSampleCollection,
-                     sampler_state: SamplerState) -> SamplerState:
+    def _post_process(self, ephemeral_state: EphemeralState,
+                      sampler_state: Any) -> Any:
         if self.perfect:  # nothing needed
-            return (sample_collection,)
+            return ephemeral_state.live_points_collection
         else:  # TODO: step out with doubling, using ellipsoidal clustering, could shrink ellipsoids
-            return (sample_collection,)
+            return ephemeral_state.live_points_collection
 
-    def get_seed_point(self, key: PRNGKey, sampler_state: SamplerState,
+    def get_seed_point(self, key: PRNGKey, sampler_state: LivePointCollection,
                        log_L_constraint: FloatArray) -> SeedPoint:
 
-        sample_collection: StaticStandardSampleCollection
-        (sample_collection,) = sampler_state
+        sample_collection = sampler_state
 
         select_mask = sample_collection.log_L > log_L_constraint
         # If non satisfied samples, then choose randomly from them.
         any_satisfied = jnp.any(select_mask)
-        yes_ = jnp.asarray(0., float_type)
-        no_ = jnp.asarray(-jnp.inf, float_type)
+        yes_ = jnp.asarray(0., jnp.float32)
+        no_ = jnp.asarray(-jnp.inf, jnp.float32)
         unnorm_select_log_prob = jnp.where(
             any_satisfied,
             jnp.where(select_mask, yes_, no_),
@@ -309,12 +315,12 @@ class UniDimSliceSampler(BaseAbstractMarkovSampler):
         sample_idx = jnp.argmax(g + unnorm_select_log_prob)
 
         return SeedPoint(
-            U0=sample_collection.U_samples[sample_idx],
+            U0=sample_collection.U_sample[sample_idx],
             log_L0=sample_collection.log_L[sample_idx]
         )
 
     def get_sample_from_seed(self, key: PRNGKey, seed_point: SeedPoint, log_L_constraint: FloatArray,
-                             sampler_state: SamplerState) -> Tuple[Sample, Sample]:
+                             sampler_state: SampleCollection) -> Tuple[Sample, Sample]:
 
         class XType(NamedTuple):
             key: jax.Array
@@ -345,7 +351,7 @@ class UniDimSliceSampler(BaseAbstractMarkovSampler):
             U_sample=seed_point.U0,
             log_L_constraint=log_L_constraint,
             log_L=seed_point.log_L0,
-            num_likelihood_evaluations=jnp.asarray(0, int_type)
+            num_likelihood_evaluations=jnp.asarray(0, mp_policy.count_dtype)
         )
         xs = XType(
             key=random.split(key, self.num_slices),
@@ -361,22 +367,11 @@ class UniDimSliceSampler(BaseAbstractMarkovSampler):
         # Take only the last num_phantom_save phantom samples
         phantom_samples: Sample = jax.tree.map(lambda x: x[-(self.num_phantom_save + 1):-1], cumulative_samples)
 
-        # Due to the cumulative nature of the sampler, the final number of likelihood evaluations should be divided
-        # equally among the accepted sample and retained phantom samples.
-        num_likelihood_evaluations_per_phantom_sample = (
-                final_sample.num_likelihood_evaluations / (self.num_phantom_save + 1)
-        ).astype(int_type)
-        num_likelihood_evaluations_per_accepted_sample = (
-                final_sample.num_likelihood_evaluations - num_likelihood_evaluations_per_phantom_sample * self.num_phantom_save
-        )
-        final_sample = final_sample._replace(
-            num_likelihood_evaluations=num_likelihood_evaluations_per_accepted_sample
-        )
         phantom_samples = phantom_samples._replace(
             num_likelihood_evaluations=jnp.full(
                 phantom_samples.num_likelihood_evaluations.shape,
-                num_likelihood_evaluations_per_phantom_sample,
-                phantom_samples.num_likelihood_evaluations.dtype
+                0,
+                mp_policy.count_dtype
             )
         )
         return final_sample, phantom_samples

@@ -6,6 +6,8 @@ from jax import random, vmap, lax
 from jax._src.scipy.special import logsumexp
 from jax.scipy.stats import multivariate_normal
 
+from jaxns.internals.mixed_precision import mp_policy
+
 
 def initialize_params(key, data, n_components: int):
     """
@@ -31,7 +33,7 @@ def initialize_params(key, data, n_components: int):
     covariances = jnp.repeat(cov[None, ...], n_components, axis=0)
 
     # Initialize mixture weights uniformly
-    log_weights = jnp.full((n_components,), -jnp.log(n_components))
+    log_weights = jnp.full((n_components,), -jnp.log(n_components), mp_policy.measure_dtype)
 
     return means, covariances, log_weights
 
@@ -56,7 +58,7 @@ def e_step(data, means, covariances, log_weights, mask):
     # Compute the probabilities of each data point belonging to each Gaussian
     logpdf = vmap(lambda m, c: multivariate_normal.logpdf(data, m, c))(means, covariances)  # num_clusters, num_data
     if mask is not None:
-        logpdf = jnp.where(mask[None, :], logpdf, -jnp.inf)
+        logpdf = jnp.where(mask[None, :], logpdf, mp_policy.cast_to_measure(-jnp.inf))
     logpdf_weighted = logpdf + log_weights[:, None]
     # Normalize probabilities
     log_responsibilities = logpdf_weighted - logsumexp(logpdf_weighted, axis=0)
@@ -88,7 +90,9 @@ def m_step(data, log_responsibilities):
 
     covariances = jnp.einsum("cn,cnd,cne->cde", weighted_responsibilities, centered_data, centered_data)
     covariances = covariances + 1e-4 * jnp.eye(d)
-    return means, covariances, log_weights
+    return (
+        mp_policy.cast_to_measure(means), mp_policy.cast_to_measure(covariances), mp_policy.cast_to_measure(log_weights)
+    )
 
 
 # No invariance under jit...
@@ -118,7 +122,7 @@ def em_gmm(key, data, n_components, mask: Union[jax.Array, None] = None, n_iters
         new_params = m_step(data, log_responsibilities)
         done = False
         for param, new_param in zip(params, new_params):
-            done = done | (jnp.all(jnp.abs(jnp.array(param) - jnp.array(new_param)) < tol)) | (i >= n_iters)
+            done = done | (jnp.all(jnp.abs(jnp.asarray(param) - jnp.asarray(new_param)) < tol)) | (i >= n_iters)
 
         return done, i + 1, new_params
 
@@ -129,7 +133,7 @@ def em_gmm(key, data, n_components, mask: Union[jax.Array, None] = None, n_iters
     _, total_iters, params = lax.while_loop(
         cond,
         body,
-        (jnp.asarray(False), jnp.asarray(0), params)
+        (jnp.asarray(False, jnp.bool_), jnp.asarray(0, jnp.int32), params)
     )
 
     cluster_id = jnp.argmax(e_step(data, *params, mask=mask), axis=0)

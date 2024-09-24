@@ -1,13 +1,12 @@
 from typing import NamedTuple, List, Tuple, Union, Optional
 
 import jax
-from jax import numpy as jnp, lax, core
-from jax._src.numpy import lax_numpy
+import numpy as np
+from jax import numpy as jnp, lax
 
-from jaxns.internals.cumulative_ops import cumulative_op_dynamic, scan_associative_cumulative_op, cumulative_op_static
-from jaxns.internals.maps import remove_chunk_dim
-from jaxns.internals.types import MeasureType, IntArray, float_type, FloatArray, StaticStandardNestedSamplerState, \
-    int_type
+from jaxns.internals.cumulative_ops import cumulative_op_dynamic, cumulative_op_static
+from jaxns.internals.mixed_precision import mp_policy
+from jaxns.internals.types import MeasureType, IntArray, FloatArray
 
 
 class SampleTreeGraph(NamedTuple):
@@ -17,9 +16,13 @@ class SampleTreeGraph(NamedTuple):
     Each node has exactly 1 sender (except the root node).
     Each node has zero or more receivers.
     The root is always node 0.
+
+    Args:
+        sender_node_idx: [N] with values in [0, N], the sender node for each node.
+        log_L: [N] with values in [-inf, +inf], the log likelihood of each node.
     """
     sender_node_idx: IntArray  # [N] with values in [0, N]
-    log_L: MeasureType  # [N]
+    log_L: MeasureType  # [N] with values in [-inf, +inf]
 
 
 class SampleLivePointCounts(NamedTuple):
@@ -31,17 +34,32 @@ def count_crossed_edges(sample_tree: SampleTreeGraph, num_samples: Optional[IntA
     def _argsort(
             a: jax.Array
     ):
-        arr = jnp.asarray(a)
         axis_num = 0
-        use_64bit_index = not core.is_constant_dim(arr.shape[axis_num]) or arr.shape[axis_num] >= (1 << 31)
-        iota = lax.broadcasted_iota(lax_numpy.int64 if use_64bit_index else lax_numpy.int_, arr.shape, axis_num)
-        _, perm = lax.sort_key_val(arr, iota, dimension=axis_num)
+        iota = lax.broadcasted_iota(mp_policy.index_dtype, np.shape(a), axis_num)
+        _, perm = lax.sort_key_val(a, iota, dimension=axis_num)
         return perm
 
     N = sample_tree.sender_node_idx.size
 
-    fake_edges = 0
-    if num_samples is not None:
+    # Construct N edges from N+1 nodes
+
+    log_L_nodes = jnp.concatenate([jnp.asarray([-jnp.inf], mp_policy.measure_dtype), sample_tree.log_L])  # [N+1]
+
+    sort_idx = _argsort(log_L_nodes)  # [N+1]
+
+    # Count out-degree of each node, how many nodes have parent_idx==idx.
+    # At least one node will have zero, but we don't know which.
+    # Could just use sender (unsorted)
+    # out_degree = jnp.bincount(sample_tree.sender_node_idx, length=N + 1).astype(jnp.int32)  # [N+1]
+    out_degree = jnp.zeros(N + 1, jnp.int32).at[
+        jax.lax.max(sample_tree.sender_node_idx, jnp.zeros((), sample_tree.sender_node_idx.dtype))
+    ].add(jnp.ones((), jnp.int32))
+
+    one = jnp.ones((), out_degree.dtype)
+
+    if num_samples is None:
+        fake_edges = jnp.zeros((), out_degree.dtype)
+    else:
         # We put edges from root to +inf for the indices that are not used.
         # Since all lines will cross these injected edges, we subtract them from the total.
         # Note: these values are set by default, so we don't need to do anything.
@@ -51,31 +69,18 @@ def count_crossed_edges(sample_tree: SampleTreeGraph, num_samples: Optional[IntA
         #     sender_node_idx=jnp.where(mask, sample_tree.sender_node_idx, 0),
         #     log_L=jnp.where(mask, sample_tree.log_L, jnp.inf)
         # )
-
-        fake_edges = N - num_samples
-
-    # Construct N edges from N+1 nodes
-
-    log_L_nodes = jnp.concatenate([jnp.asarray([-jnp.inf], float_type), sample_tree.log_L])  # [N+1]
-
-    sender = sample_tree.sender_node_idx  # [N]
-    sort_idx = _argsort(log_L_nodes)  # [N+1]
-
-    # Count out-degree of each node, how many nodes have parent_idx==idx.
-    # At least one node will have zero, but we don't know which.
-    # Could just use sender (unsorted)
-    out_degree = jnp.bincount(sender, length=N + 1)  # [N+1]
+        fake_edges = jnp.array(N - num_samples, out_degree.dtype)
 
     def op(crossed_edges, last_node):
         # init = 1
         # delta = degree(nodes[last_node]) - 1
-        crossed_edges += out_degree[last_node] - 1
+        crossed_edges += out_degree[last_node] - one
         return crossed_edges
 
     if num_samples is not None:
         _, crossed_edges_sorted = cumulative_op_dynamic(
             op=op,
-            init=jnp.asarray(1, out_degree.dtype),
+            init=one,
             xs=sort_idx,
             stop_idx=num_samples,
             pre_op=False,
@@ -84,7 +89,7 @@ def count_crossed_edges(sample_tree: SampleTreeGraph, num_samples: Optional[IntA
     else:
         _, crossed_edges_sorted = cumulative_op_static(
             op=op,
-            init=jnp.asarray(1, out_degree.dtype),
+            init=one,
             xs=sort_idx,
             pre_op=False
         )
@@ -93,7 +98,7 @@ def count_crossed_edges(sample_tree: SampleTreeGraph, num_samples: Optional[IntA
         crossed_edges_sorted -= fake_edges
 
     # Since the root node is always 0, we need to slice and subtract 1 to get the sample index.
-    samples_indices = sort_idx[1:] - 1  # [N]
+    samples_indices = sort_idx[1:] - one  # [N]
 
     # The last node is the accumulation, which is always 0, so we drop it.
     num_live_points = crossed_edges_sorted[:-1]  # [N]
@@ -344,76 +349,3 @@ def concatenate_sample_trees(trees: List[SampleTreeGraph],
         log_L=jnp.concatenate([t.log_L for t in shifted_trees])
     )
     return output
-
-
-def unbatch_state(batched_state: StaticStandardNestedSamplerState) -> StaticStandardNestedSamplerState:
-    """
-    Remove the batch dimension from the state. The returned samples will be sorted by log_L,
-    so assumes,
-
-        log_L[i]==+inf ==> i is not a sample
-
-    Args:
-        batched_state: the state with batch dimension
-
-    Returns:
-        the state without batch dimension
-    """
-    if len(batched_state.sample_collection.log_L.shape) == 1:
-        # Already unbatched
-        return batched_state
-
-    if batched_state.sample_collection.log_L.shape[0] == 1:
-        # Remove batch dimension is all that's needed
-        return remove_chunk_dim(batched_state)
-
-    key = batched_state.key[0]  # Take first key
-    next_sample_idx = jnp.sum(batched_state.next_sample_idx)  # Next insert will be sum
-    # Shifts are the cumulative sum of the number of samples per batch dimension
-    shifts = [0]
-    for i in range(len(batched_state.next_sample_idx) - 1):
-        shifts.append(shifts[-1] + batched_state.sample_collection.log_L.shape[1])
-    shifts = jnp.asarray(shifts, int_type)
-
-    # shifts = jnp.concatenate([jnp.asarray([0], int_type), jnp.cumsum(batched_state.next_sample_idx[:-1])])
-    sender_node_idx = jnp.where(
-        batched_state.sample_collection.sender_node_idx.astype(jnp.bool_),
-        batched_state.sample_collection.sender_node_idx + shifts[:, None],
-        batched_state.sample_collection.sender_node_idx
-    )
-    # Front indices are shifted like senders
-    front_idx = remove_chunk_dim(
-        batched_state.front_idx + shifts[:, None]
-    )
-
-    unbatched_state = StaticStandardNestedSamplerState(
-        key=key,
-        next_sample_idx=next_sample_idx,
-        sample_collection=remove_chunk_dim(
-            batched_state.sample_collection._replace(sender_node_idx=sender_node_idx)
-        ),
-        front_idx=front_idx
-    )
-
-    # Some non-samples will interleave samples, so we sort by log_L, carefully adjusting sender_node_idx to match.
-
-    sort_idx = jnp.argsort(unbatched_state.sample_collection.log_L)
-    inverse_idx = jnp.argsort(sort_idx)
-
-    # Shift the front_idx and sender idx
-    front_idx = inverse_idx[unbatched_state.front_idx]
-    sender_node_idx = jnp.where(
-        unbatched_state.sample_collection.sender_node_idx.astype(jnp.bool_),
-        inverse_idx[unbatched_state.sample_collection.sender_node_idx - 1] + 1,
-        jnp.zeros_like(unbatched_state.sample_collection.sender_node_idx)
-    )
-    unbatched_state = unbatched_state._replace(
-        sample_collection=unbatched_state.sample_collection._replace(sender_node_idx=sender_node_idx)
-    )
-
-    # Rearrange the samples
-    unbatched_state = unbatched_state._replace(
-        sample_collection=jax.tree.map(lambda x: x[sort_idx], unbatched_state.sample_collection),
-        front_idx=front_idx
-    )
-    return unbatched_state

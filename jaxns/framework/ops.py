@@ -8,8 +8,10 @@ from jax import numpy as jnp, lax
 from jaxns.framework.bases import PriorModelType, BaseAbstractPrior, PriorModelGen
 from jaxns.framework.prior import InvalidPriorName, SingularPrior, Prior
 from jaxns.internals.maps import pytree_unravel
-from jaxns.internals.types import UType, XType, float_type, LikelihoodInputType, FloatArray, LikelihoodType, PRNGKey, \
+from jaxns.internals.types import UType, XType, LikelihoodInputType, FloatArray, LikelihoodType, PRNGKey, \
     isinstance_namedtuple, WType, RandomVariableType
+from jaxns.internals.mixed_precision import float_type, mp_policy
+import numpy as np
 
 __all__ = [
     'simulate_prior_model'
@@ -54,7 +56,7 @@ def compute_U_ndims(prior_model: PriorModelType) -> int:
             prior: BaseAbstractPrior = gen.send(prior_response)
             d = prior.base_ndims
             U_ndims += d
-            u = jnp.full(prior.base_shape, 0.5, float_type)
+            u = jnp.full(prior.base_shape, 0.5, mp_policy.measure_dtype)
             prior_response = prior.forward(u)
             if prior.name is not None:
                 if prior.name in names:
@@ -79,7 +81,7 @@ def simulate_prior_model(key: PRNGKey, prior_model: PriorModelType) -> Tuple[Lik
     # parse prior
     U_placeholder, _, W_placeholder = parse_prior(prior_model=prior_model)
     _, unravel_fn = pytree_unravel(W_placeholder)
-    U = jax.random.uniform(key, shape=U_placeholder.shape, dtype=U_placeholder.dtype)
+    U = jax.random.uniform(key, shape=U_placeholder.shape, dtype=mp_policy.measure_dtype)
     W = unravel_fn(U)
     return prepare_input(W=W, prior_model=prior_model), transform(W=W, prior_model=prior_model)
 
@@ -106,7 +108,7 @@ def parse_prior(prior_model: PriorModelType) -> Tuple[UType, XType, WType]:
             prior: BaseAbstractPrior = gen.send(prior_response)
             d = prior.base_ndims
             U_ndims += d
-            u = jnp.full(prior.base_shape, 0.5, float_type)
+            u = jnp.full(prior.base_shape, 0.5, mp_policy.measure_dtype)
             W_placeholder += (u,)
             prior_response = prior.forward(u)
             if prior.name is not None:
@@ -117,7 +119,7 @@ def parse_prior(prior_model: PriorModelType) -> Tuple[UType, XType, WType]:
                     X_placeholder[prior.name] = prior_response
         except StopIteration:
             break
-    U_placeholder = jnp.zeros((U_ndims,), float_type)
+    U_placeholder = jnp.full((U_ndims,), 0.5, mp_policy.measure_dtype)
     return U_placeholder, X_placeholder, W_placeholder
 
 
@@ -145,7 +147,7 @@ def parse_joint(prior_model: PriorModelType, log_likelihood: LikelihoodType) -> 
             prior: BaseAbstractPrior = gen.send(prior_response)
             d = prior.base_ndims
             U_ndims += d
-            u = jnp.full(prior.base_shape, 0.5, float_type)
+            u = jnp.full(prior.base_shape, 0.5, mp_policy.measure_dtype)
             W_placeholder += (u,)
             prior_response = prior.forward(u)
             if prior.name is not None:
@@ -160,8 +162,8 @@ def parse_joint(prior_model: PriorModelType, log_likelihood: LikelihoodType) -> 
                 output = (output,)
             break
     likelihood_input_placeholder = output
-    log_L_placeholder = jnp.asarray(log_likelihood(*output), float_type)
-    U_placeholder = jnp.zeros((U_ndims,), float_type)
+    log_L_placeholder = mp_policy.cast_to_measure(log_likelihood(*output))
+    U_placeholder = jnp.full((U_ndims,), 0.5, mp_policy.measure_dtype)
     return U_placeholder, X_placeholder, W_placeholder, likelihood_input_placeholder, log_L_placeholder
 
 
@@ -292,7 +294,7 @@ def compute_log_prob_prior(W: WType, prior_model: PriorModelType) -> FloatArray:
         except StopIteration:
             break
     if len(log_prob) == 0:
-        return jnp.asarray(0., float_type)
+        return jnp.asarray(0., mp_policy.measure_dtype)
     else:
         return sum(log_prob[1:], log_prob[0])
 
@@ -313,14 +315,14 @@ def compute_log_likelihood(W: WType, prior_model: PriorModelType, log_likelihood
     """
 
     V = prepare_input(W=W, prior_model=prior_model)
-    log_L = jnp.asarray(log_likelihood(*V), float_type)
-    if log_L.size != 1:
+    log_L = mp_policy.cast_to_measure(log_likelihood(*V))
+    if np.size(log_L) != 1:
         raise ValueError(f"Log likelihood should be scalar, but got {log_L.shape}.")
     if log_L.shape != ():
         log_L = lax.reshape(log_L, ())
     if not allow_nan:
         is_nan = lax.ne(log_L, log_L)
-        log_L = lax.select(is_nan, jnp.asarray(-jnp.inf, log_L.dtype), log_L)
+        log_L = lax.select(is_nan, jnp.asarray(-jnp.inf, mp_policy.measure_dtype), log_L)
     return log_L
 
 

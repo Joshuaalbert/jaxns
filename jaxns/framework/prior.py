@@ -9,7 +9,8 @@ import jaxns.framework.context as ctx
 from jaxns.framework.bases import BaseAbstractPrior, BaseAbstractDistribution
 from jaxns.framework.wrapped_tfp_distribution import WrappedTFPDistribution
 from jaxns.internals.constraint_bijections import quick_unit
-from jaxns.internals.types import FloatArray, IntArray, BoolArray, XType, UType, float_type
+from jaxns.internals.types import FloatArray, IntArray, BoolArray, XType, UType
+from jaxns.internals.mixed_precision import float_type
 
 tfpd = tfp.distributions
 

@@ -7,8 +7,8 @@ from jax import numpy as jnp, vmap, random, lax
 from jax._src.scipy.special import gammaln
 
 from jaxns.internals.log_semiring import LogSpace
-from jaxns.internals.types import IntArray, FloatArray, PRNGKey, BoolArray
-from jaxns.internals.types import UType, int_type, float_type
+from jaxns.internals.mixed_precision import mp_policy
+from jaxns.internals.types import IntArray, FloatArray, PRNGKey, BoolArray, UType
 from jaxns.samplers.multi_ellipsoid.em_gmm import em_gmm
 
 __all__ = [
@@ -31,7 +31,8 @@ class MultEllipsoidState(NamedTuple):
 
 def log_ellipsoid_volume(radii):
     D = radii.shape[0]
-    return jnp.log(2.) - jnp.log(D) + 0.5 * D * jnp.log(jnp.pi) - gammaln(0.5 * D) + jnp.sum(jnp.log(radii))
+    return mp_policy.cast_to_measure(
+        jnp.log(2.) - jnp.log(D) + 0.5 * D * jnp.log(jnp.pi) - gammaln(0.5 * D) + jnp.sum(jnp.log(radii)))
 
 
 def bounding_ellipsoid(points: UType, mask: FloatArray) -> Tuple[FloatArray, FloatArray]:
@@ -48,7 +49,7 @@ def bounding_ellipsoid(points: UType, mask: FloatArray) -> Tuple[FloatArray, Flo
     mu = jnp.average(points, weights=mask, axis=0)
     dx = points - mu
     cov = jnp.average(dx[:, :, None] * dx[:, None, :], weights=mask, axis=0)
-    return mu, cov
+    return mp_policy.cast_to_measure(mu), mp_policy.cast_to_measure(cov)
 
 
 def covariance_to_rotational(cov: jax.Array) -> Tuple[jax.Array, jax.Array]:
@@ -105,7 +106,7 @@ def ellipsoid_params(points: UType, mask: FloatArray) -> EllipsoidParams:
     # for all i (points[i] - mu) @ (L @ L.T) @ (points[i] - mu) <= scale**2
     rho = vmap(lambda x: maha_ellipsoid(x=x, mu=mu, radii=radii, rotation=rotation))(points)
 
-    rho_max = jnp.max(jnp.where(mask, rho, 0.))
+    rho_max = jnp.max(jnp.where(mask, rho, jnp.zeros((), rho.dtype)))
     radii *= jnp.sqrt(rho_max)
 
     return EllipsoidParams(mu=mu, radii=radii, rotation=rotation)
@@ -172,7 +173,9 @@ def point_in_ellipsoid(x: FloatArray, mu: FloatArray, radii: FloatArray, rotatio
     Returns:
         True iff x is inside the closed ellipse
     """
-    return jnp.less_equal(maha_ellipsoid(x, mu, radii, rotation), jnp.asarray(1., x.dtype))
+    # maha can be slightly bigger than 1, e.g.  maha=1.0000000000000004
+    # jax.debug.print("maha={maha}",maha=maha_ellipsoid(x, mu, radii, rotation))
+    return jnp.less_equal(maha_ellipsoid(x, mu, radii, rotation), jnp.asarray(1. + 1e-10, x.dtype))
 
 
 def sample_ellipsoid(key: PRNGKey, mu: FloatArray, radii: FloatArray, rotation: FloatArray,
@@ -193,13 +196,14 @@ def sample_ellipsoid(key: PRNGKey, mu: FloatArray, radii: FloatArray, rotation: 
 
     def _single_sample(key):
         direction_key, radii_key = random.split(key, 2)
-        direction = random.normal(direction_key, shape=radii.shape)
+        direction = random.normal(direction_key, shape=radii.shape, dtype=mp_policy.measure_dtype)
         direction = direction / jnp.linalg.norm(direction)
-        t = random.uniform(radii_key) ** (1. / radii.size)
+        t = random.uniform(radii_key, dtype=mp_policy.measure_dtype) ** jnp.asarray(1. / radii.size,
+                                                                                    mp_policy.measure_dtype)
         u_circ = direction * t
         R = rotation * radii
         u = R @ u_circ + mu
-        return u
+        return mp_policy.cast_to_measure(u)
 
     def body(state):
         (key, _, _) = state
@@ -211,7 +215,7 @@ def sample_ellipsoid(key: PRNGKey, mu: FloatArray, radii: FloatArray, rotation: 
     if unit_cube_constraint:
         (_, _, u) = lax.while_loop(lambda s: ~s[1],
                                    body,
-                                   (key, jnp.asarray(False), mu))
+                                   (key, jnp.asarray(False, jnp.bool_), mu))
     else:
         u = _single_sample(key)
     return u
@@ -268,18 +272,19 @@ def sample_multi_ellipsoid(key: PRNGKey, mu: FloatArray, radii: FloatArray, rota
     def body(state):
         (i, _, key, done, _) = state
         key, accept_key, sample_key, select_key = random.split(key, 4)
-        k = random.categorical(select_key, log_p)
+        k = random.categorical(select_key, log_p).astype(jnp.int32)
         mu_k = mu[k, :]
         radii_k = radii[k, :]
         rotation_k = rotation[k, :, :]
         u_test = sample_ellipsoid(sample_key, mu_k, radii_k, rotation_k, unit_cube_constraint=False)
         depth = compute_depth_ellipsoids(u_test, mu, radii, rotation, constraint_unit_cube=unit_cube_constraint)
         done = random.uniform(accept_key) < jnp.reciprocal(depth)
-        return (i + 1, k, key, done, u_test)
+        return (i + jnp.ones((), jnp.int32), k, key, done, u_test)
 
     _, k, _, _, u_accept = lax.while_loop(lambda state: ~state[3],
                                           body,
-                                          (jnp.array(0), jnp.array(0), key, jnp.array(False), jnp.zeros(D)))
+                                          (jnp.array(0, jnp.int32), jnp.array(0, jnp.int32), key,
+                                           jnp.array(False, jnp.bool_), jnp.zeros(D, mp_policy.measure_dtype)))
     return k, u_accept
 
 
@@ -294,7 +299,7 @@ def log_coverage_scale(log_VE, log_VS, D):
         D:
     Returns:
     """
-    return jnp.maximum(0., (log_VS - log_VE) / D)
+    return mp_policy.cast_to_measure(jnp.maximum(0., (log_VS - log_VE) / D))
 
 
 class ClusterSplitResult(NamedTuple):
@@ -345,15 +350,15 @@ def _multinest_split(key: PRNGKey, params: EllipsoidParams, points: FloatArray, 
         # Split the ellipsoid in half
         j_max = jnp.argmax(params.radii)
         n = jnp.where(jnp.arange(params.radii.size) == j_max,
-                      jnp.asarray(1., float_type),
-                      jnp.asarray(0., float_type)
+                      jnp.asarray(1., mp_policy.measure_dtype),
+                      jnp.asarray(0., mp_policy.measure_dtype)
                       )
         p = params.rotation @ (jnp.diag(params.radii) @ n)
         q = points - params.mu
         proj = q @ p
-        cluster_id = jnp.where(proj >= jnp.asarray(0., float_type),
-                               jnp.asarray(0, int_type),
-                               jnp.asarray(1, int_type))
+        cluster_id = jnp.where(proj >= jnp.asarray(0., mp_policy.measure_dtype),
+                               jnp.asarray(0, jnp.int32),
+                               jnp.asarray(1, jnp.int32))
         # # assign to random clusters: child0 or child1
         # cluster_id = random.randint(init_key, shape=(N,), minval=0, maxval=2)
 
@@ -406,7 +411,7 @@ def _multinest_split(key: PRNGKey, params: EllipsoidParams, points: FloatArray, 
         masked_log_abs_delta_F = jnp.where(mask, abs_delta_F.log_abs_val, -jnp.inf)
         reassign_idx = jnp.argmax(masked_log_abs_delta_F)
         new_id = jnp.where(masked_log_abs_delta_F[reassign_idx] > -jnp.inf,
-                           jnp.asarray(1, int_type) - cluster_id[reassign_idx],
+                           jnp.asarray(1, jnp.int32) - cluster_id[reassign_idx],
                            cluster_id[reassign_idx])
         new_cluster_id = cluster_id.at[reassign_idx].set(new_id)
 
@@ -435,7 +440,7 @@ def _multinest_split(key: PRNGKey, params: EllipsoidParams, points: FloatArray, 
                | jnp.isnan(log_V_sum)
 
         return CarryState(
-            iter=body_state.iter + jnp.asarray(1, int_type),
+            iter=body_state.iter + jnp.asarray(1, jnp.int32),
             done=done,
             cluster_id=new_cluster_id,
             log_VS0=log_VS0,
@@ -458,7 +463,7 @@ def _multinest_split(key: PRNGKey, params: EllipsoidParams, points: FloatArray, 
         log_VS1=jnp.array(-jnp.inf),
         params1=EllipsoidParams(mu=jnp.zeros(D), radii=jnp.zeros(D), rotation=jnp.eye(D)),
         min_loss=jnp.asarray(jnp.inf),
-        iters_no_improvement=jnp.asarray(0, int_type)
+        iters_no_improvement=jnp.asarray(0, jnp.int32)
     )
 
     output_state: CarryState = lax.while_loop(lambda state: ~state.done,
@@ -659,11 +664,11 @@ def ellipsoid_clustering(key: PRNGKey, points: FloatArray, log_VS: FloatArray,
     init_ellipsoid = init_ellipsoid._replace(radii=radii)
 
     # state is zeros except first ellipsoid
-    cluster_id = jnp.zeros(N, dtype=int_type)
+    cluster_id = jnp.zeros(N, dtype=jnp.int32)
     params = EllipsoidParams(
-        mu=jnp.zeros((K, D), float_type),
-        radii=jnp.zeros((K, D), float_type),
-        rotation=jnp.zeros((K, D, D), float_type)
+        mu=jnp.zeros((K, D), mp_policy.measure_dtype),
+        radii=jnp.zeros((K, D), mp_policy.measure_dtype),
+        rotation=jnp.zeros((K, D, D), mp_policy.measure_dtype)
     )
     params: EllipsoidParams = jax.tree.map(lambda x, y: x.at[0].set(y), params, init_ellipsoid)
     state = MultEllipsoidState(
@@ -672,9 +677,9 @@ def ellipsoid_clustering(key: PRNGKey, points: FloatArray, log_VS: FloatArray,
     )
 
     # Initial tracking parameters
-    log_VS_subclusters = jnp.asarray([log_VS] + [-jnp.inf] * (K - 1))
+    log_VS_subclusters = jnp.asarray([log_VS] + [-jnp.inf] * (K - 1), mp_policy.measure_dtype)
     done_splitting = jnp.isneginf(log_VS_subclusters)
-    split_depth = jnp.zeros([K], int_type)
+    split_depth = jnp.zeros([K], jnp.int32)
 
     # TODO: compare performance with scan
 
@@ -734,7 +739,7 @@ def ellipsoid_clustering(key: PRNGKey, points: FloatArray, log_VS: FloatArray,
                                    body_state.done_splitting.at[select_split].set(True))
 
         # If success => update split depth
-        new_depth = body_state.split_depth[select_split] + jnp.asarray(1, int_type)
+        new_depth = body_state.split_depth[select_split] + jnp.asarray(1, jnp.int32)
         split_depth = jnp.where(cluster_split_result.successful_split,
                                 body_state.split_depth.at[select_split].set(new_depth),
                                 body_state.split_depth)
@@ -752,7 +757,7 @@ def ellipsoid_clustering(key: PRNGKey, points: FloatArray, log_VS: FloatArray,
 
         # TODO: (verify) I think next_k should only increment if successful split, as otherwise it uses up space.
         next_k = jnp.where(cluster_split_result.successful_split,
-                           body_state.next_k + jnp.asarray(1, int_type),
+                           body_state.next_k + jnp.asarray(1, jnp.int32),
                            body_state.next_k)
 
         return CarryType(
@@ -770,7 +775,7 @@ def ellipsoid_clustering(key: PRNGKey, points: FloatArray, log_VS: FloatArray,
 
     init_body_state = CarryType(
         key=key,
-        next_k=jnp.asarray(1, int_type),
+        next_k=jnp.asarray(1, jnp.int32),
         state=state,
         done_splitting=done_splitting,
         split_depth=split_depth,

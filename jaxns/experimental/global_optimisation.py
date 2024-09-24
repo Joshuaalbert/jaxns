@@ -1,23 +1,19 @@
+import dataclasses
 import io
-from typing import NamedTuple, Optional, Union, TextIO, Tuple, List
+from typing import NamedTuple, Optional, Union, TextIO, Tuple
 
-import jax
-import jax.nn
 import jax.numpy as jnp
 import numpy as np
-from jax import lax, random, pmap
-from jax._src.lax import parallel
+from jaxlib import xla_client
 from jaxopt import NonlinearCG
 
 from jaxns.framework.bases import BaseAbstractModel
 from jaxns.internals.constraint_bijections import quick_unit, quick_unit_inverse
-from jaxns.internals.logging import logger
-from jaxns.internals.maps import remove_chunk_dim
-from jaxns.internals.types import PRNGKey, StaticStandardNestedSamplerState, BoolArray, StaticStandardSampleCollection, \
-    int_type, Sample, IntArray, UType, FloatArray, LikelihoodInputType, XType
-from jaxns.nested_sampler.standard_static import draw_uniform_samples, _inter_sync_shrinkage_process, \
-    create_init_termination_register
-from jaxns.samplers.bases import BaseAbstractSampler
+from jaxns.internals.mixed_precision import mp_policy
+from jaxns.internals.types import PRNGKey, IntArray, UType, FloatArray, LikelihoodInputType, XType
+from jaxns.nested_samplers import ShardedStaticNestedSampler
+from jaxns.nested_samplers.common.types import TerminationCondition, SampleCollection
+from jaxns.samplers.abc import AbstractSampler
 from jaxns.utils import _bit_mask
 
 __all__ = [
@@ -30,9 +26,11 @@ __all__ = [
 
 class GlobalOptimisationState(NamedTuple):
     key: PRNGKey
-    samples: Sample
-    num_likelihood_evaluations: IntArray
+    samples: SampleCollection
     num_samples: IntArray
+    relative_spread: FloatArray
+    absolute_spread: FloatArray
+    num_likelihood_evaluations: IntArray
 
 
 class GlobalOptimisationResults(NamedTuple):
@@ -48,124 +46,11 @@ class GlobalOptimisationResults(NamedTuple):
 
 
 class GlobalOptimisationTerminationCondition(NamedTuple):
-    max_likelihood_evaluations: Optional[Union[IntArray, int]] = None  # jnp.asarray(jnp.iinfo(int_type).max, int_type)
-    log_likelihood_contour: Optional[
-        Union[FloatArray, float]] = None  # jnp.asarray(jnp.finfo(float_type).max, float_type)
-    rtol: Optional[Union[FloatArray, float]] = None  # jnp.asarray(0., float_type)
-    atol: Optional[Union[FloatArray, float]] = None  # jnp.asarray(0., float_type)
-    min_efficiency: Optional[Union[FloatArray, float]] = None  # jnp.asarray(0., float_type)
-
-    def __and__(self, other):
-        return TerminationConditionConjunction(conds=[self, other])
-
-    def __or__(self, other):
-        return TerminationConditionDisjunction(conds=[self, other])
-
-
-class TerminationConditionConjunction(NamedTuple):
-    conds: List[Union[
-        'TerminationConditionDisjunction', 'TerminationConditionConjunction', GlobalOptimisationTerminationCondition]]
-
-
-class TerminationConditionDisjunction(NamedTuple):
-    conds: List[Union[
-        'TerminationConditionDisjunction', TerminationConditionConjunction, GlobalOptimisationTerminationCondition]]
-
-
-def determine_termination(term_cond: GlobalOptimisationTerminationCondition,
-                          state: GlobalOptimisationState) -> Tuple[BoolArray, IntArray]:
-    """
-    Determine if termination should happen. Termination Flags are bits:
-        0-bit -> 1: used maximum allowed number of likelihood evaluations
-        1-bit -> 2: reached goal log-likelihood contour
-        2-bit -> 4: relative spread of log-likelihood values below threshold
-        3-bit -> 8: absolute spread of log-likelihood values below threshold
-        4-bit -> 16: efficiency below threshold
-        5-bit -> 32: on a plateau (possibly local minimum, or due to numerical issues)
-
-    Multiple flags are summed together
-
-    Args:
-        term_cond: termination condition
-        state: global optimisation state
-
-    Returns:
-        boolean done signal, and termination reason
-    """
-
-    termination_reason = jnp.asarray(0, int_type)
-    done = jnp.asarray(False, jnp.bool_)
-
-    def _set_done_bit(bit_done, bit_reason, done, termination_reason):
-        if bit_done.size > 1:
-            raise RuntimeError("bit_done must be a scalar.")
-        done = jnp.bitwise_or(bit_done, done)
-        termination_reason += jnp.where(bit_done,
-                                        jnp.asarray(2 ** bit_reason, int_type),
-                                        jnp.asarray(0, int_type))
-        return done, termination_reason
-
-    if isinstance(term_cond, TerminationConditionConjunction):
-        for c in term_cond.conds:
-            _done, _reason = determine_termination(term_cond=c, state=state)
-            done = jnp.bitwise_and(_done, done)
-            termination_reason = jnp.bitwise_and(_reason, termination_reason)
-        return done, termination_reason
-
-    if isinstance(term_cond, TerminationConditionDisjunction):
-        for c in term_cond.conds:
-            _done, _reason = determine_termination(term_cond=c, state=state)
-            done = jnp.bitwise_or(_done, done)
-            termination_reason = jnp.bitwise_or(_reason, termination_reason)
-        return done, termination_reason
-
-    if term_cond.max_likelihood_evaluations is not None:
-        # used all points
-        reached_max_samples = state.num_likelihood_evaluations >= term_cond.max_likelihood_evaluations
-        done, termination_reason = _set_done_bit(reached_max_samples, 0,
-                                                 done=done, termination_reason=termination_reason)
-
-    if term_cond.log_likelihood_contour is not None:
-        # reached goal log-likelihood contour
-        reached_log_L_contour = jnp.max(state.samples.log_L) >= term_cond.log_likelihood_contour
-        done, termination_reason = _set_done_bit(reached_log_L_contour, 1,
-                                                 done=done, termination_reason=termination_reason)
-
-    if term_cond.rtol is not None:
-        # relative spread of log-likelihood values below threshold
-        max_log_L = jnp.max(state.samples.log_L)
-        min_log_L = jnp.min(state.samples.log_L)
-        diff_log_L = jnp.abs(max_log_L - min_log_L)  # NaN = inf - inf
-        diff_log_L = jnp.where(jnp.isnan(diff_log_L), jnp.inf, diff_log_L)
-        mean_log_L = 0.5 * jnp.abs(max_log_L + min_log_L)  # = inf - inf
-        mean_log_L = jnp.where(jnp.isnan(mean_log_L), jnp.inf, mean_log_L)
-        reached_rtol = diff_log_L <= term_cond.rtol * mean_log_L
-        done, termination_reason = _set_done_bit(reached_rtol, 2,
-                                                 done=done, termination_reason=termination_reason)
-
-    if term_cond.atol is not None:
-        # absolute spread of log-likelihood values below threshold
-        max_log_L = jnp.max(state.samples.log_L)
-        min_log_L = jnp.min(state.samples.log_L)
-        diff_log_L = jnp.abs(max_log_L - min_log_L)  # NaN = inf - inf
-        diff_log_L = jnp.where(jnp.isnan(diff_log_L), jnp.inf, diff_log_L)
-        reached_atol = diff_log_L <= term_cond.atol
-        done, termination_reason = _set_done_bit(reached_atol, 3,
-                                                 done=done, termination_reason=termination_reason)
-
-    if term_cond.min_efficiency is not None:
-        # efficiency below threshold
-        efficiency = state.samples.log_L.shape[0] / jnp.sum(state.samples.num_likelihood_evaluations)
-        reached_min_efficiency = efficiency <= term_cond.min_efficiency
-        done, termination_reason = _set_done_bit(reached_min_efficiency, 4,
-                                                 done=done, termination_reason=termination_reason)
-
-    # on plateau
-    on_plateau = jnp.max(state.samples.log_L) == jnp.min(state.samples.log_L)
-    done, termination_reason = _set_done_bit(on_plateau, 5,
-                                             done=done, termination_reason=termination_reason)
-
-    return done, termination_reason
+    max_likelihood_evaluations: Optional[IntArray] = None  # jnp.asarray(jnp.iinfo(int_type).max, int_type)
+    log_likelihood_contour: Optional[FloatArray] = None  # jnp.asarray(jnp.finfo(float_type).max, float_type)
+    rtol: Optional[FloatArray] = None  # jnp.asarray(0., float_type)
+    atol: Optional[FloatArray] = None  # jnp.asarray(0., float_type)
+    min_efficiency: Optional[FloatArray] = None  # jnp.asarray(0., float_type)
 
 
 def gradient_based_optimisation(model: BaseAbstractModel, init_U_point: UType) -> Tuple[UType, FloatArray, IntArray]:
@@ -184,158 +69,31 @@ def gradient_based_optimisation(model: BaseAbstractModel, init_U_point: UType) -
     return quick_unit(results.params), -results.state.value, results.state.num_fun_eval
 
 
-def _single_thread_global_optimisation(init_state: GlobalOptimisationState,
-                                       termination_cond: GlobalOptimisationTerminationCondition,
-                                       sampler: BaseAbstractSampler) -> Tuple[GlobalOptimisationState, IntArray]:
-    """
-    Runs a single thread of global optimisation. Sequentially samples until termination condition is met,
-    replacing the worst sample with a new one in groups of num_samples.
-
-    Args:
-        init_state: initial state of the global optimisation
-        termination_cond: termination condition
-        sampler: sampler
-
-    Returns:
-        final state of the global optimisation and termination reason
-    """
-
-    class CarryType(NamedTuple):
-        state: GlobalOptimisationState
-
-    def cond(carry: CarryType) -> BoolArray:
-        done, _ = determine_termination(term_cond=termination_cond, state=carry.state)
-        return jnp.bitwise_not(done)
-
-    def body(carry: CarryType) -> CarryType:
-        # Devices are independent, i.e. expect no communication between them in sampler.
-        key, sample_key = random.split(carry.state.key, 2)
-
-        num_samples = carry.state.samples.log_L.shape[0]
-
-        fake_state = StaticStandardNestedSamplerState(
-            key=sample_key,
-            next_sample_idx=jnp.asarray(0, int_type),
-            sample_collection=StaticStandardSampleCollection(
-                sender_node_idx=jnp.zeros((num_samples,), int_type),
-                log_L=carry.state.samples.log_L,
-                U_samples=carry.state.samples.U_sample,
-                num_likelihood_evaluations=carry.state.samples.num_likelihood_evaluations,
-                phantom=jnp.zeros((num_samples,), jnp.bool_)
-            ),
-            front_idx=jnp.arange(num_samples, dtype=int_type)
-        )
-
-        k = sampler.num_phantom()
-        if k > 0:
-            def _repeat(x):
-                return jnp.repeat(x, (k + 1), axis=0)
-
-            fake_state = fake_state._replace(
-                sample_collection=jax.tree.map(_repeat, fake_state.sample_collection)
-            )
-
-        fake_state, fake_termination_register = _inter_sync_shrinkage_process(
-            init_state=fake_state,
-            sampler=sampler,
-            num_samples=num_samples * (1 + k),
-            init_termination_register=create_init_termination_register()
-        )
-
-        num_likelihood_evaluations = carry.state.num_likelihood_evaluations + jnp.sum(
-            fake_state.sample_collection.num_likelihood_evaluations)
-
-        if k > 0:
-            # Choose the maximum likelihood sample from the k+1 samples (requires reshape first to unstack)
-
-            choose_idx = jnp.argmax(
-                jnp.reshape(fake_state.sample_collection.log_L, ((k + 1), num_samples)),
-                axis=0
-            )
-
-            def _select(x):
-                x = jnp.reshape(x, ((k + 1), num_samples) + x.shape[1:])  # [k+1, N, ...]
-                return x[choose_idx, jnp.arange(num_samples)]  # [N, ...]
-
-            fake_state = fake_state._replace(
-                sample_collection=jax.tree.map(
-                    _select,
-                    fake_state.sample_collection
-                )
-            )
-
-        samples = Sample(
-            U_sample=fake_state.sample_collection.U_samples,
-            log_L_constraint=fake_state.sample_collection.log_L,
-            log_L=fake_state.sample_collection.log_L,
-            num_likelihood_evaluations=fake_state.sample_collection.num_likelihood_evaluations
-        )
-
-        state = GlobalOptimisationState(
-            key=key,
-            samples=samples,
-            num_likelihood_evaluations=num_likelihood_evaluations,
-            num_samples=carry.state.num_samples + jnp.asarray(num_samples, int_type)
-        )
-
-        return CarryType(state=state)
-
-    init_carry_state = CarryType(
-        state=init_state
-    )
-
-    carry_state: CarryType = lax.while_loop(
-        cond_fun=cond,
-        body_fun=body,
-        init_val=init_carry_state
-    )
-
-    _, termination_reason = determine_termination(term_cond=termination_cond, state=carry_state.state)
-
-    return carry_state.state, termination_reason
-
-
-def create_init_state(key: PRNGKey, num_search_chains: int,
-                      model: BaseAbstractModel) -> GlobalOptimisationState:
-    """
-    Creates the initial state of the global optimisation.
-
-    Args:
-        key: PRNGKey
-        num_search_chains: number of search chains
-        model: model
-
-    Returns:
-        initial state of the global optimisation
-    """
-    key, sample_key = random.split(key, 2)
-    init_samples = draw_uniform_samples(key=sample_key, num_live_points=num_search_chains, model=model)
-
-    return GlobalOptimisationState(
-        key=key,
-        samples=init_samples,
-        num_likelihood_evaluations=jnp.sum(init_samples.num_likelihood_evaluations),
-        num_samples=jnp.asarray(num_search_chains, int_type)
-    )
-
-
+@dataclasses.dataclass(eq=False)
 class SimpleGlobalOptimisation:
     """
     Simple global optimisation leveraging building blocks of nested sampling.
     """
+    sampler: AbstractSampler
+    num_search_chains: int
+    model: BaseAbstractModel
+    devices: Optional[xla_client.Device] = None
+    verbose: bool = False
 
-    def __init__(self, sampler: BaseAbstractSampler, num_search_chains: int,
-                 model: BaseAbstractModel, num_parallel_workers: int = 1):
-        self.sampler = sampler
-        if num_search_chains < 1:
+    def __post_init__(self):
+        if self.num_search_chains < 1:
             raise ValueError("num_search_chains must be >= 1.")
-        self.num_search_chains = int(num_search_chains)
-        self.num_parallel_workers = int(num_parallel_workers)
+        self.num_search_chains = int(self.num_search_chains)
 
-        if self.num_parallel_workers > 1:
-            logger.info(f"Using {self.num_parallel_workers} parallel workers, each running identical samplers.")
-        self.model = model
-        self.num_search_chains = num_search_chains
+        self._nested_sampler = ShardedStaticNestedSampler(
+            model=self.model,
+            max_samples=self.num_search_chains,
+            init_efficiency_threshold=0.,
+            sampler=self.sampler,
+            num_live_points=self.num_search_chains,
+            devices=self.devices,
+            verbose=self.verbose
+        )
 
     def _gradient_descent(self, results: GlobalOptimisationResults) -> GlobalOptimisationResults:
         U_solution, log_L_solution, _num_likelihood_evals = gradient_based_optimisation(self.model,
@@ -361,33 +119,23 @@ class SimpleGlobalOptimisation:
         Returns:
             results of the global optimisation
         """
-        best_idx = jnp.argmax(state.samples.log_L)
-        U_solution = state.samples.U_sample[best_idx]
+        is_sample_mask = jnp.arange(np.shape(state.samples.log_L)[0], dtype=mp_policy.index_dtype) < state.num_samples
+        best_idx = jnp.argmax(
+            jnp.where(is_sample_mask, state.samples.log_L, jnp.asarray(-jnp.inf, mp_policy.measure_dtype)))
+        U_solution = state.samples.U_samples[best_idx]
         X_solution = self.model.transform(U_solution)
-        solution = self.model.prepare_input(U_solution)
-        max_log_L = state.samples.log_L[best_idx]
-        min_log_L = jnp.min(state.samples.log_L)
-        relative_spread = 2. * jnp.abs(max_log_L - min_log_L) / jnp.abs(max_log_L + min_log_L)
-        relative_spread = jnp.where(
-            jnp.isnan(relative_spread),
-            jnp.asarray(jnp.inf, relative_spread.dtype),
-            relative_spread
-        )
-        absolute_spread = jnp.abs(max_log_L - min_log_L)
-        absolute_spread = jnp.where(
-            jnp.isnan(absolute_spread),
-            jnp.asarray(jnp.inf, absolute_spread.dtype),
-            absolute_spread
-        )
+        solution = self.model.prepare_input(U_solution)  # The output of prior_model is solution
+        log_L_solution = state.samples.log_L[best_idx]
+        num_likelihood_evaluations = state.num_likelihood_evaluations
         return GlobalOptimisationResults(
-            U_solution=state.samples.U_sample[best_idx],
+            U_solution=U_solution,
             X_solution=X_solution,
             solution=solution,
-            log_L_solution=state.samples.log_L[best_idx],
-            num_likelihood_evaluations=state.num_likelihood_evaluations,
+            log_L_solution=log_L_solution,
+            num_likelihood_evaluations=num_likelihood_evaluations,
             num_samples=state.num_samples,
-            relative_spread=relative_spread,
-            absolute_spread=absolute_spread,
+            relative_spread=state.relative_spread,
+            absolute_spread=state.absolute_spread,
             termination_reason=termination_reason
         )
 
@@ -404,41 +152,27 @@ class SimpleGlobalOptimisation:
             the termination reason and final state of the global optimisation
         """
 
-        def replica(key: PRNGKey) -> Tuple[GlobalOptimisationState, IntArray]:
-            state = create_init_state(
-                key=key,
-                num_search_chains=self.num_search_chains,
-                model=self.model
+        termination_reason, termination_register, state = self._nested_sampler._run(
+            key=key,
+            term_cond=TerminationCondition(
+                max_num_likelihood_evaluations=term_cond.max_likelihood_evaluations,
+                log_L_contour=term_cond.log_likelihood_contour,
+                efficiency_threshold=term_cond.min_efficiency,
+                atol=term_cond.atol,
+                rtol=term_cond.rtol,
+                max_samples=None
             )
+        )
 
-            # Continue sampling with provided sampler until user-defined termination condition is met.
-            state, termination_reason = _single_thread_global_optimisation(
-                init_state=state,
-                termination_cond=term_cond,
-                sampler=self.sampler
-            )
-            if self.num_parallel_workers > 1:
-                target_log_L_contour = jnp.max(
-                    parallel.all_gather(jnp.max(state.samples.log_L), 'i')
-                )
-                state, termination_reason = _single_thread_global_optimisation(
-                    init_state=state,
-                    termination_cond=term_cond._replace(log_likelihood_contour=target_log_L_contour),
-                    sampler=self.sampler
-                )
-
-            return state, termination_reason
-
-        if self.num_parallel_workers > 1:
-            parallel_ns = pmap(replica, axis_name='i')
-            keys = random.split(key, self.num_parallel_workers)
-            batched_state, termination_reason = parallel_ns(keys)
-            state = remove_chunk_dim(batched_state)
-            state = state._replace(key=state.key[0])
-        else:
-            state, termination_reason = replica(key)
-
-        return termination_reason, state
+        go_state = GlobalOptimisationState(
+            key=state.key,
+            samples=state.sample_collection,
+            num_samples=state.num_samples,
+            absolute_spread=termination_register.absolute_spread,
+            relative_spread=termination_register.relative_spread,
+            num_likelihood_evaluations=termination_register.num_likelihood_evaluations
+        )
+        return termination_reason, go_state
 
 
 def summary(results: GlobalOptimisationResults, f_obj: Optional[Union[str, TextIO]] = None):
@@ -472,12 +206,16 @@ def summary(results: GlobalOptimisationResults, f_obj: Optional[Union[str, TextI
         #         4-bit -> 16: efficiency below threshold
         #         5-bit -> 32: on a plateau (possibly local minimum, or due to numerical issues)
         for bit, condition in zip(termination_bit_mask, [
-            'Reached max num likelihood evaluations',
-            'Reached goal log-likelihood contour',
-            'Small relative spread of log-likelihood values',
-            'Small absolute spread of log-likelihood values',
+            'Reached max samples',
+            'Evidence uncertainty low enough',
+            'Small remaining evidence',
+            'Reached ESS',
+            "Used max num likelihood evaluations",
+            'Likelihood contour reached',
             'Sampler efficiency too low',
-            'On plateau (possibly local minimum, or due to numerical issues)'
+            'All live-points are on a single plateau (potential numerical errors, consider 64-bit)',
+            'relative spread of live points < rtol',
+            'absolute spread of live points < atol'
         ]):
             if bit == 1:
                 _print(condition)

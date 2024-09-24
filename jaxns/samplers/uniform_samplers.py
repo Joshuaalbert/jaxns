@@ -1,14 +1,15 @@
-from typing import NamedTuple, Tuple
+import dataclasses
+from typing import NamedTuple, Tuple, Any
 
 import jax
 from jax import random, numpy as jnp, lax
 
 from jaxns.framework.bases import BaseAbstractModel
-from jaxns.internals.types import IntArray, StaticStandardNestedSamplerState, UType, MeasureType, \
-    StaticStandardSampleCollection
+from jaxns.internals.mixed_precision import int_type
+from jaxns.internals.types import IntArray, UType, MeasureType
 from jaxns.internals.types import PRNGKey, FloatArray
-from jaxns.internals.types import Sample, int_type
-from jaxns.samplers.abc import SamplerState
+from jaxns.nested_samplers.common.types import Sample
+from jaxns.samplers.abc import EphemeralState
 from jaxns.samplers.bases import BaseAbstractRejectionSampler
 
 __all__ = [
@@ -16,36 +17,29 @@ __all__ = [
 ]
 
 
-class UniformSampler(BaseAbstractRejectionSampler):
+@dataclasses.dataclass(eq=False)
+class UniformSampler(BaseAbstractRejectionSampler[Tuple]):
     """
     A sampler that produces uniform samples from the model within the log_L_constraint.
     """
+    model: BaseAbstractModel
+    max_likelihood_evals: int = 100
 
-    def __init__(self, model: BaseAbstractModel, max_likelihood_evals: int = 100):
-        """
-        Initialises the sampler.
-
-        Args:
-            model: the model to sample from
-            max_likelihood_evals: the maximum number of likelihood evaluations to perform, before stopping. This is
-                important for not getting stuck on plateaus, or forbidden zones.
-        """
-        super().__init__(model=model)
-        if max_likelihood_evals < 1:
+    def __post_init__(self):
+        if self.max_likelihood_evals < 1:
             raise ValueError("max_likelihood_evals must be >= 1")
-        self.max_likelihood_evals = int(max_likelihood_evals)
 
     def num_phantom(self) -> int:
         return 0
 
-    def pre_process(self, state: StaticStandardNestedSamplerState) -> SamplerState:
+    def _pre_process(self, ephemeral_state: EphemeralState) -> Any:
         return ()
 
-    def post_process(self, sample_collection: StaticStandardSampleCollection,
-                     sampler_state: SamplerState) -> SamplerState:
+    def _post_process(self, ephemeral_state: EphemeralState,
+                      sampler_state: Any) -> Any:
         return sampler_state
 
-    def get_sample(self, key: PRNGKey, log_L_constraint: FloatArray, sampler_state: SamplerState) -> Tuple[
+    def _get_sample(self, key: PRNGKey, log_L_constraint: FloatArray, sampler_state: Any) -> Tuple[
         Sample, Sample]:
         class CarryState(NamedTuple):
             key: PRNGKey

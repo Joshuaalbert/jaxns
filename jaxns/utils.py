@@ -6,16 +6,19 @@ from typing import NamedTuple, TextIO, Union, Optional, Tuple, TypeVar, Callable
 import jax
 import numpy as np
 from jax import numpy as jnp, vmap, random, jit, lax
+from scipy.stats import kstwobign
 
 from jaxns.framework.bases import BaseAbstractModel
 from jaxns.internals.cumulative_ops import cumulative_op_static
 from jaxns.internals.log_semiring import LogSpace
 from jaxns.internals.maps import prepare_func_args
+from jaxns.internals.mixed_precision import mp_policy
 from jaxns.internals.namedtuple_utils import serialise_namedtuple, deserialise_namedtuple
 from jaxns.internals.random import resample_indicies
-from jaxns.internals.types import NestedSamplerResults, float_type, XType, UType, FloatArray, IntArray, \
-    isinstance_namedtuple
 from jaxns.internals.types import PRNGKey
+from jaxns.internals.types import XType, UType, FloatArray, IntArray, \
+    isinstance_namedtuple
+from jaxns.nested_samplers.common.types import NestedSamplerResults
 from jaxns.warnings import deprecated
 
 __all__ = [
@@ -303,7 +306,7 @@ def summary(results: NestedSamplerResults, with_parametrised: bool = False, f_ob
             return float(v)
 
     def _print_termination_reason(_termination_reason: int):
-        termination_bit_mask = _bit_mask(int(_termination_reason), width=8)
+        termination_bit_mask = _bit_mask(int(_termination_reason), width=10)
 
         for bit, condition in zip(termination_bit_mask, [
             'Reached max samples',
@@ -313,7 +316,9 @@ def summary(results: NestedSamplerResults, with_parametrised: bool = False, f_ob
             "Used max num likelihood evaluations",
             'Likelihood contour reached',
             'Sampler efficiency too low',
-            'All live-points are on a single plateau (potential numerical errors, consider 64-bit)'
+            'All live-points are on a single plateau (potential numerical errors, consider 64-bit)',
+            'relative spread of live points < rtol',
+            'absolute spread of live points < atol'
         ]):
             if bit == 1:
                 _print(condition)
@@ -340,6 +345,9 @@ def summary(results: NestedSamplerResults, with_parametrised: bool = False, f_ob
     _print("--------")
     _print(
         f"logZ={_round(results.log_Z_mean, results.log_Z_uncert)} +- {_round(results.log_Z_uncert, results.log_Z_uncert)}"
+    )
+    _print(
+        f"max(logL)={_round(np.max(results.log_L_samples), results.log_Z_uncert)}"
     )
     # _print("H={} +- {}".format(
     #     _round(results.H_mean, results.H_uncert), _round(results.H_uncert, results.H_uncert)))
@@ -463,7 +471,7 @@ def bruteforce_posterior_samples(model: BaseAbstractModel, S: int = 60) -> Tuple
     Returns:
         samples, and log-weight
     """
-    u_vec = jnp.linspace(jnp.finfo(float_type).eps, 1. - jnp.finfo(float_type).eps, S)
+    u_vec = jnp.linspace(jnp.finfo(mp_policy.measure_dtype).eps, 1. - jnp.finfo(mp_policy.measure_dtype).eps, S)
     du = u_vec[1] - u_vec[0]
     args = jnp.stack([x.flatten() for x in jnp.meshgrid(*[u_vec] * model.U_ndims, indexing='ij')], axis=-1)
     samples = jit(vmap(model.transform))(args)
@@ -484,12 +492,58 @@ def bruteforce_evidence(model: BaseAbstractModel, S: int = 60):
         log(Z)
     """
 
-    u_vec = jnp.linspace(jnp.finfo(float_type).eps, 1. - jnp.finfo(float_type).eps, S)
+    u_vec = jnp.linspace(jnp.finfo(mp_policy.measure_dtype).eps, 1. - jnp.finfo(mp_policy.measure_dtype).eps, S)
     du = u_vec[1] - u_vec[0]
     args = jnp.stack([x.flatten() for x in jnp.meshgrid(*[u_vec] * model.U_ndims, indexing='ij')], axis=-1)
     Z_true = (LogSpace(jit(vmap(model.forward))(args)).nansum() * LogSpace(
         jnp.log(du)) ** model.U_ndims)
     return Z_true.log_abs_val
+
+
+def insert_index_diagnostic(insert_indices: IntArray, num_live_points: int) -> np.ndarray:
+    """
+    Compute the insert index diagnostic of Fowlie et al. (2020).
+
+    Args:
+        insert_indices: [N] array of insert indices
+        num_live_points: number of live points, must be constant over run.
+
+    Returns:
+        p-value of the insert index being uniformly distributed.
+    """
+    insert_indices = jax.tree.map(np.asarray, insert_indices)
+    if len(np.shape(insert_indices)) != 1:
+        raise ValueError(f"Expected 1D array, got {np.shape(insert_indices)}")
+
+    def _get_p_value(indices):
+        N = np.size(indices)
+        # Get expected CDF
+        expected_cdf = np.arange(num_live_points) / num_live_points
+        # Get observed CDF
+        observed_cdf = np.bincount(indices, minlength=num_live_points) / num_live_points
+        observed_cdf = np.cumsum(observed_cdf)
+        observed_cdf = observed_cdf[:num_live_points]
+        observed_cdf /= observed_cdf[-1]
+        # Compute KS statistic
+        ks_statistic = np.max(jnp.abs(observed_cdf - expected_cdf))
+        #  We convert the test-statistic into a p-value using an asymptotic approximation of the Kolmogorov distribution
+        # P(KS > ks_statistic) = 1 - CDF(ks_statistic)
+        p_value = kstwobign.sf(ks_statistic * np.sqrt(num_live_points))
+        return p_value
+
+    # Break into chunks
+    chunk_size = num_live_points
+    # For each chunk compute p-value
+    p_values = []
+    for i in range(0, np.size(insert_indices), chunk_size):
+        # Compute p-value
+        p_value = _get_p_value(indices=insert_indices[i:i + chunk_size])  # []
+        p_values.append(p_value)
+    # Compute minimum p-value adjusted for multiple tests
+    min_p_value = np.min(np.stack(p_values))
+    num_chunks = len(p_values)
+    # Return adjusted p-value
+    return 1. - (1. - min_p_value) ** num_chunks
 
 
 @deprecated(bruteforce_posterior_samples)
@@ -506,7 +560,7 @@ def analytic_posterior_samples(model: BaseAbstractModel, S: int = 60):
     """
     warnings.warn(f"")
 
-    u_vec = jnp.linspace(jnp.finfo(float_type).eps, 1. - jnp.finfo(float_type).eps, S)
+    u_vec = jnp.linspace(jnp.finfo(mp_policy.measure_dtype).eps, 1. - jnp.finfo(mp_policy.measure_dtype).eps, S)
     du = u_vec[1] - u_vec[0]
     args = jnp.stack([x.flatten() for x in jnp.meshgrid(*[u_vec] * model.U_ndims, indexing='ij')], axis=-1)
     samples = jit(vmap(model.transform))(args)

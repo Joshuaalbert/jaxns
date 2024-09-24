@@ -11,8 +11,9 @@ from jaxns.framework.bases import BaseAbstractPrior
 from jaxns.framework.prior import SingularPrior, prior_to_parametrised_singular
 from jaxns.internals.interp_utils import InterpolatedArray
 from jaxns.internals.log_semiring import cumulative_logsumexp
-from jaxns.internals.types import FloatArray, IntArray, BoolArray, float_type, int_type, UType, RandomVariableType, \
+from jaxns.internals.types import FloatArray, IntArray, BoolArray, UType, RandomVariableType, \
     MeasureType
+from jaxns.internals.mixed_precision import float_type, int_type
 
 tfpd = tfp.distributions
 
