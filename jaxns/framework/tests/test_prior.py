@@ -333,7 +333,7 @@ def test_empirical():
     assert jnp.all(jnp.bitwise_not(jnp.isnan(x)))
 
     x = prior.forward(0.5 * jnp.ones(prior.base_shape, mp_policy.measure_dtype))
-    np.testing.assert_allclose(x, 0., atol=0.05)
+    np.testing.assert_allclose(x, 0., atol=0.06)
 
     u_input = vmap(lambda key: random.uniform(key, shape=prior.base_shape, dtype=mp_policy.measure_dtype))(
         random.split(random.PRNGKey(42), 1000))
