@@ -131,6 +131,7 @@ class TerminationRegister(NamedTuple):
     log_L_contour: FloatArray
     efficiency: FloatArray
     plateau: BoolArray
+    no_seed_points: BoolArray
     relative_spread: FloatArray
     absolute_spread: FloatArray
 

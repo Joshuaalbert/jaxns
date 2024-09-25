@@ -147,7 +147,7 @@ def _collect_shell(
     # Replace the discarded samples
     key, sample_key = jax.random.split(state.key, 2)
     state = state._replace(key=key)
-    supremum_index = shell_size - 1 # Biggest of discarded
+    supremum_index = shell_size - 1  # Biggest of discarded
     log_L_contour = live_point_collection.log_L[supremum_index]
     sharded_sample_keys = tree_device_put(jax.random.split(sample_key, shell_size), mesh, ('shard',))
     new_samples, phantom_samples = get_samples(sharded_sample_keys, log_L_contour, sampler_state)
@@ -213,6 +213,7 @@ def _collect_shell(
     plateau = jnp.all(jnp.equal(live_point_collection.log_L, live_point_collection.log_L[0]))
     absolute_spread = jnp.abs(live_point_collection.log_L[-1] - live_point_collection.log_L[0])
     relative_spread = 2. * absolute_spread / jnp.abs(live_point_collection.log_L[0] + live_point_collection.log_L[-1])
+    no_seed_points = live_point_collection.log_L[supremum_index] >= live_point_collection.log_L[-1]
     termination_register = TerminationRegister(
         num_samples_used=state.num_samples,
         evidence_calc=evidence_calc,
@@ -221,6 +222,7 @@ def _collect_shell(
         log_L_contour=log_L_contour,
         efficiency=efficiency,
         plateau=plateau,
+        no_seed_points=no_seed_points,
         relative_spread=relative_spread,
         absolute_spread=absolute_spread
     )
@@ -271,6 +273,9 @@ def _main_ns_thread(
                 np.shape(state.sample_collection.log_L)[0] - space_needed_per_iteration
             )
         )
+    # Catch case of no seed points left
+    no_seed_points = live_point_collection.log_L[shell_size - 1] >= live_point_collection.log_L[-1]
+    termination_register = termination_register._replace(no_seed_points=no_seed_points)
 
     class CarryType(NamedTuple):
         live_point_collection: LivePointCollection
@@ -423,8 +428,10 @@ class ShardedStaticNestedSampler(AbstractNestedSampler):
     def __post_init__(self):
         if self.shell_fraction is None:
             self.shell_fraction = 0.5
-        if (self.shell_fraction <= 0.) or (self.shell_fraction >= 1.):
-            raise ValueError(f"Expected 0 < shell_fraction < 1, got {self.shell_fraction}. Best to keep it around 0.5.")
+        self.shell_fraction = max(self.shell_fraction, 1. / self.num_live_points)
+        if (self.shell_fraction <= 0.) or (self.shell_fraction > 1.):
+            raise ValueError(
+                f"Expected 0 < shell_fraction <= 1, got {self.shell_fraction}. Best to keep it around 0.5.")
         if self.devices is None:
             self.devices = jax.devices()
         if len(self.devices) > 1:
@@ -565,6 +572,9 @@ class ShardedStaticNestedSampler(AbstractNestedSampler):
         # Create sampler threads.
         mesh = create_mesh((len(self.devices),), ('shard',), devices=self.devices)
 
+        if self.verbose:
+            jax.debug.print(f"Creating initial state with {self.num_live_points} live points.")
+
         live_point_collection, state = create_init_state(
             key=key,
             num_live_points=self.num_live_points,
@@ -576,9 +586,13 @@ class ShardedStaticNestedSampler(AbstractNestedSampler):
         termination_register = create_init_termination_register()
 
         if self.init_efficiency_threshold > 0.:
+            if self.verbose:
+                jax.debug.print(
+                    f"Running uniform sampling down to efficiency threshold of {self.init_efficiency_threshold}."
+                )
             # Uniform sampling down to a given mean efficiency
             uniform_sampler = UniformSampler(model=self.model)
-            termination_cond = TerminationCondition(
+            uniform_term_cond = TerminationCondition(
                 efficiency_threshold=jnp.asarray(self.init_efficiency_threshold, mp_policy.measure_dtype),
                 dlogZ=jnp.asarray(0., mp_policy.measure_dtype),
                 max_samples=jnp.asarray(self.max_samples, mp_policy.count_dtype)
@@ -588,12 +602,15 @@ class ShardedStaticNestedSampler(AbstractNestedSampler):
                 live_point_collection=live_point_collection,
                 state=state,
                 termination_register=termination_register,
-                termination_cond=termination_cond,
+                termination_cond=uniform_term_cond,
                 sampler=uniform_sampler,
                 num_discards_per_iteration=1,
                 shell_fraction=self.shell_fraction,
                 verbose=self.verbose
             )
+        if self.verbose:
+            jax.debug.print("Running until termination condition: {term_cond}",
+                            term_cond=term_cond)
 
         # Continue sampling with provided sampler until user-defined termination condition is met.
         live_point_collection, state, termination_register, termination_reason = _main_ns_thread(

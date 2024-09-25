@@ -1,8 +1,8 @@
 import os
 import time
 
-# Force 2 jax  hosts
-os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={os.cpu_count()}"
+# Force jax  hosts
+os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={os.cpu_count()//2}"
 
 import jax
 import jax.numpy as jnp
@@ -61,7 +61,7 @@ def run_model(key):
 def main():
     num_devices = len(jax.devices())
     jaxns_version = pkg_resources.get_distribution("jaxns").version
-    m = 3
+    m = 10
     run_model_aot = jax.jit(run_model).lower(jax.random.PRNGKey(0)).compile()
     dt = []
 
@@ -87,6 +87,7 @@ def main():
           f"The best 3 of {m} runs took {best_3:.5f} seconds.")
 
     with open('results', 'a') as fp:
+        #verion,num_devices,mean_error,mean_uncert,avg_time,best_3
         fp.write(f"{jaxns_version},{num_devices},{np.mean(errors)},{np.mean(uncerts)},{total_time / m},{best_3}\n")
 
 

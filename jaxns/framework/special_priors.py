@@ -11,9 +11,9 @@ from jaxns.framework.bases import BaseAbstractPrior
 from jaxns.framework.prior import SingularPrior, prior_to_parametrised_singular
 from jaxns.internals.interp_utils import InterpolatedArray
 from jaxns.internals.log_semiring import cumulative_logsumexp
+from jaxns.internals.mixed_precision import mp_policy
 from jaxns.internals.types import FloatArray, IntArray, BoolArray, UType, RandomVariableType, \
     MeasureType
-from jaxns.internals.mixed_precision import float_type, int_type
 
 tfpd = tfp.distributions
 
@@ -216,7 +216,7 @@ class ForcedIdentifiability(SpecialPrior):
         self.fix_right = fix_right
 
     def _dtype(self):
-        return float_type
+        return mp_policy.measure_dtype
 
     def _base_shape(self) -> Tuple[int, ...]:
         num_base = self.n
@@ -355,7 +355,7 @@ def _poisson_quantile_bisection(U, rate, max_iter=15, unroll: bool = True):
 @partial(jax.jit, static_argnames=("unroll",))
 def _poisson_quantile(U, rate, unroll: bool = False):
     x, _ = _poisson_quantile_bisection(U, rate, unroll=unroll)
-    return x.astype(int_type)
+    return x.astype(mp_policy.count_dtype)
 
 
 class Poisson(SpecialPrior):
@@ -364,7 +364,7 @@ class Poisson(SpecialPrior):
         self.dist = tfpd.Poisson(rate=rate, log_rate=log_rate)
 
     def _dtype(self):
-        return int_type
+        return mp_policy.count_dtype
 
     def _base_shape(self) -> Tuple[int, ...]:
         return self._shape()

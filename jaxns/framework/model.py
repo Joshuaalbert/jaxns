@@ -11,9 +11,9 @@ from jaxns.framework.ops import transform, prepare_input, compute_log_prob_prior
     parse_joint, transform_parametrised
 from jaxns.internals.logging import logger
 from jaxns.internals.maps import pytree_unravel
+from jaxns.internals.mixed_precision import mp_policy
 from jaxns.internals.types import PRNGKey, FloatArray, LikelihoodType, UType, XType, LikelihoodInputType, \
     WType
-from jaxns.internals.mixed_precision import float_type
 
 __all__ = [
     'Model'
@@ -132,7 +132,7 @@ class Model(BaseAbstractModel):
             raise RuntimeError("Model has not been initialised")
 
         def _sample_U():
-            return random.uniform(key=ctx.next_rng_key(), shape=(self.U_ndims,), dtype=float_type)
+            return random.uniform(key=ctx.next_rng_key(), shape=(self.U_ndims,), dtype=mp_policy.measure_dtype)
 
         return ctx.transform(_sample_U).apply(self._params, key).fn_val
 

@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Array of jaxns versions to be installed
-declare -a jaxns_versions=("2.4.6" "2.4.7" "2.4.8" "2.4.10" "2.4.11" "2.4.12" "2.4.13" "2.5.0")
+declare -a jaxns_versions=("2.4.6" "2.4.7" "2.4.8" "2.4.10" "2.4.11" "2.4.12" "2.4.13" "2.5.0" "2.6.0" "2.6.1" "2.6.2")
 
 # Path to your benchmark script
 benchmark_script="main.py"

@@ -10,7 +10,7 @@ from jax._src.partition_spec import PartitionSpec
 from jax.experimental.mesh_utils import create_device_mesh
 from jaxlib.xla_extension import NamedSharding
 
-from jaxns.internals.mixed_precision import int_type, mp_policy
+from jaxns.internals.mixed_precision import mp_policy
 
 
 def replace_index(operand, update, start_index):
@@ -28,7 +28,7 @@ def replace_index(operand, update, start_index):
 
 def get_index(operand, start_index, length):
     return lax.dynamic_slice(operand,
-                             [start_index] + [jnp.asarray(0, int_type)] * (len(operand.shape) - 1),
+                             [start_index] + [jnp.asarray(0, mp_policy.index_dtype)] * (len(operand.shape) - 1),
                              (length,) + operand.shape[1:])
 
 

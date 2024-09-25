@@ -7,7 +7,7 @@ from jax import numpy as jnp, random, disable_jit, vmap
 from jaxns.framework.bases import PriorModelGen
 from jaxns.framework.model import Model
 from jaxns.framework.prior import Prior
-from jaxns.internals.mixed_precision import float_type, mp_policy
+from jaxns.internals.mixed_precision import mp_policy
 from jaxns.internals.random import random_ortho_matrix
 from jaxns.nested_samplers.common.types import Sample
 from jaxns.nested_samplers.common.uniform_sample import draw_uniform_samples
@@ -43,7 +43,7 @@ def test_ellipsoid_clustering():
     plt.scatter(reservoir.U_sample[:, 0], reservoir.U_sample[:, 1])
     with disable_jit():
         state = ellipsoid_clustering(random.PRNGKey(42), points=reservoir.U_sample,
-                                     log_VS=jnp.asarray(0., float_type),
+                                     log_VS=jnp.asarray(0., mp_policy.measure_dtype),
                                      max_num_ellipsoids=10)
         plot_ellipses(params=state.params)
     # plt.show()

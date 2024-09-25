@@ -11,7 +11,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from scipy.stats import gaussian_kde
 
 from jaxns.internals.log_semiring import cumulative_logsumexp, LogSpace, normalise_log_space
-from jaxns.internals.mixed_precision import int_type
+from jaxns.internals.mixed_precision import mp_policy
 from jaxns.internals.shapes import tuple_prod
 from jaxns.nested_samplers.common.types import NestedSamplerResults
 from jaxns.utils import resample
@@ -30,10 +30,6 @@ def plot_diagnostics(results: NestedSamplerResults, save_name=None):
     """
 
     num_samples = int(results.total_num_samples)
-    if results.log_L_samples.shape[0] != num_samples:
-        raise ValueError(f"Expected all samples to have the same number of samples, "
-                         f"got log_L_samples with {results.log_L_samples.shape[0]} samples, "
-                         f"expected {num_samples} samples.")
     fig, axs = plt.subplots(5, 1, sharex=True, figsize=(8, 12))
     log_X = np.asarray(results.log_X_mean[:num_samples])
     num_live_points_per_sample = np.asarray(results.num_live_points_per_sample[:num_samples])
@@ -44,6 +40,7 @@ def plot_diagnostics(results: NestedSamplerResults, save_name=None):
     cum_evidence = np.exp(log_cum_evidence)
     log_Z_mean = np.asarray(results.log_Z_mean)
     num_likelihood_evaluations_per_sample = np.asarray(results.num_likelihood_evaluations_per_sample[:num_samples])
+    mean_efficiency = np.exp(results.log_efficiency)
     if np.any(num_likelihood_evaluations_per_sample == 0):
         warnings.warn("Found samples with zero likelihood evaluations.")
         efficiency = np.where(
@@ -53,7 +50,7 @@ def plot_diagnostics(results: NestedSamplerResults, save_name=None):
         )
     else:
         efficiency = 1. / num_likelihood_evaluations_per_sample
-    mean_efficiency = np.exp(results.log_efficiency)
+
     # Plot the number of live points
     axs[0].plot(-log_X, num_live_points_per_sample, c='black')
     axs[0].set_ylabel(r'$n_{\rm live}$')
@@ -397,7 +394,7 @@ def plot_samples_development(results, variables=None, save_name=None):
 
     def init():
         start = 0
-        stop = start + results.n_per_sample[start].astype(int_type)
+        stop = start + results.n_per_sample[start].astype(mp_policy.index_dtype)
         for i in range(ndims):
             for j in range(ndims):
                 axs[i][j].clear()
@@ -408,7 +405,7 @@ def plot_samples_development(results, variables=None, save_name=None):
         return artists
 
     def update(start):
-        stop = start + results.n_per_sample[start].astype(int_type)
+        stop = start + results.n_per_sample[start].astype(mp_policy.index_dtype)
         for i in range(ndims):
             for j in range(ndims):
                 axs[i][j].clear()

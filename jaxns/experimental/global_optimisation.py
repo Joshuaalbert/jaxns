@@ -198,7 +198,7 @@ def summary(results: GlobalOptimisationResults, f_obj: Optional[Union[str, TextI
             return float(v)
 
     def _print_termination_condition(_termination_reason: int):
-        termination_bit_mask = _bit_mask(int(_termination_reason), width=8)
+        termination_bit_mask = _bit_mask(int(_termination_reason), width=11)
         # 0-bit -> 1: used maximum allowed number of likelihood evaluations
         #         1-bit -> 2: reached goal log-likelihood contour
         #         2-bit -> 4: relative spread of log-likelihood values below threshold
@@ -215,7 +215,8 @@ def summary(results: GlobalOptimisationResults, f_obj: Optional[Union[str, TextI
             'Sampler efficiency too low',
             'All live-points are on a single plateau (potential numerical errors, consider 64-bit)',
             'relative spread of live points < rtol',
-            'absolute spread of live points < atol'
+            'absolute spread of live points < atol',
+            'no seed points left'
         ]):
             if bit == 1:
                 _print(condition)

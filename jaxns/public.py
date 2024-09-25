@@ -66,9 +66,6 @@ class NestedSampler:
     verbose: bool = False
 
     def __post_init__(self):
-        if self.max_samples is None:
-            self.max_samples = self.model.U_ndims * 10000
-        self.max_samples = int(self.max_samples)
         if self.difficult_model:
             self.s = 10 if self.s is None else int(self.s)
         else:
@@ -92,8 +89,9 @@ class NestedSampler:
         if self.c <= 0:
             raise ValueError(f"Expected c > 0, got c={self.c}")
         # Sanity check for max_samples (should be able to at least do one shrinkage)
-        if self.max_samples < self.c * (self.k + 1):
-            warnings.warn(f"max_samples={self.max_samples} is likely too small!")
+        if self.max_samples is None:
+            self.max_samples = self.c * (self.k + 1) * 100
+        self.max_samples = int(self.max_samples)
         if self.num_parallel_workers is not None:
             warnings.warn("`num_parallel_workers` is depreciated. Use `devices` instead.")
         self._nested_sampler = ShardedStaticNestedSampler(
