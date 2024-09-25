@@ -106,10 +106,10 @@ class Sample(NamedTuple):
 
 class LivePointCollection(NamedTuple):
     sender_node_idx: IntArray  # [N] with values in [0, N], 0 means root node
-    U_sample: UType  # [..., D] sample in U-space
-    log_L_constraint: FloatArray  # [...,] log(L) constraint
-    log_L: FloatArray  # [...,] log(L) of sample
-    num_likelihood_evaluations: IntArray  # [...,] number of likelihood evaluations
+    U_sample: UType  # [N, D] sample in U-space
+    log_L_constraint: FloatArray  # [N,] log(L) constraint
+    log_L: FloatArray  # [N] log(L) of sample
+    num_likelihood_evaluations: IntArray  # [N] number of likelihood evaluations
 
 
 class SampleCollection(NamedTuple):

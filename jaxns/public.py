@@ -61,6 +61,7 @@ class NestedSampler:
     devices: Optional[List[xla_client.Device]] = None
     difficult_model: bool = False
     parameter_estimation: bool = False
+    shell_fraction: float = 0.5
     init_efficiency_threshold: float = 0.1
     verbose: bool = False
 
@@ -107,6 +108,7 @@ class NestedSampler:
                 perfect=True
             ),
             init_efficiency_threshold=self.init_efficiency_threshold,
+            shell_fraction=self.shell_fraction,
             devices=self.devices,
             verbose=self.verbose
         )
