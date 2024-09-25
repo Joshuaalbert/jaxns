@@ -1,16 +1,15 @@
 import numpy as np
 from jax import random, numpy as jnp
 
-import jaxns.internals.maps
 from jaxns.internals.random import random_ortho_matrix, resample_indicies
 
 
 def test_random_ortho_matrix():
-    M = random_ortho_matrix(random.PRNGKey(42), 5)
-    assert jnp.isclose(jnp.linalg.det(M), 1.)
-    assert jnp.allclose(M.T @ M, M @ M.T, atol=1e-6)
-    assert jnp.allclose(M.T @ M, jnp.eye(5), atol=1e-6)
-    assert jnp.allclose(jnp.linalg.norm(M, axis=0), jnp.linalg.norm(M, axis=1))
+    M = random_ortho_matrix(random.PRNGKey(42), 5, special_orthogonal=True)
+    np.testing.assert_allclose(jnp.linalg.det(M), 1.)
+    np.testing.assert_allclose(M.T @ M, M @ M.T, atol=1e-6)
+    np.testing.assert_allclose(M.T @ M, jnp.eye(5), atol=1e-6)
+    np.testing.assert_allclose(jnp.linalg.norm(M, axis=0), jnp.linalg.norm(M, axis=1))
 
     for i in range(100):
         M = random_ortho_matrix(random.PRNGKey(i), 5)
