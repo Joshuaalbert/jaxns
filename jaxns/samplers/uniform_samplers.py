@@ -5,7 +5,7 @@ import jax
 from jax import random, numpy as jnp, lax
 
 from jaxns.framework.bases import BaseAbstractModel
-from jaxns.internals.mixed_precision import int_type
+from jaxns.internals.mixed_precision import mp_policy
 from jaxns.internals.types import IntArray, UType, MeasureType
 from jaxns.internals.types import PRNGKey, FloatArray
 from jaxns.nested_samplers.common.types import Sample
@@ -70,7 +70,7 @@ class UniformSampler(BaseAbstractRejectionSampler[Tuple]):
             key=key,
             U=init_U,
             log_L=init_log_L,
-            num_likelihood_evals=jnp.asarray(1, int_type)
+            num_likelihood_evals=jnp.asarray(1, mp_policy.count_dtype)
         )
 
         carry_state = lax.while_loop(cond_fun=cond, body_fun=body, init_val=init_carry_state)

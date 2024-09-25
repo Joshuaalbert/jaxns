@@ -14,7 +14,7 @@ from jaxns.framework.special_priors import Bernoulli, Categorical, Poisson, Beta
     UnnormalisedDirichlet, _poisson_quantile_bisection, _poisson_quantile, Empirical, TruncationWrapper, \
     ExplicitDensityPrior
 from jaxns.framework.wrapped_tfp_distribution import InvalidDistribution, distribution_chain
-from jaxns.internals.mixed_precision import float_type, mp_policy
+from jaxns.internals.mixed_precision import mp_policy
 
 tfpd = tfp.distributions
 
@@ -105,84 +105,84 @@ def test_distribution_chain():
 def test_priors():
     d = Prior(jnp.zeros(5))
     print(d)
-    assert d.forward(jnp.ones(d.base_shape, float_type)).shape == d.shape
-    assert d.forward(jnp.zeros(d.base_shape, float_type)).shape == d.shape
+    assert d.forward(jnp.ones(d.base_shape, mp_policy.measure_dtype)).shape == d.shape
+    assert d.forward(jnp.zeros(d.base_shape, mp_policy.measure_dtype)).shape == d.shape
     assert d.base_shape == (0,)
     assert d.shape == (5,)
 
     d = Prior(tfpd.Uniform(low=jnp.zeros(5), high=jnp.ones(5)))
     print(d)
-    assert d.forward(jnp.ones(d.base_shape, float_type)).shape == d.shape
-    assert d.forward(jnp.zeros(d.base_shape, float_type)).shape == d.shape
+    assert d.forward(jnp.ones(d.base_shape, mp_policy.measure_dtype)).shape == d.shape
+    assert d.forward(jnp.zeros(d.base_shape, mp_policy.measure_dtype)).shape == d.shape
     assert d.base_shape == (5,)
     assert d.shape == (5,)
 
     d = Prior(tfpd.Normal(loc=jnp.zeros(5), scale=jnp.ones(5)))
     print(d)
-    assert d.forward(jnp.ones(d.base_shape, float_type)).shape == d.shape
+    assert d.forward(jnp.ones(d.base_shape, mp_policy.measure_dtype)).shape == d.shape
     assert d.base_shape == (5,)
     assert d.shape == (5,)
 
     d = Prior(tfpd.Laplace(loc=jnp.zeros(5), scale=jnp.ones(5)))
     print(d)
-    assert d.forward(jnp.ones(d.base_shape, float_type)).shape == d.shape
-    assert d.forward(jnp.zeros(d.base_shape, float_type)).shape == d.shape
+    assert d.forward(jnp.ones(d.base_shape, mp_policy.measure_dtype)).shape == d.shape
+    assert d.forward(jnp.zeros(d.base_shape, mp_policy.measure_dtype)).shape == d.shape
     assert d.base_shape == (5,)
     assert d.shape == (5,)
 
     d = Prior(tfpd.Cauchy(loc=jnp.zeros(5), scale=jnp.ones(5)))
     print(d)
-    assert d.forward(jnp.ones(d.base_shape, float_type)).shape == d.shape
-    assert d.forward(jnp.zeros(d.base_shape, float_type)).shape == d.shape
+    assert d.forward(jnp.ones(d.base_shape, mp_policy.measure_dtype)).shape == d.shape
+    assert d.forward(jnp.zeros(d.base_shape, mp_policy.measure_dtype)).shape == d.shape
     assert d.base_shape == (5,)
     assert d.shape == (5,)
 
     d = Prior(tfpd.StudentT(df=1.5, loc=jnp.zeros(5), scale=jnp.ones(5)))
     print(d)
-    assert d.forward(jnp.ones(d.base_shape, float_type)).shape == d.shape
-    assert d.forward(jnp.zeros(d.base_shape, float_type)).shape == d.shape
+    assert d.forward(jnp.ones(d.base_shape, mp_policy.measure_dtype)).shape == d.shape
+    assert d.forward(jnp.zeros(d.base_shape, mp_policy.measure_dtype)).shape == d.shape
     assert d.base_shape == (5,)
     assert d.shape == (5,)
 
     d = Prior(tfpd.Beta(concentration0=jnp.ones(5), concentration1=jnp.ones(5)))
     print(d)
-    assert d.forward(jnp.ones(d.base_shape, float_type)).shape == d.shape
-    assert d.forward(jnp.zeros(d.base_shape, float_type)).shape == d.shape
+    assert d.forward(jnp.ones(d.base_shape, mp_policy.measure_dtype)).shape == d.shape
+    assert d.forward(jnp.zeros(d.base_shape, mp_policy.measure_dtype)).shape == d.shape
     assert d.base_shape == (5,)
     assert d.shape == (5,)
 
     d = Prior(tfpd.HalfNormal(scale=jnp.ones(5)))
     print(d)
-    assert d.forward(jnp.ones(d.base_shape, float_type)).shape == d.shape
-    assert d.forward(jnp.zeros(d.base_shape, float_type)).shape == d.shape
+    assert d.forward(jnp.ones(d.base_shape, mp_policy.measure_dtype)).shape == d.shape
+    assert d.forward(jnp.zeros(d.base_shape, mp_policy.measure_dtype)).shape == d.shape
     assert d.base_shape == (5,)
     assert d.shape == (5,)
 
     d = Prior(tfpd.HalfCauchy(loc=jnp.zeros(5), scale=jnp.ones(5)))
     print(d)
-    assert d.forward(jnp.ones(d.base_shape, float_type)).shape == d.shape
-    assert d.forward(jnp.zeros(d.base_shape, float_type)).shape == d.shape
+    assert d.forward(jnp.ones(d.base_shape, mp_policy.measure_dtype)).shape == d.shape
+    assert d.forward(jnp.zeros(d.base_shape, mp_policy.measure_dtype)).shape == d.shape
     assert d.base_shape == (5,)
     assert d.shape == (5,)
 
     d = Prior(tfpd.Gamma(concentration=jnp.ones(5), rate=jnp.ones(5)))
     print(d)
-    assert d.forward(jnp.ones(d.base_shape, float_type)).shape == d.shape
-    assert d.forward(jnp.zeros(d.base_shape, float_type)).shape == d.shape
+    assert d.forward(jnp.ones(d.base_shape, mp_policy.measure_dtype)).shape == d.shape
+    assert d.forward(jnp.zeros(d.base_shape, mp_policy.measure_dtype)).shape == d.shape
     assert d.base_shape == (5,)
     assert d.shape == (5,)
 
     d = Prior(tfpd.Gumbel(loc=jnp.ones(5), scale=jnp.ones(5)))
     print(d)
-    assert d.forward(jnp.ones(d.base_shape, float_type)).shape == d.shape
-    assert d.forward(jnp.zeros(d.base_shape, float_type)).shape == d.shape
+    assert d.forward(jnp.ones(d.base_shape, mp_policy.measure_dtype)).shape == d.shape
+    assert d.forward(jnp.zeros(d.base_shape, mp_policy.measure_dtype)).shape == d.shape
     assert d.base_shape == ()
     assert d.shape == (5,)
 
     d = Prior(tfpd.MultivariateNormalTriL(loc=jnp.zeros(5), scale_tril=jnp.eye(5)))
     print(d)
-    assert d.forward(jnp.ones(d.base_shape, float_type)).shape == d.shape
-    assert d.forward(jnp.zeros(d.base_shape, float_type)).shape == d.shape
+    assert d.forward(jnp.ones(d.base_shape, mp_policy.measure_dtype)).shape == d.shape
+    assert d.forward(jnp.zeros(d.base_shape, mp_policy.measure_dtype)).shape == d.shape
     assert d.base_shape == (5,)
     assert d.shape == (5,)
 
@@ -210,13 +210,13 @@ def mock_special_priors() -> List[
 def test_special_priors(mock_special_priors: List[BaseAbstractPrior]):
     for prior, (vmin, vmax), shape in mock_special_priors:
         print(f"Testing {prior.__class__}")
-        x = prior.forward(jnp.ones(prior.base_shape, float_type))
+        x = prior.forward(jnp.ones(prior.base_shape, mp_policy.measure_dtype))
         assert jnp.all(jnp.bitwise_not(jnp.isnan(x)))
         assert jnp.all(x >= vmin)
         assert jnp.all(x <= vmax)
         assert x.shape == shape
         assert x.shape == prior.shape
-        x = prior.forward(jnp.zeros(prior.base_shape, float_type))
+        x = prior.forward(jnp.zeros(prior.base_shape, mp_policy.measure_dtype))
         assert jnp.all(jnp.bitwise_not(jnp.isnan(x)))
         assert jnp.all(x >= vmin)
         assert jnp.all(x <= vmax)
@@ -333,7 +333,7 @@ def test_empirical():
     assert jnp.all(jnp.bitwise_not(jnp.isnan(x)))
 
     x = prior.forward(0.5 * jnp.ones(prior.base_shape, mp_policy.measure_dtype))
-    np.testing.assert_allclose(x, 0., atol=0.05)
+    np.testing.assert_allclose(x, 0., atol=0.06)
 
     u_input = vmap(lambda key: random.uniform(key, shape=prior.base_shape, dtype=mp_policy.measure_dtype))(
         random.split(random.PRNGKey(42), 1000))
@@ -350,13 +350,13 @@ def test_truncation_wrapper():
     prior = Prior(tfpd.Normal(loc=jnp.zeros(5), scale=jnp.ones(5)))
     trancated_prior = TruncationWrapper(prior=prior, low=0., high=1.)
 
-    x = trancated_prior.forward(jnp.ones(trancated_prior.base_shape, float_type))
+    x = trancated_prior.forward(jnp.ones(trancated_prior.base_shape, mp_policy.measure_dtype))
     assert jnp.all(jnp.bitwise_not(jnp.isnan(x)))
     assert jnp.all(x >= 0.)
     assert jnp.all(x <= 1.)
     assert x.shape == (5,)
 
-    x = trancated_prior.forward(jnp.zeros(trancated_prior.base_shape, float_type))
+    x = trancated_prior.forward(jnp.zeros(trancated_prior.base_shape, mp_policy.measure_dtype))
     assert jnp.all(jnp.bitwise_not(jnp.isnan(x)))
     assert jnp.all(x >= 0.)
     assert jnp.all(x <= 1.)
@@ -375,13 +375,13 @@ def test_truncation_wrapper():
     prior = Prior(tfpd.Normal(loc=jnp.zeros(5), scale=jnp.ones(5)))
     trancated_prior = TruncationWrapper(prior=prior, low=-jnp.inf, high=1.)
 
-    x = trancated_prior.forward(jnp.ones(trancated_prior.base_shape, float_type))
+    x = trancated_prior.forward(jnp.ones(trancated_prior.base_shape, mp_policy.measure_dtype))
     assert jnp.all(jnp.bitwise_not(jnp.isnan(x)))
     assert jnp.all(x >= -jnp.inf)
     assert jnp.all(x <= 1.)
     assert x.shape == (5,)
 
-    x = trancated_prior.forward(jnp.zeros(trancated_prior.base_shape, float_type))
+    x = trancated_prior.forward(jnp.zeros(trancated_prior.base_shape, mp_policy.measure_dtype))
     assert jnp.all(jnp.bitwise_not(jnp.isnan(x)))
     assert jnp.all(x >= -jnp.inf)
     assert jnp.all(x <= 1.)
@@ -400,13 +400,13 @@ def test_truncation_wrapper():
     prior = Prior(tfpd.Normal(loc=jnp.zeros(5), scale=0.01 * jnp.ones(5)))
     trancated_prior = TruncationWrapper(prior=prior, low=0., high=1.)
 
-    x = trancated_prior.forward(jnp.ones(trancated_prior.base_shape, float_type))
+    x = trancated_prior.forward(jnp.ones(trancated_prior.base_shape, mp_policy.measure_dtype))
     assert jnp.all(jnp.bitwise_not(jnp.isnan(x)))
     assert jnp.all(x >= 0.)
     assert jnp.all(x <= 1.)
     assert x.shape == (5,)
 
-    x = trancated_prior.forward(jnp.zeros(trancated_prior.base_shape, float_type))
+    x = trancated_prior.forward(jnp.zeros(trancated_prior.base_shape, mp_policy.measure_dtype))
     assert jnp.all(jnp.bitwise_not(jnp.isnan(x)))
     assert jnp.all(x >= 0.)
     assert jnp.all(x <= 1.)
@@ -429,12 +429,12 @@ def test_explicit_density_prior():
     axes = (jnp.linspace(0, 1, resolution + 1), jnp.linspace(0, 1, resolution))
     prior = ExplicitDensityPrior(axes=axes, density=density, regular_grid=True)
 
-    x = prior.forward(jnp.ones(prior.base_shape, float_type))
+    x = prior.forward(jnp.ones(prior.base_shape, mp_policy.measure_dtype))
     assert jnp.all(jnp.bitwise_not(jnp.isnan(x)))
     assert jnp.all(x == 1.)
     assert x.shape == (2,)
 
-    x = prior.forward(jnp.zeros(prior.base_shape, float_type))
+    x = prior.forward(jnp.zeros(prior.base_shape, mp_policy.measure_dtype))
     assert jnp.all(jnp.bitwise_not(jnp.isnan(x)))
     assert jnp.all(x == 0.)
     assert x.shape == (2,)

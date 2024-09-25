@@ -4,7 +4,7 @@ import jax.numpy as jnp
 
 from jaxns.internals.cumulative_ops import cumulative_op_dynamic, scan_associative_cumulative_op, cumulative_op_static
 from jaxns.internals.log_semiring import LogSpace
-from jaxns.internals.mixed_precision import float_type, mp_policy
+from jaxns.internals.mixed_precision import mp_policy
 from jaxns.internals.tree_structure import SampleTreeGraph, count_crossed_edges
 from jaxns.internals.types import MeasureType, IntArray, FloatArray
 from jaxns.nested_samplers.common.types import EvidenceCalculation
@@ -30,7 +30,7 @@ def compute_enclosed_prior_volume(sample_tree: SampleTreeGraph) -> MeasureType:
         next_X_mean = X_mean * T_mean
         return next_X_mean.log_abs_val
 
-    _, log_X = scan_associative_cumulative_op(op=op, init=jnp.asarray(-jnp.inf, float_type),
+    _, log_X = scan_associative_cumulative_op(op=op, init=jnp.asarray(-jnp.inf, mp_policy.measure_dtype),
                                               xs=live_point_counts.num_live_points)
     return log_X
 
@@ -51,20 +51,25 @@ def _update_evidence_calc_op(carry: EvidenceCalculation, y: EvidenceUpdateVariab
     ZX_mean = LogSpace(carry.log_ZX_mean)
     Z2_mean = LogSpace(carry.log_Z2_mean)
     dZ2_mean = LogSpace(carry.log_dZ2_mean)
+    # num_live_points = jnp.maximum(y.num_live_points, jnp.zeros_like(y.num_live_points))
+    num_live_points = mp_policy.cast_to_measure(y.num_live_points, quiet=True)
+    log_num_live_points = jnp.log(num_live_points)
+    log_num_live_points_p1 = jnp.log(num_live_points + jnp.asarray(1., num_live_points.dtype))
+    log_num_live_points_p2 = jnp.log(num_live_points + jnp.asarray(2., num_live_points.dtype))
 
     # T_mean = LogSpace(jnp.log(num_live_points) - jnp.log(num_live_points + 1.))
     # T_mean = LogSpace(jnp.log(1.) - jnp.log(1. + 1./num_live_points))
-    T_mean = LogSpace(- jnp.logaddexp(0., -jnp.log(y.num_live_points)))
+    T_mean = LogSpace(- jnp.logaddexp(0., -log_num_live_points))
     # T_mean = LogSpace(- jnp.logaddexp(0., -jnp.log(num_live_points)))
-    t_mean = LogSpace(- jnp.log(y.num_live_points + 1.))
+    t_mean = LogSpace(- log_num_live_points_p1)
     # T2_mean = LogSpace(jnp.log(num_live_points) - jnp.log( num_live_points + 2.))
     # T2_mean = LogSpace(jnp.log(1.) - jnp.log(1. + 2./num_live_points))
-    T2_mean = LogSpace(- jnp.logaddexp((0.), jnp.log(2.) - jnp.log(y.num_live_points)))
+    T2_mean = LogSpace(- jnp.logaddexp((0.), jnp.log(2.) - log_num_live_points))
     # T2_mean = LogSpace(- jnp.logaddexp(jnp.log(2.), -jnp.log(num_live_points)))
-    t2_mean = LogSpace(jnp.log(2.) - jnp.log(y.num_live_points + 1.) - jnp.log(y.num_live_points + 2.))
+    t2_mean = LogSpace(jnp.log(2.) - log_num_live_points_p1 - log_num_live_points_p2)
     # tT_mean = LogSpace(jnp.log(num_live_points) - jnp.log(num_live_points + 1.) - jnp.log(num_live_points + 2.))
     # tT_mean = LogSpace(jnp.log(1.) - jnp.log(1. + 1./num_live_points) - jnp.log(num_live_points + 2.))
-    tT_mean = LogSpace(- jnp.logaddexp(0., -jnp.log(y.num_live_points)) - jnp.log(y.num_live_points + 2.))
+    tT_mean = LogSpace(- jnp.logaddexp(0., -log_num_live_points) - log_num_live_points_p2)
     # tT_mean = LogSpace(- jnp.logaddexp(0., -jnp.log(num_live_points)) - jnp.log(num_live_points + 2.))
 
     dZ_mean = X_mean * t_mean * midL
@@ -138,7 +143,7 @@ def compute_evidence_stats(log_L: MeasureType, num_live_points: FloatArray, num_
     """
     init_evidence_calc = create_init_evidence_calc()
     xs = EvidenceUpdateVariables(
-        num_live_points=num_live_points.astype(float_type),
+        num_live_points=num_live_points.astype(mp_policy.measure_dtype),
         log_L_next=log_L
     )
     if num_samples is not None:

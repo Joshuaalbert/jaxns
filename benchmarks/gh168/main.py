@@ -82,6 +82,7 @@ def main():
           f"The best 3 of {m} runs took {best_3:.5f} seconds.")
 
     with open('results', 'a') as fp:
+        # jaxns_version,mean_error,mean_uncert,avg_time,best_3
         fp.write(f"{jaxns_version},{np.mean(errors)},{np.mean(uncerts)},{total_time / m},{best_3}\n")
 
 # Before fix

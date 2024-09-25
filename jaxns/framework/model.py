@@ -11,9 +11,9 @@ from jaxns.framework.ops import transform, prepare_input, compute_log_prob_prior
     parse_joint, transform_parametrised
 from jaxns.internals.logging import logger
 from jaxns.internals.maps import pytree_unravel
+from jaxns.internals.mixed_precision import mp_policy
 from jaxns.internals.types import PRNGKey, FloatArray, LikelihoodType, UType, XType, LikelihoodInputType, \
     WType
-from jaxns.internals.mixed_precision import float_type
 
 __all__ = [
     'Model'
@@ -31,12 +31,16 @@ class Model(BaseAbstractModel):
         if params is None:
             params = self.init_params(rng=random.PRNGKey(0))
         self._params = params
+        self._num_params = int(sum(jax.tree.leaves(jax.tree.map(np.size, self._params))))
         # Parse the prior model to get place holders
         self.__U_placeholder, self.__X_placeholder, self.__W_placeholder = ctx.transform(
             lambda: parse_prior(prior_model=self.prior_model)
         ).apply(self._params, random.PRNGKey(0)).fn_val
         self._id = str(uuid4())  # Used for making sure it's hashable, so it can be used as a key in a dict.
         self.ravel_fn, self.unravel_fn = pytree_unravel(self.__W_placeholder)
+
+    def __repr__(self):
+        return f"Model(U_ndims={self.U_ndims}, num_params={self.num_params})"
 
     @property
     def num_params(self) -> int:
@@ -128,7 +132,7 @@ class Model(BaseAbstractModel):
             raise RuntimeError("Model has not been initialised")
 
         def _sample_U():
-            return random.uniform(key=ctx.next_rng_key(), shape=(self.U_ndims,), dtype=float_type)
+            return random.uniform(key=ctx.next_rng_key(), shape=(self.U_ndims,), dtype=mp_policy.measure_dtype)
 
         return ctx.transform(_sample_U).apply(self._params, key).fn_val
 

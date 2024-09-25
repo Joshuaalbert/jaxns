@@ -96,11 +96,11 @@ def _new_proposal(key: PRNGKey, seed_point: SeedPoint, num_restrict_dims: int, l
         num_likelihood_evaluations: IntArray
 
     def cond(carry: Carry) -> BoolArray:
-        close_to_zero_interval = jnp.all((carry.right - carry.left) <= 2 * jnp.finfo(carry.right.dtype).eps)
         satisfaction = carry.log_L > log_L_constraint
         # Allow if on plateau to fly around the plateau for a while
         lesser_satisfaction = jnp.bitwise_and(seed_point.log_L0 == log_L_constraint, carry.log_L == log_L_constraint)
-        done = jnp.bitwise_or(jnp.bitwise_or(close_to_zero_interval, satisfaction), lesser_satisfaction)
+        # done = jnp.bitwise_or(jnp.bitwise_or(close_to_zero_interval, satisfaction), lesser_satisfaction)
+        done = jnp.bitwise_or(satisfaction, lesser_satisfaction)
         return jnp.bitwise_not(done)
 
     def body(carry: Carry) -> Carry:

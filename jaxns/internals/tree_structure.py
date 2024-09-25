@@ -109,7 +109,7 @@ def count_crossed_edges(sample_tree: SampleTreeGraph, num_samples: Optional[IntA
 
 
 def count_crossed_edges_less_fast(S: SampleTreeGraph) -> SampleLivePointCounts:
-    log_L = jnp.concatenate([-jnp.inf * jnp.ones(1), S.log_L])  # [N+1]
+    log_L = jnp.concatenate([jnp.asarray([-jnp.inf], mp_policy.measure_dtype), S.log_L])  # [N+1]
     # Construct N edges from N+1 nodes
     N = S.sender_node_idx.size
     sender = S.sender_node_idx  # [N]
@@ -135,7 +135,7 @@ def count_crossed_edges_less_fast(S: SampleTreeGraph) -> SampleLivePointCounts:
 
 def count_intervals_naive(S: SampleTreeGraph) -> SampleLivePointCounts:
     # We use the simple method, of counting the number that satisfy the selection condition
-    log_L = jnp.concatenate([-jnp.inf * jnp.ones(1), S.log_L])  # [N+1]
+    log_L = jnp.concatenate([jnp.asarray([-jnp.inf], mp_policy.measure_dtype), S.log_L])  # [N+1]
     log_L_constraints = log_L[S.sender_node_idx]  # [N]
     sort_idx = jnp.argsort(log_L[1:])  # [N]
     N = S.sender_node_idx.size
