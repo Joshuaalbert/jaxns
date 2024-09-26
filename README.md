@@ -239,7 +239,7 @@ from jaxns.experimental import EvidenceMaximisation
 
 # Let's train the sigma parameter to maximise the evidence
 
-em = EvidenceMaximisation(model, ns_kwargs=dict(max_samples=1e4))
+em = EvidenceMaximisation(model)
 results, params = em.train(num_steps=5)
 
 summary(results, with_parametrised=True)

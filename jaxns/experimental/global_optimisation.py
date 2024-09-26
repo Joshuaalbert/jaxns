@@ -88,9 +88,10 @@ class SimpleGlobalOptimisation:
         self._nested_sampler = ShardedStaticNestedSampler(
             model=self.model,
             max_samples=self.num_search_chains * 10,
-            init_efficiency_threshold=0.,
+            init_efficiency_threshold=0.1,
             sampler=self.sampler,
             num_live_points=self.num_search_chains,
+            shell_fraction=0.,
             devices=self.devices,
             verbose=self.verbose
         )
@@ -213,10 +214,10 @@ def summary(results: GlobalOptimisationResults, f_obj: Optional[Union[str, TextI
             "Used max num likelihood evaluations",
             'Likelihood contour reached',
             'Sampler efficiency too low',
-            'All live-points are on a single plateau (potential numerical errors, consider 64-bit)',
+            'All live-points are on a single plateau (sign of possible precision error)',
             'relative spread of live points < rtol',
             'absolute spread of live points < atol',
-            'no seed points left'
+            'no seed points left (consider decreasing shell_fraction)'
         ]):
             if bit == 1:
                 _print(condition)
