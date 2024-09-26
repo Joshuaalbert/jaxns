@@ -200,12 +200,6 @@ def summary(results: GlobalOptimisationResults, f_obj: Optional[Union[str, TextI
 
     def _print_termination_condition(_termination_reason: int):
         termination_bit_mask = _bit_mask(int(_termination_reason), width=11)
-        # 0-bit -> 1: used maximum allowed number of likelihood evaluations
-        #         1-bit -> 2: reached goal log-likelihood contour
-        #         2-bit -> 4: relative spread of log-likelihood values below threshold
-        #         3-bit -> 8: absolute spread of log-likelihood values below threshold
-        #         4-bit -> 16: efficiency below threshold
-        #         5-bit -> 32: on a plateau (possibly local minimum, or due to numerical issues)
         for bit, condition in zip(termination_bit_mask, [
             'Reached max samples',
             'Evidence uncertainty low enough',

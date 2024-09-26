@@ -43,10 +43,12 @@ def plot_diagnostics(results: NestedSamplerResults, save_name=None):
     mean_efficiency = np.exp(results.log_efficiency)
     if np.any(num_likelihood_evaluations_per_sample == 0):
         warnings.warn("Found samples with zero likelihood evaluations.")
-        efficiency = np.where(
-            num_likelihood_evaluations_per_sample == 0,
-            np.nan,
-            1. / num_likelihood_evaluations_per_sample
+        efficiency = np.reciprocal(
+            np.where(
+                num_likelihood_evaluations_per_sample == 0,
+                np.nan,
+                num_likelihood_evaluations_per_sample
+            )
         )
     else:
         efficiency = 1. / num_likelihood_evaluations_per_sample
@@ -260,8 +262,8 @@ def plot_cornerplot(results: NestedSamplerResults, variables: Optional[List[str]
             axs[row][col].set_yticklabels([])
     # Set the labels on the bottom row and left column
     for i in range(ndims):
-        axs[-1][i].set_xlabel(parameters[i])
-        axs[i][0].set_ylabel(parameters[i])
+        axs[-1][i].set_xlabel(parameters[i], rotation=30, ha='right')
+        axs[i][0].set_ylabel(parameters[i], rotation=30, ha='right')
     # Remove upper diagonal
     for row in range(ndims):
         for col in range(ndims):
@@ -375,9 +377,9 @@ def plot_samples_development(results, variables=None, save_name=None):
                             sc = ax.scatter(samples2, samples1, marker='+', c=to_colour(weights[start:stop]), alpha=0.3)
                             artists.append(sc)
                         if dim == ndims - 1:
-                            ax.set_xlabel("{}".format(title2))
+                            ax.set_xlabel(f"{title2}", rotation=30, ha='right')
                         if dim2 == 0:
-                            ax.set_ylabel("{}".format(title1))
+                            ax.set_ylabel(f"{title1}", rotation=30, ha='right')
 
                         dim2 += 1
                 dim += 1
