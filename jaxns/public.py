@@ -61,13 +61,11 @@ class NestedSampler:
     devices: Optional[List[xla_client.Device]] = None
     difficult_model: bool = False
     parameter_estimation: bool = False
+    shell_fraction: float = 0.5
     init_efficiency_threshold: float = 0.1
     verbose: bool = False
 
     def __post_init__(self):
-        if self.max_samples is None:
-            self.max_samples = self.model.U_ndims * 10000
-        self.max_samples = int(self.max_samples)
         if self.difficult_model:
             self.s = 10 if self.s is None else int(self.s)
         else:
@@ -91,14 +89,11 @@ class NestedSampler:
         if self.c <= 0:
             raise ValueError(f"Expected c > 0, got c={self.c}")
         # Sanity check for max_samples (should be able to at least do one shrinkage)
-        if self.max_samples < self.c * (self.k + 1):
-            warnings.warn(f"max_samples={self.max_samples} is likely too small!")
+        if self.max_samples is None:
+            self.max_samples = self.c * (self.k + 1) * 100
+        self.max_samples = int(self.max_samples)
         if self.num_parallel_workers is not None:
             warnings.warn("`num_parallel_workers` is depreciated. Use `devices` instead.")
-            if self.devices is None:
-                self.devices = jax.devices()[:self.num_parallel_workers]
-            else:
-                self.devices = self.devices[:self.num_parallel_workers]
         self._nested_sampler = ShardedStaticNestedSampler(
             model=self.model,
             num_live_points=self.c,
@@ -111,6 +106,7 @@ class NestedSampler:
                 perfect=True
             ),
             init_efficiency_threshold=self.init_efficiency_threshold,
+            shell_fraction=self.shell_fraction,
             devices=self.devices,
             verbose=self.verbose
         )

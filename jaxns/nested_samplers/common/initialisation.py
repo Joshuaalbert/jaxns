@@ -17,9 +17,8 @@ from jaxns.nested_samplers.common.types import StaticStandardSampleCollection, \
 from jaxns.nested_samplers.common.uniform_sample import draw_uniform_samples
 
 
-def create_init_state(key: PRNGKey, num_live_points: int, max_samples: int,
-                      model: BaseAbstractModel, mesh: Optional[Mesh] = None) -> Tuple[
-    LivePointCollection, NestedSamplerState]:
+def create_init_state(key: PRNGKey, num_live_points: int, max_samples: int, model: BaseAbstractModel,
+                      mesh: Optional[Mesh] = None) -> Tuple[LivePointCollection, NestedSamplerState]:
     """
     Return an initial sample collection, that will be incremented by the sampler.
 
@@ -73,6 +72,8 @@ def create_init_state(key: PRNGKey, num_live_points: int, max_samples: int,
         log_L_constraint=live_point_samples.log_L_constraint,
         num_likelihood_evaluations=live_point_samples.num_likelihood_evaluations
     )
+    sort_indices = jnp.argsort(live_point_samples.log_L)
+    live_point_collection = jax.tree_map(lambda x: x[sort_indices], live_point_collection)
 
     state = NestedSamplerState(
         key=key,
@@ -100,6 +101,7 @@ def create_init_termination_register() -> TerminationRegister:
         log_L_contour=jnp.asarray(-jnp.inf, mp_policy.measure_dtype),
         efficiency=jnp.asarray(0., mp_policy.measure_dtype),
         plateau=jnp.asarray(False, jnp.bool_),
+        no_seed_points=jnp.asarray(False, jnp.bool_),
         relative_spread=jnp.asarray(jnp.inf, mp_policy.measure_dtype),
         absolute_spread=jnp.asarray(jnp.inf, mp_policy.measure_dtype)
     )

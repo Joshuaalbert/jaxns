@@ -17,10 +17,10 @@ from jaxns.framework.context import MutableParams
 from jaxns.internals.cumulative_ops import cumulative_op_static
 from jaxns.internals.log_semiring import LogSpace
 from jaxns.internals.logging import logger
+from jaxns.internals.mixed_precision import mp_policy
 from jaxns.internals.types import IntArray, PRNGKey
 from jaxns.nested_samplers.common.types import TerminationCondition, NestedSamplerResults, \
     StaticStandardNestedSamplerState
-from jaxns.internals.mixed_precision import float_type
 
 __all__ = [
     'EvidenceMaximisation'
@@ -242,7 +242,7 @@ class EvidenceMaximisation:
                 log_dZ = model.forward(data.U_samples) + data.log_weights
                 return (LogSpace(log_Z) + LogSpace(log_dZ)).log_abs_val
 
-            log_Z, _ = cumulative_op_static(op=op, init=jnp.asarray(-jnp.inf, float_type), xs=data)
+            log_Z, _ = cumulative_op_static(op=op, init=jnp.asarray(-jnp.inf, mp_policy.measure_dtype), xs=data)
             return log_Z
 
         def loss(params: MutableParams, data: MStepData):
@@ -308,8 +308,8 @@ class EvidenceMaximisation:
 
         log_weights = ns_results.log_dp_mean - ns_results.log_L_samples + ns_results.log_Z_mean
         data = MStepData(
-            U_samples=_pad_to_n(ns_results.U_samples, 0.5, float_type),
-            log_weights=_pad_to_n(log_weights, -jnp.inf, float_type)
+            U_samples=_pad_to_n(ns_results.U_samples, 0.5, mp_policy.measure_dtype),
+            log_weights=_pad_to_n(log_weights, -jnp.inf, mp_policy.measure_dtype)
         )
         desc = p_bar.desc
         last_params = params

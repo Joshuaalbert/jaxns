@@ -55,6 +55,10 @@ def main():
 # Avg. time taken: 0.00562 seconds.
 # The best 3 of 10 runs took 0.00478 seconds.
 
+# 2.6.2
+# Avg. time taken: 0.00012 seconds.
+# The best 3 of 10 runs took 0.00007 seconds.
+
 
 if __name__ == '__main__':
     main()

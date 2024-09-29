@@ -9,7 +9,7 @@ from jaxns import Prior, Model
 from jaxns.experimental import GlobalOptimisationResults
 from jaxns.experimental.global_optimisation import GlobalOptimisationTerminationCondition, gradient_based_optimisation, \
     summary
-from jaxns.experimental.public import DefaultGlobalOptimisation
+from jaxns.experimental.public import GlobalOptimisation
 
 tfpd = tfp.distributions
 
@@ -107,7 +107,7 @@ def test_gradient_based_optimisation(all_global_optimisation_problems):
 def test_all_global_optimisation(all_global_optimisation_problems):
     for name, (model, optimum, a_tol, log_L_tol) in all_global_optimisation_problems:
         print(f"Checking {name}")
-        go = DefaultGlobalOptimisation(model, gradient_slice=True)
+        go = GlobalOptimisation(model, gradient_slice=True)
         results = jax.jit(go, static_argnames=['finetune'])(
             key=jax.random.PRNGKey(0),
             term_cond=GlobalOptimisationTerminationCondition(log_likelihood_contour=log_L_tol),

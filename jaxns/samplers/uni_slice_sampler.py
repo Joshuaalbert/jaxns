@@ -108,7 +108,10 @@ def _shrink_interval(key: PRNGKey, t: FloatArray, left: FloatArray, right: Float
     return left, right
 
 
-def _new_proposal(key: PRNGKey, seed_point: SeedPoint, midpoint_shrink: bool, alpha: jax.Array,
+def _new_proposal(key: PRNGKey,
+                  seed_point: SeedPoint,
+                  midpoint_shrink: bool,
+                  alpha: jax.Array,
                   perfect: bool,
                   gradient_slice: bool,
                   log_L_constraint: FloatArray,
@@ -120,6 +123,7 @@ def _new_proposal(key: PRNGKey, seed_point: SeedPoint, midpoint_shrink: bool, al
         key: PRNG key
         seed_point: the seed point to sample from
         midpoint_shrink: if true then contract to the midpoint of interval on rejection. Otherwise, normal contract
+        alpha: exponential shrinkage factor
         perfect: if true then perform exponential shrinkage from maximal bounds, requiring no step-out procedure.
         gradient_slice: if true the slice along gradient direction
         log_L_constraint: the constraint to sample within
@@ -142,11 +146,11 @@ def _new_proposal(key: PRNGKey, seed_point: SeedPoint, midpoint_shrink: bool, al
         num_likelihood_evaluations: IntArray
 
     def cond(carry: Carry) -> BoolArray:
-        close_to_zero_interval = (carry.right - carry.left) <= 2 * jnp.finfo(carry.right.dtype).eps
         satisfaction = carry.log_L > log_L_constraint
         # Allow if on plateau to fly around the plateau for a while
         lesser_satisfaction = jnp.bitwise_and(seed_point.log_L0 == log_L_constraint, carry.log_L == log_L_constraint)
-        done = jnp.bitwise_or(jnp.bitwise_or(close_to_zero_interval, satisfaction), lesser_satisfaction)
+        # done = jnp.bitwise_or(jnp.bitwise_or(close_to_zero_interval, satisfaction), lesser_satisfaction)
+        done = jnp.bitwise_or(satisfaction, lesser_satisfaction)
         return jnp.bitwise_not(done)
 
     def body(carry: Carry) -> Carry:
@@ -337,12 +341,12 @@ class UniDimSliceSampler(BaseAbstractMarkovSampler[SampleCollection]):
                 alpha=x.alpha,
                 perfect=self.perfect,
                 gradient_slice=self.gradient_slice,
-                log_L_constraint=log_L_constraint,
+                log_L_constraint=sample.log_L_constraint,
                 model=self.model
             )
             return Sample(
                 U_sample=U_sample,
-                log_L_constraint=log_L_constraint,
+                log_L_constraint=sample.log_L_constraint,
                 log_L=log_L,
                 num_likelihood_evaluations=num_likelihood_evaluations + sample.num_likelihood_evaluations
             )

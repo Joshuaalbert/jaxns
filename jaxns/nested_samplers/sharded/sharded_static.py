@@ -1,5 +1,4 @@
 import dataclasses
-import warnings
 from functools import partial
 from typing import List, Optional, Tuple, NamedTuple, Any
 
@@ -68,7 +67,7 @@ def _add_samples_to_state(sample_collection: LivePointCollection,
         phantom=replace_index(
             state.sample_collection.phantom,
             jnp.full((num_samples,), is_phantom, jnp.bool_),
-            state.next_sample_idx
+            replace_idx
         )
     )
     num_added = jnp.asarray(num_samples, mp_policy.index_dtype)
@@ -90,7 +89,8 @@ def _collect_shell(
         state: NestedSamplerState,
         termination_register: TerminationRegister,
         sampler: AbstractSampler,
-        sampler_state: Any
+        sampler_state: Any,
+        shell_size: int
 ) -> Tuple[LivePointCollection, NestedSamplerState, TerminationRegister]:
     """
     Run nested sampling until `num_samples` samples are collected.
@@ -101,7 +101,8 @@ def _collect_shell(
         state: the state of the nested sampler at the start
         termination_register: the termination register at the start
         sampler: sampler to use
-        sampler_state: the sampler state to use for sampling
+        sampler_state: the sampler state to use for
+        shell_size: the size of the shell to collect
 
     Returns:
         live_point_collection: the live point collection
@@ -135,12 +136,8 @@ def _collect_shell(
 
     # Find and discard shell
     front_size = np.shape(live_point_collection.log_L)[0]
-    # TODO: could make this a parameter
-    shell_size = front_size // 2
-    # TODO: always leave live points sorted so that we don't need to do again.
-    discard_locs = jnp.argsort(live_point_collection.log_L)[:shell_size]
-    # TODO: compute insert index KS-statistic
-    discarded_sample_collection: LivePointCollection = jax.tree.map(lambda x: x[discard_locs], live_point_collection)
+    # always leave live points sorted so that we don't need to do it here.
+    discarded_sample_collection: LivePointCollection = jax.tree.map(lambda x: x[:shell_size], live_point_collection)
     state = _add_samples_to_state(
         sample_collection=discarded_sample_collection,
         state=state,
@@ -150,29 +147,34 @@ def _collect_shell(
     # Replace the discarded samples
     key, sample_key = jax.random.split(state.key, 2)
     state = state._replace(key=key)
-    supremum_index = discard_locs[-1]
+    supremum_index = shell_size - 1  # Biggest of discarded
     log_L_contour = live_point_collection.log_L[supremum_index]
     sharded_sample_keys = tree_device_put(jax.random.split(sample_key, shell_size), mesh, ('shard',))
     new_samples, phantom_samples = get_samples(sharded_sample_keys, log_L_contour, sampler_state)
     # Sender is the maximum log_L sample from discarded, i.e. that last added discarded
+    sender_node_idx = state.next_sample_idx - jnp.asarray(1, mp_policy.index_dtype)
     new_sample_collection = LivePointCollection(
-        sender_node_idx=jnp.full((shell_size,), state.next_sample_idx, mp_policy.index_dtype),
+        sender_node_idx=jnp.full((shell_size,), sender_node_idx, mp_policy.index_dtype),
         U_sample=new_samples.U_sample,
         log_L=new_samples.log_L,
         log_L_constraint=new_samples.log_L_constraint,
         num_likelihood_evaluations=new_samples.num_likelihood_evaluations
     )
     live_point_collection: LivePointCollection = jax.tree.map(
-        lambda x, update: x.at[discard_locs, ...].set(update),
+        lambda x, update: x.at[:shell_size, ...].set(update),
         live_point_collection,
         new_sample_collection
     )
+    sort_indices = jnp.argsort(live_point_collection.log_L)
+    live_point_collection = jax.tree_map(lambda x: x[sort_indices], live_point_collection)
+    # compute insert index KS-statistic
+    _, insert_indices = jax.lax.top_k(-sort_indices, k=shell_size)
 
     # Add phantom samples (this is an option of user, controlled by `k`)
 
     num_phantom = np.shape(phantom_samples.log_L)[0]
     phantom_collection = LivePointCollection(
-        sender_node_idx=jnp.full((num_phantom,), state.next_sample_idx, mp_policy.index_dtype),
+        sender_node_idx=jnp.full((num_phantom,), sender_node_idx, mp_policy.index_dtype),
         U_sample=phantom_samples.U_sample,
         log_L=phantom_samples.log_L,
         log_L_constraint=phantom_samples.log_L_constraint,
@@ -185,6 +187,7 @@ def _collect_shell(
     )
 
     # Update termination register
+    # TODO: technically we must compute the num live points in case there is a plateau
     evidence_calc, _ = cumulative_op_static(
         op=_update_evidence_calc_op,
         init=termination_register.evidence_calc,
@@ -193,13 +196,12 @@ def _collect_shell(
             log_L_next=discarded_sample_collection.log_L
         ),
     )
-    sorted_log_L_live = jnp.sort(live_point_collection.log_L)
     evidence_calc_with_remaining, _ = cumulative_op_static(
         op=_update_evidence_calc_op,
         init=evidence_calc,
         xs=EvidenceUpdateVariables(
             num_live_points=jnp.arange(front_size, 0., -1., mp_policy.measure_dtype),
-            log_L_next=sorted_log_L_live
+            log_L_next=live_point_collection.log_L
         ),
     )
     # Note we consider phantom samples requiring 0 num_likelihood_evaluations
@@ -209,9 +211,9 @@ def _collect_shell(
     efficiency = jnp.asarray(front_size / jnp.sum(live_point_collection.num_likelihood_evaluations),
                              mp_policy.measure_dtype)
     plateau = jnp.all(jnp.equal(live_point_collection.log_L, live_point_collection.log_L[0]))
-    relative_spread = 2. * jnp.abs(sorted_log_L_live[-1] - sorted_log_L_live[0]) / jnp.abs(
-        sorted_log_L_live[0] + sorted_log_L_live[-1])
-    absolute_spread = jnp.abs(sorted_log_L_live[-1] - sorted_log_L_live[0])
+    absolute_spread = jnp.abs(live_point_collection.log_L[-1] - live_point_collection.log_L[0])
+    relative_spread = 2. * absolute_spread / jnp.abs(live_point_collection.log_L[0] + live_point_collection.log_L[-1])
+    no_seed_points = live_point_collection.log_L[supremum_index] >= live_point_collection.log_L[-1]
     termination_register = TerminationRegister(
         num_samples_used=state.num_samples,
         evidence_calc=evidence_calc,
@@ -220,6 +222,7 @@ def _collect_shell(
         log_L_contour=log_L_contour,
         efficiency=efficiency,
         plateau=plateau,
+        no_seed_points=no_seed_points,
         relative_spread=relative_spread,
         absolute_spread=absolute_spread
     )
@@ -233,8 +236,9 @@ def _main_ns_thread(
         termination_register: TerminationRegister,
         termination_cond: TerminationCondition,
         sampler: AbstractSampler,
-        num_discards_per_iteration: int = 1,
-        verbose: bool = False
+        num_discards_per_iteration: int,
+        shell_fraction: float,
+        verbose: bool
 ) -> Tuple[LivePointCollection, NestedSamplerState, TerminationRegister, IntArray]:
     """
     Runs a single thread of static nested sampling until a stopping condition is reached. Discards 1/2 of the
@@ -259,10 +263,8 @@ def _main_ns_thread(
         raise ValueError("num_discards_per_iteration must be > 0 got {num_discards_per_iteration}.")
 
     # Update the termination condition to stop before going over the maximum number of samples.
-    # TODO: if we parametrise discard size then this needs to be updated.
-    samples_per_discard = np.shape(live_point_collection.log_L)[0] // 2
-    phantom_per_discard = samples_per_discard * sampler.num_phantom()
-    space_needed_per_iteration = num_discards_per_iteration * (samples_per_discard + phantom_per_discard)
+    shell_size = int(np.shape(live_point_collection.log_L)[0] * shell_fraction)
+    space_needed_per_iteration = num_discards_per_iteration * shell_size * (1 + sampler.num_phantom())
 
     if termination_cond.max_samples is not None:
         termination_cond = termination_cond._replace(
@@ -271,6 +273,9 @@ def _main_ns_thread(
                 np.shape(state.sample_collection.log_L)[0] - space_needed_per_iteration
             )
         )
+    # Catch case of no seed points left
+    no_seed_points = live_point_collection.log_L[shell_size - 1] >= live_point_collection.log_L[-1]
+    termination_register = termination_register._replace(no_seed_points=no_seed_points)
 
     class CarryType(NamedTuple):
         live_point_collection: LivePointCollection
@@ -286,30 +291,33 @@ def _main_ns_thread(
 
     def body(carry: CarryType) -> CarryType:
         # Discard half the live points and replace them with new samples
+        live_point_collection, state, termination_register = carry
 
-        key, ephemeral_key = jax.random.split(carry.state.key, 2)
+        key, ephemeral_key = jax.random.split(state.key, 2)
+        state = state._replace(key=key)
         ephemeral_state = EphemeralState(
             key=ephemeral_key,
-            live_points_collection=carry.live_point_collection,
-            termination_register=carry.termination_register
+            live_points_collection=live_point_collection,
+            termination_register=termination_register
         )
         sampler_state = sampler.pre_process(ephemeral_state)
 
-        live_point_collection, state, termination_register = ..., ..., ...  # so IDE doesnt complain
         for _ in range(num_discards_per_iteration):
             live_point_collection, state, termination_register = _collect_shell(
                 mesh=mesh,
-                live_point_collection=carry.live_point_collection,
-                state=carry.state,
+                live_point_collection=live_point_collection,
+                state=state,
                 sampler=sampler,
-                termination_register=carry.termination_register,
-                sampler_state=sampler_state
+                termination_register=termination_register,
+                sampler_state=sampler_state,
+                shell_size=shell_size
             )
-            key, ephemeral_key = jax.random.split(carry.state.key, 2)
+            key, ephemeral_key = jax.random.split(state.key, 2)
+            state = state._replace(key=key)
             ephemeral_state = EphemeralState(
                 key=ephemeral_key,
-                live_points_collection=carry.live_point_collection,
-                termination_register=carry.termination_register
+                live_points_collection=live_point_collection,
+                termination_register=termination_register
             )
             sampler_state = sampler.post_process(ephemeral_state=ephemeral_state, sampler_state=sampler_state)
 
@@ -318,19 +326,31 @@ def _main_ns_thread(
                 log_f_mean=termination_register.evidence_calc_with_remaining.log_Z_mean,
                 log_f2_mean=termination_register.evidence_calc_with_remaining.log_Z2_mean)
             log_Z_uncert = jnp.sqrt(log_Z_var)
+            log_Z_mean0, log_Z_var0 = linear_to_log_stats(
+                log_f_mean=termination_register.evidence_calc.log_Z_mean,
+                log_f2_mean=termination_register.evidence_calc.log_Z2_mean)
+            log_Z_remaining = log_Z_mean - log_Z_mean0
+            log_Z_remaining_error = jnp.sqrt(log_Z_var + log_Z_var0)
+            ess = effective_sample_size_kish(termination_register.evidence_calc_with_remaining.log_Z_mean,
+                                             termination_register.evidence_calc_with_remaining.log_dZ2_mean)
             jax.debug.print(
                 "-------\n"
                 "Num samples: {num_samples}\n"
                 "Num likelihood evals: {num_likelihood_evals}\n"
                 "Efficiency: {efficiency}\n"
                 "log(L) contour: {log_L_contour}\n"
-                "log(Z) est.: {log_Z_mean} +- {log_Z_uncert}",
+                "log(Z) est.: {log_Z_mean} +- {log_Z_uncert}\n"
+                "log(Z | remaining) est.: {log_Z_remaining} +- {log_Z_remaining_error}\n"
+                "ESS: {ess}\n",
                 num_samples=termination_register.num_samples_used,
                 num_likelihood_evals=termination_register.num_likelihood_evaluations,
                 efficiency=termination_register.efficiency,
                 log_L_contour=termination_register.log_L_contour,
                 log_Z_mean=log_Z_mean,
-                log_Z_uncert=log_Z_uncert
+                log_Z_uncert=log_Z_uncert,
+                log_Z_remaining=log_Z_remaining,
+                log_Z_remaining_error=log_Z_remaining_error,
+                ess=ess
             )
 
         return CarryType(
@@ -359,6 +379,26 @@ def _main_ns_thread(
     return carry.live_point_collection, carry.state, carry.termination_register, termination_reason
 
 
+def round_up_num_live_points(init_num_live_points, shell_frac, num_devices):
+    num_live_points = int(init_num_live_points)
+    while True:
+        shell_size = int(num_live_points * shell_frac)
+        if shell_size % num_devices == 0:
+            break
+        num_live_points += 1
+    return num_live_points
+
+
+def round_up_max_samples(init_max_samples, num_discard, num_phantom_points):
+    max_samples = int(init_max_samples)
+    block_size = num_discard * (1 + num_phantom_points)
+    while True:
+        if max_samples % block_size == 0:
+            break
+        max_samples += 1
+    return max_samples
+
+
 @dataclasses.dataclass(eq=False)
 class ShardedStaticNestedSampler(AbstractNestedSampler):
     """
@@ -381,35 +421,33 @@ class ShardedStaticNestedSampler(AbstractNestedSampler):
     init_efficiency_threshold: float
     sampler: AbstractSampler
     num_live_points: int
+    shell_fraction: Optional[float] = None
     devices: Optional[List[xla_client.Device]] = None
     verbose: bool = False
 
     def __post_init__(self):
+        if self.shell_fraction is None:
+            self.shell_fraction = 0.5
+        self.shell_fraction = max(self.shell_fraction, 1. / self.num_live_points)
+        if (self.shell_fraction <= 0.) or (self.shell_fraction > 1.):
+            raise ValueError(
+                f"Expected 0 < shell_fraction <= 1, got {self.shell_fraction}. Best to keep it around 0.5.")
         if self.devices is None:
             self.devices = jax.devices()
         if len(self.devices) > 1:
             print(f"Running over {len(self.devices)} devices.")
         # Make sure num_live_points // 2 is a multiple of the number of devices
-        if self.num_live_points % 2 != 0:
-            raise ValueError("num_live_points must be even.")
-        remainder = (self.num_live_points // 2) % len(self.devices)
-        extra = 2 * ((self.num_live_points // 2 - remainder) % len(self.devices))
-        if extra > 0:
-            warnings.warn(
-                f"Increasing num_live_points ({self.num_live_points}) by {extra} to closest multiple of "
-                f"num_devices {len(self.devices)}."
-            )
-            self.num_live_points += extra
-
-        block_size = self.num_live_points * (1 + self.sampler.num_phantom())
-        remainder = self.max_samples % block_size
-        extra = (self.max_samples - remainder) % block_size
-        if extra > 0:
-            warnings.warn(
-                f"Increasing max_samples ({self.max_samples}) by {extra} to closest multiple of "
-                f"{block_size}."
-            )
-        self.max_samples = int(self.max_samples + extra)
+        self.num_live_points = round_up_num_live_points(
+            init_num_live_points=self.num_live_points,
+            shell_frac=self.shell_fraction,
+            num_devices=len(self.devices)
+        )
+        self.max_samples = round_up_max_samples(
+            init_max_samples=self.max_samples,
+            # TODO: if we do more than 1 discard per iteration need to update here too.
+            num_discard=int(self.shell_fraction * self.num_live_points),
+            num_phantom_points=self.sampler.num_phantom()
+        )
 
     def _to_results(self, termination_reason: IntArray, state: NestedSamplerState,
                     trim: bool) -> NestedSamplerResults:
@@ -534,6 +572,9 @@ class ShardedStaticNestedSampler(AbstractNestedSampler):
         # Create sampler threads.
         mesh = create_mesh((len(self.devices),), ('shard',), devices=self.devices)
 
+        if self.verbose:
+            jax.debug.print(f"Creating initial state with {self.num_live_points} live points.")
+
         live_point_collection, state = create_init_state(
             key=key,
             num_live_points=self.num_live_points,
@@ -545,9 +586,13 @@ class ShardedStaticNestedSampler(AbstractNestedSampler):
         termination_register = create_init_termination_register()
 
         if self.init_efficiency_threshold > 0.:
+            if self.verbose:
+                jax.debug.print(
+                    f"Running uniform sampling down to efficiency threshold of {self.init_efficiency_threshold}."
+                )
             # Uniform sampling down to a given mean efficiency
             uniform_sampler = UniformSampler(model=self.model)
-            termination_cond = TerminationCondition(
+            uniform_term_cond = TerminationCondition(
                 efficiency_threshold=jnp.asarray(self.init_efficiency_threshold, mp_policy.measure_dtype),
                 dlogZ=jnp.asarray(0., mp_policy.measure_dtype),
                 max_samples=jnp.asarray(self.max_samples, mp_policy.count_dtype)
@@ -557,11 +602,15 @@ class ShardedStaticNestedSampler(AbstractNestedSampler):
                 live_point_collection=live_point_collection,
                 state=state,
                 termination_register=termination_register,
-                termination_cond=termination_cond,
+                termination_cond=uniform_term_cond,
                 sampler=uniform_sampler,
                 num_discards_per_iteration=1,
+                shell_fraction=self.shell_fraction,
                 verbose=self.verbose
             )
+        if self.verbose:
+            jax.debug.print("Running until termination condition: {term_cond}",
+                            term_cond=term_cond)
 
         # Continue sampling with provided sampler until user-defined termination condition is met.
         live_point_collection, state, termination_register, termination_reason = _main_ns_thread(
@@ -572,9 +621,11 @@ class ShardedStaticNestedSampler(AbstractNestedSampler):
             termination_cond=term_cond,
             sampler=self.sampler,
             num_discards_per_iteration=1,
+            shell_fraction=self.shell_fraction,
             verbose=self.verbose
         )
 
+        # Consumer live_point_collection
         state = _add_samples_to_state(
             sample_collection=live_point_collection,
             state=state,

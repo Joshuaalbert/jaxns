@@ -3,15 +3,15 @@ import warnings
 from typing import Tuple, Callable, Generator
 
 import jax
+import numpy as np
 from jax import numpy as jnp, lax
 
 from jaxns.framework.bases import PriorModelType, BaseAbstractPrior, PriorModelGen
 from jaxns.framework.prior import InvalidPriorName, SingularPrior, Prior
 from jaxns.internals.maps import pytree_unravel
+from jaxns.internals.mixed_precision import mp_policy
 from jaxns.internals.types import UType, XType, LikelihoodInputType, FloatArray, LikelihoodType, PRNGKey, \
     isinstance_namedtuple, WType, RandomVariableType
-from jaxns.internals.mixed_precision import float_type, mp_policy
-import numpy as np
 
 __all__ = [
     'simulate_prior_model'

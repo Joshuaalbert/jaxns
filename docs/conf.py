@@ -10,9 +10,9 @@
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
 project = "jaxns"
-copyright = "2022, Joshua G. Albert"
+copyright = "2024, Joshua G. Albert"
 author = "Joshua G. Albert"
-release = "2.6.1"
+release = "2.6.2"
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration

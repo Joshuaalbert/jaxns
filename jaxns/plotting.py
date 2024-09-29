@@ -11,9 +11,9 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from scipy.stats import gaussian_kde
 
 from jaxns.internals.log_semiring import cumulative_logsumexp, LogSpace, normalise_log_space
+from jaxns.internals.mixed_precision import mp_policy
 from jaxns.internals.shapes import tuple_prod
 from jaxns.nested_samplers.common.types import NestedSamplerResults
-from jaxns.internals.mixed_precision import int_type
 from jaxns.utils import resample
 
 __all__ = ['plot_diagnostics',
@@ -30,20 +30,17 @@ def plot_diagnostics(results: NestedSamplerResults, save_name=None):
     """
 
     num_samples = int(results.total_num_samples)
-    if results.log_L_samples.shape[0] != num_samples:
-        raise ValueError(f"Expected all samples to have the same number of samples, "
-                         f"got log_L_samples with {results.log_L_samples.shape[0]} samples, "
-                         f"expected {num_samples} samples.")
     fig, axs = plt.subplots(5, 1, sharex=True, figsize=(8, 12))
-    log_X = np.asarray(results.log_X_mean)
-    num_live_points_per_sample = np.asarray(results.num_live_points_per_sample)
-    log_L = np.asarray(results.log_L_samples)
+    log_X = np.asarray(results.log_X_mean[:num_samples])
+    num_live_points_per_sample = np.asarray(results.num_live_points_per_sample[:num_samples])
+    log_L = np.asarray(results.log_L_samples[:num_samples])
     max_log_likelihood = np.max(log_L)
-    log_dp_mean = np.asarray(results.log_dp_mean)
+    log_dp_mean = np.asarray(results.log_dp_mean[:num_samples])
     log_cum_evidence = cumulative_logsumexp(log_dp_mean)
     cum_evidence = np.exp(log_cum_evidence)
     log_Z_mean = np.asarray(results.log_Z_mean)
-    num_likelihood_evaluations_per_sample = np.asarray(results.num_likelihood_evaluations_per_sample)
+    num_likelihood_evaluations_per_sample = np.asarray(results.num_likelihood_evaluations_per_sample[:num_samples])
+    mean_efficiency = np.exp(results.log_efficiency)
     if np.any(num_likelihood_evaluations_per_sample == 0):
         warnings.warn("Found samples with zero likelihood evaluations.")
         efficiency = np.where(
@@ -53,7 +50,7 @@ def plot_diagnostics(results: NestedSamplerResults, save_name=None):
         )
     else:
         efficiency = 1. / num_likelihood_evaluations_per_sample
-    mean_efficiency = np.exp(results.log_efficiency)
+
     # Plot the number of live points
     axs[0].plot(-log_X, num_live_points_per_sample, c='black')
     axs[0].set_ylabel(r'$n_{\rm live}$')
@@ -99,16 +96,18 @@ def plot_cornerplot(results: NestedSamplerResults, variables: Optional[List[str]
         save_name: file to save result to.
         kde_overlay: whether to overlay a KDE on the histograms.
     """
+    num_samples = int(results.total_num_samples)
     samples = results.samples
     if with_parametrised:
         samples.update(results.parametrised_samples)
+    samples = jax.tree.map(lambda x: np.asarray(x[:num_samples]), samples)
+
     # Plot all variables by default
     if variables is None:
         variables = list(samples.keys())
     variables = sorted(filter(lambda v: v in samples, variables))
     ndims = sum([tuple_prod(samples[key].shape[1:]) for key in variables], 0)
 
-    num_samples = int(results.total_num_samples)
     for key in variables:
         if samples[key].shape[0] != num_samples:
             raise ValueError(f"Expected all samples to have the same number of samples, "
@@ -135,21 +134,25 @@ def plot_cornerplot(results: NestedSamplerResults, variables: Optional[List[str]
                 parameters.append(f"{key}[{','.join([str(j) for j in indices])}]")
 
     # Get the maximum likelihood and MAP samples
-    log_L_samples = np.asarray(results.log_L_samples)
-    log_posterior_density = np.asarray(results.log_posterior_density)
+    log_L_samples = np.asarray(results.log_L_samples[:num_samples])
+    log_posterior_density = np.asarray(results.log_posterior_density[:num_samples])
     max_like_idx = np.argmax(log_L_samples)
     map_idx = np.argmax(log_posterior_density)
     max_like_sample = leaves[max_like_idx]
     map_sample = leaves[map_idx]
 
     # Get the weight of each sample
-    log_weights = np.asarray(normalise_log_space(LogSpace(results.log_dp_mean), norm_type='max').log_abs_val)
+    log_weights = np.asarray(
+        normalise_log_space(LogSpace(results.log_dp_mean[:num_samples]), norm_type='max').log_abs_val)
 
     figsize = min(20, max(4, int(2 * ndims)))
     fig, axs = plt.subplots(ndims, ndims, figsize=(figsize, figsize), squeeze=False)
 
     # Get the number of bins for the histograms based on the effective sample size
-    nbins = max(10, int(jnp.sqrt(results.ESS)))
+    if np.isnan(results.ESS):
+        nbins = 10
+    else:
+        nbins = max(10, int(jnp.sqrt(results.ESS)))
 
     # Loop over the variables, and plot the marginal distributions on the diagonal setting a title above
     # each plot with the mean+-stddev, 5%/50%/95%, and MAP
@@ -391,7 +394,7 @@ def plot_samples_development(results, variables=None, save_name=None):
 
     def init():
         start = 0
-        stop = start + results.n_per_sample[start].astype(int_type)
+        stop = start + results.n_per_sample[start].astype(mp_policy.index_dtype)
         for i in range(ndims):
             for j in range(ndims):
                 axs[i][j].clear()
@@ -402,7 +405,7 @@ def plot_samples_development(results, variables=None, save_name=None):
         return artists
 
     def update(start):
-        stop = start + results.n_per_sample[start].astype(int_type)
+        stop = start + results.n_per_sample[start].astype(mp_policy.index_dtype)
         for i in range(ndims):
             for j in range(ndims):
                 axs[i][j].clear()

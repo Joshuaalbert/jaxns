@@ -9,8 +9,8 @@ import jaxns.framework.context as ctx
 from jaxns.framework.bases import BaseAbstractPrior, BaseAbstractDistribution
 from jaxns.framework.wrapped_tfp_distribution import WrappedTFPDistribution
 from jaxns.internals.constraint_bijections import quick_unit
+from jaxns.internals.mixed_precision import mp_policy
 from jaxns.internals.types import FloatArray, IntArray, BoolArray, XType, UType
-from jaxns.internals.mixed_precision import float_type
 
 tfpd = tfp.distributions
 
@@ -56,7 +56,7 @@ class SingularPrior(BaseAbstractPrior):
         return self.value
 
     def _inverse(self, X: XType) -> UType:
-        return jnp.asarray([], float_type)
+        return jnp.asarray([], mp_policy.measure_dtype)
 
     def _log_prob(self, X: XType) -> FloatArray:
         return self.base_prior.log_prob(X)
@@ -129,7 +129,7 @@ class Prior(BaseAbstractPrior):
 
     def _inverse(self, X: XType) -> FloatArray:
         if self._type == 'value':
-            return jnp.asarray([], float_type)
+            return jnp.asarray([], mp_policy.measure_dtype)
         elif self._type == 'dist':
             return self.dist.inverse(X)
         else:
@@ -137,7 +137,7 @@ class Prior(BaseAbstractPrior):
 
     def _log_prob(self, X: XType) -> FloatArray:
         if self._type == 'value':
-            return jnp.asarray(0., float_type)
+            return jnp.asarray(0., mp_policy.measure_dtype)
         elif self._type == 'dist':
             return self.dist.log_prob(X=X)
         else:
@@ -189,7 +189,7 @@ def prior_to_parametrised_singular(prior: BaseAbstractPrior, random_init: bool =
     norm_U_base_param = ctx.get_parameter(
         name=name,
         shape=prior.base_shape,
-        dtype=float_type,
+        dtype=mp_policy.measure_dtype,
         init=initaliser
     )
     # transform [-inf, inf] -> [0,1]

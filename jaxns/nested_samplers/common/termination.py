@@ -3,7 +3,7 @@ from typing import Union, Tuple
 
 from jax import numpy as jnp
 
-from jaxns.internals.mixed_precision import int_type
+from jaxns.internals.mixed_precision import mp_policy
 from jaxns.internals.stats import linear_to_log_stats, effective_sample_size_kish
 from jaxns.internals.types import BoolArray, IntArray
 from jaxns.nested_samplers.common.types import TerminationConditionDisjunction, TerminationConditionConjunction, \
@@ -25,6 +25,7 @@ def determine_termination(
         7-bit -> 128: entire live-points set is a single plateau
         8-bit -> 256: relative spread of live points < rtol
         9-bit -> 512: absolute spread of live points < atol
+        10-bit -> 1024: no seed points left
 
     Multiple flags are summed together
 
@@ -36,7 +37,7 @@ def determine_termination(
         boolean done signal, and termination reason
     """
 
-    termination_reason = jnp.asarray(0, int_type)
+    termination_reason = jnp.asarray(0, mp_policy.count_dtype)
     done = jnp.asarray(False, jnp.bool_)
 
     def _set_done_bit(bit_done, bit_reason, done, termination_reason):
@@ -44,8 +45,8 @@ def determine_termination(
             raise RuntimeError("bit_done must be a scalar.")
         done = jnp.bitwise_or(bit_done, done)
         termination_reason += jnp.where(bit_done,
-                                        jnp.asarray(2 ** bit_reason, int_type),
-                                        jnp.asarray(0, int_type))
+                                        jnp.asarray(2 ** bit_reason, mp_policy.count_dtype),
+                                        jnp.asarray(0, mp_policy.count_dtype))
         return done, termination_reason
 
     if isinstance(term_cond, TerminationConditionConjunction):
@@ -132,5 +133,7 @@ def determine_termination(
         done, termination_reason = _set_done_bit(absolute_spread_low, 9,
                                                  done=done, termination_reason=termination_reason)
 
+    done, termination_reason = _set_done_bit(termination_register.no_seed_points, 10,
+                                             done=done, termination_reason=termination_reason)
 
     return done, termination_reason

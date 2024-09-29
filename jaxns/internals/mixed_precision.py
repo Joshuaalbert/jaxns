@@ -7,9 +7,8 @@ from jax import numpy as jnp
 
 from jaxns.internals.logging import get_grandparent_info
 
-# if not jax.config.threefry_partitionable:
-#     warnings.warn("JAX threefry partitionable is not enabled. Setting it now. Check for errors.")
-#     jax.config.update('jax_threefry_partitionable', True)
+# We set this here also, since mp_policy use will mandate this being invoked early enough to matter.
+jax.config.update("jax_threefry_partitionable", True)
 
 if not jax.config.read('jax_enable_x64'):
     warnings.warn("JAX x64 is not enabled. Setting it now. Check for errors.")

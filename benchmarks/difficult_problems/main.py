@@ -152,21 +152,20 @@ def main():
     for model_name, model in all_models().items():
         print(f"Testing model {model_name}")
         model.sanity_check(jax.random.PRNGKey(0), 1000)
-        ns = NestedSampler(model=model,
-                                  max_samples=1000000,
-                                  verbose=True,
-                                  difficult_model=True,
-                                  parameter_estimation=True
-                                  )
+        ns = NestedSampler(
+            model=model,
+            difficult_model=True,
+            parameter_estimation=True
+        )
         ns_jit = jax.jit(lambda key: ns(key))
         ns_compiled = ns_jit.lower(jax.random.PRNGKey(42)).compile()
         with Timer():
             termination_reason, state = ns_compiled(jax.random.PRNGKey(42))
             termination_reason.block_until_ready()
         results = ns.to_results(termination_reason=termination_reason, state=state)
-        ns.plot_diagnostics(results)
-        ns.summary(results)
-        ns.plot_cornerplot(results)
+        ns.plot_diagnostics(results, save_name=f"{model_name}_diagnostics.png")
+        ns.plot_cornerplot(results, save_name=f"{model_name}_cornerplot.png")
+        ns.summary(results, f_obj=f"{model_name}_summary.txt")
 
 
 if __name__ == '__main__':

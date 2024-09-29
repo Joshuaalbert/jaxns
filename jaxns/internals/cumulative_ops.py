@@ -3,9 +3,9 @@ from typing import TypeVar, Callable, Tuple, Optional
 import jax
 from jax import lax, numpy as jnp, tree_util
 
+from jaxns.internals.mixed_precision import mp_policy
 from jaxns.internals.prefix_sum import scan_associative
 from jaxns.internals.types import IntArray
-from jaxns.internals.mixed_precision import int_type
 
 X = TypeVar('X')
 V = TypeVar('V')
@@ -119,7 +119,7 @@ def cumulative_op_dynamic(op: Callable[[V, Y], V], init: V, xs: Y, stop_idx: Int
         empty_fill if empty_fill is not None else init
     )
 
-    w_init = (init, jnp.asarray(0, int_type), output)
+    w_init = (init, jnp.asarray(0, mp_policy.count_dtype), output)
 
     (final_accumulate, _, final_output) = lax.while_loop(
         cond_fun=cond,
