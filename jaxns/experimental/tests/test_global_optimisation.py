@@ -1,4 +1,4 @@
-import jax.numpy as jnp
+import jax.random
 import jax.random
 import numpy as np
 import pytest
@@ -8,7 +8,7 @@ from jax import numpy as jnp
 from jaxns import Prior, Model
 from jaxns.experimental import GlobalOptimisationResults
 from jaxns.experimental.global_optimisation import GlobalOptimisationTerminationCondition, gradient_based_optimisation, \
-    summary
+    go_summary
 from jaxns.experimental.public import GlobalOptimisation
 
 tfpd = tfp.distributions
@@ -104,18 +104,44 @@ def test_gradient_based_optimisation(all_global_optimisation_problems):
         assert log_L_solution >= log_L_init
 
 
-def test_all_global_optimisation(all_global_optimisation_problems):
-    for name, (model, optimum, a_tol, log_L_tol) in all_global_optimisation_problems:
+def test_all_global_optimisation_gradient_slice(xin_she_yang_1_problem,
+                                                drop_wave_problem_2d,
+                                                drop_wave_problem_5d):
+    for name, (model, optimum, a_tol, log_L_tol) in [
+        ('xin_she_yang_1_problem', xin_she_yang_1_problem),
+        ('drop_wave_problem_2d', drop_wave_problem_2d),
+        ('drop_wave_problem_5d', drop_wave_problem_5d),
+    ]:
         print(f"Checking {name}")
         go = GlobalOptimisation(model, gradient_slice=True)
-        results = jax.jit(go, static_argnames=['finetune'])(
+        results = jax.jit(go)(
             key=jax.random.PRNGKey(0),
-            term_cond=GlobalOptimisationTerminationCondition(log_likelihood_contour=log_L_tol),
-            finetune=False
+            term_cond=GlobalOptimisationTerminationCondition(log_likelihood_contour=log_L_tol)
         )
         assert len(results.X_solution) > 0
         # print(results)
         go.summary(results)
+        go.plot_progress(results)
+
+        np.testing.assert_allclose(results.solution[0], optimum, atol=a_tol)
+
+
+def test_all_global_optimisation_no_gradient_slice(xin_she_yang_1_problem,
+                                                   drop_wave_problem_2d):
+    for name, (model, optimum, a_tol, log_L_tol) in [
+        ('xin_she_yang_1_problem', xin_she_yang_1_problem),
+        ('drop_wave_problem_2d', drop_wave_problem_2d),
+    ]:
+        print(f"Checking {name}")
+        go = GlobalOptimisation(model, gradient_slice=False)
+        results = jax.jit(go)(
+            key=jax.random.PRNGKey(0),
+            term_cond=GlobalOptimisationTerminationCondition(log_likelihood_contour=log_L_tol)
+        )
+        assert len(results.X_solution) > 0
+        # print(results)
+        go.summary(results)
+        go.plot_progress(results)
 
         np.testing.assert_allclose(results.solution[0], optimum, atol=a_tol)
 
@@ -136,6 +162,7 @@ def test_summary():
         num_samples=jnp.array(1),
         termination_reason=jnp.array(1),
         relative_spread=jnp.array(1.),
-        absolute_spread=jnp.array(1.)
+        absolute_spread=jnp.array(1.),
+        log_L_progress=jnp.arange(10)
     )
-    summary(mock_results)
+    go_summary(mock_results)

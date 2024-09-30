@@ -4,6 +4,7 @@ from typing import NamedTuple, Optional, Union, TextIO, Tuple
 
 import jax.numpy as jnp
 import numpy as np
+import pylab as plt
 from jaxlib import xla_client
 from jaxopt import NonlinearCG
 
@@ -38,6 +39,7 @@ class GlobalOptimisationResults(NamedTuple):
     X_solution: XType
     solution: LikelihoodInputType
     log_L_solution: FloatArray
+    log_L_progress: FloatArray
     num_likelihood_evaluations: IntArray
     num_samples: IntArray
     termination_reason: IntArray
@@ -77,6 +79,7 @@ class SimpleGlobalOptimisation:
     sampler: AbstractSampler
     num_search_chains: int
     model: BaseAbstractModel
+    shell_frac: float = 0.5
     devices: Optional[xla_client.Device] = None
     verbose: bool = False
 
@@ -91,7 +94,7 @@ class SimpleGlobalOptimisation:
             init_efficiency_threshold=0.1,
             sampler=self.sampler,
             num_live_points=self.num_search_chains,
-            shell_fraction=0.,
+            shell_fraction=self.shell_frac,
             devices=self.devices,
             verbose=self.verbose
         )
@@ -121,18 +124,20 @@ class SimpleGlobalOptimisation:
             results of the global optimisation
         """
         is_sample_mask = jnp.arange(np.shape(state.samples.log_L)[0], dtype=mp_policy.index_dtype) < state.num_samples
-        best_idx = jnp.argmax(
-            jnp.where(is_sample_mask, state.samples.log_L, jnp.asarray(-jnp.inf, mp_policy.measure_dtype)))
+        log_L_masked = jnp.where(is_sample_mask, state.samples.log_L, jnp.asarray(jnp.nan, mp_policy.measure_dtype))
+        best_idx = jnp.nanargmax(log_L_masked)
         U_solution = state.samples.U_samples[best_idx]
         X_solution = self.model.transform(U_solution)
         solution = self.model.prepare_input(U_solution)  # The output of prior_model is solution
         log_L_solution = state.samples.log_L[best_idx]
         num_likelihood_evaluations = state.num_likelihood_evaluations
+        log_L_progress = jnp.sort(log_L_masked)  # Low to high likelihoods, nan's at the end.
         return GlobalOptimisationResults(
             U_solution=U_solution,
             X_solution=X_solution,
             solution=solution,
             log_L_solution=log_L_solution,
+            log_L_progress=log_L_progress,
             num_likelihood_evaluations=num_likelihood_evaluations,
             num_samples=state.num_samples,
             relative_spread=state.relative_spread,
@@ -161,7 +166,7 @@ class SimpleGlobalOptimisation:
                 efficiency_threshold=term_cond.min_efficiency,
                 atol=term_cond.atol,
                 rtol=term_cond.rtol,
-                max_samples=None
+                max_samples=None  # Turn off max samples for global optimisation, wraps index
             )
         )
 
@@ -176,7 +181,24 @@ class SimpleGlobalOptimisation:
         return termination_reason, go_state
 
 
-def summary(results: GlobalOptimisationResults, f_obj: Optional[Union[str, TextIO]] = None):
+def plot_progress(results: GlobalOptimisationResults, save_file: Optional[str] = None):
+    fig, ax = plt.subplots(1, 1, figsize=(8, 6))
+    start_sample_idx = max(0, results.num_samples - int(np.shape(results.log_L_progress)[0]))
+    end_sample_idx = int(results.num_samples)
+
+    ax.plot(
+        np.arange(start_sample_idx, end_sample_idx),
+        results.log_L_progress
+    )
+    ax.set_title(f"Optimisation progress (samples {start_sample_idx} to {end_sample_idx})")
+    ax.set_xlabel("Sample index")
+    ax.set_ylabel(r"Objective ($\log L$)")
+    if save_file is not None:
+        plt.savefig(save_file)
+    plt.show()
+
+
+def go_summary(results: GlobalOptimisationResults, f_obj: Optional[Union[str, TextIO]] = None):
     """
     Gives a summary of the results of a global optimisation.
 

@@ -72,7 +72,6 @@ class Bernoulli(SpecialPrior):
         sample = jnp.less(U, probs)
         return sample.astype(self.dtype)
 
-
 class Beta(SpecialPrior):
     def __init__(self, *, concentration0=None, concentration1=None, name: Optional[str] = None):
         super(Beta, self).__init__(name=name)
