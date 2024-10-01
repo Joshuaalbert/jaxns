@@ -68,7 +68,7 @@ class GlobalContext:
 
 global_context = GlobalContext()
 
-InitType = Union[Callable[[Tuple[int, ...], SupportsDType], jax.Array], jax.Array]
+InitType = Union[Callable[[Tuple[int, ...], SupportsDType], jax.Array], Any]
 
 
 def get_parameter(name: str, shape: Optional[Tuple[int, ...]] = None, dtype: Optional[SupportsDType] = jnp.float32, *,
@@ -86,12 +86,13 @@ def get_parameter(name: str, shape: Optional[Tuple[int, ...]] = None, dtype: Opt
         The parameter variable as a jax.Array=
     """
     if name not in global_context.params:
-        if isinstance(init, jax.Array):
-            global_context.params[name] = init
-        else:
+        if callable(init):
             if shape is None or dtype is None:
-                raise ValueError(f"shape and dtype must be provided if init is not a jax.Array, got {init}")
+                raise ValueError(f"shape and dtype must be provided since init {init} is a callable")
             global_context.params[name] = init(shape, dtype)
+        else:
+            global_context.params[name] = init
+
     return global_context.params[name]
 
 
@@ -153,12 +154,12 @@ def get_state(name: str, shape: Optional[Tuple[int, ...]] = None, dtype: Optiona
         The state variable as a jax.Array
     """
     if name not in global_context.states:
-        if isinstance(init, jax.Array):
-            global_context.states[name] = init
-        else:
+        if callable(init):
             if shape is None or dtype is None:
-                raise ValueError("shape and dtype must be provided if init is not a jax.Array")
+                raise ValueError(f"shape and dtype must be provided since init {init} is a callable")
             global_context.states[name] = init(shape, dtype)
+        else:
+            global_context.states[name] = init
     return global_context.states[name]
 
 
