@@ -1,3 +1,4 @@
+import warnings
 from functools import wraps
 from typing import Callable, Tuple, Dict, NamedTuple, Any, Optional, Union, TypeVar
 
@@ -68,11 +69,12 @@ class GlobalContext:
 
 global_context = GlobalContext()
 
-InitType = Union[Callable[[Tuple[int, ...], SupportsDType], jax.Array], Any]
+PT = TypeVar('PT')
+InitType = Union[Callable[[Tuple[int, ...], SupportsDType], PT], PT]
 
 
 def get_parameter(name: str, shape: Optional[Tuple[int, ...]] = None, dtype: Optional[SupportsDType] = jnp.float32, *,
-                  init: InitType) -> jax.Array:
+                  init: InitType) -> PT:
     """
     Get a parameter variable.
 
@@ -87,10 +89,14 @@ def get_parameter(name: str, shape: Optional[Tuple[int, ...]] = None, dtype: Opt
     """
     if name not in global_context.params:
         if callable(init):
-            if shape is None or dtype is None:
-                raise ValueError(f"shape and dtype must be provided since init {init} is a callable")
-            global_context.params[name] = init(shape, dtype)
+
+            if (shape is None) and (dtype is None):
+                global_context.params[name] = init()
+            else:
+                global_context.params[name] = init(shape, dtype)
         else:
+            warnings.warn(
+                "Using a constant initializer for state. This is not recommended as it may induce closure issues.")
             global_context.params[name] = init
 
     return global_context.params[name]
@@ -140,7 +146,7 @@ def wrap_random(f):
 
 
 def get_state(name: str, shape: Optional[Tuple[int, ...]] = None, dtype: Optional[SupportsDType] = None, *,
-              init: InitType) -> jax.Array:
+              init: InitType) -> PT:
     """
     Get a state variable.
 
@@ -155,10 +161,13 @@ def get_state(name: str, shape: Optional[Tuple[int, ...]] = None, dtype: Optiona
     """
     if name not in global_context.states:
         if callable(init):
-            if shape is None or dtype is None:
-                raise ValueError(f"shape and dtype must be provided since init {init} is a callable")
-            global_context.states[name] = init(shape, dtype)
+            if (shape is None) and (dtype is None):
+                global_context.states[name] = init()
+            else:
+                global_context.states[name] = init(shape, dtype)
         else:
+            warnings.warn(
+                "Using a constant initializer for state. This is not recommended as it may induce closure issues.")
             global_context.states[name] = init
     return global_context.states[name]
 
