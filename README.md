@@ -350,6 +350,8 @@ before importing JAXNS.
 
 # Change Log
 
+1 Oct, 2024 -- JAXNS 2.6.3 released. Enable pytrees in context.
+
 25 Sep, 2024 -- JAXNS 2.6.2 released. Fixed some important (not so edge) cases. Made faster. Handle no seed scenarios.
 
 24 Sep, 2024 -- JAXNS 2.6.1 released. Sharded parallel JAXNS. Rewrite of internals to support sharded parallelisation.
