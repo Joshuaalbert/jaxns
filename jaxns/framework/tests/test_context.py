@@ -17,7 +17,10 @@ def test_context():
         reg_loss = 0.01 * jnp.sum(w ** 2)
         get_state("reg_loss", init=reg_loss)
 
-        return jnp.dot(x, w)
+        param_pytree = get_parameter("param_pytree", init={"a": jnp.ones(()), "b": jnp.ones(())})
+        state_pytree = get_state("state_pytree", init={"a": jnp.ones(()), "b": jnp.ones(())})
+
+        return jnp.dot(x, w) + param_pytree["a"] + param_pytree["b"] + reg_loss + state_pytree["a"] + state_pytree["b"]
 
     assert len(global_context.stack) == 0
 

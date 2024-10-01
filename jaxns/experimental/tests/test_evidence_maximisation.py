@@ -24,7 +24,7 @@ def test_basic(solver):
 
     model = Model(prior_model=prior_model, log_likelihood=log_likelihood)
 
-    em = EvidenceMaximisation(model=model, ns_kwargs=dict(max_samples=1e5), verbose=False, solver=solver)
+    em = EvidenceMaximisation(model=model, verbose=False, solver=solver)
     t0 = time.time()
     ns_results, params = em.train(num_steps=3)
     print(f"Time taken ({solver}): {time.time() - t0}")
@@ -51,7 +51,7 @@ def test_basic_zero_size_param():
 
     model = Model(prior_model=prior_model, log_likelihood=log_likelihood)
 
-    em = EvidenceMaximisation(model=model, ns_kwargs=dict(max_samples=1e5))
+    em = EvidenceMaximisation(model=model)
     assert any(np.size(p) == 0 for p in jax.tree.leaves(model.params))
 
     ns_results, params = em.train(num_steps=1)

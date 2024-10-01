@@ -71,19 +71,19 @@ class EvidenceMaximisation:
         verbose: Whether to print progress verbosely.
     """
     model: Model
-    ns_kwargs: Dict[str, Any]
+    ns_kwargs: Optional[Dict[str, Any]] = None
     max_num_epochs: int = 50
     gtol: float = 1e-2
     log_Z_ftol: float = 1.
     log_Z_atol: float = 1e-4
-    batch_size: int = 128
+    batch_size: Optional[int] = 128
     termination_cond: Optional[TerminationCondition] = None
     solver: str = 'armijo'
     verbose: bool = False
 
     def __post_init__(self):
-        if 'max_samples' not in self.ns_kwargs:
-            raise ValueError("ns_kwargs must contain 'max_samples'.")
+        if self.ns_kwargs is None:
+            self.ns_kwargs = {}
         self._e_step = self._create_e_step()
         # self._m_step = self._create_m_step()
         self._m_step = self._create_m_step_stochastic()

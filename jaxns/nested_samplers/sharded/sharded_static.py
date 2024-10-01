@@ -73,7 +73,7 @@ def _add_samples_to_state(sample_collection: LivePointCollection,
     num_added = jnp.asarray(num_samples, mp_policy.index_dtype)
     next_sample_idx = state.next_sample_idx + num_added
     # Wrap at the number of samples (this is a trick for global optimisation that doesn't care about the entire progress)
-    next_sample_idx = next_sample_idx % np.shape(state.sample_collection.log_L)[0]
+    next_sample_idx = next_sample_idx % jnp.asarray(np.shape(state.sample_collection.log_L)[0], mp_policy.index_dtype)
     state = NestedSamplerState(
         key=state.key,
         next_sample_idx=next_sample_idx,
@@ -171,7 +171,6 @@ def _collect_shell(
     _, insert_indices = jax.lax.top_k(-sort_indices, k=shell_size)
 
     # Add phantom samples (this is an option of user, controlled by `k`)
-
     num_phantom = np.shape(phantom_samples.log_L)[0]
     phantom_collection = LivePointCollection(
         sender_node_idx=jnp.full((num_phantom,), sender_node_idx, mp_policy.index_dtype),

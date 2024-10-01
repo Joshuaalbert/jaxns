@@ -41,16 +41,16 @@ class TerminationCondition(NamedTuple):
         rtol: finish when the relative value 2*|log_L_max - log_L_min|/|log_L_max + log_L_min| < rol
         atol: finish when the absolute |log_L_max - log_L_min| < atol
     """
-    ess: Optional[FloatArray] = None
+    ess: Optional[Union[FloatArray, IntArray]] = None
     evidence_uncert: Optional[FloatArray] = None
     live_evidence_frac: Optional[FloatArray] = None  # Depreceated use dlogZ
     dlogZ: Optional[FloatArray] = None  #
-    max_samples: Optional[IntArray] = None
-    max_num_likelihood_evaluations: Optional[IntArray] = None
+    max_samples: Optional[Union[FloatArray, IntArray]] = None
+    max_num_likelihood_evaluations: Optional[Union[FloatArray, IntArray]] = None
     log_L_contour: Optional[FloatArray] = None
     efficiency_threshold: Optional[FloatArray] = None
-    rtol: Optional[Union[FloatArray, float]] = None
-    atol: Optional[Union[FloatArray, float]] = None
+    rtol: Optional[FloatArray] = None
+    atol: Optional[FloatArray] = None
 
     def __and__(self, other):
         return TerminationConditionConjunction(conds=[self, other])

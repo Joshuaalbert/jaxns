@@ -239,7 +239,7 @@ from jaxns.experimental import EvidenceMaximisation
 
 # Let's train the sigma parameter to maximise the evidence
 
-em = EvidenceMaximisation(model, ns_kwargs=dict(max_samples=1e4))
+em = EvidenceMaximisation(model)
 results, params = em.train(num_steps=5)
 
 summary(results, with_parametrised=True)
@@ -349,6 +349,8 @@ your CPUs by placing `os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_devi
 before importing JAXNS.
 
 # Change Log
+
+1 Oct, 2024 -- JAXNS 2.6.3 released. Enable pytrees in context.
 
 25 Sep, 2024 -- JAXNS 2.6.2 released. Fixed some important (not so edge) cases. Made faster. Handle no seed scenarios.
 

@@ -1,11 +1,11 @@
 import dataclasses
-from typing import Optional, TextIO, Union
+from typing import Optional
 
 from jaxlib import xla_client
 
 from jaxns.experimental import SimpleGlobalOptimisation, GlobalOptimisationTerminationCondition, \
     GlobalOptimisationResults
-from jaxns.experimental.global_optimisation import summary
+from jaxns.experimental.global_optimisation import plot_progress, go_summary
 from jaxns.framework.bases import BaseAbstractModel
 from jaxns.internals.types import PRNGKey
 from jaxns.samplers import UniDimSliceSampler
@@ -19,31 +19,54 @@ __all__ = [
 @dataclasses.dataclass(eq=False)
 class GlobalOptimisation:
     """
-    A global optimisation class that uses 1-dimensional slice sampler for the sampling step and decent default
-        values.
+    A global optimiser using nested sampling as the core algorithm. Can easily globally optimise complex models, with
+    curving degeneracies and multimodal structure. Highly parallelisable. Recommended to use gradient information by
+    setting gradient_slice=True.
+
+    Note, the log-likelihood over the model is maximised NOT the posterior. The prior acts as the search space prior,
+    by constraining the search space and giving search preference to regions of high prior probability. Thus, the
+    prior should encode your prior belief about where you think the global maximum is located.
 
     Args:
-        model: a model to perform global optimisation on
-        num_search_chains: number of search chains to use. Defaults to 20 * D.
-        s: number of slices to use per dimension. Defaults to 1.
-        k: number of phantom samples to use. Defaults to 0.
-        gradient_slice: if true use gradient information to improve.
+        model: a model to perform global optimisation on over the sample space.
+        num_search_chains: number of search chains to use.
+        s: number of slices to use per dimension.
+        k: number of phantom samples to use.
+        gradient_slice: if true use gradient information to improve. Default True.
+        shell_frac: fraction of the shell to discard in parallel.
+        devices: devices to use for parallel sharded computation. Default all available devices.
+        verbose: whether to print verbose output. Default False.
     """
     model: BaseAbstractModel
     num_search_chains: Optional[int] = None
     s: Optional[int] = None
     k: Optional[int] = None
-    gradient_slice: bool = False
+    gradient_slice: bool = True
+    shell_frac: Optional[float] = None
     devices: Optional[xla_client.Device] = None
     verbose: bool = False
 
     def __post_init__(self):
         if self.num_search_chains is None:
-            self.num_search_chains = self.model.U_ndims * 20
+            if self.gradient_slice:
+                self.num_search_chains = self.model.U_ndims * 15
+            else:
+                self.num_search_chains = self.model.U_ndims * 100
         if self.s is None:
-            self.s = 1
+            if self.gradient_slice:
+                self.s = 2
+            else:
+                self.s = 10
+        if self.shell_frac is None:
+            if self.gradient_slice:
+                self.shell_frac = 0.5
+            else:
+                self.shell_frac = 0.5
         if self.k is None:
-            self.k = 0
+            if self.gradient_slice:
+                self.k = self.model.U_ndims * self.s - 1
+            else:
+                self.k = self.model.U_ndims * self.s - 1
 
         sampler = UniDimSliceSampler(
             model=self.model,
@@ -57,10 +80,14 @@ class GlobalOptimisation:
         self._global_optimiser = SimpleGlobalOptimisation(
             sampler=sampler,
             num_search_chains=int(self.num_search_chains),
+            shell_frac=float(self.shell_frac),
             model=self.model,
             devices=self.devices,
             verbose=self.verbose
         )
+
+        self.summary = go_summary
+        self.plot_progress = plot_progress
 
     def __call__(self, key: PRNGKey,
                  term_cond: Optional[GlobalOptimisationTerminationCondition] = None,
@@ -85,9 +112,6 @@ class GlobalOptimisation:
         if finetune:
             results = self._global_optimiser._gradient_descent(results=results)
         return results
-
-    def summary(self, results: GlobalOptimisationResults, f_obj: Optional[Union[str, TextIO]] = None):
-        summary(results, f_obj=f_obj)
 
 
 DefaultGlobalOptimisation = GlobalOptimisation
