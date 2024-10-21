@@ -1,29 +1,44 @@
 from typing import NamedTuple
 
+import jax
 import jax.numpy as jnp
 import numpy as np
 
+from jaxns.internals.namedtuple_utils import isinstance_namedtuple
 from jaxns.internals.namedtuple_utils import serialise_namedtuple, \
     deserialise_namedtuple, issubclass_namedtuple, serialise_ndarray
 
 
-class MockAge(NamedTuple):
-    years: int
-    months: int
-
-
-class MockPerson(NamedTuple):
+class MockNested(NamedTuple):
     name: str
-    age: MockAge
+
+
+class MockModel(NamedTuple):
+    string: str
+    integer: int
+    float: float
+    complex: complex
+    ndarray: np.ndarray
+    jaxndarray: jax.Array
+    nested: MockNested
 
 
 def test_isinstance_namedtuple():
     # Example NamedTuple
-    data = MockPerson('Alice', MockAge(25, 6))
-    assert isinstance(data, MockPerson)
+    data = MockModel(
+        string='Alice',
+        integer=25,
+        float=3.14,
+        complex=1 + 2j,
+        ndarray=np.array([1, 2, 3]),
+        jaxndarray=jnp.array([1, 2, 3]),
+        nested=MockNested('Bob')
+    )
 
-    data = ()
-    assert not isinstance(data, MockPerson)
+    assert isinstance_namedtuple(data)
+    assert not isinstance_namedtuple(('Bob',))
+
+    assert not isinstance(('Bob',), MockNested)
 
 
 def test_issubclass_namedtuple():
@@ -44,8 +59,16 @@ def test_issubclass_namedtuple():
 
 
 def test_serialise_namedtuple():
-    # Example NamedTuple
-    data = MockPerson('Alice', MockAge(25, 6))
+    data = MockModel(
+        string='Alice',
+        integer=25,
+        float=3.14,
+        complex=1 + 2j,
+        ndarray=np.array([1, 2, 3]),
+        jaxndarray=jnp.array([1, 2, 3]),
+        nested=MockNested('Bob')
+    )
+
     # Serialise
     serialized_data = serialise_namedtuple(data)
     print(serialized_data)
@@ -54,7 +77,13 @@ def test_serialise_namedtuple():
     restored_data = deserialise_namedtuple(serialized_data)
     print(restored_data)
 
-    assert data == restored_data
+    assert data.string == restored_data.string
+    assert data.integer == restored_data.integer
+    assert data.float == restored_data.float
+    assert data.complex == restored_data.complex
+    np.testing.assert_allclose(data.ndarray, restored_data.ndarray)
+    np.testing.assert_allclose(data.jaxndarray, restored_data.jaxndarray)
+    assert data.nested.name == restored_data.nested.name
 
 
 def test_serialise_ndarray():
