@@ -80,7 +80,7 @@ class NestedSampler:
             raise ValueError(f"Expected 0 <= k < s * U_ndims, got k={self.k}, s={self.s}, U_ndims={self.model.U_ndims}")
         if self.num_live_points is not None:
             self.c = max(1, int(self.num_live_points / (self.k + 1)))
-            logger.info(f"Number of parallel Markov-chains set to: {self.c}")
+            logger.info(f"Number of Markov-chains set to: {self.c}")
         else:
             if self.difficult_model:
                 self.c = 100 * self.model.U_ndims if self.c is None else int(self.c)
