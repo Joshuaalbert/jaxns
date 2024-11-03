@@ -1,6 +1,32 @@
+# pyproject.toml
+
 [build-system]
-requires = [
-    "setuptools>=42",
-    "wheel"
-]
+requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
+
+[project]
+name = "jaxns"
+version = "2.6.2"
+description = "Nested Sampling in JAX"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "Apache Software License 2.0" }
+authors = [{ name = "Joshua G. Albert", email = "albert@strw.leidenuniv.nl" }]
+keywords = ["bayesian-methods", "scientific-computing", "probabilistic-programming", "nested-sampling", "model-comparison", "bayesian-computing", "jax", "scientific-machine-learning"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent"
+]
+urls = { "Homepage" = "https://github.com/joshuaalbert/jaxns" }
+
+[project.optional-dependencies]
+# Define the extras here; they will be loaded dynamically from setup.py
+notebooks = []  # Placeholders; extras will load from setup.py
+
+[tool.setuptools]
+include-package-data = true
+
+
+[tool.setuptools.packages.find]
+where = ["src"]
