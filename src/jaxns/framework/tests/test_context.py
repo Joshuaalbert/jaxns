@@ -76,3 +76,16 @@ def test_scope_dict_flatten():
     sd2 = jax.tree_util.tree_unflatten(treedef, leaves)
     assert sd2["key"] == 1
     assert sd2.scopes == ["scope"]
+
+    sd = ScopedDict()
+    sd.push_scope("scope")
+    sd["key"] = jnp.ones(1)
+
+    def f(sd):
+        return sd
+
+
+    f_jit = jax.jit(f).lower(sd).compile()
+    sd2 = f_jit(sd)
+    np.testing.assert_allclose(sd2["key"], jnp.ones(1))
+    assert sd2.scopes == ["scope"]
