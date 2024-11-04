@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "jaxns"
-version = "2.6.2"
+version = "2.6.3"
 description = "Nested Sampling in JAX"
 readme = "README.md"
 requires-python = ">=3.9"
