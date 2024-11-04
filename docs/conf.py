@@ -56,7 +56,7 @@ autodoc_typehints = "description"
 
 # -- Options for AutoAPI -----------------------------------------------------
 
-autoapi_dirs = ["../jaxns"]
+autoapi_dirs = ["../src/jaxns"]
 autoapi_root = "api"  # where to put the generated files relative to root
 autoapi_options = ["members", "undoc-members", "show-inheritance",
                    "special-members", "imported-members"]
