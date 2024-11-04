@@ -524,9 +524,14 @@ class ShardedStaticNestedSampler(AbstractNestedSampler):
         log_L_samples = log_L
         dp_mean = LogSpace(per_sample_evidence_stats.log_dZ_mean)
         dp_mean = normalise_log_space(dp_mean)
-        H_mean_instable = -((dp_mean * LogSpace(jnp.log(jnp.abs(log_L_samples)),
-                                                jnp.sign(log_L_samples))).sum().value - log_Z_mean)
-        # H \approx E[-log(compression)] = E[-log(X)] (More stable than E[log(L) - log(Z)]
+        H_mean_instable = -(
+                (
+                        dp_mean * LogSpace.from_signed_value(
+                    jnp.where(jnp.isneginf(dp_mean.log_abs_val), 0., log_L_samples)
+                )
+                ).sum().value - log_Z_mean
+        )
+        # H \approx E[-log(compression)] = E[-log(X)] (More stable than E[log(L) - log(Z)] but biased)
         H_mean_stable = -((dp_mean * LogSpace(jnp.log(-per_sample_evidence_stats.log_X_mean))).sum().value)
         H_mean = jnp.where(jnp.isfinite(H_mean_instable), H_mean_instable, H_mean_stable)
         X_mean = LogSpace(per_sample_evidence_stats.log_X_mean)
