@@ -101,7 +101,7 @@ def update_evicence_calculation(evidence_calculation: EvidenceCalculation,
 
     Args:
         evidence_calculation: The current evidence statistics.
-        y: The update variables.
+        update: The update variables.
 
     Returns:
         The updated evidence statistics.
