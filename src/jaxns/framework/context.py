@@ -1,7 +1,7 @@
 import warnings
 from contextlib import contextmanager
 from functools import wraps
-from typing import Callable, Tuple, Dict, NamedTuple, Any, Optional, TypeVar, List
+from typing import Callable, Tuple, Dict, NamedTuple, Any, Optional, TypeVar, List, Union
 
 import jax
 from jax._src.typing import SupportsDType
@@ -164,7 +164,7 @@ class GlobalContext:
 global_context = GlobalContext()
 
 PT = TypeVar('PT')
-InitType = Callable[[Tuple[int, ...], SupportsDType], PT] | Callable[[], PT]
+InitType = Union[Callable[[Tuple[int, ...], SupportsDType], PT], Callable[[], PT]]
 
 
 @contextmanager
