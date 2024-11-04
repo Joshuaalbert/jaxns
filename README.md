@@ -350,6 +350,8 @@ before importing JAXNS.
 
 # Change Log
 
+4 Nov, 2024 -- JAXNS 2.6.4 released. Resolved bias when using phantom points.
+
 1 Oct, 2024 -- JAXNS 2.6.3 released. Enable pytrees in context.
 
 25 Sep, 2024 -- JAXNS 2.6.2 released. Fixed some important (not so edge) cases. Made faster. Handle no seed scenarios.
