@@ -3,27 +3,37 @@
 Welcome to JAXNS's documentation!
 =================================
 
-JAXNS is a probabilistic programming framework, built on top of JAX for high performance.
-Initially, JAXNS was designed for nested sampling powered Bayesian computations,
-however it has since grown into a full-fledged probabilistic programming framework.
+JAXNS is a probabilistic programming framework and advanced nested sampling algorithm.
+It's goal is to empower researchers and scientists of all types, from early career to seasoned professionals,
+from small jupyter notebooks to massive HPC problem.
+Initially, I developed JAXNS to solve my own problems during my PhD. However, it has since grown into a
+full-fledged probabilistic programming framework.
+JAXNS has been applied in numerous domains from cosmology, astrophysics, gravitational waves, interferometry,
+exoplanets, particle physics, meta materials, epidemiology, climate modelling, and beyond. Not to mention it has been
+used in industry for a variety of applications. All of this is welcomed and gladly supported.
+JAXNS is citable, use the [(outdated) pre-print here](https://arxiv.org/abs/2012.15286).
 
-Here are some of the things you can do with JAXNS:
+Here are 10 things you can do with JAXNS:
 
-1. Build Bayesian models in an easy to use, high-level language.
+1. Build probabilistic models in an easy to use, high-level language, that can be used anywhere in the JAX ecosystem.
 
-2. Compute and sample the posterior distribution of your model.
+2. Compute the Bayesian evidence of a model or hypothesis (the ultimate scientific method);
 
-3. Compute the Bayesian evidence of your model.
+3. Produce high-quality samples from the posterior distribution;
 
-4. Use deep learning models in your Bayesian models.
+4. Easily handle degenerate difficult multi-modal posteriors;
 
-5. Use Bayesian models in your deep learning models.
+5. Model both discrete and continuous priors;
 
-6. Maximise the Bayesian evidence of your model.
+6. Encode complex constraints on the prior space;
 
-7. Global optimisation (maximum likelihood determination).
+7. Easily embed your neural networks or ML model in the likelihood/prior;
 
-8. Use JAX's automatic differentiation to compute gradients of your model.
+8. Easily embed JAXNS in your ML model;
+
+9. Use JAXNS in a distributed computing environment;
+
+10. Solve global optimisation problems.
 
 
 JAXNS's Mission Statement

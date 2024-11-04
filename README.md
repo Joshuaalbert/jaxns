@@ -16,11 +16,20 @@ Status: ![Workflow name](https://github.com/JoshuaAlbert/jaxns/actions/workflows
 
 JAXNS is:
 
-1) a probabilistic programming framework using nested sampling as the engine;
+1) a simple and powerful probabilistic programming framework using nested sampling as the engine;
 2) coded in JAX in a manner that allows lowering the entire inference algorithm to XLA primitives, which are
    JIT-compiled for high performance;
 3) continuously improving on its mission of making nested sampling faster, easier, and more powerful; and
 4) citable, use the [(old) pre-print here](https://arxiv.org/abs/2012.15286).
+
+What can you do with JAXNS?
+
+1) Compute the Bayesian evidence of a model or hypothesis (the ultimate scientific method); 
+2) Produce high-quality samples from the posterior distribution;
+3) Easily handle degenerate difficult multi-modal posteriors;
+4) Model both discrete and continuous priors and likelihoods;
+5) Encode complex constraints on the prior space;
+6) Easily embed neural networks or any other ML model in the likelihood/prior;
 
 ## JAXNS Probabilistic Programming Framework
 
