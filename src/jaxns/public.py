@@ -73,14 +73,15 @@ class NestedSampler:
         if self.s <= 0:
             raise ValueError(f"Expected s > 0, got s={self.s}")
         if self.parameter_estimation:
-            self.k = self.model.U_ndims if self.k is None else int(self.k)
+            max_k = self.s * self.model.U_ndims - 1
+            self.k = min(self.model.U_ndims, max_k) if self.k is None else int(self.k)
         else:
             self.k = 0 if self.k is None else int(self.k)
         if not (0 <= self.k < self.s * self.model.U_ndims):
             raise ValueError(f"Expected 0 <= k < s * U_ndims, got k={self.k}, s={self.s}, U_ndims={self.model.U_ndims}")
         if self.num_live_points is not None:
             self.c = max(1, int(self.num_live_points / (self.k + 1)))
-            logger.info(f"Number of parallel Markov-chains set to: {self.c}")
+            logger.info(f"Number of Markov-chains set to: {self.c}")
         else:
             if self.difficult_model:
                 self.c = 100 * self.model.U_ndims if self.c is None else int(self.c)
@@ -90,6 +91,7 @@ class NestedSampler:
             raise ValueError(f"Expected c > 0, got c={self.c}")
         # Sanity check for max_samples (should be able to at least do one shrinkage)
         if self.max_samples is None:
+            # Default to 100 shrinkages
             self.max_samples = self.c * (self.k + 1) * 100
         self.max_samples = int(self.max_samples)
         if self.num_parallel_workers is not None:

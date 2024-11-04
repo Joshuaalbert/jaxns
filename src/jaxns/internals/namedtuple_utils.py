@@ -1,3 +1,4 @@
+import base64
 import importlib
 
 import jax
@@ -69,23 +70,34 @@ def deserialise_namedtuple(obj):
 
 def serialise_ndarray(obj):
     if isinstance(obj, np.ndarray):
-        return {'type': '__ndarray__', '__dtype__': str(obj.dtype), '__data__': obj.tolist()}
+        data_bytes = obj.tobytes()
+        bytes_base64 = base64.b64encode(data_bytes).decode('utf-8')
+        return {'type': '__ndarray__', '__dtype__': str(obj.dtype), '__data__': bytes_base64, '__shape__': obj.shape}
     return obj
 
 
 def deserialise_ndarray(obj):
     if isinstance(obj, dict) and obj.get('type') == '__ndarray__':
-        return np.array(obj['__data__'], dtype=obj['__dtype__'])
+        bytes_base64 = obj['__data__']
+        data_bytes = base64.b64decode(bytes_base64)
+        # make array from bytes and give correct dtype and shape
+        return np.frombuffer(data_bytes, dtype=obj['__dtype__']).reshape(obj['__shape__'])
     return obj
 
 
 def serialise_jax_ndarray(obj):
     if isinstance(obj, jax.Array):
-        return {'type': '__jax_ndarray__', '__dtype__': str(obj.dtype), '__data__': np.asarray(obj).tolist()}
+        data_bytes = np.asarray(obj).tobytes()
+        bytes_base64 = base64.b64encode(data_bytes).decode('utf-8')
+        return {'type': '__jax_ndarray__', '__dtype__': str(obj.dtype), '__data__': bytes_base64,
+                '__shape__': obj.shape}
     return obj
 
 
 def deserialise_jax_ndarray(obj):
     if isinstance(obj, dict) and obj.get('type') == '__jax_ndarray__':
-        return jnp.array(np.array(obj['__data__'], dtype=obj['__dtype__']))
+        bytes_base64 = obj['__data__']
+        data_bytes = base64.b64decode(bytes_base64)
+        # make array from bytes and give correct dtype and shape
+        return jnp.frombuffer(data_bytes, dtype=obj['__dtype__']).reshape(obj['__shape__'])
     return obj
