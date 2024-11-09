@@ -291,6 +291,33 @@ def summary(results: NestedSamplerResults, with_parametrised: bool = False, f_ob
         f_obj: file-like object to write summary to. If None, prints to stdout.
     """
 
+    samples = results.samples
+    if with_parametrised:
+        samples.update(results.parametrised_samples)
+    log_L_samples = results.log_L_samples
+    log_dp_mean = results.log_dp_mean
+    num_samples = int(results.total_num_samples)
+    if np.isnan(results.ESS):
+        ESS = 100
+    else:
+        ESS = int(results.ESS)
+    # Trim
+    samples = jax.tree.map(lambda x: x[:num_samples], samples)
+    log_L_samples = log_L_samples[:num_samples]
+    log_dp_mean = log_dp_mean[:num_samples]
+
+    max_like_idx = np.argmax(log_L_samples)
+    max_like_points = jax.tree.map(lambda x: x[max_like_idx], samples)
+
+    uniform_samples = resample(random.PRNGKey(23426),
+                               samples,
+                               log_dp_mean,
+                               S=max(100, ESS),
+                               replace=True)
+
+    max_map_idx = np.argmax(results.log_posterior_density)
+    map_points = jax.tree.map(lambda x: x[max_map_idx], samples)
+
     main_s = []
 
     def _print(s):
@@ -307,7 +334,7 @@ def summary(results: NestedSamplerResults, with_parametrised: bool = False, f_ob
             return float(v)
 
     def _print_termination_reason(_termination_reason: int):
-        termination_bit_mask = _bit_mask(int(_termination_reason), width=11)
+        termination_bit_mask = _bit_mask(int(_termination_reason), width=12)
 
         for bit, condition in zip(termination_bit_mask, [
             'Reached max samples',
@@ -320,7 +347,8 @@ def summary(results: NestedSamplerResults, with_parametrised: bool = False, f_ob
             'All live-points are on a single plateau (sign of possible precision error)',
             'relative spread of live points < rtol',
             'absolute spread of live points < atol',
-            'no seed points left (consider decreasing shell_fraction)'
+            'no seed points left (consider decreasing shell_fraction)',
+            'XL < max(XL) * peak_XL_frac'
         ]):
             if bit == 1:
                 _print(condition)
@@ -349,7 +377,7 @@ def summary(results: NestedSamplerResults, with_parametrised: bool = False, f_ob
         f"logZ={_round(results.log_Z_mean, results.log_Z_uncert)} +- {_round(results.log_Z_uncert, results.log_Z_uncert)}"
     )
     _print(
-        f"max(logL)={_round(np.max(results.log_L_samples), results.log_Z_uncert)}"
+        f"max(logL)={_round(log_L_samples[max_like_idx], results.log_Z_uncert)}"
     )
     # _print("H={} +- {}".format(
     #     _round(results.H_mean, results.H_uncert), _round(results.H_uncert, results.H_uncert)))
@@ -359,33 +387,6 @@ def summary(results: NestedSamplerResults, with_parametrised: bool = False, f_ob
     _print(
         f"ESS={np.asarray(results.ESS, np.int64)}"
     )
-
-    samples = results.samples
-    if with_parametrised:
-        samples.update(results.parametrised_samples)
-    log_L_samples = results.log_L_samples
-    log_dp_mean = results.log_dp_mean
-    num_samples = int(results.total_num_samples)
-    if np.isnan(results.ESS):
-        ESS = 100
-    else:
-        ESS = int(results.ESS)
-    # Trim
-    samples = jax.tree.map(lambda x: x[:num_samples], samples)
-    log_L_samples = log_L_samples[:num_samples]
-    log_dp_mean = log_dp_mean[:num_samples]
-
-    max_like_idx = np.argmax(log_L_samples)
-    max_like_points = jax.tree.map(lambda x: x[max_like_idx], samples)
-
-    uniform_samples = resample(random.PRNGKey(23426),
-                               samples,
-                               log_dp_mean,
-                               S=max(100, ESS),
-                               replace=True)
-
-    max_map_idx = np.argmax(results.log_posterior_density)
-    map_points = jax.tree.map(lambda x: x[max_map_idx], samples)
 
     for name in uniform_samples.keys():
         _samples = uniform_samples[name].reshape((uniform_samples[name].shape[0], -1))

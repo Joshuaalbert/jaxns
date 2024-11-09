@@ -51,6 +51,7 @@ class TerminationCondition(NamedTuple):
     efficiency_threshold: Optional[FloatArray] = None
     rtol: Optional[FloatArray] = None
     atol: Optional[FloatArray] = None
+    peak_XL_frac: Optional[FloatArray] = None
 
     def __and__(self, other):
         return TerminationConditionConjunction(conds=[self, other])
@@ -134,6 +135,7 @@ class TerminationRegister(NamedTuple):
     no_seed_points: BoolArray
     relative_spread: FloatArray
     absolute_spread: FloatArray
+    peak_log_XL: FloatArray
 
 
 class NestedSamplerState(NamedTuple):
