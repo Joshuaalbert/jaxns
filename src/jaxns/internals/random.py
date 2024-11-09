@@ -1,5 +1,6 @@
 from typing import Optional
 
+import jax
 from jax import random, numpy as jnp
 from jax.scipy import special
 
@@ -72,3 +73,12 @@ def resample_indicies(key: PRNGKey, log_weights: Optional[FloatArray] = None, S:
             g = -random.gumbel(key, shape=(num_total,))
         idx = jnp.argsort(g)[:S]
     return idx
+
+
+def sample_uniformly_masked(key, v, select_mask, num_samples: int, squeeze: bool = False):
+    # If no satisfied samples, then chooses randomly from them. Should never happen, but good to know.
+    log_weights = jnp.where(select_mask, 0., -jnp.inf)
+    sample_idxs = resample_indicies(key, log_weights=log_weights, S=num_samples, replace=True)
+    if squeeze:
+        sample_idxs = jnp.squeeze(sample_idxs)
+    return jax.tree.map(lambda x: x[sample_idxs], v)

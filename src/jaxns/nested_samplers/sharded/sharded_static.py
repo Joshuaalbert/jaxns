@@ -1,4 +1,5 @@
 import dataclasses
+import warnings
 from functools import partial
 from typing import List, Optional, Tuple, NamedTuple, Any
 
@@ -16,6 +17,7 @@ from jaxns.internals.cumulative_ops import cumulative_op_static
 from jaxns.internals.log_semiring import LogSpace, normalise_log_space
 from jaxns.internals.maps import create_mesh, tree_device_put, replace_index
 from jaxns.internals.mixed_precision import mp_policy
+from jaxns.internals.random import sample_uniformly_masked, resample_indicies
 from jaxns.internals.shrinkage_statistics import EvidenceUpdateVariables, _update_evidence_calc_op, \
     compute_evidence_stats
 from jaxns.internals.stats import linear_to_log_stats, effective_sample_size_kish
@@ -83,6 +85,128 @@ def _add_samples_to_state(sample_collection: LivePointCollection,
     return state
 
 
+def get_samples(key, mesh: Mesh, sampler: AbstractSampler, sampler_state: Any, log_L_contour, num_samples: int):
+    """
+    Get samples from the sampler.
+
+    Args:
+        key: the PRNG key
+        mesh: the mesh to use
+        sampler: the sampler to use
+        sampler_state: the sampler state
+        log_L_contour: the log likelihood contour
+        num_samples: the number of samples to get
+
+    Returns:
+        samples, phantom_samples
+    """
+
+    @partial(
+        shard_map,
+        mesh=mesh,
+        in_specs=(PartitionSpec('shard', ), PartitionSpec(), PartitionSpec()),
+        out_specs=(PartitionSpec('shard', ), PartitionSpec('shard', )),
+        check_rep=False
+    )
+    def get_samples(sample_keys, log_L_contour, sampler_state: Any):
+        def body(carry, sample_key):
+            sample, phantom_samples = sampler.get_sample(
+                key=sample_key,
+                log_L_constraint=log_L_contour,
+                sampler_state=sampler_state
+            )
+            return carry, (sample, phantom_samples)
+
+        _, (sample, phantom_samples) = jax.lax.scan(body, None, sample_keys)
+        # phantom samples are [k, ...] and samples are [...] so
+        phantom_samples = jax.tree.map(
+            lambda x: jax.lax.reshape(x, (int(np.prod(np.shape(x)[:2])),) + np.shape(x)[2:]),
+            phantom_samples
+        )
+        return sample, phantom_samples
+
+    sharded_sample_keys = tree_device_put(jax.random.split(key, num_samples), mesh, ('shard',))
+    return get_samples(sharded_sample_keys, log_L_contour, sampler_state)
+
+
+def dynamic_new_live_point_collection(
+        key,
+        mesh: Mesh,
+        state: NestedSamplerState,
+        sender_sample_idx: IntArray,
+        sampler: AbstractSampler,
+        sampler_state: Any,
+        num_live_points: int
+):
+    """
+    Get live points from the sampler for a dynamic slice.
+
+    Args:
+        mesh: the mesh to use
+        state: the state
+        sampler: the sampler
+        sampler_state: the sampler state
+        num_live_points: the number of live points to get
+
+    Returns:
+        live_point_collection, state
+    """
+    log_L_contour = state.sample_collection.log_L[sender_sample_idx]
+
+    new_samples, phantom_samples = get_samples(
+        key=key,
+        mesh=mesh,
+        sampler=sampler,
+        sampler_state=sampler_state,
+        log_L_contour=log_L_contour,
+        num_samples=num_live_points
+    )
+    # Node is sample_idx - 1
+    sender_node_idx = sender_sample_idx - jnp.asarray(1, mp_policy.index_dtype)
+    live_point_collection = LivePointCollection(
+        sender_node_idx=jnp.full((num_live_points,), sender_node_idx, mp_policy.index_dtype),
+        U_sample=new_samples.U_sample,
+        log_L=new_samples.log_L,
+        log_L_constraint=new_samples.log_L_constraint,
+        num_likelihood_evaluations=new_samples.num_likelihood_evaluations
+    )
+
+    sort_indices = jnp.argsort(live_point_collection.log_L)
+    live_point_collection = jax.tree_map(lambda x: x[sort_indices], live_point_collection)
+
+    state = add_phantom_samples_to_state(phantom_samples, sender_node_idx, state)
+    return live_point_collection, state
+
+
+def add_phantom_samples_to_state(phantom_samples, sender_node_idx, state):
+    """
+    Add phantom samples to the state
+
+    Args:
+        phantom_samples: the phantom samples
+        sender_node_idx: the sender node index
+        state: the state
+
+    Returns:
+        live_point_collection, state
+    """
+    # Add phantom samples (this is an option of user, controlled by `k`)
+    num_phantom = np.shape(phantom_samples.log_L)[0]
+    phantom_collection = LivePointCollection(
+        sender_node_idx=jnp.full((num_phantom,), sender_node_idx, mp_policy.index_dtype),
+        U_sample=phantom_samples.U_sample,
+        log_L=phantom_samples.log_L,
+        log_L_constraint=phantom_samples.log_L_constraint,
+        num_likelihood_evaluations=phantom_samples.num_likelihood_evaluations
+    )
+    state = _add_samples_to_state(
+        sample_collection=phantom_collection,
+        state=state,
+        is_phantom=True
+    )
+    return state
+
+
 def _collect_shell(
         mesh: Mesh,
         live_point_collection: LivePointCollection,
@@ -110,30 +234,6 @@ def _collect_shell(
         termination_register: the termination register at the end
     """
 
-    @partial(
-        shard_map,
-        mesh=mesh,
-        in_specs=(PartitionSpec('shard', ), PartitionSpec(), PartitionSpec()),
-        out_specs=(PartitionSpec('shard', ), PartitionSpec('shard', )),
-        check_rep=False
-    )
-    def get_samples(sample_keys, log_L_contour, sampler_state: Any):
-        def body(carry, sample_key):
-            sample, phantom_samples = sampler.get_sample(
-                key=sample_key,
-                log_L_constraint=log_L_contour,
-                sampler_state=sampler_state
-            )
-            return carry, (sample, phantom_samples)
-
-        _, (sample, phantom_samples) = jax.lax.scan(body, None, sample_keys)
-        # phantom samples are [k, ...] and samples are [...] so
-        phantom_samples = jax.tree.map(
-            lambda x: jax.lax.reshape(x, (int(np.prod(np.shape(x)[:2])),) + np.shape(x)[2:]),
-            phantom_samples
-        )
-        return sample, phantom_samples
-
     # Find and discard shell
     front_size = np.shape(live_point_collection.log_L)[0]
     # always leave live points sorted so that we don't need to do it here.
@@ -149,8 +249,14 @@ def _collect_shell(
     state = state._replace(key=key)
     supremum_index = shell_size - 1  # Biggest of discarded
     log_L_contour = live_point_collection.log_L[supremum_index]
-    sharded_sample_keys = tree_device_put(jax.random.split(sample_key, shell_size), mesh, ('shard',))
-    new_samples, phantom_samples = get_samples(sharded_sample_keys, log_L_contour, sampler_state)
+    new_samples, phantom_samples = get_samples(
+        key=sample_key,
+        mesh=mesh,
+        sampler=sampler,
+        sampler_state=sampler_state,
+        log_L_contour=log_L_contour,
+        num_samples=shell_size
+    )
     # Sender is the maximum log_L sample from discarded, i.e. that last added discarded
     sender_node_idx = state.next_sample_idx - jnp.asarray(1, mp_policy.index_dtype)
     new_sample_collection = LivePointCollection(
@@ -167,26 +273,14 @@ def _collect_shell(
     )
     sort_indices = jnp.argsort(live_point_collection.log_L)
     live_point_collection = jax.tree_map(lambda x: x[sort_indices], live_point_collection)
-    # compute insert index KS-statistic
+    # TODO: compute insert index KS-statistic
     _, insert_indices = jax.lax.top_k(-sort_indices, k=shell_size)
 
-    # Add phantom samples (this is an option of user, controlled by `k`)
-    num_phantom = np.shape(phantom_samples.log_L)[0]
-    phantom_collection = LivePointCollection(
-        sender_node_idx=jnp.full((num_phantom,), sender_node_idx, mp_policy.index_dtype),
-        U_sample=phantom_samples.U_sample,
-        log_L=phantom_samples.log_L,
-        log_L_constraint=phantom_samples.log_L_constraint,
-        num_likelihood_evaluations=phantom_samples.num_likelihood_evaluations
-    )
-    state = _add_samples_to_state(
-        sample_collection=phantom_collection,
-        state=state,
-        is_phantom=True
-    )
+    state = add_phantom_samples_to_state(phantom_samples, sender_node_idx, state)
 
     # Update termination register
-    # TODO: technically we must compute the num live points in case there is a plateau
+    # Technically we must compute the num live points in case there is a plateau.
+    #  but it gets done properly in to_results.
     evidence_calc, _ = cumulative_op_static(
         op=_update_evidence_calc_op,
         init=termination_register.evidence_calc,
@@ -213,6 +307,7 @@ def _collect_shell(
     absolute_spread = jnp.abs(live_point_collection.log_L[-1] - live_point_collection.log_L[0])
     relative_spread = 2. * absolute_spread / jnp.abs(live_point_collection.log_L[0] + live_point_collection.log_L[-1])
     no_seed_points = live_point_collection.log_L[supremum_index] >= live_point_collection.log_L[-1]
+    peak_log_XL = jnp.maximum(termination_register.peak_log_XL, evidence_calc.log_X_mean + evidence_calc.log_L)
     termination_register = TerminationRegister(
         num_samples_used=state.num_samples,
         evidence_calc=evidence_calc,
@@ -223,9 +318,110 @@ def _collect_shell(
         plateau=plateau,
         no_seed_points=no_seed_points,
         relative_spread=relative_spread,
-        absolute_spread=absolute_spread
+        absolute_spread=absolute_spread,
+        peak_log_XL=peak_log_XL
     )
     return live_point_collection, state, termination_register
+
+
+def _dynamic_posterior_refinement_iteration(
+        mesh: Mesh,
+        state: NestedSamplerState,
+        sampler: AbstractSampler,
+        termination_register: TerminationRegister,
+        refine_threshold: float,
+        num_live_points: int
+) -> NestedSamplerState:
+    """
+    Perform a dynamic posterior refinement iteration.
+
+    Args:
+        mesh: the mesh to use
+        state: the state of the nested sampler
+        sampler: the sampler to use
+        termination_register: the termination register
+        refine_threshold: the threshold for refinement, will attach new points from somewhere within a masked region,
+            where XL > max(XL) * refine_threshold
+        num_live_points: the number of live points to get
+
+    Returns:
+        the updated state
+    """
+    key, sample_key, ephemeral_key, reseed_key, select_attach_key = jax.random.split(state.key, 5)
+    state = state._replace(key=key)
+    sample_collection = state.sample_collection
+
+    # Get the part of prior region that contains most of the posterior mass.
+    # This is where XL is largest.
+    sample_tree = SampleTreeGraph(
+        sender_node_idx=sample_collection.sender_node_idx,
+        log_L=sample_collection.log_L
+    )
+    num_samples = jnp.minimum(
+        state.num_samples,
+        jnp.asarray(state.sample_collection.log_L.size, mp_policy.count_dtype)
+    )
+    live_point_counts = count_crossed_edges(sample_tree=sample_tree, num_samples=num_samples)
+    num_live_points_per_sample = live_point_counts.num_live_points
+    log_L = sample_tree.log_L[live_point_counts.samples_indices]
+    final_evidence_stats, per_sample_evidence_stats = compute_evidence_stats(
+        log_L=log_L,
+        num_live_points=num_live_points_per_sample,
+        num_samples=num_samples
+    )
+    log_XL = per_sample_evidence_stats.log_X_mean + per_sample_evidence_stats.log_L
+    peak_log_XL = jnp.max(log_XL)
+
+    # Randomly choose attach point
+    # TODO: ensure attachment certain to be within sample set.
+    select_mask = jnp.logical_and(
+        log_XL > peak_log_XL + np.log(refine_threshold),
+        jnp.logical_not(sample_collection.phantom)
+    )
+    log_weights = jnp.where(select_mask, 0., -jnp.inf)
+    sample_root_idx = resample_indicies(select_attach_key, log_weights, 1)[0]
+
+    # Create a fake live point collection to create sampler state. We don't care about the samples being i.i.d.
+    log_L_constraint = sample_collection.log_L[sample_root_idx]
+    select_mask = sample_collection.log_L > log_L_constraint
+    ephemeral_sample_collection: SampleCollection = sample_uniformly_masked(
+        key=reseed_key,
+        v=sample_collection,
+        select_mask=select_mask,
+        num_samples=num_live_points
+    )
+    ephemeral_live_point_collection = LivePointCollection(
+        sender_node_idx=ephemeral_sample_collection.sender_node_idx,
+        U_sample=ephemeral_sample_collection.U_samples,
+        log_L=ephemeral_sample_collection.log_L,
+        log_L_constraint=sample_collection.log_L[ephemeral_sample_collection.sender_node_idx + 1],
+        num_likelihood_evaluations=ephemeral_sample_collection.num_likelihood_evaluations
+    )
+    ephemeral_state = EphemeralState(
+        key=ephemeral_key,
+        live_points_collection=ephemeral_live_point_collection,
+        termination_register=termination_register
+    )
+    sampler_state = sampler.pre_process(ephemeral_state)
+
+    # Get a proper i.i.d. set of live points
+    live_point_collection, state = dynamic_new_live_point_collection(
+        key=sample_key,
+        mesh=mesh,
+        state=state,
+        sender_sample_idx=sample_root_idx,
+        sampler=sampler,
+        sampler_state=sampler_state,
+        num_live_points=num_live_points
+    )
+
+    # Add all live points to the state
+    state = _add_samples_to_state(
+        sample_collection=live_point_collection,
+        state=state,
+        is_phantom=False
+    )
+    return state
 
 
 def _main_ns_thread(
@@ -421,6 +617,8 @@ class ShardedStaticNestedSampler(AbstractNestedSampler):
     sampler: AbstractSampler
     num_live_points: int
     shell_fraction: Optional[float] = None
+    num_dynamic_refinement_iterations: int = 0
+    refine_threshold: float = 0.01
     devices: Optional[List[xla_client.Device]] = None
     verbose: bool = False
 
@@ -447,6 +645,9 @@ class ShardedStaticNestedSampler(AbstractNestedSampler):
             num_discard=int(self.shell_fraction * self.num_live_points),
             num_phantom_points=self.sampler.num_phantom()
         )
+
+        if self.num_dynamic_refinement_iterations > 0:
+            warnings.warn("Dynamic refinement is experimental and may not work as expected.")
 
     def _to_results(self, termination_reason: IntArray, state: NestedSamplerState,
                     trim: bool) -> NestedSamplerResults:
@@ -635,5 +836,16 @@ class ShardedStaticNestedSampler(AbstractNestedSampler):
             state=state,
             is_phantom=False
         )
+
+        def body(i, state: NestedSamplerState) -> NestedSamplerState:
+            state = _dynamic_posterior_refinement_iteration(
+                mesh=mesh, state=state, sampler=self.sampler, termination_register=termination_register,
+                refine_threshold=self.refine_threshold,
+                num_live_points=self.num_live_points
+            )
+            return state
+
+        if self.num_dynamic_refinement_iterations > 0:
+            state = jax.lax.fori_loop(0, self.num_dynamic_refinement_iterations, body, state)
 
         return termination_reason, termination_register, state

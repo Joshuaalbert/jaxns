@@ -54,10 +54,10 @@ class NestedSampler:
     model: BaseAbstractModel
     max_samples: Optional[Union[int, float]] = None
     num_live_points: Optional[int] = None
+    num_slices: Optional[int] = None
     s: Optional[int] = None
     k: Optional[int] = None
     c: Optional[int] = None
-    num_parallel_workers: Optional[int] = None
     devices: Optional[List[xla_client.Device]] = None
     difficult_model: bool = False
     parameter_estimation: bool = False
@@ -66,19 +66,27 @@ class NestedSampler:
     verbose: bool = False
 
     def __post_init__(self):
-        if self.difficult_model:
-            self.s = 10 if self.s is None else int(self.s)
-        else:
-            self.s = 5 if self.s is None else int(self.s)
-        if self.s <= 0:
-            raise ValueError(f"Expected s > 0, got s={self.s}")
+        # Determine number of slices per acceptance
+        if self.num_slices is None:
+            if self.difficult_model:
+                self.s = 10 if self.s is None else int(self.s)
+            else:
+                self.s = 5 if self.s is None else int(self.s)
+            if self.s <= 0:
+                raise ValueError(f"Expected s > 0, got s={self.s}")
+            self.num_slices = self.model.U_ndims * self.s
+        self.num_slices = int(self.num_slices)
+
+        # Determine number of phantom samples
         if self.parameter_estimation:
             max_k = self.s * self.model.U_ndims - 1
             self.k = min(self.model.U_ndims, max_k) if self.k is None else int(self.k)
         else:
             self.k = 0 if self.k is None else int(self.k)
-        if not (0 <= self.k < self.s * self.model.U_ndims):
-            raise ValueError(f"Expected 0 <= k < s * U_ndims, got k={self.k}, s={self.s}, U_ndims={self.model.U_ndims}")
+        if not (0 <= self.k < self.num_slices):
+            raise ValueError(f"Expected 0 <= k < num_slices, got k={self.k}, num_slices={self.num_slices}, U_ndims={self.model.U_ndims}")
+
+        # Determine number of parallel Markov-chains
         if self.num_live_points is not None:
             self.c = max(1, int(self.num_live_points / (self.k + 1)))
             logger.info(f"Number of Markov-chains set to: {self.c}")
@@ -87,22 +95,22 @@ class NestedSampler:
                 self.c = 100 * self.model.U_ndims if self.c is None else int(self.c)
             else:
                 self.c = 30 * self.model.U_ndims if self.c is None else int(self.c)
-        if self.c <= 0:
-            raise ValueError(f"Expected c > 0, got c={self.c}")
+            if self.c <= 0:
+                raise ValueError(f"Expected c > 0, got c={self.c}")
+
         # Sanity check for max_samples (should be able to at least do one shrinkage)
         if self.max_samples is None:
-            # Default to 100 shrinkages
+            # Default to 100 shrinkages.
             self.max_samples = self.c * (self.k + 1) * 100
         self.max_samples = int(self.max_samples)
-        if self.num_parallel_workers is not None:
-            warnings.warn("`num_parallel_workers` is depreciated. Use `devices` instead.")
+
         self._nested_sampler = ShardedStaticNestedSampler(
             model=self.model,
             num_live_points=self.c,
             max_samples=self.max_samples,
             sampler=UniDimSliceSampler(
                 model=self.model,
-                num_slices=self.model.U_ndims * self.s,
+                num_slices=self.num_slices,
                 num_phantom_save=self.k,
                 midpoint_shrink=not self.difficult_model,
                 perfect=True
@@ -110,7 +118,8 @@ class NestedSampler:
             init_efficiency_threshold=self.init_efficiency_threshold,
             shell_fraction=self.shell_fraction,
             devices=self.devices,
-            verbose=self.verbose
+            verbose=self.verbose,
+
         )
         # Back propagate any updates here
         self.num_live_points = self._nested_sampler.num_live_points
@@ -139,10 +148,16 @@ class NestedSampler:
             termination reason, state
         """
         if term_cond is None:
-            term_cond = TerminationCondition(
-                dlogZ=jnp.asarray(np.log(1. + 1e-3), mp_policy.measure_dtype),
-                max_samples=jnp.asarray(jnp.iinfo(mp_policy.count_dtype).max, mp_policy.count_dtype)
-            )
+            if self.parameter_estimation:
+                term_cond = TerminationCondition(
+                    peak_XL_frac=jnp.asarray(0.1, mp_policy.measure_dtype),
+                    max_samples=jnp.asarray(jnp.iinfo(mp_policy.count_dtype).max, mp_policy.count_dtype)
+                )
+            else:
+                term_cond = TerminationCondition(
+                    dlogZ=jnp.asarray(np.log(1. + 1e-3), mp_policy.measure_dtype),
+                    max_samples=jnp.asarray(jnp.iinfo(mp_policy.count_dtype).max, mp_policy.count_dtype)
+                )
         term_cond = term_cond._replace(
             max_samples=(
                 jnp.minimum(term_cond.max_samples, jnp.asarray(self._nested_sampler.max_samples, mp_policy.count_dtype))

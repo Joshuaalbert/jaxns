@@ -24,7 +24,7 @@ JAXNS is:
 
 What can you do with JAXNS?
 
-1) Compute the Bayesian evidence of a model or hypothesis (the ultimate scientific method); 
+1) Compute the Bayesian evidence of a model or hypothesis (the ultimate scientific method);
 2) Produce high-quality samples from the posterior distribution;
 3) Easily handle degenerate difficult multi-modal posteriors;
 4) Model both discrete and continuous priors and likelihoods;
@@ -358,6 +358,9 @@ your CPUs by placing `os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_devi
 before importing JAXNS.
 
 # Change Log
+
+9 Nov, 2024 -- JAXNS 2.6.5 released. Added gradient guided nested sampling. Removed `num_parallel_workers` in favour
+`devices`.
 
 4 Nov, 2024 -- JAXNS 2.6.4 released. Resolved bias when using phantom points.
 

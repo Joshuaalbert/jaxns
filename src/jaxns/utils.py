@@ -334,7 +334,7 @@ def summary(results: NestedSamplerResults, with_parametrised: bool = False, f_ob
             return float(v)
 
     def _print_termination_reason(_termination_reason: int):
-        termination_bit_mask = _bit_mask(int(_termination_reason), width=11)
+        termination_bit_mask = _bit_mask(int(_termination_reason), width=12)
 
         for bit, condition in zip(termination_bit_mask, [
             'Reached max samples',
@@ -347,7 +347,8 @@ def summary(results: NestedSamplerResults, with_parametrised: bool = False, f_ob
             'All live-points are on a single plateau (sign of possible precision error)',
             'relative spread of live points < rtol',
             'absolute spread of live points < atol',
-            'no seed points left (consider decreasing shell_fraction)'
+            'no seed points left (consider decreasing shell_fraction)',
+            'XL < max(XL) * peak_XL_frac'
         ]):
             if bit == 1:
                 _print(condition)

@@ -1,12 +1,14 @@
 import dataclasses
-from typing import NamedTuple, Tuple, Any
+from typing import NamedTuple, Tuple, Any, Callable
 
 import jax
-from jax import numpy as jnp, random, lax
+from jax import numpy as jnp, random
 
 from jaxns.framework.bases import BaseAbstractModel
 from jaxns.internals.cumulative_ops import cumulative_op_static
 from jaxns.internals.mixed_precision import mp_policy
+from jaxns.internals.pytree_utils import tree_dot
+from jaxns.internals.random import sample_uniformly_masked
 from jaxns.internals.types import PRNGKey, FloatArray, BoolArray, IntArray, UType
 from jaxns.nested_samplers.common.types import Sample, SampleCollection, LivePointCollection
 from jaxns.samplers.abc import EphemeralState
@@ -108,29 +110,38 @@ def _shrink_interval(key: PRNGKey, t: FloatArray, left: FloatArray, right: Float
     return left, right
 
 
-def _new_proposal(key: PRNGKey,
-                  seed_point: SeedPoint,
-                  midpoint_shrink: bool,
-                  alpha: jax.Array,
-                  perfect: bool,
-                  gradient_slice: bool,
-                  log_L_constraint: FloatArray,
-                  model: BaseAbstractModel) -> Tuple[FloatArray, FloatArray, IntArray]:
+def _new_proposal(
+        key: PRNGKey,
+        seed_point: SeedPoint,
+        direction: UType,
+        midpoint_shrink: bool,
+        alpha: jax.Array,
+        perfect: bool,
+        gradient_slice: bool,
+        gradient_guided: bool,
+        log_L_constraint: FloatArray,
+        log_likelihood_fn: Callable,
+        grad_fn: Callable
+) -> Tuple[FloatArray, FloatArray, FloatArray, IntArray]:
     """
     Sample from a slice about a seed point.
 
     Args:
         key: PRNG key
         seed_point: the seed point to sample from
+        direction: the direction to sample along
         midpoint_shrink: if true then contract to the midpoint of interval on rejection. Otherwise, normal contract
         alpha: exponential shrinkage factor
         perfect: if true then perform exponential shrinkage from maximal bounds, requiring no step-out procedure.
         gradient_slice: if true the slice along gradient direction
+        gradient_guided: if true then do householder reflections
         log_L_constraint: the constraint to sample within
-        model: the model to sample from
+        log_likelihood_fn: the log-likelihood function
+        grad_fn: the gradient function
 
     Returns:
         point_U: the new sample
+        momentum: the new momentum
         log_L: the log-likelihood of the new sample
         num_likelihood_evaluations: the number of likelihood evaluations performed
     """
@@ -170,7 +181,7 @@ def _new_proposal(key: PRNGKey,
             left=left,
             right=right
         )
-        log_L = model.forward(point_U)
+        log_L = log_likelihood_fn(point_U)
         num_likelihood_evaluations = carry.num_likelihood_evaluations + jnp.ones_like(carry.num_likelihood_evaluations)
         return Carry(
             key=key,
@@ -183,25 +194,25 @@ def _new_proposal(key: PRNGKey,
             direction=carry.direction
         )
 
-    key, n_key, t_key = random.split(key, 3)
+    # Chose the direction to go
+    num_likelihood_evaluations = jnp.full((), 0, mp_policy.count_dtype)
+
+    run_key, n_key, t_key, after_key = random.split(key, 4)
     if gradient_slice:
-        direction = jax.grad(model.forward)(seed_point.U0)
-        norm = jnp.linalg.norm(direction)
-        direction /= norm
-        direction = jnp.where(
-            jnp.bitwise_or(jnp.equal(norm, jnp.zeros_like(norm)), ~jnp.isfinite(norm)),
-            _sample_direction(n_key, seed_point.U0.size),
-            direction
-        )
-        num_likelihood_evaluations = jnp.full((), 1, mp_policy.count_dtype)
+        # climb the gradient
+        grad = grad_fn(seed_point.U0)
+        num_likelihood_evaluations += jnp.ones_like(num_likelihood_evaluations)
+        grad_norm = jnp.linalg.norm(grad)
+        grad_mask = jnp.bitwise_or(jnp.equal(grad_norm, jnp.zeros_like(grad_norm)), ~jnp.isfinite(grad_norm))
+        grad_dir = grad / grad_norm
+        direction = jnp.where(grad_mask, direction, grad_dir)
         (left, right) = _slice_bounds(
             point_U0=seed_point.U0,
             direction=direction
         )
-        left = jnp.zeros_like(left)
+        left = jnp.where(grad_mask, left, jnp.zeros_like(left))
     else:
-        direction = _sample_direction(n_key, seed_point.U0.size)
-        num_likelihood_evaluations = jnp.full((), 0, mp_policy.count_dtype)
+
         if perfect:
             (left, right) = _slice_bounds(
                 point_U0=seed_point.U0,
@@ -209,7 +220,8 @@ def _new_proposal(key: PRNGKey,
             )
         else:
             # TODO: implement doubling step out
-            raise NotImplementedError("TODO: implement doubling step out")
+            raise NotImplementedError("Step out not implemented.")
+
     point_U, t = _pick_point_in_interval(
         key=t_key,
         point_U0=seed_point.U0,
@@ -217,9 +229,10 @@ def _new_proposal(key: PRNGKey,
         left=left,
         right=right
     )
-    log_L = model.forward(point_U)
+    log_L = log_likelihood_fn(point_U)
+    num_likelihood_evaluations += jnp.ones_like(num_likelihood_evaluations)
     init_carry = Carry(
-        key=key,
+        key=run_key,
         direction=direction,
         left=left,
         right=right,
@@ -229,12 +242,40 @@ def _new_proposal(key: PRNGKey,
         num_likelihood_evaluations=num_likelihood_evaluations
     )
 
-    carry = lax.while_loop(
+    carry = jax.lax.while_loop(
         cond_fun=cond,
         body_fun=body,
         init_val=init_carry
     )
-    return carry.point_U, carry.log_L, carry.num_likelihood_evaluations
+
+    # Update direction
+    direction = carry.direction
+    num_likelihood_evaluations = carry.num_likelihood_evaluations
+    if gradient_guided:
+        # Perform a Householder reflection at the accepted point
+        after_key1, after_key2 = jax.random.split(after_key, 2)
+        grad = grad_fn(carry.point_U)
+        num_likelihood_evaluations += jnp.ones_like(num_likelihood_evaluations)
+        grad_norm = jnp.linalg.norm(grad)
+        grad_mask = jnp.bitwise_or(jnp.equal(grad_norm, jnp.zeros_like(grad_norm)), ~jnp.isfinite(grad_norm))
+        grad = grad / grad_norm
+
+        reflect_direction = direction - 2 * tree_dot(direction, grad) * grad
+        reflect_direction /= jnp.linalg.norm(reflect_direction)
+
+        random_direction = _sample_direction(after_key1, direction.size)
+
+        choose_dir = jax.random.randint(after_key2, shape=(), minval=0, maxval=2)
+        direction = jnp.where(
+            choose_dir == 0,
+            reflect_direction,
+            random_direction
+        )
+        direction = jnp.where(grad_mask, random_direction, direction)
+    else:
+        # Randomly choose a new direction
+        direction = _sample_direction(after_key, direction.size)
+    return carry.point_U, direction, carry.log_L, num_likelihood_evaluations
 
 
 @dataclasses.dataclass(eq=False)
@@ -263,6 +304,7 @@ class UniDimSliceSampler(BaseAbstractMarkovSampler[SampleCollection]):
     perfect: bool
     gradient_slice: bool = False
     adaptive_shrink: bool = False
+    gradient_guided: bool = False
 
     def __post_init__(self):
         if self.num_slices < 1:
@@ -278,6 +320,7 @@ class UniDimSliceSampler(BaseAbstractMarkovSampler[SampleCollection]):
         self.perfect = bool(self.perfect)
         self.gradient_slice = bool(self.gradient_slice)
         self.adaptive_shrink = bool(self.adaptive_shrink)
+        self.gradient_guided = bool(self.gradient_guided)
         if self.adaptive_shrink:
             raise NotImplementedError("Adaptive shrinkage not implemented.")
         if not self.perfect:
@@ -289,14 +332,14 @@ class UniDimSliceSampler(BaseAbstractMarkovSampler[SampleCollection]):
     def _pre_process(self, ephemeral_state: EphemeralState) -> Any:
         if self.perfect:  # nothing needed
             return ephemeral_state.live_points_collection
-        else:  # TODO: step out with doubling, using ellipsoidal clustering
+        else:  # TODO: step out with doubling
             return ephemeral_state.live_points_collection
 
     def _post_process(self, ephemeral_state: EphemeralState,
                       sampler_state: Any) -> Any:
         if self.perfect:  # nothing needed
             return ephemeral_state.live_points_collection
-        else:  # TODO: step out with doubling, using ellipsoidal clustering, could shrink ellipsoids
+        else:  # TODO: step out with doubling
             return ephemeral_state.live_points_collection
 
     def get_seed_point(self, key: PRNGKey, sampler_state: LivePointCollection,
@@ -305,23 +348,16 @@ class UniDimSliceSampler(BaseAbstractMarkovSampler[SampleCollection]):
         sample_collection = sampler_state
 
         select_mask = sample_collection.log_L > log_L_constraint
-        # If non satisfied samples, then choose randomly from them.
-        any_satisfied = jnp.any(select_mask)
-        yes_ = jnp.asarray(0., jnp.float32)
-        no_ = jnp.asarray(-jnp.inf, jnp.float32)
-        unnorm_select_log_prob = jnp.where(
-            any_satisfied,
-            jnp.where(select_mask, yes_, no_),
-            yes_
-        )
-        # Choose randomly where mask is True
-        g = random.gumbel(key, shape=unnorm_select_log_prob.shape)
-        sample_idx = jnp.argmax(g + unnorm_select_log_prob)
 
-        return SeedPoint(
-            U0=sample_collection.U_sample[sample_idx],
-            log_L0=sample_collection.log_L[sample_idx]
+        seed_point = sample_uniformly_masked(
+            key=key,
+            v=SeedPoint(U0=sample_collection.U_sample, log_L0=sample_collection.log_L),
+            select_mask=select_mask,
+            num_samples=1,
+            squeeze=True
         )
+
+        return seed_point
 
     def get_sample_from_seed(self, key: PRNGKey, seed_point: SeedPoint, log_L_constraint: FloatArray,
                              sampler_state: SampleCollection) -> Tuple[Sample, Sample]:
@@ -330,26 +366,41 @@ class UniDimSliceSampler(BaseAbstractMarkovSampler[SampleCollection]):
             key: jax.Array
             alpha: jax.Array
 
-        def propose_op(sample: Sample, x: XType) -> Sample:
-            U_sample, log_L, num_likelihood_evaluations = _new_proposal(
+        log_likelihood_fn = self.model.forward
+        grad_fn = jax.grad(log_likelihood_fn)
+
+        class Carry(NamedTuple):
+            sample: Sample
+            direction: UType
+
+        def propose_op(carry: Carry, x: XType) -> Carry:
+            U_sample, direction, log_L, num_likelihood_evaluations = _new_proposal(
                 key=x.key,
                 seed_point=SeedPoint(
-                    U0=sample.U_sample,
-                    log_L0=sample.log_L
+                    U0=carry.sample.U_sample,
+                    log_L0=carry.sample.log_L
                 ),
+                direction=carry.direction,
                 midpoint_shrink=self.midpoint_shrink,
                 alpha=x.alpha,
                 perfect=self.perfect,
                 gradient_slice=self.gradient_slice,
-                log_L_constraint=sample.log_L_constraint,
-                model=self.model
+                gradient_guided=self.gradient_guided,
+                log_L_constraint=carry.sample.log_L_constraint,
+                log_likelihood_fn=log_likelihood_fn,
+                grad_fn=grad_fn
             )
-            return Sample(
-                U_sample=U_sample,
-                log_L_constraint=sample.log_L_constraint,
-                log_L=log_L,
-                num_likelihood_evaluations=num_likelihood_evaluations + sample.num_likelihood_evaluations
+
+            carry = Carry(
+                sample=Sample(
+                    U_sample=U_sample,
+                    log_L_constraint=carry.sample.log_L_constraint,
+                    log_L=log_L,
+                    num_likelihood_evaluations=num_likelihood_evaluations + carry.sample.num_likelihood_evaluations
+                ),
+                direction=direction
             )
+            return carry
 
         init_sample = Sample(
             U_sample=seed_point.U0,
@@ -357,19 +408,30 @@ class UniDimSliceSampler(BaseAbstractMarkovSampler[SampleCollection]):
             log_L=seed_point.log_L0,
             num_likelihood_evaluations=jnp.asarray(0, mp_policy.count_dtype)
         )
+
+        direction_key, sample_key = jax.random.split(key, 2)
+
+        n = init_sample.U_sample.size
+        direction = _sample_direction(direction_key, n)
+
+        init_carry = Carry(
+            sample=init_sample,
+            direction=direction
+        )
+
         xs = XType(
-            key=random.split(key, self.num_slices),
+            key=random.split(sample_key, self.num_slices),
             alpha=jnp.linspace(0.5, 1., self.num_slices)
         )
-        final_sample, cumulative_samples = cumulative_op_static(
+        final_carry, cumulative_samples = cumulative_op_static(
             op=propose_op,
-            init=init_sample,
+            init=init_carry,
             xs=xs
         )
 
         # Last sample is the final sample, the rest are potential phantom samples
         # Take only the last num_phantom_save phantom samples
-        phantom_samples: Sample = jax.tree.map(lambda x: x[-(self.num_phantom_save + 1):-1], cumulative_samples)
+        phantom_samples: Sample = jax.tree.map(lambda x: x[-(self.num_phantom_save + 1):-1], cumulative_samples.sample)
 
         phantom_samples = phantom_samples._replace(
             num_likelihood_evaluations=jnp.full(
@@ -378,4 +440,4 @@ class UniDimSliceSampler(BaseAbstractMarkovSampler[SampleCollection]):
                 mp_policy.count_dtype
             )
         )
-        return final_sample, phantom_samples
+        return final_carry.sample, phantom_samples
