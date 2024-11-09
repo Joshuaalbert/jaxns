@@ -30,7 +30,7 @@ def plot_diagnostics(results: NestedSamplerResults, save_name=None):
     """
 
     num_samples = int(results.total_num_samples)
-    fig, axs = plt.subplots(5, 1, sharex=True, figsize=(8, 12))
+    fig, axs = plt.subplots(6, 1, sharex=True, figsize=(8, 15))
     log_X = np.asarray(results.log_X_mean[:num_samples])
     num_live_points_per_sample = np.asarray(results.num_live_points_per_sample[:num_samples])
     log_L = np.asarray(results.log_L_samples[:num_samples])
@@ -80,7 +80,13 @@ def plot_diagnostics(results: NestedSamplerResults, save_name=None):
     axs[4].set_ylabel("sampler efficiency")
     axs[4].set_ylim(0., 1.05)
     axs[4].legend()
-    axs[4].set_xlabel(r'$- \log X$')
+
+    # Plot X*L vs -log(X)
+    XL = (LogSpace(log_X) * LogSpace(log_L)).value
+    axs[5].plot(-log_X, XL, c='black')
+    axs[5].set_ylabel(r'$X L$')
+
+    axs[5].set_xlabel(r'$- \log X$')
     if save_name is not None:
         fig.savefig(save_name, bbox_inches='tight', dpi=300, pad_inches=0.0)
     plt.show()
