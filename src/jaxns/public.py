@@ -1,5 +1,4 @@
 import dataclasses
-import warnings
 from typing import Optional, Tuple, Union, List
 
 import jax
@@ -43,13 +42,14 @@ class NestedSampler:
         s: number of slices to use per dimension. Defaults to 4.
         k: number of phantom samples to use. Defaults to 0.
         c: number of parallel Markov-chains to use. Defaults to 20 * D.
-        num_parallel_workers: number of parallel workers to use. Defaults to 1. Experimental feature.
         devices: devices to use. Defaults to all available devices.
         difficult_model: if True, uses more robust default settings. Defaults to False.
         parameter_estimation: if True, uses more robust default settings for parameter estimation. Defaults to False.
+        shell_fraction: fraction of the shell to use for the slice sampler. Defaults to 0.5.
+        gradient_guided: if True, uses gradient guided sampling. Defaults to False.
         init_efficiency_threshold: if > 0 then use uniform sampling first down to this acceptance efficiency.
             0 turns it off.
-        verbose: whether to use JAX
+        verbose: whether to log progress.
     """
     model: BaseAbstractModel
     max_samples: Optional[Union[int, float]] = None
@@ -62,6 +62,7 @@ class NestedSampler:
     difficult_model: bool = False
     parameter_estimation: bool = False
     shell_fraction: float = 0.5
+    gradient_guided: bool = False
     init_efficiency_threshold: float = 0.1
     verbose: bool = False
 
@@ -84,7 +85,8 @@ class NestedSampler:
         else:
             self.k = 0 if self.k is None else int(self.k)
         if not (0 <= self.k < self.num_slices):
-            raise ValueError(f"Expected 0 <= k < num_slices, got k={self.k}, num_slices={self.num_slices}, U_ndims={self.model.U_ndims}")
+            raise ValueError(
+                f"Expected 0 <= k < num_slices, got k={self.k}, num_slices={self.num_slices}, U_ndims={self.model.U_ndims}")
 
         # Determine number of parallel Markov-chains
         if self.num_live_points is not None:
@@ -113,6 +115,7 @@ class NestedSampler:
                 num_slices=self.num_slices,
                 num_phantom_save=self.k,
                 midpoint_shrink=not self.difficult_model,
+                gradient_guided=self.gradient_guided,
                 perfect=True
             ),
             init_efficiency_threshold=self.init_efficiency_threshold,

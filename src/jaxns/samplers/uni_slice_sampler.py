@@ -1,4 +1,5 @@
 import dataclasses
+import warnings
 from typing import NamedTuple, Tuple, Any, Callable
 
 import jax
@@ -295,6 +296,7 @@ class UniDimSliceSampler(BaseAbstractMarkovSampler[SampleCollection]):
             Note: Perfect is a misnomer, as perfection also depends on the number of slices between acceptance.
         gradient_slice: if true then always slice along increasing gradient direction.
         adaptive_shrink: if true then shrink interval to random point in interval, rather than midpoint.
+        gradient_guided: if true then do householder reflections at between proposals with a 50% probability.
     """
 
     model: BaseAbstractModel
@@ -325,6 +327,8 @@ class UniDimSliceSampler(BaseAbstractMarkovSampler[SampleCollection]):
             raise NotImplementedError("Adaptive shrinkage not implemented.")
         if not self.perfect:
             raise ValueError("Only perfect slice sampler is implemented.")
+        if self.gradient_guided:
+            warnings.warn("Gradient guided slice sampler is experimental and will likely change.")
 
     def num_phantom(self) -> int:
         return self.num_phantom_save
