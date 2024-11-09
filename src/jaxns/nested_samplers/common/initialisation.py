@@ -103,5 +103,6 @@ def create_init_termination_register() -> TerminationRegister:
         plateau=jnp.asarray(False, jnp.bool_),
         no_seed_points=jnp.asarray(False, jnp.bool_),
         relative_spread=jnp.asarray(jnp.inf, mp_policy.measure_dtype),
-        absolute_spread=jnp.asarray(jnp.inf, mp_policy.measure_dtype)
+        absolute_spread=jnp.asarray(jnp.inf, mp_policy.measure_dtype),
+        peak_log_XL=jnp.asarray(-jnp.inf, mp_policy.measure_dtype)
     )

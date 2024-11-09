@@ -26,6 +26,7 @@ def determine_termination(
         8-bit -> 256: relative spread of live points < rtol
         9-bit -> 512: absolute spread of live points < atol
         10-bit -> 1024: no seed points left
+        11-bit -> 2048: XL < max(XL) * peak_XL_frac
 
     Multiple flags are summed together
 
@@ -135,5 +136,12 @@ def determine_termination(
 
     done, termination_reason = _set_done_bit(termination_register.no_seed_points, 10,
                                              done=done, termination_reason=termination_reason)
+
+    if term_cond.peak_XL_frac is not None:
+        log_XL = termination_register.evidence_calc.log_X_mean + termination_register.evidence_calc.log_L
+        peak_log_XL = termination_register.peak_log_XL
+        XL_reduction_reached = log_XL < peak_log_XL + jnp.log(term_cond.peak_XL_frac)
+        done, termination_reason = _set_done_bit(XL_reduction_reached, 11,
+                                                 done=done, termination_reason=termination_reason)
 
     return done, termination_reason
