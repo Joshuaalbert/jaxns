@@ -89,7 +89,9 @@ def plot_diagnostics(results: NestedSamplerResults, save_name=None):
     axs[5].set_xlabel(r'$- \log X$')
     if save_name is not None:
         fig.savefig(save_name, bbox_inches='tight', dpi=300, pad_inches=0.0)
-    plt.show()
+        plt.close(fig)
+    else:
+        plt.show()
 
 
 def plot_cornerplot(results: NestedSamplerResults, variables: Optional[List[str]] = None,
@@ -279,7 +281,9 @@ def plot_cornerplot(results: NestedSamplerResults, variables: Optional[List[str]
     # Save the figure
     if save_name is not None:
         fig.savefig(save_name, bbox_inches='tight', dpi=300, pad_inches=0.0)
-    plt.show()
+        plt.close(fig)
+    else:
+        plt.show()
 
 
 def weighted_percentile(samples: np.ndarray, log_weights: np.ndarray,

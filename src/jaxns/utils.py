@@ -321,7 +321,9 @@ def summary(results: NestedSamplerResults, with_parametrised: bool = False, f_ob
     main_s = []
 
     def _print(s):
-        print(s)
+        if f_obj is None:
+            # It goes to file instead
+            print(s)
         main_s.append(s)
 
     def _round(v, uncert_v):

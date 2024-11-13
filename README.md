@@ -359,6 +359,8 @@ before importing JAXNS.
 
 # Change Log
 
+13 Nov, 2024 -- JAXNS 2.6.6 released. Minor improvements to plotting.
+
 9 Nov, 2024 -- JAXNS 2.6.5 released. Added gradient guided nested sampling. Removed `num_parallel_workers` in favour
 `devices`.
 

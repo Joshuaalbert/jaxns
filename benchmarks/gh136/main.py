@@ -79,8 +79,8 @@ def get_data(ndims):
 
 def main():
     jaxns_version = pkg_resources.get_distribution("jaxns").version
-    m = 3
-    d = 32
+    m = 90
+    d = 16
 
     data = get_data(d)
 
@@ -88,14 +88,16 @@ def main():
     # Row 2: Plot H error for gradient guided vs baseline for different s, with errorbars
     # Row 3: Plot time taken for gradient guided vs baseline for different s, with errorbars
 
-    s_array = [10, 20, 30, 40, 80, 120]
+    s_array = [0.5, 1, 2, 3, 4, 5]
 
     run_model_baseline_aot_array = [
-        jax.jit(build_run_model(num_slices=s, gradient_guided=False, ndims=d)).lower(jax.random.PRNGKey(0), *data).compile() for
+        jax.jit(build_run_model(num_slices=int(s * d), gradient_guided=False, ndims=d)).lower(jax.random.PRNGKey(0),
+                                                                                              *data).compile() for
         s in
         s_array]
     run_model_gg_aot_array = [
-        jax.jit(build_run_model(num_slices=s, gradient_guided=True, ndims=d)).lower(jax.random.PRNGKey(0), *data).compile() for s
+        jax.jit(build_run_model(num_slices=int(s * d), gradient_guided=True, ndims=d)).lower(jax.random.PRNGKey(0),
+                                                                                             *data).compile() for s
         in
         s_array]
 
@@ -158,7 +160,7 @@ def main():
     axs[2].fill_between(s_array, dt_mean[:, 1] - dt_std[:, 1], dt_mean[:, 1] + dt_std[:, 1], color='r', alpha=0.2)
     axs[2].set_ylabel("Time taken")
     axs[2].legend()
-    axs[2].set_xlabel(r"number of slices")
+    axs[2].set_xlabel(r"s, slices per dim")
 
     axs[0].set_title(f"Gradient guided vs baseline, D={d}, v{jaxns_version}")
 
