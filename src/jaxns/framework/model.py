@@ -19,6 +19,7 @@ __all__ = [
     'Model'
 ]
 
+# TODO: Rewrite Model using context framework to avoid recompiling functions.
 
 class Model(BaseAbstractModel):
     """
