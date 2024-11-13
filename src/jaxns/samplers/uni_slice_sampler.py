@@ -258,7 +258,7 @@ def _new_proposal(
         grad = grad_fn(carry.point_U)
         num_likelihood_evaluations += jnp.ones_like(num_likelihood_evaluations)
         grad_norm = jnp.linalg.norm(grad)
-        grad_mask = jnp.bitwise_or(jnp.equal(grad_norm, jnp.zeros_like(grad_norm)), ~jnp.isfinite(grad_norm))
+        grad_mask = jnp.bitwise_or(grad_norm < jnp.asarray(1e-10, grad_norm.dtype), ~jnp.isfinite(grad_norm))
         grad = grad / grad_norm
 
         reflect_direction = direction - 2 * tree_dot(direction, grad) * grad
@@ -266,13 +266,7 @@ def _new_proposal(
 
         random_direction = _sample_direction(after_key1, direction.size)
 
-        choose_dir = jax.random.randint(after_key2, shape=(), minval=0, maxval=2)
-        direction = jnp.where(
-            choose_dir == 0,
-            reflect_direction,
-            random_direction
-        )
-        direction = jnp.where(grad_mask, random_direction, direction)
+        direction = jnp.where(grad_mask, random_direction, reflect_direction)
     else:
         # Randomly choose a new direction
         direction = _sample_direction(after_key, direction.size)
