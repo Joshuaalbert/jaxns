@@ -55,7 +55,7 @@ class NestedSampler:
     max_samples: Optional[Union[int, float]] = None
     num_live_points: Optional[int] = None
     num_slices: Optional[int] = None
-    s: Optional[int] = None
+    s: Optional[Union[int, float]] = None
     k: Optional[int] = None
     c: Optional[int] = None
     devices: Optional[List[xla_client.Device]] = None
@@ -70,9 +70,9 @@ class NestedSampler:
         # Determine number of slices per acceptance
         if self.num_slices is None:
             if self.difficult_model:
-                self.s = 10 if self.s is None else int(self.s)
+                self.s = 10 if self.s is None else float(self.s)
             else:
-                self.s = 5 if self.s is None else int(self.s)
+                self.s = 5 if self.s is None else float(self.s)
             if self.s <= 0:
                 raise ValueError(f"Expected s > 0, got s={self.s}")
             self.num_slices = self.model.U_ndims * self.s
