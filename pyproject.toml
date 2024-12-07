@@ -19,12 +19,7 @@ classifiers = [
     "Operating System :: OS Independent"
 ]
 urls = { "Homepage" = "https://github.com/joshuaalbert/jaxns" }
-dynamic = ["dependencies"]
-
-[project.optional-dependencies]
-# Define the extras here; they will be loaded dynamically from setup.py
-examples = []  # Placeholders; extras will load from setup.py
-tests = [] # Placeholders; extras will load from setup.py
+dynamic = ["dependencies", "optional-dependencies"]
 
 [tool.setuptools]
 include-package-data = true
