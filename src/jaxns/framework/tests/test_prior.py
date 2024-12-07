@@ -321,15 +321,15 @@ def test_forced_identifiability():
 
 
 def test_empirical():
-    samples = jax.random.normal(jax.random.PRNGKey(42), shape=(5, 2000), dtype=mp_policy.measure_dtype)
+    samples = jax.random.normal(jax.random.PRNGKey(42), shape=(2000,), dtype=mp_policy.measure_dtype)
     prior = Empirical(samples=samples, resolution=100, name='x')
-    assert prior._percentiles.shape == (101, 5)
+    assert prior._percentiles.shape == (101, 1)
 
     x = prior.forward(jnp.ones(prior.base_shape, mp_policy.measure_dtype))
-    assert x.shape == (5,)
+    assert x.shape == ()
     assert jnp.all(jnp.bitwise_not(jnp.isnan(x)))
     x = prior.forward(jnp.zeros(prior.base_shape, mp_policy.measure_dtype))
-    assert x.shape == (5,)
+    assert x.shape == ()
     assert jnp.all(jnp.bitwise_not(jnp.isnan(x)))
 
     x = prior.forward(0.5 * jnp.ones(prior.base_shape, mp_policy.measure_dtype))
