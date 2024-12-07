@@ -25,7 +25,8 @@ __all__ = [
     "Poisson",
     "UnnormalisedDirichlet",
     "Empirical",
-    "TruncationWrapper"
+    "TruncationWrapper",
+    "ExplicitDensityPrior",
 ]
 
 
@@ -71,6 +72,7 @@ class Bernoulli(SpecialPrior):
         probs = self.dist._probs_parameter_no_checks()
         sample = jnp.less(U, probs)
         return sample.astype(self.dtype)
+
 
 class Beta(SpecialPrior):
     def __init__(self, *, concentration0=None, concentration1=None, name: Optional[str] = None):
@@ -443,7 +445,8 @@ class Empirical(SpecialPrior):
     Represents the empirical distribution of a set of 1D samples, with arbitrary batch dimension.
     """
 
-    def __init__(self, *, samples: jax.Array, resolution: int = 100, name: Optional[str] = None):
+    def __init__(self, *, samples: jax.Array, support_min: FloatArray | None = None,
+                 support_max: FloatArray | None = None, resolution: int = 100, name: Optional[str] = None):
         super(Empirical, self).__init__(name=name)
         if len(np.shape(samples)) < 1:
             raise ValueError("Samples must have at least one dimension")
@@ -452,6 +455,17 @@ class Empirical(SpecialPrior):
         if resolution < 1:
             raise ValueError("Resolution must be at least 1")
         samples = jnp.asarray(samples)
+        # Add 1 point for each support endpoint
+        endpoints = []
+        if support_min is not None:
+            endpoints.append(support_min)
+        if support_max is not None:
+            endpoints.append(support_max)
+        if len(endpoints) > 0:
+            samples = jnp.concatenate([samples, jnp.asarray(endpoints)])
+
+        resolution = min(resolution, len(samples) - 1)
+
         self._q = jnp.linspace(0., 100., resolution + 1)
         self._percentiles = jnp.reshape(jnp.percentile(samples, self._q, axis=-1), (resolution + 1, -1))
 
