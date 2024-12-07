@@ -12,6 +12,6 @@ setup(
     install_requires=load_requirements("requirements.txt"),
     extras_require={
         "examples": load_requirements("requirements-examples.txt"),
-    },
-    tests_require=load_requirements("requirements-tests.txt"),
+        "tests": load_requirements("requirements-tests.txt"),
+    }
 )
