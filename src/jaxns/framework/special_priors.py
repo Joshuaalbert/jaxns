@@ -445,8 +445,8 @@ class Empirical(SpecialPrior):
     Represents the empirical distribution of a set of 1D samples, with arbitrary batch dimension.
     """
 
-    def __init__(self, *, samples: jax.Array, support_min: FloatArray | None = None,
-                 support_max: FloatArray | None = None, resolution: int = 100, name: Optional[str] = None):
+    def __init__(self, *, samples: jax.Array, support_min: Optional[FloatArray] = None,
+                 support_max: Optional[FloatArray] = None, resolution: int = 100, name: Optional[str] = None):
         super(Empirical, self).__init__(name=name)
         if len(np.shape(samples)) < 1:
             raise ValueError("Samples must have at least one dimension")
