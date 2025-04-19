@@ -7,12 +7,12 @@ import numpy as np
 from jaxns.internals.mixed_precision import mp_policy
 from jaxns.internals.types import LikelihoodType
 
-__all__ = [
-    'jaxify_likelihood'
-]
+__all__ = ["jaxify_likelihood"]
 
 
-def jaxify_likelihood(log_likelihood: Callable[..., np.ndarray], vectorised: bool = False) -> LikelihoodType:
+def jaxify_likelihood(
+    log_likelihood: Callable[..., np.ndarray], vectorised: bool = False
+) -> LikelihoodType:
     """
     Wraps a non-JAX log likelihood function.
 
@@ -38,15 +38,21 @@ def jaxify_likelihood(log_likelihood: Callable[..., np.ndarray], vectorised: boo
         return x
 
     def _casted_log_likelihood(*args) -> np.ndarray:
-        args = jax.tree.map(_cond_cast, args)  # Convert all arguments to numpy arrays, as they now pass jax.Array
+        args = jax.tree.map(
+            _cond_cast, args
+        )  # Convert all arguments to numpy arrays, as they now pass jax.Array
         return mp_policy.cast_to_measure(log_likelihood(*args))
 
     def _log_likelihood(*args) -> jax.Array:
         # Define the expected shape & dtype of output.
         result_shape_dtype = jax.ShapeDtypeStruct(
-            shape=(),
-            dtype=mp_policy.measure_dtype
+            shape=(), dtype=mp_policy.measure_dtype
         )
-        return jax.pure_callback(_casted_log_likelihood, result_shape_dtype, *args, vectorized=vectorised)
+        return jax.pure_callback(
+            _casted_log_likelihood,
+            result_shape_dtype,
+            *args,
+            vmap_method="legacy_vectorized" if vectorised else None,
+        )
 
     return _log_likelihood
