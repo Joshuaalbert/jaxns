@@ -73,7 +73,7 @@ def create_init_state(key: PRNGKey, num_live_points: int, max_samples: int, mode
         num_likelihood_evaluations=live_point_samples.num_likelihood_evaluations
     )
     sort_indices = jnp.argsort(live_point_samples.log_L)
-    live_point_collection = jax.tree_map(lambda x: x[sort_indices], live_point_collection)
+    live_point_collection = jax.tree.map(lambda x: x[sort_indices], live_point_collection)
 
     state = NestedSamplerState(
         key=key,

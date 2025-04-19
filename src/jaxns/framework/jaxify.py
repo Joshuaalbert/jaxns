@@ -47,6 +47,11 @@ def jaxify_likelihood(log_likelihood: Callable[..., np.ndarray], vectorised: boo
             shape=(),
             dtype=mp_policy.measure_dtype
         )
-        return jax.pure_callback(_casted_log_likelihood, result_shape_dtype, *args, vectorized=vectorised)
+        return jax.pure_callback(
+            _casted_log_likelihood,
+            result_shape_dtype,
+            *args,
+            vmap_method="legacy_vectorized" if vectorised else None,
+        )
 
     return _log_likelihood
