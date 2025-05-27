@@ -63,8 +63,13 @@ def gradient_based_optimisation(model: BaseAbstractModel, init_U_point: UType) -
     solution, diagnostics = newton_cg_solver(
         loss, quick_unit_inverse(init_U_point)
     )
+    final_iter = jnp.max(diagnostics.iteration)
+    final_obj = -diagnostics.f[final_iter]
+    # Assuming ~4 function evaluations per CG iteration:
+    # 1 for the initial function evaluation, 3 for the gradient and hvp.
+    num_fun_eval = 4 * jnp.sum(diagnostics.cg_iters)
 
-    return quick_unit(solution), -results.state.value, results.state.num_fun_eval
+    return quick_unit(solution), final_obj, num_fun_eval
 
 
 @dataclasses.dataclass(eq=False)

@@ -85,7 +85,7 @@ def newton_cg_solver(
         mu_out_factor: float = 0.1,
         approx_hvp: bool = False,  # reuse H·v between rejections
         verbose: bool = False,
-):
+) -> Tuple[DomainType, NewtonDiagnostic]:
     """
     Trust-region Newton-CG minimiser.
 
