@@ -1,6 +1,6 @@
 from jax import numpy as jnp
 
-from dsa2000_cal.solvers.cg import cg_solve
+from jaxns.experimental.solvers.cg import cg_solve
 
 
 def test_cg():
