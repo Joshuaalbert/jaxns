@@ -2,7 +2,7 @@ import jax
 import numpy as np
 from jax import numpy as jnp
 
-from dsa2000_common.common.ad_utils import grad_and_hvp, build_hvp
+from jaxns.experimental.solvers.ad_utils import grad_and_hvp, build_hvp
 
 
 def test_grad_and_hvp():
