@@ -4,15 +4,13 @@ from functools import partial
 from typing import Tuple, Dict, Any, Optional, NamedTuple
 
 import jax
-import jaxopt
 import numpy as np
 import tensorflow_probability.substrates.jax as tfp
 from jax import numpy as jnp, random
-from jax._src.scipy.special import logsumexp
-from jaxopt import ArmijoSGD, BFGS
 from tqdm import tqdm
 
 from jaxns import NestedSampler, Model
+from jaxns.experimental.solvers.gauss_newton_cg import newton_cg_solver
 from jaxns.framework.context import MutableParams
 from jaxns.internals.cumulative_ops import cumulative_op_static
 from jaxns.internals.log_semiring import LogSpace
@@ -78,15 +76,13 @@ class EvidenceMaximisation:
     log_Z_atol: float = 1e-4
     batch_size: Optional[int] = 128
     termination_cond: Optional[TerminationCondition] = None
-    solver: str = 'armijo'
     verbose: bool = False
 
     def __post_init__(self):
         if self.ns_kwargs is None:
             self.ns_kwargs = {}
         self._e_step = self._create_e_step()
-        # self._m_step = self._create_m_step()
-        self._m_step = self._create_m_step_stochastic()
+        self._m_step = self._create_m_step()
 
     def _create_e_step(self):
         """
@@ -153,85 +149,6 @@ class EvidenceMaximisation:
             )
             yield batch
 
-    def _create_m_step_stochastic(self):
-        def log_evidence(params: MutableParams, data: MStepData):
-            # Compute the log evidence
-            model = self.model(params=params)
-            # To make manageable, we could do chunked_pmap
-            log_dZ = jax.vmap(
-                lambda U, log_weight: model.forward(U) + log_weight
-            )(data.U_samples, data.log_weights)
-            # We add the log_Z_mean because log_dp_mean is normalised
-            log_Z = logsumexp(log_dZ)
-            return log_Z
-
-        def loss(params: MutableParams, data: MStepData):
-            log_Z, grad = jax.value_and_grad(log_evidence, argnums=0)(params, data)
-            obj = -log_Z
-            grad = jax.tree.map(jnp.negative, grad)
-
-            # If objective is -+inf, or nan, then the gradient is nan
-            grad = jax.tree.map(lambda x: jnp.where(jnp.isfinite(obj), x, jnp.zeros_like(x)), grad)
-
-            # Clip the gradient
-            grad = jax.tree.map(lambda x: jnp.clip(x, -10, 10), grad)
-
-            aux = (log_Z,)
-            if self.verbose:
-                jax.debug.print("(minibatch) log_Z={log_Z}", log_Z=log_Z)
-            return (obj, aux), grad
-
-        if self.solver == 'adam':
-            try:
-                import optax
-            except ImportError:
-                raise ImportError("optax must be installed to use the 'adam' solver")
-
-            solver = jaxopt.OptaxSolver(
-                fun=loss,
-                opt=optax.adam(learning_rate=1e-2),
-                has_aux=True,
-                value_and_grad=True,
-                jit=True,
-                unroll=False,
-                verbose=self.verbose,
-                maxiter=1000
-            )
-        elif self.solver == 'armijo':
-            solver = ArmijoSGD(
-                fun=loss,
-                has_aux=True,
-                value_and_grad=True,
-                jit=True,
-                unroll=False,
-                verbose=self.verbose,
-                momentum=0.,  # momentum does not help
-                maxiter=1000
-            )
-        else:
-            raise ValueError(f"Unknown solver {self.solver}")
-
-        def _m_step_stochastic(key: PRNGKey, params: MutableParams, data: MStepData) -> Tuple[MutableParams, Any]:
-            """
-            The M-step is just evidence maximisation.
-
-            Args:
-                key: The random number generator key.
-                params: The parameters to use.
-                data: The data to use.
-
-            Returns:
-                The updated parameters.
-            """
-
-            # The M-step is just evidence maximisation
-
-            iterator = self._m_step_iterator(key, data)
-            opt_results = solver.run_iterator(init_params=params, iterator=iterator)
-            return opt_results.params, opt_results.state.aux
-
-        return _m_step_stochastic
-
     def _create_m_step(self):
 
         def log_evidence(params: MutableParams, data: MStepData):
@@ -254,15 +171,6 @@ class EvidenceMaximisation:
                 jax.debug.print("log_Z={log_Z}", log_Z=log_Z)
             return (obj, aux), grad
 
-        solver = BFGS(
-            fun=loss,
-            has_aux=True,
-            value_and_grad=True,
-            jit=True,
-            unroll=False,
-            verbose=False
-        )
-
         @partial(jax.jit)
         def _m_step(key: PRNGKey, params: MutableParams, data: MStepData) -> Tuple[MutableParams, Any]:
             """
@@ -275,7 +183,7 @@ class EvidenceMaximisation:
             Returns:
                 The updated parameters and the negative log evidence.
             """
-            opt_results = solver.run(init_params=params, data=data)
+            opt_results = newton_cg_solver(loss, params, args=(data,))
             return opt_results.params, opt_results.state.aux
 
         return _m_step
