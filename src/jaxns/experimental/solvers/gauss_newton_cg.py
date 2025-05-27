@@ -73,7 +73,7 @@ def newton_cg_solver(
         obj_fn: Callable[..., ObjectiveRet],
         x0: DomainType,
         args: tuple = (),
-        maxiter: int = 50,
+        maxiter: int = 100,
         maxiter_cg: int = 100,
         gtol: float = 3e-5,
         p_accept: float = 0.01,
@@ -81,6 +81,8 @@ def newton_cg_solver(
         p_upper: float = 1.10,
         mu_init: float = 1.0,
         mu_min: float = 1e-6,
+        mu_in_factor: float = 10,
+        mu_out_factor: float = 0.1,
         approx_hvp: bool = False,  # reuse H·v between rejections
         verbose: bool = False,
 ):
@@ -138,7 +140,7 @@ def newton_cg_solver(
             return (f_new >= f0) & (mu > mu_min)
 
         def ls_body(mu):
-            return 0.5 * mu
+            return mu * mu_out_factor
 
         mu0 = jax.lax.while_loop(ls_cond, ls_body, mu_init)
 
@@ -193,7 +195,7 @@ def newton_cg_solver(
         # 4.6  Trust-region logic
         in_trust = (delta_f_pred > 0) & (delta_f_actual > p_lower * delta_f_pred) & (
                 delta_f_actual < p_upper * delta_f_pred)
-        new_mu = jax.lax.select(in_trust, 2 * state.mu, 0.5 * state.mu)
+        new_mu = jax.lax.select(in_trust, mu_in_factor * state.mu, state.mu * mu_out_factor)
         new_mu = jnp.maximum(new_mu, mu_min)
 
         accepted = (delta_f_pred > 0) & (delta_f_actual > p_accept * delta_f_pred)

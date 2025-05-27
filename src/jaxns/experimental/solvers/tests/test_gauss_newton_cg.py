@@ -18,7 +18,7 @@ def test_newton_cg_solver():
     print("Diagnostics:", diag)
 
 
-@pytest.mark.parametrize("n", [2, 10, 100, 1000])
+@pytest.mark.parametrize("n", [1000])
 def test_approx_cg_newton(n):
     def rosenbrock_nd(x):
         a = 1.

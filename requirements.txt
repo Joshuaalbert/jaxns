@@ -1,4 +1,4 @@
-jax>=0.4.25
+jax>=0.5.0
 jaxlib
 matplotlib
 numpy
