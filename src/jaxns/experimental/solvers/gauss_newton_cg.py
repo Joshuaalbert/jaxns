@@ -81,7 +81,7 @@ def newton_cg_solver(
         p_upper: float = 1.10,
         mu_init: float = 1.0,
         mu_min: float = 1e-6,
-        mu_in_factor: float = 10,
+        mu_in_factor: float = 5,
         mu_out_factor: float = 0.1,
         approx_hvp: bool = False,  # reuse H·v between rejections
         verbose: bool = False,
