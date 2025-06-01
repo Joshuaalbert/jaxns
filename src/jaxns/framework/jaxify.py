@@ -19,9 +19,8 @@ def jaxify_likelihood(log_likelihood: Callable[..., np.ndarray], vectorised: boo
     Args:
         log_likelihood: a non-JAX log-likelihood function, which accepts a number of arguments and returns a scalar
             log-likelihood.
-        vectorised: if True then the `log_likelihood` performs a vectorised computation for leading batch dimensions,
-            i.e. if a leading batch dimension is added to all input arguments, then it returns a vector of
-            log-likelihoods with the same leading batch dimension.
+        vectorised: if True then the `log_likelihood` must handle batched inputs, i.e. each input will receive a common
+            set of batched dimensions which the function must handle.
 
     Returns:
         A JAX-compatible log-likelihood function.
@@ -47,6 +46,8 @@ def jaxify_likelihood(log_likelihood: Callable[..., np.ndarray], vectorised: boo
             shape=(),
             dtype=mp_policy.measure_dtype
         )
-        return jax.pure_callback(_casted_log_likelihood, result_shape_dtype, *args, vectorized=vectorised)
+        if vectorised:
+            return jax.pure_callback(_casted_log_likelihood, result_shape_dtype, *args, vmap_method='broadcast_all')
+        return jax.pure_callback(_casted_log_likelihood, result_shape_dtype, *args, vmap_method=None)
 
     return _log_likelihood

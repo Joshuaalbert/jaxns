@@ -6,8 +6,8 @@ import jax.numpy as jnp
 import numpy as np
 import pylab as plt
 from jaxlib import xla_client
-from jaxopt import NonlinearCG
 
+from jaxns.experimental.solvers.gauss_newton_cg import newton_cg_solver
 from jaxns.framework.bases import BaseAbstractModel
 from jaxns.internals.constraint_bijections import quick_unit, quick_unit_inverse
 from jaxns.internals.mixed_precision import mp_policy
@@ -60,15 +60,16 @@ def gradient_based_optimisation(model: BaseAbstractModel, init_U_point: UType) -
         U = quick_unit(U_unconstrained)
         return -model.log_prob_likelihood(U, allow_nan=False)
 
-    solver = NonlinearCG(
-        fun=loss,
-        jit=True,
-        unroll=False,
-        verbose=False
+    solution, diagnostics = newton_cg_solver(
+        loss, quick_unit_inverse(init_U_point)
     )
+    final_iter = jnp.max(diagnostics.iteration)
+    final_obj = -diagnostics.f[final_iter]
+    # Assuming ~4 function evaluations per CG iteration:
+    # 1 for the initial function evaluation, 3 for the gradient and hvp.
+    num_fun_eval = 4 * jnp.sum(diagnostics.cg_iters)
 
-    results = solver.run(init_params=quick_unit_inverse(init_U_point))
-    return quick_unit(results.params), -results.state.value, results.state.num_fun_eval
+    return quick_unit(solution), final_obj, num_fun_eval
 
 
 @dataclasses.dataclass(eq=False)
