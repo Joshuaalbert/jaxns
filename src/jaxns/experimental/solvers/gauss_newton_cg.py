@@ -106,7 +106,7 @@ def newton_cg_solver(
     def _obj_fn(x):
         val = obj_fn(merge_back(x), *args)
         if not isinstance(val, jax.Array):
-            raise RuntimeError("Objective function must return a JAX scalar array.")
+            raise RuntimeError(f"Objective function must return a JAX scalar array, got {type(val)}.")
         if jnp.ndim(val) != 0:
             raise RuntimeError("Objective function must return a scalar.")
         return val

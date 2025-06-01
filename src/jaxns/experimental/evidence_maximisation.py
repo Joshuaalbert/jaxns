@@ -160,13 +160,11 @@ class EvidenceMaximisation:
             return log_Z
 
         def loss(params: MutableParams, data: MStepData):
-            log_Z, grad = jax.value_and_grad(log_evidence, argnums=0)(params, data)
+            log_Z = log_evidence(params, data)
             obj = -log_Z
-            grad = jax.tree.map(jnp.negative, grad)
-            aux = (log_Z,)
             if self.verbose:
                 jax.debug.print("log_Z={log_Z}", log_Z=log_Z)
-            return (obj, aux), grad
+            return obj
 
         @partial(jax.jit)
         def _m_step(key: PRNGKey, params: MutableParams, data: MStepData) -> Tuple[MutableParams, Any]:
@@ -180,8 +178,9 @@ class EvidenceMaximisation:
             Returns:
                 The updated parameters and the negative log evidence.
             """
-            opt_results = newton_cg_solver(loss, params, args=(data,))
-            return opt_results.params, opt_results.state.aux
+            params, diagnostics = newton_cg_solver(loss, params, args=(data,))
+            i = jnp.max(diagnostics.iteration)
+            return params, -diagnostics.f[i]
 
         return _m_step
 
@@ -220,7 +219,7 @@ class EvidenceMaximisation:
         epoch = 0
         log_Z = None
         while epoch < self.max_num_epochs:
-            params, (log_Z,) = self._m_step(key=key, params=params, data=data)
+            params, log_Z = self._m_step(key=key, params=params, data=data)
             l_oo = jax.tree.map(lambda x, y: float(jnp.max(jnp.abs(x - y))) if np.size(x) > 0 else 0.,
                                 last_params, params)
             last_params = params

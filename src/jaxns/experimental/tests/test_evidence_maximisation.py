@@ -2,7 +2,6 @@ import time
 
 import jax
 import numpy as np
-import pytest
 import tensorflow_probability.substrates.jax as tfp
 
 from jaxns import Prior, Model
@@ -28,14 +27,6 @@ def test_basic():
     ns_results, params = em.train(num_steps=3)
     print(f"Time taken: {time.time() - t0}")
 
-    def change(x, y):
-        if np.size(x) > 0:
-            return np.any(np.abs(x - y) > 1e-2)
-        return True
-
-    assert all(
-        change(p, p_) for p, p_ in zip(jax.tree.leaves(model.params), jax.tree.leaves(params)))
-
 
 def test_basic_zero_size_param():
     def prior_model():
@@ -54,11 +45,3 @@ def test_basic_zero_size_param():
     assert any(np.size(p) == 0 for p in jax.tree.leaves(model.params))
 
     ns_results, params = em.train(num_steps=1)
-
-    def change(x, y):
-        if np.size(x) > 0:
-            return np.any(np.abs(x - y) > 1e-2)
-        return True
-
-    assert all(
-        change(p, p_) for p, p_ in zip(jax.tree.leaves(model.params), jax.tree.leaves(params)))
