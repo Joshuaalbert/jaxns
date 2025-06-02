@@ -9,7 +9,7 @@ name = "jaxns"
 version = "2.6.8"
 description = "Nested Sampling in JAX"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 license = { text = "Apache Software License 2.0" }
 authors = [{ name = "Joshua G. Albert", email = "albert@strw.leidenuniv.nl" }]
 keywords = ["bayesian-methods", "scientific-computing", "probabilistic-programming", "nested-sampling", "model-comparison", "bayesian-computing", "jax", "scientific-machine-learning"]
