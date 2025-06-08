@@ -5,7 +5,7 @@ import jax
 import numpy as np
 import tensorflow_probability.substrates.jax as tfp
 from jax import numpy as jnp, vmap, lax
-from jax._src.scipy.special import gammaln
+from jax._src.scipy.special import gammaln, logsumexp
 
 from jaxns.framework.bases import BaseAbstractPrior
 from jaxns.framework.prior import SingularPrior, prior_to_parametrised_singular
@@ -166,7 +166,7 @@ class Categorical(SpecialPrior):
         logits = self.dist._logits_parameter_no_checks()
         z = jnp.max(logits, axis=-1, keepdims=True)
         logits -= z
-        return jnp.exp(logits) / jnp.sum(jnp.exp(logits), axis=-1, keepdims=True)
+        return jnp.exp(logits - logsumexp(logits, axis=-1, keepdims=True))
 
     def _quantile_cdf(self, U):
         """
