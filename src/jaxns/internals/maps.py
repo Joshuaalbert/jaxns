@@ -4,11 +4,10 @@ from typing import TypeVar, Callable, Optional, Tuple, List, Union, Any
 
 import jax
 import numpy as np
-from jax import pmap, numpy as jnp, lax
+from jax import pmap, numpy as jnp, lax, NamedSharding
 from jax._src.mesh import Mesh
 from jax._src.partition_spec import PartitionSpec
 from jax.experimental.mesh_utils import create_device_mesh
-from jaxlib.xla_extension import NamedSharding
 
 from jaxns.internals.mixed_precision import mp_policy
 

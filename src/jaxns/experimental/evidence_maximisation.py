@@ -4,15 +4,12 @@ from functools import partial
 from typing import Tuple, Dict, Any, Optional, NamedTuple
 
 import jax
-import jaxopt
 import numpy as np
 import tensorflow_probability.substrates.jax as tfp
 from jax import numpy as jnp, random
-from jax._src.scipy.special import logsumexp
-from jaxopt import ArmijoSGD, BFGS
-from tqdm import tqdm
 
 from jaxns import NestedSampler, Model
+from jaxns.experimental.solvers.gauss_newton_cg import newton_cg_solver
 from jaxns.framework.context import MutableParams
 from jaxns.internals.cumulative_ops import cumulative_op_static
 from jaxns.internals.log_semiring import LogSpace
@@ -65,9 +62,7 @@ class EvidenceMaximisation:
         log_Z_ftol, log_Z_atol: The tolerances for the change in the evidence as function of log_Z_uncert.
             Terminate if the change in log_Z is less than max(log_Z_ftol * log_Z_uncert, log_Z_atol).
         batch_size: The batch size to use for the M-step.
-        momentum: The momentum to use for the M-step.
         termination_cond: The termination condition to use for the nested sampler.
-        solver: The solver to use for the M-step. Either 'adam' or 'armijo'.
         verbose: Whether to print progress verbosely.
     """
     model: Model
@@ -78,15 +73,13 @@ class EvidenceMaximisation:
     log_Z_atol: float = 1e-4
     batch_size: Optional[int] = 128
     termination_cond: Optional[TerminationCondition] = None
-    solver: str = 'armijo'
     verbose: bool = False
 
     def __post_init__(self):
         if self.ns_kwargs is None:
             self.ns_kwargs = {}
         self._e_step = self._create_e_step()
-        # self._m_step = self._create_m_step()
-        self._m_step = self._create_m_step_stochastic()
+        self._m_step = self._create_m_step()
 
     def _create_e_step(self):
         """
@@ -110,29 +103,29 @@ class EvidenceMaximisation:
             logger.info(f"E-step compilation time: {time.time() - t0:.2f}s")
         ns = NestedSampler(model=self.model(params=self.model.params), **self.ns_kwargs)
 
-        def _e_step(key: PRNGKey, params: MutableParams, p_bar: tqdm) -> NestedSamplerResults:
-            p_bar.set_description(f"Running E-step... {p_bar.desc}")
+        def _e_step(key: PRNGKey, params: MutableParams, desc: str) -> NestedSamplerResults:
+            print(f"Running E-step... {desc}")
             termination_reason, state = ns_solve_compiled(params, key)
             # Trim results
             return ns.to_results(termination_reason=termination_reason, state=state, trim=True)
 
         return _e_step
 
-    def e_step(self, key: PRNGKey, params: MutableParams, p_bar: tqdm) -> NestedSamplerResults:
+    def e_step(self, key: PRNGKey, params: MutableParams, desc) -> NestedSamplerResults:
         """
         The E-step is just nested sampling.
 
         Args:
             key: The random number generator key.
             params: The parameters to use.
-            p_bar: progress bar
+            desc: progress bar desc
 
         Returns:
             The nested sampling results.
         """
 
         # The E-step is just nested sampling
-        return self._e_step(key, params, p_bar)
+        return self._e_step(key, params, desc)
 
     def _m_step_iterator(self, key: PRNGKey, data: MStepData):
         num_samples = int(data.U_samples.shape[0])
@@ -153,85 +146,6 @@ class EvidenceMaximisation:
             )
             yield batch
 
-    def _create_m_step_stochastic(self):
-        def log_evidence(params: MutableParams, data: MStepData):
-            # Compute the log evidence
-            model = self.model(params=params)
-            # To make manageable, we could do chunked_pmap
-            log_dZ = jax.vmap(
-                lambda U, log_weight: model.forward(U) + log_weight
-            )(data.U_samples, data.log_weights)
-            # We add the log_Z_mean because log_dp_mean is normalised
-            log_Z = logsumexp(log_dZ)
-            return log_Z
-
-        def loss(params: MutableParams, data: MStepData):
-            log_Z, grad = jax.value_and_grad(log_evidence, argnums=0)(params, data)
-            obj = -log_Z
-            grad = jax.tree.map(jnp.negative, grad)
-
-            # If objective is -+inf, or nan, then the gradient is nan
-            grad = jax.tree.map(lambda x: jnp.where(jnp.isfinite(obj), x, jnp.zeros_like(x)), grad)
-
-            # Clip the gradient
-            grad = jax.tree.map(lambda x: jnp.clip(x, -10, 10), grad)
-
-            aux = (log_Z,)
-            if self.verbose:
-                jax.debug.print("(minibatch) log_Z={log_Z}", log_Z=log_Z)
-            return (obj, aux), grad
-
-        if self.solver == 'adam':
-            try:
-                import optax
-            except ImportError:
-                raise ImportError("optax must be installed to use the 'adam' solver")
-
-            solver = jaxopt.OptaxSolver(
-                fun=loss,
-                opt=optax.adam(learning_rate=1e-2),
-                has_aux=True,
-                value_and_grad=True,
-                jit=True,
-                unroll=False,
-                verbose=self.verbose,
-                maxiter=1000
-            )
-        elif self.solver == 'armijo':
-            solver = ArmijoSGD(
-                fun=loss,
-                has_aux=True,
-                value_and_grad=True,
-                jit=True,
-                unroll=False,
-                verbose=self.verbose,
-                momentum=0.,  # momentum does not help
-                maxiter=1000
-            )
-        else:
-            raise ValueError(f"Unknown solver {self.solver}")
-
-        def _m_step_stochastic(key: PRNGKey, params: MutableParams, data: MStepData) -> Tuple[MutableParams, Any]:
-            """
-            The M-step is just evidence maximisation.
-
-            Args:
-                key: The random number generator key.
-                params: The parameters to use.
-                data: The data to use.
-
-            Returns:
-                The updated parameters.
-            """
-
-            # The M-step is just evidence maximisation
-
-            iterator = self._m_step_iterator(key, data)
-            opt_results = solver.run_iterator(init_params=params, iterator=iterator)
-            return opt_results.params, opt_results.state.aux
-
-        return _m_step_stochastic
-
     def _create_m_step(self):
 
         def log_evidence(params: MutableParams, data: MStepData):
@@ -246,22 +160,11 @@ class EvidenceMaximisation:
             return log_Z
 
         def loss(params: MutableParams, data: MStepData):
-            log_Z, grad = jax.value_and_grad(log_evidence, argnums=0)(params, data)
+            log_Z = log_evidence(params, data)
             obj = -log_Z
-            grad = jax.tree.map(jnp.negative, grad)
-            aux = (log_Z,)
             if self.verbose:
                 jax.debug.print("log_Z={log_Z}", log_Z=log_Z)
-            return (obj, aux), grad
-
-        solver = BFGS(
-            fun=loss,
-            has_aux=True,
-            value_and_grad=True,
-            jit=True,
-            unroll=False,
-            verbose=False
-        )
+            return obj
 
         @partial(jax.jit)
         def _m_step(key: PRNGKey, params: MutableParams, data: MStepData) -> Tuple[MutableParams, Any]:
@@ -275,12 +178,13 @@ class EvidenceMaximisation:
             Returns:
                 The updated parameters and the negative log evidence.
             """
-            opt_results = solver.run(init_params=params, data=data)
-            return opt_results.params, opt_results.state.aux
+            params, diagnostics = newton_cg_solver(loss, params, args=(data,))
+            i = jnp.max(diagnostics.iteration)
+            return params, -diagnostics.f[i]
 
         return _m_step
 
-    def m_step(self, key: PRNGKey, params: MutableParams, ns_results: NestedSamplerResults, p_bar: tqdm) -> Tuple[
+    def m_step(self, key: PRNGKey, params: MutableParams, ns_results: NestedSamplerResults, desc: str) -> Tuple[
         MutableParams, Any]:
         """
         The M-step is just evidence maximisation. We pad the data to the next power of 2, to make JIT compilation
@@ -290,7 +194,7 @@ class EvidenceMaximisation:
             key: The random number generator key.
             params: The parameters to use.
             ns_results: The nested sampling results to use.
-            p_bar: progress bar
+            desc: progress bar description
 
         Returns:
             The updated parameters
@@ -299,7 +203,7 @@ class EvidenceMaximisation:
         num_samples = int(ns_results.total_num_samples)
         n = next_power_2(num_samples)
 
-        p_bar.set_description(f"Running M-step ({num_samples} samples padded to {n})... {p_bar.desc}")
+        print(f"Running M-step ({num_samples} samples padded to {n})... {desc}")
 
         def _pad_to_n(x, fill_value, dtype):
             if x.shape[0] == n:
@@ -311,16 +215,15 @@ class EvidenceMaximisation:
             U_samples=_pad_to_n(ns_results.U_samples, 0.5, mp_policy.measure_dtype),
             log_weights=_pad_to_n(log_weights, -jnp.inf, mp_policy.measure_dtype)
         )
-        desc = p_bar.desc
         last_params = params
         epoch = 0
         log_Z = None
         while epoch < self.max_num_epochs:
-            params, (log_Z,) = self._m_step(key=key, params=params, data=data)
+            params, log_Z = self._m_step(key=key, params=params, data=data)
             l_oo = jax.tree.map(lambda x, y: float(jnp.max(jnp.abs(x - y))) if np.size(x) > 0 else 0.,
                                 last_params, params)
             last_params = params
-            p_bar.set_description(f"{desc}: Epoch {epoch}: log_Z={log_Z}, l_oo={l_oo}")
+            print(f"{desc}: Epoch {epoch}: log_Z={log_Z}, l_oo={l_oo}")
 
             if all(_l_oo < self.gtol for _l_oo in jax.tree.leaves(l_oo)):
                 break
@@ -347,29 +250,26 @@ class EvidenceMaximisation:
         log_Z = -jnp.inf
 
         # Initialize the progress bar with a description
-        p_bar = tqdm(range(num_steps), desc="Processing Steps", dynamic_ncols=True)
 
         ns_results = None
-        for step in p_bar:
+        for step in range(num_steps):
             key_e_step, key_m_step = random.split(random.PRNGKey(step), 2)
 
             # Execute the e_step
             if ns_results is None:
-                p_bar.set_description(f"Step {step}: Initial run")
+                desc = f"Step {step}: Initial run"
 
             else:
-                p_bar.set_description(
-                    f"Step {step}: log Z = {ns_results.log_Z_mean:.4f} +- {ns_results.log_Z_uncert:.4f}"
-                )
+                desc = f"Step {step}: log Z = {ns_results.log_Z_mean:.4f} +- {ns_results.log_Z_uncert:.4f}"
 
-            ns_results = self.e_step(key=key_e_step, params=params, p_bar=p_bar)
+            ns_results = self.e_step(key=key_e_step, params=params, desc=desc)
             # Update progress bar description
 
             # Check termination condition
             log_Z_change = jnp.abs(ns_results.log_Z_mean - log_Z)
 
             if log_Z_change < self.log_Z_atol:
-                p_bar.set_description(
+                desc = (
                     f"Convergence achieved at step {step}, "
                     f"due to delta log_Z {log_Z_change} < log_Z_atol {self.log_Z_atol}."
                 )
@@ -378,7 +278,7 @@ class EvidenceMaximisation:
 
             relative_atol = float(self.log_Z_ftol * ns_results.log_Z_uncert)
             if log_Z_change < relative_atol:
-                p_bar.set_description(
+                desc = (
                     f"Convergence achieved at step {step}, "
                     f"due to log_Z {log_Z_change} < log_Z_ftol * log_Z_uncert {relative_atol}."
                 )
@@ -389,11 +289,11 @@ class EvidenceMaximisation:
             log_Z = ns_results.log_Z_mean
 
             # Execute the m_step
-            p_bar.set_description(
+            desc = (
                 f"Step {step}: log Z = {ns_results.log_Z_mean:.4f} +- {ns_results.log_Z_uncert:.4f}"
             )
 
-            params, log_Z_opt = self.m_step(key=key_m_step, params=params, ns_results=ns_results, p_bar=p_bar)
+            params, log_Z_opt = self.m_step(key=key_m_step, params=params, ns_results=ns_results, desc=desc)
 
         if ns_results is None:
             raise RuntimeError("No results were computed.")

@@ -172,7 +172,7 @@ def dynamic_new_live_point_collection(
     )
 
     sort_indices = jnp.argsort(live_point_collection.log_L)
-    live_point_collection = jax.tree_map(lambda x: x[sort_indices], live_point_collection)
+    live_point_collection = jax.tree.map(lambda x: x[sort_indices], live_point_collection)
 
     state = add_phantom_samples_to_state(phantom_samples, sender_node_idx, state)
     return live_point_collection, state
@@ -272,7 +272,7 @@ def _collect_shell(
         new_sample_collection
     )
     sort_indices = jnp.argsort(live_point_collection.log_L)
-    live_point_collection = jax.tree_map(lambda x: x[sort_indices], live_point_collection)
+    live_point_collection = jax.tree.map(lambda x: x[sort_indices], live_point_collection)
     # TODO: compute insert index KS-statistic
     _, insert_indices = jax.lax.top_k(-sort_indices, k=shell_size)
 
