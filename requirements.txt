@@ -3,4 +3,4 @@ jaxlib
 matplotlib
 numpy
 scipy
-tensorflow_probability
+tfp-nightly
