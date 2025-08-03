@@ -7,10 +7,10 @@ import jax
 import numpy as np
 import tensorflow_probability.substrates.jax as tfp
 from jax import numpy as jnp, random
+from jaxctx import CtxParams
 
 from jaxns import NestedSampler, Model
 from jaxns.experimental.solvers.gauss_newton_cg import newton_cg_solver
-from jaxns.framework.context import MutableParams
 from jaxns.internals.cumulative_ops import cumulative_op_static
 from jaxns.internals.log_semiring import LogSpace
 from jaxns.internals.logging import logger
@@ -89,7 +89,7 @@ class EvidenceMaximisation:
             A compiled function that runs nested sampling and returns trimmed results.
         """
 
-        def _ns_solve(params: MutableParams, key: random.PRNGKey) -> Tuple[
+        def _ns_solve(params: CtxParams, key: random.PRNGKey) -> Tuple[
             IntArray, StaticStandardNestedSamplerState]:
             model = self.model(params=params)
             ns = NestedSampler(model=model, **self.ns_kwargs)
@@ -103,7 +103,7 @@ class EvidenceMaximisation:
             logger.info(f"E-step compilation time: {time.time() - t0:.2f}s")
         ns = NestedSampler(model=self.model(params=self.model.params), **self.ns_kwargs)
 
-        def _e_step(key: PRNGKey, params: MutableParams, desc: str) -> NestedSamplerResults:
+        def _e_step(key: PRNGKey, params: CtxParams, desc: str) -> NestedSamplerResults:
             print(f"Running E-step... {desc}")
             termination_reason, state = ns_solve_compiled(params, key)
             # Trim results
@@ -111,7 +111,7 @@ class EvidenceMaximisation:
 
         return _e_step
 
-    def e_step(self, key: PRNGKey, params: MutableParams, desc) -> NestedSamplerResults:
+    def e_step(self, key: PRNGKey, params: CtxParams, desc) -> NestedSamplerResults:
         """
         The E-step is just nested sampling.
 
@@ -148,7 +148,7 @@ class EvidenceMaximisation:
 
     def _create_m_step(self):
 
-        def log_evidence(params: MutableParams, data: MStepData):
+        def log_evidence(params: CtxParams, data: MStepData):
             # Compute the log evidence
             model = self.model(params=params)
 
@@ -159,7 +159,7 @@ class EvidenceMaximisation:
             log_Z, _ = cumulative_op_static(op=op, init=jnp.asarray(-jnp.inf, mp_policy.measure_dtype), xs=data)
             return log_Z
 
-        def loss(params: MutableParams, data: MStepData):
+        def loss(params: CtxParams, data: MStepData):
             log_Z = log_evidence(params, data)
             obj = -log_Z
             if self.verbose:
@@ -167,7 +167,7 @@ class EvidenceMaximisation:
             return obj
 
         @partial(jax.jit)
-        def _m_step(key: PRNGKey, params: MutableParams, data: MStepData) -> Tuple[MutableParams, Any]:
+        def _m_step(key: PRNGKey, params: CtxParams, data: MStepData) -> Tuple[CtxParams, Any]:
             """
             The M-step is just evidence maximisation.
 
@@ -184,8 +184,8 @@ class EvidenceMaximisation:
 
         return _m_step
 
-    def m_step(self, key: PRNGKey, params: MutableParams, ns_results: NestedSamplerResults, desc: str) -> Tuple[
-        MutableParams, Any]:
+    def m_step(self, key: PRNGKey, params: CtxParams, ns_results: NestedSamplerResults, desc: str) -> Tuple[
+        CtxParams, Any]:
         """
         The M-step is just evidence maximisation. We pad the data to the next power of 2, to make JIT compilation
         happen less frequently.
@@ -231,9 +231,9 @@ class EvidenceMaximisation:
 
         return params, log_Z
 
-    def train(self, num_steps: int = 10, params: Optional[MutableParams] = None) -> \
+    def train(self, num_steps: int = 10, params: Optional[CtxParams] = None) -> \
             Tuple[
-                NestedSamplerResults, MutableParams]:
+                NestedSamplerResults, CtxParams]:
         """
         Train the model using EM for num_steps.
 

@@ -4,8 +4,8 @@ from typing import Tuple, Optional, Union
 import jax.nn
 import tensorflow_probability.substrates.jax as tfp
 from jax import numpy as jnp
+from jaxctx import wrap_random, get_parameter
 
-import jaxns.framework.context as ctx
 from jaxns.framework.bases import BaseAbstractPrior, BaseAbstractDistribution
 from jaxns.framework.wrapped_tfp_distribution import WrappedTFPDistribution
 from jaxns.internals.constraint_bijections import quick_unit
@@ -181,12 +181,12 @@ def prior_to_parametrised_singular(prior: BaseAbstractPrior, random_init: bool =
     name = f"{prior.name}_param"
     # Initialises at median of distribution using zeros, else unit-normal.
     if random_init:
-        initaliser = ctx.wrap_random(jax.random.normal)
+        initaliser = wrap_random(jax.random.normal)
     else:
         initaliser = jnp.zeros
     if prior.base_ndims == 0:
         warnings.warn(f"Creating a zero-sized parameter for {prior.name}. Probably unintended.")
-    norm_U_base_param = ctx.get_parameter(
+    norm_U_base_param = get_parameter(
         name=name,
         shape=prior.base_shape,
         dtype=mp_policy.measure_dtype,
