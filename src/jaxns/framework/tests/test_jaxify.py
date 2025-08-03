@@ -1,8 +1,9 @@
 import jax
 import jax.random
 import numpy as np
+from jaxctx.priors.prior import Prior
 
-from jaxns import Prior, Model
+from jaxns import Model
 from jaxns.framework.jaxify import jaxify_likelihood
 from jaxns.framework.tests.test_model import tfpd
 
@@ -24,7 +25,7 @@ def test_jaxify_likelihood():
 
 def test_jaxify():
     def prior_model():
-        x = yield Prior(tfpd.Uniform(), name='x').parametrised()
+        x = yield Prior(tfpd.Uniform(), name='x').sample()
         return x
 
     @jaxify_likelihood

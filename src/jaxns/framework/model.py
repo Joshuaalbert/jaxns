@@ -4,8 +4,8 @@ from uuid import uuid4
 import jax.tree
 import numpy as np
 from jax import random, vmap, jit, numpy as jnp
+from jaxctx import CtxParams
 
-import jaxns.framework.context as ctx
 from jaxns.framework.bases import BaseAbstractModel, PriorModelType
 from jaxns.framework.ops import transform, prepare_input, compute_log_prob_prior, compute_log_likelihood, parse_prior, \
     parse_joint, transform_parametrised
@@ -27,7 +27,7 @@ class Model(BaseAbstractModel):
     """
 
     def __init__(self, prior_model: PriorModelType, log_likelihood: LikelihoodType,
-                 params: Optional[ctx.MutableParams] = None):
+                 params: Optional[CtxParams] = None):
         super().__init__(prior_model=prior_model, log_likelihood=log_likelihood)
         if params is None:
             params = self.init_params(rng=random.PRNGKey(0))
