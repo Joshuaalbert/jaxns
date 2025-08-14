@@ -61,24 +61,27 @@ class ZMQActor(ABC):
         Connects to the ack_rep socket and sends an ACK message to indicate readiness.
         """
         if self._acked_startup:
-            raise RuntimeError(f"[{self.__class__.__name__}] has already acknowledged startup.")
+            raise RuntimeError(f"{self.__class__.__name__} has already acknowledged startup.")
         ack_req = self.ctx.socket(zmq.REQ)
         ack_req.connect(self.ack_rep_addr)
         try:
             ack_req.send(f"{self.__class__.__name__}".encode())
             ack_req.recv()
-            jaxns_logger.info(f"[{self.__class__.__name__}] startup acknowledged.")
+            jaxns_logger.info(f"{self.__class__.__name__} startup acknowledged.")
         finally:
             ack_req.close(linger=0)
         self._acked_startup = True
 
-    def new_socket(self, sock_type, *, bind=None, connect=None, **opts) -> zmq.Socket:
+    def new_socket(self, sock_type, *, bind=None, connect=None, no_hwm: bool = True, **opts) -> zmq.Socket:
         if bind is None and connect is None:
             raise ValueError("Must specify either bind or connect")
         jaxns_logger.info(
             f"[{self.__class__.__name__}] added socket {sock_type!r}, bind={bind}, connect={connect}, opts={opts}"
         )
         s = self.ctx.socket(sock_type)
+        if no_hwm:
+            s.setsockopt(zmq.SNDHWM, 0)
+            s.setsockopt(zmq.RCVHWM, 0)
         for opt_name, opt_val in opts.items():
             setattr(s, opt_name, opt_val)
         if bind:
@@ -177,7 +180,7 @@ class ZMQActor(ABC):
                 err_pipe.send(pickle.dumps(e))
             except Exception as e2:
                 jaxns_logger.error(f"Error sending exception through error pipe: {str(e2)}.")
-            sys.exit(1) # Raises SystemExit, which is caught by the process manager.
+            sys.exit(1)  # Raises SystemExit, which is caught by the process manager.
         finally:
             try:
                 # ctl socket makes run() return, so we can do cleanup here.

@@ -66,7 +66,7 @@ class ProcessManager:
         for actor_proc in self.actor_procs:
             if actor_proc.done and actor_proc.actor.exception is not None:
                 jaxns_logger.error(f"Exception raised in {actor_proc.actor.__class__.__name__}: "
-                                f"{getattr(actor_proc.actor.exception, 'traceback', str(actor_proc.actor.exception))}")
+                                   f"{getattr(actor_proc.actor.exception, 'traceback', str(actor_proc.actor.exception))}")
 
     def start_all(self):
         """Spawn a Process for each actor's run() method."""
@@ -208,10 +208,16 @@ class ProcessManager:
                     else:
                         # Process has terminated with an exit code != 0
                         err_pipe = actor_proc.err_pipe
-                        e = pickle.loads(err_pipe.recv())
-                        a.set_exception(e)
-                        jaxns_logger.error(f"Process {p.pid} ({a.__class__.__name__}) exited with code {p.exitcode}. "
-                                        f"Error message: {e}")
+                        try:
+                            e = pickle.loads(err_pipe.recv())
+                        except EOFError:
+                            # EOFError can occur if the pipe is closed before we read from it
+                            pass
+                        else:
+                            a.set_exception(e)
+                            jaxns_logger.error(
+                                f"Process {p.pid} ({a.__class__.__name__}) exited with code {p.exitcode}. "
+                                f"Error message: {e}")
                         actor_proc.done = True
                 else:
                     # Process is still alive, attempt to terminate it gracefully
@@ -235,7 +241,7 @@ class ProcessManager:
                         e = err_pipe.recv()
                         a.set_exception(e)
                         jaxns_logger.error(f"Process {p.pid} ({a.__class__.__name__}) exited with code {p.exitcode}. "
-                                        f"Error message: {e}")
+                                           f"Error message: {e}")
                         actor_proc.done = True
                 else:
                     jaxns_logger.warning(f"Process {p.pid} ({a.__class__.__name__}) did not exit cleanly, killing it.")

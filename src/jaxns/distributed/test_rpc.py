@@ -14,8 +14,10 @@ class AbstractService(ABC):
 
 
 class ServiceImpl(AbstractService):
-
+    def __init__(self):
+        self.count = 0
     def echo(self, x):
+        self.count += 1
         return x
 
 
@@ -60,7 +62,7 @@ def test_rpc():
         with (Client(ident='client1', frontend_addr=frontend_addr) as client1,
               Client(ident='client2', frontend_addr=frontend_addr) as client2):
 
-            for i in range(10):
+            for i in range(15):
                 assert client1.echo(f'hello {i} for client 1') == f'hello {i} for client 1'
                 assert client2.echo(f'hello {i} for client 2') == f'hello {i} for client 2'
 

@@ -35,7 +35,6 @@ class MockActorCleanExit(ZMQActor):
             poller.unregister(ctl)
 
 
-
 def test_basic_shutdown_logic():
     ctl_pub_addr = create_random_control_address()
     ack_rep_addr = create_random_ack_address()
@@ -57,6 +56,7 @@ def test_basic_shutdown_logic():
     for actor_proc in mgr.actor_procs:
         assert not actor_proc.proc.is_alive()
         assert actor_proc.done
+
 
 class MockActorException(ZMQActor):
 
@@ -122,6 +122,7 @@ def test_exception_shutdown_logic():
         assert not actor_proc.proc.is_alive()
         assert actor_proc.done
 
+
 def test_exception_shutdown_ctl_logic():
     ctl_pub_addr = create_random_control_address()
     ack_rep_addr = create_random_ack_address()
@@ -158,6 +159,7 @@ def test_exception_shutdown_ctl_logic():
         assert actor_proc.done
 
     mgr.print_tracebacks()
+
 
 class MockActorCTLShutdown(ZMQActor):
 

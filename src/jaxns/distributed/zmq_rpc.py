@@ -80,6 +80,8 @@ class RPCActor(ZMQActor, ABC):
     """
     Provides a three-frame‐in, two-frame‐out request/reply loop on a REP socket:
       [method, pickle(args), pickle(kwargs)] → [b"ok", pickle(result)] or [b"error", pickle(exception)]
+
+      extra data for load balancer: identity
     """
 
     def __init__(self, ctl_pub_addr: str, ack_rep_addr: str, backend_addr: str):
@@ -197,7 +199,7 @@ class RPCActor(ZMQActor, ABC):
             return
         finally:
             try:
-                req.send(b"DONE")  # Tells loadbalancer that we are available
+                req.send(b"DONE")  # Tells load balancer that we are done
             except zmq.error.ZMQError as e:
                 jaxns_logger.warning(f"Unable to deregister RPC Service: {str(e)}")
             poller.unregister(ctl)
