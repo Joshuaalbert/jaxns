@@ -3,4 +3,5 @@ jaxlib
 matplotlib
 numpy
 scipy
-tfp_nightly
+tfp-nightly
+zmq
