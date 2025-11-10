@@ -8,7 +8,6 @@ from jax import numpy as jnp, random
 from jaxns.framework.bases import BaseAbstractModel
 from jaxns.internals.cumulative_ops import cumulative_op_static
 from jaxns.internals.mixed_precision import mp_policy
-from jaxns.internals.pytree_utils import tree_dot
 from jaxns.internals.random import sample_uniformly_masked
 from jaxns.internals.types import PRNGKey, FloatArray, BoolArray, IntArray, UType
 from jaxns.nested_samplers.common.types import Sample, SampleCollection, LivePointCollection

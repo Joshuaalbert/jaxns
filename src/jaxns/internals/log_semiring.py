@@ -1,11 +1,13 @@
-from typing import Union, Literal
+import dataclasses
+from typing import Union, Literal, Tuple, List, Any
 
 import jax
 from jax import numpy as jnp, lax
 from jax.scipy.special import logsumexp
 
 from jaxns.internals.mixed_precision import mp_policy
-from jaxns.internals.types import SignedLog
+from jaxns.internals.pytree import PureDataclassPytree
+from jaxns.internals.types import SignedLog, FloatArray
 
 
 def logaddexp(x1, x2):
@@ -91,41 +93,32 @@ def cumulative_logsumexp(u, sign=None, reverse=False, axis=0):
             v = jnp.swapaxes(v, axis, 0)
         return v
 
+@dataclasses.dataclass(slots=True)
+class LogSpace(PureDataclassPytree):
+    log_abs_val: FloatArray
+    sign: FloatArray | None = None
 
-class LogSpace(object):
-    def __init__(self, log_abs_val: Union[jax.Array, float], sign: Union[jax.Array, float] = None):
-        self._log_abs_val = jnp.asarray(log_abs_val, mp_policy.measure_dtype)
-        if sign is None:
-            self._sign = jnp.asarray(1., mp_policy.measure_dtype)
-            self._naked = True
-        else:
-            self._sign = jnp.asarray(sign, mp_policy.measure_dtype)
-            self._naked = False
+    @property
+    def naked(self) -> bool:
+        return self.sign is None
 
     @staticmethod
     def from_signed_value(value: jax.Array) -> 'LogSpace':
-        return LogSpace(jnp.log(jnp.abs(value)), jnp.sign(value))
+        return LogSpace(log_abs_val=jnp.log(jnp.abs(value)), sign=jnp.sign(value))
 
     @property
     def dtype(self):
         return self.log_abs_val.dtype
 
-    @property
-    def log_abs_val(self):
-        return self._log_abs_val
-
-    @property
-    def sign(self):
-        return self._sign
 
     @property
     def value(self):
-        if self._naked:
+        if self.naked:
             return jnp.exp(self.log_abs_val)
         return self.sign * jnp.exp(self.log_abs_val)
 
     def __neg__(self):
-        if self._naked:
+        if self.naked:
             return LogSpace(self.log_abs_val, -jnp.ones_like(self.log_abs_val))
         return LogSpace(self.log_abs_val, -self.sign)
 
@@ -143,13 +136,13 @@ class LogSpace(object):
         """
         if not isinstance(other, LogSpace):
             raise TypeError(f"Expected type {type(self)} got {type(other)}")
-        if self._naked and other._naked:  # no coefficients
-            return LogSpace(jnp.logaddexp(self._log_abs_val, other._log_abs_val))
-        return LogSpace(*signed_logaddexp(self._log_abs_val, self._sign, other._log_abs_val, other._sign))
+        if self.naked and other.naked:  # no coefficients
+            return LogSpace(jnp.logaddexp(self.log_abs_val, other.log_abs_val))
+        return LogSpace(*signed_logaddexp(self.log_abs_val, self.sign, other.log_abs_val, other.sign))
 
     def __sub__(self, other):
         """
-        Implements addition in log space
+        Implements subtracton in log space
 
             log(exp(log_A) - exp(log_B))
 
@@ -161,7 +154,7 @@ class LogSpace(object):
         """
         if not isinstance(other, LogSpace):
             raise TypeError(f"Expected type {type(self)} got {type(other)}")
-        return LogSpace(*signed_logaddexp(self._log_abs_val, self._sign, other._log_abs_val, -other._sign))
+        return LogSpace(*signed_logaddexp(self.log_abs_val, self.sign or 1, other.log_abs_val, -(other.sign or 1)))
 
     def __mul__(self, other):
         """
@@ -177,46 +170,46 @@ class LogSpace(object):
         """
         if not isinstance(other, LogSpace):
             raise TypeError(f"Expected type {type(self)} got {type(other)}")
-        if self._naked and other._naked:  # no coefficients
-            return LogSpace(self._log_abs_val + other._log_abs_val)
-        return LogSpace(self._log_abs_val + other._log_abs_val, self._sign * other._sign)
+        if self.naked and other.naked:  # no coefficients
+            return LogSpace(self.log_abs_val + other.log_abs_val)
+        return LogSpace(self.log_abs_val + other.log_abs_val, self.sign * other.sign)
 
     def __repr__(self):
-        if self._naked:
+        if self.naked:
             return f"LogSpace({self.log_abs_val})"
         return f"LogSpace({self.log_abs_val}, {self.sign})"
 
     def sum(self, axis=-1, keepdims=False):
-        if not self._naked:  # no coefficients
+        if not self.naked:  # no coefficients
             return LogSpace(*logsumexp(self.log_abs_val, b=self.sign, axis=axis, keepdims=keepdims, return_sign=True))
-        return LogSpace(logsumexp(self._log_abs_val, axis=axis, keepdims=keepdims))
+        return LogSpace(logsumexp(self.log_abs_val, axis=axis, keepdims=keepdims))
 
     def nansum(self, axis=-1, keepdims=False):
         log_abs_val = jnp.where(jnp.isnan(self.log_abs_val), -jnp.inf, self.log_abs_val)
-        if not self._naked:  # no coefficients
+        if not self.naked:  # no coefficients
             return LogSpace(*logsumexp(log_abs_val, b=self.sign, axis=axis, keepdims=keepdims, return_sign=True))
         return LogSpace(logsumexp(log_abs_val, axis=axis, keepdims=keepdims))
 
     def cumsum(self, axis=0, reverse=False):
-        if not self._naked:  # no coefficients
+        if not self.naked:  # no coefficients
             return LogSpace(*cumulative_logsumexp(self.log_abs_val, sign=self.sign, axis=axis, reverse=reverse))
-        return LogSpace(cumulative_logsumexp(self._log_abs_val, axis=axis, reverse=reverse))
+        return LogSpace(cumulative_logsumexp(self.log_abs_val, axis=axis, reverse=reverse))
 
     def cumprod(self, axis=0):
-        if not self._naked:  # no coefficients
+        if not self.naked:  # no coefficients
             log_abs_val, sign = jnp.broadcast_arrays(self.log_abs_val, self.sign)
             return LogSpace(jnp.cumsum(log_abs_val, axis=axis), jnp.cumprod(sign, axis=axis))
-        return LogSpace(jnp.cumsum(self._log_abs_val, axis=axis))
+        return LogSpace(jnp.cumsum(self.log_abs_val, axis=axis))
 
     def mean(self, axis=-1, keepdims=False):
-        N = self._log_abs_val.shape[axis]
+        N = self.log_abs_val.shape[axis]
         return self.sum(axis=axis, keepdims=keepdims) / LogSpace(jnp.log(N))
 
     def var(self, axis=-1, keepdims=False):
         return (self - self.mean(axis=axis, keepdims=True)).mean(axis=axis, keepdims=keepdims)
 
     def log(self):
-        assert self._naked
+        assert self.naked
         return LogSpace(jnp.log(jnp.abs(self.log_abs_val)), jnp.sign(self.log_abs_val))
 
     def exp(self):
@@ -229,7 +222,7 @@ class LogSpace(object):
         return LogSpace(self.log_abs_val)
 
     def diff(self):
-        if self._naked:
+        if self.naked:
             log_abs_val, sign = jnp.broadcast_arrays(self.log_abs_val, self.sign)
             return LogSpace(log_abs_val[1:], sign[1:]) - LogSpace(log_abs_val[:-1], sign[:-1])
         else:
@@ -242,23 +235,23 @@ class LogSpace(object):
         return jnp.argmax(self.log_abs_val)
 
     def maximum(self, other: "LogSpace"):
-        assert self._naked and other._naked
+        assert self.naked and other.naked
         return LogSpace(jnp.maximum(self.log_abs_val, other.log_abs_val))
 
     def minimum(self, other: "LogSpace"):
-        assert self._naked and other._naked
+        assert self.naked and other.naked
         return LogSpace(jnp.minimum(self.log_abs_val, other.log_abs_val))
 
     def max(self):
-        assert self._naked
+        assert self.naked
         return LogSpace(jnp.max(self.log_abs_val))
 
     def min(self):
-        assert self._naked
+        assert self.naked
         return LogSpace(jnp.min(self.log_abs_val))
 
     def concatenate(self, other: "LogSpace", axis=0):
-        if self._naked and other._naked:
+        if self.naked and other.naked:
             return LogSpace(jnp.concatenate([self.log_abs_val, other.log_abs_val], axis=axis))
         log_abs_val, sign = jnp.broadcast_arrays(self.log_abs_val, self.sign)
         _log_abs_val, _sign = jnp.broadcast_arrays(other.log_abs_val, other.sign)
@@ -266,7 +259,7 @@ class LogSpace(object):
                         jnp.concatenate([sign, _sign], axis=axis))
 
     def __getitem__(self, item):
-        if self._naked:
+        if self.naked:
             return LogSpace(self.log_abs_val[item])
         log_abs_val, sign = jnp.broadcast_arrays(self.log_abs_val, self.sign)
         return LogSpace(log_abs_val[item], sign[item])
@@ -278,34 +271,34 @@ class LogSpace(object):
     def __gt__(self, other):
         if not isinstance(other, LogSpace):
             raise TypeError(f"Expected type {type(self)} got {type(other)}")
-        if self._naked and other._naked:
+        if self.naked and other.naked:
             return self.log_abs_val > other.log_abs_val
         return (self / other).value > 1.
 
     def __lt__(self, other):
         if not isinstance(other, LogSpace):
             raise TypeError(f"Expected type {type(self)} got {type(other)}")
-        if self._naked and other._naked:
+        if self.naked and other.naked:
             return self.log_abs_val < other.log_abs_val
         return (self / other).value < 1.
 
     def __ge__(self, other):
         if not isinstance(other, LogSpace):
             raise TypeError(f"Expected type {type(self)} got {type(other)}")
-        if self._naked and other._naked:
+        if self.naked and other.naked:
             return self.log_abs_val >= other.log_abs_val
         return (self / other).value >= 1.
 
     def __le__(self, other):
         if not isinstance(other, LogSpace):
             raise TypeError(f"Expected type {type(self)} got {type(other)}")
-        if self._naked and other._naked:
+        if self.naked and other.naked:
             return self.log_abs_val <= other.log_abs_val
         return (self / other).value <= 1.
 
     @property
     def size(self):
-        if self._naked:
+        if self.naked:
             return self.log_abs_val.size
         log_abs_val, sign = jnp.broadcast_arrays(self.log_abs_val, self.sign)
         return log_abs_val.size
@@ -325,7 +318,7 @@ class LogSpace(object):
         if not isinstance(n, (int, float, jax.Array)):
             raise NotImplementedError("Not implemented for non-int powers.")
         n = jnp.asarray(n, mp_policy.measure_dtype)
-        if self._naked:
+        if self.naked:
             return LogSpace(n * self.log_abs_val)
         # complex values can occur if n is not even
         return LogSpace(n * self.log_abs_val, sign=self.sign ** n)
@@ -347,10 +340,10 @@ class LogSpace(object):
         """
         if not isinstance(other, LogSpace):
             raise TypeError(f"Expected type {type(self)} got {type(other)}")
-        if self._naked and other._naked:  # no coefficients
-            return LogSpace(self._log_abs_val - other._log_abs_val)
-        return LogSpace(self._log_abs_val - other._log_abs_val, self._sign * other._sign)
-
+        if self.naked and other.naked:  # no coefficients
+            return LogSpace(self.log_abs_val - other.log_abs_val)
+        return LogSpace(self.log_abs_val - other.log_abs_val, self.sign * other.sign)
+LogSpace.register_pytree()
 
 def is_complex(a):
     return a.dtype in [jnp.complex64, jnp.complex128]

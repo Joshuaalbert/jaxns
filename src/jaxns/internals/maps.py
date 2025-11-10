@@ -329,35 +329,6 @@ def pytree_unpack(example_tree: PT) -> Tuple[Callable[[PT], List[jax.Array]], Ca
     return pack_fun, unpack_fun
 
 
-PV = TypeVar('PV')
-
-
-class PyTree:
-    """
-    For acting on W space.
-    """
-
-    def __init__(self, tree: PV):
-        self.tree = tree
-
-    def __add__(self, other: PV) -> PV:
-        return jax.tree.map(lambda x, y: x + y, self.tree, other)
-
-    def __sub__(self, other: PV) -> PV:
-        return jax.tree.map(lambda x, y: x - y, self.tree, other)
-
-    def __mul__(self, other: PV) -> PV:
-        return jax.tree.map(lambda x, y: x * y, self.tree, other)
-
-    def __truediv__(self, other: PV) -> PV:
-        return jax.tree.map(lambda x, y: x / y, self.tree, other)
-
-    def __pow__(self, other: PV) -> PV:
-        return jax.tree.map(lambda x, y: x ** y, self.tree, other)
-
-    def __neg__(self):
-        return jax.tree.map(lambda x: -x, self.tree)
-
 
 def create_mesh(shape, axis_names, devices=None):
     """

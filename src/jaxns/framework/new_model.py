@@ -7,6 +7,7 @@ from jaxctx import transform, CtxParams
 
 from jaxns.framework.bases import PriorModelType
 from jaxns.internals.logging import logger
+from jaxns.internals.pytree import Pytree
 from jaxns.internals.types import PRNGKey, MeasureType
 
 __all__ = [
@@ -101,7 +102,7 @@ class AbstractModel(ABC):
         ...
 
 
-class Model(AbstractModel):
+class Model(AbstractModel, Pytree):
     """
     Represents a Bayesian model in terms of a generative prior, and likelihood function.
     """

@@ -359,6 +359,8 @@ before importing JAXNS.
 
 # Change Log
 
+3 Aug, 2025 -- JAXNS 2.6.9 released. Fix sdist, and TFP dependency.
+
 7 Dec, 2024 -- JAXNS 2.6.7 released. Fix pip dependencies install.
 
 13 Nov, 2024 -- JAXNS 2.6.6 released. Minor improvements to plotting.

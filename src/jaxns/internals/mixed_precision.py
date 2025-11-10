@@ -1,3 +1,4 @@
+import contextlib
 import dataclasses
 import warnings
 from typing import TypeVar
@@ -83,13 +84,19 @@ def _cast_bool_to(tree: T, dtype: jnp.dtype, quiet: bool) -> T:
 
 X = TypeVar("X")
 
+float_type = jnp.result_type(float)
+int_type = jnp.result_type(int)
+complex_type = jnp.result_type(complex)
+bool_dtype = jnp.result_type(bool)
 
-@dataclasses.dataclass(frozen=True)
+
+@dataclasses.dataclass(slots=True)
 class Policy:
     """Encapsulates casting for inputs, outputs and parameters."""
-    measure_dtype: jnp.dtype = jnp.float64
-    index_dtype: jnp.dtype = jnp.int64
-    count_dtype: jnp.dtype = jnp.int64
+    measure_dtype: jnp.dtype = float_type
+    index_dtype: jnp.dtype = int_type
+    count_dtype: jnp.dtype = int_type
+    bool_dtype: jnp.dtype = bool_dtype
 
     def cast_to_index(self, x: X, quiet: bool = False) -> X:
         """Converts index values to the index dtype."""
@@ -103,9 +110,19 @@ class Policy:
         """Converts count values to the count dtype."""
         return _cast_integer_to(x, self.count_dtype, quiet=quiet)
 
+    @contextlib.contextmanager
+    def dtype_setting(self, measure_dtype: jnp.dtype | None = None, index_dtype: jnp.dtype | None = None,
+                      count_dtype: jnp.dtype | None = None):
+        """Context manager to temporarily set dtypes."""
+        tmp_dtypes = (self.measure_dtype, self.index_dtype, self.count_dtype)
+        if measure_dtype is not None:
+            self.measure_dtype = measure_dtype
+        if index_dtype is not None:
+            self.index_dtype = index_dtype
+        if count_dtype is not None:
+            self.count_dtype = count_dtype
+        yield self
+        self.measure_dtype, self.index_dtype, self.count_dtype = tmp_dtypes
+
 
 mp_policy = Policy()
-
-float_type = jnp.result_type(float)
-int_type = jnp.result_type(int)
-complex_type = jnp.result_type(complex)

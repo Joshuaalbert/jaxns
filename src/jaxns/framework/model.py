@@ -19,6 +19,7 @@ __all__ = [
     'Model'
 ]
 
+ctx = None
 # TODO: Rewrite Model using context framework to avoid recompiling functions.
 
 class Model(BaseAbstractModel):
@@ -57,7 +58,7 @@ class Model(BaseAbstractModel):
             raise RuntimeError("Model has not been initialised")
         return self._params
 
-    def set_params(self, params: ctx.MutableParams) -> 'Model':
+    def set_params(self, params) -> 'Model':
         """
         Create a new parametrised model with the given parameters.
 
@@ -69,7 +70,7 @@ class Model(BaseAbstractModel):
         """
         return Model(prior_model=self.prior_model, log_likelihood=self.log_likelihood, params=params)
 
-    def __call__(self, params: ctx.MutableParams) -> 'Model':
+    def __call__(self, params) -> 'Model':
         """
         Create a new parametrised model with the given parameters.
 
@@ -92,7 +93,7 @@ class Model(BaseAbstractModel):
     def _W_placeholder(self) -> WType:
         return self.__W_placeholder
 
-    def init_params(self, rng: PRNGKey) -> ctx.MutableParams:
+    def init_params(self, rng: PRNGKey):
         """
         Initialise the parameters of the model.
 

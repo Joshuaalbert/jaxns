@@ -6,8 +6,8 @@ import jax
 import numpy as np
 from jax import numpy as jnp, lax
 
+from jaxctx.priors.prior import Prior
 from jaxns.framework.bases import PriorModelType, BaseAbstractPrior, PriorModelGen
-from jaxns.framework.prior import InvalidPriorName, SingularPrior, Prior
 from jaxns.internals.maps import pytree_unravel
 from jaxns.internals.mixed_precision import mp_policy
 from jaxns.internals.types import UType, XType, LikelihoodInputType, FloatArray, LikelihoodType, PRNGKey, \
@@ -17,6 +17,9 @@ __all__ = [
     'simulate_prior_model'
 ]
 
+class InvalidPriorName(Exception):
+    def __init__(self, name: str):
+        super().__init__(f"Prior name '{name}' is used multiple times in the prior model. Prior names must be unique.")
 
 def _get_prior_model_gen(prior_model: PriorModelType) -> PriorModelGen:
     gen = prior_model()
