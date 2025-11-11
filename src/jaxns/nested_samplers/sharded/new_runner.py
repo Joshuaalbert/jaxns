@@ -1,4 +1,5 @@
 import dataclasses
+from abc import ABC, abstractmethod
 from typing import Any, Tuple
 
 import jax.numpy as jnp
@@ -12,7 +13,7 @@ from jaxns.internals.mixed_precision import mp_policy
 from jaxns.internals.pytree import PureDataclassPytree
 from jaxns.internals.stats import linear_to_log_stats, effective_sample_size_kish
 from jaxns.internals.types import FloatArray, IntArray, BoolArray
-from jaxns.samplers.abc import AbstractSampler
+from jaxns.logging import jaxns_logger
 
 """
 We formulate nested sampling as an exponential race of lineages.
@@ -214,7 +215,6 @@ class TerminationCondition(PureDataclassPytree):
     Args:
         ess: The effective sample size, if the ESS (Kish's estimate) is greater than this the run will terminate.
         evidence_uncert: The uncertainty in the evidence, if the uncertainty is less than this the run will terminate.
-        live_evidence_frac: Depreceated use dlogZ.
         dlogZ: Terminate if log(Z_current + Z_remaining) - log(Z_current) < dlogZ. Default log(1 + 1e-2)
         max_samples: Terminate if the number of samples exceeds this.
         max_num_likelihood_evaluations: Terminate if the number of likelihood evaluations exceeds this.
@@ -224,7 +224,7 @@ class TerminationCondition(PureDataclassPytree):
             for the last shrinkage iteration.
         rtol: finish when the relative value 2*|log_L_max - log_L_min|/|log_L_max + log_L_min| < rol
         atol: finish when the absolute |log_L_max - log_L_min| < atol
-        peak_XL_frac: Terminate when XL < cummax(XL) * peak_XL_frac
+        cummax_XL_frac: Terminate when XL < cummax(XL) * cummax_XL_frac
     """
     ess: FloatArray | None = None
     evidence_uncert: FloatArray | None = None
@@ -235,7 +235,7 @@ class TerminationCondition(PureDataclassPytree):
     efficiency_threshold: FloatArray | None = None
     rtol: FloatArray | None = None
     atol: FloatArray | None = None
-    peak_XL_frac: FloatArray | None = None
+    cummax_XL_frac: FloatArray | None = None
 
 
 TerminationCondition.register_pytree()
@@ -377,13 +377,14 @@ class TerminationRegister(PureDataclassPytree):
             done, termination_reason = _set_done_bit(absolute_spread_low, 9,
                                                      done=done, termination_reason=termination_reason)
 
+        # Sampler relies upon this termination condition to stop when no seed points are left.
         done, termination_reason = _set_done_bit(self.no_seed_points, 10,
                                                  done=done, termination_reason=termination_reason)
 
-        if term_cond.peak_XL_frac is not None:
+        if term_cond.cummax_XL_frac is not None:
             log_XL = self.evidence_calc.X_mean.log_abs_val + self.evidence_calc.L.log_abs_val
             peak_log_XL = self.cummax_log_XL
-            XL_reduction_reached = log_XL < peak_log_XL + jnp.log(term_cond.peak_XL_frac)
+            XL_reduction_reached = log_XL < peak_log_XL + jnp.log(term_cond.cummax_XL_frac)
             done, termination_reason = _set_done_bit(XL_reduction_reached, 11,
                                                      done=done, termination_reason=termination_reason)
 
@@ -444,29 +445,44 @@ class Samples(PureDataclassPytree):
             num_likelihood_evaluations=num_likelihood_evaluations,
         )
 
-    def compute_num_live_points_per_sample(self, K0: IntArray, num_samples: IntArray | None = None) -> IntArray:
+    def compute_num_live_points_per_sample(self, root_out_degree: IntArray,
+                                           num_samples: IntArray | None = None) -> IntArray:
         # Cumulatively apply K[i] = K[i-1] - 1 + d(i)
         def scan_fn(carry, out_degree):
             K_prev, = carry
-            K_new = K_prev - jnp.ones((), K0.dtype) + out_degree
+            K_new = K_prev - jnp.ones((), root_out_degree.dtype) + out_degree
             return (K_new,), K_new
 
-        _, K_values = scan_or_while_loop(scan_fn, (K0,), self.out_degree.astype(K0.dtype), length=num_samples, unroll=1)
+        _, K_values = scan_or_while_loop(scan_fn, (root_out_degree,), self.out_degree.astype(root_out_degree.dtype),
+                                         length=num_samples, unroll=1)
         return K_values
 
-    def append_sample(self, insert_idx: IntArray, parent_idx: IntArray, log_likelihood: FloatArray,
-                      U_sample: UType, num_likelihood_evaluations: IntArray) -> 'Samples':
-        (log_likelihoods, U_samples, num_likelihood_evaluations) = jax.tree.map(
-            lambda x, y: x.at[insert_idx, ...].set(y),
-            (self.log_likelihoods, self.U_samples, self.num_likelihood_evaluations),
-            (log_likelihood, U_sample, num_likelihood_evaluations)
-        )
-        out_degrees = self.out_degree.at[parent_idx].add(1)
+    def append_samples(self, insert_idx: IntArray, parent_idx: IntArray, samples: 'Samples',
+                       delta_parent_out_degree: IntArray) -> 'Samples':
+        samples = self.set_slice(insert_idx, samples)
+        samples.out_degree = samples.out_degree.at[parent_idx].add(delta_parent_out_degree)
+        return samples
+
+    def resize(self, max_samples: int) -> 'Samples':
+        if len(self) >= max_samples:
+            jaxns_logger.warning(
+                f"Samples.resize called with max_samples={max_samples} less than current size {len(self)}. No resize performed.")
+            return self
+
+        def _concat(x, fill_value):
+            return jax.tree.map(
+                lambda x: jnp.concatenate([
+                    x,
+                    jnp.full((max_samples - len(self),) + x.shape[1:], fill_value, dtype=x.dtype)
+                ], axis=0),
+                x
+            )
+
         return Samples(
-            log_likelihoods=log_likelihoods,
-            U_samples=U_samples,
-            out_degree=out_degrees,
-            num_likelihood_evaluations=num_likelihood_evaluations
+            log_likelihoods=_concat(self.log_likelihoods, -jnp.inf),
+            out_degree=_concat(self.out_degree, 0),
+            num_likelihood_evaluations=_concat(self.num_likelihood_evaluations, 0),
+            U_samples=_concat(self.U_samples, 0),
         )
 
 
@@ -542,6 +558,26 @@ class State(PureDataclassPytree):
 State.register_pytree()
 
 
+class AbstractSampler(ABC):
+
+    @abstractmethod
+    def get_sample(self, key, log_L_constraint: FloatArray, seed_point: UType) -> Tuple[UType, FloatArray, IntArray]:
+        """
+        Produce a single i.i.d. sample from the model within the log_L_constraint.
+
+        Args:
+            key: PRNGkey
+            log_L_constraint: the constraint to sample within
+            seed_point: a seed point to begin sampling from
+
+        Returns:
+            U_sample: an i.i.d. sample within the constraint
+            log_L: the log-likelihood of the sample
+            num_likelihood_evaluations: number of likelihood evaluations used to produce the sample
+        """
+        ...
+
+
 def sample_init_state(key, num_live_points: int, max_samples: int, model: Model, args=(),
                       params=None,
                       batch_size: int | None = None) -> State:
@@ -603,75 +639,148 @@ def sample_init_state(key, num_live_points: int, max_samples: int, model: Model,
     return state
 
 
-def single_ns_run(key, num_live_points: int, max_samples: int, shell_size: int, model: Model, args=(),
+def single_ns_run(key, root_out_degree: int, max_samples: int, shell_size: int, model: Model, args=(),
                   sampler: AbstractSampler | None = None,
-                  init_efficiency_threshold: float = 0.1, params=None,
-                  termination_condition: TerminationCondition | None = None) -> State:
+                  params=None,
+                  termination_condition: TerminationCondition | None = None,
+                  batch_size: int | None = None) -> State:
+    """
+    Perform a single nested sampling run, using a shell-based parallel nested sampling algorithm.
+
+    The branching strategy is as follows:
+    0 -> {r(1),...,r(K)}
+    S -> {r(1) ,..., r(S)}
+    2S -> {r(S), ..., r(2S)}
+    ...
+    nS -> {r((n-1)S), ..., r(nS)}
+
+    where r(i) is the likelihood rank of the i-th sample.
+
+
+    Args:
+        key: PRNG key
+        root_out_degree: the number of live points to use off root
+        max_samples: the maximum number of samples to store
+        shell_size: the number of samples to discard and replenish per iteration
+        model: the model to sample from
+        args: arguments to pass to the model
+        sampler: the sampler to use to produce i.i.d. samples within likelihood constraints
+        params: parameters to pass to the model
+        termination_condition: the termination condition to use
+        batch_size: how many likelihood evaluations to batch together
+
+    Returns:
+        A final state object containing all samples and relevant information for resuming, or evidence calculation.
+    """
+    # Initialise the state
+    key, init_key = jax.random.split(key)
     state = sample_init_state(
-        key=key,
-        num_live_points=num_live_points,
+        key=init_key,
+        num_live_points=root_out_degree,
         max_samples=max_samples,
         model=model,
         args=args,
-        params=params
+        params=params,
+        batch_size=batch_size
     )
 
-    # Sequentially discard shell, and replenish until termination condition
-
-    discard_idx = 0
-    register = TerminationRegister.initialise()
-
-    K_total = state.root_out_degree
-
     # Initialize register
-    register.num_samples_used = num_live_points
+    register = TerminationRegister.initialise()
+    register.num_samples_used = root_out_degree
     register.num_likelihood_evaluations = jnp.sum(state.samples.num_likelihood_evaluations)
     # register.log_L_contour = register.evidence_calc.L.log_abs_val
     register.efficiency = register.num_samples_used / register.num_likelihood_evaluations
     register.plateau = (log_L0 := state.samples.log_likelihoods[0]) == (
-        log_L1 := state.samples.log_likelihoods[num_live_points - 1])
+        log_L1 := state.samples.log_likelihoods[root_out_degree - 1])
     register.no_seed_points = register.plateau
     register.absolute_spread = jnp.abs(log_L1 - log_L0)
     register.relative_spread = 2. * register.absolute_spread / jnp.abs(log_L0 + log_L1)
     register.cummax_log_XL = jnp.maximum(register.cummax_log_XL,
                                          (register.evidence_calc.X_mean * register.evidence_calc.L).log_abs_val)
     register.evidence_calc_with_remaining = register.evidence_calc
-    K_total_tmp = K_total
-    for idx in range(num_live_points):
+    K_total_tmp = state.root_out_degree
+    for idx in range(root_out_degree):
         register.evidence_calc_with_remaining = register.evidence_calc_with_remaining.update_evidence(
             K_total_tmp,
             state.samples.log_likelihoods[idx]
         )
         K_total_tmp = K_total_tmp - 1 + state.samples.out_degree[idx]
 
+    # Sequentially discard shell, and replenish until termination condition
+    discard_idx = 0
+    K_total = state.root_out_degree
     done = register.is_done(termination_condition)
     while not done:
         for _ in range(shell_size):
-            # Update register per discard
-            register.evidence_calc = register.evidence_calc.update_evidence(K_total,
-                                                                            state.samples.log_likelihoods[discard_idx])
+            # Partial register update per discard
+            register.evidence_calc = register.evidence_calc.update_evidence(
+                K_total, state.samples.log_likelihoods[discard_idx])
             K_total = K_total - 1 + state.samples.out_degree[discard_idx]
             discard_idx += 1
 
+        # Last discarded sample sets the likelihood constraint
+        parent_idx = discard_idx - 1
+        insert_idx = discard_idx
 
         # Replenish discarded samples, by merging and sorting with active samples
-        kept_size = num_live_points - shell_size
-        active_samples = state.samples.slice(discard_idx, kept_size)
-        new_samples, delta_root_out_degree = ...  # may not be possible (should allow reparenting off root to avoid getting stuck)
+        kept_size = root_out_degree - shell_size
+        active_samples = state.samples.slice(insert_idx, kept_size)
+
+        log_L_constraint = state.samples.log_likelihoods[parent_idx]
+        # When there are no seeds, we reparent off the root.
+        # However, since this retroactively changes the out-degree of the root,
+        # the evidence calculation needs to be recalculated.
+        # It also becomes unclear where to continue sampling from, since there were no seeds in the active set.
+        # We therefore stop the run if there are no seeds.
+        # The user can then use adaptive refinement to continue improving if desired.
+        no_seeds = jnp.all(active_samples.log_likelihoods <= log_L_constraint)
+        log_L_constraint = jnp.where(no_seeds, jnp.asarray(-jnp.inf, dtype=mp_policy.measure_dtype), log_L_constraint)
+        delta_root_out_degree = jnp.where(no_seeds, shell_size, 0).astype(mp_policy.count_dtype)
+        delta_parent_out_degree = jnp.where(no_seeds, 0, shell_size).astype(mp_policy.count_dtype)
+
+        # TODO: modularise out the sampling distribution strategy.
+
+        def get_sample(key, log_L_constraint, active_samples: Samples):
+            seed_key, sample_key = jax.random.split(key)
+            seed_select_idx = jax.random.randint(seed_key, (), 0, len(active_samples))
+            seed_point = active_samples.U_samples[seed_select_idx]
+            return sampler.get_sample(
+                sample_key, log_L_constraint, seed_point
+            )
+
+        key, subkey = jax.random.split(key)
+        U_samples, log_likelihoods, num_likelihood_evaluations = jax.lax.map(
+            lambda key: get_sample(key, log_L_constraint, active_samples),
+            jax.random.split(subkey, shell_size),
+            batch_size=batch_size
+        )
+
+        new_samples = Samples(
+            log_likelihoods=log_likelihoods,
+            U_samples=U_samples,
+            out_degree=jnp.zeros((shell_size,), dtype=mp_policy.count_dtype),
+            num_likelihood_evaluations=num_likelihood_evaluations
+        )
+        # If no reparenting off root, then this is sufficient to maintain ordering.
         joint_samples = active_samples.concat(new_samples).sort()
-        assert len(joint_samples) == num_live_points
-        state.samples = state.samples.set_slice(discard_idx, joint_samples)
-        state.root_out_degree += delta_root_out_degree
+        assert len(joint_samples) == root_out_degree
+        state.samples = state.samples.append_samples(
+            insert_idx=insert_idx,
+            parent_idx=parent_idx,
+            samples=new_samples,
+            delta_parent_out_degree=delta_parent_out_degree
+        )
         state.num_samples += shell_size
+        state.root_out_degree += delta_root_out_degree
+        K_total += delta_root_out_degree
 
         # Update register now rest of the way (post sampling)
         register.num_samples_used = state.num_samples
         register.num_likelihood_evaluations += delta_num_like_evals := jnp.sum(new_samples.num_likelihood_evaluations)
         register.log_L_contour = register.evidence_calc.L.log_abs_val
         register.efficiency = 0.1 * register.efficiency + 0.9 * (shell_size / delta_num_like_evals)
-        register.plateau = (log_L0 := state.samples.log_likelihoods[discard_idx]) == (
-            log_L1 := state.samples.log_likelihoods[state.num_samples - 1])
-        register.no_seed_points = register.plateau
+        register.plateau = (log_L0 := joint_samples.log_likelihoods[0]) == (log_L1 := joint_samples.log_likelihoods[-1])
+        register.no_seed_points = no_seeds
         register.absolute_spread = jnp.abs(log_L1 - log_L0)
         register.relative_spread = 2. * register.absolute_spread / jnp.abs(log_L0 + log_L1)
         register.cummax_log_XL = jnp.maximum(register.cummax_log_XL,
@@ -689,16 +798,96 @@ def single_ns_run(key, num_live_points: int, max_samples: int, shell_size: int, 
         # Check termination condition
         done = register.is_done(termination_condition)
 
+    state.samples = state.samples.sort()
     return state
 
 
-def resume_ns_run(key, model: Model, state: State, args=(), sampler: AbstractSampler | None = None,
-                  init_efficiency_threshold: float = 0.1, params=None, num_live_points: int | None = None,
-                  max_samples: int | None = None, shell_fraction: float = 0.5) -> State:
+def resume_ns_run(key, state: State, log_L_start: FloatArray, log_L_end: FloatArray, model: Model, args=(),
+                  sampler: AbstractSampler | None = None,
+                  params=None,
+                  max_samples: int | None = None) -> State:
     ...
 
 
-def refine_ns_run(key, model: Model, state: State, args=(), sampler: AbstractSampler | None = None,
-                  init_efficiency_threshold: float = 0.1, params=None, num_live_points: int | None = None,
-                  max_samples: int | None = None, shell_fraction: float = 0.5) -> State:
-    ...
+def refine_ns_run(
+        key, state: State,
+        log_L_start: FloatArray, log_L_end: FloatArray,
+        target_live_points: IntArray,
+        model: Model, args=(), sampler: AbstractSampler | None = None,
+        params=None,
+        max_samples: int | None = None,
+        batch_size: int | None = None
+) -> State:
+    """
+    Adds children off parents in the specified log-likelihood range, until each contour within that range has at least
+    the target number of live points, or until there are no seed points.
+    Greedily adds children off the lowest live point parents first.
+
+    Args:
+        key: PRNG key
+        state: the current state of the nested sampling run
+        log_L_start: the starting log-likelihood contour to refine from
+        log_L_end: the ending log-likelihood contour to refine to
+        target_live_points: the target number of live points per contour
+        model: the model to sample from
+        args: arguments to pass to the model
+        sampler: the sampler to use to produce i.i.d. samples within likelihood constraints
+        params: parameters to pass to the model
+        max_samples: the maximum number of samples to store
+        batch_size: how many likelihood evaluations to batch together
+
+    Returns:
+        A final state object containing all samples and relevant information for resuming, or evidence calculation.
+    """
+    if max_samples is not None:
+        state.samples = state.samples.resize(max_samples)
+    done = ...
+    while not done:
+        state.samples = state.samples.sort()
+        K_total_per_sample = state.samples.compute_num_live_points_per_sample(
+            root_out_degree=state.root_out_degree,
+            num_samples=state.num_samples
+        )  # [max_samples]
+        sample_mask = jnp.logical_and(
+            K_total_per_sample < target_live_points,
+            (state.samples.log_likelihoods >= log_L_start) &
+            (state.samples.log_likelihoods <= log_L_end)
+        )
+        key, select_key = jax.random.split(key)
+        parent_idxs = jax.random.choice(
+            select_key, len(state.samples), replace=True,
+            shape=(batch_size,),
+            p=jnp.where(
+                sample_mask.astype(jnp.float32),
+                target_live_points - K_total_per_sample,
+                0
+            )
+        )
+        empty_sample_mask = ~jnp.any(sample_mask)
+        log_L_constraints = jnp.where(
+            empty_sample_mask,
+            state.samples.log_likelihoods[parent_idxs],
+            -jnp.inf
+        )
+
+        def get_sample(key, log_L_constraint, active_samples: Samples):
+            seed_key, sample_key = jax.random.split(key)
+            seed_select_idx = jax.random.randint(seed_key, (), 0, len(active_samples))
+            seed_point = active_samples.U_samples[seed_select_idx]
+            return sampler.get_sample(
+                sample_key, log_L_constraint, seed_point
+            )
+
+        key, subkey = jax.random.split(key)
+        U_samples, log_likelihoods, num_likelihood_evaluations = jax.lax.map(
+            lambda key, log_L_constraint: get_sample(key, log_L_constraint, active_samples),
+            jax.random.split(subkey, shell_size),
+            batch_size=batch_size
+        )
+
+        new_samples = Samples(
+            log_likelihoods=log_likelihoods,
+            U_samples=U_samples,
+            out_degree=jnp.zeros((shell_size,), dtype=mp_policy.count_dtype),
+            num_likelihood_evaluations=num_likelihood_evaluations
+        )
