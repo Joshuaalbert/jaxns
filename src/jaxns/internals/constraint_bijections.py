@@ -1,6 +1,7 @@
 import jax
 import jax.numpy as jnp
 from jax import lax
+import math
 
 __all__ = [
     "quick_unit",
@@ -8,33 +9,34 @@ __all__ = [
 ]
 
 
+
+_A = 2.0 / math.pi
+_SQRT_A = math.sqrt(_A)
+
 def quick_unit(x: jax.Array) -> jax.Array:
     """
-    Quick approximation to the sigmoid.
+    Smooth, fast CDF-like map approximating Φ(x).
 
     Args:
-        x: jax.Array value in (-inf, inf) open interval
+        x: [...] in (-inf, inf)
 
     Returns:
-        value in (0, 1) in open interval
+        [...] y in (0, 1)
     """
-    return 0.5 * (x / (1 + lax.abs(x)) + 1)
+    return 0.5 * (1.0 + _SQRT_A * x / jnp.sqrt(1.0 + _A * x * x))
 
 
 def quick_unit_inverse(y: jax.Array) -> jax.Array:
     """
-    Inverse of quick_unit.
+    Approximate probit (inverse CDF) for quick_unit.
 
     Args:
-        y: jax.Array value in (0, 1) open interval
+        y: [...] (0, 1)
 
     Returns:
-        value in (-inf, inf) in open interval
+        [...] x in (-inf, inf)
     """
-    twoy = y + y
-
-    return jnp.where(
-        y >= 0.5,
-        (1 - twoy) / (twoy - 2),
-        1 - lax.reciprocal(twoy)
-    )
+    eps = 1e-12  # avoid hitting sqrt(0) at exactly 0 or 1
+    y = jnp.clip(y, eps, 1.0 - eps)
+    t = 2.0 * y - 1.0
+    return t / (_SQRT_A * jnp.sqrt(1.0 - t * t))
