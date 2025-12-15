@@ -4,4 +4,4 @@ jaxctx
 matplotlib
 numpy
 scipy
-tensorflow_probability
+tfp_nightly
