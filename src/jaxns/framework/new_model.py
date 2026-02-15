@@ -1,8 +1,7 @@
 from abc import abstractmethod, ABC
 
 import jax
-import numpy as np
-from jax import random, vmap, jit, numpy as jnp
+from jax import numpy as jnp
 from jaxctx import transform, CtxParams
 
 from jaxns.framework.bases import PriorModelType
@@ -14,9 +13,9 @@ __all__ = [
     'Model'
 ]
 
-
 UType = CtxParams
 XType = CtxParams
+
 
 class AbstractModel(ABC):
     """
@@ -118,6 +117,14 @@ class Model(AbstractModel, Pytree):
         )
         return init_return.collections['U']
 
+    def transform_to_X(self, U: UType, args=(), params=None) -> XType:
+        apply_return = self.transformed_model.apply(
+            rngs=None,
+            collections={'params': params, 'U': U},
+            *args
+        )
+        return apply_return.collections['X']
+
     def log_likelihood(self, U: UType, args=(), params=None, *, allow_nan: bool = True) -> MeasureType:
         apply_return = self.transformed_model.apply(
             rngs=None,
@@ -138,20 +145,17 @@ class Model(AbstractModel, Pytree):
         else:
             return sum(log_prior[1:], log_prior[0])
 
-
     def log_joint(self, U: UType, args=(), params=None, *, allow_nan: bool = True) -> MeasureType:
-        pass
+        return self.log_prior(U, args, params) + self.log_likelihood(U, args, params, allow_nan=allow_nan)
 
-    def sanity_check(self, key: PRNGKey, S: int):
-        U = jit(vmap(self.sample_U))(random.split(key, S))
-        log_L = jit(vmap(lambda u: self.forward(u, allow_nan=True)))(U)
+    def sanity_check(self, key: PRNGKey, args=(), params=None, num_samples: int = 100):
         logger.info("Sanity check...")
-        for _U, _log_L in zip(U, log_L):
-            if jnp.isnan(_log_L):
+        for key in jax.random.split(key, num_samples):
+            u_sample = self.sample_U(key, args=args, params=params)
+
+            log_likelihood = self.log_likelihood(u_sample, args=args, params=params, allow_nan=True)
+            if not jnp.isfinite(log_likelihood):
                 logger.info(f"Found bad point:"
-                            f"\n{_U} -> {self.transform(_U)}"
-                            f"\n -> {self.transform_parametrised(_U)}")
-        assert not any(np.isnan(log_L))
+                            f"\n{u_sample} -> {self.transform_to_X(u_sample, args=args, params=params)}"
+                            f"\nlog_likelihood: {log_likelihood}")
         logger.info("Sanity check passed")
-        if 'parsed_prior' in self.__dict__:
-            del self.__dict__['parsed_prior']

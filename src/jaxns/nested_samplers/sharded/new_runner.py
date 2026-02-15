@@ -491,9 +491,36 @@ Samples.register_pytree()
 
 @dataclasses.dataclass(slots=True)
 class State(PureDataclassPytree):
-    root_out_degree: IntArray
+    root_out_degree: IntArray  # scalar
     samples: Samples
-    num_samples: IntArray
+    num_samples: IntArray  # scalar
+
+    def merge(self, other: 'State') -> 'State':
+        return State(
+            root_out_degree=self.root_out_degree + other.root_out_degree,
+            samples=self.samples.concat(other.samples),
+            num_samples=self.num_samples + other.num_samples
+        )
+
+    def determine_parent_graph(self):
+        # Determine parent graph from out-degrees along
+        samples = self.samples.sort()
+        # Carry:
+        # next_parent_idx, remaining_out_degrees
+
+        carry_init = (jnp.asarray(-1, mp_policy.count_dtype), self.root_out_degree)
+
+        def scan_fn(carry, x):
+            next_parent_idx, remaining_out_degrees = carry
+            child_node_idx, = x
+            y = (next_parent_idx, child_node_idx)
+            remaining_out_degrees = remaining_out_degrees - 1
+            next_parent_idx = jnp.where(remaining_out_degrees <= 0, next_parent_idx + 1, next_parent_idx)
+            remaining_out_degrees = jnp.where(remaining_out_degrees <= 0, samples.out_degree[next_parent_idx], remaining_out_degrees)
+            return (next_parent_idx, remaining_out_degrees), y
+
+        _, parent_edges = scan_or_while_loop(scan_fn, carry_init, (jnp.arange(self.samples.log_likelihoods.shape[0]),), length=self.num_samples, unroll=1)
+        return parent_edges
 
     def ensure_consistency(self):
         # Every non-root has exactly one parent, so sum of out-degrees = num_samples
@@ -503,6 +530,22 @@ class State(PureDataclassPytree):
         assert K_samples[self.num_samples - 1] == 0
         K_pre = K_samples + 1 - self.samples.out_degree
         assert np.all(K_pre[:self.num_samples] > 0)
+
+        # determine parent graph
+        samples = jax.tree.map(np.asarray, self.samples.sort())
+        next_parent_idx, remaining_out_degrees = (-1, float(self.root_out_degree))
+        child_node_idx = 0
+        num_samples = int(self.num_samples)
+        parent_edges = []
+        while child_node_idx < num_samples:
+            if remaining_out_degrees <= 0:
+                raise ValueError(f"Invalid graph, contains a broken lineage.")
+            parent_edges.append([next_parent_idx, child_node_idx])
+            remaining_out_degrees -= 1
+            if remaining_out_degrees == 0:
+                next_parent_idx = next_parent_idx + 1
+                remaining_out_degrees = samples.out_degree[next_parent_idx]
+            child_node_idx += 1
 
     def evaluate_evidence(self) -> Tuple[EvidenceCalculation, EvidenceCalculation]:
         # Evaluate evidence calculation over all samples

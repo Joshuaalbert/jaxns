@@ -1,17 +1,14 @@
-import os
 from time import monotonic_ns
-
-os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={os.cpu_count()}"
 
 import jax
 import pytest
 from jax import numpy as jnp, random
 from jax._src.scipy.linalg import solve_triangular
+from jaxctx.priors.prior import Prior
 from tensorflow_probability.substrates import jax as tfp
 
 from jaxns.framework.bases import PriorModelGen
 from jaxns.framework.model import Model
-from jaxns.framework.prior import Prior
 from jaxns.nested_samplers import ShardedStaticNestedSampler
 from jaxns.nested_samplers.common.types import TerminationCondition
 from jaxns.public import NestedSampler
