@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Tuple
 
-from jaxns.internals.types import UType, XType, PRNGKey, LikelihoodInputType, RandomVariableType, MeasureType
+from jaxns.nested_samplers.types import PRNGKey, RandomVariableType, MeasureType, LikelihoodInputType, UType, XType
 
 __all__ = [
     'AbstractPrior',

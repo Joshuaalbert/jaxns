@@ -3,11 +3,10 @@ from typing import Tuple, Optional, NamedTuple
 import jax.numpy as jnp
 
 from jaxns.internals.cumulative_ops import cumulative_op_dynamic, scan_associative_cumulative_op, cumulative_op_static
-from jaxns.internals.log_semiring import LogSpace
-from jaxns.internals.mixed_precision import mp_policy
+from jaxns.nested_samplers.log_semiring import LogSpace
+from jaxns.nested_samplers.mixed_precision import mp_policy
 from jaxns.internals.tree_structure import SampleTreeGraph, count_crossed_edges
-from jaxns.internals.types import MeasureType, IntArray, FloatArray
-from jaxns.nested_samplers.common.types import EvidenceCalculation
+from jaxns.nested_samplers.types import EvidenceCalculation, FloatArray, IntArray, MeasureType
 
 
 def compute_enclosed_prior_volume(sample_tree: SampleTreeGraph) -> MeasureType:

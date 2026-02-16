@@ -1,8 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import TypeVar, Tuple, NamedTuple, Generic, Any
 
-from jaxns.internals.types import PRNGKey, FloatArray
-from jaxns.nested_samplers.common.types import Sample, TerminationRegister, LivePointCollection
+from jaxns.nested_samplers.types import Sample, TerminationRegister, LivePointCollection, PRNGKey, FloatArray
 
 SamplerState = TypeVar('SamplerState')
 

@@ -10,15 +10,12 @@ from scipy.stats import kstwobign
 
 from jaxns.framework.bases import BaseAbstractModel
 from jaxns.internals.cumulative_ops import cumulative_op_static
-from jaxns.internals.log_semiring import LogSpace
+from jaxns.nested_samplers.log_semiring import LogSpace
 from jaxns.internals.maps import prepare_func_args
-from jaxns.internals.mixed_precision import mp_policy
+from jaxns.nested_samplers.mixed_precision import mp_policy
 from jaxns.internals.namedtuple_utils import serialise_namedtuple, deserialise_namedtuple
 from jaxns.internals.random import resample_indicies
-from jaxns.internals.types import PRNGKey
-from jaxns.internals.types import XType, UType, FloatArray, IntArray, \
-    isinstance_namedtuple
-from jaxns.nested_samplers.common.types import NestedSamplerResults
+from jaxns.nested_samplers.types import NestedSamplerResults, PRNGKey, FloatArray, IntArray, UType, XType, isinstance_namedtuple
 from jaxns.warnings import deprecated
 
 __all__ = [

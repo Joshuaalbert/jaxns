@@ -3,11 +3,10 @@ from typing import Union, Tuple
 
 from jax import numpy as jnp
 
-from jaxns.internals.mixed_precision import mp_policy
+from jaxns.nested_samplers.mixed_precision import mp_policy
 from jaxns.internals.stats import linear_to_log_stats, effective_sample_size_kish
-from jaxns.internals.types import BoolArray, IntArray
-from jaxns.nested_samplers.common.types import TerminationConditionDisjunction, TerminationConditionConjunction, \
-    TerminationRegister, TerminationCondition
+from jaxns.nested_samplers.types import TerminationConditionDisjunction, TerminationConditionConjunction, \
+    TerminationRegister, TerminationCondition, IntArray, BoolArray
 
 
 def determine_termination(

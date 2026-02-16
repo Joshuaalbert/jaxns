@@ -6,9 +6,9 @@ import pylab as plt
 from jax import numpy as jnp, vmap, random, lax
 from jax._src.scipy.special import gammaln
 
-from jaxns.internals.log_semiring import LogSpace
-from jaxns.internals.mixed_precision import mp_policy
-from jaxns.internals.types import IntArray, FloatArray, PRNGKey, BoolArray, UType
+from jaxns.nested_samplers.log_semiring import LogSpace
+from jaxns.nested_samplers.mixed_precision import mp_policy
+from jaxns.nested_samplers.types import PRNGKey, FloatArray, IntArray, BoolArray, UType
 from jaxns.samplers.multi_ellipsoid.em_gmm import em_gmm
 
 __all__ = [

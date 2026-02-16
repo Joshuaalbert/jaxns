@@ -4,8 +4,8 @@ from typing import Callable
 import jax
 import numpy as np
 
-from jaxns.internals.mixed_precision import mp_policy
-from jaxns.internals.types import LikelihoodType
+from jaxns.nested_samplers.mixed_precision import mp_policy
+from jaxns.nested_samplers.types import LikelihoodType
 
 __all__ = [
     'jaxify_likelihood'

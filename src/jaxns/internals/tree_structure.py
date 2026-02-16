@@ -5,8 +5,8 @@ import numpy as np
 from jax import numpy as jnp, lax
 
 from jaxns.internals.cumulative_ops import cumulative_op_dynamic, cumulative_op_static
-from jaxns.internals.mixed_precision import mp_policy
-from jaxns.internals.types import MeasureType, IntArray, FloatArray
+from jaxns.nested_samplers.mixed_precision import mp_policy
+from jaxns.nested_samplers.types import FloatArray, IntArray, MeasureType
 
 
 class SampleTreeGraph(NamedTuple):

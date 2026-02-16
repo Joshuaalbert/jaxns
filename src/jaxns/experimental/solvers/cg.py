@@ -5,7 +5,7 @@ import jax.numpy as jnp
 import numpy as np
 
 from jaxns.experimental.solvers.ad_utils import tree_vdot_real_part, tree_scalar_mul, tree_add, tree_sub
-from jaxns.internals.types import IntArray, FloatArray
+from jaxns.nested_samplers.types import FloatArray, IntArray
 
 
 def _identity(x):

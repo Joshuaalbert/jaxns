@@ -4,9 +4,8 @@ import jax
 from jax import numpy as jnp, random, lax
 
 from jaxns.framework.bases import BaseAbstractModel
-from jaxns.internals.mixed_precision import mp_policy
-from jaxns.internals.types import PRNGKey, UType, MeasureType, IntArray
-from jaxns.nested_samplers.common.types import Sample
+from jaxns.nested_samplers.mixed_precision import mp_policy
+from jaxns.nested_samplers.types import Sample, PRNGKey, IntArray, MeasureType, UType
 
 
 def _single_uniform_sample(key: PRNGKey, model: BaseAbstractModel) -> Sample:

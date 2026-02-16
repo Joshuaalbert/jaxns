@@ -4,7 +4,7 @@ from typing import TypeVar, Generic
 import jax
 import jax.numpy as jnp
 
-from jaxns.internals.pytree import PureDataclassPytree
+from jaxns.nested_samplers.pytree import PureDataclassPytree
 
 
 def tree_dot(x, y):

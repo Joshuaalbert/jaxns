@@ -1,4 +1,4 @@
-from jaxns.nested_samplers.sharded.sharded_static import round_up_num_live_points
+from jaxns.nested_samplers.old.sharded_static import round_up_num_live_points
 
 
 def test_round_up_num_live_points():

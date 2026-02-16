@@ -1,12 +1,71 @@
-from typing import NamedTuple, Optional, List, Union
+from typing import NamedTuple, Optional, List, Union, Callable, TypeVar, Tuple, Any, Dict
 
-from jaxns.internals.types import FloatArray, IntArray, XType, UType, MeasureType, BoolArray, PRNGKey
+import jax
+import numpy as np
 
-__all__ = [
-    'TerminationCondition',
-    'NestedSamplerResults',
-    'NestedSamplerState'
+from jaxns.nested_samplers.pytree import PureDataclassPytree
+
+PRNGKey = jax.Array
+Array = Union[
+    jax.Array,  # JAX array type
+    np.ndarray,  # NumPy array type
 ]
+FloatArray = Union[
+    jax.Array,  # JAX array type
+    np.ndarray,  # NumPy array type
+    float,  # valid scalars
+]
+IntArray = Union[
+    jax.Array,  # JAX array type
+    np.ndarray,  # NumPy array type
+    int,  # valid scalars
+]
+BoolArray = Union[
+    jax.Array,  # JAX array type
+    np.ndarray,  # NumPy array type
+    np.bool_, bool,  # valid scalars
+]
+LikelihoodType = Callable[..., FloatArray]
+RandomVariableType = TypeVar('RandomVariableType')
+MeasureType = TypeVar('MeasureType')
+LikelihoodInputType = Union[Tuple[Any, ...], Any]  # Likelihood conditional variables
+UType = FloatArray  # Sample space type
+WType = Tuple[FloatArray, ...]
+XType = Dict[str, RandomVariableType]  # Prior variable type
+
+
+class SignedLog(NamedTuple):
+    """
+    Represents a signed value in log-space
+    """
+    log_abs_val: jax.Array
+    sign: Union[jax.Array, Any]
+
+
+def isinstance_namedtuple(obj) -> bool:
+    """
+    Check if object is a namedtuple.
+
+    Args:
+        obj: object
+
+    Returns:
+        bool
+    """
+    return (
+            isinstance(obj, tuple) and
+            hasattr(obj, '_asdict') and
+            hasattr(obj, '_fields')
+    )
+
+
+Array.__doc__ = "Type annotation for JAX array-like objects, with no scalar types."
+
+FloatArray.__doc__ = "Type annotation for JAX array-like objects, with float scalar types."
+
+IntArray.__doc__ = "Type annotation for JAX array-like objects, with int scalar types."
+
+BoolArray.__doc__ = "Type annotation for JAX array-like objects, with bool scalar types."
 
 
 class EvidenceCalculation(NamedTuple):
@@ -74,7 +133,7 @@ class TerminationConditionDisjunction(NamedTuple):
     conds: List[Union['TerminationConditionDisjunction', TerminationConditionConjunction, TerminationCondition]]
 
 
-class NestedSamplerResults(NamedTuple):
+class NestedSamplerResults(PureDataclassPytree):
     """
     Results of the nested sampling run.
     """
@@ -143,6 +202,3 @@ class NestedSamplerState(NamedTuple):
     next_sample_idx: IntArray  # the next sample insert index <==> the number of samples
     num_samples: IntArray
     sample_collection: StaticStandardSampleCollection
-
-
-StaticStandardNestedSamplerState = NestedSamplerState

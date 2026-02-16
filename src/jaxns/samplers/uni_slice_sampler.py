@@ -7,10 +7,9 @@ from jax import numpy as jnp, random
 
 from jaxns.framework.bases import BaseAbstractModel
 from jaxns.internals.cumulative_ops import cumulative_op_static
-from jaxns.internals.mixed_precision import mp_policy
+from jaxns.nested_samplers.mixed_precision import mp_policy
 from jaxns.internals.random import sample_uniformly_masked
-from jaxns.internals.types import PRNGKey, FloatArray, BoolArray, IntArray, UType
-from jaxns.nested_samplers.common.types import Sample, SampleCollection, LivePointCollection
+from jaxns.nested_samplers.types import Sample, SampleCollection, LivePointCollection, PRNGKey, FloatArray, IntArray, BoolArray, UType
 from jaxns.samplers.abc import EphemeralState
 from jaxns.samplers.bases import SeedPoint, BaseAbstractMarkovSampler
 

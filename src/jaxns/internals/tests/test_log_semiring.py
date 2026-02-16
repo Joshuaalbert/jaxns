@@ -1,8 +1,8 @@
 from jax import numpy as jnp, random
 
-from jaxns.internals.log_semiring import LogSpace, signed_logaddexp, cumulative_logsumexp, logaddexp, \
+from jaxns.nested_samplers.log_semiring import LogSpace, signed_logaddexp, cumulative_logsumexp, logaddexp, \
     is_complex
-from jaxns.internals.mixed_precision import complex_type
+from jaxns.nested_samplers.mixed_precision import complex_type
 
 
 def test_log_space():

@@ -12,12 +12,11 @@ from jaxctx import CtxParams
 from jaxns import NestedSampler, Model
 from jaxns.experimental.solvers.gauss_newton_cg import newton_cg_solver
 from jaxns.internals.cumulative_ops import cumulative_op_static
-from jaxns.internals.log_semiring import LogSpace
+from jaxns.nested_samplers.log_semiring import LogSpace
 from jaxns.internals.logging import logger
-from jaxns.internals.mixed_precision import mp_policy
-from jaxns.internals.types import IntArray, PRNGKey
-from jaxns.nested_samplers.common.types import TerminationCondition, NestedSamplerResults, \
-    StaticStandardNestedSamplerState
+from jaxns.nested_samplers.mixed_precision import mp_policy
+from jaxns.nested_samplers.types import TerminationCondition, NestedSamplerResults, \
+    StaticStandardNestedSamplerState, PRNGKey, IntArray
 
 __all__ = [
     'EvidenceMaximisation'

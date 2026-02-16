@@ -6,10 +6,8 @@ import jax
 from jax import random, numpy as jnp, lax
 
 from jaxns.framework.bases import BaseAbstractModel
-from jaxns.internals.mixed_precision import mp_policy
-from jaxns.internals.types import IntArray, UType
-from jaxns.internals.types import PRNGKey, FloatArray
-from jaxns.nested_samplers.common.types import Sample
+from jaxns.nested_samplers.mixed_precision import mp_policy
+from jaxns.nested_samplers.types import Sample, PRNGKey, FloatArray, IntArray, UType
 from jaxns.samplers.abc import EphemeralState
 from jaxns.samplers.bases import BaseAbstractRejectionSampler
 from jaxns.samplers.multi_ellipsoid.multi_ellipsoid_utils import ellipsoid_clustering, MultEllipsoidState

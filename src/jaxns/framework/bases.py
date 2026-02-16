@@ -7,8 +7,7 @@ from jax import lax
 
 from jaxns.framework.abc import AbstractModel, AbstractPrior, AbstractDistribution
 from jaxns.internals.shapes import tuple_prod
-from jaxns.internals.types import LikelihoodInputType
-from jaxns.internals.types import LikelihoodType, UType, XType, RandomVariableType, MeasureType
+from jaxns.nested_samplers.types import LikelihoodType, RandomVariableType, MeasureType, LikelihoodInputType, UType, XType
 
 __all__ = [
     "PriorModelGen",

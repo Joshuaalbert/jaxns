@@ -10,11 +10,10 @@ from jaxlib import xla_client
 
 from jaxns.framework.bases import BaseAbstractModel
 from jaxns.internals.logging import logger
-from jaxns.internals.mixed_precision import mp_policy
-from jaxns.internals.types import PRNGKey, IntArray
-from jaxns.nested_samplers.abc import AbstractNestedSampler
-from jaxns.nested_samplers.common.types import TerminationCondition, NestedSamplerResults, \
-    NestedSamplerState
+from jaxns.nested_samplers.mixed_precision import mp_policy
+from jaxns.nested_samplers.old.abc import AbstractNestedSampler
+from jaxns.nested_samplers.types import TerminationCondition, NestedSamplerResults, \
+    NestedSamplerState, PRNGKey, IntArray
 from jaxns.nested_samplers.sharded import ShardedStaticNestedSampler
 from jaxns.plotting import plot_cornerplot, plot_diagnostics
 from jaxns.samplers.uni_slice_sampler import UniDimSliceSampler

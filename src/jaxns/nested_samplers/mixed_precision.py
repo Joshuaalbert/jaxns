@@ -6,7 +6,7 @@ from typing import TypeVar
 import jax
 from jax import numpy as jnp
 
-from jaxns.internals.logging import get_grandparent_info
+from jaxns.nested_samplers.logging import get_grandparent_info
 
 # We set this here also, since mp_policy use will mandate this being invoked early enough to matter.
 jax.config.update("jax_threefry_partitionable", True)

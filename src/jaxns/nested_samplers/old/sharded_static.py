@@ -14,20 +14,19 @@ from jaxlib import xla_client
 
 from jaxns.framework.bases import BaseAbstractModel
 from jaxns.internals.cumulative_ops import cumulative_op_static
-from jaxns.internals.log_semiring import LogSpace, normalise_log_space
+from jaxns.nested_samplers.log_semiring import LogSpace, normalise_log_space
 from jaxns.internals.maps import create_mesh, tree_device_put, replace_index
-from jaxns.internals.mixed_precision import mp_policy
+from jaxns.nested_samplers.mixed_precision import mp_policy
 from jaxns.internals.random import sample_uniformly_masked, resample_indicies
 from jaxns.internals.shrinkage_statistics import EvidenceUpdateVariables, _update_evidence_calc_op, \
     compute_evidence_stats
 from jaxns.internals.stats import linear_to_log_stats, effective_sample_size_kish
 from jaxns.internals.tree_structure import SampleTreeGraph, count_crossed_edges
-from jaxns.internals.types import PRNGKey, IntArray, BoolArray
-from jaxns.nested_samplers.abc import AbstractNestedSampler
-from jaxns.nested_samplers.common.initialisation import create_init_state, create_init_termination_register
-from jaxns.nested_samplers.common.termination import determine_termination
-from jaxns.nested_samplers.common.types import TerminationCondition, NestedSamplerState, TerminationRegister, \
-    SampleCollection, LivePointCollection, NestedSamplerResults
+from jaxns.nested_samplers.old.abc import AbstractNestedSampler
+from jaxns.nested_samplers.old.initialisation import create_init_state, create_init_termination_register
+from jaxns.nested_samplers.old.termination import determine_termination
+from jaxns.nested_samplers.types import TerminationCondition, NestedSamplerState, TerminationRegister, \
+    SampleCollection, LivePointCollection, NestedSamplerResults, PRNGKey, IntArray, BoolArray
 from jaxns.samplers.abc import AbstractSampler
 from jaxns.samplers.abc import EphemeralState
 from jaxns.samplers.uniform_samplers import UniformSampler

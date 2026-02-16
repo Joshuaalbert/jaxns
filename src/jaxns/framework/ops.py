@@ -9,9 +9,8 @@ from jax import numpy as jnp, lax
 from jaxctx.priors.prior import Prior
 from jaxns.framework.bases import PriorModelType, BaseAbstractPrior, PriorModelGen
 from jaxns.internals.maps import pytree_unravel
-from jaxns.internals.mixed_precision import mp_policy
-from jaxns.internals.types import UType, XType, LikelihoodInputType, FloatArray, LikelihoodType, PRNGKey, \
-    isinstance_namedtuple, WType, RandomVariableType
+from jaxns.nested_samplers.mixed_precision import mp_policy
+from jaxns.nested_samplers.types import PRNGKey, FloatArray, LikelihoodType, RandomVariableType, LikelihoodInputType, UType, WType, XType, isinstance_namedtuple
 
 __all__ = [
     'simulate_prior_model'

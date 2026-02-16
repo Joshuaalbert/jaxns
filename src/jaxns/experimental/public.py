@@ -7,7 +7,7 @@ from jaxns.experimental import SimpleGlobalOptimisation, GlobalOptimisationTermi
     GlobalOptimisationResults
 from jaxns.experimental.global_optimisation import plot_progress, go_summary
 from jaxns.framework.bases import BaseAbstractModel
-from jaxns.internals.types import PRNGKey
+from jaxns.nested_samplers.types import PRNGKey
 from jaxns.samplers import UniDimSliceSampler
 
 __all__ = [

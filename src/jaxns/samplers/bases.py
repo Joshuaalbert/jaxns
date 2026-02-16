@@ -3,9 +3,7 @@ from typing import NamedTuple, Tuple, TypeVar, Generic
 
 from jax import random
 
-from jaxns.internals.types import FloatArray
-from jaxns.internals.types import PRNGKey
-from jaxns.nested_samplers.common.types import Sample
+from jaxns.nested_samplers.types import Sample, PRNGKey, FloatArray
 from jaxns.samplers.abc import AbstractSampler
 
 

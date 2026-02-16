@@ -10,10 +10,9 @@ from jaxlib import xla_client
 from jaxns.experimental.solvers.gauss_newton_cg import newton_cg_solver
 from jaxns.framework.bases import BaseAbstractModel
 from jaxns.internals.constraint_bijections import quick_unit, quick_unit_inverse
-from jaxns.internals.mixed_precision import mp_policy
-from jaxns.internals.types import PRNGKey, IntArray, UType, FloatArray, LikelihoodInputType, XType
+from jaxns.nested_samplers.mixed_precision import mp_policy
 from jaxns.nested_samplers import ShardedStaticNestedSampler
-from jaxns.nested_samplers.common.types import TerminationCondition, SampleCollection
+from jaxns.nested_samplers.types import TerminationCondition, SampleCollection, PRNGKey, FloatArray, IntArray, LikelihoodInputType, UType, XType
 from jaxns.samplers.abc import AbstractSampler
 from jaxns.utils import _bit_mask
 

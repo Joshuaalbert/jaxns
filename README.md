@@ -112,7 +112,9 @@ There are two spaces of samples:
 
 ```python
 # Sample the prior in U-space (base measure)
-U = model.sample_U(key=jax.random.PRNGKey(0))
+import jaxns.nested_samplers.types
+
+U = model.sample_U(key=jaxns.nested_samplers.types.PRNGKey(0))
 # Transform to X-space
 X = model.transform(U=U)
 # Only named Bayesian prior variables are returned, the rest are treated as hidden variables.
@@ -153,12 +155,13 @@ Given a probabilistic model, JAXNS can perform nested sampling on it. This allow
 posterior samples.
 
 ```python
+import jaxns.nested_samplers.types
 from jaxns import NestedSampler
 
 ns = NestedSampler(model=model, max_samples=1e5)
 
 # Run the sampler
-termination_reason, state = ns(jax.random.PRNGKey(42))
+termination_reason, state = ns(jaxns.nested_samplers.types.PRNGKey(42))
 # Get the results
 results = ns.to_results(termination_reason=termination_reason, state=state)
 ```
@@ -167,7 +170,9 @@ results = ns.to_results(termination_reason=termination_reason, state=state)
 
 ```python
 # Ahead of time compilation (sometimes useful)
-ns_aot = jax.jit(ns).lower(jax.random.PRNGKey(42)).compile()
+import jaxns.nested_samplers.types
+
+ns_aot = jax.jit(ns).lower(jaxns.nested_samplers.types.PRNGKey(42)).compile()
 
 # Just-in-time compilation (usually useful)
 ns_jit = jax.jit(ns)
@@ -222,10 +227,11 @@ Nested sampling produces weighted posterior samples. To use for most use cases, 
 replacement).
 
 ```python
+import jaxns.nested_samplers.types
 from jaxns import resample
 
 samples = resample(
-    key=jax.random.PRNGKey(0),
+    key=jaxns.nested_samplers.types.PRNGKey(0),
     samples=results.samples,
     log_weights=results.log_dp_mean,
     S=1000,

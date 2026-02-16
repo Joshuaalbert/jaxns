@@ -10,7 +10,7 @@ from tensorflow_probability.substrates import jax as tfp
 from jaxns.framework.bases import PriorModelGen
 from jaxns.framework.model import Model
 from jaxns.nested_samplers import ShardedStaticNestedSampler
-from jaxns.nested_samplers.common.types import TerminationCondition
+from jaxns.nested_samplers.types import TerminationCondition
 from jaxns.public import NestedSampler
 from jaxns.samplers.multi_ellipsoidal_samplers import MultiEllipsoidalSampler
 from jaxns.utils import bruteforce_evidence, summary

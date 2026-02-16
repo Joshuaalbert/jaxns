@@ -1,7 +1,7 @@
 from jax import numpy as jnp, vmap
 
-from jaxns.internals.log_semiring import LogSpace
-from jaxns.internals.mixed_precision import mp_policy
+from jaxns.nested_samplers.log_semiring import LogSpace
+from jaxns.nested_samplers.mixed_precision import mp_policy
 
 
 def normal_to_lognormal(mu, std):

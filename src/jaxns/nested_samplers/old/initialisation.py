@@ -9,12 +9,11 @@ from jax.experimental.shard_map import shard_map
 
 from jaxns.framework.bases import BaseAbstractModel
 from jaxns.internals.maps import tree_device_put
-from jaxns.internals.mixed_precision import mp_policy
+from jaxns.nested_samplers.mixed_precision import mp_policy
 from jaxns.internals.shrinkage_statistics import create_init_evidence_calc
-from jaxns.internals.types import PRNGKey
-from jaxns.nested_samplers.common.types import StaticStandardSampleCollection, \
-    NestedSamplerState, TerminationRegister, LivePointCollection
-from jaxns.nested_samplers.common.uniform_sample import draw_uniform_samples
+from jaxns.nested_samplers.types import StaticStandardSampleCollection, \
+    NestedSamplerState, TerminationRegister, LivePointCollection, PRNGKey
+from jaxns.nested_samplers.old.uniform_sample import draw_uniform_samples
 
 
 def create_init_state(key: PRNGKey, num_live_points: int, max_samples: int, model: BaseAbstractModel,

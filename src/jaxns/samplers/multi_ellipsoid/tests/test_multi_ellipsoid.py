@@ -3,14 +3,14 @@ import numpy as np
 import pylab as plt
 import tensorflow_probability.substrates.jax as tfp
 from jax import numpy as jnp, random, disable_jit, vmap
+from jaxctx.priors.prior import Prior
 
 from jaxns.framework.bases import PriorModelGen
 from jaxns.framework.model import Model
-from jaxns.framework.prior import Prior
-from jaxns.internals.mixed_precision import mp_policy
+from jaxns.nested_samplers.mixed_precision import mp_policy
 from jaxns.internals.random import random_ortho_matrix
-from jaxns.nested_samplers.common.types import Sample
-from jaxns.nested_samplers.common.uniform_sample import draw_uniform_samples
+from jaxns.nested_samplers.types import Sample
+from jaxns.nested_samplers.old.uniform_sample import draw_uniform_samples
 from jaxns.samplers.multi_ellipsoid.multi_ellipsoid_utils import log_ellipsoid_volume, ellipsoid_clustering, \
     bounding_ellipsoid, covariance_to_rotational, ellipsoid_params, point_in_ellipsoid, plot_ellipses, \
     EllipsoidParams, maha_ellipsoid, circle_to_ellipsoid, ellipsoid_to_circle

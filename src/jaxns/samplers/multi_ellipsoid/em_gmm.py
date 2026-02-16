@@ -6,7 +6,7 @@ from jax import random, vmap, lax
 from jax._src.scipy.special import logsumexp
 from jax.scipy.stats import multivariate_normal
 
-from jaxns.internals.mixed_precision import mp_policy
+from jaxns.nested_samplers.mixed_precision import mp_policy
 
 
 def initialize_params(key, data, n_components: int):

@@ -10,10 +10,10 @@ from matplotlib.animation import FuncAnimation
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from scipy.stats import gaussian_kde
 
-from jaxns.internals.log_semiring import cumulative_logsumexp, LogSpace, normalise_log_space
-from jaxns.internals.mixed_precision import mp_policy
+from jaxns.nested_samplers.log_semiring import cumulative_logsumexp, LogSpace, normalise_log_space
+from jaxns.nested_samplers.mixed_precision import mp_policy
 from jaxns.internals.shapes import tuple_prod
-from jaxns.nested_samplers.common.types import NestedSamplerResults
+from jaxns.nested_samplers.types import NestedSamplerResults
 from jaxns.utils import resample
 
 __all__ = ['plot_diagnostics',

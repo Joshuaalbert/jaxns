@@ -6,7 +6,7 @@ import jax.numpy as jnp
 from jaxns.experimental.solvers.ad_utils import tree_neg, tree_vdot_real_part, tree_scalar_mul, tree_add, tree_sub, \
     build_hvp
 from jaxns.experimental.solvers.cg import cg_solve
-from jaxns.internals.types import IntArray, FloatArray, BoolArray
+from jaxns.nested_samplers.types import FloatArray, IntArray, BoolArray
 
 # ----------------------------------------------------------------
 # Type helpers

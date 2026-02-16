@@ -3,9 +3,9 @@ from typing import TypeVar, Callable, Tuple, Optional
 import jax
 from jax import lax, numpy as jnp, tree_util
 
-from jaxns.internals.mixed_precision import mp_policy
+from jaxns.nested_samplers.mixed_precision import mp_policy
 from jaxns.internals.prefix_sum import scan_associative
-from jaxns.internals.types import IntArray
+from jaxns.nested_samplers.types import IntArray
 
 X = TypeVar('X')
 V = TypeVar('V')

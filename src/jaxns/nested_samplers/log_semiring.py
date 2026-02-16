@@ -1,13 +1,13 @@
 import dataclasses
-from typing import Union, Literal, Tuple, List, Any
+from typing import Literal
 
 import jax
 from jax import numpy as jnp, lax
 from jax.scipy.special import logsumexp
 
-from jaxns.internals.mixed_precision import mp_policy
-from jaxns.internals.pytree import PureDataclassPytree
-from jaxns.internals.types import SignedLog, FloatArray
+from jaxns.nested_samplers.mixed_precision import mp_policy
+from jaxns.nested_samplers.pytree import PureDataclassPytree
+from jaxns.nested_samplers.types import FloatArray, SignedLog
 
 
 def logaddexp(x1, x2):

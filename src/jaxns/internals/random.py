@@ -4,9 +4,9 @@ import jax
 from jax import random, numpy as jnp
 from jax.scipy import special
 
-from jaxns.internals.log_semiring import cumulative_logsumexp
-from jaxns.internals.mixed_precision import mp_policy
-from jaxns.internals.types import FloatArray, IntArray, PRNGKey
+from jaxns.nested_samplers.log_semiring import cumulative_logsumexp
+from jaxns.nested_samplers.mixed_precision import mp_policy
+from jaxns.nested_samplers.types import PRNGKey, FloatArray, IntArray
 
 __all__ = ['random_ortho_matrix',
            'resample_indicies']

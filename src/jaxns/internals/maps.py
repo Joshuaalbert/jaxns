@@ -9,7 +9,7 @@ from jax._src.mesh import Mesh
 from jax._src.partition_spec import PartitionSpec
 from jax.experimental.mesh_utils import create_device_mesh
 
-from jaxns.internals.mixed_precision import mp_policy
+from jaxns.nested_samplers.mixed_precision import mp_policy
 
 
 def replace_index(operand, update, start_index):
