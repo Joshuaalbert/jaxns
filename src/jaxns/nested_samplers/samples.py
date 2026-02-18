@@ -16,7 +16,7 @@ from jaxns.nested_samplers.utils import scan_or_while_loop
 UType = Any
 
 
-@dataclasses.dataclass(slots=True, frozen=True)
+@dataclasses.dataclass(slots=True)
 class Samples(PureDataclassPytree):
     log_likelihoods: FloatArray  # [max_samples]
     U_samples: UType  # [max_samples, ...]

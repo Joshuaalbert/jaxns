@@ -69,7 +69,7 @@ def compute_U_ndims(prior_model: PriorModelType) -> int:
     return U_ndims
 
 
-def simulate_prior_model(key: PRNGKey, prior_model: PriorModelType) -> Tuple[LikelihoodInputType, XType]:
+def simulate_prior_model(key: PRNGKey, prior_model: PriorModelType) -> tuple[LikelihoodInputType, XType]:
     """
     Simulate a prior model.
 
@@ -88,7 +88,7 @@ def simulate_prior_model(key: PRNGKey, prior_model: PriorModelType) -> Tuple[Lik
     return prepare_input(W=W, prior_model=prior_model), transform(W=W, prior_model=prior_model)
 
 
-def parse_prior(prior_model: PriorModelType) -> Tuple[UType, XType, WType]:
+def parse_prior(prior_model: PriorModelType) -> tuple[UType, XType, WType]:
     """
     Computes placeholders of model.
 
@@ -125,7 +125,7 @@ def parse_prior(prior_model: PriorModelType) -> Tuple[UType, XType, WType]:
     return U_placeholder, X_placeholder, W_placeholder
 
 
-def parse_joint(prior_model: PriorModelType, log_likelihood: LikelihoodType) -> Tuple[
+def parse_joint(prior_model: PriorModelType, log_likelihood: LikelihoodType) -> tuple[
     UType, XType, WType, LikelihoodInputType, FloatArray
 ]:
     """

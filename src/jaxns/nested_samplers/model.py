@@ -1,3 +1,4 @@
+import dataclasses
 from functools import partial
 from typing import Callable, Any
 
@@ -17,7 +18,7 @@ UType = CtxParams
 XType = CtxParams
 PriorModelType = Callable[[...], FloatArray]
 
-
+@dataclasses.dataclass(slots=True, frozen=True)
 class Model(PureDataclassPytree):
     """
     Represents a Bayesian model in terms of a generative prior, and likelihood function.

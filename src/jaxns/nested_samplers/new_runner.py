@@ -19,9 +19,10 @@ We handle pleateaus by marginalising the race over permutations within plateaus.
 
 A parent graph is defined,
 
-    p(i) -> i means that i is a child of p(i), which mans i was sampled from {L > L(p(i))}.
+    p(i) -> i means that i is a child of p(i), which means i was sampled from {L > L(p(i))}. 
+    Note, clearly a plateau implies some ambiguity in the parent graph, since any node within the plateau could be the parent of a given child.
     
-A lineage is maximal chain of nodes where p(i_{k}}) = i_{k-1}.
+A lineage is a maximal chain of nodes where p(i_{k}}) = i_{k-1}.
 
 A dummy root node, 0, is defined with L(0) = 0.
 
@@ -34,7 +35,7 @@ Define the number of active children of node i at index j>i, as C(i,j) = |{ k : 
 
 Define the active parent set A(i-1) = {j : j=1..i-1, C(j,i) > 0} which is the set of nodes before i which have active children at or after i.
 
-Each parent in A(i-1) defines a lineage, which at least one active child at or after i.
+Each parent in A(i-1) defines a lineage, with at least one active child at or after i.
 
 For node i, sample ds_i ~ Exponential(K(i)) where K(i)=sum_{j in A(i-1)} C(j,i) is the total number of active children over all active lineages A(i-1).
 
@@ -63,25 +64,34 @@ This implies creating new lineages is possibly by creating d(i) > 1 for some i.
 We have two modalities of evidence estimation: expectation-based and sampling-based.
 
 In the sampling based approach, we compute the trajectory of s_i many times, and then x_i = exp(-s_i) for each sample, and use these to sample evidence.
-When doing this for each sample we permutate the samples first, after which stable sorting preserves the that permuatation within plateaus.
+When doing this for each sample we permutate the samples first, after which stable sorting preserves that permuatation within plateaus.
 Thus each evidence sample corresponds to a different trajectory of s_i handling plateaus correctly.
 
 For the expectation-based approach, we track several sufficient statistics to compute E[logZ], Var[logZ], E[logH] etc, marginalising over permutations within plateaus.
-These are ...
+These permutations are important when statistics involving the parameters are performed, but not when only evidence statistics are performed, since the likelihoods and prior volumes are invariant to permutations within plateaus.
+Marginalising over permutations is derived as the correct approach using the axiomatic derivation of Shapley values, which happens to satisfy the necessary properties for consistent evidence estimation in the presence of plateaus.
 
 Now the above tells us how to compute the prior volumes X_i associated with each sample i, but we now turn to how to sample.
 
 We begin with a dummy node 0, and K children sampled iid from the prior (constrained to L>L(0)), forming the initial live point set.
 We then apply the above tracking of K(i) in an online manner starting from node 0 with K(0) = K.
-We introduce parallelism by discarding m in (1, K/2) points at a time, and outsourcing the sampling of their replacements to different devices.
+We introduce parallelism by discarding m in [1, K/2] points at a time, and outsourcing the sampling of their replacements to different devices.
 That is we apply the above logic, to sequentially select nodes 1..m, each time updating K(i) = K(i-1) - 1 + d(i) as above, and updating the sufficient statistics for evidence estimation after each discard.
 Once we have selected m nodes to discard, we send their replacement sampling to different devices, sampling from within the last discarded point {L>L(m)}.
+This is repeated until a termination condition is met.
+
+We can then refine the run by adding children off any node in any lineage, every time adding d(i) -> d(i) + 1.
+To determine which nodes to add children to we require a target live point count per contour. 
+This is tricky, since suppose you add a child to node i, then the child sample will increase the live point count for an arbitrary number of subsequent contours.
+
+Let us rearrange K(i) = K(i-1) - 1 + d(i) to give,
+
+    K(i-1) = K(i) - d(i) + 1
 """
 
 @partial(jax.jit, inline=True, static_argnames=['num_live_points', 'max_samples', 'batch_size'])
 def sample_init_state(key, num_live_points: int, max_samples: int, model: Model, args=(),
-                      params=None,
-                      batch_size: int | None = None) -> State:
+                      params=None,   batch_size: int | None = None) -> State:
     def single_sample(key):
         key, subkey = jax.random.split(key)
         U_sample = model.sample_U(subkey)
@@ -142,7 +152,7 @@ def sample_init_state(key, num_live_points: int, max_samples: int, model: Model,
         num_samples=state.num_samples
     )
 
-
+@partial(jax.jit, inline=True, static_argnames=['root_out_degree', 'max_samples', 'shell_size', 'batch_size'])
 def single_ns_run(key, root_out_degree: int, max_samples: int, shell_size: int, model: Model, args=(),
                   sampler: AbstractSampler | None = None,
                   params=None,
@@ -201,14 +211,27 @@ def single_ns_run(key, root_out_degree: int, max_samples: int, shell_size: int, 
     register.relative_spread = 2. * register.absolute_spread / jnp.abs(log_L0 + log_L1)
     register.cummax_log_XL = jnp.maximum(register.cummax_log_XL,
                                          (register.evidence_calc.X_mean * register.evidence_calc.L).log_abs_val)
-    register.evidence_calc_with_remaining = register.evidence_calc
-    K_total_tmp = state.root_out_degree
-    for idx in range(root_out_degree):
-        register.evidence_calc_with_remaining = register.evidence_calc_with_remaining.update_evidence(
-            K_total_tmp,
-            state.samples.log_likelihoods[idx]
-        )
-        K_total_tmp = K_total_tmp - 1 + state.samples.out_degree[idx]
+    # register.evidence_calc_with_remaining = register.evidence_calc
+    # K_total_tmp = state.root_out_degree
+    # for idx in range(root_out_degree):
+    #     register.evidence_calc_with_remaining = register.evidence_calc_with_remaining.update_evidence(
+    #         K_total_tmp,
+    #         state.samples.log_likelihoods[idx]
+    #     )
+    #     K_total_tmp = K_total_tmp - 1 + state.samples.out_degree[idx]
+
+    def init_evidence_calc_with_remaining_body(carry, x):
+        evidence_calc_with_remaining, K_total = carry
+        log_L, out_degree = x
+        evidence_calc_with_remaining = evidence_calc_with_remaining.update_evidence(K_total, log_L)
+        K_total = K_total - 1 + out_degree
+        return (evidence_calc_with_remaining, K_total), None
+
+    register.evidence_calc_with_remaining, _ = jax.lax.scan(
+        init_evidence_calc_with_remaining_body,
+        (register.evidence_calc, state.root_out_degree),
+        (state.samples.log_likelihoods[:root_out_degree], state.samples.out_degree[:root_out_degree])
+    )
 
     # Sequentially discard shell, and replenish until termination condition
     discard_idx = 0
@@ -304,13 +327,6 @@ def single_ns_run(key, root_out_degree: int, max_samples: int, shell_size: int, 
 
     state.samples = state.samples.sort()
     return state
-
-
-def resume_ns_run(key, state: State, log_L_start: FloatArray, log_L_end: FloatArray, model: Model, args=(),
-                  sampler: AbstractSampler | None = None,
-                  params=None,
-                  max_samples: int | None = None) -> State:
-    ...
 
 
 def refine_ns_run(

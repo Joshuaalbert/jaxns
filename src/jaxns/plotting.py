@@ -94,7 +94,7 @@ def plot_diagnostics(results: NestedSamplerResults, save_name=None):
         plt.show()
 
 
-def plot_cornerplot(results: NestedSamplerResults, variables: Optional[List[str]] = None,
+def plot_cornerplot(results: NestedSamplerResults, variables: Optional[list[str]] = None,
                     with_parametrised: bool = False,
                     save_name: Optional[str] = None, kde_overlay: bool = False):
     """
@@ -287,7 +287,7 @@ def plot_cornerplot(results: NestedSamplerResults, variables: Optional[List[str]
 
 
 def weighted_percentile(samples: np.ndarray, log_weights: np.ndarray,
-                        percentiles: List[Union[float, int]]) -> np.ndarray:
+                        percentiles: list[Union[float, int]]) -> np.ndarray:
     """
     Compute weighted percentiles of a set of samples.
 

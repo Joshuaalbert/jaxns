@@ -73,7 +73,7 @@ class AbstractSampler(ABC, Generic[SamplerState]):
         return self._post_process(ephemeral_state, sampler_state)
 
     @abstractmethod
-    def _get_sample(self, key: PRNGKey, log_L_constraint: FloatArray, sampler_state: Any) -> Tuple[
+    def _get_sample(self, key: PRNGKey, log_L_constraint: FloatArray, sampler_state: Any) -> tuple[
         Sample, Sample]:
         """
         Produce a single i.i.d. sample from the model within the log_L_constraint.
@@ -88,7 +88,7 @@ class AbstractSampler(ABC, Generic[SamplerState]):
         """
         ...
 
-    def get_sample(self, key: PRNGKey, log_L_constraint: FloatArray, sampler_state: SamplerState) -> Tuple[
+    def get_sample(self, key: PRNGKey, log_L_constraint: FloatArray, sampler_state: SamplerState) -> tuple[
         Sample, Sample]:
         """
         Produce a single i.i.d. sample from the model within the log_L_constraint.

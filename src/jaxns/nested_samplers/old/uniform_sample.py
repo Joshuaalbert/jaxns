@@ -76,7 +76,7 @@ def draw_uniform_samples(keys: PRNGKey, model: BaseAbstractModel, method: str = 
         return jax.vmap(lambda _key: _single_uniform_sample(key=_key, model=model))(keys)
     elif method == 'scan':
 
-        def body(carry_unused: Any, key: PRNGKey) -> Tuple[Any, Sample]:
+        def body(carry_unused: Any, key: PRNGKey) -> tuple[Any, Sample]:
             return carry_unused, _single_uniform_sample(key=key, model=model)
 
         _, samples = lax.scan(body, (), keys)

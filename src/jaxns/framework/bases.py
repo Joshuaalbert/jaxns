@@ -34,7 +34,7 @@ class BaseAbstractPrior(AbstractPrior):
         return self._dtype()
 
     @property
-    def base_shape(self) -> Tuple[int, ...]:
+    def base_shape(self) -> tuple[int, ...]:
         """
         The base shape of the prior random variable in U-space.
         """
@@ -48,7 +48,7 @@ class BaseAbstractPrior(AbstractPrior):
         return tuple_prod(self.base_shape)
 
     @property
-    def shape(self) -> Tuple[int, ...]:
+    def shape(self) -> tuple[int, ...]:
         """
         The shape of the prior random variable in X-space.
         """
@@ -172,14 +172,14 @@ class BaseAbstractDistribution(AbstractDistribution):
         return self._dtype()
 
     @property
-    def base_shape(self) -> Tuple[int, ...]:
+    def base_shape(self) -> tuple[int, ...]:
         """
         The base shape of the distribution, in U-space.
         """
         return self._base_shape()
 
     @property
-    def shape(self) -> Tuple[int, ...]:
+    def shape(self) -> tuple[int, ...]:
         """
         The shape of the distribution, in X-space.
         """

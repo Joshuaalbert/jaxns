@@ -65,7 +65,7 @@ class EvidenceMaximisation:
         verbose: Whether to print progress verbosely.
     """
     model: Model
-    ns_kwargs: Optional[Dict[str, Any]] = None
+    ns_kwargs: Optional[dict[str, Any]] = None
     max_num_epochs: int = 50
     gtol: float = 1e-2
     log_Z_ftol: float = 1.
@@ -88,7 +88,7 @@ class EvidenceMaximisation:
             A compiled function that runs nested sampling and returns trimmed results.
         """
 
-        def _ns_solve(params: CtxParams, key: random.PRNGKey) -> Tuple[
+        def _ns_solve(params: CtxParams, key: random.PRNGKey) -> tuple[
             IntArray, StaticStandardNestedSamplerState]:
             model = self.model(params=params)
             ns = NestedSampler(model=model, **self.ns_kwargs)
@@ -166,7 +166,7 @@ class EvidenceMaximisation:
             return obj
 
         @partial(jax.jit)
-        def _m_step(key: PRNGKey, params: CtxParams, data: MStepData) -> Tuple[CtxParams, Any]:
+        def _m_step(key: PRNGKey, params: CtxParams, data: MStepData) -> tuple[CtxParams, Any]:
             """
             The M-step is just evidence maximisation.
 
@@ -183,7 +183,7 @@ class EvidenceMaximisation:
 
         return _m_step
 
-    def m_step(self, key: PRNGKey, params: CtxParams, ns_results: NestedSamplerResults, desc: str) -> Tuple[
+    def m_step(self, key: PRNGKey, params: CtxParams, ns_results: NestedSamplerResults, desc: str) -> tuple[
         CtxParams, Any]:
         """
         The M-step is just evidence maximisation. We pad the data to the next power of 2, to make JIT compilation
@@ -231,7 +231,7 @@ class EvidenceMaximisation:
         return params, log_Z
 
     def train(self, num_steps: int = 10, params: Optional[CtxParams] = None) -> \
-            Tuple[
+            tuple[
                 NestedSamplerResults, CtxParams]:
         """
         Train the model using EM for num_steps.

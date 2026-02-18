@@ -11,7 +11,7 @@ class AbstractNestedSampler(ABC):
     """
 
     @abstractmethod
-    def _run(self, key: PRNGKey, term_cond: TerminationCondition) -> Tuple[IntArray, TerminationRegister, NestedSamplerState]:
+    def _run(self, key: PRNGKey, term_cond: TerminationCondition) -> tuple[IntArray, TerminationRegister, NestedSamplerState]:
         """
         Run the nested sampler.
 

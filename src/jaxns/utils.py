@@ -1,7 +1,7 @@
 import io
 import json
 import warnings
-from typing import NamedTuple, TextIO, Union, Optional, Tuple, TypeVar, Callable
+from typing import NamedTuple, TextIO, Union, Optional, TypeVar, Callable
 
 import jax
 import numpy as np
@@ -14,7 +14,7 @@ from jaxns.nested_samplers.log_semiring import LogSpace
 from jaxns.internals.maps import prepare_func_args
 from jaxns.nested_samplers.mixed_precision import mp_policy
 from jaxns.internals.namedtuple_utils import serialise_namedtuple, deserialise_namedtuple
-from jaxns.internals.random import resample_indicies
+from jaxns.nested_samplers.random_utils import resample_indicies
 from jaxns.nested_samplers.types import NestedSamplerResults, PRNGKey, FloatArray, IntArray, UType, XType, isinstance_namedtuple
 from jaxns.warnings import deprecated
 
@@ -473,7 +473,7 @@ def sample_evidence(key: PRNGKey, num_live_points_per_sample: IntArray, log_L_sa
     return log_Z_samples
 
 
-def bruteforce_posterior_samples(model: BaseAbstractModel, S: int = 60) -> Tuple[XType, jax.Array]:
+def bruteforce_posterior_samples(model: BaseAbstractModel, S: int = 60) -> tuple[XType, jax.Array]:
     """
     Compute the posterior with brute-force over a regular grid.
 

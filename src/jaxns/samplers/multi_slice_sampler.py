@@ -7,16 +7,16 @@ from jax import numpy as jnp, random, lax
 from jaxns.framework.bases import BaseAbstractModel
 from jaxns.internals.cumulative_ops import cumulative_op_static
 from jaxns.nested_samplers.mixed_precision import mp_policy
-from jaxns.nested_samplers.types import Sample, SampleCollection, LivePointCollection, PRNGKey, FloatArray, IntArray, BoolArray, UType
+from jaxns.nested_samplers.types import Sample, SampleCollection, LivePointCollection, PRNGKey, FloatArray, IntArray, BoolArray, UType, SeedPoint
 from jaxns.samplers.abc import EphemeralState
-from jaxns.samplers.bases import SeedPoint, BaseAbstractMarkovSampler
+from jaxns.samplers.bases import BaseAbstractMarkovSampler
 
 __all__ = [
     'MultiDimSliceSampler'
 ]
 
 
-def _slice_bounds(key: PRNGKey, point_U0: FloatArray, num_restrict_dims: int) -> Tuple[FloatArray, FloatArray]:
+def _slice_bounds(key: PRNGKey, point_U0: FloatArray, num_restrict_dims: int) -> tuple[FloatArray, FloatArray]:
     """
     Get the slice bounds, randomly selecting which dimensions to slice in.
 
@@ -42,7 +42,7 @@ def _new_sample(key: PRNGKey, left: FloatArray, right: FloatArray) -> UType:
     return random.uniform(key=key, shape=left.shape, dtype=left.dtype, minval=left, maxval=right)
 
 
-def _shrink_region(point_U: UType, point_U0: UType, left: FloatArray, right: FloatArray) -> Tuple[
+def _shrink_region(point_U: UType, point_U0: UType, left: FloatArray, right: FloatArray) -> tuple[
     FloatArray, FloatArray]:
     """
     Shrink the region to the left and right of the point_U0.
@@ -69,7 +69,7 @@ def _shrink_region(point_U: UType, point_U0: UType, left: FloatArray, right: Flo
 
 
 def _new_proposal(key: PRNGKey, seed_point: SeedPoint, num_restrict_dims: int, log_L_constraint: FloatArray,
-                  model: BaseAbstractModel) -> Tuple[FloatArray, FloatArray, IntArray]:
+                  model: BaseAbstractModel) -> tuple[FloatArray, FloatArray, IntArray]:
     """
     Sample from a slice about a seed point.
 
@@ -233,7 +233,7 @@ class MultiDimSliceSampler(BaseAbstractMarkovSampler[SampleCollection]):
         )
 
     def get_sample_from_seed(self, key: PRNGKey, seed_point: SeedPoint, log_L_constraint: FloatArray,
-                             sampler_state: SampleCollection) -> Tuple[Sample, Sample]:
+                             sampler_state: SampleCollection) -> tuple[Sample, Sample]:
 
         def propose_op(sample: Sample, key: PRNGKey) -> Sample:
             U_sample, log_L, num_likelihood_evaluations = _new_proposal(

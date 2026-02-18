@@ -22,7 +22,7 @@ DomainType = TypeVar('DomainType')
 
 def cg_solve(A: Callable[[DomainType], DomainType], b: DomainType, x0: DomainType,
              M: Callable[[DomainType], DomainType] = _identity, maxiter: int | None = 100, tol: float = 1e-5,
-             atol: float = 0.0) -> Tuple[DomainType, CGDiagnostics]:
+             atol: float = 0.0) -> tuple[DomainType, CGDiagnostics]:
     """
     Solve a linear system Ax = b using the conjugate gradient method.
 

@@ -93,7 +93,7 @@ def cumulative_logsumexp(u, sign=None, reverse=False, axis=0):
             v = jnp.swapaxes(v, axis, 0)
         return v
 
-@dataclasses.dataclass(slots=True)
+@dataclasses.dataclass(slots=True, frozen=True)
 class LogSpace(PureDataclassPytree):
     log_abs_val: FloatArray
     sign: FloatArray | None = None

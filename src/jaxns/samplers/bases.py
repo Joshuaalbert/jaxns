@@ -1,16 +1,10 @@
 from abc import abstractmethod
-from typing import NamedTuple, Tuple, TypeVar, Generic
+from typing import Tuple, TypeVar, Generic
 
 from jax import random
 
-from jaxns.nested_samplers.types import Sample, PRNGKey, FloatArray
+from jaxns.nested_samplers.types import Sample, PRNGKey, FloatArray, SeedPoint
 from jaxns.samplers.abc import AbstractSampler
-
-
-class SeedPoint(NamedTuple):
-    U0: FloatArray
-    log_L0: FloatArray
-
 
 T = TypeVar('T')
 
@@ -26,7 +20,7 @@ class BaseAbstractMarkovSampler(AbstractSampler[T], Generic[T]):
 
     @abstractmethod
     def get_sample_from_seed(self, key: PRNGKey, seed_point: SeedPoint, log_L_constraint: FloatArray,
-                             sampler_state: T) -> Tuple[Sample, Sample]:
+                             sampler_state: T) -> tuple[Sample, Sample]:
         """
         Produce a single i.i.d. sample from the model within the log_L_constraint.
 
@@ -58,7 +52,7 @@ class BaseAbstractMarkovSampler(AbstractSampler[T], Generic[T]):
         """
         ...
 
-    def _get_sample(self, key: PRNGKey, log_L_constraint: FloatArray, sampler_state: T) -> Tuple[Sample, Sample]:
+    def _get_sample(self, key: PRNGKey, log_L_constraint: FloatArray, sampler_state: T) -> tuple[Sample, Sample]:
         sample_key, seed_key = random.split(key, 2)
         seed_point = self.get_seed_point(
             key=seed_key,

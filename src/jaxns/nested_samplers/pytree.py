@@ -43,7 +43,7 @@ class Pytree(ABC):
             return pickle.load(f)
 
     @classmethod
-    def build_flatten(cls, this, aux_names: List[str]):
+    def build_flatten(cls, this, aux_names: list[str]):
         """
         Helper function to facilitate dataclass Pytrees.
         """
@@ -58,7 +58,7 @@ class Pytree(ABC):
         return [children_dict], (aux_data_dict,)
 
     @classmethod
-    def build_unflatten(cls, aux_data: Tuple[Any, ...], children: List[Any]):
+    def build_unflatten(cls, aux_data: tuple[Any, ...], children: list[Any]):
         """
         Helper function to facilitate dataclass Pytrees.
         """
@@ -86,7 +86,7 @@ class Pytree(ABC):
 
     @classmethod
     @abstractmethod
-    def flatten(cls, this) -> Tuple[List[Any], Tuple[Any, ...]]:
+    def flatten(cls, this) -> tuple[list[Any], tuple[Any, ...]]:
         """
         Flatten the model.
 
@@ -100,7 +100,7 @@ class Pytree(ABC):
 
     @classmethod
     @abstractmethod
-    def unflatten(cls, aux_data: Tuple[Any, ...], children: List[Any]):
+    def unflatten(cls, aux_data: tuple[Any, ...], children: list[Any]):
         """
         Unflatten the model.
 
@@ -120,9 +120,9 @@ class PureDataclassPytree(Pytree):
     """
 
     @classmethod
-    def flatten(cls, this) -> Tuple[List[Any], Tuple[Any, ...]]:
+    def flatten(cls, this) -> tuple[list[Any], tuple[Any, ...]]:
         return cls.build_flatten(this, [])
 
     @classmethod
-    def unflatten(cls, aux_data: Tuple[Any, ...], children: List[Any]):
+    def unflatten(cls, aux_data: tuple[Any, ...], children: list[Any]):
         return cls.build_unflatten(aux_data, children)

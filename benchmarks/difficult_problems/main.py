@@ -125,7 +125,7 @@ def build_spikeslab_model(ndim: int) -> Model:
     return model
 
 
-def all_models() -> Dict[str, Model]:
+def all_models() -> dict[str, Model]:
     """
     Return all the models
 

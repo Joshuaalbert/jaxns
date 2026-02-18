@@ -12,7 +12,7 @@ V = TypeVar('V')
 Y = TypeVar('Y')
 
 
-def scan_associative_cumulative_op(op: Callable[[X, X], X], init: X, xs: X, pre_op: bool = False) -> Tuple[X, X]:
+def scan_associative_cumulative_op(op: Callable[[X, X], X], init: X, xs: X, pre_op: bool = False) -> tuple[X, X]:
     """
     Compute a cumulative operation on an array of values using scan_associative.
 
@@ -47,7 +47,7 @@ def scan_associative_cumulative_op(op: Callable[[X, X], X], init: X, xs: X, pre_
     return final_accumulate, scanned_results
 
 
-def cumulative_op_static(op: Callable[[V, Y], V], init: V, xs: Y, pre_op: bool = False, unroll: int = 1) -> Tuple[
+def cumulative_op_static(op: Callable[[V, Y], V], init: V, xs: Y, pre_op: bool = False, unroll: int = 1) -> tuple[
     V, V]:
     """
     Compute a cumulative operation on a list of values.
@@ -80,7 +80,7 @@ def cumulative_op_static(op: Callable[[V, Y], V], init: V, xs: Y, pre_op: bool =
 
 
 def cumulative_op_dynamic(op: Callable[[V, Y], V], init: V, xs: Y, stop_idx: IntArray, pre_op: bool = False,
-                          empty_fill: Optional[V] = None) -> Tuple[
+                          empty_fill: Optional[V] = None) -> tuple[
     V, V]:
     """
     Compute a cumulative operation on a list of values with a dynamic stop index.
@@ -97,11 +97,11 @@ def cumulative_op_dynamic(op: Callable[[V, Y], V], init: V, xs: Y, stop_idx: Int
         the final accumulated value, and the result of the cumulative operation applied on input
     """
 
-    def cond(carry: Tuple[V, IntArray, V]):
+    def cond(carry: tuple[V, IntArray, V]):
         (accumulate, i, output) = carry
         return jnp.less(i, stop_idx)
 
-    def body(carry: Tuple[V, IntArray, V]):
+    def body(carry: tuple[V, IntArray, V]):
         (accumulate, i, output) = carry
         y = jax.tree.map(lambda x: x[i], xs)
         next_accumulate = op(accumulate, y)

@@ -17,7 +17,7 @@ from jaxns.nested_samplers.old.uniform_sample import draw_uniform_samples
 
 
 def create_init_state(key: PRNGKey, num_live_points: int, max_samples: int, model: BaseAbstractModel,
-                      mesh: Optional[Mesh] = None) -> Tuple[LivePointCollection, NestedSamplerState]:
+                      mesh: Optional[Mesh] = None) -> tuple[LivePointCollection, NestedSamplerState]:
     """
     Return an initial sample collection, that will be incremented by the sampler.
 

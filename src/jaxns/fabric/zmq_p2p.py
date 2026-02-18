@@ -152,7 +152,7 @@ class ClientRecord:
     lease_id: bytes | None = dataclasses.field(default_factory=lambda: None)
     worker_record: Union['WorkerRecord', None] = dataclasses.field(default_factory=lambda: None)
     state: ClientStateEnum = dataclasses.field(default_factory=lambda: ClientStateEnum.idle)
-    mru_cache: OrderedDict[bytes, None] = dataclasses.field(default_factory=OrderedDict)  # worker_id -> None
+    mru_cache: Ordereddict[bytes, None] = dataclasses.field(default_factory=OrderedDict)  # worker_id -> None
 
     def request(self):
         if self.pending_request:
@@ -324,8 +324,8 @@ class LoadBalancer(ZMQActor):
         self.backend_addr = backend_addr
 
         # Maintain in LRU order
-        self.worker_records: OrderedDict[bytes, WorkerRecord] = OrderedDict()
-        self.client_records: OrderedDict[bytes, ClientRecord] = OrderedDict()
+        self.worker_records: Ordereddict[bytes, WorkerRecord] = OrderedDict()
+        self.client_records: Ordereddict[bytes, ClientRecord] = OrderedDict()
 
         # Epoch fences stale COMPLETEs across LB restarts
         self.epoch: bytes = f"{random.getrandbits(64):016x}".encode("ascii")
@@ -819,7 +819,7 @@ class RPCActor(ZMQActor, ABC):
 
         # Lease and request tracking
         self.lock: threading.Lock | None = None
-        self.result_records: Dict[bytes, ResultRecord] = dict()  # lease_id -> lease record
+        self.result_records: dict[bytes, ResultRecord] = dict()  # lease_id -> lease record
         self.lb_epoch: bytes | None = None  # last seen LB epoch (bytes)
 
     @contextlib.contextmanager
@@ -887,7 +887,7 @@ class RPCActor(ZMQActor, ABC):
             finally:
                 pass
 
-        fut_to_lease: Dict[Future, bytes] = {}
+        fut_to_lease: dict[Future, bytes] = {}
 
         def done_cb(fut: Future):
             lease_id = fut_to_lease.pop(fut, None)
@@ -1205,7 +1205,7 @@ class ZMQRPCClient:
         self.future: Future | None = None
 
         # Pools and lease
-        self.pool: Dict[bytes, ClientWorkerRecord] = {}  # worker_id -> client worker record
+        self.pool: dict[bytes, ClientWorkerRecord] = {}  # worker_id -> client worker record
         self.rpc_frames: list[zmq.Frame] | None = None
         self.lease: ClientLeaseRecord | None = None
 

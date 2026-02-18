@@ -128,7 +128,7 @@ def create_init_evidence_calc() -> EvidenceCalculation:
 
 
 def compute_evidence_stats(log_L: MeasureType, num_live_points: FloatArray, num_samples: Optional[IntArray] = None) -> \
-        Tuple[EvidenceCalculation, EvidenceCalculation]:
+        tuple[EvidenceCalculation, EvidenceCalculation]:
     """
     Compute the evidence statistics along the shrinkage process.
 

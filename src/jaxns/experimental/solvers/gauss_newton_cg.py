@@ -22,7 +22,7 @@ _CT = TypeVar("_CT")
 # Utility: split complex pytrees into real pairs so Wirtinger calculus
 #          works out of the box with JAX’s real autodiff.
 # ----------------------------------------------------------------
-def convert_to_real(x: CT) -> Tuple[_CT, Callable[[_CT], CT]]:
+def convert_to_real(x: CT) -> tuple[_CT, Callable[[_CT], CT]]:
     """Return a real-valued twin of `x`   and   a merge-back function."""
 
     def _maybe_split(a: jax.Array | Any):
@@ -85,7 +85,7 @@ def newton_cg_solver(
         mu_out_factor: float = 0.1,
         approx_hvp: bool = False,  # reuse H·v between rejections
         verbose: bool = False,
-) -> Tuple[DomainType, NewtonDiagnostic]:
+) -> tuple[DomainType, NewtonDiagnostic]:
     """
     Trust-region Newton-CG minimiser.
 

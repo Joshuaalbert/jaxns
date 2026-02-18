@@ -37,7 +37,7 @@ class UniformSampler(BaseAbstractRejectionSampler[Tuple]):
                       sampler_state: Any) -> Any:
         return sampler_state
 
-    def _get_sample(self, key: PRNGKey, log_L_constraint: FloatArray, sampler_state: Any) -> Tuple[
+    def _get_sample(self, key: PRNGKey, log_L_constraint: FloatArray, sampler_state: Any) -> tuple[
         Sample, Sample]:
         class CarryState(NamedTuple):
             key: PRNGKey

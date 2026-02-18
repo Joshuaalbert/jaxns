@@ -1,7 +1,7 @@
 import dataclasses
 import warnings
 from functools import partial
-from typing import List, Optional, Tuple, NamedTuple, Any
+from typing import Optional, NamedTuple, Any
 
 import jax
 import jax.numpy as jnp
@@ -17,7 +17,7 @@ from jaxns.internals.cumulative_ops import cumulative_op_static
 from jaxns.nested_samplers.log_semiring import LogSpace, normalise_log_space
 from jaxns.internals.maps import create_mesh, tree_device_put, replace_index
 from jaxns.nested_samplers.mixed_precision import mp_policy
-from jaxns.internals.random import sample_uniformly_masked, resample_indicies
+from jaxns.nested_samplers.random_utils import sample_uniformly_masked, resample_indicies
 from jaxns.internals.shrinkage_statistics import EvidenceUpdateVariables, _update_evidence_calc_op, \
     compute_evidence_stats
 from jaxns.internals.stats import linear_to_log_stats, effective_sample_size_kish
@@ -214,7 +214,7 @@ def _collect_shell(
         sampler: AbstractSampler,
         sampler_state: Any,
         shell_size: int
-) -> Tuple[LivePointCollection, NestedSamplerState, TerminationRegister]:
+) -> tuple[LivePointCollection, NestedSamplerState, TerminationRegister]:
     """
     Run nested sampling until `num_samples` samples are collected.
 
@@ -433,7 +433,7 @@ def _main_ns_thread(
         num_discards_per_iteration: int,
         shell_fraction: float,
         verbose: bool
-) -> Tuple[LivePointCollection, NestedSamplerState, TerminationRegister, IntArray]:
+) -> tuple[LivePointCollection, NestedSamplerState, TerminationRegister, IntArray]:
     """
     Runs a single thread of static nested sampling until a stopping condition is reached. Discards 1/2 of the
     live points at once, replacing them from the supremum contour, creating a sample tree.
@@ -618,7 +618,7 @@ class ShardedStaticNestedSampler(AbstractNestedSampler):
     shell_fraction: Optional[float] = None
     num_dynamic_refinement_iterations: int = 0
     refine_threshold: float = 0.01
-    devices: Optional[List[xla_client.Device]] = None
+    devices: Optional[list[xla_client.Device]] = None
     verbose: bool = False
 
     def __post_init__(self):
@@ -771,7 +771,7 @@ class ShardedStaticNestedSampler(AbstractNestedSampler):
             U_samples=U_samples
         )
 
-    def _run(self, key: PRNGKey, term_cond: TerminationCondition) -> Tuple[
+    def _run(self, key: PRNGKey, term_cond: TerminationCondition) -> tuple[
         IntArray, TerminationRegister, NestedSamplerState]:
         # Create sampler threads.
         mesh = create_mesh((len(self.devices),), ('shard',), devices=self.devices)

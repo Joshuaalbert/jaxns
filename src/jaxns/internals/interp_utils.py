@@ -55,8 +55,8 @@ def left_broadcast_multiply(x, y, axis: int = 0):
     return x * y
 
 
-def get_interp_indices_and_weights(x, xp, regular_grid: bool = False) -> Tuple[
-    Tuple[Union[int, jax.Array, float, jax.Array]], Tuple[Union[int, jax.Array, float, jax.Array]]]:
+def get_interp_indices_and_weights(x, xp, regular_grid: bool = False) -> tuple[
+    tuple[Union[int, jax.Array, float, jax.Array]], tuple[Union[int, jax.Array, float, jax.Array]]]:
     """
     One-dimensional linear interpolation. Outside bounds is also linear from nearest two points.
 

@@ -12,7 +12,7 @@ from jaxns.nested_samplers.evidence_calculation import EvidenceCalculation
 from jaxns.nested_samplers.types import FloatArray, IntArray, BoolArray
 
 
-@dataclasses.dataclass(slots=True, frozen=True)
+@dataclasses.dataclass(slots=True)
 class TerminationCondition(PureDataclassPytree):
     """
     Contains the termination conditions for the nested sampling run.
@@ -46,7 +46,7 @@ class TerminationCondition(PureDataclassPytree):
 TerminationCondition.register_pytree()
 
 
-@dataclasses.dataclass(slots=True, frozen=True)
+@dataclasses.dataclass(slots=True)
 class TerminationRegister(PureDataclassPytree):
     num_samples_used: IntArray
     evidence_calc: EvidenceCalculation
@@ -78,7 +78,7 @@ class TerminationRegister(PureDataclassPytree):
             cummax_log_XL=jnp.asarray(-jnp.inf, mp_policy.measure_dtype)
         )
 
-    def is_done(self, term_cond: TerminationCondition) -> Tuple[BoolArray, IntArray]:
+    def is_done(self, term_cond: TerminationCondition) -> tuple[BoolArray, IntArray]:
         """
         Determine if termination should happen. Termination Flags are bits:
             0-bit -> 1: used maximum allowed number of samples
@@ -109,7 +109,7 @@ TerminationRegister.register_pytree()
 
 
 @partial(jax.jit, inline=True)
-def _is_done(self, term_cond: TerminationCondition) -> Tuple[BoolArray, IntArray]:
+def _is_done(self, term_cond: TerminationCondition) -> tuple[BoolArray, IntArray]:
     termination_reason = jnp.asarray(0, mp_policy.count_dtype)
     done = jnp.asarray(False, jnp.bool_)
 

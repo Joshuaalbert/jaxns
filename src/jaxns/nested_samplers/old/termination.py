@@ -11,7 +11,7 @@ from jaxns.nested_samplers.types import TerminationConditionDisjunction, Termina
 
 def determine_termination(
         term_cond: Union[TerminationConditionDisjunction, TerminationConditionConjunction, TerminationCondition],
-        termination_register: TerminationRegister) -> Tuple[BoolArray, IntArray]:
+        termination_register: TerminationRegister) -> tuple[BoolArray, IntArray]:
     """
     Determine if termination should happen. Termination Flags are bits:
         0-bit -> 1: used maximum allowed number of samples

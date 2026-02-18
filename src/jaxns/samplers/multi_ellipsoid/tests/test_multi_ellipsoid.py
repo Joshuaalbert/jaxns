@@ -8,7 +8,7 @@ from jaxctx.priors.prior import Prior
 from jaxns.framework.bases import PriorModelGen
 from jaxns.framework.model import Model
 from jaxns.nested_samplers.mixed_precision import mp_policy
-from jaxns.internals.random import random_ortho_matrix
+from jaxns.nested_samplers.random_utils import random_ortho_matrix
 from jaxns.nested_samplers.types import Sample
 from jaxns.nested_samplers.old.uniform_sample import draw_uniform_samples
 from jaxns.samplers.multi_ellipsoid.multi_ellipsoid_utils import log_ellipsoid_volume, ellipsoid_clustering, \

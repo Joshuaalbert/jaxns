@@ -35,7 +35,7 @@ def log_ellipsoid_volume(radii):
         jnp.log(2.) - jnp.log(D) + 0.5 * D * jnp.log(jnp.pi) - gammaln(0.5 * D) + jnp.sum(jnp.log(radii)))
 
 
-def bounding_ellipsoid(points: UType, mask: FloatArray) -> Tuple[FloatArray, FloatArray]:
+def bounding_ellipsoid(points: UType, mask: FloatArray) -> tuple[FloatArray, FloatArray]:
     """
     Use empirical mean and covariance as approximation to bounding ellipse.
 
@@ -52,7 +52,7 @@ def bounding_ellipsoid(points: UType, mask: FloatArray) -> Tuple[FloatArray, Flo
     return mp_policy.cast_to_measure(mu), mp_policy.cast_to_measure(cov)
 
 
-def covariance_to_rotational(cov: jax.Array) -> Tuple[jax.Array, jax.Array]:
+def covariance_to_rotational(cov: jax.Array) -> tuple[jax.Array, jax.Array]:
     """
     (x - mu)^T inv(cov) (x - mu) = (x - mu)^T J @ J.T (x - mu)
 
@@ -247,7 +247,7 @@ def compute_depth_ellipsoids(point: FloatArray, mu: FloatArray, radii: FloatArra
 
 
 def sample_multi_ellipsoid(key: PRNGKey, mu: FloatArray, radii: FloatArray, rotation: FloatArray,
-                           unit_cube_constraint: bool = True) -> Tuple[IntArray, FloatArray]:
+                           unit_cube_constraint: bool = True) -> tuple[IntArray, FloatArray]:
     """
     Sample from a set of intersecting ellipsoids.
     When unit_cube_constraint=True then reject points outside the closed unit-cube.

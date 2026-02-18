@@ -54,7 +54,7 @@ class GlobalOptimisationTerminationCondition(NamedTuple):
     min_efficiency: Optional[FloatArray] = None  # jnp.asarray(0., float_type)
 
 
-def gradient_based_optimisation(model: BaseAbstractModel, init_U_point: UType) -> Tuple[UType, FloatArray, IntArray]:
+def gradient_based_optimisation(model: BaseAbstractModel, init_U_point: UType) -> tuple[UType, FloatArray, IntArray]:
     def loss(U_unconstrained: UType):
         U = quick_unit(U_unconstrained)
         return -model.log_prob_likelihood(U, allow_nan=False)
@@ -145,7 +145,7 @@ class SimpleGlobalOptimisation:
             termination_reason=termination_reason
         )
 
-    def _run(self, key: PRNGKey, term_cond: GlobalOptimisationTerminationCondition) -> Tuple[
+    def _run(self, key: PRNGKey, term_cond: GlobalOptimisationTerminationCondition) -> tuple[
         IntArray, GlobalOptimisationState]:
         """
         Runs the global optimisation.

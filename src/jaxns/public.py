@@ -16,7 +16,7 @@ from jaxns.nested_samplers.types import TerminationCondition, NestedSamplerResul
     NestedSamplerState, PRNGKey, IntArray
 from jaxns.nested_samplers.sharded import ShardedStaticNestedSampler
 from jaxns.plotting import plot_cornerplot, plot_diagnostics
-from jaxns.samplers.uni_slice_sampler import UniDimSliceSampler
+from jaxns.nested_samplers.constrained_sampler import UniDimSliceSampler
 from jaxns.utils import summary, save_results, load_results
 
 tfpd = tfp.distributions
@@ -57,7 +57,7 @@ class NestedSampler:
     s: Optional[Union[int, float]] = None
     k: Optional[int] = None
     c: Optional[int] = None
-    devices: Optional[List[xla_client.Device]] = None
+    devices: Optional[list[xla_client.Device]] = None
     difficult_model: bool = False
     parameter_estimation: bool = False
     shell_fraction: float = 0.5
@@ -137,7 +137,7 @@ class NestedSampler:
     def nested_sampler(self) -> AbstractNestedSampler:
         return self._nested_sampler
 
-    def __call__(self, key: PRNGKey, term_cond: Optional[TerminationCondition] = None) -> Tuple[
+    def __call__(self, key: PRNGKey, term_cond: Optional[TerminationCondition] = None) -> tuple[
         IntArray, NestedSamplerState]:
         """
         Performs nested sampling with the given termination conditions.

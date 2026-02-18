@@ -28,10 +28,10 @@ BoolArray = Union[
 LikelihoodType = Callable[..., FloatArray]
 RandomVariableType = TypeVar('RandomVariableType')
 MeasureType = TypeVar('MeasureType')
-LikelihoodInputType = Union[Tuple[Any, ...], Any]  # Likelihood conditional variables
+LikelihoodInputType = Union[tuple[Any, ...], Any]  # Likelihood conditional variables
 UType = FloatArray  # Sample space type
-WType = Tuple[FloatArray, ...]
-XType = Dict[str, RandomVariableType]  # Prior variable type
+WType = tuple[FloatArray, ...]
+XType = dict[str, RandomVariableType]  # Prior variable type
 
 
 class SignedLog(NamedTuple):
@@ -123,14 +123,14 @@ class TerminationConditionConjunction(NamedTuple):
     """
     A conjunction of termination conditions, e.g. term_cond1 & term_cond2
     """
-    conds: List[Union['TerminationConditionDisjunction', 'TerminationConditionConjunction', TerminationCondition]]
+    conds: list[Union['TerminationConditionDisjunction', 'TerminationConditionConjunction', TerminationCondition]]
 
 
 class TerminationConditionDisjunction(NamedTuple):
     """
     A disjunction of termination conditions, e.g. term_cond1 | term_cond2
     """
-    conds: List[Union['TerminationConditionDisjunction', TerminationConditionConjunction, TerminationCondition]]
+    conds: list[Union['TerminationConditionDisjunction', TerminationConditionConjunction, TerminationCondition]]
 
 
 class NestedSamplerResults(PureDataclassPytree):
@@ -202,3 +202,8 @@ class NestedSamplerState(NamedTuple):
     next_sample_idx: IntArray  # the next sample insert index <==> the number of samples
     num_samples: IntArray
     sample_collection: StaticStandardSampleCollection
+
+
+class SeedPoint(NamedTuple):
+    U0: FloatArray
+    log_L0: FloatArray

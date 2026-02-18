@@ -71,7 +71,8 @@ def resample_indicies(key: PRNGKey, log_weights: Optional[FloatArray] = None, S:
             if num_total is None:
                 raise ValueError("Need num_total if log_weights is None.")
             g = -random.gumbel(key, shape=(num_total,))
-        idx = jnp.argsort(g)[:S]
+        # idx = jnp.argsort(g)[:S]
+        _, idx = jax.lax.top_k(-g, k=S)
     return idx
 
 

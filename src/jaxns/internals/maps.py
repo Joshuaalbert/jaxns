@@ -278,7 +278,7 @@ def chunked_vmap(f, chunk_size: Optional[int] = None, unroll: int = 1):
 PT = TypeVar('PT')
 
 
-def pytree_unravel(example_tree: PT) -> Tuple[Callable[[PT], jax.Array], Callable[[jax.Array], PT]]:
+def pytree_unravel(example_tree: PT) -> tuple[Callable[[PT], jax.Array], Callable[[jax.Array], PT]]:
     """
     Returns functions to ravel and unravel a pytree.
 
@@ -313,17 +313,17 @@ def pytree_unravel(example_tree: PT) -> Tuple[Callable[[PT], jax.Array], Callabl
     return ravel_fun, unravel_fun
 
 
-def pytree_unpack(example_tree: PT) -> Tuple[Callable[[PT], List[jax.Array]], Callable[[List[jax.Array]], PT]]:
+def pytree_unpack(example_tree: PT) -> tuple[Callable[[PT], list[jax.Array]], Callable[[list[jax.Array]], PT]]:
     """
     Returns functions to ravel and unravel a pytree.
     """
     leaf_list, tree_def = jax.tree.flatten(example_tree)
 
-    def pack_fun(pytree: PT) -> List[jax.Array]:
+    def pack_fun(pytree: PT) -> list[jax.Array]:
         leaf_list, tree_def = jax.tree.flatten(pytree)
         return leaf_list
 
-    def unpack_fun(leaf_list: List[jax.Array]) -> PT:
+    def unpack_fun(leaf_list: list[jax.Array]) -> PT:
         return jax.tree.unflatten(tree_def, leaf_list)
 
     return pack_fun, unpack_fun
@@ -359,7 +359,7 @@ def create_mesh(shape, axis_names, devices=None):
 SPT = TypeVar('SPT')
 
 
-def tree_device_put(tree: SPT, mesh: Mesh, axis_names: Tuple[Union[str, None], ...]) -> SPT:
+def tree_device_put(tree: SPT, mesh: Mesh, axis_names: tuple[Union[str, None], ...]) -> SPT:
     """
     Put a pytree on a device.
 

@@ -16,7 +16,7 @@ from jaxns.nested_samplers.types import IntArray, FloatArray
 from jaxns.nested_samplers.utils import scan_or_while_loop
 
 
-@dataclasses.dataclass(slots=True, frozen=True)
+@dataclasses.dataclass(slots=True)
 class State(PureDataclassPytree):
     root_out_degree: IntArray  # scalar
     samples: Samples
@@ -31,7 +31,7 @@ class State(PureDataclassPytree):
     def ensure_consistency(self):
         return _ensure_consistency(self)
 
-    def evaluate_evidence(self) -> Tuple[EvidenceCalculation, EvidenceCalculation]:
+    def evaluate_evidence(self) -> tuple[EvidenceCalculation, EvidenceCalculation]:
         return _evaluate_evidence(self)
 
     def sample_logZ(self, key, num_samples: int) -> FloatArray:
@@ -100,7 +100,7 @@ def _ensure_consistency(self):
 
 
 @partial(jax.jit, inline=True)
-def _evaluate_evidence(self) -> Tuple[EvidenceCalculation, EvidenceCalculation]:
+def _evaluate_evidence(self) -> tuple[EvidenceCalculation, EvidenceCalculation]:
     # Evaluate evidence calculation over all samples
     def single_register_update(carry, x):
         K_total, evidence_calculation, log_L = carry

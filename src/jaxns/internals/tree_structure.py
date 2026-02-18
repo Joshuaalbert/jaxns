@@ -180,7 +180,7 @@ def fast_perfect_live_point_computation_jax(log_L_constraints: jax.Array, log_L_
 
 def compute_num_live_points_from_unit_threads(log_L_constraints: FloatArray, log_L_samples: FloatArray,
                                               num_samples: IntArray = None, sorted_collection: bool = True) \
-        -> Union[FloatArray, Tuple[FloatArray, IntArray]]:
+        -> Union[FloatArray, tuple[FloatArray, IntArray]]:
     """
     Compute the number of live points of shrinkage distribution, from an arbitrary list of samples with
     corresponding sampling constraints.
@@ -303,8 +303,8 @@ def plot_tree(S: SampleTreeGraph):
     plt.show()
 
 
-def concatenate_sample_trees(trees: List[SampleTreeGraph],
-                             num_samples: Optional[List[IntArray]] = None) -> SampleTreeGraph:
+def concatenate_sample_trees(trees: list[SampleTreeGraph],
+                             num_samples: Optional[list[IntArray]] = None) -> SampleTreeGraph:
     """
     Concatenates a list of SampleTreeGraphs into a single SampleTreeGraph.
 

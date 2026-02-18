@@ -23,14 +23,14 @@ class AbstractPrior(ABC):
         ...
 
     @abstractmethod
-    def _base_shape(self) -> Tuple[int, ...]:
+    def _base_shape(self) -> tuple[int, ...]:
         """
         The base shape of the prior, in U-space.
         """
         ...
 
     @abstractmethod
-    def _shape(self) -> Tuple[int, ...]:
+    def _shape(self) -> tuple[int, ...]:
         """
         The shape of the prior, in X-space.
         """
@@ -223,14 +223,14 @@ class AbstractDistribution(ABC):
         ...
 
     @abstractmethod
-    def _base_shape(self) -> Tuple[int, ...]:
+    def _base_shape(self) -> tuple[int, ...]:
         """
         The base shape of the distribution, in U-space.
         """
         ...
 
     @abstractmethod
-    def _shape(self) -> Tuple[int, ...]:
+    def _shape(self) -> tuple[int, ...]:
         """
         The shape of the distribution, in X-space.
         """

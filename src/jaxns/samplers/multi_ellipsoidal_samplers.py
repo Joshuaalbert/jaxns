@@ -57,7 +57,7 @@ class MultiEllipsoidalSampler(BaseAbstractRejectionSampler[MultEllipsoidState]):
     def max_num_ellipsoids(self):
         return 2 ** self.depth
 
-    def _get_sample(self, key: PRNGKey, log_L_constraint: FloatArray, sampler_state: MultEllipsoidState) -> Tuple[
+    def _get_sample(self, key: PRNGKey, log_L_constraint: FloatArray, sampler_state: MultEllipsoidState) -> tuple[
         Sample, Sample]:
         def _sample_multi_ellipsoid(key: PRNGKey) -> UType:
             _, U = sample_multi_ellipsoid(
