@@ -206,7 +206,13 @@ class LogSpace(PureDataclassPytree):
         return self.sum(axis=axis, keepdims=keepdims) / LogSpace(jnp.log(N))
 
     def var(self, axis=-1, keepdims=False):
-        return (self - self.mean(axis=axis, keepdims=True)).mean(axis=axis, keepdims=keepdims)
+        return (self - self.mean(axis=axis, keepdims=True)).square().mean(axis=axis, keepdims=keepdims)
+
+    def pos_subtract(self, other):
+        # self - other given self > other
+        assert self.naked and other.naked
+        log_diff = self.log_abs_val + jnp.log1p(-jnp.exp(other.log_abs_value - self.log_abs_val))
+        return LogSpace(log_diff)
 
     def log(self):
         assert self.naked

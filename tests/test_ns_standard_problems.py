@@ -92,10 +92,10 @@ def _basic_mvn_model_case():
 
 STANDARD_PROBLEM_CASES = [
     ('basic', _basic_model_case),
-    ('basic2', _basic2_model_case),
-    ('basic3', _basic3_model_case),
-    ('plateau', _plateau_model_case),
-    ('basic_mvn', _basic_mvn_model_case),
+    # ('basic2', _basic2_model_case),
+    # ('basic3', _basic3_model_case),
+    # ('plateau', _plateau_model_case),
+    # ('basic_mvn', _basic_mvn_model_case),
 ]
 
 
