@@ -15,7 +15,7 @@ from uuid import uuid4
 import zmq
 
 from jaxns.fabric.zmq_actor import ZMQActor
-from jaxns.nested_samplers.logging import jaxns_logger
+from jaxns.logging import jaxns_logger
 
 STARTUP_ACK_TIMEOUT_S = 30
 

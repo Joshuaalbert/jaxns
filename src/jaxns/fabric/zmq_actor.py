@@ -8,7 +8,7 @@ from abc import abstractmethod, ABC
 
 import zmq
 
-from jaxns.nested_samplers.logging import jaxns_logger
+from jaxns.logging import jaxns_logger
 
 
 class CtlTerminate(Exception):

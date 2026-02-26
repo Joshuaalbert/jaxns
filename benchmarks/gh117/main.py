@@ -15,7 +15,7 @@ def run_model(max_samples: int):
         return 0.
 
     def prior_model():
-        x = yield Prior(tfpd.Uniform(0., 1.))  # , name='x')
+        x = Prior(tfpd.Uniform(0., 1.))  # , name='x')
         return x
 
     model = Model(prior_model=prior_model,

@@ -170,3 +170,77 @@ foundation to provide distributions. Any distribution with a quantile and CDF is
 this framework better and more compact, by outsource most of the lifting to `jaxctx`, a sister package used for making
 parametrised models using the memoisation model.
 
+## exponential races
+
+
+We formulate nested sampling as an exponential race of lineages.
+
+All node indices are in sorted order, so i < j implies L(i) >= L(j) (where = only for plateaus).
+We handle pleateaus by marginalising the race over permutations within plateaus.
+
+A parent graph is defined,
+
+    p(i) -> i means that i is a child of p(i), which means i was sampled from {L > L(p(i))}. 
+    Note, clearly a plateau implies some ambiguity in the parent graph, since any node within the plateau could be the parent of a given child.
+    
+A lineage is a maximal chain of nodes where p(i_{k}}) = i_{k-1}.
+
+A dummy root node, 0, is defined with L(0) = 0.
+
+Suppose we have N samples, indexed 1,...,N, via argsort(L) + 1 (stable sort so within plateau ordering preserved).
+
+define s_i = -log(X_i) where X_i is the prior volume associated with sample i. 
+Set s_0 = 0.
+
+Define the number of active children of node i at index j>i, as C(i,j) = |{ k : p(k) = i, k >= j}|.
+
+Define the active parent set A(i-1) = {j : j=1..i-1, C(j,i) > 0} which is the set of nodes before i which have active children at or after i.
+
+Each parent in A(i-1) defines a lineage, with at least one active child at or after i.
+
+For node i, sample ds_i ~ Exponential(K(i)) where K(i)=sum_{j in A(i-1)} C(j,i) is the total number of active children over all active lineages A(i-1).
+
+The principle property of exponential races is that the minimum of independent exponentials is itself an exponential with rate equal to the sum of the rates.
+
+So we set s_i = s_{i-1} + ds_i, and assign the race winner to the observed winning lineage (unconditionally we would need to sample which lineage won, but nested sampling conditions on this).
+In the case of plateaus we marginalise over the permutations within the plateau, which is equivalent to assigning winners in every possible order and averaging the results.
+We rely on permutations and stable sorting to ensure that the order of nodes within plateaus is consistent across all computations.
+
+Now, we don't need to actually compute C(j,i), nor maintain A(i-1) explicitly.
+We can maintain a running count of the number of active children for each node, and update this as we move through the samples.
+Define out-degree d(i) = |{ j : p(j) = i }|, and set d(0) = K, which K is the number of live points.
+
+When we process node i, we have K(i) = sum_{j in A(i-1)} C(j,i) as the total number of active children over all active lineages.
+We then decrement C(p(i),i+1) = C(p(i),i) - 1, removing one active child from the parent lineage of i, and then add d(i) active children to C(i+1) = C(i) + d(i).
+
+So in total after consuming node i, perform the update:
+
+    K(i+1) = K(i) - 1 + d(i)
+    
+Thus, we only need to maintain d(i) for each node, and not actually the graph {p(i)->i}, since the only thing we do with that graph is compute the out-degrees d(i).
+
+We are thus free to arbitrarily add samples to the graph from any node in any lineage, including the dummy node. 
+This implies creating new lineages is possibly by creating d(i) > 1 for some i.
+
+We have two modalities of evidence estimation: expectation-based and sampling-based.
+
+In the sampling based approach, we compute the trajectory of s_i many times, and then x_i = exp(-s_i) for each sample, and use these to sample evidence.
+When doing this for each sample we permutate the samples first, after which stable sorting preserves that permuatation within plateaus.
+Thus each evidence sample corresponds to a different trajectory of s_i handling plateaus correctly.
+
+For the expectation-based approach, we track several sufficient statistics to compute E[logZ], Var[logZ], E[logH] etc, marginalising over permutations within plateaus.
+These permutations are important when statistics involving the parameters are performed, but not when only evidence statistics are performed, since the likelihoods and prior volumes are invariant to permutations within plateaus.
+Marginalising over permutations is derived as the correct approach using the axiomatic derivation of Shapley values, which happens to satisfy the necessary properties for consistent evidence estimation in the presence of plateaus.
+
+Now the above tells us how to compute the prior volumes X_i associated with each sample i, but we now turn to how to sample.
+
+We begin with a dummy node 0, and K children sampled iid from the prior (constrained to L>L(0)), forming the initial live point set.
+We then apply the above tracking of K(i) in an online manner starting from node 0 with K(0) = K.
+We introduce parallelism by discarding m in [1, K/2] points at a time, and outsourcing the sampling of their replacements to different devices.
+That is we apply the above logic, to sequentially select nodes 1..m, each time updating K(i) = K(i-1) - 1 + d(i) as above, and updating the sufficient statistics for evidence estimation after each discard.
+Once we have selected m nodes to discard, we send their replacement sampling to different devices, sampling from within the last discarded point {L>L(m)}.
+This is repeated until a termination condition is met.
+
+We can then refine the run by adding children off any node in any lineage, every time adding d(i) -> d(i) + 1.
+To determine which nodes to add children to we require a target live point count per contour. 
+This is tricky, since suppose you add a child to node i, then the child sample will increase the live point count for an arbitrary number of subsequent contours.

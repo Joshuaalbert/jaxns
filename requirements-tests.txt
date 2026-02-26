@@ -3,3 +3,4 @@ networkx
 psutil
 pytest
 flake8
+ruff

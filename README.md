@@ -83,11 +83,11 @@ from jaxns.framework.prior import Prior
 
 
 def prior_model():
-    mu = yield Prior(tfpd.Normal(loc=0., scale=1.))
+    mu = Prior(tfpd.Normal(loc=0., scale=1.))
     # Let's make sigma a parameterised variable
-    sigma = yield Prior(tfpd.Exponential(rate=1.), name='sigma').parametrised()
-    x = yield Prior(tfpd.Cauchy(loc=mu, scale=sigma), name='x')
-    uncert = yield Prior(tfpd.Exponential(rate=1.), name='uncert')
+    sigma = Prior(tfpd.Exponential(rate=1.), name='sigma').parametrised()
+    x = Prior(tfpd.Cauchy(loc=mu, scale=sigma), name='x')
+    uncert = Prior(tfpd.Exponential(rate=1.), name='uncert')
     return x, uncert
 
 
@@ -112,9 +112,9 @@ There are two spaces of samples:
 
 ```python
 # Sample the prior in U-space (base measure)
-import jaxns.nested_samplers.types
+import jaxns.types
 
-U = model.sample_U(key=jaxns.nested_samplers.types.PRNGKey(0))
+U = model.sample_U(key=jaxns.types.PRNGKey(0))
 # Transform to X-space
 X = model.transform(U=U)
 # Only named Bayesian prior variables are returned, the rest are treated as hidden variables.
@@ -155,13 +155,13 @@ Given a probabilistic model, JAXNS can perform nested sampling on it. This allow
 posterior samples.
 
 ```python
-import jaxns.nested_samplers.types
+import jaxns.types
 from jaxns import NestedSampler
 
 ns = NestedSampler(model=model, max_samples=1e5)
 
 # Run the sampler
-termination_reason, state = ns(jaxns.nested_samplers.types.PRNGKey(42))
+termination_reason, state = ns(jaxns.types.PRNGKey(42))
 # Get the results
 results = ns.to_results(termination_reason=termination_reason, state=state)
 ```
@@ -170,9 +170,9 @@ results = ns.to_results(termination_reason=termination_reason, state=state)
 
 ```python
 # Ahead of time compilation (sometimes useful)
-import jaxns.nested_samplers.types
+import jaxns.types
 
-ns_aot = jax.jit(ns).lower(jaxns.nested_samplers.types.PRNGKey(42)).compile()
+ns_aot = jax.jit(ns).lower(jaxns.types.PRNGKey(42)).compile()
 
 # Just-in-time compilation (usually useful)
 ns_jit = jax.jit(ns)
@@ -227,15 +227,15 @@ Nested sampling produces weighted posterior samples. To use for most use cases, 
 replacement).
 
 ```python
-import jaxns.nested_samplers.types
+import jaxns.types
 from jaxns import resample
 
 samples = resample(
-    key=jaxns.nested_samplers.types.PRNGKey(0),
-    samples=results.samples,
-    log_weights=results.log_dp_mean,
-    S=1000,
-    replace=True
+   key=jaxns.types.PRNGKey(0),
+   samples=results.samples,
+   log_weights=results.log_dp,
+   S=1000,
+   replace=True
 )
 ```
 

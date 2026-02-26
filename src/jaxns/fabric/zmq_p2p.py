@@ -52,12 +52,12 @@ from collections import OrderedDict
 from concurrent.futures import Future
 from concurrent.futures.thread import ThreadPoolExecutor
 from enum import auto, Enum
-from typing import Dict, Optional, Union
+from typing import Optional, Union
 
 import zmq
 
 from jaxns.fabric.zmq_actor import ZMQActor, CtlTerminate
-from jaxns.nested_samplers.logging import jaxns_logger
+from jaxns.logging import jaxns_logger
 
 PICKLE_PROTO = pickle.HIGHEST_PROTOCOL
 

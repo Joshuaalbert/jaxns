@@ -45,7 +45,7 @@ def build_run_model(num_slices, gradient_guided, ndims):
         # print("True H={}".format(H_true))
 
         def prior_model():
-            x = yield Prior(
+            x = Prior(
                 tfpd.MultivariateNormalTriL(loc=prior_mu, scale_tril=jnp.linalg.cholesky(prior_cov)),
                 name='x')
             return x

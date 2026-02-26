@@ -12,7 +12,7 @@ def run(ndims, ensemble_size, input_queue: Queue, output_queue: Queue):
     # config.update("jax_enable_x64", True)
 
     from jaxns import Prior, Model
-    from jaxns.nested_samplers.types import TerminationCondition
+    from jaxns.types import TerminationCondition
     from jaxns.samplers import UniDimSliceSampler
     import jax
     from jax import random, numpy as jnp
@@ -28,7 +28,7 @@ def run(ndims, ensemble_size, input_queue: Queue, output_queue: Queue):
     data_cov = jnp.where(data_cov == 0., 0.99, data_cov)
 
     def prior_model():
-        x = yield Prior(
+        x = Prior(
             tfpd.MultivariateNormalTriL(
                 loc=prior_mu,
                 scale_tril=jnp.linalg.cholesky(prior_cov)

@@ -22,7 +22,7 @@ def build_eggbox_model(ndim: int) -> Model:
     """
 
     def prior_model():
-        z = yield Prior(tfpd.Uniform(low=jnp.zeros(ndim), high=10. * jnp.pi * jnp.ones(ndim)), name='z')
+        z = Prior(tfpd.Uniform(low=jnp.zeros(ndim), high=10. * jnp.pi * jnp.ones(ndim)), name='z')
         return z
 
     def log_likelihood(z):
@@ -51,7 +51,7 @@ def build_rastrigin_model(ndim: int) -> Model:
     def prior_model():
         x_min = -5.12
         x_max = 5.12
-        z = yield Prior(tfpd.Uniform(low=x_min * jnp.ones(ndim), high=x_max * jnp.ones(ndim)), name='z')
+        z = Prior(tfpd.Uniform(low=x_min * jnp.ones(ndim), high=x_max * jnp.ones(ndim)), name='z')
         return z
 
     def log_likelihood(z):
@@ -78,7 +78,7 @@ def build_rosenbrock_model(ndim: int) -> Model:
     """
 
     def prior_model():
-        z = yield Prior(tfpd.Uniform(low=-5 * jnp.ones(ndim), high=5 * jnp.ones(ndim)), name='z')
+        z = Prior(tfpd.Uniform(low=-5 * jnp.ones(ndim), high=5 * jnp.ones(ndim)), name='z')
         return z
 
     def log_likelihood(z):
@@ -104,7 +104,7 @@ def build_spikeslab_model(ndim: int) -> Model:
     """
 
     def prior_model():
-        z = yield Prior(tfpd.Uniform(low=-4. * jnp.ones(ndim), high=8. * jnp.ones(ndim)), name='z')
+        z = Prior(tfpd.Uniform(low=-4. * jnp.ones(ndim), high=8. * jnp.ones(ndim)), name='z')
         return z
 
     def log_likelihood(z):
@@ -163,8 +163,8 @@ def main():
             termination_reason, state = ns_compiled(jax.random.PRNGKey(42))
             termination_reason.block_until_ready()
         results = ns.to_results(termination_reason=termination_reason, state=state)
-        ns.plot_diagnostics(results, save_name=f"{model_name}_diagnostics.png")
-        ns.plot_cornerplot(results, save_name=f"{model_name}_cornerplot.png")
+        results.plot_diagnostics(save_file=f"{model_name}_diagnostics.png")
+        results.plot_cornerplot(save_name=f"{model_name}_cornerplot.png")
         ns.summary(results, f_obj=f"{model_name}_summary.txt")
 
 

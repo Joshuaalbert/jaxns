@@ -34,7 +34,7 @@ def run_model(key, prior_mu, prior_cov, data_mu, data_cov):
     # print(f"True log Z: {log_Z_true}")
 
     def prior_model():
-        x = yield Prior(
+        x = Prior(
             tfpd.MultivariateNormalTriL(loc=prior_mu, scale_tril=jnp.linalg.cholesky(prior_cov)),
             name='x')
         return x
