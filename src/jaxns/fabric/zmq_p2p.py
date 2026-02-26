@@ -152,7 +152,7 @@ class ClientRecord:
     lease_id: bytes | None = dataclasses.field(default_factory=lambda: None)
     worker_record: Union['WorkerRecord', None] = dataclasses.field(default_factory=lambda: None)
     state: ClientStateEnum = dataclasses.field(default_factory=lambda: ClientStateEnum.idle)
-    mru_cache: Ordereddict[bytes, None] = dataclasses.field(default_factory=OrderedDict)  # worker_id -> None
+    mru_cache: OrderedDict[bytes, None] = dataclasses.field(default_factory=OrderedDict)  # worker_id -> None
 
     def request(self):
         if self.pending_request:
@@ -324,8 +324,8 @@ class LoadBalancer(ZMQActor):
         self.backend_addr = backend_addr
 
         # Maintain in LRU order
-        self.worker_records: Ordereddict[bytes, WorkerRecord] = OrderedDict()
-        self.client_records: Ordereddict[bytes, ClientRecord] = OrderedDict()
+        self.worker_records: OrderedDict[bytes, WorkerRecord] = OrderedDict()
+        self.client_records: OrderedDict[bytes, ClientRecord] = OrderedDict()
 
         # Epoch fences stale COMPLETEs across LB restarts
         self.epoch: bytes = f"{random.getrandbits(64):016x}".encode("ascii")

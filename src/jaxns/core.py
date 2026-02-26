@@ -19,7 +19,7 @@ from jaxns.types import IntArray, BoolArray, PRNGKey
 
 
 @partial(jax.jit, inline=True, static_argnames=['num_live_points', 'num_phantom', 'max_samples', 'store_phantom_samples', 'batch_size'])
-def _sample_init_state(key, num_live_points: int, num_phantom: int, max_samples: int, model: Model, args=(),
+def _sample_init_state(key, num_live_points: int, max_samples: int, model: Model, num_phantom: int = 0, args=(),
                        params: CtxParams | None = None, store_phantom_samples: bool = False, batch_size: int | None = None) -> State:
     def single_sample(key):
         key, subkey = jax.random.split(key)
@@ -83,8 +83,8 @@ def _sample_init_state(key, num_live_points: int, num_phantom: int, max_samples:
         U_samples=jax.tree.map(lambda x: jnp.zeros_like(x[0]), samples.U_samples),
         phantom_samples=PhantomSamples(
             U_samples=jax.tree.map(lambda x: jnp.zeros_like(x[0]), samples.phantom_samples.U_samples),
-            log_L=jnp.asarray(-jnp.inf, mp_policy.measure_dtype),
-            valid_mask=jnp.asarray(False, mp_policy.bool_dtype)
+            log_L=jnp.zeros_like(samples.phantom_samples.log_L[0]),
+            valid_mask=jnp.zeros_like(samples.phantom_samples.valid_mask[0])
         )
     )
     if not store_phantom_samples:
@@ -264,7 +264,9 @@ class NestedSampler(PureDataclassPytree):
     batch_size: int | None = None
 
     def __post_init__(self):
-        U_ndims = self.model.U_ndims(self.args, self.params)
+        U_ndims = 0
+        if self.target_num_live_points is None or self.max_samples is None or self.shell_size is None:
+            U_ndims = int(self.model.U_ndims(self.args, self.params))
         if self.target_num_live_points is None:
             self.target_num_live_points = 100 * U_ndims
         if self.max_samples is None:
@@ -312,8 +314,8 @@ class NestedSampler(PureDataclassPytree):
         return _run_ns(
             key=key,
             state=state,
-            target_num_live_points=self.target_num_live_points,
-            shell_size=self.shell_size,
+            target_num_live_points=int(self.target_num_live_points),
+            shell_size=int(self.shell_size),
             args=self.args,
             sampler=self.sampler,
             params=self.params,
@@ -330,8 +332,8 @@ def _run(self: NestedSampler, key) -> State:
     key, init_key = jax.random.split(key)
     state = _sample_init_state(
         key=init_key,
-        num_live_points=self.target_num_live_points,
-        max_samples=self.max_samples,
+        num_live_points=int(self.target_num_live_points),
+        max_samples=int(self.max_samples),
         model=self.model,
         args=self.args,
         params=self.params,
@@ -341,8 +343,8 @@ def _run(self: NestedSampler, key) -> State:
     state = _run_ns(
         key=key,
         state=state,
-        target_num_live_points=self.target_num_live_points,
-        shell_size=self.shell_size,
+        target_num_live_points=int(self.target_num_live_points),
+        shell_size=int(self.shell_size),
         args=self.args,
         sampler=self.sampler,
         params=self.params,

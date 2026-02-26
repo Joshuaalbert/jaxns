@@ -79,7 +79,7 @@ def cumulative_op_dynamic(op: Callable[[V, Y], V], init: V, xs: Y, stop_idx: Int
         next_output = jax.tree.map(lambda a, b: a.at[i].set(b), output, next_accumulate)
         return (next_accumulate, next_i, next_output)
 
-    length = jax.tree.jax.tree.flatten(xs)[0][0].shape[0]
+    length = jax.tree.flatten(xs)[0][0].shape[0]
 
     output = jax.tree.map(
         lambda x: jnp.tile(x[None], [length] + [1] * len(x.shape)),
@@ -95,6 +95,24 @@ def cumulative_op_dynamic(op: Callable[[V, Y], V], init: V, xs: Y, stop_idx: Int
     )
 
     return final_accumulate, final_output
+
+
+def scan_associative_cumulative_op(op: Callable[[V, Y], V], init: V, xs: Y, pre_op: bool = False) -> tuple[V, V]:
+    """
+    Compute cumulative operation via ``jax.lax.associative_scan``.
+    """
+
+    stacked_xs = jax.tree.map(lambda x, i: jnp.concatenate([i[None, ...], x], axis=0), xs, init)
+    try:
+        cumulative = jax.lax.associative_scan(op, stacked_xs)
+    except Exception:
+        return cumulative_op_static(op=op, init=init, xs=xs, pre_op=pre_op)
+    final_accumulate = jax.tree.map(lambda x: x[-1], cumulative)
+    if pre_op:
+        result = jax.tree.map(lambda x: x[:-1], cumulative)
+    else:
+        result = jax.tree.map(lambda x: x[1:], cumulative)
+    return final_accumulate, result
 
 
 def scan_or_while_loop(scan_fn, carry_init, xs, length: IntArray | None = None, unroll: int = 1) -> tuple:

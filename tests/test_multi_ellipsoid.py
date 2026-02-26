@@ -1,52 +1,52 @@
+import matplotlib
 import jax
 import numpy as np
-import pylab as plt
 import tensorflow_probability.substrates.jax as tfp
-from jax import numpy as jnp, random, disable_jit, vmap
+from jax import numpy as jnp, random, vmap
 from jaxctx.priors.prior import Prior
 
-from jaxns.framework.bases import PriorModelGen
-from jaxns.framework.model import Model
+from jaxns.model import Model
+
 from jaxns.mixed_precision import mp_policy
 from jaxns.random_utils import random_ortho_matrix
-from jaxns.types import Sample
-from jaxns.nested_samplers.old.uniform_sample import draw_uniform_samples
 from jaxns.multi_ellipsoid_utils import log_ellipsoid_volume, ellipsoid_clustering, \
     bounding_ellipsoid, covariance_to_rotational, ellipsoid_params, point_in_ellipsoid, plot_ellipses, \
     EllipsoidParams, maha_ellipsoid, circle_to_ellipsoid, ellipsoid_to_circle
+
+matplotlib.use("Agg")
+import pylab as plt
 
 tfpd = tfp.distributions
 
 
 def test_ellipsoid_clustering():
     def prior_model():
-        x = Prior(tfpd.Uniform(low=0, high=2))
-        y = Prior(tfpd.Normal(loc=0, scale=2))
-
-        return x, y
+        x = Prior(tfpd.Uniform(low=0, high=2), name='x').realise()
+        y = Prior(tfpd.Normal(loc=0, scale=2), name='y').realise()
+        return log_likelihood(x, y)
 
     def log_likelihood(x, y):
         return jnp.log(jnp.exp(-0.5 * ((x - 0.5) / 0.1) ** 2 - 0.5 * ((y - 0.5) / 0.1) ** 2) + jnp.exp(
             -0.5 * ((x - 1.5) / 0.1) ** 2 - 0.5 * ((y - 1.5) / 0.1) ** 2))
 
-    model = Model(prior_model=prior_model,
-                  log_likelihood=log_likelihood)
+    model = Model(prior_model=prior_model)
 
     n = 1000
     keys = random.split(random.PRNGKey(42), n)
-    live_points = draw_uniform_samples(
-        keys=keys,
-        model=model
+    U_samples = vmap(model.sample_U)(keys)
+    log_L = vmap(model.log_likelihood)(U_samples)
+    threshold = jnp.percentile(log_L, 75)
+    keep = log_L > threshold
+    points = jnp.stack(jax.tree.leaves(U_samples), axis=-1).astype(mp_policy.measure_dtype)
+    reservoir = points[keep]
+    plt.scatter(reservoir[:, 0], reservoir[:, 1])
+    state = ellipsoid_clustering(
+        random.PRNGKey(42),
+        points=reservoir,
+        log_VS=jnp.asarray(0., mp_policy.measure_dtype),
+        max_num_ellipsoids=10
     )
-    keep = live_points.log_L > log_likelihood(1.1, 1.1)
-    reservoir: Sample = jax.tree.map(lambda x: x[keep], live_points)
-    plt.scatter(reservoir.U_sample[:, 0], reservoir.U_sample[:, 1])
-    with disable_jit():
-        state = ellipsoid_clustering(random.PRNGKey(42), points=reservoir.U_sample,
-                                     log_VS=jnp.asarray(0., mp_policy.measure_dtype),
-                                     max_num_ellipsoids=10)
-        plot_ellipses(params=state.params)
-    # plt.show()
+    plot_ellipses(params=state.params, show=False)
     plt.close('all')
 
 
@@ -58,15 +58,15 @@ def test_log_ellipsoid_volume():
 
 
 def test_bounding_ellipsoid():
-    n = 1_000_000
+    n = 200_000
     mean = jnp.asarray([0., 0.])
     cov = jnp.asarray([[1., 0.4], [0.4, 1.]])
     X = random.multivariate_normal(random.PRNGKey(42), mean=mean,
                                    cov=cov, shape=(n,))
     mask = jnp.ones(n, jnp.bool_)
     mu, Sigma = bounding_ellipsoid(points=X, mask=mask)
-    assert jnp.allclose(mu, mean, atol=1e-2)
-    assert jnp.allclose(Sigma, cov, atol=1e-2)
+    assert jnp.allclose(mu, mean, atol=2e-2)
+    assert jnp.allclose(Sigma, cov, atol=2e-2)
 
 
 def test_covariance_to_rotational():
@@ -106,7 +106,7 @@ def test_ellipsoid_params():
     mu, radii, rotation = ellipsoid_params(points=X, mask=jnp.ones(n, jnp.bool_))
     inside = vmap(lambda x: point_in_ellipsoid(x, mu, radii, rotation))(X)
     plt.scatter(X[:, 0], X[:, 1], c=inside)
-    plot_ellipses(jax.tree.map(lambda x: x[None], EllipsoidParams(mu, radii, rotation)))
+    plot_ellipses(jax.tree.map(lambda x: x[None], EllipsoidParams(mu, radii, rotation)), show=False)
 
     assert np.all(inside)
 

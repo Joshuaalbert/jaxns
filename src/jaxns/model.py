@@ -9,7 +9,7 @@ from jaxctx import transform
 
 from jaxns.logging import jaxns_logger
 from jaxns.pytree import PureDataclassPytree
-from jaxns.types import PRNGKey, FloatArray, UType, XType, IntArray
+from jaxns.types import PRNGKey, FloatArray, UType, XType
 
 __all__ = [
     'Model'
@@ -34,6 +34,7 @@ class Model(PureDataclassPytree):
     def U_ndims(self, args=(), params=None) -> int:
         """
         Get the number of dimensions in flattened U-space.
+        Will cause a problem if traced.
 
         Args:
             args: additional arguments for the model
@@ -144,17 +145,17 @@ class Model(PureDataclassPytree):
 Model.register_pytree()
 
 
-@partial(jax.jit, inline=True)
-def _U_ndims(self: Model, args=(), params=None) -> IntArray:
-    u_example = self.sample_U(jax.random.PRNGKey(0), args=args, params=params)
-    U_ndims = sum(jax.tree.map(np.size, u_example))
-    return U_ndims
+def _U_ndims(self: Model, args=(), params=None) -> int:
+    u_example = jax.eval_shape(self.sample_U, jax.random.PRNGKey(0), args=args, params=params)
+    U_ndims = sum(map(lambda x: np.prod(x.shape), jax.tree.leaves(u_example)))
+    return int(U_ndims)
 
 
 @partial(jax.jit, inline=True)
 def _sample_U(self: Model, key: PRNGKey, args=(), params=None) -> UType:
+    u_key, params_key = jax.random.split(key, 2)
     init_return = transform(self.prior_model).init(
-        rngs={'params': key},
+        rngs={'params': params_key, 'U': u_key},
         collections={'params': params},
         *args
     )

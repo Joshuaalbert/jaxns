@@ -1,4 +1,7 @@
 from functools import partial
+import pickle
+from pathlib import Path
+from typing import Any
 
 import jax
 import numpy as np
@@ -10,13 +13,42 @@ from jaxns.log_semiring import LogSpace, normalise_log_space
 from jaxns.mixed_precision import mp_policy
 from jaxns.model import Model
 from jaxns.pytree import pytree_ravel
+from jaxns.random_utils import resample_indicies
 from jaxns.types import FloatArray, IntArray, XType
 
 __all__ = [
     'summary',
     'bruteforce_posterior_samples',
-    'bruteforce_evidence'
+    'bruteforce_evidence',
+    'resample',
+    '_bit_mask',
+    'save_pytree',
+    'load_pytree',
+    'insert_index_diagnostic'
 ]
+
+
+def _bit_mask(int_mask, width=8):
+    return list(map(int, '{:0{size}b}'.format(int_mask, size=width)))[::-1]
+
+
+def resample(key, samples, log_weights, S: int | None = None, replace: bool = True):
+    if S is None:
+        S = int(np.size(log_weights))
+    idx = resample_indicies(key=key, log_weights=log_weights, S=S, replace=replace)
+    return jax.tree.map(lambda x: x[idx, ...], samples)
+
+
+def save_pytree(pytree: Any, filename: str):
+    path = Path(filename)
+    with path.open('wb') as f:
+        pickle.dump(pytree, f)
+
+
+def load_pytree(filename: str):
+    path = Path(filename)
+    with path.open('rb') as f:
+        return pickle.load(f)
 
 
 def _isinstance_namedtuple(obj) -> bool:
