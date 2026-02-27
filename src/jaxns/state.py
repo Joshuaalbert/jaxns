@@ -126,8 +126,8 @@ def _to_result(self: State) -> NestedSamplerResults:
         evidence_calc.Z_mean.log_abs_val,
         evidence_calc.dZ2_mean.log_abs_val
     )
-    dp_mean = LogSpace(cum_evidence_calc.dZ_mean.log_abs_val)
-    dp_mean = normalise_log_space(dp_mean)
+    log_dZ_mean = jnp.where(sample_mask, cum_evidence_calc.dZ_mean.log_abs_val, jnp.asarray(-jnp.inf, mp_policy.measure_dtype))
+    dp_mean = normalise_log_space(LogSpace(log_dZ_mean))
     H_mean_instable = -(
             (
                     dp_mean * LogSpace.from_signed_value(

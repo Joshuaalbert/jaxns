@@ -156,17 +156,15 @@ def _run_ns(key, state: State, target_num_live_points: int, shell_size: int, arg
             root_out_degree=outer_carry.state.root_out_degree,
             num_samples=outer_carry.state.num_samples
         )
-        # K[i] = K[i-1] - 1 + d(i)
-        # so K[i-1] = K[i] + 1 - d(i) is the number of live points just before shrinkage
-        K_per_sample_before = K_per_sample + 1 - outer_carry.state.samples.out_degree
+        K_next_sample = K_per_sample - 1 + outer_carry.state.samples.out_degree
         select_weights = jnp.where(
             jnp.logical_and(
-                jnp.arange(K_per_sample_before.shape[0]) < outer_carry.state.num_samples,
-                K_per_sample_before < target_num_live_points
+                jnp.arange(K_next_sample.shape[0]) < outer_carry.state.num_samples,
+                K_next_sample < target_num_live_points
             ), 0, -jnp.inf)
         select_contours_key, key = jax.random.split(outer_carry.key, 2)
         parent_idxs = resample_indicies(select_contours_key, log_weights=select_weights, S=shell_size, replace=False)  # [S]
-        log_L_constraints = outer_carry.state.samples.log_likelihoods[parent_idxs]  # [S]
+        proposed_log_L_constraints = outer_carry.state.samples.log_likelihoods[parent_idxs]  # [S]
 
         def get_sample(key, log_L_constraint, parent_idx: IntArray):
             seed_key, sample_key = jax.random.split(key)
@@ -188,13 +186,17 @@ def _run_ns(key, state: State, target_num_live_points: int, shell_size: int, arg
             )
             return sampler.get_sample(
                 sample_key, log_L_constraint, seed_point, args=args, params=params,
-            ), (delta_root_out_degree, delta_parent_out_degree)
+            ), (delta_root_out_degree, delta_parent_out_degree, log_L_constraint)
 
         key, subkey = jax.random.split(outer_carry.key)
         keys = jax.random.split(subkey, shell_size)
-        (U_samples, log_likelihoods, num_likelihood_evaluations, phantom_samples), (delta_root_out_degree, delta_parent_out_degree) = jax.lax.map(
+        (U_samples, log_likelihoods, num_likelihood_evaluations, phantom_samples), (
+            delta_root_out_degree,
+            delta_parent_out_degree,
+            log_L_constraints
+        ) = jax.lax.map(
             lambda x: get_sample(x[0], x[1], x[2]),
-            (keys, log_L_constraints, parent_idxs),
+            (keys, proposed_log_L_constraints, parent_idxs),
             batch_size=batch_size
         )
 
@@ -283,7 +285,7 @@ class NestedSampler(PureDataclassPytree):
             self.shell_size = max(1, self.target_num_live_points // 2)
         max_samples = jnp.asarray(self.max_samples, dtype=mp_policy.count_dtype)
         if self.termination_condition is None:
-            self.termination_condition = TerminationCondition(dlogZ=1e-3, max_samples=max_samples)
+            self.termination_condition = TerminationCondition(dlogZ=1e-5, max_samples=max_samples)
         elif self.termination_condition.max_samples is None:
             self.termination_condition.max_samples = max_samples
         else:

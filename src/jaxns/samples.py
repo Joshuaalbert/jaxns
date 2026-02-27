@@ -3,15 +3,13 @@ from functools import partial
 
 import jax.lax
 import jax.tree
-import numpy as np
-from jax import numpy as jnp
-from jax._src import prng
+from jax import numpy as jnp, random
 
+from jaxns.cumulative_ops import scan_or_while_loop
 from jaxns.logging import jaxns_logger
 from jaxns.mixed_precision import mp_policy
 from jaxns.pytree import PureDataclassPytree
 from jaxns.types import FloatArray, IntArray, UType, BoolArray
-from jaxns.cumulative_ops import scan_or_while_loop
 
 
 @dataclasses.dataclass(slots=True)
@@ -31,6 +29,7 @@ class PhantomSamples(PureDataclassPytree):
 
 
 PhantomSamples.register_pytree()
+
 
 @dataclasses.dataclass(slots=True)
 class Samples(PureDataclassPytree):
@@ -113,7 +112,13 @@ def _sort(self: Samples) -> Samples:
 
 @partial(jax.jit, inline=True)
 def _perm_sort(self: Samples, key) -> Samples:
-    sort_keys = prng.random_bits(key, bit_width=32, shape=np.shape(self.log_likelihoods))
+    sort_keys = random.randint(
+        key,
+        shape=jnp.shape(self.log_likelihoods),
+        minval=0,
+        maxval=jnp.iinfo(jnp.uint32).max,
+        dtype=jnp.uint32
+    )
     iota = jnp.arange(len(self.log_likelihoods))
     (log_likelihoods, _, idxs) = jax.lax.sort(
         (self.log_likelihoods, sort_keys, iota),
@@ -127,9 +132,9 @@ def _perm_sort(self: Samples, key) -> Samples:
 def _compute_num_live_points_per_sample(self: Samples, root_out_degree: IntArray,
                                         num_samples: IntArray | None = None) -> IntArray:
     # Cumulatively apply K[i+1] = K[i] - 1 + d(i)
-    def scan_fn(carry, out_degree):
+    def scan_fn(carry, out_degree_i):
         K_i, = carry
-        K_ip1 = K_i - jnp.ones((), K_i.dtype) + out_degree
+        K_ip1 = K_i - jnp.ones((), K_i.dtype) + out_degree_i
         return (K_ip1,), K_i
 
     _, K_values = scan_or_while_loop(scan_fn, (root_out_degree,), self.out_degree.astype(root_out_degree.dtype),

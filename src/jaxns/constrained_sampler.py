@@ -254,21 +254,23 @@ def _new_proposal(
 
             can_expand_left = carry.left > left_bound
             can_expand_right = carry.right < right_bound
-            choose_left_random = random.uniform(choose_key, dtype=left_bound.dtype) < 0.5
-            expand_left = jnp.where(can_expand_left & can_expand_right, choose_left_random, can_expand_left)
-            expand_right = jnp.bitwise_not(expand_left)
+
+            choose_left_random = random.uniform(choose_key, dtype=left_bound.dtype) < jnp.where(
+                can_expand_left & can_expand_right, 0.5, jnp.where(can_expand_left, 1., 0.))
 
             current_width = jnp.maximum(carry.right - carry.left, eps)
             candidate_left = jnp.maximum(left_bound, carry.left - current_width)
             candidate_right = jnp.minimum(right_bound, carry.right + current_width)
 
-            next_left = jnp.where(expand_left, candidate_left, carry.left)
-            next_right = jnp.where(expand_right, candidate_right, carry.right)
+            t_eval = jnp.where(choose_left_random, candidate_left, candidate_right)
 
-            left_log_L = log_likelihood_fn(_point_at_t(next_left).tree).astype(log_L_constraint.dtype)
-            right_log_L = log_likelihood_fn(_point_at_t(next_right).tree).astype(log_L_constraint.dtype)
-            next_left_outside_slice = jnp.where(expand_left, left_log_L <= log_L_constraint, carry.left_outside_slice)
-            next_right_outside_slice = jnp.where(expand_right, right_log_L <= log_L_constraint, carry.right_outside_slice)
+            next_left = jnp.where(choose_left_random, candidate_left, carry.left)
+            next_right = jnp.where(choose_left_random, carry.right, candidate_right)
+
+            log_L_eval = log_likelihood_fn(_point_at_t(t_eval).tree)
+            outside_slice_eval = log_L_eval <= log_L_constraint
+            next_left_outside_slice = jnp.where(choose_left_random, outside_slice_eval, carry.left_outside_slice)
+            next_right_outside_slice = jnp.where(choose_left_random, carry.right_outside_slice, outside_slice_eval)
             num_likelihood_evaluations = carry.num_likelihood_evaluations + jnp.ones_like(carry.num_likelihood_evaluations)
 
             return StepOutCarry(
@@ -280,13 +282,15 @@ def _new_proposal(
                 num_likelihood_evaluations=num_likelihood_evaluations
             )
 
+        left_outside_slice = log_likelihood_fn(_point_at_t(left).tree) <= log_L_constraint
+        right_outside_slice = log_likelihood_fn(_point_at_t(right).tree) <= log_L_constraint
         step_out_init = StepOutCarry(
             key=step_key,
             left=left,
             right=right,
-            left_outside_slice=jnp.zeros((), mp_policy.bool_dtype),
-            right_outside_slice=jnp.zeros((), mp_policy.bool_dtype),
-            num_likelihood_evaluations=jnp.asarray(0, mp_policy.count_dtype)
+            left_outside_slice=left_outside_slice,
+            right_outside_slice=right_outside_slice,
+            num_likelihood_evaluations=jnp.asarray(2, mp_policy.count_dtype)
         )
 
         step_out_carry = jax.lax.while_loop(
@@ -333,7 +337,7 @@ def _new_proposal(
     else:
         # Randomly choose a new direction
         direction = _sample_direction(after_key, direction)
-    next_slice_width = carry.right - carry.left
+    next_slice_width = 2*(carry.right - carry.left)
     return carry.point_U, carry.log_L, num_likelihood_evaluations, direction, next_slice_width
 
 
@@ -442,26 +446,47 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
 
         direction_key, sample_key = jax.random.split(key, 2)
 
-        direction = _sample_direction(direction_key, TreeField(seed_point.U0))
+        init_direction = _sample_direction(direction_key, TreeField(seed_point.U0))
         slice_width_dtype = jax.tree.leaves(seed_point.U0)[0].dtype
 
-        init_carry = Carry(
-            U_sample=TreeField(seed_point.U0),
+        #### initial proposal to get slice width for cumulative op with perfect stepout
+        sample_key, init_sample_key = random.split(sample_key, 2)
+
+        U_sample, log_L, num_likelihood_evaluations, init_direction, slice_width = _new_proposal(
+            key=init_sample_key,
+            U0=TreeField(seed_point.U0),
+            direction=init_direction,
+            slice_width=jnp.asarray(jnp.inf, slice_width_dtype),
+            no_step_out=True,
+            gradient_guided=self.gradient_guided,
             log_L_constraint=log_L_constraint,
-            log_L=seed_point.log_L0,
-            num_likelihood_evaluations=jnp.asarray(0, mp_policy.count_dtype),
-            direction=direction,
-            slice_width=jnp.asarray(jnp.inf, slice_width_dtype)
+            log_likelihood_fn=log_likelihood_fn,
+        )
+
+        init_carry = Carry(
+            U_sample=U_sample,
+            log_L_constraint=log_L_constraint,
+            log_L=log_L,
+            num_likelihood_evaluations=num_likelihood_evaluations,
+            direction=init_direction,
+            slice_width=slice_width
         )
 
         xs = XType(
-            key=random.split(sample_key, self.num_slices),
-            alpha=jnp.linspace(0.5, 1., self.num_slices)
+            key=random.split(sample_key, self.num_slices - 1),
+            alpha=jnp.linspace(0.5, 1., self.num_slices - 1)
         )
         final_carry, cumulative_samples = cumulative_op_static(
             op=propose_op,
             init=init_carry,
             xs=xs
+        )
+
+        # concat initial sample to cumulative samples
+        cumulative_samples = jax.tree.map(
+            lambda x, y: jnp.concatenate([x[None], y], axis=0),
+            init_carry,
+            cumulative_samples
         )
 
         # Last sample is the final sample, the rest are potential phantom samples
