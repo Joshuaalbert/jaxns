@@ -23,6 +23,16 @@ class AbstractSampler(ABC):
     """
 
     @abstractmethod
+    def num_phantom(self) -> int:
+        """
+        Get the number of phantom samples to produce per real sample. Note that the number of phantom samples may be less than this if the sampler fails to produce enough valid phantom samples, but it will never be more than this.
+
+        Returns:
+            the number of phantom samples to produce per real sample.
+        """
+        ...
+
+    @abstractmethod
     def get_sample(self, key, log_L_constraint: FloatArray, seed_point: SeedPoint, args=(), params=None) -> tuple[UType, FloatArray, IntArray, PhantomSamples]:
         """
         Produce a single i.i.d. sample from the model within the log_L_constraint.

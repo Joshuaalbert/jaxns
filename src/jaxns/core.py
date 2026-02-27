@@ -208,9 +208,6 @@ def _run_ns(key, state: State, target_num_live_points: int, shell_size: int, arg
         )
         if outer_carry.state.samples.phantom_samples.U_samples is None:
             new_samples.phantom_samples.U_samples = None
-            num_phantom = outer_carry.state.samples.phantom_samples.valid_mask.shape[1]
-            new_samples.phantom_samples.valid_mask = jnp.zeros((shell_size, num_phantom), dtype=mp_policy.bool_dtype)
-            new_samples.phantom_samples.log_L = jnp.full((shell_size, num_phantom), -jnp.inf, dtype=mp_policy.measure_dtype)
 
         candidate_supremum_candidate_iid = jnp.argmax(new_samples.log_likelihoods)
         candidate_log_L_supremum = new_samples.log_likelihoods[candidate_supremum_candidate_iid]
@@ -283,8 +280,13 @@ class NestedSampler(PureDataclassPytree):
             self.max_samples = 10000 * U_ndims
         if self.shell_size is None:
             self.shell_size = max(1, self.target_num_live_points // 2)
+        max_samples = jnp.asarray(self.max_samples, dtype=mp_policy.count_dtype)
         if self.termination_condition is None:
-            self.termination_condition = TerminationCondition(dlogZ=1e-3)
+            self.termination_condition = TerminationCondition(dlogZ=1e-3, max_samples=max_samples)
+        elif self.termination_condition.max_samples is None:
+            self.termination_condition.max_samples = max_samples
+        else:
+            self.termination_condition.max_samples = jnp.minimum(self.termination_condition.max_samples, max_samples)
         if self.sampler is None:
             self.sampler = UniDimSliceSampler(model=self.model, num_slices=max(1, 5 * U_ndims))
 
@@ -347,6 +349,7 @@ def _run(self: NestedSampler, key) -> State:
         num_live_points=int(self.target_num_live_points),
         max_samples=int(self.max_samples),
         model=self.model,
+        num_phantom=int(self.sampler.num_phantom()) if self.sampler is not None else 0,
         args=self.args,
         params=self.params,
         store_phantom_samples=self.store_phantom_samples,
