@@ -8,9 +8,7 @@ from tensorflow_probability.substrates import jax as tfp
 
 from jaxns.core import NestedSampler
 from jaxns.model import Model
-from jaxns.results import _sample_evidence
 from jaxns.utils import bruteforce_evidence
-
 
 pytestmark = pytest.mark.skip(reason="Legacy nested-sampling standard-problem tests are incompatible with the in-progress v3 rewrite.")
 
@@ -25,7 +23,6 @@ def _basic_model_case():
     model = Model(prior_model=prior_model)
     log_Z_true = bruteforce_evidence(model=model, grid_res=200)
     return model, log_Z_true, {}
-
 
 
 def _basic2_model_case():
@@ -92,12 +89,11 @@ def _basic_mvn_model_case():
 
 STANDARD_PROBLEM_CASES = [
     ('basic', _basic_model_case),
-    # ('basic2', _basic2_model_case),
-    # ('basic3', _basic3_model_case),
-    # ('plateau', _plateau_model_case),
-    # ('basic_mvn', _basic_mvn_model_case),
+    ('basic2', _basic2_model_case),
+    ('basic3', _basic3_model_case),
+    ('plateau', _plateau_model_case),
+    ('basic_mvn', _basic_mvn_model_case),
 ]
-
 
 
 def test_nested_sampling_run_results():
@@ -110,11 +106,7 @@ def test_nested_sampling_run_results():
         print(f"Checking {name}")
         assert not np.isnan(results.log_Z_mean)
         assert not np.isnan(results.log_Z_uncert)
-
-        log_Z_samples = _sample_evidence(results,
-                                         alpha=results.num_live_points_per_sample,
-                                         log_L=results.log_L,
-                                         num_samples=1000)
+        log_Z_samples = results.sample_evidence(num_samples=1000)
 
         # Filter outliers
         select_mask = jnp.bitwise_and(
