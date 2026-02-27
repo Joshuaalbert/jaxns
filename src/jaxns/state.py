@@ -100,88 +100,97 @@ class State(PureDataclassPytree):
         """
         return _compute_termination_register(self, target_num_live_points)
 
-    def to_result(self) -> NestedSamplerResults:
+    def to_result(self: NestedSamplerResults) -> NestedSamplerResults:
         """
             Convert the current state to a NestedSamplerResults object, which contains all the information about the samples, evidence, and diagnostics.
 
         Returns:
             result object
         """
-        evidence_calc, cum_evidence_calc = self.evaluate_evidence()
-        log_Z_mean, log_Z_var = linear_to_log_stats(evidence_calc.Z_mean.log_abs_val, log_f2_mean=evidence_calc.Z2_mean.log_abs_val)
-        log_Z_uncert = jnp.sqrt(jnp.maximum(0, log_Z_var))
-        ess = effective_sample_size_kish(
-            evidence_calc.Z_mean.log_abs_val,
-            evidence_calc.dZ2_mean.log_abs_val
-        )
-        dp_mean = LogSpace(cum_evidence_calc.dZ_mean.log_abs_val)
-        dp_mean = normalise_log_space(dp_mean)
-        H_mean_instable = -(
-                (
-                        dp_mean * LogSpace.from_signed_value(
-                    jnp.where(jnp.isneginf(dp_mean.log_abs_val), 0., self.samples.log_likelihoods)
-                )
-                ).sum().value - log_Z_mean
-        )
-        # H \approx E[-log(compression)] = E[-log(X)] (More stable than E[log(L) - log(Z)] but biased)
-        H_mean_stable = -(dp_mean * LogSpace(jnp.log(-cum_evidence_calc.X_mean.log_abs_val))).sum().value
-        H_mean = jnp.where(jnp.isfinite(H_mean_instable), H_mean_instable, H_mean_stable)
-        U_samples = self.samples.U_samples
-        X_samples = jax.lax.map(lambda u: self.model.transform_to_X(u, args=self.args, params=self.params), U_samples)
-        log_L = self.samples.log_likelihoods
-        log_dp = dp_mean.log_abs_val
-        log_X_mean = cum_evidence_calc.X_mean.log_abs_val
-        log_posterior_density = log_L + jax.lax.map(
-            lambda u: self.model.log_prior(u, args=self.args, params=self.params), U_samples
-        ) - log_Z_mean
-        num_live_points_per_sample = self.samples.compute_num_live_points_per_sample(root_out_degree=self.root_out_degree, num_samples=self.num_samples)
-        num_likelihood_evaluations_per_sample = self.samples.num_likelihood_evaluations.astype(mp_policy.count_dtype)
-        total_num_samples = self.num_samples.astype(mp_policy.count_dtype)
-        total_phantom_samples = jnp.sum(self.samples.phantom_samples.valid_mask).astype(mp_policy.count_dtype)
-        total_num_likelihood_evaluations = jnp.sum(num_likelihood_evaluations_per_sample)
-        log_efficiency = jnp.log(total_num_samples) - jnp.log(total_num_likelihood_evaluations)
-        log_L_constraints = self.samples.log_L_constraints
-        log_L_phantom = self.samples.phantom_samples.log_L
-        # TODO: Currently only accept clusters which are completely valid.
-        valid_phantom = jnp.all(self.samples.phantom_samples.valid_mask, axis=-1)
+        return _to_result(self)
 
-        X_supremum = self.model.transform_to_X(self.U_supremum, args=self.args, params=self.params)
-        map_idx = jnp.argmax(log_posterior_density)
-        log_L_map = log_L[map_idx]
-        U_map = jax.tree.map(lambda u: u[map_idx], U_samples)
-        X_map = jax.tree.map(lambda x: x[map_idx], X_samples)
-        return NestedSamplerResults(
-            U_samples=U_samples,
-            X_samples=X_samples,
-            log_L=log_L,
-            log_dp=log_dp,
-            log_X_mean=log_X_mean,
-            log_posterior_density=log_posterior_density,
-            num_live_points_per_sample=num_live_points_per_sample,
-            num_likelihood_evaluations_per_sample=num_likelihood_evaluations_per_sample,
-            log_Z_mean=log_Z_mean,
-            log_Z_uncert=log_Z_uncert,
-            ess=ess,
-            H_mean=H_mean,
-            total_num_samples=total_num_samples,
-            total_phantom_samples=total_phantom_samples,
-            total_num_likelihood_evaluations=total_num_likelihood_evaluations,
-            log_efficiency=log_efficiency,
-            termination_reason=self.termination_reason,
-            log_L_supremum=self.log_L_supremum,
-            U_supremum=self.U_supremum,
-            X_supremum=X_supremum,
-            log_L_map=log_L_map,
-            U_map=U_map,
-            X_map=X_map,
-            log_L_constraints=log_L_constraints,
-            log_L_phantom=log_L_phantom,
-            valid_phantom=valid_phantom
-        )
+
 
 
 State.register_pytree()
 
+@partial(jax.jit, inline=True)
+def _to_result(self: State) -> NestedSamplerResults:
+    max_samples = self.samples.log_likelihoods.shape[0]
+    total_num_samples = self.num_samples.astype(mp_policy.count_dtype)
+    sample_mask = jnp.arange(max_samples) < total_num_samples
+    evidence_calc, cum_evidence_calc = self.evaluate_evidence()
+    log_Z_mean, log_Z_var = linear_to_log_stats(evidence_calc.Z_mean.log_abs_val, log_f2_mean=evidence_calc.Z2_mean.log_abs_val)
+    log_Z_uncert = jnp.sqrt(jnp.maximum(0, log_Z_var))
+    ess = effective_sample_size_kish(
+        evidence_calc.Z_mean.log_abs_val,
+        evidence_calc.dZ2_mean.log_abs_val
+    )
+    dp_mean = LogSpace(cum_evidence_calc.dZ_mean.log_abs_val)
+    dp_mean = normalise_log_space(dp_mean)
+    H_mean_instable = -(
+            (
+                    dp_mean * LogSpace.from_signed_value(
+                jnp.where(jnp.isneginf(dp_mean.log_abs_val), 0., self.samples.log_likelihoods)
+            )
+            ).sum().value - log_Z_mean
+    )
+    # H \approx E[-log(compression)] = E[-log(X)] (More stable than E[log(L) - log(Z)] but biased)
+    H_mean_stable = -(dp_mean * LogSpace(jnp.log(-cum_evidence_calc.X_mean.log_abs_val))).sum().value
+    H_mean = jnp.where(jnp.isfinite(H_mean_instable), H_mean_instable, H_mean_stable)
+    U_samples = self.samples.U_samples
+    X_samples = jax.lax.map(lambda u: self.model.transform_to_X(u, args=self.args, params=self.params), U_samples)
+    X_samples = jax.tree.map(lambda x: jnp.where(sample_mask.reshape([-1] + [1] * (len(x.shape) - 1)), x, 0.), X_samples)
+    log_L = self.samples.log_likelihoods
+    log_dp = dp_mean.log_abs_val
+    log_X_mean = cum_evidence_calc.X_mean.log_abs_val
+    log_posterior_density = log_L + jax.lax.map(
+        lambda u: self.model.log_prior(u, args=self.args, params=self.params), U_samples
+    ) - log_Z_mean
+    log_posterior_density = jnp.where(sample_mask, log_posterior_density, -jnp.inf)
+    num_live_points_per_sample = self.samples.compute_num_live_points_per_sample(root_out_degree=self.root_out_degree, num_samples=self.num_samples)
+    num_likelihood_evaluations_per_sample = self.samples.num_likelihood_evaluations.astype(mp_policy.count_dtype)
+    total_phantom_samples = jnp.sum(self.samples.phantom_samples.valid_mask).astype(mp_policy.count_dtype)
+    total_num_likelihood_evaluations = jnp.sum(num_likelihood_evaluations_per_sample)
+    log_efficiency = jnp.log(total_num_samples) - jnp.log(total_num_likelihood_evaluations)
+    log_L_constraints = self.samples.log_L_constraints
+    log_L_phantom = self.samples.phantom_samples.log_L
+    # TODO: Currently only accept clusters which are completely valid.
+    valid_phantom = jnp.all(self.samples.phantom_samples.valid_mask, axis=-1)
+
+    X_supremum = self.model.transform_to_X(self.U_supremum, args=self.args, params=self.params)
+    map_idx = jnp.argmax(log_posterior_density)
+    log_L_map = log_L[map_idx]
+    U_map = jax.tree.map(lambda u: u[map_idx], U_samples)
+    X_map = jax.tree.map(lambda x: x[map_idx], X_samples)
+    return NestedSamplerResults(
+        U_samples=U_samples,
+        X_samples=X_samples,
+        log_L=log_L,
+        log_dp=log_dp,
+        log_X_mean=log_X_mean,
+        log_posterior_density=log_posterior_density,
+        num_live_points_per_sample=num_live_points_per_sample,
+        num_likelihood_evaluations_per_sample=num_likelihood_evaluations_per_sample,
+        log_Z_mean=log_Z_mean,
+        log_Z_uncert=log_Z_uncert,
+        ess=ess,
+        H_mean=H_mean,
+        total_num_samples=total_num_samples,
+        total_phantom_samples=total_phantom_samples,
+        total_num_likelihood_evaluations=total_num_likelihood_evaluations,
+        log_efficiency=log_efficiency,
+        termination_reason=self.termination_reason,
+        log_L_supremum=self.log_L_supremum,
+        U_supremum=self.U_supremum,
+        X_supremum=X_supremum,
+        log_L_map=log_L_map,
+        U_map=U_map,
+        X_map=X_map,
+        log_L_constraints=log_L_constraints,
+        log_L_phantom=log_L_phantom,
+        valid_phantom=valid_phantom
+    )
 
 @partial(jax.jit, inline=True)
 def _merge(self: State, other: State) -> 'State':

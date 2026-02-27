@@ -2,6 +2,7 @@ import dataclasses
 import io
 import warnings
 from functools import partial
+from pathlib import Path
 from typing import Callable, TypeVar, TextIO, Optional, Union
 
 import jax
@@ -58,6 +59,24 @@ class NestedSamplerResults(PureDataclassPytree):
     log_L_map: FloatArray  # max(L p) of the samples, used for diagnostics and resampling
     U_map: UType  # the U point with the largest posterior density, used for diagnostics and resampling
     X_map: XType  # the X point with the largest posterior density, used for diagnostics and resampling
+
+    def trim(self) -> 'NestedSamplerResults':
+        num_samples = int(self.total_num_samples)
+        sample_data = dict(
+            U_samples=self.U_samples,
+            X_samples=self.X_samples,
+            log_L=self.log_L,
+            log_dp=self.log_dp,
+            log_X_mean=self.log_X_mean,
+            log_posterior_density=self.log_posterior_density,
+            num_live_points_per_sample=self.num_live_points_per_sample,
+            num_likelihood_evaluations_per_sample=self.num_likelihood_evaluations_per_sample,
+            log_L_constraints=self.log_L_constraints,
+            log_L_phantom=self.log_L_phantom,
+            valid_phantom=self.valid_phantom,
+        )
+        sample_data = jax.tree.map(lambda s: s[:num_samples, ...], sample_data)
+        return dataclasses.replace(self, **sample_data)
 
     def summary(self, f_obj: str | TextIO | None = None):
         """
@@ -175,11 +194,16 @@ def _resample(self: NestedSamplerResults, key: PRNGKey, num_samples: int, replac
 def _integrate_fn_over_posterior(self: NestedSamplerResults, fn: Callable[[XType], MF], *, semi_positive: bool = False, batch_size: int | None = None) -> MF:
     def kernel(x):
         weight, X = x
-        if semi_positive:
-            f = LogSpace(fn(X))
-        else:
-            f = LogSpace.from_signed_value(fn(X))
-        return weight * f
+        Y = fn(X)
+
+        def _increment(y):
+            if semi_positive:
+                f = LogSpace(y)
+            else:
+                f = LogSpace.from_signed_value(y)
+            return (weight * f).value
+
+        return jax.tree.map(_increment, Y)
 
     weights = LogSpace(self.log_dp)
     return batch_reduce(kernel, xs=(weights, self.X_samples), reduce_fn=jnp.sum, batch_size=batch_size, vectorised_kernel=False)
@@ -232,7 +256,7 @@ def _summary(results: NestedSamplerResults, f_obj: str | TextIO | None = None):
             return float(v)
 
     def _print_termination_reason(_termination_reason: int):
-        termination_bit_mask = _bit_mask(int(_termination_reason), width=12)
+        termination_bit_mask = _bit_mask(int(_termination_reason), width=13)
 
         for bit, condition in zip(termination_bit_mask, [
             'Reached max samples',
@@ -308,7 +332,7 @@ def _summary(results: NestedSamplerResults, f_obj: str | TextIO | None = None):
         for dim in range(ndims):
             _uncert = _x_std[dim]
             # two sig-figs based on uncert
-            sig_figs = -int("{:e}".format(_uncert).split('e')[1]) + 1
+            sig_figs = 1 - int(f"{_uncert:e}".split('e')[1])
 
             def _round(ar):
                 return round(float(ar), sig_figs)
@@ -322,7 +346,7 @@ def _summary(results: NestedSamplerResults, f_obj: str | TextIO | None = None):
     _print("--------")
     if f_obj is not None:
         out = "\n".join(main_s)
-        if isinstance(f_obj, str):
+        if isinstance(f_obj, (str, Path)):
             with open(f_obj, 'w') as f:
                 f.write(out)
         elif isinstance(f_obj, io.TextIOBase):

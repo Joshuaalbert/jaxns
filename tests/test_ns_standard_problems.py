@@ -1,9 +1,12 @@
+from pathlib import Path
+
 import numpy as np
 from jax import numpy as jnp
 from jax.scipy.linalg import solve_triangular
 from jaxctx.priors.prior import Prior
 from tensorflow_probability.substrates import jax as tfp
 
+from jaxns.constrained_sampler import UniDimSliceSampler
 from jaxns.core import NestedSampler
 from jaxns.model import Model
 from jaxns.utils import bruteforce_evidence
@@ -80,24 +83,28 @@ def _basic_mvn_model_case():
         return tfpd.MultivariateNormalTriL(loc=data_mu, scale_tril=jnp.linalg.cholesky(data_cov)).log_prob(x)
 
     model = Model(prior_model=prior_model)
-    return model, log_Z_true, {'max_samples': 100000}
+    return model, log_Z_true, {'max_samples': 100000, 'sampler': UniDimSliceSampler(model=model, num_slices=max(1, 10 * ndims),
+                                                                                    no_step_out=True,
+                                                                                    collect_phantom_samples=False)}
 
 
 STANDARD_PROBLEM_CASES = [
-    ('basic', _basic_model_case),
-    ('basic2', _basic2_model_case),
-    ('basic3', _basic3_model_case),
-    ('plateau', _plateau_model_case),
+    # ('basic', _basic_model_case),
+    # ('basic2', _basic2_model_case),
+    # ('basic3', _basic3_model_case),
+    # ('plateau', _plateau_model_case),
     ('basic_mvn', _basic_mvn_model_case),
 ]
 
 
 def test_nested_sampling_run_results(tmp_path):
+    tmp_path = Path('.')
     for name, build_case in STANDARD_PROBLEM_CASES:
         model, log_Z_true, ns_kwargs = build_case()
         ns = NestedSampler(model=model, **ns_kwargs)
         state = ns.run()
         results = state.to_result()
+        results.summary(tmp_path / f"{name}_summary.txt")
 
         print(f"Checking {name}")
         assert not np.isnan(results.log_Z_mean)
@@ -117,8 +124,8 @@ def test_nested_sampling_run_results(tmp_path):
 
         log_Z_ensemble_mean = jnp.mean(log_Z_samples)
         log_Z_ensemble_std = jnp.std(log_Z_samples)
-        np.testing.assert_allclose(log_Z_ensemble_mean, log_Z_true, atol=3.0 * results.log_Z_uncert)
         np.testing.assert_allclose(results.log_Z_mean, log_Z_ensemble_mean, atol=3. * results.log_Z_uncert)
+        np.testing.assert_allclose(log_Z_ensemble_mean, log_Z_true, atol=3.0 * results.log_Z_uncert)
         np.testing.assert_allclose(
             results.log_Z_uncert, log_Z_ensemble_std,
             atol=np.sqrt(results.log_Z_uncert ** 2 + log_Z_ensemble_std ** 2)

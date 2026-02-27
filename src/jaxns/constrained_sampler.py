@@ -5,6 +5,7 @@ from functools import partial
 from typing import Callable, NamedTuple, Any
 
 import jax
+import numpy as np
 from jax import numpy as jnp, random
 
 from jaxns.cumulative_ops import cumulative_op_static
@@ -140,18 +141,19 @@ def _new_proposal(
         key: PRNGKey,
         U0: TreeField[UType],
         direction: TreeField[UType],
-        perfect: bool,
+        slice_width: FloatArray,
+        no_step_out: bool,
         gradient_guided: bool,
         log_L_constraint: FloatArray,
         log_likelihood_fn: Callable[[UType], FloatArray],
-) -> tuple[TreeField[UType], FloatArray, IntArray, TreeField[UType]]:
+) -> tuple[TreeField[UType], FloatArray, IntArray, TreeField[UType], FloatArray]:
     """
     Sample from a slice about a seed point.
 
     Args:
         key: PRNG key
         direction: the direction to sample along
-        perfect: if true then perform exponential shrinkage from maximal bounds, requiring no step-out procedure.
+        no_step_out: if true then perform exponential shrinkage from maximal bounds, requiring no step-out procedure.
         gradient_guided: if true then do householder reflections
         log_L_constraint: the constraint to sample within
         log_likelihood_fn: the log-likelihood function
@@ -177,7 +179,7 @@ def _new_proposal(
         return jnp.bitwise_not(satisfaction)
 
     def body(carry: Carry) -> Carry:
-        key, t_key, shrink_key = random.split(carry.key, 3)
+        key, t_key = random.split(carry.key, 2)
         left, right = _shrink_interval(
             t=carry.t,
             left=carry.left,
@@ -206,16 +208,94 @@ def _new_proposal(
     # Chose the direction to go
     num_likelihood_evaluations = jnp.full((), 0, mp_policy.count_dtype)
 
-    run_key, n_key, t_key, after_key = random.split(key, 4)
+    run_key, t_key, step_key, after_key = random.split(key, 4)
 
-    if perfect:
-        (left, right) = _slice_bounds(
-            point_U0=U0,
-            direction=direction
-        )
+    (left_bound, right_bound) = _slice_bounds(
+        point_U0=U0,
+        direction=direction
+    )
+    slice_width = jnp.asarray(slice_width, left_bound.dtype)
+
+    if no_step_out:
+        left, right = left_bound, right_bound
+        step_out_num_likelihood_evaluations = jnp.asarray(0, mp_policy.count_dtype)
     else:
-        # TODO: implement doubling step out
-        raise NotImplementedError("Step out not implemented.")
+        class StepOutCarry(NamedTuple):
+            key: PRNGKey
+            left: FloatArray
+            right: FloatArray
+            left_outside_slice: BoolArray
+            right_outside_slice: BoolArray
+            num_likelihood_evaluations: IntArray
+
+        eps = jnp.asarray(1e-12, left_bound.dtype)
+        use_full_slice = jnp.isinf(slice_width)
+        effective_slice_width = jnp.maximum(slice_width, eps)
+        place_key, step_key = random.split(step_key)
+        uniform_origin = random.uniform(place_key, dtype=left_bound.dtype)
+        initial_left = -uniform_origin * effective_slice_width
+        initial_right = initial_left + effective_slice_width
+
+        left = jnp.where(use_full_slice, left_bound, jnp.maximum(left_bound, initial_left))
+        right = jnp.where(use_full_slice, right_bound, jnp.minimum(right_bound, initial_right))
+
+        def _point_at_t(t: FloatArray) -> TreeField[UType]:
+            return TreeField(jax.tree.map(lambda p, d: p + t * d, U0.tree, direction.tree))
+
+        def step_out_cond(carry: StepOutCarry) -> BoolArray:
+            can_expand_left = carry.left > left_bound
+            can_expand_right = carry.right < right_bound
+            both_outside_box = jnp.bitwise_not(jnp.bitwise_or(can_expand_left, can_expand_right))
+            both_outside_slice = jnp.bitwise_and(carry.left_outside_slice, carry.right_outside_slice)
+            return jnp.bitwise_not(jnp.bitwise_or(both_outside_box, both_outside_slice))
+
+        def step_out_body(carry: StepOutCarry) -> StepOutCarry:
+            key, choose_key = random.split(carry.key, 2)
+
+            can_expand_left = carry.left > left_bound
+            can_expand_right = carry.right < right_bound
+            choose_left_random = random.uniform(choose_key, dtype=left_bound.dtype) < 0.5
+            expand_left = jnp.where(can_expand_left & can_expand_right, choose_left_random, can_expand_left)
+            expand_right = jnp.bitwise_not(expand_left)
+
+            current_width = jnp.maximum(carry.right - carry.left, eps)
+            candidate_left = jnp.maximum(left_bound, carry.left - current_width)
+            candidate_right = jnp.minimum(right_bound, carry.right + current_width)
+
+            next_left = jnp.where(expand_left, candidate_left, carry.left)
+            next_right = jnp.where(expand_right, candidate_right, carry.right)
+
+            left_log_L = log_likelihood_fn(_point_at_t(next_left).tree).astype(log_L_constraint.dtype)
+            right_log_L = log_likelihood_fn(_point_at_t(next_right).tree).astype(log_L_constraint.dtype)
+            next_left_outside_slice = jnp.where(expand_left, left_log_L <= log_L_constraint, carry.left_outside_slice)
+            next_right_outside_slice = jnp.where(expand_right, right_log_L <= log_L_constraint, carry.right_outside_slice)
+            num_likelihood_evaluations = carry.num_likelihood_evaluations + jnp.ones_like(carry.num_likelihood_evaluations)
+
+            return StepOutCarry(
+                key=key,
+                left=next_left,
+                right=next_right,
+                left_outside_slice=next_left_outside_slice,
+                right_outside_slice=next_right_outside_slice,
+                num_likelihood_evaluations=num_likelihood_evaluations
+            )
+
+        step_out_init = StepOutCarry(
+            key=step_key,
+            left=left,
+            right=right,
+            left_outside_slice=jnp.zeros((), mp_policy.bool_dtype),
+            right_outside_slice=jnp.zeros((), mp_policy.bool_dtype),
+            num_likelihood_evaluations=jnp.asarray(0, mp_policy.count_dtype)
+        )
+
+        step_out_carry = jax.lax.while_loop(
+            cond_fun=lambda c: jnp.bitwise_and(jnp.bitwise_not(use_full_slice), step_out_cond(c)),
+            body_fun=step_out_body,
+            init_val=step_out_init
+        )
+        left, right = step_out_carry.left, step_out_carry.right
+        step_out_num_likelihood_evaluations = step_out_carry.num_likelihood_evaluations
 
     point_U, t = _pick_point_in_interval(
         key=t_key,
@@ -226,6 +306,7 @@ def _new_proposal(
     )
     log_L = log_likelihood_fn(point_U.tree).astype(log_L_constraint.dtype)
     num_likelihood_evaluations += jnp.ones_like(num_likelihood_evaluations)
+    num_likelihood_evaluations += step_out_num_likelihood_evaluations
     init_carry = Carry(
         key=run_key,
         direction=direction,
@@ -247,12 +328,13 @@ def _new_proposal(
     direction = carry.direction
     num_likelihood_evaluations = carry.num_likelihood_evaluations
     if gradient_guided:
-        # Perform a Householder reflection at the accepted point
+        # Perform HMC with Householder reflections
         raise NotImplementedError("Gradient guided slice sampler not implemented.")
     else:
         # Randomly choose a new direction
         direction = _sample_direction(after_key, direction)
-    return carry.point_U, carry.log_L, num_likelihood_evaluations, direction
+    next_slice_width = carry.right - carry.left
+    return carry.point_U, carry.log_L, num_likelihood_evaluations, direction, next_slice_width
 
 
 @partial(jax.jit, inline=True)
@@ -287,20 +369,22 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
     Args:
         model: AbstractModel
         num_slices: number of slices between acceptance. Note: some other software use units of prior dimension.
-        perfect: if true then perform exponential shrinkage from maximal bounds, requiring no step-out procedure.
+        no_step_out: if true then perform exponential shrinkage from maximal bounds, requiring no step-out procedure.
             Otherwise, uses a doubling procedure (exponentially finding bracket).
             Note: Perfect is a misnomer, as perfection also depends on the number of slices between acceptance.
-        gradient_guided: if true then do householder reflections at between proposals with a 50% probability.
+        gradient_guided: if true then do HMC with householder reflections.
+        collect_phantom_samples: if true, then collect phantom samples
     """
 
     model: Model
     num_slices: int
-    perfect: bool = True
+    no_step_out: bool = True
     gradient_guided: bool = False
+    collect_phantom_samples: bool = False
 
     @classmethod
     def flatten(cls, this) -> tuple[list[Any], tuple[Any, ...]]:
-        return cls.build_flatten(this, ['num_slices', 'perfect', 'gradient_guided'])
+        return cls.build_flatten(this, ['num_slices', 'no_step_out', 'gradient_guided', 'collect_phantom_samples'])
 
     @classmethod
     def unflatten(cls, aux_data: tuple[Any, ...], children: list[Any]):
@@ -309,13 +393,13 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
     def _check(self):
         if self.num_slices < 1:
             raise ValueError(f"num_slices should be >= 1, got {self.num_slices}.")
-        if not self.perfect:
-            raise ValueError("Only perfect slice sampler is implemented.")
         if self.gradient_guided:
             warnings.warn("Gradient guided slice sampler is experimental and will likely change.")
 
     def num_phantom(self) -> int:
-        return self.num_slices - 1
+        if self.collect_phantom_samples:
+            return self.num_slices - 1
+        return 0
 
     def get_sample(self, key, log_L_constraint: FloatArray, seed_point: SeedPoint, args=(), params=None) -> tuple[UType, FloatArray, IntArray, PhantomSamples]:
 
@@ -332,13 +416,15 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
             log_L: FloatArray
             num_likelihood_evaluations: IntArray
             direction: TreeField[UType]
+            slice_width: FloatArray
 
         def propose_op(carry: Carry, x: XType) -> Carry:
-            U_sample, log_L, num_likelihood_evaluations, direction = _new_proposal(
+            U_sample, log_L, num_likelihood_evaluations, direction, slice_width = _new_proposal(
                 key=x.key,
                 U0=carry.U_sample,
                 direction=carry.direction,
-                perfect=self.perfect,
+                slice_width=carry.slice_width,
+                no_step_out=self.no_step_out,
                 gradient_guided=self.gradient_guided,
                 log_L_constraint=carry.log_L_constraint,
                 log_likelihood_fn=log_likelihood_fn,
@@ -349,20 +435,23 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
                 log_L_constraint=carry.log_L_constraint,
                 log_L=log_L,
                 num_likelihood_evaluations=num_likelihood_evaluations + carry.num_likelihood_evaluations,
-                direction=direction
+                direction=direction,
+                slice_width=slice_width
             )
             return carry
 
         direction_key, sample_key = jax.random.split(key, 2)
 
         direction = _sample_direction(direction_key, TreeField(seed_point.U0))
+        slice_width_dtype = jax.tree.leaves(seed_point.U0)[0].dtype
 
         init_carry = Carry(
             U_sample=TreeField(seed_point.U0),
             log_L_constraint=log_L_constraint,
             log_L=seed_point.log_L0,
             num_likelihood_evaluations=jnp.asarray(0, mp_policy.count_dtype),
-            direction=direction
+            direction=direction,
+            slice_width=jnp.asarray(jnp.inf, slice_width_dtype)
         )
 
         xs = XType(
@@ -377,7 +466,8 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
 
         # Last sample is the final sample, the rest are potential phantom samples
         # Take only the last num_phantom_save phantom samples
-        phantom_fraction = jax.tree.map(lambda x: x[:-1], cumulative_samples)
+        assert self.num_phantom() <= self.num_slices - 1, "num_phantom() should be in [0, num_slices - 1]"
+        phantom_fraction = jax.tree.map(lambda x: x[np.shape(x)[0] - 1 - self.num_phantom():-1], cumulative_samples)
         phantom_samples = PhantomSamples(
             U_samples=phantom_fraction.U_sample.tree,
             log_L=phantom_fraction.log_L,

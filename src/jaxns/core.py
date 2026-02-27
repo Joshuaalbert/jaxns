@@ -268,6 +268,7 @@ class NestedSampler(PureDataclassPytree):
     sampler: AbstractSampler | None = None
     termination_condition: TerminationCondition | None = None
     store_phantom_samples: bool = False
+    collect_phantom_samples: bool = False
     batch_size: int | None = None
 
     def __post_init__(self):
@@ -288,7 +289,7 @@ class NestedSampler(PureDataclassPytree):
         else:
             self.termination_condition.max_samples = jnp.minimum(self.termination_condition.max_samples, max_samples)
         if self.sampler is None:
-            self.sampler = UniDimSliceSampler(model=self.model, num_slices=max(1, 5 * U_ndims))
+            self.sampler = UniDimSliceSampler(model=self.model, num_slices=max(1, 5 * U_ndims), collect_phantom_samples=self.collect_phantom_samples)
 
     @classmethod
     def flatten(cls, this) -> tuple[list[Any], tuple[Any, ...]]:

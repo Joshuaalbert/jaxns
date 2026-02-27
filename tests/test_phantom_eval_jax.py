@@ -45,6 +45,7 @@ def _make_scenario(seed, num_blocks, num_phantom, valid_mask, offset, pad_invali
 
 
 SCENARIOS = [
+    _make_scenario(seed=4, num_blocks=4, num_phantom=0, valid_mask=[False, False, False, False], offset=0.1),
     _make_scenario(seed=0, num_blocks=3, num_phantom=6, valid_mask=[False, False, False], offset=-0.5),
     _make_scenario(seed=1, num_blocks=4, num_phantom=7, valid_mask=[True, False, True, True], offset=-1.0),
     _make_scenario(seed=2, num_blocks=5, num_phantom=9, valid_mask=[True, True, True, True, True], offset=0.3),

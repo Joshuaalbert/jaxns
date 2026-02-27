@@ -44,38 +44,52 @@ def _rho_grid_default(
     return jnp.logspace(start, stop, grid_size, dtype=dtype)
 
 
-def _boundary_counts_from_clusters(
-        log_L_blocks: FloatArray,
-        log_L_constraints: FloatArray,
-        log_L_phantom: FloatArray,
-        valid_phantom: FloatArray,
-        *,
-        boot_idx: Optional[IntArray] = None,
-        boot_mask: Optional[BoolArray] = None,
+def _boundary_counts_from_multiplicity(
+        cluster_multiplicity: FloatArray,
+        start_idx: IntArray,
+        count_A_start_per_cluster: FloatArray,
+        count_B_start_per_cluster: FloatArray,
+        event_cluster_idx: IntArray,
+        event_a_hi: IntArray,
+        event_b_hi: IntArray,
+        event_A_active: BoolArray,
+        event_B_active: BoolArray,
+        event_eq_idx: IntArray,
+        event_eq_active: BoolArray,
+        num_blocks: int,
 ) -> tuple[FloatArray, FloatArray, FloatArray]:
-    num_clusters = log_L_constraints.shape[0]
-    if boot_idx is None:
-        boot_idx = jnp.arange(num_clusters)
-    if boot_mask is None:
-        boot_mask = jnp.ones((boot_idx.shape[0],), dtype=bool)
+    dtype = cluster_multiplicity.dtype
 
-    c = log_L_constraints[boot_idx]
-    ph = log_L_phantom[boot_idx]
-    valid = valid_phantom[boot_idx]
-    cluster_mask = boot_mask & valid
+    dA_start = jnp.bincount(
+        start_idx,
+        weights=cluster_multiplicity * count_A_start_per_cluster,
+        length=num_blocks + 1
+    )
+    dB_start = jnp.bincount(
+        start_idx,
+        weights=cluster_multiplicity * count_B_start_per_cluster,
+        length=num_blocks + 1
+    )
 
-    dtype = log_L_blocks.dtype
-    a = jnp.concatenate([jnp.full((1,), -jnp.inf, dtype=dtype), log_L_blocks[:-1]], axis=0)
-    b = log_L_blocks
+    event_weights = cluster_multiplicity[event_cluster_idx]
+    dA_end = jnp.bincount(
+        event_a_hi,
+        weights=event_weights * jnp.asarray(event_A_active, dtype=dtype),
+        length=num_blocks + 1
+    )
+    dB_end = jnp.bincount(
+        event_b_hi,
+        weights=event_weights * jnp.asarray(event_B_active, dtype=dtype),
+        length=num_blocks + 1
+    )
 
-    eligible = cluster_mask[:, None] & (c[:, None] <= a[None, :])
-    ph_expanded = ph[:, :, None]
-    a_expanded = a[None, None, :]
-    b_expanded = b[None, None, :]
+    dA = dA_start - dA_end
+    dB = dB_start - dB_end
+    A = jnp.cumsum(dA[:-1])
+    B = jnp.cumsum(dB[:-1])
 
-    A = jnp.sum(eligible[:, None, :] & (ph_expanded > a_expanded), axis=(0, 1)).astype(dtype)
-    B = jnp.sum(eligible[:, None, :] & (ph_expanded > b_expanded), axis=(0, 1)).astype(dtype)
-    E = jnp.sum(eligible[:, None, :] & (ph_expanded == b_expanded), axis=(0, 1)).astype(dtype)
+    eq_weights = jnp.where(event_eq_active, event_weights, jnp.zeros_like(event_weights))
+    E = jnp.bincount(event_eq_idx, weights=eq_weights, length=num_blocks)
     return A, B, E
 
 
@@ -225,8 +239,10 @@ def sample_mc_shrinkage(
     """
     N = log_L_classic.shape[0]
     sample_valid_mask = jnp.arange(N, dtype=jnp.int32) < num_samples
+    positive_live_mask = K_classic > 0
+    effective_sample_mask = jnp.logical_and(sample_valid_mask, positive_live_mask)
     has_phantom_dim = log_L_phantom.shape[1] > 0
-    valid_classic = jnp.where(sample_valid_mask, log_L_classic, jnp.inf)
+    valid_classic = jnp.where(effective_sample_mask, log_L_classic, jnp.inf)
     if has_phantom_dim:
         log_L_blocks = jnp.unique(valid_classic, size=N, fill_value=jnp.inf)
         block_valid_mask = jnp.isfinite(log_L_blocks)
@@ -237,7 +253,7 @@ def sample_mc_shrinkage(
         K_per_block = jnp.where(block_valid_mask, K_per_block, jnp.ones_like(K_per_block))
     else:
         log_L_blocks = valid_classic
-        block_valid_mask = sample_valid_mask
+        block_valid_mask = effective_sample_mask
         block_first_idx = jnp.where(block_valid_mask, jnp.arange(N, dtype=jnp.int32), jnp.asarray(-1, jnp.int32))
         K_per_block = jnp.where(block_valid_mask, K_classic.astype(log_L_blocks.dtype), jnp.ones_like(log_L_blocks))
     eps_equal = jnp.asarray(eps_equal_prior, dtype=log_L_blocks.dtype)
@@ -246,28 +262,113 @@ def sample_mc_shrinkage(
     if rho_grid is None:
         rho_grid = _rho_grid_default(dtype=dtype)
 
-    num_clusters = log_L_constraints.shape[0]
-    effective_valid_phantom = valid_phantom & sample_valid_mask
-    num_valid = jnp.sum(effective_valid_phantom, dtype=jnp.int32)
-    boot_mask = jnp.arange(num_clusters, dtype=jnp.int32) < num_valid
+    has_active_samples = jnp.any(effective_sample_mask)
+    first_active_idx = jnp.argmax(effective_sample_mask.astype(jnp.int32))
+    ref_log_L = log_L_classic[first_active_idx]
+    constant_likelihood = jnp.logical_and(
+        has_active_samples,
+        jnp.all(jnp.where(effective_sample_mask, log_L_classic == ref_log_L, True))
+    )
 
-    zero = jnp.zeros((), dtype=dtype)
-    neg_inf = jnp.full((), -jnp.inf, dtype=dtype)
-    logits = jnp.where(effective_valid_phantom, zero, neg_inf)
-    has_valid = jnp.any(effective_valid_phantom)
-    logits = jnp.where(has_valid, logits, jnp.zeros_like(logits))
+    num_blocks = log_L_blocks.shape[0]
+    num_phantom = log_L_phantom.shape[1]
+    num_valid_blocks = jnp.sum(block_valid_mask, dtype=jnp.int32)
+
+    if num_phantom == 0:
+        rho_fallback = rho_grid[-1]
+        min_log_r = jnp.log(jnp.asarray(1e-300, dtype=dtype))
+
+        def single_sample_no_phantom(sample_key: FloatArray) -> tuple[FloatArray, FloatArray, FloatArray]:
+            ds = random.exponential(sample_key, shape=(num_blocks,)) / K_per_block
+            log_r = jnp.maximum(-ds, min_log_r)
+            log_X = jnp.cumsum(log_r)
+            log_X_prev = jnp.concatenate([jnp.zeros((1,), dtype=log_r.dtype), log_X[:-1]], axis=0)
+            log_dX = _logdiffexp(log_X_prev, log_X)
+            log_dZ = jnp.where(block_valid_mask, log_dX + log_L_blocks, jnp.full_like(log_dX, -jnp.inf))
+            log_Z = _logsumexp(log_dZ, axis=None)
+            log_Z = jnp.where(constant_likelihood, ref_log_L, log_Z)
+            return log_Z, log_dZ, rho_fallback
+
+        keys = random.split(key, num_Z_samples)
+        log_Z_samples, log_dZ_samples, rho_samples = jax.lax.map(single_sample_no_phantom, keys, batch_size=batch_size)
+        dZ_samples = LogSpace(log_dZ_samples)
+        tiny = jnp.finfo(log_L_blocks.dtype).tiny
+        log_dZ_mean = jnp.maximum(dZ_samples.mean(axis=0).log_abs_val, jnp.log(tiny))
+        log_dZ_var = jnp.maximum(dZ_samples.var(axis=0).log_abs_val, jnp.log(tiny))
+        return EvidenceSamples(
+            log_Z_samples=log_Z_samples,
+            log_dZ_mean=jnp.where(block_valid_mask, log_dZ_mean, jnp.full_like(log_dZ_mean, -jnp.inf)),
+            log_dZ_var=jnp.where(block_valid_mask, log_dZ_var, jnp.full_like(log_dZ_var, -jnp.inf)),
+            rho_samples=rho_samples,
+            log_L_blocks=log_L_blocks,
+            block_first_idx=block_first_idx,
+        )
+
+    num_clusters = log_L_constraints.shape[0]
+    effective_valid_phantom = valid_phantom & effective_sample_mask
+    num_valid = jnp.sum(effective_valid_phantom, dtype=jnp.int32)
+    valid_cluster_idx = jnp.nonzero(effective_valid_phantom, size=num_clusters, fill_value=0)[0]
+
+    left_c = jnp.searchsorted(log_L_blocks, log_L_constraints, side='left')
+    start_idx = jnp.where(jnp.isneginf(log_L_constraints), 0, left_c + 1)
+    start_idx = jnp.minimum(start_idx, num_valid_blocks)
+    start_idx = jnp.where(effective_valid_phantom, start_idx, 0)
+
+    event_cluster_idx = jnp.repeat(jnp.arange(num_clusters, dtype=jnp.int32), repeats=num_phantom)
+    event_start = start_idx[event_cluster_idx]
+    event_logL = log_L_phantom.reshape((-1,))
+    left_l = jnp.searchsorted(log_L_blocks, event_logL, side='left')
+    event_a_hi = jnp.minimum(left_l + 1, num_valid_blocks)
+    event_b_hi = jnp.minimum(left_l, num_valid_blocks)
+    event_A_active = event_a_hi > event_start
+    event_B_active = event_b_hi > event_start
+    count_A_start_per_cluster = jnp.bincount(
+        event_cluster_idx,
+        weights=jnp.asarray(event_A_active, dtype=dtype),
+        length=num_clusters
+    )
+    count_B_start_per_cluster = jnp.bincount(
+        event_cluster_idx,
+        weights=jnp.asarray(event_B_active, dtype=dtype),
+        length=num_clusters
+    )
+    eq_ok = jnp.logical_and(left_l < num_valid_blocks, log_L_blocks[left_l] == event_logL)
+    event_eq_idx = jnp.where(eq_ok, left_l, 0)
+    event_eq_active = jnp.logical_and(eq_ok, event_eq_idx >= event_start)
+    event_eq_active = jnp.logical_and(event_eq_active, effective_valid_phantom[event_cluster_idx])
 
     def single_sample(sample_key: FloatArray) -> tuple[FloatArray, FloatArray, FloatArray]:
         key_boot, key_rho, key_r = random.split(sample_key, 3)
-        boot_idx = random.categorical(key_boot, logits, shape=(num_clusters,))
 
-        A, B, E = _boundary_counts_from_clusters(
-            log_L_blocks=log_L_blocks,
-            log_L_constraints=log_L_constraints,
-            log_L_phantom=log_L_phantom,
-            valid_phantom=effective_valid_phantom,
-            boot_idx=boot_idx,
-            boot_mask=boot_mask,
+        safe_num_valid = jnp.maximum(num_valid, 1)
+        boot_local_idx = random.randint(key_boot, shape=(num_clusters,), minval=0, maxval=safe_num_valid)
+        boot_draw_mask = jnp.arange(num_clusters, dtype=jnp.int32) < num_valid
+        boot_local_weights = jnp.where(boot_draw_mask, jnp.ones((num_clusters,), dtype=dtype), jnp.zeros((num_clusters,), dtype=dtype))
+        local_multiplicity = jnp.bincount(boot_local_idx, weights=boot_local_weights, length=num_clusters)
+        cluster_multiplicity = jnp.zeros((num_clusters,), dtype=dtype).at[valid_cluster_idx].add(local_multiplicity)
+
+        A, B, E = jax.lax.cond(
+            num_phantom > 0,
+            lambda _: _boundary_counts_from_multiplicity(
+                cluster_multiplicity=cluster_multiplicity,
+                start_idx=start_idx,
+                count_A_start_per_cluster=count_A_start_per_cluster,
+                count_B_start_per_cluster=count_B_start_per_cluster,
+                event_cluster_idx=event_cluster_idx,
+                event_a_hi=event_a_hi,
+                event_b_hi=event_b_hi,
+                event_A_active=event_A_active,
+                event_B_active=event_B_active,
+                event_eq_idx=event_eq_idx,
+                event_eq_active=event_eq_active,
+                num_blocks=num_blocks,
+            ),
+            lambda _: (
+                jnp.zeros((num_blocks,), dtype=dtype),
+                jnp.zeros((num_blocks,), dtype=dtype),
+                jnp.zeros((num_blocks,), dtype=dtype)
+            ),
+            operand=None
         )
         A = jnp.where(block_valid_mask, A, jnp.zeros_like(A))
         B = jnp.where(block_valid_mask, B, jnp.zeros_like(B))
@@ -297,6 +398,7 @@ def sample_mc_shrinkage(
         log_dZ = jnp.where(block_valid_mask, log_dX + log_L_blocks, jnp.full_like(log_dX, -jnp.inf))
         log_terms = log_dZ
         log_Z = _logsumexp(log_terms, axis=None)
+        log_Z = jnp.where(constant_likelihood, ref_log_L, log_Z)
         return log_Z, log_dZ, rho
 
     keys = random.split(key, num_Z_samples)
