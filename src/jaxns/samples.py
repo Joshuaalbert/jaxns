@@ -34,6 +34,7 @@ PhantomSamples.register_pytree()
 
 @dataclasses.dataclass(slots=True)
 class Samples(PureDataclassPytree):
+    log_L_constraints: FloatArray  # [max_samples] the likelihood constraint for each sample, i.e. the likelihood of the parent sample
     log_likelihoods: FloatArray  # [max_samples]
     U_samples: UType  # [max_samples, ...]
     out_degree: IntArray  # [max_samples]

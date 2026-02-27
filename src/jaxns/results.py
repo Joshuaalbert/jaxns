@@ -5,19 +5,19 @@ from functools import partial
 from typing import Callable, TypeVar, TextIO, Optional, Union
 
 import jax
-import jax.numpy as jnp
 import numpy as np
 import pylab as plt
-from jax import random, numpy as jnp
+from jax import numpy as jnp
 from jaxctx.context import CtxParams
 from scipy.stats import gaussian_kde
 
-from jaxns.cumulative_ops import batch_reduce, cumulative_op_static
+from jaxns.cumulative_ops import batch_reduce
 from jaxns.log_semiring import LogSpace, cumulative_logsumexp, normalise_log_space
 from jaxns.mixed_precision import mp_policy
+from jaxns.phantom_eval import EvidenceSamples, sample_mc_shrinkage
 from jaxns.pytree import PureDataclassPytree
 from jaxns.random_utils import resample_indicies
-from jaxns.types import FloatArray, IntArray, UType, XType, PRNGKey
+from jaxns.types import FloatArray, IntArray, UType, XType, PRNGKey, BoolArray
 
 MF = TypeVar('MF')
 
@@ -39,6 +39,9 @@ class NestedSamplerResults(PureDataclassPytree):
 
     U_samples: UType  # [num_samples] samples in homogeneous unit hypercube.
     X_samples: XType  # [num_samples] samples in the constrained space.
+    log_L_constraints: FloatArray  # [num_samples] the likelihood constraint for each sample, i.e. the likelihood contour that the sample was drawn from.
+    log_L_phantom: FloatArray  # [num_samples, num_phantom] the likelihood of the phantom point used for each sample, or -inf if no phantom point was used.
+    valid_phantom: BoolArray  # [num_samples] whether the phantoms are valid for each sample, i.e. whether the phantom points were used for the sample or not.
     log_L: FloatArray  # log(L) of each sample
     log_dp: FloatArray  # log(weight) of each sample, i.e. log(dp) = log(L) + log(dX) - log(Z)
     log_X_mean: FloatArray  # log(E[U]) of each sample
@@ -65,7 +68,7 @@ class NestedSamplerResults(PureDataclassPytree):
         """
         return _summary(self, f_obj=f_obj)
 
-    def plot_diagnostics(self, save_file: str|None=None):
+    def plot_diagnostics(self, save_file: str | None = None):
         """
         Plot diagnostics of the nested sampling run.
 
@@ -80,7 +83,7 @@ class NestedSamplerResults(PureDataclassPytree):
         """
         plot_cornerplot(self, variables=variables, save_name=save_name, kde_overlay=kde_overlay)
 
-    def resample(self, key: PRNGKey, num_samples: int, replace: bool = True) -> 'NestedSamplerResults':
+    def resample(self, num_samples: int, replace: bool = True, key: PRNGKey | None = None) -> 'NestedSamplerResults':
         """
         Resamples the nested sampling results according to the posterior weights.
 
@@ -92,6 +95,8 @@ class NestedSamplerResults(PureDataclassPytree):
         Returns:
             a new NestedSamplerResults object with resampled samples.
         """
+        if key is None:
+            key = jax.random.PRNGKey(42)
         return _resample(self, key, num_samples, replace)
 
     def integrate_fn_over_posterior(self, fn: Callable[[XType], MF], *, semi_positive: bool = False, batch_size: int | None = None) -> MF:
@@ -109,6 +114,38 @@ class NestedSamplerResults(PureDataclassPytree):
         """
 
         return _integrate_fn_over_posterior(self, fn, semi_positive=semi_positive, batch_size=batch_size)
+
+    def sample_evidence(self, num_samples: int, batch_size: int | None = None, key: PRNGKey | None = None) -> FloatArray:
+        """
+        Sample the evidence using the MC shrinkage method.
+
+        Args:
+            num_samples: number of evidence samples to draw
+            batch_size: optional, how many samples to process in a batch when applying the function.
+            key: optional, PRNGKey for resampling
+
+        Returns:
+            array of shape [num_samples] containing samples of the evidence.
+        """
+        if key is None:
+            key = jax.random.PRNGKey(42)
+        return _sample_evidence(self, num_samples=num_samples, batch_size=batch_size, key=key)
+
+    def sample_mc_shrinkage(self, num_samples: int, batch_size: int | None = None, key: PRNGKey | None = None) -> EvidenceSamples:
+        """
+        Sample the evidence using the MC shrinkage method.
+
+        Args:
+            num_samples: number of evidence samples to draw
+            batch_size: optional, how many samples to process in a batch when applying the function.
+            key: optional, PRNGKey for resampling
+
+        Returns:
+            EvidenceSamples object containing samples of the evidence and related statistics.
+        """
+        if key is None:
+            key = jax.random.PRNGKey(42)
+        return _sample_mc_shrinkage(self, num_samples=num_samples, batch_size=batch_size, key=key)
 
 
 NestedSamplerResults.register_pytree()
@@ -369,54 +406,37 @@ def plot_diagnostics(results: NestedSamplerResults, save_file=None):
 
 
 @partial(jax.jit, inline=True, static_argnames=['num_samples', 'batch_size'])
-def _sample_evidence(self: NestedSamplerResults, log_L: FloatArray, alpha: IntArray, beta: IntArray | None = None,
-                     num_samples: int = 100, batch_size: int | None = None, key: PRNGKey|None=None) -> FloatArray:
-    """
-    Sample the evidence by MC expectation over the shrinkage distribution.
-    This is a more accurate way to estimate the evidence than using the mean shrinkage, as it captures the uncertainty in the shrinkage distribution.
-    This is a general implementation that allows for arbitrary shrinkage distributions.
-    For standard nested sampling, the shrinkage distribution is T ~ Beta(alpha=n[i], beta=1).
+def _sample_evidence(self: NestedSamplerResults,
+                     num_samples: int = 100, batch_size: int | None = None, key: PRNGKey | None = None) -> FloatArray:
+    evidence_samples = sample_mc_shrinkage(
+        key=key,
+        log_L_constraints=self.log_L_constraints,
+        log_L_classic=self.log_L,
+        K_classic=self.num_live_points_per_sample,
+        valid_phantom=self.valid_phantom,
+        log_L_phantom=self.log_L_phantom,
+        num_samples=self.total_num_samples,
+        num_Z_samples=num_samples,
+        batch_size=batch_size
+    )
+    return evidence_samples.log_Z_samples
 
-    Args:
-        key: PRNGKey
-        log_L: the log-Likelihood schedule
-        alpha: the alpha parameters of the Beta distribution for the shrinkage distribution
-        beta: the beta parameters of the Beta distribution for the shrinkage distribution
-        num_samples: The number of samples to produce
 
-    Returns:
-        samples of log(Z)
-    """
-
-    if key is None:
-        key = random.PRNGKey(42)
-
-    def accumulate_op(accumulate, y):
-        # T ~ Beta(n[i],1) <==> T ~ Kumaraswamy(n[i],1)
-        (key, _alpha, _beta, _log_L) = y
-        (log_Z, log_X) = accumulate
-        if _beta is None:
-            log_T = jnp.log(random.uniform(key=key, shape=(), dtype=_log_L.dtype)) / _alpha
-        else:
-            log_T = jnp.log(random.beta(key=key, a=_alpha, b=_beta, shape=(), dtype=_log_L.dtype))
-
-        T = LogSpace(log_T)
-        X = LogSpace(log_X)
-        Z = LogSpace(log_Z)
-        L = LogSpace(_log_L)
-        next_X = X * T
-        dZ = X * (LogSpace(0) - T).abs() * L
-        next_Z = Z + dZ
-        return (next_Z.log_abs_val, next_X.log_abs_val)
-
-    def single_log_Z_sample(key: PRNGKey) -> FloatArray:
-        init = (jnp.asarray(-jnp.inf, log_L.dtype), jnp.asarray(0., log_L.dtype))
-        xs = (random.split(key, log_L.shape[0]), alpha, beta, log_L)
-        (log_Z, _), _ = cumulative_op_static(accumulate_op, init=init, xs=xs)
-        return log_Z
-
-    log_Z_samples = jax.lax.map(single_log_Z_sample, random.split(key, num_samples), batch_size=batch_size)
-    return log_Z_samples
+@partial(jax.jit, inline=True, static_argnames=['num_samples', 'batch_size'])
+def _sample_mc_shrinkage(self: NestedSamplerResults,
+                         num_samples: int = 100, batch_size: int | None = None, key: PRNGKey | None = None) -> EvidenceSamples:
+    evidence_samples = sample_mc_shrinkage(
+        key=key,
+        log_L_constraints=self.log_L_constraints,
+        log_L_classic=self.log_L,
+        K_classic=self.num_live_points_per_sample,
+        valid_phantom=self.valid_phantom,
+        log_L_phantom=self.log_L_phantom,
+        num_samples=self.total_num_samples,
+        num_Z_samples=num_samples,
+        batch_size=batch_size
+    )
+    return evidence_samples
 
 
 def _tuple_prod(t):

@@ -69,6 +69,7 @@ def _sample_init_state(key, num_live_points: int, max_samples: int, model: Model
     if not store_phantom_samples:
         phantom_samples.U_samples = None
     samples = Samples(
+        log_L_constraints=jnp.full((num_live_points,), -jnp.inf, dtype=mp_policy.measure_dtype),
         log_likelihoods=log_likelihoods,
         U_samples=U_samples,
         out_degree=out_degree,
@@ -85,7 +86,8 @@ def _sample_init_state(key, num_live_points: int, max_samples: int, model: Model
             U_samples=jax.tree.map(lambda x: jnp.zeros_like(x[0]), samples.phantom_samples.U_samples),
             log_L=jnp.zeros_like(samples.phantom_samples.log_L[0]),
             valid_mask=jnp.zeros_like(samples.phantom_samples.valid_mask[0])
-        )
+        ),
+        log_L_constraints=jnp.asarray(-jnp.inf, mp_policy.measure_dtype)
     )
     if not store_phantom_samples:
         sample_atom.phantom_samples.U_samples = None
@@ -195,6 +197,7 @@ def _run_ns(key, state: State, target_num_live_points: int, shell_size: int, arg
         )
 
         new_samples = Samples(
+            log_L_constraints=log_L_constraints,
             log_likelihoods=log_likelihoods,
             U_samples=U_samples,
             out_degree=jnp.zeros((shell_size,), dtype=mp_policy.count_dtype),

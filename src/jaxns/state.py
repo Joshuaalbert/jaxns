@@ -138,6 +138,9 @@ class State(PureDataclassPytree):
         total_phantom_samples = jnp.sum(self.samples.phantom_samples.valid_mask).astype(mp_policy.count_dtype)
         total_num_likelihood_evaluations = jnp.sum(num_likelihood_evaluations_per_sample)
         log_efficiency = jnp.log(total_num_samples) - jnp.log(total_num_likelihood_evaluations)
+        log_L_constraints = self.samples.log_L_constraints
+        log_L_phantom = self.samples.phantom_samples.log_L
+        valid_phantom = self.samples.phantom_samples.valid_mask
 
         X_supremum = self.model.transform_to_X(self.U_supremum, args=self.args, params=self.params)
         map_idx = jnp.argmax(log_posterior_density)
@@ -167,7 +170,10 @@ class State(PureDataclassPytree):
             X_supremum=X_supremum,
             log_L_map=log_L_map,
             U_map=U_map,
-            X_map=X_map
+            X_map=X_map,
+            log_L_constraints=log_L_constraints,
+            log_L_phantom=log_L_phantom,
+            valid_phantom=valid_phantom
         )
 
 

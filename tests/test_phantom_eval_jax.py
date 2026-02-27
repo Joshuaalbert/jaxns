@@ -104,7 +104,7 @@ def test_sample_mc_shrinkage_stats_close():
             num_Z_samples=num_Z_samples,
         )
         jax_out = jax_phantom.sample_mc_shrinkage(
-            seed=321,
+            key=jax.random.PRNGKey(321),
             log_L_constraints=jnp.array(log_L_constraints),
             log_L_classic=jnp.array(log_L_classic),
             K_classic=jnp.array(K_classic),

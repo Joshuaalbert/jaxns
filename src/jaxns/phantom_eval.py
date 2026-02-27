@@ -8,7 +8,7 @@ from jax.scipy import special as jsp
 
 from jaxns.log_semiring import LogSpace
 from jaxns.pytree import PureDataclassPytree
-from jaxns.types import FloatArray, IntArray, BoolArray
+from jaxns.types import FloatArray, IntArray, BoolArray, PRNGKey
 
 
 @dataclasses.dataclass(slots=True, frozen=True)
@@ -176,7 +176,7 @@ def _fit_rho_mle(
 
 @partial(jax.jit, inline=True, static_argnames=["num_Z_samples", "batch_size", "rho_prior"])
 def sample_mc_shrinkage(
-        seed: int,
+        key: PRNGKey,
         log_L_constraints: FloatArray,
         log_L_classic: FloatArray,
         K_classic: IntArray,
@@ -201,7 +201,7 @@ def sample_mc_shrinkage(
     5) samples shrinkages and accumulates evidence contributions.
 
     Args:
-        seed: PRNG seed for Monte-Carlo sampling.
+        key: PRNGKey for Monte-Carlo sampling.
         log_L_constraints: ``[num_samples]`` cluster constraints for classic samples.
         log_L_classic: ``[num_samples]`` classic likelihood values.
         K_classic: ``[num_samples]`` classic live-point counts.
@@ -223,8 +223,6 @@ def sample_mc_shrinkage(
           - ``log_L_blocks``: derived block levels padded with ``+inf``;
           - ``block_first_idx``: first classic index per block, ``-1`` for padded blocks.
     """
-    key = random.PRNGKey(seed)
-
     N = log_L_classic.shape[0]
     sample_valid_mask = jnp.arange(N, dtype=jnp.int32) < num_samples
     valid_classic = jnp.where(sample_valid_mask, log_L_classic, jnp.inf)
