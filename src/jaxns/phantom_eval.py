@@ -17,6 +17,8 @@ class EvidenceSamples(PureDataclassPytree):
     log_dZ_mean: FloatArray  # [num_blocks] L_{g} * (X_{g-1} - X_g) averaged over MC chains
     log_dZ_var: FloatArray  # [num_blocks] variance of L_{g} * (X_{g-1} - X_g) over MC chains
     rho_samples: FloatArray  # [num_Z_samples] samples of the global rho parameter used in the MC shrinkage sampling
+    log_L_blocks: FloatArray  # [num_blocks] block levels derived from log_L_classic, padded with +inf
+    block_first_idx: IntArray  # [num_blocks] first classic index per block, -1 for padded blocks
 
 
 EvidenceSamples.register_pytree()
@@ -173,14 +175,14 @@ def _fit_rho_mle(
 
 
 @partial(jax.jit, inline=True, static_argnames=["num_Z_samples", "batch_size", "rho_prior"])
-def compute_mc_shrinkage_v2(
+def sample_mc_shrinkage(
         seed: int,
-        log_L_blocks: FloatArray,
         log_L_constraints: FloatArray,
         log_L_classic: FloatArray,
         K_classic: IntArray,
         valid_phantom: BoolArray,
         log_L_phantom: FloatArray,
+        num_samples: IntArray,
         num_Z_samples: int,
         *,
         eps_equal_prior: float = 1e-3,
@@ -200,12 +202,12 @@ def compute_mc_shrinkage_v2(
 
     Args:
         seed: PRNG seed for Monte-Carlo sampling.
-        log_L_blocks: ``[num_blocks]`` strictly increasing block likelihood levels.
         log_L_constraints: ``[num_samples]`` cluster constraints for classic samples.
         log_L_classic: ``[num_samples]`` classic likelihood values.
         K_classic: ``[num_samples]`` classic live-point counts.
         valid_phantom: ``[num_samples]`` mask indicating which clusters have valid phantom draws.
         log_L_phantom: ``[num_samples, num_phantom]`` phantom likelihoods.
+        num_samples: Number of valid leading entries in classic arrays.
         num_Z_samples: Number of Monte-Carlo evidence samples.
         eps_equal_prior: Small equality-mass prior for candlestick calibration.
         rho_grid: Optional grid of rho values; if None a default log-spaced grid is used.
@@ -217,12 +219,24 @@ def compute_mc_shrinkage_v2(
           - ``log_Z_samples``: evidence samples ``[num_Z_samples]``;
           - ``log_dZ_mean``: mean per-block contribution in log-space ``[num_blocks]``;
           - ``log_dZ_var``: variance per-block contribution in log-space ``[num_blocks]``;
-          - ``rho_samples``: sampled global rho values ``[num_Z_samples]``.
+          - ``rho_samples``: sampled global rho values ``[num_Z_samples]``;
+          - ``log_L_blocks``: derived block levels padded with ``+inf``;
+          - ``block_first_idx``: first classic index per block, ``-1`` for padded blocks.
     """
     key = random.PRNGKey(seed)
 
-    first_idx = jnp.searchsorted(log_L_classic, log_L_blocks, side="left")
-    K_per_block = K_classic[first_idx].astype(log_L_blocks.dtype)
+    N = log_L_classic.shape[0]
+    sample_valid_mask = jnp.arange(N, dtype=jnp.int32) < num_samples
+    valid_classic = jnp.where(sample_valid_mask, log_L_classic, jnp.inf)
+    log_L_blocks = jnp.unique(valid_classic, size=N, fill_value=jnp.inf)
+    block_valid_mask = jnp.isfinite(log_L_blocks)
+
+    first_idx_raw = jnp.searchsorted(valid_classic, log_L_blocks, side="left")
+    first_idx_safe = jnp.clip(first_idx_raw, 0, jnp.maximum(N - 1, 0))
+    block_first_idx = jnp.where(block_valid_mask, first_idx_raw.astype(jnp.int32), jnp.asarray(-1, jnp.int32))
+
+    K_per_block = K_classic[first_idx_safe].astype(log_L_blocks.dtype)
+    K_per_block = jnp.where(block_valid_mask, K_per_block, jnp.ones_like(K_per_block))
     eps_equal = jnp.asarray(eps_equal_prior, dtype=log_L_blocks.dtype)
 
     dtype = log_L_blocks.dtype
@@ -230,13 +244,14 @@ def compute_mc_shrinkage_v2(
         rho_grid = _rho_grid_default(dtype=dtype)
 
     num_clusters = log_L_constraints.shape[0]
-    num_valid = jnp.sum(valid_phantom, dtype=jnp.int32)
+    effective_valid_phantom = valid_phantom & sample_valid_mask
+    num_valid = jnp.sum(effective_valid_phantom, dtype=jnp.int32)
     boot_mask = jnp.arange(num_clusters, dtype=jnp.int32) < num_valid
 
     zero = jnp.zeros((), dtype=dtype)
     neg_inf = jnp.full((), -jnp.inf, dtype=dtype)
-    logits = jnp.where(valid_phantom, zero, neg_inf)
-    has_valid = jnp.any(valid_phantom)
+    logits = jnp.where(effective_valid_phantom, zero, neg_inf)
+    has_valid = jnp.any(effective_valid_phantom)
     logits = jnp.where(has_valid, logits, jnp.zeros_like(logits))
 
     def single_sample(sample_key: FloatArray) -> tuple[FloatArray, FloatArray, FloatArray]:
@@ -247,10 +262,13 @@ def compute_mc_shrinkage_v2(
             log_L_blocks=log_L_blocks,
             log_L_constraints=log_L_constraints,
             log_L_phantom=log_L_phantom,
-            valid_phantom=valid_phantom,
+            valid_phantom=effective_valid_phantom,
             boot_idx=boot_idx,
             boot_mask=boot_mask,
         )
+        A = jnp.where(block_valid_mask, A, jnp.zeros_like(A))
+        B = jnp.where(block_valid_mask, B, jnp.zeros_like(B))
+        E = jnp.where(block_valid_mask, E, jnp.zeros_like(E))
 
         d2, alpha0, _ = _candlestick_d2_per_boundary(K_per_block, eps_equal, A, B, E)
         rho = _sample_rho_from_likelihood(
@@ -273,7 +291,7 @@ def compute_mc_shrinkage_v2(
         log_X = jnp.cumsum(log_r)
         log_X_prev = jnp.concatenate([jnp.zeros((1,), dtype=log_r.dtype), log_X[:-1]], axis=0)
         log_dX = _logdiffexp(log_X_prev, log_X)
-        log_dZ = log_dX + log_L_blocks
+        log_dZ = jnp.where(block_valid_mask, log_dX + log_L_blocks, jnp.full_like(log_dX, -jnp.inf))
         log_terms = log_dZ
         log_Z = _logsumexp(log_terms, axis=None)
         return log_Z, log_dZ, rho
@@ -281,12 +299,14 @@ def compute_mc_shrinkage_v2(
     keys = random.split(key, num_Z_samples)
     log_Z_samples, log_dZ_samples, rho_samples = jax.lax.map(single_sample, keys, batch_size=batch_size)
     dZ_samples = LogSpace(log_dZ_samples)
-    dZ_mean = dZ_samples.mean(axis=0)
-    dZ_var = dZ_samples.var(axis=0)
     tiny = jnp.finfo(log_L_blocks.dtype).tiny
+    log_dZ_mean = jnp.maximum(dZ_samples.mean(axis=0).log_abs_val, jnp.log(tiny))
+    log_dZ_var = jnp.maximum(dZ_samples.var(axis=0).log_abs_val, jnp.log(tiny))
     return EvidenceSamples(
         log_Z_samples=log_Z_samples,
-        log_dZ_mean=jnp.log(jnp.maximum(dZ_mean, tiny)),
-        log_dZ_var=jnp.log(jnp.maximum(dZ_var, tiny)),
+        log_dZ_mean=jnp.where(block_valid_mask, log_dZ_mean, jnp.full_like(log_dZ_mean, -jnp.inf)),
+        log_dZ_var=jnp.where(block_valid_mask, log_dZ_var, jnp.full_like(log_dZ_var, -jnp.inf)),
         rho_samples=rho_samples,
+        log_L_blocks=log_L_blocks,
+        block_first_idx=block_first_idx,
     )

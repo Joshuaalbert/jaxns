@@ -1,8 +1,8 @@
 
-# Design notes (v3): global bootstrap + rho sampling for `compute_mc_shrinkage_v2`
+# Design notes (v3): global bootstrap + rho sampling for `sample_mc_shrinkage`
 
 This document accompanies `phantom_eval_ref_v3.py` and focuses on the mathematics and design decisions
-for the improved Monte Carlo evidence sampler `compute_mc_shrinkage_v2`.
+for the improved Monte Carlo evidence sampler `sample_mc_shrinkage`.
 
 It assumes the base evaluation function `evaluate_phantoms` described earlier.
 
@@ -86,7 +86,7 @@ This yields an approximate likelihood `L(rho)` which we evaluate on a discrete g
 
 ---
 
-## 4. `compute_mc_shrinkage_v2`: global bootstrap + rho sampling
+## 4. `sample_mc_shrinkage`: global bootstrap + rho sampling
 
 ### 4.1 Global cluster bootstrap
 

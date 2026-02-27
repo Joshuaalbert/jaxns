@@ -29,7 +29,7 @@ They inform r through exceedances, but correlation reduces effective information
 ------------------------------------------------------------------------------
 New in v3
 ------------------------------------------------------------------------------
-We add `compute_mc_shrinkage_v2`, which:
+We add `sample_mc_shrinkage`, which:
   1) performs a **global cluster bootstrap** of phantom clusters for each evidence draw,
      preserving cross-boundary dependence induced by reusing loose samples; and
   2) samples rho from its **candlestick likelihood** on each bootstrap replicate (rather than fixing rho).
@@ -69,6 +69,8 @@ class EvidenceSamples(NamedTuple):
     log_dZ_mean: FloatArray  # [num_blocks] L_{g} * (X_{g-1} - X_g) averaged over MC chains
     log_dZ_var: FloatArray  # [num_blocks] variance of L_{g} * (X_{g-1} - X_g) over MC chains
     rho_samples: FloatArray  # [num_Z_samples] samples of the global rho parameter used in the MC shrinkage sampling
+    log_L_blocks: FloatArray  # [num_blocks] block levels derived from log_L_classic, padded with +inf
+    block_first_idx: IntArray  # [num_blocks] first classic index per block, -1 for padded blocks
 
 
 # -----------------------------------------------------------------------------
@@ -370,14 +372,14 @@ def _candlestick_d2_per_boundary(
     return np.array(d2_list, dtype=float), np.array(alpha0_list, dtype=float), np.array(A_list, dtype=float)
 
 
-def compute_mc_shrinkage_v2(
+def sample_mc_shrinkage(
         seed: int,
-        log_L_blocks: FloatArray,
         log_L_constraints: FloatArray,
         log_L_classic: FloatArray,
         K_classic: IntArray,
         valid_phantom: BoolArray,
         log_L_phantom: FloatArray,
+        num_samples: IntArray,
         num_Z_samples: int,
         *,
         eps_equal_prior: float = 1e-3,
@@ -420,26 +422,39 @@ def compute_mc_shrinkage_v2(
         raise ValueError("num_Z_samples must be >= 1.")
     rng = np.random.default_rng(int(seed))
 
-    log_L_blocks = np.asarray(log_L_blocks, dtype=float)
     log_L_constraints = np.asarray(log_L_constraints, dtype=float)
     log_L_classic = np.asarray(log_L_classic, dtype=float)
     K_classic = np.asarray(K_classic, dtype=float)
     valid_phantom = np.asarray(valid_phantom, dtype=bool)
     log_L_phantom = np.asarray(log_L_phantom, dtype=float)
 
-    first_idx = np.searchsorted(log_L_classic, log_L_blocks, side="left")
-    K_per_block = K_classic[first_idx].astype(float)
+    N = log_L_classic.shape[0]
+    num_samples_int = int(np.asarray(num_samples).item())
+    sample_valid_mask = np.arange(N, dtype=np.int32) < num_samples_int
+    valid_classic = np.where(sample_valid_mask, log_L_classic, np.inf)
+    unique_valid = np.unique(valid_classic)
+    log_L_blocks = np.full((N,), np.inf, dtype=float)
+    log_L_blocks[:unique_valid.shape[0]] = unique_valid
+    block_valid_mask = np.isfinite(log_L_blocks)
+
+    first_idx_raw = np.searchsorted(valid_classic, log_L_blocks, side="left")
+    first_idx_safe = np.clip(first_idx_raw, 0, max(N - 1, 0))
+    block_first_idx = np.where(block_valid_mask, first_idx_raw.astype(np.int32), np.int32(-1))
+
+    K_per_block = K_classic[first_idx_safe].astype(float)
+    K_per_block = np.where(block_valid_mask, K_per_block, np.ones_like(K_per_block))
     eps_equal = float(eps_equal_prior)
 
     # Extract valid phantom clusters
-    valid_idx = np.where(valid_phantom)[0]
+    effective_valid_phantom = valid_phantom & sample_valid_mask
+    valid_idx = np.where(effective_valid_phantom)[0]
     if valid_idx.size == 0:
         c_valid = log_L_constraints
         ph_valid = log_L_phantom
     else:
         c_valid = log_L_constraints[valid_idx]
         ph_valid = log_L_phantom[valid_idx]
-    N = valid_idx.size
+    N_valid = valid_idx.size
 
     if rho_grid is None:
         rho_grid = _rho_grid_default()
@@ -451,18 +466,21 @@ def compute_mc_shrinkage_v2(
 
     # For each evidence sample: bootstrap clusters, sample rho, sample r trajectory, compute Z.
     for s in range(num_Z_samples):
-        if N == 0:
+        if N_valid == 0:
             A = np.zeros(G, dtype=float)
             B = np.zeros(G, dtype=float)
             E = np.zeros(G, dtype=float)
         else:
-            boot_idx = rng.integers(0, N, size=N)  # cluster bootstrap indices into valid clusters
+            boot_idx = rng.integers(0, N_valid, size=N_valid)  # cluster bootstrap indices into valid clusters
             A, B, E = _boundary_counts_from_clusters(
                 log_L_blocks=log_L_blocks,
                 log_L_constraints=c_valid,
                 log_L_phantom=ph_valid,
                 cluster_indices=boot_idx,
             )
+        A = np.where(block_valid_mask, A, 0.0)
+        B = np.where(block_valid_mask, B, 0.0)
+        E = np.where(block_valid_mask, E, 0.0)
 
         d2, alpha0, A_used = _candlestick_d2_per_boundary(K_per_block, eps_equal, A, B, E)
         if d2.size == 0:
@@ -504,7 +522,10 @@ def compute_mc_shrinkage_v2(
         for g in range(G):
             log_X_curr = log_X_prev + np.log(r[g])
             log_dX = _logdiffexp(np.array(log_X_prev), np.array(log_X_curr)).item()
-            log_terms[g] = log_dX + log_L_blocks[g]
+            if block_valid_mask[g]:
+                log_terms[g] = log_dX + log_L_blocks[g]
+            else:
+                log_terms[g] = -np.inf
             log_dZ_out[s, g] = log_terms[g]
             log_X_prev = log_X_curr
 
@@ -516,7 +537,9 @@ def compute_mc_shrinkage_v2(
     tiny = np.finfo(float).tiny
     return EvidenceSamples(
         log_Z_samples=log_Z_out,
-        log_dZ_mean=np.log(np.maximum(dZ_mean, tiny)),
-        log_dZ_var=np.log(np.maximum(dZ_var, tiny)),
+        log_dZ_mean=np.where(block_valid_mask, np.log(np.maximum(dZ_mean, tiny)), -np.inf),
+        log_dZ_var=np.where(block_valid_mask, np.log(np.maximum(dZ_var, tiny)), -np.inf),
         rho_samples=rho_samples,
+        log_L_blocks=log_L_blocks,
+        block_first_idx=block_first_idx,
     )
