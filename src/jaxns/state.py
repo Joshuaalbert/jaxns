@@ -127,11 +127,13 @@ class State(PureDataclassPytree):
         H_mean_stable = -(dp_mean * LogSpace(jnp.log(-cum_evidence_calc.X_mean.log_abs_val))).sum().value
         H_mean = jnp.where(jnp.isfinite(H_mean_instable), H_mean_instable, H_mean_stable)
         U_samples = self.samples.U_samples
-        X_samples = jax.lax.map(self.model.transform_to_X, U_samples, self.args, self.params)
+        X_samples = jax.lax.map(lambda u: self.model.transform_to_X(u, args=self.args, params=self.params), U_samples)
         log_L = self.samples.log_likelihoods
         log_dp = dp_mean.log_abs_val
         log_X_mean = cum_evidence_calc.X_mean.log_abs_val
-        log_posterior_density = log_L + jax.lax.map(self.model.log_prior, U_samples, self.args, self.params) - log_Z_mean
+        log_posterior_density = log_L + jax.lax.map(
+            lambda u: self.model.log_prior(u, args=self.args, params=self.params), U_samples
+        ) - log_Z_mean
         num_live_points_per_sample = self.samples.compute_num_live_points_per_sample(root_out_degree=self.root_out_degree, num_samples=self.num_samples)
         num_likelihood_evaluations_per_sample = self.samples.num_likelihood_evaluations.astype(mp_policy.count_dtype)
         total_num_samples = self.num_samples.astype(mp_policy.count_dtype)
@@ -140,12 +142,13 @@ class State(PureDataclassPytree):
         log_efficiency = jnp.log(total_num_samples) - jnp.log(total_num_likelihood_evaluations)
         log_L_constraints = self.samples.log_L_constraints
         log_L_phantom = self.samples.phantom_samples.log_L
-        valid_phantom = self.samples.phantom_samples.valid_mask
+        # TODO: Currently only accept clusters which are completely valid.
+        valid_phantom = jnp.all(self.samples.phantom_samples.valid_mask, axis=-1)
 
         X_supremum = self.model.transform_to_X(self.U_supremum, args=self.args, params=self.params)
         map_idx = jnp.argmax(log_posterior_density)
         log_L_map = log_L[map_idx]
-        U_map = U_samples[map_idx]
+        U_map = jax.tree.map(lambda u: u[map_idx], U_samples)
         X_map = jax.tree.map(lambda x: x[map_idx], X_samples)
         return NestedSamplerResults(
             U_samples=U_samples,

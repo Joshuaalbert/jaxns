@@ -54,9 +54,11 @@ def _sample_direction(key: PRNGKey, u0: TreeField[UType]) -> TreeField[UType]:
     """
     ndim = u0.ndim()
     if ndim == 1:
-        return u0.ones_like()
-    direction = u0.random_normal_like(key)
-    direction = direction / jnp.maximum(1e-6, direction.norm())
+        return TreeField(u0.ones_like())
+    direction = TreeField(u0.random_normal_like(key))
+    eps = jnp.asarray(1e-6, direction.norm().dtype)
+    norm = jnp.maximum(eps, direction.norm())
+    direction = TreeField(jax.tree.map(lambda x: x / norm, direction.tree))
     return direction
 
 
@@ -72,15 +74,18 @@ def _slice_bounds(point_U0: TreeField[UType], direction: TreeField[UType]) -> tu
         left_bound: left most point (<= 0).
         right_bound: right most point (>= 0).
     """
-    zero = jnp.zeros((), mp_policy.measure_dtype)
-    one = jnp.ones((), mp_policy.measure_dtype)
-    inf = jnp.full((), jnp.inf, mp_policy.measure_dtype)
-    t1 = (one - point_U0) / direction
-    t1_right = jax.tree.reduce(lambda x, y: jnp.minimum(jnp.min(jnp.where(x >= zero, x, inf)), jnp.min(jnp.where(y >= zero, y, inf))), t1, initializer=jnp.inf)
+    leaf_dtype = jax.tree.leaves(point_U0.tree)[0].dtype
+    zero = jnp.zeros((), leaf_dtype)
+    one = jnp.ones((), leaf_dtype)
+    inf = jnp.full((), jnp.inf, leaf_dtype)
+    t1 = jax.tree.map(lambda p, d: (one - p) / d, point_U0.tree, direction.tree)
+    t1_right = jax.tree.reduce(lambda x, y: jnp.minimum(jnp.min(jnp.where(x >= zero, x, inf)), jnp.min(jnp.where(y >= zero, y, inf))), t1,
+                               initializer=jnp.inf)
     t1_left = jax.tree.reduce(lambda x, y: jnp.maximum(jnp.max(jnp.where(x <= zero, x, -inf)), jnp.max(jnp.where(y <= zero, y, -inf))), t1,
                               initializer=-jnp.inf)
-    t0 = -point_U0 / direction
-    t0_right = jax.tree.reduce(lambda x, y: jnp.minimum(jnp.min(jnp.where(x >= zero, x, inf)), jnp.min(jnp.where(y >= zero, y, inf))), t0, initializer=jnp.inf)
+    t0 = jax.tree.map(lambda p, d: -p / d, point_U0.tree, direction.tree)
+    t0_right = jax.tree.reduce(lambda x, y: jnp.minimum(jnp.min(jnp.where(x >= zero, x, inf)), jnp.min(jnp.where(y >= zero, y, inf))), t0,
+                               initializer=jnp.inf)
     t0_left = jax.tree.reduce(lambda x, y: jnp.maximum(jnp.max(jnp.where(x <= zero, x, -inf)), jnp.max(jnp.where(y <= zero, y, -inf))), t0,
                               initializer=-jnp.inf)
     right_bound = jnp.minimum(t0_right, t1_right)
@@ -104,8 +109,9 @@ def _pick_point_in_interval(key: PRNGKey, point_U0: TreeField[UType], direction:
         point_U: [D]
         t: selection point between [left, right]
     """
-    t = left + random.uniform(key, dtype=mp_policy.measure_dtype) * (right - left)
-    point_U = point_U0 + t * direction
+    leaf_dtype = jax.tree.leaves(point_U0.tree)[0].dtype
+    t = left + random.uniform(key, dtype=leaf_dtype) * (right - left)
+    point_U = TreeField(jax.tree.map(lambda p, d: p + t * d, point_U0.tree, direction.tree))
     return point_U, t
 
 
@@ -128,7 +134,7 @@ def _new_proposal(
         gradient_guided: bool,
         log_L_constraint: FloatArray,
         log_likelihood_fn: Callable[[UType], FloatArray],
-) -> tuple[TreeField[UType], FloatArray, IntArray]:
+) -> tuple[TreeField[UType], FloatArray, IntArray, TreeField[UType]]:
     """
     Sample from a slice about a seed point.
 
@@ -174,7 +180,7 @@ def _new_proposal(
             left=left,
             right=right
         )
-        log_L = log_likelihood_fn(point_U.tree)
+        log_L = log_likelihood_fn(point_U.tree).astype(log_L_constraint.dtype)
         num_likelihood_evaluations = carry.num_likelihood_evaluations + jnp.ones_like(carry.num_likelihood_evaluations)
         return Carry(
             key=key,
@@ -208,7 +214,7 @@ def _new_proposal(
         left=left,
         right=right
     )
-    log_L = log_likelihood_fn(point_U.tree)
+    log_L = log_likelihood_fn(point_U.tree).astype(log_L_constraint.dtype)
     num_likelihood_evaluations += jnp.ones_like(num_likelihood_evaluations)
     init_carry = Carry(
         key=run_key,
@@ -236,7 +242,7 @@ def _new_proposal(
     else:
         # Randomly choose a new direction
         direction = _sample_direction(after_key, direction)
-    return carry.point_U, carry.log_L, num_likelihood_evaluations
+    return carry.point_U, carry.log_L, num_likelihood_evaluations, direction
 
 
 @partial(jax.jit, inline=True)
@@ -318,7 +324,7 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
             direction: TreeField[UType]
 
         def propose_op(carry: Carry, x: XType) -> Carry:
-            U_sample, log_L, num_likelihood_evaluations = _new_proposal(
+            U_sample, log_L, num_likelihood_evaluations, direction = _new_proposal(
                 key=x.key,
                 U0=carry.U_sample,
                 direction=carry.direction,
@@ -373,3 +379,6 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
         num_likelihood_evaluations = final_carry.num_likelihood_evaluations
 
         return U_sample, log_L_sample, num_likelihood_evaluations, phantom_samples
+
+
+UniDimSliceSampler.register_pytree()

@@ -2,15 +2,14 @@ import dataclasses
 from functools import partial
 
 import jax
-import numpy as np
 from jax import numpy as jnp
 
+from jaxns.cumulative_ops import scan_or_while_loop
 from jaxns.log_semiring import LogSpace
 from jaxns.mixed_precision import mp_policy
 from jaxns.pytree import PureDataclassPytree
 from jaxns.samples import Samples
 from jaxns.types import IntArray, FloatArray
-from jaxns.cumulative_ops import scan_or_while_loop
 
 
 @dataclasses.dataclass(slots=True, frozen=True)
@@ -54,7 +53,8 @@ class EvidenceCalculation(PureDataclassPytree):
         """
         return _update_evidence(self, K_total, log_L_next)
 
-    def update_from_samples(self, samples: Samples, root_out_degree: IntArray, num_samples: IntArray | None = None) -> tuple['EvidenceCalculation', 'EvidenceCalculation']:
+    def update_from_samples(self, samples: Samples, root_out_degree: IntArray, num_samples: IntArray | None = None) -> tuple[
+        'EvidenceCalculation', 'EvidenceCalculation']:
         """
         Update the evidence calculation from a set of samples. The samples should be ordered in the order they were generated, and the root_out_degree should
         be the out degree of the root node (i.e. the number of live points at the start of the nested sampling run).
@@ -85,10 +85,10 @@ def _update_from_samples(self: EvidenceCalculation, samples: Samples, root_out_d
         return (K_ip1, self), self
 
     (_, self), per_sample_state = scan_or_while_loop(scan_fn,
-                                      (root_out_degree, self),
-                                      (samples.out_degree.astype(root_out_degree.dtype), samples.log_likelihoods),
-                                      length=num_samples,
-                                      unroll=1)
+                                                     (root_out_degree, self),
+                                                     (samples.out_degree.astype(root_out_degree.dtype), samples.log_likelihoods),
+                                                     length=num_samples,
+                                                     unroll=1)
     return self, per_sample_state
 
 
@@ -112,7 +112,7 @@ def _update_evidence(self, K_total: IntArray, log_L_next: FloatArray) -> 'Eviden
     t_mean = LogSpace(- log_num_live_points_p1)
     # T2_mean = LogSpace(jnp.log(num_live_points) - jnp.log( num_live_points + 2.))
     # T2_mean = LogSpace(jnp.log(1.) - jnp.log(1. + 2./num_live_points))
-    T2_mean = LogSpace(- jnp.logaddexp(zero, np.log(two) - log_num_live_points))
+    T2_mean = LogSpace(- jnp.logaddexp(zero, jnp.log(two) - log_num_live_points))
     # T2_mean = LogSpace(- jnp.logaddexp(jnp.log(2.), -jnp.log(num_live_points)))
     t2_mean = LogSpace(jnp.log(two) - log_num_live_points_p1 - log_num_live_points_p2)
     # tT_mean = LogSpace(jnp.log(num_live_points) - jnp.log(num_live_points + 1.) - jnp.log(num_live_points + 2.))

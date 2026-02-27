@@ -138,7 +138,9 @@ class LogSpace(PureDataclassPytree):
             raise TypeError(f"Expected type {type(self)} got {type(other)}")
         if self.naked and other.naked:  # no coefficients
             return LogSpace(jnp.logaddexp(self.log_abs_val, other.log_abs_val))
-        return LogSpace(*signed_logaddexp(self.log_abs_val, self.sign, other.log_abs_val, other.sign))
+        self_sign = self.sign if self.sign is not None else jnp.ones_like(self.log_abs_val)
+        other_sign = other.sign if other.sign is not None else jnp.ones_like(other.log_abs_val)
+        return LogSpace(*signed_logaddexp(self.log_abs_val, self_sign, other.log_abs_val, other_sign))
 
     def __sub__(self, other):
         """
@@ -172,7 +174,9 @@ class LogSpace(PureDataclassPytree):
             raise TypeError(f"Expected type {type(self)} got {type(other)}")
         if self.naked and other.naked:  # no coefficients
             return LogSpace(self.log_abs_val + other.log_abs_val)
-        return LogSpace(self.log_abs_val + other.log_abs_val, self.sign * other.sign)
+        self_sign = self.sign if self.sign is not None else jnp.ones_like(self.log_abs_val)
+        other_sign = other.sign if other.sign is not None else jnp.ones_like(other.log_abs_val)
+        return LogSpace(self.log_abs_val + other.log_abs_val, self_sign * other_sign)
 
     def __repr__(self):
         if self.naked:
@@ -344,6 +348,10 @@ class LogSpace(PureDataclassPytree):
             raise TypeError(f"Expected type {type(self)} got {type(other)}")
         if self.naked and other.naked:  # no coefficients
             return LogSpace(self.log_abs_val - other.log_abs_val)
+        if self.naked:
+            return LogSpace(self.log_abs_val - other.log_abs_val, other.sign)
+        if other.naked:
+            return LogSpace(self.log_abs_val - other.log_abs_val, self.sign)
         return LogSpace(self.log_abs_val - other.log_abs_val, self.sign * other.sign)
 
 

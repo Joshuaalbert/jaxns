@@ -225,16 +225,21 @@ def sample_mc_shrinkage(
     """
     N = log_L_classic.shape[0]
     sample_valid_mask = jnp.arange(N, dtype=jnp.int32) < num_samples
+    has_phantom_dim = log_L_phantom.shape[1] > 0
     valid_classic = jnp.where(sample_valid_mask, log_L_classic, jnp.inf)
-    log_L_blocks = jnp.unique(valid_classic, size=N, fill_value=jnp.inf)
-    block_valid_mask = jnp.isfinite(log_L_blocks)
-
-    first_idx_raw = jnp.searchsorted(valid_classic, log_L_blocks, side="left")
-    first_idx_safe = jnp.clip(first_idx_raw, 0, jnp.maximum(N - 1, 0))
-    block_first_idx = jnp.where(block_valid_mask, first_idx_raw.astype(jnp.int32), jnp.asarray(-1, jnp.int32))
-
-    K_per_block = K_classic[first_idx_safe].astype(log_L_blocks.dtype)
-    K_per_block = jnp.where(block_valid_mask, K_per_block, jnp.ones_like(K_per_block))
+    if has_phantom_dim:
+        log_L_blocks = jnp.unique(valid_classic, size=N, fill_value=jnp.inf)
+        block_valid_mask = jnp.isfinite(log_L_blocks)
+        first_idx_raw = jnp.searchsorted(valid_classic, log_L_blocks, side="left")
+        first_idx_safe = jnp.clip(first_idx_raw, 0, jnp.maximum(N - 1, 0))
+        block_first_idx = jnp.where(block_valid_mask, first_idx_raw.astype(jnp.int32), jnp.asarray(-1, jnp.int32))
+        K_per_block = K_classic[first_idx_safe].astype(log_L_blocks.dtype)
+        K_per_block = jnp.where(block_valid_mask, K_per_block, jnp.ones_like(K_per_block))
+    else:
+        log_L_blocks = valid_classic
+        block_valid_mask = sample_valid_mask
+        block_first_idx = jnp.where(block_valid_mask, jnp.arange(N, dtype=jnp.int32), jnp.asarray(-1, jnp.int32))
+        K_per_block = jnp.where(block_valid_mask, K_classic.astype(log_L_blocks.dtype), jnp.ones_like(log_L_blocks))
     eps_equal = jnp.asarray(eps_equal_prior, dtype=log_L_blocks.dtype)
 
     dtype = log_L_blocks.dtype

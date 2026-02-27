@@ -7,7 +7,7 @@ import jax.numpy as jnp
 import jax.random
 from jaxctx import CtxParams
 
-from jaxns.constrained_sampler import AbstractSampler
+from jaxns.constrained_sampler import AbstractSampler, UniDimSliceSampler
 from jaxns.mixed_precision import mp_policy
 from jaxns.model import Model
 from jaxns.pytree import PureDataclassPytree
@@ -24,7 +24,7 @@ def _sample_init_state(key, num_live_points: int, max_samples: int, model: Model
     def single_sample(key):
         key, subkey = jax.random.split(key)
         U_sample = model.sample_U(subkey)
-        log_L = model.log_likelihood(U_sample, args=args, params=params, allow_nan=False)
+        log_L = model.log_likelihood(U_sample, args=args, params=params, allow_nan=False).astype(mp_policy.measure_dtype)
         num_likelihood_evaluations = jnp.array(1, dtype=mp_policy.count_dtype)
         carry = (key, U_sample, log_L, num_likelihood_evaluations)
 
@@ -36,7 +36,7 @@ def _sample_init_state(key, num_live_points: int, max_samples: int, model: Model
             key, _, _, num_likelihood_evaluations = carry
             key, subkey = jax.random.split(key)
             U_sample = model.sample_U(subkey)
-            log_L = model.log_likelihood(U_sample, args=args, params=params, allow_nan=False)
+            log_L = model.log_likelihood(U_sample, args=args, params=params, allow_nan=False).astype(mp_policy.measure_dtype)
             num_likelihood_evaluations += jnp.ones_like(num_likelihood_evaluations)
             return (key, U_sample, log_L, num_likelihood_evaluations)
 
@@ -78,7 +78,7 @@ def _sample_init_state(key, num_live_points: int, max_samples: int, model: Model
     )
 
     sample_atom = Samples(
-        log_likelihoods=jnp.asarray(-jnp.inf, mp_policy.measure_dtype),
+        log_likelihoods=jnp.asarray(jnp.inf, mp_policy.measure_dtype),
         out_degree=jnp.asarray(0, mp_policy.count_dtype),
         num_likelihood_evaluations=jnp.asarray(0, mp_policy.count_dtype),
         U_samples=jax.tree.map(lambda x: jnp.zeros_like(x[0]), samples.U_samples),
@@ -87,7 +87,7 @@ def _sample_init_state(key, num_live_points: int, max_samples: int, model: Model
             log_L=jnp.zeros_like(samples.phantom_samples.log_L[0]),
             valid_mask=jnp.zeros_like(samples.phantom_samples.valid_mask[0])
         ),
-        log_L_constraints=jnp.asarray(-jnp.inf, mp_policy.measure_dtype)
+        log_L_constraints=jnp.asarray(jnp.inf, mp_policy.measure_dtype)
     )
     if not store_phantom_samples:
         sample_atom.phantom_samples.U_samples = None
@@ -161,7 +161,8 @@ def _run_ns(key, state: State, target_num_live_points: int, shell_size: int, arg
         K_per_sample_before = K_per_sample + 1 - outer_carry.state.samples.out_degree
         select_weights = jnp.where(
             jnp.logical_and(
-                jnp.arange(K_per_sample_before.shape[0]) < outer_carry.state.num_samples, K_per_sample_before < target_num_live_points
+                jnp.arange(K_per_sample_before.shape[0]) < outer_carry.state.num_samples,
+                K_per_sample_before < target_num_live_points
             ), 0, -jnp.inf)
         select_contours_key, key = jax.random.split(outer_carry.key, 2)
         parent_idxs = resample_indicies(select_contours_key, log_weights=select_weights, S=shell_size, replace=False)  # [S]
@@ -182,7 +183,7 @@ def _run_ns(key, state: State, target_num_live_points: int, shell_size: int, arg
             i_start = jnp.where(no_seeds, 0, i_start).astype(mp_policy.index_dtype)
             seed_select_idx = jax.random.randint(seed_key, (), i_start, outer_carry.state.num_samples)
             seed_point = SeedPoint(
-                U0=outer_carry.state.samples.U_samples[seed_select_idx],
+                U0=jax.tree.map(lambda u: u[seed_select_idx], outer_carry.state.samples.U_samples),
                 log_L0=outer_carry.state.samples.log_likelihoods[seed_select_idx]
             )
             return sampler.get_sample(
@@ -190,9 +191,10 @@ def _run_ns(key, state: State, target_num_live_points: int, shell_size: int, arg
             ), (delta_root_out_degree, delta_parent_out_degree)
 
         key, subkey = jax.random.split(outer_carry.key)
+        keys = jax.random.split(subkey, shell_size)
         (U_samples, log_likelihoods, num_likelihood_evaluations, phantom_samples), (delta_root_out_degree, delta_parent_out_degree) = jax.lax.map(
-            lambda key: get_sample(key, log_L_constraints, parent_idxs),
-            jax.random.split(subkey, shell_size),
+            lambda x: get_sample(x[0], x[1], x[2]),
+            (keys, log_L_constraints, parent_idxs),
             batch_size=batch_size
         )
 
@@ -204,6 +206,11 @@ def _run_ns(key, state: State, target_num_live_points: int, shell_size: int, arg
             num_likelihood_evaluations=num_likelihood_evaluations,
             phantom_samples=phantom_samples
         )
+        if outer_carry.state.samples.phantom_samples.U_samples is None:
+            new_samples.phantom_samples.U_samples = None
+            num_phantom = outer_carry.state.samples.phantom_samples.valid_mask.shape[1]
+            new_samples.phantom_samples.valid_mask = jnp.zeros((shell_size, num_phantom), dtype=mp_policy.bool_dtype)
+            new_samples.phantom_samples.log_L = jnp.full((shell_size, num_phantom), -jnp.inf, dtype=mp_policy.measure_dtype)
 
         candidate_supremum_candidate_iid = jnp.argmax(new_samples.log_likelihoods)
         candidate_log_L_supremum = new_samples.log_likelihoods[candidate_supremum_candidate_iid]
@@ -226,7 +233,7 @@ def _run_ns(key, state: State, target_num_live_points: int, shell_size: int, arg
                                       candidate_U_supremum_phantom, U_supremum)
 
         state = State(
-            root_out_degree=outer_carry.state.root_out_degree + delta_root_out_degree,
+            root_out_degree=outer_carry.state.root_out_degree + jnp.sum(delta_root_out_degree),
             samples=outer_carry.state.samples.append_samples(
                 insert_idx=outer_carry.state.num_samples,
                 parent_idxs=parent_idxs,
@@ -268,7 +275,7 @@ class NestedSampler(PureDataclassPytree):
 
     def __post_init__(self):
         U_ndims = 0
-        if self.target_num_live_points is None or self.max_samples is None or self.shell_size is None:
+        if self.target_num_live_points is None or self.max_samples is None or self.shell_size is None or self.sampler is None:
             U_ndims = int(self.model.U_ndims(self.args, self.params))
         if self.target_num_live_points is None:
             self.target_num_live_points = 100 * U_ndims
@@ -277,7 +284,9 @@ class NestedSampler(PureDataclassPytree):
         if self.shell_size is None:
             self.shell_size = max(1, self.target_num_live_points // 2)
         if self.termination_condition is None:
-            self.termination_condition = TerminationCondition(dlogZ=1e-2)
+            self.termination_condition = TerminationCondition(dlogZ=1e-3)
+        if self.sampler is None:
+            self.sampler = UniDimSliceSampler(model=self.model, num_slices=max(1, 5 * U_ndims))
 
     @classmethod
     def flatten(cls, this) -> tuple[list[Any], tuple[Any, ...]]:

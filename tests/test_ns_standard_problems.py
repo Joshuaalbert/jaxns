@@ -1,5 +1,4 @@
 import numpy as np
-import pytest
 from jax import numpy as jnp
 from jax.scipy.linalg import solve_triangular
 from jaxctx.priors.prior import Prior
@@ -8,8 +7,6 @@ from tensorflow_probability.substrates import jax as tfp
 from jaxns.core import NestedSampler
 from jaxns.model import Model
 from jaxns.utils import bruteforce_evidence
-
-pytestmark = pytest.mark.skip(reason="Legacy nested-sampling standard-problem tests are incompatible with the in-progress v3 rewrite.")
 
 tfpd = tfp.distributions
 
@@ -95,7 +92,7 @@ STANDARD_PROBLEM_CASES = [
 ]
 
 
-def test_nested_sampling_run_results():
+def test_nested_sampling_run_results(tmp_path):
     for name, build_case in STANDARD_PROBLEM_CASES:
         model, log_Z_true, ns_kwargs = build_case()
         ns = NestedSampler(model=model, **ns_kwargs)
@@ -106,6 +103,17 @@ def test_nested_sampling_run_results():
         assert not np.isnan(results.log_Z_mean)
         assert not np.isnan(results.log_Z_uncert)
         log_Z_samples = results.sample_evidence(num_samples=1000)
+        import pylab as plt
+        plt.hist(log_Z_samples, bins='auto')
+        plt.axvline(log_Z_true, color='k', linestyle='--', label='true log Z')
+        plt.axvline(results.log_Z_mean, color='r', linestyle='--', label='estimated log Z')
+        plt.legend()
+        plt.title(f"{name} log Z samples")
+        plt.savefig(tmp_path / f"{name}_logZ_samples.png")
+        plt.close()
+
+        results.plot_diagnostics(save_file=tmp_path / f"{name}_diagnostics.png")
+        results.plot_cornerplot(save_name=tmp_path / f"{name}_cornplot.png")
 
         log_Z_ensemble_mean = jnp.mean(log_Z_samples)
         log_Z_ensemble_std = jnp.std(log_Z_samples)

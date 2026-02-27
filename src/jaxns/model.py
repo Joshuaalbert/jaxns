@@ -193,7 +193,10 @@ def _log_prior(self: Model, U: UType, args=(), params=None) -> FloatArray:
         collections={'params': params, 'U': U},
         *args
     )
-    log_prior = jax.tree.leaves(apply_return.collections['log_prior'])
+    log_prob_collection = apply_return.collections.get('log_prob', None)
+    if log_prob_collection is None:
+        raise ValueError("No log prior found in the model. Expected 'log_prior' collection.")
+    log_prior = jax.tree.leaves(log_prob_collection)
     if len(log_prior) == 0:
         raise ValueError("No log prior found in the model. Ensure the prior model is correctly defined.")
     else:

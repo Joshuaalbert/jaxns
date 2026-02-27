@@ -82,7 +82,7 @@ def _get_items(self: Samples, item):
     return jax.tree.map(lambda x: x[item], self)
 
 
-@partial(jax.jit, inline=True)
+@partial(jax.jit, inline=True, static_argnames=['size'])
 def _slice(self: Samples, start: IntArray, size: int) -> Samples:
     return jax.tree.map(lambda x: jax.lax.dynamic_slice(x, (start,) + (0,) * (x.ndim - 1), (size,) + x.shape[1:]), self)
 
@@ -163,13 +163,13 @@ def _resize(self: Samples, max_samples: int) -> Samples:
         )
 
     sample_atom = Samples(
-        log_likelihoods=jnp.asarray(-jnp.inf, mp_policy.measure_dtype),
+        log_likelihoods=jnp.asarray(jnp.inf, mp_policy.measure_dtype),
         out_degree=jnp.asarray(0, mp_policy.count_dtype),
         num_likelihood_evaluations=jnp.asarray(0, mp_policy.count_dtype),
         U_samples=jax.tree.map(lambda x: jnp.zeros_like(x[0]), self.U_samples),
         phantom_samples=PhantomSamples(
             U_samples=jax.tree.map(lambda x: jnp.zeros_like(x[0]), self.phantom_samples.U_samples),
-            log_L=jnp.asarray(-jnp.inf, mp_policy.measure_dtype),
+            log_L=jnp.asarray(jnp.inf, mp_policy.measure_dtype),
             valid_mask=jnp.asarray(False, mp_policy.bool_dtype)
         )
     )

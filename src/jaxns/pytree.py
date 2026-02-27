@@ -277,14 +277,16 @@ class TreeField(PureDataclassPytree, Generic[PV]):
         leaves = jax.tree.leaves(self.tree)
         if not leaves:
             return self
-        z = jax.tree.map(lambda k, x: jax.random.normal(k, shape=x.shape, dtype=x.dtype), jax.random.split(key, len(leaves)), leaves)
+        keys = jax.random.split(key, len(leaves))
+        z = [jax.random.normal(k, shape=x.shape, dtype=x.dtype) for k, x in zip(keys, leaves)]
         return jax.tree.unflatten(jax.tree.structure(self.tree), z)
 
     def random_uniform_like(self, key):
         leaves = jax.tree.leaves(self.tree)
         if not leaves:
             return self
-        z = jax.tree.map(lambda k, x: jax.random.uniform(k, shape=x.shape, dtype=x.dtype), jax.random.split(key, len(leaves)), leaves)
+        keys = jax.random.split(key, len(leaves))
+        z = [jax.random.uniform(k, shape=x.shape, dtype=x.dtype) for k, x in zip(keys, leaves)]
         return jax.tree.unflatten(jax.tree.structure(self.tree), z)
 
 
