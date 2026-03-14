@@ -69,6 +69,8 @@ class EvidenceSamples(NamedTuple):
     log_dZ_mean: FloatArray  # [num_blocks] L_{g} * (X_{g-1} - X_g) averaged over MC chains
     log_dZ_var: FloatArray  # [num_blocks] variance of L_{g} * (X_{g-1} - X_g) over MC chains
     rho_samples: FloatArray  # [num_Z_samples] samples of the global rho parameter used in the MC shrinkage sampling
+    eta_samples: FloatArray  # [num_Z_samples] estimated loose-reuse efficiency eta from phantom counts
+    rho_eta_samples: FloatArray  # [num_Z_samples] sampled rho multiplied by estimated eta
     log_L_blocks: FloatArray  # [num_blocks] block levels derived from log_L_classic, padded with +inf
     block_first_idx: IntArray  # [num_blocks] first classic index per block, -1 for padded blocks
 
@@ -245,6 +247,31 @@ def _fit_rho_mle(
             best_nll = nll
             best_rho = float(rho)
     return float(np.clip(best_rho, np.min(rho_grid), np.max(rho_grid)))
+
+
+def _estimate_eta(
+        K_per_block: np.ndarray,
+        A: np.ndarray,
+        num_phantom: int,
+        block_valid_mask: np.ndarray,
+) -> float:
+    if num_phantom == 0:
+        return 0.0
+
+    K_safe = np.maximum(np.asarray(K_per_block, dtype=float), 1.0)
+    A = np.asarray(A, dtype=float)
+    block_valid_mask = np.asarray(block_valid_mask, dtype=bool)
+    mask = block_valid_mask & (A > 0.0)
+
+    eta_min = 1.0 / (K_safe + 1.0)
+    eta_raw = A / (K_safe * float(num_phantom))
+    eta_per_boundary = np.clip(eta_raw, eta_min, 1.0)
+
+    weights = np.where(mask, K_safe, 0.0)
+    denom = float(np.sum(weights))
+    if denom <= 0.0:
+        return 0.0
+    return float(np.sum(weights * eta_per_boundary) / denom)
 
 
 # -----------------------------------------------------------------------------
@@ -463,6 +490,8 @@ def sample_mc_shrinkage(
     log_dZ_out = np.empty((num_Z_samples, G), dtype=float)
     log_Z_out = np.empty((num_Z_samples,), dtype=float)
     rho_samples = np.empty((num_Z_samples,), dtype=float)
+    eta_samples = np.empty((num_Z_samples,), dtype=float)
+    rho_eta_samples = np.empty((num_Z_samples,), dtype=float)
 
     # For each evidence sample: bootstrap clusters, sample rho, sample r trajectory, compute Z.
     for s in range(num_Z_samples):
@@ -496,6 +525,9 @@ def sample_mc_shrinkage(
                 prior=rho_prior,
             )
         rho_samples[s] = rho
+        eta = _estimate_eta(K_per_block=K_per_block, A=A, num_phantom=int(log_L_phantom.shape[1]), block_valid_mask=block_valid_mask)
+        eta_samples[s] = eta
+        rho_eta_samples[s] = rho * eta
 
         # Build Beta params per boundary
         alpha = np.empty(G, dtype=float)
@@ -540,6 +572,8 @@ def sample_mc_shrinkage(
         log_dZ_mean=np.where(block_valid_mask, np.log(np.maximum(dZ_mean, tiny)), -np.inf),
         log_dZ_var=np.where(block_valid_mask, np.log(np.maximum(dZ_var, tiny)), -np.inf),
         rho_samples=rho_samples,
+        eta_samples=eta_samples,
+        rho_eta_samples=rho_eta_samples,
         log_L_blocks=log_L_blocks,
         block_first_idx=block_first_idx,
     )

@@ -83,9 +83,8 @@ def _basic_mvn_model_case():
         return tfpd.MultivariateNormalTriL(loc=data_mu, scale_tril=jnp.linalg.cholesky(data_cov)).log_prob(x)
 
     model = Model(prior_model=prior_model)
-    return model, log_Z_true, {'max_samples': 100000, 'sampler': UniDimSliceSampler(model=model, num_slices=max(1, 10 * ndims),
-                                                                                    no_step_out=True,
-                                                                                    collect_phantom_samples=False)}
+    return model, log_Z_true, {'max_samples': 100000, 'target_num_live_points': 10 * ndims,
+                               'sampler': UniDimSliceSampler(model=model, num_slices=max(1, 100 * ndims), no_step_out=True, collect_phantom_samples=True)}
 
 
 STANDARD_PROBLEM_CASES = [
@@ -103,13 +102,18 @@ def test_nested_sampling_run_results(tmp_path):
         model, log_Z_true, ns_kwargs = build_case()
         ns = NestedSampler(model=model, **ns_kwargs)
         state = ns.run()
-        results = state.to_result()
+        results = state.to_result().trim()
         results.summary(tmp_path / f"{name}_summary.txt")
 
         print(f"Checking {name}")
         assert not np.isnan(results.log_Z_mean)
         assert not np.isnan(results.log_Z_uncert)
-        log_Z_samples = results.sample_evidence(num_samples=1000)
+        mc_shrinkage_samples = results.sample_mc_shrinkage(num_samples=1000)
+
+        rho_eta_samples = mc_shrinkage_samples.rho_eta_samples
+        rho_samples = mc_shrinkage_samples.rho_samples
+        eta_samples = mc_shrinkage_samples.eta_samples
+        log_Z_samples = mc_shrinkage_samples.log_Z_samples
         import pylab as plt
         plt.hist(log_Z_samples, bins='auto')
         plt.axvline(log_Z_true, color='k', linestyle='--', label='true log Z')
@@ -117,6 +121,21 @@ def test_nested_sampling_run_results(tmp_path):
         plt.legend()
         plt.title(f"{name} log Z samples")
         plt.savefig(tmp_path / f"{name}_logZ_samples.png")
+        plt.close()
+
+        plt.hist(rho_eta_samples, bins='auto')
+        plt.title(f"{name} rho_eta samples")
+        plt.savefig(tmp_path / f"{name}_rho_eta_samples.png")
+        plt.close()
+
+        plt.hist(rho_samples, bins='auto')
+        plt.title(f"{name} rho samples")
+        plt.savefig(tmp_path / f"{name}_rho_samples.png")
+        plt.close()
+
+        plt.hist(eta_samples, bins='auto')
+        plt.title(f"{name} eta samples")
+        plt.savefig(tmp_path / f"{name}_eta_samples.png")
         plt.close()
 
         results.plot_diagnostics(save_file=tmp_path / f"{name}_diagnostics.png")

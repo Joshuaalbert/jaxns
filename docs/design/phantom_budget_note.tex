@@ -1,0 +1,127 @@
+\documentclass[10pt]{article}
+\usepackage[margin=0.72in]{geometry}
+\usepackage{amsmath,amssymb,mathtools}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{enumitem}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{4pt}
+\setlist[itemize]{leftmargin=1.2em,itemsep=1pt,topsep=2pt}
+\begin{document}
+\small
+
+\begin{center}
+{\Large Phantom-aware shrinkage sampling: posterior construction and budget tradeoff}\\[2mm]
+{\normalsize Concise note based on the design notes and reference implementation}
+\end{center}
+
+\section*{1. Posterior, global bootstrap, and the $\rho$ distribution}
+
+Consider one classic boundary pair $a \to b$ with $b>a$. Among phantom samples drawn under constraints $c_i \le a$, define
+\[
+A = \#\{L>a\},\qquad B = \#\{L>b\},\qquad E = \#\{L=b\}.
+\]
+Here $A$ counts qualifiers from $\pi_a$, $B$ counts successes above the next boundary, and $E$ counts equality mass at the boundary. The design note uses a three-cell model
+\[
+p=(p_>,p_=,p_<),\qquad p \sim \mathrm{Dirichlet}(K,\varepsilon,1-\varepsilon),
+\]
+so that the shrinkage ratio $r = X(b)/X(a)=p_>$ has the classical marginal prior
+\[
+r \sim \mathrm{Beta}(K,1).
+\]
+Correlation among phantoms is handled by an efficiency parameter $\rho\in(0,1]$, interpreted as replacing the raw count $A$ by an effective count $A_{\mathrm{eff}}=\rho A$. Treating the observed proportions as fractional multinomial counts gives the posterior
+\[
+p\mid A,B,E,\rho \sim \mathrm{Dirichlet}\bigl(K+\rho B,\;\varepsilon+\rho E,\;1-\varepsilon+\rho(A-B-E)\bigr).
+\]
+Marginalizing out the equality and lower cells yields the shrinkage posterior used by the sampler,
+\[
+\boxed{\;r\mid A,B,\rho \sim \mathrm{Beta}(\alpha,\beta),\quad
+\alpha=K+\rho B,\quad \beta=1+\rho(A-B).\;}
+\]
+When $A=0$ the code falls back to the classical $\mathrm{Beta}(K,1)$ update.
+
+The global bootstrap is performed at the level of constrained-sampling calls rather than individual phantom points. Let cluster $i$ contain a correlated phantom set $\{L_{i,t}\}$ generated under constraint $c_i$. For bootstrap replicate $s$, sample clusters with replacement, keep each resampled cluster intact, and recompute all boundary counts $(A_g,B_g,E_g)$ from the same replicate. This preserves the within-cluster dependence and, crucially, the cross-boundary dependence induced by loose reuse: the same resampled cluster can contribute to many adjacent boundaries. Given the replicate counts, sample a single global $\rho_s$ and then sample all boundary shrinkages independently conditional on that replicate,
+\[
+r_{g,s}\sim \mathrm{Beta}\bigl(K_g+\rho_s B_g,\;1+\rho_s(A_g-B_g)\bigr),
+\]
+followed by the usual recursion
+\[
+X_{-1,s}=1,\qquad X_{g,s}=X_{g-1,s}r_{g,s},\qquad
+Z_s=\sum_g \bigl(X_{g-1,s}-X_{g,s}\bigr)e^{\ell_g},
+\]
+with $\ell_g=\log L_{\text{block},g}$. This is the mechanism by which the sampler propagates both phantom reuse and $\rho$ uncertainty into $\log Z$.
+
+The $\rho$ distribution comes from a candlestick calibration. For one boundary, define the observed proportion vector
+\[
+\hat p = (\hat p_>,\hat p_=)=\left(\frac{B}{A},\frac{E}{A}\right),
+\]
+and let $\mu$ and $\Sigma$ be the mean and covariance of the first two Dirichlet components under $\alpha=(K,\varepsilon,1-\varepsilon)$, with $\alpha_0=K+1$. In the iid case the covariance inflates like $\Sigma(1+\alpha_0/A)$; with correlated phantoms the design note replaces this by
+\[
+\kappa_g(\rho)=1+\frac{\alpha_{0,g}}{\rho A_g}.
+\]
+Using the Mahalanobis distance
+\[
+d_g^2=(\hat p_g-\mu_g)^\top \Sigma_g^{-1}(\hat p_g-\mu_g),
+\]
+and the approximation $d_g^2\sim \kappa_g(\rho)\chi_2^2$, the discrete grid posterior used in the code is
+\[
+\Pr(\rho=\rho_m\mid \text{bootstrap data}) \propto
+\exp\!\Bigl[-\sum_{g:A_g>0}\Bigl\{\frac{2}{2}\log \kappa_g(\rho_m)+\frac{d_g^2}{2\kappa_g(\rho_m)}\Bigr\}\Bigr]\,\pi(\rho_m),
+\]
+with either $\pi(\rho)=1$ or the optional log prior $\pi(\rho)\propto 1/\rho$. Sampling $\rho$ from this grid rather than fixing it is what allows the evidence bootstrap to reflect uncertainty in phantom quality.
+
+\section*{2. How to spend budget: more phantom samples or more live points?}
+
+Write the chain length as $xD$ slice steps per replacement, of which $yD$ are burned in and discarded. Then the number of retained phantom points per replacement is
+\[
+p = xD-yD-1.
+\]
+If each slice costs about $n$ likelihood evaluations, then one replacement costs $nxD$ likelihood calls. Traversing the information-bearing region costs about $KH$ replacements, where $H$ is the usual nested-sampling information. Hence the total budget obeys
+\[
+N_{\mathrm{like}}\approx n\,xD\,K\,H.
+\]
+
+To summarize how much loose reuse actually helps, introduce a reuse efficiency $\eta\in[1/(K+1),1]$ defined so that the pooled effective phantom information behaves like $\rho\eta p$ extra shrinkage information per boundary. Then a useful evidence-level approximation is
+\[
+\boxed{\;\mathrm{Var}(\log Z)\approx \frac{H}{K_{\mathrm{ev}}},\qquad
+K_{\mathrm{ev}}:=K\bigl(1+\rho\eta p\bigr).\;}
+\]
+The two important limits are:
+\begin{itemize}
+    \item fresh-only use of each replacement's phantoms: $\eta\approx 1/(K+1)$, so $K_{\mathrm{ev}}\approx K+\rho p$;
+    \item strong loose reuse across many later boundaries: $\eta\approx 1$, so $K_{\mathrm{ev}}\approx K(1+\rho p)$.
+\end{itemize}
+Thus phantoms can improve evidence precision either additively or multiplicatively, depending on how much reuse survives in practice.
+
+For a fair comparison at fixed likelihood budget, define
+\[
+C:=\frac{N_{\mathrm{like}}}{nDH},\qquad Kx=C,
+\]
+so increasing $x$ forces $K$ down. Using $p=xD-yD-1$, the evidence-effective live count becomes
+\[
+K_{\mathrm{ev}}(K)=K\Bigl[1+\rho\eta\Bigl(D\Bigl(\frac{C}{K}-y\Bigr)-1\Bigr)\Bigr]
+= \rho\eta DC + \bigl[1-\rho\eta(Dy+1)\bigr]K.
+\]
+This produces a clean threshold:
+\[
+\boxed{\;\rho\eta(Dy+1)>1 \Longrightarrow \text{evidence prefers smaller $K$ and larger $x$};\;}
+\]
+\[
+\boxed{\;\rho\eta(Dy+1)<1 \Longrightarrow \text{evidence prefers larger $K$ and smaller $x$}.\;}
+\]
+So, for evidence alone, there is no interior optimum in this simple model; the optimum sits on one side of the threshold.
+
+Posterior quality pulls the other way. If only classic dead points are retained as posterior samples, then their reservoir size and effective sample size scale roughly like
+\[
+\mathrm{ESS}_{\mathrm{classic}} \propto K.
+\]
+Therefore a small-$K$, large-$x$ design can improve evidence precision while simultaneously reducing posterior ESS. The operational rule is:
+\begin{itemize}
+    \item choose $y$ as the smallest burn-in that gets the slice chain close enough to stationarity;
+    \item ensure $K$ is large enough for mode finding, exploration robustness, and posterior ESS;
+    \item once that minimum viable $K$ is set, spend the remaining budget on larger $x$ only if $\rho\eta(Dy+1)>1$.
+\end{itemize}
+In other words, extra burn-in beyond stationarity is always a tax, while extra post-burn-in phantom samples are worthwhile only when their effective information rate $\rho\eta$ is high enough to compensate for the loss in live points.
+
+\end{document}

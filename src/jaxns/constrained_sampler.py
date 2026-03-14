@@ -5,7 +5,6 @@ from functools import partial
 from typing import Callable, NamedTuple, Any
 
 import jax
-import numpy as np
 from jax import numpy as jnp, random
 
 from jaxns.cumulative_ops import cumulative_op_static
@@ -337,7 +336,7 @@ def _new_proposal(
     else:
         # Randomly choose a new direction
         direction = _sample_direction(after_key, direction)
-    next_slice_width = 2*(carry.right - carry.left)
+    next_slice_width = 2 * (carry.right - carry.left)
     return carry.point_U, carry.log_L, num_likelihood_evaluations, direction, next_slice_width
 
 
@@ -385,10 +384,11 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
     no_step_out: bool = True
     gradient_guided: bool = False
     collect_phantom_samples: bool = False
+    phantom_burn_in: int | None = None
 
     @classmethod
     def flatten(cls, this) -> tuple[list[Any], tuple[Any, ...]]:
-        return cls.build_flatten(this, ['num_slices', 'no_step_out', 'gradient_guided', 'collect_phantom_samples'])
+        return cls.build_flatten(this, ['num_slices', 'no_step_out', 'gradient_guided', 'collect_phantom_samples', 'phantom_burn_in'])
 
     @classmethod
     def unflatten(cls, aux_data: tuple[Any, ...], children: list[Any]):
@@ -402,7 +402,11 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
 
     def num_phantom(self) -> int:
         if self.collect_phantom_samples:
-            return self.num_slices - 1
+            if self.phantom_burn_in is None:
+                burn_in = int(self.num_slices * 0.1)
+            else:
+                burn_in = self.phantom_burn_in
+            return self.num_slices - 1 - burn_in
         return 0
 
     def get_sample(self, key, log_L_constraint: FloatArray, seed_point: SeedPoint, args=(), params=None) -> tuple[UType, FloatArray, IntArray, PhantomSamples]:
@@ -492,7 +496,8 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
         # Last sample is the final sample, the rest are potential phantom samples
         # Take only the last num_phantom_save phantom samples
         assert self.num_phantom() <= self.num_slices - 1, "num_phantom() should be in [0, num_slices - 1]"
-        phantom_fraction = jax.tree.map(lambda x: x[np.shape(x)[0] - 1 - self.num_phantom():-1], cumulative_samples)
+
+        phantom_fraction = jax.tree.map(lambda x: x[self.num_slices - 1 - self.num_phantom():-1], cumulative_samples)
         phantom_samples = PhantomSamples(
             U_samples=phantom_fraction.U_sample.tree,
             log_L=phantom_fraction.log_L,

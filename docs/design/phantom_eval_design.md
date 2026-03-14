@@ -1,7 +1,7 @@
 
 # Design notes (v3): global bootstrap + rho sampling for `sample_mc_shrinkage`
 
-This document accompanies `phantom_eval_ref_v3.py` and focuses on the mathematics and design decisions
+This document accompanies `phantom_eval_ref.py` and focuses on the mathematics and design decisions
 for the improved Monte Carlo evidence sampler `sample_mc_shrinkage`.
 
 It assumes the base evaluation function `evaluate_phantoms` described earlier.

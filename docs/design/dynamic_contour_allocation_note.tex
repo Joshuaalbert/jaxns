@@ -1,0 +1,151 @@
+\documentclass[10pt]{article}
+\usepackage[margin=0.72in]{geometry}
+\usepackage{amsmath,amssymb,mathtools}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{enumitem}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{4pt}
+\setlist[itemize]{leftmargin=1.2em,itemsep=1pt,topsep=2pt}
+\begin{document}
+\small
+
+\begin{center}
+{\Large Dynamic contour allocation for evidence and posterior resolution}\\[2mm]
+{\normalsize A compact first-principles note}
+\end{center}
+
+\section*{1. Setup and the two downstream kernels}
+
+Let the current classic tree define likelihood contours
+\[
+L_0<L_1<\cdots<L_G,
+\]
+with corresponding prior-mass locations
+\[
+1=X_0>X_1>\cdots>X_G.
+\]
+Shell $j$ is the interval $(X_j,X_{j-1}]$, with width
+\[
+\Delta X_j := X_{j-1}-X_j,
+\qquad
+z_j := L_j\Delta X_j,
+\qquad
+m_j := \frac{z_j}{Z},
+\]
+where $Z=\sum_j z_j$ and $m_j$ is the posterior mass carried by shell $j$.
+
+Suppose we may launch an extra constrained-sampling call inside any existing classic contour $i$. Under the ideal constrained prior, a draw from contour $i$ is uniform in prior mass on $[0,X_i]$. This induces two natural kernels for all deeper shells $j>i$:
+\[
+A_{ij}:=\Pr(\text{draw from contour $i$ reaches boundary $j-1$})
+=\frac{X_{j-1}}{X_i},
+\]
+\[
+P_{ij}:=\Pr(\text{draw from contour $i$ lands in shell $j$})
+=\frac{\Delta X_j}{X_i}.
+\]
+The kernel $A_{ij}$ controls how much a draw from contour $i$ can inform the shrinkage at deeper boundaries, while $P_{ij}$ controls how much it contributes posterior support to shell $j$.
+
+If one constrained call at contour $i$ returns a whole correlated phantom cluster rather than a single point, let $\rho_i$ denote its evidence-efficiency multiplier and let $c_i$ denote its cost in likelihood evaluations. In the simplest case $\rho_i=1$ and $c_i$ is constant across contours.
+
+\section*{2. Objective 1: reduce evidence uncertainty}
+
+Write the local shrinkage as $r_j=X_j/X_{j-1}$ and $t_j:=\log r_j$. Since
+\[
+Z=\sum_h L_h(X_{h-1}-X_h),
+\]
+a perturbation in $t_j$ changes the evidence by
+\[
+\frac{\partial Z}{\partial t_j}
+=\sum_{h>j} L_h\Delta X_h - L_jX_j.
+\]
+Define the dimensionless evidence sensitivity
+\[
+g_j:=\frac{1}{Z}\frac{\partial Z}{\partial t_j}
+=\frac{1}{Z}\left(\sum_{h>j}L_h\Delta X_h-L_jX_j\right).
+\]
+If $v_j:=\operatorname{Var}(t_j)$, a delta-method proxy is
+\[
+\operatorname{Var}(\log Z)\approx \sum_j g_j^2v_j.
+\]
+Now let $I_j$ be the current effective information count for boundary $j$, so that $v_j\propto I_j^{-1}$. A new draw from contour $i$ contributes to boundary $j$ only if it reaches boundary $j-1$, hence the expected information increment is
+\[
+\delta I_{ij}\approx \rho_iA_{ij}.
+\]
+Therefore the first-order evidence utility of allocating one extra call to contour $i$ is
+\[
+\boxed{
+U_i^{(Z)}
+\propto
+\sum_{j>i}
+\frac{\rho_iA_{ij}g_j^2}{I_j^2}.
+}
+\]
+This score is large when contour $i$ can reach boundaries that are both evidence-sensitive ($g_j^2$ large) and currently poorly learned ($I_j$ small).
+
+\section*{3. Objective 2: improve posterior resolution}
+
+Let $n_j$ be the current number of effective posterior-support points in shell $j$. A simple resolution-loss proxy is
+\[
+V_{\mathrm{post}}\approx \sum_j \frac{m_j^2}{n_j+\kappa},
+\]
+with a small stabilizer $\kappa>0$. This says that shells with large posterior mass $m_j$ need more support points to keep Monte Carlo error small.
+
+A draw from contour $i$ lands in shell $j$ with probability $P_{ij}$, so one extra call at contour $i$ has posterior utility
+\[
+\boxed{
+U_i^{(P)}
+\propto
+\sum_{j>i}
+\frac{P_{ij}m_j^2}{(n_j+\kappa)^2}.
+}
+\]
+This score is large when contour $i$ feeds posterior mass into shells that matter to the posterior and are currently under-resolved.
+
+If the target is a particular posterior expectation $\mathbb{E}[f\mid y]$, replace $m_j^2$ by $m_j^2\sigma_j^2(f)$, where $\sigma_j^2(f)$ is the within-shell variance of $f$. Then the rule targets shells that are both posterior-important and variable for the chosen observable.
+
+\section*{4. Choosing $S$ contours at a time}
+
+Let $b_i\in\mathbb{N}$ be the number of the next $S$ calls allocated to contour $i$, with $\sum_i b_i=S$. A natural batch objective is
+\[
+\min_{\{b_i\}}
+\left[
+\lambda_Z\sum_j\frac{g_j^2}{I_j+\sum_i b_i\rho_iA_{ij}}
++\lambda_P\sum_j\frac{m_j^2}{n_j+\kappa+\sum_i b_iP_{ij}}
+\right],
+\]
+where $\lambda_Z,\lambda_P\ge 0$ set the relative importance of evidence precision and posterior resolution. The greedy marginal gain for adding one more call at contour $i$ is then
+\[
+\boxed{
+\mathrm{score}_i(\mathbf b)
+=
+\frac{1}{c_i}
+\left[
+\lambda_Z\sum_j\frac{\rho_iA_{ij}g_j^2}{\left(I_j+\sum_\ell b_\ell\rho_\ell A_{\ell j}\right)^2}
++
+\lambda_P\sum_j\frac{P_{ij}m_j^2}{\left(n_j+\kappa+\sum_\ell b_\ell P_{\ell j}\right)^2}
+\right].
+}
+\]
+A simple allocation rule is:
+\begin{itemize}
+    \item initialize $b_i=0$ for all contours;
+    \item repeatedly choose the contour with the largest current $\mathrm{score}_i(\mathbf b)$;
+    \item increment its $b_i$ by one and update the denominators;
+    \item stop when $\sum_i b_i=S$.
+\end{itemize}
+The denominator updates create diminishing returns automatically, so the batch spreads across contours whenever one region becomes saturated.
+
+\section*{5. Practical interpretation}
+
+The two objectives push to different contour regions:
+\begin{itemize}
+    \item \textbf{Evidence only} ($\lambda_P=0$): favor contours that sit high enough to inform many downstream boundaries with large evidence sensitivity.
+    \item \textbf{Posterior only} ($\lambda_Z=0$): favor contours whose descendants fall into high-posterior, currently under-sampled shells, including minor modes if their $m_j^2/(n_j+\kappa)^2$ score is large.
+    \item \textbf{Mixed objective}: the greedy batch approximately equalizes marginal gain per unit cost across selected contours.
+\end{itemize}
+
+Finally, if posterior resolution is defined using only the original classic dead points, then extra contour calls do not directly increase that ESS. They only improve evidence and the resolution of the expanded sample tree. Thus it is useful to track two distinct goals: a classic-point ESS target and an expanded-tree utility target based on the objectives above.
+
+\end{document}

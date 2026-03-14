@@ -43,7 +43,13 @@ def test_mc_shrinkage_v2_basic():
     assert out.log_Z_samples.shape == (10,)
     assert out.log_dZ_mean.shape == log_L_classic.shape
     assert out.log_dZ_var.shape == log_L_classic.shape
+    assert out.rho_samples.shape == (10,)
+    assert out.eta_samples.shape == (10,)
+    assert out.rho_eta_samples.shape == (10,)
     assert np.all(np.isfinite(out.log_Z_samples))
+    assert np.all(out.eta_samples >= 0.0)
+    assert np.all(out.eta_samples <= 1.0)
+    np.testing.assert_allclose(out.rho_eta_samples, out.rho_samples * out.eta_samples)
     block_mask = np.isfinite(out.log_L_blocks)
     assert np.all(np.isfinite(out.log_dZ_mean[block_mask]))
     assert np.all(np.isfinite(out.log_dZ_var[block_mask]))
@@ -68,6 +74,9 @@ def test_mc_shrinkage_v2_runs_and_shapes():
     assert out.log_Z_samples.shape == (20,)
     assert out.log_dZ_mean.shape == log_L_classic.shape
     assert out.log_dZ_var.shape == log_L_classic.shape
+    assert out.rho_samples.shape == (20,)
+    assert out.eta_samples.shape == (20,)
+    assert out.rho_eta_samples.shape == (20,)
     assert np.all(np.isfinite(out.log_Z_samples))
 
     # v2 should have some variability across samples
@@ -95,6 +104,8 @@ def test_mc_shrinkage_v2_falls_back_without_phantoms():
     )
     assert out.log_Z_samples.shape == (5,)
     assert np.all(np.isfinite(out.log_Z_samples))
+    assert np.all(out.eta_samples == 0.0)
+    assert np.all(out.rho_eta_samples == 0.0)
     block_mask = np.isfinite(out.log_L_blocks)
     assert np.all(out.block_first_idx[block_mask] >= 0)
     assert np.all(out.block_first_idx[~block_mask] == -1)
