@@ -78,7 +78,7 @@ class NestedSamplerResults(PureDataclassPytree):
         sample_data = jax.tree.map(lambda s: s[:num_samples, ...], sample_data)
         return dataclasses.replace(self, **sample_data)
 
-    def summary(self, f_obj: str | TextIO | None = None):
+    def summary(self, f_obj: str | TextIO | Path | None = None):
         """
         Gives a summary of the results of a nested sampling run.
 
@@ -87,7 +87,7 @@ class NestedSamplerResults(PureDataclassPytree):
         """
         return _summary(self, f_obj=f_obj)
 
-    def plot_diagnostics(self, save_file: str | None = None):
+    def plot_diagnostics(self, save_file: str | Path | None = None):
         """
         Plot diagnostics of the nested sampling run.
 
@@ -96,7 +96,7 @@ class NestedSamplerResults(PureDataclassPytree):
         """
         plot_diagnostics(self, save_file=save_file)
 
-    def plot_cornerplot(self, variables: Optional[list[str]] = None, save_name: Optional[str] = None, kde_overlay: bool = False):
+    def plot_cornerplot(self, variables: list[str] | None = None, save_name: str | Path | None = None, kde_overlay: bool = False):
         """
         Plots a cornerplot of the posterior samples.
         """

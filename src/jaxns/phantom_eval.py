@@ -346,7 +346,6 @@ def sample_mc_shrinkage(
             log_dZ_var=jnp.where(block_valid_mask, log_dZ_var, jnp.full_like(log_dZ_var, -jnp.inf)),
             rho_samples=rho_samples,
             eta_samples=eta_samples,
-            rho_eta_samples=rho_eta_samples,
             log_L_blocks=log_L_blocks,
             block_first_idx=block_first_idx,
         )

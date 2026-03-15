@@ -278,7 +278,7 @@ class NestedSampler(PureDataclassPytree):
         if self.target_num_live_points is None or self.max_samples is None or self.shell_size is None or self.sampler is None:
             U_ndims = int(self.model.U_ndims(self.args, self.params))
         if self.target_num_live_points is None:
-            self.target_num_live_points = 100 * U_ndims
+            self.target_num_live_points = 40 * U_ndims
         if self.max_samples is None:
             self.max_samples = 10000 * U_ndims
         if self.shell_size is None:
@@ -291,7 +291,8 @@ class NestedSampler(PureDataclassPytree):
         else:
             self.termination_condition.max_samples = jnp.minimum(self.termination_condition.max_samples, max_samples)
         if self.sampler is None:
-            self.sampler = UniDimSliceSampler(model=self.model, num_slices=max(1, 5 * U_ndims), collect_phantom_samples=self.collect_phantom_samples)
+            self.sampler = UniDimSliceSampler(model=self.model, num_slices=max(1, 25 * U_ndims), phantom_burn_in=max(1, 10 * U_ndims), no_step_out=True,
+                                              collect_phantom_samples=self.collect_phantom_samples)
 
     @classmethod
     def flatten(cls, this) -> tuple[list[Any], tuple[Any, ...]]:
