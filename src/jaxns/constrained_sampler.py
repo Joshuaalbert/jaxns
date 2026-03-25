@@ -51,7 +51,7 @@ class AbstractSampler(ABC):
         ...
 
 
-def _sample_direction(key: PRNGKey, u0: TreeField[UType]) -> TreeField[UType]:
+def _sample_direction(key: PRNGKey, u0: TreeField[UType], radii: TreeField[UType] | None = None, rotation: UType | None = None) -> TreeField[UType]:
     """
     Choose a direction randomly from S^(D-1).
 
@@ -64,12 +64,15 @@ def _sample_direction(key: PRNGKey, u0: TreeField[UType]) -> TreeField[UType]:
     """
     ndim = u0.ndim()
     if ndim == 1:
-        return TreeField(u0.ones_like())
-    direction = TreeField(u0.random_normal_like(key))
+        return u0.ones_like()
+    direction = u0.random_normal_like(key)
+    if radii is not None:
+        direction = radii * direction
+    if rotation is not None:
+        direction = rotation @ direction
     eps = jnp.asarray(1e-6, direction.norm().dtype)
     norm = jnp.maximum(eps, direction.norm())
-    direction = TreeField(jax.tree.map(lambda x: x / norm, direction.tree))
-    return direction
+    return direction / norm
 
 
 def _slice_bounds(point_U0: TreeField[UType], direction: TreeField[UType]) -> tuple[FloatArray, FloatArray]:
@@ -84,16 +87,16 @@ def _slice_bounds(point_U0: TreeField[UType], direction: TreeField[UType]) -> tu
         left_bound: left most point (<= 0).
         right_bound: right most point (>= 0).
     """
-    leaf_dtype = jax.tree.leaves(point_U0.tree)[0].dtype
+    leaf_dtype = jax.tree.leaves(point_U0)[0].dtype
     zero = jnp.zeros((), leaf_dtype)
     one = jnp.ones((), leaf_dtype)
     inf = jnp.full((), jnp.inf, leaf_dtype)
-    t1 = jax.tree.map(lambda p, d: (one - p) / d, point_U0.tree, direction.tree)
+    t1 = (one - point_U0) / direction
     t1_right = jax.tree.reduce(lambda x, y: jnp.minimum(jnp.min(jnp.where(x >= zero, x, inf)), jnp.min(jnp.where(y >= zero, y, inf))), t1,
                                initializer=jnp.inf)
     t1_left = jax.tree.reduce(lambda x, y: jnp.maximum(jnp.max(jnp.where(x <= zero, x, -inf)), jnp.max(jnp.where(y <= zero, y, -inf))), t1,
                               initializer=-jnp.inf)
-    t0 = jax.tree.map(lambda p, d: -p / d, point_U0.tree, direction.tree)
+    t0 = -point_U0 / direction
     t0_right = jax.tree.reduce(lambda x, y: jnp.minimum(jnp.min(jnp.where(x >= zero, x, inf)), jnp.min(jnp.where(y >= zero, y, inf))), t0,
                                initializer=jnp.inf)
     t0_left = jax.tree.reduce(lambda x, y: jnp.maximum(jnp.max(jnp.where(x <= zero, x, -inf)), jnp.max(jnp.where(y <= zero, y, -inf))), t0,
@@ -119,9 +122,9 @@ def _pick_point_in_interval(key: PRNGKey, point_U0: TreeField[UType], direction:
         point_U: [D]
         t: selection point between [left, right]
     """
-    leaf_dtype = jax.tree.leaves(point_U0.tree)[0].dtype
+    leaf_dtype = jax.tree.leaves(point_U0)[0].dtype
     t = left + random.uniform(key, dtype=leaf_dtype) * (right - left)
-    point_U = TreeField(jax.tree.map(lambda p, d: p + t * d, point_U0.tree, direction.tree))
+    point_U = point_U0 + direction * t
     return point_U, t
 
 
@@ -239,7 +242,7 @@ def _new_proposal(
         right = jnp.where(use_full_slice, right_bound, jnp.minimum(right_bound, initial_right))
 
         def _point_at_t(t: FloatArray) -> TreeField[UType]:
-            return TreeField(jax.tree.map(lambda p, d: p + t * d, U0.tree, direction.tree))
+            return U0 + direction * t
 
         def step_out_cond(carry: StepOutCarry) -> BoolArray:
             can_expand_left = carry.left > left_bound

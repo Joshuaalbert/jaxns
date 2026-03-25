@@ -151,7 +151,7 @@ def _run_ns(key, state: State, target_num_live_points: int, shell_size: int, arg
         return jnp.logical_not(done)
 
     def outer_body_fn(outer_carry: OuterCarry) -> OuterCarry:
-        # Select likelihood constraints to achieve minimum K[i]>target (randomly without replacement)
+        # Select likelihood constraints to achieve minimum K[i]>target (randomly without replacement for simplicity)
         K_per_sample = outer_carry.state.samples.compute_num_live_points_per_sample(
             root_out_degree=outer_carry.state.root_out_degree,
             num_samples=outer_carry.state.num_samples
@@ -165,6 +165,8 @@ def _run_ns(key, state: State, target_num_live_points: int, shell_size: int, arg
         select_contours_key, key = jax.random.split(outer_carry.key, 2)
         parent_idxs = resample_indicies(select_contours_key, log_weights=select_weights, S=shell_size, replace=False)  # [S]
         proposed_log_L_constraints = outer_carry.state.samples.log_likelihoods[parent_idxs]  # [S]
+
+        # TODO: give sampling a multi-ellipsoidal clustering, then use to guide sampling along preferential axes.
 
         def get_sample(key, log_L_constraint, parent_idx: IntArray):
             seed_key, sample_key = jax.random.split(key)
@@ -278,20 +280,20 @@ class NestedSampler(PureDataclassPytree):
         if self.target_num_live_points is None or self.max_samples is None or self.shell_size is None or self.sampler is None:
             U_ndims = int(self.model.U_ndims(self.args, self.params))
         if self.target_num_live_points is None:
-            self.target_num_live_points = 40 * U_ndims
+            self.target_num_live_points = 20 * U_ndims
         if self.max_samples is None:
             self.max_samples = 10000 * U_ndims
         if self.shell_size is None:
             self.shell_size = max(1, self.target_num_live_points // 2)
         max_samples = jnp.asarray(self.max_samples, dtype=mp_policy.count_dtype)
         if self.termination_condition is None:
-            self.termination_condition = TerminationCondition(dlogZ=1e-5, max_samples=max_samples)
+            self.termination_condition = TerminationCondition(dlogZ=1e-2, max_samples=max_samples)
         elif self.termination_condition.max_samples is None:
             self.termination_condition.max_samples = max_samples
         else:
             self.termination_condition.max_samples = jnp.minimum(self.termination_condition.max_samples, max_samples)
         if self.sampler is None:
-            self.sampler = UniDimSliceSampler(model=self.model, num_slices=max(1, 25 * U_ndims), phantom_burn_in=max(1, 10 * U_ndims), no_step_out=True,
+            self.sampler = UniDimSliceSampler(model=self.model, num_slices=max(1, 100 * U_ndims), phantom_burn_in=max(1, 20 * U_ndims), no_step_out=True,
                                               collect_phantom_samples=self.collect_phantom_samples)
 
     @classmethod

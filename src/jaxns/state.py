@@ -128,7 +128,8 @@ def _to_result(self: State) -> NestedSamplerResults:
     )
     log_dZ_mean = jnp.where(sample_mask, cum_evidence_calc.dZ_mean.log_abs_val, jnp.asarray(-jnp.inf, mp_policy.measure_dtype))
     dp_mean = normalise_log_space(LogSpace(log_dZ_mean))
-    H_mean_instable = -(
+    # E[log(L) - log(Z)]
+    H_mean_instable = (
             (
                     dp_mean * LogSpace.from_signed_value(
                 jnp.where(jnp.isneginf(dp_mean.log_abs_val), 0., self.samples.log_likelihoods)
@@ -136,7 +137,7 @@ def _to_result(self: State) -> NestedSamplerResults:
             ).sum().value - log_Z_mean
     )
     # H \approx E[-log(compression)] = E[-log(X)] (More stable than E[log(L) - log(Z)] but biased)
-    H_mean_stable = -(dp_mean * LogSpace(jnp.log(-cum_evidence_calc.X_mean.log_abs_val))).sum().value
+    H_mean_stable = (dp_mean * LogSpace(jnp.log(-cum_evidence_calc.X_mean.log_abs_val))).sum().value
     H_mean = jnp.where(jnp.isfinite(H_mean_instable), H_mean_instable, H_mean_stable)
     U_samples = self.samples.U_samples
     X_samples = jax.lax.map(lambda u: self.model.transform_to_X(u, args=self.args, params=self.params), U_samples)
@@ -156,7 +157,11 @@ def _to_result(self: State) -> NestedSamplerResults:
     log_L_constraints = self.samples.log_L_constraints
     log_L_phantom = self.samples.phantom_samples.log_L
     # TODO: Currently only accept clusters which are completely valid.
-    valid_phantom = jnp.all(self.samples.phantom_samples.valid_mask, axis=-1)
+    phantom_valid_mask = self.samples.phantom_samples.valid_mask
+    if phantom_valid_mask.shape[-1] == 0:
+        valid_phantom = jnp.zeros(phantom_valid_mask.shape[:-1], dtype=mp_policy.bool_dtype)
+    else:
+        valid_phantom = jnp.all(phantom_valid_mask, axis=-1)
 
     X_supremum = self.model.transform_to_X(self.U_supremum, args=self.args, params=self.params)
     map_idx = jnp.argmax(log_posterior_density)

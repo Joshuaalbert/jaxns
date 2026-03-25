@@ -348,6 +348,7 @@ def _multinest_split(key: PRNGKey, params: EllipsoidParams, points: FloatArray, 
         )
     else:
         # Split the ellipsoid in half
+        # TODO: use the opposing ends of semi-major axis as initial cluster centers.
         j_max = jnp.argmax(params.radii)
         n = jnp.where(jnp.arange(params.radii.size) == j_max,
                       jnp.asarray(1., mp_policy.measure_dtype),
