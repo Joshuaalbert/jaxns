@@ -2,7 +2,7 @@ import dataclasses
 import pickle
 import warnings
 from abc import abstractmethod, ABC
-from typing import Any, TypeVar, Generic
+from typing import Any, TypeVar, Generic, Union
 
 import jax
 import numpy as np
@@ -211,9 +211,9 @@ def _tree_norm(x):
 PV = TypeVar('PV')
 
 
-@dataclasses.dataclass(slots=True)
+@dataclasses.dataclass(slots=True, frozen=True)
 class TreeField(PureDataclassPytree, Generic[PV]):
-    tree: PV
+    tree: Union['TreeField[PV]', Any]
 
     def batch_dim(self) -> int:
         leaves = jax.tree.leaves(self.tree)
@@ -223,71 +223,89 @@ class TreeField(PureDataclassPytree, Generic[PV]):
         return leaves[0].shape[0]
 
     def ndim(self) -> int:
-        return sum(jax.tree.map(np.size, jax.tree.leaves(self.tree)))
+        return sum(jax.tree.map(np.size, jax.tree.leaves(self)))
 
-    def __rsub__(self, other):
+    def from_flat_matrix(self, flat) -> 'TreeField[PV]':
+        """
+        Turn a matrix into pytree of pytrees so that matmul contract (: PyTree x PyTree -> PyTree) holds.
+
+        Args:
+            flat: [N, N]
+
+        Returns:
+            A TreeField with the same structure as self, but with the leaves replaced by the corresponding slices of the flat matrix.
+        """
+        _, unravel_fn = pytree_ravel(self)
+        return jax.vmap(unravel_fn)(flat)
+
+    def __matmul__(self, other: 'TreeField[PV]') -> jax.Array:
         if not isinstance(other, TreeField):
-            return jax.tree.map(lambda x: other - x, self.tree)
-        return jax.tree.map(lambda x, y: y - x, self.tree, other)
+            raise ValueError("Only works on other same matching trees.")
+        return jax.vmap(lambda x: _tree_dot(x, other))(self)
 
-    def __add__(self, other: PV) -> PV:
-        if not isinstance(other, TreeField):
-            return jax.tree.map(lambda x: x + other, self.tree)
-        return jax.tree.map(lambda x, y: x + y, self.tree, other)
+    def __rsub__(self, other: Union['TreeField[PV]', Any]) -> 'TreeField[PV]':
+        if isinstance(other, TreeField):
+            return jax.tree.map(lambda x, y: y - x, self, other)
+        return jax.tree.map(lambda x: other - x, self)
 
-    def __sub__(self, other: PV) -> PV:
-        if not isinstance(other, TreeField):
-            return jax.tree.map(lambda x: x - other, self.tree)
-        return jax.tree.map(lambda x, y: x - y, self.tree, other)
+    def __add__(self, other: Union['TreeField[PV]', Any]) -> 'TreeField[PV]':
+        if isinstance(other, TreeField):
+            return jax.tree.map(lambda x, y: x + y, self, other)
+        return jax.tree.map(lambda x: x + other, self)
 
-    def __mul__(self, other: PV) -> PV:
-        if not isinstance(other, TreeField):
-            return jax.tree.map(lambda x: x * other, self.tree)
-        return jax.tree.map(lambda x, y: x * y, self.tree, other)
+    def __sub__(self, other: Union['TreeField[PV]', Any]) -> 'TreeField[PV]':
+        if isinstance(other, TreeField):
+            return jax.tree.map(lambda x, y: x - y, self, other)
+        return jax.tree.map(lambda x: x - other, self)
 
-    def __truediv__(self, other: PV) -> PV:
-        if not isinstance(other, TreeField):
-            return jax.tree.map(lambda x: x / other, self.tree)
-        return jax.tree.map(lambda x, y: x / y, self.tree, other)
+    def __mul__(self, other: Union['TreeField[PV]', Any]) -> 'TreeField[PV]':
+        if isinstance(other, TreeField):
+            return jax.tree.map(lambda x, y: x * y, self, other)
+        return jax.tree.map(lambda x: x * other, self)
 
-    def __pow__(self, other: PV) -> PV:
-        if not isinstance(other, TreeField):
-            return jax.tree.map(lambda x: x ** other, self.tree)
-        return jax.tree.map(lambda x, y: x ** y, self.tree, other)
+    def __truediv__(self, other: Union['TreeField[PV]', Any]) -> 'TreeField[PV]':
+        if isinstance(other, TreeField):
+            return jax.tree.map(lambda x, y: x / y, self, other)
+        return jax.tree.map(lambda x: x / other, self)
 
-    def __neg__(self):
-        return jax.tree.map(lambda x: -x, self.tree)
+    def __pow__(self, other: Union['TreeField[PV]', Any]) -> 'TreeField[PV]':
+        if isinstance(other, TreeField):
+            return jax.tree.map(lambda x, y: x ** y, self, other)
+        return jax.tree.map(lambda x: x ** other, self)
+
+    def __neg__(self) -> 'TreeField[PV]':
+        return jax.tree.map(lambda x: -x, self)
 
     def norm(self):
-        return _tree_norm(self.tree)
+        return _tree_norm(self)
 
     def min(self):
-        return jax.tree.reduce(lambda x, y: jnp.minimum(jnp.min(x), jnp.min(y)), self.tree)
+        return jax.tree.reduce(lambda x, y: jnp.minimum(jnp.min(x), jnp.min(y)), self)
 
     def max(self):
-        return jax.tree.reduce(lambda x, y: jnp.maximum(jnp.max(x), jnp.max(y)), self.tree)
+        return jax.tree.reduce(lambda x, y: jnp.maximum(jnp.max(x), jnp.max(y)), self)
 
-    def ones_like(self):
-        return jax.tree.map(lambda x: jnp.ones_like(x), self.tree)
+    def ones_like(self) -> 'TreeField[PV]':
+        return jax.tree.map(lambda x: jnp.ones_like(x), self)
 
-    def zeros_like(self):
-        return jax.tree.map(lambda x: jnp.zeros_like(x), self.tree)
+    def zeros_like(self) -> 'TreeField[PV]':
+        return jax.tree.map(lambda x: jnp.zeros_like(x), self)
 
-    def random_normal_like(self, key):
-        leaves = jax.tree.leaves(self.tree)
+    def random_normal_like(self, key) -> 'TreeField[PV]':
+        leaves = jax.tree.leaves(self)
         if not leaves:
             return self
         keys = jax.random.split(key, len(leaves))
         z = [jax.random.normal(k, shape=x.shape, dtype=x.dtype) for k, x in zip(keys, leaves)]
-        return jax.tree.unflatten(jax.tree.structure(self.tree), z)
+        return jax.tree.unflatten(jax.tree.structure(self), z)
 
-    def random_uniform_like(self, key):
-        leaves = jax.tree.leaves(self.tree)
+    def random_uniform_like(self, key) -> 'TreeField[PV]':
+        leaves = jax.tree.leaves(self)
         if not leaves:
             return self
         keys = jax.random.split(key, len(leaves))
         z = [jax.random.uniform(k, shape=x.shape, dtype=x.dtype) for k, x in zip(keys, leaves)]
-        return jax.tree.unflatten(jax.tree.structure(self.tree), z)
+        return jax.tree.unflatten(jax.tree.structure(self), z)
 
 
 TreeField.register_pytree()

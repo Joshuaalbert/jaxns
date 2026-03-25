@@ -62,6 +62,10 @@ class NestedSamplerResults(PureDataclassPytree):
 
     def trim(self) -> 'NestedSamplerResults':
         num_samples = int(self.total_num_samples)
+        initial_size = self.log_L.shape[0]
+        if num_samples > initial_size:
+            raise ValueError(
+                f"num_samples ({num_samples}) is greater than the number of samples collected ({initial_size}). You probably set max_samples too low.")
         sample_data = dict(
             U_samples=self.U_samples,
             X_samples=self.X_samples,
@@ -136,7 +140,7 @@ class NestedSamplerResults(PureDataclassPytree):
 
     def sample_evidence(self, num_samples: int, batch_size: int | None = None, key: PRNGKey | None = None) -> FloatArray:
         """
-        Sample the evidence using the MC shrinkage method.
+        Sample the evidence using the shrinkage method.
 
         Args:
             num_samples: number of evidence samples to draw
@@ -166,8 +170,35 @@ class NestedSamplerResults(PureDataclassPytree):
             key = jax.random.PRNGKey(42)
         return _sample_mc_shrinkage(self, num_samples=num_samples, batch_size=batch_size, key=key)
 
+    def ess_with_phantom(self, num_samples: int = 512, batch_size: int | None = None, key: PRNGKey | None = None) -> FloatArray:
+        """
+        Compute the ESS including phantoms.
+
+        Args:
+            num_samples: number of samples to draw
+            batch_size: optional, how many samples to process in a batch when applying the function.
+            key: optional, PRNGKey for resampling
+
+        Returns:
+            scalar, the ESS including phantoms.
+        """
+        if key is None:
+            key = jax.random.PRNGKey(42)
+
+        return _ess_with_phantom(self, num_samples=num_samples, batch_size=batch_size, key=key)
+
 
 NestedSamplerResults.register_pytree()
+
+
+@partial(jax.jit, inline=True, static_argnames=['num_samples', 'batch_size'])
+def _ess_with_phantom(self: NestedSamplerResults, num_samples: int, batch_size: int | None = None, key: PRNGKey | None = None) -> FloatArray:
+    evidence_samples = self.sample_mc_shrinkage(num_samples=num_samples, batch_size=batch_size, key=key)
+    # make sure finite mask is same for both numerator and denominator
+    finite_mask = jnp.isfinite(evidence_samples.H_samples) & jnp.isfinite(evidence_samples.log_Z_samples)
+    H_mean = jnp.nanmean(jnp.where(finite_mask, evidence_samples.H_samples, jnp.nan))
+    log_Z_var = jnp.nanvar(jnp.where(finite_mask, evidence_samples.log_Z_samples, jnp.nan))
+    return H_mean / log_Z_var
 
 
 @partial(jax.jit, inline=True, static_argnames=['num_samples', 'replace'])
@@ -287,18 +318,22 @@ def _summary(results: NestedSamplerResults, f_obj: str | TextIO | None = None):
         _print_termination_reason(int(results.termination_reason))
     _print("--------")
     _print(f"likelihood evals: {int(results.total_num_likelihood_evaluations):d}")
-    _print(f"samples: {int(results.total_num_samples):d}")
+    _print(f"classic samples: {int(results.total_num_samples):d}")
     _print(f"phantom samples: {int(results.total_phantom_samples):d}")
     _print(
         f"likelihood evals / sample: {float(results.total_num_likelihood_evaluations / results.total_num_samples):.1f}"
     )
-    _print(
-        f"phantom fraction (%): {100 * float(results.total_phantom_samples / results.total_num_samples):.1f}%"
-    )
     _print("--------")
     _print(
-        f"logZ={_round(results.log_Z_mean, results.log_Z_uncert)} +- {_round(results.log_Z_uncert, results.log_Z_uncert)}"
+        f"logZ (classic)={_round(results.log_Z_mean, results.log_Z_uncert)} +- {_round(results.log_Z_uncert, results.log_Z_uncert)}"
     )
+    if results.total_phantom_samples > 0:
+        log_Z_samples = results.sample_evidence(num_samples=512)
+        _log_Z_samples_mean = jnp.nanmean(log_Z_samples)
+        _log_Z_samples_uncert = jnp.nanstd(log_Z_samples)
+        _print(
+            f"logZ (with phantom)={_round(_log_Z_samples_mean, _log_Z_samples_uncert)} +- {_round(_log_Z_samples_uncert, _log_Z_samples_uncert)}"
+        )
     _print(
         f"max(logL)={_round(results.log_L_supremum, results.log_Z_uncert)}"
     )
@@ -308,8 +343,20 @@ def _summary(results: NestedSamplerResults, f_obj: str | TextIO | None = None):
         f"H={_round(results.H_mean, 0.1)}"
     )
     _print(
-        f"effective sample size={results.ess:.1f}"
+        f"effective sample size (classic)={results.ess:.1f}"
     )
+    if results.total_phantom_samples > 0:
+        ess_with_phantom = results.ess_with_phantom()
+        _print(
+            f"effective sample size (with phantom)={ess_with_phantom:.1f}"
+        )
+    _print(
+        f"likelihood evals / ess(classic): {float(results.total_num_likelihood_evaluations / results.ess):.1f}"
+    )
+    if results.total_phantom_samples > 0:
+        _print(
+            f"likelihood evals / ess(with phantom): {float(results.total_num_likelihood_evaluations / ess_with_phantom):.1f}"
+        )
 
     def moments(x):
         x2 = jax.tree.map(jnp.square, x)
@@ -399,8 +446,8 @@ def plot_diagnostics(results: NestedSamplerResults, save_file=None):
     axs[1].set_ylabel(r'$L/L_{\rm max}$')
     axs[1].legend()
     axs[2].plot(-log_X, np.exp(log_dp), c='black')
-    axs[2].axvline(-results.H_mean, color='black', ls='dashed',
-                   label=rf'$-H={-results.H_mean:.1f}$')
+    axs[2].axvline(results.H_mean, color='black', ls='dashed',
+                   label=rf'$H={results.H_mean:.1f}$')
     axs[2].set_ylabel(r'$Z^{-1}L dX$')
     axs[2].legend()
     axs[3].plot(-log_X, cum_evidence, c='black')
@@ -429,7 +476,7 @@ def plot_diagnostics(results: NestedSamplerResults, save_file=None):
         plt.show()
 
 
-@partial(jax.jit, inline=True, static_argnames=['num_samples', 'batch_size'])
+@partial(jax.jit, inline=True, static_argnames=['num_samples'])
 def _sample_evidence(self: NestedSamplerResults,
                      num_samples: int = 100, batch_size: int | None = None, key: PRNGKey | None = None) -> FloatArray:
     evidence_samples = sample_mc_shrinkage(
@@ -446,7 +493,7 @@ def _sample_evidence(self: NestedSamplerResults,
     return evidence_samples.log_Z_samples
 
 
-@partial(jax.jit, inline=True, static_argnames=['num_samples', 'batch_size'])
+@partial(jax.jit, inline=True, static_argnames=['num_samples'])
 def _sample_mc_shrinkage(self: NestedSamplerResults,
                          num_samples: int = 100, batch_size: int | None = None, key: PRNGKey | None = None) -> EvidenceSamples:
     evidence_samples = sample_mc_shrinkage(

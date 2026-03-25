@@ -1,8 +1,8 @@
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
-import matplotlib
 import numpy as np
 from jax import numpy as jnp
 from jax.scipy.linalg import solve_triangular
@@ -79,7 +79,7 @@ def _basic_model_case():
 
     model = Model(prior_model=prior_model)
     log_Z_true = bruteforce_evidence(model=model, grid_res=200)
-    return model, log_Z_true, 1000, 3.0
+    return model, log_Z_true
 
 
 def _basic2_model_case():
@@ -91,7 +91,7 @@ def _basic2_model_case():
         return jnp.log(1.0 - x ** n)
 
     model = Model(prior_model=prior_model)
-    return model, log_Z_true, 1000, 3.0
+    return model, log_Z_true
 
 
 def _basic3_model_case():
@@ -103,7 +103,7 @@ def _basic3_model_case():
 
     model = Model(prior_model=prior_model)
     log_Z_true = bruteforce_evidence(model=model, grid_res=500)
-    return model, log_Z_true, 2000, 3.0
+    return model, log_Z_true
 
 
 def _plateau_model_case():
@@ -113,13 +113,14 @@ def _plateau_model_case():
 
     model = Model(prior_model=prior_model)
     log_Z_true = jnp.asarray(0.0)
-    return model, log_Z_true, 1000, 3.0
+    return model, log_Z_true
 
 
 def _basic_mvn_model_case():
     ndims = 8
     prior_mu = 6 * jnp.ones(ndims)
-    prior_cov = jnp.eye(ndims)
+    prior_cov = np.eye(ndims)
+    prior_cov[prior_cov == 0] = 0.99
 
     data_mu = jnp.zeros(ndims)
     data_cov = jnp.eye(ndims)
@@ -133,7 +134,7 @@ def _basic_mvn_model_case():
         return tfpd.MultivariateNormalTriL(loc=data_mu, scale_tril=jnp.linalg.cholesky(data_cov)).log_prob(x)
 
     model = Model(prior_model=prior_model)
-    return model, log_Z_true, 10000, 4.0
+    return model, log_Z_true
 
 
 def _spike_slab_model_case():
@@ -174,7 +175,7 @@ def _spike_slab_model_case():
         return mixture.log_prob(x)
 
     model = Model(prior_model=prior_model)
-    return model, log_Z_true, 10000, 5.0
+    return model, log_Z_true
 
 
 def _spike_slab10_model_case():
@@ -215,7 +216,7 @@ def _spike_slab10_model_case():
         return mixture.log_prob(x)
 
     model = Model(prior_model=prior_model)
-    return model, log_Z_true, 12000, 5.0
+    return model, log_Z_true
 
 
 def _weak_curved_mvn8_model_case():
@@ -248,7 +249,7 @@ def _weak_curved_mvn8_model_case():
         ).log_prob(z)
 
     model = Model(prior_model=prior_model)
-    return model, log_Z_true, 10000, 4.5
+    return model, log_Z_true
 
 
 def _weak_curved_spike_slab8_model_case():
@@ -298,7 +299,7 @@ def _weak_curved_spike_slab8_model_case():
         return mixture.log_prob(z)
 
     model = Model(prior_model=prior_model)
-    return model, log_Z_true, 11000, 5.5
+    return model, log_Z_true
 
 
 def _weak_curved_spike_slab10_model_case():
@@ -348,17 +349,17 @@ def _weak_curved_spike_slab10_model_case():
         return mixture.log_prob(z)
 
     model = Model(prior_model=prior_model)
-    return model, log_Z_true, 13000, 5.5
+    return model, log_Z_true
 
 
 STANDARD_PROBLEM_CASES = [
-    # StandardProblemCase('basic', _basic_model_case),
-    # StandardProblemCase('basic2', _basic2_model_case),
-    # StandardProblemCase('basic3', _basic3_model_case),
-    # StandardProblemCase('plateau', _plateau_model_case),
-    # StandardProblemCase('basic_mvn', _basic_mvn_model_case),
-    # StandardProblemCase('spike_slab', _spike_slab_model_case),
-    # StandardProblemCase('spike_slab10', _spike_slab10_model_case),
+    StandardProblemCase('basic', _basic_model_case),
+    StandardProblemCase('basic2', _basic2_model_case),
+    StandardProblemCase('basic3', _basic3_model_case),
+    StandardProblemCase('plateau', _plateau_model_case),
+    StandardProblemCase('basic_mvn', _basic_mvn_model_case),
+    StandardProblemCase('spike_slab', _spike_slab_model_case),
+    StandardProblemCase('spike_slab10', _spike_slab10_model_case),
     StandardProblemCase('weak_curved_mvn8', _weak_curved_mvn8_model_case),
     StandardProblemCase('weak_curved_spike_slab8', _weak_curved_spike_slab8_model_case),
     StandardProblemCase('weak_curved_spike_slab10', _weak_curved_spike_slab10_model_case),
@@ -367,19 +368,24 @@ STANDARD_PROBLEM_CASES = [
 
 def test_nested_sampling_run_results(tmp_path):
     import pylab as plt
+    import os
 
-    tmp_path = Path('./')
+    tmp_path = Path('./test_plots')
+    os.makedirs(tmp_path, exist_ok=True)
 
     for case in STANDARD_PROBLEM_CASES:
-        model, log_Z_true, max_samples, truth_sigma_tol = case.build_case()
-        ns = NestedSampler(model=model, max_samples=max_samples)
+        print(f"Checking {case.name}")
+        model, log_Z_true = case.build_case()
+        ns = NestedSampler(model=model, collect_phantom_samples=True)
+        t0 = time.time()
         state = ns.run()
         results = state.to_result().trim()
+        print(f"Runtime: {time.time() - t0} seconds")
         results.summary(tmp_path / f"{case.name}_summary.txt")
 
-        print(f"Checking {case.name}")
         assert not np.isnan(results.log_Z_mean)
         assert not np.isnan(results.log_Z_uncert)
+        assert results.log_L_phantom.shape[1] > 0, "rho/eta diagnostics require collected phantom samples."
         mc_shrinkage_samples = results.sample_mc_shrinkage(num_samples=1000)
 
         rho_samples = mc_shrinkage_samples.rho_samples
@@ -390,6 +396,9 @@ def test_nested_sampling_run_results(tmp_path):
         plt.hist(log_Z_samples, bins='auto')
         plt.axvline(log_Z_true, color='k', linestyle='--', label='true log Z')
         plt.axvline(results.log_Z_mean, color='r', linestyle='--', label='estimated log Z')
+        plt.axvline(results.log_Z_mean - results.log_Z_uncert, color='r', linestyle='dotted', label='+1sigma')
+        plt.axvline(results.log_Z_mean + results.log_Z_uncert, color='r', linestyle='dotted', label='-1sigma')
+
         plt.legend()
         plt.title(f"{case.name} log Z samples")
         plt.savefig(tmp_path / f"{case.name}_logZ_samples.png")
@@ -413,11 +422,7 @@ def test_nested_sampling_run_results(tmp_path):
         results.plot_diagnostics(save_file=tmp_path / f"{case.name}_diagnostics.png")
         results.plot_cornerplot(save_name=tmp_path / f"{case.name}_cornerplot.png")
 
-        log_Z_ensemble_mean = jnp.mean(log_Z_samples)
-        log_Z_ensemble_std = jnp.std(log_Z_samples)
-        np.testing.assert_allclose(results.log_Z_mean, log_Z_ensemble_mean, atol=3.0 * results.log_Z_uncert)
-        np.testing.assert_allclose(log_Z_ensemble_mean, log_Z_true, atol=truth_sigma_tol * results.log_Z_uncert)
-        np.testing.assert_allclose(
-            results.log_Z_uncert, log_Z_ensemble_std,
-            atol=np.sqrt(results.log_Z_uncert ** 2 + log_Z_ensemble_std ** 2)
-        )
+        log_Z_ensemble_mean = np.mean(log_Z_samples)
+        log_Z_ensemble_std = np.std(log_Z_samples)
+        np.testing.assert_allclose(results.log_Z_mean, log_Z_true, atol=3.0 * results.log_Z_uncert, rtol=0)
+        np.testing.assert_allclose(log_Z_ensemble_mean, log_Z_true, atol=2.0 * log_Z_ensemble_std, rtol=0)
