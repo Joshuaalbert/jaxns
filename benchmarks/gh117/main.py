@@ -3,30 +3,28 @@ import time
 import jax
 import tensorflow_probability.substrates.jax as tfp
 from jax import random
+from jaxctx.priors.prior import Prior
 
-from jaxns import Model, Prior, NestedSampler
+from jaxns.core import NestedSampler
+from jaxns.model import Model
 
 
 tfpd = tfp.distributions
 
 
 def run_model(max_samples: int):
-    def log_likelihood(x):
+    def prior_model():
+        Prior(tfpd.Uniform(0., 1.)).realise()  # , name='x')
         return 0.
 
-    def prior_model():
-        x = Prior(tfpd.Uniform(0., 1.))  # , name='x')
-        return x
-
-    model = Model(prior_model=prior_model,
-                  log_likelihood=log_likelihood)
+    model = Model(prior_model=prior_model)
 
 
     # Create the nested sampler class. In this case without any tuning.
     exact_ns = NestedSampler(model=model, max_samples=max_samples)
 
-    termination_reason, state = exact_ns(random.PRNGKey(42))
-    return termination_reason
+    state = exact_ns.run(random.PRNGKey(42))
+    return state.termination_reason
 
 
 def main():

@@ -1,0 +1,93 @@
+# Shared execution rules for this repository.
+#
+# These rules only govern commands Codex wants to run outside the sandbox.
+# Most normal repo work should stay inside the workspace-write sandbox and
+# follow approval_policy = "on-request".
+
+prefix_rule(
+    pattern = ["codex", ["--help", "--version", "features"]],
+    decision = "allow",
+    justification = "Harmless Codex inspection commands are always allowed.",
+    match = [
+        "codex --help",
+        "codex --version",
+    ],
+    not_match = [
+        "codex exec 'print(1)'",
+        "codex apply",
+    ],
+)
+
+prefix_rule(
+    pattern = ["git", ["status", "diff", "show", "log"]],
+    decision = "allow",
+    justification = "Read-only git inspection is always allowed.",
+    match = [
+        "git status",
+        "git diff -- package/src",
+        "git show HEAD~1",
+        "git log --oneline -5",
+    ],
+    not_match = [
+        "git add .",
+        "git commit -m test",
+    ],
+)
+
+prefix_rule(
+    pattern = ["git", "reset", "--hard"],
+    decision = "forbidden",
+    justification = "Destructive reset is blocked. Use git status or git diff to inspect changes instead.",
+    match = [
+        "git reset --hard",
+        "git reset --hard HEAD~1",
+    ],
+    not_match = [
+        "git reset --keep HEAD~1",
+        "git reset HEAD~1",
+    ],
+)
+
+prefix_rule(
+    pattern = ["git", "checkout", "--"],
+    decision = "forbidden",
+    justification = "Discarding tracked changes is blocked. Review changes before reverting anything.",
+    match = [
+        "git checkout -- package/src/bx_trading/example.py",
+    ],
+    not_match = [
+        "git checkout main",
+        "git checkout -b feature/test",
+    ],
+)
+
+prefix_rule(
+    pattern = ["rm", "-rf"],
+    decision = "forbidden",
+    justification = "Recursive deletion is blocked."
+)
+
+prefix_rule(
+    pattern = ["pip", "install"],
+    decision = "forbidden",
+    justification = "Dependency changes done via 'conda run -n jaxns_py pip ...'.",
+)
+
+prefix_rule(
+    pattern = ["python"],
+    decision = "forbidden",
+    justification = "System level python not allowed.",
+)
+
+prefix_rule(
+    pattern = ["conda", "install"],
+    decision = "forbidden",
+    justification = "We don't install from conda channels.",
+
+)
+
+prefix_rule(
+    pattern = ["conda", "run", "-n", "jaxns_py" , ["pytest", "python", "pip", "ruff"]],
+    decision = "allow",
+    justification = "This is how we run python related things in conda.",
+)

@@ -2,9 +2,13 @@
 *_diagnostics.png
 *_samples.png
 *_summary.txt
+*.pdf
 *.prof
-AGENTS.md
-LEARNINGS.md
+.idea/
+*.ipynb_timestamp
+*.npz
+*.pkl
+*.json
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
