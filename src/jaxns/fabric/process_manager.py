@@ -39,12 +39,14 @@ class ProcessManager:
 
     def __init__(self, actors: list[ZMQActor], ctl_pub_addr: str, ack_rep_addr: str,
                  shutdown_timeout: float = 1.0,
-                 profile: bool = False):
+                 profile: bool = False,
+                 start_method: str = "forkserver"):
         self.actors = actors
         self.actor_procs: list[ActorProc] = []
         self.shutdown_timeout = shutdown_timeout
         self.ack_rep_addr = ack_rep_addr
         self.ctl_pub_addr = ctl_pub_addr
+        self.start_method = start_method
         self.ctx = zmq.Context()
         # Initialize the ZeroMQ context and control socket for process management
         self.ctl = self.ctx.socket(zmq.PUB)
@@ -69,7 +71,7 @@ class ProcessManager:
 
     def start_all(self):
         """Spawn a Process for each actor's run() method."""
-        spawn_ctx = multiprocessing.get_context("forkserver")
+        spawn_ctx = multiprocessing.get_context(self.start_method)
         ack_rep = self.ctx.socket(zmq.REP)
         ack_rep.bind(self.ack_rep_addr)
         poller = zmq.Poller()

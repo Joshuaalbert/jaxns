@@ -1,8 +1,10 @@
 import time
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from typing import Callable
 
+import jax
 import numpy as np
 from jax import numpy as jnp
 from jax.scipy.linalg import solve_triangular
@@ -11,6 +13,8 @@ from jaxctx.priors.prior import Prior
 from tensorflow_probability.substrates import jax as tfp
 
 from jaxns.core import NestedSampler
+from jaxns.core_distributed import NestedSamplerDistributed
+from jaxns.fabric.node import local_node_evaluator
 from jaxns.model import Model
 from jaxns.utils import bruteforce_evidence
 
@@ -365,6 +369,23 @@ STANDARD_PROBLEM_CASES = [
     StandardProblemCase('weak_curved_spike_slab10', _weak_curved_spike_slab10_model_case),
 ]
 
+STANDARD_PROBLEM_CASES_BY_NAME = {
+    case.name: case for case in STANDARD_PROBLEM_CASES
+}
+
+
+class StandardProblemNode:
+    def __init__(self, case_name: str):
+        self.case_name = case_name
+        self.model, _ = STANDARD_PROBLEM_CASES_BY_NAME[case_name].build_case()
+
+    def evaluate(self, u):
+        return self.model.log_likelihood(u, allow_nan=False)
+
+
+def make_standard_problem_node(case_name: str) -> StandardProblemNode:
+    return StandardProblemNode(case_name=case_name)
+
 
 def test_nested_sampling_run_results(tmp_path):
     import pylab as plt
@@ -422,6 +443,64 @@ def test_nested_sampling_run_results(tmp_path):
         results.plot_diagnostics(save_file=tmp_path / f"{case.name}_diagnostics.png")
         results.plot_cornerplot(save_name=tmp_path / f"{case.name}_cornerplot.png")
 
+        log_Z_ensemble_mean = np.mean(log_Z_samples)
+        log_Z_ensemble_std = np.std(log_Z_samples)
+        np.testing.assert_allclose(results.log_Z_mean, log_Z_true, atol=3.0 * results.log_Z_uncert, rtol=0)
+        np.testing.assert_allclose(log_Z_ensemble_mean, log_Z_true, atol=2.0 * log_Z_ensemble_std, rtol=0)
+
+
+def test_nested_sampling_run_results_distributed(tmp_path):
+    tmp_path = Path('./test_plots/distributed')
+    tmp_path.mkdir(parents=True, exist_ok=True)
+
+    for case in STANDARD_PROBLEM_CASES:
+        print(f"Checking distributed {case.name}")
+        model, log_Z_true = case.build_case()
+        run_key = jax.random.PRNGKey(42)
+        local_ns = NestedSampler(model=model, collect_phantom_samples=True)
+        local_state = local_ns.run(run_key)
+        local_results = local_state.to_result().trim()
+        with local_node_evaluator(
+            service_factory=partial(make_standard_problem_node, case.name),
+            num_workers=2,
+            ident_prefix=f"std-{case.name}",
+            start_method="forkserver",
+        ) as evaluator:
+            ns = NestedSamplerDistributed(
+                model=model,
+                evaluator=evaluator,
+                collect_phantom_samples=True,
+                num_parallel_workers=2,
+            )
+            t0 = time.time()
+            state = ns.run(run_key)
+            results = state.to_result().trim()
+            print(f"Distributed runtime: {time.time() - t0} seconds")
+
+        results.summary(tmp_path / f"{case.name}_summary.txt")
+        assert not np.isnan(results.log_Z_mean)
+        assert not np.isnan(results.log_Z_uncert)
+        assert results.log_L_phantom.shape[1] > 0
+        np.testing.assert_allclose(
+            np.asarray(results.log_Z_mean),
+            np.asarray(local_results.log_Z_mean),
+            atol=max(float(results.log_Z_uncert), float(local_results.log_Z_uncert)),
+            rtol=0.0,
+        )
+        np.testing.assert_allclose(
+            np.asarray(results.log_Z_uncert),
+            np.asarray(local_results.log_Z_uncert),
+            atol=max(1e-6, 0.25 * max(float(results.log_Z_uncert), float(local_results.log_Z_uncert))),
+            rtol=0.0,
+        )
+        np.testing.assert_allclose(
+            np.asarray(results.log_L_supremum),
+            np.asarray(local_results.log_L_supremum),
+            atol=1e-8,
+            rtol=1e-8,
+        )
+        mc_shrinkage_samples = results.sample_mc_shrinkage(num_samples=1000)
+        log_Z_samples = mc_shrinkage_samples.log_Z_samples
         log_Z_ensemble_mean = np.mean(log_Z_samples)
         log_Z_ensemble_std = np.std(log_Z_samples)
         np.testing.assert_allclose(results.log_Z_mean, log_Z_true, atol=3.0 * results.log_Z_uncert, rtol=0)

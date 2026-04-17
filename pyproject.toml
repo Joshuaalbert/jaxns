@@ -21,6 +21,10 @@ classifiers = [
 urls = { "Homepage" = "https://github.com/joshuaalbert/jaxns" }
 dynamic = ["dependencies", "optional-dependencies"]
 
+[project.scripts]
+jaxns-fabric-scheduler = "jaxns.fabric.scheduler_launcher:main"
+jaxns-fabric-worker = "jaxns.fabric.worker_launcher:main"
+
 [tool.setuptools]
 include-package-data = true
 
