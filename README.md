@@ -171,7 +171,7 @@ results = state.to_result().trim()
 Checkpointing writes a single HDF5 archive that is updated after each committed chunk of nested-sampling work.
 This keeps the default non-checkpointed path unchanged, while allowing long-running jobs to resume from disk.
 If you want to set `checkpoint_every` explicitly, `16` is a reasonable starting point for most runs; leaving it unset will adaptively set the interval based on the number of live points and the shell size.
-If both `archive_path` and `checkpoint_every` are none, no checkpointing will occue, which may improve performance.
+If both `resume` is `False`, no checkpointing will occur, which may improve performance.
 
 ```python
 from pathlib import Path

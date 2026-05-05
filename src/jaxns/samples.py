@@ -35,6 +35,7 @@ PhantomSamples.register_pytree()
 class Samples(PureDataclassPytree):
     log_L_constraints: FloatArray  # [max_samples] the likelihood constraint for each sample, i.e. the likelihood of the parent sample
     log_likelihoods: FloatArray  # [max_samples]
+    sample_ids: IntArray  # [max_samples] stable creation-order ids used for deterministic tie-breaking
     U_samples: UType  # [max_samples, ...]
     out_degree: IntArray  # [max_samples]
     num_likelihood_evaluations: IntArray  # [max_samples] incorperates
@@ -102,11 +103,12 @@ def _concat(self: Samples, other: Samples) -> Samples:
 @partial(jax.jit, inline=True)
 def _sort(self: Samples) -> Samples:
     iota = jnp.arange(len(self.log_likelihoods))
-    (log_likelihoods, idxs) = jax.lax.sort(
-        (self.log_likelihoods, iota),
-        is_stable=False, num_keys=1)
+    (log_likelihoods, sample_ids, idxs) = jax.lax.sort(
+        (self.log_likelihoods, self.sample_ids, iota),
+        is_stable=False, num_keys=2)
     self = jax.tree.map(lambda x: x[idxs], self)
     self.log_likelihoods = log_likelihoods
+    self.sample_ids = sample_ids
     return self
 
 
@@ -120,11 +122,12 @@ def _perm_sort(self: Samples, key) -> Samples:
         dtype=jnp.uint32
     )
     iota = jnp.arange(len(self.log_likelihoods))
-    (log_likelihoods, _, idxs) = jax.lax.sort(
-        (self.log_likelihoods, sort_keys, iota),
-        is_stable=False, num_keys=2)
+    (log_likelihoods, _, sample_ids, idxs) = jax.lax.sort(
+        (self.log_likelihoods, sort_keys, self.sample_ids, iota),
+        is_stable=False, num_keys=3)
     self = jax.tree.map(lambda x: x[idxs], self)
     self.log_likelihoods = log_likelihoods
+    self.sample_ids = sample_ids
     return self
 
 
@@ -150,33 +153,45 @@ def _append_samples(self: Samples, insert_idx: IntArray, parent_idxs: IntArray, 
     return samples
 
 
-@partial(jax.jit, inline=True)
+@partial(jax.jit, inline=True, static_argnames=['max_samples'])
 def _resize(self: Samples, max_samples: int) -> Samples:
     if len(self) >= max_samples:
         jaxns_logger.warning(
             f"Samples.resize called with max_samples={max_samples} less than current size {len(self)}. No resize performed.")
         return self
 
-    def _concat(x, fill_value):
-        return jax.tree.map(
-            lambda x, y: jnp.concatenate([
-                x,
-                jnp.repeat(y[None, ...], repeats=(max_samples - len(self)), axis=0)
-            ], axis=0),
+    num_new_samples = max_samples - len(self)
+    next_sample_id = jnp.max(self.sample_ids) + jnp.ones((), dtype=self.sample_ids.dtype)
+    phantom_U_samples = None
+    if self.phantom_samples.U_samples is not None:
+        phantom_U_samples = jax.tree.map(lambda x: jnp.zeros_like(x[0]), self.phantom_samples.U_samples)
+
+    def _pad_leaf(x, fill_value):
+        return jnp.concatenate([
             x,
-            fill_value
-        )
+            jnp.repeat(fill_value[None, ...], repeats=num_new_samples, axis=0)
+        ], axis=0)
 
-    sample_atom = Samples(
-        log_likelihoods=jnp.asarray(jnp.inf, mp_policy.measure_dtype),
-        out_degree=jnp.asarray(0, mp_policy.count_dtype),
-        num_likelihood_evaluations=jnp.asarray(0, mp_policy.count_dtype),
-        U_samples=jax.tree.map(lambda x: jnp.zeros_like(x[0]), self.U_samples),
+    return Samples(
+        log_L_constraints=_pad_leaf(self.log_L_constraints, jnp.asarray(jnp.inf, mp_policy.measure_dtype)),
+        log_likelihoods=_pad_leaf(self.log_likelihoods, jnp.asarray(jnp.inf, mp_policy.measure_dtype)),
+        sample_ids=jnp.concatenate([
+            self.sample_ids,
+            next_sample_id + jnp.arange(num_new_samples, dtype=self.sample_ids.dtype)
+        ], axis=0),
+        U_samples=jax.tree.map(lambda x: _pad_leaf(x, jnp.zeros_like(x[0])), self.U_samples),
+        out_degree=_pad_leaf(self.out_degree, jnp.asarray(0, mp_policy.count_dtype)),
+        num_likelihood_evaluations=_pad_leaf(
+            self.num_likelihood_evaluations,
+            jnp.asarray(0, mp_policy.count_dtype),
+        ),
         phantom_samples=PhantomSamples(
-            U_samples=jax.tree.map(lambda x: jnp.zeros_like(x[0]), self.phantom_samples.U_samples),
-            log_L=jnp.asarray(jnp.inf, mp_policy.measure_dtype),
-            valid_mask=jnp.asarray(False, mp_policy.bool_dtype)
-        )
+            U_samples=(
+                None
+                if phantom_U_samples is None
+                else jax.tree.map(lambda x: _pad_leaf(x, jnp.zeros_like(x[0])), self.phantom_samples.U_samples)
+            ),
+            log_L=_pad_leaf(self.phantom_samples.log_L, jnp.full_like(self.phantom_samples.log_L[0], jnp.inf)),
+            valid_mask=_pad_leaf(self.phantom_samples.valid_mask, jnp.zeros_like(self.phantom_samples.valid_mask[0])),
+        ),
     )
-
-    return _concat(self, sample_atom)

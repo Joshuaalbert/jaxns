@@ -30,6 +30,8 @@ class StepDelta(NamedTuple):
 @partial(jax.jit, inline=True, static_argnames=['num_live_points', 'num_phantom', 'max_samples', 'store_phantom_samples', 'batch_size'])
 def _sample_init_state(key, num_live_points: int, max_samples: int, model: Model, num_phantom: int = 0, args=(),
                        params: CtxParams | None = None, store_phantom_samples: bool = False, batch_size: int | None = None) -> State:
+    """Draw the initial live points and allocate the padded sample buffers."""
+
     def single_sample(key):
         key, subkey = jax.random.split(key)
         U_sample = model.sample_U(subkey)
@@ -288,6 +290,25 @@ def _run_ns(key, state: State, target_num_live_points: int, shell_size: int, arg
             params=None,
             termination_condition: TerminationCondition | None = None,
             batch_size: int | None = None) -> State:
+    """
+    Perform a single nested sampling run.
+
+    Args:
+        key: PRNG key.
+        state: State to advance until the termination condition is met.
+        target_num_live_points: The number of live points to maintain off root.
+        shell_size: The number of samples to discard and replenish per iteration.
+        args: Arguments to pass to the model.
+        sampler: Sampler used to produce i.i.d. samples within likelihood constraints.
+        params: Parameters to pass to the model.
+        termination_condition: Termination condition to use.
+        batch_size: How many likelihood evaluations to batch together.
+
+    Returns:
+        A final state object containing all samples, with the final termination reason
+        recorded for evidence calculation or later in-memory resume.
+    """
+
     class OuterCarry(NamedTuple):
         key: jax.Array
         state: State
@@ -420,19 +441,30 @@ class NestedSampler(PureDataclassPytree):
             archive_path: str | Path | None = None,
             checkpoint_every: int | None = None) -> State:
         """
-        Creates an initial state, and performs sampling until the termination condition is met, returning the final state.
+        Create or load a state and perform sampling until the termination condition is met.
 
         Args:
-            key: PRNGKey to use for sampling
-            resume: if true, resume from an existing archive_path
-            archive_path: optional HDF5 archive used for checkpointing and resume
-            checkpoint_every: number of outer nested-sampling steps to execute per checkpoint commit
+            key: PRNGKey to use for sampling. When ``archive_path`` is omitted and ``key``
+                is ``None``, a default key of ``jax.random.PRNGKey(42)`` is used. When
+                ``resume=True``, the committed key stored in the archive is used instead.
+            resume: If true, resume from an existing checkpoint archive after validating
+                that the current sampler configuration matches the archived metadata.
+            archive_path: Optional HDF5 archive used for checkpointing and resume. When
+                provided with ``resume=False``, any existing archive at this path is
+                overwritten with a fresh run.
+            checkpoint_every: Number of outer nested-sampling steps to execute per
+                checkpoint commit. If omitted for a checkpointed run, a built-in
+                heuristic chooses a conservative chunk size automatically.
 
         Returns:
-            the final state after running nested sampling, which can be used for evidence calculation or resuming.
+            The final state after running nested sampling, which can be used for
+            evidence calculation or later in-memory resume.
 
         Raises:
             ValueError: If ``resume`` or ``checkpoint_every`` is provided without ``archive_path``.
+            FileNotFoundError: If ``resume=True`` and the requested archive does not exist.
+            CheckpointValidationError: If ``resume=True`` and the archive metadata is
+                incompatible with the current sampler configuration.
         """
         if archive_path is None:
             if resume:
@@ -475,6 +507,8 @@ NestedSampler.register_pytree()
 
 @partial(jax.jit, inline=True)
 def _run(self: NestedSampler, key) -> State:
+    """Initialise a fresh state and execute the non-checkpointed fast path."""
+
     key, init_key = jax.random.split(key)
     state = _sample_init_state(
         key=init_key,
