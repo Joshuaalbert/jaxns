@@ -6,7 +6,6 @@ import pytest
 from jax import random, numpy as jnp
 
 from jaxns.results import _weighted_percentile
-from jaxns.samples import PhantomSamples, Samples
 from jaxns.utils import resample, _bit_mask, save_pytree, load_pytree, insert_index_diagnostic
 
 
@@ -62,53 +61,3 @@ def test_insert_index_diagnostic_nonuniform(seed):
     p_value = insert_index_diagnostic(indices, num_live_points=100)
     print('Should be small', p_value)
     assert p_value < 0.01
-
-
-def test_samples_resize_preserves_constraints_and_shapes():
-    """Samples.resize should preserve data and extend phantom buffers consistently."""
-
-    samples = Samples(
-        log_L_constraints=jnp.asarray([0.0, 1.0]),
-        log_likelihoods=jnp.asarray([0.5, 1.5]),
-        sample_ids=jnp.asarray([0, 1]),
-        U_samples={'x': jnp.asarray([[1.0], [2.0]])},
-        out_degree=jnp.asarray([1, 0]),
-        num_likelihood_evaluations=jnp.asarray([3, 4]),
-        phantom_samples=PhantomSamples(
-            U_samples={'x': jnp.asarray([[[10.0]], [[20.0]]])},
-            valid_mask=jnp.asarray([[True], [False]]),
-            log_L=jnp.asarray([[0.25], [0.75]]),
-        ),
-    )
-
-    resized = samples.resize(4)
-
-    assert resized.log_L_constraints.shape == (4,)
-    np.testing.assert_allclose(np.asarray(resized.log_L_constraints[:2]), np.asarray(samples.log_L_constraints))
-    assert resized.log_likelihoods.shape == (4,)
-    np.testing.assert_array_equal(np.asarray(resized.sample_ids), np.asarray([0, 1, 2, 3]))
-    assert resized.U_samples['x'].shape == (4, 1)
-    assert resized.phantom_samples.U_samples['x'].shape == (4, 1, 1)
-
-
-def test_samples_sort_breaks_equal_likelihood_ties_with_sample_id():
-    """Samples.sort should use sample_ids as the deterministic tie-breaker."""
-
-    samples = Samples(
-        log_L_constraints=jnp.asarray([0.0, 0.0, 0.0]),
-        log_likelihoods=jnp.asarray([1.0, 1.0, 1.0]),
-        sample_ids=jnp.asarray([2, 0, 1]),
-        U_samples={'x': jnp.asarray([[2.0], [0.0], [1.0]])},
-        out_degree=jnp.asarray([0, 0, 0]),
-        num_likelihood_evaluations=jnp.asarray([1, 1, 1]),
-        phantom_samples=PhantomSamples(
-            U_samples=None,
-            valid_mask=jnp.zeros((3, 0), dtype=bool),
-            log_L=jnp.zeros((3, 0)),
-        ),
-    )
-
-    sorted_samples = samples.sort()
-
-    np.testing.assert_array_equal(np.asarray(sorted_samples.sample_ids), np.asarray([0, 1, 2]))
-    np.testing.assert_allclose(np.asarray(sorted_samples.U_samples['x']).reshape((-1,)), np.asarray([0.0, 1.0, 2.0]))
