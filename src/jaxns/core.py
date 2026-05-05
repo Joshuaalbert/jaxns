@@ -1,10 +1,12 @@
 import dataclasses
 from functools import partial
+from pathlib import Path
 from typing import NamedTuple, Any
 
 import jax
 import jax.numpy as jnp
 import jax.random
+import numpy as np
 from jaxctx import CtxParams
 
 from jaxns.constrained_sampler import AbstractSampler, UniDimSliceSampler
@@ -16,6 +18,13 @@ from jaxns.samples import Samples, SeedPoint, PhantomSamples
 from jaxns.state import State
 from jaxns.termination_condition import TerminationCondition
 from jaxns.types import IntArray, BoolArray, PRNGKey
+
+
+class StepDelta(NamedTuple):
+    """Checkpoint delta emitted by one outer nested-sampling step."""
+
+    samples: Samples
+    parent_sample_ids: IntArray
 
 
 @partial(jax.jit, inline=True, static_argnames=['num_live_points', 'num_phantom', 'max_samples', 'store_phantom_samples', 'batch_size'])
@@ -71,6 +80,7 @@ def _sample_init_state(key, num_live_points: int, max_samples: int, model: Model
     samples = Samples(
         log_L_constraints=jnp.full((num_live_points,), -jnp.inf, dtype=mp_policy.measure_dtype),
         log_likelihoods=log_likelihoods,
+        sample_ids=jnp.arange(num_live_points, dtype=mp_policy.count_dtype),
         U_samples=U_samples,
         out_degree=out_degree,
         num_likelihood_evaluations=num_likelihood_evaluations,
@@ -79,6 +89,7 @@ def _sample_init_state(key, num_live_points: int, max_samples: int, model: Model
 
     sample_atom = Samples(
         log_likelihoods=jnp.asarray(jnp.inf, mp_policy.measure_dtype),
+        sample_ids=jnp.asarray(0, mp_policy.count_dtype),
         out_degree=jnp.asarray(0, mp_policy.count_dtype),
         num_likelihood_evaluations=jnp.asarray(0, mp_policy.count_dtype),
         U_samples=jax.tree.map(lambda x: jnp.zeros_like(x[0]), samples.U_samples),
@@ -93,6 +104,7 @@ def _sample_init_state(key, num_live_points: int, max_samples: int, model: Model
         sample_atom.phantom_samples.U_samples = None
 
     samples = _concat(samples, sample_atom).sort()
+    samples.sample_ids = jnp.arange(max_samples, dtype=mp_policy.count_dtype)
 
     log_L_supremum_idx = jnp.argmax(log_likelihoods)
     log_L_supremum = log_likelihoods[log_L_supremum_idx]
@@ -112,153 +124,253 @@ def _sample_init_state(key, num_live_points: int, max_samples: int, model: Model
     return state
 
 
+@partial(jax.jit, inline=True, static_argnames=['target_num_live_points'])
+def _check_termination(state: State, target_num_live_points: int,
+                       termination_condition: TerminationCondition | None = None) -> tuple[BoolArray, IntArray]:
+    """Evaluate whether the current state satisfies the termination condition."""
+
+    register = state.compute_termination_register(target_num_live_points=target_num_live_points)
+    return register.is_done(termination_condition)
+
+
+@partial(jax.jit, inline=True)
+def _set_termination_reason(state: State, termination_reason: IntArray) -> State:
+    """Return a copy of ``state`` with an updated termination reason."""
+
+    return State(
+        root_out_degree=state.root_out_degree,
+        samples=state.samples,
+        num_samples=state.num_samples,
+        log_L_supremum=state.log_L_supremum,
+        U_supremum=state.U_supremum,
+        model=state.model,
+        args=state.args,
+        params=state.params,
+        termination_reason=termination_reason,
+    )
+
+
+@partial(jax.jit, inline=True, static_argnames=['target_num_live_points', 'shell_size', 'batch_size'])
+def _run_ns_step(key, state: State, target_num_live_points: int, shell_size: int, args=(),
+                 sampler: AbstractSampler | None = None,
+                 params=None,
+                 batch_size: int | None = None) -> tuple[jax.Array, State, StepDelta]:
+    """Execute one replenishment step and emit the corresponding checkpoint delta."""
+
+    K_per_sample = state.samples.compute_num_live_points_per_sample(
+        root_out_degree=state.root_out_degree,
+        num_samples=state.num_samples,
+    )
+    K_next_sample = K_per_sample - 1 + state.samples.out_degree
+    select_weights = jnp.where(
+        jnp.logical_and(
+            jnp.arange(K_next_sample.shape[0]) < state.num_samples,
+            K_next_sample < target_num_live_points,
+        ),
+        0,
+        -jnp.inf,
+    )
+    select_contours_key, key = jax.random.split(key, 2)
+    parent_idxs = resample_indicies(select_contours_key, log_weights=select_weights, S=shell_size, replace=False)
+    proposed_log_L_constraints = state.samples.log_likelihoods[parent_idxs]
+
+    def get_sample(sample_key, log_L_constraint, parent_idx: IntArray):
+        seed_key, constrained_sample_key = jax.random.split(sample_key)
+        i_start = jax.lax.while_loop(
+            lambda i: (i < state.num_samples) & (state.samples.log_likelihoods[i] <= log_L_constraint),
+            lambda i: i + 1,
+            parent_idx + 1,
+        )
+        no_seeds = i_start == state.num_samples
+        log_L_constraint = jnp.where(no_seeds, jnp.asarray(-jnp.inf, dtype=mp_policy.measure_dtype), log_L_constraint)
+        delta_root_out_degree = jnp.where(no_seeds, 1, 0).astype(mp_policy.count_dtype)
+        delta_parent_out_degree = jnp.where(no_seeds, 0, 1).astype(mp_policy.count_dtype)
+        parent_sample_id = jnp.where(
+            no_seeds,
+            -jnp.ones((), dtype=state.samples.sample_ids.dtype),
+            state.samples.sample_ids[parent_idx],
+        )
+        i_start = jnp.where(no_seeds, 0, i_start).astype(mp_policy.index_dtype)
+        seed_select_idx = jax.random.randint(seed_key, (), i_start, state.num_samples)
+        seed_point = SeedPoint(
+            U0=jax.tree.map(lambda u: u[seed_select_idx], state.samples.U_samples),
+            log_L0=state.samples.log_likelihoods[seed_select_idx],
+        )
+        return sampler.get_sample(
+            constrained_sample_key,
+            log_L_constraint,
+            seed_point,
+            args=args,
+            params=params,
+        ), (delta_root_out_degree, delta_parent_out_degree, log_L_constraint, parent_sample_id)
+
+    key, subkey = jax.random.split(key)
+    keys = jax.random.split(subkey, shell_size)
+    (U_samples, log_likelihoods, num_likelihood_evaluations, phantom_samples), (
+        delta_root_out_degree,
+        delta_parent_out_degree,
+        log_L_constraints,
+        parent_sample_ids,
+    ) = jax.lax.map(
+        lambda x: get_sample(x[0], x[1], x[2]),
+        (keys, proposed_log_L_constraints, parent_idxs),
+        batch_size=batch_size,
+    )
+
+    new_samples = Samples(
+        log_L_constraints=log_L_constraints,
+        log_likelihoods=log_likelihoods,
+        sample_ids=state.num_samples + jnp.arange(shell_size, dtype=mp_policy.count_dtype),
+        U_samples=U_samples,
+        out_degree=jnp.zeros((shell_size,), dtype=mp_policy.count_dtype),
+        num_likelihood_evaluations=num_likelihood_evaluations,
+        phantom_samples=phantom_samples,
+    )
+    if state.samples.phantom_samples.U_samples is None:
+        new_samples.phantom_samples.U_samples = None
+
+    candidate_supremum_candidate_iid = jnp.argmax(new_samples.log_likelihoods)
+    candidate_log_L_supremum = new_samples.log_likelihoods[candidate_supremum_candidate_iid]
+    candidate_U_supremum = jax.tree.map(lambda u: u[candidate_supremum_candidate_iid], new_samples.U_samples)
+
+    log_L_supremum = jnp.where(
+        candidate_log_L_supremum > state.log_L_supremum,
+        candidate_log_L_supremum,
+        state.log_L_supremum,
+    )
+    U_supremum = jax.tree.map(
+        lambda u_new, u_old: jnp.where(candidate_log_L_supremum > state.log_L_supremum, u_new, u_old),
+        candidate_U_supremum,
+        state.U_supremum,
+    )
+    if new_samples.phantom_samples.U_samples is not None:
+        valid_mask = new_samples.phantom_samples.valid_mask.reshape((-1,))
+        phantom_log_L = new_samples.phantom_samples.log_L.reshape((-1,))
+        phantom_U_samples = jax.tree.map(lambda u: u.reshape((-1,) + u.shape[2:]), new_samples.phantom_samples.U_samples)
+        phantom_log_L = jnp.where(valid_mask, phantom_log_L, -jnp.inf)
+        candidate_supremum_candidate_phantom = jnp.argmax(phantom_log_L)
+        candidate_log_L_supremum_phantom = phantom_log_L[candidate_supremum_candidate_phantom]
+        candidate_U_supremum_phantom = jax.tree.map(lambda u: u[candidate_supremum_candidate_phantom], phantom_U_samples)
+        log_L_supremum = jnp.where(
+            candidate_log_L_supremum_phantom > log_L_supremum,
+            candidate_log_L_supremum_phantom,
+            log_L_supremum,
+        )
+        U_supremum = jax.tree.map(
+            lambda u_phantom, u_current: jnp.where(candidate_log_L_supremum_phantom > log_L_supremum, u_phantom, u_current),
+            candidate_U_supremum_phantom,
+            U_supremum,
+        )
+
+    next_state = State(
+        root_out_degree=state.root_out_degree + jnp.sum(delta_root_out_degree),
+        samples=state.samples.append_samples(
+            insert_idx=state.num_samples,
+            parent_idxs=parent_idxs,
+            samples=new_samples,
+            delta_parent_out_degree=delta_parent_out_degree,
+        ).sort(),
+        num_samples=state.num_samples + len(new_samples),
+        log_L_supremum=log_L_supremum,
+        U_supremum=U_supremum,
+        model=state.model,
+        args=state.args,
+        params=state.params,
+        termination_reason=state.termination_reason,
+    )
+
+    return key, next_state, StepDelta(samples=new_samples, parent_sample_ids=parent_sample_ids)
+
+
 @partial(jax.jit, inline=True, static_argnames=['target_num_live_points', 'shell_size', 'batch_size'])
 def _run_ns(key, state: State, target_num_live_points: int, shell_size: int, args=(),
             sampler: AbstractSampler | None = None,
             params=None,
             termination_condition: TerminationCondition | None = None,
             batch_size: int | None = None) -> State:
-    """
-    Perform a single nested sampling run.
-
-    Args:
-        key: PRNG key
-        target_num_live_points: the number of live points to use off root
-        shell_size: the number of samples to discard and replenish per iteration
-        args: arguments to pass to the model
-        sampler: the sampler to use to produce i.i.d. samples within likelihood constraints
-        params: parameters to pass to the model
-        termination_condition: the termination condition to use
-        batch_size: how many likelihood evaluations to batch together
-
-    Returns:
-        A final state object containing all samples and relevant information for resuming, or evidence calculation.
-    """
-
-    # Algorithm
-    # repeat until termination condition:
-    # choose constraints: compute the recurrence K[i] = K[i-1] - 1 + d[i], and choose indexes where K[i] < num_live_points. I.e. we make each sample have at least a certain number of live points.
-    # choose seeds: the any points with likelihoods > the contour, else reparent off root
-    # sample (in parallel)
-
     class OuterCarry(NamedTuple):
         key: jax.Array
         state: State
 
     def outer_cond_fn(carry: OuterCarry) -> BoolArray:
-        register = carry.state.compute_termination_register(target_num_live_points=target_num_live_points)
-        done, _ = register.is_done(termination_condition)
+        done, _ = _check_termination(carry.state, target_num_live_points, termination_condition)
         return jnp.logical_not(done)
 
-    def outer_body_fn(outer_carry: OuterCarry) -> OuterCarry:
-        # Select likelihood constraints to achieve minimum K[i]>target (randomly without replacement for simplicity)
-        K_per_sample = outer_carry.state.samples.compute_num_live_points_per_sample(
-            root_out_degree=outer_carry.state.root_out_degree,
-            num_samples=outer_carry.state.num_samples
+    def outer_body_fn(carry: OuterCarry) -> OuterCarry:
+        key, state, _ = _run_ns_step(
+            key=carry.key,
+            state=carry.state,
+            target_num_live_points=target_num_live_points,
+            shell_size=shell_size,
+            args=args,
+            sampler=sampler,
+            params=params,
+            batch_size=batch_size,
         )
-        K_next_sample = K_per_sample - 1 + outer_carry.state.samples.out_degree
-        select_weights = jnp.where(
-            jnp.logical_and(
-                jnp.arange(K_next_sample.shape[0]) < outer_carry.state.num_samples,
-                K_next_sample < target_num_live_points
-            ), 0, -jnp.inf)
-        select_contours_key, key = jax.random.split(outer_carry.key, 2)
-        parent_idxs = resample_indicies(select_contours_key, log_weights=select_weights, S=shell_size, replace=False)  # [S]
-        proposed_log_L_constraints = outer_carry.state.samples.log_likelihoods[parent_idxs]  # [S]
-
-        # TODO: give sampling a multi-ellipsoidal clustering, then use to guide sampling along preferential axes.
-
-        def get_sample(key, log_L_constraint, parent_idx: IntArray):
-            seed_key, sample_key = jax.random.split(key)
-            # Get seed from samples
-            i_start = jax.lax.while_loop(
-                lambda i: (i < outer_carry.state.num_samples) & (outer_carry.state.samples.log_likelihoods[i] <= log_L_constraint),
-                lambda i: i + 1,
-                parent_idx + 1
-            )
-            no_seeds = i_start == outer_carry.state.num_samples
-            log_L_constraint = jnp.where(no_seeds, jnp.asarray(-jnp.inf, dtype=mp_policy.measure_dtype), log_L_constraint)
-            delta_root_out_degree = jnp.where(no_seeds, 1, 0).astype(mp_policy.count_dtype)
-            delta_parent_out_degree = jnp.where(no_seeds, 0, 1).astype(mp_policy.count_dtype)
-            i_start = jnp.where(no_seeds, 0, i_start).astype(mp_policy.index_dtype)
-            seed_select_idx = jax.random.randint(seed_key, (), i_start, outer_carry.state.num_samples)
-            seed_point = SeedPoint(
-                U0=jax.tree.map(lambda u: u[seed_select_idx], outer_carry.state.samples.U_samples),
-                log_L0=outer_carry.state.samples.log_likelihoods[seed_select_idx]
-            )
-            return sampler.get_sample(
-                sample_key, log_L_constraint, seed_point, args=args, params=params,
-            ), (delta_root_out_degree, delta_parent_out_degree, log_L_constraint)
-
-        key, subkey = jax.random.split(outer_carry.key)
-        keys = jax.random.split(subkey, shell_size)
-        (U_samples, log_likelihoods, num_likelihood_evaluations, phantom_samples), (
-            delta_root_out_degree,
-            delta_parent_out_degree,
-            log_L_constraints
-        ) = jax.lax.map(
-            lambda x: get_sample(x[0], x[1], x[2]),
-            (keys, proposed_log_L_constraints, parent_idxs),
-            batch_size=batch_size
-        )
-
-        new_samples = Samples(
-            log_L_constraints=log_L_constraints,
-            log_likelihoods=log_likelihoods,
-            U_samples=U_samples,
-            out_degree=jnp.zeros((shell_size,), dtype=mp_policy.count_dtype),
-            num_likelihood_evaluations=num_likelihood_evaluations,
-            phantom_samples=phantom_samples
-        )
-        if outer_carry.state.samples.phantom_samples.U_samples is None:
-            new_samples.phantom_samples.U_samples = None
-
-        candidate_supremum_candidate_iid = jnp.argmax(new_samples.log_likelihoods)
-        candidate_log_L_supremum = new_samples.log_likelihoods[candidate_supremum_candidate_iid]
-        candidate_U_supremum = jax.tree.map(lambda u: u[candidate_supremum_candidate_iid], new_samples.U_samples)
-
-        log_L_supremum = jnp.where(candidate_log_L_supremum > outer_carry.state.log_L_supremum, candidate_log_L_supremum, outer_carry.state.log_L_supremum)
-        U_supremum = jax.tree.map(lambda u_new, u_old: jnp.where(candidate_log_L_supremum > outer_carry.state.log_L_supremum, u_new, u_old),
-                                  candidate_U_supremum, outer_carry.state.U_supremum)
-        if new_samples.phantom_samples.U_samples is not None:
-            # flatten, and select only valid ones
-            valid_mask = new_samples.phantom_samples.valid_mask.reshape((-1,))
-            phantom_log_L = new_samples.phantom_samples.log_L.reshape((-1,))
-            phantom_U_samples = jax.tree.map(lambda u: u.reshape((-1,) + u.shape[2:]), new_samples.phantom_samples.U_samples)
-            phantom_log_L = jnp.where(valid_mask, phantom_log_L, -jnp.inf)
-            candidate_supremum_candidate_phantom = jnp.argmax(phantom_log_L)
-            candidate_log_L_supremum_phantom = phantom_log_L[candidate_supremum_candidate_phantom]
-            candidate_U_supremum_phantom = jax.tree.map(lambda u: u[candidate_supremum_candidate_phantom], phantom_U_samples)
-            log_L_supremum = jnp.where(candidate_log_L_supremum_phantom > log_L_supremum, candidate_log_L_supremum_phantom, log_L_supremum)
-            U_supremum = jax.tree.map(lambda u_phantom, u_current: jnp.where(candidate_log_L_supremum_phantom > log_L_supremum, u_phantom, u_current),
-                                      candidate_U_supremum_phantom, U_supremum)
-
-        state = State(
-            root_out_degree=outer_carry.state.root_out_degree + jnp.sum(delta_root_out_degree),
-            samples=outer_carry.state.samples.append_samples(
-                insert_idx=outer_carry.state.num_samples,
-                parent_idxs=parent_idxs,
-                samples=new_samples,
-                delta_parent_out_degree=delta_parent_out_degree,
-            ).sort(),
-            num_samples=outer_carry.state.num_samples + len(new_samples),
-            log_L_supremum=log_L_supremum,
-            U_supremum=U_supremum,
-            model=outer_carry.state.model,
-            args=outer_carry.state.args,
-            params=outer_carry.state.params,
-            termination_reason=outer_carry.state.termination_reason
-        )
-
         return OuterCarry(key=key, state=state)
 
-    init_outer_carry = OuterCarry(
-        key=key,
-        state=state
+    carry = jax.lax.while_loop(outer_cond_fn, outer_body_fn, OuterCarry(key=key, state=state))
+    _, termination_reason = _check_termination(carry.state, target_num_live_points, termination_condition)
+    return _set_termination_reason(carry.state, termination_reason)
+
+
+@partial(jax.jit, inline=True, static_argnames=['target_num_live_points', 'shell_size', 'checkpoint_every', 'batch_size'])
+def _run_ns_chunk(key, state: State, target_num_live_points: int, shell_size: int, checkpoint_every: int, args=(),
+                  sampler: AbstractSampler | None = None,
+                  params=None,
+                  termination_condition: TerminationCondition | None = None,
+                  batch_size: int | None = None):
+    """Run up to one checkpoint chunk of nested-sampling steps."""
+
+    class ChunkCarry(NamedTuple):
+        key: jax.Array
+        state: State
+        steps_executed: IntArray
+
+    empty_delta = StepDelta(
+        samples=state.samples.slice(0, shell_size),
+        parent_sample_ids=jnp.zeros((shell_size,), dtype=mp_policy.count_dtype),
     )
 
-    carry = jax.lax.while_loop(outer_cond_fn, outer_body_fn, init_outer_carry)
-    return carry.state
+    def scan_fn(carry: ChunkCarry, _):
+        done, _ = _check_termination(carry.state, target_num_live_points, termination_condition)
+
+        def skip_step(_):
+            return carry, empty_delta
+
+        def run_step(_):
+            key, next_state, step_delta = _run_ns_step(
+                key=carry.key,
+                state=carry.state,
+                target_num_live_points=target_num_live_points,
+                shell_size=shell_size,
+                args=args,
+                sampler=sampler,
+                params=params,
+                batch_size=batch_size,
+            )
+            return ChunkCarry(
+                key=key,
+                state=next_state,
+                steps_executed=carry.steps_executed + jnp.ones((), dtype=mp_policy.count_dtype),
+            ), step_delta
+
+        return jax.lax.cond(done, skip_step, run_step, operand=None)
+
+    carry, step_deltas = jax.lax.scan(
+        scan_fn,
+        ChunkCarry(key=key, state=state, steps_executed=jnp.zeros((), dtype=mp_policy.count_dtype)),
+        xs=None,
+        length=checkpoint_every,
+    )
+    done, termination_reason = _check_termination(carry.state, target_num_live_points, termination_condition)
+    final_state = jax.lax.cond(
+        done,
+        lambda current_state: _set_termination_reason(current_state, termination_reason),
+        lambda current_state: current_state,
+        carry.state,
+    )
+    return carry.key, final_state, step_deltas, carry.steps_executed, done, termination_reason
 
 
 @dataclasses.dataclass(slots=True)
@@ -304,19 +416,33 @@ class NestedSampler(PureDataclassPytree):
     def unflatten(cls, aux_data: tuple[Any, ...], children: list[Any]):
         return cls.build_unflatten(aux_data, children)
 
-    def run(self, key: PRNGKey | None = None) -> State:
+    def run(self, key: PRNGKey | None = None, *, resume: bool = False,
+            archive_path: str | Path | None = None,
+            checkpoint_every: int | None = None) -> State:
         """
         Creates an initial state, and performs sampling until the termination condition is met, returning the final state.
 
         Args:
             key: PRNGKey to use for sampling
+            resume: if true, resume from an existing archive_path
+            archive_path: optional HDF5 archive used for checkpointing and resume
+            checkpoint_every: number of outer nested-sampling steps to execute per checkpoint commit
 
         Returns:
             the final state after running nested sampling, which can be used for evidence calculation or resuming.
+
+        Raises:
+            ValueError: If ``resume`` or ``checkpoint_every`` is provided without ``archive_path``.
         """
-        if key is None:
-            key = jax.random.PRNGKey(42)
-        return _run(self, key)
+        if archive_path is None:
+            if resume:
+                raise ValueError('resume=True requires archive_path to be set.')
+            if checkpoint_every is not None:
+                raise ValueError('checkpoint_every requires archive_path to be set.')
+            if key is None:
+                key = jax.random.PRNGKey(42)
+            return _run(self, key)
+        return _run_with_checkpointing(self, key, archive_path, resume=resume, checkpoint_every=checkpoint_every)
 
     def resume(self, state: State, key: PRNGKey | None = None) -> State:
         """
@@ -373,3 +499,131 @@ def _run(self: NestedSampler, key) -> State:
         batch_size=self.batch_size
     )
     return state
+
+
+def _default_checkpoint_every(self: NestedSampler) -> int:
+    """Choose a conservative default chunk size for checkpointed runs."""
+
+    shell_size = max(1, int(self.shell_size))
+    target_num_live_points = max(shell_size, int(self.target_num_live_points))
+    return max(1, min(16, (4 * target_num_live_points) // shell_size))
+
+
+def _flatten_step_deltas(step_deltas: StepDelta, steps_executed: int) -> tuple[Samples | None, np.ndarray | None]:
+    """Flatten a scanned chunk delta into append-ready journal rows."""
+
+    if steps_executed <= 0:
+        return None, None
+
+    host_deltas = jax.device_get(step_deltas)
+    row_count = steps_executed * host_deltas.parent_sample_ids.shape[1]
+
+    def flatten_leaf(leaf):
+        leaf = np.asarray(leaf[:steps_executed])
+        return leaf.reshape((row_count,) + leaf.shape[2:])
+
+    phantom_U_samples = None
+    if host_deltas.samples.phantom_samples.U_samples is not None:
+        phantom_U_samples = jax.tree.map(flatten_leaf, host_deltas.samples.phantom_samples.U_samples)
+
+    flat_samples = Samples(
+        log_L_constraints=flatten_leaf(host_deltas.samples.log_L_constraints),
+        log_likelihoods=flatten_leaf(host_deltas.samples.log_likelihoods),
+        sample_ids=flatten_leaf(host_deltas.samples.sample_ids),
+        U_samples=jax.tree.map(flatten_leaf, host_deltas.samples.U_samples),
+        out_degree=flatten_leaf(host_deltas.samples.out_degree),
+        num_likelihood_evaluations=flatten_leaf(host_deltas.samples.num_likelihood_evaluations),
+        phantom_samples=PhantomSamples(
+            U_samples=phantom_U_samples,
+            valid_mask=flatten_leaf(host_deltas.samples.phantom_samples.valid_mask),
+            log_L=flatten_leaf(host_deltas.samples.phantom_samples.log_L),
+        ),
+    )
+    parent_sample_ids = np.asarray(host_deltas.parent_sample_ids[:steps_executed]).reshape((row_count,))
+    return flat_samples, parent_sample_ids
+
+
+def _run_with_checkpointing(self: NestedSampler, key: PRNGKey | None, archive_path: str | Path, *, resume: bool,
+                            checkpoint_every: int | None) -> State:
+    """Drive checkpointed sampling from Python while keeping chunk execution jitted."""
+
+    from jaxns.checkpointing import append_checkpoint, initialise_archive, load_checkpoint
+
+    archive_path = Path(archive_path)
+
+    if resume:
+        loaded_checkpoint = load_checkpoint(archive_path, nested_sampler=self)
+        state = loaded_checkpoint.state
+        key = loaded_checkpoint.key
+        checkpoint_index = loaded_checkpoint.checkpoint_index
+        if checkpoint_every is None:
+            checkpoint_every = loaded_checkpoint.checkpoint_every
+        if loaded_checkpoint.completed:
+            return state
+    else:
+        if key is None:
+            key = jax.random.PRNGKey(42)
+        if checkpoint_every is None:
+            checkpoint_every = _default_checkpoint_every(self)
+        key, init_key = jax.random.split(key)
+        state = _sample_init_state(
+            key=init_key,
+            num_live_points=int(self.target_num_live_points),
+            max_samples=int(self.max_samples),
+            model=self.model,
+            num_phantom=int(self.sampler.num_phantom()) if self.sampler is not None else 0,
+            args=self.args,
+            params=self.params,
+            store_phantom_samples=self.store_phantom_samples,
+            batch_size=self.batch_size,
+        )
+        done, termination_reason = _check_termination(state, int(self.target_num_live_points), self.termination_condition)
+        done = bool(np.asarray(jax.device_get(done)))
+        if done:
+            state = dataclasses.replace(state, termination_reason=termination_reason)
+        initialise_archive(
+            archive_path,
+            nested_sampler=self,
+            state=state,
+            current_key=key,
+            checkpoint_every=checkpoint_every,
+            completed=done,
+        )
+        checkpoint_index = 0
+        if done:
+            return state
+
+    if checkpoint_every is None or checkpoint_every < 1:
+        raise ValueError(f'checkpoint_every must be >= 1, got {checkpoint_every}.')
+
+    while True:
+        key, state, step_deltas, steps_executed, done, termination_reason = _run_ns_chunk(
+            key=key,
+            state=state,
+            target_num_live_points=int(self.target_num_live_points),
+            shell_size=int(self.shell_size),
+            checkpoint_every=int(checkpoint_every),
+            args=self.args,
+            sampler=self.sampler,
+            params=self.params,
+            termination_condition=self.termination_condition,
+            batch_size=self.batch_size,
+        )
+        done = bool(np.asarray(jax.device_get(done)))
+        if done:
+            state = dataclasses.replace(state, termination_reason=termination_reason)
+        steps_executed_host = int(np.asarray(jax.device_get(steps_executed)))
+        flat_samples, parent_sample_ids = _flatten_step_deltas(step_deltas, steps_executed_host)
+        checkpoint_index += 1
+        append_checkpoint(
+            archive_path,
+            samples=flat_samples,
+            parent_sample_ids=parent_sample_ids,
+            current_key=key,
+            state=state,
+            checkpoint_index=checkpoint_index,
+            checkpoint_every=int(checkpoint_every),
+            completed=done,
+        )
+        if done:
+            return state

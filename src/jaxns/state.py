@@ -35,6 +35,63 @@ class State(PureDataclassPytree):
     args: tuple = ()
     params: CtxParams | None = None
 
+    @classmethod
+    def from_checkpoint(cls, *, root_out_degree: IntArray, samples: Samples, num_samples: IntArray,
+                        log_L_supremum: FloatArray, U_supremum: UType, termination_reason: IntArray,
+                        model: Model, args: tuple = (), params: CtxParams | None = None) -> 'State':
+        """
+        Reconstruct a state from committed checkpoint payloads.
+
+        Args:
+            root_out_degree: root out-degree for the reconstructed lineage
+            samples: committed samples buffer
+            num_samples: number of committed samples
+            log_L_supremum: best likelihood seen so far
+            U_supremum: U-space point achieving the best likelihood seen so far
+            termination_reason: current termination bit-mask
+            model: model associated with this state
+            args: model arguments
+            params: model parameters
+
+        Returns:
+            reconstructed state
+        """
+        return cls(
+            root_out_degree=root_out_degree,
+            samples=samples,
+            num_samples=num_samples,
+            log_L_supremum=log_L_supremum,
+            U_supremum=U_supremum,
+            termination_reason=termination_reason,
+            model=model,
+            args=args,
+            params=params,
+        )
+
+    def with_runtime_context(self, *, model: Model, args: tuple = (), params: CtxParams | None = None) -> 'State':
+        """
+        Attach the current runtime model context to an already reconstructed state.
+
+        Args:
+            model: model to associate with the state
+            args: model arguments
+            params: model parameters
+
+        Returns:
+            state with updated runtime context
+        """
+        return State(
+            root_out_degree=self.root_out_degree,
+            samples=self.samples,
+            num_samples=self.num_samples,
+            log_L_supremum=self.log_L_supremum,
+            U_supremum=self.U_supremum,
+            termination_reason=self.termination_reason,
+            model=model,
+            args=args,
+            params=params,
+        )
+
     def merge(self, other: 'State') -> 'State':
         """
         Merge samples from another state into this state. This is used for merging results from parallel nested sampling runs.

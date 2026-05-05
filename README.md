@@ -158,12 +158,38 @@ posterior samples.
 import jaxns.types
 from jaxns import NestedSampler
 
-ns = NestedSampler(model=model, max_samples=1e5)
+ns = NestedSampler(model=model, max_samples=int(1e5))
 
 # Run the sampler
-termination_reason, state = ns(jaxns.types.PRNGKey(42))
+state = ns.run(jaxns.types.PRNGKey(42))
 # Get the results
-results = ns.to_results(termination_reason=termination_reason, state=state)
+results = state.to_result().trim()
+```
+
+### Checkpointing and resuming a run
+
+Checkpointing writes a single HDF5 archive that is updated after each committed chunk of nested-sampling work.
+This keeps the default non-checkpointed path unchanged, while allowing long-running jobs to resume from disk.
+
+```python
+from pathlib import Path
+
+archive_path = Path('nested_sampling_checkpoint.h5')
+
+# Start a fresh checkpointed run. Any existing archive at this path is overwritten.
+state = ns.run(
+  jaxns.types.PRNGKey(42),
+  archive_path=archive_path,
+  checkpoint_every=32,
+)
+
+# Later, recreate the same model and sampler in Python and resume from the archive.
+state = ns.run(
+  resume=True,
+  archive_path=archive_path,
+)
+
+results = state.to_result().trim()
 ```
 
 #### To AOT or JIT-compile the sampler
