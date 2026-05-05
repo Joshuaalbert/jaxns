@@ -170,6 +170,8 @@ results = state.to_result().trim()
 
 Checkpointing writes a single HDF5 archive that is updated after each committed chunk of nested-sampling work.
 This keeps the default non-checkpointed path unchanged, while allowing long-running jobs to resume from disk.
+If you want to set `checkpoint_every` explicitly, `16` is a reasonable starting point for most runs; leaving it unset will adaptively set the interval based on the number of live points and the shell size.
+If both `archive_path` and `checkpoint_every` are none, no checkpointing will occue, which may improve performance.
 
 ```python
 from pathlib import Path
@@ -180,7 +182,7 @@ archive_path = Path('nested_sampling_checkpoint.h5')
 state = ns.run(
   jaxns.types.PRNGKey(42),
   archive_path=archive_path,
-  checkpoint_every=32,
+  checkpoint_every=16,
 )
 
 # Later, recreate the same model and sampler in Python and resume from the archive.
