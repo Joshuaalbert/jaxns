@@ -1,6 +1,7 @@
 jax>=0.6.0
 jaxlib
 jaxctx
+h5py
 matplotlib
 numpy
 scipy
