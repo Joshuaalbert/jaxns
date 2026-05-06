@@ -1,11 +1,8 @@
-from __future__ import annotations
-
 import dataclasses
 import warnings
 from typing import Any
 
 import jax
-import numpy as np
 from jax import numpy as jnp, random
 
 from jaxns.constrained_sampler import (
@@ -17,7 +14,7 @@ from jaxns.constrained_sampler import (
 )
 from jaxns.mixed_precision import mp_policy
 from jaxns.model import Model
-from jaxns.pytree import TreeField
+from jaxns.pytree import TreeField, PureDataclassPytree
 from jaxns.samples import PhantomSamples, SeedPoint
 
 
@@ -26,14 +23,14 @@ def _evaluate_log_likelihood(evaluator, u, dtype):
 
 
 def _distributed_new_proposal(
-    key,
-    evaluator,
-    U0: TreeField,
-    direction: TreeField,
-    slice_width,
-    no_step_out: bool,
-    gradient_guided: bool,
-    log_L_constraint,
+        key,
+        evaluator,
+        U0: TreeField,
+        direction: TreeField,
+        slice_width,
+        no_step_out: bool,
+        gradient_guided: bool,
+        log_L_constraint,
 ):
     if gradient_guided:
         raise NotImplementedError("Gradient guided distributed slice sampler not implemented.")
@@ -129,7 +126,7 @@ def _distributed_new_proposal(
 
 
 @dataclasses.dataclass(slots=True)
-class DistributedUniDimSliceSampler(AbstractSampler):
+class DistributedUniDimSliceSampler(AbstractSampler, PureDataclassPytree):
     model: Model
     evaluator: Any
     num_slices: int
@@ -137,6 +134,11 @@ class DistributedUniDimSliceSampler(AbstractSampler):
     gradient_guided: bool = False
     collect_phantom_samples: bool = False
     phantom_burn_in: int | None = None
+
+    @classmethod
+    def flatten(cls, this) -> tuple[list[Any], tuple[Any, ...]]:
+        return cls.build_flatten(this, ['num_slices', 'no_step_out', 'gradient_guided', 'collect_phantom_samples', 'phantom_burn_in'])
+
 
     def __post_init__(self):
         if self.num_slices < 1:
@@ -154,7 +156,7 @@ class DistributedUniDimSliceSampler(AbstractSampler):
         del args, params
         direction_key, sample_key = jax.random.split(key, 2)
         init_direction = _sample_direction(direction_key, TreeField(seed_point.U0))
-        slice_width_dtype = np.result_type(seed_point.U0)
+        slice_width_dtype = jax.tree.leaves(seed_point.U0)[0].dtype
 
         sample_key, init_sample_key = random.split(sample_key, 2)
         U_sample, log_L, num_likelihood_evaluations, direction, slice_width = _distributed_new_proposal(

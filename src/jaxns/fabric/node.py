@@ -174,6 +174,10 @@ class RemoteNodeEvaluator(AbstractNode):
         client = getattr(self._thread_local, "client", None)
         if client is None:
             thread_id = threading.get_ident()
+            with self._lock:
+                stale_client = self._clients.pop(thread_id, None)
+            if stale_client is not None:
+                stale_client.__exit__(None, None, None)
             client = NodeClient(
                 ident=f"{self.ident_prefix}-{thread_id}",
                 frontend_addr=self.frontend_addr,
@@ -292,18 +296,20 @@ def local_node_evaluator(
         **actor_kwargs,
     )
     scheduler_mgr.start_all()
-    worker_mgr.start_all()
     try:
-        with RemoteNodeEvaluator(
-            frontend_addr=addresses.frontend_addr,
-            ident_prefix=ident_prefix,
-            assign_timeout_ms=assign_timeout_ms,
-            retries=retries,
-        ) as evaluator:
-            yield evaluator
+        try:
+            worker_mgr.start_all()
+            with RemoteNodeEvaluator(
+                frontend_addr=addresses.frontend_addr,
+                ident_prefix=ident_prefix,
+                assign_timeout_ms=assign_timeout_ms,
+                retries=retries,
+            ) as evaluator:
+                yield evaluator
+        finally:
+            worker_mgr.stop_all()
+            worker_mgr.print_tracebacks()
     finally:
-        worker_mgr.stop_all()
-        worker_mgr.print_tracebacks()
         scheduler_mgr.stop_all()
         scheduler_mgr.print_tracebacks()
 

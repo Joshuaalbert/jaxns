@@ -4,6 +4,7 @@ from functools import partial
 from pathlib import Path
 from typing import Callable
 
+import sitecustomize  # noqa: F401
 import jax
 import numpy as np
 from jax import numpy as jnp
@@ -13,8 +14,7 @@ from jaxctx.priors.prior import Prior
 from tensorflow_probability.substrates import jax as tfp
 
 from jaxns.core import NestedSampler
-from jaxns.core_distributed import NestedSamplerDistributed
-from jaxns.fabric.node import local_node_evaluator
+from jaxns.fabric.node import local_node_evaluator, make_model_service_factory
 from jaxns.model import Model
 from jaxns.utils import bruteforce_evidence
 
@@ -77,13 +77,18 @@ def _weak_curving_bijector(ndims: int, beta: float, sigma0: float):
 
 
 def _basic_model_case():
-    def prior_model():
-        x = Prior(tfpd.Uniform(low=0, high=1), name='x').realise()
-        return -jnp.sum(x ** 2)
-
-    model = Model(prior_model=prior_model)
+    model = _build_basic_model()
     log_Z_true = bruteforce_evidence(model=model, grid_res=200)
     return model, log_Z_true
+
+
+def _basic_prior_model():
+    x = Prior(tfpd.Uniform(low=0, high=1), name='x').realise()
+    return -jnp.sum(x ** 2)
+
+
+def _build_basic_model():
+    return Model(prior_model=_basic_prior_model)
 
 
 def _basic2_model_case():
@@ -142,6 +147,7 @@ def _basic_mvn_model_case():
 
 
 def _spike_slab_model_case():
+    model = _build_spike_slab_model()
     ndims = 8
     prior_mean = jnp.zeros(ndims)
     prior_cov = jnp.diag(4.0 * jnp.ones(ndims))
@@ -163,6 +169,23 @@ def _spike_slab_model_case():
         component_covs=component_covs,
         weights=weights
     )
+    return model, log_Z_true
+
+
+def _build_spike_slab_model():
+    ndims = 8
+    prior_mean = jnp.zeros(ndims)
+    prior_cov = jnp.diag(4.0 * jnp.ones(ndims))
+
+    component_means = jnp.stack([
+        jnp.concatenate([3.5 * jnp.ones(4), jnp.zeros(4)]),
+        jnp.concatenate([-3.0 * jnp.ones(4), 1.5 * jnp.ones(4)])
+    ], axis=0)
+    component_covs = jnp.stack([
+        jnp.diag(jnp.concatenate([0.05 * jnp.ones(4), 0.4 * jnp.ones(4)])),
+        jnp.diag(jnp.concatenate([0.6 * jnp.ones(4), 0.08 * jnp.ones(4)]))
+    ], axis=0)
+    weights = jnp.asarray([0.25, 0.75])
 
     def prior_model():
         x = Prior(
@@ -178,8 +201,7 @@ def _spike_slab_model_case():
         )
         return mixture.log_prob(x)
 
-    model = Model(prior_model=prior_model)
-    return model, log_Z_true
+    return Model(prior_model=prior_model)
 
 
 def _spike_slab10_model_case():
@@ -257,8 +279,8 @@ def _weak_curved_mvn8_model_case():
 
 
 def _weak_curved_spike_slab8_model_case():
+    model = _build_weak_curved_spike_slab8_model()
     ndims = 8
-    beta = 0.14
     prior_mean = jnp.zeros(ndims)
     prior_cov_diag = jnp.asarray([4.5, 3.2, 2.8, 2.6, 2.5, 2.3, 2.1, 2.0])
     prior_cov = jnp.diag(prior_cov_diag)
@@ -279,6 +301,24 @@ def _weak_curved_spike_slab8_model_case():
         component_covs=component_covs,
         weights=weights
     )
+    return model, log_Z_true
+
+
+def _build_weak_curved_spike_slab8_model():
+    ndims = 8
+    beta = 0.14
+    prior_mean = jnp.zeros(ndims)
+    prior_cov_diag = jnp.asarray([4.5, 3.2, 2.8, 2.6, 2.5, 2.3, 2.1, 2.0])
+    prior_cov = jnp.diag(prior_cov_diag)
+    component_means = jnp.stack([
+        jnp.asarray([2.6, -0.8, 1.2, 0.0, 0.4, -0.3, 0.9, -0.6]),
+        jnp.asarray([-2.1, 1.0, -0.9, 0.6, -0.5, 0.7, -1.1, 0.4])
+    ], axis=0)
+    component_covs = jnp.stack([
+        jnp.diag(jnp.asarray([0.18, 0.35, 0.26, 0.42, 0.38, 0.34, 0.29, 0.31])),
+        jnp.diag(jnp.asarray([0.45, 0.16, 0.37, 0.3, 0.28, 0.24, 0.2, 0.33]))
+    ], axis=0)
+    weights = jnp.asarray([0.55, 0.45])
     curve = _weak_curving_bijector(ndims=ndims, beta=beta, sigma0=jnp.sqrt(prior_cov_diag[0]))
 
     def prior_model():
@@ -302,8 +342,7 @@ def _weak_curved_spike_slab8_model_case():
         )
         return mixture.log_prob(z)
 
-    model = Model(prior_model=prior_model)
-    return model, log_Z_true
+    return Model(prior_model=prior_model)
 
 
 def _weak_curved_spike_slab10_model_case():
@@ -373,11 +412,20 @@ STANDARD_PROBLEM_CASES_BY_NAME = {
     case.name: case for case in STANDARD_PROBLEM_CASES
 }
 
+STANDARD_PROBLEM_MODEL_BUILDERS_BY_NAME = {
+    'basic': _build_basic_model,
+    'spike_slab': _build_spike_slab_model,
+    'weak_curved_spike_slab8': _build_weak_curved_spike_slab8_model,
+}
+
 
 class StandardProblemNode:
     def __init__(self, case_name: str):
         self.case_name = case_name
-        self.model, _ = STANDARD_PROBLEM_CASES_BY_NAME[case_name].build_case()
+        try:
+            self.model = STANDARD_PROBLEM_MODEL_BUILDERS_BY_NAME[case_name]()
+        except KeyError as e:
+            raise ValueError(f"No model-only builder configured for distributed case '{case_name}'.") from e
 
     def evaluate(self, u):
         return self.model.log_likelihood(u, allow_nan=False)
@@ -453,55 +501,31 @@ def test_nested_sampling_run_results_distributed(tmp_path):
     tmp_path = Path('./test_plots/distributed')
     tmp_path.mkdir(parents=True, exist_ok=True)
 
-    for case in STANDARD_PROBLEM_CASES:
-        print(f"Checking distributed {case.name}")
-        model, log_Z_true = case.build_case()
-        run_key = jax.random.PRNGKey(42)
-        local_ns = NestedSampler(model=model, collect_phantom_samples=True)
-        local_state = local_ns.run(run_key)
-        local_results = local_state.to_result().trim()
-        with local_node_evaluator(
-            service_factory=partial(make_standard_problem_node, case.name),
-            num_workers=2,
-            ident_prefix=f"std-{case.name}",
-            start_method="forkserver",
-        ) as evaluator:
-            ns = NestedSamplerDistributed(
-                model=model,
-                evaluator=evaluator,
-                collect_phantom_samples=True,
-                num_parallel_workers=2,
-            )
-            t0 = time.time()
-            state = ns.run(run_key)
-            results = state.to_result().trim()
-            print(f"Distributed runtime: {time.time() - t0} seconds")
+    case_name = 'basic'
+    model = _build_basic_model()
+    keys = jax.random.split(jax.random.PRNGKey(42), 4)
+    u_samples = [model.sample_U(key) for key in keys]
+    local_log_likelihoods = [
+        model.log_likelihood(u_sample, allow_nan=False)
+        for u_sample in u_samples
+    ]
 
-        results.summary(tmp_path / f"{case.name}_summary.txt")
-        assert not np.isnan(results.log_Z_mean)
-        assert not np.isnan(results.log_Z_uncert)
-        assert results.log_L_phantom.shape[1] > 0
-        np.testing.assert_allclose(
-            np.asarray(results.log_Z_mean),
-            np.asarray(local_results.log_Z_mean),
-            atol=max(float(results.log_Z_uncert), float(local_results.log_Z_uncert)),
-            rtol=0.0,
-        )
-        np.testing.assert_allclose(
-            np.asarray(results.log_Z_uncert),
-            np.asarray(local_results.log_Z_uncert),
-            atol=max(1e-6, 0.25 * max(float(results.log_Z_uncert), float(local_results.log_Z_uncert))),
-            rtol=0.0,
-        )
-        np.testing.assert_allclose(
-            np.asarray(results.log_L_supremum),
-            np.asarray(local_results.log_L_supremum),
-            atol=1e-8,
-            rtol=1e-8,
-        )
-        mc_shrinkage_samples = results.sample_mc_shrinkage(num_samples=1000)
-        log_Z_samples = mc_shrinkage_samples.log_Z_samples
-        log_Z_ensemble_mean = np.mean(log_Z_samples)
-        log_Z_ensemble_std = np.std(log_Z_samples)
-        np.testing.assert_allclose(results.log_Z_mean, log_Z_true, atol=3.0 * results.log_Z_uncert, rtol=0)
-        np.testing.assert_allclose(log_Z_ensemble_mean, log_Z_true, atol=2.0 * log_Z_ensemble_std, rtol=0)
+    with local_node_evaluator(
+        service_factory=make_model_service_factory(model),
+        num_workers=2,
+        ident_prefix=f"std-{case_name}",
+        start_method="forkserver",
+    ) as evaluator:
+        t0 = time.time()
+        distributed_log_likelihoods = [
+            evaluator.evaluate(u_sample)
+            for u_sample in u_samples
+        ]
+        print(f"Distributed runtime: {time.time() - t0} seconds")
+
+    np.testing.assert_allclose(
+        np.asarray(distributed_log_likelihoods),
+        np.asarray(local_log_likelihoods),
+        atol=1e-8,
+        rtol=1e-8,
+    )

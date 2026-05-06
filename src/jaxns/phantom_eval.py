@@ -241,6 +241,12 @@ def _summarise_log_dz_samples(
     def body(carry, sample_key):
         log_sum_dz, log_sum_dz_sq = carry
         log_Z, log_dZ, rho, eta, rho_eta, H = sample_fn(sample_key)
+        log_Z = jnp.asarray(log_Z, dtype=dtype)
+        log_dZ = jnp.asarray(log_dZ, dtype=dtype)
+        rho = jnp.asarray(rho, dtype=dtype)
+        eta = jnp.asarray(eta, dtype=dtype)
+        rho_eta = jnp.asarray(rho_eta, dtype=dtype)
+        H = jnp.asarray(H, dtype=dtype)
         log_sum_dz = jnp.logaddexp(log_sum_dz, log_dZ)
         log_sum_dz_sq = jnp.logaddexp(log_sum_dz_sq, two * log_dZ)
         return (log_sum_dz, log_sum_dz_sq), (log_Z, rho, eta, rho_eta, H)

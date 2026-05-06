@@ -1219,8 +1219,10 @@ class ZMQRPCClient:
         self.client_id = f"client-{self.ident}-{os.getpid()}".encode("ascii")
         self.stop_event = threading.Event()
         self.control_thread = threading.Thread(
+            name=f"zmq-rpc-client-{self.ident}",
             target=self._control_loop,
             args=(self.ctx, self.stop_event),
+            daemon=True,
         )
         self.control_thread.start()
 
@@ -1233,8 +1235,11 @@ class ZMQRPCClient:
         """Tear down sockets and clear local state (linger=0 for fast shutdown)."""
         # Close worker sockets
 
-        self.stop_event.set()
-        self.control_thread.join()
+        if self.stop_event is not None:
+            self.stop_event.set()
+        if self.control_thread is not None:
+            self.control_thread.join(timeout=1.0)
+        control_thread_alive = self.control_thread is not None and self.control_thread.is_alive()
 
         self.pool.clear()
         self.lease = None
@@ -1255,10 +1260,15 @@ class ZMQRPCClient:
 
         try:
             if self.ctx:
-                self.ctx.term()
+                if control_thread_alive:
+                    self.ctx.destroy(linger=0)
+                else:
+                    self.ctx.term()
         except zmq.error.ContextTerminated:
             pass
         self.ctx = None
+        self.control_thread = None
+        self.stop_event = None
 
     def _drop_worker(self, worker_id, poller):
         # remove the worker
@@ -1310,10 +1320,13 @@ class ZMQRPCClient:
                             raise RuntimeError("Internal error: lease should be None when waiting for assign")
                         self._drop_pool(poller)
                         self.lb_epoch = None
-                        self.future.set_exception(TimeoutError("Timeout waiting for assignment"))
+                        future = self.future
+                        self.future = None
                         self.rpc_frames = None
                         state = IDLE
                         assign_deadline_ms = None
+                        if future is not None and not future.done():
+                            future.set_exception(TimeoutError("Timeout waiting for assignment"))
                         continue
                 socks = dict(poller.poll(100))
                 if req_pull in socks:
@@ -1366,18 +1379,23 @@ class ZMQRPCClient:
                             self.rpc_frames = None  # No need to send any more, can drop
 
                             # Handle statuses
+                            future = self.future
+                            self.future = None
+                            state = IDLE
                             if status == STATUS_OK:
                                 self.lease = None
-                                self.future.set_result(pickle.loads(main, buffers=in_bufs))
+                                if future is not None and not future.done():
+                                    future.set_result(pickle.loads(main, buffers=in_bufs))
                             elif status == STATUS_ERR:
                                 self.lease = None
-                                self.future.set_exception(pickle.loads(main, buffers=in_bufs))
+                                if future is not None and not future.done():
+                                    future.set_exception(pickle.loads(main, buffers=in_bufs))
                             elif status == STATUS_INVALID_LEASE:
                                 self.lease = None
-                                self.future.set_exception(pickle.loads(main, buffers=in_bufs))
+                                if future is not None and not future.done():
+                                    future.set_exception(pickle.loads(main, buffers=in_bufs))
                             else:
                                 raise RuntimeError(f"Unknown status '{status}' in RPC response")
-                            state = IDLE
                             del resp, main, in_bufs
 
                 if frontend in socks:
@@ -1470,18 +1488,21 @@ class ZMQRPCClient:
                             assign_deadline_ms = time.monotonic() * 1000 + self.assign_timeout_ms if self.assign_timeout_ms is not None else None
                         else:
                             # Too many tries; give up
-                            self.future.set_exception(TimeoutError("Maximum retries exceeded"))
+                            future = self.future
+                            self.future = None
                             self.rpc_frames = None
                             state = IDLE
                             tries = 0
                             assign_deadline_ms = None
+                            if future is not None and not future.done():
+                                future.set_exception(TimeoutError("Maximum retries exceeded"))
 
                         continue
                     else:
                         raise RuntimeError(f"Unknown command from LB: {cmd}")
 
         finally:
-            for s in (req_pull,):
+            for s in (req_pull, frontend):
                 try:
                     poller.unregister(s)
                 except Exception:

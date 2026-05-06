@@ -5,6 +5,7 @@ import jax.tree
 from jax import numpy as jnp
 from jax._src.pjit import auto_axes
 from jax._src.sharding_impls import canonicalize_sharding
+from jax.sharding import NamedSharding, PartitionSpec
 
 from jaxns.mixed_precision import mp_policy
 from jaxns.types import IntArray
@@ -154,7 +155,13 @@ def _scan_leaf(leaf, batch_elems, num_batches, batch_size):
         raise ValueError(
             '0th dimension of leaf passed to `jax.jax.lax.map` should be replicated.'
             f' Got {aval.str_short(True, True)}')
-    out_s = aval.sharding.update(spec=(None, None, *aval.sharding.spec[1:]))
+    if isinstance(aval.sharding, NamedSharding):
+        out_s = NamedSharding(
+            mesh=aval.sharding.mesh,
+            spec=PartitionSpec(None, None, *aval.sharding.spec[1:]),
+        )
+    else:
+        out_s = aval.sharding
     out_s = canonicalize_sharding(out_s, 'jax.lax.map')
     if out_s is not None and out_s.mesh._any_axis_explicit:
         return auto_axes(f, out_sharding=out_s, axes=out_s.mesh.explicit_axes)(leaf)

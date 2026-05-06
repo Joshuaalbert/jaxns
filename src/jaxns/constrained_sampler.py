@@ -50,7 +50,7 @@ class AbstractSampler(ABC):
         """
         ...
 
-
+@partial(jax.jit, inline=True)
 def _sample_direction(key: PRNGKey, u0: TreeField[UType], radii: TreeField[UType] | None = None, rotation: UType | None = None) -> TreeField[UType]:
     """
     Choose a direction randomly from S^(D-1).
@@ -74,7 +74,7 @@ def _sample_direction(key: PRNGKey, u0: TreeField[UType], radii: TreeField[UType
     norm = jnp.maximum(eps, direction.norm())
     return direction / norm
 
-
+@partial(jax.jit, inline=True)
 def _slice_bounds(point_U0: TreeField[UType], direction: TreeField[UType]) -> tuple[FloatArray, FloatArray]:
     """
     Compute the slice bounds, t, where point_U0 + direction * t intersects uit cube boundary.
@@ -105,7 +105,7 @@ def _slice_bounds(point_U0: TreeField[UType], direction: TreeField[UType]) -> tu
     left_bound = jnp.maximum(t0_left, t1_left)
     return left_bound, right_bound
 
-
+@partial(jax.jit, inline=True)
 def _pick_point_in_interval(key: PRNGKey, point_U0: TreeField[UType], direction: TreeField[UType], left: FloatArray,
                             right: FloatArray) -> tuple[TreeField[UType], FloatArray]:
     """
@@ -127,7 +127,7 @@ def _pick_point_in_interval(key: PRNGKey, point_U0: TreeField[UType], direction:
     point_U = point_U0 + direction * t
     return point_U, t
 
-
+@partial(jax.jit, inline=True)
 def _shrink_interval(t: FloatArray, left: FloatArray, right: FloatArray) -> tuple[FloatArray, FloatArray]:
     """
     Not successful proposal, so shrink, optionally apply exponential shrinkage.
@@ -138,7 +138,7 @@ def _shrink_interval(t: FloatArray, left: FloatArray, right: FloatArray) -> tupl
 
     return left, right
 
-
+@partial(jax.jit, inline=True)
 def _new_proposal(
         key: PRNGKey,
         U0: TreeField[UType],
@@ -393,9 +393,6 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
     def flatten(cls, this) -> tuple[list[Any], tuple[Any, ...]]:
         return cls.build_flatten(this, ['num_slices', 'no_step_out', 'gradient_guided', 'collect_phantom_samples', 'phantom_burn_in'])
 
-    @classmethod
-    def unflatten(cls, aux_data: tuple[Any, ...], children: list[Any]):
-        return cls.build_unflatten(aux_data, children)
 
     def _check(self):
         if self.num_slices < 1:

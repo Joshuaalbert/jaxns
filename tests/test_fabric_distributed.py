@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -12,6 +13,7 @@ from jaxns.fabric.node import (
     RemoteNodeEvaluator,
     build_scheduler_process_manager,
     build_worker_process_manager,
+    local_node_evaluator,
     load_service_factory,
 )
 from jaxns.fabric.process_manager import (
@@ -86,6 +88,97 @@ def test_build_process_managers_create_expected_actor_counts():
     assert len(worker_mgr.actors) == 3
 
 
+def test_local_node_evaluator_stops_started_managers_when_worker_start_fails(monkeypatch):
+    class MockManager:
+        def __init__(self, start_error=None):
+            self.start_error = start_error
+            self.calls = []
+
+        def start_all(self):
+            self.calls.append("start_all")
+            if self.start_error is not None:
+                raise self.start_error
+
+        def stop_all(self):
+            self.calls.append("stop_all")
+
+        def print_tracebacks(self):
+            self.calls.append("print_tracebacks")
+
+    scheduler_mgr = MockManager()
+    worker_mgr = MockManager(start_error=RuntimeError("worker startup failed"))
+
+    monkeypatch.setattr(
+        "jaxns.fabric.node.build_scheduler_process_manager",
+        lambda **kwargs: scheduler_mgr,
+    )
+    monkeypatch.setattr(
+        "jaxns.fabric.node.build_worker_process_manager",
+        lambda **kwargs: worker_mgr,
+    )
+    monkeypatch.setattr(
+        "jaxns.fabric.node.create_local_fabric_addresses",
+        make_fabric_addresses,
+    )
+
+    with pytest.raises(RuntimeError, match="worker startup failed"):
+        with local_node_evaluator(service_factory=make_offset_node):
+            raise AssertionError("The evaluator context should not be entered when worker startup fails.")
+
+    assert scheduler_mgr.calls == ["start_all", "stop_all", "print_tracebacks"]
+    assert worker_mgr.calls == ["start_all", "stop_all", "print_tracebacks"]
+
+
+def test_remote_node_evaluator_closes_stale_client_when_thread_id_is_reused(monkeypatch):
+    class MockNodeClient:
+        next_id = 0
+
+        def __init__(self, ident, frontend_addr, assign_timeout_ms=None, retries=0):
+            del frontend_addr, assign_timeout_ms, retries
+            self.ident = ident
+            self.client_id = MockNodeClient.next_id
+            MockNodeClient.next_id += 1
+            events.append(("init", self.client_id, self.ident))
+
+        def __enter__(self):
+            events.append(("enter", self.client_id, self.ident))
+            return self
+
+        def __exit__(self, exc_type, exc_val, exc_tb):
+            del exc_type, exc_val, exc_tb
+            events.append(("exit", self.client_id, self.ident))
+
+    events = []
+    monkeypatch.setattr("jaxns.fabric.node.NodeClient", MockNodeClient)
+    monkeypatch.setattr("jaxns.fabric.node.threading.get_ident", lambda: 17)
+
+    evaluator = RemoteNodeEvaluator(frontend_addr="tcp://127.0.0.1:6553", ident_prefix="reuse")
+
+    first_client = evaluator._get_client()
+    evaluator._thread_local = threading.local()
+    second_client = evaluator._get_client()
+
+    assert first_client is not second_client
+    assert events == [
+        ("init", 0, "reuse-17"),
+        ("enter", 0, "reuse-17"),
+        ("exit", 0, "reuse-17"),
+        ("init", 1, "reuse-17"),
+        ("enter", 1, "reuse-17"),
+    ]
+
+    evaluator.close()
+
+    assert events == [
+        ("init", 0, "reuse-17"),
+        ("enter", 0, "reuse-17"),
+        ("exit", 0, "reuse-17"),
+        ("init", 1, "reuse-17"),
+        ("enter", 1, "reuse-17"),
+        ("exit", 1, "reuse-17"),
+    ]
+
+
 def test_worker_and_scheduler_managers_support_rpc_roundtrip():
     addresses = make_fabric_addresses()
     scheduler_mgr = build_scheduler_process_manager(addresses=addresses, profile=False)
@@ -130,6 +223,35 @@ def test_remote_node_evaluator_supports_parallel_requests():
 
         assert results == pytest.approx([1.0, 2.0])
         assert elapsed_s < 0.9
+    finally:
+        worker_mgr.stop_all()
+        worker_mgr.print_tracebacks()
+        scheduler_mgr.stop_all()
+        scheduler_mgr.print_tracebacks()
+
+
+def test_remote_node_evaluator_supports_repeated_sequential_then_parallel_batches():
+    addresses = make_fabric_addresses()
+    scheduler_mgr = build_scheduler_process_manager(addresses=addresses, profile=False)
+    worker_mgr = build_worker_process_manager(
+        addresses=addresses,
+        service_factory=make_offset_node,
+        num_workers=2,
+        profile=False,
+    )
+
+    scheduler_mgr.start_all()
+    worker_mgr.start_all()
+    try:
+        with RemoteNodeEvaluator(frontend_addr=addresses.frontend_addr, ident_prefix="batched-eval") as evaluator:
+            for value in range(4):
+                assert evaluator.evaluate(float(value)) == pytest.approx(float(value + 1))
+
+            for batch_idx in range(8):
+                inputs = [float(100 + 2 * batch_idx), float(101 + 2 * batch_idx)]
+                with ThreadPoolExecutor(max_workers=2) as executor:
+                    results = list(executor.map(evaluator.evaluate, inputs))
+                assert results == pytest.approx([value + 1.0 for value in inputs])
     finally:
         worker_mgr.stop_all()
         worker_mgr.print_tracebacks()
