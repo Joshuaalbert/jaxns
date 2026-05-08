@@ -150,3 +150,15 @@ Recommended reference tests:
 - Evidence uncertainty can be sampled from the Bayesian shrinkage model.
 - Existing result conversion uses the v3 weight semantics or explicitly exposes
   a separate v3 result path.
+
+## Current Review Follow-Up
+
+Implementation review found blockers that must be resolved before acceptance:
+
+- v3 Dirichlet/evidence sampling is not wired into public result/evidence paths;
+  `State.to_result()`, `State.sample_logZ`, and public shrinkage sampling still
+  use legacy evidence code.
+- No-phantom `sample_mc_shrinkage` falls back to one block per sample instead of
+  canonical likelihood blocks when plateaus exist.
+- Public posterior weights still come from legacy `log_dp` semantics rather
+  than v3 plateau atom/shell rules.

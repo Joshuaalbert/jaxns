@@ -252,25 +252,6 @@ def _run_ns_distributed(
             state.U_supremum,
         )
 
-        if new_samples.phantom_samples.U_samples is not None:
-            valid_mask = new_samples.phantom_samples.valid_mask.reshape((-1,))
-            phantom_log_L = new_samples.phantom_samples.log_L.reshape((-1,))
-            phantom_U_samples = jax.tree.map(
-                lambda u: u.reshape((-1,) + u.shape[2:]),
-                new_samples.phantom_samples.U_samples,
-            )
-            phantom_log_L = jnp.where(valid_mask, phantom_log_L, -jnp.inf)
-            phantom_candidate_idx = int(jnp.argmax(phantom_log_L))
-            phantom_candidate_log_L = phantom_log_L[phantom_candidate_idx]
-            phantom_candidate_U = jax.tree.map(lambda u: u[phantom_candidate_idx], phantom_U_samples)
-            better_phantom = phantom_candidate_log_L > log_L_supremum
-            log_L_supremum = jnp.where(better_phantom, phantom_candidate_log_L, log_L_supremum)
-            U_supremum = jax.tree.map(
-                lambda u_new, u_old: jnp.where(better_phantom, u_new, u_old),
-                phantom_candidate_U,
-                U_supremum,
-            )
-
         state = State(
             root_out_degree=state.root_out_degree + jnp.sum(delta_root_out_degree),
             samples=state.samples.append_samples(
@@ -306,6 +287,11 @@ class NestedSamplerDistributed:
     num_parallel_workers: int | None = None
 
     def __post_init__(self):
+        raise RuntimeError(
+            "NestedSamplerDistributed has been replaced by the v3 "
+            "load-balanced runtime. Use jaxns.runtime.LoadBalancerClient "
+            "to add workers and create runtime nested samplers."
+        )
         U_ndims = 0
         if (
             self.target_num_live_points is None
@@ -331,6 +317,7 @@ class NestedSamplerDistributed:
             self.termination_condition.max_samples = jnp.minimum(self.termination_condition.max_samples, max_samples)
         if self.num_parallel_workers is None:
             self.num_parallel_workers = int(self.shell_size)
+        self.store_phantom_samples = False
         if self.sampler is None:
             if self.evaluator is None:
                 raise ValueError("Provide evaluator when sampler is not supplied.")

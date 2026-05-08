@@ -144,3 +144,12 @@ Required unit tests:
   and phantom diagnostics without private imports.
 - Result APIs make legacy versus v3 semantics explicit.
 - Tests cover no-phantom, phantom, singleton-block, and plateau-block cases.
+
+## Review Status
+
+Accepted in the implementation loop after resolving the prior public-surface
+blockers. The accepted implementation exposes plateau-aware v3 posterior
+weights, block sizes, incoming `K_g`, Dirichlet concentrations, `A_g/B_g/E_g`,
+`p_{>g}` / `p_{=g}` summaries, and shrinkage-returned `rho_values`/`rho_fit`
+aligned with `log_L_blocks`. Remaining work that consumes execution-time
+diagnostics belongs to Ticket 0011.

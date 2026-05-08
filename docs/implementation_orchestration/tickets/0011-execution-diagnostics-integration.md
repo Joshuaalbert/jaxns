@@ -94,3 +94,74 @@ Required unit tests:
   estimates.
 - Tests cover unavailable diagnostics explicitly rather than relying on missing
   fields or `None` surprises.
+
+## Current Review Follow-Up
+
+The first test-first draft was reviewed and must be revised before
+implementation. Required fixes:
+
+- Do not force diagnostics to be a `NestedSamplerResults.diagnostics` init
+  field; the ticket also allows another public attached or reachable diagnostics
+  object.
+- Strengthen worker-runtime identity tests so they prove task ids and in-flight
+  parent targets are coordinator-owned values rather than fabricated summaries.
+- Prove depth summaries match values used by execution, not values synthesized
+  from final results.
+- Avoid hard-coding exactly one goal observation when valid outer-loop execution
+  may record multiple boundary checks.
+- Isolate malformed diagnostics validation so failures happen at the intended
+  public diagnostics/result boundary.
+
+## Test Gate Status
+
+The revised test gate is independently accepted. The final remediation removed
+the load-balancer attribute fallback from the worker-runtime identity test so
+coordinator dispatch records must be observed through the injected public trace
+probe during execution. The remaining expected failures are missing production
+diagnostics surfaces and missing runtime trace-probe publication.
+
+## Implementation Review Findings
+
+The first implementation pass is rejected and must be remediated before
+acceptance:
+
+- Runtime dispatch records must be published when the coordinator creates the
+  in-flight task, before worker execution can complete or fail. Recording only
+  after synchronous worker completion is not a valid source of truth for
+  transient parent targets.
+- Worker-runtime diagnostics must not fabricate audit values. Model compile
+  timing and async identity preservation should be measured or derived from
+  runtime records, and otherwise represented as explicitly unavailable empty
+  values.
+- `dlogZ` depth diagnostics must report the actual remaining-evidence ratio and
+  satisfied boolean used by execution, not the configured threshold with a
+  hard-coded false status.
+- Retained phantom-cluster likelihood-evaluation diagnostics must not be filled
+  with fake zero-cost values when per-phantom counts are unavailable.
+- Public diagnostics validation must reject malformed worker-runtime arrays,
+  incomplete/non-coordinator dispatch records, and inconsistent sentinel
+  fallback counts.
+
+## Test Gate Correction After Review
+
+The worker-runtime test no longer requires non-empty model-compilation timings
+when this local runtime has not measured a compilation event. Empty timing
+tuples are the explicit unavailable value; any reported timing must be a finite
+positive measured duration rather than a hard-coded zero placeholder.
+
+## Acceptance Status
+
+Accepted after remediation. Final reviews accepted the runtime source-of-truth
+path and diagnostics boundary after dispatch records were published before
+worker execution, in-flight parent targets became explicit record fields,
+worker audit values stopped using fabricated timings, `dlogZ` diagnostics
+reported the actual execution ratio and satisfied boolean, unavailable phantom
+likelihood-evaluation counts used explicit sentinel values, and public
+validation rejected malformed worker-runtime arrays, bad timing values,
+incomplete dispatch records, and inconsistent fallback counts.
+
+Final focused verification passed:
+
+- `conda run -n jaxns_py pytest tests/test_v3_execution_diagnostics.py tests/test_runtime.py tests/test_v3_run_pattern.py`
+- `conda run -n jaxns_py flake8 src/jaxns/diagnostics.py src/jaxns/runtime.py tests/test_v3_execution_diagnostics.py`
+- `conda run -n jaxns_py python -m py_compile src/jaxns/diagnostics.py`

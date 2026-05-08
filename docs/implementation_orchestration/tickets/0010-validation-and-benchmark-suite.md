@@ -159,3 +159,82 @@ Required benchmark harnesses:
 - Phantom diagnostics include `rho_g` information.
 - Evidence and posterior quality are reported separately.
 - Benchmarks are reproducible from recorded seeds and metadata.
+
+## Review Status
+
+Accepted for the early deterministic validation/benchmark harness phase. The
+current harness covers analytic evidence, plateau equality, phantom count
+effects, race-tree accounting, posterior weighting, multi-seed calibration
+records, RMSE/Pareto producers, posterior quality/Wasserstein records,
+performance guardrails, timing history, and method-conditional `rho_g`/`rho_fit`
+diagnostics. Final benchmark production remains blocked on the feature tickets
+that provide the completed v3 execution, allocation, sampler, runtime, and
+diagnostics surfaces.
+
+### Minimal Public Collector Test Draft Accepted
+
+The final benchmark-production test draft was accepted for a minimal collector
+slice. The accepted red test requires
+`benchmarks.v3_validation.collector.collect_minimal_v3_validation_records(...)`
+to run cheap real public v3 sampler/result/diagnostics paths and emit
+schema-checked records for:
+
+- baseline race-tree, phantom-conditioned, dynamic allocation, and Galilean
+  method settings over deterministic seeds;
+- evidence calibration and calibration rollups with `result_diagnostics`
+  metadata from public results/diagnostics;
+- phantom `rho_g`/`rho_fit` diagnostics for phantom-conditioned rows;
+- plateau equality recovery derived from actual result block output;
+- separate posterior quality, posterior Wasserstein, RMSE/Pareto,
+  performance guardrail, timing-row, and append-only timing-history sections.
+
+Focused red-test check before implementation:
+
+- `conda run -n jaxns_py pytest
+  tests/test_v3_validation_benchmark_collector.py` failed as intended because
+  `benchmarks.v3_validation.collector` did not exist.
+
+### Minimal Public Collector Slice Accepted
+
+Independent review accepted the minimal public collector implementation after
+remediation. The collector now:
+
+- runs real public `NestedSampler.run_until_goal(...)` toy validations for the
+  required four method settings;
+- builds evidence, plateau equality, posterior quality, posterior
+  Wasserstein, RMSE/Pareto, performance guardrail, timing-row, and timing
+  history records through the existing schema/producer helpers;
+- carries public result diagnostics into benchmark metadata;
+- fails loudly for non-finite, too-short, non-1D, or degenerate MC shrinkage
+  log-Z samples;
+- requires finite/nonempty `rho_g` and `rho_fit` diagnostics for
+  phantom-conditioned rows instead of using synthetic fallback curves;
+- derives guardrail observations from measured collector-stage timings and
+  labels thresholds as coarse smoke-test ceilings, not final benchmark claims.
+
+Focused acceptance checks passed:
+
+- `conda run -n jaxns_py pytest
+  tests/test_v3_validation_benchmark_collector.py -q`;
+- `conda run -n jaxns_py pytest
+  tests/test_v3_validation_benchmark_collector.py
+  tests/test_v3_validation_benchmark_producers.py
+  tests/test_v3_validation_benchmark_schema.py
+  tests/test_v3_validation_deterministic_fixtures.py -q` (`29 passed`);
+- combined focused gate:
+  `conda run -n jaxns_py pytest tests/test_runtime.py
+  tests/test_v3_run_pattern.py tests/test_v3_execution_diagnostics.py
+  tests/test_v3_validation_benchmark_collector.py
+  tests/test_v3_validation_benchmark_producers.py
+  tests/test_v3_validation_benchmark_schema.py
+  tests/test_v3_validation_deterministic_fixtures.py -q` (`127 passed`);
+- `conda run -n jaxns_py flake8
+  benchmarks/v3_validation/collector.py
+  tests/test_v3_validation_benchmark_collector.py`;
+- `conda run -n jaxns_py python -m py_compile
+  benchmarks/v3_validation/collector.py
+  tests/test_v3_validation_benchmark_collector.py`.
+
+This accepts the minimal production collector/harness skeleton. It does not
+claim final expensive benchmark numbers; those remain a release/benchmarking
+activity using this collector and any later runtime transport improvements.

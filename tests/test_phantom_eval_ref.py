@@ -14,7 +14,7 @@ def _make_toy_inputs():
     log_L_constraints = np.array([-np.inf, 0.0, 0.0], dtype=float)
 
     # Only the second cluster has usable phantoms.
-    valid_phantom = np.array([False, True, True], dtype=bool)
+    valid_phantom = np.array([False, True, False], dtype=bool)
 
     # 11 phantoms for cluster 1:
     # 10 above b=1.0 (success), 1 between a=0 and b=1 (failure).

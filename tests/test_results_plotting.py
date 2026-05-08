@@ -49,6 +49,7 @@ def _make_fake_results(num_samples: int = 64) -> NestedSamplerResults:
         log_L_phantom=jnp.full((num_samples, 0), -jnp.inf),
         valid_phantom=jnp.zeros((num_samples,), dtype=jnp.bool_),
         log_L=log_l,
+        log_L_blocks=jnp.unique(log_l, size=num_samples, fill_value=jnp.inf),
         log_dp=jnp.asarray(np.linspace(-2.0, -1.0, num_samples)),
         log_X_mean=-jnp.linspace(0.0, 1.0, num_samples),
         log_posterior_density=log_posterior_density,

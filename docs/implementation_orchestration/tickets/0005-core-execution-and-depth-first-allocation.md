@@ -191,3 +191,15 @@ Recommended integration tests:
 - Depth-first uniform allocation is functional and design-aligned.
 - Evidence-improving and posterior-improving modes are not enabled in this
   ticket.
+
+## Review Status
+
+Accepted in the implementation loop. The accepted implementation exposes the
+v3 `run_until_goal(...)` / `resume_until_goal(...)` run pattern, initializes
+root samples before the first goal check, keeps the inner loop running until
+the depth condition is met, uses fixed initial `d_0` and outer iteration `k`
+for `K_*^k`, preserves in-flight parent indices through acceptance, implements
+weighted strict parent-block selection with sentinel fallback, and supports v3
+`dlogZ` depth handling while failing explicitly for unsupported legacy depth
+fields. Legacy `run()` / `resume()` remain documented fixed-live-point
+compatibility paths.

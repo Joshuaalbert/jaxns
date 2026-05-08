@@ -193,3 +193,13 @@ Recommended implementation checks:
   posterior-improving allocation modes explicitly.
 - Utility target construction is deterministic, numerically guarded, and
   reviewable without private sampler state.
+
+## Review Status
+
+Accepted in the implementation loop. The accepted implementation builds
+allocation plans from v3 block summaries, uses stable likelihood scaling for
+evidence and posterior utilities, shares integer target construction across
+uniform/evidence/posterior modes, supports the conservative posterior option
+through allocation and run APIs, schedules multiple work items for remaining
+deficits, and still schedules zero-utility blocks when they are below the
+base `d_0` target.

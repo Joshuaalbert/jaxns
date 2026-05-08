@@ -150,7 +150,7 @@ def _append_samples(self: Samples, insert_idx: IntArray, parent_idxs: IntArray, 
     return samples
 
 
-@partial(jax.jit, inline=True)
+@partial(jax.jit, inline=True, static_argnames=['max_samples'])
 def _resize(self: Samples, max_samples: int) -> Samples:
     if len(self) >= max_samples:
         jaxns_logger.warning(
@@ -168,14 +168,15 @@ def _resize(self: Samples, max_samples: int) -> Samples:
         )
 
     sample_atom = Samples(
+        log_L_constraints=jnp.asarray(jnp.inf, mp_policy.measure_dtype),
         log_likelihoods=jnp.asarray(jnp.inf, mp_policy.measure_dtype),
         out_degree=jnp.asarray(0, mp_policy.count_dtype),
         num_likelihood_evaluations=jnp.asarray(0, mp_policy.count_dtype),
         U_samples=jax.tree.map(lambda x: jnp.zeros_like(x[0]), self.U_samples),
         phantom_samples=PhantomSamples(
             U_samples=jax.tree.map(lambda x: jnp.zeros_like(x[0]), self.phantom_samples.U_samples),
-            log_L=jnp.asarray(jnp.inf, mp_policy.measure_dtype),
-            valid_mask=jnp.asarray(False, mp_policy.bool_dtype)
+            log_L=jnp.full_like(self.phantom_samples.log_L[0], -jnp.inf),
+            valid_mask=jnp.zeros_like(self.phantom_samples.valid_mask[0])
         )
     )
 

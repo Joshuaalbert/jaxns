@@ -85,3 +85,35 @@ Required tests:
   satisfy the slice.
 - Existing straight-line sampler tests still pass without changing default
   behavior.
+
+## Current Review Follow-Up
+
+The first test-first draft was reviewed and revised before implementation.
+Required fixes were added: built-trajectory reversibility/symmetry,
+phantom-exclusion fixtures that distinguish completed Markov states from
+internal trajectory points, uniformity within selected segments, negative tests
+for reflection/boundary failures, and local versus worker-backed parity.
+
+Current implementation-loop note: the Ticket 0008 worker-backed negative test
+for `trajectory="galilean"` was narrowed to `trajectory="gradient_guided"` for
+this ticket. Before Ticket 0012, Galilean selection failed clearly; during and
+after Ticket 0012, explicit `trajectory="galilean"` is the supported
+gradient-informed mode, while `trajectory="gradient_guided"` and the legacy
+`gradient_guided=True` flag remain unsupported/ambiguous.
+
+Implementation review rejected the first Galilean implementation pass. Required
+fixes:
+
+- Make `trajectory="galilean"` usable through public `NestedSampler` execution,
+  not only direct `sampler.get_sample(...)` calls. The first pass used Python
+  concretization inside a JIT/lax path and failed in legacy `NestedSampler.run`.
+- Keep Galilean trajectories inside the unit hypercube/prior support. The first
+  pass checked only likelihood contour membership and could build/sample points
+  with `U < 0` or `U > 1` for broad contours.
+
+Review status: accepted after remediation. Independent review found no blocking
+issues after adding unit-cube support checks, public `NestedSampler.run()`
+compatibility for the non-JAX Galilean path, local/worker-backed parity, and
+updated unsupported `gradient_guided` wording. Focused acceptance run:
+`conda run -n jaxns_py pytest tests/test_v3_galilean_sampler.py tests/test_v3_direction_trajectories.py tests/test_v3_sampler_contract.py tests/test_constrained_sampler.py tests/test_distributed_core.py`
+passed with 71 tests.

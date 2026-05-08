@@ -172,3 +172,17 @@ Recommended integration tests:
 - Plateau equality counts improve atom-mass inference in toy tests.
 - The classic-only path remains available and unchanged when no phantom
   information is present.
+
+## Current Review Follow-Up
+
+The first test-first draft was reviewed and must be revised before
+implementation. Required fixes:
+
+- Use one public phantom-conditioned Dirichlet API name/signature consistently
+  across unit and validation tests.
+- Add negative tests for mismatched phantom masks, stale classic associations,
+  stale or misaligned `log_L_constraints`, per-phantom/per-cluster validity
+  shape mismatches, and `State.to_result()` cluster-validity preservation.
+- Avoid reimplementing the full `rho_g` estimator in the test oracle; keep the
+  oracle focused on hand-computable fixtures or independent reference outputs.
+- Add an iid synthetic cluster case where raw `rho_g` is near one.

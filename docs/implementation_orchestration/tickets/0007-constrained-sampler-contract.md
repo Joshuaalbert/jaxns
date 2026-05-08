@@ -141,3 +141,12 @@ Recommended stochastic tests:
   cannot affect posterior, MAP, resampling, supremum, or plotting outputs.
 - Execution and sampler responsibilities are separated: execution handles
   no-seed sentinel fallback; sampler samples from a valid strict contour.
+
+## Review Status
+
+Accepted in the implementation loop. The behavior review accepted strict
+parent-contour validation, likelihood-only phantom clusters, and
+`phantom_burn_in` validation. The follow-up doc review confirmed public
+docstrings/comments now describe strict `log_L > log_L_constraint` semantics,
+equality rejection, burn-in/capacity validation intent, and v3 phantom
+diagnostics without stored phantom coordinates or posterior inclusion.

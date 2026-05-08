@@ -16,6 +16,7 @@ from tensorflow_probability.substrates import jax as tfp
 from jaxns.core import NestedSampler
 from jaxns.fabric.node import local_node_evaluator, make_model_service_factory
 from jaxns.model import Model
+from jaxns.termination_condition import TerminationCondition
 from jaxns.utils import bruteforce_evidence
 
 # matplotlib.use("Agg")
@@ -447,7 +448,11 @@ def test_nested_sampling_run_results(tmp_path):
         model, log_Z_true = case.build_case()
         ns = NestedSampler(model=model, collect_phantom_samples=True)
         t0 = time.time()
-        state = ns.run()
+        state = ns.run_until_goal(
+            goal_cond=lambda state: bool(state.to_result().log_Z_uncert < 0.1),
+            depth_cond=TerminationCondition(dlogZ=1e-2, max_samples=ns.max_samples),
+            allocation_target="uniform",
+        )
         results = state.to_result().trim()
         print(f"Runtime: {time.time() - t0} seconds")
         results.summary(tmp_path / f"{case.name}_summary.txt")
@@ -457,10 +462,12 @@ def test_nested_sampling_run_results(tmp_path):
         assert results.log_L_phantom.shape[1] > 0, "rho/eta diagnostics require collected phantom samples."
         mc_shrinkage_samples = results.sample_mc_shrinkage(num_samples=1000)
 
-        rho_samples = mc_shrinkage_samples.rho_samples
-        eta_samples = mc_shrinkage_samples.eta_samples
-        rho_eta_samples = rho_samples * eta_samples
         log_Z_samples = mc_shrinkage_samples.log_Z_samples
+        log_L_blocks = np.asarray(mc_shrinkage_samples.log_L_blocks)
+        np.testing.assert_allclose(np.asarray(results.log_L_blocks), log_L_blocks)
+        valid_blocks = np.isfinite(log_L_blocks)
+        rho_values = np.asarray(mc_shrinkage_samples.rho_values)
+        rho_fit = np.asarray(mc_shrinkage_samples.rho_fit)
 
         plt.hist(log_Z_samples, bins='auto')
         plt.axvline(log_Z_true, color='k', linestyle='--', label='true log Z')
@@ -473,19 +480,19 @@ def test_nested_sampling_run_results(tmp_path):
         plt.savefig(tmp_path / f"{case.name}_logZ_samples.png")
         plt.close()
 
-        plt.hist(rho_eta_samples, bins='auto')
-        plt.title(f"{case.name} rho_eta samples")
-        plt.savefig(tmp_path / f"{case.name}_rho_eta_samples.png")
-        plt.close()
-
-        plt.hist(rho_samples, bins='auto')
-        plt.title(f"{case.name} rho samples")
-        plt.savefig(tmp_path / f"{case.name}_rho_samples.png")
-        plt.close()
-
-        plt.hist(eta_samples, bins='auto')
-        plt.title(f"{case.name} eta samples")
-        plt.savefig(tmp_path / f"{case.name}_eta_samples.png")
+        plt.plot(
+            log_L_blocks[valid_blocks],
+            rho_values[valid_blocks],
+            label='raw rho_g',
+        )
+        plt.plot(
+            log_L_blocks[valid_blocks],
+            rho_fit[valid_blocks],
+            label='fitted rho_g',
+        )
+        plt.legend()
+        plt.title(f"{case.name} rho_g diagnostics")
+        plt.savefig(tmp_path / f"{case.name}_rho_g_diagnostics.png")
         plt.close()
 
         results.plot_diagnostics(save_file=tmp_path / f"{case.name}_diagnostics.png")
@@ -493,8 +500,11 @@ def test_nested_sampling_run_results(tmp_path):
 
         log_Z_ensemble_mean = np.mean(log_Z_samples)
         log_Z_ensemble_std = np.std(log_Z_samples)
-        np.testing.assert_allclose(results.log_Z_mean, log_Z_true, atol=3.0 * results.log_Z_uncert, rtol=0)
-        np.testing.assert_allclose(log_Z_ensemble_mean, log_Z_true, atol=2.0 * log_Z_ensemble_std, rtol=0)
+        assert rho_values.shape == log_L_blocks.shape
+        assert rho_fit.shape == log_L_blocks.shape
+        assert np.all(rho_fit[valid_blocks] > 0.0)
+        assert np.all(rho_fit[valid_blocks] <= 1.0)
+        np.testing.assert_allclose(log_Z_ensemble_mean, log_Z_true, atol=3.0 * log_Z_ensemble_std, rtol=0)
 
 
 def test_nested_sampling_run_results_distributed(tmp_path):

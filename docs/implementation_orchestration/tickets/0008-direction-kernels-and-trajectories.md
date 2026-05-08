@@ -138,3 +138,37 @@ Recommended integration tests:
 - Unsupported modes fail clearly rather than silently falling back.
 - Tests prove shape, strict-contour validity, frozen direction-kernel behavior,
   and straight-line bracketing invariants.
+
+## Current Review Follow-Up
+
+Implementation review rejected the first implementation pass. Required fixes:
+
+- Wire the documented greedy shrink/fallback behavior into production
+  straight-line proposal construction, or otherwise bound the JAX shrink loop so
+  a valid current point is returned when no other strict point is found.
+- Make one-dimensional isotropic directions symmetric instead of always `+1`.
+- Resolve ellipsoidal adaptation by building/freezing a mixture from sample
+  history through the adaptation context, using existing ellipsoid/GMM utilities
+  where possible, and documenting the update schedule enabled by this ticket.
+- Make worker-backed/distributed unsupported gradient or Galilean modes fail at
+  construction with a clear message until Ticket 0012 owns the Galilean path.
+
+Resolution notes:
+
+- Straight-line shrinkage in production is bounded by `max_shrinkage_steps`
+  (default 32). If the bounded retry budget is exhausted, the sampler returns
+  the current strict seed point for that transition rather than entering an
+  unbounded shrink loop.
+- Ellipsoidal adaptation is frozen at chain start. Execution supplies
+  `adaptation_context` to `get_sample`; when component fields are absent, the
+  sampler builds a one-component bounding ellipsoid from `samples_U` and
+  `valid_mask` using existing ellipsoid utilities, then reuses that frozen
+  kernel for every direction in the chain. Future adaptation-context updates
+  apply only to later chains.
+
+Review status: accepted after remediation. Independent review found no blocking
+issues after the bounded shrinkage, one-dimensional symmetry, sample-history
+ellipsoidal adaptation, distributed unsupported-mode validation, and legacy
+metadata-regression fixes. Focused acceptance run:
+`conda run -n jaxns_py pytest tests/test_v3_direction_trajectories.py tests/test_v3_sampler_contract.py tests/test_constrained_sampler.py tests/test_distributed_core.py`
+passed with 53 tests.

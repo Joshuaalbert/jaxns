@@ -163,3 +163,20 @@ dataclasses. Do not test by mirroring private helper internals.
   segment-summed out-degree.
 - No phantom record can change lineage accounting.
 - Reviewers can trace each invariant to the design docs above.
+
+## Review Status
+
+Accepted with a narrow follow-up. The previous blocker list is resolved:
+default block construction keeps valid `logL=-inf` blocks distinct from
+padding, canonical block state exposes sample membership, public evidence/result
+paths validate strict contour and graph consistency before jitted use, and
+`Samples.resize()` preserves `log_L_constraints` without the ordinary traced
+`max_samples` failure.
+
+Remaining non-blocking follow-up:
+
+- decide whether `build_block_state(..., validate=False)` should remain the
+  default low-level behavior or whether public callers need a validated wrapper;
+- add a plateau-stable block diagnostic for reconstructed parent information if
+  later diagnostics require it, rather than relying on per-sample parent-edge
+  ordering inside plateaus.
