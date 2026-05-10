@@ -29,6 +29,10 @@ from jaxns.diagnostics import GoalDiagnostics
 from jaxns.diagnostics import ParentSelectionDiagnostics
 from jaxns.diagnostics import SamplerDiagnostics
 from jaxns.diagnostics import WorkerRuntimeDiagnostics
+from jaxns.em_gmm import DirectionAdaptationContext
+from jaxns.em_gmm import DirectionKernelAdaptationCoordinator
+from jaxns.em_gmm import DirectionKernelDispatchRequest
+from jaxns.em_gmm import DirectionKernelFitRequest
 from jaxns.mixed_precision import mp_policy
 from jaxns.model import Model
 from jaxns.pytree import PureDataclassPytree
@@ -108,6 +112,9 @@ class _ExecutionDiagnosticsBuilder:
         default_factory=list
     )
     sentinel_fallback_indices: list[int] = dataclasses.field(
+        default_factory=list
+    )
+    direction_adaptation_diagnostics: list[object] = dataclasses.field(
         default_factory=list
     )
 
@@ -268,6 +275,70 @@ def _sampler_mode(sampler: AbstractSampler | None) -> str:
 def _direction_kernel_mode(sampler: AbstractSampler | None) -> str:
     mode = _as_mode_name(getattr(sampler, "direction_kernel", None))
     return "isotropic" if mode is None else mode
+
+
+def _direction_kernel_requests_adaptation(
+        sampler: AbstractSampler | None,
+) -> bool:
+    mode = _direction_kernel_mode(sampler)
+    return mode in {
+        "ellipsoidal",
+        "ellipsoidal_gaussian",
+        "gmm",
+        "non_isotropic",
+        "non-isotropic",
+    }
+
+
+def _identity_direction_context(
+        *,
+        d_dim: int,
+        kernel_version: int = 0,
+        allocation_target: str | None = None,
+) -> DirectionAdaptationContext:
+    return DirectionAdaptationContext(
+        component_means=np.zeros((1, d_dim), dtype=float),
+        component_radii=np.ones((1, d_dim), dtype=float),
+        component_rotations=np.eye(d_dim, dtype=float)[None, :, :],
+        component_probabilities=np.ones((1,), dtype=float),
+        component_integrated_volumes=np.ones((1,), dtype=float),
+        kernel_version=int(kernel_version),
+        allocation_target=allocation_target,
+    )
+
+
+def _direction_context_has_components(context: object | None) -> bool:
+    if context is None:
+        return False
+    for name in (
+            "component_means",
+            "component_radii",
+            "component_rotations",
+            "component_probabilities",
+    ):
+        if isinstance(context, dict):
+            value = context.get(name)
+        else:
+            value = getattr(context, name, None)
+        if value is None:
+            return False
+    return True
+
+
+def _ensure_direction_context(
+        *,
+        context: object | None,
+        d_dim: int,
+        kernel_version: int = 0,
+        allocation_target: str | None = None,
+) -> DirectionAdaptationContext | object:
+    if _direction_context_has_components(context):
+        return context
+    return _identity_direction_context(
+        d_dim=d_dim,
+        kernel_version=kernel_version,
+        allocation_target=allocation_target,
+    )
 
 
 def _trajectory_mode(sampler: AbstractSampler | None) -> str:
@@ -508,6 +579,9 @@ def _build_execution_diagnostics(
             likelihood_evaluations_per_retained_phantom_cluster=(
                 phantom_likelihood_evaluations
             ),
+            direction_adaptation_diagnostics=tuple(
+                builder.direction_adaptation_diagnostics
+            ),
         ),
         worker_runtime=_worker_runtime_diagnostics(ns),
     )
@@ -561,8 +635,7 @@ def _sample_init_state(key, num_live_points: int, max_samples: int, model: Model
         U_samples=jax.tree.map(lambda u: jnp.zeros((num_live_points, num_phantom) + u[0].shape, u.dtype), U_samples),
         log_L=jnp.full((num_live_points, num_phantom), -jnp.inf, dtype=mp_policy.measure_dtype)
     )
-    if not store_phantom_samples:
-        phantom_samples.U_samples = None
+    phantom_samples.U_samples = None
     samples = Samples(
         log_L_constraints=jnp.full((num_live_points,), -jnp.inf, dtype=mp_policy.measure_dtype),
         log_likelihoods=log_likelihoods,
@@ -584,8 +657,7 @@ def _sample_init_state(key, num_live_points: int, max_samples: int, model: Model
         ),
         log_L_constraints=jnp.asarray(jnp.inf, mp_policy.measure_dtype)
     )
-    if not store_phantom_samples:
-        sample_atom.phantom_samples.U_samples = None
+    sample_atom.phantom_samples.U_samples = None
 
     samples = _concat(samples, sample_atom).sort()
 
@@ -705,14 +777,7 @@ def _run_ns(key, state: State, target_num_live_points: int, shell_size: int, arg
             num_likelihood_evaluations=num_likelihood_evaluations,
             phantom_samples=phantom_samples
         )
-        if new_samples.phantom_samples.U_samples is None:
-            new_samples.phantom_samples.U_samples = (
-                _phantom_coordinates_like_state(
-                    outer_carry.state,
-                    batch_size=shell_size,
-                    num_phantom=int(phantom_samples.log_L.shape[1]),
-                )
-            )
+        new_samples.phantom_samples.U_samples = None
 
         candidate_supremum_candidate_iid = jnp.argmax(new_samples.log_likelihoods)
         candidate_log_L_supremum = new_samples.log_likelihoods[candidate_supremum_candidate_iid]
@@ -768,6 +833,24 @@ def _phantom_coordinates_like_state(
         ),
         sample_U,
     )
+
+
+def _state_direction_fitting_rows_and_weights(
+        state: State,
+) -> tuple[object, np.ndarray]:
+    result = state.to_result().trim()
+    log_weights = np.asarray(result.v3_log_posterior_weights, dtype=float)
+    finite = np.isfinite(log_weights)
+    weights = np.zeros_like(log_weights, dtype=float)
+    if np.any(finite):
+        max_log_weight = float(np.max(log_weights[finite]))
+        raw_weights = np.exp(log_weights[finite] - max_log_weight)
+        total = float(np.sum(raw_weights))
+        if total > 0.0 and np.isfinite(total):
+            weights[finite] = raw_weights / total
+    num_samples = int(state.num_samples)
+    rows = jax.tree.map(lambda u: u[:num_samples], state.samples.U_samples)
+    return rows, weights[:num_samples]
 
 
 def _run_ns_python(
@@ -908,8 +991,7 @@ def _run_ns_python(
                 ),
             ),
         )
-        if state.samples.phantom_samples.U_samples is None:
-            new_samples.phantom_samples.U_samples = None
+        new_samples.phantom_samples.U_samples = None
 
         candidate_idx = int(jnp.argmax(new_samples.log_likelihoods))
         candidate_log_L_supremum = new_samples.log_likelihoods[candidate_idx]
@@ -1056,6 +1138,12 @@ class NestedSampler(PureDataclassPytree):
     def _sample_v3_root_state(self, key: PRNGKey) -> State:
         """Draw only the v3 root children from the sentinel contour."""
         root_count = int(self.target_num_live_points)
+        adaptation_context = None
+        if _direction_kernel_requests_adaptation(self.sampler):
+            adaptation_context = _identity_direction_context(
+                d_dim=int(self.model.U_ndims(self.args, self.params)),
+                allocation_target=None,
+            )
         outputs = []
         for sample_key in jax.random.split(key, root_count):
             seed_key, sampler_key = jax.random.split(sample_key, 2)
@@ -1078,6 +1166,7 @@ class NestedSampler(PureDataclassPytree):
                     requested_parent_idx=-1,
                     effective_parent_idx=-1,
                     accepted_parent_idx=-1,
+                    adaptation_context=adaptation_context,
                 )
             )
 
@@ -1152,14 +1241,24 @@ class NestedSampler(PureDataclassPytree):
             requested_parent_idx: int,
             effective_parent_idx: int,
             accepted_parent_idx: int,
+            adaptation_context=None,
     ):
         del requested_parent_idx, effective_parent_idx, accepted_parent_idx
+        if adaptation_context is None:
+            return self.sampler.get_sample(
+                key,
+                log_L_constraint,
+                seed_point,
+                args=self.args,
+                params=self.params,
+            )
         return self.sampler.get_sample(
             key,
             log_L_constraint,
             seed_point,
             args=self.args,
             params=self.params,
+            adaptation_context=adaptation_context,
         )
 
     def _sample_parent_work(
@@ -1167,6 +1266,7 @@ class NestedSampler(PureDataclassPytree):
             key: PRNGKey,
             state: State,
             parent_work: ParentWork,
+            adaptation_context=None,
     ) -> tuple[ParentWork, Samples]:
         outputs = []
         parent_idxs = []
@@ -1174,33 +1274,62 @@ class NestedSampler(PureDataclassPytree):
         target_block_idxs = []
         parent_block_idxs = []
         fallback_to_root = []
-        log_likelihoods = jnp.asarray(state.samples.log_likelihoods)
         num_samples = int(state.num_samples)
-        sample_indices = jnp.arange(num_samples)
+        active_log_likelihoods = np.asarray(
+            state.samples.log_likelihoods[:num_samples],
+        )
+        sortable_log_likelihoods = np.where(
+            np.isnan(active_log_likelihoods),
+            -np.inf,
+            active_log_likelihoods,
+        )
+        sorted_active_offsets = np.argsort(
+            sortable_log_likelihoods,
+            kind="stable",
+        )
+        sorted_active_log_likelihoods = (
+            sortable_log_likelihoods[sorted_active_offsets]
+        )
 
         for work_idx, sample_key in enumerate(
                 jax.random.split(key, int(parent_work.parent_idxs.shape[0]))
         ):
             seed_key, sampler_key = jax.random.split(sample_key, 2)
             constraint = parent_work.parent_log_L_constraints[work_idx]
-            candidate_mask = log_likelihoods[:num_samples] > constraint
-            candidate_indices = sample_indices[candidate_mask]
-            no_seed = int(candidate_indices.shape[0]) == 0
+            constraint_value = float(constraint)
+            if np.isnan(constraint_value):
+                first_seed_offset = num_samples
+            else:
+                first_seed_offset = int(
+                    np.searchsorted(
+                        sorted_active_log_likelihoods,
+                        constraint_value,
+                        side="right",
+                    )
+                )
+            no_seed = first_seed_offset == num_samples
             if no_seed:
                 constraint = jnp.asarray(
                     -jnp.inf,
                     dtype=mp_policy.measure_dtype,
                 )
-                candidate_mask = log_likelihoods[:num_samples] > constraint
-                candidate_indices = sample_indices[candidate_mask]
+                first_seed_offset = int(
+                    np.searchsorted(
+                        sorted_active_log_likelihoods,
+                        float(constraint),
+                        side="right",
+                    )
+                )
 
+            candidate_count = num_samples - first_seed_offset
             seed_choice = jax.random.randint(
                 seed_key,
                 (),
                 minval=0,
-                maxval=candidate_indices.shape[0],
+                maxval=candidate_count,
             )
-            seed_idx = candidate_indices[seed_choice]
+            seed_offset = first_seed_offset + int(seed_choice)
+            seed_idx = int(sorted_active_offsets[seed_offset])
             seed_point = SeedPoint(
                 U0=jax.tree.map(
                     lambda u: u[seed_idx],
@@ -1218,6 +1347,7 @@ class NestedSampler(PureDataclassPytree):
                     requested_parent_idx=requested_parent_idx,
                     effective_parent_idx=effective_parent_idx,
                     accepted_parent_idx=effective_parent_idx,
+                    adaptation_context=adaptation_context,
                 )
             )
             parent_idxs.append(
@@ -1298,7 +1428,10 @@ class NestedSampler(PureDataclassPytree):
                 ),
             ),
         )
-        if state.samples.phantom_samples.U_samples is None:
+        if (
+                state.samples.phantom_samples.U_samples is None
+                and not self.store_phantom_samples
+        ):
             new_samples.phantom_samples.U_samples = None
         return adjusted_parent_work, new_samples
 
@@ -1439,6 +1572,14 @@ class NestedSampler(PureDataclassPytree):
     ) -> State:
         current = state
         initial_root_out_degree = int(state.root_out_degree)
+        direction_adaptation_enabled = _direction_kernel_requests_adaptation(
+            self.sampler
+        )
+        direction_d_dim = int(self.model.U_ndims(self.args, self.params))
+        direction_coordinator = DirectionKernelAdaptationCoordinator.initial()
+        direction_distinct_shell_count = 0
+        direction_last_successful_shell_count = 0
+        direction_last_log_likelihood = None
         diagnostics_builder = _ExecutionDiagnosticsBuilder(
             allocation_target=allocation_target,
             target_num_live_points=int(self.target_num_live_points),
@@ -1526,10 +1667,63 @@ class NestedSampler(PureDataclassPytree):
                         skip_goal_check = True
                     break
                 requested_parent_work = parent_work
+                direction_adaptation_context = None
+                if direction_adaptation_enabled:
+                    shells_since_success = (
+                            direction_distinct_shell_count
+                            - direction_last_successful_shell_count
+                    )
+                    fit_eligible = (
+                            direction_coordinator.successful_update_count == 0
+                            or shells_since_success
+                            >= direction_coordinator.update_every_shells
+                    )
+                    if fit_eligible:
+                        key, fit_key = jax.random.split(key)
+                        fit_rows, fit_weights = (
+                            _state_direction_fitting_rows_and_weights(current)
+                        )
+                        fit_result = (
+                            direction_coordinator.request_direction_kernel_fit(
+                                DirectionKernelFitRequest(
+                                    shell_epoch=direction_distinct_shell_count,
+                                    allocation_target=allocation_target,
+                                    samples_U=fit_rows,
+                                    posterior_weights=fit_weights,
+                                    key=fit_key,
+                                )
+                            )
+                        )
+                        diagnostics_builder.direction_adaptation_diagnostics.append(
+                            fit_result.diagnostics
+                        )
+                        direction_coordinator = fit_result.coordinator
+                        if not fit_result.diagnostics.fallback_active:
+                            direction_last_successful_shell_count = (
+                                direction_distinct_shell_count
+                            )
+
+                    snapshot = direction_coordinator.prepare_dispatch_snapshot(
+                        DirectionKernelDispatchRequest(
+                            chain_id=(
+                                f"{allocation_target}-"
+                                f"{direction_distinct_shell_count}"
+                            ),
+                            shell_epoch=direction_distinct_shell_count,
+                            allocation_target=allocation_target,
+                        )
+                    )
+                    direction_adaptation_context = _ensure_direction_context(
+                        context=snapshot.direction_adaptation_context(),
+                        d_dim=direction_d_dim,
+                        kernel_version=snapshot.kernel_version,
+                        allocation_target=allocation_target,
+                    )
                 parent_work, new_samples = self._sample_parent_work(
                     key=sample_key,
                     state=current,
                     parent_work=parent_work,
+                    adaptation_context=direction_adaptation_context,
                 )
                 _record_parent_selection(
                     diagnostics_builder,
@@ -1542,6 +1736,21 @@ class NestedSampler(PureDataclassPytree):
                     parent_work=parent_work,
                     new_samples=new_samples,
                 )
+                if direction_adaptation_enabled:
+                    shell_values = np.asarray(
+                        parent_work.parent_log_L_constraints,
+                        dtype=float,
+                    )
+                    for shell_value in np.unique(shell_values):
+                        if not np.isfinite(shell_value):
+                            continue
+                        if (
+                                direction_last_log_likelihood is None
+                                or float(shell_value)
+                                != float(direction_last_log_likelihood)
+                        ):
+                            direction_distinct_shell_count += 1
+                            direction_last_log_likelihood = float(shell_value)
                 if int(current.num_samples) <= before:
                     return finish(current)
         return finish(current)

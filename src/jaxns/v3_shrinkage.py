@@ -64,6 +64,68 @@ class V3EvidenceSummary(PureDataclassPytree):
 V3EvidenceSummary.register_pytree()
 
 
+@dataclasses.dataclass(slots=True, frozen=True)
+class PhantomCountMatrices(PureDataclassPytree):
+    A_cg: FloatArray
+    B_cg: FloatArray
+    E_cg: FloatArray
+    R_cg: FloatArray
+    A_g: FloatArray
+    B_g: FloatArray
+    E_g: FloatArray
+    R_g: FloatArray
+    kish_participating_cluster_counts: FloatArray
+    phantom_gate_active: BoolArray
+
+
+PhantomCountMatrices.register_pytree()
+
+
+@dataclasses.dataclass(slots=True, frozen=True)
+class GammaWeightedPhantomDraws(PureDataclassPytree):
+    race_gamma_gt: FloatArray
+    race_gamma_eq: FloatArray
+    race_gamma_lt: FloatArray
+    cluster_weights: FloatArray
+
+
+GammaWeightedPhantomDraws.register_pytree()
+
+
+@dataclasses.dataclass(slots=True, frozen=True)
+class GammaWeightedPhantomProbabilities(PureDataclassPytree):
+    p_gt: FloatArray
+    p_eq: FloatArray
+    p_lt: FloatArray
+    phantom_add_gt: FloatArray
+    phantom_add_eq: FloatArray
+    phantom_add_lt: FloatArray
+    kish_participating_cluster_counts: FloatArray
+    phantom_gate_active: BoolArray
+
+
+GammaWeightedPhantomProbabilities.register_pytree()
+
+
+@dataclasses.dataclass(slots=True, frozen=True)
+class GammaWeightedPhantomProbabilitySamples(PureDataclassPytree):
+    p_gt_samples: FloatArray
+    p_eq_samples: FloatArray
+    p_lt_samples: FloatArray
+    phantom_add_gt_samples: FloatArray
+    phantom_add_eq_samples: FloatArray
+    phantom_add_lt_samples: FloatArray
+    kish_participating_cluster_counts: FloatArray
+    phantom_gate_active: BoolArray
+    race_gamma_gt: FloatArray
+    race_gamma_eq: FloatArray
+    race_gamma_lt: FloatArray
+    cluster_weights: FloatArray
+
+
+GammaWeightedPhantomProbabilitySamples.register_pytree()
+
+
 def epsilon_for_block_size(block_size: FloatArray) -> FloatArray:
     """Paper default equality-atom prior policy."""
     block_size = jnp.asarray(block_size)
@@ -283,6 +345,252 @@ def fit_low_order_rho_g_curve(
     fitted = jnp.where(jnp.isfinite(fitted), fitted, fallback)
     fitted = jnp.clip(fitted, jnp.finfo(raw_rho_g.dtype).tiny, 1.0)
     return jnp.where(valid_mask, fitted, jnp.nan)
+
+
+def validate_phantom_count_matrices(
+        *,
+        A_cg: FloatArray,
+        B_cg: FloatArray,
+        E_cg: FloatArray,
+        block_valid_mask: BoolArray,
+) -> None:
+    """Validate per-cluster phantom count matrices for v3 conditioning."""
+    expected_shape = jnp.shape(A_cg)
+    if len(expected_shape) != 2:
+        raise ValueError("A_cg must have shape [num_clusters, num_blocks].")
+    for name, value in (("B_cg", B_cg), ("E_cg", E_cg)):
+        if jnp.shape(value) != expected_shape:
+            raise ValueError(
+                f"{name} shape must align with A_cg; got {jnp.shape(value)}, "
+                f"expected {expected_shape}."
+            )
+    if jnp.shape(block_valid_mask) != (expected_shape[1],):
+        raise ValueError(
+            "block_valid_mask shape must align with the count matrix block "
+            f"axis; got {jnp.shape(block_valid_mask)}, expected "
+            f"{(expected_shape[1],)}."
+        )
+
+    try:
+        valid = np.asarray(block_valid_mask, dtype=bool)
+        A = np.asarray(A_cg, dtype=float)
+        B = np.asarray(B_cg, dtype=float)
+        E = np.asarray(E_cg, dtype=float)
+    except Exception:
+        return
+
+    if not np.all(np.isfinite(A[:, valid])):
+        raise ValueError("A_cg counts must be finite on valid blocks.")
+    if not np.all(np.isfinite(B[:, valid])):
+        raise ValueError("B_cg counts must be finite on valid blocks.")
+    if not np.all(np.isfinite(E[:, valid])):
+        raise ValueError("E_cg counts must be finite on valid blocks.")
+    if (
+            np.any(A[:, valid] < 0.0)
+            or np.any(B[:, valid] < 0.0)
+            or np.any(E[:, valid] < 0.0)
+    ):
+        raise ValueError("Phantom count matrices must be non-negative.")
+    if np.any(B[:, valid] + E[:, valid] > A[:, valid]):
+        raise ValueError(
+            "Invalid phantom count relation: B_cg + E_cg must be <= A_cg."
+        )
+
+
+def compute_kish_participating_cluster_counts(
+        A_cg: FloatArray,
+) -> FloatArray:
+    """Kish participating-cluster count per block from `A_cg`."""
+    A = jnp.asarray(A_cg, dtype=mp_policy.measure_dtype)
+    numerator = jnp.square(jnp.sum(A, axis=0))
+    denominator = jnp.sum(jnp.square(A), axis=0)
+    return jnp.where(
+        denominator > 0.0,
+        numerator / denominator,
+        jnp.zeros_like(numerator),
+    )
+
+
+def compute_phantom_gate_active(
+        A_cg: FloatArray,
+        *,
+        C_min: float = 20,
+) -> BoolArray:
+    """Return the canonical Kish gate mask, defaulting to `C_min=20`."""
+    A = jnp.asarray(A_cg, dtype=mp_policy.measure_dtype)
+    participation = jnp.sum(A, axis=0) > 0.0
+    denominator = jnp.sum(jnp.square(A), axis=0)
+    kish = compute_kish_participating_cluster_counts(A)
+    return (denominator > 0.0) & participation & (
+            kish >= jnp.asarray(C_min, dtype=kish.dtype)
+    )
+
+
+def gamma_weighted_phantom_probabilities_from_draws(
+        *,
+        block_state: BlockState,
+        A_cg: FloatArray,
+        B_cg: FloatArray,
+        E_cg: FloatArray,
+        race_gamma_gt: FloatArray,
+        race_gamma_eq: FloatArray,
+        race_gamma_lt: FloatArray,
+        cluster_weights: FloatArray,
+        C_min: float = 20,
+) -> GammaWeightedPhantomProbabilities:
+    """Apply explicit race gammas and shared per-cluster gamma weights."""
+    validate_phantom_count_matrices(
+        A_cg=A_cg,
+        B_cg=B_cg,
+        E_cg=E_cg,
+        block_valid_mask=block_state.valid,
+    )
+    A = jnp.asarray(A_cg, dtype=mp_policy.measure_dtype)
+    B = jnp.asarray(B_cg, dtype=A.dtype)
+    E = jnp.asarray(E_cg, dtype=A.dtype)
+    R = A - B - E
+    weights = jnp.asarray(cluster_weights, dtype=A.dtype)
+    if jnp.shape(weights) != (A.shape[0],):
+        raise ValueError(
+            "cluster_weights shape must align with the count matrix cluster "
+            f"axis; got {jnp.shape(weights)}, expected {(A.shape[0],)}."
+        )
+    expected_block_shape = block_state.log_L_blocks.shape
+    for name, value in (
+            ("race_gamma_gt", race_gamma_gt),
+            ("race_gamma_eq", race_gamma_eq),
+            ("race_gamma_lt", race_gamma_lt),
+    ):
+        if jnp.shape(value) != expected_block_shape:
+            raise ValueError(
+                f"{name} shape must align with block_state.log_L_blocks; "
+                f"got {jnp.shape(value)}, expected {expected_block_shape}."
+            )
+
+    kish = compute_kish_participating_cluster_counts(A)
+    gate = compute_phantom_gate_active(A, C_min=C_min) & block_state.valid
+    gate_float = gate.astype(A.dtype)
+    phantom_add_gt = (weights @ B) * gate_float
+    phantom_add_eq = (weights @ E) * gate_float
+    phantom_add_lt = (weights @ R) * gate_float
+    m_gt = jnp.asarray(race_gamma_gt, dtype=A.dtype) + phantom_add_gt
+    m_eq = jnp.asarray(race_gamma_eq, dtype=A.dtype) + phantom_add_eq
+    m_lt = jnp.asarray(race_gamma_lt, dtype=A.dtype) + phantom_add_lt
+    total = m_gt + m_eq + m_lt
+    safe_total = jnp.where(total > 0.0, total, jnp.ones_like(total))
+    p_gt = jnp.where(block_state.valid, m_gt / safe_total, 0.0)
+    p_eq = jnp.where(block_state.valid, m_eq / safe_total, 0.0)
+    p_lt = jnp.where(block_state.valid, m_lt / safe_total, 0.0)
+    return GammaWeightedPhantomProbabilities(
+        p_gt=p_gt,
+        p_eq=p_eq,
+        p_lt=p_lt,
+        phantom_add_gt=phantom_add_gt,
+        phantom_add_eq=phantom_add_eq,
+        phantom_add_lt=phantom_add_lt,
+        kish_participating_cluster_counts=jnp.where(
+            block_state.valid,
+            kish,
+            jnp.zeros_like(kish),
+        ),
+        phantom_gate_active=gate,
+    )
+
+
+def sample_gamma_weighted_phantom_draws(
+        *,
+        key: PRNGKey,
+        block_state: BlockState,
+        num_clusters: int,
+        num_samples: int,
+) -> GammaWeightedPhantomDraws:
+    """Draw independent race gammas and shared `v_c ~ Gamma(1, 1)` weights."""
+    concentrations = classic_dirichlet_concentrations(block_state)
+    alpha_gt = jnp.where(block_state.valid, concentrations.alpha_gt, 1.0)
+    alpha_eq = jnp.where(block_state.valid, concentrations.alpha_eq, 1.0)
+    alpha_lt = jnp.where(block_state.valid, concentrations.alpha_lt, 1.0)
+    key_gt, key_eq, key_lt, key_v = jax.random.split(key, 4)
+    sample_shape = (int(num_samples),) + block_state.log_L_blocks.shape
+    race_gamma_gt = jax.random.gamma(key_gt, alpha_gt, shape=sample_shape)
+    race_gamma_eq = jax.random.gamma(key_eq, alpha_eq, shape=sample_shape)
+    race_gamma_lt = jax.random.gamma(key_lt, alpha_lt, shape=sample_shape)
+    race_gamma_gt = jnp.where(block_state.valid[None, :], race_gamma_gt, 0.0)
+    race_gamma_eq = jnp.where(block_state.valid[None, :], race_gamma_eq, 0.0)
+    race_gamma_lt = jnp.where(block_state.valid[None, :], race_gamma_lt, 0.0)
+    cluster_shape = (int(num_samples), int(num_clusters))
+    cluster_weights = jax.random.gamma(
+        key_v,
+        jnp.ones((int(num_clusters),), dtype=mp_policy.measure_dtype),
+        shape=cluster_shape,
+    )
+    return GammaWeightedPhantomDraws(
+        race_gamma_gt=race_gamma_gt,
+        race_gamma_eq=race_gamma_eq,
+        race_gamma_lt=race_gamma_lt,
+        cluster_weights=cluster_weights,
+    )
+
+
+def sample_gamma_weighted_phantom_probabilities(
+        *,
+        key: PRNGKey,
+        block_state: BlockState,
+        A_cg: FloatArray,
+        B_cg: FloatArray,
+        E_cg: FloatArray,
+        num_samples: int,
+        C_min: float = 20,
+) -> GammaWeightedPhantomProbabilitySamples:
+    """Sample gamma-weighted phantom-conditioned block probabilities."""
+    validate_phantom_count_matrices(
+        A_cg=A_cg,
+        B_cg=B_cg,
+        E_cg=E_cg,
+        block_valid_mask=block_state.valid,
+    )
+    A = jnp.asarray(A_cg, dtype=mp_policy.measure_dtype)
+    B = jnp.asarray(B_cg, dtype=A.dtype)
+    E = jnp.asarray(E_cg, dtype=A.dtype)
+    R = A - B - E
+    draws = sample_gamma_weighted_phantom_draws(
+        key=key,
+        block_state=block_state,
+        num_clusters=A.shape[0],
+        num_samples=int(num_samples),
+    )
+    kish = compute_kish_participating_cluster_counts(A)
+    gate = compute_phantom_gate_active(A, C_min=C_min) & block_state.valid
+    gate_float = gate.astype(A.dtype)[None, :]
+    phantom_add_gt = (draws.cluster_weights @ B) * gate_float
+    phantom_add_eq = (draws.cluster_weights @ E) * gate_float
+    phantom_add_lt = (draws.cluster_weights @ R) * gate_float
+    m_gt = draws.race_gamma_gt + phantom_add_gt
+    m_eq = draws.race_gamma_eq + phantom_add_eq
+    m_lt = draws.race_gamma_lt + phantom_add_lt
+    total = m_gt + m_eq + m_lt
+    safe_total = jnp.where(total > 0.0, total, jnp.ones_like(total))
+    valid = block_state.valid[None, :]
+    p_gt = jnp.where(valid, m_gt / safe_total, 0.0)
+    p_eq = jnp.where(valid, m_eq / safe_total, 0.0)
+    p_lt = jnp.where(valid, m_lt / safe_total, 0.0)
+    return GammaWeightedPhantomProbabilitySamples(
+        p_gt_samples=p_gt,
+        p_eq_samples=p_eq,
+        p_lt_samples=p_lt,
+        phantom_add_gt_samples=phantom_add_gt,
+        phantom_add_eq_samples=phantom_add_eq,
+        phantom_add_lt_samples=phantom_add_lt,
+        kish_participating_cluster_counts=jnp.where(
+            block_state.valid,
+            kish,
+            jnp.zeros_like(kish),
+        ),
+        phantom_gate_active=gate,
+        race_gamma_gt=draws.race_gamma_gt,
+        race_gamma_eq=draws.race_gamma_eq,
+        race_gamma_lt=draws.race_gamma_lt,
+        cluster_weights=draws.cluster_weights,
+    )
 
 
 def validate_lineage_capacity(block_state: BlockState) -> None:

@@ -78,10 +78,14 @@ samples in that block, while non-plateau mass uses `1 - p_{>g}`.
 
 When phantom clusters are retained, execution preserves likelihood values,
 cluster boundaries, and generation constraint likelihoods so the shrinkage layer
-can compute `A_g`, `B_g`, and `E_g`, apply the effective count `rho_g A_g`,
-estimate `rho_g` by cluster bootstrap, and respect the paper's burn-in and
-stationarity warning. Phantom coordinates are not retained by the v3 execution
-state.
+can compute parent-contour-gated per-cluster counts `A_{cg}`, `B_{cg}`,
+`E_{cg}`, and `R_{cg}`. The shrinkage layer draws race posterior gamma
+variables, draws independent `Gamma(1, 1)` weights per phantom cluster, applies
+the Kish participating-cluster gate, records gate activation diagnostics, and
+normalizes to `p_g`. Execution must preserve enough cluster identity and parent
+contour provenance for that calculation while respecting the paper's burn-in
+and stationarity warning. Phantom coordinates are not retained by the v3
+execution state.
 
 ## Core Algorithm
 

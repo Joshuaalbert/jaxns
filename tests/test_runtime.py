@@ -22,6 +22,7 @@ from jaxns.core import NestedSampler
 from jaxns.model import Model
 from jaxns.pytree import PureDataclassPytree
 from jaxns.samples import PhantomSamples
+from jaxns.samples import SeedPoint
 from jaxns.state import State
 from jaxns.termination_condition import TerminationCondition
 
@@ -333,6 +334,129 @@ class IdentityConfigSampler(AbstractSampler):
             adaptation_context=None,
     ):
         del key, log_L_constraint, args, params, adaptation_context
+        return (
+            seed_point.U0,
+            seed_point.log_L0,
+            jnp.asarray(1, dtype=jnp.int32),
+            PhantomSamples(
+                U_samples=None,
+                valid_mask=jnp.zeros((0,), dtype=bool),
+                log_L=jnp.zeros(
+                    (0,),
+                    dtype=jnp.asarray(seed_point.log_L0).dtype,
+                ),
+            ),
+        )
+
+
+class CountingSerializedWorkerSampler(AbstractSampler):
+    """Sampler fixture that records worker-side deserialisation count."""
+
+    _deserialise_count: int = 0
+
+    def __init__(self, *, worker_instance: bool = False):
+        self.worker_instance = worker_instance
+
+    def __getstate__(self):
+        return {}
+
+    def __setstate__(self, state) -> None:
+        del state
+        self.worker_instance = True
+        self.__class__._deserialise_count += 1
+
+    @classmethod
+    def reset_counts(cls) -> None:
+        cls._deserialise_count = 0
+
+    @classmethod
+    def deserialise_count(cls) -> int:
+        return cls._deserialise_count
+
+    def num_phantom(self) -> int:
+        return 0
+
+    def get_sample(
+            self,
+            key,
+            log_L_constraint,
+            seed_point,
+            args=(),
+            params=None,
+            adaptation_context=None,
+    ):
+        del key, log_L_constraint, args, params, adaptation_context
+        if not self.worker_instance:
+            raise AssertionError(
+                "sampler must execute from serialized worker payload"
+            )
+        return (
+            seed_point.U0,
+            seed_point.log_L0,
+            jnp.asarray(1, dtype=jnp.int32),
+            PhantomSamples(
+                U_samples=None,
+                valid_mask=jnp.zeros((0,), dtype=bool),
+                log_L=jnp.zeros(
+                    (0,),
+                    dtype=jnp.asarray(seed_point.log_L0).dtype,
+                ),
+            ),
+        )
+
+
+class AdaptationContextRecordingSampler(AbstractSampler):
+    """Sampler fixture that records per-task adaptation contexts."""
+
+    _observed_kernel_versions: list[int | None] = []
+    _deserialise_count: int = 0
+
+    def __init__(self, *, worker_instance: bool = False):
+        self.worker_instance = worker_instance
+
+    def __getstate__(self):
+        return {}
+
+    def __setstate__(self, state) -> None:
+        del state
+        self.worker_instance = True
+        self.__class__._deserialise_count += 1
+
+    @classmethod
+    def reset_counts(cls) -> None:
+        cls._observed_kernel_versions = []
+        cls._deserialise_count = 0
+
+    @classmethod
+    def observed_kernel_versions(cls) -> tuple[int | None, ...]:
+        return tuple(cls._observed_kernel_versions)
+
+    @classmethod
+    def deserialise_count(cls) -> int:
+        return cls._deserialise_count
+
+    def num_phantom(self) -> int:
+        return 0
+
+    def get_sample(
+            self,
+            key,
+            log_L_constraint,
+            seed_point,
+            args=(),
+            params=None,
+            adaptation_context=None,
+    ):
+        del key, log_L_constraint, args, params
+        if not self.worker_instance:
+            raise AssertionError(
+                "sampler must execute from serialized worker payload"
+            )
+        self.__class__._observed_kernel_versions.append(
+            None
+            if adaptation_context is None
+            else int(getattr(adaptation_context, "kernel_version"))
+        )
         return (
             seed_point.U0,
             seed_point.log_L0,
@@ -1009,6 +1133,27 @@ def _worker_result_for_lifecycle_record(record: object, runtime):
     )
 
 
+def _worker_result_with_runtime_stats_for_lifecycle_record(
+        record: object,
+        runtime,
+        *,
+        dispatch_latency_seconds: float = 1.25,
+        payload_cache_latency_seconds: float = 0.125,
+        sampler_execution_latency_seconds: float = 1.0,
+):
+    worker_result = _worker_result_for_lifecycle_record(record, runtime)
+    return dataclasses.replace(
+        worker_result,
+        payload=runtime._WorkerTaskExecutionStats(
+            output=worker_result.payload,
+            sampler_loop_mode="python",
+            dispatch_latency_seconds=dispatch_latency_seconds,
+            payload_cache_latency_seconds=payload_cache_latency_seconds,
+            sampler_execution_latency_seconds=sampler_execution_latency_seconds,
+        ),
+    )
+
+
 def _mismatched_worker_result_for_lifecycle_record(
         record: object,
         runtime,
@@ -1151,6 +1296,49 @@ def _assert_accepted_dispatch_is_non_duplicating(
     ledger = getattr(runner, "runtime_acceptance_ledger", None)
     if ledger is not None:
         assert set(ledger.accepted_task_ids) == set(task_ids)
+
+
+def _accepted_raw_diagnostic_records_for_runner(
+        runner,
+        state: State,
+) -> tuple[object, ...]:
+    diagnostics = getattr(state, "execution_diagnostics", None)
+    assert diagnostics is not None
+    worker_runtime = getattr(diagnostics, "worker_runtime", None)
+    assert worker_runtime is not None
+    runner_id = _runner_id(runner)
+    records = tuple(
+        record
+        for record in worker_runtime.dispatch_records
+        if str(_record_field(record, "runner_id", "coordinator_runner_id"))
+        == runner_id
+        and _normalise_dispatch_status(
+            _record_field(record, "status", "task_status")
+        )
+        == "accepted"
+    )
+    assert records
+    return records
+
+
+def _runtime_latency_values(record: object) -> tuple[float, float, float]:
+    values = tuple(
+        float(_record_field(record, field_name))
+        for field_name in (
+            "dispatch_latency_seconds",
+            "payload_cache_latency_seconds",
+            "sampler_execution_latency_seconds",
+        )
+    )
+    assert np.all(np.isfinite(np.asarray(values, dtype=float)))
+    assert all(value >= 0.0 for value in values)
+    return values
+
+
+def _runtime_sampler_loop_mode(record: object) -> str:
+    mode = str(_record_field(record, "sampler_loop_mode")).lower()
+    assert mode in {"python", "fused"}
+    return mode
 
 
 def _serialized_problem_payload(record: object, runtime):
@@ -1564,6 +1752,224 @@ def test_local_load_balanced_runner_executes_with_coordinator_dispatch_trace():
         "sector-000001"
     }
     _assert_accepted_dispatch_is_non_duplicating(accepted_records, runner)
+
+
+def test_local_runtime_reuses_worker_payload_until_last_client_teardown():
+    LoadBalancerClient = _load_balancer_client()
+    CountingSerializedWorkerSampler.reset_counts()
+    lb_state = None
+
+    with LoadBalancerClient(address="local") as lb:
+        lb.add_workers(["cpu:*:1"])
+        lb_state = lb.load_balancer_state
+        runner = lb.get_nested_sampler(
+            model=make_toy_model(),
+            collect_phantoms=False,
+            sampler=CountingSerializedWorkerSampler(),
+            target_num_live_points=2,
+            max_samples=5,
+            shell_size=1,
+            termination_condition=TerminationCondition(max_samples=5),
+            batch_size=None,
+        )
+
+        state = _run_small_runtime_runner(runner, max_samples=5)
+
+        assert int(state.num_samples) == 5
+        assert lb_state.worker_runtime_cache_size() == 1
+        assert CountingSerializedWorkerSampler.deserialise_count() == 1
+
+    assert lb_state is not None
+    assert lb_state.worker_runtime_cache_size() == 0
+
+
+def test_local_runtime_reuses_stable_sampler_payload_for_dispatches(
+        monkeypatch,
+):
+    runtime = _runtime_module()
+    LoadBalancerClient = _load_balancer_client()
+    serialize_calls = []
+    original_serialize_sampler = runtime.serialize_sampler
+
+    def counting_serialize_sampler(sampler):
+        serialize_calls.append(type(sampler).__qualname__)
+        return original_serialize_sampler(sampler)
+
+    monkeypatch.setattr(
+        runtime,
+        "serialize_sampler",
+        counting_serialize_sampler,
+    )
+
+    with LoadBalancerClient(address="local") as lb:
+        lb.add_workers(["cpu:*:1"])
+        runner = lb.get_nested_sampler(
+            model=make_toy_model(),
+            collect_phantoms=False,
+            sampler=SerializedWorkerOnlySampler(),
+            target_num_live_points=2,
+            max_samples=5,
+            shell_size=1,
+            termination_condition=TerminationCondition(max_samples=5),
+            batch_size=None,
+        )
+
+        state = _run_small_runtime_runner(runner, max_samples=5)
+        accepted_records = _accepted_dispatch_records_for_runner(
+            runner,
+            lb,
+            runner,
+            state,
+        )
+
+    assert len(accepted_records) >= 3
+    assert len(serialize_calls) <= 2, (
+        "stable runtime compile identity/payload cache should avoid "
+        "serializing the sampler once per accepted local-LB dispatch; "
+        f"serialize_calls={serialize_calls!r}, "
+        f"accepted_dispatches={len(accepted_records)}"
+    )
+
+
+def test_worker_payload_cache_keeps_per_dispatch_adaptation_context_fresh():
+    runtime = _runtime_module()
+    DirectionAdaptationContext = importlib.import_module(
+        "jaxns.em_gmm"
+    ).DirectionAdaptationContext
+    AdaptationContextRecordingSampler.reset_counts()
+    serialized_problem = runtime.SerializedModelProblem.from_problem(
+        model=make_toy_model(),
+    )
+    sampler = AdaptationContextRecordingSampler()
+    sampler_bytes = runtime.serialize_sampler(sampler)
+    compile_identity = runtime._build_runtime_compile_identity(
+        serialized_problem=serialized_problem,
+        sampler=sampler,
+        worker_device_types=("cpu",),
+    )
+    lb_state = runtime.LocalLoadBalancerState(address="local-test")
+    seed_point = SeedPoint(U0=jnp.asarray(0.25), log_L0=jnp.asarray(0.0))
+
+    def make_task(kernel_version: int):
+        return runtime.SerializedWorkerTask(
+            serialized_problem=serialized_problem,
+            sampler_bytes=sampler_bytes,
+            key_bytes=runtime.pickle_payload(jax.random.PRNGKey(kernel_version)),
+            log_L_constraint_bytes=runtime.pickle_payload(jnp.asarray(-np.inf)),
+            seed_point_bytes=runtime.pickle_payload(seed_point),
+            adaptation_context_bytes=runtime.pickle_payload(
+                DirectionAdaptationContext(kernel_version=kernel_version)
+            ),
+            runtime_compile_identity=compile_identity,
+        )
+
+    runtime._execute_serialized_worker_task(
+        make_task(3),
+        runtime_lb_state=lb_state,
+    )
+    runtime._execute_serialized_worker_task(
+        make_task(4),
+        runtime_lb_state=lb_state,
+    )
+
+    assert lb_state.worker_runtime_cache_size() == 1
+    assert AdaptationContextRecordingSampler.deserialise_count() == 1
+    assert AdaptationContextRecordingSampler.observed_kernel_versions() == (3, 4)
+
+
+def test_unidim_worker_cache_keeps_fresh_context_and_explicit_loop_mode(
+        monkeypatch,
+):
+    runtime = _runtime_module()
+    DirectionAdaptationContext = importlib.import_module(
+        "jaxns.em_gmm"
+    ).DirectionAdaptationContext
+    observed_contexts = []
+
+    def recording_get_sample(
+            self,
+            key,
+            log_L_constraint,
+            seed_point,
+            args=(),
+            params=None,
+            adaptation_context=None,
+    ):
+        del self, key, log_L_constraint, args, params
+        observed_contexts.append(adaptation_context)
+        return (
+            seed_point.U0,
+            seed_point.log_L0,
+            jnp.asarray(1, dtype=jnp.int32),
+            PhantomSamples(
+                U_samples=None,
+                valid_mask=jnp.zeros((0,), dtype=bool),
+                log_L=jnp.zeros(
+                    (0,),
+                    dtype=jnp.asarray(seed_point.log_L0).dtype,
+                ),
+            ),
+        )
+
+    monkeypatch.setattr(
+        UniDimSliceSampler,
+        "get_sample",
+        recording_get_sample,
+    )
+
+    model = make_toy_model()
+    serialized_problem = runtime.SerializedModelProblem.from_problem(
+        model=model,
+    )
+    sampler = UniDimSliceSampler(
+        model=model,
+        num_slices=3,
+        no_step_out=True,
+        direction_kernel="ellipsoidal",
+    )
+    sampler_bytes = runtime.serialize_sampler(sampler)
+    compile_identity = runtime._build_runtime_compile_identity(
+        serialized_problem=serialized_problem,
+        sampler=sampler,
+        worker_device_types=("cpu",),
+    )
+    lb_state = runtime.LocalLoadBalancerState(address="local-test")
+    seed_point = SeedPoint(U0=jnp.asarray(0.25), log_L0=jnp.asarray(0.0))
+
+    def make_task(kernel_version: int):
+        return runtime.SerializedWorkerTask(
+            serialized_problem=serialized_problem,
+            sampler_bytes=sampler_bytes,
+            key_bytes=runtime.pickle_payload(jax.random.PRNGKey(kernel_version)),
+            log_L_constraint_bytes=runtime.pickle_payload(jnp.asarray(-np.inf)),
+            seed_point_bytes=runtime.pickle_payload(seed_point),
+            adaptation_context_bytes=runtime.pickle_payload(
+                DirectionAdaptationContext(kernel_version=kernel_version)
+            ),
+            runtime_compile_identity=compile_identity,
+        )
+
+    runtime._execute_serialized_worker_task(
+        make_task(3),
+        runtime_lb_state=lb_state,
+    )
+    runtime._execute_serialized_worker_task(
+        make_task(4),
+        runtime_lb_state=lb_state,
+    )
+
+    assert lb_state.worker_runtime_cache_size() == 1
+    observed_versions = tuple(
+        int(context["direction_adaptation_context"].kernel_version)
+        for context in observed_contexts
+    )
+    observed_loop_modes = tuple(
+        str(context["sampler_loop_mode"]).lower()
+        for context in observed_contexts
+    )
+    assert observed_versions == (3, 4)
+    assert observed_loop_modes
+    assert set(observed_loop_modes) <= {"python", "fused"}
 
 
 def test_runtime_dispatch_mutates_acceptance_ledger_once_per_task_id():
@@ -2007,6 +2413,93 @@ def test_accepted_dispatch_records_preserve_runtime_compile_identity():
         assert isinstance(restored_problem.params, CtxParams)
         _assert_trees_equal(restored_problem.args, args)
         _assert_trees_equal(restored_problem.params, params)
+
+
+def test_unidim_runtime_dispatch_records_expose_sampler_loop_mode():
+    LoadBalancerClient = _load_balancer_client()
+
+    with LoadBalancerClient(address="local") as lb:
+        lb.add_workers(["cpu:*:1"])
+        model = make_toy_model()
+        runner = lb.get_nested_sampler(
+            model=model,
+            collect_phantoms=False,
+            sampler=_small_runtime_sampler(model, collect_phantoms=False),
+            target_num_live_points=2,
+            max_samples=4,
+            shell_size=1,
+            termination_condition=TerminationCondition(max_samples=4),
+            batch_size=None,
+        )
+
+        state = _run_small_runtime_runner(runner, max_samples=4)
+        raw_records = _accepted_raw_dispatch_records_for_runner(
+            runner,
+            lb,
+            runner,
+            state,
+        )
+        diagnostic_records = _accepted_raw_diagnostic_records_for_runner(
+            runner,
+            state,
+        )
+
+    raw_modes_by_task = {
+        str(_record_field(record, "task_id")): _runtime_sampler_loop_mode(
+            record
+        )
+        for record in raw_records
+    }
+    diagnostic_modes_by_task = {
+        str(_record_field(record, "task_id")): _runtime_sampler_loop_mode(
+            record
+        )
+        for record in diagnostic_records
+    }
+    assert set(raw_modes_by_task.values()) <= {
+        "python",
+        "fused",
+    }
+    assert diagnostic_modes_by_task == raw_modes_by_task
+
+
+def test_accepted_dispatch_records_expose_latency_fields_in_diagnostics():
+    LoadBalancerClient = _load_balancer_client()
+
+    with LoadBalancerClient(address="local") as lb:
+        lb.add_workers(["cpu:*:1"])
+        runner = lb.get_nested_sampler(
+            model=make_toy_model(),
+            collect_phantoms=False,
+            sampler=SerializedWorkerOnlySampler(),
+            target_num_live_points=2,
+            max_samples=4,
+            shell_size=1,
+            termination_condition=TerminationCondition(max_samples=4),
+            batch_size=None,
+        )
+
+        state = _run_small_runtime_runner(runner, max_samples=4)
+        raw_records = _accepted_raw_dispatch_records_for_runner(
+            runner,
+            lb,
+            runner,
+            state,
+        )
+        diagnostic_records = _accepted_raw_diagnostic_records_for_runner(
+            runner,
+            state,
+        )
+
+    raw_latency_by_task = {
+        str(_record_field(record, "task_id")): _runtime_latency_values(record)
+        for record in raw_records
+    }
+    diagnostic_latency_by_task = {
+        str(_record_field(record, "task_id")): _runtime_latency_values(record)
+        for record in diagnostic_records
+    }
+    assert diagnostic_latency_by_task == raw_latency_by_task
 
 
 def test_multi_client_scheduler_records_client_and_cache_isolation():
@@ -3569,9 +4062,12 @@ def test_stale_parent_target_completion_is_rejected_without_ledger_mutation():
         )
         pending_record = _prepare_runtime_dispatch(runner)
         pending = _normalise_lifecycle_record(pending_record)
-        worker_result = _worker_result_for_lifecycle_record(
+        worker_result = _worker_result_with_runtime_stats_for_lifecycle_record(
             pending_record,
             runtime,
+            dispatch_latency_seconds=1.75,
+            payload_cache_latency_seconds=0.25,
+            sampler_execution_latency_seconds=1.5,
         )
         changed_parent_idx = pending.accepted_parent_idx + 1
         changed_log_L_constraint = pending.accepted_log_L_constraint + 0.25
@@ -3595,6 +4091,7 @@ def test_stale_parent_target_completion_is_rejected_without_ledger_mutation():
     assert stale.status == "stale_parent_target"
     assert stale.task_id == pending.task_id
     assert stale.attempt_id == pending.attempt_id
+    assert _runtime_latency_values(stale_record) == (1.75, 0.25, 1.5)
     _assert_lifecycle_parent_metadata_preserved(pending, stale)
     assert int(_record_field(
         stale_record,
@@ -3611,3 +4108,49 @@ def test_stale_parent_target_completion_is_rejected_without_ledger_mutation():
         == accepted_task_ids_before
     )
     _assert_runtime_state_snapshot_equal(state_before, state_after)
+
+
+def test_terminal_late_completion_preserves_worker_latency_fields():
+    LoadBalancerClient = _load_balancer_client()
+    runtime = _runtime_module()
+
+    with LoadBalancerClient(address="local") as lb:
+        lb.add_workers(["cpu:*:1"])
+        runner = lb.get_nested_sampler(
+            model=make_toy_model(),
+            collect_phantoms=False,
+            target_num_live_points=2,
+            max_samples=4,
+            shell_size=1,
+            termination_condition=TerminationCondition(max_samples=4),
+            batch_size=None,
+        )
+        pending_record = _prepare_runtime_dispatch(runner)
+        failed_record = _fail_runtime_dispatch(runner, pending_record)
+        pending = _normalise_lifecycle_record(pending_record)
+        failed_completion_record = _complete_runtime_dispatch(
+            runner,
+            pending_record,
+            _worker_result_with_runtime_stats_for_lifecycle_record(
+                pending_record,
+                runtime,
+                dispatch_latency_seconds=2.5,
+                payload_cache_latency_seconds=0.5,
+                sampler_execution_latency_seconds=2.0,
+            ),
+            current_parent_idx=pending.accepted_parent_idx,
+            current_log_L_constraint=pending.accepted_log_L_constraint,
+        )
+
+    failed_completion = _normalise_lifecycle_record(failed_completion_record)
+    failed = _normalise_lifecycle_record(failed_record)
+
+    assert failed_completion.status == "failed"
+    assert failed_completion.task_id == failed.task_id
+    assert failed_completion.attempt_id == failed.attempt_id
+    assert failed_completion.transport_id == failed.transport_id
+    assert _runtime_latency_values(failed_completion_record) == (
+        2.5,
+        0.5,
+        2.0,
+    )

@@ -39,7 +39,27 @@ BASE_EVIDENCE_CALIBRATION_FIELDS = frozenset(
         "mc_shrinkage_logZ",
     }
 )
-PHANTOM_DIAGNOSTIC_FIELDS = frozenset({"rho_g", "rho_fit"})
+PHANTOM_DIAGNOSTIC_FIELDS = frozenset(
+    {
+        "kish_participating_cluster_counts",
+        "phantom_gate_active",
+        "phantom_A_g",
+        "phantom_B_g",
+        "phantom_E_g",
+        "phantom_R_g",
+        "C_min",
+    }
+)
+DEPRECATED_RHO_DIAGNOSTIC_FIELDS = frozenset(
+    {
+        "rho_g",
+        "rho_fit",
+        "rho_samples",
+        "rho_values",
+        "rho_eta_samples",
+        "rho_bootstrap",
+    }
+)
 EVIDENCE_CALIBRATION_FIELDS = (
     BASE_EVIDENCE_CALIBRATION_FIELDS | PHANTOM_DIAGNOSTIC_FIELDS
 )
@@ -116,7 +136,7 @@ REQUIRED_PERFORMANCE_GUARDRAIL_NAMES = frozenset(
         "block_construction",
         "shrinkage_sampling",
         "phantom_counting",
-        "rho_bootstrap",
+        "gamma_phantom_conditioning",
         "trajectories",
         "serialization",
         "worker_task_latency",
@@ -145,8 +165,14 @@ EVIDENCE_ONLY_FIELDS = frozenset(
         "hat_logZ",
         "sigma_logZ",
         "logZ_ref",
-        "rho_g",
-        "rho_fit",
+        "kish_participating_cluster_counts",
+        "phantom_gate_active",
+        "phantom_A_g",
+        "phantom_B_g",
+        "phantom_E_g",
+        "phantom_R_g",
+        "C_min",
+        *DEPRECATED_RHO_DIAGNOSTIC_FIELDS,
     }
 )
 
@@ -205,6 +231,7 @@ def assert_benchmark_metadata(metadata: Mapping[str, Any]) -> None:
 
 def assert_evidence_calibration_record(record: Mapping[str, Any]) -> None:
     _require_mapping(record, "record")
+    _assert_forbidden_keys(record, DEPRECATED_RHO_DIAGNOSTIC_FIELDS)
     if record.get("metric_family") != "evidence_calibration":
         raise AssertionError(
             "record.metric_family must be evidence_calibration."
@@ -228,7 +255,10 @@ def assert_evidence_calibration_record(record: Mapping[str, Any]) -> None:
         "sigma_convention",
     }:
         _assert_real(calibration[key], f"record.evidence_calibration.{key}")
-    has_rho = any(key in calibration for key in PHANTOM_DIAGNOSTIC_FIELDS)
+    has_phantom_diagnostics = any(
+        key in calibration
+        for key in PHANTOM_DIAGNOSTIC_FIELDS
+    )
     if _method_requires_phantom_diagnostics(
         record["metadata"]["method_setting"],
     ):
@@ -237,19 +267,14 @@ def assert_evidence_calibration_record(record: Mapping[str, Any]) -> None:
             PHANTOM_DIAGNOSTIC_FIELDS,
             "record.evidence_calibration",
         )
-        has_rho = True
-    if has_rho:
+        has_phantom_diagnostics = True
+    if has_phantom_diagnostics:
         _assert_required_keys(
             calibration,
             PHANTOM_DIAGNOSTIC_FIELDS,
             "record.evidence_calibration",
         )
-        _assert_rho_curve(calibration["rho_g"], "rho_g")
-        _assert_rho_curve(calibration["rho_fit"], "rho_fit")
-        if len(calibration["rho_g"]) != len(calibration["rho_fit"]):
-            raise AssertionError(
-                "rho_g and rho_fit must have the same length."
-            )
+        _assert_phantom_diagnostics(calibration)
     _assert_forbidden_keys(record, POSTERIOR_ONLY_FIELDS)
 
 
@@ -276,6 +301,7 @@ def assert_plateau_equality_record(record: Mapping[str, Any]) -> None:
 
 def assert_posterior_quality_record(record: Mapping[str, Any]) -> None:
     _require_mapping(record, "record")
+    _assert_forbidden_keys(record, DEPRECATED_RHO_DIAGNOSTIC_FIELDS)
     if record.get("metric_family") != "posterior_quality":
         raise AssertionError("record.metric_family must be posterior_quality.")
     assert_benchmark_metadata(record.get("metadata"))
@@ -460,6 +486,7 @@ def assert_calibration_rollup_table(
 
 def assert_rmse_vs_likelihood_record(record: Mapping[str, Any]) -> None:
     _require_mapping(record, "record")
+    _assert_forbidden_keys(record, DEPRECATED_RHO_DIAGNOSTIC_FIELDS)
     if record.get("metric_family") != "rmse_vs_likelihood":
         raise AssertionError(
             "record.metric_family must be rmse_vs_likelihood."
@@ -537,6 +564,7 @@ def assert_rmse_vs_likelihood_record(record: Mapping[str, Any]) -> None:
 
 def assert_posterior_wasserstein_record(record: Mapping[str, Any]) -> None:
     _require_mapping(record, "record")
+    _assert_forbidden_keys(record, DEPRECATED_RHO_DIAGNOSTIC_FIELDS)
     if record.get("metric_family") != "posterior_wasserstein":
         raise AssertionError(
             "record.metric_family must be posterior_wasserstein."
@@ -597,6 +625,7 @@ def assert_posterior_wasserstein_record(record: Mapping[str, Any]) -> None:
 
 def assert_performance_guardrail_record(record: Mapping[str, Any]) -> None:
     _require_mapping(record, "record")
+    _assert_forbidden_keys(record, DEPRECATED_RHO_DIAGNOSTIC_FIELDS)
     if record.get("metric_family") != "performance_guardrail":
         raise AssertionError(
             "record.metric_family must be performance_guardrail."
@@ -615,6 +644,10 @@ def assert_performance_guardrail_record(record: Mapping[str, Any]) -> None:
         body["name"],
         "record.performance_guardrail.name",
     )
+    if body["name"] in DEPRECATED_RHO_DIAGNOSTIC_FIELDS:
+        raise AssertionError(
+            f"Forbidden stale rho diagnostic {body['name']!r}."
+        )
     if body["name"] not in REQUIRED_PERFORMANCE_GUARDRAIL_NAMES:
         raise AssertionError(
             "performance guardrail name must be one of "
@@ -900,6 +933,71 @@ def _assert_dominance_summary(
         )
 
 
+def _assert_phantom_diagnostics(calibration: Mapping[str, Any]) -> None:
+    kish = _assert_real_sequence(
+        calibration["kish_participating_cluster_counts"],
+        "kish_participating_cluster_counts",
+        minimum=0.0,
+    )
+    gate = _assert_bool_sequence(
+        calibration["phantom_gate_active"],
+        "phantom_gate_active",
+    )
+    counts_by_name = {
+        "phantom_A_g": _assert_real_sequence(
+            calibration["phantom_A_g"],
+            "phantom_A_g",
+            minimum=0.0,
+        ),
+        "phantom_B_g": _assert_real_sequence(
+            calibration["phantom_B_g"],
+            "phantom_B_g",
+            minimum=0.0,
+        ),
+        "phantom_E_g": _assert_real_sequence(
+            calibration["phantom_E_g"],
+            "phantom_E_g",
+            minimum=0.0,
+        ),
+        "phantom_R_g": _assert_real_sequence(
+            calibration["phantom_R_g"],
+            "phantom_R_g",
+            minimum=0.0,
+        ),
+    }
+    C_min = calibration["C_min"]
+    _assert_positive_real(C_min, "C_min")
+    expected_length = len(kish)
+    if len(gate) != expected_length:
+        raise AssertionError(
+            "phantom_gate_active length must align with "
+            "kish_participating_cluster_counts."
+        )
+    for name, values in counts_by_name.items():
+        if len(values) != expected_length:
+            raise AssertionError(
+                f"{name} length must align with "
+                "kish_participating_cluster_counts."
+            )
+
+    kish_array = np.asarray(kish, dtype=float)
+    gate_array = np.asarray(gate, dtype=bool)
+    expected_gate = kish_array >= float(C_min)
+    if not np.array_equal(gate_array, expected_gate):
+        raise AssertionError(
+            "phantom_gate_active must match kish_participating_cluster_counts "
+            ">= C_min."
+        )
+    A = np.asarray(counts_by_name["phantom_A_g"], dtype=float)
+    B = np.asarray(counts_by_name["phantom_B_g"], dtype=float)
+    E = np.asarray(counts_by_name["phantom_E_g"], dtype=float)
+    R = np.asarray(counts_by_name["phantom_R_g"], dtype=float)
+    if not np.allclose(R, A - B - E, rtol=1e-12, atol=1e-12):
+        raise AssertionError(
+            "phantom_R_g must equal A_g - B_g - E_g; R_g derives from A."
+        )
+
+
 def _assert_rho_curve(value: Any, name: str) -> None:
     curve = _require_sequence(value, name)
     if not curve:
@@ -948,6 +1046,7 @@ def _assert_bool_sequence(value: Any, name: str) -> Sequence[Any]:
 
 def _assert_timing_history_row(row: Mapping[str, Any]) -> None:
     _require_mapping(row, "timing_history row")
+    _assert_forbidden_keys(row, DEPRECATED_RHO_DIAGNOSTIC_FIELDS)
     _assert_required_keys(row, TIMING_HISTORY_FIELDS, "timing_history row")
     assert_benchmark_metadata(row["metadata"])
     timings = _require_mapping(row["timings"], "timing_history row.timings")

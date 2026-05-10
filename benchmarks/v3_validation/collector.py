@@ -29,7 +29,9 @@ from benchmarks.v3_validation.schema_checks import (
 from jaxns.constrained_sampler import UniDimSliceSampler
 from jaxns.core import NestedSampler
 from jaxns.pytree import PureDataclassPytree
+from jaxns.race_tree import BlockState
 from jaxns.termination_condition import TerminationCondition
+from jaxns.v3_shrinkage import sample_gamma_weighted_phantom_probabilities
 
 
 QUADRATIC_CENTRE = 0.25
@@ -274,7 +276,7 @@ def _execute_method_run(
         result,
         seed=seed + 101 * (method_index + 1),
         evidence_sample_count=evidence_sample_count,
-        require_rho=(
+        require_phantom_diagnostics=(
                 setting["method_setting"]["method"]
                 == "phantom-conditioned"
         ),
@@ -307,8 +309,16 @@ def _execute_method_run(
         "mc_shrinkage_logZ": float(np.mean(evidence_samples["log_Z_samples"])),
     }
     if setting["method_setting"]["method"] == "phantom-conditioned":
-        calibration_run["rho_g"] = evidence_samples["rho_g"]
-        calibration_run["rho_fit"] = evidence_samples["rho_fit"]
+        for key in (
+                "kish_participating_cluster_counts",
+                "phantom_gate_active",
+                "phantom_A_g",
+                "phantom_B_g",
+                "phantom_E_g",
+                "phantom_R_g",
+                "C_min",
+        ):
+            calibration_run[key] = evidence_samples[key]
 
     posterior_run = _posterior_run_from_result(
         result=result,
@@ -366,7 +376,7 @@ def _sample_evidence_from_result(
         *,
         seed: int,
         evidence_sample_count: int,
-        require_rho: bool,
+        require_phantom_diagnostics: bool,
 ) -> dict[str, Any]:
     reducer_result = dataclasses.replace(result, execution_diagnostics=None)
     key = jax.random.PRNGKey(seed)
@@ -374,6 +384,7 @@ def _sample_evidence_from_result(
     mc = reducer_result.sample_mc_shrinkage(
         num_samples=evidence_sample_count,
         key=key,
+        C_min=20,
     )
     shrinkage_seconds = time.perf_counter() - shrinkage_start
     log_Z_samples = np.asarray(mc.log_Z_samples, dtype=float)
@@ -388,47 +399,146 @@ def _sample_evidence_from_result(
             "MC shrinkage must produce finite non-degenerate log_Z samples "
             "for validation calibration."
         )
-    valid_blocks = np.isfinite(np.asarray(result.log_L_blocks, dtype=float))
-    rho_start = time.perf_counter()
-    rho_g = _finite_rho_curve(
-        mc.rho_values,
-        valid_blocks,
-        require=require_rho,
-        name="rho_g",
+    phantom_diagnostics = _phantom_diagnostics_from_mc(
+        mc,
+        require=require_phantom_diagnostics,
     )
-    rho_fit = _finite_rho_curve(
-        mc.rho_fit,
-        valid_blocks,
-        require=require_rho,
-        name="rho_fit",
+    gamma_seconds = _measure_gamma_phantom_conditioning_seconds(
+        reducer_result,
+        seed=seed + 17_171,
+        evidence_sample_count=evidence_sample_count,
+        require=require_phantom_diagnostics,
     )
-    rho_seconds = time.perf_counter() - rho_start
     return {
         "log_Z_samples": log_Z_samples.tolist(),
-        "rho_g": rho_g,
-        "rho_fit": rho_fit,
         "shrinkage_seconds": float(shrinkage_seconds),
-        "rho_seconds": float(rho_seconds),
+        "gamma_phantom_conditioning_seconds": float(gamma_seconds),
+        **phantom_diagnostics,
     }
 
 
-def _finite_rho_curve(
-        value,
-        valid_blocks: np.ndarray,
+def _measure_gamma_phantom_conditioning_seconds(
+        result,
         *,
+        seed: int,
+        evidence_sample_count: int,
         require: bool,
-        name: str,
-) -> list[float]:
-    curve = np.asarray(value, dtype=float)
-    mask = valid_blocks & np.isfinite(curve) & (curve > 0.0) & (curve <= 1.0)
-    if not np.any(mask):
+) -> float:
+    block_state = _block_state_for_gamma_timing(result, require=require)
+    if block_state is None:
+        return 0.0
+    counts = result.phantom_conditioning_diagnostics(C_min=20)
+    gamma_start = time.perf_counter()
+    probability_samples = sample_gamma_weighted_phantom_probabilities(
+        key=jax.random.PRNGKey(seed),
+        block_state=block_state,
+        A_cg=counts.A_cg,
+        B_cg=counts.B_cg,
+        E_cg=counts.E_cg,
+        num_samples=evidence_sample_count,
+        C_min=20,
+    )
+    jax.block_until_ready(
+        (
+            probability_samples.p_gt_samples,
+            probability_samples.p_eq_samples,
+            probability_samples.p_lt_samples,
+        )
+    )
+    return time.perf_counter() - gamma_start
+
+
+def _block_state_for_gamma_timing(result, *, require: bool) -> BlockState | None:
+    if result.block_size is None or result.block_incoming_K is None:
         if require:
             raise ValueError(
-                f"MC shrinkage must expose finite {name} diagnostics for "
-                "phantom-conditioned validation rows."
+                "Gamma phantom-conditioning timing requires block_size and "
+                "block_incoming_K on phantom-conditioned validation rows."
             )
-        return []
-    return [float(item) for item in curve[mask]]
+        return None
+    log_L_blocks = jnp.asarray(result.log_L_blocks)
+    valid = jnp.isfinite(log_L_blocks)
+    block_first_idx = result.block_first_idx
+    if block_first_idx is None:
+        block_first_idx = jnp.arange(log_L_blocks.shape[0], dtype=jnp.int32)
+        block_first_idx = jnp.where(valid, block_first_idx, -1)
+    block_out_degree = result.block_out_degree
+    if block_out_degree is None:
+        block_out_degree = jnp.zeros_like(result.block_size)
+    return BlockState(
+        log_L_blocks=log_L_blocks,
+        block_first_idx=block_first_idx,
+        block_size=result.block_size,
+        incoming_K=result.block_incoming_K,
+        block_out_degree=block_out_degree,
+        valid=valid,
+        block_start=result.block_start,
+        block_stop=result.block_stop,
+        block_sample_indices=result.block_sample_indices,
+    )
+
+
+def _phantom_diagnostics_from_mc(
+        mc,
+        *,
+        require: bool,
+) -> dict[str, Any]:
+    required_fields = (
+        "kish_participating_cluster_counts",
+        "phantom_gate_active",
+        "phantom_A",
+        "phantom_B",
+        "phantom_E",
+        "phantom_R",
+    )
+    missing = [field for field in required_fields if not hasattr(mc, field)]
+    if missing:
+        if require:
+            raise ValueError(
+                "MC shrinkage must expose Kish/gate/gamma diagnostics for "
+                f"phantom-conditioned validation rows; missing {missing}."
+            )
+        return {}
+    kish = np.asarray(mc.kish_participating_cluster_counts, dtype=float)
+    gate = np.asarray(mc.phantom_gate_active, dtype=bool)
+    A = np.asarray(mc.phantom_A, dtype=float)
+    B = np.asarray(mc.phantom_B, dtype=float)
+    E = np.asarray(mc.phantom_E, dtype=float)
+    R = np.asarray(mc.phantom_R, dtype=float)
+    valid = np.isfinite(kish)
+    if require and not np.any(valid):
+        raise ValueError(
+            "MC shrinkage must expose finite Kish diagnostics for "
+            "phantom-conditioned validation rows."
+        )
+    valid = valid & np.isfinite(A) & np.isfinite(B) & np.isfinite(E) & np.isfinite(R)
+    return {
+        "kish_participating_cluster_counts": [
+            float(value)
+            for value in kish[valid]
+        ],
+        "phantom_gate_active": [
+            bool(value)
+            for value in gate[valid]
+        ],
+        "phantom_A_g": [
+            float(value)
+            for value in A[valid]
+        ],
+        "phantom_B_g": [
+            float(value)
+            for value in B[valid]
+        ],
+        "phantom_E_g": [
+            float(value)
+            for value in E[valid]
+        ],
+        "phantom_R_g": [
+            float(value)
+            for value in R[valid]
+        ],
+        "C_min": 20,
+    }
 
 
 def _collector_timings(
@@ -461,7 +571,9 @@ def _collector_timings(
         "block_construction": float(block_seconds),
         "shrinkage_sampling": float(evidence_samples["shrinkage_seconds"]),
         "phantom_counting": float(phantom_seconds),
-        "rho_bootstrap": float(evidence_samples["rho_seconds"]),
+        "gamma_phantom_conditioning": float(
+            evidence_samples["gamma_phantom_conditioning_seconds"]
+        ),
         "trajectories": float(wall_clock_seconds),
         "serialization": float(serialization_seconds),
         "worker_task_latency": float(wall_clock_seconds / total_samples),
@@ -615,7 +727,7 @@ def _collect_plateau_equality_record(
         result,
         seed=seed + 99_101,
         evidence_sample_count=evidence_sample_count,
-        require_rho=False,
+        require_phantom_diagnostics=False,
     )
     metadata = _metadata(
         seed=seed,
@@ -707,7 +819,7 @@ def _collect_performance_guardrails(
         "block_construction": 1.0,
         "shrinkage_sampling": 10.0,
         "phantom_counting": 1.0,
-        "rho_bootstrap": 1.0,
+        "gamma_phantom_conditioning": 1.0,
         "trajectories": 10.0,
         "serialization": 1.0,
         "worker_task_latency": 10.0,
@@ -735,7 +847,9 @@ def _guardrail_observations_from_timings(
         "block_construction": float(timings["block_construction"]),
         "shrinkage_sampling": float(timings["shrinkage_sampling"]),
         "phantom_counting": float(timings["phantom_counting"]),
-        "rho_bootstrap": float(timings["rho_bootstrap"]),
+        "gamma_phantom_conditioning": float(
+            timings["gamma_phantom_conditioning"]
+        ),
         "trajectories": float(timings["trajectories"]),
         "serialization": float(timings["serialization"]),
         "worker_task_latency": float(timings["worker_task_latency"]),

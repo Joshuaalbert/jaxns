@@ -20,6 +20,8 @@ from jaxns.log_semiring import LogSpace, cumulative_logsumexp, normalise_log_spa
 from jaxns.mixed_precision import mp_policy
 from jaxns.phantom_eval import (
     EvidenceSamples,
+    _sample_mc_shrinkage as _phantom_eval_sample_mc_shrinkage,
+    compute_phantom_count_matrices,
     sample_mc_shrinkage,
     validate_sample_mc_shrinkage_inputs,
 )
@@ -27,7 +29,7 @@ from jaxns.pytree import PureDataclassPytree
 from jaxns.race_tree import BlockState
 from jaxns.random_utils import resample_indicies
 from jaxns.types import FloatArray, IntArray, UType, XType, PRNGKey, BoolArray
-from jaxns.v3_shrinkage import DirichletConcentrations
+from jaxns.v3_shrinkage import DirichletConcentrations, PhantomCountMatrices
 
 MF = TypeVar('MF')
 
@@ -86,6 +88,9 @@ class NestedSamplerResults(PureDataclassPytree):
     block_phantom_A: FloatArray | None = None
     block_phantom_B: FloatArray | None = None
     block_phantom_E: FloatArray | None = None
+    block_phantom_R: FloatArray | None = None
+    block_kish_participating_cluster_counts: FloatArray | None = None
+    block_phantom_gate_active: BoolArray | None = None
     execution_diagnostics: object | None = None
 
     @classmethod
@@ -125,6 +130,11 @@ class NestedSamplerResults(PureDataclassPytree):
     def E_g(self) -> FloatArray | None:
         """Alias for public phantom `E_g` counts."""
         return self.block_phantom_E
+
+    @property
+    def R_g(self) -> FloatArray | None:
+        """Alias for public phantom `R_g` counts."""
+        return self.block_phantom_R
 
     @property
     def block_alpha_gt(self) -> FloatArray | None:
@@ -203,6 +213,9 @@ class NestedSamplerResults(PureDataclassPytree):
             "block_phantom_A",
             "block_phantom_B",
             "block_phantom_E",
+            "block_phantom_R",
+            "block_kish_participating_cluster_counts",
+            "block_phantom_gate_active",
         ):
             value = getattr(self, field_name)
             if value is not None:
@@ -301,7 +314,13 @@ class NestedSamplerResults(PureDataclassPytree):
             key = jax.random.PRNGKey(42)
         return _sample_evidence(self, num_samples=num_samples, batch_size=batch_size, key=key)
 
-    def sample_mc_shrinkage(self, num_samples: int, batch_size: int | None = None, key: PRNGKey | None = None) -> EvidenceSamples:
+    def sample_mc_shrinkage(
+            self,
+            num_samples: int,
+            batch_size: int | None = None,
+            key: PRNGKey | None = None,
+            C_min: float = 20,
+    ) -> EvidenceSamples:
         """
         Sample the evidence using the MC shrinkage method.
 
@@ -315,6 +334,7 @@ class NestedSamplerResults(PureDataclassPytree):
         """
         if key is None:
             key = jax.random.PRNGKey(42)
+        block_state = _block_state_from_results(self)
         validate_sample_mc_shrinkage_inputs(
             log_L_constraints=self.log_L_constraints,
             log_L_classic=self.log_L,
@@ -322,9 +342,49 @@ class NestedSamplerResults(PureDataclassPytree):
             valid_phantom=self.valid_phantom,
             log_L_phantom=self.log_L_phantom,
             num_samples=self.total_num_samples,
-            block_state=_block_state_from_results(self),
+            block_state=block_state,
         )
-        return _sample_mc_shrinkage(self, num_samples=num_samples, batch_size=batch_size, key=key)
+        if block_state is not None:
+            return _sample_mc_shrinkage_with_block_state(
+                results=self,
+                block_state=block_state,
+                num_samples=num_samples,
+                batch_size=batch_size,
+                key=key,
+                C_min=C_min,
+            )
+        return _sample_mc_shrinkage(
+            self,
+            num_samples=num_samples,
+            batch_size=batch_size,
+            key=key,
+            C_min=C_min,
+        )
+
+    def phantom_conditioning_diagnostics(
+            self,
+            C_min: float = 20,
+    ) -> PhantomCountMatrices:
+        """Return block-aligned gamma phantom-conditioning diagnostics."""
+        num_samples = self.total_num_samples.astype(mp_policy.count_dtype)
+        sample_mask = (
+            jnp.arange(self.log_L.shape[0], dtype=mp_policy.count_dtype)
+            < num_samples
+        )
+        block_state = _block_state_from_results(self)
+        if block_state is None:
+            block_valid_mask = jnp.isfinite(self.log_L_blocks)
+        else:
+            block_valid_mask = block_state.valid
+        return compute_phantom_count_matrices(
+            log_L_blocks=self.log_L_blocks,
+            block_valid_mask=block_valid_mask,
+            log_L_constraints=self.log_L_constraints,
+            valid_phantom=self.valid_phantom,
+            log_L_phantom=self.log_L_phantom,
+            sample_mask=sample_mask,
+            C_min=C_min,
+        )
 
     def ess_with_phantom(self, num_samples: int = 512, batch_size: int | None = None, key: PRNGKey | None = None) -> FloatArray:
         """
@@ -462,6 +522,9 @@ def _resample(self: NestedSamplerResults, key: PRNGKey, num_samples: int, replac
         block_phantom_A=None,
         block_phantom_B=None,
         block_phantom_E=None,
+        block_phantom_R=None,
+        block_kish_participating_cluster_counts=None,
+        block_phantom_gate_active=None,
     )
 
 
@@ -527,7 +590,7 @@ def _summary(results: NestedSamplerResults, f_obj: str | TextIO | None = None):
         try:
             sig_figs = -int("{:e}".format(uncert_v).split('e')[1]) + 1
             return round(float(v), sig_figs)
-        except:
+        except Exception:
             return float(v)
 
     def _print_termination_reason(_termination_reason: int):
@@ -720,7 +783,6 @@ def plot_diagnostics(results: NestedSamplerResults, save_file=None):
         plt.show()
 
 
-@partial(jax.jit, inline=True, static_argnames=['num_samples'])
 def _sample_evidence(self: NestedSamplerResults,
                      num_samples: int = 100, batch_size: int | None = None, key: PRNGKey | None = None) -> FloatArray:
     evidence_samples = sample_mc_shrinkage(
@@ -733,14 +795,15 @@ def _sample_evidence(self: NestedSamplerResults,
         num_samples=self.total_num_samples,
         num_Z_samples=num_samples,
         block_state=_block_state_from_results(self),
-        batch_size=batch_size
+        batch_size=batch_size,
     )
     return evidence_samples.log_Z_samples
 
 
-@partial(jax.jit, inline=True, static_argnames=['num_samples'])
 def _sample_mc_shrinkage(self: NestedSamplerResults,
-                         num_samples: int = 100, batch_size: int | None = None, key: PRNGKey | None = None) -> EvidenceSamples:
+                         num_samples: int = 100, batch_size: int | None = None,
+                         key: PRNGKey | None = None,
+                         C_min: float = 20) -> EvidenceSamples:
     evidence_samples = sample_mc_shrinkage(
         key=key,
         log_L_constraints=self.log_L_constraints,
@@ -751,9 +814,64 @@ def _sample_mc_shrinkage(self: NestedSamplerResults,
         num_samples=self.total_num_samples,
         num_Z_samples=num_samples,
         block_state=_block_state_from_results(self),
-        batch_size=batch_size
+        batch_size=batch_size,
+        C_min=C_min,
     )
     return evidence_samples
+
+
+def _sample_mc_shrinkage_with_block_state(
+        *,
+        results: NestedSamplerResults,
+        block_state: BlockState,
+        num_samples: int = 100,
+        batch_size: int | None = None,
+        key: PRNGKey,
+        C_min: float = 20,
+) -> EvidenceSamples:
+    return _sample_mc_shrinkage_with_block_state_jit(
+        key=key,
+        log_L_constraints=results.log_L_constraints,
+        log_L_classic=results.log_L,
+        K_classic=results.num_live_points_per_sample,
+        valid_phantom=results.valid_phantom,
+        log_L_phantom=results.log_L_phantom,
+        total_num_samples=results.total_num_samples,
+        num_Z_samples=num_samples,
+        block_state=block_state,
+        batch_size=batch_size,
+        C_min=C_min,
+    )
+
+
+@partial(jax.jit, inline=True, static_argnames=["num_Z_samples", "batch_size"])
+def _sample_mc_shrinkage_with_block_state_jit(
+        *,
+        key: PRNGKey,
+        log_L_constraints: FloatArray,
+        log_L_classic: FloatArray,
+        K_classic: IntArray,
+        valid_phantom: BoolArray,
+        log_L_phantom: FloatArray,
+        total_num_samples: IntArray,
+        num_Z_samples: int,
+        block_state: BlockState,
+        batch_size: int | None = None,
+        C_min: float = 20,
+) -> EvidenceSamples:
+    return _phantom_eval_sample_mc_shrinkage(
+        key=key,
+        log_L_constraints=log_L_constraints,
+        log_L_classic=log_L_classic,
+        K_classic=K_classic,
+        valid_phantom=valid_phantom,
+        log_L_phantom=log_L_phantom,
+        num_samples=total_num_samples,
+        num_Z_samples=num_Z_samples,
+        block_state=block_state,
+        batch_size=batch_size,
+        C_min=C_min,
+    )
 
 
 def _tuple_prod(t):

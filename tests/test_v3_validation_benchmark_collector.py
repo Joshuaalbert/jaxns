@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import importlib
+from types import SimpleNamespace
 from collections.abc import Mapping
 from collections.abc import Sequence
 from typing import Any
 from typing import NamedTuple
 
+import jax.numpy as jnp
 import numpy as np
+import pytest
 
 from benchmarks.v3_validation.schema_checks import (
     assert_calibration_rollup_table,
@@ -32,6 +35,28 @@ class PublicRunEvent(NamedTuple):
     allocation_target: object
     max_samples: int
     sampler_type: str
+
+
+class GammaTimingCounts(NamedTuple):
+    A_cg: object
+    B_cg: object
+    E_cg: object
+
+
+class GammaTimingResult(NamedTuple):
+    log_L_blocks: object
+    block_first_idx: object
+    block_size: object
+    block_incoming_K: object
+    block_out_degree: object
+    block_start: object
+    block_stop: object
+    block_sample_indices: object
+    counts: GammaTimingCounts
+
+    def phantom_conditioning_diagnostics(self, C_min: float = 20):
+        del C_min
+        return self.counts
 
 
 def _require_collector_api():
@@ -163,7 +188,7 @@ def _assert_method_settings_cover_ticket_methods(
         )
 
 
-def _assert_phantom_rows_include_rho(
+def _assert_phantom_rows_include_kish_gate_diagnostics(
         calibration_records: Sequence[Mapping[str, Any]],
 ) -> None:
     for record in calibration_records:
@@ -171,13 +196,45 @@ def _assert_phantom_rows_include_rho(
         if "phantom" not in method:
             continue
         calibration = record["evidence_calibration"]
-        for key in ("rho_g", "rho_fit"):
+        for key in (
+                "kish_participating_cluster_counts",
+                "phantom_gate_active",
+                "phantom_A_g",
+                "phantom_B_g",
+                "phantom_E_g",
+                "phantom_R_g",
+                "C_min",
+        ):
             assert key in calibration, (
                 f"phantom calibration rows must include {key} diagnostics."
             )
+        assert "rho_g" not in calibration
+        assert "rho_fit" not in calibration
+        kish = np.asarray(
+            calibration["kish_participating_cluster_counts"],
+            dtype=float,
+        )
+        gate = np.asarray(calibration["phantom_gate_active"], dtype=bool)
+        assert kish.ndim == 1 and kish.size > 0, "kish diagnostics must be 1D."
+        assert gate.shape == kish.shape, "phantom_gate_active length must align."
+        assert np.all(kish >= 0.0), "kish diagnostics must be non-negative."
+        c_min = float(calibration["C_min"])
+        assert np.isfinite(c_min) and c_min > 0.0, "C_min must be positive."
+        np.testing.assert_array_equal(gate, kish >= c_min)
+        aggregate_counts = {}
+        for key in ("phantom_A_g", "phantom_B_g", "phantom_E_g", "phantom_R_g"):
             values = np.asarray(calibration[key], dtype=float)
-            assert values.ndim == 1 and values.size > 0
-            assert np.all((values > 0.0) & (values <= 1.0))
+            assert values.shape == kish.shape, f"{key} length must align."
+            assert np.all(values >= 0.0), f"{key} counts must be non-negative."
+            aggregate_counts[key] = values
+        np.testing.assert_allclose(
+            aggregate_counts["phantom_R_g"],
+            (
+                aggregate_counts["phantom_A_g"]
+                - aggregate_counts["phantom_B_g"]
+                - aggregate_counts["phantom_E_g"]
+            ),
+        )
 
 
 def _assert_result_diagnostics_metadata(record: Mapping[str, Any]) -> None:
@@ -201,6 +258,58 @@ def _assert_result_diagnostics_metadata(record: Mapping[str, Any]) -> None:
     assert np.isfinite(float(diagnostics["log_Z_mean"]))
     assert np.isfinite(float(diagnostics["log_Z_uncert"]))
     assert float(diagnostics["ess"]) > 0.0
+
+
+def test_gamma_phantom_conditioning_timing_runs_probability_sampler(
+        monkeypatch,
+):
+    _require_collector_api()
+    collector_module = importlib.import_module("benchmarks.v3_validation.collector")
+    calls = []
+
+    def fake_sampler(**kwargs):
+        calls.append(kwargs)
+        num_samples = int(kwargs["num_samples"])
+        num_blocks = int(kwargs["block_state"].log_L_blocks.shape[0])
+        samples = jnp.ones((num_samples, num_blocks))
+        return SimpleNamespace(
+            p_gt_samples=samples,
+            p_eq_samples=samples,
+            p_lt_samples=samples,
+        )
+
+    monkeypatch.setattr(
+        collector_module,
+        "sample_gamma_weighted_phantom_probabilities",
+        fake_sampler,
+    )
+    result = GammaTimingResult(
+        log_L_blocks=jnp.asarray([0.0, 1.0]),
+        block_first_idx=jnp.asarray([0, 1], dtype=jnp.int32),
+        block_size=jnp.asarray([1, 1], dtype=jnp.int32),
+        block_incoming_K=jnp.asarray([5, 4], dtype=jnp.int32),
+        block_out_degree=jnp.asarray([0, 0], dtype=jnp.int32),
+        block_start=None,
+        block_stop=None,
+        block_sample_indices=jnp.asarray([[0], [1]], dtype=jnp.int32),
+        counts=GammaTimingCounts(
+            A_cg=jnp.ones((20, 2)),
+            B_cg=jnp.zeros((20, 2)),
+            E_cg=jnp.zeros((20, 2)),
+        ),
+    )
+
+    seconds = collector_module._measure_gamma_phantom_conditioning_seconds(
+        result,
+        seed=123,
+        evidence_sample_count=3,
+        require=True,
+    )
+
+    assert seconds >= 0.0
+    assert len(calls) == 1
+    assert calls[0]["num_samples"] == 3
+    assert calls[0]["C_min"] == 20
 
 
 def _assert_plateau_equality_comes_from_result_blocks(
@@ -245,6 +354,53 @@ def _assert_public_runs_were_executed(
     )
 
 
+def _phantom_calibration_record(**updates) -> dict[str, Any]:
+    calibration = {
+        "kish_participating_cluster_counts": [20.0, 12.0],
+        "phantom_gate_active": [True, False],
+        "phantom_A_g": [20.0, 18.0],
+        "phantom_B_g": [8.0, 6.0],
+        "phantom_E_g": [3.0, 2.0],
+        "phantom_R_g": [9.0, 10.0],
+        "C_min": 20,
+    }
+    calibration.update(updates)
+    return {
+        "metadata": {
+            "method_setting": {
+                "method": "phantom-conditioned",
+            },
+        },
+        "evidence_calibration": calibration,
+    }
+
+
+@pytest.mark.parametrize(
+    ("updates", "match"),
+    [
+        ({"phantom_R_g": [8.0, 10.0]}, "Not equal|Mismatched|ACTUAL"),
+        (
+            {
+                "kish_participating_cluster_counts": [20.0, 21.0],
+                "phantom_gate_active": [True, False],
+            },
+            "Arrays are not equal|Mismatched|ACTUAL",
+        ),
+        ({"C_min": 0}, "C_min"),
+        ({"phantom_A_g": [20.0]}, "align"),
+    ],
+    ids=["bad-R", "bad-gate", "bad-C-min", "bad-length"],
+)
+def test_collector_phantom_row_check_rejects_incoherent_diagnostics(
+        updates,
+        match,
+):
+    with pytest.raises(AssertionError, match=match):
+        _assert_phantom_rows_include_kish_gate_diagnostics(
+            [_phantom_calibration_record(**updates)]
+        )
+
+
 def test_minimal_collector_runs_public_v3_apis_and_emits_schema_records(
         monkeypatch,
 ):
@@ -267,7 +423,7 @@ def test_minimal_collector_runs_public_v3_apis_and_emits_schema_records(
     calibration_records = _records_section(rollup, "evidence_calibration")
     assert_calibration_table(calibration_records)
     _assert_method_settings_cover_ticket_methods(calibration_records)
-    _assert_phantom_rows_include_rho(calibration_records)
+    _assert_phantom_rows_include_kish_gate_diagnostics(calibration_records)
     for record in calibration_records:
         _assert_result_diagnostics_metadata(record)
 
@@ -294,6 +450,12 @@ def test_minimal_collector_runs_public_v3_apis_and_emits_schema_records(
 
     guardrail_records = _records_section(rollup, "performance_guardrails")
     assert_performance_guardrail_suite(guardrail_records)
+    guardrail_names = {
+        record["performance_guardrail"]["name"]
+        for record in guardrail_records
+    }
+    assert "gamma_phantom_conditioning" in guardrail_names
+    assert "rho_bootstrap" not in guardrail_names
 
     timing_history = _records_section(rollup, "timing_history")
     timing_rows = _records_section(rollup, "timing_rows")
@@ -301,3 +463,6 @@ def test_minimal_collector_runs_public_v3_apis_and_emits_schema_records(
     assert_timing_history_append_only([], timing_rows)
     for row in timing_rows:
         assert row in timing_history
+        collector_timings = row["metadata"].get("collector_timings", {})
+        assert "gamma_phantom_conditioning" in collector_timings
+        assert "rho_bootstrap" not in collector_timings

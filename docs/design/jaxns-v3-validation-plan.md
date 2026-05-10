@@ -44,7 +44,7 @@ Reports should include:
 - empirical root-mean-square error;
 - relationship between reported and empirical uncertainty;
 - comparison of expectation-based estimates to Monte Carlo shrinkage estimates;
-- per-block `rho_g` estimates plotted alongside the fitted `rho_g` curve.
+- per-block Kish participating-cluster counts and phantom gate activation.
 
 ## Plateau Tests
 
@@ -58,7 +58,7 @@ They should measure:
 - empirical root-mean-square error;
 - comparison of expectation-based estimates to Monte Carlo shrinkage estimates;
 - relationship between reported and empirical uncertainty;
-- per-block `rho_g` estimates plotted alongside the fitted `rho_g` curve;
+- per-block Kish participating-cluster counts and phantom gate activation;
 - whether phantom equality counts improve atom-mass inference without biasing
   shrinkage.
 
@@ -155,7 +155,11 @@ breaks it into:
 The paper also names constrained-sampler choices that can affect benchmarks:
 
 - isotropic Gaussian direction kernels;
-- ellipsoidal Gaussian direction kernels;
+- GMM-based ellipsoidal Gaussian direction kernels fit to the current
+  posterior approximation from accumulated accepted classic samples and
+  nested-sampling posterior weights, under the v3 policy of attempting updates
+  every five completed shells, with component choice proportional to integrated
+  volume and kernel snapshots frozen for each chain and shell epoch;
 - straight-line perfect bracketing;
 - Galilean sampling, including path-length-uniform sampling after Hausdorff
   reflections and U-turn trajectory construction;
@@ -173,12 +177,23 @@ The paper's expected diagnostics depend on the underlying assumptions:
 - plateau or no-seed fallback applies the out-degree increment to the actual
   dispatch parent after sentinel fallback, without requiring stored parent
   links in persisted sample state;
+- non-isotropic direction-kernel adaptation is owned by the coordinator, uses
+  the current posterior-weighted approximation from accumulated accepted
+  classic samples, excludes phantom coordinates, and is frozen during chains
+  and shell epochs so it cannot adapt to a current chain point;
+- GMM direction-kernel component probabilities are proportional to integrated
+  ellipsoidal volume; component count, covariance regularization, bounded
+  fitting-row policy, invalid-fit thresholds, and fallback to the previous
+  valid kernel or isotropic kernel follow the constrained-sampling design; and
+  fallback activation is reported;
 - phantom states are stationary enough after burn-in;
 - Galilean trajectory-building points are excluded from phantom clusters; only
   retained post-burn-in constrained-sampler states that are uniform under the
   parent contour may condition shrinkage;
-- `rho_g` is estimated by cluster-bootstrap covariance matching, and the paper
-  suggests fitting a low-order function against normalized race time;
+- phantom clusters are approximately independent between clusters and may be
+  arbitrarily correlated within cluster;
+- phantom conditioning uses parent-contour-gated per-cluster counts,
+  `Gamma(1, 1)` cluster weights, and a Kish participating-cluster threshold;
 - plateau posterior weighting uses `X_g = X_{g-1} p_{>g}`, splits equality atom
   mass equally across plateau samples, and uses `1 - p_{>g}` for non-plateau
   mass.
@@ -191,8 +206,15 @@ framework. It describes the following expected checks:
 - evidence z-scores are centered near zero across seeds;
 - evidence z-score standard deviation is near one across seeds;
 - reported uncertainty tracks empirical uncertainty;
+- switching from isotropic to GMM-based non-isotropic direction kernels does
+  not measurably bias known-reference evidence estimates, while any benefit is
+  reported as mixing, likelihood-evaluation efficiency, or posterior-exploration
+  improvement;
 - plateau equality mass recovery improves when informative phantom equality
   counts are present;
+- singleton independent phantom clusters match the iid Dirichlet posterior,
+  while correlated multi-sample clusters have larger shrinkage variance without
+  a systematic mean shift;
 - phantom conditioning does not introduce measurable log-evidence bias in known
   reference problems;
 - efficiency comparisons are reported as cost-error curves, not only as single

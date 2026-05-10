@@ -216,6 +216,92 @@ class ArgsParamsAssertingSampler(PureDataclassPytree, AbstractSampler):
 ArgsParamsAssertingSampler.register_pytree()
 
 
+@dataclasses.dataclass(slots=True)
+class DirectionContextRecordingSampler(AbstractSampler):
+    direction_kernel: str = "ellipsoidal"
+    observed_kernel_versions: list[int] = dataclasses.field(
+        default_factory=list,
+    )
+
+    def num_phantom(self) -> int:
+        return 0
+
+    def get_sample(
+            self,
+            key,
+            log_L_constraint,
+            seed_point: SeedPoint,
+            args=(),
+            params=None,
+            adaptation_context=None,
+    ):
+        del key, args, params
+        if adaptation_context is None:
+            raise AssertionError("direction adaptation context is required")
+        self.observed_kernel_versions.append(
+            int(getattr(adaptation_context, "kernel_version"))
+        )
+        log_L = jnp.where(
+            jnp.isneginf(log_L_constraint),
+            seed_point.log_L0,
+            jnp.maximum(seed_point.log_L0, log_L_constraint)
+            + jnp.asarray(0.05),
+        )
+        phantom_samples = PhantomSamples(
+            U_samples=None,
+            valid_mask=jnp.zeros((0,), dtype=bool),
+            log_L=jnp.zeros((0,), dtype=jnp.asarray(log_L).dtype),
+        )
+        return (
+            seed_point.U0,
+            log_L,
+            jnp.asarray(1, dtype=jnp.int32),
+            phantom_samples,
+        )
+
+
+@dataclasses.dataclass(slots=True)
+class SeedRecordingSampler(AbstractSampler):
+    observed_seed_indices: list[int] = dataclasses.field(
+        default_factory=list,
+    )
+    observed_constraints: list[float] = dataclasses.field(
+        default_factory=list,
+    )
+
+    def num_phantom(self) -> int:
+        return 0
+
+    def get_sample(
+            self,
+            key,
+            log_L_constraint,
+            seed_point: SeedPoint,
+            args=(),
+            params=None,
+            adaptation_context=None,
+    ):
+        del key, args, params, adaptation_context
+        self.observed_seed_indices.append(int(seed_point.U0))
+        self.observed_constraints.append(float(log_L_constraint))
+        log_L = jnp.where(
+            jnp.isneginf(log_L_constraint),
+            seed_point.log_L0 + jnp.asarray(0.5),
+            log_L_constraint + jnp.asarray(0.5),
+        )
+        phantom_samples = PhantomSamples(
+            U_samples=jnp.zeros((0,), dtype=jnp.asarray(seed_point.U0).dtype),
+            valid_mask=jnp.zeros((0,), dtype=bool),
+            log_L=jnp.zeros((0,), dtype=jnp.asarray(log_L).dtype),
+        )
+        return (
+            seed_point.U0,
+            log_L,
+            jnp.asarray(1, dtype=jnp.int32),
+            phantom_samples,
+        )
+
+
 PUBLIC_ALLOCATION_TARGETS = (
     "uniform",
     "evidence_improving",
@@ -362,6 +448,48 @@ def _make_state(
         args=(),
         params=None,
         termination_reason=jnp.asarray(0, dtype=jnp.int32),
+    )
+
+
+def _make_indexed_seed_state(
+        *,
+        root_out_degree: int,
+        log_likelihoods: tuple[float, ...],
+        out_degree: tuple[int, ...],
+        max_samples: int,
+) -> State:
+    state = _make_state(
+        root_out_degree=root_out_degree,
+        log_likelihoods=log_likelihoods,
+        out_degree=out_degree,
+        max_samples=max_samples,
+    )
+    active_indices = tuple(range(len(log_likelihoods)))
+    pad_count = max_samples - len(log_likelihoods)
+    samples = dataclasses.replace(
+        state.samples,
+        U_samples=jnp.asarray(
+            active_indices + tuple([-1] * pad_count),
+            dtype=jnp.int32,
+        ),
+    )
+    return dataclasses.replace(state, samples=samples)
+
+
+def _make_parent_work(
+        *,
+        parent_idx: int,
+        parent_log_L_constraint: float,
+) -> allocation.ParentWork:
+    return allocation.ParentWork(
+        parent_idxs=jnp.asarray([parent_idx], dtype=jnp.int32),
+        parent_log_L_constraints=jnp.asarray(
+            [parent_log_L_constraint],
+            dtype=float,
+        ),
+        target_block_idxs=jnp.asarray([0], dtype=jnp.int32),
+        parent_block_idxs=jnp.asarray([0], dtype=jnp.int32),
+        fallback_to_root=jnp.asarray([False], dtype=bool),
     )
 
 
@@ -767,7 +895,7 @@ def test_uniform_delta_k_is_accepted_by_depth_limited_public_resume():
     assert int(high_delta_state.num_samples) == 7
 
 
-def test_public_allocation_modes_choose_different_parent_work_sets():
+def test_public_allocation_modes_run_and_record_requested_target():
     initial_state = _make_state(
         root_out_degree=3,
         log_likelihoods=(
@@ -781,6 +909,7 @@ def test_public_allocation_modes_choose_different_parent_work_sets():
         max_samples=10,
     )
     work_by_mode = {}
+    diagnostics_modes = {}
 
     for allocation_target in PUBLIC_ALLOCATION_TARGETS:
         observations: list[int] = []
@@ -802,8 +931,16 @@ def test_public_allocation_modes_choose_different_parent_work_sets():
             state,
             initial_num_samples=4,
         )
+        diagnostics_modes[allocation_target] = (
+            state.execution_diagnostics.allocation.mode
+        )
 
-    assert len(set(work_by_mode.values())) == len(PUBLIC_ALLOCATION_TARGETS)
+    assert diagnostics_modes == {
+        allocation_target: allocation_target
+        for allocation_target in PUBLIC_ALLOCATION_TARGETS
+    }
+    for allocation_target in PUBLIC_ALLOCATION_TARGETS:
+        assert work_by_mode[allocation_target][2] > 0
 
 
 def test_select_parent_work_targets_exact_under_allocated_strict_parent():
@@ -873,14 +1010,15 @@ def test_select_parent_work_uses_volume_weighted_strict_parent_blocks():
 
     # For target block 3, the documented strict-parent weights are
     # proportional to X_3 / X_g = [0.1, 0.2, 0.5] for blocks 0, 1, and 2.
-    # With PRNGKey(2), this selects block 1, not the first or nearest parent.
+    # Selection is a key-driven weighted-CDF draw, not a categorical
+    # implementation accident. With PRNGKey(2), this selects block 2.
     np.testing.assert_array_equal(
         np.asarray(parent_work.parent_idxs),
-        np.asarray([1]),
+        np.asarray([2]),
     )
     np.testing.assert_array_equal(
         np.asarray(parent_work.parent_log_L_constraints),
-        np.asarray([1.0]),
+        np.asarray([2.0]),
     )
     np.testing.assert_array_equal(
         np.asarray(parent_work.target_block_idxs),
@@ -888,12 +1026,82 @@ def test_select_parent_work_uses_volume_weighted_strict_parent_blocks():
     )
     np.testing.assert_array_equal(
         np.asarray(parent_work.parent_block_idxs),
-        np.asarray([1]),
+        np.asarray([2]),
     )
     np.testing.assert_array_equal(
         np.asarray(parent_work.fallback_to_root),
         np.asarray([False]),
     )
+
+
+def _reference_weighted_cdf_choice(
+        key,
+        candidate_indices: np.ndarray,
+        weights: np.ndarray,
+) -> int:
+    if candidate_indices.size == 1:
+        return int(candidate_indices[0])
+    finite_positive_weights = np.where(
+        np.isfinite(weights) & (weights > 0.0),
+        weights,
+        0.0,
+    )
+    total = float(np.sum(finite_positive_weights))
+    if total <= 0.0:
+        return int(candidate_indices[0])
+    quantile = float(jax.random.uniform(key, dtype=jnp.float32))
+    cdf = np.cumsum(finite_positive_weights / total)
+    selected_offset = min(
+        int(np.searchsorted(cdf, quantile, side="right")),
+        candidate_indices.size - 1,
+    )
+    return int(candidate_indices[selected_offset])
+
+
+def test_choose_index_from_weights_uses_keyed_weighted_cdf_semantics():
+    candidate_indices = np.asarray([10, 20, 30], dtype=np.int64)
+    weights = np.asarray([0.1, 0.2, 0.7], dtype=float)
+    key = jax.random.PRNGKey(0)
+
+    selected = allocation._choose_index_from_weights(
+        key,
+        candidate_indices,
+        weights,
+    )
+
+    assert selected == _reference_weighted_cdf_choice(
+        key,
+        candidate_indices,
+        weights,
+    )
+    assert allocation._choose_index_from_weights(
+        jax.random.PRNGKey(1),
+        np.asarray([42], dtype=np.int64),
+        np.asarray([0.0], dtype=float),
+    ) == 42
+    assert allocation._choose_index_from_weights(
+        jax.random.PRNGKey(2),
+        candidate_indices,
+        np.asarray([0.0, np.nan, -1.0], dtype=float),
+    ) == 10
+
+
+def test_choose_index_from_weights_zero_quantile_skips_zero_weight_prefix(
+        monkeypatch,
+):
+    def zero_uniform(key, *, dtype):
+        del key
+        return jnp.asarray(0.0, dtype=dtype)
+
+    monkeypatch.setattr(allocation.jax.random, "uniform", zero_uniform)
+
+    selected = allocation._choose_index_from_weights(
+        jax.random.PRNGKey(5),
+        np.asarray([10, 20, 30], dtype=np.int64),
+        np.asarray([0.0, 0.0, 1.0], dtype=float),
+    )
+
+    assert selected == 30
 
 
 def test_select_parent_work_schedules_multiple_items_for_same_block_deficit():
@@ -966,6 +1174,73 @@ def test_select_parent_work_schedules_zero_utility_base_target_deficits():
     assert 2 in set(np.asarray(parent_work.target_block_idxs).tolist())
 
 
+def test_select_parent_work_does_not_double_weight_utility_targets():
+    state = _make_state(
+        root_out_degree=3,
+        log_likelihoods=(0.0, 1.0, 2.0),
+        out_degree=(0, 0, 0),
+        max_samples=3,
+    )
+    plan = _selection_plan(
+        target_K=(3, 3, 6),
+        current_K=(3, 2, 1),
+        log_L_blocks=(0.0, 1.0, 2.0),
+        X=(1.0, 0.5, 0.25),
+    )
+    plan = plan._replace(
+        unit_peak_utility=jnp.asarray([0.5, 1.0, 0.0]),
+    )
+
+    parent_work = allocation.select_parent_work(
+        key=jax.random.PRNGKey(55),
+        state=state,
+        plan=plan,
+        num_parents=3,
+    )
+
+    assert 1 in set(np.asarray(parent_work.target_block_idxs).tolist())
+
+
+def test_select_parent_work_target_choice_depends_on_targets_not_utility_hash():
+    state = _make_state(
+        root_out_degree=3,
+        log_likelihoods=(0.0, 1.0, 2.0),
+        out_degree=(0, 0, 0),
+        max_samples=3,
+    )
+    base_plan = _selection_plan(
+        target_K=(3, 4, 4),
+        current_K=(3, 3, 3),
+        log_L_blocks=(0.0, 1.0, 2.0),
+        X=(1.0, 0.5, 0.25),
+    )
+    utility_weighted_plan = base_plan._replace(
+        unit_peak_utility=jnp.asarray([0.0, 1.0, 0.0]),
+    )
+
+    base_work = allocation.select_parent_work(
+        key=jax.random.PRNGKey(0),
+        state=state,
+        plan=base_plan,
+        num_parents=2,
+    )
+    utility_weighted_work = allocation.select_parent_work(
+        key=jax.random.PRNGKey(0),
+        state=state,
+        plan=utility_weighted_plan,
+        num_parents=2,
+    )
+
+    np.testing.assert_array_equal(
+        np.asarray(utility_weighted_work.target_block_idxs),
+        np.asarray(base_work.target_block_idxs),
+    )
+    np.testing.assert_array_equal(
+        np.asarray(utility_weighted_work.parent_block_idxs),
+        np.asarray(base_work.parent_block_idxs),
+    )
+
+
 def test_select_parent_work_falls_back_to_root_when_no_strict_parent_exists():
     state = _make_state(
         root_out_degree=2,
@@ -1007,6 +1282,147 @@ def test_select_parent_work_falls_back_to_root_when_no_strict_parent_exists():
         np.asarray(parent_work.fallback_to_root),
         np.asarray([True]),
     )
+
+
+def test_sample_parent_work_uses_right_side_plateau_for_strict_seed():
+    sampler = SeedRecordingSampler()
+    nested_sampler = _make_deterministic_nested_sampler(max_samples=8)
+    nested_sampler.sampler = sampler
+    state = _make_indexed_seed_state(
+        root_out_degree=1,
+        log_likelihoods=(0.0, 1.0, 1.0, 1.0, 2.0),
+        out_degree=(1, 0, 0, 0, 0),
+        max_samples=8,
+    )
+
+    adjusted_work, _ = nested_sampler._sample_parent_work(
+        key=jax.random.PRNGKey(7),
+        state=state,
+        parent_work=_make_parent_work(
+            parent_idx=3,
+            parent_log_L_constraint=1.0,
+        ),
+    )
+
+    assert sampler.observed_seed_indices == [4]
+    assert sampler.observed_constraints == [1.0]
+    np.testing.assert_array_equal(
+        np.asarray(adjusted_work.parent_idxs),
+        np.asarray([3]),
+    )
+    np.testing.assert_array_equal(
+        np.asarray(adjusted_work.parent_log_L_constraints),
+        np.asarray([1.0]),
+    )
+    np.testing.assert_array_equal(
+        np.asarray(adjusted_work.parent_block_idxs),
+        np.asarray([0]),
+    )
+    np.testing.assert_array_equal(
+        np.asarray(adjusted_work.fallback_to_root),
+        np.asarray([False]),
+    )
+
+
+def test_sample_parent_work_falls_back_to_root_when_no_strict_seed():
+    sampler = SeedRecordingSampler()
+    nested_sampler = _make_deterministic_nested_sampler(max_samples=5)
+    nested_sampler.sampler = sampler
+    state = _make_indexed_seed_state(
+        root_out_degree=2,
+        log_likelihoods=(0.0, 0.0),
+        out_degree=(0, 0),
+        max_samples=5,
+    )
+
+    adjusted_work, new_samples = nested_sampler._sample_parent_work(
+        key=jax.random.PRNGKey(11),
+        state=state,
+        parent_work=_make_parent_work(
+            parent_idx=1,
+            parent_log_L_constraint=0.0,
+        ),
+    )
+
+    assert sampler.observed_seed_indices[0] in {0, 1}
+    assert sampler.observed_constraints == [-np.inf]
+    np.testing.assert_array_equal(
+        np.asarray(adjusted_work.parent_idxs),
+        np.asarray([-1]),
+    )
+    np.testing.assert_array_equal(
+        np.asarray(adjusted_work.parent_block_idxs),
+        np.asarray([-1]),
+    )
+    np.testing.assert_array_equal(
+        np.asarray(adjusted_work.fallback_to_root),
+        np.asarray([True]),
+    )
+    assert float(new_samples.log_L_constraints[0]) == -np.inf
+
+
+def test_sample_parent_work_selects_only_active_valid_seed_indices():
+    sampler = SeedRecordingSampler()
+    nested_sampler = _make_deterministic_nested_sampler(max_samples=7)
+    nested_sampler.sampler = sampler
+    state = _make_indexed_seed_state(
+        root_out_degree=1,
+        log_likelihoods=(0.0, 0.5, 1.0, 1.5),
+        out_degree=(1, 0, 0, 0),
+        max_samples=7,
+    )
+
+    nested_sampler._sample_parent_work(
+        key=jax.random.PRNGKey(13),
+        state=state,
+        parent_work=_make_parent_work(
+            parent_idx=1,
+            parent_log_L_constraint=0.5,
+        ),
+    )
+
+    selected_idx = sampler.observed_seed_indices[0]
+    assert selected_idx in {2, 3}
+    assert selected_idx < int(state.num_samples)
+    assert float(state.samples.log_likelihoods[selected_idx]) > 0.5
+
+
+def test_sample_parent_work_never_selects_padded_inactive_seed():
+    sampler = SeedRecordingSampler()
+    nested_sampler = _make_deterministic_nested_sampler(max_samples=8)
+    nested_sampler.sampler = sampler
+    state = _make_indexed_seed_state(
+        root_out_degree=1,
+        log_likelihoods=(0.0, 1.0, 2.0),
+        out_degree=(1, 0, 0),
+        max_samples=8,
+    )
+
+    adjusted_work, new_samples = nested_sampler._sample_parent_work(
+        key=jax.random.PRNGKey(17),
+        state=state,
+        parent_work=_make_parent_work(
+            parent_idx=2,
+            parent_log_L_constraint=2.0,
+        ),
+    )
+
+    assert sampler.observed_seed_indices[0] in {0, 1, 2}
+    assert sampler.observed_seed_indices[0] != -1
+    assert sampler.observed_constraints == [-np.inf]
+    np.testing.assert_array_equal(
+        np.asarray(adjusted_work.parent_idxs),
+        np.asarray([-1]),
+    )
+    np.testing.assert_array_equal(
+        np.asarray(adjusted_work.parent_log_L_constraints),
+        np.asarray([-np.inf]),
+    )
+    np.testing.assert_array_equal(
+        np.asarray(adjusted_work.fallback_to_root),
+        np.asarray([True]),
+    )
+    assert float(new_samples.log_L_constraints[0]) == -np.inf
 
 
 def test_accept_parent_work_preserves_in_flight_parent_indices():
@@ -1289,6 +1705,80 @@ def test_conservative_posterior_utility_option_is_public_for_run_and_resume():
 
     assert isinstance(initial_state, State)
     assert isinstance(resumed_state, State)
+
+
+def test_v3_run_loop_updates_and_dispatches_frozen_direction_context(monkeypatch):
+    em_gmm = __import__("jaxns.em_gmm", fromlist=["DirectionGMMKernel"])
+    sampler = DirectionContextRecordingSampler()
+    model = make_toy_model()
+    fitted_kernel = em_gmm.DirectionGMMKernel(
+        component_means=jnp.asarray([[0.0]]),
+        component_radii=jnp.asarray([[0.5]]),
+        component_rotations=jnp.asarray([[[1.0]]]),
+        component_probabilities=jnp.asarray([1.0]),
+    )
+
+    def successful_fit(**kwargs):
+        del kwargs
+        return em_gmm.DirectionKernelFitResult(
+            kernel=fitted_kernel,
+            diagnostics=em_gmm.DirectionFittingDiagnostics(
+                active_kernel_mode="gmm",
+                fallback_active=False,
+            ),
+        )
+
+    monkeypatch.setattr(
+        em_gmm,
+        "fit_posterior_weighted_direction_gmm",
+        successful_fit,
+    )
+    ns = NestedSampler(
+        model=model,
+        sampler=sampler,
+        target_num_live_points=20,
+        max_samples=22,
+        shell_size=1,
+        termination_condition=TerminationCondition(max_samples=22),
+    )
+
+    state = ns.run_until_goal(
+        goal_cond=lambda state: False,
+        depth_cond=TerminationCondition(max_samples=22),
+        allocation_target="uniform",
+        key=jax.random.PRNGKey(71),
+        max_goal_iterations=2,
+    )
+
+    assert isinstance(state, State)
+    assert sampler.observed_kernel_versions[:20] == [0] * 20
+    assert 1 in sampler.observed_kernel_versions[20:]
+    diagnostics = state.execution_diagnostics
+    assert diagnostics is not None
+    direction_diagnostics = diagnostics.sampler.direction_adaptation_diagnostics
+    assert direction_diagnostics
+    assert any(
+        (
+            getattr(item, "active_kernel_mode", None) == "gmm"
+            and not bool(getattr(item, "fallback_active", True))
+            and int(getattr(item, "active_kernel_version", 0)) >= 1
+        )
+        for item in direction_diagnostics
+    )
+
+
+@pytest.mark.parametrize(
+    "direction_kernel",
+    ("gmm", "non_isotropic", "non-isotropic"),
+)
+def test_gmm_direction_kernel_aliases_are_public(direction_kernel):
+    sampler = UniDimSliceSampler(
+        model=make_toy_model(),
+        num_slices=3,
+        direction_kernel=direction_kernel,
+    )
+
+    assert sampler.direction_kernel == direction_kernel
 
 
 def test_legacy_run_and_resume_remain_fixed_live_point_compatibility_path():

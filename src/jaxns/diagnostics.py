@@ -54,6 +54,7 @@ class SamplerDiagnostics:
     retained_phantom_counts_per_sample: object
     likelihood_evaluations_per_classic_sample: object
     likelihood_evaluations_per_retained_phantom_cluster: object
+    direction_adaptation_diagnostics: tuple[object, ...] = ()
 
 
 @dataclasses.dataclass(frozen=True, slots=True)

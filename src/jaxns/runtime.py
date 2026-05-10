@@ -9,8 +9,10 @@ import time
 from collections.abc import Iterable
 from typing import TypeVar
 
+import jax
 from jaxctx import CtxParams
 
+from jaxns.constrained_sampler import UniDimSliceSampler
 from jaxns.core import NestedSampler
 from jaxns.model import Model
 from jaxns.samples import SeedPoint
@@ -178,6 +180,23 @@ class SerializedWorkerTask:
     key_bytes: bytes
     log_L_constraint_bytes: bytes
     seed_point_bytes: bytes
+    adaptation_context_bytes: bytes | None = None
+    runtime_compile_identity: RuntimeCompileIdentity | None = None
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class WorkerRuntimePayload:
+    problem: ModelProblem
+    sampler: object
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class _WorkerTaskExecutionStats:
+    output: object
+    sampler_loop_mode: str
+    dispatch_latency_seconds: float
+    payload_cache_latency_seconds: float
+    sampler_execution_latency_seconds: float
 
 
 @dataclasses.dataclass(slots=True)
@@ -198,6 +217,10 @@ class CoordinatorDispatchRecord:
     runtime_compile_identity: RuntimeCompileIdentity
     serialized_problem: SerializedModelProblem
     dispatch_sequence: int = -1
+    sampler_loop_mode: str = "python"
+    dispatch_latency_seconds: float = 0.0
+    payload_cache_latency_seconds: float = 0.0
+    sampler_execution_latency_seconds: float = 0.0
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -228,6 +251,10 @@ class CoordinatorLifecycleRecord:
     current_parent_idx: int | None = None
     current_effective_log_L_constraint: float | None = None
     dispatch_sequence: int = -1
+    sampler_loop_mode: str = "python"
+    dispatch_latency_seconds: float = 0.0
+    payload_cache_latency_seconds: float = 0.0
+    sampler_execution_latency_seconds: float = 0.0
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -251,6 +278,10 @@ class _LifecycleRecordMetadata:
     client_id: str
     runtime_compile_identity: RuntimeCompileIdentity
     serialized_problem: SerializedModelProblem | None
+    sampler_loop_mode: str = "python"
+    dispatch_latency_seconds: float = 0.0
+    payload_cache_latency_seconds: float = 0.0
+    sampler_execution_latency_seconds: float = 0.0
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -337,6 +368,10 @@ class LocalLoadBalancerState:
         default_factory=dict,
         repr=False,
     )
+    _worker_runtime_cache: dict[str, WorkerRuntimePayload] = dataclasses.field(
+        default_factory=dict,
+        repr=False,
+    )
     shutdown_event: threading.Event = dataclasses.field(
         default_factory=threading.Event,
         repr=False,
@@ -367,8 +402,11 @@ class LocalLoadBalancerState:
         with self._shutdown_condition:
             self.unregister_compute_sectors_for_client(client_id)
             self._active_client_ids.discard(client_id)
+            no_active_clients = len(self._active_client_ids) == 0
+            if no_active_clients:
+                self.clear_worker_runtime_cache()
             self._shutdown_condition.notify_all()
-            return len(self._active_client_ids) == 0
+            return no_active_clients
 
     def allocate_runner_identity(self, client_id: str) -> RunnerIdentity:
         with self._lock:
@@ -502,6 +540,35 @@ class LocalLoadBalancerState:
                 )
             )
 
+    def worker_runtime_payload(
+            self,
+            *,
+            task: SerializedWorkerTask,
+            runtime_compile_identity: RuntimeCompileIdentity,
+    ) -> WorkerRuntimePayload:
+        cache_key = runtime_compile_identity.identity_digest
+        with self._lock:
+            payload = self._worker_runtime_cache.get(cache_key)
+        if payload is not None:
+            return payload
+
+        payload = _deserialize_worker_runtime_payload(task)
+        with self._lock:
+            existing = self._worker_runtime_cache.get(cache_key)
+            if existing is not None:
+                return existing
+            self._worker_runtime_cache[cache_key] = payload
+            return payload
+
+    def clear_worker_runtime_cache(self) -> None:
+        with self._lock:
+            self._worker_runtime_cache.clear()
+        jax.clear_caches()
+
+    def worker_runtime_cache_size(self) -> int:
+        with self._lock:
+            return len(self._worker_runtime_cache)
+
     def record_dispatch(self, record: object) -> object:
         with self._lock:
             sequence = len(self.coordinator_dispatch_records)
@@ -625,9 +692,11 @@ def _build_runtime_compile_identity(
         *,
         serialized_problem: SerializedModelProblem,
         sampler: object,
+        sampler_bytes: bytes | None = None,
         worker_device_types: tuple[str, ...],
 ) -> RuntimeCompileIdentity:
-    sampler_bytes = serialize_sampler(sampler)
+    if sampler_bytes is None:
+        sampler_bytes = serialize_sampler(sampler)
     serialized_model_digest = _digest_bytes(serialized_problem.model_bytes)
     serialized_args_digest = _digest_bytes(serialized_problem.args_bytes)
     serialized_params_digest = _digest_bytes(serialized_problem.params_bytes)
@@ -655,23 +724,116 @@ def _build_runtime_compile_identity(
     )
 
 
-def _execute_serialized_worker_task(task: SerializedWorkerTask):
+def _inject_problem_model(sampler: object, problem: ModelProblem) -> None:
+    if not hasattr(sampler, "model"):
+        return
+    try:
+        sampler.model = problem.model
+    except dataclasses.FrozenInstanceError:
+        object.__setattr__(sampler, "model", problem.model)
+
+
+def _deserialize_worker_runtime_payload(
+        task: SerializedWorkerTask,
+) -> WorkerRuntimePayload:
     problem = task.serialized_problem.deserialize_problem()
     sampler = deserialize_sampler(task.sampler_bytes)
-    if hasattr(sampler, "model"):
-        try:
-            sampler.model = problem.model
-        except dataclasses.FrozenInstanceError:
-            object.__setattr__(sampler, "model", problem.model)
+    _inject_problem_model(sampler, problem)
+    return WorkerRuntimePayload(problem=problem, sampler=sampler)
+
+
+def _nonnegative_elapsed_seconds(start: float, end: float) -> float:
+    return max(float(end - start), 0.0)
+
+
+def _execute_serialized_worker_task(
+        task: SerializedWorkerTask,
+        *,
+        runtime_lb_state: LocalLoadBalancerState | None = None,
+):
+    return _execute_serialized_worker_task_with_stats(
+        task,
+        runtime_lb_state=runtime_lb_state,
+    ).output
+
+
+def _execute_serialized_worker_task_with_stats(
+        task: SerializedWorkerTask,
+        *,
+        runtime_lb_state: LocalLoadBalancerState | None = None,
+) -> _WorkerTaskExecutionStats:
+    dispatch_start = time.perf_counter()
+    payload_start = dispatch_start
+    if (
+            runtime_lb_state is not None
+            and task.runtime_compile_identity is not None
+    ):
+        payload = runtime_lb_state.worker_runtime_payload(
+            task=task,
+            runtime_compile_identity=task.runtime_compile_identity,
+        )
+    else:
+        payload = _deserialize_worker_runtime_payload(task)
+    payload_end = time.perf_counter()
+    problem = payload.problem
+    sampler = payload.sampler
     key = unpickle_payload(task.key_bytes)
     log_L_constraint = unpickle_payload(task.log_L_constraint_bytes)
     seed_point = unpickle_payload(task.seed_point_bytes)
-    return sampler.get_sample(
-        key,
-        log_L_constraint,
-        seed_point,
-        args=problem.args,
-        params=problem.params,
+    adaptation_context = (
+        None
+        if task.adaptation_context_bytes is None
+        else unpickle_payload(task.adaptation_context_bytes)
+    )
+    sampler_loop_mode = "python"
+    sampler_start = time.perf_counter()
+    if isinstance(sampler, UniDimSliceSampler):
+        output = sampler.get_sample(
+            key,
+            log_L_constraint,
+            seed_point,
+            args=problem.args,
+            params=problem.params,
+            adaptation_context={
+                "force_python_loop": True,
+                "sampler_loop_mode": sampler_loop_mode,
+                "direction_adaptation_context": adaptation_context,
+            },
+        )
+    elif adaptation_context is not None:
+        output = sampler.get_sample(
+            key,
+            log_L_constraint,
+            seed_point,
+            args=problem.args,
+            params=problem.params,
+            adaptation_context=adaptation_context,
+        )
+    else:
+        output = sampler.get_sample(
+            key,
+            log_L_constraint,
+            seed_point,
+            args=problem.args,
+            params=problem.params,
+        )
+    sampler_end = time.perf_counter()
+    dispatch_end = sampler_end
+    return _WorkerTaskExecutionStats(
+        output=output,
+        sampler_loop_mode=sampler_loop_mode,
+        dispatch_latency_seconds=_nonnegative_elapsed_seconds(
+            dispatch_start,
+            dispatch_end,
+        ),
+        payload_cache_latency_seconds=_nonnegative_elapsed_seconds(
+            payload_start,
+            payload_end,
+        ),
+        sampler_execution_latency_seconds=_nonnegative_elapsed_seconds(
+            sampler_start,
+            sampler_end,
+        ),
     )
 
 
@@ -729,6 +891,10 @@ class RuntimeNestedSampler(NestedSampler):
     runtime_runner_identity: RunnerIdentity | None = None
     runtime_problem_payload: SerializedModelProblem | None = None
     runtime_compile_identity: RuntimeCompileIdentity | None = None
+    runtime_sampler_bytes: bytes | None = dataclasses.field(
+        default=None,
+        repr=False,
+    )
     runtime_acceptance_ledger: AcceptanceLedger = dataclasses.field(
         default_factory=AcceptanceLedger,
         repr=False,
@@ -766,13 +932,16 @@ class RuntimeNestedSampler(NestedSampler):
                 and self.runtime_lb_state is not None
                 and self.runtime_problem_payload is not None
         ):
+            sampler_bytes = serialize_sampler(self.sampler)
             self.runtime_compile_identity = _build_runtime_compile_identity(
                 serialized_problem=self.runtime_problem_payload,
                 sampler=self.sampler,
+                sampler_bytes=sampler_bytes,
                 worker_device_types=(
                     self.runtime_lb_state.worker_device_types()
                 ),
             )
+            self.runtime_sampler_bytes = sampler_bytes
 
     def _sample_constrained(
             self,
@@ -783,14 +952,21 @@ class RuntimeNestedSampler(NestedSampler):
             requested_parent_idx: int,
             effective_parent_idx: int,
             accepted_parent_idx: int,
+            adaptation_context=None,
     ):
         _, _, problem_payload = self._require_runtime_context()
         worker_task = SerializedWorkerTask(
             serialized_problem=problem_payload,
-            sampler_bytes=serialize_sampler(self.sampler),
+            sampler_bytes=self._require_runtime_sampler_bytes(),
             key_bytes=pickle_payload(key),
             log_L_constraint_bytes=pickle_payload(log_L_constraint),
             seed_point_bytes=pickle_payload(seed_point),
+            adaptation_context_bytes=(
+                None
+                if adaptation_context is None
+                else pickle_payload(adaptation_context)
+            ),
+            runtime_compile_identity=self._require_runtime_compile_identity(),
         )
         accepted_log_l = float(log_L_constraint)
         dispatch_record = self.prepare_runtime_dispatch(
@@ -805,7 +981,10 @@ class RuntimeNestedSampler(NestedSampler):
         max_attempts = 2
         for attempt_idx in range(max_attempts):
             try:
-                output = _execute_serialized_worker_task(worker_task)
+                worker_execution = _execute_serialized_worker_task_with_stats(
+                    worker_task,
+                    runtime_lb_state=self.runtime_lb_state,
+                )
             except Exception as error:
                 failed_record = self.mark_runtime_dispatch_failed(
                     dispatch_record=dispatch_record,
@@ -855,12 +1034,12 @@ class RuntimeNestedSampler(NestedSampler):
                 dispatch_record=dispatch_record,
                 result=WorkerResult(
                     identity=result_identity,
-                    payload=output,
+                    payload=worker_execution,
                 ),
                 current_parent_idx=int(accepted_parent_idx),
                 current_effective_log_L_constraint=accepted_log_l,
             )
-            return output
+            return worker_execution.output
 
         raise RuntimeError("worker execution exhausted retry attempts.")
 
@@ -982,6 +1161,10 @@ class RuntimeNestedSampler(NestedSampler):
     ) -> CoordinatorLifecycleRecord:
         metadata = self._lifecycle_metadata_from_record(dispatch_record)
         self._validate_lifecycle_record_owner(metadata)
+        metadata = self._metadata_with_worker_execution_stats(
+            metadata,
+            result.payload,
+        )
         result_identity = result.identity
         mismatched_fields = []
         if result_identity.task_id != metadata.task_id:
@@ -1053,6 +1236,11 @@ class RuntimeNestedSampler(NestedSampler):
             )
         return self.runtime_compile_identity
 
+    def _require_runtime_sampler_bytes(self) -> bytes:
+        if self.runtime_sampler_bytes is None:
+            self.runtime_sampler_bytes = serialize_sampler(self.sampler)
+        return self.runtime_sampler_bytes
+
     def _validate_lifecycle_record_owner(
             self,
             metadata: _LifecycleRecordMetadata,
@@ -1106,9 +1294,36 @@ class RuntimeNestedSampler(NestedSampler):
             current_effective_log_L_constraint=(
                 current_effective_log_L_constraint
             ),
+            sampler_loop_mode=metadata.sampler_loop_mode,
+            dispatch_latency_seconds=metadata.dispatch_latency_seconds,
+            payload_cache_latency_seconds=(
+                metadata.payload_cache_latency_seconds
+            ),
+            sampler_execution_latency_seconds=(
+                metadata.sampler_execution_latency_seconds
+            ),
         )
         self._record_dispatch(record)
         return record
+
+    @staticmethod
+    def _metadata_with_worker_execution_stats(
+            metadata: _LifecycleRecordMetadata,
+            payload: object,
+    ) -> _LifecycleRecordMetadata:
+        if not isinstance(payload, _WorkerTaskExecutionStats):
+            return metadata
+        return dataclasses.replace(
+            metadata,
+            sampler_loop_mode=payload.sampler_loop_mode,
+            dispatch_latency_seconds=payload.dispatch_latency_seconds,
+            payload_cache_latency_seconds=(
+                payload.payload_cache_latency_seconds
+            ),
+            sampler_execution_latency_seconds=(
+                payload.sampler_execution_latency_seconds
+            ),
+        )
 
     def _lifecycle_metadata_from_record(
             self,
@@ -1184,6 +1399,34 @@ class RuntimeNestedSampler(NestedSampler):
                 )
             ),
             serialized_problem=serialized_problem,
+            sampler_loop_mode=str(
+                self._optional_dispatch_record_field(
+                    record,
+                    "sampler_loop_mode",
+                    default="python",
+                )
+            ),
+            dispatch_latency_seconds=float(
+                self._optional_dispatch_record_field(
+                    record,
+                    "dispatch_latency_seconds",
+                    default=0.0,
+                )
+            ),
+            payload_cache_latency_seconds=float(
+                self._optional_dispatch_record_field(
+                    record,
+                    "payload_cache_latency_seconds",
+                    default=0.0,
+                )
+            ),
+            sampler_execution_latency_seconds=float(
+                self._optional_dispatch_record_field(
+                    record,
+                    "sampler_execution_latency_seconds",
+                    default=0.0,
+                )
+            ),
         )
 
     def _mark_dispatch_terminal(

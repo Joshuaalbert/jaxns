@@ -85,19 +85,30 @@ def test_to_result_marks_no_phantoms_invalid():
     assert int(results.total_phantom_samples) == 0
     assert not np.any(np.asarray(results.valid_phantom))
 
-    evidence_samples = results.sample_mc_shrinkage(num_samples=16)
-    log_L_blocks = np.asarray(evidence_samples.log_L_blocks)
-    valid_blocks = np.isfinite(log_L_blocks)
+    diagnostics = results.phantom_conditioning_diagnostics()
+    assert hasattr(diagnostics, "kish_participating_cluster_counts")
+    assert hasattr(diagnostics, "phantom_gate_active")
     np.testing.assert_allclose(
-        np.asarray(evidence_samples.rho_values)[valid_blocks],
-        1.0,
+        np.asarray(diagnostics.kish_participating_cluster_counts),
+        np.zeros_like(np.asarray(results.log_L_blocks), dtype=float),
     )
+    np.testing.assert_array_equal(
+        np.asarray(diagnostics.phantom_gate_active, dtype=bool),
+        np.zeros_like(np.asarray(results.log_L_blocks), dtype=bool),
+    )
+
+    evidence_samples = results.sample_mc_shrinkage(num_samples=16, C_min=20)
     np.testing.assert_allclose(
-        np.asarray(evidence_samples.rho_fit)[valid_blocks],
-        1.0,
+        np.asarray(evidence_samples.kish_participating_cluster_counts),
+        np.zeros_like(np.asarray(evidence_samples.log_L_blocks), dtype=float),
     )
-    np.testing.assert_allclose(np.asarray(evidence_samples.eta_samples), 0.0)
-    np.testing.assert_allclose(np.asarray(evidence_samples.rho_eta_samples), 0.0)
+    np.testing.assert_array_equal(
+        np.asarray(evidence_samples.phantom_gate_active, dtype=bool),
+        np.zeros_like(np.asarray(evidence_samples.log_L_blocks), dtype=bool),
+    )
+    for old_name in ("rho_values", "rho_fit", "rho_samples", "rho_eta_samples"):
+        if hasattr(evidence_samples, old_name):
+            assert getattr(evidence_samples, old_name) is None
 
 
 def test_samples_resize_preserves_constraints_and_provenance_fields():
@@ -264,6 +275,72 @@ def test_state_to_result_evidence_summary_uses_v3_block_model():
     assert not np.isclose(
         float(results.log_Z_mean),
         float(legacy_log_Z_mean),
+    )
+
+
+def test_state_to_result_preserves_phantom_provenance_for_kish_diagnostics():
+    samples = Samples(
+        log_L_constraints=jnp.asarray([-jnp.inf, -jnp.inf, 0.0]),
+        log_likelihoods=jnp.asarray([0.0, 1.0, 2.0]),
+        U_samples=jnp.asarray([0.20, 0.50, 0.80]),
+        out_degree=jnp.asarray([1, 0, 0], dtype=jnp.int32),
+        num_likelihood_evaluations=jnp.asarray([3, 3, 3], dtype=jnp.int32),
+        phantom_samples=PhantomSamples(
+            U_samples=None,
+            valid_mask=jnp.asarray(
+                [
+                    [True, True],
+                    [True, True],
+                    [True, True],
+                ],
+                dtype=jnp.bool_,
+            ),
+            log_L=jnp.asarray(
+                [
+                    [-0.5, 1.0],
+                    [0.5, 2.0],
+                    [2.5, 1.5],
+                ],
+                dtype=jnp.float32,
+            ),
+        ),
+    )
+    state = State(
+        root_out_degree=jnp.asarray(2, dtype=jnp.int32),
+        samples=samples,
+        num_samples=jnp.asarray(3, dtype=jnp.int32),
+        log_L_supremum=jnp.asarray(2.0),
+        U_supremum=jnp.asarray(0.80),
+        termination_reason=jnp.asarray(0, dtype=jnp.int32),
+        model=make_toy_model(),
+    )
+
+    results = state.to_result().trim()
+    diagnostics = results.phantom_conditioning_diagnostics(C_min=1)
+
+    np.testing.assert_allclose(
+        np.asarray(results.log_L_constraints),
+        np.asarray([-np.inf, -np.inf, 0.0]),
+    )
+    np.testing.assert_allclose(
+        np.asarray(results.log_L_phantom),
+        np.asarray([[-0.5, 1.0], [0.5, 2.0], [2.5, 1.5]]),
+    )
+    np.testing.assert_array_equal(
+        np.asarray(results.valid_phantom, dtype=bool),
+        np.asarray([True, True, True]),
+    )
+    np.testing.assert_allclose(np.asarray(diagnostics.A_g), [4.0, 5.0, 3.0])
+    np.testing.assert_allclose(np.asarray(diagnostics.B_g), [3.0, 3.0, 1.0])
+    np.testing.assert_allclose(np.asarray(diagnostics.E_g), [0.0, 1.0, 1.0])
+    np.testing.assert_allclose(np.asarray(diagnostics.R_g), [1.0, 1.0, 1.0])
+    np.testing.assert_allclose(
+        np.asarray(diagnostics.kish_participating_cluster_counts),
+        [2.0, 25.0 / 9.0, 9.0 / 5.0],
+    )
+    np.testing.assert_array_equal(
+        np.asarray(diagnostics.phantom_gate_active, dtype=bool),
+        np.asarray([True, True, True]),
     )
 
 

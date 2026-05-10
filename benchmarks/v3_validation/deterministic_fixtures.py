@@ -14,12 +14,6 @@ class AnalyticEvidenceFixture(NamedTuple):
     logZ_ref: float
 
 
-class DirichletConcentrationFixture(NamedTuple):
-    alpha_gt: float
-    alpha_eq: float
-    alpha_lt: float
-
-
 class PlateauEqualityRecoveryFixture(NamedTuple):
     name: str
     likelihood_level: float
@@ -30,23 +24,39 @@ class PlateauEqualityRecoveryFixture(NamedTuple):
     phantom_A: int
     phantom_B: int
     phantom_E: int
-    rho_g: float
+    phantom_R: int
+    A_cg: tuple[tuple[float, ...], ...]
+    B_cg: tuple[tuple[float, ...], ...]
+    E_cg: tuple[tuple[float, ...], ...]
+    R_cg: tuple[tuple[float, ...], ...]
+    C_min: int
+    kish_participating_cluster_count: float
+    phantom_gate_active: bool
     no_phantom_equality_mean: float
     phantom_equality_mean: float
     logZ_ref: float
 
 
-class PhantomCountEffectFixture(NamedTuple):
+class GammaWeightedPhantomConditioningFixture(NamedTuple):
     name: str
     log_L_blocks: tuple[float, ...]
     block_size: tuple[int, ...]
     incoming_K: tuple[int, ...]
-    phantom_A: tuple[int, ...]
-    phantom_B: tuple[int, ...]
-    phantom_E: tuple[int, ...]
-    rho_g: tuple[float, ...]
-    classic_concentrations: DirichletConcentrationFixture
-    conditioned_concentrations: DirichletConcentrationFixture
+    block_sample_indices: tuple[tuple[int, ...], ...]
+    A_cg: tuple[tuple[float, ...], ...]
+    B_cg: tuple[tuple[float, ...], ...]
+    E_cg: tuple[tuple[float, ...], ...]
+    R_cg: tuple[tuple[float, ...], ...]
+    race_gamma_gt: tuple[float, ...]
+    race_gamma_eq: tuple[float, ...]
+    race_gamma_lt: tuple[float, ...]
+    cluster_weights: tuple[float, ...]
+    C_min: int
+    kish_participating_cluster_counts: tuple[float, ...]
+    phantom_gate_active: tuple[bool, ...]
+    expected_p_gt: tuple[float, ...]
+    expected_p_eq: tuple[float, ...]
+    expected_p_lt: tuple[float, ...]
 
 
 class RaceTreeAccountingFixture(NamedTuple):
@@ -98,54 +108,38 @@ def _log_evidence(
     ))
 
 
-def _classic_concentrations(
+def _classic_equality_mean(
         *,
         incoming_K: int,
         block_size: int,
         epsilon: float,
-) -> DirichletConcentrationFixture:
-    return DirichletConcentrationFixture(
-        alpha_gt=float(incoming_K - block_size + 1),
-        alpha_eq=float(block_size + epsilon),
-        alpha_lt=float(1.0 - epsilon),
-    )
+) -> float:
+    alpha_gt = float(incoming_K - block_size + 1)
+    alpha_eq = float(block_size + epsilon)
+    alpha_lt = float(1.0 - epsilon)
+    return alpha_eq / (alpha_gt + alpha_eq + alpha_lt)
 
 
-def _conditioned_concentrations(
+def _gamma_weighted_equality_target_mean(
         *,
         incoming_K: int,
         block_size: int,
         epsilon: float,
-        phantom_A: int,
-        phantom_B: int,
-        phantom_E: int,
-        rho_g: float,
-) -> DirichletConcentrationFixture:
-    if phantom_B + phantom_E > phantom_A:
-        raise ValueError(
-            "Phantom count fixture must satisfy B_g + E_g <= A_g."
-        )
-    classic = _classic_concentrations(
-        incoming_K=incoming_K,
-        block_size=block_size,
-        epsilon=epsilon,
+        B_cg: tuple[tuple[float, ...], ...],
+        E_cg: tuple[tuple[float, ...], ...],
+        R_cg: tuple[tuple[float, ...], ...],
+        gate_active: bool,
+) -> float:
+    alpha_gt = float(incoming_K - block_size + 1)
+    alpha_eq = float(block_size + epsilon)
+    alpha_lt = float(1.0 - epsilon)
+    gate = 1.0 if gate_active else 0.0
+    add_gt = gate * sum(row[0] for row in B_cg)
+    add_eq = gate * sum(row[0] for row in E_cg)
+    add_lt = gate * sum(row[0] for row in R_cg)
+    return (alpha_eq + add_eq) / (
+        alpha_gt + add_gt + alpha_eq + add_eq + alpha_lt + add_lt
     )
-    return DirichletConcentrationFixture(
-        alpha_gt=classic.alpha_gt + rho_g * phantom_B,
-        alpha_eq=classic.alpha_eq + rho_g * phantom_E,
-        alpha_lt=classic.alpha_lt + rho_g * (
-            phantom_A - phantom_B - phantom_E
-        ),
-    )
-
-
-def _mean_eq(concentrations: DirichletConcentrationFixture) -> float:
-    total = (
-        concentrations.alpha_gt
-        + concentrations.alpha_eq
-        + concentrations.alpha_lt
-    )
-    return concentrations.alpha_eq / total
 
 
 def analytic_evidence_fixtures() -> tuple[AnalyticEvidenceFixture, ...]:
@@ -181,25 +175,21 @@ def plateau_equality_recovery_fixture() -> PlateauEqualityRecoveryFixture:
     incoming_K = 12
     block_size = 3
     epsilon = 0.5
-    phantom_A = 100
-    phantom_B = 20
-    phantom_E = 30
-    rho_g = 1.0
+    A_cg = tuple((1.0,) for _ in range(100))
+    B_cg = tuple((1.0 if idx < 20 else 0.0,) for idx in range(100))
+    E_cg = tuple((1.0 if 20 <= idx < 50 else 0.0,) for idx in range(100))
+    R_cg = tuple(
+        (A_cg[idx][0] - B_cg[idx][0] - E_cg[idx][0],)
+        for idx in range(100)
+    )
+    phantom_A = int(sum(row[0] for row in A_cg))
+    phantom_B = int(sum(row[0] for row in B_cg))
+    phantom_E = int(sum(row[0] for row in E_cg))
+    phantom_R = int(sum(row[0] for row in R_cg))
+    C_min = 20
+    kish = float(phantom_A * phantom_A / phantom_A)
+    gate_active = kish >= C_min
     equality_mass_ref = 0.3
-    classic = _classic_concentrations(
-        incoming_K=incoming_K,
-        block_size=block_size,
-        epsilon=epsilon,
-    )
-    conditioned = _conditioned_concentrations(
-        incoming_K=incoming_K,
-        block_size=block_size,
-        epsilon=epsilon,
-        phantom_A=phantom_A,
-        phantom_B=phantom_B,
-        phantom_E=phantom_E,
-        rho_g=rho_g,
-    )
     analytic = analytic_evidence_fixtures()[1]
     return PlateauEqualityRecoveryFixture(
         name="plateau_step_equality_recovery",
@@ -211,44 +201,97 @@ def plateau_equality_recovery_fixture() -> PlateauEqualityRecoveryFixture:
         phantom_A=phantom_A,
         phantom_B=phantom_B,
         phantom_E=phantom_E,
-        rho_g=rho_g,
-        no_phantom_equality_mean=_mean_eq(classic),
-        phantom_equality_mean=_mean_eq(conditioned),
-        logZ_ref=analytic.logZ_ref,
-    )
-
-
-def phantom_count_effect_fixture() -> PhantomCountEffectFixture:
-    """One-block fixture proving phantoms update all Dirichlet components."""
-    incoming_K = 6
-    block_size = 2
-    epsilon = 0.5
-    phantom_A = 20
-    phantom_B = 7
-    phantom_E = 5
-    rho_g = 0.4
-    return PhantomCountEffectFixture(
-        name="single_block_count_effect",
-        log_L_blocks=(math.log(4.0),),
-        block_size=(block_size,),
-        incoming_K=(incoming_K,),
-        phantom_A=(phantom_A,),
-        phantom_B=(phantom_B,),
-        phantom_E=(phantom_E,),
-        rho_g=(rho_g,),
-        classic_concentrations=_classic_concentrations(
+        phantom_R=phantom_R,
+        A_cg=A_cg,
+        B_cg=B_cg,
+        E_cg=E_cg,
+        R_cg=R_cg,
+        C_min=C_min,
+        kish_participating_cluster_count=kish,
+        phantom_gate_active=gate_active,
+        no_phantom_equality_mean=_classic_equality_mean(
             incoming_K=incoming_K,
             block_size=block_size,
             epsilon=epsilon,
         ),
-        conditioned_concentrations=_conditioned_concentrations(
+        phantom_equality_mean=_gamma_weighted_equality_target_mean(
             incoming_K=incoming_K,
             block_size=block_size,
             epsilon=epsilon,
-            phantom_A=phantom_A,
-            phantom_B=phantom_B,
-            phantom_E=phantom_E,
-            rho_g=rho_g,
+            B_cg=B_cg,
+            E_cg=E_cg,
+            R_cg=R_cg,
+            gate_active=gate_active,
+        ),
+        logZ_ref=analytic.logZ_ref,
+    )
+
+
+def gamma_weighted_phantom_conditioning_fixture(
+) -> GammaWeightedPhantomConditioningFixture:
+    """Explicit gamma-weighted phantom fixture with shared cluster weights."""
+    A_cg = tuple((1.0, 1.0) for _ in range(20))
+    B_cg = tuple(
+        (
+            1.0 if idx < 8 else 0.0,
+            1.0 if idx < 5 else 0.0,
+        )
+        for idx in range(20)
+    )
+    E_cg = tuple(
+        (
+            1.0 if 8 <= idx < 12 else 0.0,
+            1.0 if 5 <= idx < 10 else 0.0,
+        )
+        for idx in range(20)
+    )
+    R_cg = tuple(
+        (
+            A_cg[idx][0] - B_cg[idx][0] - E_cg[idx][0],
+            A_cg[idx][1] - B_cg[idx][1] - E_cg[idx][1],
+        )
+        for idx in range(20)
+    )
+    race_gamma_gt = (10.0, 12.0)
+    race_gamma_eq = (2.0, 3.0)
+    race_gamma_lt = (4.0, 5.0)
+    add_gt = (8.0, 5.0)
+    add_eq = (4.0, 5.0)
+    add_lt = (8.0, 10.0)
+    total = (
+        race_gamma_gt[0] + add_gt[0] + race_gamma_eq[0] + add_eq[0]
+        + race_gamma_lt[0] + add_lt[0],
+        race_gamma_gt[1] + add_gt[1] + race_gamma_eq[1] + add_eq[1]
+        + race_gamma_lt[1] + add_lt[1],
+    )
+    return GammaWeightedPhantomConditioningFixture(
+        name="gamma_weighted_two_block_conditioning",
+        log_L_blocks=(0.0, 1.0),
+        block_size=(1, 1),
+        incoming_K=(10, 12),
+        block_sample_indices=((0,), (1,)),
+        A_cg=A_cg,
+        B_cg=B_cg,
+        E_cg=E_cg,
+        R_cg=R_cg,
+        race_gamma_gt=race_gamma_gt,
+        race_gamma_eq=race_gamma_eq,
+        race_gamma_lt=race_gamma_lt,
+        cluster_weights=tuple(1.0 for _ in range(20)),
+        C_min=20,
+        kish_participating_cluster_counts=(20.0, 20.0),
+        phantom_gate_active=(True, True),
+        expected_p_gt=(
+            (race_gamma_gt[0] + add_gt[0]) / total[0],
+            (race_gamma_gt[1] + add_gt[1]) / total[1],
+        ),
+        expected_p_eq=(
+            (race_gamma_eq[0] + add_eq[0]) / total[0],
+            (race_gamma_eq[1] + add_eq[1]) / total[1],
+        ),
+        expected_p_lt=(
+            (race_gamma_lt[0] + add_lt[0]) / total[0],
+            (race_gamma_lt[1] + add_lt[1]) / total[1],
         ),
     )
 

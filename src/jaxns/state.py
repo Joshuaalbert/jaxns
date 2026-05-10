@@ -12,7 +12,7 @@ from jaxns.evidence_calculation import EvidenceCalculation
 from jaxns.log_semiring import LogSpace, normalise_log_space
 from jaxns.mixed_precision import mp_policy
 from jaxns.model import Model
-from jaxns.phantom_eval import compute_phantom_block_counts
+from jaxns.phantom_eval import compute_phantom_count_matrices
 from jaxns.pytree import PureDataclassPytree
 from jaxns.race_tree import build_block_state
 from jaxns.samples import Samples, UType
@@ -227,7 +227,7 @@ def _to_result(self: State) -> NestedSamplerResults:
         valid_phantom = jnp.zeros(phantom_valid_mask.shape[:-1], dtype=mp_policy.bool_dtype)
     else:
         valid_phantom = jnp.all(phantom_valid_mask, axis=-1)
-    block_phantom_A, block_phantom_B, block_phantom_E = compute_phantom_block_counts(
+    phantom_counts = compute_phantom_count_matrices(
         log_L_blocks=block_state.log_L_blocks,
         block_valid_mask=block_state.valid,
         log_L_constraints=log_L_constraints,
@@ -292,9 +292,14 @@ def _to_result(self: State) -> NestedSamplerResults:
             block_p_eq_mean,
             jnp.nan,
         ),
-        block_phantom_A=block_phantom_A,
-        block_phantom_B=block_phantom_B,
-        block_phantom_E=block_phantom_E,
+        block_phantom_A=phantom_counts.A_g,
+        block_phantom_B=phantom_counts.B_g,
+        block_phantom_E=phantom_counts.E_g,
+        block_phantom_R=phantom_counts.R_g,
+        block_kish_participating_cluster_counts=(
+            phantom_counts.kish_participating_cluster_counts
+        ),
+        block_phantom_gate_active=phantom_counts.phantom_gate_active,
     )
 
 

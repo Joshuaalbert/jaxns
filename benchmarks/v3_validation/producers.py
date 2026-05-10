@@ -10,6 +10,7 @@ import numpy as np
 
 from benchmarks.v3_validation.schema_checks import (
     REQUIRED_PERFORMANCE_GUARDRAIL_NAMES,
+    assert_evidence_calibration_record,
     compute_calibration_summary,
 )
 
@@ -35,19 +36,35 @@ def produce_multi_seed_evidence_calibration(
             "expectation_logZ": float(run["expectation_logZ"]),
             "mc_shrinkage_logZ": float(run["mc_shrinkage_logZ"]),
         }
-        for key in ("rho_g", "rho_fit"):
+        for key in (
+                "kish_participating_cluster_counts",
+                "phantom_A_g",
+                "phantom_B_g",
+                "phantom_E_g",
+                "phantom_R_g",
+        ):
             if key in run:
                 calibration[key] = [
                     float(value)
                     for value in run[key]
                 ]
-        records.append(
-            {
-                "metric_family": "evidence_calibration",
-                "metadata": copy.deepcopy(run["metadata"]),
-                "evidence_calibration": calibration,
-            }
-        )
+        if "phantom_gate_active" in run:
+            calibration["phantom_gate_active"] = [
+                bool(value)
+                for value in run["phantom_gate_active"]
+            ]
+        if "C_min" in run:
+            calibration["C_min"] = float(run["C_min"])
+        record = {
+            "metric_family": "evidence_calibration",
+            "metadata": copy.deepcopy(run["metadata"]),
+            "evidence_calibration": calibration,
+        }
+        try:
+            assert_evidence_calibration_record(record)
+        except AssertionError as error:
+            raise ValueError(str(error)) from error
+        records.append(record)
     return records
 
 

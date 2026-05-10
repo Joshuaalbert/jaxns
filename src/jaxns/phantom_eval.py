@@ -8,18 +8,25 @@ from jax import numpy as jnp, random
 from jax.scipy import special as jsp
 
 from jaxns.log_semiring import LogSpace
+from jaxns.mixed_precision import mp_policy
 from jaxns.pytree import PureDataclassPytree
 from jaxns.race_tree import BlockState
 from jaxns.types import FloatArray, IntArray, BoolArray, PRNGKey
 from jaxns.v3_shrinkage import (
     DirichletConcentrations,
+    PhantomCountMatrices,
     classic_dirichlet_concentrations,
+    compute_kish_participating_cluster_counts,
+    compute_phantom_gate_active,
     dirichlet_probability_means,
     estimate_raw_rho_g_from_bootstrap_covariance,
     fit_low_order_rho_g_curve,
+    gamma_weighted_phantom_probabilities_from_draws as _gamma_weighted_phantom_probabilities_from_draws,
     phantom_conditioned_dirichlet_concentrations,
+    sample_gamma_weighted_phantom_probabilities,
     sample_dirichlet_probabilities,
     validate_lineage_capacity,
+    validate_phantom_count_matrices,
 )
 
 
@@ -29,18 +36,16 @@ class EvidenceSamples(PureDataclassPytree):
     H_samples: FloatArray  # [num_Z_samples] the information E[log_L - log_Z]
     log_dZ_mean: FloatArray  # [num_blocks] L_{g} * (X_{g-1} - X_g) averaged over MC chains
     log_dZ_var: FloatArray  # [num_blocks] variance of L_{g} * (X_{g-1} - X_g) over MC chains
-    rho_samples: FloatArray  # [num_Z_samples] samples of the global rho parameter used in the MC shrinkage sampling
-    rho_values: FloatArray  # [num_blocks] raw per-block rho estimates aligned with log_L_blocks
-    rho_fit: FloatArray  # [num_blocks] fitted rho curve aligned with log_L_blocks
-    eta_samples: FloatArray  # [num_Z_samples] estimated loose-reuse efficiency eta from phantom counts
-    rho_eta_samples: FloatArray  # [num_Z_samples] sampled rho multiplied by estimated eta
     log_L_blocks: FloatArray  # [num_blocks] block levels derived from log_L_classic, padded with +inf
     block_first_idx: IntArray  # [num_blocks] first classic index per block, -1 for padded blocks
     block_size: IntArray  # [num_blocks] number of classic samples in each likelihood block
     incoming_K: IntArray  # [num_blocks] canonical incoming active lineage count per block
+    kish_participating_cluster_counts: FloatArray  # [num_blocks] Kish participating-cluster count
+    phantom_gate_active: BoolArray  # [num_blocks] active gamma phantom conditioning gate
     phantom_A: FloatArray | None = None  # [num_blocks] full-data phantom A_g counts
     phantom_B: FloatArray | None = None  # [num_blocks] full-data phantom B_g counts
     phantom_E: FloatArray | None = None  # [num_blocks] full-data phantom E_g counts
+    phantom_R: FloatArray | None = None  # [num_blocks] full-data phantom R_g counts
     classic_alpha_gt: FloatArray | None = None  # [num_blocks] classic alpha for p_>
     classic_alpha_eq: FloatArray | None = None  # [num_blocks] classic alpha for p_=
     classic_alpha_lt: FloatArray | None = None  # [num_blocks] classic alpha for p_<
@@ -50,8 +55,18 @@ class EvidenceSamples(PureDataclassPytree):
     epsilon: FloatArray | None = None  # [num_blocks] equality-atom prior epsilon_g
     p_gt_samples: FloatArray | None = None  # [num_Z_samples, num_blocks] sampled strict endpoint probabilities
     p_eq_samples: FloatArray | None = None  # [num_Z_samples, num_blocks] sampled equality atom probabilities
+    p_lt_samples: FloatArray | None = None  # [num_Z_samples, num_blocks] sampled open-interval probabilities
     p_gt_mean: FloatArray | None = None  # [num_blocks] posterior mean of p_>
     p_eq_mean: FloatArray | None = None  # [num_blocks] posterior mean of p_=
+    p_lt_mean: FloatArray | None = None  # [num_blocks] posterior mean of p_<
+    phantom_add_gt_samples: FloatArray | None = None  # [num_Z_samples, num_blocks]
+    phantom_add_eq_samples: FloatArray | None = None  # [num_Z_samples, num_blocks]
+    phantom_add_lt_samples: FloatArray | None = None  # [num_Z_samples, num_blocks]
+    rho_samples: FloatArray | None = None
+    rho_values: FloatArray | None = None
+    rho_fit: FloatArray | None = None
+    eta_samples: FloatArray | None = None
+    rho_eta_samples: FloatArray | None = None
 
     @property
     def m_g(self) -> IntArray:
@@ -84,6 +99,16 @@ class EvidenceSamples(PureDataclassPytree):
         return self.phantom_E
 
     @property
+    def R_g(self) -> FloatArray | None:
+        """Alias for phantom `R_g` counts."""
+        return self.phantom_R
+
+    @property
+    def deprecated_fields(self) -> tuple[str, ...]:
+        """Compatibility names retained as explicit non-target diagnostics."""
+        return ("rho_samples", "rho_values", "rho_fit", "rho_eta_samples")
+
+    @property
     def classic_dirichlet_concentrations(self) -> DirichletConcentrations | None:
         """Classic v3 block Dirichlet concentrations, if returned."""
         if self.classic_alpha_gt is None:
@@ -114,6 +139,8 @@ class EvidenceSamples(PureDataclassPytree):
         Determine the efficiency of adding more phantoms.
         Iff > 1 then for a given compute budget prefer decreasing number of live points, and increasing number of phantoms.
         """
+        if self.rho_samples is None or self.eta_samples is None:
+            return jnp.asarray(0.0)
         return _compute_phantom_efficiency(self, num_burn_in)
 
 
@@ -556,7 +583,7 @@ def _estimate_eta(
     return jnp.where(denom > 0, numer / denom, jnp.zeros_like(numer))
 
 
-def compute_phantom_block_counts(
+def _legacy_compute_phantom_block_counts(
         *,
         log_L_blocks: FloatArray,
         block_valid_mask: BoolArray,
@@ -712,16 +739,15 @@ def sample_mc_shrinkage(
         rho_grid: Optional[FloatArray] = None,
         rho_prior: str = "none",
         batch_size: int | None = None,
+        C_min: float = 20,
 ) -> EvidenceSamples:
     """
-    Monte-Carlo evidence sampling with phantom-aware shrinkage.
+    Monte-Carlo evidence sampling with gamma-weighted phantom shrinkage.
 
-    Per Monte-Carlo draw this function:
-    1) bootstraps valid phantom clusters,
-    2) computes boundary counts ``(A, B, E)`` under the loose-cluster rule,
-    3) samples a global ``rho`` from the candlestick likelihood,
-    4) forms per-boundary v3 Dirichlet shrinkage posteriors,
-    5) samples block probabilities and accumulates evidence contributions.
+    Per Monte-Carlo draw this function samples independent race gammas and
+    shared per-cluster ``Gamma(1, 1)`` phantom weights, applies the Kish
+    participating-cluster gate, and accumulates evidence contributions from
+    the resulting block probabilities.
 
     Args:
         key: PRNGKey for Monte-Carlo sampling.
@@ -736,20 +762,21 @@ def sample_mc_shrinkage(
         block_state: Optional canonical v3 block state. When supplied, its
             block likelihoods, membership sizes, and incoming lineage counts are
             used instead of reconstructing blocks from per-sample live counts.
-        rho_grid: Optional grid of rho values; if None a default log-spaced grid is used.
-        rho_prior: Prior for rho grid sampling, either ``"none"`` or ``"log"``.
+        rho_grid: Deprecated compatibility argument; ignored by the
+            gamma-weighted target.
+        rho_prior: Deprecated compatibility argument; ignored by the
+            gamma-weighted target.
         batch_size: Reserved for API compatibility; currently unused.
+        C_min: Kish participating-cluster gate threshold. Defaults to 20.
 
     Returns:
         EvidenceSamples with:
           - ``log_Z_samples``: evidence samples ``[num_Z_samples]``;
           - ``log_dZ_mean``: mean per-block contribution in log-space ``[num_blocks]``;
           - ``log_dZ_var``: variance per-block contribution in log-space ``[num_blocks]``;
-          - ``rho_samples``: sampled global rho values ``[num_Z_samples]``;
-          - ``rho_values``: raw per-block ``rho_g`` estimates ``[num_blocks]``;
-          - ``rho_fit``: fitted per-block ``rho_g`` curve ``[num_blocks]``;
-          - ``eta_samples``: estimated loose-reuse efficiency values ``[num_Z_samples]``;
-          - ``rho_eta_samples``: product ``rho * eta`` per sample ``[num_Z_samples]``;
+          - Kish/gate diagnostics and aggregate ``A_g/B_g/E_g/R_g`` counts;
+          - sampled ``p_>``, ``p_=``, and ``p_<`` block probabilities;
+          - sample means of the returned block probability draws;
           - ``log_L_blocks``: derived block levels padded with ``+inf``;
           - ``block_first_idx``: first classic index per block, ``-1`` for padded blocks.
     """
@@ -776,6 +803,7 @@ def sample_mc_shrinkage(
         rho_grid=rho_grid,
         rho_prior=rho_prior,
         batch_size=batch_size,
+        C_min=C_min,
     )
 
 
@@ -1269,7 +1297,7 @@ def _validate_block_state_shapes(block_state: BlockState) -> None:
 
 
 @partial(jax.jit, inline=True, static_argnames=["num_Z_samples", "rho_prior"])
-def _sample_mc_shrinkage(
+def _legacy_sample_mc_shrinkage(
         key: PRNGKey,
         log_L_constraints: FloatArray,
         log_L_classic: FloatArray,
@@ -1686,4 +1714,403 @@ def _sample_mc_shrinkage(
         p_eq_samples=None,
         p_gt_mean=jnp.where(block_valid_mask, p_gt_mean, jnp.nan),
         p_eq_mean=jnp.where(block_valid_mask, p_eq_mean, jnp.nan),
+    )
+
+
+def _validate_phantom_count_inputs(
+        *,
+        log_L_blocks: FloatArray,
+        block_valid_mask: BoolArray,
+        log_L_constraints: FloatArray,
+        valid_phantom: BoolArray,
+        log_L_phantom: FloatArray,
+        sample_mask: BoolArray,
+) -> None:
+    try:
+        blocks = np.asarray(log_L_blocks)
+        valid_blocks = np.asarray(block_valid_mask)
+        constraints = np.asarray(log_L_constraints)
+        cluster_valid = np.asarray(valid_phantom)
+        phantom_l = np.asarray(log_L_phantom)
+        samples = np.asarray(sample_mask)
+    except Exception:
+        return
+
+    if blocks.ndim != 1:
+        raise ValueError("log_L_blocks must be one-dimensional.")
+    if valid_blocks.shape != blocks.shape:
+        raise ValueError("block_valid_mask shape must align with log_L_blocks.")
+    if constraints.ndim != 1:
+        raise ValueError("log_L_constraints must be one-dimensional.")
+    num_clusters = constraints.shape[0]
+    if cluster_valid.ndim != 1:
+        raise ValueError(
+            "valid_phantom must be a one-dimensional per-cluster mask, not a "
+            "per-phantom mask."
+        )
+    if cluster_valid.shape != (num_clusters,):
+        raise ValueError("valid_phantom shape must match the cluster axis.")
+    if samples.shape != (num_clusters,):
+        raise ValueError("sample_mask shape must match the cluster axis.")
+    if phantom_l.ndim != 2:
+        raise ValueError("log_L_phantom must be a two-dimensional array.")
+    if phantom_l.shape[0] != num_clusters:
+        raise ValueError("log_L_phantom shape must match the cluster axis.")
+    if np.any(cluster_valid & ~samples):
+        raise ValueError(
+            "valid_phantom contains a stale sample_mask/num_samples "
+            "association."
+        )
+
+
+def gamma_weighted_phantom_probabilities_from_draws(**kwargs):
+    """Public JAX wrapper for explicit gamma-weighted phantom draws."""
+    return _gamma_weighted_phantom_probabilities_from_draws(**kwargs)
+
+
+def compute_phantom_count_matrices(
+        *,
+        log_L_blocks: FloatArray,
+        block_valid_mask: BoolArray,
+        log_L_constraints: FloatArray,
+        valid_phantom: BoolArray,
+        log_L_phantom: FloatArray,
+        sample_mask: BoolArray,
+        C_min: float = 20,
+) -> PhantomCountMatrices:
+    """Compute parent-contour-gated per-cluster phantom count matrices."""
+    _validate_phantom_count_inputs(
+        log_L_blocks=log_L_blocks,
+        block_valid_mask=block_valid_mask,
+        log_L_constraints=log_L_constraints,
+        valid_phantom=valid_phantom,
+        log_L_phantom=log_L_phantom,
+        sample_mask=sample_mask,
+    )
+    log_L_blocks = jnp.asarray(log_L_blocks, dtype=mp_policy.measure_dtype)
+    block_valid_mask = jnp.asarray(block_valid_mask, dtype=mp_policy.bool_dtype)
+    log_L_constraints = jnp.asarray(
+        log_L_constraints,
+        dtype=log_L_blocks.dtype,
+    )
+    valid_phantom = jnp.asarray(valid_phantom, dtype=mp_policy.bool_dtype)
+    log_L_phantom = jnp.asarray(log_L_phantom, dtype=log_L_blocks.dtype)
+    sample_mask = jnp.asarray(sample_mask, dtype=mp_policy.bool_dtype)
+
+    dtype = log_L_blocks.dtype
+    num_blocks = log_L_blocks.shape[0]
+    num_clusters = log_L_constraints.shape[0]
+    num_phantom = log_L_phantom.shape[1]
+    effective_valid_phantom = valid_phantom & sample_mask
+    num_valid_blocks = jnp.sum(block_valid_mask, dtype=jnp.int32)
+
+    left_c = jnp.searchsorted(log_L_blocks, log_L_constraints, side="left")
+    start_idx = jnp.where(jnp.isneginf(log_L_constraints), 0, left_c + 1)
+    start_idx = jnp.minimum(start_idx, num_valid_blocks)
+    start_idx = jnp.where(effective_valid_phantom, start_idx, 0)
+
+    event_cluster_idx = jnp.repeat(
+        jnp.arange(num_clusters, dtype=jnp.int32),
+        repeats=num_phantom,
+    )
+    event_start = start_idx[event_cluster_idx]
+    event_logL = log_L_phantom.reshape((-1,))
+    left_l = jnp.searchsorted(log_L_blocks, event_logL, side="left")
+    event_a_hi = jnp.minimum(left_l + 1, num_valid_blocks)
+    event_b_hi = jnp.minimum(left_l, num_valid_blocks)
+    event_A_active = event_a_hi > event_start
+    event_B_active = event_b_hi > event_start
+    count_A_start_per_cluster = jnp.bincount(
+        event_cluster_idx,
+        weights=jnp.asarray(event_A_active, dtype=dtype),
+        length=num_clusters,
+    )
+    count_B_start_per_cluster = jnp.bincount(
+        event_cluster_idx,
+        weights=jnp.asarray(event_B_active, dtype=dtype),
+        length=num_clusters,
+    )
+    eq_ok = jnp.logical_and(
+        left_l < num_valid_blocks,
+        log_L_blocks[left_l] == event_logL,
+    )
+    event_eq_idx = jnp.where(eq_ok, left_l, 0)
+    event_eq_active = jnp.logical_and(eq_ok, event_eq_idx >= event_start)
+    event_eq_active = jnp.logical_and(
+        event_eq_active,
+        effective_valid_phantom[event_cluster_idx],
+    )
+
+    A_cg, B_cg, E_cg = _cluster_count_matrices_from_precompute(
+        effective_valid_phantom=effective_valid_phantom,
+        start_idx=start_idx,
+        count_A_start_per_cluster=count_A_start_per_cluster,
+        count_B_start_per_cluster=count_B_start_per_cluster,
+        event_cluster_idx=event_cluster_idx,
+        event_a_hi=event_a_hi,
+        event_b_hi=event_b_hi,
+        event_A_active=event_A_active,
+        event_B_active=event_B_active,
+        event_eq_idx=event_eq_idx,
+        event_eq_active=event_eq_active,
+        num_blocks=num_blocks,
+        dtype=dtype,
+    )
+    valid_cols = block_valid_mask[None, :]
+    zeros = jnp.zeros_like(A_cg)
+    A_cg = jnp.where(valid_cols, A_cg, zeros)
+    B_cg = jnp.where(valid_cols, B_cg, zeros)
+    E_cg = jnp.where(valid_cols, E_cg, zeros)
+    R_cg = A_cg - B_cg - E_cg
+    validate_phantom_count_matrices(
+        A_cg=A_cg,
+        B_cg=B_cg,
+        E_cg=E_cg,
+        block_valid_mask=block_valid_mask,
+    )
+    A_g = jnp.sum(A_cg, axis=0)
+    B_g = jnp.sum(B_cg, axis=0)
+    E_g = jnp.sum(E_cg, axis=0)
+    R_g = jnp.sum(R_cg, axis=0)
+    kish = compute_kish_participating_cluster_counts(A_cg)
+    gate = compute_phantom_gate_active(A_cg, C_min=C_min) & block_valid_mask
+    return PhantomCountMatrices(
+        A_cg=A_cg,
+        B_cg=B_cg,
+        E_cg=E_cg,
+        R_cg=R_cg,
+        A_g=jnp.where(block_valid_mask, A_g, jnp.zeros_like(A_g)),
+        B_g=jnp.where(block_valid_mask, B_g, jnp.zeros_like(B_g)),
+        E_g=jnp.where(block_valid_mask, E_g, jnp.zeros_like(E_g)),
+        R_g=jnp.where(block_valid_mask, R_g, jnp.zeros_like(R_g)),
+        kish_participating_cluster_counts=jnp.where(
+            block_valid_mask,
+            kish,
+            jnp.zeros_like(kish),
+        ),
+        phantom_gate_active=gate,
+    )
+
+
+def compute_phantom_block_counts(
+        *,
+        log_L_blocks: FloatArray,
+        block_valid_mask: BoolArray,
+        log_L_constraints: FloatArray,
+        valid_phantom: BoolArray,
+        log_L_phantom: FloatArray,
+        sample_mask: BoolArray,
+) -> tuple[FloatArray, FloatArray, FloatArray]:
+    """Compute aggregate public v3 phantom `A_g`, `B_g`, and `E_g` counts."""
+    counts = compute_phantom_count_matrices(
+        log_L_blocks=log_L_blocks,
+        block_valid_mask=block_valid_mask,
+        log_L_constraints=log_L_constraints,
+        valid_phantom=valid_phantom,
+        log_L_phantom=log_L_phantom,
+        sample_mask=sample_mask,
+    )
+    return counts.A_g, counts.B_g, counts.E_g
+
+
+def _summarise_gamma_log_dz_samples(
+        *,
+        log_dZ: FloatArray,
+        log_Z: FloatArray,
+        block_valid_mask: BoolArray,
+) -> tuple[FloatArray, FloatArray, FloatArray]:
+    dtype = log_dZ.dtype
+    log_num = jnp.log(jnp.asarray(log_dZ.shape[0], dtype=dtype))
+    log_dZ_mean = _logsumexp(log_dZ, axis=0) - log_num
+    log_dZ_second = _logsumexp(2.0 * log_dZ, axis=0) - log_num
+    log_dZ_mean_sq = 2.0 * log_dZ_mean
+    log_dZ_var = jnp.where(
+        log_dZ_second > log_dZ_mean_sq,
+        _logdiffexp(log_dZ_second, log_dZ_mean_sq),
+        jnp.full_like(log_dZ_mean, -jnp.inf),
+    )
+    weights = jnp.exp(log_dZ - log_Z[:, None])
+    entropy_terms = jnp.where(
+        block_valid_mask[None, :],
+        log_dZ * 0.0 + 1.0,
+        jnp.zeros_like(log_dZ),
+    )
+    entropy_terms = entropy_terms * (
+        jnp.where(block_valid_mask, 1.0, 0.0)[None, :]
+    )
+    del entropy_terms
+    return log_dZ_mean, log_dZ_var, weights
+
+
+def _sample_mc_shrinkage(
+        key: PRNGKey,
+        log_L_constraints: FloatArray,
+        log_L_classic: FloatArray,
+        K_classic: IntArray,
+        valid_phantom: BoolArray,
+        log_L_phantom: FloatArray,
+        num_samples: IntArray,
+        num_Z_samples: int,
+        *,
+        eps_equal_prior: float = 1e-3,
+        block_state: BlockState | None = None,
+        rho_grid: Optional[FloatArray] = None,
+        rho_prior: str = "none",
+        batch_size: int | None = None,
+        C_min: float = 20,
+) -> EvidenceSamples:
+    del eps_equal_prior, rho_grid, rho_prior, batch_size
+    N = log_L_classic.shape[0]
+    sample_valid_mask = jnp.arange(N, dtype=jnp.int32) < num_samples
+    positive_live_mask = K_classic > 0
+    effective_sample_mask = jnp.logical_and(sample_valid_mask, positive_live_mask)
+    if block_state is None:
+        n = int(np.asarray(num_samples))
+        log_l_np = np.asarray(log_L_classic, dtype=float)
+        live_np = np.asarray(K_classic, dtype=np.int32)
+        sample_mask_np = np.arange(log_l_np.shape[0]) < n
+        active_np = sample_mask_np & (live_np > 0)
+        valid_classic_np = np.where(active_np, log_l_np, np.inf)
+        sorted_order_np = np.argsort(valid_classic_np, kind="stable")
+        sorted_log_np = valid_classic_np[sorted_order_np]
+        sorted_k_np = live_np[sorted_order_np]
+        unique_log_np, starts_np, counts_np = np.unique(
+            sorted_log_np[np.isfinite(sorted_log_np)],
+            return_index=True,
+            return_counts=True,
+        )
+        block_count = unique_log_np.shape[0]
+        log_L_blocks = jnp.asarray(unique_log_np, dtype=log_L_classic.dtype)
+        block_valid_mask = jnp.ones((block_count,), dtype=jnp.bool_)
+        block_first_idx = jnp.asarray(
+            sorted_order_np[starts_np],
+            dtype=jnp.int32,
+        )
+        block_size = jnp.asarray(counts_np, dtype=jnp.int32)
+        incoming_K_int = jnp.asarray(
+            sorted_k_np[starts_np],
+            dtype=jnp.int32,
+        )
+        block_out_degree = jnp.zeros((block_count,), dtype=jnp.int32)
+        block_start = None
+        block_stop = None
+        block_sample_indices = None
+    else:
+        log_L_blocks = block_state.log_L_blocks
+        block_valid_mask = block_state.valid
+        block_first_idx = block_state.block_first_idx.astype(jnp.int32)
+        block_size = block_state.block_size.astype(jnp.int32)
+        incoming_K_int = block_state.incoming_K.astype(jnp.int32)
+        block_out_degree = block_state.block_out_degree.astype(jnp.int32)
+        block_start = block_state.block_start
+        block_stop = block_state.block_stop
+        block_sample_indices = block_state.block_sample_indices
+
+    num_blocks = log_L_blocks.shape[0]
+    block_state_for_v3 = BlockState(
+        log_L_blocks=log_L_blocks,
+        block_first_idx=block_first_idx,
+        block_size=block_size,
+        incoming_K=incoming_K_int,
+        block_out_degree=block_out_degree,
+        valid=block_valid_mask,
+        block_start=block_start,
+        block_stop=block_stop,
+        block_sample_indices=block_sample_indices,
+    )
+    classic_concentrations = classic_dirichlet_concentrations(block_state_for_v3)
+    counts = compute_phantom_count_matrices(
+        log_L_blocks=log_L_blocks,
+        block_valid_mask=block_valid_mask,
+        log_L_constraints=log_L_constraints,
+        valid_phantom=valid_phantom,
+        log_L_phantom=log_L_phantom,
+        sample_mask=effective_sample_mask,
+        C_min=C_min,
+    )
+    probability_samples = sample_gamma_weighted_phantom_probabilities(
+        key=key,
+        block_state=block_state_for_v3,
+        A_cg=counts.A_cg,
+        B_cg=counts.B_cg,
+        E_cg=counts.E_cg,
+        num_samples=num_Z_samples,
+        C_min=C_min,
+    )
+    p_gt_for_path = jnp.where(
+        block_valid_mask[None, :],
+        probability_samples.p_gt_samples,
+        jnp.ones((num_Z_samples, num_blocks), dtype=log_L_blocks.dtype),
+    )
+    p_gt_for_path = jnp.clip(p_gt_for_path, 1e-300, 1.0)
+    log_X = jnp.cumsum(jnp.log(p_gt_for_path), axis=-1)
+    log_X_prev = jnp.concatenate(
+        [
+            jnp.zeros((num_Z_samples, 1), dtype=log_X.dtype),
+            log_X[:, :-1],
+        ],
+        axis=-1,
+    )
+    log_dX = _logdiffexp(log_X_prev, log_X)
+    log_dZ = log_dX + log_L_blocks[None, :]
+    log_dZ = jnp.where(block_valid_mask[None, :], log_dZ, -jnp.inf)
+    log_Z_samples = _logsumexp(log_dZ, axis=-1)
+    log_dZ_mean, log_dZ_var, weights = _summarise_gamma_log_dz_samples(
+        log_dZ=log_dZ,
+        log_Z=log_Z_samples,
+        block_valid_mask=block_valid_mask,
+    )
+    entropy_terms = jnp.where(
+        block_valid_mask[None, :],
+        log_L_blocks[None, :] - log_Z_samples[:, None],
+        jnp.zeros_like(log_dZ),
+    )
+    H_samples = jnp.sum(weights * entropy_terms, axis=-1)
+    p_gt_mean = jnp.mean(probability_samples.p_gt_samples, axis=0)
+    p_eq_mean = jnp.mean(probability_samples.p_eq_samples, axis=0)
+    p_lt_mean = jnp.mean(probability_samples.p_lt_samples, axis=0)
+    return EvidenceSamples(
+        log_Z_samples=log_Z_samples,
+        H_samples=H_samples,
+        log_dZ_mean=jnp.where(
+            block_valid_mask,
+            log_dZ_mean,
+            jnp.full_like(log_dZ_mean, -jnp.inf),
+        ),
+        log_dZ_var=jnp.where(
+            block_valid_mask,
+            log_dZ_var,
+            jnp.full_like(log_dZ_var, -jnp.inf),
+        ),
+        log_L_blocks=log_L_blocks,
+        block_first_idx=block_first_idx,
+        block_size=block_size,
+        incoming_K=incoming_K_int,
+        kish_participating_cluster_counts=counts.kish_participating_cluster_counts,
+        phantom_gate_active=counts.phantom_gate_active,
+        phantom_A=counts.A_g,
+        phantom_B=counts.B_g,
+        phantom_E=counts.E_g,
+        phantom_R=counts.R_g,
+        classic_alpha_gt=classic_concentrations.alpha_gt,
+        classic_alpha_eq=classic_concentrations.alpha_eq,
+        classic_alpha_lt=classic_concentrations.alpha_lt,
+        conditioned_alpha_gt=None,
+        conditioned_alpha_eq=None,
+        conditioned_alpha_lt=None,
+        epsilon=classic_concentrations.epsilon,
+        p_gt_samples=probability_samples.p_gt_samples,
+        p_eq_samples=probability_samples.p_eq_samples,
+        p_lt_samples=probability_samples.p_lt_samples,
+        p_gt_mean=jnp.where(block_valid_mask, p_gt_mean, jnp.nan),
+        p_eq_mean=jnp.where(block_valid_mask, p_eq_mean, jnp.nan),
+        p_lt_mean=jnp.where(block_valid_mask, p_lt_mean, jnp.nan),
+        phantom_add_gt_samples=probability_samples.phantom_add_gt_samples,
+        phantom_add_eq_samples=probability_samples.phantom_add_eq_samples,
+        phantom_add_lt_samples=probability_samples.phantom_add_lt_samples,
+        rho_samples=None,
+        rho_values=None,
+        rho_fit=None,
+        eta_samples=None,
+        rho_eta_samples=None,
     )

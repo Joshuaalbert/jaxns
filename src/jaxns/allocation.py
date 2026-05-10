@@ -389,27 +389,18 @@ def _choose_index_from_weights(
 ) -> int:
     if candidate_indices.size == 1:
         return int(candidate_indices[0])
-    log_weights = jnp.log(jnp.asarray(weights, dtype=jnp.float32))
-    selected_offset = int(jax.random.categorical(key, log_weights))
-    return int(candidate_indices[selected_offset])
-
-
-def _choose_target_index_from_weights(
-        key,
-        candidate_indices: np.ndarray,
-        weights: np.ndarray,
-        utility_hash: int,
-) -> int:
-    if candidate_indices.size == 1:
-        return int(candidate_indices[0])
-    total = float(np.sum(weights))
+    finite_positive_weights = np.where(
+        np.isfinite(weights) & (weights > 0.0),
+        weights,
+        0.0,
+    )
+    total = float(np.sum(finite_positive_weights))
     if total <= 0.0:
         return int(candidate_indices[0])
     quantile = float(jax.random.uniform(key, dtype=jnp.float32))
-    quantile = (quantile + ((utility_hash * 92) % 997) / 997.0) % 1.0
-    cdf = np.cumsum(weights / total)
+    cdf = np.cumsum(finite_positive_weights / total)
     selected_offset = min(
-        int(np.searchsorted(cdf, quantile)),
+        int(np.searchsorted(cdf, quantile, side="right")),
         candidate_indices.size - 1,
     )
     return int(candidate_indices[selected_offset])
@@ -442,15 +433,6 @@ def select_parent_work(
     current_K = np.asarray(plan.current_K, dtype=np.int64).copy()
     valid = np.asarray(plan.valid, dtype=bool)
     X = np.asarray(plan.volume_path.X, dtype=float)
-    unit_peak = np.asarray(plan.unit_peak_utility, dtype=float)
-    utility_hash = int(
-        np.sum(
-            np.round(np.nan_to_num(unit_peak, nan=0.0, posinf=0.0) * 1000.0)
-            * (np.arange(unit_peak.size) + 1)
-        )
-        + np.sum(target_K * (np.arange(target_K.size) + 17))
-        + np.sum(current_K * (np.arange(current_K.size) + 31))
-    )
     log_likelihoods = np.asarray(state.samples.log_likelihoods)
     block_sample_indices = np.asarray(block_state.block_sample_indices)
 
@@ -476,10 +458,7 @@ def select_parent_work(
         ):
             target_candidates = target_candidates[has_strict_parent]
 
-        target_weights = (
-                deficits[target_candidates].astype(float)
-                * np.maximum(unit_peak[target_candidates], 0.0)
-        )
+        target_weights = deficits[target_candidates].astype(float)
         target_weights = np.maximum(target_weights, 0.0)
         target_weights = np.where(
             np.isfinite(target_weights),
@@ -491,11 +470,10 @@ def select_parent_work(
             target_weights = np.maximum(target_weights, 0.0)
         if np.sum(target_weights) <= 0.0:
             break
-        target_block_idx = _choose_target_index_from_weights(
+        target_block_idx = _choose_index_from_weights(
             key,
             target_candidates,
             target_weights,
-            utility_hash,
         )
         if target_candidates.size > 1:
             key, _ = jax.random.split(key)

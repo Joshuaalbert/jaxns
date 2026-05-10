@@ -8,9 +8,13 @@ Last updated: current orchestration pass.
 
 None currently.
 
+## Ticket Preparation
+
+None currently.
+
 ## Under Review
 
-None.
+None currently.
 
 ## Accepted With Follow-Up
 
@@ -56,9 +60,10 @@ None.
   deterministic validation fixtures/producers and the minimal public collector
   skeleton that runs real v3 public toy validations for baseline race-tree,
   phantom-conditioned, dynamic allocation, and Galilean method settings,
-  carries result diagnostics, requires real MC shrinkage/rho diagnostics, and
-  reports measured smoke-test guardrails without claiming final benchmark
-  numbers.
+  carries result diagnostics, originally required MC shrinkage/rho diagnostics,
+  and reports measured smoke-test guardrails without claiming final benchmark
+  numbers. Ticket 0013 supersedes the rho diagnostics with Kish/gate/gamma
+  phantom-conditioning diagnostics.
 - `0011-execution-diagnostics-integration`: implementation accepted after
   public diagnostics schema/accessors, result-side diagnostics attachment,
   allocation/depth/goal/parent/sampler diagnostics, coordinator-owned
@@ -72,8 +77,31 @@ None currently.
 
 ## Completed
 
-None yet. A ticket only moves here after tests pass, implementation review
-findings are resolved, and no known design ambiguity remains.
+- `0013-gamma-weighted-phantom-conditioning`: completed after final strict
+  review confirmed the gamma-weighted per-cluster phantom-conditioning target,
+  zero-participant Kish-gate behavior, NumPy reference count validation,
+  public Kish/gate diagnostics, stale-rho validation rejection, honest
+  gamma-conditioning timing. The full standard-problem acceptance gate now
+  passes after Ticket 0014's non-isotropic direction-kernel work and the
+  allocation-selector starvation fix.
+- `0014-gmm-non-isotropic-direction-kernel`: completed after strict design and
+  integration reviews accepted the posterior-weighted GMM direction fitting
+  helpers, coordinator-owned five-shell adaptation cadence, immutable dispatch
+  snapshots, local-worker adaptation-context transport, public diagnostics, GMM
+  direction-kernel aliases, fallback behavior, and full standard-problem
+  acceptance. A follow-up allocation-selector fix removed double utility
+  weighting in `select_parent_work()` so baseline target deficits are serviced
+  directly from `target_K`.
+- `0016-standard-problem-speed-benchmarks`: completed after adding the
+  full-dimensional `basic_mvn` local-LB speed benchmark, schema validation,
+  CLI JSON output, worker-scaling mode, observed worker-count diagnostics,
+  synchronized MC-shrinkage timing, fast focused coverage, strict review, and
+  a tiny real worker-scaling smoke measurement.
+- `0017-standard-problem-performance-benchmark-driven`: completed after the
+  sorted-prefix strict seed-selection optimization reduced full 8D `basic_mvn`
+  benchmark time from `150.89s` to `88.99s` while the representative
+  correctness subset for `basic_mvn`, `spike_slab`, and `plateau` passed across
+  all allocation targets.
 
 ## Integration
 
@@ -135,7 +163,23 @@ findings are resolved, and no known design ambiguity remains.
   `tests/test_v3_validation_benchmark_producers.py`,
   `tests/test_v3_validation_benchmark_schema.py`, and
   `tests/test_v3_validation_deterministic_fixtures.py` together.
-- Not rerun in the current pass: `tests/test_ns_standard_problems.py` because
-  it is slow/stochastic standard-problem coverage and should be used as part of
-  the later validation gate.
+- The final 0013 acceptance run passed
+  `tests/test_v3_shrinkage.py`, `tests/test_v3_phantom_conditioning.py`,
+  `tests/test_phantom_eval_jax.py`, `tests/test_phantom_eval_ref.py`,
+  `tests/test_v3_phantom_results.py`, `tests/test_state.py`,
+  `tests/test_results_plotting.py`,
+  `tests/test_v3_validation_deterministic_fixtures.py`,
+  `tests/test_v3_validation_benchmark_schema.py`,
+  `tests/test_v3_validation_benchmark_producers.py`, and
+  `tests/test_v3_validation_benchmark_collector.py` together under
+  `MPLBACKEND=Agg`.
+- Current standard-problem gate status: passed
+  `MPLBACKEND=Agg conda run --no-capture-output -n jaxns_py pytest -q -s
+  tests/test_ns_standard_problems.py` after the Ticket 0014 GMM direction path
+  and allocation-selector follow-up. The gate covers the full original
+  `STANDARD_PROBLEM_CASES` list, all three allocation targets (`uniform`,
+  `evidence_improving`, `posterior_improving`), direct pytest execution with no
+  subprocess isolation, `3 * sample_std` evidence tolerance, per-case
+  `LoadBalancerClient(address='local')` teardown, and the local distributed
+  smoke test: `31 passed, 2 warnings in 9167.84s (2:32:47)`.
 - No accepted test-first drafts are currently expected to fail.

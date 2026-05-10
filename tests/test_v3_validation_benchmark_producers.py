@@ -125,6 +125,32 @@ def _posterior_wasserstein_run(
     }
 
 
+def _phantom_diagnostics(offset: float = 0.0) -> dict:
+    return {
+        "kish_participating_cluster_counts": [20.0, 12.0 + offset],
+        "phantom_gate_active": [True, False],
+        "phantom_A_g": [20.0, 18.0 + offset],
+        "phantom_B_g": [8.0, 6.0 + offset],
+        "phantom_E_g": [3.0, 2.0],
+        "phantom_R_g": [9.0, 10.0],
+        "C_min": 20,
+    }
+
+
+def _producer_calibration_run_with_diagnostics(**diagnostic_overrides) -> dict:
+    diagnostics = _phantom_diagnostics()
+    diagnostics.update(diagnostic_overrides)
+    return {
+        "metadata": _metadata(seed=0, evaluations=64),
+        "log_Z_samples": [1.00, 1.05, 1.10],
+        "reported_uncertainty_logZ": 0.05,
+        "empirical_uncertainty_logZ": 0.05,
+        "expectation_logZ": 1.04,
+        "mc_shrinkage_logZ": 1.05,
+        **diagnostics,
+    }
+
+
 def test_multi_seed_calibration_producer_emits_schema_checked_table():
     producers = _require_producers()
     runs = [
@@ -135,8 +161,7 @@ def test_multi_seed_calibration_producer_emits_schema_checked_table():
             "empirical_uncertainty_logZ": 0.05,
             "expectation_logZ": 1.04,
             "mc_shrinkage_logZ": 1.05,
-            "rho_g": [1.0, 0.9],
-            "rho_fit": [0.98, 0.91],
+            **_phantom_diagnostics(0.0),
         },
         {
             "metadata": _metadata(seed=1, evaluations=64),
@@ -145,8 +170,7 @@ def test_multi_seed_calibration_producer_emits_schema_checked_table():
             "empirical_uncertainty_logZ": 0.05,
             "expectation_logZ": 1.03,
             "mc_shrinkage_logZ": 1.04,
-            "rho_g": [1.0, 0.88],
-            "rho_fit": [0.97, 0.90],
+            **_phantom_diagnostics(1.0),
         },
         {
             "metadata": _metadata(
@@ -162,8 +186,7 @@ def test_multi_seed_calibration_producer_emits_schema_checked_table():
             "empirical_uncertainty_logZ": 0.05,
             "expectation_logZ": 1.04,
             "mc_shrinkage_logZ": 1.05,
-            "rho_g": [1.0, 0.86],
-            "rho_fit": [0.96, 0.89],
+            **_phantom_diagnostics(2.0),
         },
         {
             "metadata": _metadata(
@@ -179,8 +202,7 @@ def test_multi_seed_calibration_producer_emits_schema_checked_table():
             "empirical_uncertainty_logZ": 0.05,
             "expectation_logZ": 1.04,
             "mc_shrinkage_logZ": 1.05,
-            "rho_g": [1.0, 0.85],
-            "rho_fit": [0.95, 0.88],
+            **_phantom_diagnostics(3.0),
         },
     ]
 
@@ -190,6 +212,10 @@ def test_multi_seed_calibration_producer_emits_schema_checked_table():
     )
 
     assert_calibration_table(table)
+    assert "rho_g" not in table[0]["evidence_calibration"]
+    assert "rho_fit" not in table[0]["evidence_calibration"]
+    for key in _phantom_diagnostics():
+        assert key in table[0]["evidence_calibration"]
     assert [row["metadata"]["seed"] for row in table] == [0, 1, 0, 1]
 
     rollups = producers.produce_multi_seed_calibration_rollups(table)
@@ -221,6 +247,35 @@ def test_multi_seed_calibration_producer_emits_schema_checked_table():
     )
     assert rollups[1]["method"] == "phantom-conditioned"
     assert rollups[1]["method_setting"]["allocation"] == "dynamic"
+
+
+@pytest.mark.parametrize(
+    ("diagnostic_overrides", "match"),
+    [
+        ({"phantom_R_g": [8.0, 10.0]}, "phantom_R_g|A.*B.*E|R.*A"),
+        (
+            {
+                "kish_participating_cluster_counts": [20.0, 21.0],
+                "phantom_gate_active": [True, False],
+            },
+            "phantom_gate_active|kish|C_min",
+        ),
+        ({"C_min": -1}, "C_min"),
+        ({"phantom_B_g": [8.0]}, "length|align|phantom_B_g"),
+    ],
+    ids=["bad-R", "bad-gate", "bad-C-min", "bad-length"],
+)
+def test_calibration_producer_rejects_incoherent_phantom_diagnostics(
+        diagnostic_overrides,
+        match,
+):
+    producers = _require_producers()
+
+    with pytest.raises(ValueError, match=match):
+        producers.produce_multi_seed_evidence_calibration(
+            [_producer_calibration_run_with_diagnostics(**diagnostic_overrides)],
+            logZ_ref=1.02,
+        )
 
 
 def test_rmse_vs_likelihood_pareto_producer_aggregates_calibration_records():
@@ -692,7 +747,7 @@ def test_performance_guardrail_suite_producer_covers_ticket_hot_paths():
         "block_construction": 0.01,
         "shrinkage_sampling": 0.02,
         "phantom_counting": 0.03,
-        "rho_bootstrap": 0.04,
+        "gamma_phantom_conditioning": 0.04,
         "trajectories": 0.05,
         "serialization": 0.01,
         "worker_task_latency": 0.06,

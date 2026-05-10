@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 from jax import numpy as jnp
 
+import jaxns.results as results_module
 from jaxns.constrained_sampler import AbstractSampler
 from jaxns.core import NestedSampler
 from jaxns.mixed_precision import mp_policy
@@ -246,6 +247,71 @@ def _make_padded_plateau_result(num_phantom: int) -> NestedSamplerResults:
     )
 
 
+def _make_single_block_gamma_public_result() -> NestedSamplerResults:
+    num_samples = 20
+    u_samples = jnp.linspace(0.05, 0.95, num_samples)
+    log_l = jnp.zeros((num_samples,), dtype=mp_policy.measure_dtype)
+    log_l_phantom = jnp.asarray(
+        np.concatenate(
+            [
+                np.full((12, 1), 1.0, dtype=float),
+                np.full((4, 1), 0.0, dtype=float),
+                np.full((4, 1), -1.0, dtype=float),
+            ],
+            axis=0,
+        ),
+        dtype=mp_policy.measure_dtype,
+    )
+    return NestedSamplerResults(
+        log_Z_mean=jnp.asarray(0.0, dtype=mp_policy.measure_dtype),
+        log_Z_uncert=jnp.asarray(0.1, dtype=mp_policy.measure_dtype),
+        ess=jnp.asarray(10.0, dtype=mp_policy.measure_dtype),
+        H_mean=jnp.asarray(0.0, dtype=mp_policy.measure_dtype),
+        total_num_samples=jnp.asarray(num_samples, dtype=mp_policy.count_dtype),
+        total_phantom_samples=jnp.asarray(num_samples, dtype=mp_policy.count_dtype),
+        total_num_likelihood_evaluations=jnp.asarray(40, dtype=mp_policy.count_dtype),
+        log_efficiency=jnp.log(jnp.asarray(0.5, dtype=mp_policy.measure_dtype)),
+        termination_reason=jnp.asarray(0, dtype=mp_policy.count_dtype),
+        U_samples=u_samples,
+        X_samples=u_samples,
+        log_L_constraints=jnp.full((num_samples,), -jnp.inf, dtype=mp_policy.measure_dtype),
+        log_L_phantom=log_l_phantom,
+        valid_phantom=jnp.ones((num_samples,), dtype=mp_policy.bool_dtype),
+        log_L=log_l,
+        log_L_blocks=jnp.asarray([0.0], dtype=mp_policy.measure_dtype),
+        log_dp=jnp.full((num_samples,), -jnp.log(num_samples), dtype=mp_policy.measure_dtype),
+        log_X_mean=-jnp.linspace(0.0, 1.0, num_samples),
+        log_posterior_density=log_l,
+        num_live_points_per_sample=jnp.full((num_samples,), 40, dtype=mp_policy.count_dtype),
+        num_likelihood_evaluations_per_sample=jnp.full((num_samples,), 2, dtype=mp_policy.count_dtype),
+        log_L_supremum=jnp.asarray(0.0, dtype=mp_policy.measure_dtype),
+        U_supremum=u_samples[0],
+        X_supremum=u_samples[0],
+        log_L_map=jnp.asarray(0.0, dtype=mp_policy.measure_dtype),
+        U_map=u_samples[0],
+        X_map=u_samples[0],
+        block_first_idx=jnp.asarray([0], dtype=mp_policy.index_dtype),
+        block_size=jnp.asarray([num_samples], dtype=mp_policy.count_dtype),
+        block_incoming_K=jnp.asarray([40], dtype=mp_policy.count_dtype),
+        block_out_degree=jnp.asarray([0], dtype=mp_policy.count_dtype),
+        block_start=jnp.asarray([0], dtype=mp_policy.index_dtype),
+        block_stop=jnp.asarray([num_samples], dtype=mp_policy.index_dtype),
+        block_sample_indices=jnp.arange(num_samples, dtype=mp_policy.index_dtype)[None, :],
+    )
+
+
+def _assert_result_probability_mean(samples, expected: np.ndarray, *, atol: float) -> None:
+    got = np.stack(
+        [
+            np.asarray(samples.p_gt_samples)[:, 0],
+            np.asarray(samples.p_eq_samples)[:, 0],
+            np.asarray(samples.p_lt_samples)[:, 0],
+        ],
+        axis=-1,
+    )
+    np.testing.assert_allclose(np.mean(got, axis=0), expected, atol=atol)
+
+
 def _run_high_phantom_probe():
     sampler = _HighPhantomLikelihoodSampler()
     ns = NestedSampler(
@@ -274,31 +340,207 @@ def _run_mixed_validity_probe():
     return ns.run(jax.random.PRNGKey(23))
 
 
-def test_results_sample_mc_shrinkage_exposes_block_aligned_rho_diagnostics():
+def test_results_expose_public_phantom_conditioning_diagnostics():
+    result_case = _make_result_case()
+
+    diagnostics = result_case.results.phantom_conditioning_diagnostics(
+        C_min=2,
+    )
+
+    for field_name in (
+            "kish_participating_cluster_counts",
+            "phantom_gate_active",
+            "A_g",
+            "B_g",
+            "E_g",
+            "R_g",
+    ):
+        assert hasattr(diagnostics, field_name), (
+            "phantom_conditioning_diagnostics() must expose "
+            f"{field_name}."
+        )
+
+    np.testing.assert_allclose(
+        np.asarray(diagnostics.kish_participating_cluster_counts),
+        np.asarray([1.0, 2.0, 3.0]),
+    )
+    np.testing.assert_array_equal(
+        np.asarray(diagnostics.phantom_gate_active, dtype=bool),
+        np.asarray([False, True, True]),
+    )
+    np.testing.assert_allclose(np.asarray(diagnostics.A_g), [2.0, 4.0, 6.0])
+    np.testing.assert_allclose(np.asarray(diagnostics.B_g), [2.0, 4.0, 6.0])
+    np.testing.assert_allclose(np.asarray(diagnostics.E_g), [0.0, 0.0, 0.0])
+    np.testing.assert_allclose(np.asarray(diagnostics.R_g), [0.0, 0.0, 0.0])
+
+
+def test_results_sample_mc_shrinkage_exposes_kish_gate_diagnostics_not_target_rho():
     result_case = _make_result_case()
 
     evidence_samples = result_case.results.sample_mc_shrinkage(
         num_samples=4,
         key=jax.random.PRNGKey(7),
+        C_min=2,
     )
-
-    assert hasattr(evidence_samples, "rho_values")
-    assert hasattr(evidence_samples, "rho_fit")
-
-    log_l_blocks = np.asarray(evidence_samples.log_L_blocks)
-    rho_values = np.asarray(evidence_samples.rho_values)
-    rho_fit = np.asarray(evidence_samples.rho_fit)
 
     np.testing.assert_allclose(
-        log_l_blocks,
+        np.asarray(evidence_samples.log_L_blocks),
         np.asarray(result_case.results.log_L),
     )
-    assert rho_values.shape == log_l_blocks.shape
-    assert rho_fit.shape == log_l_blocks.shape
-    assert np.all(np.isfinite(rho_values))
-    assert np.all((rho_values > 0.0) & (rho_values <= 1.0))
-    assert np.all(np.isfinite(rho_fit))
-    assert np.all((rho_fit > 0.0) & (rho_fit <= 1.0))
+    for field_name in (
+            "kish_participating_cluster_counts",
+            "phantom_gate_active",
+            "phantom_A",
+            "phantom_B",
+            "phantom_E",
+            "phantom_R",
+    ):
+        assert hasattr(evidence_samples, field_name), (
+            "EvidenceSamples from result.sample_mc_shrinkage() must expose "
+            f"{field_name}."
+        )
+        assert np.asarray(getattr(evidence_samples, field_name)).shape == (
+            result_case.results.log_L.shape
+        )
+    for old_name in ("rho_values", "rho_fit", "rho_samples", "rho_eta_samples"):
+        if hasattr(evidence_samples, old_name):
+            assert getattr(evidence_samples, old_name) is None
+
+
+def test_results_sample_mc_shrinkage_uses_gamma_conditioning_when_gate_active():
+    results = _make_single_block_gamma_public_result()
+    num_draws = 4096
+
+    active = results.sample_mc_shrinkage(
+        num_samples=num_draws,
+        key=jax.random.PRNGKey(103),
+        C_min=20,
+    )
+    inactive = results.sample_mc_shrinkage(
+        num_samples=num_draws,
+        key=jax.random.PRNGKey(103),
+        C_min=21,
+    )
+
+    for samples in (active, inactive):
+        for field_name in ("p_gt_samples", "p_eq_samples", "p_lt_samples"):
+            assert hasattr(samples, field_name), (
+                "NestedSamplerResults.sample_mc_shrinkage() must return "
+                f"{field_name} so the public path target can be verified."
+            )
+
+    classic_alpha = np.asarray([21.0, 20.5, 0.5], dtype=float)
+    active_alpha = np.asarray([33.0, 24.5, 4.5], dtype=float)
+    _assert_result_probability_mean(
+        inactive,
+        classic_alpha / np.sum(classic_alpha),
+        atol=0.02,
+    )
+    _assert_result_probability_mean(
+        active,
+        active_alpha / np.sum(active_alpha),
+        atol=0.02,
+    )
+    assert abs(
+        float(np.mean(np.asarray(active.p_gt_samples)[:, 0]))
+        - float(np.mean(np.asarray(inactive.p_gt_samples)[:, 0]))
+    ) > 0.03
+    np.testing.assert_allclose(
+        np.asarray(active.kish_participating_cluster_counts),
+        np.asarray([20.0]),
+    )
+    np.testing.assert_array_equal(
+        np.asarray(active.phantom_gate_active, dtype=bool),
+        np.asarray([True]),
+    )
+    np.testing.assert_array_equal(
+        np.asarray(inactive.phantom_gate_active, dtype=bool),
+        np.asarray([False]),
+    )
+
+
+def test_results_sample_mc_shrinkage_matches_explicit_block_state_public_call():
+    results = _make_single_block_gamma_public_result()
+    block_state = results_module._block_state_from_results(results)
+    assert block_state is not None
+
+    key = jax.random.PRNGKey(107)
+    result_samples = results.sample_mc_shrinkage(
+        num_samples=16,
+        key=key,
+        C_min=20,
+    )
+    direct_samples = sample_mc_shrinkage(
+        key=key,
+        log_L_constraints=results.log_L_constraints,
+        log_L_classic=results.log_L,
+        K_classic=results.num_live_points_per_sample,
+        valid_phantom=results.valid_phantom,
+        log_L_phantom=results.log_L_phantom,
+        num_samples=results.total_num_samples,
+        num_Z_samples=16,
+        block_state=block_state,
+        C_min=20,
+    )
+
+    for field in dataclasses.fields(result_samples):
+        expected = getattr(direct_samples, field.name)
+        got = getattr(result_samples, field.name)
+        if expected is None or got is None:
+            assert got is expected
+            continue
+        np.testing.assert_allclose(np.asarray(got), np.asarray(expected))
+
+
+def test_results_sample_mc_shrinkage_uses_block_state_helper(monkeypatch):
+    results = _make_single_block_gamma_public_result()
+    block_state = results_module._block_state_from_results(results)
+    assert block_state is not None
+    helper_calls = []
+    sentinel = object()
+
+    def fake_block_state_helper(*, block_state, **kwargs):
+        helper_calls.append((block_state, kwargs))
+        return sentinel
+
+    def fail_generic_path(*args, **kwargs):
+        del args, kwargs
+        raise AssertionError(
+            "NestedSamplerResults.sample_mc_shrinkage() must use the "
+            "block-state helper when result block arrays are present."
+        )
+
+    monkeypatch.setattr(
+        results_module,
+        "_sample_mc_shrinkage_with_block_state",
+        fake_block_state_helper,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        results_module,
+        "_sample_mc_shrinkage",
+        fail_generic_path,
+    )
+
+    got = results.sample_mc_shrinkage(
+        num_samples=4,
+        key=jax.random.PRNGKey(109),
+        C_min=20,
+    )
+
+    assert got is sentinel
+    assert len(helper_calls) == 1
+    called_block_state, kwargs = helper_calls[0]
+    np.testing.assert_allclose(
+        np.asarray(called_block_state.log_L_blocks),
+        np.asarray(block_state.log_L_blocks),
+    )
+    np.testing.assert_array_equal(
+        np.asarray(called_block_state.block_size),
+        np.asarray(block_state.block_size),
+    )
+    assert kwargs["num_samples"] == 4
+    assert kwargs["C_min"] == 20
 
 
 def test_trim_keeps_log_l_blocks_aligned_to_trimmed_sample_size():

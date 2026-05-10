@@ -95,8 +95,19 @@ with LoadBalancerClient(address='local') as lb:
         num_samples=1000
     )
     log_Z_samples = shrinkage_samples.log_Z_samples  # [num_samples]
-    plt.plot(results.log_L_blocks, shrinkage_samples.rho_values)
-    plt.plot(results.log_L_blocks, shrinkage_samples.rho_fit)
+    phantom_diag = results.phantom_conditioning_diagnostics()
+    # Target diagnostics for phantom-conditioned shrinkage:
+    # - participating independent-cluster count used by the Kish gate;
+    # - whether phantom counts were activated for each block.
+    plt.plot(
+        results.log_L_blocks,
+        phantom_diag.kish_participating_cluster_counts
+    )
+    plt.step(
+        results.log_L_blocks,
+        phantom_diag.phantom_gate_active.astype(float),
+        where='post'
+    )
     plt.show()
 
 

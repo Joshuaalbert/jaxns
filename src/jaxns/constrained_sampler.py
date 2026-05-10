@@ -20,6 +20,7 @@ from jaxns.types import FloatArray, IntArray, PRNGKey, UType, BoolArray
 
 ISOTROPIC_DIRECTION_KERNELS = frozenset(("isotropic", "isotropic_gaussian"))
 ELLIPSOIDAL_DIRECTION_KERNELS = frozenset(("ellipsoidal", "ellipsoidal_gaussian"))
+GMM_DIRECTION_KERNELS = frozenset(("gmm", "non_isotropic", "non-isotropic"))
 STRAIGHT_LINE_TRAJECTORIES = frozenset(("straight_line", "straight_line_perfect"))
 GALILEAN_TRAJECTORIES = frozenset(("galilean",))
 UNSUPPORTED_TRAJECTORIES = frozenset(("gradient_guided",))
@@ -268,7 +269,7 @@ def _validate_direction_kernel_mode(direction_kernel: object) -> None:
     direction_mode = _as_mode_name(direction_kernel)
     if direction_mode in ISOTROPIC_DIRECTION_KERNELS:
         return
-    if direction_mode in ELLIPSOIDAL_DIRECTION_KERNELS:
+    if direction_mode in ELLIPSOIDAL_DIRECTION_KERNELS | GMM_DIRECTION_KERNELS:
         return
     if hasattr(direction_kernel, "component_probabilities"):
         return
@@ -446,7 +447,7 @@ def _freeze_direction_kernel(
         return direction_kernel
     if direction_mode in ISOTROPIC_DIRECTION_KERNELS:
         return "isotropic"
-    if direction_mode in ELLIPSOIDAL_DIRECTION_KERNELS:
+    if direction_mode in ELLIPSOIDAL_DIRECTION_KERNELS | GMM_DIRECTION_KERNELS:
         return _build_ellipsoidal_direction_kernel(
             adaptation_context=adaptation_context,
         )
@@ -530,6 +531,37 @@ def _point_tree(value):
     if hasattr(value, "tree"):
         return value.tree
     return value
+
+
+class _StaticLogLikelihoodFn:
+    """Stable static JIT argument for repeated sampler calls on one problem."""
+
+    __slots__ = ("model", "args", "params", "_hash", "__weakref__")
+
+    def __init__(self, model: Model, args: tuple, params):
+        self.model = model
+        self.args = args
+        self.params = params
+        self._hash = hash((id(model), id(args), id(params)))
+
+    def __call__(self, U):
+        return self.model.log_likelihood(
+            U,
+            args=self.args,
+            params=self.params,
+            allow_nan=False,
+        )
+
+    def __hash__(self) -> int:
+        return self._hash
+
+    def __eq__(self, other: object) -> bool:
+        return (
+                isinstance(other, _StaticLogLikelihoodFn)
+                and self.model is other.model
+                and self.args is other.args
+                and self.params is other.params
+        )
 
 
 def _ravel_point(value) -> tuple[FloatArray, Callable[[FloatArray], UType]]:
@@ -1379,10 +1411,18 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
             alpha: jax.Array
 
         num_slices = _resolve_num_slices(self.num_slices)
-        log_likelihood_fn = lambda U: self.model.log_likelihood(U, args=args, params=params, allow_nan=False)
+        log_likelihood_fn = _StaticLogLikelihoodFn(self.model, args, params)
+        force_python_loop = bool(
+            _context_get(adaptation_context, "force_python_loop", False)
+        )
+        direction_adaptation_context = _context_get(
+            adaptation_context,
+            "direction_adaptation_context",
+            adaptation_context,
+        )
         direction_kernel = _freeze_direction_kernel(
             self.direction_kernel,
-            adaptation_context,
+            direction_adaptation_context,
         )
         direction_template = TreeField(seed_point.U0)
         trajectory_mode = _as_mode_name(self.trajectory)
@@ -1550,11 +1590,39 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
             direction_key=random.split(direction_scan_key, num_slices - 1),
             alpha=jnp.linspace(0.5, 1., num_slices - 1)
         )
-        final_carry, cumulative_samples = cumulative_op_static(
-            op=propose_op,
-            init=init_carry,
-            xs=xs
-        )
+        if force_python_loop:
+            carry = init_carry
+            samples = []
+            for i in range(num_slices - 1):
+                carry = propose_op(
+                    carry,
+                    XType(
+                        key=xs.key[i],
+                        direction_key=xs.direction_key[i],
+                        alpha=xs.alpha[i],
+                    ),
+                )
+                samples.append(carry)
+            final_carry = carry
+            if samples:
+                cumulative_samples = jax.tree.map(
+                    lambda *values: jnp.stack(values, axis=0),
+                    *samples,
+                )
+            else:
+                cumulative_samples = jax.tree.map(
+                    lambda value: jnp.zeros(
+                        (0,) + jnp.shape(value),
+                        dtype=jnp.asarray(value).dtype,
+                    ),
+                    init_carry,
+                )
+        else:
+            final_carry, cumulative_samples = cumulative_op_static(
+                op=propose_op,
+                init=init_carry,
+                xs=xs
+            )
 
         # concat initial sample to cumulative samples
         cumulative_samples = jax.tree.map(

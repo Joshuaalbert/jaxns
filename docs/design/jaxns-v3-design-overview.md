@@ -13,7 +13,7 @@ as an audit of what the repository currently implements.
 | Document | Scope |
 | --- | --- |
 | `jaxns-v3-statistical-core.md` | Race-tree nested sampling, plateaus, Bayesian shrinkage, evidence and posterior weights. |
-| `jaxns-v3-phantom-conditioning.md` | Phantom sample clusters, effective multinomial conditioning, `rho_g` estimation, and stationarity requirements. |
+| `jaxns-v3-phantom-conditioning.md` | Phantom sample clusters, gamma-weighted per-cluster conditioning, Kish participation gating, and stationarity requirements. |
 | `jaxns-v3-execution-and-allocation.md` | Single core outer and inner algorithm, lineage allocation targets, depth and goal conditions, parent choice, and load-balanced worker execution. |
 | `jaxns-v3-constrained-sampling.md` | Constrained-prior sampler contract, slice-sampling transitions, direction kernels, trajectory construction, and phantom collection; includes the Galilean rule that trajectory-building points are not retained as phantoms. |
 | `jaxns-v3-validation-plan.md` | Correctness, calibration, evidence-efficiency, and posterior-quality benchmark protocol. |
@@ -47,6 +47,10 @@ frames the method around these ideas:
 - In the paper's shrinkage model, a phantom sample acts as a Monte Carlo
   observation of constrained-prior probabilities. It is not a race participant
   and does not change lineage counts.
+- Phantom clusters are assumed independent between clusters and may be
+  arbitrarily correlated within a cluster. Conditioning uses per-cluster counts
+  gated by the generation parent contour, not aggregate effective-count
+  Dirichlet updates.
 - The sentinel sample defines the initial likelihood contour with prior volume
   one. Its out-degree is the root lineage count.
 - Parent out-degrees, not live-point membership, are the primitive bookkeeping
@@ -66,8 +70,9 @@ frames the method around these ideas:
 - The Bayesian shrinkage model uses `Dir(1, epsilon_g, 1 - epsilon_g)` before
   classic and phantom observations. The paper suggests `epsilon_g = 1e-6` for
   singleton blocks and `epsilon_g = 1/2` for plateau blocks.
-- Phantom conditioning uses block counts `A_g`, `B_g`, and `E_g`, scaled by an
-  effective-count factor `rho_g`, to update the Dirichlet concentrations.
+- Phantom conditioning draws race posterior gamma variables, draws cluster
+  weights `v_c ~ Gamma(1, 1)`, adds gated weighted per-cluster counts when the
+  Kish participating-cluster threshold is met, and normalizes to `p_g`.
 - Plateau posterior mass is assigned from the equality atom and divided equally
   across samples in the plateau block.
 - Dynamic allocation is an experimental-design layer over the race tree. It may
@@ -101,10 +106,10 @@ them:
   probabilities `(p_{>g}, p_{=g}, p_{<g})`.
 - Phantom cluster record:
   the classic sample it belongs to, retained phantom likelihood values, cluster
-  boundaries, and the generation constraint likelihood. The paper writes
-  phantom pairs `(x, L(x))`, but the shrinkage model uses only likelihoods and
-  cluster identity; v3 does not retain phantom coordinates and does not add
-  phantoms to posterior samples.
+  boundaries, and the generation parent contour. The paper writes phantom pairs
+  `(x, L(x))`, but the shrinkage model uses only likelihoods, cluster identity,
+  and parent-contour eligibility; v3 does not retain phantom coordinates and
+  does not add phantoms to posterior samples.
 
 ## Paper Status Notes
 

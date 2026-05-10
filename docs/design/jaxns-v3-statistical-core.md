@@ -190,47 +190,67 @@ censorship.
 
 The same block probability vector can be conditioned on retained post-burn-in
 phantom samples when those states are stationary enough under their parent
-contours. Phantom samples are organised as clusters `P_i` associated with the
-classic sample whose generation produced them. Cluster membership must be
-retained for the paper's bootstrap estimate of phantom correlation.
+contours. Phantom samples are organised as clusters `P_c`. Clusters are assumed
+approximately independent of each other, while retained states within one
+cluster may be arbitrarily correlated. A cluster can be the phantom set
+associated with a classic sample, or any smaller disjoint subset if
+between-cluster independence remains approximately valid. Cluster membership
+and the generation parent contour must be retained for phantom conditioning.
 Pre-burn-in states and non-uniform trajectory/bracketing/reflection points are
-not phantom-conditioning observations. Define phantom counts over
-`P = union_i P_i`:
+not phantom-conditioning observations.
+
+For each block `g`, define per-cluster counts gated by parent contour
+eligibility:
 
 ```text
-A_g = sum_{(x,L) in P} 1{L(x) > L_{g-1}}
-B_g = sum_{(x,L) in P} 1{L(x) > L_g} 1{L(x) > L_{g-1}}
-E_g = sum_{(x,L) in P} 1{L(x) = L_g} 1{L(x) > L_{g-1}}.
+A_{cg} = sum_{(x,L) in P_c} 1{L(x) > L_{g-1}} 1{L_{p(c)} <= L_{g-1}}
+B_{cg} = sum_{(x,L) in P_c} 1{L(x) > L_g} 1{L_{p(c)} <= L_{g-1}}
+E_{cg} = sum_{(x,L) in P_c} 1{L(x) = L_g} 1{L_{p(c)} <= L_{g-1}}
+R_{cg} = A_{cg} - B_{cg} - E_{cg}.
 ```
 
-Because phantom samples are correlated, the paper uses an effective count
-`A_g^eff = rho_g A_g` with `0 < rho_g <= 1`. The conditioned posterior is
+The paper target is no longer an effective-count `rho_g` Dirichlet posterior.
+Instead, each shrinkage draw starts with independent same-scale draws from the
+non-phantom race posterior in gamma form:
 
 ```text
-p_g | K_g, m_g, rho_g, P ~ Dir(b_{>g}, b_{=g}, b_{<g})
-b_{>g} = K_g - m_g + 1 + rho_g B_g
-b_{=g} = m_g + epsilon_g + rho_g E_g
-b_{<g} = 1 - epsilon_g + rho_g (A_g - B_g - E_g).
+M_{>g} ~ Gamma(a_{>g}, 1), independently
+M_{=g} ~ Gamma(a_{=g}, 1), independently
+M_{<g} ~ Gamma(a_{<g}, 1), independently.
 ```
 
-The paper estimates `rho_g` by cluster-bootstrap covariance matching. It uses
-the covariance of the first two components
-`q_g = (hat p_{>g}, hat p_{=g})^T`, the iid multinomial covariance `Sigma_g`,
-and the bootstrap covariance `Sigma_g^boot`:
+For that joint shrinkage draw, draw one independent cluster weight per phantom
+cluster,
 
 ```text
-hat rho_g =
-    rank(Sigma_g) / trace(Sigma_g^+ Sigma_g^boot).
+v_c ~ Gamma(1, 1),
 ```
 
-Because per-block estimates are noisy, the paper suggests fitting a low-order
-function of normalized race time:
+independent over clusters and independent of the race gammas. Reuse the same
+`v_c` for cluster `c` across all blocks and components in that joint draw. Let
 
 ```text
-rho_g = c_0 + c_1 (s_g / s_G) + c_2 (s_g / s_G)^2.
+C_g^Kish = (sum_c A_{cg})^2 / sum_c A_{cg}^2
+I_g = 1{C_g^Kish >= C_min}.
 ```
 
-This variance correction cannot remove bias from non-stationary phantoms.
+`C_min` defaults to `20` unless explicitly overridden by the implementation
+ticket or public API. If there are no participating clusters, `I_g = 0`. The
+phantom-conditioned block draw is
+
+```text
+M'_{>g} = M_{>g} + I_g sum_c v_c B_{cg}
+M'_{=g} = M_{=g} + I_g sum_c v_c E_{cg}
+M'_{<g} = M_{<g} + I_g sum_c v_c R_{cg}
+
+p_g = (M'_{>g}, M'_{=g}, M'_{<g})
+      / (M'_{>g} + M'_{=g} + M'_{<g}).
+```
+
+Singleton independent phantom clusters recover the iid Dirichlet posterior by
+gamma additivity. Correlated multi-sample clusters preserve the expected count
+contribution but inflate variance by sharing one cluster weight. This correction
+does not remove bias from non-stationary phantoms.
 
 ## Evidence Sampling
 
@@ -277,8 +297,8 @@ classic shrinkage ratios cannot correctly handle equality atoms.
 
 - Strict endpoint shrinkage is always `X_g / X_{g-1} = p_{>g}`.
 - Equality atom mass is not part of the strict endpoint.
-- Stationary phantom samples can condition `p_g` through effective-count
-  Dirichlet updates, but do not alter `K_g`, `m_g`, or parent out-degrees.
+- Stationary phantom samples can condition `p_g` through gamma-weighted
+  per-cluster counts, but do not alter `K_g`, `m_g`, or parent out-degrees.
 - Race-tree validity depends on classic samples being independent constrained
   prior draws from their parents.
 - Any generation strategy is valid only if the final sample set satisfies the

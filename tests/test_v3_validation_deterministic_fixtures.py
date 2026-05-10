@@ -5,9 +5,9 @@ import numpy as np
 import pytest
 from jax import numpy as jnp
 
+from benchmarks.v3_validation import deterministic_fixtures
 from benchmarks.v3_validation.deterministic_fixtures import (
     analytic_evidence_fixtures,
-    phantom_count_effect_fixture,
     posterior_weighting_fixtures,
     plateau_equality_recovery_fixture,
     race_tree_accounting_fixture,
@@ -80,6 +80,12 @@ def test_calibration_summary_declares_hat_logz_and_sigma_convention():
 
 def test_plateau_fixture_records_equality_mass_recovery_separately():
     fixture = plateau_equality_recovery_fixture()
+    assert not hasattr(fixture, "rho_g")
+    np.testing.assert_allclose(
+        np.asarray(fixture.R_cg),
+        np.asarray(fixture.A_cg) - np.asarray(fixture.B_cg) - np.asarray(fixture.E_cg),
+    )
+    assert fixture.phantom_gate_active
     assert (
         abs(fixture.phantom_equality_mean - fixture.equality_mass_ref)
         < abs(fixture.no_phantom_equality_mean - fixture.equality_mass_ref)
@@ -103,8 +109,15 @@ def test_plateau_fixture_records_equality_mass_recovery_separately():
             "empirical_uncertainty_logZ": summary["sigma_logZ"],
             "expectation_logZ": fixture.logZ_ref,
             "mc_shrinkage_logZ": summary["hat_logZ"],
-            "rho_g": [fixture.rho_g],
-            "rho_fit": [fixture.rho_g],
+            "kish_participating_cluster_counts": [
+                fixture.kish_participating_cluster_count
+            ],
+            "phantom_gate_active": [fixture.phantom_gate_active],
+            "phantom_A_g": [fixture.phantom_A],
+            "phantom_B_g": [fixture.phantom_B],
+            "phantom_E_g": [fixture.phantom_E],
+            "phantom_R_g": [fixture.phantom_R],
+            "C_min": fixture.C_min,
         },
         "plateau_equality": {
             "likelihood_level": fixture.likelihood_level,
@@ -127,59 +140,71 @@ def test_plateau_fixture_records_equality_mass_recovery_separately():
         assert_plateau_equality_record(bad_record)
 
 
-def test_phantom_count_effect_fixture_forces_conditioned_dirichlet_surface():
-    fixture = phantom_count_effect_fixture()
-    expected = fixture.conditioned_concentrations
-    np.testing.assert_allclose(
-        [
-            expected.alpha_gt,
-            expected.alpha_eq,
-            expected.alpha_lt,
-        ],
-        [7.8, 4.5, 3.7],
-    )
-
-    conditioned_fn = getattr(
-        v3_shrinkage,
-        "phantom_conditioned_dirichlet_concentrations",
+def test_gamma_weighted_phantom_fixture_forces_explicit_draw_surface():
+    fixture_fn = getattr(
+        deterministic_fixtures,
+        "gamma_weighted_phantom_conditioning_fixture",
         None,
     )
-    assert conditioned_fn is not None, (
-        "v3 validation needs "
-        "phantom_conditioned_dirichlet_concentrations(...) so the phantom "
-        "count-effect fixture can prove B_g, E_g, and A_g-B_g-E_g update "
-        "alpha_gt, alpha_eq, and alpha_lt separately."
+    assert callable(fixture_fn), (
+        "v3 validation fixtures must expose "
+        "gamma_weighted_phantom_conditioning_fixture() with per-cluster "
+        "A_cg/B_cg/E_cg/R_cg counts, explicit race gammas, explicit "
+        "cluster weights, C_min, gate activity, and expected probabilities."
+    )
+    fixture = fixture_fn()
+    assert fixture.C_min == 20
+    np.testing.assert_allclose(
+        np.asarray(fixture.R_cg),
+        np.asarray(fixture.A_cg) - np.asarray(fixture.B_cg) - np.asarray(fixture.E_cg),
+    )
+    assert np.any(np.asarray(fixture.E_cg) > 0.0)
+    assert np.any(np.asarray(fixture.R_cg) > 0.0)
+
+    draw_fn = getattr(
+        v3_shrinkage,
+        "gamma_weighted_phantom_probabilities_from_draws",
+        None,
+    )
+    assert callable(draw_fn), (
+        "v3_shrinkage.gamma_weighted_phantom_probabilities_from_draws(...) "
+        "is required so deterministic fixtures can validate explicit race "
+        "gammas and shared v_c weights."
     )
 
+    num_blocks = len(fixture.log_L_blocks)
     block_state = BlockState(
         log_L_blocks=jnp.asarray(fixture.log_L_blocks),
-        block_first_idx=jnp.asarray([0], dtype=jnp.int32),
+        block_first_idx=jnp.arange(num_blocks, dtype=jnp.int32),
         block_size=jnp.asarray(fixture.block_size, dtype=jnp.int32),
         incoming_K=jnp.asarray(fixture.incoming_K, dtype=jnp.int32),
-        block_out_degree=jnp.asarray([0], dtype=jnp.int32),
-        valid=jnp.asarray([True]),
-        block_sample_indices=jnp.asarray([[0, 1]], dtype=jnp.int32),
+        block_out_degree=jnp.zeros((num_blocks,), dtype=jnp.int32),
+        valid=jnp.ones((num_blocks,), dtype=jnp.bool_),
+        block_sample_indices=jnp.asarray(fixture.block_sample_indices),
     )
-    concentrations = conditioned_fn(
+    draw = draw_fn(
         block_state=block_state,
-        phantom_A=jnp.asarray(fixture.phantom_A),
-        phantom_B=jnp.asarray(fixture.phantom_B),
-        phantom_E=jnp.asarray(fixture.phantom_E),
-        rho_g=jnp.asarray(fixture.rho_g),
+        A_cg=jnp.asarray(fixture.A_cg),
+        B_cg=jnp.asarray(fixture.B_cg),
+        E_cg=jnp.asarray(fixture.E_cg),
+        race_gamma_gt=jnp.asarray(fixture.race_gamma_gt),
+        race_gamma_eq=jnp.asarray(fixture.race_gamma_eq),
+        race_gamma_lt=jnp.asarray(fixture.race_gamma_lt),
+        cluster_weights=jnp.asarray(fixture.cluster_weights),
+        C_min=fixture.C_min,
     )
 
     np.testing.assert_allclose(
-        np.asarray(concentrations.alpha_gt),
-        [expected.alpha_gt],
+        np.asarray(draw.kish_participating_cluster_counts),
+        np.asarray(fixture.kish_participating_cluster_counts),
     )
-    np.testing.assert_allclose(
-        np.asarray(concentrations.alpha_eq),
-        [expected.alpha_eq],
+    np.testing.assert_array_equal(
+        np.asarray(draw.phantom_gate_active, dtype=bool),
+        np.asarray(fixture.phantom_gate_active, dtype=bool),
     )
-    np.testing.assert_allclose(
-        np.asarray(concentrations.alpha_lt),
-        [expected.alpha_lt],
-    )
+    np.testing.assert_allclose(np.asarray(draw.p_gt), fixture.expected_p_gt)
+    np.testing.assert_allclose(np.asarray(draw.p_eq), fixture.expected_p_eq)
+    np.testing.assert_allclose(np.asarray(draw.p_lt), fixture.expected_p_lt)
 
 
 def test_race_tree_accounting_fixture_records_block_assumptions():

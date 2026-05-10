@@ -59,8 +59,13 @@ def _evidence_record() -> dict:
             "empirical_uncertainty_logZ": 0.051,
             "expectation_logZ": 1.099,
             "mc_shrinkage_logZ": 1.100,
-            "rho_g": [1.0, 0.8, 0.7],
-            "rho_fit": [0.95, 0.82, 0.72],
+            "kish_participating_cluster_counts": [20.0, 12.5, 0.0],
+            "phantom_gate_active": [True, False, False],
+            "phantom_A_g": [20.0, 25.0, 0.0],
+            "phantom_B_g": [9.0, 8.0, 0.0],
+            "phantom_E_g": [2.0, 5.0, 0.0],
+            "phantom_R_g": [9.0, 12.0, 0.0],
+            "C_min": 20,
         },
     }
 
@@ -84,11 +89,19 @@ def _evidence_record_for_group(
     return record
 
 
-def _baseline_evidence_record_without_rho() -> dict:
+def _baseline_evidence_record_without_phantom_diagnostics() -> dict:
     record = _evidence_record()
     record["metadata"] = _metadata()
-    del record["evidence_calibration"]["rho_g"]
-    del record["evidence_calibration"]["rho_fit"]
+    for key in (
+            "kish_participating_cluster_counts",
+            "phantom_gate_active",
+            "phantom_A_g",
+            "phantom_B_g",
+            "phantom_E_g",
+            "phantom_R_g",
+            "C_min",
+    ):
+        del record["evidence_calibration"][key]
     return record
 
 
@@ -197,19 +210,72 @@ def test_evidence_calibration_schema_rejects_posterior_metrics():
         assert_evidence_calibration_record(mixed_record)
 
 
-def test_evidence_calibration_rho_diagnostics_are_method_conditional():
-    baseline = _baseline_evidence_record_without_rho()
+def test_evidence_calibration_phantom_diagnostics_are_method_conditional():
+    baseline = _baseline_evidence_record_without_phantom_diagnostics()
     assert_evidence_calibration_record(baseline)
 
-    phantom_missing_rho = _evidence_record()
-    del phantom_missing_rho["evidence_calibration"]["rho_g"]
-    with pytest.raises(AssertionError, match="rho_g"):
-        assert_evidence_calibration_record(phantom_missing_rho)
+    phantom_missing_kish = _evidence_record()
+    del phantom_missing_kish["evidence_calibration"][
+        "kish_participating_cluster_counts"
+    ]
+    with pytest.raises(AssertionError, match="kish_participating_cluster_counts"):
+        assert_evidence_calibration_record(phantom_missing_kish)
 
-    phantom_bad_rho = _evidence_record()
-    phantom_bad_rho["evidence_calibration"]["rho_g"] = [1.0, 0.0]
-    with pytest.raises(AssertionError, match="rho_g"):
-        assert_evidence_calibration_record(phantom_bad_rho)
+    phantom_bad_gate = _evidence_record()
+    phantom_bad_gate["evidence_calibration"]["phantom_gate_active"] = [1.0, 0.0]
+    with pytest.raises(AssertionError, match="phantom_gate_active"):
+        assert_evidence_calibration_record(phantom_bad_gate)
+
+    phantom_bad_counts = _evidence_record()
+    phantom_bad_counts["evidence_calibration"]["phantom_R_g"] = [9.0, -1.0]
+    with pytest.raises(AssertionError, match="phantom_R_g"):
+        assert_evidence_calibration_record(phantom_bad_counts)
+
+    for stale_name in (
+            "rho_g",
+            "rho_fit",
+            "rho_samples",
+            "rho_values",
+            "rho_eta_samples",
+            "rho_bootstrap",
+    ):
+        old_rho_record = _evidence_record()
+        old_rho_record["evidence_calibration"][stale_name] = [1.0]
+        with pytest.raises(AssertionError, match=f"{stale_name}|Forbidden"):
+            assert_evidence_calibration_record(old_rho_record)
+
+
+@pytest.mark.parametrize(
+    ("update", "match"),
+    [
+        (
+            {"phantom_R_g": [8.0, 12.0, 0.0]},
+            "phantom_R_g|A.*B.*E|R.*A",
+        ),
+        (
+            {
+                "kish_participating_cluster_counts": [20.0, 21.0, 0.0],
+                "phantom_gate_active": [True, False, False],
+            },
+            "phantom_gate_active|kish|C_min",
+        ),
+        (
+            {"C_min": 0},
+            "C_min",
+        ),
+        (
+            {"phantom_E_g": [2.0, 5.0]},
+            "length|align|phantom_E_g",
+        ),
+    ],
+    ids=["bad-R", "bad-gate", "bad-C-min", "bad-length"],
+)
+def test_evidence_calibration_rejects_incoherent_phantom_diagnostics(update, match):
+    record = _evidence_record()
+    record["evidence_calibration"].update(update)
+
+    with pytest.raises(AssertionError, match=match):
+        assert_evidence_calibration_record(record)
 
 
 def test_calibration_table_scopes_duplicate_seeds_by_problem_and_method():
@@ -357,7 +423,9 @@ def test_posterior_wasserstein_schema_keeps_posterior_metric_separate():
         assert_posterior_wasserstein_record(single_seed)
 
     mixed_record = copy.deepcopy(record)
-    mixed_record["posterior_wasserstein"]["rho_g"] = [1.0]
+    mixed_record["posterior_wasserstein"][
+        "kish_participating_cluster_counts"
+    ] = [20.0]
     with pytest.raises(AssertionError, match="Forbidden metric keys"):
         assert_posterior_wasserstein_record(mixed_record)
 
@@ -376,13 +444,18 @@ def test_performance_guardrail_schema_records_threshold_and_outcome():
     with pytest.raises(AssertionError, match="guardrail name"):
         assert_performance_guardrail_record(unknown_guardrail)
 
+    stale_guardrail = copy.deepcopy(record)
+    stale_guardrail["performance_guardrail"]["name"] = "rho_bootstrap"
+    with pytest.raises(AssertionError, match="rho_bootstrap|Forbidden"):
+        assert_performance_guardrail_record(stale_guardrail)
+
 
 def test_performance_guardrail_suite_covers_ticket_hot_paths():
     names = [
         "block_construction",
         "shrinkage_sampling",
         "phantom_counting",
-        "rho_bootstrap",
+        "gamma_phantom_conditioning",
         "trajectories",
         "serialization",
         "worker_task_latency",
@@ -402,6 +475,13 @@ def test_performance_guardrail_suite_covers_ticket_hot_paths():
     missing = records[:-1]
     with pytest.raises(AssertionError, match="worker_task_latency"):
         assert_performance_guardrail_suite(missing)
+
+
+def test_timing_history_rejects_stale_rho_diagnostic_names():
+    row = _timing_row(seed=3, seconds=0.01)
+    row["timings"]["rho_bootstrap"] = 0.01
+    with pytest.raises(AssertionError, match="rho_bootstrap|Forbidden"):
+        assert_timing_history_append_only([], [row])
 
 
 def test_timing_history_is_append_only():

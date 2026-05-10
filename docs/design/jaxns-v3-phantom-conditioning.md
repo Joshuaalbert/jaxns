@@ -4,17 +4,24 @@ Status: paper-derived design draft.
 Source: `docs/design/paper.tex`, Sections 1, 3, and 4.
 
 This document defines how JAXNS v3 should use phantom samples to condition the
-Bayesian shrinkage model. It intentionally treats current code as irrelevant.
+Bayesian shrinkage model. It intentionally treats current code as irrelevant,
+and it describes the statistical target rather than a required implementation
+layout.
 
 ## Role of Phantom Samples
 
-A phantom cluster `P_i` is the set of retained post-burn-in constrained-sampler
-transition states produced while realising classic sample `i`. These states are
-correlated draws from the strict constrained prior of the classic sample's
-parent:
+A phantom cluster `P_c` is a set of retained post-burn-in constrained-sampler
+transition states produced under one generation contour. In the common case the
+cluster is the phantom set associated with classic sample `i`, but the design
+only requires a disjoint decomposition whose clusters are approximately
+independent of each other. States within one cluster may be arbitrarily
+correlated.
+
+Each cluster has a parent contour `L_{p(c)}`. Its retained states are correlated
+draws from the strict constrained prior of that contour:
 
 ```text
-P_i contains states from pi_{lambda_{p(i)}}.
+P_c contains states from pi_{L_{p(c)}}.
 ```
 
 Phantom samples are not independent race participants. They must not be inserted
@@ -36,6 +43,11 @@ The equality component matters because likelihood atoms censor the strict
 endpoint of a plateau block: the final plateau rank lies between `p_{>g}` and
 `p_{>g} + p_{=g}` without revealing `p_{>g}` itself.
 
+When a retained sampler trajectory can be split into smaller disjoint clusters
+that are still approximately independent between clusters, the paper favors
+using the smaller clusters. This increases information use while preserving the
+assumption that only between-cluster independence is relied on.
+
 ## Epsilon Prior
 
 The phantom-conditioned posterior extends the paper's Bayesian shrinkage prior
@@ -52,115 +64,132 @@ epsilon_g = 1e-6  if m_g = 1
 epsilon_g = 1/2   if m_g > 1.
 ```
 
-## Phantom Counts
+## Per-Cluster Counts
 
-Let `P = union_i P_i` be the retained phantom set. For each block `g`, define:
+For each block `g` and phantom cluster `c`, define counts with a parent-contour
+eligibility gate:
 
 ```text
-A_g = sum_{(x,L) in P} 1{L(x) > L_{g-1}}
-B_g = sum_{(x,L) in P} 1{L(x) > L_g} 1{L(x) > L_{g-1}}
-E_g = sum_{(x,L) in P} 1{L(x) = L_g} 1{L(x) > L_{g-1}}
+A_{cg} = sum_{(x,L) in P_c} 1{L(x) > L_{g-1}} 1{L_{p(c)} <= L_{g-1}}
+B_{cg} = sum_{(x,L) in P_c} 1{L(x) > L_g} 1{L_{p(c)} <= L_{g-1}}
+E_{cg} = sum_{(x,L) in P_c} 1{L(x) = L_g} 1{L_{p(c)} <= L_{g-1}}
+R_{cg} = A_{cg} - B_{cg} - E_{cg}
 ```
 
-The paper's Monte Carlo estimate of the block probability vector is
+The gate ensures that cluster `c` only conditions block `g` if its retained
+states were generated from a contour no stricter than the block's parent
+contour. Then `A_{cg}` counts participating retained states, `B_{cg}` counts
+states beyond the strict endpoint, `E_{cg}` counts states in the equality atom,
+and `R_{cg}` counts states in the open interval
+`L_{g-1} < L(x) < L_g`.
+
+The corresponding Monte Carlo estimate of the block probability vector is
 
 ```text
 hat p_g = (
-    B_g / A_g,
-    E_g / A_g,
-    (A_g - B_g - E_g) / A_g
+    sum_c B_{cg} / sum_c A_{cg},
+    sum_c E_{cg} / sum_c A_{cg},
+    sum_c R_{cg} / sum_c A_{cg}
 ).
 ```
 
 The three components estimate `(p_{>g}, p_{=g}, p_{<g})`.
 
-The paper does not specify behavior when `A_g = 0`; in that case `hat p_g` is
-undefined and the block has no phantom Monte Carlo estimate in the stated
-formula.
+The paper does not specify behavior when `sum_c A_{cg} = 0`; in that case
+`hat p_g` is undefined and the block has no phantom Monte Carlo estimate in the
+stated formula.
 
-## Effective Multinomial Likelihood
+## Gamma-Weighted Conditioning Target
 
-If the phantom points were independent, `A_g hat p_g` would follow a multinomial
-likelihood. Because Markov-chain phantom samples are correlated, the paper uses
-an effective count
+The old design target was an effective-count Dirichlet posterior using a
+per-block `rho_g`. That is no longer the paper target. The target is now a
+generative shrinkage draw built from gamma variables.
 
-```text
-A_g^eff = rho_g A_g
-0 < rho_g <= 1.
-```
-
-The effective-count posterior is
+First draw independent, same-scale race-induced posterior gammas:
 
 ```text
-p_g | K_g, m_g, rho_g, P ~ Dir(b_{>g}, b_{=g}, b_{<g})
-b_{>g} = K_g - m_g + 1 + rho_g B_g
-b_{=g} = m_g + epsilon_g + rho_g E_g
-b_{<g} = 1 - epsilon_g + rho_g (A_g - B_g - E_g)
+M_{>g} ~ Gamma(a_{>g}, 1), independently
+M_{=g} ~ Gamma(a_{=g}, 1), independently
+M_{<g} ~ Gamma(a_{<g}, 1), independently
+
+a_{>g} = K_g - m_g + 1
+a_{=g} = m_g + epsilon_g
+a_{<g} = 1 - epsilon_g
 ```
 
-The marginals for `p_{>g}` and `p_{=g}` follow the same Dirichlet marginal rules
-used by the statistical core.
-
-The role of `rho_g` is variance calibration:
-
-- `rho_g = 1` for independent phantom samples.
-- `rho_g < 1` for correlated Markov-chain phantom samples, which have inflated
-  covariance.
-
-## Estimating `rho_g`
-
-The paper estimates `rho_g` by cluster bootstrap. The bootstrap unit is the
-phantom cluster, not an individual phantom sample, so the estimate can capture
-correlation both within and between clusters.
-
-For each block:
-
-1. Resample phantom clusters with replacement.
-2. Recompute `hat p_g`.
-3. Let `q_g = (hat p_{>g}, hat p_{=g})^T`.
-4. Compute the bootstrap covariance `Sigma_g^boot` of `q_g`.
-5. Match it to the analytic iid multinomial covariance.
-
-The analytic covariance for the first two components is
+Then draw one independent cluster weight per phantom cluster for the joint
+shrinkage draw:
 
 ```text
-Sigma_g = (1 / A_g) [
-    [hat p_{>g} (1 - hat p_{>g}), -hat p_{>g} hat p_{=g}],
-    [-hat p_{>g} hat p_{=g}, hat p_{=g} (1 - hat p_{=g})],
-]
+v_c ~ Gamma(1, 1), independently over clusters and independent of the race gammas.
 ```
 
-The effective-count model predicts `Sigma_g / rho_g`. The paper proposes
+The same `v_c` must be reused for cluster `c` across all blocks and all
+components within that joint shrinkage draw. A new joint shrinkage draw gets a
+new independent set of race gammas and cluster weights. Equivalent
+implementations are acceptable if they preserve the same distributional target.
+
+Before adding phantom counts, require enough independent participating clusters.
+The paper uses a Kish-like participating cluster count:
 
 ```text
-hat rho_g =
-    rank(Sigma_g) / trace(Sigma_g^+ Sigma_g^boot)
+C_g^Kish = (sum_c A_{cg})^2 / sum_c A_{cg}^2.
 ```
 
-where `Sigma_g^+` is the Moore-Penrose inverse.
+If there are no participating clusters, the denominator is zero and the
+criterion fails. The canonical minimum threshold name is `C_min`, with default
+`C_min = 20`. Implementations should expose `C_min` as a configurable parameter
+with this default unless the implementation ticket or public API explicitly
+chooses a different default. The paper text also uses the name `C_0`; the
+design treats this as the same threshold until the paper notation is settled.
 
-Because individual `hat rho_g` estimates are noisy, the paper suggests fitting a
-low-order function of normalized race time:
+For a block with `C_g^Kish >= C_min`, add weighted per-cluster counts and
+normalize:
 
 ```text
-rho_g = c_0 + c_1 (s_g / s_G) + c_2 (s_g / s_G)^2.
+I_g = 1{C_g^Kish >= C_min}
+
+M'_{>g} = M_{>g} + I_g sum_c v_c B_{cg}
+M'_{=g} = M_{=g} + I_g sum_c v_c E_{cg}
+M'_{<g} = M_{<g} + I_g sum_c v_c R_{cg}
+
+p_g = (M'_{>g}, M'_{=g}, M'_{<g})
+      / (M'_{>g} + M'_{=g} + M'_{<g})
 ```
+
+If the threshold is not met, `I_g = 0` and the block uses the non-phantom
+race-induced posterior.
+
+This construction has two required limiting behaviors:
+
+- If all phantom clusters are singleton independent observations, then
+  `A_{cg}`, `B_{cg}`, `E_{cg}`, and `R_{cg}` are category indicators. Gamma
+  additivity with common scale recovers the iid Dirichlet posterior exactly.
+- If a cluster contains correlated multiple observations, the shared `v_c`
+  preserves the expected count contribution but ties those observations
+  together, inflating variance relative to singleton independent observations.
+
+The third component is expressed with `R_{cg} = A_{cg} - B_{cg} - E_{cg}` so the
+normalized vector remains categorical over strict endpoint, equality atom, and
+open interval. See the open paper-review note below for the current notation
+ambiguity in the source text.
 
 ## Stationarity Requirement
 
-Phantom conditioning only corrects variance inflation from correlation. It does
-not correct bias from non-stationary phantom states.
+Phantom conditioning only accounts for within-cluster correlation through the
+cluster-weight construction. It does not correct bias from non-stationary
+phantom states.
 
 JAXNS v3 should therefore:
 
 - retain phantom states only after a burn-in period;
 - associate retained phantoms with the classic sample whose generation produced
   them;
-- preserve clusters for bootstrap resampling;
+- preserve cluster boundaries for per-cluster counts and cluster weights;
 - exclude non-uniform trajectory construction states, including Galilean
   reflection/bracketing points;
-- use `rho_g` estimates with the understanding that non-stationary phantoms are
-  outside the correction supplied by the paper.
+- treat non-stationary phantoms as outside the correction supplied by the
+  paper.
 
 ## Downstream Use
 
@@ -189,10 +218,11 @@ w_g = lambda_g X_{g-1} (1 - p_{>g}).
 The conditioning formulas require, for each retained phantom state:
 
 - likelihood value `L(x)`;
-- the cluster identity `P_i`;
+- the cluster identity `P_c`;
 - the associated classic sample `i`;
-- the generation constraint likelihood used for that cluster, usually available
-  as the accepted sample's strict `log_L_constraint` audit field.
+- the generation constraint likelihood `L_{p(c)}` used for that cluster,
+  usually available as the accepted sample's strict `log_L_constraint` audit
+  field.
 
 The paper's constrained sampler returns phantom pairs `(x^k, L(x^k))`, but the
 conditioning counts above use likelihood values and cluster identity. JAXNS v3
@@ -208,8 +238,21 @@ phantom records part of the race tree.
 
 - Phantom samples never increment out-degree.
 - Phantom samples never change `K_g` or `m_g`.
-- Phantom contributions enter only through the Dirichlet concentration
-  parameters.
-- The paper's effective-count model uses `0 < rho_g <= 1`.
+- Phantom contributions enter only through the gamma-weighted shrinkage draw.
+- The old `rho_g` effective-count Dirichlet posterior is not the paper target.
+- Singleton independent phantom clusters recover the iid Dirichlet posterior by
+  gamma additivity.
+- Correlated multi-sample clusters inflate shrinkage variance while preserving
+  the expected count contribution.
 - Retaining non-stationary phantom samples can bias shrinkage and is outside the
   correction supplied by the paper.
+
+## Paper-Review Notes
+
+- The paper alternates between `C_min` and `C_0` for the minimum Kish
+  participating-cluster threshold. This design uses `C_min` as the canonical
+  name.
+- In the displayed `M'_{<g}` update, the paper currently adds `A_{cg}`. The
+  preceding Monte Carlo vector and the stated singleton Dirichlet-recovery
+  property require the open-interval count `A_{cg} - B_{cg} - E_{cg}`. This
+  design uses `R_{cg}` and treats the paper notation as needing review.
