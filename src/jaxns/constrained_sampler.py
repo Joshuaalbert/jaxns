@@ -577,6 +577,11 @@ def _ravel_point(value) -> tuple[FloatArray, Callable[[FloatArray], UType]]:
     return pytree_ravel(_point_tree(value))
 
 
+def _has_traced_leaf(value) -> bool:
+    """Return whether a pytree contains a JAX tracer leaf."""
+    return any(isinstance(leaf, jax.core.Tracer) for leaf in jax.tree.leaves(value))
+
+
 def _normalize_galilean_vector(vector: FloatArray, name: str) -> FloatArray:
     vector = jnp.ravel(jnp.asarray(vector))
     norm = jnp.linalg.norm(vector)
@@ -585,10 +590,33 @@ def _normalize_galilean_vector(vector: FloatArray, name: str) -> FloatArray:
     return vector / norm
 
 
+def _normalize_galilean_vector_jax(vector: FloatArray) -> FloatArray:
+    """Normalize a flat vector without Python validation for traced calls."""
+    vector = jnp.ravel(jnp.asarray(vector))
+    eps = jnp.asarray(1e-12, vector.dtype)
+    norm = jnp.maximum(jnp.linalg.norm(vector), eps)
+    return vector / norm
+
+
 def _flat_point_in_unit_cube(point: FloatArray) -> bool:
     point = jnp.ravel(jnp.asarray(point))
     inside = jnp.all((point >= 0.0) & (point <= 1.0))
     return bool(np.asarray(inside))
+
+
+def _flat_point_in_unit_cube_jax(point: FloatArray) -> BoolArray:
+    """Return a traced-compatible unit-cube support predicate."""
+    point = jnp.ravel(jnp.asarray(point))
+    return jnp.all((point >= 0.0) & (point <= 1.0))
+
+
+def _unit_cube_support_normal_jax(point: FloatArray) -> FloatArray:
+    """Return an outward support normal for a point outside ``[0, 1]^D``."""
+    # point, normal: [D]
+    point = jnp.ravel(jnp.asarray(point))
+    lower_violation = jnp.where(point < 0.0, point, 0.0)
+    upper_violation = jnp.where(point > 1.0, point - 1.0, 0.0)
+    return lower_violation + upper_violation
 
 
 def _reflect_galilean_direction(
@@ -606,6 +634,37 @@ def _reflect_galilean_direction(
     unit_normal = _normalize_galilean_vector(gradient_normal, "gradient normal")
     reflected = unit_direction - 2.0 * jnp.vdot(unit_direction, unit_normal) * unit_normal
     return _normalize_galilean_vector(reflected, "reflected direction")
+
+
+def _reflect_galilean_direction_jax(
+        direction: FloatArray,
+        gradient_normal: FloatArray,
+        support_normal: FloatArray,
+) -> FloatArray:
+    """Reflect a direction using a traced-compatible boundary normal."""
+    # direction, gradient_normal, support_normal: [D]
+    unit_direction = _normalize_galilean_vector_jax(direction)
+    gradient_normal = jnp.ravel(jnp.asarray(gradient_normal))
+    support_normal = jnp.ravel(jnp.asarray(support_normal))
+    eps = jnp.asarray(1e-12, gradient_normal.dtype)
+    normal_norm = jnp.linalg.norm(gradient_normal)
+    support_norm = jnp.linalg.norm(support_normal)
+    gradient_or_fallback = jnp.where(
+        normal_norm > eps,
+        gradient_normal,
+        unit_direction,
+    )
+    gradient_or_fallback_norm = jnp.linalg.norm(gradient_or_fallback)
+    unit_normal = jnp.where(
+        support_norm > eps,
+        support_normal / jnp.maximum(support_norm, eps),
+        gradient_or_fallback / jnp.maximum(gradient_or_fallback_norm, eps),
+    )
+    reflected = (
+        unit_direction
+        - 2.0 * jnp.vdot(unit_direction, unit_normal) * unit_normal
+    )
+    return _normalize_galilean_vector_jax(reflected)
 
 
 def _build_galilean_side(
@@ -895,6 +954,697 @@ def _sample_galilean_markov_transition(
         + jnp.ones((), mp_policy.count_dtype)
     )
     return TreeField(point_tree), log_likelihood, num_likelihood_evaluations
+
+
+class _GalileanStreamingSide(NamedTuple):
+    selected_point: FloatArray
+    total_length: FloatArray
+    step_size: FloatArray
+    num_likelihood_evaluations: IntArray
+
+
+def _sample_galilean_markov_transition_jax_with_step(
+        *,
+        key: PRNGKey,
+        U0: TreeField[UType],
+        log_L0: FloatArray,
+        direction: TreeField[UType],
+        log_L_constraint: FloatArray,
+        log_likelihood_fn: Callable[[UType], FloatArray],
+        grad_log_likelihood_fn: Callable[[UType], UType],
+        initial_step_size: FloatArray,
+        max_step_halvings: int,
+        max_step_doublings: int,
+) -> tuple[TreeField[UType], FloatArray, IntArray, FloatArray]:
+    """Sample a Galilean transition using JAX control flow.
+
+    The trajectory is streamed rather than materialized. Each reflected segment
+    is considered once, and reservoir weighting by segment length gives a
+    uniform draw over the full two-sided Galilean path.
+    """
+    # flat_u0, flat_direction: [D]
+    flat_u0, unravel_fn = _ravel_point(U0)
+    flat_direction, _ = _ravel_point(direction)
+    flat_direction = _normalize_galilean_vector_jax(flat_direction)
+    constraint = jnp.asarray(log_L_constraint)
+    step_size0 = jnp.asarray(initial_step_size, dtype=flat_u0.dtype)
+    step_size0 = jnp.maximum(step_size0, jnp.asarray(1e-12, flat_u0.dtype))
+    max_step_halvings = jnp.asarray(max_step_halvings, mp_policy.count_dtype)
+    max_step_doublings = jnp.asarray(max_step_doublings, mp_policy.count_dtype)
+
+    def log_likelihood_flat(point: FloatArray) -> FloatArray:
+        return jnp.asarray(
+            log_likelihood_fn(unravel_fn(point)),
+            dtype=constraint.dtype,
+        )
+
+    def strict_inside_and_log_likelihood(
+            point: FloatArray,
+    ) -> tuple[BoolArray, FloatArray, IntArray]:
+        in_unit_cube = _flat_point_in_unit_cube_jax(point)
+
+        def evaluate_inside(_):
+            def accept_root_contour(__):
+                return (
+                    jnp.asarray(True, mp_policy.bool_dtype),
+                    jnp.asarray(-jnp.inf, dtype=constraint.dtype),
+                    jnp.zeros((), mp_policy.count_dtype),
+                )
+
+            def evaluate_likelihood(__):
+                log_likelihood = log_likelihood_flat(point)
+                return (
+                    log_likelihood > constraint,
+                    log_likelihood,
+                    jnp.ones((), mp_policy.count_dtype),
+                )
+
+            return jax.lax.cond(
+                jnp.isneginf(constraint),
+                accept_root_contour,
+                evaluate_likelihood,
+                operand=None,
+            )
+
+        def reject_outside(_):
+            return (
+                jnp.asarray(False, mp_policy.bool_dtype),
+                jnp.asarray(-jnp.inf, dtype=constraint.dtype),
+                jnp.zeros((), mp_policy.count_dtype),
+            )
+
+        return jax.lax.cond(
+            in_unit_cube,
+            evaluate_inside,
+            reject_outside,
+            operand=None,
+        )
+
+    def add_segment_sample(
+            sample_key,
+            selected_point: FloatArray,
+            total_length: FloatArray,
+            start_point: FloatArray,
+            end_point: FloatArray,
+    ) -> tuple[FloatArray, FloatArray]:
+        # start_point, end_point, selected_point: [D]
+        segment = end_point - start_point
+        segment_length = jnp.linalg.norm(segment)
+        next_total = total_length + segment_length
+        choose_key, alpha_key = random.split(sample_key)
+        choose_probability = jnp.where(
+            next_total > 0.0,
+            segment_length / next_total,
+            jnp.asarray(0.0, next_total.dtype),
+        )
+        choose_segment = random.uniform(choose_key, dtype=next_total.dtype) < (
+            choose_probability
+        )
+        alpha = random.uniform(alpha_key, dtype=end_point.dtype)
+        candidate_point = start_point + alpha * segment
+        selected_point = jnp.where(
+            choose_segment,
+            candidate_point,
+            selected_point,
+        )
+        return selected_point, next_total
+
+    class SideCarry(NamedTuple):
+        current_point: FloatArray
+        current_direction: FloatArray
+        step_size: FloatArray
+        selected_point: FloatArray
+        total_length: FloatArray
+        key: PRNGKey
+        num_likelihood_evaluations: IntArray
+
+    def build_side(initial_direction: FloatArray, side_key) -> _GalileanStreamingSide:
+        # initial_direction: [D]
+        initial_direction = _normalize_galilean_vector_jax(initial_direction)
+
+        def side_cond(carry: SideCarry) -> BoolArray:
+            alignment = jnp.vdot(carry.current_direction, initial_direction)
+            return alignment >= jnp.asarray(0.0, alignment.dtype)
+
+        def side_body(carry: SideCarry) -> SideCarry:
+            old_point = carry.current_point
+            proposal = old_point + carry.step_size * carry.current_direction
+
+            (
+                proposal_inside,
+                _,
+                proposal_evaluations,
+            ) = strict_inside_and_log_likelihood(proposal)
+
+            class BoundaryResult(NamedTuple):
+                next_point: FloatArray
+                next_step_size: FloatArray
+                outside_point: FloatArray
+                exhausted: BoolArray
+                num_likelihood_evaluations: IntArray
+
+            class GrowCarry(NamedTuple):
+                search_step_size: FloatArray
+                last_inside: FloatArray
+                first_outside: FloatArray
+                candidate_inside: BoolArray
+                step_count: IntArray
+                num_likelihood_evaluations: IntArray
+
+            def grow_cond(grow: GrowCarry) -> BoolArray:
+                return grow.candidate_inside & (
+                    grow.step_count < max_step_doublings
+                )
+
+            def grow_body(grow: GrowCarry) -> GrowCarry:
+                candidate_step_size = (
+                    jnp.asarray(2.0, grow.search_step_size.dtype)
+                    * grow.search_step_size
+                )
+                candidate = (
+                    old_point
+                    + candidate_step_size * carry.current_direction
+                )
+                (
+                    candidate_inside,
+                    _,
+                    candidate_evaluations,
+                ) = strict_inside_and_log_likelihood(candidate)
+                return GrowCarry(
+                    search_step_size=jnp.where(
+                        candidate_inside,
+                        candidate_step_size,
+                        grow.search_step_size,
+                    ),
+                    last_inside=jnp.where(
+                        candidate_inside,
+                        candidate,
+                        grow.last_inside,
+                    ),
+                    first_outside=jnp.where(
+                        candidate_inside,
+                        grow.first_outside,
+                        candidate,
+                    ),
+                    candidate_inside=candidate_inside,
+                    step_count=(
+                        grow.step_count
+                        + jnp.ones((), mp_policy.count_dtype)
+                    ),
+                    num_likelihood_evaluations=(
+                        grow.num_likelihood_evaluations
+                        + candidate_evaluations
+                    ),
+                )
+
+            def grow_from_inside(_: None) -> BoundaryResult:
+                grown = jax.lax.while_loop(
+                    grow_cond,
+                    grow_body,
+                    GrowCarry(
+                        search_step_size=carry.step_size,
+                        last_inside=proposal,
+                        first_outside=proposal,
+                        candidate_inside=jnp.asarray(True, mp_policy.bool_dtype),
+                        step_count=jnp.zeros((), mp_policy.count_dtype),
+                        num_likelihood_evaluations=(
+                            carry.num_likelihood_evaluations
+                            + proposal_evaluations
+                        ),
+                    ),
+                )
+                found_boundary = jnp.logical_not(grown.candidate_inside)
+                fallback_outside = (
+                    old_point + carry.step_size * carry.current_direction
+                )
+                return BoundaryResult(
+                    next_point=jnp.where(
+                        found_boundary,
+                        grown.last_inside,
+                        old_point,
+                    ),
+                    next_step_size=jnp.where(
+                        found_boundary,
+                        grown.search_step_size,
+                        carry.step_size,
+                    ),
+                    outside_point=jnp.where(
+                        found_boundary,
+                        grown.first_outside,
+                        fallback_outside,
+                    ),
+                    exhausted=jnp.logical_not(found_boundary),
+                    num_likelihood_evaluations=(
+                        grown.num_likelihood_evaluations
+                    ),
+                )
+
+            class ShrinkCarry(NamedTuple):
+                search_step_size: FloatArray
+                inside_point: FloatArray
+                found_inside: BoolArray
+                step_count: IntArray
+                num_likelihood_evaluations: IntArray
+
+            def shrink_cond(shrink: ShrinkCarry) -> BoolArray:
+                return jnp.logical_not(shrink.found_inside) & (
+                    shrink.step_count < max_step_halvings
+                )
+
+            def shrink_body(shrink: ShrinkCarry) -> ShrinkCarry:
+                next_step_size = (
+                    jnp.asarray(0.5, shrink.search_step_size.dtype)
+                    * shrink.search_step_size
+                )
+                candidate = old_point + next_step_size * carry.current_direction
+                (
+                    candidate_inside,
+                    _,
+                    candidate_evaluations,
+                ) = strict_inside_and_log_likelihood(candidate)
+                return ShrinkCarry(
+                    search_step_size=next_step_size,
+                    inside_point=jnp.where(
+                        candidate_inside,
+                        candidate,
+                        shrink.inside_point,
+                    ),
+                    found_inside=shrink.found_inside | candidate_inside,
+                    step_count=(
+                        shrink.step_count
+                        + jnp.ones((), mp_policy.count_dtype)
+                    ),
+                    num_likelihood_evaluations=(
+                        shrink.num_likelihood_evaluations
+                        + candidate_evaluations
+                    ),
+                )
+
+            def shrink_from_outside(_: None) -> BoundaryResult:
+                shrunk = jax.lax.while_loop(
+                    shrink_cond,
+                    shrink_body,
+                    ShrinkCarry(
+                        search_step_size=carry.step_size,
+                        inside_point=old_point,
+                        found_inside=jnp.asarray(False, mp_policy.bool_dtype),
+                        step_count=jnp.zeros((), mp_policy.count_dtype),
+                        num_likelihood_evaluations=(
+                            carry.num_likelihood_evaluations
+                            + proposal_evaluations
+                        ),
+                    ),
+                )
+                return BoundaryResult(
+                    next_point=jnp.where(
+                        shrunk.found_inside,
+                        shrunk.inside_point,
+                        old_point,
+                    ),
+                    next_step_size=jnp.where(
+                        shrunk.found_inside,
+                        shrunk.search_step_size,
+                        carry.step_size,
+                    ),
+                    outside_point=proposal,
+                    exhausted=jnp.logical_not(shrunk.found_inside),
+                    num_likelihood_evaluations=(
+                        shrunk.num_likelihood_evaluations
+                    ),
+                )
+
+            boundary = jax.lax.cond(
+                proposal_inside,
+                grow_from_inside,
+                shrink_from_outside,
+                operand=None,
+            )
+
+            sample_key, next_key = random.split(carry.key)
+            selected_point, total_length = add_segment_sample(
+                sample_key,
+                carry.selected_point,
+                carry.total_length,
+                old_point,
+                boundary.next_point,
+            )
+            support_normal = _unit_cube_support_normal_jax(
+                boundary.outside_point
+            )
+            eps = jnp.asarray(1e-12, support_normal.dtype)
+            skip_gradient = (
+                    (jnp.linalg.norm(support_normal) > eps)
+                    | jnp.isneginf(constraint)
+                    | boundary.exhausted
+            )
+
+            def zero_gradient(_):
+                return jnp.zeros_like(boundary.next_point)
+
+            def likelihood_gradient(_):
+                gradient_tree = grad_log_likelihood_fn(
+                    unravel_fn(boundary.next_point)
+                )
+                gradient, _ = _ravel_point(gradient_tree)
+                return gradient
+
+            gradient = jax.lax.cond(
+                skip_gradient,
+                zero_gradient,
+                likelihood_gradient,
+                operand=None,
+            )
+            next_direction = _reflect_galilean_direction_jax(
+                carry.current_direction,
+                gradient,
+                support_normal,
+            )
+            next_direction = jnp.where(
+                boundary.exhausted,
+                -initial_direction,
+                next_direction,
+            )
+            return SideCarry(
+                current_point=boundary.next_point,
+                current_direction=next_direction,
+                step_size=boundary.next_step_size,
+                selected_point=selected_point,
+                total_length=total_length,
+                key=next_key,
+                num_likelihood_evaluations=(
+                    boundary.num_likelihood_evaluations
+                ),
+            )
+
+        final_carry = jax.lax.while_loop(
+            side_cond,
+            side_body,
+            SideCarry(
+                current_point=flat_u0,
+                current_direction=initial_direction,
+                step_size=step_size0,
+                selected_point=flat_u0,
+                total_length=jnp.asarray(0.0, flat_u0.dtype),
+                key=side_key,
+                num_likelihood_evaluations=jnp.zeros((), mp_policy.count_dtype),
+            ),
+        )
+        return _GalileanStreamingSide(
+            selected_point=final_carry.selected_point,
+            total_length=final_carry.total_length,
+            step_size=final_carry.step_size,
+            num_likelihood_evaluations=(
+                final_carry.num_likelihood_evaluations
+            ),
+        )
+
+    positive_key, negative_key, side_key = random.split(key, 3)
+    positive_side = build_side(flat_direction, positive_key)
+    negative_side = build_side(-flat_direction, negative_key)
+    total_length = positive_side.total_length + negative_side.total_length
+    positive_probability = jnp.where(
+        total_length > 0.0,
+        positive_side.total_length / total_length,
+        jnp.asarray(1.0, total_length.dtype),
+    )
+    choose_positive = random.uniform(side_key, dtype=total_length.dtype) < (
+        positive_probability
+    )
+    selected_point = jnp.where(
+        choose_positive,
+        positive_side.selected_point,
+        negative_side.selected_point,
+    )
+    selected_point = jnp.where(
+        total_length > 0.0,
+        selected_point,
+        flat_u0,
+    )
+    next_step_size = jnp.where(
+        choose_positive,
+        positive_side.step_size,
+        negative_side.step_size,
+    )
+    next_step_size = jnp.where(
+        total_length > 0.0,
+        next_step_size,
+        step_size0,
+    )
+    selected_inside, selected_log_likelihood, selected_evaluations = (
+        strict_inside_and_log_likelihood(selected_point)
+    )
+    final_log_likelihood, final_evaluations = jax.lax.cond(
+        selected_inside & jnp.isneginf(constraint),
+        lambda _: (
+            log_likelihood_flat(selected_point),
+            jnp.ones((), mp_policy.count_dtype),
+        ),
+        lambda _: (
+            selected_log_likelihood,
+            jnp.zeros((), mp_policy.count_dtype),
+        ),
+        operand=None,
+    )
+    selected_point = jnp.where(
+        selected_inside,
+        selected_point,
+        flat_u0,
+    )
+    log_likelihood = jnp.where(
+        selected_inside,
+        final_log_likelihood,
+        jnp.asarray(log_L0, dtype=constraint.dtype),
+    )
+    point_tree = unravel_fn(selected_point)
+    num_likelihood_evaluations = (
+        positive_side.num_likelihood_evaluations
+        + negative_side.num_likelihood_evaluations
+        + selected_evaluations
+        + final_evaluations
+    )
+    return (
+        TreeField(point_tree),
+        log_likelihood,
+        num_likelihood_evaluations,
+        next_step_size,
+    )
+
+
+def _sample_galilean_markov_transition_jax(
+        *,
+        key: PRNGKey,
+        U0: TreeField[UType],
+        log_L0: FloatArray,
+        direction: TreeField[UType],
+        log_L_constraint: FloatArray,
+        log_likelihood_fn: Callable[[UType], FloatArray],
+        grad_log_likelihood_fn: Callable[[UType], UType],
+        initial_step_size: FloatArray,
+        max_step_halvings: int,
+        max_step_doublings: int,
+) -> tuple[TreeField[UType], FloatArray, IntArray]:
+    """Sample one Galilean transition and discard the adapted step size."""
+    point, log_likelihood, num_likelihood_evaluations, _ = (
+        _sample_galilean_markov_transition_jax_with_step(
+            key=key,
+            U0=U0,
+            log_L0=log_L0,
+            direction=direction,
+            log_L_constraint=log_L_constraint,
+            log_likelihood_fn=log_likelihood_fn,
+            grad_log_likelihood_fn=grad_log_likelihood_fn,
+            initial_step_size=initial_step_size,
+            max_step_halvings=max_step_halvings,
+            max_step_doublings=max_step_doublings,
+        )
+    )
+    return point, log_likelihood, num_likelihood_evaluations
+
+
+@partial(
+    jax.jit,
+    static_argnames=[
+        "log_likelihood_fn",
+        "max_step_halvings",
+        "max_step_doublings",
+    ],
+)
+def _sample_galilean_markov_transition_jit(
+        key: PRNGKey,
+        U0: TreeField[UType],
+        log_L0: FloatArray,
+        direction: TreeField[UType],
+        log_L_constraint: FloatArray,
+        initial_step_size: FloatArray,
+        *,
+        log_likelihood_fn: Callable[[UType], FloatArray],
+        max_step_halvings: int,
+        max_step_doublings: int,
+) -> tuple[TreeField[UType], FloatArray, IntArray]:
+    """Cached JIT wrapper for repeated traced Galilean transitions."""
+    return _sample_galilean_markov_transition_jax(
+        key=key,
+        U0=U0,
+        log_L0=log_L0,
+        direction=direction,
+        log_L_constraint=log_L_constraint,
+        log_likelihood_fn=log_likelihood_fn,
+        grad_log_likelihood_fn=jax.grad(log_likelihood_fn),
+        initial_step_size=initial_step_size,
+        max_step_halvings=max_step_halvings,
+        max_step_doublings=max_step_doublings,
+    )
+
+
+def _sample_galilean_chain_impl(
+        *,
+        key: PRNGKey,
+        log_L_constraint: FloatArray,
+        seed_point: SeedPoint,
+        log_likelihood_fn: Callable[[UType], FloatArray],
+        grad_log_likelihood_fn: Callable[[UType], UType],
+        direction_kernel,
+        direction_template: TreeField[UType],
+        initial_step_size: FloatArray,
+        num_slices: int,
+        num_phantom: int,
+        max_step_halvings: int,
+        max_step_doublings: int,
+) -> tuple[UType, FloatArray, IntArray, PhantomSamples]:
+    """Run a full Galilean Markov chain with JAX control flow."""
+
+    class ChainCarry(NamedTuple):
+        point: TreeField[UType]
+        log_likelihood: FloatArray
+        step_size: FloatArray
+        num_likelihood_evaluations: IntArray
+
+    def chain_body(carry: ChainCarry, keys) -> tuple[ChainCarry, FloatArray]:
+        proposal_key, direction_key = keys
+        direction = _sample_direction_from_kernel(
+            key=direction_key,
+            direction_kernel=direction_kernel,
+            current_point=direction_template,
+        )
+        (
+            next_point,
+            next_log_likelihood,
+            delta_evaluations,
+            next_step_size,
+        ) = (
+            _sample_galilean_markov_transition_jax_with_step(
+                key=proposal_key,
+                U0=carry.point,
+                log_L0=carry.log_likelihood,
+                direction=direction,
+                log_L_constraint=log_L_constraint,
+                log_likelihood_fn=log_likelihood_fn,
+                grad_log_likelihood_fn=grad_log_likelihood_fn,
+                initial_step_size=carry.step_size,
+                max_step_halvings=max_step_halvings,
+                max_step_doublings=max_step_doublings,
+            )
+        )
+        next_carry = ChainCarry(
+            point=next_point,
+            log_likelihood=next_log_likelihood,
+            step_size=next_step_size,
+            num_likelihood_evaluations=(
+                carry.num_likelihood_evaluations + delta_evaluations
+            ),
+        )
+        return next_carry, next_log_likelihood
+
+    proposal_keys = random.split(key, num_slices)
+    direction_keys = random.split(random.fold_in(key, 1), num_slices)
+    final_carry, chain_log_likelihoods = jax.lax.scan(
+        chain_body,
+        ChainCarry(
+            point=TreeField(seed_point.U0),
+            log_likelihood=jnp.asarray(
+                seed_point.log_L0,
+                dtype=log_L_constraint.dtype,
+            ),
+            step_size=initial_step_size,
+            num_likelihood_evaluations=jnp.asarray(
+                0,
+                mp_policy.count_dtype,
+            ),
+        ),
+        (proposal_keys, direction_keys),
+    )
+
+    if num_phantom == 0:
+        phantom_log_likelihoods = jnp.zeros(
+            (0,),
+            dtype=log_L_constraint.dtype,
+        )
+        phantom_valid_mask = jnp.zeros(
+            (0,),
+            dtype=mp_policy.bool_dtype,
+        )
+    else:
+        phantom_start = num_slices - 1 - num_phantom
+        phantom_log_likelihoods = chain_log_likelihoods[
+                                  phantom_start:-1
+                                  ]
+        phantom_valid_mask = jnp.ones(
+            (num_phantom,),
+            dtype=mp_policy.bool_dtype,
+        )
+    phantom_samples = PhantomSamples(
+        U_samples=None,
+        log_L=phantom_log_likelihoods,
+        valid_mask=phantom_valid_mask,
+    )
+    return (
+        final_carry.point.tree,
+        final_carry.log_likelihood,
+        final_carry.num_likelihood_evaluations,
+        phantom_samples,
+    )
+
+
+@partial(
+    jax.jit,
+    static_argnames=[
+        "log_likelihood_fn",
+        "direction_kernel",
+        "num_slices",
+        "num_phantom",
+        "max_step_halvings",
+        "max_step_doublings",
+    ],
+)
+def _sample_galilean_chain_jit(
+        key: PRNGKey,
+        log_L_constraint: FloatArray,
+        seed_point: SeedPoint,
+        direction_template: TreeField[UType],
+        initial_step_size: FloatArray,
+        *,
+        log_likelihood_fn: Callable[[UType], FloatArray],
+        direction_kernel,
+        num_slices: int,
+        num_phantom: int,
+        max_step_halvings: int,
+        max_step_doublings: int,
+) -> tuple[UType, FloatArray, IntArray, PhantomSamples]:
+    """Cached JIT wrapper for a full Galilean chain."""
+    return _sample_galilean_chain_impl(
+        key=key,
+        log_L_constraint=log_L_constraint,
+        seed_point=seed_point,
+        log_likelihood_fn=log_likelihood_fn,
+        grad_log_likelihood_fn=jax.grad(log_likelihood_fn),
+        direction_kernel=direction_kernel,
+        direction_template=direction_template,
+        initial_step_size=initial_step_size,
+        num_slices=num_slices,
+        num_phantom=num_phantom,
+        max_step_halvings=max_step_halvings,
+        max_step_doublings=max_step_doublings,
+    )
 
 
 def _greedy_shrink_to_strict_contour(
@@ -1641,6 +2391,68 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
 
         if trajectory_mode in GALILEAN_TRAJECTORIES:
             grad_log_likelihood_fn = jax.grad(log_likelihood_fn)
+            force_jax_galilean = (
+                    _context_get(
+                        adaptation_context,
+                        "force_jax_galilean",
+                        False,
+                    )
+                    is True
+            )
+            use_jax_galilean = (
+                    not force_python_loop
+                    and (
+                        force_jax_galilean
+                        or _has_traced_leaf(
+                            (
+                                key,
+                                log_L_constraint,
+                                seed_point.U0,
+                                seed_point.log_L0,
+                            )
+                        )
+                    )
+            )
+            if use_jax_galilean:
+                step_size_dtype = jax.tree.leaves(seed_point.U0)[0].dtype
+                initial_step_size = jnp.asarray(
+                    self.galilean_initial_step_size,
+                    dtype=step_size_dtype,
+                )
+                num_phantom = self.num_phantom()
+                if _as_mode_name(direction_kernel) in ISOTROPIC_DIRECTION_KERNELS:
+                    return _sample_galilean_chain_jit(
+                        key,
+                        log_L_constraint,
+                        seed_point,
+                        direction_template,
+                        initial_step_size,
+                        log_likelihood_fn=log_likelihood_fn,
+                        direction_kernel=direction_kernel,
+                        num_slices=num_slices,
+                        num_phantom=num_phantom,
+                        max_step_halvings=(
+                            self.max_galilean_step_halvings
+                        ),
+                        max_step_doublings=(
+                            self.max_galilean_step_doublings
+                        ),
+                    )
+                return _sample_galilean_chain_impl(
+                    key=key,
+                    log_L_constraint=log_L_constraint,
+                    seed_point=seed_point,
+                    log_likelihood_fn=log_likelihood_fn,
+                    grad_log_likelihood_fn=grad_log_likelihood_fn,
+                    direction_kernel=direction_kernel,
+                    direction_template=direction_template,
+                    initial_step_size=initial_step_size,
+                    num_slices=num_slices,
+                    num_phantom=num_phantom,
+                    max_step_halvings=self.max_galilean_step_halvings,
+                    max_step_doublings=self.max_galilean_step_doublings,
+                )
+
             all_samples = []
             all_log_likelihoods = []
             num_likelihood_evaluations = jnp.asarray(

@@ -2517,6 +2517,11 @@ class NestedSampler(PureDataclassPytree):
                 d_dim=int(self.model.U_ndims(self.args, self.params)),
                 allocation_target=None,
             )
+        if _sampler_uses_galilean(self.sampler):
+            adaptation_context = {
+                "force_jax_galilean": True,
+                "direction_adaptation_context": adaptation_context,
+            }
         outputs = []
         for sample_idx, sample_key in enumerate(jax.random.split(key, root_count)):
             seed_key, sampler_key = jax.random.split(sample_key, 2)
@@ -2531,18 +2536,39 @@ class NestedSampler(PureDataclassPytree):
                 params=self.params,
                 allow_nan=False,
             ).astype(mp_policy.measure_dtype)
-            outputs.append(
-                self._sample_constrained(
-                    sampler_key,
-                    jnp.asarray(-jnp.inf, dtype=mp_policy.measure_dtype),
-                    SeedPoint(U0=seed_U, log_L0=seed_log_L),
-                    requested_parent_idx=-1,
-                    effective_parent_idx=-1,
-                    accepted_parent_idx=-1,
-                    parent_work_id=sample_idx,
-                    adaptation_context=adaptation_context,
+            if _sampler_uses_galilean(self.sampler):
+                num_phantom = self.sampler.num_phantom()
+                outputs.append(
+                    (
+                        seed_U,
+                        seed_log_L,
+                        jnp.ones((), dtype=mp_policy.count_dtype),
+                        PhantomSamples(
+                            U_samples=None,
+                            log_L=jnp.zeros(
+                                (num_phantom,),
+                                dtype=mp_policy.measure_dtype,
+                            ),
+                            valid_mask=jnp.zeros(
+                                (num_phantom,),
+                                dtype=mp_policy.bool_dtype,
+                            ),
+                        ),
+                    )
                 )
-            )
+            else:
+                outputs.append(
+                    self._sample_constrained(
+                        sampler_key,
+                        jnp.asarray(-jnp.inf, dtype=mp_policy.measure_dtype),
+                        SeedPoint(U0=seed_U, log_L0=seed_log_L),
+                        requested_parent_idx=-1,
+                        effective_parent_idx=-1,
+                        accepted_parent_idx=-1,
+                        parent_work_id=sample_idx,
+                        adaptation_context=adaptation_context,
+                    )
+                )
 
         U_samples = jax.tree.map(
             lambda *values: jnp.stack(values, axis=0),
@@ -3111,6 +3137,8 @@ class NestedSampler(PureDataclassPytree):
                             // epoch_capacity,
                         ),
                     )
+                    if _sampler_uses_galilean(self.sampler):
+                        max_epoch_steps = 1
                     plan = build_allocation_plan(
                         state=current,
                         allocation_target=allocation_target,

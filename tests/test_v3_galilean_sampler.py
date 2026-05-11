@@ -10,6 +10,8 @@ from jax import numpy as jnp
 from jax import random
 
 import jaxns.constrained_sampler as constrained_sampler
+import jaxns.constrained_sampler_distributed as distributed_constrained_sampler
+import jaxns.core as core_module
 from jaxns.constrained_sampler import UniDimSliceSampler
 from jaxns.constrained_sampler_distributed import DistributedUniDimSliceSampler
 from jaxns.core import NestedSampler
@@ -675,6 +677,287 @@ def test_galilean_sampler_runs_through_public_nested_sampler_run():
         np.asarray(state.samples.log_likelihoods[:num_samples], dtype=float)
         > -np.inf
     )
+
+
+def test_galilean_run_until_goal_uses_pure_core_epoch_without_python_parent_selection(
+        monkeypatch,
+):
+    model = UnitIntervalQuadraticModel()
+    sampler = UniDimSliceSampler(
+        model=model,
+        num_slices=2,
+        no_step_out=True,
+        trajectory="galilean",
+        collect_phantom_samples=True,
+        phantom_burn_in=1,
+    )
+    ns = NestedSampler(
+        model=model,
+        sampler=sampler,
+        target_num_live_points=2,
+        max_samples=4,
+        shell_size=1,
+        store_phantom_samples=True,
+    )
+
+    def fail_python_parent_selection(*args, **kwargs):
+        del args, kwargs
+        raise AssertionError(
+            "direct pure-core Galilean must not call select_parent_work"
+        )
+
+    epoch_steps = []
+    original_depth_epoch = core_module._pure_core_depth_epoch_jax
+
+    def recording_depth_epoch(*args, **kwargs):
+        result = original_depth_epoch(*args, **kwargs)
+        epoch_steps.append(int(np.asarray(result.history.num_steps)))
+        return result
+
+    monkeypatch.setattr(
+        core_module,
+        "select_parent_work",
+        fail_python_parent_selection,
+    )
+    monkeypatch.setattr(
+        core_module,
+        "_pure_core_depth_epoch_jax",
+        recording_depth_epoch,
+    )
+
+    state = ns.run_until_goal(
+        goal_cond=lambda state: int(state.num_samples) >= 4,
+        depth_cond=TerminationCondition(max_samples=4),
+        allocation_target="uniform",
+        key=random.PRNGKey(33),
+        max_goal_iterations=3,
+    )
+
+    num_samples = int(state.num_samples)
+    assert num_samples == 4
+    assert epoch_steps
+    assert sum(epoch_steps) >= 1
+    active_u = np.asarray(state.samples.U_samples[:num_samples], dtype=float)
+    assert np.all(active_u >= -1e-8)
+    assert np.all(active_u <= 1.0 + 1e-8)
+    active_log_l = np.asarray(
+        state.samples.log_likelihoods[:num_samples],
+        dtype=float,
+    )
+    assert np.all(np.isfinite(active_log_l))
+    phantom = state.samples.phantom_samples
+    assert phantom.log_L.shape[1] == sampler.num_phantom()
+    valid_phantom = np.asarray(phantom.valid_mask[:num_samples], dtype=bool)
+    phantom_log_l = np.asarray(phantom.log_L[:num_samples], dtype=float)
+    assert np.all(np.isfinite(phantom_log_l[valid_phantom]))
+
+
+def test_galilean_run_until_goal_does_not_use_eager_python_transition(
+        monkeypatch,
+):
+    model = UnitIntervalQuadraticModel()
+    sampler = UniDimSliceSampler(
+        model=model,
+        num_slices=2,
+        no_step_out=True,
+        trajectory="galilean",
+        collect_phantom_samples=True,
+        phantom_burn_in=1,
+    )
+    ns = NestedSampler(
+        model=model,
+        sampler=sampler,
+        target_num_live_points=2,
+        max_samples=4,
+        shell_size=1,
+        store_phantom_samples=True,
+    )
+
+    def fail_eager_transition(*args, **kwargs):
+        del args, kwargs
+        raise AssertionError(
+            "direct pure-core Galilean must use the traced-safe streaming "
+            "transition, including root initialization"
+        )
+
+    monkeypatch.setattr(
+        constrained_sampler,
+        "_sample_galilean_markov_transition",
+        fail_eager_transition,
+    )
+
+    state = ns.run_until_goal(
+        goal_cond=lambda state: int(state.num_samples) >= 4,
+        depth_cond=TerminationCondition(max_samples=4),
+        allocation_target="uniform",
+        key=random.PRNGKey(41),
+        max_goal_iterations=3,
+    )
+
+    assert int(state.num_samples) == 4
+
+
+def test_galilean_standalone_sampler_uses_eager_transition(monkeypatch):
+    model = UnitIntervalQuadraticModel()
+    sampler = UniDimSliceSampler(
+        model=model,
+        num_slices=2,
+        no_step_out=True,
+        trajectory="galilean",
+        collect_phantom_samples=True,
+        phantom_burn_in=1,
+    )
+
+    def fail_jax_transition(*args, **kwargs):
+        del args, kwargs
+        raise AssertionError(
+            "standalone Galilean sampler calls should keep the eager "
+            "trajectory path unless explicitly forced or traced"
+        )
+
+    monkeypatch.setattr(
+        constrained_sampler,
+        "_sample_galilean_markov_transition_jax",
+        fail_jax_transition,
+    )
+
+    U_sample, log_likelihood, _, phantom_samples = sampler.get_sample(
+        key=random.PRNGKey(52),
+        log_L_constraint=jnp.asarray(-0.04),
+        seed_point=SeedPoint(
+            U0=jnp.asarray([0.5]),
+            log_L0=jnp.asarray(0.0),
+        ),
+    )
+
+    assert float(log_likelihood) > -0.04
+    assert float(model.log_likelihood(U_sample)) > -0.04
+    assert np.all(np.asarray(phantom_samples.log_L, dtype=float) > -0.04)
+
+
+def test_galilean_distributed_sampler_uses_eager_transition(monkeypatch):
+    model = UnitIntervalQuadraticModel()
+    sampler = DistributedUniDimSliceSampler(
+        model=model,
+        evaluator=UnitIntervalQuadraticEvaluator(centre=0.5),
+        num_slices=2,
+        no_step_out=True,
+        trajectory="galilean",
+        collect_phantom_samples=True,
+        phantom_burn_in=1,
+    )
+    eager_calls = []
+    original_eager_transition = (
+        distributed_constrained_sampler._sample_galilean_markov_transition
+    )
+
+    def recording_eager_transition(*args, **kwargs):
+        eager_calls.append(True)
+        return original_eager_transition(*args, **kwargs)
+
+    def fail_jax_transition(*args, **kwargs):
+        del args, kwargs
+        raise AssertionError(
+            "distributed Galilean sampler calls should keep the eager "
+            "worker-backed trajectory path"
+        )
+
+    monkeypatch.setattr(
+        distributed_constrained_sampler,
+        "_sample_galilean_markov_transition",
+        recording_eager_transition,
+    )
+    monkeypatch.setattr(
+        constrained_sampler,
+        "_sample_galilean_markov_transition_jit",
+        fail_jax_transition,
+    )
+
+    U_sample, log_likelihood, _, phantom_samples = sampler.get_sample(
+        key=random.PRNGKey(53),
+        log_L_constraint=jnp.asarray(-0.04),
+        seed_point=SeedPoint(
+            U0=jnp.asarray([0.5]),
+            log_L0=jnp.asarray(0.0),
+        ),
+    )
+
+    assert eager_calls
+    assert float(log_likelihood) > -0.04
+    assert float(model.log_likelihood(U_sample)) > -0.04
+    assert np.all(np.asarray(phantom_samples.log_L, dtype=float) > -0.04)
+
+
+def test_jax_galilean_does_not_evaluate_likelihood_outside_unit_cube():
+    transition = _required_sampler_symbol(
+        "_sample_galilean_markov_transition_jax"
+    )
+    outside_likelihood_calls = []
+
+    def record_call(point):
+        point = np.asarray(point, dtype=float)
+        outside_likelihood_calls.append(
+            bool(np.any((point < -1e-8) | (point > 1.0 + 1e-8)))
+        )
+
+    def log_likelihood(U):
+        u = jnp.asarray(U)
+        jax.debug.callback(record_call, u)
+        return -jnp.square(u[0] - 0.5)
+
+    def grad_log_likelihood(U):
+        u = jnp.asarray(U)
+        return jnp.asarray([-2.0 * (u[0] - 0.5)])
+
+    point, log_likelihood_value, _, = transition(
+        key=random.PRNGKey(71),
+        U0=jnp.asarray([0.5]),
+        log_L0=jnp.asarray(0.0),
+        direction=jnp.asarray([1.0]),
+        log_L_constraint=jnp.asarray(-1.0),
+        log_likelihood_fn=log_likelihood,
+        grad_log_likelihood_fn=grad_log_likelihood,
+        initial_step_size=jnp.asarray(0.2),
+        max_step_halvings=16,
+        max_step_doublings=16,
+    )
+
+    assert not any(outside_likelihood_calls)
+    assert np.all(np.asarray(point.tree, dtype=float) >= -1e-8)
+    assert np.all(np.asarray(point.tree, dtype=float) <= 1.0 + 1e-8)
+    assert float(log_likelihood_value) > -1.0
+
+
+def test_jax_galilean_reflects_from_unit_cube_support_normal():
+    transition = _required_sampler_symbol(
+        "_sample_galilean_markov_transition_jax"
+    )
+
+    def log_likelihood(U):
+        u = jnp.asarray(U)
+        return -jnp.square(u[1] - 0.5)
+
+    def grad_log_likelihood(U):
+        u = jnp.asarray(U)
+        return jnp.asarray([0.0, -2.0 * (u[1] - 0.5)])
+
+    point, log_likelihood_value, _ = transition(
+        key=random.PRNGKey(93),
+        U0=jnp.asarray([0.98, 0.5]),
+        log_L0=jnp.asarray(0.0),
+        direction=jnp.asarray([1.0, 0.0]),
+        log_L_constraint=jnp.asarray(-1.0),
+        log_likelihood_fn=log_likelihood,
+        grad_log_likelihood_fn=grad_log_likelihood,
+        initial_step_size=jnp.asarray(0.05),
+        max_step_halvings=16,
+        max_step_doublings=16,
+    )
+
+    point_array = np.asarray(point.tree, dtype=float)
+    assert np.all(point_array >= -1e-8)
+    assert np.all(point_array <= 1.0 + 1e-8)
+    assert float(log_likelihood_value) > -1.0
 
 
 def test_galilean_internal_points_are_excluded_from_phantom_clusters(

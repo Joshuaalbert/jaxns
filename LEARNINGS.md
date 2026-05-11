@@ -276,6 +276,34 @@ repeat mistakes specific to this project. Keep learnings compact.
   `mean(log_Z_samples)`, compared with the reference at `3 * std(log_Z_samples)`.
   Do not replace this with `result.log_Z_mean` or `result.log_Z_uncert`; that is
   a changed acceptance criterion.
-- Ticket 0020 direct pure-core Galilean rows are not ready until the Galilean
-  trajectory helpers stop using Python `bool(np.asarray(...))` validation on
-  traced values. Those checks abort inside the compiled pure-core epoch.
+- Ticket 0020 direct pure-core Galilean uses a traced-safe streaming trajectory
+  sampler inside compiled epochs. Keep the eager Python Galilean trajectory
+  builders for standalone trajectory tests, but route traced sampler calls
+  through JAX `while_loop` helpers that avoid `bool(np.asarray(...))`.
+- Ticket 0020 direct pure-core Galilean root initialization is not traced, so
+  `NestedSampler._sample_v3_root_state` must pass a `force_jax_galilean`
+  adaptation-context flag. Ordinary standalone local/worker sampler calls
+  should still use the eager trajectory path unless they are inside JAX tracing.
+- Ticket 0020 traced Galilean support checks must use `jax.lax.cond` around
+  the likelihood call. JAX boolean `&` is not short-circuiting, and the
+  boundary search intentionally probes outside the unit cube.
+- Ticket 0020 traced Galilean reflections must prefer the unit-cube support
+  normal when the rejected point leaves `[0, 1]^D`; likelihood gradients can be
+  tangent to the cube face and are not a valid support-boundary normal.
+- Ticket 0020 pure-core root initialization should call a cached JIT Galilean
+  transition wrapper. Calling raw `lax.while_loop` Galilean transitions from
+  the Python root loop can trigger repeated XLA compilations and LLVM memory
+  failures on the full 8D MVN gate.
+- For pure-core Galilean performance, fusing all Galilean slices for one
+  constrained sample into a cached chain JIT reduced the 60-sample 8D MVN
+  first-run timing from about `49.5s` to about `7.0s`, with steady-state timing
+  about `0.33s`. Do not regress back to per-slice transition JIT calls.
+- For Galilean root initialization, the sentinel `-inf` contour does not need a
+  Galilean trajectory: the model's `sample_U` prior draw is already the exact
+  root constrained sample. Skipping root Galilean work reduced the best 1200
+  sample 8D MVN timing to about `49s`.
+- Current pure-core Galilean is not statistically accepted for full 8D MVN:
+  the fast configuration (`num_slices=4`, step `0.01`, boundary limits `4`)
+  runs under `60s` for seed `0` but misses the `3 * sample_std` evidence gate,
+  and seed `29` fails badly. More work is needed before claiming Galilean
+  standard-problem parity.

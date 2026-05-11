@@ -416,11 +416,22 @@ Required distributed benchmark gate:
   planned parent has no strict seed, `CoreWorkBatch.effective_parent_idx`,
   `fallback_to_root`, `parent_block_idx`, and `seed_idx` must match the
   `ParentWork` accepted by the core result/acceptance path.
-- Galilean trajectories are not yet JAX-traceable in the direct pure-core
-  epoch because the current trajectory helpers still perform Python
-  `bool(np.asarray(...))` validation on traced values. Keep standard accuracy
-  rows on straight-line trajectories until this is fixed by a dedicated
-  sampler-internals slice; do not claim Galilean pure-core parity before then.
+- Direct pure-core Galilean trajectories are implemented through a
+  traced-safe streaming sampler path. The eager Python trajectory builders
+  remain for standalone geometry tests, while compiled pure-core sampler calls
+  avoid Python `bool(np.asarray(...))` validation on traced values. The traced
+  path must short-circuit unit-cube support checks before model likelihood
+  evaluation, must run only the active grow-or-shrink boundary-search branch,
+  and must keep ordinary standalone local and worker-backed Galilean sampler
+  calls on the eager trajectory path. Unit-cube support hits must reflect on
+  the support normal, not on an unrelated likelihood gradient, and the traced
+  boundary grow/shrink searches keep the configured Galilean boundary-search
+  limits while the outer reflection loop remains U-turn driven.
+- Follow-up status: the traced Galilean routing/compilation slice passes
+  focused contract tests, but full 8D MVN Galilean standard-problem parity is
+  not accepted yet. A fast exploratory configuration can run under 60 seconds,
+  but evidence accuracy is seed-unstable and misses the `3 * sample_std` gate.
+  Do not mark Galilean standard-problem parity complete until that gate passes.
 
 ## Acceptance Criteria
 
