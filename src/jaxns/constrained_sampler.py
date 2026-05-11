@@ -24,6 +24,7 @@ GMM_DIRECTION_KERNELS = frozenset(("gmm", "non_isotropic", "non-isotropic"))
 STRAIGHT_LINE_TRAJECTORIES = frozenset(("straight_line", "straight_line_perfect"))
 GALILEAN_TRAJECTORIES = frozenset(("galilean",))
 UNSUPPORTED_TRAJECTORIES = frozenset(("gradient_guided",))
+_MISSING = object()
 
 
 class AbstractSampler(ABC):
@@ -533,6 +534,14 @@ def _point_tree(value):
     return value
 
 
+def _context_any(context, names: tuple[str, ...], default=None):
+    for name in names:
+        value = _context_get(context, name, _MISSING)
+        if value is not _MISSING:
+            return value
+    return default
+
+
 class _StaticLogLikelihoodFn:
     """Stable static JIT argument for repeated sampler calls on one problem."""
 
@@ -976,6 +985,186 @@ def _greedy_shrink_to_strict_contour(
     )
 
 
+def _new_proposal_python(
+        *,
+        key: PRNGKey,
+        U0: TreeField[UType],
+        direction: TreeField[UType],
+        slice_width: FloatArray,
+        no_step_out: bool,
+        gradient_guided: bool,
+        log_L_constraint: FloatArray,
+        log_likelihood_fn: Callable[[UType], FloatArray],
+        log_L0: FloatArray | None = None,
+        max_shrinkage_steps: int = 32,
+) -> tuple[TreeField[UType], FloatArray, IntArray, TreeField[UType], FloatArray]:
+    """
+    Python-loop equivalent of ``_new_proposal`` for dispatched likelihoods.
+
+    The likelihood callable is deliberately invoked on concrete proposal
+    values. This keeps runtime-dispatched ``U -> log_L`` probes outside JAX
+    tracing while retaining the same straight-line slice/shrinkage semantics.
+    """
+    if gradient_guided:
+        raise NotImplementedError("Gradient guided slice sampler not implemented.")
+
+    max_shrinkage_steps = _resolve_max_shrinkage_steps(max_shrinkage_steps)
+    run_key, t_key, step_key, _ = random.split(key, 4)
+    num_likelihood_evaluations = jnp.asarray(0, mp_policy.count_dtype)
+
+    left_bound, right_bound = _slice_bounds(
+        point_U0=U0,
+        direction=direction,
+    )
+    slice_width = jnp.asarray(slice_width, left_bound.dtype)
+    left = left_bound
+    right = right_bound
+    pick_point = partial(
+        _pick_point_in_interval,
+        point_U0=U0,
+        direction=direction,
+    )
+
+    if not no_step_out:
+        eps = jnp.asarray(1e-12, left_bound.dtype)
+        use_full_slice = bool(np.asarray(jnp.isinf(slice_width)))
+        effective_slice_width = jnp.maximum(slice_width, eps)
+        place_key, step_key = random.split(step_key)
+        uniform_origin = random.uniform(place_key, dtype=left_bound.dtype)
+        initial_left = -uniform_origin * effective_slice_width
+        initial_right = initial_left + effective_slice_width
+        if use_full_slice:
+            left = left_bound
+            right = right_bound
+        else:
+            left = jnp.maximum(left_bound, initial_left)
+            right = jnp.minimum(right_bound, initial_right)
+
+        def _point_at_t(t: FloatArray) -> TreeField[UType]:
+            return U0 + direction * t
+
+        def _outside_slice(t: FloatArray) -> bool:
+            nonlocal num_likelihood_evaluations
+            log_likelihood = log_likelihood_fn(_point_at_t(t).tree)
+            num_likelihood_evaluations += jnp.ones(
+                (),
+                mp_policy.count_dtype,
+            )
+            return bool(np.asarray(log_likelihood <= log_L_constraint))
+
+        left_outside_slice = _outside_slice(left)
+        right_outside_slice = _outside_slice(right)
+        while (
+                not use_full_slice
+                and (
+                    (bool(np.asarray(left > left_bound)))
+                    or (bool(np.asarray(right < right_bound)))
+                )
+                and not (left_outside_slice and right_outside_slice)
+        ):
+            step_key, choose_key = random.split(step_key, 2)
+            can_expand_left = bool(np.asarray(left > left_bound))
+            can_expand_right = bool(np.asarray(right < right_bound))
+            if can_expand_left and can_expand_right:
+                choose_left = bool(
+                    np.asarray(
+                        random.uniform(choose_key, dtype=left_bound.dtype)
+                        < 0.5
+                    )
+                )
+            else:
+                choose_left = can_expand_left
+            current_width = jnp.maximum(right - left, eps)
+            if choose_left:
+                candidate_left = jnp.maximum(left_bound, left - current_width)
+                left = candidate_left
+                left_outside_slice = _outside_slice(candidate_left)
+            else:
+                candidate_right = jnp.minimum(
+                    right_bound,
+                    right + current_width,
+                )
+                right = candidate_right
+                right_outside_slice = _outside_slice(candidate_right)
+
+    point_U, t = pick_point(
+        key=t_key,
+        left=left,
+        right=right,
+    )
+    log_L = jnp.asarray(
+        log_likelihood_fn(point_U.tree),
+        dtype=log_L_constraint.dtype,
+    )
+    num_likelihood_evaluations += jnp.ones((), mp_policy.count_dtype)
+
+    if bool(np.asarray(log_L > log_L_constraint)):
+        proposal = point_U
+        proposal_log_L = log_L
+        left_after = left
+        right_after = right
+    else:
+        current_left = left
+        current_right = right
+        rejected_t = t
+        proposal = U0
+        proposal_satisfied = False
+        left_after = left
+        right_after = right
+        for _ in range(max_shrinkage_steps):
+            current_left, current_right = _shrink_interval(
+                t=rejected_t,
+                left=current_left,
+                right=current_right,
+            )
+            run_key, proposal_key = random.split(run_key, 2)
+            candidate_U, candidate_t = pick_point(
+                key=proposal_key,
+                left=current_left,
+                right=current_right,
+            )
+            candidate_log_L = jnp.asarray(
+                log_likelihood_fn(candidate_U.tree),
+                dtype=log_L_constraint.dtype,
+            )
+            num_likelihood_evaluations += jnp.ones(
+                (),
+                mp_policy.count_dtype,
+            )
+            left_after = current_left
+            right_after = current_right
+            if bool(np.asarray(candidate_log_L > log_L_constraint)):
+                proposal = candidate_U
+                proposal_log_L = candidate_log_L
+                proposal_satisfied = True
+                break
+            rejected_t = candidate_t
+        if not proposal_satisfied:
+            if log_L0 is None:
+                proposal_log_L = jnp.asarray(
+                    log_likelihood_fn(U0.tree),
+                    dtype=log_L_constraint.dtype,
+                )
+                num_likelihood_evaluations += jnp.ones(
+                    (),
+                    mp_policy.count_dtype,
+                )
+            else:
+                proposal_log_L = jnp.asarray(
+                    log_L0,
+                    dtype=log_L_constraint.dtype,
+                )
+
+    next_slice_width = 2 * (right_after - left_after)
+    return (
+        proposal,
+        proposal_log_L,
+        num_likelihood_evaluations,
+        direction,
+        next_slice_width,
+    )
+
+
 @partial(jax.jit, inline=True, static_argnames=["no_step_out", "gradient_guided", "log_likelihood_fn"])
 def _new_proposal(
         key: PRNGKey,
@@ -1252,6 +1441,16 @@ def _resolve_num_slices(num_slices: int) -> int:
     return resolved
 
 
+def _materialize_split_keys(key: PRNGKey, count: int) -> tuple[PRNGKey, ...]:
+    """Split and host-materialize keys for forced Python loops."""
+    resolved = operator.index(count)
+    if resolved < 0:
+        raise ValueError(f"count must be non-negative, got {count}.")
+    if resolved == 0:
+        return ()
+    return tuple(jax.device_get(random.split(key, resolved)))
+
+
 def _resolve_phantom_burn_in(
         num_slices: int,
         phantom_burn_in: int | None,
@@ -1411,9 +1610,22 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
             alpha: jax.Array
 
         num_slices = _resolve_num_slices(self.num_slices)
-        log_likelihood_fn = _StaticLogLikelihoodFn(self.model, args, params)
+        dispatch_log_likelihood_fn = _context_any(
+            adaptation_context,
+            (
+                "proposal_log_likelihood_fn",
+                "dispatch_log_likelihood_fn",
+                "log_likelihood_fn",
+            ),
+        )
+        log_likelihood_fn = (
+            _StaticLogLikelihoodFn(self.model, args, params)
+            if dispatch_log_likelihood_fn is None
+            else dispatch_log_likelihood_fn
+        )
         force_python_loop = bool(
             _context_get(adaptation_context, "force_python_loop", False)
+            or dispatch_log_likelihood_fn is not None
         )
         direction_adaptation_context = _context_get(
             adaptation_context,
@@ -1513,9 +1725,22 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
             direction: TreeField[UType]
             slice_width: FloatArray
 
-        def propose_op(carry: Carry, x: XType) -> Carry:
-            U_sample, log_L, num_likelihood_evaluations, direction, slice_width = _new_proposal(
-                key=x.key,
+        def apply_proposal(carry: Carry, proposal_key: PRNGKey):
+            if force_python_loop:
+                return _new_proposal_python(
+                    key=proposal_key,
+                    U0=carry.U_sample,
+                    direction=carry.direction,
+                    slice_width=carry.slice_width,
+                    no_step_out=self.no_step_out,
+                    gradient_guided=self.gradient_guided,
+                    log_L_constraint=carry.log_L_constraint,
+                    log_likelihood_fn=log_likelihood_fn,
+                    log_L0=carry.log_L,
+                    max_shrinkage_steps=self.max_shrinkage_steps,
+                )
+            return _new_proposal(
+                key=proposal_key,
                 U0=carry.U_sample,
                 direction=carry.direction,
                 slice_width=carry.slice_width,
@@ -1526,10 +1751,14 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
                 log_L0=carry.log_L,
                 max_shrinkage_steps=self.max_shrinkage_steps,
             )
-            direction = _sample_direction_from_kernel(
-                key=x.direction_key,
-                direction_kernel=direction_kernel,
-                current_point=direction_template,
+
+        def update_carry(
+                carry: Carry,
+                proposal_result,
+                direction: TreeField[UType],
+        ) -> Carry:
+            U_sample, log_L, num_likelihood_evaluations, _, slice_width = (
+                proposal_result
             )
 
             carry = Carry(
@@ -1541,6 +1770,19 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
                 slice_width=slice_width
             )
             return carry
+
+        def propose_op(carry: Carry, x: XType) -> Carry:
+            proposal_result = apply_proposal(carry, x.key)
+            direction = _sample_direction_from_kernel(
+                key=x.direction_key,
+                direction_kernel=direction_kernel,
+                current_point=direction_template,
+            )
+            return update_carry(carry, proposal_result, direction)
+
+        def propose_op_without_next_direction(carry: Carry, x: XType) -> Carry:
+            proposal_result = apply_proposal(carry, x.key)
+            return update_carry(carry, proposal_result, carry.direction)
 
         direction_key, sample_key = jax.random.split(key, 2)
 
@@ -1557,23 +1799,41 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
             3,
         )
 
-        U_sample, log_L, num_likelihood_evaluations, _, slice_width = _new_proposal(
-            key=init_sample_key,
-            U0=direction_template,
-            direction=init_direction,
-            slice_width=jnp.asarray(jnp.inf, slice_width_dtype),
-            no_step_out=True,
-            gradient_guided=self.gradient_guided,
-            log_L_constraint=log_L_constraint,
-            log_likelihood_fn=log_likelihood_fn,
-            log_L0=seed_point.log_L0,
-            max_shrinkage_steps=self.max_shrinkage_steps,
+        if force_python_loop:
+            init_proposal_result = _new_proposal_python(
+                key=init_sample_key,
+                U0=direction_template,
+                direction=init_direction,
+                slice_width=jnp.asarray(jnp.inf, slice_width_dtype),
+                no_step_out=True,
+                gradient_guided=self.gradient_guided,
+                log_L_constraint=log_L_constraint,
+                log_likelihood_fn=log_likelihood_fn,
+                log_L0=seed_point.log_L0,
+                max_shrinkage_steps=self.max_shrinkage_steps,
+            )
+        else:
+            init_proposal_result = _new_proposal(
+                key=init_sample_key,
+                U0=direction_template,
+                direction=init_direction,
+                slice_width=jnp.asarray(jnp.inf, slice_width_dtype),
+                no_step_out=True,
+                gradient_guided=self.gradient_guided,
+                log_L_constraint=log_L_constraint,
+                log_likelihood_fn=log_likelihood_fn,
+                log_L0=seed_point.log_L0,
+                max_shrinkage_steps=self.max_shrinkage_steps,
+            )
+        U_sample, log_L, num_likelihood_evaluations, _, slice_width = (
+            init_proposal_result
         )
-        init_direction = _sample_direction_from_kernel(
-            key=init_direction_key,
-            direction_kernel=direction_kernel,
-            current_point=direction_template,
-        )
+        if num_slices > 1 or not force_python_loop:
+            init_direction = _sample_direction_from_kernel(
+                key=init_direction_key,
+                direction_kernel=direction_kernel,
+                current_point=direction_template,
+            )
 
         init_carry = Carry(
             U_sample=U_sample,
@@ -1584,23 +1844,32 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
             slice_width=slice_width
         )
 
+        loop_count = num_slices - 1
         proposal_key, direction_scan_key = random.split(sample_key, 2)
-        xs = XType(
-            key=random.split(proposal_key, num_slices - 1),
-            direction_key=random.split(direction_scan_key, num_slices - 1),
-            alpha=jnp.linspace(0.5, 1., num_slices - 1)
-        )
         if force_python_loop:
+            proposal_keys = _materialize_split_keys(proposal_key, loop_count)
+            consumed_direction_count = max(loop_count - 1, 0)
+            direction_keys = _materialize_split_keys(
+                direction_scan_key,
+                consumed_direction_count,
+            )
             carry = init_carry
             samples = []
-            for i in range(num_slices - 1):
-                carry = propose_op(
-                    carry,
-                    XType(
-                        key=xs.key[i],
-                        direction_key=xs.direction_key[i],
-                        alpha=xs.alpha[i],
-                    ),
+            for i, loop_proposal_key in enumerate(proposal_keys):
+                proposal_result = apply_proposal(carry, loop_proposal_key)
+                if i == loop_count - 1:
+                    direction = carry.direction
+                else:
+                    loop_direction_key = direction_keys[i]
+                    direction = _sample_direction_from_kernel(
+                        key=loop_direction_key,
+                        direction_kernel=direction_kernel,
+                        current_point=direction_template,
+                    )
+                carry = update_carry(
+                    carry=carry,
+                    proposal_result=proposal_result,
+                    direction=direction,
                 )
                 samples.append(carry)
             final_carry = carry
@@ -1618,6 +1887,11 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
                     init_carry,
                 )
         else:
+            xs = XType(
+                key=random.split(proposal_key, loop_count),
+                direction_key=random.split(direction_scan_key, loop_count),
+                alpha=jnp.linspace(0.5, 1., loop_count)
+            )
             final_carry, cumulative_samples = cumulative_op_static(
                 op=propose_op,
                 init=init_carry,

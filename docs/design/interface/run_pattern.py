@@ -52,11 +52,11 @@ with LoadBalancerClient(address='local') as lb:
         params=model_params,
         collect_phantoms=True  # collect phantom likelihoods, discarding points
     )
-    # get_nested_sampler compiles the likelihood ahead of time on each device
-    # type and creates an isolated runner. After compilation, workers feed off
-    # the LB and return results to the original runner. Many clients can share a
-    # worker pool across different likelihood problems; fair sharing is managed
-    # by the LB.
+    # get_nested_sampler registers the compile identity and creates an isolated
+    # runner. Workers JIT/cache the likelihood on first matching likelihood-eval
+    # work, then return scalar log_L results to the original runner. Many
+    # clients can share a worker pool across different likelihood problems;
+    # fair sharing is managed by the LB.
     state: State = ns.run_until_goal(
         goal_cond=goal_cond,
         depth_cond=TerminationCondition(),

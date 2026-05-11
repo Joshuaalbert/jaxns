@@ -23,6 +23,28 @@ states must have marginal expectation under the same parent contour after
 burn-in. Correlated phantom states are allowed, but non-stationary phantom states
 can bias the phantom-conditioned shrinkage model.
 
+## Runtime Boundary For Likelihood Evaluation
+
+The constrained sampler owns local chain state. It chooses seeds, directions,
+slice or trajectory proposals, strict-contour checks, phantom-retention
+boundaries, and retry/failure policy for a parent task. In the process-isolated
+runtime, only deterministic likelihood probes are dispatched to remote worker
+processes: the sampler sends one proposed prior-space coordinate `U` and
+receives one scalar `log_L`.
+
+This means constrained samplers may run locally and in parallel for many parent
+tasks, while likelihood evaluations overlap through the worker pool. Sampler
+state, phantom buffers, direction snapshots, and parent metadata do not cross
+the worker boundary for every proposal. The runner remains responsible for
+accepting completed child samples and mutating race-tree state exactly once.
+
+Sampler implementations should avoid exposing dynamic JAX shapes to the
+likelihood worker path. Variable candidate lists, active-parent pools, phantom
+buffers, and trajectory segments should be trimmed in NumPy before JAX calls or
+represented with fixed shapes and explicit masks. A likelihood worker may JIT
+its model on first work for a static `U` tree shape, but it must not silently
+recompile for variable proposal shapes under the same runtime identity.
+
 ## Slice-Sampling Algorithm
 
 The paper's constrained sampler uses one-dimensional slice-sampling transitions

@@ -38,6 +38,9 @@ make the migration smaller and easier to verify.
 - `0017-standard-problem-performance-benchmark-driven.md`: uses the accepted
   benchmarks to reduce full 8D `basic_mvn` runtime while preserving
   representative standard-problem correctness; depends on `0015` and `0016`.
+- `0018-likelihood-eval-dispatch-runtime.md`: splits local/parallel
+  constrained sampling from process-isolated likelihood evaluation dispatch;
+  depends on `0005`, `0007`, `0009`, `0011`, `0016`, and `0017`.
 
 ## Suggested Waves
 
@@ -58,6 +61,9 @@ make the migration smaller and easier to verify.
     for ongoing optimization work.
 11. Benchmark-driven optimization: `0017` applies focused performance fixes
     against those reference points.
+12. Likelihood dispatch runtime: `0018` moves the worker boundary to
+    deterministic `U -> log_L` evaluations while local constrained samplers
+    drive parallel parent tasks.
 
 ## Branch Names
 
@@ -78,6 +84,7 @@ make the migration smaller and easier to verify.
 - `feature/v3-standard-problem-performance`
 - `feature/v3-standard-problem-speed-benchmarks`
 - `feature/v3-benchmark-driven-standard-performance`
+- `feature/v3-likelihood-eval-dispatch-runtime`
 
 ## Ticket Files
 
@@ -98,3 +105,4 @@ make the migration smaller and easier to verify.
 - `docs/implementation_orchestration/tickets/0015-standard-problem-performance.md`
 - `docs/implementation_orchestration/tickets/0016-standard-problem-speed-benchmarks.md`
 - `docs/implementation_orchestration/tickets/0017-standard-problem-performance-benchmark-driven.md`
+- `docs/implementation_orchestration/tickets/0018-likelihood-eval-dispatch-runtime.md`

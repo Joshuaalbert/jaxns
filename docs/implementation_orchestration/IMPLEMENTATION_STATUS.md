@@ -14,7 +14,17 @@ None currently.
 
 ## Under Review
 
-None currently.
+- `0018-likelihood-eval-dispatch-runtime`: local first-layer implementation
+  passed strict runtime-boundary review and the representative standard-problem
+  correctness subset passed again after final key-materialization remediation
+  (`9 passed, 2 warnings in 1587.17s`). Focused gates pass for runtime,
+  benchmark schema, constrained-sampler parity, and ruff. The
+  best full 8D `basic_mvn` local-LB timing is now `218.90s` total / `216.54s`
+  run with `cpu:*:1`, improving the first correct likelihood-dispatch
+  `246.27s` total reference, but `cpu:*:2` remains slower (`265.62s` total)
+  despite balanced worker utilization. Further performance work should target
+  larger runtime-topology changes or a parity-proven batched scalar operation
+  path rather than repeating the rejected NumPy geometry rewrite.
 
 ## Accepted With Follow-Up
 

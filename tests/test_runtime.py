@@ -149,8 +149,28 @@ class RuntimeStateSnapshot(NamedTuple):
     phantom_log_L: np.ndarray
 
 
+# Pre-0018 legacy fixtures below assert the old serialized constrained-sampler
+# worker-task path. Ticket 0018 supersedes that path for ordinary runtime work:
+# workers should receive only likelihood-eval U payloads after identity
+# registration, while sampler state remains runner-local.
+PRE_0018_LEGACY_SERIALIZED_WORKER_SKIP = pytest.mark.skip(
+    reason=(
+        "pre-0018 legacy serialized constrained-sampler worker-task "
+        "coverage; Ticket 0018 ordinary LoadBalancerClient work must use "
+        "likelihood-eval dispatch with sampler state runner-local"
+    )
+)
+PRE_0018_LEGACY_COMPILE_IDENTITY_SKIP = pytest.mark.skip(
+    reason=(
+        "pre-0018 RuntimeCompileIdentity included sampler/phantom execution "
+        "payload details; Ticket 0018 ordinary compile identity is model, "
+        "args, params, dtype policy, device class, and U shape/tree"
+    )
+)
+
+
 class SerializedWorkerOnlySampler(AbstractSampler):
-    """Sampler fixture that only runs after crossing a pickle boundary."""
+    """Pre-0018 sampler fixture that requires a serialized worker boundary."""
 
     def __init__(self, *, worker_instance: bool = False):
         self.worker_instance = worker_instance
@@ -1129,7 +1149,20 @@ def _worker_result_for_lifecycle_record(record: object, runtime):
             worker_id=lifecycle_record.worker_id,
             sector_id=lifecycle_record.sector_id,
         ),
-        payload={"sample": "deterministic-test-payload"},
+        payload=_constrained_sampler_completion_payload(runtime),
+    )
+
+
+def _constrained_sampler_completion_payload(runtime):
+    return runtime.ConstrainedSamplerCompletionPayload(
+        U_sample=jnp.asarray(0.25, dtype=jnp.float32),
+        log_L=jnp.asarray(-0.25, dtype=jnp.float32),
+        num_likelihood_evaluations=jnp.asarray(1, dtype=jnp.int32),
+        phantom_samples=PhantomSamples(
+            U_samples=None,
+            valid_mask=jnp.zeros((0,), dtype=bool),
+            log_L=jnp.zeros((0,), dtype=jnp.float32),
+        ),
     )
 
 
@@ -1180,7 +1213,7 @@ def _mismatched_worker_result_for_lifecycle_record(
             worker_id=lifecycle_record.worker_id,
             sector_id=lifecycle_record.sector_id,
         ),
-        payload={"sample": "deterministic-test-payload"},
+        payload=_constrained_sampler_completion_payload(runtime),
     )
 
 
@@ -1565,7 +1598,8 @@ def test_get_nested_sampler_returns_v3_runner_and_preserves_problem_payload():
         )
 
 
-def test_runtime_compile_identity_is_public_stable_and_problem_sensitive():
+@PRE_0018_LEGACY_COMPILE_IDENTITY_SKIP
+def test_pre_0018_legacy_runtime_compile_identity_is_sampler_sensitive():
     LoadBalancerClient = _load_balancer_client()
 
     with LoadBalancerClient(address="local") as lb:
@@ -1664,7 +1698,8 @@ def test_runtime_compile_identity_is_public_stable_and_problem_sensitive():
     assert device_type_changed_identity != base_identity
 
 
-def test_serialized_worker_only_sampler_rejects_direct_core_execution():
+@PRE_0018_LEGACY_SERIALIZED_WORKER_SKIP
+def test_pre_0018_legacy_serialized_worker_only_sampler_rejects_direct_core_execution():
     model = make_toy_model()
     runner = NestedSampler(
         model=model,
@@ -1716,7 +1751,8 @@ def test_v3_direct_run_respects_store_phantom_samples_flag():
     assert store_state.samples.phantom_samples.log_L.shape[1] > 0
 
 
-def test_local_load_balanced_runner_executes_with_coordinator_dispatch_trace():
+@PRE_0018_LEGACY_SERIALIZED_WORKER_SKIP
+def test_pre_0018_legacy_local_load_balanced_runner_executes_with_coordinator_dispatch_trace():
     LoadBalancerClient = _load_balancer_client()
 
     with LoadBalancerClient(address="local") as lb:
@@ -1754,7 +1790,8 @@ def test_local_load_balanced_runner_executes_with_coordinator_dispatch_trace():
     _assert_accepted_dispatch_is_non_duplicating(accepted_records, runner)
 
 
-def test_local_runtime_reuses_worker_payload_until_last_client_teardown():
+@PRE_0018_LEGACY_SERIALIZED_WORKER_SKIP
+def test_pre_0018_legacy_local_runtime_reuses_worker_payload_until_last_client_teardown():
     LoadBalancerClient = _load_balancer_client()
     CountingSerializedWorkerSampler.reset_counts()
     lb_state = None
@@ -1783,7 +1820,8 @@ def test_local_runtime_reuses_worker_payload_until_last_client_teardown():
     assert lb_state.worker_runtime_cache_size() == 0
 
 
-def test_local_runtime_reuses_stable_sampler_payload_for_dispatches(
+@PRE_0018_LEGACY_SERIALIZED_WORKER_SKIP
+def test_pre_0018_legacy_local_runtime_reuses_stable_sampler_payload_for_dispatches(
         monkeypatch,
 ):
     runtime = _runtime_module()
@@ -1831,7 +1869,8 @@ def test_local_runtime_reuses_stable_sampler_payload_for_dispatches(
     )
 
 
-def test_worker_payload_cache_keeps_per_dispatch_adaptation_context_fresh():
+@PRE_0018_LEGACY_SERIALIZED_WORKER_SKIP
+def test_pre_0018_legacy_worker_payload_cache_keeps_per_dispatch_adaptation_context_fresh():
     runtime = _runtime_module()
     DirectionAdaptationContext = importlib.import_module(
         "jaxns.em_gmm"
@@ -1877,7 +1916,8 @@ def test_worker_payload_cache_keeps_per_dispatch_adaptation_context_fresh():
     assert AdaptationContextRecordingSampler.observed_kernel_versions() == (3, 4)
 
 
-def test_unidim_worker_cache_keeps_fresh_context_and_explicit_loop_mode(
+@PRE_0018_LEGACY_SERIALIZED_WORKER_SKIP
+def test_pre_0018_legacy_unidim_worker_cache_keeps_fresh_context_and_explicit_loop_mode(
         monkeypatch,
 ):
     runtime = _runtime_module()
@@ -1972,7 +2012,8 @@ def test_unidim_worker_cache_keeps_fresh_context_and_explicit_loop_mode(
     assert set(observed_loop_modes) <= {"python", "fused"}
 
 
-def test_runtime_dispatch_mutates_acceptance_ledger_once_per_task_id():
+@PRE_0018_LEGACY_SERIALIZED_WORKER_SKIP
+def test_pre_0018_legacy_runtime_dispatch_mutates_acceptance_ledger_once_per_task_id():
     LoadBalancerClient = _load_balancer_client()
 
     with LoadBalancerClient(address="local") as lb:
@@ -2004,7 +2045,8 @@ def test_runtime_dispatch_mutates_acceptance_ledger_once_per_task_id():
     )
 
 
-def test_local_runtime_retries_failed_worker_task_before_acceptance():
+@PRE_0018_LEGACY_SERIALIZED_WORKER_SKIP
+def test_pre_0018_legacy_local_runtime_retries_failed_worker_task_before_acceptance():
     LoadBalancerClient = _load_balancer_client()
     RetryOnceSerializedWorkerSampler.reset_failures()
 
@@ -2203,7 +2245,8 @@ def test_local_load_balanced_runner_executes_default_sampler():
     _assert_accepted_dispatch_is_non_duplicating(accepted_records, runner)
 
 
-def test_two_local_clients_execute_shared_workers_with_isolated_dispatch_ids():
+@PRE_0018_LEGACY_SERIALIZED_WORKER_SKIP
+def test_pre_0018_legacy_two_local_clients_execute_shared_workers_with_isolated_dispatch_ids():
     LoadBalancerClient = _load_balancer_client()
 
     with LoadBalancerClient(address="local") as first:
@@ -2280,7 +2323,8 @@ def test_two_local_clients_execute_shared_workers_with_isolated_dispatch_ids():
     assert int(second_state.num_samples) == 5
 
 
-def test_worker_dispatch_payload_executes_real_model_args_and_ctx_params():
+@PRE_0018_LEGACY_SERIALIZED_WORKER_SKIP
+def test_pre_0018_legacy_worker_dispatch_payload_executes_real_model_args_and_ctx_params():
     LoadBalancerClient = _load_balancer_client()
     runtime = _runtime_module()
     model = Model(prior_model=runtime_prior_model_with_nested_args)
@@ -2356,7 +2400,8 @@ def test_worker_dispatch_payload_executes_real_model_args_and_ctx_params():
     assert int(state.num_samples) == 4
 
 
-def test_accepted_dispatch_records_preserve_runtime_compile_identity():
+@PRE_0018_LEGACY_SERIALIZED_WORKER_SKIP
+def test_pre_0018_legacy_accepted_dispatch_records_preserve_runtime_compile_identity():
     LoadBalancerClient = _load_balancer_client()
     runtime = _runtime_module()
     model = Model(prior_model=runtime_prior_model_with_nested_args)
@@ -2415,7 +2460,8 @@ def test_accepted_dispatch_records_preserve_runtime_compile_identity():
         _assert_trees_equal(restored_problem.params, params)
 
 
-def test_unidim_runtime_dispatch_records_expose_sampler_loop_mode():
+@PRE_0018_LEGACY_SERIALIZED_WORKER_SKIP
+def test_pre_0018_legacy_unidim_runtime_dispatch_records_expose_sampler_loop_mode():
     LoadBalancerClient = _load_balancer_client()
 
     with LoadBalancerClient(address="local") as lb:
@@ -2463,7 +2509,8 @@ def test_unidim_runtime_dispatch_records_expose_sampler_loop_mode():
     assert diagnostic_modes_by_task == raw_modes_by_task
 
 
-def test_accepted_dispatch_records_expose_latency_fields_in_diagnostics():
+@PRE_0018_LEGACY_SERIALIZED_WORKER_SKIP
+def test_pre_0018_legacy_accepted_dispatch_records_expose_latency_fields_in_diagnostics():
     LoadBalancerClient = _load_balancer_client()
 
     with LoadBalancerClient(address="local") as lb:
@@ -2896,7 +2943,8 @@ def test_owned_worker_cleanup_preserves_duplicate_spec_sibling_sector():
             ) == (first_sector_id,)
 
 
-def test_tcp_clients_share_worker_namespace_and_worker_exit_cleans_sectors():
+@PRE_0018_LEGACY_SERIALIZED_WORKER_SKIP
+def test_pre_0018_legacy_tcp_clients_share_worker_namespace_and_worker_exit_cleans_sectors():
     LoadBalancerClient = _load_balancer_client()
     address = "tcp://127.0.0.1:19009"
 
@@ -3751,7 +3799,7 @@ def test_failed_revoked_retried_and_stale_dispatch_lifecycle_records():
     )
 
 
-def test_runtime_completion_rejects_replay_and_later_attempt():
+def test_runtime_completion_rejects_superseded_attempt_then_accepts_live_retry():
     LoadBalancerClient = _load_balancer_client()
     runtime = _runtime_module()
 
@@ -3788,14 +3836,14 @@ def test_runtime_completion_rejects_replay_and_later_attempt():
         accepted_task_ids_before = (
             runner.runtime_acceptance_ledger.accepted_task_ids
         )
-        accepted_record = _complete_runtime_dispatch(
+        superseded_record = _complete_runtime_dispatch(
             runner,
             pending_record,
             first_result,
             current_parent_idx=pending.accepted_parent_idx,
             current_log_L_constraint=pending.accepted_log_L_constraint,
         )
-        accepted_task_ids_after_first = (
+        accepted_task_ids_after_superseded = (
             runner.runtime_acceptance_ledger.accepted_task_ids
         )
         state_before_replay = _runtime_state_snapshot(state)
@@ -3810,7 +3858,7 @@ def test_runtime_completion_rejects_replay_and_later_attempt():
         accepted_task_ids_after_replay = (
             runner.runtime_acceptance_ledger.accepted_task_ids
         )
-        state_before_later_completion = _runtime_state_snapshot(state)
+        state_before_live_completion = _runtime_state_snapshot(state)
         later_completion_record = _complete_runtime_dispatch(
             runner,
             later_attempt_record,
@@ -3820,43 +3868,40 @@ def test_runtime_completion_rejects_replay_and_later_attempt():
                 later_attempt.accepted_log_L_constraint
             ),
         )
-        state_after_later_completion = _runtime_state_snapshot(state)
+        state_after_live_completion = _runtime_state_snapshot(state)
         accepted_task_ids_after_later_completion = (
             runner.runtime_acceptance_ledger.accepted_task_ids
         )
 
-    accepted = _normalise_lifecycle_record(accepted_record)
+    superseded = _normalise_lifecycle_record(superseded_record)
     replayed = _normalise_lifecycle_record(replayed_record)
     later_completion = _normalise_lifecycle_record(later_completion_record)
 
-    assert accepted.status == "accepted"
-    assert replayed.status == "duplicate_task_result"
-    assert later_completion.status == "stale_task_result"
+    assert superseded.status == "stale_task_result"
+    assert replayed.status == "stale_task_result"
+    assert later_completion.status == "accepted"
     assert pending.task_id not in accepted_task_ids_before
-    assert accepted.task_id == pending.task_id
+    assert superseded.task_id == pending.task_id
     assert replayed.task_id == pending.task_id
     assert later_completion.task_id == pending.task_id
     assert later_completion.attempt_id == later_attempt.attempt_id
     assert later_completion.attempt_number == 2
-    assert len(accepted_task_ids_after_first) == (
+    assert accepted_task_ids_after_superseded == accepted_task_ids_before
+    assert accepted_task_ids_after_replay == accepted_task_ids_before
+    assert len(accepted_task_ids_after_later_completion) == (
         len(accepted_task_ids_before) + 1
     )
-    assert set(accepted_task_ids_after_first) == (
+    assert set(accepted_task_ids_after_later_completion) == (
         set(accepted_task_ids_before) | {pending.task_id}
     )
-    assert accepted_task_ids_after_first.count(pending.task_id) == 1
-    assert accepted_task_ids_after_replay == accepted_task_ids_after_first
-    assert (
-        accepted_task_ids_after_later_completion
-        == accepted_task_ids_after_first
-    )
+    assert accepted_task_ids_after_later_completion.count(pending.task_id) == 1
     _assert_runtime_state_snapshot_equal(
         state_before_replay,
         state_after_replay,
     )
     _assert_runtime_state_snapshot_equal(
-        state_before_later_completion,
-        state_after_later_completion,
+        state_before_live_completion,
+        state_after_live_completion,
     )
 
 

@@ -329,14 +329,22 @@ The paper's runtime contract is:
 - constrained-sampling calls from different parent contours can overlap in
   wall-clock time.
 
+Ticket 0018 refines the ordinary remote work unit to likelihood evaluation
+only. Constrained samplers remain local to the runner, may run in parallel where
+execution policy allows, and send one proposed `U` per likelihood probe. Identity
+registration may happen during runner creation or before ordinary work, but
+worker-local JIT compilation happens on first matching work for a registered
+identity/device class.
+
 The intended user-facing runtime has these roles:
 
-- A load balancer owns worker registration, fair sharing, model compilation, and
-  nested-sampler runner creation.
+- A load balancer owns worker registration, fair sharing, compile-identity
+  registration/cache coordination, and nested-sampler runner creation.
 - Workers join the load balancer and establish compute sectors such as CPU or
-  GPU device pools.
+  GPU device pools. Each likelihood worker process handles at most one active
+  likelihood evaluation at a time.
 - A nested-sampler runner owns one v3 core state for one submitted model and
-  dispatches work through the load balancer.
+  dispatches likelihood-eval work through the load balancer.
 - Multiple clients may submit different models to the same worker pool; the load
   balancer schedules fairly without changing statistical semantics.
 

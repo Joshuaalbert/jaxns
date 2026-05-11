@@ -43,6 +43,26 @@ REQUIRED_CONFIG_FIELDS = (
     "direction_kernel",
     "mc_sample_count",
 )
+REQUIRED_LIKELIHOOD_DISPATCH_DIAGNOSTIC_FIELDS = (
+    "observed_worker_device_classes",
+    "dispatch_eval_count",
+    "dispatch_latency_seconds_total",
+    "dispatch_latency_seconds_mean",
+    "dispatch_throughput_per_second",
+    "compile_count",
+    "cache_hit_count",
+    "rejected_shape_cache_count",
+    "distinct_compile_identity_count",
+    "max_active_evals_per_worker",
+    "max_active_evals_pool",
+    "completed_eval_count_by_worker",
+    "queued_eval_count",
+    "failed_eval_count",
+)
+LIKELIHOOD_DISPATCH_LATENCY_TAIL_FIELDS = (
+    "dispatch_latency_seconds_max",
+    "dispatch_latency_seconds_p95",
+)
 
 
 def _require_speed_api():
@@ -88,6 +108,89 @@ def _as_mapping(value: Any) -> Mapping[str, Any]:
     return value
 
 
+def _diagnostics_mapping(record: Mapping[str, Any]) -> Mapping[str, Any]:
+    diagnostics = record.get("diagnostics")
+    assert isinstance(diagnostics, Mapping), (
+        "benchmark records must expose diagnostics as a mapping."
+    )
+    return diagnostics
+
+
+def _completed_worker_ids_from_diagnostics(
+        diagnostics: Mapping[str, Any],
+) -> set[str]:
+    completed_by_worker = diagnostics["completed_eval_count_by_worker"]
+    assert isinstance(completed_by_worker, Mapping)
+    return {
+        str(worker_id)
+        for worker_id, completed_count in completed_by_worker.items()
+        if int(completed_count) > 0
+    }
+
+
+def _assert_likelihood_dispatch_diagnostics_present(
+        record: Mapping[str, Any],
+) -> None:
+    diagnostics = _diagnostics_mapping(record)
+    missing = [
+        field_name
+        for field_name in REQUIRED_LIKELIHOOD_DISPATCH_DIAGNOSTIC_FIELDS
+        if field_name not in diagnostics
+    ]
+    assert not missing, (
+        "standard-problem speed records must include likelihood-dispatch "
+        f"diagnostic field(s): {', '.join(missing)}."
+    )
+    assert any(
+        field_name in diagnostics
+        for field_name in LIKELIHOOD_DISPATCH_LATENCY_TAIL_FIELDS
+    ), (
+        "standard-problem speed records must include a dispatch latency tail "
+        "summary, either dispatch_latency_seconds_max or "
+        "dispatch_latency_seconds_p95."
+    )
+    device_classes = diagnostics["observed_worker_device_classes"]
+    assert isinstance(device_classes, list | tuple)
+    assert device_classes
+    assert all(isinstance(item, str) and item for item in device_classes)
+    max_by_worker = diagnostics["max_active_evals_per_worker"]
+    assert isinstance(max_by_worker, Mapping)
+    assert max_by_worker
+    assert all(isinstance(value, int) and value <= 1
+               for value in max_by_worker.values())
+    completed_by_worker = diagnostics["completed_eval_count_by_worker"]
+    assert isinstance(completed_by_worker, Mapping)
+    assert completed_by_worker
+    assert all(
+        isinstance(value, int) and value >= 0
+        for value in completed_by_worker.values()
+    )
+    for field_name in (
+            "dispatch_eval_count",
+            "compile_count",
+            "cache_hit_count",
+            "rejected_shape_cache_count",
+            "distinct_compile_identity_count",
+            "max_active_evals_pool",
+            "queued_eval_count",
+            "failed_eval_count",
+    ):
+        value = diagnostics[field_name]
+        assert isinstance(value, int), f"{field_name} must be an integer."
+        assert value >= 0, f"{field_name} must be non-negative."
+    for field_name in (
+            "dispatch_latency_seconds_total",
+            "dispatch_latency_seconds_mean",
+            "dispatch_throughput_per_second",
+    ) + LIKELIHOOD_DISPATCH_LATENCY_TAIL_FIELDS:
+        if field_name not in diagnostics:
+            continue
+        value = diagnostics[field_name]
+        assert isinstance(value, int | float), f"{field_name} must be numeric."
+        assert np.isfinite(float(value)), f"{field_name} must be finite."
+        assert float(value) >= 0.0, f"{field_name} must be non-negative."
+
+
 def _speed_config(api, **overrides):
     return api.default_standard_problem_speed_config(**overrides)
 
@@ -129,6 +232,27 @@ def _complete_speed_record(**updates) -> dict[str, Any]:
         "diagnostics": {
             "worker_sampler_latency_seconds": 3.5,
             "actual_worker_count": 2,
+            "observed_worker_device_classes": ["cpu"],
+            "dispatch_eval_count": 3,
+            "dispatch_latency_seconds_total": 1.5,
+            "dispatch_latency_seconds_mean": 0.5,
+            "dispatch_latency_seconds_max": 0.75,
+            "dispatch_throughput_per_second": 2.0,
+            "compile_count": 1,
+            "cache_hit_count": 2,
+            "rejected_shape_cache_count": 0,
+            "distinct_compile_identity_count": 1,
+            "max_active_evals_per_worker": {
+                "worker-000001": 1,
+                "worker-000002": 1,
+            },
+            "max_active_evals_pool": 2,
+            "completed_eval_count_by_worker": {
+                "worker-000001": 2,
+                "worker-000002": 1,
+            },
+            "queued_eval_count": 1,
+            "failed_eval_count": 0,
         },
         "results": {
             "likelihood_evaluations": 123,
@@ -148,6 +272,185 @@ def test_standard_problem_speed_schema_accepts_complete_records():
     record = _complete_speed_record()
 
     api.assert_standard_problem_speed_record(record)
+    _assert_likelihood_dispatch_diagnostics_present(record)
+
+
+def test_standard_problem_speed_schema_rejects_missing_dispatch_diagnostics(
+):
+    api = _require_speed_api()
+    unguarded_fields = []
+    for field_name in REQUIRED_LIKELIHOOD_DISPATCH_DIAGNOSTIC_FIELDS:
+        record = _complete_speed_record()
+        record["diagnostics"].pop(field_name)
+        try:
+            api.assert_standard_problem_speed_record(record)
+        except AssertionError as error:
+            assert field_name in str(error)
+        else:
+            unguarded_fields.append(field_name)
+
+    assert unguarded_fields == []
+
+
+def test_standard_problem_speed_schema_requires_latency_tail_summary():
+    api = _require_speed_api()
+    record = _complete_speed_record()
+    for field_name in LIKELIHOOD_DISPATCH_LATENCY_TAIL_FIELDS:
+        record["diagnostics"].pop(field_name, None)
+
+    with pytest.raises(AssertionError, match="dispatch_latency_seconds"):
+        api.assert_standard_problem_speed_record(record)
+
+
+@pytest.mark.parametrize(
+    ("mutate", "match"),
+    [
+        (
+            lambda record: record["diagnostics"].__setitem__(
+                "dispatch_latency_seconds_total",
+                -0.01,
+            ),
+            "dispatch_latency_seconds_total|non-negative|>= 0",
+        ),
+        (
+            lambda record: record["diagnostics"].__setitem__(
+                "dispatch_latency_seconds_mean",
+                np.inf,
+            ),
+            "dispatch_latency_seconds_mean|finite",
+        ),
+        (
+            lambda record: record["diagnostics"].__setitem__(
+                "dispatch_latency_seconds_max",
+                np.nan,
+            ),
+            "dispatch_latency_seconds_max|finite",
+        ),
+        (
+            lambda record: record["diagnostics"].__setitem__(
+                "dispatch_throughput_per_second",
+                -1.0,
+            ),
+            "dispatch_throughput_per_second|non-negative|>= 0",
+        ),
+        (
+            lambda record: record["diagnostics"].__setitem__(
+                "dispatch_throughput_per_second",
+                np.inf,
+            ),
+            "dispatch_throughput_per_second|finite",
+        ),
+        (
+            lambda record: (
+                record["diagnostics"].__setitem__(
+                    "dispatch_latency_seconds_total",
+                    0.0,
+                ),
+                record["diagnostics"].__setitem__(
+                    "dispatch_latency_seconds_mean",
+                    0.0,
+                ),
+                record["diagnostics"].__setitem__(
+                    "dispatch_latency_seconds_max",
+                    0.0,
+                ),
+                record["diagnostics"].__setitem__(
+                    "dispatch_latency_seconds_p95",
+                    0.0,
+                ),
+                record["diagnostics"].__setitem__(
+                    "completed_eval_count_by_worker",
+                    {"worker-000001": 0, "worker-000002": 0},
+                ),
+            ),
+            "dispatch_eval_count|positive|latency|completed",
+        ),
+        (
+            lambda record: record["diagnostics"].__setitem__(
+                "max_active_evals_per_worker",
+                {"worker-000001": 2, "worker-000002": 1},
+            ),
+            "max_active_evals_per_worker|active|<= 1|per worker",
+        ),
+        (
+            lambda record: record["diagnostics"].__setitem__(
+                "observed_worker_device_classes",
+                [],
+            ),
+            "observed_worker_device_classes|device",
+        ),
+        (
+            lambda record: record["diagnostics"].__setitem__(
+                "observed_worker_device_classes",
+                ["cpu", ""],
+            ),
+            "observed_worker_device_classes|device|non-empty",
+        ),
+        (
+            lambda record: record["diagnostics"].__setitem__(
+                "completed_eval_count_by_worker",
+                {"worker-000001": 4, "worker-000002": 0},
+            ),
+            "completed_eval_count_by_worker|dispatch_eval_count|exceed",
+        ),
+        (
+            lambda record: record["diagnostics"].__setitem__(
+                "failed_eval_count",
+                1,
+            ),
+            "completed|failed|dispatch_eval_count|exceed",
+        ),
+        (
+            lambda record: (
+                record["diagnostics"].__setitem__(
+                    "dispatch_eval_count",
+                    4,
+                ),
+                record["diagnostics"].__setitem__(
+                    "dispatch_latency_seconds_mean",
+                    0.375,
+                ),
+                record["diagnostics"].__setitem__(
+                    "dispatch_throughput_per_second",
+                    4.0 / 1.5,
+                ),
+            ),
+            "dispatch_eval_count|completed|failed|equal",
+        ),
+        (
+            lambda record: record["diagnostics"].__setitem__(
+                "dispatch_latency_seconds_mean",
+                0.25,
+            ),
+            "dispatch_latency_seconds_mean|total latency|dispatch_eval_count",
+        ),
+    ],
+    ids=[
+        "negative-dispatch-latency-total",
+        "nonfinite-dispatch-latency-mean",
+        "nonfinite-dispatch-latency-tail",
+        "negative-dispatch-throughput",
+        "nonfinite-dispatch-throughput",
+        "positive-dispatch-count-with-no-evidence",
+        "worker-active-count-above-one",
+        "empty-device-classes",
+        "empty-device-class-entry",
+        "completed-count-above-dispatch-count",
+        "completed-plus-failed-above-dispatch-count",
+        "dispatch-count-above-completed-plus-failed",
+        "latency-mean-not-derived-from-dispatch-count",
+    ],
+)
+def test_standard_problem_speed_schema_rejects_malformed_dispatch_diagnostics(
+        mutate,
+        match,
+):
+    api = _require_speed_api()
+    record = _complete_speed_record()
+    mutate(record)
+
+    with pytest.raises(AssertionError, match=match):
+        api.assert_standard_problem_speed_record(record)
 
 
 @pytest.mark.parametrize(
@@ -389,6 +692,7 @@ def test_collect_speed_records_include_full_metadata_and_worker_inner_time(
     assert len(records) == 1
     record = records[0]
     api.assert_standard_problem_speed_record(record)
+    _assert_likelihood_dispatch_diagnostics_present(record)
     metadata = record["metadata"]
     assert metadata["problem"] == "basic_mvn"
     assert metadata["dimension"] == 8
@@ -468,6 +772,21 @@ def test_worker_scaling_records_vary_specs_and_report_observed_workers(
         assert client.worker_specs == [tuple(worker_specs)]
         assert client.run_allocation_targets == ["uniform"]
         api.assert_standard_problem_speed_record(record)
+        _assert_likelihood_dispatch_diagnostics_present(record)
+        diagnostics = record["diagnostics"]
+        requested_worker_count = sum(
+            _requested_worker_count(worker_spec)
+            for worker_spec in worker_specs
+        )
+        if requested_worker_count >= 2:
+            assert diagnostics["max_active_evals_pool"] >= 2
+            assert len(
+                _completed_worker_ids_from_diagnostics(diagnostics)
+            ) >= 2
+        else:
+            assert diagnostics["max_active_evals_pool"] >= 1
+        assert diagnostics["compile_count"] >= 1
+        assert diagnostics["cache_hit_count"] >= 1
 
     encoded = json.dumps(records, sort_keys=True)
     assert json.loads(encoded) == records
@@ -554,6 +873,17 @@ def test_main_worker_scaling_writes_json_records(monkeypatch, capsys):
     ]
     for record in decoded:
         api.assert_standard_problem_speed_record(record)
+        _assert_likelihood_dispatch_diagnostics_present(record)
+        diagnostics = _diagnostics_mapping(record)
+        requested_worker_count = sum(
+            _requested_worker_count(worker_spec)
+            for worker_spec in record["metadata"]["worker_specs"]
+        )
+        if requested_worker_count >= 2:
+            assert diagnostics["max_active_evals_pool"] >= 2
+            assert len(
+                _completed_worker_ids_from_diagnostics(diagnostics)
+            ) >= 2
 
 
 def test_mc_shrinkage_timing_synchronizes_samples_before_timer_stops(
@@ -701,6 +1031,38 @@ class _FakeLoadBalancerClient:
     def get_nested_sampler(self, **kwargs):
         self.get_nested_sampler_calls.append(copy.deepcopy(kwargs))
         return _FakeNestedSampler(self, kwargs)
+
+    def likelihood_dispatch_diagnostics(self):
+        worker_specs = self.worker_specs[-1] if self.worker_specs else ()
+        worker_count = _fake_compute_sector_worker_count(worker_specs)
+        completed_counts = {
+            f"worker-{idx + 1:06d}": (
+                2 if idx == 0 else int(idx == 1)
+            )
+            for idx in range(worker_count)
+        }
+        return SimpleNamespace(
+            observed_worker_count=worker_count,
+            observed_worker_device_classes=("cpu",),
+            dispatch_eval_count=3,
+            dispatch_latency_seconds=(0.25, 0.50, 0.75),
+            dispatch_throughput_per_second=2.0,
+            compile_count=1,
+            cache_hit_count=2,
+            rejected_shape_cache_count=0,
+            distinct_compile_identity_count=1,
+            max_active_evals_per_worker={
+                f"worker-{idx + 1:06d}": 1
+                for idx in range(worker_count)
+            },
+            max_active_evals_pool=min(worker_count, 2),
+            completed_eval_count_by_worker=completed_counts,
+            queued_eval_count=1,
+            failed_eval_count=0,
+        )
+
+    def get_likelihood_dispatch_diagnostics(self):
+        return self.likelihood_dispatch_diagnostics()
 
 
 class _FakeNestedSampler:

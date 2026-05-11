@@ -88,6 +88,28 @@ class WorkerRuntimeDiagnostics:
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
+class LikelihoodDispatchDiagnostics:
+    requested_worker_specs: tuple[str, ...]
+    observed_worker_count: int
+    observed_worker_device_classes: tuple[str, ...]
+    dispatch_eval_count: int
+    dispatch_latency_seconds: tuple[float, ...]
+    dispatch_throughput_per_second: float
+    compile_count: int
+    cache_hit_count: int
+    rejected_shape_cache_count: int
+    distinct_compile_identity_count: int
+    max_active_evals_per_worker: object
+    max_active_evals_pool: int
+    likelihood_eval_records: tuple[object, ...] = ()
+    queued_eval_count: int = 0
+    failed_eval_count: int = 0
+    completed_eval_count_by_worker: object = dataclasses.field(
+        default_factory=dict
+    )
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
 class ExecutionDiagnostics:
     allocation: AllocationDiagnostics
     parent_selection: ParentSelectionDiagnostics

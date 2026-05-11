@@ -84,10 +84,29 @@ REQUIRED_RESULT_FIELDS = (
 REQUIRED_DIAGNOSTIC_FIELDS = (
     "actual_worker_count",
     "worker_sampler_latency_seconds",
+    "observed_worker_device_classes",
+    "dispatch_eval_count",
+    "dispatch_latency_seconds_total",
+    "dispatch_latency_seconds_mean",
+    "dispatch_throughput_per_second",
+    "compile_count",
+    "cache_hit_count",
+    "rejected_shape_cache_count",
+    "distinct_compile_identity_count",
+    "max_active_evals_per_worker",
+    "max_active_evals_pool",
+    "completed_eval_count_by_worker",
+    "queued_eval_count",
+    "failed_eval_count",
+)
+LIKELIHOOD_DISPATCH_LATENCY_TAIL_FIELDS = (
+    "dispatch_latency_seconds_max",
+    "dispatch_latency_seconds_p95",
 )
 
 tfpd = tfp.distributions
 perf_counter = time.perf_counter
+_MISSING = object()
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -429,6 +448,7 @@ def _collect_one_allocation_record(
         result_conversion_seconds = perf_counter() - result_started
 
         worker_sampler_latency_seconds = _worker_sampler_latency_seconds(result)
+        likelihood_dispatch_diagnostics = _likelihood_dispatch_diagnostics(lb)
 
         mc_started = perf_counter()
         mc_shrinkage_samples = result.sample_mc_shrinkage(
@@ -457,6 +477,9 @@ def _collect_one_allocation_record(
             "actual_worker_count": int(actual_worker_count),
             "worker_sampler_latency_seconds": float(
                 worker_sampler_latency_seconds
+            ),
+            **_likelihood_dispatch_diagnostics_record(
+                likelihood_dispatch_diagnostics
             ),
         },
         "results": _results_record(
@@ -528,6 +551,116 @@ def _worker_sampler_latency_seconds(result: Any) -> float:
         if math.isfinite(value) and value >= 0.0:
             total += value
     return float(total)
+
+
+def _likelihood_dispatch_diagnostics(lb: Any) -> Any:
+    if hasattr(lb, "likelihood_dispatch_diagnostics"):
+        return lb.likelihood_dispatch_diagnostics()
+    if hasattr(lb, "get_likelihood_dispatch_diagnostics"):
+        return lb.get_likelihood_dispatch_diagnostics()
+    raise AssertionError(
+        "load balancer must expose likelihood dispatch diagnostics."
+    )
+
+
+def _likelihood_dispatch_diagnostics_record(diagnostics: Any) -> dict[str, Any]:
+    latencies = [
+        _finite_non_negative(value, "dispatch_latency_seconds")
+        for value in _read_diagnostic(
+            diagnostics,
+            "dispatch_latency_seconds",
+            default=(),
+        )
+    ]
+    total_latency = float(sum(latencies))
+    dispatch_eval_count = int(
+        _read_diagnostic(
+            diagnostics,
+            "dispatch_eval_count",
+            default=len(latencies),
+        )
+    )
+    if latencies and dispatch_eval_count > 0:
+        mean_latency = total_latency / float(dispatch_eval_count)
+        max_latency = float(max(latencies))
+        p95_latency = float(np.percentile(np.asarray(latencies), 95.0))
+    else:
+        mean_latency = 0.0
+        max_latency = 0.0
+        p95_latency = 0.0
+
+    record = {
+        "observed_worker_device_classes": list(
+            _read_diagnostic(
+                diagnostics,
+                "observed_worker_device_classes",
+                default=(),
+            )
+        ),
+        "dispatch_eval_count": dispatch_eval_count,
+        "dispatch_latency_seconds_total": total_latency,
+        "dispatch_latency_seconds_mean": float(mean_latency),
+        "dispatch_latency_seconds_max": max_latency,
+        "dispatch_latency_seconds_p95": p95_latency,
+        "dispatch_throughput_per_second": float(
+            _read_diagnostic(
+                diagnostics,
+                "dispatch_throughput_per_second",
+                default=0.0,
+            )
+        ),
+        "compile_count": int(_read_diagnostic(diagnostics, "compile_count")),
+        "cache_hit_count": int(
+            _read_diagnostic(diagnostics, "cache_hit_count")
+        ),
+        "rejected_shape_cache_count": int(
+            _read_diagnostic(diagnostics, "rejected_shape_cache_count")
+        ),
+        "distinct_compile_identity_count": int(
+            _read_diagnostic(diagnostics, "distinct_compile_identity_count")
+        ),
+        "max_active_evals_per_worker": _json_safe_mapping(
+            _read_diagnostic(diagnostics, "max_active_evals_per_worker"),
+            "max_active_evals_per_worker",
+        ),
+        "max_active_evals_pool": int(
+            _read_diagnostic(diagnostics, "max_active_evals_pool")
+        ),
+        "completed_eval_count_by_worker": _json_safe_mapping(
+            _read_diagnostic(diagnostics, "completed_eval_count_by_worker"),
+            "completed_eval_count_by_worker",
+        ),
+        "queued_eval_count": int(
+            _read_diagnostic(diagnostics, "queued_eval_count", default=0)
+        ),
+        "failed_eval_count": int(
+            _read_diagnostic(diagnostics, "failed_eval_count", default=0)
+        ),
+    }
+    return record
+
+
+def _read_diagnostic(
+        diagnostics: Any,
+        field_name: str,
+        *,
+        default: Any = _MISSING,
+) -> Any:
+    if isinstance(diagnostics, Mapping):
+        if field_name in diagnostics:
+            return diagnostics[field_name]
+    elif hasattr(diagnostics, field_name):
+        return getattr(diagnostics, field_name)
+    if default is not _MISSING:
+        return default
+    raise AssertionError(
+        f"likelihood dispatch diagnostics missing {field_name!r}."
+    )
+
+
+def _json_safe_mapping(value: Any, field_name: str) -> dict[str, int]:
+    mapping = _require_mapping(value, field_name)
+    return {str(key): int(item) for key, item in mapping.items()}
 
 
 def _actual_worker_count(lb: Any) -> int:
@@ -710,6 +843,184 @@ def _assert_diagnostics(diagnostics_map: Mapping[str, Any]) -> None:
             raise AssertionError(
                 "diagnostics.actual_worker_count must be positive."
             )
+    device_classes = diagnostics_map["observed_worker_device_classes"]
+    if isinstance(device_classes, (str, bytes)) or not isinstance(
+            device_classes,
+            Sequence,
+    ):
+        raise AssertionError(
+            "observed_worker_device_classes must be a sequence."
+        )
+    if not device_classes:
+        raise AssertionError(
+            "observed_worker_device_classes must be non-empty."
+        )
+    if not all(isinstance(item, str) and item for item in device_classes):
+        raise AssertionError(
+            "observed_worker_device_classes entries must be non-empty."
+        )
+    for name in (
+            "dispatch_eval_count",
+            "compile_count",
+            "cache_hit_count",
+            "rejected_shape_cache_count",
+            "distinct_compile_identity_count",
+            "max_active_evals_pool",
+            "queued_eval_count",
+            "failed_eval_count",
+    ):
+        value = diagnostics_map[name]
+        if not isinstance(value, Integral) or int(value) < 0:
+            raise AssertionError(f"{name} must be a non-negative integer.")
+    for name in (
+            "dispatch_latency_seconds_total",
+            "dispatch_latency_seconds_mean",
+            "dispatch_throughput_per_second",
+    ):
+        _finite_non_negative(diagnostics_map[name], name)
+    if not any(
+            name in diagnostics_map
+            for name in LIKELIHOOD_DISPATCH_LATENCY_TAIL_FIELDS
+    ):
+        raise AssertionError(
+            "dispatch_latency_seconds tail summary is required."
+        )
+    for name in LIKELIHOOD_DISPATCH_LATENCY_TAIL_FIELDS:
+        if name in diagnostics_map:
+            _finite_non_negative(diagnostics_map[name], name)
+    dispatch_eval_count = int(diagnostics_map["dispatch_eval_count"])
+    total_latency = float(diagnostics_map["dispatch_latency_seconds_total"])
+    mean_latency = float(diagnostics_map["dispatch_latency_seconds_mean"])
+    if dispatch_eval_count == 0:
+        if total_latency != 0.0 or mean_latency != 0.0:
+            raise AssertionError(
+                "zero dispatch_eval_count requires zero dispatch latency "
+                "summary."
+            )
+    elif total_latency > 0.0:
+        expected_mean_latency = total_latency / float(dispatch_eval_count)
+        if not math.isclose(
+                mean_latency,
+                expected_mean_latency,
+                rel_tol=1e-9,
+                abs_tol=1e-12,
+        ):
+            raise AssertionError(
+                "dispatch_latency_seconds_mean must equal total latency "
+                "divided by dispatch_eval_count."
+            )
+        expected_throughput = dispatch_eval_count / total_latency
+        actual_throughput = float(
+            diagnostics_map["dispatch_throughput_per_second"]
+        )
+        if not math.isclose(
+                actual_throughput,
+                expected_throughput,
+                rel_tol=1e-9,
+                abs_tol=1e-12,
+        ):
+            raise AssertionError(
+                "dispatch_throughput_per_second must be derived from "
+                "dispatch_eval_count and dispatch latency total."
+            )
+    if "dispatch_latency_seconds_max" in diagnostics_map:
+        max_latency = float(diagnostics_map["dispatch_latency_seconds_max"])
+        if max_latency > total_latency and dispatch_eval_count > 0:
+            raise AssertionError(
+                "dispatch_latency_seconds_max must not exceed total latency."
+            )
+    if (
+            "dispatch_latency_seconds_p95" in diagnostics_map
+            and "dispatch_latency_seconds_max" in diagnostics_map
+    ):
+        p95_latency = float(diagnostics_map["dispatch_latency_seconds_p95"])
+        max_latency = float(diagnostics_map["dispatch_latency_seconds_max"])
+        if p95_latency > max_latency:
+            raise AssertionError(
+                "dispatch_latency_seconds_p95 must not exceed max latency."
+            )
+    if int(diagnostics_map["dispatch_eval_count"]) > 0:
+        latency_evidence = any(
+            float(diagnostics_map.get(name, 0.0)) > 0.0
+            for name in (
+                "dispatch_latency_seconds_total",
+                "dispatch_latency_seconds_mean",
+                "dispatch_latency_seconds_max",
+                "dispatch_latency_seconds_p95",
+            )
+        )
+        record_evidence = bool(
+            any(
+                int(value) > 0
+                for value in _require_mapping(
+                    diagnostics_map["completed_eval_count_by_worker"],
+                    "completed_eval_count_by_worker",
+                ).values()
+            )
+        )
+        if not latency_evidence and not record_evidence:
+            raise AssertionError(
+                "dispatch_eval_count is positive but diagnostics contain no "
+                "dispatch latency or completed-eval evidence."
+            )
+    max_by_worker = _require_mapping(
+        diagnostics_map["max_active_evals_per_worker"],
+        "max_active_evals_per_worker",
+    )
+    if not max_by_worker:
+        raise AssertionError("max_active_evals_per_worker must be non-empty.")
+    for worker_id, active_count in max_by_worker.items():
+        if not str(worker_id):
+            raise AssertionError(
+                "max_active_evals_per_worker keys must be non-empty."
+            )
+        if not isinstance(active_count, Integral):
+            raise AssertionError(
+                "max_active_evals_per_worker values must be integers."
+            )
+        if int(active_count) < 0 or int(active_count) > 1:
+            raise AssertionError(
+                "max_active_evals_per_worker values must be active <= 1 "
+                "per worker."
+            )
+    completed_by_worker = _require_mapping(
+        diagnostics_map["completed_eval_count_by_worker"],
+        "completed_eval_count_by_worker",
+    )
+    if not completed_by_worker:
+        raise AssertionError(
+            "completed_eval_count_by_worker must be non-empty."
+        )
+    for worker_id, completed_count in completed_by_worker.items():
+        if not str(worker_id):
+            raise AssertionError(
+                "completed_eval_count_by_worker keys must be non-empty."
+            )
+        if not isinstance(completed_count, Integral):
+            raise AssertionError(
+                "completed_eval_count_by_worker values must be integers."
+            )
+        if int(completed_count) < 0:
+            raise AssertionError(
+            "completed_eval_count_by_worker values must be non-negative."
+            )
+    completed_eval_count = sum(int(value) for value in completed_by_worker.values())
+    failed_eval_count = int(diagnostics_map["failed_eval_count"])
+    if completed_eval_count > dispatch_eval_count:
+        raise AssertionError(
+            "completed_eval_count_by_worker total must not exceed "
+            "dispatch_eval_count."
+        )
+    if completed_eval_count + failed_eval_count > dispatch_eval_count:
+        raise AssertionError(
+            "completed and failed eval counts must not exceed "
+            "dispatch_eval_count."
+        )
+    if completed_eval_count + failed_eval_count != dispatch_eval_count:
+        raise AssertionError(
+            "dispatch_eval_count must equal completed plus failed eval "
+            "counts."
+        )
 
 
 def _assert_worker_specs(worker_specs: Any) -> None:
