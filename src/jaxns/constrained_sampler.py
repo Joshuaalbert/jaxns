@@ -1103,6 +1103,54 @@ def _sample_galilean_markov_transition_jax_with_step(
                 exhausted: BoolArray
                 num_likelihood_evaluations: IntArray
 
+            class RefineCarry(NamedTuple):
+                inside_point: FloatArray
+                outside_point: FloatArray
+                num_likelihood_evaluations: IntArray
+
+            def refine_boundary(
+                    inside_point: FloatArray,
+                    outside_point: FloatArray,
+                    num_likelihood_evaluations: IntArray,
+            ) -> RefineCarry:
+                """Refine an inside/outside bracket with fixed bisection."""
+
+                def body(_, refine: RefineCarry) -> RefineCarry:
+                    midpoint = (
+                        jnp.asarray(0.5, inside_point.dtype)
+                        * (refine.inside_point + refine.outside_point)
+                    )
+                    midpoint_inside, _, midpoint_evaluations = (
+                        strict_inside_and_log_likelihood(midpoint)
+                    )
+                    return RefineCarry(
+                        inside_point=jnp.where(
+                            midpoint_inside,
+                            midpoint,
+                            refine.inside_point,
+                        ),
+                        outside_point=jnp.where(
+                            midpoint_inside,
+                            refine.outside_point,
+                            midpoint,
+                        ),
+                        num_likelihood_evaluations=(
+                            refine.num_likelihood_evaluations
+                            + midpoint_evaluations
+                        ),
+                    )
+
+                return jax.lax.fori_loop(
+                    0,
+                    8,
+                    body,
+                    RefineCarry(
+                        inside_point=inside_point,
+                        outside_point=outside_point,
+                        num_likelihood_evaluations=num_likelihood_evaluations,
+                    ),
+                )
+
             class GrowCarry(NamedTuple):
                 search_step_size: FloatArray
                 last_inside: FloatArray
@@ -1177,26 +1225,39 @@ def _sample_galilean_markov_transition_jax_with_step(
                 fallback_outside = (
                     old_point + carry.step_size * carry.current_direction
                 )
-                return BoundaryResult(
-                    next_point=jnp.where(
-                        found_boundary,
+
+                def found_result(_: None) -> BoundaryResult:
+                    refined = refine_boundary(
                         grown.last_inside,
-                        old_point,
-                    ),
-                    next_step_size=jnp.where(
-                        found_boundary,
-                        grown.search_step_size,
-                        carry.step_size,
-                    ),
-                    outside_point=jnp.where(
-                        found_boundary,
                         grown.first_outside,
-                        fallback_outside,
-                    ),
-                    exhausted=jnp.logical_not(found_boundary),
-                    num_likelihood_evaluations=(
-                        grown.num_likelihood_evaluations
-                    ),
+                        grown.num_likelihood_evaluations,
+                    )
+                    return BoundaryResult(
+                        next_point=refined.inside_point,
+                        next_step_size=grown.search_step_size,
+                        outside_point=refined.outside_point,
+                        exhausted=jnp.asarray(False, mp_policy.bool_dtype),
+                        num_likelihood_evaluations=(
+                            refined.num_likelihood_evaluations
+                        ),
+                    )
+
+                def exhausted_result(_: None) -> BoundaryResult:
+                    return BoundaryResult(
+                        next_point=old_point,
+                        next_step_size=carry.step_size,
+                        outside_point=fallback_outside,
+                        exhausted=jnp.asarray(True, mp_policy.bool_dtype),
+                        num_likelihood_evaluations=(
+                            grown.num_likelihood_evaluations
+                        ),
+                    )
+
+                return jax.lax.cond(
+                    found_boundary,
+                    found_result,
+                    exhausted_result,
+                    operand=None,
                 )
 
             class ShrinkCarry(NamedTuple):
@@ -1255,22 +1316,39 @@ def _sample_galilean_markov_transition_jax_with_step(
                         ),
                     ),
                 )
-                return BoundaryResult(
-                    next_point=jnp.where(
-                        shrunk.found_inside,
+
+                def found_result(_: None) -> BoundaryResult:
+                    refined = refine_boundary(
                         shrunk.inside_point,
-                        old_point,
-                    ),
-                    next_step_size=jnp.where(
-                        shrunk.found_inside,
-                        shrunk.search_step_size,
-                        carry.step_size,
-                    ),
-                    outside_point=proposal,
-                    exhausted=jnp.logical_not(shrunk.found_inside),
-                    num_likelihood_evaluations=(
-                        shrunk.num_likelihood_evaluations
-                    ),
+                        proposal,
+                        shrunk.num_likelihood_evaluations,
+                    )
+                    return BoundaryResult(
+                        next_point=refined.inside_point,
+                        next_step_size=shrunk.search_step_size,
+                        outside_point=refined.outside_point,
+                        exhausted=jnp.asarray(False, mp_policy.bool_dtype),
+                        num_likelihood_evaluations=(
+                            refined.num_likelihood_evaluations
+                        ),
+                    )
+
+                def exhausted_result(_: None) -> BoundaryResult:
+                    return BoundaryResult(
+                        next_point=old_point,
+                        next_step_size=carry.step_size,
+                        outside_point=proposal,
+                        exhausted=jnp.asarray(True, mp_policy.bool_dtype),
+                        num_likelihood_evaluations=(
+                            shrunk.num_likelihood_evaluations
+                        ),
+                    )
+
+                return jax.lax.cond(
+                    shrunk.found_inside,
+                    found_result,
+                    exhausted_result,
+                    operand=None,
                 )
 
             boundary = jax.lax.cond(
@@ -1530,7 +1608,7 @@ def _sample_galilean_chain_impl(
             next_point,
             next_log_likelihood,
             delta_evaluations,
-            next_step_size,
+            _next_step_size,
         ) = (
             _sample_galilean_markov_transition_jax_with_step(
                 key=proposal_key,
@@ -1540,7 +1618,7 @@ def _sample_galilean_chain_impl(
                 log_L_constraint=log_L_constraint,
                 log_likelihood_fn=log_likelihood_fn,
                 grad_log_likelihood_fn=grad_log_likelihood_fn,
-                initial_step_size=carry.step_size,
+                initial_step_size=initial_step_size,
                 max_step_halvings=max_step_halvings,
                 max_step_doublings=max_step_doublings,
             )
@@ -1548,7 +1626,7 @@ def _sample_galilean_chain_impl(
         next_carry = ChainCarry(
             point=next_point,
             log_likelihood=next_log_likelihood,
-            step_size=next_step_size,
+            step_size=initial_step_size,
             num_likelihood_evaluations=(
                 carry.num_likelihood_evaluations + delta_evaluations
             ),

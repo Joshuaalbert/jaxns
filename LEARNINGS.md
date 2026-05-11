@@ -307,3 +307,9 @@ repeat mistakes specific to this project. Keep learnings compact.
   runs under `60s` for seed `0` but misses the `3 * sample_std` evidence gate,
   and seed `29` fails badly. More work is needed before claiming Galilean
   standard-problem parity.
+- A direct 1D Galilean transition check on the interval implied by
+  `-(u - 0.5)^2 > -0.04` caught a serious endpoint bias: coarse boundary
+  endpoints sampled approximately `[0.4, 0.7]` instead of `[0.3, 0.7]`.
+  Fixed-step bisection of inside/outside brackets restored the expected
+  transition mean/variance in that check, but it did not by itself fix full
+  8D MVN evidence.
