@@ -27,6 +27,9 @@ tfpd = tfp.distributions
 
 
 DIFFICULT_DIMENSION = 10
+DEFAULT_TARGET_NUM_LIVE_POINTS = 100 * DIFFICULT_DIMENSION
+DEFAULT_MAX_SAMPLES = 2 * DEFAULT_TARGET_NUM_LIVE_POINTS
+DEFAULT_SHELL_SIZE = DEFAULT_TARGET_NUM_LIVE_POINTS // 2
 
 
 def _eggbox_prior_model():
@@ -239,9 +242,9 @@ class Timer:
 def main():
     """Run all difficult-problem benchmarks and write a dated report."""
     parser = argparse.ArgumentParser()
-    parser.add_argument("--target-num-live-points", type=int, default=30)
-    parser.add_argument("--max-samples", type=int, default=1200)
-    parser.add_argument("--shell-size", type=int, default=15)
+    parser.add_argument("--target-num-live-points", type=int, default=None)
+    parser.add_argument("--max-samples", type=int, default=None)
+    parser.add_argument("--shell-size", type=int, default=None)
     parser.add_argument("--num-slices", type=int, default=24)
     parser.add_argument("--phantom-burn-in", type=int, default=4)
     parser.add_argument("--allocation-target", default="uniform")
@@ -257,6 +260,22 @@ def main():
         default=Path(__file__).resolve().parent / "reports" / date.today().isoformat(),
     )
     args = parser.parse_args()
+
+    target_num_live_points = (
+        DEFAULT_TARGET_NUM_LIVE_POINTS
+        if args.target_num_live_points is None
+        else args.target_num_live_points
+    )
+    max_samples = (
+        2 * target_num_live_points
+        if args.max_samples is None
+        else args.max_samples
+    )
+    shell_size = (
+        max(1, target_num_live_points // 2)
+        if args.shell_size is None
+        else args.shell_size
+    )
 
     output_dir = args.output_dir
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -286,9 +305,9 @@ def main():
                 model=model,
                 collect_phantoms=True,
                 sampler=sampler,
-                target_num_live_points=args.target_num_live_points,
-                max_samples=args.max_samples,
-                shell_size=args.shell_size,
+                target_num_live_points=target_num_live_points,
+                max_samples=max_samples,
+                shell_size=shell_size,
             )
             with Timer() as timer:
                 state = ns.run_until_goal(
@@ -322,9 +341,11 @@ def main():
         "",
         "## Configuration",
         "",
-        f"- target_num_live_points: {args.target_num_live_points}",
-        f"- max_samples: {args.max_samples}",
-        f"- shell_size: {args.shell_size}",
+        f"- dimension: {DIFFICULT_DIMENSION}",
+        f"- target_num_live_points: {target_num_live_points}",
+        f"- live_points_per_dimension: {target_num_live_points / DIFFICULT_DIMENSION:.1f}",
+        f"- max_samples: {max_samples}",
+        f"- shell_size: {shell_size}",
         f"- num_slices: {args.num_slices}",
         f"- phantom_burn_in: {args.phantom_burn_in}",
         f"- allocation_target: {args.allocation_target}",

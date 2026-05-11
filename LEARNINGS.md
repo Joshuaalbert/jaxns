@@ -11,9 +11,9 @@ repeat mistakes specific to this project. Keep learnings compact.
   independent race gammas, independent `v_c ~ Gamma(1, 1)` cluster weights, and
   Kish participation gating.
 - For phantom conditioning, the open-interval contribution is
-  `R_cg = A_cg - B_cg - E_cg`. The current paper equations print `A_cg` in the
-  `M'_<g` update, but the Monte Carlo vector and singleton Dirichlet-recovery
-  argument require `R_cg`.
+  `R_cg = A_cg - B_cg - E_cg`. Earlier paper drafts printed `A_cg` in the
+  `M'_<g` update; the current paper/design should use `R_cg`, matching the
+  Monte Carlo vector and singleton Dirichlet-recovery argument.
 - Use `C_min` as the canonical Kish participating-cluster threshold name for
   phantom conditioning, with default `20` unless a ticket/API explicitly
   overrides it. Blocks with no participating clusters fail the phantom gate.
@@ -182,3 +182,100 @@ repeat mistakes specific to this project. Keep learnings compact.
   `246.27s` total reference. `cpu:*:2` measured `265.62s` total despite
   balanced worker completions, so CPU multi-worker dispatch currently proves
   utilization but not wall-clock speedup.
+- Difficult-problem benchmark reports with only `30` live points in 10D are
+  underpowered and can show misleading single-mode corner plots. Default these
+  benchmarks to at least `100 * D` live points, and tie shell/sample budgets to
+  that live-point count unless a CLI run intentionally overrides them.
+- Ticket 0019 process-topology checks must prove the hot data path, not just
+  topology-shaped diagnostics. Local-LB likelihood evals should physically
+  route parent -> LB actor -> node ingress actor -> worker actor; started evals
+  must not use finite client deadlines that free parent capacity while the
+  physical worker is still busy; and failed worker registration must retire the
+  bad socket before any later scheduling can reuse it.
+- v3 has not been released, so v3 runtime tickets should prefer the target
+  design over backwards-compatibility branches. Keep old/in-process scheduler
+  paths explicitly test-only or internal when they remain useful for narrow
+  unit tests.
+- Ticket 0019 node coordinators must not select `sorted(idle_worker_ids)[0]`
+  for each request. That makes shallow demand collapse onto worker 1. Use
+  node-local fair rotation/deques and verify sequential dispatch touches all
+  workers. After this fix, the 8-worker `basic_mvn` speed benchmark balanced
+  completions almost exactly across workers, but wall time still stayed near
+  `270-281s`.
+- The post-round-robin 8-worker `basic_mvn` benchmark showed the remaining
+  bottleneck is not physical worker balance: worker likelihood latency totaled
+  only about `30s` across `301010` evals, while run wall time was about
+  `270-281s`. Fuller shells and bypassing the parent logical scheduler did not
+  materially improve time; future speed work should target the forced Python
+  slice/proposal loop and per-proposal JAX/host/RPC orchestration.
+- Ticket 0019 keeps the default implicit `--worker-scaling` benchmark as a
+  strict acceptance gate. It is expected to fail until multi-worker wall time
+  improves; pass explicit `--worker-spec` grids only when collecting
+  reporting-only diagnostics.
+- Runtime diagnostics should keep observed node count distinct from live node
+  ingress process count so degraded topology can be reported accurately. Healthy
+  benchmark acceptance records should still require one live ingress/coordinator
+  per observed node.
+- Ticket 0020 pure-core work uses a host public `goal_cond(state)` boundary
+  around compiled JAX depth/transition kernels. Do not try to call arbitrary
+  Python goal callbacks from inside `jit`, `lax.while_loop`, or `lax.scan`.
+- For Ticket 0020, a Python outer loop around `goal_cond(state)` is acceptable
+  and intentional because users may compute goals through `state -> result ->
+  trim -> metric`. The expensive inner depth/transition loop is the required
+  JIT-compiled JAX-control-flow target.
+- Ticket 0020 primary pure-core performance should be measured with direct
+  `NestedSampler`, not `LoadBalancerClient`: full 8D `basic_mvn`, uniform
+  allocation, isotropic directions, standard `30` live points / `1200` max
+  samples / `24` slices, MC evidence criterion, and sampler `run_seconds < 60s`.
+- Ticket 0020 runtime/subclass execution must honor empty `CoreWorkBatch`
+  before calling `_sample_parent_work`. Zero-work allocation iterations should
+  advance the allocation target and continue; sampling an empty `ParentWork`
+  hits downstream tree-mapping assumptions.
+- Ticket 0020 runtime parity should use fixed-shape core work/result buffers:
+  pure core owns planning and ordered acceptance; runtime/distributed layers may
+  produce proposal or likelihood results, but raw completions must not mutate
+  race-tree state directly.
+- Ticket 0020 full-standard plateau rows expose the current Python-core gap:
+  `run_until_goal(..., goal_cond=lambda state: False, max_samples=1200)` can
+  stop around the root/sentinel fallback frontier instead of exhausting the
+  requested sample budget. Treat this as an expected-red pure-core acceptance
+  gate; the JAX core must keep plateau fallback work advancing to the fixed
+  depth budget.
+- Ticket 0020 implementation review must reject trace-only progress shims. The
+  trace hook needs to cover the same inner transition used by public
+  `run_until_goal` / `resume_until_goal`: fixed-shape work planning, seed
+  selection, constrained-sampler result production, result-buffer construction,
+  and ordered acceptance. A JAXPR that only plans work and increments
+  `num_samples` is not enough.
+- Ticket 0020 `CoreResultBatch` buffers must be fixed-shape for every field,
+  including `U_samples`; partial shells must pad the leading dimension to
+  `capacity` with `valid_mask`/`num_results` carrying the dynamic count.
+- Ticket 0020 `max_goal_iterations` should cap public host goal-callback
+  evaluations, not internal allocation-target increments. Plateau/uniform rows
+  may need many allocation target increments to reach a `max_samples` depth
+  gate while still checking `goal_cond(state)` only at outer boundaries.
+- Ticket 0020 pure-core transition JITs must be module-level/cacheable and
+  include sampler configuration in the static cache key. Defining a fresh
+  nested `jax.jit` per shell causes severe same-shape cache misses; treating
+  sampler fields such as phantom count as dynamic can trigger JAX
+  concretization errors.
+- Ticket 0020 review should distinguish a compiled shell transition from a
+  compiled depth epoch. Public direct `run_until_goal`/`resume_until_goal`
+  should call the same JAX-control-flow depth epoch that the trace hook traces;
+  invoking a one-shell JIT from a Python allocation loop is still a review
+  blocker.
+- Ticket 0020 core boundary metadata must be post-fallback metadata. When a
+  planned parent has no strict seed, `CoreWorkBatch.effective_parent_idx`,
+  `parent_block_idx`, `fallback_to_root`, and `seed_idx` must agree with the
+  accepted `ParentWork` and result buffer.
+- Ticket 0020 compiled depth epochs should be bounded reusable chunks, not a
+  single epoch whose static history length equals all remaining samples. Large
+  plateau rows can otherwise ask XLA to compile dozens of shell transitions at
+  once and abort during compilation.
+- Standard-problem evidence acceptance uses the MC shrinkage ensemble mean,
+  `mean(log_Z_samples)`, compared with the reference at `3 * std(log_Z_samples)`.
+  Do not replace this with `result.log_Z_mean` or `result.log_Z_uncert`; that is
+  a changed acceptance criterion.
+- Ticket 0020 direct pure-core Galilean rows are not ready until the Galilean
+  trajectory helpers stop using Python `bool(np.asarray(...))` validation on
+  traced values. Those checks abort inside the compiled pure-core epoch.

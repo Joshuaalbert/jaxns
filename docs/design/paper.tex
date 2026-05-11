@@ -383,11 +383,12 @@ Lets define, per cluster $c$, block interval counts,
 \begin{align}
     A_{cg} =&\, \sum_{(x, L) \in \mathcal{P}_c} \mathbf{1}\{L(x) > L_{g-1}\} \mathbf{1}\{L_{p(c)} \le L_{g-1}\}\\
     B_{cg} =&\, \sum_{(x, L) \in \mathcal{P}_c} \mathbf{1}\{L(x) > L_{g}\} \mathbf{1}\{L_{p(c)} \le L_{g-1}\}\\
-    E_{cg} =&\, \sum_{(x, L) \in \mathcal{P}_c} \mathbf{1}\{L(x) = L_{g}\} \mathbf{1}\{L_{p(c)} \le L_{g-1}\}.
+    E_{cg} =&\, \sum_{(x, L) \in \mathcal{P}_c} \mathbf{1}\{L(x) = L_{g}\} \mathbf{1}\{L_{p(c)} \le L_{g-1}\}\\
+    R_{cg} =&\, A_{cg} - B_{cg} - E_{cg}.
 \end{align}
 Then an MC estimate of $p_g$ is,
 \begin{align}
-    \hat{p}_{g} =& \frac{\sum_c \left( B_{cg}, E_{cg}, A_{cg} - B_{cg} - E_{cg}\right)^\top}{\sum_c A_{cg}}.
+    \hat{p}_{g} =& \frac{\sum_c \left( B_{cg}, E_{cg}, R_{cg}\right)^\top}{\sum_c A_{cg}}.
 \end{align}
 Now, if the phantom samples were independent then the observable $\sum_c A_{cg} \hat{p}_g$ would satisfy the multinomial likelihood.
 In this case, the exact same machinery as in Section~\ref{sec:bayesian_shrinkage} could be used, and phantom-conditioned posterior shrinkage would be a Dirichlet distribution.
@@ -411,7 +412,7 @@ Define a cluster weight $v_c$ and then define,
 \begin{align}
     M'_{>g} =& M_{>g} + \sum_c v_c B_{cg}\\
     M'_{=g} =& M_{=g} + \sum_c v_c E_{cg}\\
-    M'_{<g} =& M_{<g} + \sum_c v_c A_{cg}\\
+    M'_{<g} =& M_{<g} + \sum_c v_c R_{cg}\\
     p_g =& \frac{(M'_{>g}, M'_{=g}, M'_{<g})^\top}{M'_{>g} + M'_{=g} + M'_{<g}}.
 \end{align}
 Using additivity of identical-scale gamma random variables, we can then identify the natural cluster weight as,
@@ -434,9 +435,9 @@ Specifically, we use a Kish-like quantity to measure effective participating clu
 \end{align}
 and then define a minimum threshold for condition, say $C_{\rm min} = 20$, and hence,
 \begin{align}
-    M'_{>g} =& M_{>g} + \mathbf{1}\{C^{\rm Kish}_g \ge C_0\} \sum_c v_c B_{cg}\\
-    M'_{=g} =& M_{=g} + \mathbf{1}\{C^{\rm Kish}_g \ge C_0\} \sum_c v_c E_{cg}\\
-    M'_{<g} =& M_{<g} + \mathbf{1}\{C^{\rm Kish}_g \ge C_0\} \sum_c v_c A_{cg}\\
+    M'_{>g} =& M_{>g} + \mathbf{1}\{C^{\rm Kish}_g \ge C_{\rm min}\} \sum_c v_c B_{cg}\\
+    M'_{=g} =& M_{=g} + \mathbf{1}\{C^{\rm Kish}_g \ge C_{\rm min}\} \sum_c v_c E_{cg}\\
+    M'_{<g} =& M_{<g} + \mathbf{1}\{C^{\rm Kish}_g \ge C_{\rm min}\} \sum_c v_c R_{cg}\\
     p_g =& \frac{(M'_{>g}, M'_{=g}, M'_{<g})^\top}{M'_{>g} + M'_{=g} + M'_{<g}}.
 \end{align}
 This provides a consistent generative shrinkage model that properly takes into account the race tree and phantom samples.
@@ -746,7 +747,7 @@ where $\widehat{\log Z}$ and $\widehat\sigma_{\log Z}$ come from MC-based shrink
 We'll also compare the expectation based estimates to these MC-based estimates.
 Each seed will produce a $z_{\log Z}$, and we should expect mean $z_{\log Z}$ near zero and standard deviation near one over repeated runs.
 The same experiments will report bias in $\widehat{\log Z}$, empirical root-mean-square error, and the relationship between reported and empirical uncertainty.
-The per block $\rho_g$ curves will be shown along side the fit.
+Phantom-conditioning diagnostics will report the gamma-weighted posterior draws, the per-block Kish participating-cluster count, gate activation, and the resulting change in evidence and shrinkage uncertainty.
 
 Plateau tests will include likelihoods with equality atoms.
 These tests will measure recovery of equality masses in addition to the above diagnostics.

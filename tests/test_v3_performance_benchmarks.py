@@ -18,6 +18,8 @@ DEFAULT_ALLOCATION_TARGETS = (
     "evidence_improving",
     "posterior_improving",
 )
+TICKET_0018_BEST_RUN_SECONDS = 216.54
+TICKET_0018_BEST_TOTAL_SECONDS = 218.90
 REQUIRED_TIMING_FIELDS = (
     "setup_seconds",
     "run_seconds",
@@ -44,6 +46,10 @@ REQUIRED_CONFIG_FIELDS = (
     "mc_sample_count",
 )
 REQUIRED_LIKELIHOOD_DISPATCH_DIAGNOSTIC_FIELDS = (
+    "observed_node_count",
+    "node_ingress_process_count",
+    "observed_worker_process_count",
+    "worker_process_ids",
     "observed_worker_device_classes",
     "dispatch_eval_count",
     "dispatch_latency_seconds_total",
@@ -57,7 +63,13 @@ REQUIRED_LIKELIHOOD_DISPATCH_DIAGNOSTIC_FIELDS = (
     "max_active_evals_pool",
     "completed_eval_count_by_worker",
     "queued_eval_count",
+    "load_balancer_queue_length",
+    "node_queue_length",
     "failed_eval_count",
+    "failed_eval_count_by_type",
+    "process_start_method",
+    "worker_shutdown_status",
+    "ipc_endpoint_cleanup_status",
 )
 LIKELIHOOD_DISPATCH_LATENCY_TAIL_FIELDS = (
     "dispatch_latency_seconds_max",
@@ -83,8 +95,11 @@ def _require_speed_api():
 
     required_callables = (
         "default_standard_problem_speed_config",
+        "default_pure_core_standard_problem_speed_config",
         "collect_standard_problem_speed_records",
+        "collect_pure_core_standard_problem_speed_records",
         "assert_standard_problem_speed_record",
+        "assert_pure_core_isotropic_speed_gate",
         "compute_timing_fractions",
         "main",
     )
@@ -153,6 +168,49 @@ def _assert_likelihood_dispatch_diagnostics_present(
     assert isinstance(device_classes, list | tuple)
     assert device_classes
     assert all(isinstance(item, str) and item for item in device_classes)
+    for field_name in (
+            "observed_node_count",
+            "node_ingress_process_count",
+            "observed_worker_process_count",
+    ):
+        value = diagnostics[field_name]
+        assert isinstance(value, int), f"{field_name} must be an integer."
+        assert value > 0, f"{field_name} must be positive."
+    assert diagnostics["node_ingress_process_count"] == (
+        diagnostics["observed_node_count"]
+    )
+    assert diagnostics["observed_worker_process_count"] == (
+        diagnostics["actual_worker_count"]
+    )
+    worker_process_ids = diagnostics["worker_process_ids"]
+    assert isinstance(worker_process_ids, list | tuple)
+    assert len(worker_process_ids) == diagnostics["observed_worker_process_count"]
+    assert len({int(pid) for pid in worker_process_ids}) == len(worker_process_ids)
+    assert all(int(pid) > 0 for pid in worker_process_ids)
+    for field_name in ("process_start_method", "worker_shutdown_status"):
+        value = diagnostics[field_name]
+        assert isinstance(value, str) and value
+    assert diagnostics["process_start_method"] in {
+        "spawn",
+        "forkserver",
+    }
+    assert diagnostics["worker_shutdown_status"] in {
+        "clean",
+        "shutdown",
+        "terminated",
+    }
+    assert diagnostics["ipc_endpoint_cleanup_status"] in {
+        "removed",
+        "clean",
+        "complete",
+    }
+    failed_by_type = diagnostics["failed_eval_count_by_type"]
+    assert isinstance(failed_by_type, Mapping)
+    assert all(
+        isinstance(key, str) and key
+        and isinstance(value, int) and value >= 0
+        for key, value in failed_by_type.items()
+    )
     max_by_worker = diagnostics["max_active_evals_per_worker"]
     assert isinstance(max_by_worker, Mapping)
     assert max_by_worker
@@ -173,6 +231,8 @@ def _assert_likelihood_dispatch_diagnostics_present(
             "distinct_compile_identity_count",
             "max_active_evals_pool",
             "queued_eval_count",
+            "load_balancer_queue_length",
+            "node_queue_length",
             "failed_eval_count",
     ):
         value = diagnostics[field_name]
@@ -232,6 +292,10 @@ def _complete_speed_record(**updates) -> dict[str, Any]:
         "diagnostics": {
             "worker_sampler_latency_seconds": 3.5,
             "actual_worker_count": 2,
+            "observed_node_count": 1,
+            "node_ingress_process_count": 1,
+            "observed_worker_process_count": 2,
+            "worker_process_ids": [41001, 41002],
             "observed_worker_device_classes": ["cpu"],
             "dispatch_eval_count": 3,
             "dispatch_latency_seconds_total": 1.5,
@@ -252,7 +316,13 @@ def _complete_speed_record(**updates) -> dict[str, Any]:
                 "worker-000002": 1,
             },
             "queued_eval_count": 1,
+            "load_balancer_queue_length": 0,
+            "node_queue_length": 1,
             "failed_eval_count": 0,
+            "failed_eval_count_by_type": {},
+            "process_start_method": "spawn",
+            "worker_shutdown_status": "clean",
+            "ipc_endpoint_cleanup_status": "removed",
         },
         "results": {
             "likelihood_evaluations": 123,
@@ -264,6 +334,50 @@ def _complete_speed_record(**updates) -> dict[str, Any]:
     }
     for key, value in updates.items():
         record[key] = value
+    return record
+
+
+def _speed_record_for_worker_scaling(
+        *,
+        worker_count: int,
+        run_seconds: float,
+) -> dict[str, Any]:
+    record = _complete_speed_record()
+    record["metadata"]["worker_specs"] = [f"cpu:*:{worker_count}"]
+    record["timings"]["run_seconds"] = float(run_seconds)
+    record["timings"]["total_seconds"] = (
+        record["timings"]["setup_seconds"]
+        + record["timings"]["run_seconds"]
+        + record["timings"]["result_conversion_seconds"]
+        + record["timings"]["mc_shrinkage_seconds"]
+    )
+    total = record["timings"]["total_seconds"]
+    record["timing_fractions"] = {
+        "setup_fraction": record["timings"]["setup_seconds"] / total,
+        "run_fraction": record["timings"]["run_seconds"] / total,
+        "result_conversion_fraction": (
+            record["timings"]["result_conversion_seconds"] / total
+        ),
+        "mc_shrinkage_fraction": (
+            record["timings"]["mc_shrinkage_seconds"] / total
+        ),
+    }
+    diagnostics = record["diagnostics"]
+    diagnostics["actual_worker_count"] = worker_count
+    diagnostics["observed_worker_process_count"] = worker_count
+    diagnostics["worker_process_ids"] = [
+        43000 + idx + 1
+        for idx in range(worker_count)
+    ]
+    diagnostics["max_active_evals_per_worker"] = {
+        f"worker-{idx + 1:06d}": 1
+        for idx in range(worker_count)
+    }
+    diagnostics["max_active_evals_pool"] = min(worker_count, 2)
+    diagnostics["completed_eval_count_by_worker"] = {
+        f"worker-{idx + 1:06d}": (2 if idx == 0 else int(idx == 1))
+        for idx in range(worker_count)
+    }
     return record
 
 
@@ -388,6 +502,48 @@ def test_standard_problem_speed_schema_requires_latency_tail_summary():
         ),
         (
             lambda record: record["diagnostics"].__setitem__(
+                "observed_node_count",
+                0,
+            ),
+            "observed_node_count|positive|node",
+        ),
+        (
+            lambda record: record["diagnostics"].__setitem__(
+                "node_ingress_process_count",
+                2,
+            ),
+            "node_ingress_process_count|observed_node_count|one ingress",
+        ),
+        (
+            lambda record: record["diagnostics"].__setitem__(
+                "observed_worker_process_count",
+                1,
+            ),
+            "observed_worker_process_count|actual_worker_count|worker process",
+        ),
+        (
+            lambda record: record["diagnostics"].__setitem__(
+                "worker_process_ids",
+                [41001],
+            ),
+            "worker_process_ids|observed_worker_process_count",
+        ),
+        (
+            lambda record: record["diagnostics"].__setitem__(
+                "process_start_method",
+                "fork",
+            ),
+            "process_start_method|spawn|forkserver",
+        ),
+        (
+            lambda record: record["diagnostics"].__setitem__(
+                "ipc_endpoint_cleanup_status",
+                "leaked",
+            ),
+            "ipc_endpoint_cleanup_status|removed|clean|complete",
+        ),
+        (
+            lambda record: record["diagnostics"].__setitem__(
                 "completed_eval_count_by_worker",
                 {"worker-000001": 4, "worker-000002": 0},
             ),
@@ -435,6 +591,12 @@ def test_standard_problem_speed_schema_requires_latency_tail_summary():
         "worker-active-count-above-one",
         "empty-device-classes",
         "empty-device-class-entry",
+        "zero-observed-node-count",
+        "node-ingress-count-not-one-per-node",
+        "worker-process-count-mismatch",
+        "worker-process-pid-count-mismatch",
+        "unsupported-process-start-method",
+        "ipc-endpoint-cleanup-not-clean",
         "completed-count-above-dispatch-count",
         "completed-plus-failed-above-dispatch-count",
         "dispatch-count-above-completed-plus-failed",
@@ -610,6 +772,26 @@ def test_speed_config_can_express_historical_50d_live_point_policy():
     assert config["live_point_policy"] == "50_per_dimension"
 
 
+def test_pure_core_speed_config_is_primary_isotropic_gate():
+    api = _require_speed_api()
+    config = _as_mapping(api.default_pure_core_standard_problem_speed_config())
+
+    assert config["feature_row_ids"] == (
+        "standard_basic_mvn_uniform",
+        "standard_basic_mvn_evidence_improving",
+        "standard_basic_mvn_posterior_improving",
+    )
+    assert config["allocation_targets"] == (
+        "uniform",
+        "evidence_improving",
+        "posterior_improving",
+    )
+    assert config["direction_kernel"] == "isotropic"
+    assert config["worker_specs"] == ("pure_core:local:1",)
+    assert config["max_samples"] == 1200
+    assert config["num_slices"] == 24
+
+
 def test_speed_config_rejects_invalid_phantom_burn_in_for_slice_count():
     api = _require_speed_api()
 
@@ -631,6 +813,87 @@ def test_real_basic_mvn_builder_is_full_8d_reference():
     )
     assert log_z_ref == pytest.approx(expected_log_z_ref)
     assert log_z_ref == pytest.approx(-24.606462553878423)
+
+
+def test_collect_pure_core_speed_record_uses_no_load_balancer_and_gate(
+        monkeypatch,
+        tmp_path,
+):
+    api = _require_speed_api()
+    created_runners = _install_fake_pure_core_runtime(monkeypatch, api)
+    _install_fake_clock(monkeypatch, api)
+    config = api.default_pure_core_standard_problem_speed_config(
+        feature_row_ids=("standard_basic_mvn_uniform",),
+        seed=17,
+    )
+
+    records = api.collect_pure_core_standard_problem_speed_records(config=config)
+
+    assert len(records) == 1
+    assert len(created_runners) == 1
+    runner = created_runners[0]
+    assert runner.run_allocation_targets == ["uniform"]
+    assert runner.kwargs["target_num_live_points"] == 30
+    assert runner.kwargs["max_samples"] == 1200
+    sampler = runner.kwargs["sampler"]
+    assert sampler.direction_kernel == "isotropic"
+    assert sampler.num_slices == config.num_slices
+    assert sampler.phantom_burn_in == config.phantom_burn_in
+
+    record = records[0]
+    assert record["execution_mode"] == "pure_core"
+    assert record["metadata"]["feature_row_id"] == "standard_basic_mvn_uniform"
+    assert record["metadata"]["problem_fixture"] == "basic_mvn"
+    assert record["metadata"]["dimension"] == 8
+    assert record["metadata"]["allocation_target"] == "uniform"
+    assert record["metadata"]["direction_kernel"] == "isotropic"
+    assert record["results"]["accuracy_passed"] is True
+    assert record["results"]["total_samples"] == 1200
+    assert record["metadata"]["target_num_live_points"] == 30
+    assert record["metadata"]["max_samples"] == 1200
+    assert record["metadata"]["shell_size"] == 15
+    assert record["metadata"]["num_slices"] == 24
+    assert record["metadata"]["phantom_burn_in"] == 4
+    assert record["metadata"]["mc_sample_count"] == 1000
+    assert record["timings"]["run_seconds"] < 60.0
+    api.assert_pure_core_isotropic_speed_gate(record)
+    short_record = copy.deepcopy(record)
+    short_record["results"]["total_samples"] = 1
+    with pytest.raises(AssertionError, match="total_samples"):
+        api.assert_pure_core_isotropic_speed_gate(short_record)
+
+    report_path = api.write_v3_performance_split_markdown_report(
+        records=records,
+        report_dir=tmp_path,
+    )
+    report_text = report_path.read_text(encoding="utf-8")
+    assert report_path.name.startswith("v3_performance_split_")
+    assert "## Pure-Core Results" in report_text
+    assert "standard_basic_mvn_uniform" in report_text
+
+
+def test_pure_core_speed_record_covers_all_basic_mvn_benchmark_targets(
+        monkeypatch,
+):
+    api = _require_speed_api()
+    created_runners = _install_fake_pure_core_runtime(monkeypatch, api)
+    _install_fake_clock(monkeypatch, api)
+    config = api.default_pure_core_standard_problem_speed_config()
+
+    records = api.collect_pure_core_standard_problem_speed_records(config=config)
+
+    assert [
+        record["metadata"]["feature_row_id"]
+        for record in records
+    ] == list(config.feature_row_ids)
+    assert [
+        runner.run_allocation_targets[-1]
+        for runner in created_runners
+    ] == [
+        "uniform",
+        "evidence_improving",
+        "resume:posterior_improving",
+    ]
 
 
 def test_collect_speed_records_uses_one_local_load_balancer_per_target(
@@ -792,6 +1055,182 @@ def test_worker_scaling_records_vary_specs_and_report_observed_workers(
     assert json.loads(encoded) == records
 
 
+def test_worker_scaling_default_grid_covers_ticket_0019_worker_counts():
+    api = _require_speed_api()
+    default_worker_scaling_specs = getattr(
+        api,
+        "default_worker_scaling_specs",
+        None,
+    )
+    assert callable(default_worker_scaling_specs), (
+        "Ticket 0019 requires a public default_worker_scaling_specs() API "
+        "for the canonical 1/2/4/8 scaling grid."
+    )
+    assert default_worker_scaling_specs() == (
+        ("cpu:*:1",),
+        ("cpu:*:2",),
+        ("cpu:*:4",),
+        ("cpu:*:8",),
+    )
+
+
+def test_worker_scaling_validation_accepts_strict_ticket_0019_speedup():
+    api = _require_speed_api()
+    assert_scaling = getattr(
+        api,
+        "assert_worker_scaling_speed_records",
+        None,
+    )
+    assert callable(assert_scaling), (
+        "Ticket 0019 requires assert_worker_scaling_speed_records(...) to "
+        "validate the 1/2/4/8 wall-time scaling gate."
+    )
+    records = [
+        _speed_record_for_worker_scaling(worker_count=1, run_seconds=100.0),
+        _speed_record_for_worker_scaling(worker_count=2, run_seconds=70.0),
+        _speed_record_for_worker_scaling(worker_count=4, run_seconds=45.0),
+        _speed_record_for_worker_scaling(worker_count=8, run_seconds=25.0),
+    ]
+
+    assert_scaling(records)
+
+
+@pytest.mark.parametrize(
+    "records, error_pattern",
+    [
+        (
+            [
+                _speed_record_for_worker_scaling(
+                    worker_count=1,
+                    run_seconds=100.0,
+                ),
+                _speed_record_for_worker_scaling(
+                    worker_count=2,
+                    run_seconds=100.0,
+                ),
+                _speed_record_for_worker_scaling(
+                    worker_count=4,
+                    run_seconds=80.0,
+                ),
+                _speed_record_for_worker_scaling(
+                    worker_count=8,
+                    run_seconds=60.0,
+                ),
+            ],
+            "run_seconds|strictly decrease|1-worker|2-worker",
+        ),
+        (
+            [
+                _speed_record_for_worker_scaling(
+                    worker_count=1,
+                    run_seconds=100.0,
+                ),
+                _speed_record_for_worker_scaling(
+                    worker_count=2,
+                    run_seconds=120.0,
+                ),
+                _speed_record_for_worker_scaling(
+                    worker_count=4,
+                    run_seconds=90.0,
+                ),
+                _speed_record_for_worker_scaling(
+                    worker_count=8,
+                    run_seconds=80.0,
+                ),
+            ],
+            "run_seconds|1-worker|2-worker|regression",
+        ),
+        (
+            [
+                _speed_record_for_worker_scaling(
+                    worker_count=1,
+                    run_seconds=100.0,
+                ),
+                _speed_record_for_worker_scaling(
+                    worker_count=2,
+                    run_seconds=70.0,
+                ),
+                _speed_record_for_worker_scaling(
+                    worker_count=4,
+                    run_seconds=90.0,
+                ),
+                _speed_record_for_worker_scaling(
+                    worker_count=8,
+                    run_seconds=50.0,
+                ),
+            ],
+            "run_seconds|2-worker|4-worker|regression",
+        ),
+        (
+            [
+                _speed_record_for_worker_scaling(
+                    worker_count=1,
+                    run_seconds=100.0,
+                ),
+                _speed_record_for_worker_scaling(
+                    worker_count=2,
+                    run_seconds=70.0,
+                ),
+                _speed_record_for_worker_scaling(
+                    worker_count=4,
+                    run_seconds=45.0,
+                ),
+                _speed_record_for_worker_scaling(
+                    worker_count=8,
+                    run_seconds=60.0,
+                ),
+            ],
+            "8-worker|fastest|run_seconds",
+        ),
+        (
+            [
+                _speed_record_for_worker_scaling(
+                    worker_count=1,
+                    run_seconds=300.0,
+                ),
+                _speed_record_for_worker_scaling(
+                    worker_count=2,
+                    run_seconds=260.0,
+                ),
+                _speed_record_for_worker_scaling(
+                    worker_count=4,
+                    run_seconds=235.0,
+                ),
+                _speed_record_for_worker_scaling(
+                    worker_count=8,
+                    run_seconds=220.0,
+                ),
+            ],
+            "Ticket 0018|216.54|218.90|baseline",
+        ),
+    ],
+    ids=(
+        "two-worker-ties",
+        "two-worker-regresses",
+        "four-worker-regresses",
+        "eight-worker-not-fastest",
+        "eight-worker-misses-ticket-0018-baseline",
+    ),
+)
+def test_worker_scaling_validation_rejects_ticket_0019_failures(
+        records,
+        error_pattern,
+):
+    api = _require_speed_api()
+    assert_scaling = getattr(
+        api,
+        "assert_worker_scaling_speed_records",
+        None,
+    )
+    assert callable(assert_scaling), (
+        "Ticket 0019 requires assert_worker_scaling_speed_records(...) to "
+        "validate the 1/2/4/8 wall-time scaling gate."
+    )
+
+    with pytest.raises(AssertionError, match=error_pattern):
+        assert_scaling(records)
+
+
 def test_collect_speed_records_are_deterministic_and_json_serializable(
         monkeypatch,
 ):
@@ -849,6 +1288,31 @@ def test_main_writes_json_records_with_fake_runtime(
     assert "uniform" in reports[0].read_text(encoding="utf-8")
 
 
+def test_main_pure_core_writes_split_report(monkeypatch, capsys, tmp_path):
+    api = _require_speed_api()
+    _install_fake_pure_core_runtime(monkeypatch, api)
+    _install_fake_clock(monkeypatch, api)
+
+    exit_code = api.main([
+        "--pure-core",
+        "--allocation-target",
+        "uniform",
+        "--report-dir",
+        str(tmp_path),
+    ])
+
+    assert exit_code == 0
+    decoded = json.loads(capsys.readouterr().out)
+    assert len(decoded) == 1
+    assert decoded[0]["execution_mode"] == "pure_core"
+    api.assert_pure_core_isotropic_speed_gate(decoded[0])
+    reports = list(tmp_path.glob("v3_performance_split_*.md"))
+    assert len(reports) == 1
+    assert "standard_basic_mvn_uniform" in reports[0].read_text(
+        encoding="utf-8",
+    )
+
+
 def test_main_worker_scaling_writes_json_records(monkeypatch, capsys, tmp_path):
     api = _require_speed_api()
     _install_fake_runtime(monkeypatch, api)
@@ -898,6 +1362,52 @@ def test_main_worker_scaling_writes_json_records(monkeypatch, capsys, tmp_path):
     reports = list(tmp_path.glob("standard_problem_speed_*.md"))
     assert len(reports) == 1
     assert "cpu:*:3" in reports[0].read_text(encoding="utf-8")
+
+
+def test_main_explicit_default_worker_scaling_grid_is_reporting_only(
+        monkeypatch,
+        capsys,
+        tmp_path,
+):
+    api = _require_speed_api()
+    _install_fake_runtime(monkeypatch, api)
+    _install_fake_clock(monkeypatch, api)
+
+    exit_code = api.main([
+        "--worker-scaling",
+        "--allocation-target",
+        "uniform",
+        "--worker-spec",
+        "cpu:*:1",
+        "--worker-spec",
+        "cpu:*:2",
+        "--worker-spec",
+        "cpu:*:4",
+        "--worker-spec",
+        "cpu:*:8",
+        "--max-samples",
+        "7",
+        "--target-num-live-points",
+        "24",
+        "--mc-sample-count",
+        "3",
+        "--report-dir",
+        str(tmp_path),
+    ])
+
+    assert exit_code == 0
+    decoded = json.loads(capsys.readouterr().out)
+    assert [
+        record["metadata"]["worker_specs"]
+        for record in decoded
+    ] == [["cpu:*:1"], ["cpu:*:2"], ["cpu:*:4"], ["cpu:*:8"]]
+    assert [
+        record["timings"]["run_seconds"]
+        for record in decoded
+    ] == [1.0, 1.0, 1.0, 1.0]
+    for record in decoded:
+        api.assert_standard_problem_speed_record(record)
+        _assert_likelihood_dispatch_diagnostics_present(record)
 
 
 def test_mc_shrinkage_timing_synchronizes_samples_before_timer_stops(
@@ -1057,6 +1567,13 @@ class _FakeLoadBalancerClient:
         }
         return SimpleNamespace(
             observed_worker_count=worker_count,
+            observed_node_count=1,
+            node_ingress_process_count=1,
+            observed_worker_process_count=worker_count,
+            worker_process_ids=tuple(
+                42000 + idx + 1
+                for idx in range(worker_count)
+            ),
             observed_worker_device_classes=("cpu",),
             dispatch_eval_count=3,
             dispatch_latency_seconds=(0.25, 0.50, 0.75),
@@ -1072,7 +1589,13 @@ class _FakeLoadBalancerClient:
             max_active_evals_pool=min(worker_count, 2),
             completed_eval_count_by_worker=completed_counts,
             queued_eval_count=1,
+            load_balancer_queue_length=0,
+            node_queue_length=1,
             failed_eval_count=0,
+            failed_eval_count_by_type={},
+            process_start_method="spawn",
+            worker_shutdown_status="clean",
+            ipc_endpoint_cleanup_status="removed",
         )
 
     def get_likelihood_dispatch_diagnostics(self):
@@ -1097,6 +1620,41 @@ class _FakeNestedSampler:
         )
 
 
+class _FakePureCoreNestedSampler:
+    def __init__(
+            self,
+            *,
+            created_runners: list[Any],
+            mc_shrinkage_sample_factory: Any,
+            **kwargs,
+    ):
+        self.kwargs = kwargs
+        self.max_samples = int(kwargs["max_samples"])
+        self.run_allocation_targets: list[str] = []
+        self.mc_shrinkage_sample_factory = mc_shrinkage_sample_factory
+        created_runners.append(self)
+
+    def run_until_goal(self, *args, **kwargs):
+        del args
+        allocation_target = kwargs["allocation_target"]
+        self.run_allocation_targets.append(allocation_target)
+        return _FakeState(
+            allocation_target=allocation_target,
+            max_samples=self.max_samples,
+            mc_shrinkage_sample_factory=self.mc_shrinkage_sample_factory,
+        )
+
+    def resume_until_goal(self, *args, **kwargs):
+        del args
+        allocation_target = kwargs["allocation_target"]
+        self.run_allocation_targets.append(f"resume:{allocation_target}")
+        return _FakeState(
+            allocation_target=allocation_target,
+            max_samples=self.max_samples,
+            mc_shrinkage_sample_factory=self.mc_shrinkage_sample_factory,
+        )
+
+
 class _FakeState:
     def __init__(
             self,
@@ -1108,6 +1666,7 @@ class _FakeState:
         self.allocation_target = allocation_target
         self.max_samples = max_samples
         self.mc_shrinkage_sample_factory = mc_shrinkage_sample_factory
+        self.samples = SimpleNamespace(log_likelihoods=[0.0] * max_samples)
 
     def to_result(self):
         return _FakeResult(
@@ -1173,8 +1732,8 @@ def _observed_worker_count(record: Mapping[str, Any]) -> int:
 
 
 def _fake_compute_sector_worker_count(worker_specs: tuple[str, ...]) -> int:
-    return 10 + sum(_requested_worker_count(worker_spec)
-                    for worker_spec in worker_specs)
+    return sum(_requested_worker_count(worker_spec)
+               for worker_spec in worker_specs)
 
 
 def _requested_worker_count(worker_spec: str) -> int:
@@ -1219,6 +1778,46 @@ def _install_fake_runtime(
         raising=False,
     )
     return created_clients
+
+
+def _install_fake_pure_core_runtime(monkeypatch, api) -> list[Any]:
+    created_runners: list[Any] = []
+
+    def mc_shrinkage_sample_factory(num_samples: int):
+        return SimpleNamespace(
+            log_Z_samples=[
+                -50.1 if idx % 2 == 0 else -49.9
+                for idx in range(num_samples)
+            ],
+        )
+
+    def fake_nested_sampler(**kwargs):
+        return _FakePureCoreNestedSampler(
+            created_runners=created_runners,
+            mc_shrinkage_sample_factory=mc_shrinkage_sample_factory,
+            **kwargs,
+        )
+
+    monkeypatch.setattr(api, "NestedSampler", fake_nested_sampler)
+    monkeypatch.setattr(api, "build_basic_mvn_problem", lambda: (object(), -50.0))
+    monkeypatch.setattr(
+        api,
+        "UniDimSliceSampler",
+        lambda **kwargs: SimpleNamespace(**kwargs),
+    )
+    monkeypatch.setattr(
+        api,
+        "TerminationCondition",
+        lambda **kwargs: SimpleNamespace(**kwargs),
+    )
+    monkeypatch.setattr(
+        api,
+        "LoadBalancerClient",
+        lambda *args, **kwargs: pytest.fail(
+            "pure-core benchmark must not create LoadBalancerClient"
+        ),
+    )
+    return created_runners
 
 
 def _install_fake_clock(monkeypatch, api, *, clock: Any = None) -> None:

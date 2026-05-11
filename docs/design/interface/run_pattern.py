@@ -33,13 +33,16 @@ def goal_cond(state: State) -> bool:
     return result.log_Z_uncert < 0.1
 
 
-# A client for LB is what enables adding workers.
-# Workers do likelihood evaluation with overlapping computation.
+# A client for LB is what enables adding node-managed workers.
+# Workers are process-isolated likelihood evaluators with overlapping computation.
 # LB is what enables creating a nested sampler object that can run NS over the workers.
 # When address is 'local' it finds or starts a local LB, connects to it, and
 # tears down only resources owned by this context on exit.
 with LoadBalancerClient(address='local') as lb:
-    # Add workers on the current host.
+    # Add workers on the current host. This creates or reuses a local node
+    # process manager, which owns one node ingress/coordinator process plus the
+    # worker processes. The node ingress talks to the LB; the node coordinator
+    # fans out to local workers over random ipc:// endpoints under /tmp.
     # syntax is `device_type:device_ids:num_workers_per_device`
     lb.add_workers(['cpu:*:5', 'gpu:0,1:10'])
     # This adds:
@@ -56,7 +59,7 @@ with LoadBalancerClient(address='local') as lb:
     # runner. Workers JIT/cache the likelihood on first matching likelihood-eval
     # work, then return scalar log_L results to the original runner. Many
     # clients can share a worker pool across different likelihood problems;
-    # fair sharing is managed by the LB.
+    # fair sharing is managed by the LB at node-advertised capacity.
     state: State = ns.run_until_goal(
         goal_cond=goal_cond,
         depth_cond=TerminationCondition(),
@@ -111,11 +114,12 @@ with LoadBalancerClient(address='local') as lb:
     plt.show()
 
 
-### This is what a worker node script might look like to joining in nodes
+### This is what a worker-node script might look like for joining nodes.
 
 try:
     with LoadBalancerClient(address='tcp://123.123.123.123:5555') as lb:
-        # Add workers on the current host.
+        # Add a node process manager and workers on the current host. The
+        # remote LB sees one node ingress/coordinator, not every worker socket.
         # syntax is `device_type:device_ids:num_workers_per_device`
         lb.add_workers(['cpu:*:5', 'gpu:0,1:10'])
         lb.wait_until_shutdown()

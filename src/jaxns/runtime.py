@@ -1,25 +1,60 @@
 from __future__ import annotations
 
+# ruff: noqa: E402
+
 import dataclasses
 import hashlib
+import multiprocessing
+import os
 import pickle
 import re
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
+import traceback
+import uuid
 from collections.abc import Iterable
+from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ThreadPoolExecutor
 from typing import TypeVar
+
+
+def _single_threaded_process_env() -> None:
+    """Configure subprocess JAX/BLAS CPU execution before JAX import work."""
+    os.environ.setdefault("OMP_NUM_THREADS", "1")
+    os.environ.setdefault("MKL_NUM_THREADS", "1")
+    os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+    os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
+    xla_flags = os.environ.get("XLA_FLAGS", "")
+    additions = []
+    if "--xla_cpu_multi_thread_eigen" not in xla_flags:
+        additions.append("--xla_cpu_multi_thread_eigen=false")
+    if "intra_op_parallelism_threads" not in xla_flags:
+        additions.append("intra_op_parallelism_threads=1")
+    if additions:
+        os.environ["XLA_FLAGS"] = " ".join(
+            item for item in (xla_flags, *additions) if item
+        )
+
+
+_single_threaded_process_env()
 
 import jax
 import jax.numpy as jnp
 import numpy as np
+import zmq
 from jaxctx import CtxParams
 
 from jaxns.allocation import ParentWork
 from jaxns.constrained_sampler import UniDimSliceSampler
+from jaxns.core import CoreResultBatch
+from jaxns.core import CoreWorkBatch
 from jaxns.core import NestedSampler
 from jaxns.core import _phantom_coordinates_like_state
 from jaxns.diagnostics import LikelihoodDispatchDiagnostics as _BaseLikelihoodDispatchDiagnostics
+from jaxns.fabric.process_manager import ProcessManager
+from jaxns.fabric.process_manager import create_random_ack_address
+from jaxns.fabric.process_manager import create_random_control_address
+from jaxns.fabric.zmq_actor import ZMQActor
 from jaxns.mixed_precision import mp_policy
 from jaxns.model import Model
 from jaxns.samples import PhantomSamples
@@ -42,6 +77,39 @@ SENTINEL_PARENT_IDX = -1
 
 T = TypeVar("T")
 _MISSING = object()
+_PROCESS_START_METHOD = "spawn"
+_LOCAL_NODE_ID = "node-000001"
+
+
+def _random_ipc_endpoint(prefix: str) -> str:
+    return f"ipc:///tmp/jaxns-{prefix}-{uuid.uuid4().hex}.sock"
+
+
+def _ipc_endpoint_path(endpoint: str) -> str | None:
+    endpoint = str(endpoint)
+    if not endpoint.startswith("ipc://"):
+        return None
+    return endpoint.removeprefix("ipc://")
+
+
+def _remove_ipc_endpoint_files(endpoints: Iterable[str]) -> str:
+    status = "removed"
+    for endpoint in endpoints:
+        path = _ipc_endpoint_path(endpoint)
+        if path is None:
+            continue
+        try:
+            os.unlink(path)
+        except FileNotFoundError:
+            continue
+        except OSError:
+            status = "cleanup_failed"
+    return status
+
+
+def _managed_actor_main(stop_event) -> None:
+    _single_threaded_process_env()
+    stop_event.wait()
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -64,6 +132,71 @@ class ComputeSector:
     device_id: str
     num_workers: int
     source_worker_spec: WorkerSpec
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class LoadBalancerRouteDiagnostics:
+    route_kind: str
+    node_id: str
+    node_ingress_endpoint: str
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class NodeTopologyDiagnostics:
+    node_id: str
+    node_ingress_process_id: int
+    node_ingress_endpoint: str
+    worker_process_ids: tuple[int, ...]
+    worker_endpoints: tuple[str, ...]
+    node_queue_length: int
+    schedulable: bool
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class ProcessTopologyDiagnostics:
+    status: str
+    topology_mode: str
+    load_balancer_managed_actor: bool
+    load_balancer_process_id: int
+    node_process_manager_count: int
+    node_ingress_process_count: int
+    worker_process_count: int
+    live_owned_worker_process_count: int
+    schedulable_node_count: int
+    schedulable_worker_process_count: int
+    direct_worker_route_count: int
+    load_balancer_routing_table: tuple[LoadBalancerRouteDiagnostics, ...]
+    nodes: tuple[NodeTopologyDiagnostics, ...]
+    process_start_method: str
+    worker_shutdown_status: str
+    ipc_endpoint_cleanup_status: str
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class NodeIngressTerminationDiagnostics:
+    status: str
+    node_id: str
+    retired_inflight_eval_ids: tuple[str, ...]
+    failed_likelihood_responses: tuple["LikelihoodEvalResponse", ...]
+    node_failure_error_type: str
+    node_failure_error_message: str
+    node_failure_traceback: str
+    retry_status: str
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class _LikelihoodWorkerActorInfo:
+    worker_id: str
+    device_class: str
+    endpoint: str
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class _NodeCoordinatorActorDiagnostics:
+    node_id: str
+    node_queue_length: int
+    max_active_evals_per_worker: dict[str, int]
+    max_active_evals_pool: int
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -470,6 +603,7 @@ class CoordinatorDispatchRecord:
     task_id: str
     attempt_id: str
     transport_id: str
+    parent_work_id: int
     requested_parent_idx: int
     effective_parent_idx: int
     accepted_parent_idx: int
@@ -496,6 +630,7 @@ class CoordinatorLifecycleRecord:
     transport_id: str
     attempt_number: int
     delivery_number: int
+    parent_work_id: int
     requested_parent_idx: int
     effective_parent_idx: int
     accepted_parent_idx: int
@@ -530,6 +665,7 @@ class _LifecycleRecordMetadata:
     transport_id: str
     attempt_number: int
     delivery_number: int
+    parent_work_id: int
     requested_parent_idx: int
     effective_parent_idx: int
     accepted_parent_idx: int
@@ -547,6 +683,15 @@ class _LifecycleRecordMetadata:
     dispatch_latency_seconds: float = 0.0
     payload_cache_latency_seconds: float = 0.0
     sampler_execution_latency_seconds: float = 0.0
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class RuntimeCoreBoundaryRecord:
+    """One fixed-shape core work/result boundary consumed by runtime."""
+
+    runner_id: str
+    work: CoreWorkBatch
+    result: CoreResultBatch
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -604,6 +749,7 @@ class LikelihoodEvalDispatchRecord:
     request: LikelihoodEvalRequest
     status: str
     worker_id: str = ""
+    node_id: str = ""
     response: LikelihoodEvalResponse | None = None
     dispatch_latency_seconds: float = 0.0
 
@@ -1119,6 +1265,587 @@ class LikelihoodEvalWorker:
         return self.likelihood_dispatch_diagnostics()
 
 
+_PROCESS_LIKELIHOOD_WORKER: LikelihoodEvalWorker | None = None
+
+
+def _process_worker() -> LikelihoodEvalWorker:
+    if _PROCESS_LIKELIHOOD_WORKER is None:
+        raise RuntimeError("Process likelihood worker has not been initialized.")
+    return _PROCESS_LIKELIHOOD_WORKER
+
+
+def _process_worker_init(worker_id: str, device_class: str) -> None:
+    global _PROCESS_LIKELIHOOD_WORKER
+    _single_threaded_process_env()
+    _PROCESS_LIKELIHOOD_WORKER = LikelihoodEvalWorker(
+        worker_id=worker_id,
+        device_class=device_class,
+    )
+
+
+def _process_worker_register(payload: _RegisteredLikelihoodIdentity) -> bool:
+    _process_worker()._register_likelihood_identity_payload(payload)
+    return True
+
+
+def _process_worker_evaluate(
+        request: LikelihoodEvalRequest,
+) -> LikelihoodEvalResponse:
+    return _process_worker().evaluate_likelihood(request)
+
+
+def _process_worker_pid() -> int:
+    _process_worker()
+    return os.getpid()
+
+
+def _strip_registered_payload_for_process(
+        payload: _RegisteredLikelihoodIdentity,
+) -> _RegisteredLikelihoodIdentity:
+    if payload.serialized_problem is None:
+        return payload
+    return _RegisteredLikelihoodIdentity(
+        identity=payload.identity,
+        model=None,
+        args=(),
+        params=None,
+        serialized_problem=payload.serialized_problem,
+    )
+
+
+class ProcessIsolatedLikelihoodEvalWorker:
+    """Single-capacity likelihood worker hosted in its own process."""
+
+    def __init__(
+            self,
+            *,
+            worker_id: str,
+            device_class: str = "cpu",
+            ipc_endpoint: str | None = None,
+    ) -> None:
+        self.worker_id = str(worker_id)
+        self.device_class = str(device_class)
+        self.ipc_endpoint = (
+            _random_ipc_endpoint("worker")
+            if ipc_endpoint is None
+            else str(ipc_endpoint)
+        )
+        self._shutdown_status = "active"
+        _single_threaded_process_env()
+        context = multiprocessing.get_context(_PROCESS_START_METHOD)
+        self._executor = ProcessPoolExecutor(
+            max_workers=1,
+            mp_context=context,
+            initializer=_process_worker_init,
+            initargs=(self.worker_id, self.device_class),
+        )
+        self._process_id = int(self._executor.submit(_process_worker_pid).result())
+
+    @property
+    def process_id(self) -> int:
+        return self._process_id
+
+    @property
+    def shutdown_status(self) -> str:
+        return self._shutdown_status
+
+    def _register_likelihood_identity_payload(
+            self,
+            payload: _RegisteredLikelihoodIdentity,
+    ) -> None:
+        process_payload = _strip_registered_payload_for_process(payload)
+        self._executor.submit(
+            _process_worker_register,
+            process_payload,
+        ).result()
+
+    def register_compile_identity(
+            self,
+            *,
+            identity: RuntimeCompileIdentity,
+            model: object,
+            args: tuple[object, ...] = (),
+            params: object | None = None,
+    ) -> None:
+        payload = _registered_likelihood_identity_from_problem(
+            identity=identity,
+            model=model,
+            args=args,
+            params=params,
+        )
+        self._register_likelihood_identity_payload(payload)
+
+    def register_runtime_compile_identity(
+            self,
+            *,
+            identity: RuntimeCompileIdentity,
+            model: object,
+            args: tuple[object, ...] = (),
+            params: object | None = None,
+    ) -> None:
+        self.register_compile_identity(
+            identity=identity,
+            model=model,
+            args=args,
+            params=params,
+        )
+
+    def evaluate_likelihood(
+            self,
+            request: LikelihoodEvalRequest,
+    ) -> LikelihoodEvalResponse:
+        return self._executor.submit(
+            _process_worker_evaluate,
+            request,
+        ).result()
+
+    def shutdown(self) -> None:
+        if self._shutdown_status != "active":
+            return
+        self._executor.shutdown(wait=True, cancel_futures=True)
+        self._shutdown_status = "clean"
+
+
+class LocalLikelihoodLoadBalancerActor(ZMQActor):
+    """ZMQ proxy actor for local likelihood-eval requests."""
+
+    def __init__(
+            self,
+            *,
+            ctl_pub_addr: str,
+            ack_rep_addr: str,
+            lb_endpoint: str,
+            node_endpoint: str,
+    ) -> None:
+        super().__init__(ctl_pub_addr=ctl_pub_addr, ack_rep_addr=ack_rep_addr)
+        self.lb_endpoint = str(lb_endpoint)
+        self.node_endpoint = str(node_endpoint)
+
+    def run(self):
+        ctl = self.new_socket(zmq.SUB, connect=self.ctl_pub_addr)
+        ctl.setsockopt_string(zmq.SUBSCRIBE, "")
+        frontend = self.new_socket(zmq.ROUTER, bind=self.lb_endpoint)
+        backend = self.new_socket(zmq.DEALER, connect=self.node_endpoint)
+        poller = zmq.Poller()
+        poller.register(ctl, zmq.POLLIN)
+        poller.register(frontend, zmq.POLLIN)
+        poller.register(backend, zmq.POLLIN)
+        self.ack_startup()
+        while True:
+            socks = dict(poller.poll())
+            if ctl in socks:
+                if ctl.recv() == b"TERMINATE":
+                    break
+            if frontend in socks:
+                backend.send_multipart(frontend.recv_multipart())
+            if backend in socks:
+                frontend.send_multipart(backend.recv_multipart())
+
+
+class LikelihoodWorkerActor(ZMQActor):
+    """One-process actor owning one LikelihoodEvalWorker."""
+
+    def __init__(
+            self,
+            *,
+            ctl_pub_addr: str,
+            ack_rep_addr: str,
+            worker_id: str,
+            device_class: str,
+            worker_endpoint: str,
+    ) -> None:
+        super().__init__(ctl_pub_addr=ctl_pub_addr, ack_rep_addr=ack_rep_addr)
+        self.worker_id = str(worker_id)
+        self.device_class = str(device_class)
+        self.worker_endpoint = str(worker_endpoint)
+
+    def run(self):
+        _single_threaded_process_env()
+        worker = LikelihoodEvalWorker(
+            worker_id=self.worker_id,
+            device_class=self.device_class,
+        )
+        ctl = self.new_socket(zmq.SUB, connect=self.ctl_pub_addr)
+        ctl.setsockopt_string(zmq.SUBSCRIBE, "")
+        worker_socket = self.new_socket(zmq.REP, bind=self.worker_endpoint)
+        poller = zmq.Poller()
+        poller.register(ctl, zmq.POLLIN)
+        poller.register(worker_socket, zmq.POLLIN)
+        self.ack_startup()
+        while True:
+            socks = dict(poller.poll())
+            if ctl in socks:
+                if ctl.recv() == b"TERMINATE":
+                    break
+            if worker_socket not in socks:
+                continue
+            payload = unpickle_payload(worker_socket.recv())
+            if isinstance(payload, LikelihoodEvalRequest):
+                response = worker.evaluate_likelihood(payload)
+                worker_socket.send(pickle_payload(response))
+                continue
+            command = str(payload.get("command", ""))
+            if command == "REGISTER":
+                worker._register_likelihood_identity_payload(
+                    payload["payload"]
+                )
+                worker_socket.send(pickle_payload({"status": "ok"}))
+            elif command == "DIAGNOSTICS":
+                worker_socket.send(
+                    pickle_payload(worker.likelihood_dispatch_diagnostics())
+                )
+            else:
+                worker_socket.send(
+                    pickle_payload({
+                        "status": "failed",
+                        "error": f"Unknown worker command {command!r}.",
+                    })
+                )
+
+
+class NodeIngressCoordinatorActor(ZMQActor):
+    """Node actor that owns worker idle/inflight/queue accounting."""
+
+    def __init__(
+            self,
+            *,
+            ctl_pub_addr: str,
+            ack_rep_addr: str,
+            node_id: str,
+            node_endpoint: str,
+            workers: tuple[_LikelihoodWorkerActorInfo, ...],
+    ) -> None:
+        super().__init__(ctl_pub_addr=ctl_pub_addr, ack_rep_addr=ack_rep_addr)
+        self.node_id = str(node_id)
+        self.node_endpoint = str(node_endpoint)
+        self.workers = tuple(workers)
+
+    def run(self):
+        ctl = self.new_socket(zmq.SUB, connect=self.ctl_pub_addr)
+        ctl.setsockopt_string(zmq.SUBSCRIBE, "")
+        frontend = self.new_socket(zmq.ROUTER, bind=self.node_endpoint)
+        worker_sockets = {
+            worker.worker_id: self.new_socket(
+                zmq.REQ,
+                connect=worker.endpoint,
+            )
+            for worker in self.workers
+        }
+        socket_to_worker_id = {
+            socket: worker_id
+            for worker_id, socket in worker_sockets.items()
+        }
+        worker_device_class = {
+            worker.worker_id: worker.device_class
+            for worker in self.workers
+        }
+        identity_device_class: dict[str, str] = {}
+        poller = zmq.Poller()
+        poller.register(ctl, zmq.POLLIN)
+        poller.register(frontend, zmq.POLLIN)
+        for socket in worker_sockets.values():
+            poller.register(socket, zmq.POLLIN)
+        worker_order = tuple(worker.worker_id for worker in self.workers)
+        next_worker_offset = 0
+        idle_worker_ids = set(worker_sockets)
+        queue: list[tuple[list[bytes], LikelihoodEvalRequest]] = []
+        inflight: dict[str, tuple[list[bytes], LikelihoodEvalRequest]] = {}
+        max_active_by_worker = {worker.worker_id: 0 for worker in self.workers}
+        max_active_pool = 0
+        self.ack_startup()
+        while True:
+            next_worker_offset = self._dispatch_queued(
+                queue=queue,
+                inflight=inflight,
+                idle_worker_ids=idle_worker_ids,
+                worker_sockets=worker_sockets,
+                worker_device_class=worker_device_class,
+                identity_device_class=identity_device_class,
+                max_active_by_worker=max_active_by_worker,
+                worker_order=worker_order,
+                next_worker_offset=next_worker_offset,
+            )
+            max_active_pool = max(max_active_pool, len(inflight))
+            socks = dict(poller.poll())
+            if ctl in socks:
+                if ctl.recv() == b"TERMINATE":
+                    break
+            if frontend in socks:
+                frames = frontend.recv_multipart()
+                route_frames = frames[:-1]
+                payload = unpickle_payload(frames[-1])
+                if isinstance(payload, LikelihoodEvalRequest):
+                    queue.append((route_frames, payload))
+                else:
+                    self._handle_control_message(
+                        frontend=frontend,
+                        route_frames=route_frames,
+                        payload=payload,
+                        queue=queue,
+                        inflight=inflight,
+                        worker_sockets=worker_sockets,
+                        worker_device_class=worker_device_class,
+                        idle_worker_ids=idle_worker_ids,
+                        socket_to_worker_id=socket_to_worker_id,
+                        poller=poller,
+                        identity_device_class=identity_device_class,
+                        max_active_by_worker=max_active_by_worker,
+                        max_active_pool=max_active_pool,
+                    )
+            for socket, worker_id in socket_to_worker_id.items():
+                if socket not in socks:
+                    continue
+                response = unpickle_payload(socket.recv())
+                route_frames, _ = inflight.pop(worker_id)
+                idle_worker_ids.add(worker_id)
+                frontend.send_multipart([*route_frames, pickle_payload(response)])
+
+    def _handle_control_message(
+            self,
+            *,
+            frontend,
+            route_frames: list[bytes],
+            payload: object,
+            queue: list[tuple[list[bytes], LikelihoodEvalRequest]],
+            inflight: dict[str, tuple[list[bytes], LikelihoodEvalRequest]],
+            worker_sockets: dict[str, zmq.Socket],
+            worker_device_class: dict[str, str],
+            idle_worker_ids: set[str],
+            socket_to_worker_id: dict[zmq.Socket, str],
+            poller: zmq.Poller,
+            identity_device_class: dict[str, str],
+            max_active_by_worker: dict[str, int],
+            max_active_pool: int,
+    ) -> None:
+        command = str(payload.get("command", "")) if isinstance(payload, dict) else ""
+        if command == "REGISTER":
+            registered_payload = payload["payload"]
+            worker_poller = zmq.Poller()
+            for socket in worker_sockets.values():
+                worker_poller.register(socket, zmq.POLLIN)
+            try:
+                for worker_id, socket in tuple(worker_sockets.items()):
+                    socket.send(pickle_payload(payload))
+                    if socket not in dict(worker_poller.poll(30000)):
+                        self._retire_worker_socket(
+                            worker_id=worker_id,
+                            socket=socket,
+                            worker_sockets=worker_sockets,
+                            worker_device_class=worker_device_class,
+                            idle_worker_ids=idle_worker_ids,
+                            socket_to_worker_id=socket_to_worker_id,
+                            poller=poller,
+                        )
+                        frontend.send_multipart([
+                            *route_frames,
+                            pickle_payload({
+                                "status": "failed",
+                                "error": (
+                                    "Timed out registering worker identity."
+                                ),
+                            }),
+                        ])
+                        return
+                    reply = unpickle_payload(socket.recv())
+                    if isinstance(reply, dict) and reply.get("status") != "ok":
+                        frontend.send_multipart([
+                            *route_frames,
+                            pickle_payload(reply),
+                        ])
+                        return
+            finally:
+                for socket in tuple(worker_sockets.values()):
+                    try:
+                        worker_poller.unregister(socket)
+                    except (KeyError, zmq.ZMQError):
+                        pass
+            identity_device_class[
+                registered_payload.identity.identity_digest
+            ] = registered_payload.identity.device_class
+            frontend.send_multipart([
+                *route_frames,
+                pickle_payload({"status": "ok"}),
+            ])
+        elif command == "DIAGNOSTICS":
+            diagnostics = _NodeCoordinatorActorDiagnostics(
+                node_id=self.node_id,
+                node_queue_length=len(queue),
+                max_active_evals_per_worker=dict(max_active_by_worker),
+                max_active_evals_pool=max_active_pool,
+            )
+            frontend.send_multipart([*route_frames, pickle_payload(diagnostics)])
+        else:
+            frontend.send_multipart([
+                *route_frames,
+                pickle_payload({
+                    "status": "failed",
+                    "error": f"Unknown node command {command!r}.",
+                }),
+            ])
+
+    @staticmethod
+    def _retire_worker_socket(
+            *,
+            worker_id: str,
+            socket: zmq.Socket,
+            worker_sockets: dict[str, zmq.Socket],
+            worker_device_class: dict[str, str],
+            idle_worker_ids: set[str],
+            socket_to_worker_id: dict[zmq.Socket, str],
+            poller: zmq.Poller,
+    ) -> None:
+        worker_sockets.pop(worker_id, None)
+        worker_device_class.pop(worker_id, None)
+        idle_worker_ids.discard(worker_id)
+        socket_to_worker_id.pop(socket, None)
+        try:
+            poller.unregister(socket)
+        except (KeyError, zmq.ZMQError):
+            pass
+        socket.close(linger=0)
+
+    @staticmethod
+    def _dispatch_queued(
+            *,
+            queue: list[tuple[list[bytes], LikelihoodEvalRequest]],
+            inflight: dict[str, tuple[list[bytes], LikelihoodEvalRequest]],
+            idle_worker_ids: set[str],
+            worker_sockets: dict[str, zmq.Socket],
+            worker_device_class: dict[str, str],
+            identity_device_class: dict[str, str],
+            max_active_by_worker: dict[str, int],
+            worker_order: tuple[str, ...],
+            next_worker_offset: int,
+    ) -> int:
+        queue_index = 0
+        while queue_index < len(queue) and idle_worker_ids:
+            route_frames, request = queue[queue_index]
+            requested_device_class = identity_device_class.get(
+                request.compile_identity_digest
+            )
+            selected_worker_id, next_worker_offset = (
+                NodeIngressCoordinatorActor._select_round_robin_worker(
+                    idle_worker_ids=idle_worker_ids,
+                    worker_sockets=worker_sockets,
+                    worker_device_class=worker_device_class,
+                    requested_device_class=requested_device_class,
+                    worker_order=worker_order,
+                    next_worker_offset=next_worker_offset,
+                )
+            )
+            if selected_worker_id is None:
+                queue_index += 1
+                continue
+            queue.pop(queue_index)
+            idle_worker_ids.remove(selected_worker_id)
+            inflight[selected_worker_id] = (route_frames, request)
+            max_active_by_worker[selected_worker_id] = max(
+                max_active_by_worker.get(selected_worker_id, 0),
+                1,
+            )
+            worker_sockets[selected_worker_id].send(pickle_payload(request))
+        return next_worker_offset
+
+    @staticmethod
+    def _select_round_robin_worker(
+            *,
+            idle_worker_ids: set[str],
+            worker_sockets: dict[str, zmq.Socket],
+            worker_device_class: dict[str, str],
+            requested_device_class: str | None,
+            worker_order: tuple[str, ...],
+            next_worker_offset: int,
+    ) -> tuple[str | None, int]:
+        """Choose a compatible idle worker using node-local round-robin.
+
+        Args:
+            idle_worker_ids: Worker ids with no active node-local request.
+            worker_sockets: Worker id to ZMQ socket map for live workers.
+            worker_device_class: Worker id to device class map.
+            requested_device_class: Required device class, if any.
+            worker_order: Stable node-local worker ordering.
+            next_worker_offset: Offset at which the next scan should begin.
+
+        Returns:
+            A `(worker_id, next_offset)` pair. `worker_id` is `None` when no
+            compatible idle worker exists; in that case `next_offset` is
+            unchanged.
+        """
+        # worker_order shape: (num_node_workers,).
+        worker_count = len(worker_order)
+        if worker_count == 0:
+            return None, next_worker_offset
+        scan_start = next_worker_offset % worker_count
+        for offset in range(worker_count):
+            worker_index = (scan_start + offset) % worker_count
+            worker_id = worker_order[worker_index]
+            if worker_id not in idle_worker_ids or worker_id not in worker_sockets:
+                continue
+            if (
+                    requested_device_class is not None
+                    and worker_device_class[worker_id] != requested_device_class
+            ):
+                continue
+            return worker_id, (worker_index + 1) % worker_count
+        return None, next_worker_offset
+
+
+class _LikelihoodTopologyClient:
+    """Thread-local ZMQ client for the local likelihood actor topology."""
+
+    def __init__(self, endpoint: str) -> None:
+        self.endpoint = str(endpoint)
+        self._context = zmq.Context.instance()
+        self._thread_local = threading.local()
+
+    def request(
+            self,
+            payload: object,
+            *,
+            timeout_ms: int | None = None,
+    ) -> object:
+        socket = self._socket()
+        socket.send(pickle_payload(payload))
+        poller = zmq.Poller()
+        poller.register(socket, zmq.POLLIN)
+        try:
+            poll_timeout_ms = -1 if timeout_ms is None else int(timeout_ms)
+            socks = dict(poller.poll(poll_timeout_ms))
+        finally:
+            poller.unregister(socket)
+        if socket not in socks:
+            self._reset_socket()
+            raise TimeoutError(
+                "Timed out waiting for likelihood topology response."
+            )
+        frames = socket.recv_multipart()
+        if not frames:
+            raise RuntimeError(
+                "Likelihood topology response did not contain a payload."
+            )
+        return unpickle_payload(frames[-1])
+
+    def close(self) -> None:
+        self._reset_socket()
+
+    def _socket(self) -> zmq.Socket:
+        socket = getattr(self._thread_local, "socket", None)
+        if socket is None:
+            socket = self._context.socket(zmq.DEALER)
+            socket.setsockopt(zmq.LINGER, 0)
+            socket.setsockopt_string(zmq.IDENTITY, f"client-{uuid.uuid4().hex}")
+            socket.connect(self.endpoint)
+            self._thread_local.socket = socket
+        return socket
+
+    def _reset_socket(self) -> None:
+        socket = getattr(self._thread_local, "socket", None)
+        if socket is None:
+            return
+        socket.close(linger=0)
+        self._thread_local.socket = None
+
+
 class LikelihoodEvalScheduler:
     """Capacity-one scheduler for local likelihood-eval workers."""
 
@@ -1126,10 +1853,27 @@ class LikelihoodEvalScheduler:
             self,
             *,
             requested_worker_specs: Iterable[str] = ("cpu:*:1",),
+            process_isolated: bool = True,
     ) -> None:
         self.requested_worker_specs = tuple(requested_worker_specs)
-        self._workers: dict[str, LikelihoodEvalWorker] = {}
+        self.process_isolated = bool(process_isolated)
+        self.node_id = _LOCAL_NODE_ID
+        self.node_ingress_endpoint = _random_ipc_endpoint("node-ingress")
+        self.load_balancer_endpoint = _random_ipc_endpoint("local-lb")
+        self._node_schedulable = True
+        self._node_ingress_stop_event = None
+        self._node_ingress_process = None
+        self._workers: dict[
+            str,
+            LikelihoodEvalWorker | ProcessIsolatedLikelihoodEvalWorker,
+        ] = {}
+        self._worker_device_classes: dict[str, str] = {}
+        self._worker_endpoints: dict[str, str] = {}
         self._worker_order: list[str] = []
+        self._load_balancer_process_manager: ProcessManager | None = None
+        self._node_process_manager: ProcessManager | None = None
+        self._topology_client: _LikelihoodTopologyClient | None = None
+        self._process_topology_endpoints: list[str] = []
         self._active_by_worker: dict[str, LikelihoodEvalDispatchRecord] = {}
         self._queue: list[LikelihoodEvalRequest] = []
         self._started_by_eval_key: dict[
@@ -1154,9 +1898,129 @@ class LikelihoodEvalScheduler:
         self._public_cache_hit_count = 0
         self._public_rejected_shape_cache_count = 0
         self._public_dispatch_latencies: list[float] = []
+        self._failed_eval_count_by_type: dict[str, int] = {}
+        self._registration_in_progress = False
+        self._shutdown_status = "active"
+        self._ipc_endpoint_cleanup_status = "active"
         self._lock = threading.RLock()
         self._condition = threading.Condition(self._lock)
-        self._build_workers()
+        try:
+            if self.process_isolated:
+                self._start_process_topology()
+            else:
+                self._build_workers()
+        except BaseException:
+            self.shutdown()
+            raise
+
+    def _start_node_ingress_process(self) -> None:
+        context = multiprocessing.get_context(_PROCESS_START_METHOD)
+        self._node_ingress_stop_event = context.Event()
+        self._node_ingress_process = context.Process(
+            target=_managed_actor_main,
+            args=(self._node_ingress_stop_event,),
+            name="jaxns-node-ingress",
+        )
+        self._node_ingress_process.start()
+
+    def _start_process_topology(self) -> None:
+        worker_infos = self._build_process_worker_infos()
+        lb_ctl_addr = create_random_control_address()
+        lb_ack_addr = create_random_ack_address()
+        node_ctl_addr = create_random_control_address()
+        node_ack_addr = create_random_ack_address()
+        self._process_topology_endpoints.extend((
+            self.load_balancer_endpoint,
+            self.node_ingress_endpoint,
+            lb_ctl_addr,
+            lb_ack_addr,
+            node_ctl_addr,
+            node_ack_addr,
+            *(worker.endpoint for worker in worker_infos),
+        ))
+        lb_actor = LocalLikelihoodLoadBalancerActor(
+            ctl_pub_addr=lb_ctl_addr,
+            ack_rep_addr=lb_ack_addr,
+            lb_endpoint=self.load_balancer_endpoint,
+            node_endpoint=self.node_ingress_endpoint,
+        )
+        worker_actors = [
+            LikelihoodWorkerActor(
+                ctl_pub_addr=node_ctl_addr,
+                ack_rep_addr=node_ack_addr,
+                worker_id=worker.worker_id,
+                device_class=worker.device_class,
+                worker_endpoint=worker.endpoint,
+            )
+            for worker in worker_infos
+        ]
+        node_actor = NodeIngressCoordinatorActor(
+            ctl_pub_addr=node_ctl_addr,
+            ack_rep_addr=node_ack_addr,
+            node_id=self.node_id,
+            node_endpoint=self.node_ingress_endpoint,
+            workers=worker_infos,
+        )
+        self._load_balancer_process_manager = ProcessManager(
+            actors=[lb_actor],
+            ctl_pub_addr=lb_ctl_addr,
+            ack_rep_addr=lb_ack_addr,
+            shutdown_timeout=1.0,
+            start_method=_PROCESS_START_METHOD,
+        )
+        try:
+            self._load_balancer_process_manager.start_all()
+        except SystemExit as error:
+            self._load_balancer_process_manager.stop_all()
+            raise RuntimeError(
+                "Local likelihood load-balancer actor failed to start."
+            ) from error
+        try:
+            self._node_process_manager = ProcessManager(
+                actors=[*worker_actors, node_actor],
+                ctl_pub_addr=node_ctl_addr,
+                ack_rep_addr=node_ack_addr,
+                shutdown_timeout=1.0,
+                start_method=_PROCESS_START_METHOD,
+            )
+            try:
+                self._node_process_manager.start_all()
+            except SystemExit as error:
+                self._node_process_manager.stop_all()
+                raise RuntimeError(
+                    "Local likelihood node actor tree failed to start."
+                ) from error
+            self._topology_client = _LikelihoodTopologyClient(
+                self.load_balancer_endpoint
+            )
+        except BaseException:
+            self._load_balancer_process_manager.stop_all()
+            raise
+
+    def _build_process_worker_infos(
+            self,
+    ) -> tuple[_LikelihoodWorkerActorInfo, ...]:
+        worker_infos: list[_LikelihoodWorkerActorInfo] = []
+        worker_index = 0
+        for spec_text in self.requested_worker_specs:
+            spec = parse_worker_spec(spec_text)
+            for _ in spec.device_ids:
+                for _ in range(spec.workers_per_device):
+                    worker_index += 1
+                    worker_id = f"worker-{worker_index:06d}"
+                    endpoint = _random_ipc_endpoint("worker")
+                    worker_info = _LikelihoodWorkerActorInfo(
+                        worker_id=worker_id,
+                        device_class=spec.device_type,
+                        endpoint=endpoint,
+                    )
+                    worker_infos.append(worker_info)
+                    self._worker_order.append(worker_id)
+                    self._worker_device_classes[worker_id] = spec.device_type
+                    self._worker_endpoints[worker_id] = endpoint
+                    self._max_active_by_worker[worker_id] = 0
+                    self._completed_eval_count_by_worker[worker_id] = 0
+        return tuple(worker_infos)
 
     def _build_workers(self) -> None:
         worker_index = 0
@@ -1166,11 +2030,23 @@ class LikelihoodEvalScheduler:
                 for _ in range(spec.workers_per_device):
                     worker_index += 1
                     worker_id = f"worker-{worker_index:06d}"
-                    worker = LikelihoodEvalWorker(
-                        worker_id=worker_id,
-                        device_class=spec.device_type,
-                    )
+                    if self.process_isolated:
+                        worker = ProcessIsolatedLikelihoodEvalWorker(
+                            worker_id=worker_id,
+                            device_class=spec.device_type,
+                        )
+                    else:
+                        worker = LikelihoodEvalWorker(
+                            worker_id=worker_id,
+                            device_class=spec.device_type,
+                        )
                     self._workers[worker_id] = worker
+                    self._worker_device_classes[worker_id] = spec.device_type
+                    self._worker_endpoints[worker_id] = getattr(
+                        worker,
+                        "ipc_endpoint",
+                        "",
+                    )
                     self._worker_order.append(worker_id)
                     self._max_active_by_worker[worker_id] = 0
                     self._completed_eval_count_by_worker[worker_id] = 0
@@ -1195,6 +2071,39 @@ class LikelihoodEvalScheduler:
             self,
             payload: _RegisteredLikelihoodIdentity,
     ) -> None:
+        with self._lock:
+            process_isolated = self.process_isolated
+        if process_isolated:
+            with self._condition:
+                self._registration_in_progress = True
+                while self._active_by_worker:
+                    self._condition.wait(timeout=0.1)
+            try:
+                response = self._request_process_topology(
+                    {
+                        "command": "REGISTER",
+                        "payload": _strip_registered_payload_for_process(
+                            payload
+                        ),
+                    },
+                    timeout_ms=30000,
+                )
+                if (
+                        not isinstance(response, dict)
+                        or response.get("status") != "ok"
+                ):
+                    raise RuntimeError(
+                        "Failed to register likelihood identity with process "
+                        f"topology: {response!r}."
+                    )
+                self._registered_identities[
+                    payload.identity.identity_digest
+                ] = payload
+                return
+            finally:
+                with self._condition:
+                    self._registration_in_progress = False
+                    self._condition.notify_all()
         with self._lock:
             self._registered_identities[
                 payload.identity.identity_digest
@@ -1268,10 +2177,15 @@ class LikelihoodEvalScheduler:
                     self._public_dispatch_latencies.append(
                         float(response.elapsed_seconds)
                     )
+                    response_worker_id = (
+                        str(response.worker_id)
+                        if response.worker_id
+                        else str(worker_id)
+                    )
                     if response.status == "ok":
-                        self._completed_eval_count_by_worker[worker_id] = (
+                        self._completed_eval_count_by_worker[response_worker_id] = (
                             self._completed_eval_count_by_worker.get(
-                                worker_id,
+                                response_worker_id,
                                 0,
                             )
                             + 1
@@ -1282,6 +2196,9 @@ class LikelihoodEvalScheduler:
                             self._public_cache_hit_count += 1
                     else:
                         self._worker_failed_eval_count += 1
+                        self._record_failed_eval_type_locked(
+                            response.error_type
+                        )
                         if _is_shape_cache_rejection(response.error_type):
                             self._public_rejected_shape_cache_count += 1
                 self._cancelled_eval_keys.discard(response_key)
@@ -1390,8 +2307,81 @@ class LikelihoodEvalScheduler:
     def worker_for_id(self, worker_id: str) -> LikelihoodEvalWorker:
         return self._workers[worker_id]
 
+    def evaluate_started_likelihood(
+            self,
+            record: LikelihoodEvalDispatchRecord,
+    ) -> LikelihoodEvalResponse:
+        request = record.request
+        if not self.process_isolated:
+            worker = self.worker_for_id(record.worker_id)
+            return worker.evaluate_likelihood(request)
+        start = time.perf_counter()
+        try:
+            response = self._request_process_topology(
+                request,
+                timeout_ms=None,
+            )
+        except Exception as error:
+            elapsed = _nonnegative_elapsed_seconds(
+                start,
+                time.perf_counter(),
+            )
+            return LikelihoodEvalResponse(
+                protocol_version=request.protocol_version,
+                runner_id=request.runner_id,
+                task_id=request.task_id,
+                attempt_id=request.attempt_id,
+                transport_id=request.transport_id,
+                compile_identity_digest=request.compile_identity_digest,
+                eval_id=request.eval_id,
+                status="failed",
+                log_L=None,
+                error_type=type(error).__name__,
+                error_message=str(error),
+                worker_id=record.worker_id,
+                cache_event="rejected",
+                elapsed_seconds=elapsed,
+            )
+        if not isinstance(response, LikelihoodEvalResponse):
+            elapsed = _nonnegative_elapsed_seconds(
+                start,
+                time.perf_counter(),
+            )
+            return LikelihoodEvalResponse(
+                protocol_version=request.protocol_version,
+                runner_id=request.runner_id,
+                task_id=request.task_id,
+                attempt_id=request.attempt_id,
+                transport_id=request.transport_id,
+                compile_identity_digest=request.compile_identity_digest,
+                eval_id=request.eval_id,
+                status="failed",
+                log_L=None,
+                error_type="MalformedTopologyResponse",
+                error_message=(
+                    "Likelihood topology returned a non-response payload "
+                    f"{type(response).__name__}."
+                ),
+                worker_id=record.worker_id,
+                cache_event="rejected",
+                elapsed_seconds=elapsed,
+            )
+        return response
+
+    def _request_process_topology(
+            self,
+            payload: object,
+            *,
+            timeout_ms: int | None = None,
+    ) -> object:
+        client = self._topology_client
+        if client is None:
+            raise RuntimeError("Process topology client is not initialized.")
+        return client.request(payload, timeout_ms=timeout_ms)
+
     def has_workers(self) -> bool:
-        return bool(self._workers)
+        with self._lock:
+            return bool(self._worker_order) and self._node_schedulable
 
     def _next_idle_worker_id(
             self,
@@ -1399,7 +2389,11 @@ class LikelihoodEvalScheduler:
             request: LikelihoodEvalRequest,
     ) -> str | None:
         worker_count = len(self._worker_order)
-        if worker_count == 0:
+        if (
+                worker_count == 0
+                or not self._node_schedulable
+                or self._registration_in_progress
+        ):
             return None
         for offset in range(worker_count):
             worker_index = (
@@ -1428,6 +2422,7 @@ class LikelihoodEvalScheduler:
             request=request,
             status="started",
             worker_id=worker_id,
+            node_id=self.node_id,
         )
         self._active_by_worker[worker_id] = record
         self._started_by_eval_key[_likelihood_scheduler_key(request)] = record
@@ -1473,8 +2468,10 @@ class LikelihoodEvalScheduler:
         )
         if payload is None:
             return True
-        worker = self._workers[worker_id]
-        return payload.identity.device_class == worker.device_class
+        return (
+            payload.identity.device_class
+            == self._worker_device_classes.get(worker_id)
+        )
 
     def _cancel_likelihood_eval_locked(
             self,
@@ -1512,15 +2509,25 @@ class LikelihoodEvalScheduler:
         )
         if not already_cancelled:
             self._scheduler_failed_eval_count += 1
+            self._record_failed_eval_type_locked(error_type)
             self._public_dispatch_latencies.append(elapsed)
         self._condition.notify_all()
         return response
+
+    def _record_failed_eval_type_locked(
+            self,
+            error_type: str | None,
+    ) -> None:
+        key = "UnknownFailure" if error_type is None else str(error_type)
+        self._failed_eval_count_by_type[key] = (
+            self._failed_eval_count_by_type.get(key, 0) + 1
+        )
 
     def likelihood_dispatch_diagnostics(
             self,
     ) -> LikelihoodDispatchDiagnostics:
         with self._lock:
-            worker_items = tuple(self._workers.items())
+            worker_ids = tuple(self._worker_order)
             max_active_by_worker = dict(self._max_active_by_worker)
             completed_eval_count_by_worker = dict(
                 self._completed_eval_count_by_worker
@@ -1536,18 +2543,40 @@ class LikelihoodEvalScheduler:
                 self._public_rejected_shape_cache_count
             )
             public_dispatch_latencies = tuple(self._public_dispatch_latencies)
+            failed_eval_count_by_type = dict(self._failed_eval_count_by_type)
+            load_balancer_queue_length = len(self._queue)
+            topology = self._topology_snapshot_locked(status=None)
+        node_queue_length = load_balancer_queue_length
+        node_actor_diagnostics = self._node_actor_diagnostics()
+        if node_actor_diagnostics is not None:
+            max_active_by_worker = dict(
+                node_actor_diagnostics.max_active_evals_per_worker
+            )
+            max_active_pool = int(
+                node_actor_diagnostics.max_active_evals_pool
+            )
+            node_queue_length = int(node_actor_diagnostics.node_queue_length)
         failed_eval_count = scheduler_failed_eval_count + worker_failed_eval_count
         latencies = public_dispatch_latencies
         device_classes = tuple(
-            sorted({worker.device_class for _, worker in worker_items})
+            sorted(
+                {
+                    self._worker_device_classes[worker_id]
+                    for worker_id in worker_ids
+                    if worker_id in self._worker_device_classes
+                }
+            )
         )
         completed_eval_count = sum(
             completed_eval_count_by_worker.values()
         )
         dispatch_eval_count = completed_eval_count + failed_eval_count
+        ipc_endpoint_cleanup_status = topology.ipc_endpoint_cleanup_status
+        if ipc_endpoint_cleanup_status == "active":
+            ipc_endpoint_cleanup_status = "clean"
         return _make_likelihood_diagnostics(
             requested_worker_specs=self.requested_worker_specs,
-            observed_worker_count=len(worker_items),
+            observed_worker_count=len(worker_ids),
             observed_worker_device_classes=device_classes,
             dispatch_latency_seconds=latencies,
             compile_count=compile_count,
@@ -1560,7 +2589,306 @@ class LikelihoodEvalScheduler:
             queued_eval_count=queued_eval_count,
             failed_eval_count=failed_eval_count,
             dispatch_eval_count=dispatch_eval_count,
+            observed_node_count=len(topology.nodes),
+            node_ingress_process_count=topology.node_ingress_process_count,
+            observed_worker_process_count=topology.worker_process_count,
+            worker_process_ids=tuple(
+                pid
+                for node in topology.nodes
+                for pid in node.worker_process_ids
+            ),
+            load_balancer_queue_length=load_balancer_queue_length,
+            node_queue_length=node_queue_length,
+            failed_eval_count_by_type=failed_eval_count_by_type,
+            process_start_method=_PROCESS_START_METHOD,
+            worker_shutdown_status=topology.worker_shutdown_status,
+            ipc_endpoint_cleanup_status=ipc_endpoint_cleanup_status,
         )
+
+    def _node_actor_diagnostics(self) -> _NodeCoordinatorActorDiagnostics | None:
+        if not self.process_isolated or self._topology_client is None:
+            return None
+        response = self._request_process_topology(
+            {"command": "DIAGNOSTICS"},
+            timeout_ms=5000,
+        )
+        if isinstance(response, _NodeCoordinatorActorDiagnostics):
+            return response
+        raise RuntimeError(
+            "Process topology returned malformed diagnostics "
+            f"{response!r}."
+        )
+
+    def process_topology_diagnostics(
+            self,
+            *,
+            load_balancer_process_id: int,
+            load_balancer_managed_actor: bool,
+            status: str | None = None,
+    ) -> ProcessTopologyDiagnostics:
+        with self._lock:
+            topology = self._topology_snapshot_locked(status=status)
+        return dataclasses.replace(
+            topology,
+            load_balancer_process_id=int(load_balancer_process_id),
+            load_balancer_managed_actor=bool(load_balancer_managed_actor),
+        )
+
+    def _topology_snapshot_locked(
+            self,
+            *,
+            status: str | None,
+    ) -> ProcessTopologyDiagnostics:
+        worker_pids_by_id = self._worker_process_ids_by_id()
+        worker_pids: list[int] = []
+        worker_endpoints: list[str] = []
+        live_worker_count = 0
+        for worker_id in self._worker_order:
+            process_id = int(worker_pids_by_id.get(worker_id, 0) or 0)
+            if process_id > 0:
+                worker_pids.append(process_id)
+                if _pid_is_alive(process_id):
+                    live_worker_count += 1
+            endpoint = self._worker_endpoints.get(worker_id)
+            if endpoint is not None:
+                worker_endpoints.append(str(endpoint))
+
+        node_ingress_process_id = self._node_ingress_process_id()
+        node_live = (
+            node_ingress_process_id > 0
+            and _pid_is_alive(node_ingress_process_id)
+            and self._node_schedulable
+        )
+        has_node = bool(worker_pids) or node_ingress_process_id > 0
+        node = NodeTopologyDiagnostics(
+            node_id=self.node_id,
+            node_ingress_process_id=node_ingress_process_id,
+            node_ingress_endpoint=self.node_ingress_endpoint,
+            worker_process_ids=tuple(worker_pids),
+            worker_endpoints=tuple(worker_endpoints),
+            node_queue_length=len(self._queue),
+            schedulable=bool(
+                self._node_schedulable
+                and node_live
+                and live_worker_count > 0
+            ),
+        )
+        nodes = (node,) if has_node else ()
+        routes = (
+            (
+                LoadBalancerRouteDiagnostics(
+                    route_kind="node_ingress",
+                    node_id=self.node_id,
+                    node_ingress_endpoint=self.node_ingress_endpoint,
+                ),
+            )
+            if has_node
+            else ()
+        )
+        schedulable_node_count = int(node.schedulable) if has_node else 0
+        schedulable_worker_process_count = (
+            live_worker_count if schedulable_node_count else 0
+        )
+        worker_shutdown_status = self._shutdown_status
+        if self._shutdown_status == "active":
+            worker_shutdown_status = "clean"
+        return ProcessTopologyDiagnostics(
+            status=status or self._shutdown_status,
+            topology_mode="process_isolated",
+            load_balancer_managed_actor=False,
+            load_balancer_process_id=0,
+            node_process_manager_count=int(has_node),
+            node_ingress_process_count=int(
+                node_ingress_process_id > 0 and node_live
+            ),
+            worker_process_count=len(worker_pids),
+            live_owned_worker_process_count=live_worker_count,
+            schedulable_node_count=schedulable_node_count,
+            schedulable_worker_process_count=schedulable_worker_process_count,
+            direct_worker_route_count=0,
+            load_balancer_routing_table=routes,
+            nodes=nodes,
+            process_start_method=_PROCESS_START_METHOD,
+            worker_shutdown_status=worker_shutdown_status,
+            ipc_endpoint_cleanup_status=self._ipc_endpoint_cleanup_status,
+        )
+
+    def _load_balancer_actor_process_id(self) -> int:
+        manager = self._load_balancer_process_manager
+        if manager is None:
+            return 0
+        for actor_proc in manager.actor_procs:
+            if isinstance(actor_proc.actor, LocalLikelihoodLoadBalancerActor):
+                return int(getattr(actor_proc.proc, "pid", 0) or 0)
+        return 0
+
+    def _node_ingress_process_id(self) -> int:
+        manager = self._node_process_manager
+        if manager is None:
+            return 0
+        for actor_proc in manager.actor_procs:
+            if isinstance(actor_proc.actor, NodeIngressCoordinatorActor):
+                return int(getattr(actor_proc.proc, "pid", 0) or 0)
+        return 0
+
+    def _worker_process_ids_by_id(self) -> dict[str, int]:
+        manager = self._node_process_manager
+        if manager is None:
+            return {
+                worker_id: int(getattr(worker, "process_id", 0) or 0)
+                for worker_id, worker in self._workers.items()
+            }
+        process_ids: dict[str, int] = {}
+        for actor_proc in manager.actor_procs:
+            actor = actor_proc.actor
+            if not isinstance(actor, LikelihoodWorkerActor):
+                continue
+            process_ids[actor.worker_id] = int(
+                getattr(actor_proc.proc, "pid", 0) or 0
+            )
+        return process_ids
+
+    def terminate_node_ingress_for_testing(
+            self,
+            *,
+            node_id: str,
+    ) -> NodeIngressTerminationDiagnostics:
+        if str(node_id) != self.node_id:
+            return NodeIngressTerminationDiagnostics(
+                status="unknown",
+                node_id=str(node_id),
+                retired_inflight_eval_ids=(),
+                failed_likelihood_responses=(),
+                node_failure_error_type="UnknownNode",
+                node_failure_error_message=f"Unknown node {node_id!r}.",
+                node_failure_traceback="",
+                retry_status="not_retried_no_capacity",
+            )
+
+        with self._condition:
+            self._node_schedulable = False
+            active_records = tuple(self._active_by_worker.values())
+            self._active_by_worker.clear()
+            for record in active_records:
+                key = _likelihood_scheduler_key(record.request)
+                self._started_by_eval_key.pop(key, None)
+                self._cancelled_eval_keys.add(key)
+            self._queue.clear()
+            failed_responses = tuple(
+                self._node_lost_response_locked(record.request)
+                for record in active_records
+            )
+            self._condition.notify_all()
+
+        self._shutdown_node_ingress_process()
+        self._shutdown_workers()
+        return NodeIngressTerminationDiagnostics(
+            status="node_lost",
+            node_id=self.node_id,
+            retired_inflight_eval_ids=tuple(
+                record.request.eval_id
+                for record in active_records
+            ),
+            failed_likelihood_responses=failed_responses,
+            node_failure_error_type="NodeIngressLost",
+            node_failure_error_message=(
+                "Node ingress process was terminated for testing."
+            ),
+            node_failure_traceback="".join(traceback.format_stack(limit=8)),
+            retry_status="not_retried_no_capacity",
+        )
+
+    def _node_lost_response_locked(
+            self,
+            request: LikelihoodEvalRequest,
+    ) -> LikelihoodEvalResponse:
+        self._scheduler_failed_eval_count += 1
+        self._record_failed_eval_type_locked("NodeIngressLost")
+        response = LikelihoodEvalResponse(
+            protocol_version=request.protocol_version,
+            runner_id=request.runner_id,
+            task_id=request.task_id,
+            attempt_id=request.attempt_id,
+            transport_id=request.transport_id,
+            compile_identity_digest=request.compile_identity_digest,
+            eval_id=request.eval_id,
+            status="failed",
+            log_L=None,
+            error_type="NodeIngressLost",
+            error_message="Node ingress process was lost.",
+            worker_id="",
+            cache_event="rejected",
+            elapsed_seconds=0.0,
+        )
+        self._public_dispatch_latencies.append(0.0)
+        return response
+
+    def shutdown(self) -> None:
+        with self._condition:
+            if self._shutdown_status in {"shutdown", "clean"}:
+                return
+            self._node_schedulable = False
+            self._queue.clear()
+            self._condition.notify_all()
+        self._shutdown_process_managers()
+        self._shutdown_status = "shutdown"
+        self._ipc_endpoint_cleanup_status = _remove_ipc_endpoint_files(
+            self._process_topology_endpoints
+        )
+
+    def _shutdown_node_ingress_process(self) -> None:
+        if self.process_isolated:
+            self._shutdown_process_managers()
+            self._ipc_endpoint_cleanup_status = _remove_ipc_endpoint_files(
+                self._process_topology_endpoints
+            )
+            return
+        process = self._node_ingress_process
+        if process is None:
+            return
+        if self._node_ingress_stop_event is not None:
+            self._node_ingress_stop_event.set()
+        process.join(timeout=5.0)
+        if process.is_alive():
+            process.terminate()
+            process.join(timeout=5.0)
+
+    def _shutdown_workers(self) -> None:
+        if self.process_isolated:
+            return
+        for worker in tuple(self._workers.values()):
+            shutdown = getattr(worker, "shutdown", None)
+            if callable(shutdown):
+                shutdown()
+
+    def _shutdown_process_managers(self) -> None:
+        client = self._topology_client
+        if client is not None:
+            client.close()
+            self._topology_client = None
+        for manager in (
+                self._node_process_manager,
+                self._load_balancer_process_manager,
+        ):
+            if manager is None:
+                continue
+            self._stop_process_manager(manager)
+            manager.close()
+        self._node_process_manager = None
+        self._load_balancer_process_manager = None
+
+    @staticmethod
+    def _stop_process_manager(manager: ProcessManager) -> None:
+        if manager.ctl is not None:
+            manager.ctl.send(b"TERMINATE")
+        manager.wait_all(timeout=2.0, stop_all_on_exception=True)
+        if any(
+                actor_proc.proc.is_alive()
+                for actor_proc in manager.actor_procs
+        ):
+            manager.stop_all()
+        else:
+            manager.stopped = True
 
     def get_diagnostics(self) -> LikelihoodDispatchDiagnostics:
         return self.likelihood_dispatch_diagnostics()
@@ -1653,6 +2981,18 @@ def _is_shape_cache_rejection(error_type: str | None) -> bool:
     }
 
 
+def _pid_is_alive(pid: int) -> bool:
+    if int(pid) <= 0:
+        return False
+    try:
+        os.kill(int(pid), 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
 def _make_likelihood_diagnostics(
         *,
         requested_worker_specs: tuple[str, ...],
@@ -1670,6 +3010,16 @@ def _make_likelihood_diagnostics(
         queued_eval_count: int = 0,
         failed_eval_count: int = 0,
         dispatch_eval_count: int | None = None,
+        observed_node_count: int = 0,
+        node_ingress_process_count: int = 0,
+        observed_worker_process_count: int = 0,
+        worker_process_ids: tuple[int, ...] = (),
+        load_balancer_queue_length: int = 0,
+        node_queue_length: int = 0,
+        failed_eval_count_by_type: object | None = None,
+        process_start_method: str = "",
+        worker_shutdown_status: str = "",
+        ipc_endpoint_cleanup_status: str = "",
 ) -> LikelihoodDispatchDiagnostics:
     if dispatch_eval_count is None:
         dispatch_eval_count = len(dispatch_latency_seconds)
@@ -1698,6 +3048,19 @@ def _make_likelihood_diagnostics(
         likelihood_eval_records=tuple(likelihood_eval_records),
         queued_eval_count=int(queued_eval_count),
         failed_eval_count=int(failed_eval_count),
+        observed_node_count=int(observed_node_count),
+        node_ingress_process_count=int(node_ingress_process_count),
+        observed_worker_process_count=int(observed_worker_process_count),
+        worker_process_ids=tuple(int(pid) for pid in worker_process_ids),
+        load_balancer_queue_length=int(load_balancer_queue_length),
+        node_queue_length=int(node_queue_length),
+        failed_eval_count_by_type=(
+            {} if failed_eval_count_by_type is None
+            else failed_eval_count_by_type
+        ),
+        process_start_method=str(process_start_method),
+        worker_shutdown_status=str(worker_shutdown_status),
+        ipc_endpoint_cleanup_status=str(ipc_endpoint_cleanup_status),
     )
 
 
@@ -1754,6 +3117,25 @@ class LocalLoadBalancerState:
         repr=False,
         compare=False,
     )
+    _likelihood_schedulers: dict[str, LikelihoodEvalScheduler] = (
+        dataclasses.field(default_factory=dict, repr=False, compare=False)
+    )
+    _likelihood_scheduler_generations: dict[str, int] = (
+        dataclasses.field(default_factory=dict, repr=False, compare=False)
+    )
+    _managed_actor_stop_event: object | None = dataclasses.field(
+        default=None,
+        repr=False,
+        compare=False,
+    )
+    _managed_actor_process: object | None = dataclasses.field(
+        default=None,
+        repr=False,
+        compare=False,
+    )
+    _last_process_topology_diagnostics: ProcessTopologyDiagnostics | None = (
+        dataclasses.field(default=None, repr=False, compare=False)
+    )
     shutdown_event: threading.Event = dataclasses.field(
         default_factory=threading.Event,
         repr=False,
@@ -1773,6 +3155,16 @@ class LocalLoadBalancerState:
     def __post_init__(self) -> None:
         self._shutdown_condition = threading.Condition(self._lock)
 
+    def _start_managed_actor_process(self) -> None:
+        context = multiprocessing.get_context(_PROCESS_START_METHOD)
+        self._managed_actor_stop_event = context.Event()
+        self._managed_actor_process = context.Process(
+            target=_managed_actor_main,
+            args=(self._managed_actor_stop_event,),
+            name="jaxns-local-load-balancer",
+        )
+        self._managed_actor_process.start()
+
     def allocate_client_id(self) -> str:
         with self._lock:
             self._client_counter += 1
@@ -1783,10 +3175,12 @@ class LocalLoadBalancerState:
     def unregister_client_id(self, client_id: str) -> bool:
         with self._shutdown_condition:
             self.unregister_compute_sectors_for_client(client_id)
+            self._shutdown_likelihood_scheduler_for_key(client_id)
             self._active_client_ids.discard(client_id)
             no_active_clients = len(self._active_client_ids) == 0
             if no_active_clients:
                 self.clear_worker_runtime_cache()
+                self.shutdown_process_topology()
             self._shutdown_condition.notify_all()
             return no_active_clients
 
@@ -1911,13 +3305,19 @@ class LocalLoadBalancerState:
                 sector_id=sector.sector_id,
             )
 
-    def worker_device_types(self) -> tuple[str, ...]:
+    def worker_device_types(
+            self,
+            client_id: str | None = None,
+    ) -> tuple[str, ...]:
         with self._lock:
+            _, requested_specs = self._scheduler_key_and_specs_locked(
+                client_id
+            )
             return tuple(
                 sorted(
                     {
-                        sector.device_type
-                        for sector in self.compute_sectors.values()
+                        parse_worker_spec(spec).device_type
+                        for spec in requested_specs
                     }
                 )
             )
@@ -1946,47 +3346,111 @@ class LocalLoadBalancerState:
             )
         return tuple(specs)
 
-    def likelihood_worker_spec_strings(self) -> tuple[str, ...]:
+    def likelihood_worker_spec_strings(
+            self,
+            client_id: str | None = None,
+    ) -> tuple[str, ...]:
         with self._lock:
-            return self._likelihood_worker_spec_strings_locked()
+            _, requested_specs = self._scheduler_key_and_specs_locked(
+                client_id
+            )
+            return requested_specs
 
-    def _likelihood_worker_spec_strings_locked(self) -> tuple[str, ...]:
+    def _likelihood_worker_spec_strings_locked(
+            self,
+            client_id: str | None = None,
+    ) -> tuple[str, ...]:
+        sector_ids = (
+            self._sector_ids_by_client_id.get(str(client_id), ())
+            if client_id is not None
+            else ()
+        )
+        if sector_ids:
+            sectors = tuple(
+                self.compute_sectors[sector_id]
+                for sector_id in sector_ids
+                if sector_id in self.compute_sectors
+            )
+        else:
+            sectors = tuple(self.compute_sectors.values())
         return tuple(
             (
                 f"{sector.device_type}:"
                 f"{sector.device_id}:"
                 f"{sector.num_workers}"
             )
-            for sector in self.compute_sectors.values()
+            for sector in sectors
         )
 
-    def likelihood_scheduler_signature(self) -> tuple[tuple[str, ...], int]:
+    def _scheduler_key_and_specs_locked(
+            self,
+            client_id: str | None,
+    ) -> tuple[str, tuple[str, ...]]:
+        if client_id is not None:
+            client_id = str(client_id)
+            requested_specs = self._likelihood_worker_spec_strings_locked(
+                client_id
+            )
+            if client_id in self._active_client_ids and requested_specs:
+                return client_id, requested_specs
+        for active_client_id in sorted(self._active_client_ids):
+            requested_specs = self._likelihood_worker_spec_strings_locked(
+                active_client_id
+            )
+            if requested_specs:
+                return active_client_id, requested_specs
+        return "__local_empty__", self._likelihood_worker_spec_strings_locked()
+
+    def likelihood_scheduler_signature(
+            self,
+            client_id: str | None = None,
+    ) -> tuple[tuple[str, ...], int]:
         with self._lock:
+            scheduler_key, requested_specs = self._scheduler_key_and_specs_locked(
+                client_id
+            )
             return (
-                self._likelihood_worker_spec_strings_locked(),
-                self._likelihood_scheduler_generation,
+                requested_specs,
+                self._likelihood_scheduler_generations.get(scheduler_key, 0),
             )
 
-    def likelihood_scheduler_generation(self) -> int:
+    def likelihood_scheduler_generation(
+            self,
+            client_id: str | None = None,
+    ) -> int:
         with self._lock:
-            return self._likelihood_scheduler_generation
+            scheduler_key, _ = self._scheduler_key_and_specs_locked(client_id)
+            return self._likelihood_scheduler_generations.get(scheduler_key, 0)
 
-    def likelihood_eval_scheduler(self) -> LikelihoodEvalScheduler:
+    def likelihood_eval_scheduler(
+            self,
+            client_id: str | None = None,
+    ) -> LikelihoodEvalScheduler:
         with self._lock:
-            requested_specs = self._likelihood_worker_spec_strings_locked()
-            scheduler = self._likelihood_scheduler
+            scheduler_key, requested_specs = self._scheduler_key_and_specs_locked(
+                client_id
+            )
+            scheduler = self._likelihood_schedulers.get(scheduler_key)
             if (
                     scheduler is not None
                     and scheduler.requested_worker_specs == requested_specs
             ):
                 return scheduler
+            if scheduler is not None:
+                scheduler.shutdown()
             identity_payloads = tuple(
                 self._likelihood_identity_payloads.values()
             )
             scheduler = LikelihoodEvalScheduler(
                 requested_worker_specs=requested_specs,
+                process_isolated=True,
             )
+            self._likelihood_schedulers[scheduler_key] = scheduler
             self._likelihood_scheduler = scheduler
+            self._likelihood_scheduler_generations[scheduler_key] = (
+                self._likelihood_scheduler_generations.get(scheduler_key, 0)
+                + 1
+            )
             self._likelihood_scheduler_generation += 1
         for payload in identity_payloads:
             scheduler._register_likelihood_identity_payload(payload)
@@ -2021,14 +3485,144 @@ class LocalLoadBalancerState:
             self._likelihood_identity_payloads[
                 identity.identity_digest
             ] = payload
-            scheduler = self._likelihood_scheduler
-        if scheduler is not None:
+            schedulers = tuple(self._likelihood_schedulers.values())
+        for scheduler in schedulers:
             scheduler._register_likelihood_identity_payload(payload)
 
     def likelihood_dispatch_diagnostics(
             self,
+            client_id: str | None = None,
     ) -> LikelihoodDispatchDiagnostics:
-        return self.likelihood_eval_scheduler().likelihood_dispatch_diagnostics()
+        return (
+            self.likelihood_eval_scheduler(client_id)
+            .likelihood_dispatch_diagnostics()
+        )
+
+    def process_topology_diagnostics(
+            self,
+            *,
+            client_id: str | None = None,
+            status: str | None = None,
+    ) -> ProcessTopologyDiagnostics:
+        scheduler = self.likelihood_eval_scheduler(client_id)
+        topology = scheduler.process_topology_diagnostics(
+            load_balancer_process_id=scheduler._load_balancer_actor_process_id(),
+            load_balancer_managed_actor=True,
+            status=status,
+        )
+        with self._lock:
+            self._last_process_topology_diagnostics = topology
+        return topology
+
+    def load_balancer_process_id(self) -> int:
+        process = self._managed_actor_process
+        return int(getattr(process, "pid", 0) or 0)
+
+    def shutdown_process_topology(self) -> None:
+        schedulers = tuple(self._likelihood_schedulers.values())
+        if self._likelihood_scheduler is not None:
+            schedulers = tuple(
+                dict.fromkeys((*schedulers, self._likelihood_scheduler))
+            )
+        for scheduler in schedulers:
+            scheduler.shutdown()
+            topology = scheduler.process_topology_diagnostics(
+                load_balancer_process_id=scheduler._load_balancer_actor_process_id(),
+                load_balancer_managed_actor=True,
+                status="shutdown",
+            )
+            self._last_process_topology_diagnostics = topology
+        self._likelihood_schedulers.clear()
+        self._likelihood_scheduler_generations.clear()
+        self._likelihood_scheduler = None
+        self._likelihood_scheduler_generation += 1
+        self._shutdown_managed_actor_process()
+
+    def _shutdown_likelihood_scheduler_for_key(self, scheduler_key: str) -> None:
+        scheduler = self._likelihood_schedulers.pop(scheduler_key, None)
+        if scheduler is None:
+            return
+        scheduler.shutdown()
+        self._last_process_topology_diagnostics = (
+            scheduler.process_topology_diagnostics(
+                load_balancer_process_id=scheduler._load_balancer_actor_process_id(),
+                load_balancer_managed_actor=True,
+                status="shutdown",
+            )
+        )
+        self._likelihood_scheduler_generations[scheduler_key] = (
+            self._likelihood_scheduler_generations.get(scheduler_key, 0) + 1
+        )
+        if self._likelihood_scheduler is scheduler:
+            self._likelihood_scheduler = None
+
+    def _shutdown_managed_actor_process(self) -> None:
+        process = self._managed_actor_process
+        if process is None:
+            return
+        if self._managed_actor_stop_event is not None:
+            self._managed_actor_stop_event.set()
+        process.join(timeout=5.0)
+        if process.is_alive():
+            process.terminate()
+            process.join(timeout=5.0)
+
+    def last_process_topology_diagnostics(
+            self,
+    ) -> ProcessTopologyDiagnostics | None:
+        with self._lock:
+            return self._last_process_topology_diagnostics
+
+    def start_likelihood_eval_for_testing(
+            self,
+            *,
+            request: LikelihoodEvalRequest,
+            client_id: str | None = None,
+    ) -> LikelihoodEvalDispatchRecord:
+        return self.likelihood_eval_scheduler(client_id).start_likelihood_eval(
+            request=request,
+        )
+
+    def cancel_likelihood_eval_for_testing(
+            self,
+            *,
+            request: LikelihoodEvalRequest,
+            error_type: str = "LikelihoodEvalTimeout",
+            error_message: str = (
+                "Timed out waiting for node worker capacity."
+            ),
+            client_id: str | None = None,
+    ) -> LikelihoodEvalResponse:
+        return self.likelihood_eval_scheduler(client_id).cancel_likelihood_eval(
+            request=request,
+            error_type=error_type,
+            error_message=error_message,
+        )
+
+    def terminate_node_ingress_for_testing(
+            self,
+            *,
+            node_id: str,
+            client_id: str | None = None,
+    ) -> NodeIngressTerminationDiagnostics:
+        failure = (
+            self.likelihood_eval_scheduler(client_id)
+            .terminate_node_ingress_for_testing(node_id=node_id)
+        )
+        topology = self.likelihood_eval_scheduler(
+            client_id
+        ).process_topology_diagnostics(
+            load_balancer_process_id=(
+                self.likelihood_eval_scheduler(
+                    client_id
+                )._load_balancer_actor_process_id()
+            ),
+            load_balancer_managed_actor=True,
+            status="node_lost",
+        )
+        with self._lock:
+            self._last_process_topology_diagnostics = topology
+        return failure
 
     def worker_runtime_payload(
             self,
@@ -2198,7 +3792,7 @@ def _u_for_dtype_policy(value: object, dtype_policy: str) -> object:
     def coerce_leaf(leaf):
         array = np.asarray(leaf)
         if np.issubdtype(array.dtype, np.floating):
-            return array.astype(np.float32)
+            return array.astype(np.float32, copy=False)
         return leaf
 
     return jax.tree.map(coerce_leaf, value)
@@ -2453,9 +4047,17 @@ class RuntimeNestedSampler(NestedSampler):
     coordinator_dispatch_records: list[object] = (
         dataclasses.field(default_factory=list, repr=False)
     )
+    core_boundary_records: list[RuntimeCoreBoundaryRecord] = (
+        dataclasses.field(default_factory=list, repr=False)
+    )
     runtime_dispatch_trace: object | None = dataclasses.field(
         default=None,
         repr=False,
+    )
+    _active_core_parent_work_ids: tuple[int, ...] = dataclasses.field(
+        default_factory=tuple,
+        repr=False,
+        compare=False,
     )
     _runtime_terminal_dispatch_status: dict[
         tuple[str, str, str],
@@ -2504,6 +4106,37 @@ class RuntimeNestedSampler(NestedSampler):
         ):
             self._ensure_current_runtime_compile_identity()
             self._ensure_likelihood_scheduler()
+
+    def _set_active_core_work_batch(self, work_batch: CoreWorkBatch) -> None:
+        valid_mask = np.asarray(work_batch.valid_mask, dtype=bool)
+        parent_work_ids = np.asarray(work_batch.parent_work_id)
+        self._active_core_parent_work_ids = tuple(
+            int(value)
+            for value in parent_work_ids[valid_mask]
+        )
+
+    def _clear_active_core_work_batch(self) -> None:
+        self._active_core_parent_work_ids = ()
+
+    def _core_parent_work_id_for_work_index(self, work_idx: int) -> int:
+        if 0 <= int(work_idx) < len(self._active_core_parent_work_ids):
+            return self._active_core_parent_work_ids[int(work_idx)]
+        return int(work_idx)
+
+    def _record_core_boundary(
+            self,
+            *,
+            work_batch: CoreWorkBatch,
+            result_batch: CoreResultBatch,
+    ) -> None:
+        _, runner_identity, _ = self._require_runtime_context()
+        self.core_boundary_records.append(
+            RuntimeCoreBoundaryRecord(
+                runner_id=runner_identity.runner_id,
+                work=work_batch,
+                result=result_batch,
+            )
+        )
 
     def run_until_goal(
             self,
@@ -2692,9 +4325,10 @@ class RuntimeNestedSampler(NestedSampler):
                         float(constraint),
                         side="right",
                     )
-                )
+            )
 
             candidate_count = num_samples - first_seed_offset
+            parent_work_id = self._core_parent_work_id_for_work_index(work_idx)
             seed_choice = jax.random.randint(
                 seed_key,
                 (),
@@ -2713,6 +4347,7 @@ class RuntimeNestedSampler(NestedSampler):
             requested_parent_idx = int(parent_work.parent_idxs[work_idx])
             effective_parent_idx = -1 if no_seed else requested_parent_idx
             dispatch_record = self.prepare_runtime_dispatch(
+                parent_work_id=parent_work_id,
                 requested_parent_idx=requested_parent_idx,
                 effective_parent_idx=effective_parent_idx,
                 accepted_parent_idx=effective_parent_idx,
@@ -2727,6 +4362,7 @@ class RuntimeNestedSampler(NestedSampler):
                     "constraint": constraint,
                     "seed_point": seed_point,
                     "requested_parent_idx": requested_parent_idx,
+                    "parent_work_id": parent_work_id,
                     "effective_parent_idx": effective_parent_idx,
                     "target_block_idx": int(
                         parent_work.target_block_idxs[work_idx]
@@ -2894,11 +4530,15 @@ class RuntimeNestedSampler(NestedSampler):
             requested_parent_idx: int,
             effective_parent_idx: int,
             accepted_parent_idx: int,
+            parent_work_id: int | None = None,
             adaptation_context=None,
     ):
         self._require_runtime_context()
+        if parent_work_id is None:
+            parent_work_id = accepted_parent_idx
         accepted_log_l = float(log_L_constraint)
         dispatch_record = self.prepare_runtime_dispatch(
+            parent_work_id=int(parent_work_id),
             requested_parent_idx=int(requested_parent_idx),
             effective_parent_idx=int(effective_parent_idx),
             accepted_parent_idx=int(accepted_parent_idx),
@@ -2994,18 +4634,40 @@ class RuntimeNestedSampler(NestedSampler):
         transport_id = str(
             self._dispatch_record_field(dispatch_record, "transport_id")
         )
+        _, runner_identity, _ = self._require_runtime_context()
+        identity = self._ensure_current_runtime_compile_identity()
+        scheduler = self._ensure_likelihood_scheduler()
+        router = self.runtime_likelihood_router
+        runner_id = runner_identity.runner_id
+        identity_digest = identity.identity_digest
+        dtype_policy = identity.dtype_policy
+        U_shape_tree = identity.U_shape_tree
         eval_counter = 0
 
         def log_likelihood_fn(U):
             nonlocal eval_counter
             eval_counter += 1
-            response = self.dispatch_likelihood_eval(
-                U=U,
+            request_U = _u_for_dtype_policy(U, dtype_policy)
+            request = LikelihoodEvalRequest(
+                protocol_version=1,
+                runner_id=runner_id,
                 task_id=task_id,
                 attempt_id=attempt_id,
                 transport_id=transport_id,
+                compile_identity_digest=identity_digest,
                 eval_id=f"{transport_id}-eval-{eval_counter:06d}",
+                U_bytes=pickle_payload(request_U),
+                U_shape_tree=U_shape_tree,
+                requested_dtype_policy=dtype_policy,
+                deadline_ms=None,
             )
+            router.register_pending(request)
+            response = self._dispatch_likelihood_eval_with_scheduler(
+                request=request,
+                scheduler=scheduler,
+                deadline_ms=None,
+            )
+            router.route_eval_response(response)
             if response.status != "ok":
                 raise RuntimeError(
                     "Dispatched likelihood evaluation failed: "
@@ -3034,6 +4696,7 @@ class RuntimeNestedSampler(NestedSampler):
             requested_parent_idx: int,
             effective_parent_idx: int,
             accepted_parent_idx: int,
+            parent_work_id: int | None = None,
             effective_log_L_constraint: float,
             accepted_log_L_constraint: float,
             seed_id: str | None,
@@ -3052,6 +4715,8 @@ class RuntimeNestedSampler(NestedSampler):
             attempt_identity.attempt_id
         )
         assignment = lb_state.allocate_worker_assignment()
+        if parent_work_id is None:
+            parent_work_id = accepted_parent_idx
         metadata = _LifecycleRecordMetadata(
             runner_id=runner_identity.runner_id,
             task_id=task_identity.task_id,
@@ -3059,6 +4724,7 @@ class RuntimeNestedSampler(NestedSampler):
             transport_id=transport_identity.transport_id,
             attempt_number=attempt_identity.attempt_number,
             delivery_number=transport_identity.delivery_number,
+            parent_work_id=int(parent_work_id),
             requested_parent_idx=int(requested_parent_idx),
             effective_parent_idx=int(effective_parent_idx),
             accepted_parent_idx=int(accepted_parent_idx),
@@ -3243,7 +4909,7 @@ class RuntimeNestedSampler(NestedSampler):
     def _ensure_current_runtime_compile_identity(
             self,
     ) -> RuntimeCompileIdentity:
-        lb_state, _, problem_payload = self._require_runtime_context()
+        lb_state, runner_identity, problem_payload = self._require_runtime_context()
         previous_identity = self.runtime_compile_identity
         previous_device_class = (
             None
@@ -3251,7 +4917,7 @@ class RuntimeNestedSampler(NestedSampler):
             else previous_identity.device_class
         )
         current_device_class = _device_class_from_worker_device_types(
-            lb_state.worker_device_types(),
+            lb_state.worker_device_types(runner_identity.client_id),
             previous_device_class=previous_device_class,
         )
         if (
@@ -3275,10 +4941,10 @@ class RuntimeNestedSampler(NestedSampler):
         return self.runtime_sampler_bytes
 
     def _ensure_likelihood_scheduler(self) -> LikelihoodEvalScheduler:
-        lb_state, _, problem_payload = self._require_runtime_context()
+        lb_state, runner_identity, problem_payload = self._require_runtime_context()
         identity = self._ensure_current_runtime_compile_identity()
         requested_specs, scheduler_generation = (
-            lb_state.likelihood_scheduler_signature()
+            lb_state.likelihood_scheduler_signature(runner_identity.client_id)
         )
         if (
                 self._runtime_likelihood_scheduler is not None
@@ -3304,13 +4970,13 @@ class RuntimeNestedSampler(NestedSampler):
             self._runtime_registered_likelihood_identity_digest = (
                 identity.identity_digest
             )
-        scheduler = lb_state.likelihood_eval_scheduler()
+        scheduler = lb_state.likelihood_eval_scheduler(runner_identity.client_id)
         self._runtime_likelihood_scheduler = scheduler
         self._runtime_likelihood_scheduler_specs = (
             scheduler.requested_worker_specs
         )
         self._runtime_likelihood_scheduler_generation = (
-            lb_state.likelihood_scheduler_generation()
+            lb_state.likelihood_scheduler_generation(runner_identity.client_id)
         )
         return scheduler
 
@@ -3388,6 +5054,21 @@ class RuntimeNestedSampler(NestedSampler):
         )
         scheduler = self._ensure_likelihood_scheduler()
         self.runtime_likelihood_router.register_pending(request)
+        response = self._dispatch_likelihood_eval_with_scheduler(
+            request=request,
+            scheduler=scheduler,
+            deadline_ms=deadline_ms,
+        )
+        self.runtime_likelihood_router.route_eval_response(response)
+        return response
+
+    def _dispatch_likelihood_eval_with_scheduler(
+            self,
+            *,
+            request: LikelihoodEvalRequest,
+            scheduler: LikelihoodEvalScheduler,
+            deadline_ms: int | None,
+    ) -> LikelihoodEvalResponse:
         record = scheduler.start_likelihood_eval(request=request)
         if not record.worker_id:
             if not scheduler.has_workers():
@@ -3408,20 +5089,15 @@ class RuntimeNestedSampler(NestedSampler):
                         "evaluation to start."
                     ),
                 )
-            )
-            if isinstance(start_or_cancel, LikelihoodEvalResponse):
-                self.runtime_likelihood_router.route_eval_response(
-                    start_or_cancel
                 )
+            if isinstance(start_or_cancel, LikelihoodEvalResponse):
                 return start_or_cancel
             record = start_or_cancel
-        worker = scheduler.worker_for_id(record.worker_id)
-        response = worker.evaluate_likelihood(request)
+        response = scheduler.evaluate_started_likelihood(record)
         scheduler.complete_likelihood_eval(
             worker_id=record.worker_id,
             response=response,
         )
-        self.runtime_likelihood_router.route_eval_response(response)
         return response
 
     def evaluate_likelihood_via_dispatch(
@@ -3515,6 +5191,7 @@ class RuntimeNestedSampler(NestedSampler):
             transport_id=metadata.transport_id,
             attempt_number=metadata.attempt_number,
             delivery_number=metadata.delivery_number,
+            parent_work_id=metadata.parent_work_id,
             requested_parent_idx=metadata.requested_parent_idx,
             effective_parent_idx=metadata.effective_parent_idx,
             accepted_parent_idx=metadata.accepted_parent_idx,
@@ -3605,6 +5282,16 @@ class RuntimeNestedSampler(NestedSampler):
             ),
             delivery_number=int(
                 self._dispatch_record_field(record, "delivery_number")
+            ),
+            parent_work_id=int(
+                self._optional_dispatch_record_field(
+                    record,
+                    "parent_work_id",
+                    default=self._dispatch_record_field(
+                        record,
+                        "accepted_parent_idx",
+                    ),
+                )
             ),
             requested_parent_idx=int(
                 self._dispatch_record_field(record, "requested_parent_idx")
@@ -3918,12 +5605,60 @@ class LoadBalancerClient:
     def likelihood_dispatch_diagnostics(
             self,
     ) -> LikelihoodDispatchDiagnostics:
-        return self._state.likelihood_dispatch_diagnostics()
+        return self._state.likelihood_dispatch_diagnostics(self._client_id)
 
     def get_likelihood_dispatch_diagnostics(
             self,
     ) -> LikelihoodDispatchDiagnostics:
         return self.likelihood_dispatch_diagnostics()
+
+    def get_process_topology_diagnostics(self) -> ProcessTopologyDiagnostics:
+        if self._closed:
+            topology = self._state.last_process_topology_diagnostics()
+            if topology is not None:
+                return topology
+        return self._state.process_topology_diagnostics(
+            client_id=self._client_id
+        )
+
+    def start_likelihood_eval_for_testing(
+            self,
+            *,
+            request: LikelihoodEvalRequest,
+    ) -> LikelihoodEvalDispatchRecord:
+        self._ensure_open()
+        return self._state.start_likelihood_eval_for_testing(
+            request=request,
+            client_id=self._client_id,
+        )
+
+    def cancel_likelihood_eval_for_testing(
+            self,
+            *,
+            request: LikelihoodEvalRequest,
+            error_type: str = "LikelihoodEvalTimeout",
+            error_message: str = (
+                "Timed out waiting for node worker capacity."
+            ),
+    ) -> LikelihoodEvalResponse:
+        self._ensure_open()
+        return self._state.cancel_likelihood_eval_for_testing(
+            request=request,
+            error_type=error_type,
+            error_message=error_message,
+            client_id=self._client_id,
+        )
+
+    def terminate_node_ingress_for_testing(
+            self,
+            *,
+            node_id: str,
+    ) -> NodeIngressTerminationDiagnostics:
+        self._ensure_open()
+        return self._state.terminate_node_ingress_for_testing(
+            node_id=node_id,
+            client_id=self._client_id,
+        )
 
     def allocate_task_identity(self, runner_id: str) -> TaskIdentity:
         self._ensure_open()

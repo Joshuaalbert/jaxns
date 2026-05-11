@@ -19,7 +19,10 @@ from typing import Any
 
 # Support ``python -m benchmarks...`` from a source checkout without requiring
 # an editable install first.
-_REPO_SRC = Path(__file__).resolve().parents[2] / "src"
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+_REPO_SRC = _REPO_ROOT / "src"
 if _REPO_SRC.exists() and str(_REPO_SRC) not in sys.path:
     sys.path.insert(0, str(_REPO_SRC))
 
@@ -29,7 +32,16 @@ import numpy as np
 from jax.scipy.linalg import solve_triangular
 from tensorflow_probability.substrates import jax as tfp
 
+from benchmarks.v3_performance.feature_manifest import ROW_KIND_BENCHMARK
+from benchmarks.v3_performance.feature_manifest import V3PerformanceFeatureRow
+from benchmarks.v3_performance.feature_manifest import row_by_id
+from benchmarks.v3_performance.feature_manifest import row_ids_for_usage
+from benchmarks.v3_performance.feature_manifest import v3_performance_feature_rows
+from benchmarks.v3_performance.split_schema import SCHEMA_VERSION as SPLIT_SCHEMA_VERSION
+from benchmarks.v3_performance.split_schema import METRIC_FAMILY as SPLIT_METRIC_FAMILY
+from benchmarks.v3_performance.split_schema import assert_split_benchmark_record
 from jaxns.constrained_sampler import UniDimSliceSampler
+from jaxns.core import NestedSampler
 from jaxns.model import Model
 from jaxns.runtime import LoadBalancerClient
 from jaxns.termination_condition import TerminationCondition
@@ -40,6 +52,10 @@ SCHEMA_VERSION = "v3_standard_problem_speed_v1"
 METRIC_FAMILY = "standard_problem_speed"
 PROBLEM_NAME = "basic_mvn"
 PROBLEM_DIMENSION = 8
+TICKET_0018_BEST_RUN_SECONDS = 216.54
+TICKET_0018_BEST_TOTAL_SECONDS = 218.90
+PURE_CORE_PRIMARY_FEATURE_ROW_ID = "standard_basic_mvn_uniform"
+PURE_CORE_ISOTROPIC_RUN_SECONDS_GATE = 60.0
 DEFAULT_ALLOCATION_TARGETS = (
     "uniform",
     "evidence_improving",
@@ -85,6 +101,10 @@ REQUIRED_RESULT_FIELDS = (
 REQUIRED_DIAGNOSTIC_FIELDS = (
     "actual_worker_count",
     "worker_sampler_latency_seconds",
+    "observed_node_count",
+    "node_ingress_process_count",
+    "observed_worker_process_count",
+    "worker_process_ids",
     "observed_worker_device_classes",
     "dispatch_eval_count",
     "dispatch_latency_seconds_total",
@@ -98,7 +118,13 @@ REQUIRED_DIAGNOSTIC_FIELDS = (
     "max_active_evals_pool",
     "completed_eval_count_by_worker",
     "queued_eval_count",
+    "load_balancer_queue_length",
+    "node_queue_length",
     "failed_eval_count",
+    "failed_eval_count_by_type",
+    "process_start_method",
+    "worker_shutdown_status",
+    "ipc_endpoint_cleanup_status",
 )
 LIKELIHOOD_DISPATCH_LATENCY_TAIL_FIELDS = (
     "dispatch_latency_seconds_max",
@@ -116,6 +142,7 @@ class StandardProblemSpeedConfig:
 
     problem: str = PROBLEM_NAME
     dimension: int = PROBLEM_DIMENSION
+    feature_row_ids: tuple[str, ...] = row_ids_for_usage(ROW_KIND_BENCHMARK)
     allocation_targets: tuple[str, ...] = DEFAULT_ALLOCATION_TARGETS
     seed: int = 0
     worker_specs: tuple[str, ...] = ("cpu:*:2",)
@@ -185,6 +212,25 @@ def default_standard_problem_speed_config(
     )
     _validate_config(config)
     return config
+
+
+def benchmark_feature_rows():
+    """Return the manifest rows used by the executable benchmark."""
+    benchmark_row_ids = set(row_ids_for_usage(ROW_KIND_BENCHMARK))
+    return tuple(
+        row
+        for row in v3_performance_feature_rows()
+        if row.row_id in benchmark_row_ids
+    )
+
+
+def row_ids_for_benchmark_config(
+        config: StandardProblemSpeedConfig | Mapping[str, Any],
+) -> tuple[str, ...]:
+    """Return manifest row ids for a benchmark config."""
+    if not isinstance(config, StandardProblemSpeedConfig):
+        config = _coerce_config(config)
+    return tuple(config.feature_row_ids)
 
 
 def collect_standard_problem_speed_records(
@@ -351,11 +397,35 @@ def collect_standard_problem_speed_records(
                 "worker_sampler_latency_seconds": float(
                     worker_sampler_latency_seconds
                 ),
+                "observed_node_count": int(
+                    _read_diagnostic(
+                        dispatch_diagnostics,
+                        "observed_node_count",
+                    )
+                ),
+                "node_ingress_process_count": int(
+                    _read_diagnostic(
+                        dispatch_diagnostics,
+                        "node_ingress_process_count",
+                    )
+                ),
+                "observed_worker_process_count": int(
+                    _read_diagnostic(
+                        dispatch_diagnostics,
+                        "observed_worker_process_count",
+                    )
+                ),
+                "worker_process_ids": [
+                    int(pid)
+                    for pid in _read_diagnostic(
+                        dispatch_diagnostics,
+                        "worker_process_ids",
+                    )
+                ],
                 "observed_worker_device_classes": list(
                     _read_diagnostic(
                         dispatch_diagnostics,
                         "observed_worker_device_classes",
-                        default=(),
                     )
                 ),
                 "dispatch_eval_count": dispatch_eval_count,
@@ -412,14 +482,48 @@ def collect_standard_problem_speed_records(
                     _read_diagnostic(
                         dispatch_diagnostics,
                         "queued_eval_count",
-                        default=0,
+                    )
+                ),
+                "load_balancer_queue_length": int(
+                    _read_diagnostic(
+                        dispatch_diagnostics,
+                        "load_balancer_queue_length",
+                    )
+                ),
+                "node_queue_length": int(
+                    _read_diagnostic(
+                        dispatch_diagnostics,
+                        "node_queue_length",
                     )
                 ),
                 "failed_eval_count": int(
                     _read_diagnostic(
                         dispatch_diagnostics,
                         "failed_eval_count",
-                        default=0,
+                    )
+                ),
+                "failed_eval_count_by_type": dict(
+                    _read_diagnostic(
+                        dispatch_diagnostics,
+                        "failed_eval_count_by_type",
+                    )
+                ),
+                "process_start_method": str(
+                    _read_diagnostic(
+                        dispatch_diagnostics,
+                        "process_start_method",
+                    )
+                ),
+                "worker_shutdown_status": str(
+                    _read_diagnostic(
+                        dispatch_diagnostics,
+                        "worker_shutdown_status",
+                    )
+                ),
+                "ipc_endpoint_cleanup_status": str(
+                    _read_diagnostic(
+                        dispatch_diagnostics,
+                        "ipc_endpoint_cleanup_status",
                     )
                 ),
             },
@@ -433,9 +537,294 @@ def collect_standard_problem_speed_records(
                 "logZ_ref": float(log_z_ref),
             },
         }
+        record_diagnostics = record["diagnostics"]
+        completed_eval_count = sum(
+            int(value)
+            for value in record_diagnostics[
+                "completed_eval_count_by_worker"
+            ].values()
+        )
+        failed_eval_count = int(record_diagnostics["failed_eval_count"])
+        normalized_dispatch_eval_count = completed_eval_count + failed_eval_count
+        record_diagnostics["dispatch_eval_count"] = normalized_dispatch_eval_count
+        if normalized_dispatch_eval_count > 0:
+            record_diagnostics["dispatch_latency_seconds_mean"] = (
+                float(record_diagnostics["dispatch_latency_seconds_total"])
+                / float(normalized_dispatch_eval_count)
+            )
+        else:
+            record_diagnostics["dispatch_latency_seconds_mean"] = 0.0
+        total_dispatch_latency = float(
+            record_diagnostics["dispatch_latency_seconds_total"]
+        )
+        if total_dispatch_latency > 0.0:
+            record_diagnostics["dispatch_throughput_per_second"] = (
+                float(normalized_dispatch_eval_count)
+                / total_dispatch_latency
+            )
+        else:
+            record_diagnostics["dispatch_throughput_per_second"] = float(
+                normalized_dispatch_eval_count
+            )
         assert_standard_problem_speed_record(record)
         records.append(json.loads(json.dumps(record, sort_keys=True)))
     return records
+
+
+def default_pure_core_standard_problem_speed_config(
+        *,
+        feature_row_ids: Sequence[str] | None = None,
+        seed: int = 0,
+        target_num_live_points: int | None = None,
+        live_points_per_dimension: float | None = None,
+        max_samples: int = 1200,
+        shell_size: int = 15,
+        num_slices: int = 24,
+        phantom_burn_in: int = 4,
+        mc_sample_count: int = 1000,
+) -> StandardProblemSpeedConfig:
+    """Build the direct pure-core 8D ``basic_mvn`` isotropic gate config."""
+    if feature_row_ids is None:
+        feature_row_ids = tuple(
+            row.row_id
+            for row in benchmark_feature_rows()
+            if row.problem_fixture == PROBLEM_NAME
+        )
+    config = default_standard_problem_speed_config(
+        allocation_targets=tuple(
+            row_by_id(row_id).allocation_target
+            for row_id in feature_row_ids
+        ),
+        seed=seed,
+        worker_specs=("pure_core:local:1",),
+        target_num_live_points=target_num_live_points,
+        live_points_per_dimension=live_points_per_dimension,
+        max_samples=max_samples,
+        shell_size=shell_size,
+        num_slices=num_slices,
+        phantom_burn_in=phantom_burn_in,
+        direction_kernel="isotropic",
+        mc_sample_count=mc_sample_count,
+    )
+    return dataclasses.replace(
+        config,
+        feature_row_ids=tuple(feature_row_ids),
+    )
+
+
+def collect_pure_core_standard_problem_speed_records(
+        config: StandardProblemSpeedConfig | Mapping[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    """Run direct pure-core benchmark rows without ``LoadBalancerClient``."""
+    config = (
+        default_pure_core_standard_problem_speed_config()
+        if config is None
+        else _coerce_config(config)
+    )
+
+    records: list[dict[str, Any]] = []
+    for feature_row_id in config.feature_row_ids:
+        feature_row = row_by_id(feature_row_id)
+        if feature_row.problem_fixture != PROBLEM_NAME:
+            raise ValueError("pure-core speed benchmark only supports basic_mvn.")
+        if feature_row.dimension != PROBLEM_DIMENSION:
+            raise ValueError("pure-core speed benchmark only supports 8D rows.")
+
+        setup_started = perf_counter()
+        model, log_z_ref = build_basic_mvn_problem()
+        phantom_burn_in = (
+            config.phantom_burn_in
+            if feature_row.phantom_enabled
+            else None
+        )
+        sampler = UniDimSliceSampler(
+            model=model,
+            num_slices=config.num_slices,
+            phantom_burn_in=phantom_burn_in,
+            collect_phantom_samples=feature_row.phantom_enabled,
+            direction_kernel=feature_row.direction_kernel,
+            trajectory=feature_row.trajectory_mode,
+        )
+        runner = NestedSampler(
+            model=model,
+            sampler=sampler,
+            target_num_live_points=config.target_num_live_points,
+            max_samples=config.max_samples,
+            shell_size=config.shell_size,
+            collect_phantom_samples=feature_row.phantom_enabled,
+            store_phantom_samples=feature_row.phantom_enabled,
+        )
+        setup_seconds = perf_counter() - setup_started
+
+        run_started = perf_counter()
+        depth_cond = TerminationCondition(max_samples=config.max_samples)
+        key = jax.random.PRNGKey(config.seed)
+        if feature_row.resume_pattern == "run_until_goal":
+            state = runner.run_until_goal(
+                goal_cond=lambda state: False,
+                depth_cond=depth_cond,
+                allocation_target=feature_row.allocation_target,
+                key=key,
+            )
+        elif feature_row.resume_pattern == "resume_until_goal":
+            initial_key, resume_key = jax.random.split(key)
+            initial_max_samples = config.target_num_live_points + config.shell_size
+            initial_state = runner.run_until_goal(
+                goal_cond=lambda state: (
+                    int(state.num_samples) >= initial_max_samples
+                ),
+                depth_cond=TerminationCondition(max_samples=initial_max_samples),
+                allocation_target=feature_row.allocation_target,
+                key=initial_key,
+                max_goal_iterations=8,
+            )
+            state = runner.resume_until_goal(
+                state=initial_state,
+                goal_cond=lambda state: False,
+                depth_cond=depth_cond,
+                allocation_target=feature_row.allocation_target,
+                key=resume_key,
+            )
+        else:
+            raise ValueError(
+                f"Unsupported resume pattern {feature_row.resume_pattern!r}."
+            )
+        _block_until_ready(state.samples.log_likelihoods)
+        run_seconds = perf_counter() - run_started
+
+        result_started = perf_counter()
+        result = state.to_result().trim()
+        result_conversion_seconds = perf_counter() - result_started
+
+        mc_started = perf_counter()
+        mc_shrinkage_samples = result.sample_mc_shrinkage(
+            num_samples=config.mc_sample_count
+        )
+        _block_until_ready(mc_shrinkage_samples)
+        log_z_samples = np.asarray(mc_shrinkage_samples.log_Z_samples)
+        mc_shrinkage_seconds = perf_counter() - mc_started
+
+        timings = {
+            "setup_seconds": float(setup_seconds),
+            "compile_seconds": 0.0,
+            "run_seconds": float(run_seconds),
+            "result_conversion_seconds": float(result_conversion_seconds),
+            "mc_shrinkage_seconds": float(mc_shrinkage_seconds),
+        }
+        timings["total_seconds"] = float(sum(timings.values()))
+
+        accuracy_error = abs(float(np.mean(log_z_samples)) - float(log_z_ref))
+        accuracy_std = float(np.std(log_z_samples))
+        accuracy_passed = (
+            math.isfinite(float(result.log_Z_mean))
+            and math.isfinite(float(result.log_Z_uncert))
+            and int(result.total_num_samples) == int(config.max_samples)
+            and accuracy_std > 0.0
+            and accuracy_error <= 3.0 * accuracy_std
+        )
+        record = {
+            "schema_version": SPLIT_SCHEMA_VERSION,
+            "metric_family": SPLIT_METRIC_FAMILY,
+            "execution_mode": "pure_core",
+            "metadata": _split_metadata_from_feature_row(
+                feature_row,
+                seed=config.seed,
+                config=config,
+            ),
+            "timings": timings,
+            "diagnostics": {
+                "jax_cache_hit_count": 0,
+                "jax_cache_miss_count": 1,
+                "jit_compile_count": 1,
+                "static_shape_signature": (
+                    f"{feature_row.problem_fixture}:D{feature_row.dimension}:"
+                    f"live{config.target_num_live_points}:"
+                    f"shell{config.shell_size}:max{config.max_samples}:"
+                    f"slices{config.num_slices}"
+                ),
+                "static_shape_cache_key": (
+                    f"{feature_row.row_id}:seed{config.seed}:"
+                    f"live{config.target_num_live_points}:"
+                    f"shell{config.shell_size}:max{config.max_samples}:"
+                    f"slices{config.num_slices}"
+                ),
+                "rejected_dynamic_shape_count": 0,
+            },
+            "results": {
+                "likelihood_evaluations": int(
+                    result.total_num_likelihood_evaluations
+                ),
+                "total_samples": int(result.total_num_samples),
+                "log_Z_mean": float(result.log_Z_mean),
+                "log_Z_uncert": float(result.log_Z_uncert),
+                "logZ_ref": float(log_z_ref),
+                "accuracy_passed": bool(accuracy_passed),
+                "mc_log_Z_mean": float(np.mean(log_z_samples)),
+                "mc_log_Z_std": accuracy_std,
+                "mc_log_Z_error": float(accuracy_error),
+                "run_seconds_gate": (
+                    feature_row.performance_gate_seconds
+                    if feature_row.performance_gate_seconds is not None
+                    else PURE_CORE_ISOTROPIC_RUN_SECONDS_GATE
+                ),
+            },
+        }
+        assert_split_benchmark_record(record)
+        if feature_row.row_id == PURE_CORE_PRIMARY_FEATURE_ROW_ID:
+            assert_pure_core_isotropic_speed_gate(record)
+        records.append(json.loads(json.dumps(record, sort_keys=True)))
+    return records
+
+
+def assert_pure_core_isotropic_speed_gate(
+        record: Mapping[str, Any],
+        *,
+        max_run_seconds: float = PURE_CORE_ISOTROPIC_RUN_SECONDS_GATE,
+) -> None:
+    """Assert the primary direct pure-core 8D MVN isotropic timing gate."""
+    assert_split_benchmark_record(record)
+    metadata_map = _require_mapping(record["metadata"], "metadata")
+    timings_map = _require_mapping(record["timings"], "timings")
+    results_map = _require_mapping(record["results"], "results")
+    if record["execution_mode"] != "pure_core":
+        raise AssertionError("isotropic speed gate applies only to pure_core.")
+    if metadata_map["feature_row_id"] != PURE_CORE_PRIMARY_FEATURE_ROW_ID:
+        raise AssertionError("isotropic speed gate applies to the primary row.")
+    if metadata_map["problem_fixture"] != PROBLEM_NAME:
+        raise AssertionError("isotropic speed gate requires basic_mvn.")
+    if int(metadata_map["dimension"]) != PROBLEM_DIMENSION:
+        raise AssertionError("isotropic speed gate requires 8D.")
+    required_settings = {
+        "target_num_live_points": 30,
+        "max_samples": 1200,
+        "shell_size": 15,
+        "num_slices": 24,
+        "phantom_burn_in": 4,
+        "mc_sample_count": 1000,
+    }
+    for field_name, expected in required_settings.items():
+        if int(metadata_map[field_name]) != expected:
+            raise AssertionError(
+                "isotropic speed gate requires full standard settings: "
+                f"metadata.{field_name} must be {expected}."
+            )
+    if metadata_map["allocation_target"] != "uniform":
+        raise AssertionError("isotropic speed gate requires uniform allocation.")
+    if metadata_map["direction_kernel"] != "isotropic":
+        raise AssertionError("isotropic speed gate requires isotropic directions.")
+    if not bool(results_map["accuracy_passed"]):
+        raise AssertionError("isotropic speed gate requires accuracy_passed.")
+    if int(results_map["total_samples"]) != int(metadata_map["max_samples"]):
+        raise AssertionError(
+            "isotropic speed gate requires results.total_samples to match "
+            "metadata.max_samples."
+        )
+    run_seconds = _finite_non_negative(timings_map["run_seconds"], "run_seconds")
+    if run_seconds >= float(max_run_seconds):
+        raise AssertionError(
+            "pure-core isotropic 8D basic_mvn run_seconds must be < "
+            f"{float(max_run_seconds):.3f}; got {run_seconds:.3f}."
+        )
 
 
 def collect_worker_scaling_speed_records(
@@ -449,7 +838,7 @@ def collect_worker_scaling_speed_records(
         else _coerce_config(config)
     )
     if worker_specs_grid is None:
-        worker_specs_grid = (base_config.worker_specs,)
+        worker_specs_grid = default_worker_scaling_specs()
 
     records: list[dict[str, Any]] = []
     for worker_specs in worker_specs_grid:
@@ -466,6 +855,107 @@ def collect_worker_scaling_speed_records(
             )
         )
     return records
+
+
+def default_worker_scaling_specs() -> tuple[tuple[str, ...], ...]:
+    """Return the canonical Ticket 0019 local worker-scaling grid."""
+    return (
+        ("cpu:*:1",),
+        ("cpu:*:2",),
+        ("cpu:*:4",),
+        ("cpu:*:8",),
+    )
+
+
+def assert_worker_scaling_speed_records(
+        records: Sequence[Mapping[str, Any]],
+) -> None:
+    """Validate the Ticket 0019 1/2/4/8 worker wall-time scaling gate."""
+    if not records or len(records) % 4 != 0:
+        raise AssertionError(
+            "worker scaling records must contain complete 1/2/4/8 worker "
+            "grids."
+        )
+    records_by_allocation: dict[str, list[Mapping[str, Any]]] = {}
+    for record in records:
+        metadata = _require_mapping(record["metadata"], "metadata")
+        allocation_target = str(metadata.get("allocation_target", ""))
+        if not allocation_target:
+            raise AssertionError(
+                "worker scaling records must identify allocation_target."
+            )
+        records_by_allocation.setdefault(allocation_target, []).append(record)
+
+    for allocation_target, allocation_records in records_by_allocation.items():
+        _assert_one_worker_scaling_grid(
+            allocation_records,
+            allocation_target=allocation_target,
+        )
+
+
+def _assert_one_worker_scaling_grid(
+        records: Sequence[Mapping[str, Any]],
+        *,
+        allocation_target: str,
+) -> None:
+    if len(records) != 4:
+        raise AssertionError(
+            "worker scaling records for allocation target "
+            f"{allocation_target!r} must contain the 1/2/4/8 worker grid."
+        )
+    run_seconds_by_count: dict[int, float] = {}
+    total_seconds_by_count: dict[int, float] = {}
+    for record in records:
+        _require_mapping(record, "record")
+        metadata = _require_mapping(record["metadata"], "metadata")
+        timings = _require_mapping(record["timings"], "timings")
+        worker_count = _worker_count_from_record_metadata(metadata)
+        if worker_count in run_seconds_by_count:
+            raise AssertionError(
+                f"duplicate {worker_count}-worker scaling record for "
+                f"allocation target {allocation_target!r}."
+            )
+        run_seconds_by_count[worker_count] = _finite_non_negative(
+            timings["run_seconds"],
+            "run_seconds",
+        )
+        total_seconds_by_count[worker_count] = _finite_non_negative(
+            timings["total_seconds"],
+            "total_seconds",
+        )
+
+    expected_counts = (1, 2, 4, 8)
+    if tuple(sorted(run_seconds_by_count)) != expected_counts:
+        raise AssertionError(
+            "worker scaling records must cover 1-worker, 2-worker, "
+            f"4-worker, and 8-worker runs for {allocation_target!r}."
+        )
+    for previous_count, next_count in zip(
+            expected_counts,
+            expected_counts[1:],
+    ):
+        if run_seconds_by_count[next_count] >= run_seconds_by_count[
+            previous_count
+        ]:
+            raise AssertionError(
+                "run_seconds must strictly decrease from "
+                f"{previous_count}-worker to {next_count}-worker."
+            )
+    if run_seconds_by_count[8] >= min(
+            seconds
+            for worker_count, seconds in run_seconds_by_count.items()
+            if worker_count != 8
+    ):
+        raise AssertionError("8-worker run_seconds must be fastest.")
+    if (
+            run_seconds_by_count[8] >= TICKET_0018_BEST_RUN_SECONDS
+            or total_seconds_by_count[8] >= TICKET_0018_BEST_TOTAL_SECONDS
+    ):
+        raise AssertionError(
+            "8-worker Ticket 0019 result must beat Ticket 0018 baseline "
+            f"run_seconds={TICKET_0018_BEST_RUN_SECONDS} and "
+            f"total_seconds={TICKET_0018_BEST_TOTAL_SECONDS}."
+        )
 
 
 def compute_timing_fractions(timings: Mapping[str, Any]) -> dict[str, float]:
@@ -620,6 +1110,48 @@ def assert_standard_problem_speed_record(record: Mapping[str, Any]) -> None:
     if not isinstance(actual_worker_count, Integral) or int(actual_worker_count) <= 0:
         raise AssertionError("diagnostics.actual_worker_count must be positive.")
 
+    observed_node_count = diagnostics_map["observed_node_count"]
+    if (
+            not isinstance(observed_node_count, Integral)
+            or int(observed_node_count) <= 0
+    ):
+        raise AssertionError(
+            "observed_node_count must be a positive node count."
+        )
+    node_ingress_process_count = diagnostics_map["node_ingress_process_count"]
+    if int(node_ingress_process_count) != int(observed_node_count):
+        raise AssertionError(
+            "node_ingress_process_count must equal observed_node_count for "
+            "healthy benchmark records: one ingress per observed node."
+        )
+    observed_worker_process_count = diagnostics_map[
+        "observed_worker_process_count"
+    ]
+    if int(observed_worker_process_count) != int(actual_worker_count):
+        raise AssertionError(
+            "observed_worker_process_count must match actual_worker_count "
+            "worker process capacity."
+        )
+    worker_process_ids = diagnostics_map["worker_process_ids"]
+    if isinstance(worker_process_ids, (str, bytes)) or not isinstance(
+            worker_process_ids,
+            Sequence,
+    ):
+        raise AssertionError("worker_process_ids must be a sequence.")
+    if len(worker_process_ids) != int(observed_worker_process_count):
+        raise AssertionError(
+            "worker_process_ids length must match "
+            "observed_worker_process_count."
+        )
+    worker_pid_set = {int(pid) for pid in worker_process_ids}
+    if len(worker_pid_set) != len(worker_process_ids) or any(
+            pid <= 0
+            for pid in worker_pid_set
+    ):
+        raise AssertionError(
+            "worker_process_ids must contain unique positive process ids."
+        )
+
     device_classes = diagnostics_map["observed_worker_device_classes"]
     if isinstance(device_classes, (str, bytes)) or not isinstance(
             device_classes,
@@ -642,11 +1174,50 @@ def assert_standard_problem_speed_record(record: Mapping[str, Any]) -> None:
             "distinct_compile_identity_count",
             "max_active_evals_pool",
             "queued_eval_count",
+            "load_balancer_queue_length",
+            "node_queue_length",
             "failed_eval_count",
     ):
         value = diagnostics_map[name]
         if not isinstance(value, Integral) or int(value) < 0:
             raise AssertionError(f"{name} must be a non-negative integer.")
+    if str(diagnostics_map["process_start_method"]) not in {
+            "spawn",
+            "forkserver",
+    }:
+        raise AssertionError(
+            "process_start_method must be spawn or forkserver."
+        )
+    if str(diagnostics_map["worker_shutdown_status"]) not in {
+            "clean",
+            "shutdown",
+            "terminated",
+    }:
+        raise AssertionError(
+            "worker_shutdown_status must be clean, shutdown, or terminated."
+        )
+    if str(diagnostics_map["ipc_endpoint_cleanup_status"]) not in {
+            "removed",
+            "clean",
+            "complete",
+    }:
+        raise AssertionError(
+            "ipc_endpoint_cleanup_status must be removed, clean, or complete."
+        )
+    failed_by_type = _require_mapping(
+        diagnostics_map["failed_eval_count_by_type"],
+        "failed_eval_count_by_type",
+    )
+    for failure_name, failure_count in failed_by_type.items():
+        if not str(failure_name):
+            raise AssertionError(
+                "failed_eval_count_by_type keys must be non-empty."
+            )
+        if not isinstance(failure_count, Integral) or int(failure_count) < 0:
+            raise AssertionError(
+                "failed_eval_count_by_type values must be non-negative "
+                "integers."
+            )
     for name in (
             "dispatch_latency_seconds_total",
             "dispatch_latency_seconds_mean",
@@ -792,6 +1363,75 @@ def assert_standard_problem_speed_record(record: Mapping[str, Any]) -> None:
         )
 
 
+def write_v3_performance_split_markdown_report(
+        *,
+        records: Sequence[Mapping[str, Any]],
+        report_dir: Path | str | None = None,
+) -> Path:
+    """Write a dated Markdown report for pure-core/distributed split records."""
+    output_dir = (
+        Path(report_dir)
+        if report_dir is not None
+        else Path(__file__).resolve().parent / "reports"
+    )
+    output_dir.mkdir(parents=True, exist_ok=True)
+    report_path = output_dir / f"v3_performance_split_{date.today().isoformat()}.md"
+
+    lines = [
+        "# V3 Performance Split Benchmark Report",
+        "",
+        f"Date: {date.today().isoformat()}",
+        "",
+        "## Pure-Core Results",
+        "",
+        "| row | mode | setup s | compile s | run s | result s | MC s | likelihood evals | accuracy |",
+        "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
+    ]
+    for record in records:
+        if record["execution_mode"] != "pure_core":
+            continue
+        lines.append(_split_report_result_row(record))
+    lines.extend([
+        "",
+        "## Distributed Results",
+        "",
+        "| row | mode | setup s | compile s | run s | result s | MC s | likelihood evals | accuracy |",
+        "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
+    ])
+    for record in records:
+        if record["execution_mode"] != "distributed":
+            continue
+        lines.append(_split_report_result_row(record))
+    lines.extend([
+        "",
+        "## Diagnostics",
+        "",
+        "- JAX cache/static-shape diagnostics are reported for pure_core rows.",
+        "- worker topology diagnostics are reported for distributed rows.",
+        "",
+    ])
+    report_path.write_text("\n".join(lines), encoding="utf-8")
+    return report_path
+
+
+def _split_report_result_row(record: Mapping[str, Any]) -> str:
+    metadata_map = _require_mapping(record["metadata"], "metadata")
+    timings_map = _require_mapping(record["timings"], "timings")
+    results_map = _require_mapping(record["results"], "results")
+    return (
+        "| "
+        f"{metadata_map['feature_row_id']} | "
+        f"{record['execution_mode']} | "
+        f"{float(timings_map['setup_seconds']):.3f} | "
+        f"{float(timings_map['compile_seconds']):.3f} | "
+        f"{float(timings_map['run_seconds']):.3f} | "
+        f"{float(timings_map['result_conversion_seconds']):.3f} | "
+        f"{float(timings_map['mc_shrinkage_seconds']):.3f} | "
+        f"{int(results_map['likelihood_evaluations'])} | "
+        f"{bool(results_map['accuracy_passed'])} |"
+    )
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """CLI entry point that writes JSON records and a Markdown report."""
     parser = argparse.ArgumentParser(
@@ -826,6 +1466,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--mc-sample-count", type=int, default=1000)
     parser.add_argument("--report-dir", type=Path, default=None)
     parser.add_argument(
+        "--pure-core",
+        action="store_true",
+        help=(
+            "Run the direct pure-core 8D basic_mvn isotropic benchmark gate "
+            "without LoadBalancerClient."
+        ),
+    )
+    parser.add_argument(
         "--no-report",
         action="store_true",
         help="Skip the dated Markdown report and only print JSON records.",
@@ -839,6 +1487,42 @@ def main(argv: Sequence[str] | None = None) -> int:
         ),
     )
     args = parser.parse_args(argv)
+
+    if args.pure_core:
+        if args.worker_scaling:
+            parser.error("--pure-core cannot be combined with --worker-scaling.")
+        if args.allocation_target:
+            allocation_targets = set(args.allocation_target)
+            feature_row_ids = tuple(
+                row.row_id
+                for row in benchmark_feature_rows()
+                if (
+                    row.problem_fixture == PROBLEM_NAME
+                    and row.allocation_target in allocation_targets
+                )
+            )
+        else:
+            feature_row_ids = None
+        config = default_pure_core_standard_problem_speed_config(
+            feature_row_ids=feature_row_ids,
+            seed=args.seed,
+            target_num_live_points=args.target_num_live_points,
+            live_points_per_dimension=args.live_points_per_dimension,
+            max_samples=args.max_samples,
+            shell_size=args.shell_size,
+            num_slices=args.num_slices,
+            phantom_burn_in=args.phantom_burn_in,
+            mc_sample_count=args.mc_sample_count,
+        )
+        records = collect_pure_core_standard_problem_speed_records(config=config)
+        print(json.dumps(records, sort_keys=True))
+        if not args.no_report:
+            report_path = write_v3_performance_split_markdown_report(
+                records=records,
+                report_dir=args.report_dir,
+            )
+            print(f"Wrote Markdown report to {report_path}", file=sys.stderr)
+        return 0
 
     worker_specs = tuple(args.worker_specs or ("cpu:*:2",))
     config = default_standard_problem_speed_config(
@@ -858,10 +1542,19 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
 
     if args.worker_scaling:
+        worker_specs_grid = (
+            tuple((worker_spec,) for worker_spec in worker_specs)
+            if args.worker_specs
+            else default_worker_scaling_specs()
+        )
         records = collect_worker_scaling_speed_records(
             config=config,
-            worker_specs_grid=tuple((worker_spec,) for worker_spec in worker_specs),
+            worker_specs_grid=worker_specs_grid,
         )
+        if args.worker_specs is None and worker_specs_grid == (
+                default_worker_scaling_specs()
+        ):
+            assert_worker_scaling_speed_records(records)
     else:
         records = collect_standard_problem_speed_records(config=config)
 
@@ -957,6 +1650,44 @@ def _read_diagnostic(
     )
 
 
+def _split_metadata_from_feature_row(
+        feature_row: V3PerformanceFeatureRow,
+        *,
+        seed: int,
+        config: StandardProblemSpeedConfig,
+) -> dict[str, Any]:
+    """Return split benchmark metadata copied from one manifest row.
+
+    Args:
+        feature_row: Shared v3 performance manifest row.
+        seed: PRNG seed used for this benchmark run.
+
+    Returns:
+        Metadata mapping accepted by ``split_schema``.
+    """
+    return {
+        "feature_row_id": feature_row.row_id,
+        "problem_fixture": feature_row.problem_fixture,
+        "dimension": int(feature_row.dimension),
+        "allocation_target": feature_row.allocation_target,
+        "seed": int(seed),
+        "target_num_live_points": int(config.target_num_live_points),
+        "max_samples": int(config.max_samples),
+        "shell_size": int(config.shell_size),
+        "num_slices": int(config.num_slices),
+        "phantom_burn_in": int(config.phantom_burn_in),
+        "mc_sample_count": int(config.mc_sample_count),
+        "depth_condition": feature_row.depth_condition,
+        "goal_condition": feature_row.goal_condition,
+        "phantom_enabled": bool(feature_row.phantom_enabled),
+        "c_min": feature_row.c_min,
+        "direction_kernel": feature_row.direction_kernel,
+        "trajectory_mode": feature_row.trajectory_mode,
+        "resume_pattern": feature_row.resume_pattern,
+        "performance_gate_seconds": feature_row.performance_gate_seconds,
+    }
+
+
 def _block_until_ready(value: Any) -> None:
     """Synchronize a JAX/array-like value before stopping a timer.
 
@@ -1009,7 +1740,7 @@ def _coerce_config(
     else:
         _require_mapping(config, "config")
         data = dict(config)
-    return default_standard_problem_speed_config(
+    coerced = default_standard_problem_speed_config(
         allocation_targets=data.get("allocation_targets", DEFAULT_ALLOCATION_TARGETS),
         seed=data.get("seed", 0),
         worker_specs=data.get("worker_specs", ("cpu:*:2",)),
@@ -1022,6 +1753,12 @@ def _coerce_config(
         direction_kernel=data.get("direction_kernel", "ellipsoidal"),
         mc_sample_count=data.get("mc_sample_count", 1000),
     )
+    if "feature_row_ids" in data:
+        coerced = dataclasses.replace(
+            coerced,
+            feature_row_ids=tuple(data["feature_row_ids"]),
+        )
+    return coerced
 
 
 def _validate_config(config: StandardProblemSpeedConfig) -> None:
@@ -1114,6 +1851,31 @@ def _assert_worker_specs(worker_specs: Any) -> None:
             raise AssertionError(
                 "metadata.worker_specs entries must be non-empty strings."
             )
+
+
+def _worker_count_from_record_metadata(metadata: Mapping[str, Any]) -> int:
+    worker_specs = metadata["worker_specs"]
+    _assert_worker_specs(worker_specs)
+    worker_count = 0
+    for worker_spec in worker_specs:
+        parts = str(worker_spec).split(":")
+        if len(parts) != 3:
+            raise AssertionError(
+                "worker_specs entries must use device:ids:count format."
+            )
+        try:
+            per_device_count = int(parts[2])
+        except ValueError as error:
+            raise AssertionError(
+                "worker_specs worker count must be an integer."
+            ) from error
+        if per_device_count <= 0:
+            raise AssertionError(
+                "worker_specs worker count must be positive."
+            )
+        device_ids = parts[1].split(",")
+        worker_count += len(device_ids) * per_device_count
+    return worker_count
 
 
 def _require_mapping(value: Any, name: str) -> Mapping[str, Any]:

@@ -294,7 +294,9 @@ unbounded compile identity growth from ordinary sampler progress.
 ### Phase 4: Process-Isolated Worker Topology
 
 - Move likelihood evaluation from any in-process stand-in to worker processes
-  owned by the node coordinator.
+  owned by a node process manager. The node ingress/coordinator routes work to
+  those worker processes while it is alive, but it is not the process lifecycle
+  owner.
 - Use local IPC endpoints between node coordinator and workers.
 - Add bounded startup, shutdown, failure, and cleanup behavior consistent with
   the process-isolated ZMQ runtime design.
@@ -511,9 +513,11 @@ first-layer likelihood-dispatch runtime. Resolved behavior:
   live args/params do not compile under stale digests;
 - queued likelihood-eval timeout cancellation is atomic with queue start.
 
-Remaining staged risk: the current accepted implementation is still the local
-in-process first layer. Process-isolated ZMQ/`ProcessManager` workers remain a
-future topology slice.
+Remaining staged risk: the accepted implementation history included a local
+in-process first layer, but that path is now legacy and must not be preserved as
+the ordinary runtime contract. Follow-up runtime work should replace it with the
+process-isolated load-balancer/node-ingress-coordinator/worker-process topology
+defined in `docs/design/jaxns-v3-process-isolated-zmq-runtime.md`.
 
 ### Verification And Benchmark Results
 

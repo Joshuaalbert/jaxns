@@ -28,6 +28,23 @@ logic. Deployment changes how constrained-sampler work and likelihood
 evaluations are executed; it must not create a second nested-sampling algorithm
 with separate semantics.
 
+Implementation target note: the pure statistical core should be expressible with
+JAX control flow over fixed-shape carries, masks, and explicit counters. Python
+or runtime orchestration may choose deployment details, but accepted child
+integration, out-degree mutation, allocation accounting, phantom metadata, and
+diagnostic state transitions should remain the same core semantics across
+pure-core and distributed runs.
+
+For the pure-JAX core migration, the internal core/runtime boundary is a
+fixed-shape work/result buffer contract. The core owns allocation planning,
+active-block summaries, parent-work selection, local constrained-sampler
+proposal loops for direct pure-core mode, and deterministic acceptance. Runtime
+or distributed deployment may evaluate likelihood probes or produce completed
+proposal results, but it must consume fixed-shape work buffers, return
+fixed-shape result buffers with validity/status masks and parent-work
+identities, and reuse the same ordered acceptance semantics. Raw
+likelihood/proposal completions must not mutate the race tree directly.
+
 ## Core State
 
 The coordinator must maintain enough state to recover:
@@ -157,9 +174,16 @@ Small remaining posterior mass:
 L_g X_g / max_{g'}(L_{g'} X_{g'}) < tau_post
 ```
 
-Implementations should evaluate these from the current shrinkage state. If using
-Monte Carlo shrinkage draws, the paper does not specify whether the condition is
-evaluated with a mean, quantile, or other summary.
+Implementations should evaluate these from the current active shrinkage state.
+The default deterministic v3 execution summary is the active mean volume path
+from the same shrinkage target used for public results: phantom-conditioned for
+blocks whose gate is active and classic race posterior otherwise. For the
+posterior-mass depth condition, `g` is the deepest valid likelihood block in the
+current fixed-shape block state, `X_g = X_{g-1} p_{>g}` uses the strict endpoint
+rather than plateau equality atom mass, and padded or invalid blocks are masked
+from both the numerator choice and the `max_{g'}` denominator. A future
+Monte-Carlo quantile or JAX-expressible custom depth predicate should be an
+explicit API choice rather than an implicit replacement for this default.
 
 ## Goal Conditions
 
@@ -182,6 +206,12 @@ goal_cond(state: State) -> bool
 The goal condition may call `state.to_result()` when it needs evidence,
 posterior, or diagnostic summaries. Implementations should document and test the
 cost of this conversion, because goal checks happen at outer-loop boundaries.
+This public callback is a Python host boundary around compiled depth and
+transition kernels. The JAX statistical core must not call arbitrary Python
+callbacks from inside `jit`, `jax.lax.while_loop`, `jax.lax.scan`, or other
+compiled control flow. A separate future API may accept a JAX-expressible goal
+predicate, but the public `goal_cond(state: State) -> bool` contract remains
+host-side.
 
 ## Allocation Targets
 
@@ -319,8 +349,9 @@ evaluation, from a laptop to clusters with thousands of nodes.
 The paper's runtime contract is:
 
 - a central process coordinates the core algorithm;
-- workers perform likelihood evaluations;
-- workers receive serialized likelihood models;
+- workers perform likelihood evaluations outside the core statistical
+  coordinator;
+- workers receive serialized likelihood models or registered model identities;
 - scheduling uses load balancing;
 - communication uses ZMQ;
 - serialization uses Python `pickle`;
@@ -329,20 +360,28 @@ The paper's runtime contract is:
 - constrained-sampling calls from different parent contours can overlap in
   wall-clock time.
 
-Ticket 0018 refines the ordinary remote work unit to likelihood evaluation
-only. Constrained samplers remain local to the runner, may run in parallel where
-execution policy allows, and send one proposed `U` per likelihood probe. Identity
-registration may happen during runner creation or before ordinary work, but
-worker-local JIT compilation happens on first matching work for a registered
-identity/device class.
+The paper does not prescribe the operating-system process topology. Process
+isolation is the v3 target runtime contract, chosen as the durable JAX worker
+boundary rather than as a paper-derived statistical requirement.
+
+Ticket 0018 and the process-isolated ZMQ runtime design refine the ordinary
+remote work unit to likelihood evaluation only. Constrained samplers remain
+local to the runner, may run in parallel where execution policy allows, and send
+one proposed `U` per likelihood probe. Identity registration may happen during
+runner creation or before ordinary work, but worker-local JIT compilation
+happens on first matching work for a registered identity/device class.
 
 The intended user-facing runtime has these roles:
 
-- A load balancer owns worker registration, fair sharing, compile-identity
+- A load balancer owns node registration, fair sharing, compile-identity
   registration/cache coordination, and nested-sampler runner creation.
-- Workers join the load balancer and establish compute sectors such as CPU or
-  GPU device pools. Each likelihood worker process handles at most one active
-  likelihood evaluation at a time.
+- Each node has one process manager that owns one node ingress/coordinator
+  process plus many worker processes. The node ingress talks to the load
+  balancer; the node coordinator fans work out to local workers over efficient
+  random `ipc://` endpoints under `/tmp`.
+- Workers are one process each and establish concrete compute capacity such as
+  CPU or GPU device slots. Each likelihood worker process handles at most one
+  active likelihood evaluation at a time.
 - A nested-sampler runner owns one v3 core state for one submitted model and
   dispatches likelihood-eval work through the load balancer.
 - Multiple clients may submit different models to the same worker pool; the load
@@ -350,7 +389,14 @@ The intended user-facing runtime has these roles:
 
 This runtime is not a layer over a single-tenant, lease-first, point-to-point
 transport. If existing transport code is useful as a utility it may be reused,
-but the v3 runtime contract is the load-balancer/worker/runner model above.
+but the v3 runtime contract is the load-balancer/node-ingress-coordinator/
+worker-process/runner model above. Because v3 is unreleased, tests should assert
+the target topology directly rather than preserving older direct
+load-balancer-to-worker behavior. Ordinary v3 local-LB execution must use the
+process-isolated load-balancer/node/worker topology. There is no backwards
+compatibility requirement for earlier unreleased v3 runtime slices; old
+in-process or direct-worker paths may remain only as explicitly named test-only
+or internal helpers.
 
 The race-tree formulation makes asynchronous execution natural because a
 completed child only updates the out-degree of its known effective parent.

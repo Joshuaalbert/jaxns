@@ -4,9 +4,11 @@ Date: 2026-05-11
 
 ## Configuration
 
-- target_num_live_points: 30
-- max_samples: 1200
-- shell_size: 15
+- dimension: 10
+- target_num_live_points: 1000
+- live_points_per_dimension: 100.0
+- max_samples: 2000
+- shell_size: 500
 - num_slices: 24
 - phantom_burn_in: 4
 - allocation_target: uniform
@@ -16,7 +18,7 @@ Date: 2026-05-11
 
 | model | runtime s | samples | likelihood evals | log Z | log Z uncert | workers |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| eggbox | 170.564 | 1200 | 128924 | 183.88 | 1.16116 | 2 |
-| rastrigin | 213.318 | 1200 | 206271 | -59.3102 | 1.05559 | 2 |
-| rosenbrock | 182.274 | 1200 | 145518 | -72.9489 | 1.31345 | 2 |
-| spikeslab | 182.165 | 1200 | 124688 | -34.6361 | 0.692985 | 2 |
+| eggbox | 145.118 | 2000 | 70088 | 75.9758 | 0.883578 | 2 |
+| rastrigin | 144.980 | 2000 | 70643 | -87.3215 | 0.783838 | 2 |
+| rosenbrock | 138.274 | 2000 | 57263 | -3013.24 | 0.932387 | 2 |
+| spikeslab | 137.856 | 2000 | 53793 | -34.779 | 0.612907 | 2 |

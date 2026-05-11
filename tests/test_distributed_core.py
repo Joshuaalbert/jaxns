@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import dataclasses
+from collections.abc import Mapping
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -13,7 +16,13 @@ from jaxns.runtime import LoadBalancerClient
 from jaxns.samples import SeedPoint
 from jaxns.state import State
 from jaxns.termination_condition import TerminationCondition
+from tests.test_v3_pure_core_contract import _discover_boundary_schema_types
+from tests.test_v3_pure_core_contract import _field_names
+from tests.test_v3_pure_core_contract import _schema_pair_by_role
 from tests.distributed_support import QuadraticEvaluator, make_toy_model
+
+
+_MISSING = object()
 
 
 def _run_until_sample_count(
@@ -70,6 +79,184 @@ def _accepted_runtime_records_for_runner(
     )
     assert records
     return records
+
+
+def _runtime_core_boundary_records(
+        runner: NestedSampler,
+        lb: LoadBalancerClient,
+) -> tuple[object, ...]:
+    accessor_names = (
+        "core_boundary_records",
+        "core_work_result_boundary_records",
+        "runtime_core_boundary_records",
+        "pure_core_boundary_records",
+        "core_boundary_trace",
+        "work_result_boundary_trace",
+    )
+    for owner in (runner, lb):
+        for accessor_name in accessor_names:
+            value = getattr(owner, accessor_name, None)
+            if value is None:
+                continue
+            records = value() if callable(value) else value
+            if isinstance(records, (str, bytes)):
+                continue
+            try:
+                records = tuple(records)
+            except TypeError:
+                records = (records,)
+            if records:
+                return records
+    pytest.fail(
+        "Local-LB distributed execution must expose the fixed-shape "
+        "pure-core work/result boundary it consumed, through a public runner "
+        "or load-balancer boundary trace. Coordinator dispatch records alone "
+        "are raw runtime records and do not prove Ticket 0020 core boundary "
+        "consumption."
+    )
+
+
+def _read_field(obj: object, *field_names: str, default=_MISSING):
+    for field_name in field_names:
+        if isinstance(obj, Mapping) and field_name in obj:
+            return obj[field_name]
+        if hasattr(obj, field_name):
+            return getattr(obj, field_name)
+    if default is not _MISSING:
+        return default
+    raise AssertionError(
+        f"Object {type(obj).__name__} missing any of fields {field_names}."
+    )
+
+
+def _fields_from_boundary_value(value: object) -> frozenset[str]:
+    schema_type = _read_field(
+        value,
+        "schema",
+        "schema_type",
+        "boundary_schema",
+        default=None,
+    )
+    if schema_type is not None:
+        fields = _field_names(schema_type)
+        if fields:
+            return fields
+    if dataclasses.is_dataclass(value):
+        return frozenset(field.name for field in dataclasses.fields(value))
+    annotations = getattr(value, "__annotations__", None)
+    if annotations is not None:
+        return frozenset(annotations)
+    if isinstance(value, Mapping):
+        return frozenset(str(key) for key in value)
+    named_tuple_fields = getattr(value, "_fields", None)
+    if named_tuple_fields is not None:
+        return frozenset(named_tuple_fields)
+    return frozenset()
+
+
+def _record_boundary_fields(
+        record: object,
+        *,
+        role: str,
+) -> frozenset[str]:
+    if role == "work":
+        value = _read_field(
+            record,
+            "work",
+            "work_buffer",
+            "core_work",
+            "core_work_buffer",
+            "work_schema",
+            "core_work_schema",
+        )
+    else:
+        value = _read_field(
+            record,
+            "result",
+            "result_buffer",
+            "core_result",
+            "core_result_buffer",
+            "result_schema",
+            "core_result_schema",
+        )
+    fields = _fields_from_boundary_value(value)
+    if not fields:
+        raise AssertionError(
+            f"Core boundary record {type(record).__name__} exposes {role} "
+            "but not field/schema metadata."
+        )
+    return fields
+
+
+def _accepted_core_result_parent_work_ids(records: tuple[object, ...]) -> tuple[int, ...]:
+    parent_work_ids: list[int] = []
+    for record in records:
+        result = _read_field(
+            record,
+            "result",
+            "result_buffer",
+            "core_result",
+            "core_result_buffer",
+        )
+        ids = np.asarray(_read_field(result, "parent_work_id", "work_id"))
+        valid_mask = np.asarray(
+            _read_field(
+                result,
+                "valid_mask",
+                "result_valid_mask",
+                default=np.ones(ids.shape, dtype=bool),
+            ),
+            dtype=bool,
+        )
+        statuses = _read_field(
+            result,
+            "status",
+            "status_code",
+            "status_mask",
+            default=np.ones(ids.shape, dtype=bool),
+        )
+        statuses = np.asarray(statuses)
+        accepted_mask = valid_mask & _accepted_status_mask(statuses)
+        parent_work_ids.extend(int(value) for value in ids[accepted_mask])
+    if not parent_work_ids:
+        raise AssertionError(
+            "Core result buffers must expose accepted parent_work_id/work_id "
+            "values through valid result masks."
+        )
+    return tuple(parent_work_ids)
+
+
+def _accepted_status_mask(statuses: np.ndarray) -> np.ndarray:
+    if statuses.dtype == np.bool_:
+        return statuses
+    if np.issubdtype(statuses.dtype, np.integer):
+        return statuses > 0
+    vectorized = np.vectorize(lambda value: str(value).lower() == "accepted")
+    return vectorized(statuses)
+
+
+def _accepted_record_parent_work_ids(records: tuple[object, ...]) -> tuple[int, ...]:
+    ids = []
+    for record in records:
+        if str(_read_field(record, "status", default="accepted")).lower() != "accepted":
+            continue
+        ids.append(
+            int(
+                _read_field(
+                    record,
+                    "parent_work_id",
+                    "core_parent_work_id",
+                    "core_result_parent_work_id",
+                )
+            )
+        )
+    if not ids:
+        raise AssertionError(
+            "Accepted runtime records must carry the parent_work_id from the "
+            "core result buffer; task_id/attempt_id alone are runtime "
+            "completion identities."
+        )
+    return tuple(ids)
 
 
 def test_distributed_slice_sampler_preserves_sampler_contract():
@@ -232,6 +419,94 @@ def test_load_balanced_nested_sampler_matches_direct_v3_result_invariants():
     )
     assert float(runtime_result.ess) > 0.0
     assert float(direct_result.ess) > 0.0
+
+
+def test_local_lb_consumes_pure_core_work_result_boundary_schemas():
+    export_name, schema_pairs = _discover_boundary_schema_types()
+    schemas_by_role = _schema_pair_by_role(schema_pairs)
+    assert "work_schema" in schemas_by_role, (
+        f"{export_name} must identify the fixed-shape core work schema."
+    )
+    assert "result_schema" in schemas_by_role, (
+        f"{export_name} must identify the fixed-shape core result schema."
+    )
+    _, expected_work_type = schemas_by_role["work_schema"]
+    _, expected_result_type = schemas_by_role["result_schema"]
+    expected_work_fields = _field_names(expected_work_type)
+    expected_result_fields = _field_names(expected_result_type)
+    model = make_toy_model()
+
+    with LoadBalancerClient(address="local") as lb:
+        lb.add_workers(["cpu:*:2"])
+        runner = lb.get_nested_sampler(
+            model=model,
+            collect_phantoms=True,
+            target_num_live_points=6,
+            max_samples=12,
+            shell_size=3,
+            termination_condition=TerminationCondition(max_samples=12),
+            store_phantom_samples=False,
+            batch_size=None,
+        )
+        _run_until_sample_count(
+            runner,
+            max_samples=12,
+            key=jax.random.PRNGKey(31),
+        )
+        boundary_records = _runtime_core_boundary_records(runner, lb)
+
+    for record in boundary_records:
+        work_fields = _record_boundary_fields(record, role="work")
+        result_fields = _record_boundary_fields(record, role="result")
+        assert expected_work_fields <= work_fields, (
+            "Local-LB runtime must consume the same fixed-shape core work "
+            f"schema fields as pure core. Missing "
+            f"{sorted(expected_work_fields - work_fields)}."
+        )
+        assert expected_result_fields <= result_fields, (
+            "Local-LB runtime must produce the same fixed-shape core result "
+            f"schema fields as pure core. Missing "
+            f"{sorted(expected_result_fields - result_fields)}."
+        )
+
+
+def test_local_lb_acceptance_order_uses_core_result_parent_work_ids():
+    model = make_toy_model()
+
+    with LoadBalancerClient(address="local") as lb:
+        lb.add_workers(["cpu:*:2"])
+        runner = lb.get_nested_sampler(
+            model=model,
+            collect_phantoms=True,
+            target_num_live_points=6,
+            max_samples=12,
+            shell_size=3,
+            termination_condition=TerminationCondition(max_samples=12),
+            store_phantom_samples=False,
+            batch_size=None,
+        )
+        _run_until_sample_count(
+            runner,
+            max_samples=12,
+            key=jax.random.PRNGKey(37),
+        )
+        boundary_records = _runtime_core_boundary_records(runner, lb)
+        accepted_runtime_records = _accepted_runtime_records_for_runner(
+            runner,
+            lb,
+        )
+
+    core_parent_work_ids = _accepted_core_result_parent_work_ids(
+        boundary_records
+    )
+    runtime_parent_work_ids = _accepted_record_parent_work_ids(
+        accepted_runtime_records
+    )
+    assert runtime_parent_work_ids == core_parent_work_ids, (
+        "Ordered acceptance must be keyed by parent_work_id/work_id values "
+        "from core result buffers. Raw runtime completion identities such as "
+        "task_id or attempt_id must not define race-tree mutation order."
+    )
 
 
 @pytest.mark.parametrize(

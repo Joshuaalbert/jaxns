@@ -1,11 +1,21 @@
 # JAXNS v3 Process-Isolated ZMQ Runtime
 
-Status: future-runtime design note.
+Status: v3 runtime target contract.
 Source: user runtime architecture proposal.
 
-This note captures a proposed durable runtime architecture for future v3
-runtime work. It is not a current Ticket 0014 acceptance requirement and does
-not claim that the repository already implements this topology.
+This note defines the target process-isolated runtime topology for unreleased
+v3 runtime work. It is deliberately independent of the current code state. v3
+has no backwards-compatibility requirement with earlier unreleased runtime
+slices: implementation and tests should target this contract rather than carry
+forward direct load-balancer-to-worker paths, threaded worker boundaries, or
+remote constrained-sampler worker payloads.
+
+The ordinary v3 local-LB path is the process-isolated topology described here.
+There is no legacy local-LB compatibility branch to maintain because v3 has not
+been released. Any old in-process worker scheduler, direct
+load-balancer-to-worker route, or coarse constrained-sampler worker payload may
+exist only as an explicitly named test-only or internal helper, never as the
+default or public v3 runtime path.
 
 ## Motivation
 
@@ -20,26 +30,36 @@ local and distributed deployments. Process isolation changes where worker
 execution happens, not the race-tree, shrinkage, allocation, retry, or
 acceptance semantics.
 
-## Architecture
+## Target Architecture
 
-The proposed runtime has three actor roles:
+The target runtime has four durable ownership roles:
 
-- Load balancer: owns public runner creation, node registration, scheduling
-  policy, transport/work identity, and client-visible lifecycle. Statistical
-  parent task identity and acceptance remain runner-owned in the Ticket 0018
-  likelihood-dispatch slice.
-- Node coordinator: owns one machine or process group, starts and supervises
-  local worker actors, and fans load-balancer work out to local workers.
-- Worker: owns one isolated execution process. For the Ticket 0018
-  likelihood-dispatch slice, ordinary worker execution is likelihood evaluation
-  only; earlier constrained-sampler worker-task wording is legacy unless it is
-  explicitly scoped as pre-0018 compatibility behavior.
+- Load balancer process: owns public runner creation, node registration,
+  scheduling policy, transport/work identity, and client-visible lifecycle.
+- Runner: owns statistical parent task identity, local constrained-sampler
+  state, accepted child integration, and the acceptance ledger for one submitted
+  nested-sampling run.
+- Node process manager: owns one node's process tree. It starts exactly one
+  node ingress/coordinator process plus many local worker processes, supervises
+  them, and tears them down as one node-scoped unit.
+- Worker process: owns one isolated execution process. Ordinary v3 worker work
+  is deterministic likelihood evaluation only. Each worker process handles at
+  most one active likelihood evaluation at a time.
 
-Each role should be implemented as a `ZMQActor` owned by a `ProcessManager`.
-The owner of a process is responsible for robust `try`/`finally` teardown:
-start the actor process, connect or bind its endpoints, register it with its
-parent, and always request shutdown and join or terminate the process on context
-exit or failure.
+The node ingress/coordinator is a single node-local actor process with two
+responsibilities. Its ingress side talks to the load balancer over the
+inter-node control/work transport. Its coordinator side fans work out to local
+worker processes over node-local IPC endpoints. The load balancer never opens
+per-worker connections and never schedules directly against worker sockets; it
+schedules against node-advertised capacity.
+
+The load balancer, node ingress/coordinator, and workers should be implemented
+as `ZMQActor` processes. One node process manager owns exactly one node
+ingress/coordinator process plus that node's worker processes. The owner of a
+process tree is responsible for robust `try`/`finally` teardown: start the actor
+processes, connect or bind their endpoints, register them with their parent, and
+always request shutdown and join or terminate owned processes on context exit or
+failure.
 
 The public client should hide these mechanics. A local user should interact
 with a context such as:
@@ -52,10 +72,17 @@ with LoadBalancerClient(address="local") as lb:
     result = sampler.run_until_goal(...)
 ```
 
+In this sketch, `add_node(...)` creates or attaches one node process manager,
+and `add_workers(...)` starts worker processes under that node. A convenience
+implementation may create the default local node lazily on the first
+`add_workers(...)` call, but the ownership contract remains the same: workers
+belong to a node process manager, and the node ingress/coordinator is the only
+node-local process that talks to the load balancer.
+
 The client context owns the local process managers it starts and tears them down
 in reverse ownership order. Remote clients that connect to an existing
 `tcp://...` load balancer own only their client connection unless they also
-explicitly start node or worker processes.
+explicitly start a node process manager.
 
 ## Connection Topology
 
@@ -63,7 +90,7 @@ The load balancer should not maintain a TCP connection to every worker process.
 At scale, that creates unnecessary connection fan-out, a larger failure surface,
 and more cross-node bookkeeping in the load balancer.
 
-Use one node coordinator per node:
+Use one ingress/coordinator process per node:
 
 ```text
 client process
@@ -74,24 +101,25 @@ load-balancer actor
     |
     | tcp:// node control/work endpoint
     v
-node-coordinator actor
+node ingress/coordinator actor process
     |
     | ipc:// random /tmp paths
     v
 worker actor processes
 ```
 
-The load balancer talks to each node coordinator. The node coordinator fans work
-out to local workers and returns worker responses to the load balancer. Local
-workers on the same node should communicate with the node coordinator over
-`ipc://` endpoints using random paths under `/tmp`, for example a per-context
-temporary directory with random endpoint filenames. These paths should be
-created with ownership scoped to the process manager and removed during
-teardown.
+The load balancer talks to each node ingress. The node coordinator fans work out
+to local workers and returns worker responses through the node ingress to the
+load balancer. Local workers on the same node communicate with the node
+coordinator over `ipc://` endpoints using random paths under `/tmp`, for example
+a node-owned temporary directory with random endpoint filenames. These paths are
+owned by the node process manager and removed during teardown.
 
 TCP remains the inter-node transport. IPC is the local transport between a node
 coordinator and its worker processes because it avoids unnecessary local TCP
-connection overhead while preserving process isolation.
+connection overhead while preserving process isolation. The design must not
+depend on stable IPC filenames, predictable port numbers, or global worker
+socket identities.
 
 ## Likelihood-Evaluation Dispatch Runtime
 
@@ -109,13 +137,13 @@ shipping large sampler state, mutable chain state, seed points, direction
 snapshots, phantom buffers, or per-step trajectory objects across the transport
 for each proposal.
 
-This section intentionally supersedes older Ticket 0009 and run-pattern text
-that described ordinary remote work as serialized constrained-sampler tasks or
-described load-balancer/runner creation as ahead-of-time likelihood
-compilation. Runner creation or an explicit identity-registration step may make
-model bytes, args, params, dtype policy, device class, and expected `U` tree
-available under `RuntimeCompileIdentity`. Worker-local JIT compilation happens
-on the first matching likelihood request for that identity/device class.
+This section supersedes older design text that described ordinary remote work
+as serialized constrained-sampler tasks or described load-balancer/runner
+creation as ahead-of-time likelihood compilation. Runner creation or an
+explicit identity-registration step may make model bytes, args, params, dtype
+policy, device class, and expected `U` tree available under
+`RuntimeCompileIdentity`. Worker-local JIT compilation happens on the first
+matching likelihood request for that identity/device class.
 
 ### Work Unit Shape
 
@@ -182,7 +210,7 @@ load-balancer actor
     |
     | node-level scheduling
     v
-node-coordinator actor
+node ingress/coordinator actor process
     |
     | ipc:// local worker routing
     v
@@ -191,10 +219,11 @@ likelihood worker process
 
 The runner owns parent selection, local constrained-sampler execution, in-flight
 statistical task metadata, and the acceptance ledger. The load balancer owns
-fair scheduling across runners and nodes. Node coordinators own worker process
-supervision and local routing. Worker processes own only model payload caches,
-JAX compilation state, device state, and deterministic evaluation of `U` to
-`log_L`.
+fair scheduling across runners and nodes. Each node process manager owns one
+ingress/coordinator process and many local worker processes. The node
+ingress/coordinator owns worker supervision, node-local capacity accounting, and
+local routing. Worker processes own only model payload caches, JAX compilation
+state, device state, and deterministic evaluation of `U` to `log_L`.
 
 The same runner can issue many independent likelihood requests at once. This is
 the mechanism that addresses parallel parent dispatch: multiple parent tasks
@@ -205,11 +234,13 @@ through the existing task ledger, and only accepted children mutate out-degrees,
 phantom clusters, supremum state, or allocation diagnostics.
 
 Each likelihood worker process has capacity for at most one active likelihood
-evaluation at a time. The load balancer and node coordinator schedule against
-that capacity, queue excess requests, or route them to another idle worker.
-Concurrency comes from multiple local parent sampler tasks producing demand and
-from multiple worker processes consuming it, not from multiplexing concurrent
-evaluations inside one worker process.
+evaluation at a time. The node ingress/coordinator advertises aggregate
+node-local capacity to the load balancer and schedules against concrete local
+worker capacity. Excess requests are queued at the load balancer, node
+coordinator, or both according to the scheduling policy. Concurrency comes from
+multiple local parent sampler tasks producing demand and from multiple worker
+processes consuming it, not from multiplexing concurrent evaluations inside one
+worker process.
 
 ### Determinism And Failure Semantics
 
@@ -277,13 +308,17 @@ the static compile contract.
 Ownership should be explicit:
 
 - `LoadBalancerClient(address="local")` owns the load-balancer process it
-  starts, any node coordinators it starts through public methods, and any worker
-  actors started under those nodes.
+  starts, any node process managers it starts through public methods, and every
+  node ingress/coordinator and worker process owned by those node process
+  managers.
 - `LoadBalancerClient(address="tcp://...")` owns the client connection by
-  default. If it starts a remote or local node under that load balancer, it owns
-  that node process manager and its descendants.
-- A node coordinator owns its local worker process managers and local IPC
-  endpoint paths.
+  default. If it starts a local node under that load balancer, it owns that node
+  process manager and its descendants.
+- A node process manager owns one node ingress/coordinator process, its local
+  worker processes, and local IPC endpoint paths.
+- The node ingress/coordinator process owns node registration, heartbeat,
+  node-local worker routing, and node-local capacity reporting while it is
+  alive.
 - A worker owns only its process-local JAX runtime state, model cache, compiled
   likelihood callables, at most one active likelihood evaluation, and actor
   socket resources.
@@ -292,9 +327,9 @@ Shutdown order should be child first:
 
 1. Stop accepting new sampler work from public clients.
 2. Revoke or drain in-flight work according to the runner failure contract.
-3. Ask node coordinators to stop dispatching new worker work.
+3. Ask node ingress/coordinators to stop dispatching new worker work.
 4. Ask workers to shut down, then join or terminate them with bounded timeouts.
-5. Close node coordinator sockets and remove IPC paths.
+5. Close node ingress/coordinator sockets and remove IPC paths.
 6. Close load-balancer sockets and join or terminate the load-balancer process.
 
 All of these steps should be driven from `try`/`finally` blocks or equivalent
@@ -305,12 +340,13 @@ processes or stale IPC endpoints.
 
 The managed actor set should be extendable while a client context is open.
 Examples include adding a GPU node after a CPU-only run has started, adding more
-local CPU workers, or replacing a failed node coordinator.
+local CPU workers under an existing node process manager, or replacing a failed
+node ingress/coordinator process and its worker descendants.
 
 Dynamic extension must preserve ownership:
 
-- Register the new node or worker process manager with the owning context before
-  advertising it as schedulable.
+- Register the new node process manager, or the new worker process under its
+  owning node process manager, before advertising it as schedulable.
 - If registration with the parent actor fails, immediately tear down the new
   process and remove its local endpoints.
 - If advertisement succeeds, include the actor in normal reverse-order context
@@ -328,14 +364,15 @@ completed work can update out-degrees or phantom clusters.
 
 Failures should be explicit and local where possible:
 
-- Worker process failure: the node coordinator marks assigned attempts failed,
-  reports failed attempts to the load balancer, and optionally starts
-  replacement workers if policy allows. The runner may retry using the same
-  statistical `task_id` and a new `attempt_id`.
-- Node coordinator failure: the load balancer marks all in-flight attempts on
-  that node failed or unknown according to the retry contract, removes the node
-  from schedulable capacity, and lets owner cleanup terminate remaining local
-  descendants when possible.
+- Worker process failure: the node ingress/coordinator marks assigned attempts
+  failed, reports failed attempts to the load balancer, and optionally asks the
+  node process manager to start replacement workers if policy allows. The
+  runner may retry using the same statistical `task_id` and a new
+  `attempt_id`.
+- Node ingress/coordinator failure: the load balancer marks all in-flight
+  attempts on that node failed or unknown according to the retry contract,
+  removes the node from schedulable capacity, and lets owner cleanup terminate
+  remaining local descendants when possible.
 - Load-balancer failure: clients and nodes observe connection closure and clean
   up their owned processes. No remote component should assume a task was
   accepted unless the runner acceptance ledger recorded it before failure.
@@ -358,10 +395,10 @@ stuck or failed worker can be terminated without relying on thread cancellation
 inside JAX or Python. Local IPC keeps same-node communication efficient while
 retaining the operational benefits of process boundaries.
 
-The node coordinator keeps process isolation from turning into a large TCP mesh.
-The load balancer schedules against nodes and advertised capacity; the node
-coordinator handles local worker fan-out and worker-local failures. This keeps
-load-balancer state closer to the statistical runtime responsibilities and
+The node ingress/coordinator keeps process isolation from turning into a large
+TCP mesh. The load balancer schedules against nodes and advertised capacity; the
+node coordinator handles local worker fan-out and worker-local failures. This
+keeps load-balancer state closer to the statistical runtime responsibilities and
 keeps low-level process supervision near the processes being supervised.
 
 ## Public Client Surface
@@ -370,9 +407,9 @@ The public load-balancer client should expose runtime operations, not process
 manager details. Candidate responsibilities:
 
 - create or connect to a load balancer;
-- add a node coordinator;
-- add local workers under a node;
-- add remote-node capacity by connecting a node coordinator to the load
+- add a node process manager with one ingress/coordinator process;
+- add local worker processes under a node process manager;
+- add remote-node capacity by connecting a node ingress/coordinator to the load
   balancer;
 - create nested-sampler runners;
 - run, resume, revoke, and close runners;
@@ -383,25 +420,34 @@ creation, and `try`/`finally` cleanup. It should still expose enough diagnostics
 to explain which nodes and workers exist, which actor owns them, and how failed
 attempts were handled.
 
-## Migration Notes From Current Local LoadBalancerClient
+## Implementation Target
 
-The current local path should migrate in layers:
+Because v3 is unreleased, this design is a target contract rather than a
+compatibility migration. Implementation slices may be incremental, but tests
+and review should assert the target behavior directly. Do not add or preserve a
+legacy compatibility path for ordinary `LoadBalancerClient(address="local")`
+runs; compatibility with earlier unreleased v3 slices is not a requirement.
+Old runtime shapes may remain only when explicitly named as test-only/internal
+helpers:
 
-1. Preserve the public `LoadBalancerClient(address="local")` entry point and
-   runner-facing methods.
-2. Move local worker execution behind a process-owned worker actor instead of a
-   threaded or in-process worker boundary.
-3. Insert a node coordinator even for single-node local runs, so local and
-   distributed topologies share the same load-balancer-to-node contract.
-4. Replace coarse constrained-sampler worker payloads with likelihood-eval work
-   units, keeping constrained sampler state and acceptance in the runner.
-5. Replace direct load-balancer-to-worker bookkeeping with node-level capacity
-   and node-mediated worker dispatch.
-6. Keep task identity, attempt identity, acceptance-ledger semantics, and
-   diagnostics compatible with the existing v3 runtime contract.
-7. Add dynamic actor registration only after fixed local process topology has
-   clear ownership and shutdown tests.
+1. Every local or remote worker is a separate process.
+2. Every node has one node process manager that owns one node
+   ingress/coordinator process and all worker processes on that node.
+3. The load balancer communicates with node ingress/coordinator processes, not
+   individual workers.
+4. Node coordinators communicate with local workers over random `ipc://`
+   endpoints under `/tmp` and remove those endpoints during teardown.
+5. Ordinary remote work units are likelihood-eval requests containing one `U`
+   payload, not serialized constrained-sampler tasks.
+6. Worker capacity is process count: one active likelihood evaluation per worker
+   process.
+7. Statistical mutation remains runner-owned and happens only when the runner
+   accepts a completed constrained-sampler child.
+8. Runtime diagnostics expose node process managers, node
+   ingress/coordinators, worker process counts, per-worker capacity, IPC
+   endpoint ownership, cache events, dispatch latency, and retry/cancellation
+   outcomes.
 
-The migration should avoid changing statistical acceptance behavior. Any
+The implementation should avoid changing statistical acceptance behavior. Any
 observable changes should be runtime lifecycle, failure reporting, scheduling
 topology, or diagnostics changes.

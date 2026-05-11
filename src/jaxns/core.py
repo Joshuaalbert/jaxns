@@ -8,11 +8,11 @@ import jax.random
 import numpy as np
 from jaxctx import CtxParams
 
+from jaxns import allocation as _allocation_module
 from jaxns.allocation import AllocationTarget
 from jaxns.allocation import ParentWork
 from jaxns.allocation import accept_parent_work
 from jaxns.allocation import build_allocation_plan
-from jaxns.allocation import select_parent_work
 from jaxns.allocation import validate_allocation_target
 from jaxns.constrained_sampler import (
     AbstractSampler,
@@ -37,10 +37,83 @@ from jaxns.mixed_precision import mp_policy
 from jaxns.model import Model
 from jaxns.pytree import PureDataclassPytree
 from jaxns.random_utils import resample_indicies
+from jaxns.race_tree import build_block_state
 from jaxns.samples import Samples, SeedPoint, PhantomSamples
 from jaxns.state import State
 from jaxns.termination_condition import TerminationCondition
-from jaxns.types import IntArray, BoolArray, PRNGKey
+from jaxns.types import IntArray, BoolArray, FloatArray, PRNGKey
+
+
+@dataclasses.dataclass(slots=True, frozen=True)
+class CoreWorkBatch(PureDataclassPytree):
+    valid_mask: BoolArray
+    capacity: IntArray
+    num_work_items: IntArray
+    parent_work_id: IntArray
+    work_id: IntArray
+    requested_parent_idx: IntArray
+    effective_parent_idx: IntArray
+    target_block_idx: IntArray
+    parent_block_idx: IntArray
+    fallback_to_root: BoolArray
+    log_L_constraint: FloatArray
+    seed_idx: IntArray
+    direction_snapshot_id: IntArray
+    phantom_slot: IntArray
+
+
+CoreWorkBatch.register_pytree()
+
+
+@dataclasses.dataclass(slots=True, frozen=True)
+class CoreResultBatch(PureDataclassPytree):
+    valid_mask: BoolArray
+    capacity: IntArray
+    num_results: IntArray
+    status: IntArray
+    parent_work_id: IntArray
+    work_id: IntArray
+    accepted_parent_idx: IntArray
+    U_samples: object
+    log_L: FloatArray
+    num_likelihood_evaluations: IntArray
+    phantom_valid_mask: BoolArray
+    phantom_log_L: FloatArray
+    phantom_slot: IntArray
+
+
+CoreResultBatch.register_pytree()
+
+
+@dataclasses.dataclass(slots=True, frozen=True)
+class CoreDepthEpochHistory(PureDataclassPytree):
+    valid_step: BoolArray
+    num_steps: IntArray
+    work_batch: CoreWorkBatch
+    parent_work: ParentWork
+    result_num_results: IntArray
+    result_log_L_sum: FloatArray
+
+
+CoreDepthEpochHistory.register_pytree()
+
+
+@dataclasses.dataclass(slots=True, frozen=True)
+class CoreDepthEpochResult(PureDataclassPytree):
+    key: PRNGKey
+    state: State
+    allocation_iteration: IntArray
+    history: CoreDepthEpochHistory
+
+
+CoreDepthEpochResult.register_pytree()
+
+
+CORE_BOUNDARY_SCHEMA_NAMES = ("CoreWorkBatch", "CoreResultBatch")
+
+# Retain the legacy helper export for external callers and monkeypatch-based
+# tests, while the v3 pure-core path below uses the JAX work planner instead.
+select_parent_work = _allocation_module.select_parent_work
 
 
 def _parse_v3_options(options: dict[str, Any]) -> tuple[int, bool]:
@@ -85,6 +158,1302 @@ def _should_advance_after_no_work(
     if depth_cond.max_samples is None:
         return False
     return int(depth_cond.max_samples) <= int(state.num_samples) + shell_size
+
+
+def _first_masked_index(mask, default):
+    indices = jnp.arange(mask.shape[0], dtype=mp_policy.index_dtype)
+    sentinel = jnp.asarray(mask.shape[0], dtype=mp_policy.index_dtype)
+    selected = jnp.min(jnp.where(mask, indices, sentinel))
+    return jnp.where(selected < sentinel, selected, default)
+
+
+def _sample_categorical_index(key, weights, valid_mask):
+    clean_weights = jnp.where(
+        valid_mask & jnp.isfinite(weights) & (weights > 0.0),
+        weights,
+        0.0,
+    )
+    has_weight = jnp.sum(clean_weights) > 0.0
+    logits = jnp.where(clean_weights > 0.0, jnp.log(clean_weights), -jnp.inf)
+    safe_logits = jnp.where(has_weight, logits, jnp.zeros_like(logits))
+    categorical_idx = jax.random.categorical(key, safe_logits).astype(
+        mp_policy.index_dtype
+    )
+    first_idx = _first_masked_index(
+        valid_mask,
+        jnp.asarray(0, dtype=mp_policy.index_dtype),
+    )
+    return jnp.where(has_weight, categorical_idx, first_idx)
+
+
+def _plan_core_work_batch_impl(
+        key,
+        state: State,
+        plan,
+        num_parents,
+        *,
+        capacity: int,
+) -> CoreWorkBatch:
+    """Plan fixed-shape core work using static-size JAX control flow."""
+    block_state = build_block_state(
+        state.samples,
+        root_out_degree=state.root_out_degree,
+        num_samples=state.num_samples,
+    )
+    slot_ids = jnp.arange(capacity, dtype=mp_policy.index_dtype)
+    invalid_idx = jnp.asarray(-1, dtype=mp_policy.index_dtype)
+    invalid_log_L = jnp.asarray(-jnp.inf, dtype=mp_policy.measure_dtype)
+    zero_count = jnp.asarray(0, dtype=mp_policy.count_dtype)
+
+    def scan_body(carry, slot_id):
+        current_K, scan_key, work_count = carry
+        target_key, parent_key, sample_key, next_key = jax.random.split(
+            scan_key,
+            4,
+        )
+        deficits = plan.target_K - current_K
+        target_mask = plan.valid & (deficits > 0)
+
+        strict_parent_exists = jax.vmap(
+            lambda target_X: jnp.any(plan.valid & (target_X < plan.volume_path.X))
+        )(plan.volume_path.X)
+        strict_target_mask = target_mask & strict_parent_exists
+        root_only = state.num_samples == state.root_out_degree
+        target_mask = jnp.where(
+            root_only & jnp.any(strict_target_mask),
+            strict_target_mask,
+            target_mask,
+        )
+        has_target = jnp.any(target_mask)
+        slot_requested = slot_id < jnp.asarray(
+            num_parents,
+            dtype=mp_policy.index_dtype,
+        )
+        valid_slot = slot_requested & has_target
+
+        target_idx = _sample_categorical_index(
+            target_key,
+            deficits.astype(mp_policy.measure_dtype),
+            target_mask,
+        )
+        target_X = plan.volume_path.X[target_idx]
+        parent_mask = plan.valid & (target_X < plan.volume_path.X)
+        has_parent = jnp.any(parent_mask)
+        parent_weights = jnp.where(
+            parent_mask,
+            target_X / plan.volume_path.X,
+            0.0,
+        )
+        parent_block_idx = _sample_categorical_index(
+            parent_key,
+            parent_weights,
+            parent_mask,
+        )
+
+        block_start = block_state.block_start[parent_block_idx]
+        block_stop = block_state.block_stop[parent_block_idx]
+        block_size = jnp.maximum(block_stop - block_start, zero_count)
+        sample_offset = jax.random.randint(
+            sample_key,
+            (),
+            minval=jnp.asarray(0, dtype=mp_policy.index_dtype),
+            maxval=jnp.maximum(
+                block_size,
+                jnp.asarray(1, dtype=mp_policy.index_dtype),
+            ),
+        )
+        sample_position = block_start + sample_offset
+        parent_idx = block_state.block_sample_indices[sample_position]
+        has_sample = has_parent & (block_size > 0) & (parent_idx >= 0)
+        fallback_to_root = valid_slot & jnp.logical_not(has_sample)
+        requested_parent_idx = jnp.where(
+            valid_slot & has_sample,
+            parent_idx,
+            invalid_idx,
+        )
+        effective_parent_idx = requested_parent_idx
+        log_L_constraint = jnp.where(
+            valid_slot & has_sample,
+            state.samples.log_likelihoods[parent_idx],
+            invalid_log_L,
+        )
+        selected_parent_block_idx = jnp.where(
+            valid_slot & has_sample,
+            parent_block_idx,
+            invalid_idx,
+        )
+        selected_target_idx = jnp.where(valid_slot, target_idx, invalid_idx)
+        next_K = current_K.at[target_idx].add(
+            jnp.where(
+                valid_slot,
+                jnp.asarray(1, dtype=current_K.dtype),
+                jnp.asarray(0, dtype=current_K.dtype),
+            )
+        )
+
+        work_item = (
+            valid_slot,
+            slot_id,
+            requested_parent_idx,
+            effective_parent_idx,
+            selected_target_idx,
+            selected_parent_block_idx,
+            fallback_to_root,
+            log_L_constraint,
+            invalid_idx,
+            jnp.asarray(0, dtype=mp_policy.index_dtype),
+            jnp.asarray(-1, dtype=mp_policy.index_dtype),
+        )
+        next_count = work_count + valid_slot.astype(work_count.dtype)
+        return (next_K, next_key, next_count), work_item
+
+    (_, _, num_work_items), items = jax.lax.scan(
+        scan_body,
+        (
+            plan.current_K,
+            key,
+            jnp.asarray(0, dtype=mp_policy.count_dtype),
+        ),
+        slot_ids,
+    )
+    (
+        valid_mask,
+        work_id,
+        requested_parent_idx,
+        effective_parent_idx,
+        target_block_idx,
+        parent_block_idx,
+        fallback_to_root,
+        log_L_constraint,
+        seed_idx,
+        direction_snapshot_id,
+        phantom_slot,
+    ) = items
+    return CoreWorkBatch(
+        valid_mask=valid_mask,
+        capacity=jnp.asarray(capacity, dtype=mp_policy.count_dtype),
+        num_work_items=num_work_items,
+        parent_work_id=work_id,
+        work_id=work_id,
+        requested_parent_idx=requested_parent_idx,
+        effective_parent_idx=effective_parent_idx,
+        target_block_idx=target_block_idx,
+        parent_block_idx=parent_block_idx,
+        fallback_to_root=fallback_to_root,
+        log_L_constraint=log_L_constraint,
+        seed_idx=seed_idx,
+        direction_snapshot_id=direction_snapshot_id,
+        phantom_slot=phantom_slot,
+    )
+
+
+@partial(jax.jit, static_argnames=["capacity"])
+def _plan_core_work_batch_jax(
+        key,
+        state: State,
+        plan,
+        num_parents,
+        *,
+        capacity: int,
+) -> CoreWorkBatch:
+    return _plan_core_work_batch_impl(
+        key,
+        state,
+        plan,
+        num_parents,
+        capacity=capacity,
+    )
+
+
+def _parent_work_from_core_work_batch(work_batch: CoreWorkBatch) -> ParentWork:
+    num_work_items = int(np.asarray(work_batch.num_work_items))
+    return ParentWork(
+        parent_idxs=work_batch.requested_parent_idx[:num_work_items],
+        parent_log_L_constraints=work_batch.log_L_constraint[:num_work_items],
+        target_block_idxs=work_batch.target_block_idx[:num_work_items],
+        parent_block_idxs=work_batch.parent_block_idx[:num_work_items],
+        fallback_to_root=work_batch.fallback_to_root[:num_work_items],
+    )
+
+
+def _pad_tree_leading_dim(tree, capacity: int):
+    if tree is None:
+        return None
+
+    def pad_leaf(leaf):
+        leaf = jnp.asarray(leaf)
+        if leaf.shape[0] == capacity:
+            return leaf
+        pad_shape = (capacity - leaf.shape[0],) + leaf.shape[1:]
+        padding = jnp.zeros(pad_shape, dtype=leaf.dtype)
+        return jnp.concatenate([leaf, padding], axis=0)
+
+    return jax.tree.map(pad_leaf, tree)
+
+
+def _core_result_batch_from_samples(
+        work_batch: CoreWorkBatch,
+        parent_work: ParentWork,
+        new_samples: Samples,
+) -> CoreResultBatch:
+    num_results = int(parent_work.parent_idxs.shape[0])
+    capacity = int(np.asarray(work_batch.capacity))
+    valid_mask = jnp.arange(capacity, dtype=mp_policy.index_dtype) < num_results
+    if new_samples.phantom_samples.log_L.ndim == 1:
+        phantom_valid = jnp.zeros((capacity,), dtype=mp_policy.bool_dtype)
+        phantom_log_L = jnp.full(
+            (capacity,),
+            -jnp.inf,
+            dtype=mp_policy.measure_dtype,
+        )
+    else:
+        num_phantom = int(new_samples.phantom_samples.log_L.shape[1])
+        phantom_valid = jnp.zeros(
+            (capacity, num_phantom),
+            dtype=mp_policy.bool_dtype,
+        )
+        phantom_log_L = jnp.full(
+            (capacity, num_phantom),
+            -jnp.inf,
+            dtype=mp_policy.measure_dtype,
+        )
+        phantom_valid = phantom_valid.at[:num_results].set(
+            new_samples.phantom_samples.valid_mask
+        )
+        phantom_log_L = phantom_log_L.at[:num_results].set(
+            new_samples.phantom_samples.log_L
+        )
+    log_L = jnp.full((capacity,), -jnp.inf, dtype=mp_policy.measure_dtype)
+    log_L = log_L.at[:num_results].set(new_samples.log_likelihoods)
+    num_likelihood_evaluations = jnp.zeros(
+        (capacity,),
+        dtype=mp_policy.count_dtype,
+    )
+    num_likelihood_evaluations = num_likelihood_evaluations.at[:num_results].set(
+        new_samples.num_likelihood_evaluations
+    )
+    accepted_parent_idx = jnp.full(
+        (capacity,),
+        -1,
+        dtype=mp_policy.index_dtype,
+    )
+    accepted_parent_idx = accepted_parent_idx.at[:num_results].set(
+        parent_work.parent_idxs
+    )
+    status = jnp.where(
+        valid_mask,
+        jnp.asarray(1, dtype=mp_policy.index_dtype),
+        jnp.asarray(0, dtype=mp_policy.index_dtype),
+    )
+    return CoreResultBatch(
+        valid_mask=valid_mask,
+        capacity=work_batch.capacity,
+        num_results=jnp.asarray(num_results, dtype=mp_policy.count_dtype),
+        status=status,
+        parent_work_id=work_batch.parent_work_id,
+        work_id=work_batch.work_id,
+        accepted_parent_idx=accepted_parent_idx,
+        U_samples=_pad_tree_leading_dim(new_samples.U_samples, capacity),
+        log_L=log_L,
+        num_likelihood_evaluations=num_likelihood_evaluations,
+        phantom_valid_mask=phantom_valid,
+        phantom_log_L=phantom_log_L,
+        phantom_slot=work_batch.phantom_slot,
+    )
+
+
+def _root_core_work_batch(root_count: int) -> CoreWorkBatch:
+    slots = jnp.arange(root_count, dtype=mp_policy.index_dtype)
+    return CoreWorkBatch(
+        valid_mask=jnp.ones((root_count,), dtype=mp_policy.bool_dtype),
+        capacity=jnp.asarray(root_count, dtype=mp_policy.count_dtype),
+        num_work_items=jnp.asarray(root_count, dtype=mp_policy.count_dtype),
+        parent_work_id=slots,
+        work_id=slots,
+        requested_parent_idx=jnp.full(
+            (root_count,),
+            -1,
+            dtype=mp_policy.index_dtype,
+        ),
+        effective_parent_idx=jnp.full(
+            (root_count,),
+            -1,
+            dtype=mp_policy.index_dtype,
+        ),
+        target_block_idx=jnp.full(
+            (root_count,),
+            -1,
+            dtype=mp_policy.index_dtype,
+        ),
+        parent_block_idx=jnp.full(
+            (root_count,),
+            -1,
+            dtype=mp_policy.index_dtype,
+        ),
+        fallback_to_root=jnp.ones((root_count,), dtype=mp_policy.bool_dtype),
+        log_L_constraint=jnp.full(
+            (root_count,),
+            -jnp.inf,
+            dtype=mp_policy.measure_dtype,
+        ),
+        seed_idx=slots,
+        direction_snapshot_id=jnp.zeros(
+            (root_count,),
+            dtype=mp_policy.index_dtype,
+        ),
+        phantom_slot=jnp.full(
+            (root_count,),
+            -1,
+            dtype=mp_policy.index_dtype,
+        ),
+    )
+
+
+def _notify_core_work_batch(owner: object, work_batch: CoreWorkBatch) -> None:
+    hook = getattr(owner, "_set_active_core_work_batch", None)
+    if callable(hook):
+        hook(work_batch)
+
+
+def _clear_core_work_batch(owner: object) -> None:
+    hook = getattr(owner, "_clear_active_core_work_batch", None)
+    if callable(hook):
+        hook()
+
+
+def _notify_core_boundary(
+        owner: object,
+        *,
+        work_batch: CoreWorkBatch,
+        result_batch: CoreResultBatch,
+) -> None:
+    hook = getattr(owner, "_record_core_boundary", None)
+    if callable(hook):
+        hook(work_batch=work_batch, result_batch=result_batch)
+
+
+def _core_parent_work_id_for_owner(owner: object, work_idx: int) -> int:
+    hook = getattr(owner, "_core_parent_work_id_for_work_index", None)
+    if callable(hook):
+        return int(hook(work_idx))
+    return int(work_idx)
+
+
+def _jax_direction_adaptation_context(context):
+    if context is None:
+        return None
+    if isinstance(context, dict):
+        return context
+    return {
+        "component_means": jnp.asarray(context.component_means),
+        "component_radii": jnp.asarray(context.component_radii),
+        "component_rotations": jnp.asarray(context.component_rotations),
+        "component_probabilities": jnp.asarray(context.component_probabilities),
+        "component_integrated_volumes": jnp.asarray(
+            context.component_integrated_volumes
+        ),
+        "kernel_version": jnp.asarray(
+            context.kernel_version,
+            dtype=mp_policy.index_dtype,
+        ),
+    }
+
+
+def _sample_one_core_work_item(
+        sampler: AbstractSampler,
+        args,
+        params,
+        adaptation_context,
+        state: State,
+        work_batch: CoreWorkBatch,
+        item,
+):
+    work_idx, sample_key = item
+    seed_key, sampler_key = jax.random.split(sample_key)
+    constraint = work_batch.log_L_constraint[work_idx]
+    active_idx = (
+            jnp.arange(state.samples.log_likelihoods.shape[0])
+            < state.num_samples
+    )
+    constraint_is_nan = jnp.isnan(constraint)
+    initial_seed_mask = (
+            active_idx
+            & jnp.logical_not(constraint_is_nan)
+            & (state.samples.log_likelihoods > constraint)
+    )
+    no_seed = jnp.logical_not(jnp.any(initial_seed_mask))
+    effective_constraint = jnp.where(
+        no_seed,
+        jnp.asarray(-jnp.inf, dtype=mp_policy.measure_dtype),
+        constraint,
+    )
+    seed_mask = active_idx & (state.samples.log_likelihoods > effective_constraint)
+    seed_idx = _sample_categorical_index(
+        seed_key,
+        jnp.ones_like(state.samples.log_likelihoods, dtype=mp_policy.measure_dtype),
+        seed_mask,
+    )
+    seed_point = SeedPoint(
+        U0=jax.tree.map(lambda u: u[seed_idx], state.samples.U_samples),
+        log_L0=state.samples.log_likelihoods[seed_idx],
+    )
+    if adaptation_context is None:
+        sample = sampler.get_sample(
+            sampler_key,
+            effective_constraint,
+            seed_point,
+            args=args,
+            params=params,
+        )
+    else:
+        sample = sampler.get_sample(
+            sampler_key,
+            effective_constraint,
+            seed_point,
+            args=args,
+            params=params,
+            adaptation_context=adaptation_context,
+        )
+    effective_parent_idx = jnp.where(
+        no_seed,
+        jnp.asarray(-1, dtype=mp_policy.index_dtype),
+        work_batch.requested_parent_idx[work_idx],
+    )
+    effective_parent_block_idx = jnp.where(
+        no_seed,
+        jnp.asarray(-1, dtype=mp_policy.index_dtype),
+        work_batch.parent_block_idx[work_idx],
+    )
+    fallback_to_root = work_batch.fallback_to_root[work_idx] | no_seed
+    return (
+        sample,
+        effective_parent_idx,
+        effective_constraint,
+        work_batch.target_block_idx[work_idx],
+        effective_parent_block_idx,
+        fallback_to_root,
+        seed_idx,
+    )
+
+
+def _sample_core_work_batch_impl(
+        key,
+        state: State,
+        work_batch: CoreWorkBatch,
+        sampler: AbstractSampler,
+        args,
+        params,
+        adaptation_context,
+) -> tuple[CoreWorkBatch, ParentWork, Samples, CoreResultBatch]:
+    capacity = work_batch.valid_mask.shape[0]
+    slot_ids = jnp.arange(capacity, dtype=mp_policy.index_dtype)
+    sample_keys = jax.random.split(key, capacity)
+    (
+        samples_tuple,
+        parent_idxs,
+        parent_log_L_constraints,
+        target_block_idxs,
+        parent_block_idxs,
+        fallback_to_root,
+        seed_idx,
+    ) = jax.lax.map(
+        lambda item: _sample_one_core_work_item(
+            sampler,
+            args,
+            params,
+            adaptation_context,
+            state,
+            work_batch,
+            item,
+        ),
+        (slot_ids, sample_keys),
+    )
+    U_samples, log_likelihoods, num_likelihood_evaluations, phantom_samples = (
+        samples_tuple
+    )
+    valid_mask = work_batch.valid_mask
+    if state.samples.phantom_samples.U_samples is None:
+        phantom_U_samples = None
+    else:
+        phantom_U_samples = jax.tree.map(
+            lambda u: jnp.zeros(
+                (capacity, phantom_samples.log_L.shape[1]) + u.shape[1:],
+                dtype=u.dtype,
+            ),
+            state.samples.U_samples,
+        )
+    parent_work = ParentWork(
+        parent_idxs=jnp.where(
+            valid_mask,
+            parent_idxs,
+            jnp.asarray(-1, dtype=mp_policy.index_dtype),
+        ),
+        parent_log_L_constraints=jnp.where(
+            valid_mask,
+            parent_log_L_constraints,
+            jnp.asarray(jnp.inf, dtype=mp_policy.measure_dtype),
+        ),
+        target_block_idxs=jnp.where(
+            valid_mask,
+            target_block_idxs,
+            jnp.asarray(-1, dtype=mp_policy.index_dtype),
+        ),
+        parent_block_idxs=jnp.where(
+            valid_mask,
+            parent_block_idxs,
+            jnp.asarray(-1, dtype=mp_policy.index_dtype),
+        ),
+        fallback_to_root=valid_mask & fallback_to_root,
+    )
+    phantom_valid_mask = valid_mask[:, None] & phantom_samples.valid_mask
+    new_samples = Samples(
+        log_L_constraints=parent_work.parent_log_L_constraints,
+        log_likelihoods=jnp.where(
+            valid_mask,
+            log_likelihoods,
+            jnp.asarray(jnp.inf, dtype=mp_policy.measure_dtype),
+        ),
+        U_samples=U_samples,
+        out_degree=jnp.zeros((capacity,), dtype=mp_policy.count_dtype),
+        num_likelihood_evaluations=jnp.where(
+            valid_mask,
+            num_likelihood_evaluations.astype(mp_policy.count_dtype),
+            jnp.asarray(0, dtype=mp_policy.count_dtype),
+        ),
+        phantom_samples=PhantomSamples(
+            U_samples=phantom_U_samples,
+            valid_mask=phantom_valid_mask,
+            log_L=jnp.where(
+                phantom_valid_mask,
+                phantom_samples.log_L,
+                jnp.asarray(-jnp.inf, dtype=mp_policy.measure_dtype),
+            ),
+        ),
+    )
+    result_batch = CoreResultBatch(
+        valid_mask=valid_mask,
+        capacity=work_batch.capacity,
+        num_results=work_batch.num_work_items,
+        status=jnp.where(
+            valid_mask,
+            jnp.asarray(1, dtype=mp_policy.index_dtype),
+            jnp.asarray(0, dtype=mp_policy.index_dtype),
+        ),
+        parent_work_id=work_batch.parent_work_id,
+        work_id=work_batch.work_id,
+        accepted_parent_idx=parent_work.parent_idxs,
+        U_samples=U_samples,
+        log_L=new_samples.log_likelihoods,
+        num_likelihood_evaluations=new_samples.num_likelihood_evaluations,
+        phantom_valid_mask=new_samples.phantom_samples.valid_mask,
+        phantom_log_L=new_samples.phantom_samples.log_L,
+        phantom_slot=work_batch.phantom_slot,
+    )
+    result_batch = dataclasses.replace(
+        result_batch,
+        phantom_slot=jnp.where(
+            valid_mask,
+            result_batch.phantom_slot,
+            jnp.asarray(-1, dtype=mp_policy.index_dtype),
+        ),
+    )
+    work_batch = dataclasses.replace(
+        work_batch,
+        effective_parent_idx=parent_work.parent_idxs,
+        parent_block_idx=parent_work.parent_block_idxs,
+        fallback_to_root=parent_work.fallback_to_root,
+        seed_idx=jnp.where(
+            valid_mask,
+            seed_idx,
+            jnp.asarray(-1, dtype=mp_policy.index_dtype),
+        ),
+    )
+    return work_batch, parent_work, new_samples, result_batch
+
+
+def _accept_core_result_batch_impl(
+        state: State,
+        parent_work: ParentWork,
+        new_samples: Samples,
+        valid_mask,
+) -> State:
+    capacity = parent_work.parent_idxs.shape[0]
+    valid_mask = valid_mask.astype(mp_policy.bool_dtype)
+    parent_idxs = jnp.where(
+        parent_work.fallback_to_root | jnp.logical_not(valid_mask),
+        jnp.asarray(0, dtype=mp_policy.index_dtype),
+        parent_work.parent_idxs,
+    )
+    delta_parent_out_degree = jnp.where(
+        valid_mask & jnp.logical_not(parent_work.fallback_to_root),
+        jnp.asarray(1, dtype=state.samples.out_degree.dtype),
+        jnp.asarray(0, dtype=state.samples.out_degree.dtype),
+    )
+    root_delta = jnp.sum(
+        (valid_mask & parent_work.fallback_to_root).astype(
+            state.root_out_degree.dtype
+        ),
+        dtype=state.root_out_degree.dtype,
+    )
+    append_samples = dataclasses.replace(
+        new_samples,
+        log_L_constraints=jnp.where(
+            valid_mask,
+            parent_work.parent_log_L_constraints,
+            jnp.asarray(jnp.inf, dtype=mp_policy.measure_dtype),
+        ),
+        log_likelihoods=jnp.where(
+            valid_mask,
+            new_samples.log_likelihoods,
+            jnp.asarray(jnp.inf, dtype=mp_policy.measure_dtype),
+        ),
+        out_degree=jnp.zeros((capacity,), dtype=state.samples.out_degree.dtype),
+        num_likelihood_evaluations=jnp.where(
+            valid_mask,
+            new_samples.num_likelihood_evaluations.astype(
+                state.samples.num_likelihood_evaluations.dtype
+            ),
+            jnp.asarray(0, dtype=state.samples.num_likelihood_evaluations.dtype),
+        ),
+        phantom_samples=PhantomSamples(
+            U_samples=new_samples.phantom_samples.U_samples,
+            valid_mask=valid_mask[:, None] & new_samples.phantom_samples.valid_mask,
+            log_L=jnp.where(
+                valid_mask[:, None] & new_samples.phantom_samples.valid_mask,
+                new_samples.phantom_samples.log_L,
+                jnp.asarray(-jnp.inf, dtype=mp_policy.measure_dtype),
+            ),
+        ),
+    )
+    candidate_log_likelihoods = jnp.where(
+        valid_mask,
+        new_samples.log_likelihoods,
+        jnp.asarray(-jnp.inf, dtype=mp_policy.measure_dtype),
+    )
+    candidate_idx = jnp.argmax(candidate_log_likelihoods)
+    candidate_log_L_supremum = candidate_log_likelihoods[candidate_idx]
+    candidate_U_supremum = jax.tree.map(
+        lambda u: u[candidate_idx],
+        new_samples.U_samples,
+    )
+    improves_supremum = candidate_log_L_supremum > state.log_L_supremum
+    samples = state.samples.append_samples(
+        insert_idx=jnp.asarray(state.num_samples, dtype=jnp.int64),
+        parent_idxs=parent_idxs,
+        samples=append_samples,
+        delta_parent_out_degree=delta_parent_out_degree,
+    ).sort()
+    num_results = jnp.sum(
+        valid_mask.astype(state.num_samples.dtype),
+        dtype=state.num_samples.dtype,
+    )
+    return State(
+        root_out_degree=state.root_out_degree + root_delta,
+        samples=samples,
+        num_samples=state.num_samples + num_results,
+        log_L_supremum=jnp.where(
+            improves_supremum,
+            candidate_log_L_supremum,
+            state.log_L_supremum,
+        ),
+        U_supremum=jax.tree.map(
+            lambda u_new, u_old: jnp.where(improves_supremum, u_new, u_old),
+            candidate_U_supremum,
+            state.U_supremum,
+        ),
+        model=state.model,
+        args=state.args,
+        params=state.params,
+        termination_reason=state.termination_reason,
+    )
+
+
+def _pure_core_transition_impl(
+        key,
+        state: State,
+        plan,
+        num_parents,
+        sampler: AbstractSampler,
+        args,
+        params,
+        adaptation_context,
+        *,
+        capacity: int,
+):
+    plan_key, sample_key = jax.random.split(key)
+    work_batch = _plan_core_work_batch_impl(
+        plan_key,
+        state,
+        plan,
+        num_parents,
+        capacity=capacity,
+    )
+    work_batch, parent_work, new_samples, result_batch = _sample_core_work_batch_impl(
+        sample_key,
+        state,
+        work_batch,
+        sampler,
+        args,
+        params,
+        adaptation_context,
+    )
+    next_state = _accept_core_result_batch_impl(
+        state,
+        parent_work,
+        new_samples,
+        work_batch.valid_mask,
+    )
+    return next_state, work_batch, result_batch, parent_work, new_samples
+
+
+@partial(jax.jit, static_argnames=["sampler", "capacity"])
+def _pure_core_transition_jax(
+        key,
+        state: State,
+        plan,
+        num_parents,
+        sampler: AbstractSampler,
+        args,
+        params,
+        adaptation_context,
+        *,
+        capacity: int,
+):
+    return _pure_core_transition_impl(
+        key,
+        state,
+        plan,
+        num_parents,
+        sampler,
+        args,
+        params,
+        adaptation_context,
+        capacity=capacity,
+    )
+
+
+def _call_pure_core_transition_jax(
+        *,
+        key,
+        state: State,
+        plan,
+        num_parents,
+        sampler: AbstractSampler,
+        args,
+        params,
+        adaptation_context,
+        capacity: int,
+):
+    return _pure_core_transition_jax(
+        key,
+        state,
+        plan,
+        num_parents,
+        sampler,
+        args,
+        params,
+        adaptation_context,
+        capacity=capacity,
+    )
+
+
+def _empty_core_work_batch_history(
+        *,
+        max_epoch_steps: int,
+        capacity: int,
+) -> CoreWorkBatch:
+    step_slots = (max_epoch_steps, capacity)
+    step_ids = jnp.arange(max_epoch_steps, dtype=mp_policy.index_dtype)
+    work_ids = jnp.broadcast_to(
+        jnp.arange(capacity, dtype=mp_policy.index_dtype),
+        step_slots,
+    )
+    return CoreWorkBatch(
+        valid_mask=jnp.zeros(step_slots, dtype=mp_policy.bool_dtype),
+        capacity=jnp.full(
+            (max_epoch_steps,),
+            capacity,
+            dtype=mp_policy.count_dtype,
+        ),
+        num_work_items=jnp.zeros(
+            (max_epoch_steps,),
+            dtype=mp_policy.count_dtype,
+        ),
+        parent_work_id=work_ids,
+        work_id=work_ids,
+        requested_parent_idx=jnp.full(
+            step_slots,
+            -1,
+            dtype=mp_policy.index_dtype,
+        ),
+        effective_parent_idx=jnp.full(
+            step_slots,
+            -1,
+            dtype=mp_policy.index_dtype,
+        ),
+        target_block_idx=jnp.full(
+            step_slots,
+            -1,
+            dtype=mp_policy.index_dtype,
+        ),
+        parent_block_idx=jnp.full(
+            step_slots,
+            -1,
+            dtype=mp_policy.index_dtype,
+        ),
+        fallback_to_root=jnp.zeros(step_slots, dtype=mp_policy.bool_dtype),
+        log_L_constraint=jnp.full(
+            step_slots,
+            -jnp.inf,
+            dtype=mp_policy.measure_dtype,
+        ),
+        seed_idx=jnp.full(step_slots, -1, dtype=mp_policy.index_dtype),
+        direction_snapshot_id=jnp.broadcast_to(
+            step_ids[:, None],
+            step_slots,
+        ),
+        phantom_slot=jnp.full(step_slots, -1, dtype=mp_policy.index_dtype),
+    )
+
+
+def _empty_parent_work_history(
+        *,
+        max_epoch_steps: int,
+        capacity: int,
+) -> ParentWork:
+    step_slots = (max_epoch_steps, capacity)
+    return ParentWork(
+        parent_idxs=jnp.full(step_slots, -1, dtype=mp_policy.index_dtype),
+        parent_log_L_constraints=jnp.full(
+            step_slots,
+            jnp.inf,
+            dtype=mp_policy.measure_dtype,
+        ),
+        target_block_idxs=jnp.full(
+            step_slots,
+            -1,
+            dtype=mp_policy.index_dtype,
+        ),
+        parent_block_idxs=jnp.full(
+            step_slots,
+            -1,
+            dtype=mp_policy.index_dtype,
+        ),
+        fallback_to_root=jnp.zeros(step_slots, dtype=mp_policy.bool_dtype),
+    )
+
+
+def _set_core_work_batch_history(
+        history: CoreWorkBatch,
+        step_idx,
+        work_batch: CoreWorkBatch,
+) -> CoreWorkBatch:
+    return jax.tree.map(
+        lambda history_leaf, value_leaf: history_leaf.at[step_idx].set(
+            value_leaf
+        ),
+        history,
+        work_batch,
+    )
+
+
+def _set_parent_work_history(
+        history: ParentWork,
+        step_idx,
+        parent_work: ParentWork,
+) -> ParentWork:
+    return jax.tree.map(
+        lambda history_leaf, value_leaf: history_leaf.at[step_idx].set(
+            value_leaf
+        ),
+        history,
+        parent_work,
+    )
+
+
+def _slice_core_work_batch_history(
+        history: CoreWorkBatch,
+        step_idx: int,
+) -> CoreWorkBatch:
+    return CoreWorkBatch(
+        valid_mask=history.valid_mask[step_idx],
+        capacity=history.capacity[step_idx],
+        num_work_items=history.num_work_items[step_idx],
+        parent_work_id=history.parent_work_id[step_idx],
+        work_id=history.work_id[step_idx],
+        requested_parent_idx=history.requested_parent_idx[step_idx],
+        effective_parent_idx=history.effective_parent_idx[step_idx],
+        target_block_idx=history.target_block_idx[step_idx],
+        parent_block_idx=history.parent_block_idx[step_idx],
+        fallback_to_root=history.fallback_to_root[step_idx],
+        log_L_constraint=history.log_L_constraint[step_idx],
+        seed_idx=history.seed_idx[step_idx],
+        direction_snapshot_id=history.direction_snapshot_id[step_idx],
+        phantom_slot=history.phantom_slot[step_idx],
+    )
+
+
+def _slice_parent_work_history(
+        history: ParentWork,
+        step_idx: int,
+        num_work_items: int,
+) -> ParentWork:
+    return ParentWork(
+        parent_idxs=history.parent_idxs[step_idx, :num_work_items],
+        parent_log_L_constraints=(
+            history.parent_log_L_constraints[step_idx, :num_work_items]
+        ),
+        target_block_idxs=history.target_block_idxs[step_idx, :num_work_items],
+        parent_block_idxs=history.parent_block_idxs[step_idx, :num_work_items],
+        fallback_to_root=history.fallback_to_root[step_idx, :num_work_items],
+    )
+
+
+def _core_num_likelihood_evaluations(state: State):
+    active = (
+            jnp.arange(state.samples.num_likelihood_evaluations.shape[0])
+            < state.num_samples
+    )
+    return jnp.sum(
+        jnp.where(
+            active,
+            state.samples.num_likelihood_evaluations,
+            jnp.asarray(0, dtype=state.samples.num_likelihood_evaluations.dtype),
+        ),
+        dtype=state.samples.num_likelihood_evaluations.dtype,
+    )
+
+
+def _core_dlogz_depth_done_impl(state: State, threshold):
+    plan = build_allocation_plan(
+        state=state,
+        allocation_target="uniform",
+        iteration=jnp.asarray(0, dtype=mp_policy.index_dtype),
+        delta_K=jnp.asarray(1, dtype=mp_policy.count_dtype),
+    )
+    valid = plan.valid.astype(mp_policy.bool_dtype)
+    active = valid & jnp.isfinite(plan.log_L_blocks)
+    has_active = jnp.any(active)
+    max_log_L = jnp.max(jnp.where(active, plan.log_L_blocks, -jnp.inf))
+    max_log_L = jnp.where(jnp.isfinite(max_log_L), max_log_L, 0.0)
+    likelihood = jnp.where(active, jnp.exp(plan.log_L_blocks - max_log_L), 0.0)
+    shell_evidence = likelihood * plan.volume_path.shell_mass
+    evidence = jnp.sum(jnp.where(valid, shell_evidence, 0.0))
+    block_idx = jnp.arange(plan.valid.shape[0], dtype=mp_policy.index_dtype)
+    last_valid_idx = jnp.max(
+        jnp.where(
+            active,
+            block_idx,
+            jnp.asarray(0, dtype=mp_policy.index_dtype),
+        )
+    )
+    remaining = likelihood[last_valid_idx] * plan.volume_path.X[last_valid_idx]
+    total = evidence + remaining
+    ratio = jnp.where(
+        (total > 0.0) & jnp.isfinite(total),
+        remaining / total,
+        jnp.asarray(jnp.inf, dtype=mp_policy.measure_dtype),
+    )
+    return has_active & (ratio < threshold)
+
+
+def _core_depth_condition_done_impl(
+        state: State,
+        *,
+        depth_max_samples,
+        max_num_likelihood_evaluations,
+        dlogz_threshold,
+        has_max_num_likelihood_evaluations: bool,
+        has_dlogz: bool,
+):
+    done = state.num_samples >= depth_max_samples
+    if has_max_num_likelihood_evaluations:
+        done = done | (
+                _core_num_likelihood_evaluations(state)
+                >= max_num_likelihood_evaluations
+        )
+    if has_dlogz:
+        done = done | _core_dlogz_depth_done_impl(state, dlogz_threshold)
+    return done
+
+
+class _CoreDepthEpochCarry(NamedTuple):
+    key: PRNGKey
+    state: State
+    allocation_iteration: IntArray
+    step: IntArray
+    stop: BoolArray
+    valid_step: BoolArray
+    work_batch_history: CoreWorkBatch
+    parent_work_history: ParentWork
+    result_num_results: IntArray
+    result_log_L_sum: FloatArray
+
+
+def _pure_core_depth_epoch_impl(
+        key,
+        state: State,
+        allocation_iteration,
+        depth_max_samples,
+        max_num_likelihood_evaluations,
+        dlogz_threshold,
+        root_out_degree,
+        delta_K,
+        sampler: AbstractSampler,
+        args,
+        params,
+        adaptation_context,
+        *,
+        allocation_target: AllocationTarget,
+        posterior_conservative: bool,
+        capacity: int,
+        max_epoch_steps: int,
+        has_max_num_likelihood_evaluations: bool,
+        has_dlogz: bool,
+) -> CoreDepthEpochResult:
+    work_batch_history = _empty_core_work_batch_history(
+        max_epoch_steps=max_epoch_steps,
+        capacity=capacity,
+    )
+    parent_work_history = _empty_parent_work_history(
+        max_epoch_steps=max_epoch_steps,
+        capacity=capacity,
+    )
+    init = _CoreDepthEpochCarry(
+        key=key,
+        state=state,
+        allocation_iteration=allocation_iteration,
+        step=jnp.asarray(0, dtype=mp_policy.index_dtype),
+        stop=jnp.asarray(False, dtype=mp_policy.bool_dtype),
+        valid_step=jnp.zeros((max_epoch_steps,), dtype=mp_policy.bool_dtype),
+        work_batch_history=work_batch_history,
+        parent_work_history=parent_work_history,
+        result_num_results=jnp.zeros(
+            (max_epoch_steps,),
+            dtype=mp_policy.count_dtype,
+        ),
+        result_log_L_sum=jnp.zeros(
+            (max_epoch_steps,),
+            dtype=mp_policy.measure_dtype,
+        ),
+    )
+
+    def cond_fn(carry: _CoreDepthEpochCarry):
+        remaining = depth_max_samples - carry.state.num_samples
+        return (
+                (carry.step < max_epoch_steps)
+                & (remaining >= jnp.asarray(capacity, dtype=remaining.dtype))
+                & jnp.logical_not(carry.stop)
+                & jnp.logical_not(
+                    _core_depth_condition_done_impl(
+                        carry.state,
+                        depth_max_samples=depth_max_samples,
+                        max_num_likelihood_evaluations=(
+                            max_num_likelihood_evaluations
+                        ),
+                        dlogz_threshold=dlogz_threshold,
+                        has_max_num_likelihood_evaluations=(
+                            has_max_num_likelihood_evaluations
+                        ),
+                        has_dlogz=has_dlogz,
+                    )
+                )
+        )
+
+    def body_fn(carry: _CoreDepthEpochCarry):
+        plan = build_allocation_plan(
+            state=carry.state,
+            allocation_target=allocation_target,
+            iteration=carry.allocation_iteration,
+            delta_K=delta_K,
+            root_out_degree=root_out_degree,
+            posterior_conservative=posterior_conservative,
+        )
+        next_key, transition_key = jax.random.split(carry.key)
+        next_state, work_batch, result_batch, parent_work, _ = (
+            _pure_core_transition_impl(
+                transition_key,
+                carry.state,
+                plan,
+                jnp.asarray(capacity, dtype=mp_policy.count_dtype),
+                sampler,
+                args,
+                params,
+                adaptation_context,
+                capacity=capacity,
+            )
+        )
+        step_idx = carry.step
+        valid_step = carry.valid_step.at[step_idx].set(True)
+        work_batch_history = _set_core_work_batch_history(
+            carry.work_batch_history,
+            step_idx,
+            work_batch,
+        )
+        parent_work_history = _set_parent_work_history(
+            carry.parent_work_history,
+            step_idx,
+            parent_work,
+        )
+        result_num_results = carry.result_num_results.at[step_idx].set(
+            result_batch.num_results
+        )
+        result_log_L_sum = carry.result_log_L_sum.at[step_idx].set(
+            jnp.sum(
+                jnp.where(
+                    result_batch.valid_mask,
+                    result_batch.log_L,
+                    jnp.asarray(0.0, dtype=mp_policy.measure_dtype),
+                )
+            )
+        )
+        made_work = work_batch.num_work_items > 0
+        made_progress = next_state.num_samples > carry.state.num_samples
+        next_allocation_iteration = carry.allocation_iteration + jnp.where(
+            made_work,
+            jnp.asarray(0, dtype=carry.allocation_iteration.dtype),
+            jnp.asarray(1, dtype=carry.allocation_iteration.dtype),
+        )
+        return _CoreDepthEpochCarry(
+            key=next_key,
+            state=next_state,
+            allocation_iteration=next_allocation_iteration,
+            step=carry.step + jnp.asarray(1, dtype=mp_policy.index_dtype),
+            stop=jnp.logical_not(made_work & made_progress),
+            valid_step=valid_step,
+            work_batch_history=work_batch_history,
+            parent_work_history=parent_work_history,
+            result_num_results=result_num_results,
+            result_log_L_sum=result_log_L_sum,
+        )
+
+    output = jax.lax.while_loop(cond_fn, body_fn, init)
+    history = CoreDepthEpochHistory(
+        valid_step=output.valid_step,
+        num_steps=output.step,
+        work_batch=output.work_batch_history,
+        parent_work=output.parent_work_history,
+        result_num_results=output.result_num_results,
+        result_log_L_sum=output.result_log_L_sum,
+    )
+    return CoreDepthEpochResult(
+        key=output.key,
+        state=output.state,
+        allocation_iteration=output.allocation_iteration,
+        history=history,
+    )
+
+
+@partial(
+    jax.jit,
+    static_argnames=[
+        "sampler",
+        "allocation_target",
+        "posterior_conservative",
+        "capacity",
+        "max_epoch_steps",
+        "has_max_num_likelihood_evaluations",
+        "has_dlogz",
+    ],
+)
+def _pure_core_depth_epoch_jax(
+        key,
+        state: State,
+        allocation_iteration,
+        depth_max_samples,
+        max_num_likelihood_evaluations,
+        dlogz_threshold,
+        root_out_degree,
+        delta_K,
+        sampler: AbstractSampler,
+        args,
+        params,
+        adaptation_context,
+        *,
+        allocation_target: AllocationTarget,
+        posterior_conservative: bool,
+        capacity: int,
+        max_epoch_steps: int,
+        has_max_num_likelihood_evaluations: bool,
+        has_dlogz: bool,
+) -> CoreDepthEpochResult:
+    return _pure_core_depth_epoch_impl(
+        key,
+        state,
+        allocation_iteration,
+        depth_max_samples,
+        max_num_likelihood_evaluations,
+        dlogz_threshold,
+        root_out_degree,
+        delta_K,
+        sampler,
+        args,
+        params,
+        adaptation_context,
+        allocation_target=allocation_target,
+        posterior_conservative=posterior_conservative,
+        capacity=capacity,
+        max_epoch_steps=max_epoch_steps,
+        has_max_num_likelihood_evaluations=has_max_num_likelihood_evaluations,
+        has_dlogz=has_dlogz,
+    )
+
+
+def trace_inner_depth_transition_core(
+        *,
+        nested_sampler,
+        state: State,
+        depth_cond: TerminationCondition,
+        allocation_target: AllocationTarget,
+        key,
+        delta_K: int,
+        posterior_conservative: bool = False,
+        max_goal_iterations: int = 2,
+):
+    """Return a JAXPR for the pure-core inner depth transition."""
+    allocation_target = validate_allocation_target(allocation_target)
+    capacity = int(nested_sampler.shell_size)
+    root_out_degree = state.root_out_degree
+    depth_max_samples = (
+        state.samples.log_likelihoods.shape[0]
+        if depth_cond.max_samples is None
+        else int(depth_cond.max_samples)
+    )
+
+    def trace_fn(trace_key, trace_state):
+        output = _pure_core_depth_epoch_impl(
+            trace_key,
+            trace_state,
+            jnp.asarray(0, dtype=mp_policy.index_dtype),
+            jnp.asarray(depth_max_samples, dtype=mp_policy.count_dtype),
+            jnp.asarray(0, dtype=mp_policy.count_dtype),
+            jnp.asarray(0.0, dtype=mp_policy.measure_dtype),
+            root_out_degree,
+            jnp.asarray(delta_K, dtype=mp_policy.count_dtype),
+            nested_sampler.sampler,
+            nested_sampler.args,
+            nested_sampler.params,
+            None,
+            allocation_target=allocation_target,
+            posterior_conservative=posterior_conservative,
+            capacity=capacity,
+            max_epoch_steps=max_goal_iterations,
+            has_max_num_likelihood_evaluations=False,
+            has_dlogz=False,
+        )
+        step_idx = jnp.maximum(
+            output.history.num_steps - jnp.asarray(1, dtype=mp_policy.index_dtype),
+            jnp.asarray(0, dtype=mp_policy.index_dtype),
+        )
+        result_boundary = (
+            output.history.result_num_results[step_idx],
+            output.history.result_log_L_sum[step_idx],
+        )
+        return output.state, result_boundary
+
+    return {
+        "boundary_result": jax.make_jaxpr(trace_fn)(key, state),
+    }
 
 
 @dataclasses.dataclass(slots=True)
@@ -157,7 +1526,11 @@ def _record_depth_condition_summaries(
     if register is None:
         num_samples = int(state.num_samples)
         num_likelihood_evaluations = int(
-            jnp.sum(state.samples.num_likelihood_evaluations[:num_samples])
+            np.sum(
+                np.asarray(state.samples.num_likelihood_evaluations)[
+                    :num_samples
+                ]
+            )
         )
     else:
         num_samples = int(np.asarray(register.num_samples_used))
@@ -1145,7 +2518,7 @@ class NestedSampler(PureDataclassPytree):
                 allocation_target=None,
             )
         outputs = []
-        for sample_key in jax.random.split(key, root_count):
+        for sample_idx, sample_key in enumerate(jax.random.split(key, root_count)):
             seed_key, sampler_key = jax.random.split(sample_key, 2)
             seed_U = self.model.sample_U(
                 seed_key,
@@ -1166,6 +2539,7 @@ class NestedSampler(PureDataclassPytree):
                     requested_parent_idx=-1,
                     effective_parent_idx=-1,
                     accepted_parent_idx=-1,
+                    parent_work_id=sample_idx,
                     adaptation_context=adaptation_context,
                 )
             )
@@ -1188,7 +2562,7 @@ class NestedSampler(PureDataclassPytree):
                 lambda *values: jnp.stack(values, axis=0),
                 *[phantom.U_samples for phantom in phantom_outputs],
             )
-        samples = Samples(
+        root_samples = Samples(
             log_L_constraints=jnp.full(
                 (root_count,),
                 -jnp.inf,
@@ -1209,7 +2583,40 @@ class NestedSampler(PureDataclassPytree):
                     axis=0,
                 ),
             ),
-        ).resize(int(self.max_samples)).sort()
+        )
+        root_work_batch = _root_core_work_batch(root_count)
+        root_parent_work = ParentWork(
+            parent_idxs=jnp.full(
+                (root_count,),
+                -1,
+                dtype=mp_policy.index_dtype,
+            ),
+            parent_log_L_constraints=root_samples.log_L_constraints,
+            target_block_idxs=jnp.full(
+                (root_count,),
+                -1,
+                dtype=mp_policy.index_dtype,
+            ),
+            parent_block_idxs=jnp.full(
+                (root_count,),
+                -1,
+                dtype=mp_policy.index_dtype,
+            ),
+            fallback_to_root=jnp.ones(
+                (root_count,),
+                dtype=mp_policy.bool_dtype,
+            ),
+        )
+        _notify_core_boundary(
+            self,
+            work_batch=root_work_batch,
+            result_batch=_core_result_batch_from_samples(
+                work_batch=root_work_batch,
+                parent_work=root_parent_work,
+                new_samples=root_samples,
+            ),
+        )
+        samples = root_samples.resize(int(self.max_samples)).sort()
         if not self.store_phantom_samples:
             samples.phantom_samples.U_samples = None
 
@@ -1241,9 +2648,11 @@ class NestedSampler(PureDataclassPytree):
             requested_parent_idx: int,
             effective_parent_idx: int,
             accepted_parent_idx: int,
+            parent_work_id: int | None = None,
             adaptation_context=None,
     ):
-        del requested_parent_idx, effective_parent_idx, accepted_parent_idx
+        del requested_parent_idx, effective_parent_idx
+        del accepted_parent_idx, parent_work_id
         if adaptation_context is None:
             return self.sampler.get_sample(
                 key,
@@ -1339,6 +2748,7 @@ class NestedSampler(PureDataclassPytree):
             )
             requested_parent_idx = int(parent_work.parent_idxs[work_idx])
             effective_parent_idx = -1 if no_seed else requested_parent_idx
+            parent_work_id = _core_parent_work_id_for_owner(self, work_idx)
             outputs.append(
                 self._sample_constrained(
                     sampler_key,
@@ -1347,6 +2757,7 @@ class NestedSampler(PureDataclassPytree):
                     requested_parent_idx=requested_parent_idx,
                     effective_parent_idx=effective_parent_idx,
                     accepted_parent_idx=effective_parent_idx,
+                    parent_work_id=parent_work_id,
                     adaptation_context=adaptation_context,
                 )
             )
@@ -1492,7 +2903,11 @@ class NestedSampler(PureDataclassPytree):
         if depth_cond.max_num_likelihood_evaluations is not None:
             num_samples = int(state.num_samples)
             num_likelihood_evaluations = int(
-                jnp.sum(state.samples.num_likelihood_evaluations[:num_samples])
+                np.sum(
+                    np.asarray(state.samples.num_likelihood_evaluations)[
+                        :num_samples
+                    ]
+                )
             )
             if (
                     num_likelihood_evaluations
@@ -1570,7 +2985,7 @@ class NestedSampler(PureDataclassPytree):
             key: PRNGKey,
             max_goal_iterations: int,
     ) -> State:
-        current = state
+        current = dataclasses.replace(state, execution_diagnostics=None)
         initial_root_out_degree = int(state.root_out_degree)
         direction_adaptation_enabled = _direction_kernel_requests_adaptation(
             self.sampler
@@ -1586,6 +3001,38 @@ class NestedSampler(PureDataclassPytree):
             shell_size=int(self.shell_size),
             sampler=self.sampler,
         )
+        prior_diagnostics = getattr(state, "execution_diagnostics", None)
+        if prior_diagnostics is not None:
+            prior_parent_selection = getattr(
+                prior_diagnostics,
+                "parent_selection",
+                None,
+            )
+            if prior_parent_selection is not None:
+                diagnostics_builder.requested_parent_indices.extend(
+                    int(x)
+                    for x in np.asarray(
+                        prior_parent_selection.requested_parent_indices
+                    )
+                )
+                diagnostics_builder.effective_parent_indices.extend(
+                    int(x)
+                    for x in np.asarray(
+                        prior_parent_selection.effective_parent_indices
+                    )
+                )
+                diagnostics_builder.accepted_parent_indices.extend(
+                    int(x)
+                    for x in np.asarray(
+                        prior_parent_selection.accepted_parent_indices
+                    )
+                )
+                diagnostics_builder.sentinel_fallback_indices.extend(
+                    int(x)
+                    for x in np.asarray(
+                        prior_parent_selection.sentinel_fallback_indices
+                    )
+                )
 
         def finish(final_state: State) -> State:
             diagnostics = _build_execution_diagnostics(
@@ -1598,24 +3045,34 @@ class NestedSampler(PureDataclassPytree):
                 execution_diagnostics=diagnostics,
             )
 
-        skip_goal_check = False
-        for iteration in range(max_goal_iterations):
-            if not skip_goal_check:
-                goal_reached = bool(goal_cond(current))
-                diagnostics_builder.goal_condition_summaries.append(
-                    DiagnosticConditionSummary(
-                        condition_name="goal_cond",
-                        iteration=len(
-                            diagnostics_builder.goal_condition_summaries
-                        ),
-                        num_samples=int(current.num_samples),
-                        value=int(current.num_samples),
-                        satisfied=goal_reached,
-                    )
+        goal_iteration = 0
+        allocation_iteration = 0
+        allocation_iteration_limit = (
+                int(self.max_samples)
+                + int(state.root_out_degree)
+                + int(max_goal_iterations)
+        )
+        while goal_iteration < int(max_goal_iterations):
+            goal_reached = bool(goal_cond(current))
+            diagnostics_builder.goal_condition_summaries.append(
+                DiagnosticConditionSummary(
+                    condition_name="goal_cond",
+                    iteration=len(
+                        diagnostics_builder.goal_condition_summaries
+                    ),
+                    num_samples=int(current.num_samples),
+                    value=int(current.num_samples),
+                    satisfied=goal_reached,
                 )
-                if goal_reached:
-                    return finish(current)
-            skip_goal_check = False
+            )
+            goal_iteration += 1
+            if goal_reached:
+                return finish(current)
+            if self._depth_condition_done(
+                    current,
+                    depth_cond,
+            ):
+                return finish(current)
             if int(current.num_samples) >= int(self.max_samples):
                 return finish(current)
             while not self._depth_condition_done(
@@ -1635,10 +3092,211 @@ class NestedSampler(PureDataclassPytree):
                 remaining = int(self.max_samples) - int(current.num_samples)
                 if remaining <= 0:
                     return finish(current)
+                shell_capacity = min(int(self.shell_size), remaining)
+                if type(self) is NestedSampler:
+                    depth_max_samples = (
+                        int(self.max_samples)
+                        if depth_cond.max_samples is None
+                        else min(int(depth_cond.max_samples), int(self.max_samples))
+                    )
+                    depth_remaining = depth_max_samples - int(current.num_samples)
+                    if depth_remaining <= 0:
+                        continue
+                    epoch_capacity = min(shell_capacity, depth_remaining)
+                    max_epoch_steps = min(
+                        4,
+                        max(
+                            1,
+                            (depth_remaining + epoch_capacity - 1)
+                            // epoch_capacity,
+                        ),
+                    )
+                    plan = build_allocation_plan(
+                        state=current,
+                        allocation_target=allocation_target,
+                        iteration=allocation_iteration,
+                        delta_K=delta_K,
+                        root_out_degree=initial_root_out_degree,
+                        posterior_conservative=posterior_conservative,
+                    )
+                    diagnostics_builder.allocation_target_summaries.append(
+                        _allocation_summary(
+                            allocation_target=allocation_target,
+                            iteration=allocation_iteration,
+                            plan=plan,
+                        )
+                    )
+                    direction_adaptation_context = None
+                    if direction_adaptation_enabled:
+                        shells_since_success = (
+                                direction_distinct_shell_count
+                                - direction_last_successful_shell_count
+                        )
+                        fit_eligible = (
+                                direction_coordinator.successful_update_count == 0
+                                or shells_since_success
+                                >= direction_coordinator.update_every_shells
+                        )
+                        if fit_eligible:
+                            key, fit_key = jax.random.split(key)
+                            fit_rows, fit_weights = (
+                                _state_direction_fitting_rows_and_weights(current)
+                            )
+                            fit_result = (
+                                direction_coordinator.request_direction_kernel_fit(
+                                    DirectionKernelFitRequest(
+                                        shell_epoch=(
+                                            direction_distinct_shell_count
+                                        ),
+                                        allocation_target=allocation_target,
+                                        samples_U=fit_rows,
+                                        posterior_weights=fit_weights,
+                                        key=fit_key,
+                                    )
+                                )
+                            )
+                            diagnostics_builder.direction_adaptation_diagnostics.append(
+                                fit_result.diagnostics
+                            )
+                            direction_coordinator = fit_result.coordinator
+                            if not fit_result.diagnostics.fallback_active:
+                                direction_last_successful_shell_count = (
+                                    direction_distinct_shell_count
+                                )
+
+                        snapshot = direction_coordinator.prepare_dispatch_snapshot(
+                            DirectionKernelDispatchRequest(
+                                chain_id=(
+                                    f"{allocation_target}-"
+                                    f"{direction_distinct_shell_count}"
+                                ),
+                                shell_epoch=direction_distinct_shell_count,
+                                allocation_target=allocation_target,
+                            )
+                        )
+                        direction_adaptation_context = _ensure_direction_context(
+                            context=snapshot.direction_adaptation_context(),
+                            d_dim=direction_d_dim,
+                            kernel_version=snapshot.kernel_version,
+                            allocation_target=allocation_target,
+                        )
+                    before = int(current.num_samples)
+                    epoch_result = _pure_core_depth_epoch_jax(
+                        key,
+                        current,
+                        jnp.asarray(
+                            allocation_iteration,
+                            dtype=mp_policy.index_dtype,
+                        ),
+                        jnp.asarray(
+                            depth_max_samples,
+                            dtype=mp_policy.count_dtype,
+                        ),
+                        jnp.asarray(
+                            (
+                                0
+                                if depth_cond.max_num_likelihood_evaluations
+                                is None
+                                else int(
+                                    depth_cond
+                                    .max_num_likelihood_evaluations
+                                )
+                            ),
+                            dtype=mp_policy.count_dtype,
+                        ),
+                        jnp.asarray(
+                            0.0 if depth_cond.dlogZ is None else float(
+                                depth_cond.dlogZ
+                            ),
+                            dtype=mp_policy.measure_dtype,
+                        ),
+                        jnp.asarray(
+                            initial_root_out_degree,
+                            dtype=mp_policy.count_dtype,
+                        ),
+                        jnp.asarray(delta_K, dtype=mp_policy.count_dtype),
+                        self.sampler,
+                        self.args,
+                        self.params,
+                        _jax_direction_adaptation_context(
+                            direction_adaptation_context
+                        ),
+                        allocation_target=allocation_target,
+                        posterior_conservative=posterior_conservative,
+                        capacity=epoch_capacity,
+                        max_epoch_steps=max_epoch_steps,
+                        has_max_num_likelihood_evaluations=(
+                            depth_cond.max_num_likelihood_evaluations
+                            is not None
+                        ),
+                        has_dlogz=depth_cond.dlogZ is not None,
+                    )
+                    key = epoch_result.key
+                    current = epoch_result.state
+                    allocation_iteration = int(
+                        np.asarray(epoch_result.allocation_iteration)
+                    )
+                    num_epoch_steps = int(
+                        np.asarray(epoch_result.history.num_steps)
+                    )
+                    for epoch_step in range(num_epoch_steps):
+                        if not bool(
+                                np.asarray(
+                                    epoch_result.history.valid_step[epoch_step]
+                                )
+                        ):
+                            continue
+                        work_batch = _slice_core_work_batch_history(
+                            epoch_result.history.work_batch,
+                            epoch_step,
+                        )
+                        num_work_items = int(
+                            np.asarray(work_batch.num_work_items)
+                        )
+                        if num_work_items == 0:
+                            continue
+                        requested_parent_work = (
+                            _parent_work_from_core_work_batch(work_batch)
+                        )
+                        accepted_parent_work = _slice_parent_work_history(
+                            epoch_result.history.parent_work,
+                            epoch_step,
+                            num_work_items,
+                        )
+                        _record_parent_selection(
+                            diagnostics_builder,
+                            requested_parent_work=requested_parent_work,
+                            accepted_parent_work=accepted_parent_work,
+                        )
+                        if direction_adaptation_enabled:
+                            shell_values = np.asarray(
+                                (
+                                    accepted_parent_work
+                                    .parent_log_L_constraints
+                                ),
+                                dtype=float,
+                            )
+                            for shell_value in np.unique(shell_values):
+                                if not np.isfinite(shell_value):
+                                    continue
+                                if (
+                                        direction_last_log_likelihood is None
+                                        or float(shell_value)
+                                        != float(direction_last_log_likelihood)
+                                ):
+                                    direction_distinct_shell_count += 1
+                                    direction_last_log_likelihood = float(
+                                        shell_value
+                                    )
+                    if allocation_iteration > allocation_iteration_limit:
+                        return finish(current)
+                    if int(current.num_samples) <= before and num_epoch_steps == 0:
+                        return finish(current)
+                    continue
                 plan = build_allocation_plan(
                     state=current,
                     allocation_target=allocation_target,
-                    iteration=iteration,
+                    iteration=allocation_iteration,
                     delta_K=delta_K,
                     root_out_degree=initial_root_out_degree,
                     posterior_conservative=posterior_conservative,
@@ -1646,27 +3304,10 @@ class NestedSampler(PureDataclassPytree):
                 diagnostics_builder.allocation_target_summaries.append(
                     _allocation_summary(
                         allocation_target=allocation_target,
-                        iteration=iteration,
+                        iteration=allocation_iteration,
                         plan=plan,
                     )
                 )
-                key, select_key, sample_key = jax.random.split(key, 3)
-                parent_work = select_parent_work(
-                    key=select_key,
-                    state=current,
-                    plan=plan,
-                    num_parents=min(int(self.shell_size), remaining),
-                )
-                if int(parent_work.parent_idxs.shape[0]) == 0:
-                    if iteration == 0 and _should_advance_after_no_work(
-                            state=current,
-                            plan=plan,
-                            depth_cond=depth_cond,
-                            shell_size=int(self.shell_size),
-                    ):
-                        skip_goal_check = True
-                    break
-                requested_parent_work = parent_work
                 direction_adaptation_context = None
                 if direction_adaptation_enabled:
                     shells_since_success = (
@@ -1719,26 +3360,112 @@ class NestedSampler(PureDataclassPytree):
                         kernel_version=snapshot.kernel_version,
                         allocation_target=allocation_target,
                     )
-                parent_work, new_samples = self._sample_parent_work(
-                    key=sample_key,
-                    state=current,
-                    parent_work=parent_work,
-                    adaptation_context=direction_adaptation_context,
+                key, transition_key = jax.random.split(key)
+                if type(self) is NestedSampler:
+                    (
+                        next_current,
+                        work_batch,
+                        result_batch,
+                        parent_work,
+                        new_samples,
+                    ) = _call_pure_core_transition_jax(
+                        key=transition_key,
+                        state=current,
+                        plan=plan,
+                        num_parents=jnp.asarray(
+                            shell_capacity,
+                            dtype=mp_policy.count_dtype,
+                        ),
+                        sampler=self.sampler,
+                        args=self.args,
+                        params=self.params,
+                        adaptation_context=_jax_direction_adaptation_context(
+                            direction_adaptation_context
+                        ),
+                        capacity=shell_capacity,
+                    )
+                    requested_parent_work = _parent_work_from_core_work_batch(
+                        work_batch
+                    )
+                    accepted_parent_work = ParentWork(
+                        parent_idxs=parent_work.parent_idxs[
+                            :int(np.asarray(work_batch.num_work_items))
+                        ],
+                        parent_log_L_constraints=(
+                            parent_work.parent_log_L_constraints[
+                                :int(np.asarray(work_batch.num_work_items))
+                            ]
+                        ),
+                        target_block_idxs=parent_work.target_block_idxs[
+                            :int(np.asarray(work_batch.num_work_items))
+                        ],
+                        parent_block_idxs=parent_work.parent_block_idxs[
+                            :int(np.asarray(work_batch.num_work_items))
+                        ],
+                        fallback_to_root=parent_work.fallback_to_root[
+                            :int(np.asarray(work_batch.num_work_items))
+                        ],
+                    )
+                else:
+                    key, plan_key, sample_key = jax.random.split(key, 3)
+                    work_batch = _plan_core_work_batch_jax(
+                        plan_key,
+                        current,
+                        plan,
+                        jnp.asarray(
+                            shell_capacity,
+                            dtype=mp_policy.count_dtype,
+                        ),
+                        capacity=shell_capacity,
+                    )
+                    requested_parent_work = _parent_work_from_core_work_batch(
+                        work_batch
+                    )
+                    if int(np.asarray(work_batch.num_work_items)) == 0:
+                        allocation_iteration += 1
+                        if allocation_iteration > allocation_iteration_limit:
+                            return finish(current)
+                        continue
+                    _notify_core_work_batch(self, work_batch)
+                    try:
+                        accepted_parent_work, new_samples = self._sample_parent_work(
+                            key=sample_key,
+                            state=current,
+                            parent_work=requested_parent_work,
+                            adaptation_context=direction_adaptation_context,
+                        )
+                    finally:
+                        _clear_core_work_batch(self)
+                    result_batch = _core_result_batch_from_samples(
+                        work_batch=work_batch,
+                        parent_work=accepted_parent_work,
+                        new_samples=new_samples,
+                    )
+                    next_current = accept_parent_work(
+                        state=current,
+                        parent_work=accepted_parent_work,
+                        new_samples=new_samples,
+                    )
+                if int(np.asarray(work_batch.num_work_items)) == 0:
+                    allocation_iteration += 1
+                    if allocation_iteration > allocation_iteration_limit:
+                        return finish(current)
+                    continue
+                _notify_core_boundary(
+                    self,
+                    work_batch=work_batch,
+                    result_batch=result_batch,
                 )
                 _record_parent_selection(
                     diagnostics_builder,
                     requested_parent_work=requested_parent_work,
-                    accepted_parent_work=parent_work,
+                    accepted_parent_work=accepted_parent_work,
                 )
                 before = int(current.num_samples)
-                current = accept_parent_work(
-                    state=current,
-                    parent_work=parent_work,
-                    new_samples=new_samples,
-                )
+                current = next_current
                 if direction_adaptation_enabled:
                     shell_values = np.asarray(
-                        parent_work.parent_log_L_constraints,
+                        accepted_parent_work.parent_log_L_constraints,
                         dtype=float,
                     )
                     for shell_value in np.unique(shell_values):

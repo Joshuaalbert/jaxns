@@ -107,6 +107,16 @@ class LikelihoodDispatchDiagnostics:
     completed_eval_count_by_worker: object = dataclasses.field(
         default_factory=dict
     )
+    observed_node_count: int = 0
+    node_ingress_process_count: int = 0
+    observed_worker_process_count: int = 0
+    worker_process_ids: tuple[int, ...] = ()
+    load_balancer_queue_length: int = 0
+    node_queue_length: int = 0
+    failed_eval_count_by_type: object = dataclasses.field(default_factory=dict)
+    process_start_method: str = ""
+    worker_shutdown_status: str = ""
+    ipc_endpoint_cleanup_status: str = ""
 
 
 @dataclasses.dataclass(frozen=True, slots=True)

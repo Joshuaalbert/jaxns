@@ -140,8 +140,7 @@ If there are no participating clusters, the denominator is zero and the
 criterion fails. The canonical minimum threshold name is `C_min`, with default
 `C_min = 20`. Implementations should expose `C_min` as a configurable parameter
 with this default unless the implementation ticket or public API explicitly
-chooses a different default. The paper text also uses the name `C_0`; the
-design treats this as the same threshold until the paper notation is settled.
+chooses a different default.
 
 For a block with `C_g^Kish >= C_min`, add weighted per-cluster counts and
 normalize:
@@ -160,6 +159,17 @@ p_g = (M'_{>g}, M'_{=g}, M'_{<g})
 If the threshold is not met, `I_g = 0` and the block uses the non-phantom
 race-induced posterior.
 
+In public v3 result and MC-shrinkage outputs, "active" block probability
+statistics mean this mixed target: gamma-weighted phantom conditioning for
+valid blocks whose Kish gate is active, and the classic race posterior for
+blocks with no phantoms, no participating clusters, or insufficient Kish
+participation. `C_min` defaults to `20`. A block with zero participating
+clusters fails the gate even if a caller supplies `C_min <= 0`; implementations
+may still reject non-positive public `C_min` values at validation boundaries.
+Public summaries named like `p_gt_mean`, `p_eq_mean`, and `p_lt_mean` should be
+means of the active probability samples returned by the same call. Classic-only
+probability summaries should be exposed only with explicit classic-only names.
+
 This construction has two required limiting behaviors:
 
 - If all phantom clusters are singleton independent observations, then
@@ -171,8 +181,7 @@ This construction has two required limiting behaviors:
 
 The third component is expressed with `R_{cg} = A_{cg} - B_{cg} - E_{cg}` so the
 normalized vector remains categorical over strict endpoint, equality atom, and
-open interval. See the open paper-review note below for the current notation
-ambiguity in the source text.
+open interval.
 
 ## Stationarity Requirement
 
@@ -249,10 +258,11 @@ phantom records part of the race tree.
 
 ## Paper-Review Notes
 
-- The paper alternates between `C_min` and `C_0` for the minimum Kish
-  participating-cluster threshold. This design uses `C_min` as the canonical
-  name.
-- In the displayed `M'_{<g}` update, the paper currently adds `A_{cg}`. The
-  preceding Monte Carlo vector and the stated singleton Dirichlet-recovery
-  property require the open-interval count `A_{cg} - B_{cg} - E_{cg}`. This
-  design uses `R_{cg}` and treats the paper notation as needing review.
+- Earlier paper drafts alternated between `C_min` and `C_0` for the minimum
+  Kish participating-cluster threshold. The current paper and this design use
+  `C_min` as the canonical name.
+- Earlier paper drafts added raw `A_{cg}` in the displayed `M'_{<g}` update.
+  The required target is the open-interval count
+  `R_{cg} = A_{cg} - B_{cg} - E_{cg}`, matching the Monte Carlo vector and the
+  singleton Dirichlet-recovery property; the current paper has been edited to
+  that target in this repo.

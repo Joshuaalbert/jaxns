@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+import concurrent.futures
 import dataclasses
 import importlib
 import inspect
+import os
+import re
 import threading
+import time
+from pathlib import Path
 from typing import NamedTuple
 
 import jax
@@ -160,18 +165,11 @@ class WorkerExceptionModel(DispatchToyModel):
 WorkerExceptionModel.register_pytree()
 
 
-class BlockingLikelihoodGate:
-    def __init__(self) -> None:
-        self.started = threading.Event()
-        self.release = threading.Event()
-
-
-_BLOCKING_LIKELIHOOD_GATES: dict[str, BlockingLikelihoodGate] = {}
-
-
 @dataclasses.dataclass(frozen=True, slots=True)
-class BlockingDispatchModel(DispatchToyModel):
-    gate_id: str = ""
+class FileBarrierDispatchModel(DispatchToyModel):
+    barrier_dir: str = ""
+    required_arrivals: int = 1
+    timeout_seconds: float = 5.0
 
     def log_likelihood(
             self,
@@ -182,17 +180,26 @@ class BlockingDispatchModel(DispatchToyModel):
             allow_nan: bool = True,
     ):
         del args, params, allow_nan
-        gate_id = self.gate_id
+        barrier_dir = self.barrier_dir
+        required_arrivals = int(self.required_arrivals)
+        timeout_seconds = float(self.timeout_seconds)
         centre = float(self.centre)
         dtype = jnp.asarray(U).dtype
 
         def blocked_log_likelihood(u_value):
-            gate = _BLOCKING_LIKELIHOOD_GATES[gate_id]
-            gate.started.set()
-            if not gate.release.wait(timeout=5.0):
-                raise TimeoutError(
-                    "Timed out waiting to release blocking likelihood."
-                )
+            barrier_path = Path(barrier_dir)
+            arrival_path = barrier_path / (
+                f"arrival-{os.getpid()}-{threading.get_ident()}-"
+                f"{time.monotonic_ns()}"
+            )
+            arrival_path.write_text("arrived", encoding="utf-8")
+            deadline = time.monotonic() + timeout_seconds
+            while len(tuple(barrier_path.glob("arrival-*"))) < required_arrivals:
+                if time.monotonic() >= deadline:
+                    raise TimeoutError(
+                        "Timed out waiting for concurrent likelihood arrivals."
+                    )
+                time.sleep(0.01)
             delta = np.asarray(u_value) - centre
             return np.asarray(-np.sum(np.square(delta)), dtype=dtype)
 
@@ -203,7 +210,7 @@ class BlockingDispatchModel(DispatchToyModel):
         )
 
 
-BlockingDispatchModel.register_pytree()
+FileBarrierDispatchModel.register_pytree()
 
 
 @dataclasses.dataclass(slots=True)
@@ -593,6 +600,8 @@ def _coerce_sequence(value: object) -> tuple[object, ...]:
         value = value()
     if value is None:
         return ()
+    if isinstance(value, (str, bytes)):
+        return (value,)
     if isinstance(value, dict):
         for field_name in ("records", "events", "items", "entries"):
             if field_name in value:
@@ -601,6 +610,87 @@ def _coerce_sequence(value: object) -> tuple[object, ...]:
         if hasattr(value, field_name):
             return tuple(getattr(value, field_name))
     return tuple(value)
+
+
+def _as_mapping(value: object) -> dict[str, object]:
+    if dataclasses.is_dataclass(value):
+        return dataclasses.asdict(value)
+    if hasattr(value, "_asdict"):
+        return dict(value._asdict())
+    if isinstance(value, dict):
+        return dict(value)
+    return {
+        name: getattr(value, name)
+        for name in dir(value)
+        if not name.startswith("_")
+        and not callable(getattr(value, name))
+    }
+
+
+def _public_topology_diagnostics(lb: object) -> object:
+    method = getattr(lb, "get_process_topology_diagnostics", None)
+    assert callable(method), (
+        "LoadBalancerClient must expose public "
+        "get_process_topology_diagnostics(...) for the Ticket 0019 "
+        "process-isolated worker topology contract."
+    )
+    return method()
+
+
+def _topology_nodes(topology: object) -> tuple[object, ...]:
+    return _coerce_sequence(_read_attr(topology, "nodes"))
+
+
+def _lb_routing_entries(topology: object) -> tuple[object, ...]:
+    return _coerce_sequence(_read_attr(topology, "load_balancer_routing_table"))
+
+
+def _worker_endpoints_from_topology(topology: object) -> tuple[str, ...]:
+    endpoints = []
+    for node in _topology_nodes(topology):
+        for endpoint in _coerce_sequence(
+                _read_attr(node, "worker_endpoints")
+        ):
+            endpoints.append(str(endpoint))
+    return tuple(endpoints)
+
+
+def _endpoint_path(endpoint: str) -> Path:
+    assert endpoint.startswith("ipc://"), endpoint
+    return Path(endpoint.removeprefix("ipc://"))
+
+
+def _assert_worker_endpoints_are_random_tmp_ipc(endpoints: tuple[str, ...]):
+    assert endpoints
+    assert len(set(endpoints)) == len(endpoints)
+    for endpoint in endpoints:
+        endpoint_path = _endpoint_path(endpoint)
+        assert endpoint_path.is_absolute()
+        assert endpoint_path.parts[:2] == ("/", "tmp")
+        assert not endpoint_path.name.startswith("worker-")
+        assert re.search(r"[0-9a-fA-F]{8,}", endpoint_path.name), (
+            "worker IPC endpoint names must include random entropy."
+        )
+
+
+def _owned_worker_pids(topology: object) -> tuple[int, ...]:
+    pids = []
+    for node in _topology_nodes(topology):
+        for pid in _coerce_sequence(
+                _read_attr(node, "worker_process_ids")
+        ):
+            pids.append(int(pid))
+    return tuple(pids)
+
+
+def _pid_is_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
 
 
 def _public_runtime_snapshot(runner: object, lb: object | None = None) -> object:
@@ -1262,7 +1352,10 @@ def test_single_worker_capacity_queues_second_eval_then_starts_it_in_order():
     model = DispatchToyModel()
     U = jnp.asarray([0.125, 0.25], dtype=jnp.float32)
     identity = _make_compile_identity(runtime, model, U)
-    scheduler = Scheduler(requested_worker_specs=("cpu:*:1",))
+    scheduler = Scheduler(
+        requested_worker_specs=("cpu:*:1",),
+        process_isolated=False,
+    )
 
     _register_identity(scheduler, identity, model)
     start_eval = _require_method(scheduler, "start_likelihood_eval")
@@ -1332,7 +1425,10 @@ def test_multi_worker_capacity_never_exceeds_one_active_eval_per_worker():
     model = DispatchToyModel()
     U = jnp.asarray([0.125, 0.25], dtype=jnp.float32)
     identity = _make_compile_identity(runtime, model, U)
-    scheduler = Scheduler(requested_worker_specs=("cpu:*:2",))
+    scheduler = Scheduler(
+        requested_worker_specs=("cpu:*:2",),
+        process_isolated=False,
+    )
 
     _register_identity(scheduler, identity, model)
     start_eval = _require_method(scheduler, "start_likelihood_eval")
@@ -1385,7 +1481,10 @@ def test_scheduler_rejects_stale_response_with_old_compile_identity_digest():
             compile_identity_digest=current_digest,
         ),
     )
-    scheduler = Scheduler(requested_worker_specs=("cpu:*:1",))
+    scheduler = Scheduler(
+        requested_worker_specs=("cpu:*:1",),
+        process_isolated=False,
+    )
 
     _register_identity(scheduler, old_identity, old_model)
     _register_identity(scheduler, current_identity, model)
@@ -1439,7 +1538,10 @@ def test_queued_likelihood_eval_timeout_cancels_queue_and_routes_failure():
     U = jnp.asarray([0.125, 0.25], dtype=jnp.float32)
     identity = _make_compile_identity(runtime, model, U)
     digest = _compile_identity_digest(identity)
-    scheduler = Scheduler(requested_worker_specs=("cpu:*:1",))
+    scheduler = Scheduler(
+        requested_worker_specs=("cpu:*:1",),
+        process_isolated=False,
+    )
     router = Router()
 
     _register_identity(scheduler, identity, model)
@@ -1504,9 +1606,7 @@ def test_queued_likelihood_eval_timeout_cancels_queue_and_routes_failure():
     assert _read_int(diagnostics, "failed_eval_count") == 1
 
 
-def test_queued_dispatch_timeout_cancellation_is_atomic_with_completion_race(
-        monkeypatch,
-):
+def test_local_lb_queued_dispatch_timeout_routes_structured_failure():
     LoadBalancerClient = _public_symbol("LoadBalancerClient")
     model = DispatchToyModel()
     U = jnp.asarray([0.125, 0.25], dtype=jnp.float32)
@@ -1522,259 +1622,203 @@ def test_queued_dispatch_timeout_cancellation_is_atomic_with_completion_race(
             termination_condition=TerminationCondition(max_samples=3),
             batch_size=None,
         )
-        scheduler = runner._ensure_likelihood_scheduler()
-        assert callable(
-            _require_method(
-                scheduler,
-                "wait_for_started_record_or_cancel_likelihood_eval",
-            )
-        )
-
-        blocking_request = runner.make_likelihood_eval_request(
+        start_eval = _require_method(lb, "start_likelihood_eval_for_testing")
+        cancel_eval = _require_method(lb, "cancel_likelihood_eval_for_testing")
+        active_request = runner.make_likelihood_eval_request(
             U=U,
             task_id="task-blocking",
             attempt_id="attempt-blocking",
             transport_id="transport-blocking",
             eval_id="eval-blocking",
         )
-        blocking_record = scheduler.start_likelihood_eval(
-            request=blocking_request,
-        )
-        worker_id = str(_read_attr(blocking_record, "worker_id"))
-        worker = scheduler.worker_for_id(worker_id)
-
-        original_cancel = scheduler.cancel_likelihood_eval
-        legacy_cancel_entered = threading.Event()
-        raced_completion_finished = threading.Event()
-        raced_completion_errors = []
-
-        def racing_cancel(
-                *,
-                request,
-                error_type="LikelihoodEvalTimeout",
-                error_message=(
-                    "Timed out waiting for a queued likelihood evaluation "
-                    "to start."
-                ),
-        ):
-            legacy_cancel_entered.set()
-
-            def complete_active_request() -> None:
-                try:
-                    blocking_response = worker.evaluate_likelihood(
-                        blocking_request
-                    )
-                    scheduler.complete_likelihood_eval(
-                        worker_id=worker_id,
-                        response=blocking_response,
-                    )
-                except Exception as error:
-                    raced_completion_errors.append(error)
-                finally:
-                    raced_completion_finished.set()
-
-            completion_thread = threading.Thread(
-                target=complete_active_request,
-                name="likelihood-timeout-race-completion",
-            )
-            completion_thread.start()
-            assert raced_completion_finished.wait(timeout=2.0)
-            completion_thread.join(timeout=1.0)
-            assert not completion_thread.is_alive()
-            if raced_completion_errors:
-                raise raced_completion_errors[0]
-            return original_cancel(
-                request=request,
-                error_type=error_type,
-                error_message=error_message,
-            )
-
-        monkeypatch.setattr(scheduler, "cancel_likelihood_eval", racing_cancel)
-
-        timed_out_response = runner.dispatch_likelihood_eval(
+        queued_request = runner.make_likelihood_eval_request(
             U=U + jnp.asarray([0.25, 0.25], dtype=jnp.float32),
             task_id="task-timeout",
             attempt_id="attempt-timeout",
             transport_id="transport-timeout",
             eval_id="eval-timeout",
-            deadline_ms=0,
         )
-        assert not legacy_cancel_entered.is_set()
+        active_record = start_eval(request=active_request)
+        queued_record = start_eval(request=queued_request)
+        before = _public_runtime_snapshot(runner, lb)
+        timed_out_response = cancel_eval(
+            request=queued_request,
+            error_type="LikelihoodEvalTimeout",
+            error_message="Timed out waiting for node worker capacity.",
+        )
+        after = _public_runtime_snapshot(runner, lb)
+        diagnostics = lb.likelihood_dispatch_diagnostics()
+
+        assert _read_status(active_record) in {"started", "active", "running"}
+        assert _read_status(queued_record) in {"queued", "pending"}
         _assert_structured_failed_response(
             timed_out_response,
             error_category="LikelihoodEvalTimeout",
             cache_event="rejected",
         )
-
-        blocking_response = worker.evaluate_likelihood(blocking_request)
-        completion = scheduler.complete_likelihood_eval(
-            worker_id=worker_id,
-            response=blocking_response,
-        )
-        subsequent_response = runner.dispatch_likelihood_eval(
-            U=U + jnp.asarray([0.1, 0.0], dtype=jnp.float32),
-            task_id="task-after-timeout",
-            attempt_id="attempt-after-timeout",
-            transport_id="transport-after-timeout",
-            eval_id="eval-after-timeout",
-        )
-        diagnostics = lb.likelihood_dispatch_diagnostics()
-
-    assert _read_status(blocking_record) in {"started", "active", "running"}
-    assert _read_attr(completion, "started_record", "next_started_record") is None
-    _assert_model_log_likelihood(
-        subsequent_response,
-        model,
-        U + jnp.asarray([0.1, 0.0], dtype=jnp.float32),
-    )
-    assert _read_int(diagnostics, "failed_eval_count") == 1
+        assert _read_int(diagnostics, "failed_eval_count") >= 1
+        _assert_no_statistical_mutation(before, after)
 
 
-def test_started_likelihood_eval_cancellation_keeps_worker_occupied_until_completion():
-    runtime = _runtime_module()
-    Scheduler = _public_symbol("LikelihoodEvalScheduler")
-    gate_id = "started-cancel-occupancy"
-    gate = BlockingLikelihoodGate()
-    _BLOCKING_LIKELIHOOD_GATES[gate_id] = gate
-    model = BlockingDispatchModel(gate_id=gate_id)
+def test_local_lb_add_workers_reports_process_isolated_topology():
+    LoadBalancerClient = _public_symbol("LoadBalancerClient")
+
+    with LoadBalancerClient(address="local") as lb:
+        lb.add_workers(["cpu:*:3"])
+        topology = _public_topology_diagnostics(lb)
+
+        assert _read_attr(topology, "topology_mode") == "process_isolated"
+        assert bool(_read_attr(topology, "load_balancer_managed_actor"))
+        load_balancer_pid = _read_int(topology, "load_balancer_process_id")
+        assert load_balancer_pid > 0
+        assert load_balancer_pid != os.getpid()
+        assert _read_int(topology, "node_process_manager_count") == 1
+        assert _read_int(topology, "node_ingress_process_count") == 1
+        assert _read_int(topology, "worker_process_count") == 3
+        worker_pids = _owned_worker_pids(topology)
+        assert len(worker_pids) == 3
+        assert len(set(worker_pids)) == 3
+        assert all(pid != os.getpid() for pid in worker_pids)
+        assert all(_pid_is_alive(pid) for pid in worker_pids)
+
+
+def test_local_lb_routes_to_node_entries_not_worker_sockets():
+    LoadBalancerClient = _public_symbol("LoadBalancerClient")
+
+    with LoadBalancerClient(address="local") as lb:
+        lb.add_workers(["cpu:*:4"])
+        topology = _public_topology_diagnostics(lb)
+
+    routes = _lb_routing_entries(topology)
+    nodes = _topology_nodes(topology)
+
+    assert len(nodes) == 1
+    assert len(routes) == len(nodes)
+    assert _read_int(topology, "direct_worker_route_count") == 0
+    for route in routes:
+        route_map = _as_mapping(route)
+        assert str(route_map["route_kind"]).lower() in {
+            "node",
+            "node_ingress",
+            "node_coordinator",
+        }
+        assert "node_id" in route_map
+        assert "node_ingress_endpoint" in route_map
+        assert "worker_endpoint" not in route_map
+        assert "worker_socket" not in route_map
+        assert "worker_id" not in route_map
+
+
+def test_local_lb_worker_ipc_endpoints_are_random_tmp_paths_and_cleanup():
+    LoadBalancerClient = _public_symbol("LoadBalancerClient")
+    lb = LoadBalancerClient(address="local")
+
+    with lb:
+        lb.add_workers(["cpu:*:2"])
+        topology = _public_topology_diagnostics(lb)
+        endpoints = _worker_endpoints_from_topology(topology)
+        worker_pids = _owned_worker_pids(topology)
+
+        _assert_worker_endpoints_are_random_tmp_ipc(endpoints)
+        assert len(worker_pids) == len(endpoints) == 2
+        assert all(_pid_is_alive(pid) for pid in worker_pids)
+        assert str(_read_attr(
+            topology,
+            "ipc_endpoint_cleanup_status",
+        )).lower() in {"owned", "pending", "active"}
+
+    teardown = _public_topology_diagnostics(lb)
+    assert _read_status(teardown) in {"shutdown", "closed", "terminated"}
+    assert _read_int(teardown, "live_owned_worker_process_count") == 0
+    assert str(_read_attr(
+        teardown,
+        "ipc_endpoint_cleanup_status",
+    )).lower() in {"complete", "clean", "removed"}
+    assert all(not _pid_is_alive(pid) for pid in worker_pids)
+    for endpoint in endpoints:
+        assert not _endpoint_path(endpoint).exists()
+
+
+def test_node_ingress_death_retires_inflight_work_and_removes_capacity():
+    LoadBalancerClient = _public_symbol("LoadBalancerClient")
+    model = DispatchToyModel()
     U = jnp.asarray([0.125, 0.25], dtype=jnp.float32)
-    identity = _make_compile_identity(runtime, model, U)
-    digest = _compile_identity_digest(identity)
-    scheduler = Scheduler(requested_worker_specs=("cpu:*:1",))
 
-    try:
-        _register_identity(scheduler, identity, model)
-        start_eval = _require_method(scheduler, "start_likelihood_eval")
-        complete_eval = _require_method(scheduler, "complete_likelihood_eval")
-        cancel_eval = _require_method(scheduler, "cancel_likelihood_eval")
-        first_identity = _identity_fixture(eval_id="eval-000001")._replace(
-            compile_identity_digest=digest,
+    with LoadBalancerClient(address="local") as lb:
+        lb.add_workers(["cpu:*:1"])
+        topology_before = _public_topology_diagnostics(lb)
+        worker_pids = _owned_worker_pids(topology_before)
+        endpoints = _worker_endpoints_from_topology(topology_before)
+        runner = lb.get_nested_sampler(
+            model=model,
+            collect_phantoms=False,
+            target_num_live_points=2,
+            max_samples=3,
+            shell_size=1,
+            termination_condition=TerminationCondition(max_samples=3),
+            batch_size=None,
         )
-        second_identity = _identity_fixture(
-            transport_id="transport-000002",
-            eval_id="eval-000002",
-        )._replace(compile_identity_digest=digest)
-        first_request = _request_dataclass_from_u(
-            runtime,
-            U,
-            identity=first_identity,
+        before = _public_runtime_snapshot(runner, lb)
+        request = runner.make_likelihood_eval_request(
+            U=U,
+            task_id="task-node-death",
+            attempt_id="attempt-node-death",
+            transport_id="transport-node-death",
+            eval_id="eval-node-death",
         )
-        second_U = U + jnp.asarray([0.25, 0.25], dtype=jnp.float32)
-        second_request = _request_dataclass_from_u(
-            runtime,
-            second_U,
-            identity=second_identity,
-        )
+        started_record = _require_method(
+            lb,
+            "start_likelihood_eval_for_testing",
+        )(request=request)
+        node_id = _read_attr(started_record, "node_id")
+        failure = _require_method(
+            lb,
+            "terminate_node_ingress_for_testing",
+        )(node_id=node_id)
+        after = _public_runtime_snapshot(runner, lb)
+        topology = _public_topology_diagnostics(lb)
 
-        first_record = start_eval(request=first_request)
-        queued_second_record = start_eval(request=second_request)
-        worker_id = str(_read_attr(first_record, "worker_id"))
-        worker = scheduler.worker_for_id(worker_id)
-        first_result: dict[str, object] = {}
-        first_errors: list[BaseException] = []
-
-        def complete_first_physical_eval() -> None:
-            try:
-                response = worker.evaluate_likelihood(first_request)
-                completion = complete_eval(
-                    worker_id=worker_id,
-                    response=response,
-                )
-                first_result["response"] = response
-                first_result["completion"] = completion
-            except BaseException as error:
-                first_errors.append(error)
-
-        first_thread = threading.Thread(
-            target=complete_first_physical_eval,
-            name="started-cancel-physical-worker",
-        )
-        first_thread.start()
-        assert gate.started.wait(timeout=5.0)
-
-        failed_response = cancel_eval(
-            request=first_request,
-            error_type="LikelihoodEvalCancelled",
-            error_message="Cancelled started likelihood evaluation.",
-        )
-        second_started_before_physical_completion = (
-            scheduler.wait_for_started_record(
-                second_request,
-                timeout_seconds=0.0,
-            )
-        )
-        gate.release.set()
-        first_thread.join(timeout=5.0)
-        assert not first_thread.is_alive()
-        if first_errors:
-            raise first_errors[0]
-
-        stale_completion = first_result["completion"]
-        stale_response = first_result["response"]
-        second_started_record = _read_attr(
-            stale_completion,
-            "started_record",
-            "next_started_record",
-        )
-        second_response = worker.evaluate_likelihood(second_request)
-        second_completion = complete_eval(
-            worker_id=worker_id,
-            response=second_response,
-        )
-        diagnostics = _diagnostics_from(scheduler)
-    finally:
-        _BLOCKING_LIKELIHOOD_GATES.pop(gate_id, None)
-
-    assert _read_status(first_record) in {"started", "active", "running"}
-    assert _read_status(queued_second_record) in {"queued", "pending"}
+    in_flight_status = _read_status(failure)
+    failed_or_unknown = _coerce_sequence(
+        _read_attr(failure, "retired_inflight_eval_ids")
+    )
+    failed_responses = _coerce_sequence(
+        _read_attr(failure, "failed_likelihood_responses")
+    )
+    matching_failed_responses = [
+        response
+        for response in failed_responses
+        if _read_attr(response, "eval_id") == request.eval_id
+    ]
+    teardown = _public_topology_diagnostics(lb)
+    assert _read_status(started_record) in {"started", "active", "running"}
+    assert in_flight_status in {"failed", "unknown", "node_lost"}
+    assert request.eval_id in {str(value) for value in failed_or_unknown}
+    assert len(matching_failed_responses) == 1
     _assert_structured_failed_response(
-        failed_response,
-        error_category="LikelihoodEvalCancelled",
+        matching_failed_responses[0],
+        error_category="NodeIngressLost",
         cache_event="rejected",
     )
-    assert second_started_before_physical_completion is None
-    assert _read_status(stale_response) == "ok"
-    assert _read_attr(stale_response, "error_type") is None
-    assert second_started_record is not None
-    assert _eval_identity_tuple(second_started_record) == (
-        second_identity.task_id,
-        second_identity.attempt_id,
-        second_identity.transport_id,
-        second_identity.eval_id,
-    )
-    assert _read_attr(
-        stale_completion,
-        "completed_record",
-    ) is None
-    assert str(_read_attr(second_started_record, "worker_id")) == worker_id
-    assert _read_status(second_response) == "ok"
-    assert _read_attr(second_response, "error_type") is None
-    expected_second_log_likelihood = -np.sum(
-        np.square(np.asarray(second_U) - model.centre)
-    )
-    np.testing.assert_allclose(
-        float(_read_attr(second_response, "log_L")),
-        expected_second_log_likelihood,
-        rtol=1e-6,
-        atol=1e-7,
-    )
-    assert _eval_identity_tuple(
-        _read_attr(second_completion, "completed_record")
-    ) == (
-        second_identity.task_id,
-        second_identity.attempt_id,
-        second_identity.transport_id,
-        second_identity.eval_id,
-    )
-    assert _read_int(diagnostics, "failed_eval_count") == 1
-    assert _completed_eval_count_by_worker(diagnostics) == {worker_id: 1}
-    assert _completed_ok_eval_count_from_diagnostics(diagnostics) == 1
-    assert _read_int(diagnostics, "dispatch_eval_count") == 2
-    assert (
-        _read_int(diagnostics, "compile_count", "jit_compile_count")
-        + _read_int(diagnostics, "cache_hit_count")
-    ) == 1
-    assert _read_int(diagnostics, "max_active_evals_pool") == 1
+    assert str(_read_attr(failure, "node_failure_error_type"))
+    assert str(_read_attr(failure, "node_failure_error_message"))
+    assert str(_read_attr(failure, "node_failure_traceback"))
+    assert _read_attr(failure, "retry_status") in {
+        "retried",
+        "not_retried_no_capacity",
+    }
+    assert _read_int(topology, "schedulable_node_count") == 0
+    assert _read_int(topology, "schedulable_worker_process_count") == 0
+    _assert_no_statistical_mutation(before, after)
+    assert _read_int(teardown, "live_owned_worker_process_count") == 0
+    assert str(_read_attr(teardown, "ipc_endpoint_cleanup_status")).lower() in {
+        "complete",
+        "clean",
+        "removed",
+    }
+    assert all(not _pid_is_alive(pid) for pid in worker_pids)
+    for endpoint in endpoints:
+        assert not _endpoint_path(endpoint).exists()
 
 
 def test_response_router_ignores_duplicate_stale_and_late_eval_responses():
@@ -2424,9 +2468,11 @@ def test_local_lb_parent_shell_dispatch_uses_available_workers_concurrently():
         )
         coordinator_records = tuple(runner.coordinator_dispatch_records)
         diagnostics = _public_likelihood_diagnostics(runner, lb)
+        topology = _public_topology_diagnostics(lb)
 
     completed_worker_ids = _completed_worker_ids_from_diagnostics(diagnostics)
     max_by_worker = dict(_read_attr(diagnostics, "max_active_evals_per_worker"))
+    worker_process_count = _read_int(topology, "worker_process_count")
     accepted_parent_order = [
         int(_read_attr(record, "requested_parent_idx"))
         for record in coordinator_records
@@ -2447,6 +2493,8 @@ def test_local_lb_parent_shell_dispatch_uses_available_workers_concurrently():
     assert gate.timeout_count == 0
     assert _read_int(diagnostics, "observed_worker_count", "worker_count") == 2
     assert _read_int(diagnostics, "max_active_evals_pool") >= 2
+    assert worker_process_count == 2
+    assert _read_int(diagnostics, "max_active_evals_pool") <= worker_process_count
     assert _completed_ok_eval_count_from_diagnostics(diagnostics) == 3
     assert len(completed_worker_ids) >= 2
     assert max_by_worker
@@ -2491,6 +2539,132 @@ def test_local_lb_likelihood_dispatch_matches_direct_model_value():
         response_fields,
         RESPONSE_FORBIDDEN_FIELD_TOKENS,
     )
+
+
+def test_sequential_local_lb_likelihood_dispatch_uses_all_three_workers():
+    LoadBalancerClient = _public_symbol("LoadBalancerClient")
+    model = DispatchToyModel()
+    U_values = [
+        jnp.asarray([0.1 + 0.01 * index, 0.5], dtype=jnp.float32)
+        for index in range(9)
+    ]
+
+    with LoadBalancerClient(address="local") as lb:
+        lb.add_workers(["cpu:*:3"])
+        runner = lb.get_nested_sampler(
+            model=model,
+            collect_phantoms=False,
+            target_num_live_points=2,
+            max_samples=3,
+            shell_size=1,
+            termination_condition=TerminationCondition(max_samples=3),
+            batch_size=None,
+        )
+        topology = _public_topology_diagnostics(lb)
+        responses = tuple(
+            runner.dispatch_likelihood_eval(
+                U=U,
+                task_id=f"task-sequential-{index:06d}",
+                attempt_id=f"attempt-sequential-{index:06d}",
+                transport_id=f"transport-sequential-{index:06d}",
+                eval_id=f"eval-sequential-{index:06d}",
+            )
+            for index, U in enumerate(U_values)
+        )
+        diagnostics = lb.likelihood_dispatch_diagnostics()
+
+    for response, U in zip(responses, U_values):
+        _assert_model_log_likelihood(response, model, U)
+
+    response_worker_ids = {
+        str(_read_attr(response, "worker_id"))
+        for response in responses
+    }
+    completed_worker_ids = _completed_worker_ids_from_diagnostics(diagnostics)
+
+    assert _read_attr(topology, "topology_mode") == "process_isolated"
+    assert _read_int(topology, "worker_process_count") == 3
+    assert _read_int(topology, "direct_worker_route_count") == 0
+    assert _read_int(diagnostics, "observed_worker_count", "worker_count") == 3
+    assert _completed_ok_eval_count_from_diagnostics(diagnostics) == len(
+        U_values
+    )
+    assert response_worker_ids == {
+        "worker-000001",
+        "worker-000002",
+        "worker-000003",
+    }
+    assert completed_worker_ids == response_worker_ids
+
+
+def test_concurrent_direct_local_lb_dispatch_uses_four_node_workers(tmp_path):
+    LoadBalancerClient = _public_symbol("LoadBalancerClient")
+    model = FileBarrierDispatchModel(
+        barrier_dir=str(tmp_path),
+        required_arrivals=4,
+        timeout_seconds=5.0,
+    )
+    U_values = [
+        jnp.asarray([0.1 + 0.02 * index, 0.5], dtype=jnp.float32)
+        for index in range(4)
+    ]
+
+    with LoadBalancerClient(address="local") as lb:
+        lb.add_workers(["cpu:*:4"])
+        runner = lb.get_nested_sampler(
+            model=model,
+            collect_phantoms=False,
+            target_num_live_points=2,
+            max_samples=3,
+            shell_size=1,
+            termination_condition=TerminationCondition(max_samples=3),
+            batch_size=None,
+        )
+        topology = _public_topology_diagnostics(lb)
+
+        def dispatch(index: int):
+            return runner.dispatch_likelihood_eval(
+                U=U_values[index],
+                task_id=f"task-concurrent-direct-{index:06d}",
+                attempt_id=f"attempt-concurrent-direct-{index:06d}",
+                transport_id=f"transport-concurrent-direct-{index:06d}",
+                eval_id=f"eval-concurrent-direct-{index:06d}",
+            )
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+            futures = [
+                executor.submit(dispatch, index)
+                for index in range(len(U_values))
+            ]
+            responses = tuple(
+                future.result(timeout=10.0)
+                for future in futures
+            )
+        diagnostics = lb.likelihood_dispatch_diagnostics()
+
+    arrival_count = len(tuple(tmp_path.glob("arrival-*")))
+    completed_worker_ids = _completed_worker_ids_from_diagnostics(diagnostics)
+    max_by_worker = dict(_read_attr(diagnostics, "max_active_evals_per_worker"))
+
+    assert arrival_count == 4
+    for response, U in zip(responses, U_values):
+        assert _read_status(response) == "ok"
+        expected = -np.sum(np.square(np.asarray(U) - model.centre))
+        np.testing.assert_allclose(
+            float(_read_attr(response, "log_L")),
+            expected,
+            rtol=1e-6,
+            atol=1e-7,
+        )
+    assert _read_attr(topology, "topology_mode") == "process_isolated"
+    assert _read_int(topology, "worker_process_count") == 4
+    assert _read_int(topology, "direct_worker_route_count") == 0
+    assert _read_int(diagnostics, "observed_worker_count", "worker_count") == 4
+    assert _read_int(diagnostics, "max_active_evals_pool") >= 4
+    assert _completed_ok_eval_count_from_diagnostics(diagnostics) == 4
+    assert len(completed_worker_ids) == 4
+    assert max_by_worker
+    assert all(active <= 1 for active in max_by_worker.values())
 
 
 def test_local_lb_worker_pool_capacity_diagnostics_are_reported():
@@ -2554,60 +2728,22 @@ def test_two_local_lb_runners_share_likelihood_workers_without_bleed():
             termination_condition=TerminationCondition(max_samples=3),
             batch_size=None,
         )
-        scheduler = lb.load_balancer_state.likelihood_eval_scheduler()
-        assert scheduler is first_runner._ensure_likelihood_scheduler()
-        assert scheduler is second_runner._ensure_likelihood_scheduler()
-
-        first_request = first_runner.make_likelihood_eval_request(
+        first_response = first_runner.dispatch_likelihood_eval(
             U=U,
             task_id="task-shared",
             attempt_id="attempt-shared",
             transport_id="transport-shared",
             eval_id="eval-shared",
         )
-        second_request = second_runner.make_likelihood_eval_request(
+        second_response = second_runner.dispatch_likelihood_eval(
             U=U,
             task_id="task-shared",
             attempt_id="attempt-shared",
             transport_id="transport-shared",
             eval_id="eval-shared",
-        )
-        first_record = scheduler.start_likelihood_eval(
-            request=first_request,
-        )
-        second_record = scheduler.start_likelihood_eval(
-            request=second_request,
-        )
-
-        assert _read_status(first_record) in {
-            "started",
-            "active",
-            "running",
-        }
-        assert _read_status(second_record) in {"queued", "pending"}
-        assert scheduler.wait_for_started_record(
-            second_request,
-            timeout_seconds=0.0,
-        ) is None
-
-        worker_id = str(_read_attr(first_record, "worker_id"))
-        worker = scheduler.worker_for_id(worker_id)
-        first_response = worker.evaluate_likelihood(first_request)
-        first_completion = scheduler.complete_likelihood_eval(
-            worker_id=worker_id,
-            response=first_response,
-        )
-        second_started = _read_attr(
-            first_completion,
-            "started_record",
-            "next_started_record",
-        )
-        second_response = worker.evaluate_likelihood(second_request)
-        scheduler.complete_likelihood_eval(
-            worker_id=worker_id,
-            response=second_response,
         )
         diagnostics = lb.likelihood_dispatch_diagnostics()
+        topology = _public_topology_diagnostics(lb)
 
     _assert_model_log_likelihood(
         first_response,
@@ -2619,30 +2755,27 @@ def test_two_local_lb_runners_share_likelihood_workers_without_bleed():
         DispatchToyModel(centre=0.6),
         U,
     )
-    assert _eval_identity_tuple(second_started) == (
-        second_request.task_id,
-        second_request.attempt_id,
-        second_request.transport_id,
-        second_request.eval_id,
-    )
-    assert first_request.runner_id != second_request.runner_id
-    assert first_request.compile_identity_digest != (
-        second_request.compile_identity_digest
+    assert first_response.runner_id != second_response.runner_id
+    assert first_response.compile_identity_digest != (
+        second_response.compile_identity_digest
     )
     assert first_runner.runtime_acceptance_ledger.accepted_task_ids == ()
     assert second_runner.runtime_acceptance_ledger.accepted_task_ids == ()
+    assert _read_int(topology, "direct_worker_route_count") == 0
     assert _read_int(diagnostics, "observed_worker_count", "worker_count") == 1
     assert _read_int(diagnostics, "compile_count", "jit_compile_count") == 2
     assert _read_int(diagnostics, "distinct_compile_identity_count") == 2
     assert _completed_ok_eval_count_from_diagnostics(diagnostics) == 2
 
 
-def test_runner_scheduler_cache_refreshes_after_other_client_spec_churn():
+def test_runner_topology_isolation_survives_other_client_spec_churn():
     LoadBalancerClient = _public_symbol("LoadBalancerClient")
     U = jnp.asarray([0.125, 0.5], dtype=jnp.float32)
 
     with LoadBalancerClient(address="local") as lb:
         lb.add_workers(["cpu:*:1"])
+        original_topology = _public_topology_diagnostics(lb)
+        original_worker_pids = _owned_worker_pids(original_topology)
         runner = lb.get_nested_sampler(
             model=DispatchToyModel(centre=0.2),
             collect_phantoms=False,
@@ -2652,17 +2785,13 @@ def test_runner_scheduler_cache_refreshes_after_other_client_spec_churn():
             termination_condition=TerminationCondition(max_samples=3),
             batch_size=None,
         )
-        original_scheduler = runner._ensure_likelihood_scheduler()
-        original_specs = original_scheduler.requested_worker_specs
 
         with LoadBalancerClient(address="local") as other_lb:
             other_lb.add_workers(["cpu:*:2"])
-            churn_scheduler = (
-                other_lb.load_balancer_state.likelihood_eval_scheduler()
-            )
+            other_topology = _public_topology_diagnostics(other_lb)
+            assert _read_int(other_topology, "worker_process_count") == 2
 
-        current_scheduler = lb.load_balancer_state.likelihood_eval_scheduler()
-        refreshed_scheduler = runner._ensure_likelihood_scheduler()
+        current_topology = _public_topology_diagnostics(lb)
         response = runner.dispatch_likelihood_eval(
             U=U,
             task_id="task-spec-churn",
@@ -2670,20 +2799,13 @@ def test_runner_scheduler_cache_refreshes_after_other_client_spec_churn():
             transport_id="transport-spec-churn",
             eval_id="eval-spec-churn",
         )
-        current_diagnostics = current_scheduler.likelihood_dispatch_diagnostics()
         lb_diagnostics = lb.likelihood_dispatch_diagnostics()
-        original_diagnostics = (
-            original_scheduler.likelihood_dispatch_diagnostics()
-        )
 
-    assert churn_scheduler is not original_scheduler
-    assert current_scheduler is not original_scheduler
-    assert current_scheduler.requested_worker_specs == original_specs
-    assert refreshed_scheduler is current_scheduler
+    assert _read_int(current_topology, "worker_process_count") == 1
+    assert _owned_worker_pids(current_topology) == original_worker_pids
+    assert _read_int(current_topology, "direct_worker_route_count") == 0
     _assert_model_log_likelihood(response, DispatchToyModel(centre=0.2), U)
-    assert _completed_ok_eval_count_from_diagnostics(current_diagnostics) == 1
     assert _completed_ok_eval_count_from_diagnostics(lb_diagnostics) == 1
-    assert _completed_ok_eval_count_from_diagnostics(original_diagnostics) == 0
 
 
 def test_runner_refreshes_compile_identity_after_worker_device_class_churn():

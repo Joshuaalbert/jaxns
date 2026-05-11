@@ -4,9 +4,10 @@ Status: paper-derived design draft.
 Source: `docs/design/paper.tex`.
 
 This document set describes the intended JAXNS v3 design from the paper
-"Phantom-Boosted Nested Sampling". It is deliberately agnostic of the current
-code state. Treat these documents as paper-derived implementation guidance, not
-as an audit of what the repository currently implements.
+"Phantom-Boosted Nested Sampling" plus explicit target contracts for the v3
+runtime. It is deliberately agnostic of the current code state. Treat these
+documents as implementation guidance, not as an audit of what the repository
+currently implements.
 
 ## Design Documents
 
@@ -16,6 +17,7 @@ as an audit of what the repository currently implements.
 | `jaxns-v3-phantom-conditioning.md` | Phantom sample clusters, gamma-weighted per-cluster conditioning, Kish participation gating, and stationarity requirements. |
 | `jaxns-v3-execution-and-allocation.md` | Single core outer and inner algorithm, lineage allocation targets, depth and goal conditions, parent choice, and load-balanced worker execution. |
 | `jaxns-v3-constrained-sampling.md` | Constrained-prior sampler contract, slice-sampling transitions, direction kernels, trajectory construction, and phantom collection; includes the Galilean rule that trajectory-building points are not retained as phantoms. |
+| `jaxns-v3-process-isolated-zmq-runtime.md` | Process-isolated ZMQ runtime target: load balancer, node ingress/coordinator process, node-owned worker processes, random `/tmp` IPC endpoints, likelihood-eval dispatch, lifecycle, and failure semantics. |
 | `jaxns-v3-validation-plan.md` | Correctness, calibration, evidence-efficiency, and posterior-quality benchmark protocol. |
 
 ## Paper-Derived Scope
@@ -79,12 +81,19 @@ frames the method around these ideas:
   choose where to spend future likelihood evaluations without changing the
   shrinkage accounting.
 - JAXNS v3 should have one statistical execution core. Local, batched,
-  threaded, and distributed runs are deployment choices for evaluating the same
-  core work items, not separate nested-sampling algorithms to maintain.
-- The worker runtime is a load-balanced, multi-tenant execution service: workers
-  establish compute sectors, and the load balancer creates nested-sampler
-  runners for submitted models. This is a design requirement, not a compatibility
-  constraint with any existing point-to-point or lease-based transport.
+  process-isolated, and distributed runs are deployment choices for evaluating
+  the same core work items, not separate nested-sampling algorithms to maintain.
+- The worker runtime is a load-balanced, multi-tenant execution service. The
+  load balancer talks to node ingress/coordinator processes. Each node has one
+  process manager that owns that ingress/coordinator process plus many worker
+  processes. The node coordinator fans out to local workers over random
+  `ipc://` endpoints under `/tmp`. Workers are one process each and execute at
+  most one active likelihood evaluation.
+- v3 is unreleased and has no backwards-compatibility requirement with earlier
+  v3 runtime drafts. Design, implementation, and tests should target the
+  process-isolated node topology rather than preserve direct load-balancer to
+  worker routing, threaded worker boundaries, or remote constrained-sampler
+  payloads.
 
 ## Conceptual Records
 

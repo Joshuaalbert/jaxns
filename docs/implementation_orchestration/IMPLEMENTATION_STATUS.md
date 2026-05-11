@@ -10,10 +10,34 @@ None currently.
 
 ## Ticket Preparation
 
-None currently.
+- `0020-pure-jax-core-feature-parity`: ticket/design slice prepared for a
+  pure-JAX v3 core update in `src/jaxns/core.py`. The ticket explicitly assumes
+  no backwards compatibility requirement for unreleased v3 core behavior,
+  keeps production runtime code out of scope, and requires split
+  pure-core/distributed accuracy and benchmark suites that share an identical
+  feature manifest before implementation starts. Preparation review blockers
+  have been resolved in the ticket/design notes by defining the internal
+  pure-core/runtime work-buffer boundary, the host-side public `goal_cond`
+  contract, and the active phantom/posterior-depth/GMM-weight audit semantics.
 
 ## Under Review
 
+- `0019-process-isolated-worker-topology`: implementation is in strict
+  review/verification. The current slice replaces the unreleased ordinary
+  local-LB in-process likelihood worker boundary with the v3 topology where
+  managed load-balancer, node ingress/coordinator, and worker processes use
+  node-level routing and random `/tmp` IPC worker endpoints. Since v3 is
+  unreleased, no backwards-compatibility branch is required for the old
+  in-process local-LB path except explicitly named test-only/internal helpers.
+  Focused runtime and benchmark-schema tests pass, and representative
+  standard-problem correctness has passed for `plateau`, `basic_mvn`, and
+  `spike_slab`. Node-side round-robin routing fixes physical worker imbalance
+  in the 8-worker speed benchmark, but wall-time scaling is still not accepted:
+  the retained 8-worker timing remains about `277s` run time because parent
+  forced Python sampler orchestration dominates cheap likelihood work. The
+  default implicit `--worker-scaling` benchmark gate is intentionally retained
+  as the strict acceptance gate and is expected to fail until this is fixed;
+  explicit `--worker-spec` grids remain reporting-only for investigation.
 - `0018-likelihood-eval-dispatch-runtime`: local first-layer implementation
   passed strict runtime-boundary review and the representative standard-problem
   correctness subset passed again after final key-materialization remediation

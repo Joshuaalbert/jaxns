@@ -41,6 +41,17 @@ make the migration smaller and easier to verify.
 - `0018-likelihood-eval-dispatch-runtime.md`: splits local/parallel
   constrained sampling from process-isolated likelihood evaluation dispatch;
   depends on `0005`, `0007`, `0009`, `0011`, `0016`, and `0017`.
+- `0019-process-isolated-worker-topology.md`: replaces the unreleased ordinary
+  local-LB in-process likelihood worker boundary with the accepted process
+  topology of load balancer -> node ingress/coordinator -> local worker
+  processes over random `/tmp` IPC endpoints; depends on `0005`, `0007`,
+  `0009`, `0011`, `0016`, `0017`, and `0018`.
+- `0020-pure-jax-core-feature-parity.md`: replaces the Python-orchestrated v3
+  core loop in `src/jaxns/core.py` with a paper-aligned pure-JAX control-flow
+  core, and splits pure-core versus distributed accuracy/benchmark suites while
+  keeping their feature matrix identical; depends on `0001`, `0002`, `0004`,
+  `0005`, `0006`, `0007`, `0008`, `0010`, `0011`, `0012`, `0013`, `0014`,
+  `0016`, `0018`, and `0019`.
 
 ## Suggested Waves
 
@@ -64,6 +75,12 @@ make the migration smaller and easier to verify.
 12. Likelihood dispatch runtime: `0018` moves the worker boundary to
     deterministic `U -> log_L` evaluations while local constrained samplers
     drive parallel parent tasks.
+13. Process-isolated worker topology: `0019` makes that likelihood-eval
+    boundary the ordinary local-LB process topology, with node-owned worker
+    processes and benchmarked worker scaling.
+14. Pure-JAX core feature parity: `0020` moves the accepted v3 statistical
+    feature set into one JAX-control-flow core and proves pure-core and
+    distributed feature-identical accuracy/benchmark coverage.
 
 ## Branch Names
 
@@ -85,6 +102,8 @@ make the migration smaller and easier to verify.
 - `feature/v3-standard-problem-speed-benchmarks`
 - `feature/v3-benchmark-driven-standard-performance`
 - `feature/v3-likelihood-eval-dispatch-runtime`
+- `feature/v3-process-isolated-worker-topology`
+- `feature/v3-pure-jax-core-feature-parity`
 
 ## Ticket Files
 
@@ -106,3 +125,5 @@ make the migration smaller and easier to verify.
 - `docs/implementation_orchestration/tickets/0016-standard-problem-speed-benchmarks.md`
 - `docs/implementation_orchestration/tickets/0017-standard-problem-performance-benchmark-driven.md`
 - `docs/implementation_orchestration/tickets/0018-likelihood-eval-dispatch-runtime.md`
+- `docs/implementation_orchestration/tickets/0019-process-isolated-worker-topology.md`
+- `docs/implementation_orchestration/tickets/0020-pure-jax-core-feature-parity.md`

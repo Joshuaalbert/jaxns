@@ -113,12 +113,12 @@ Adaptation state:
 - The coordinator owns the posterior fitting dataset. Its rows are flattened
   prior-space coordinates of accumulated accepted classic samples whose
   likelihoods and posterior weights are known at the time of the update.
-- Posterior fitting weights are the same normalized posterior weights used for
-  result construction at that state. If shrinkage is represented by Monte Carlo
-  draws, use the mean posterior weight per classic sample across shrinkage
-  draws. For plateau blocks, use the same plateau posterior-mass convention as
-  results: equality atom mass is divided equally across samples in the plateau
-  block.
+- Posterior fitting weights are the same active normalized posterior weights
+  used for result construction at that state. "Active" means
+  phantom-conditioned where retained phantom metadata and the Kish gate make
+  that the result target, and classic race posterior otherwise. For plateau
+  blocks, use the same plateau posterior-mass convention as results: equality
+  atom mass is divided equally across samples in the plateau block.
 - Conceptually, for shrinkage draw `s` and likelihood block `g`, use raw
   fitting mass
 
@@ -129,9 +129,17 @@ a_i^(s) = L_g X_{g-1}^{(s)} p_{=g}^{(s)} / m_g
           for plateau block member i in g.
 ```
 
-  Average `a_i^(s)` over shrinkage draws and normalize over retained classic
-  samples to obtain `w_i`. Implementations should evaluate these expressions in
-  log space when needed.
+  Normalize within each shrinkage draw first,
+
+```text
+w_i^(s) = a_i^(s) / sum_j a_j^(s),
+```
+
+  then average the normalized per-sample weights over shrinkage draws to obtain
+  `w_i`, with a final normalization only to remove numerical drift. Do not
+  average raw masses over draws and normalize once; that is a different target
+  when the evidence varies by draw. Implementations should evaluate these
+  expressions in log space when needed.
 - Weighted EM is the preferred fit. An implementation may instead form an
   equivalent weighted posterior approximation by systematic resampling from the
   normalized posterior weights and running unweighted EM on the resampled rows,

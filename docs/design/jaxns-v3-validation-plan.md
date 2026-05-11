@@ -100,18 +100,22 @@ uncertainty without improving posterior representation.
 
 ## Parallel and Load-Balanced Scaling
 
-The JAXNS v3 section describes heterogeneous distributed likelihood evaluation
-with a central coordinator, load-balanced workers, ZMQ communication, Python
-`pickle` serialization, and overlapping constrained-sampling calls from
-different parent contours. The paper's experimental protocol only requires
-wall-clock timing where meaningful; when distributed scaling is being evaluated,
-the following reporting dimensions are useful:
+The JAXNS v3 runtime target describes heterogeneous distributed likelihood
+evaluation with a load balancer, one node ingress/coordinator process per node,
+process-isolated workers, ZMQ communication, Python `pickle` serialization, and
+overlapping constrained-sampling calls from different parent contours. The
+paper's experimental protocol only requires wall-clock timing where meaningful;
+when distributed scaling is being evaluated, the following reporting dimensions
+are useful:
 
-- worker count and node configuration;
+- node count, node ingress/coordinator process count, worker process count, and
+  node configuration;
 - compute-sector configuration and multi-tenant sharing mode;
 - likelihood-evaluation throughput;
 - wall-clock time to reach the selected goal condition;
 - scheduler overhead relative to likelihood time;
+- node-local random `/tmp` IPC endpoint creation and cleanup;
+- absence of direct load-balancer-to-worker scheduling paths;
 - serialization and communication failures, if any;
 - whether asynchronous child completion preserves the known in-flight parent
   target and phantom cluster identity until the parent out-degree is updated.
