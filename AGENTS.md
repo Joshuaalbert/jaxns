@@ -48,6 +48,12 @@ No formatter/type-checker is configured; aim for clean PEP-8 that passes `flake8
   the abstraction is clear and doesn't require too much "mental plumbing" to understand. Avoid premature DRYing.
 - It is better to have linearly readable code with some duplication than to have less code that is harder to understand
   due to abstraction. Use your judgment and err on the side of readability.
+- Benchmarks and reporting scripts should read like a human execution log: setup, run, collect results, write report.
+  Do not hide one-off setup/reporting steps behind helpers. Only factor a helper when the shared code is non-trivial
+  (> 5 lines), used more than once, and the helper name genuinely reduces mental tracing.
+- For internal numerical code, track array shapes at the point arrays are created or transformed. Add short comments like
+  `# [num_live, D]` or `# [num_components, D, D]` near non-obvious arrays so later readers do not need to mentally trace
+  shape flow across functions.
 - Adhere to existing code styles. Infer from code.
 - Tests: deterministic unit tests; isolate time/network; use `pytest` fixtures/parametrize; keep fixtures close to
   tests. Use NamedTuples to structure test fixtures, so that we have a clear schema for test data and can easily add

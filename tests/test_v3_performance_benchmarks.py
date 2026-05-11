@@ -816,7 +816,11 @@ def test_collect_speed_records_are_deterministic_and_json_serializable(
     assert decoded == first_records
 
 
-def test_main_writes_json_records_with_fake_runtime(monkeypatch, capsys):
+def test_main_writes_json_records_with_fake_runtime(
+        monkeypatch,
+        capsys,
+        tmp_path,
+):
     api = _require_speed_api()
     _install_fake_runtime(monkeypatch, api)
     _install_fake_clock(monkeypatch, api)
@@ -830,6 +834,8 @@ def test_main_writes_json_records_with_fake_runtime(monkeypatch, capsys):
         "24",
         "--mc-sample-count",
         "3",
+        "--report-dir",
+        str(tmp_path),
     ])
 
     assert exit_code == 0
@@ -838,9 +844,12 @@ def test_main_writes_json_records_with_fake_runtime(monkeypatch, capsys):
     assert len(decoded) == 1
     assert decoded[0]["metadata"]["allocation_target"] == "uniform"
     api.assert_standard_problem_speed_record(decoded[0])
+    reports = list(tmp_path.glob("standard_problem_speed_*.md"))
+    assert len(reports) == 1
+    assert "uniform" in reports[0].read_text(encoding="utf-8")
 
 
-def test_main_worker_scaling_writes_json_records(monkeypatch, capsys):
+def test_main_worker_scaling_writes_json_records(monkeypatch, capsys, tmp_path):
     api = _require_speed_api()
     _install_fake_runtime(monkeypatch, api)
     _install_fake_clock(monkeypatch, api)
@@ -859,6 +868,8 @@ def test_main_worker_scaling_writes_json_records(monkeypatch, capsys):
         "24",
         "--mc-sample-count",
         "3",
+        "--report-dir",
+        str(tmp_path),
     ])
 
     assert exit_code == 0
@@ -884,6 +895,9 @@ def test_main_worker_scaling_writes_json_records(monkeypatch, capsys):
             assert len(
                 _completed_worker_ids_from_diagnostics(diagnostics)
             ) >= 2
+    reports = list(tmp_path.glob("standard_problem_speed_*.md"))
+    assert len(reports) == 1
+    assert "cpu:*:3" in reports[0].read_text(encoding="utf-8")
 
 
 def test_mc_shrinkage_timing_synchronizes_samples_before_timer_stops(
