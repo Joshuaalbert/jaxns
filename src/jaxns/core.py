@@ -186,6 +186,18 @@ def _sample_categorical_index(key, weights, valid_mask):
     return jnp.where(has_weight, categorical_idx, first_idx)
 
 
+def _cast_floating_tree_to_measure_dtype(tree):
+    """Cast floating U leaves to the core measure dtype."""
+    return jax.tree.map(
+        lambda leaf: (
+            jnp.asarray(leaf).astype(mp_policy.measure_dtype)
+            if jnp.issubdtype(jnp.asarray(leaf).dtype, jnp.floating)
+            else jnp.asarray(leaf)
+        ),
+        tree,
+    )
+
+
 def _plan_core_work_batch_impl(
         key,
         state: State,
@@ -204,7 +216,6 @@ def _plan_core_work_batch_impl(
     invalid_idx = jnp.asarray(-1, dtype=mp_policy.index_dtype)
     invalid_log_L = jnp.asarray(-jnp.inf, dtype=mp_policy.measure_dtype)
     zero_count = jnp.asarray(0, dtype=mp_policy.count_dtype)
-
     def scan_body(carry, slot_id):
         current_K, scan_key, work_count = carry
         target_key, parent_key, sample_key, next_key = jax.random.split(
@@ -214,6 +225,7 @@ def _plan_core_work_batch_impl(
         deficits = plan.target_K - current_K
         target_mask = plan.valid & (deficits > 0)
 
+        # strict_parent_exists: [num_blocks]
         strict_parent_exists = jax.vmap(
             lambda target_X: jnp.any(plan.valid & (target_X < plan.volume_path.X))
         )(plan.volume_path.X)
@@ -569,71 +581,147 @@ def _sample_one_core_work_item(
         item,
 ):
     work_idx, sample_key = item
-    seed_key, sampler_key = jax.random.split(sample_key)
-    constraint = work_batch.log_L_constraint[work_idx]
-    active_idx = (
-            jnp.arange(state.samples.log_likelihoods.shape[0])
-            < state.num_samples
-    )
-    constraint_is_nan = jnp.isnan(constraint)
-    initial_seed_mask = (
-            active_idx
-            & jnp.logical_not(constraint_is_nan)
-            & (state.samples.log_likelihoods > constraint)
-    )
-    no_seed = jnp.logical_not(jnp.any(initial_seed_mask))
-    effective_constraint = jnp.where(
-        no_seed,
-        jnp.asarray(-jnp.inf, dtype=mp_policy.measure_dtype),
-        constraint,
-    )
-    seed_mask = active_idx & (state.samples.log_likelihoods > effective_constraint)
-    seed_idx = _sample_categorical_index(
-        seed_key,
-        jnp.ones_like(state.samples.log_likelihoods, dtype=mp_policy.measure_dtype),
-        seed_mask,
-    )
-    seed_point = SeedPoint(
-        U0=jax.tree.map(lambda u: u[seed_idx], state.samples.U_samples),
-        log_L0=state.samples.log_likelihoods[seed_idx],
-    )
-    if adaptation_context is None:
-        sample = sampler.get_sample(
-            sampler_key,
-            effective_constraint,
-            seed_point,
-            args=args,
-            params=params,
+
+    def sample_valid_slot(_):
+        seed_key, sampler_key = jax.random.split(sample_key)
+        constraint = work_batch.log_L_constraint[work_idx]
+        constraint_is_nan = jnp.isnan(constraint)
+        first_strict_idx = jnp.searchsorted(
+            state.samples.log_likelihoods,
+            constraint,
+            side="right",
+        ).astype(mp_policy.index_dtype)
+        first_strict_idx = jnp.minimum(
+            first_strict_idx,
+            state.num_samples.astype(mp_policy.index_dtype),
         )
-    else:
-        sample = sampler.get_sample(
-            sampler_key,
-            effective_constraint,
-            seed_point,
-            args=args,
-            params=params,
-            adaptation_context=adaptation_context,
+        num_seed_candidates = (
+                state.num_samples.astype(mp_policy.index_dtype)
+                - first_strict_idx
         )
-    effective_parent_idx = jnp.where(
-        no_seed,
-        jnp.asarray(-1, dtype=mp_policy.index_dtype),
-        work_batch.requested_parent_idx[work_idx],
-    )
-    effective_parent_block_idx = jnp.where(
-        no_seed,
-        jnp.asarray(-1, dtype=mp_policy.index_dtype),
-        work_batch.parent_block_idx[work_idx],
-    )
-    fallback_to_root = work_batch.fallback_to_root[work_idx] | no_seed
-    return (
-        sample,
-        effective_parent_idx,
-        effective_constraint,
-        work_batch.target_block_idx[work_idx],
-        effective_parent_block_idx,
-        fallback_to_root,
-        seed_idx,
-    )
+        has_seed = (
+                jnp.logical_not(constraint_is_nan)
+                & (num_seed_candidates > 0)
+        )
+        no_seed = jnp.logical_not(has_seed)
+        effective_constraint = jnp.where(
+            no_seed,
+            jnp.asarray(-jnp.inf, dtype=mp_policy.measure_dtype),
+            constraint,
+        )
+        fallback_num_candidates = state.num_samples.astype(
+            mp_policy.index_dtype
+        )
+        seed_start = jnp.where(
+            no_seed,
+            jnp.asarray(0, dtype=mp_policy.index_dtype),
+            first_strict_idx,
+        )
+        seed_count = jnp.where(
+            no_seed,
+            fallback_num_candidates,
+            num_seed_candidates,
+        )
+        seed_offset = jax.random.randint(
+            seed_key,
+            (),
+            minval=jnp.asarray(0, dtype=mp_policy.index_dtype),
+            maxval=jnp.maximum(
+                seed_count,
+                jnp.asarray(1, dtype=mp_policy.index_dtype),
+            ),
+        )
+        seed_idx = seed_start + seed_offset
+        seed_point = SeedPoint(
+            U0=jax.tree.map(lambda u: u[seed_idx], state.samples.U_samples),
+            log_L0=state.samples.log_likelihoods[seed_idx],
+        )
+        if adaptation_context is None:
+            sample = sampler.get_sample(
+                sampler_key,
+                effective_constraint,
+                seed_point,
+                args=args,
+                params=params,
+            )
+        else:
+            sample = sampler.get_sample(
+                sampler_key,
+                effective_constraint,
+                seed_point,
+                args=args,
+                params=params,
+                adaptation_context=adaptation_context,
+            )
+        sample = (
+            _cast_floating_tree_to_measure_dtype(sample[0]),
+            sample[1],
+            sample[2],
+            sample[3],
+        )
+        effective_parent_idx = jnp.where(
+            no_seed,
+            jnp.asarray(-1, dtype=mp_policy.index_dtype),
+            work_batch.requested_parent_idx[work_idx],
+        )
+        effective_parent_block_idx = jnp.where(
+            no_seed,
+            jnp.asarray(-1, dtype=mp_policy.index_dtype),
+            work_batch.parent_block_idx[work_idx],
+        )
+        fallback_to_root = work_batch.fallback_to_root[work_idx] | no_seed
+        return (
+            sample,
+            effective_parent_idx,
+            effective_constraint,
+            work_batch.target_block_idx[work_idx],
+            effective_parent_block_idx,
+            fallback_to_root,
+            seed_idx,
+        )
+
+    if isinstance(sampler, UniDimSliceSampler):
+        def sample_invalid_slot(_):
+            num_phantom = sampler.num_phantom()
+            log_L = jnp.asarray(-jnp.inf, dtype=mp_policy.measure_dtype)
+            sample = (
+                _cast_floating_tree_to_measure_dtype(
+                    jax.tree.map(lambda u: u[0], state.samples.U_samples)
+                ),
+                log_L,
+                jnp.asarray(0, dtype=mp_policy.count_dtype),
+                PhantomSamples(
+                    U_samples=None,
+                    valid_mask=jnp.zeros(
+                        (num_phantom,),
+                        dtype=mp_policy.bool_dtype,
+                    ),
+                    log_L=jnp.full(
+                        (num_phantom,),
+                        -jnp.inf,
+                        dtype=mp_policy.measure_dtype,
+                    ),
+                ),
+            )
+            invalid_idx = jnp.asarray(-1, dtype=mp_policy.index_dtype)
+            return (
+                sample,
+                invalid_idx,
+                jnp.asarray(jnp.inf, dtype=mp_policy.measure_dtype),
+                invalid_idx,
+                invalid_idx,
+                jnp.asarray(False, dtype=mp_policy.bool_dtype),
+                invalid_idx,
+            )
+
+        return jax.lax.cond(
+            work_batch.valid_mask[work_idx],
+            sample_valid_slot,
+            sample_invalid_slot,
+            operand=None,
+        )
+
+    return sample_valid_slot(None)
 
 
 def _sample_core_work_batch_impl(
@@ -2511,64 +2599,63 @@ class NestedSampler(PureDataclassPytree):
     def _sample_v3_root_state(self, key: PRNGKey) -> State:
         """Draw only the v3 root children from the sentinel contour."""
         root_count = int(self.target_num_live_points)
-        adaptation_context = None
-        if _direction_kernel_requests_adaptation(self.sampler):
-            adaptation_context = _identity_direction_context(
-                d_dim=int(self.model.U_ndims(self.args, self.params)),
-                allocation_target=None,
-            )
-        if _sampler_uses_galilean(self.sampler):
-            adaptation_context = {
-                "force_jax_galilean": True,
-                "direction_adaptation_context": adaptation_context,
-            }
         outputs = []
-        for sample_idx, sample_key in enumerate(jax.random.split(key, root_count)):
-            seed_key, sampler_key = jax.random.split(sample_key, 2)
+        for sample_key in jax.random.split(key, root_count):
+            seed_key, phantom_key = jax.random.split(sample_key, 2)
             seed_U = self.model.sample_U(
                 seed_key,
                 args=self.args,
                 params=self.params,
             )
+            seed_U = _cast_floating_tree_to_measure_dtype(seed_U)
             seed_log_L = self.model.log_likelihood(
                 seed_U,
                 args=self.args,
                 params=self.params,
                 allow_nan=False,
             ).astype(mp_policy.measure_dtype)
-            if _sampler_uses_galilean(self.sampler):
-                num_phantom = self.sampler.num_phantom()
-                outputs.append(
-                    (
-                        seed_U,
-                        seed_log_L,
-                        jnp.ones((), dtype=mp_policy.count_dtype),
-                        PhantomSamples(
-                            U_samples=None,
-                            log_L=jnp.zeros(
-                                (num_phantom,),
-                                dtype=mp_policy.measure_dtype,
-                            ),
-                            valid_mask=jnp.zeros(
-                                (num_phantom,),
-                                dtype=mp_policy.bool_dtype,
-                            ),
-                        ),
-                    )
+            num_phantom = self.sampler.num_phantom()
+            phantom_log_L_values = []
+            for phantom_sample_key in jax.random.split(phantom_key, num_phantom):
+                phantom_U = self.model.sample_U(
+                    phantom_sample_key,
+                    args=self.args,
+                    params=self.params,
                 )
+                phantom_U = _cast_floating_tree_to_measure_dtype(phantom_U)
+                phantom_log_L_values.append(
+                    self.model.log_likelihood(
+                        phantom_U,
+                        args=self.args,
+                        params=self.params,
+                        allow_nan=False,
+                    ).astype(mp_policy.measure_dtype)
+                )
+            if phantom_log_L_values:
+                phantom_log_L = jnp.stack(phantom_log_L_values, axis=0)
             else:
-                outputs.append(
-                    self._sample_constrained(
-                        sampler_key,
-                        jnp.asarray(-jnp.inf, dtype=mp_policy.measure_dtype),
-                        SeedPoint(U0=seed_U, log_L0=seed_log_L),
-                        requested_parent_idx=-1,
-                        effective_parent_idx=-1,
-                        accepted_parent_idx=-1,
-                        parent_work_id=sample_idx,
-                        adaptation_context=adaptation_context,
-                    )
+                phantom_log_L = jnp.zeros(
+                    (0,),
+                    dtype=mp_policy.measure_dtype,
                 )
+            outputs.append(
+                (
+                    seed_U,
+                    seed_log_L,
+                    jnp.asarray(
+                        1 + num_phantom,
+                        dtype=mp_policy.count_dtype,
+                    ),
+                    PhantomSamples(
+                        U_samples=None,
+                        log_L=phantom_log_L,
+                        valid_mask=jnp.ones(
+                            (num_phantom,),
+                            dtype=mp_policy.bool_dtype,
+                        ),
+                    ),
+                )
+            )
 
         U_samples = jax.tree.map(
             lambda *values: jnp.stack(values, axis=0),
@@ -3078,22 +3165,23 @@ class NestedSampler(PureDataclassPytree):
                 + int(state.root_out_degree)
                 + int(max_goal_iterations)
         )
-        while goal_iteration < int(max_goal_iterations):
-            goal_reached = bool(goal_cond(current))
-            diagnostics_builder.goal_condition_summaries.append(
-                DiagnosticConditionSummary(
-                    condition_name="goal_cond",
-                    iteration=len(
-                        diagnostics_builder.goal_condition_summaries
-                    ),
-                    num_samples=int(current.num_samples),
-                    value=int(current.num_samples),
-                    satisfied=goal_reached,
+        while True:
+            if goal_iteration < int(max_goal_iterations):
+                goal_reached = bool(goal_cond(current))
+                diagnostics_builder.goal_condition_summaries.append(
+                    DiagnosticConditionSummary(
+                        condition_name="goal_cond",
+                        iteration=len(
+                            diagnostics_builder.goal_condition_summaries
+                        ),
+                        num_samples=int(current.num_samples),
+                        value=int(current.num_samples),
+                        satisfied=goal_reached,
+                    )
                 )
-            )
-            goal_iteration += 1
-            if goal_reached:
-                return finish(current)
+                goal_iteration += 1
+                if goal_reached:
+                    return finish(current)
             if self._depth_condition_done(
                     current,
                     depth_cond,
@@ -3129,14 +3217,7 @@ class NestedSampler(PureDataclassPytree):
                     if depth_remaining <= 0:
                         continue
                     epoch_capacity = min(shell_capacity, depth_remaining)
-                    max_epoch_steps = min(
-                        4,
-                        max(
-                            1,
-                            (depth_remaining + epoch_capacity - 1)
-                            // epoch_capacity,
-                        ),
-                    )
+                    max_epoch_steps = 4
                     if _sampler_uses_galilean(self.sampler):
                         max_epoch_steps = 1
                     plan = build_allocation_plan(
@@ -3320,6 +3401,22 @@ class NestedSampler(PureDataclassPytree):
                         return finish(current)
                     if int(current.num_samples) <= before and num_epoch_steps == 0:
                         return finish(current)
+                    if int(current.num_samples) > before:
+                        self._depth_condition_done(
+                            current,
+                            depth_cond,
+                            iteration=len(
+                                {
+                                    summary.iteration
+                                    for summary in (
+                                        diagnostics_builder
+                                        .depth_condition_summaries
+                                    )
+                                }
+                            ),
+                            diagnostics_builder=diagnostics_builder,
+                        )
+                        break
                     continue
                 plan = build_allocation_plan(
                     state=current,

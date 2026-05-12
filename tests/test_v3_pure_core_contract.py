@@ -12,9 +12,15 @@ import pytest
 
 import jaxns.allocation as allocation
 import jaxns.core as core_module
+from jaxns.constrained_sampler import AbstractSampler
+from jaxns.constrained_sampler import UniDimSliceSampler
+from jaxns.mixed_precision import mp_policy
+from jaxns.pytree import PureDataclassPytree
 from jaxns.termination_condition import TerminationCondition
+from tests.test_v3_run_pattern import DeterministicContourSampler
 from tests.test_v3_run_pattern import _goal_after_state_counts
 from tests.test_v3_run_pattern import _make_deterministic_nested_sampler
+from tests.test_v3_run_pattern import _make_indexed_seed_state
 from tests.test_v3_run_pattern import _make_samples
 from tests.test_v3_run_pattern import _make_state
 
@@ -70,6 +76,131 @@ def _goal_after_num_samples(min_num_samples: int):
         return int(state.num_samples) >= min_num_samples
 
     return goal_cond
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class _CallbackToyModel(PureDataclassPytree):
+    """Toy model that records executed likelihood callbacks."""
+
+    def U_ndims(self, args=(), params=None) -> int:
+        del args, params
+        return 1
+
+    def sample_U(self, key, args=(), params=None):
+        del args, params
+        return jax.random.uniform(key, minval=0.0, maxval=1.0)
+
+    def transform_to_X(self, U, args=(), params=None):
+        del args, params
+        return U
+
+    def log_likelihood(
+            self,
+            U,
+            args=(),
+            params=None,
+            *,
+            allow_nan: bool = True,
+    ):
+        del args, params, allow_nan
+        jax.debug.callback(
+            lambda _: _LIKELIHOOD_CALLBACK_HITS.append(1),
+            jnp.asarray(U),
+            ordered=True,
+        )
+        return -jnp.square(jnp.asarray(U) - 0.25)
+
+    def log_prior(self, U, args=(), params=None):
+        del args, params
+        return jnp.where((U >= 0.0) & (U <= 1.0), 0.0, -jnp.inf)
+
+
+_CallbackToyModel.register_pytree()
+
+_LIKELIHOOD_CALLBACK_HITS: list[int] = []
+_SAMPLER_FORWARDING_HITS: list[int] = []
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class _ArgsParamsForwardingSampler(AbstractSampler):
+    """Sampler that asserts non-root core work receives user context."""
+
+    expected_args: tuple
+    expected_params: dict[str, float]
+
+    def num_phantom(self) -> int:
+        return 0
+
+    def get_sample(
+            self,
+            key,
+            log_L_constraint,
+            seed_point,
+            args=(),
+            params=None,
+    ):
+        del key
+        assert args == self.expected_args
+        assert params == self.expected_params
+        jax.debug.callback(
+            lambda _: _SAMPLER_FORWARDING_HITS.append(1),
+            log_L_constraint,
+            ordered=True,
+        )
+        log_L = jnp.where(
+            jnp.isneginf(log_L_constraint),
+            seed_point.log_L0,
+            log_L_constraint,
+        ) + jnp.asarray(params["offset"])
+        return (
+            seed_point.U0,
+            log_L,
+            jnp.asarray(1, dtype=mp_policy.count_dtype),
+            core_module.PhantomSamples(
+                U_samples=None,
+                valid_mask=jnp.zeros((0,), dtype=mp_policy.bool_dtype),
+                log_L=jnp.zeros((0,), dtype=mp_policy.measure_dtype),
+            ),
+        )
+
+
+def _make_core_work_batch(
+        *,
+        valid_mask: tuple[bool, ...],
+        log_l_constraints: tuple[float, ...],
+) -> core_module.CoreWorkBatch:
+    capacity = len(valid_mask)
+    slots = jnp.arange(capacity, dtype=mp_policy.index_dtype)
+    return core_module.CoreWorkBatch(
+        valid_mask=jnp.asarray(valid_mask, dtype=mp_policy.bool_dtype),
+        capacity=jnp.asarray(capacity, dtype=mp_policy.count_dtype),
+        num_work_items=jnp.asarray(sum(valid_mask), dtype=mp_policy.count_dtype),
+        parent_work_id=slots,
+        work_id=slots,
+        requested_parent_idx=jnp.full(
+            (capacity,),
+            0,
+            dtype=mp_policy.index_dtype,
+        ),
+        effective_parent_idx=jnp.full(
+            (capacity,),
+            -1,
+            dtype=mp_policy.index_dtype,
+        ),
+        target_block_idx=jnp.zeros((capacity,), dtype=mp_policy.index_dtype),
+        parent_block_idx=jnp.zeros((capacity,), dtype=mp_policy.index_dtype),
+        fallback_to_root=jnp.zeros((capacity,), dtype=mp_policy.bool_dtype),
+        log_L_constraint=jnp.asarray(
+            log_l_constraints,
+            dtype=mp_policy.measure_dtype,
+        ),
+        seed_idx=jnp.full((capacity,), -1, dtype=mp_policy.index_dtype),
+        direction_snapshot_id=jnp.zeros(
+            (capacity,),
+            dtype=mp_policy.index_dtype,
+        ),
+        phantom_slot=jnp.full((capacity,), -1, dtype=mp_policy.index_dtype),
+    )
 
 
 def _discover_boundary_schema_types():
@@ -577,6 +708,131 @@ def test_v3_root_initialization_keeps_static_capacity_and_sentinel_metadata():
         np.asarray(state.samples.phantom_samples.valid_mask[:num_samples]),
         np.ones((num_samples, 2), dtype=bool),
     )
+    np.testing.assert_array_equal(
+        np.asarray(state.samples.num_likelihood_evaluations[:num_samples]),
+        np.full((num_samples,), 3, dtype=int),
+    )
+    assert state.samples.U_samples.dtype == mp_policy.measure_dtype
+    assert state.samples.phantom_samples.log_L.dtype == mp_policy.measure_dtype
+    assert np.all(
+        np.isfinite(
+            np.asarray(state.samples.phantom_samples.log_L[:num_samples])
+        )
+    )
+
+
+def test_pure_core_work_batch_uses_right_side_plateau_for_strict_seed():
+    state = _make_indexed_seed_state(
+        root_out_degree=1,
+        log_likelihoods=(0.0, 1.0, 1.0, 1.0, 2.0),
+        out_degree=(1, 0, 0, 0, 0),
+        max_samples=8,
+    )
+    work_batch = _make_core_work_batch(
+        valid_mask=(True,),
+        log_l_constraints=(1.0,),
+    )
+
+    adjusted_work, _, new_samples, result_batch = (
+        core_module._sample_core_work_batch_impl(
+            jax.random.PRNGKey(7),
+            state,
+            work_batch,
+            DeterministicContourSampler(),
+            args=(),
+            params=None,
+            adaptation_context=None,
+        )
+    )
+
+    assert int(np.asarray(adjusted_work.seed_idx[0])) == 4
+    assert int(np.asarray(result_batch.num_results)) == 1
+    assert int(np.asarray(new_samples.num_likelihood_evaluations[0])) == 1
+
+
+def test_pure_core_non_root_work_forwards_args_and_params_to_sampler():
+    _SAMPLER_FORWARDING_HITS.clear()
+    expected_args = ("context", 7)
+    expected_params = {"offset": 0.5}
+    state = _make_state(
+        root_out_degree=1,
+        log_likelihoods=(0.0, 1.0),
+        out_degree=(1, 0),
+        max_samples=4,
+    )
+    work_batch = _make_core_work_batch(
+        valid_mask=(True,),
+        log_l_constraints=(0.0,),
+    )
+    sampler = _ArgsParamsForwardingSampler(
+        expected_args=expected_args,
+        expected_params=expected_params,
+    )
+
+    _, _, new_samples, result_batch = core_module._sample_core_work_batch_impl(
+        jax.random.PRNGKey(11),
+        state,
+        work_batch,
+        sampler,
+        args=expected_args,
+        params=expected_params,
+        adaptation_context=None,
+    )
+    jax.block_until_ready(result_batch.log_L)
+
+    assert _SAMPLER_FORWARDING_HITS == [1]
+    np.testing.assert_allclose(
+        np.asarray(new_samples.log_likelihoods),
+        np.asarray([0.5]),
+    )
+    assert int(np.asarray(new_samples.num_likelihood_evaluations[0])) == 1
+
+
+def test_pure_core_invalid_unidim_slice_slots_skip_likelihood_callbacks():
+    _LIKELIHOOD_CALLBACK_HITS.clear()
+    state = _make_state(
+        root_out_degree=1,
+        log_likelihoods=(0.0, 1.0),
+        out_degree=(1, 0),
+        max_samples=4,
+    )
+    work_batch = _make_core_work_batch(
+        valid_mask=(False, False),
+        log_l_constraints=(0.0, 0.0),
+    )
+    sampler = UniDimSliceSampler(
+        model=_CallbackToyModel(),
+        num_slices=2,
+        no_step_out=True,
+        collect_phantom_samples=False,
+    )
+
+    adjusted_work, _, new_samples, result_batch = (
+        core_module._sample_core_work_batch_impl(
+            jax.random.PRNGKey(13),
+            state,
+            work_batch,
+            sampler,
+            args=(),
+            params=None,
+            adaptation_context=None,
+        )
+    )
+    jax.block_until_ready(result_batch.log_L)
+
+    assert _LIKELIHOOD_CALLBACK_HITS == []
+    np.testing.assert_array_equal(
+        np.asarray(adjusted_work.seed_idx),
+        np.asarray([-1, -1]),
+    )
+    np.testing.assert_array_equal(
+        np.asarray(new_samples.num_likelihood_evaluations),
+        np.asarray([0, 0]),
+    )
+    np.testing.assert_array_equal(
+        np.asarray(result_batch.valid_mask),
+        np.asarray([False, False]),
+    )
 
 
 def test_depth_runs_inside_goal_boundary_before_goal_recheck():
@@ -603,6 +859,26 @@ def test_depth_runs_inside_goal_boundary_before_goal_recheck():
 
     assert observations == [3, 5]
     assert int(state.num_samples) == 5
+
+
+def test_max_goal_iterations_caps_callbacks_not_depth_progress():
+    observations: list[int] = []
+
+    state = _make_deterministic_nested_sampler(max_samples=8).run_until_goal(
+        goal_cond=_goal_after_state_counts(
+            observations,
+            required_observations=99,
+        ),
+        depth_cond=TerminationCondition(max_samples=8),
+        allocation_target="uniform",
+        key=jax.random.PRNGKey(57),
+        max_goal_iterations=2,
+    )
+
+    assert len(observations) == 2
+    assert observations[0] == 2
+    assert 2 < observations[1] < 8
+    assert int(state.num_samples) == 8
 
 
 def test_allocation_parent_acceptance_preserves_in_flight_identity():

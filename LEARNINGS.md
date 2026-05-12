@@ -310,6 +310,75 @@ repeat mistakes specific to this project. Keep learnings compact.
 - A direct 1D Galilean transition check on the interval implied by
   `-(u - 0.5)^2 > -0.04` caught a serious endpoint bias: coarse boundary
   endpoints sampled approximately `[0.4, 0.7]` instead of `[0.3, 0.7]`.
-  Fixed-step bisection of inside/outside brackets restored the expected
-  transition mean/variance in that check, but it did not by itself fix full
-  8D MVN evidence.
+  Fixed-step bisection of inside/outside brackets was still biased because the
+  reflection point stayed tied to the inner endpoint. The current target is a
+  stochastic bracket shrink: repeatedly sample uniformly between the inside and
+  outside bracket endpoints, shrink the outside endpoint on rejections, and use
+  the first inside draw as the reflection point.
+- In the eager Galilean grow branch, keep `first_outside` synchronized with the
+  first candidate that actually leaves the contour. Initializing it from the
+  inside proposal makes stochastic bracket refinement sample the wrong segment
+  and can reflect deep inside the contour.
+- Traced pure-core Galilean should keep a static `max_reflections` and
+  materialize fixed-size segment buffers per side. Uniform trajectory sampling
+  then chooses a segment proportional to its valid length and samples uniformly
+  along that segment. Do not hide the reflection sequence behind an unbounded
+  side-level streaming reservoir.
+- In traced Galilean, do not create a fake U-turn when a boundary search hits a
+  limit. Clip forward proposals to the unit cube and treat that support wall as
+  a hard `-inf` likelihood boundary with an explicit support normal.
+- On this host JAX reports an NVIDIA GPU may be present, but the installed
+  `jaxlib` is CPU-only. Pure-core benchmark reports should record backend and
+  devices, and GPU conclusions require a CUDA-enabled `jaxlib`.
+- Pure-core efficiency benchmarks should treat loose uncertainty/root-only
+  rows as smoke data only. Always report analytic logZ error, MC-shrinkage
+  variance, `evals * variance`, `evals * MSE`, target-hit fraction, and the
+  standard `3 * sample_std` accuracy gate separately.
+- For pure-core `UniDimSliceSampler`, fixed-capacity shells can contain masked
+  padded slots when allocation targets do not fill the whole capacity. Those
+  slots must not run constrained-sampler likelihood work; otherwise wall time
+  is inflated without corresponding accepted likelihood-evaluation counts.
+- Pure-core v3 root initialization now draws exact prior samples through
+  `model.sample_U` at the sentinel contour and does not call the constrained
+  sampler. Contract tests should expect model args/params forwarding at root;
+  sampler args/params forwarding must be covered by non-root constrained work.
+- Direct pure-core `run_until_goal`/`resume_until_goal` checks the public
+  Python `goal_cond` at host boundaries after a compiled depth epoch has made
+  sample progress. Tests that observe successive goal callbacks should expect
+  the second observation to reflect that progress, not a no-op recheck.
+- Pure-core manifest accuracy rows can exhaust CPU XLA code memory when many
+  parametrized rows compile in one Python process. Clear JAX caches around
+  manifest rows; isolated single rows passing after a full-row OOM usually
+  indicates cache pressure, not row semantics.
+- For the pure-core 8D `basic_mvn` isotropic row, straight-line step-out
+  (`no_step_out=False`) is both faster and more accurate than perfect
+  bracketing at the standard 30-live / 1200-sample / 24-slice gate. A seed-0
+  probe measured about `176796` evals and a passing `0.70` error-over-3sigma
+  ratio versus `431101` evals and failing `1.16` for `no_step_out=True`.
+- Pure-core benchmark grids that sweep direction kernels/settings can exhaust
+  CPU XLA section memory in one long Python process because compiled variants
+  accumulate. Use benchmark row isolation for grid reporting on CPU-only hosts;
+  keep algorithm tests in-process unless a test explicitly permits isolation.
+- Pure-core direct seed selection should use the sorted active likelihood
+  prefix with `searchsorted(..., side="right")` for the strict contour, then a
+  bounded uniform integer offset. Rebuilding full `[max_samples]` seed masks
+  in every work item adds inner-loop overhead and risks repeated shape work.
+- Direct pure-core `run_until_goal` must return to the host goal boundary after
+  a compiled depth epoch makes real sample progress. Letting the inner depth
+  loop run to `depth_cond.max_samples` makes loose `log_Z_uncert` targets look
+  artificially expensive and hides biased early-stop behavior in benchmarks.
+- V3 root initialization at the sentinel contour should use exact prior draws,
+  not constrained-sampler transitions from `log_L=-inf`. Preserve root phantom
+  diagnostics by drawing independent prior phantom likelihoods, and cast root
+  U leaves to `mp_policy.measure_dtype` so later ellipsoidal/GMM sampler outputs
+  and invalid-slot placeholders have stable JAX dtypes.
+- Pure-core efficiency reports on 8D MVN showed `result.log_Z_uncert` can be
+  much smaller than analytic error at low depth/live-point budgets. Treat
+  `evals * variance` as secondary unless rows also pass analytic
+  `3 * sample_std`/RMSE gates; use minimum-sample guards and accuracy-gated
+  rollups for ranking.
+- For the 8D MVN pure-core benchmark, 40 live points hit a practical uncertainty
+  floor near `0.7` even when sample caps are raised, while 80 live points can
+  hit `log_Z_uncert < 0.7` too early and remain biased. Precision-target
+  benchmarks should sweep live-point count and minimum depth together, not only
+  sampler direction kernels.

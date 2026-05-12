@@ -44,6 +44,7 @@ class V3PerformanceFeatureRow:
     phantom_enabled: bool
     c_min: int | None
     direction_kernel: str
+    no_step_out: bool
     trajectory_mode: str
     resume_pattern: str
     expected_diagnostic_families: tuple[str, ...]
@@ -76,6 +77,7 @@ def _standard_problem_row(
         phantom_enabled: bool,
         c_min: int | None,
         direction_kernel: str = "isotropic",
+        no_step_out: bool = True,
         trajectory_mode: str = "straight_line",
         resume_pattern: str = "run_until_goal",
         usage: tuple[str, ...] = ("accuracy",),
@@ -95,6 +97,7 @@ def _standard_problem_row(
         phantom_enabled=phantom_enabled,
         c_min=c_min,
         direction_kernel=direction_kernel,
+        no_step_out=no_step_out,
         trajectory_mode=trajectory_mode,
         resume_pattern=resume_pattern,
         expected_diagnostic_families=diagnostic_families,
@@ -114,6 +117,7 @@ DEFAULT_V3_PERFORMANCE_FEATURE_ROWS = (
         phantom_enabled=True,
         c_min=20,
         direction_kernel="isotropic",
+        no_step_out=False,
         usage=("accuracy", "benchmark"),
         diagnostic_families=_PURE_AND_DISTRIBUTED_DIAGNOSTICS,
         performance_gate_seconds=60.0,

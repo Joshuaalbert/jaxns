@@ -420,6 +420,27 @@ def test_galilean_trajectory_extends_from_seed_and_is_strict():
     assert np.all(log_likelihoods > float(case.log_L_constraint))
 
 
+def test_eager_galilean_side_samples_reflection_point_from_bracket():
+    case = _one_dimensional_contour_case()._replace(
+        log_L_constraint=jnp.asarray(-0.0625),
+        initial_step_size=jnp.asarray(0.04),
+    )
+
+    deterministic_side = _build_galilean_side(case)
+    stochastic_side = _build_galilean_side(case, key=random.PRNGKey(136))
+    deterministic_points = _trajectory_points(deterministic_side)
+    stochastic_points = _trajectory_points(stochastic_side)
+
+    deterministic_reflection = deterministic_points[1, 0]
+    stochastic_reflection = stochastic_points[1, 0]
+
+    assert 0.66 < stochastic_reflection < 0.75
+    assert stochastic_reflection != pytest.approx(deterministic_reflection)
+    assert float(case.log_likelihood(jnp.asarray([stochastic_reflection]))) > (
+        float(case.log_L_constraint)
+    )
+
+
 def test_galilean_trajectory_respects_unit_cube_support_for_broad_contours():
     sample_trajectory = _required_sampler_symbol("_sample_galilean_trajectory")
 
@@ -918,6 +939,7 @@ def test_jax_galilean_does_not_evaluate_likelihood_outside_unit_cube():
         log_likelihood_fn=log_likelihood,
         grad_log_likelihood_fn=grad_log_likelihood,
         initial_step_size=jnp.asarray(0.2),
+        max_reflections=16,
         max_step_halvings=16,
         max_step_doublings=16,
     )
@@ -950,6 +972,7 @@ def test_jax_galilean_reflects_from_unit_cube_support_normal():
         log_likelihood_fn=log_likelihood,
         grad_log_likelihood_fn=grad_log_likelihood,
         initial_step_size=jnp.asarray(0.05),
+        max_reflections=16,
         max_step_halvings=16,
         max_step_doublings=16,
     )
@@ -958,6 +981,79 @@ def test_jax_galilean_reflects_from_unit_cube_support_normal():
     assert np.all(point_array >= -1e-8)
     assert np.all(point_array <= 1.0 + 1e-8)
     assert float(log_likelihood_value) > -1.0
+
+
+def test_jax_galilean_clips_steps_to_unit_cube_support_boundary():
+    clip_step = _required_sampler_symbol(
+        "_clip_galilean_step_to_unit_cube_jax"
+    )
+    support_normal = _required_sampler_symbol("_unit_cube_support_normal_jax")
+
+    clipped_step, hit_support = clip_step(
+        point=jnp.asarray([0.98, 0.5]),
+        direction=jnp.asarray([1.0, 0.0]),
+        step_size=jnp.asarray(0.25),
+    )
+    boundary_point = jnp.asarray([0.98, 0.5]) + clipped_step * jnp.asarray(
+        [1.0, 0.0]
+    )
+    normal = support_normal(boundary_point, jnp.asarray([1.0, 0.0]))
+
+    assert bool(hit_support)
+    np.testing.assert_allclose(float(clipped_step), 0.02, atol=1e-10)
+    np.testing.assert_allclose(
+        np.asarray(boundary_point, dtype=float),
+        np.asarray([1.0, 0.5]),
+        atol=1e-10,
+    )
+    np.testing.assert_allclose(
+        np.asarray(normal, dtype=float),
+        np.asarray([1.0, 0.0]),
+        atol=1e-10,
+    )
+
+
+def test_jax_galilean_bracket_refinement_samples_inside_contour_point():
+    refine_bracket = _required_sampler_symbol(
+        "_sample_galilean_reflection_point_from_bracket_jax"
+    )
+
+    def strict_inside(point):
+        u = jnp.ravel(jnp.asarray(point))[0]
+        inside = jnp.logical_and(u > 0.3, u < 0.7)
+        return (
+            inside,
+            jnp.where(inside, 0.0, -jnp.inf),
+            jnp.ones((), dtype=jnp.int32),
+        )
+
+    def sample_one(key):
+        result = refine_bracket(
+            key=key,
+            inside_point=jnp.asarray([0.5]),
+            outside_point=jnp.asarray([1.0]),
+            strict_inside_fn=strict_inside,
+        )
+        return (
+            result.point[0],
+            result.outside_point[0],
+            result.num_likelihood_evaluations,
+        )
+
+    keys = random.split(random.PRNGKey(125), 512)
+    points, outside_points, eval_counts = jax.jit(
+        lambda batch_keys: jax.lax.map(sample_one, batch_keys)
+    )(keys)
+    points = np.asarray(points, dtype=float)
+    outside_points = np.asarray(outside_points, dtype=float)
+
+    assert np.all(points > 0.5)
+    assert np.all(points < 0.7)
+    assert np.all(outside_points > 0.7)
+    assert np.all(outside_points <= 1.0)
+    assert np.any(points > 0.66)
+    assert np.std(points) > 0.02
+    assert np.all(np.asarray(eval_counts, dtype=int) >= 1)
 
 
 def test_galilean_internal_points_are_excluded_from_phantom_clusters(

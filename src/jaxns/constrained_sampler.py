@@ -232,6 +232,12 @@ class GalileanSample:
     alpha: FloatArray
 
 
+@dataclasses.dataclass(frozen=True, slots=True)
+class GalileanBracketSample:
+    point: FloatArray
+    outside_point: FloatArray
+
+
 def _as_mode_name(value: object) -> str | None:
     if isinstance(value, str):
         return value.lower()
@@ -610,13 +616,63 @@ def _flat_point_in_unit_cube_jax(point: FloatArray) -> BoolArray:
     return jnp.all((point >= 0.0) & (point <= 1.0))
 
 
-def _unit_cube_support_normal_jax(point: FloatArray) -> FloatArray:
-    """Return an outward support normal for a point outside ``[0, 1]^D``."""
-    # point, normal: [D]
+def _unit_cube_forward_step_limit_jax(
+        point: FloatArray,
+        direction: FloatArray,
+) -> FloatArray:
+    """Return the first non-negative step from ``point`` to the unit cube wall."""
+    # point, direction: [D]
+    point = jnp.ravel(jnp.asarray(point))
+    direction = jnp.ravel(jnp.asarray(direction))
+    inf = jnp.full((), jnp.inf, dtype=point.dtype)
+    upper_steps = jnp.where(direction > 0.0, (1.0 - point) / direction, inf)
+    lower_steps = jnp.where(direction < 0.0, -point / direction, inf)
+    step_limit = jnp.minimum(jnp.min(upper_steps), jnp.min(lower_steps))
+    return jnp.maximum(step_limit, jnp.asarray(0.0, point.dtype))
+
+
+def _clip_galilean_step_to_unit_cube_jax(
+        *,
+        point: FloatArray,
+        direction: FloatArray,
+        step_size: FloatArray,
+) -> tuple[FloatArray, BoolArray]:
+    """Clip a forward Galilean step at the unit cube support boundary."""
+    step_limit = _unit_cube_forward_step_limit_jax(point, direction)
+    clipped_step_size = jnp.minimum(step_size, step_limit)
+    hit_support_boundary = step_size >= step_limit
+    return clipped_step_size, hit_support_boundary
+
+
+def _unit_cube_support_normal_jax(
+        point: FloatArray,
+        direction: FloatArray | None = None,
+) -> FloatArray:
+    """Return an outward support normal for a unit-cube boundary point."""
+    # point, direction, normal: [D]
     point = jnp.ravel(jnp.asarray(point))
     lower_violation = jnp.where(point < 0.0, point, 0.0)
     upper_violation = jnp.where(point > 1.0, point - 1.0, 0.0)
-    return lower_violation + upper_violation
+    violation_normal = lower_violation + upper_violation
+    if direction is None:
+        return violation_normal
+
+    direction = jnp.ravel(jnp.asarray(direction))
+    eps = jnp.asarray(1e-10, point.dtype)
+    lower_hit = (point <= eps) & (direction < 0.0)
+    upper_hit = (point >= (1.0 - eps)) & (direction > 0.0)
+    boundary_normal = jnp.where(
+        lower_hit,
+        -jnp.ones_like(point),
+        jnp.zeros_like(point),
+    )
+    boundary_normal = jnp.where(
+        upper_hit,
+        jnp.ones_like(point),
+        boundary_normal,
+    )
+    has_violation = jnp.linalg.norm(violation_normal) > eps
+    return jnp.where(has_violation, violation_normal, boundary_normal)
 
 
 def _reflect_galilean_direction(
@@ -667,6 +723,130 @@ def _reflect_galilean_direction_jax(
     return _normalize_galilean_vector_jax(reflected)
 
 
+def _sample_galilean_reflection_point_from_bracket(
+        *,
+        key: PRNGKey,
+        inside_point: FloatArray,
+        outside_point: FloatArray,
+        is_inside_fn: Callable[[FloatArray], bool],
+) -> GalileanBracketSample:
+    """Sample the Galilean reflection point from an inside/outside bracket.
+
+    Args:
+        key: PRNG key for the stochastic bracket shrink.
+        inside_point: [D] point known to be inside the strict contour.
+        outside_point: [D] point known to be outside the strict contour.
+        is_inside_fn: predicate that checks strict contour membership and
+            records any likelihood-evaluation accounting owned by the caller.
+
+    Returns:
+        The first uniformly sampled bracket point that falls inside, plus the
+        last outside endpoint after any failed draws.
+    """
+    # inside_point, outside_point, candidate: [D]
+    inside_point = jnp.ravel(jnp.asarray(inside_point))
+    outside_point = jnp.ravel(jnp.asarray(outside_point))
+    shrink_key = key
+    current_outside = outside_point
+    while True:
+        shrink_key, sample_key = random.split(shrink_key)
+        alpha = random.uniform(sample_key, dtype=inside_point.dtype)
+        candidate = inside_point + alpha * (current_outside - inside_point)
+        if is_inside_fn(candidate):
+            return GalileanBracketSample(
+                point=candidate,
+                outside_point=current_outside,
+            )
+        current_outside = candidate
+
+
+class _GalileanJaxBracketSample(NamedTuple):
+    point: FloatArray
+    outside_point: FloatArray
+    num_likelihood_evaluations: IntArray
+
+
+def _sample_galilean_reflection_point_from_bracket_jax(
+        *,
+        key: PRNGKey,
+        inside_point: FloatArray,
+        outside_point: FloatArray,
+        strict_inside_fn: Callable[
+            [FloatArray],
+            tuple[BoolArray, FloatArray, IntArray],
+        ],
+) -> _GalileanJaxBracketSample:
+    """Traceable stochastic shrink from a Galilean contour bracket.
+
+    Args:
+        key: PRNG key for the stochastic bracket shrink.
+        inside_point: [D] point known to be inside the strict contour.
+        outside_point: [D] point known to be outside the strict contour.
+        strict_inside_fn: traced predicate returning strict-contour membership,
+            log-likelihood, and likelihood-evaluation count for a point.
+
+    Returns:
+        The first uniformly sampled bracket point that falls inside, plus the
+        last outside endpoint and additional likelihood-evaluation count.
+    """
+    # inside_point, outside_point, candidate: [D]
+    inside_point = jnp.ravel(jnp.asarray(inside_point))
+    outside_point = jnp.ravel(jnp.asarray(outside_point))
+
+    class BracketCarry(NamedTuple):
+        outside_point: FloatArray
+        key: PRNGKey
+        found_inside: BoolArray
+        point: FloatArray
+        num_likelihood_evaluations: IntArray
+
+    def cond(carry: BracketCarry) -> BoolArray:
+        return jnp.logical_not(carry.found_inside)
+
+    def body(carry: BracketCarry) -> BracketCarry:
+        sample_key, next_key = random.split(carry.key)
+        alpha = random.uniform(sample_key, dtype=inside_point.dtype)
+        candidate = inside_point + alpha * (
+            carry.outside_point - inside_point
+        )
+        candidate_inside, _, candidate_evaluations = strict_inside_fn(
+            candidate
+        )
+        return BracketCarry(
+            outside_point=jnp.where(
+                candidate_inside,
+                carry.outside_point,
+                candidate,
+            ),
+            key=next_key,
+            found_inside=candidate_inside,
+            point=jnp.where(candidate_inside, candidate, carry.point),
+            num_likelihood_evaluations=(
+                carry.num_likelihood_evaluations + candidate_evaluations
+            ),
+        )
+
+    final_carry = jax.lax.while_loop(
+        cond,
+        body,
+        BracketCarry(
+            outside_point=outside_point,
+            key=key,
+            found_inside=jnp.asarray(False, mp_policy.bool_dtype),
+            point=inside_point,
+            num_likelihood_evaluations=jnp.zeros(
+                (),
+                mp_policy.count_dtype,
+            ),
+        ),
+    )
+    return _GalileanJaxBracketSample(
+        point=final_carry.point,
+        outside_point=final_carry.outside_point,
+        num_likelihood_evaluations=final_carry.num_likelihood_evaluations,
+    )
+
+
 def _build_galilean_side(
         *,
         U0,
@@ -678,6 +858,7 @@ def _build_galilean_side(
         max_reflections: int,
         max_step_halvings: int,
         max_step_doublings: int,
+        key: PRNGKey | None = None,
 ) -> GalileanSideTrajectory:
     """
     Build one side of the paper Galilean trajectory until the U-turn criterion.
@@ -735,18 +916,42 @@ def _build_galilean_side(
                 num_likelihood_evaluations=num_likelihood_evaluations,
             )
 
-        proposal = current_point + step_size * current_direction
-        if _is_inside(proposal):
+        proposal_step_size, proposal_hit_support = (
+            _clip_galilean_step_to_unit_cube_jax(
+                point=current_point,
+                direction=current_direction,
+                step_size=step_size,
+            )
+        )
+        proposal = current_point + proposal_step_size * current_direction
+        proposal_inside = (
+                not bool(np.asarray(proposal_hit_support))
+                and _is_inside(proposal)
+        )
+        if proposal_inside:
             last_inside = proposal
             search_step_size = step_size
             found_boundary = False
+            first_outside = proposal
             for _ in range(max_step_doublings):
                 candidate_step_size = 2.0 * search_step_size
-                candidate = current_point + candidate_step_size * current_direction
-                if _is_inside(candidate):
+                clipped_step_size, candidate_hit_support = (
+                    _clip_galilean_step_to_unit_cube_jax(
+                        point=current_point,
+                        direction=current_direction,
+                        step_size=candidate_step_size,
+                    )
+                )
+                candidate = current_point + clipped_step_size * current_direction
+                candidate_inside = (
+                        not bool(np.asarray(candidate_hit_support))
+                        and _is_inside(candidate)
+                )
+                if candidate_inside:
                     last_inside = candidate
                     search_step_size = candidate_step_size
                 else:
+                    first_outside = candidate
                     found_boundary = True
                     break
             if not found_boundary:
@@ -754,29 +959,85 @@ def _build_galilean_side(
                     "Galilean boundary search exceeded max_step_doublings "
                     "without leaving the contour."
                 )
-            current_point = last_inside
-            step_size = search_step_size
+            if key is None:
+                current_point = last_inside
+                step_size = search_step_size
+            else:
+                key, bracket_key = random.split(key)
+                bracket_sample = _sample_galilean_reflection_point_from_bracket(
+                    key=bracket_key,
+                    inside_point=last_inside,
+                    outside_point=first_outside,
+                    is_inside_fn=_is_inside,
+                )
+                current_point = bracket_sample.point
+                step_size = search_step_size
+                first_outside = bracket_sample.outside_point
+            current_outside_point = first_outside
         else:
             search_step_size = step_size
             found_inside = False
-            for _ in range(max_step_halvings):
-                search_step_size = 0.5 * search_step_size
-                candidate = current_point + search_step_size * current_direction
-                if _is_inside(candidate):
-                    current_point = candidate
-                    step_size = search_step_size
-                    found_inside = True
-                    break
-            if not found_inside:
-                raise RuntimeError(
-                    "Galilean boundary search exceeded max_step_halvings "
-                    "without returning inside the contour."
+            found_inside_point = current_point
+            at_support_boundary = bool(
+                np.asarray(
+                    _unit_cube_forward_step_limit_jax(
+                        current_point,
+                        current_direction,
+                    )
+                    <= jnp.asarray(1e-12, current_point.dtype)
                 )
+            )
+            if at_support_boundary:
+                current_outside_point = current_point
+            else:
+                for _ in range(max_step_halvings):
+                    search_step_size = 0.5 * search_step_size
+                    clipped_step_size, candidate_hit_support = (
+                        _clip_galilean_step_to_unit_cube_jax(
+                            point=current_point,
+                            direction=current_direction,
+                            step_size=search_step_size,
+                        )
+                    )
+                    candidate = current_point + clipped_step_size * current_direction
+                    candidate_inside = (
+                            not bool(np.asarray(candidate_hit_support))
+                            and _is_inside(candidate)
+                    )
+                    if candidate_inside:
+                        found_inside_point = candidate
+                        found_inside = True
+                        break
+                if not found_inside:
+                    raise RuntimeError(
+                        "Galilean boundary search exceeded max_step_halvings "
+                        "without returning inside the contour."
+                    )
+                if key is None:
+                    current_point = found_inside_point
+                    step_size = search_step_size
+                    current_outside_point = proposal
+                else:
+                    key, bracket_key = random.split(key)
+                    bracket_sample = _sample_galilean_reflection_point_from_bracket(
+                        key=bracket_key,
+                        inside_point=found_inside_point,
+                        outside_point=proposal,
+                        is_inside_fn=_is_inside,
+                    )
+                    current_point = bracket_sample.point
+                    step_size = search_step_size
+                    current_outside_point = bracket_sample.outside_point
 
         gradient, _ = _ravel_point(grad_log_likelihood_fn(unravel_fn(current_point)))
-        current_direction = _reflect_galilean_direction(
+        support_normal = _unit_cube_support_normal_jax(
+            current_outside_point,
+            current_direction,
+        )
+        current_direction = _reflect_galilean_direction_jax(
             current_direction,
             gradient,
+            support_normal,
         )
         points.append(current_point)
         directions.append(current_direction)
@@ -798,7 +1059,13 @@ def _build_galilean_trajectory(
         max_reflections: int,
         max_step_halvings: int,
         max_step_doublings: int,
+        key: PRNGKey | None = None,
 ) -> GalileanTrajectory:
+    positive_key = None
+    negative_key = None
+    if key is not None:
+        positive_key, negative_key = random.split(key)
+
     positive_side = _build_galilean_side(
         U0=U0,
         direction=direction,
@@ -809,6 +1076,7 @@ def _build_galilean_trajectory(
         max_reflections=max_reflections,
         max_step_halvings=max_step_halvings,
         max_step_doublings=max_step_doublings,
+        key=positive_key,
     )
     negative_side = _build_galilean_side(
         U0=U0,
@@ -820,6 +1088,7 @@ def _build_galilean_trajectory(
         max_reflections=max_reflections,
         max_step_halvings=max_step_halvings,
         max_step_doublings=max_step_doublings,
+        key=negative_key,
     )
     points = jnp.concatenate(
         [
@@ -912,7 +1181,6 @@ def _sample_galilean_markov_transition(
         max_step_doublings: int,
 ) -> tuple[TreeField[UType], FloatArray, IntArray]:
     build_key, sample_key = random.split(key, 2)
-    del build_key
     direction_flat, _ = _ravel_point(direction)
     _, unravel_fn = _ravel_point(U0)
     trajectory = _build_galilean_trajectory(
@@ -925,6 +1193,7 @@ def _sample_galilean_markov_transition(
         max_reflections=max_reflections,
         max_step_halvings=max_step_halvings,
         max_step_doublings=max_step_doublings,
+        key=build_key,
     )
     sample = _sample_galilean_trajectory(
         key=sample_key,
@@ -956,9 +1225,10 @@ def _sample_galilean_markov_transition(
     return TreeField(point_tree), log_likelihood, num_likelihood_evaluations
 
 
-class _GalileanStreamingSide(NamedTuple):
-    selected_point: FloatArray
-    total_length: FloatArray
+class _GalileanFixedSide(NamedTuple):
+    segment_starts: FloatArray
+    segment_ends: FloatArray
+    segment_lengths: FloatArray
     step_size: FloatArray
     num_likelihood_evaluations: IntArray
 
@@ -973,14 +1243,15 @@ def _sample_galilean_markov_transition_jax_with_step(
         log_likelihood_fn: Callable[[UType], FloatArray],
         grad_log_likelihood_fn: Callable[[UType], UType],
         initial_step_size: FloatArray,
+        max_reflections: int,
         max_step_halvings: int,
         max_step_doublings: int,
 ) -> tuple[TreeField[UType], FloatArray, IntArray, FloatArray]:
     """Sample a Galilean transition using JAX control flow.
 
-    The trajectory is streamed rather than materialized. Each reflected segment
-    is considered once, and reservoir weighting by segment length gives a
-    uniform draw over the full two-sided Galilean path.
+    The two trajectory sides are materialized into fixed-size segment buffers
+    of length ``max_reflections``. Valid segment lengths define the explicit
+    path-length CDF used for the final uniform draw.
     """
     # flat_u0, flat_direction: [D]
     flat_u0, unravel_fn = _ravel_point(U0)
@@ -989,8 +1260,7 @@ def _sample_galilean_markov_transition_jax_with_step(
     constraint = jnp.asarray(log_L_constraint)
     step_size0 = jnp.asarray(initial_step_size, dtype=flat_u0.dtype)
     step_size0 = jnp.maximum(step_size0, jnp.asarray(1e-12, flat_u0.dtype))
-    max_step_halvings = jnp.asarray(max_step_halvings, mp_policy.count_dtype)
-    max_step_doublings = jnp.asarray(max_step_doublings, mp_policy.count_dtype)
+    del max_step_halvings, max_step_doublings
 
     def log_likelihood_flat(point: FloatArray) -> FloatArray:
         return jnp.asarray(
@@ -1040,116 +1310,49 @@ def _sample_galilean_markov_transition_jax_with_step(
             operand=None,
         )
 
-    def add_segment_sample(
-            sample_key,
-            selected_point: FloatArray,
-            total_length: FloatArray,
-            start_point: FloatArray,
-            end_point: FloatArray,
-    ) -> tuple[FloatArray, FloatArray]:
-        # start_point, end_point, selected_point: [D]
-        segment = end_point - start_point
-        segment_length = jnp.linalg.norm(segment)
-        next_total = total_length + segment_length
-        choose_key, alpha_key = random.split(sample_key)
-        choose_probability = jnp.where(
-            next_total > 0.0,
-            segment_length / next_total,
-            jnp.asarray(0.0, next_total.dtype),
-        )
-        choose_segment = random.uniform(choose_key, dtype=next_total.dtype) < (
-            choose_probability
-        )
-        alpha = random.uniform(alpha_key, dtype=end_point.dtype)
-        candidate_point = start_point + alpha * segment
-        selected_point = jnp.where(
-            choose_segment,
-            candidate_point,
-            selected_point,
-        )
-        return selected_point, next_total
-
     class SideCarry(NamedTuple):
         current_point: FloatArray
         current_direction: FloatArray
         step_size: FloatArray
-        selected_point: FloatArray
-        total_length: FloatArray
         key: PRNGKey
+        done: BoolArray
         num_likelihood_evaluations: IntArray
 
-    def build_side(initial_direction: FloatArray, side_key) -> _GalileanStreamingSide:
+    def build_side(initial_direction: FloatArray, side_key) -> _GalileanFixedSide:
         # initial_direction: [D]
         initial_direction = _normalize_galilean_vector_jax(initial_direction)
 
-        def side_cond(carry: SideCarry) -> BoolArray:
-            alignment = jnp.vdot(carry.current_direction, initial_direction)
-            return alignment >= jnp.asarray(0.0, alignment.dtype)
+        class BoundaryResult(NamedTuple):
+            next_point: FloatArray
+            next_step_size: FloatArray
+            outside_point: FloatArray
+            num_likelihood_evaluations: IntArray
 
-        def side_body(carry: SideCarry) -> SideCarry:
+        def build_boundary(carry: SideCarry, boundary_key) -> BoundaryResult:
             old_point = carry.current_point
-            proposal = old_point + carry.step_size * carry.current_direction
+            proposal_step_size, proposal_hit_support = (
+                _clip_galilean_step_to_unit_cube_jax(
+                    point=old_point,
+                    direction=carry.current_direction,
+                    step_size=carry.step_size,
+                )
+            )
+            proposal = old_point + proposal_step_size * carry.current_direction
 
             (
                 proposal_inside,
                 _,
                 proposal_evaluations,
-            ) = strict_inside_and_log_likelihood(proposal)
-
-            class BoundaryResult(NamedTuple):
-                next_point: FloatArray
-                next_step_size: FloatArray
-                outside_point: FloatArray
-                exhausted: BoolArray
-                num_likelihood_evaluations: IntArray
-
-            class RefineCarry(NamedTuple):
-                inside_point: FloatArray
-                outside_point: FloatArray
-                num_likelihood_evaluations: IntArray
-
-            def refine_boundary(
-                    inside_point: FloatArray,
-                    outside_point: FloatArray,
-                    num_likelihood_evaluations: IntArray,
-            ) -> RefineCarry:
-                """Refine an inside/outside bracket with fixed bisection."""
-
-                def body(_, refine: RefineCarry) -> RefineCarry:
-                    midpoint = (
-                        jnp.asarray(0.5, inside_point.dtype)
-                        * (refine.inside_point + refine.outside_point)
-                    )
-                    midpoint_inside, _, midpoint_evaluations = (
-                        strict_inside_and_log_likelihood(midpoint)
-                    )
-                    return RefineCarry(
-                        inside_point=jnp.where(
-                            midpoint_inside,
-                            midpoint,
-                            refine.inside_point,
-                        ),
-                        outside_point=jnp.where(
-                            midpoint_inside,
-                            refine.outside_point,
-                            midpoint,
-                        ),
-                        num_likelihood_evaluations=(
-                            refine.num_likelihood_evaluations
-                            + midpoint_evaluations
-                        ),
-                    )
-
-                return jax.lax.fori_loop(
-                    0,
-                    8,
-                    body,
-                    RefineCarry(
-                        inside_point=inside_point,
-                        outside_point=outside_point,
-                        num_likelihood_evaluations=num_likelihood_evaluations,
-                    ),
-                )
+            ) = jax.lax.cond(
+                proposal_hit_support,
+                lambda _: (
+                    jnp.asarray(False, mp_policy.bool_dtype),
+                    jnp.asarray(-jnp.inf, dtype=constraint.dtype),
+                    jnp.zeros((), mp_policy.count_dtype),
+                ),
+                lambda _: strict_inside_and_log_likelihood(proposal),
+                operand=None,
+            )
 
             class GrowCarry(NamedTuple):
                 search_step_size: FloatArray
@@ -1160,24 +1363,38 @@ def _sample_galilean_markov_transition_jax_with_step(
                 num_likelihood_evaluations: IntArray
 
             def grow_cond(grow: GrowCarry) -> BoolArray:
-                return grow.candidate_inside & (
-                    grow.step_count < max_step_doublings
-                )
+                return grow.candidate_inside
 
             def grow_body(grow: GrowCarry) -> GrowCarry:
                 candidate_step_size = (
                     jnp.asarray(2.0, grow.search_step_size.dtype)
                     * grow.search_step_size
                 )
+                clipped_step_size, hit_support_boundary = (
+                    _clip_galilean_step_to_unit_cube_jax(
+                        point=old_point,
+                        direction=carry.current_direction,
+                        step_size=candidate_step_size,
+                    )
+                )
                 candidate = (
                     old_point
-                    + candidate_step_size * carry.current_direction
+                    + clipped_step_size * carry.current_direction
                 )
                 (
                     candidate_inside,
                     _,
                     candidate_evaluations,
-                ) = strict_inside_and_log_likelihood(candidate)
+                ) = jax.lax.cond(
+                    hit_support_boundary,
+                    lambda _: (
+                        jnp.asarray(False, mp_policy.bool_dtype),
+                        jnp.asarray(-jnp.inf, dtype=constraint.dtype),
+                        jnp.zeros((), mp_policy.count_dtype),
+                    ),
+                    lambda _: strict_inside_and_log_likelihood(candidate),
+                    operand=None,
+                )
                 return GrowCarry(
                     search_step_size=jnp.where(
                         candidate_inside,
@@ -1202,7 +1419,7 @@ def _sample_galilean_markov_transition_jax_with_step(
                     num_likelihood_evaluations=(
                         grow.num_likelihood_evaluations
                         + candidate_evaluations
-                    ),
+                        ),
                 )
 
             def grow_from_inside(_: None) -> BoundaryResult:
@@ -1221,43 +1438,22 @@ def _sample_galilean_markov_transition_jax_with_step(
                         ),
                     ),
                 )
-                found_boundary = jnp.logical_not(grown.candidate_inside)
-                fallback_outside = (
-                    old_point + carry.step_size * carry.current_direction
+                bracket_sample = (
+                    _sample_galilean_reflection_point_from_bracket_jax(
+                        key=boundary_key,
+                        inside_point=grown.last_inside,
+                        outside_point=grown.first_outside,
+                        strict_inside_fn=strict_inside_and_log_likelihood,
+                    )
                 )
-
-                def found_result(_: None) -> BoundaryResult:
-                    refined = refine_boundary(
-                        grown.last_inside,
-                        grown.first_outside,
-                        grown.num_likelihood_evaluations,
-                    )
-                    return BoundaryResult(
-                        next_point=refined.inside_point,
-                        next_step_size=grown.search_step_size,
-                        outside_point=refined.outside_point,
-                        exhausted=jnp.asarray(False, mp_policy.bool_dtype),
-                        num_likelihood_evaluations=(
-                            refined.num_likelihood_evaluations
-                        ),
-                    )
-
-                def exhausted_result(_: None) -> BoundaryResult:
-                    return BoundaryResult(
-                        next_point=old_point,
-                        next_step_size=carry.step_size,
-                        outside_point=fallback_outside,
-                        exhausted=jnp.asarray(True, mp_policy.bool_dtype),
-                        num_likelihood_evaluations=(
-                            grown.num_likelihood_evaluations
-                        ),
-                    )
-
-                return jax.lax.cond(
-                    found_boundary,
-                    found_result,
-                    exhausted_result,
-                    operand=None,
+                return BoundaryResult(
+                    next_point=bracket_sample.point,
+                    next_step_size=grown.search_step_size,
+                    outside_point=bracket_sample.outside_point,
+                    num_likelihood_evaluations=(
+                        grown.num_likelihood_evaluations
+                        + bracket_sample.num_likelihood_evaluations
+                    ),
                 )
 
             class ShrinkCarry(NamedTuple):
@@ -1268,21 +1464,35 @@ def _sample_galilean_markov_transition_jax_with_step(
                 num_likelihood_evaluations: IntArray
 
             def shrink_cond(shrink: ShrinkCarry) -> BoolArray:
-                return jnp.logical_not(shrink.found_inside) & (
-                    shrink.step_count < max_step_halvings
-                )
+                return jnp.logical_not(shrink.found_inside)
 
             def shrink_body(shrink: ShrinkCarry) -> ShrinkCarry:
                 next_step_size = (
                     jnp.asarray(0.5, shrink.search_step_size.dtype)
                     * shrink.search_step_size
                 )
-                candidate = old_point + next_step_size * carry.current_direction
+                clipped_step_size, hit_support_boundary = (
+                    _clip_galilean_step_to_unit_cube_jax(
+                        point=old_point,
+                        direction=carry.current_direction,
+                        step_size=next_step_size,
+                    )
+                )
+                candidate = old_point + clipped_step_size * carry.current_direction
                 (
                     candidate_inside,
                     _,
                     candidate_evaluations,
-                ) = strict_inside_and_log_likelihood(candidate)
+                ) = jax.lax.cond(
+                    hit_support_boundary,
+                    lambda _: (
+                        jnp.asarray(False, mp_policy.bool_dtype),
+                        jnp.asarray(-jnp.inf, dtype=constraint.dtype),
+                        jnp.zeros((), mp_policy.count_dtype),
+                    ),
+                    lambda _: strict_inside_and_log_likelihood(candidate),
+                    operand=None,
+                )
                 return ShrinkCarry(
                     search_step_size=next_step_size,
                     inside_point=jnp.where(
@@ -1302,156 +1512,228 @@ def _sample_galilean_markov_transition_jax_with_step(
                 )
 
             def shrink_from_outside(_: None) -> BoundaryResult:
-                shrunk = jax.lax.while_loop(
-                    shrink_cond,
-                    shrink_body,
-                    ShrinkCarry(
-                        search_step_size=carry.step_size,
-                        inside_point=old_point,
-                        found_inside=jnp.asarray(False, mp_policy.bool_dtype),
-                        step_count=jnp.zeros((), mp_policy.count_dtype),
+                at_support_boundary = (
+                        _unit_cube_forward_step_limit_jax(
+                            old_point,
+                            carry.current_direction,
+                        )
+                        <= jnp.asarray(1e-12, old_point.dtype)
+                )
+
+                def reflect_at_current_support(_: None) -> BoundaryResult:
+                    return BoundaryResult(
+                        next_point=old_point,
+                        next_step_size=carry.step_size,
+                        outside_point=old_point,
                         num_likelihood_evaluations=(
                             carry.num_likelihood_evaluations
                             + proposal_evaluations
                         ),
-                    ),
-                )
-
-                def found_result(_: None) -> BoundaryResult:
-                    refined = refine_boundary(
-                        shrunk.inside_point,
-                        proposal,
-                        shrunk.num_likelihood_evaluations,
                     )
-                    return BoundaryResult(
-                        next_point=refined.inside_point,
-                        next_step_size=shrunk.search_step_size,
-                        outside_point=refined.outside_point,
-                        exhausted=jnp.asarray(False, mp_policy.bool_dtype),
-                        num_likelihood_evaluations=(
-                            refined.num_likelihood_evaluations
+
+                def shrink_to_inside(_: None) -> BoundaryResult:
+                    shrunk = jax.lax.while_loop(
+                        shrink_cond,
+                        shrink_body,
+                        ShrinkCarry(
+                            search_step_size=carry.step_size,
+                            inside_point=old_point,
+                            found_inside=jnp.asarray(False, mp_policy.bool_dtype),
+                            step_count=jnp.zeros((), mp_policy.count_dtype),
+                            num_likelihood_evaluations=(
+                                carry.num_likelihood_evaluations
+                                + proposal_evaluations
+                            ),
                         ),
                     )
-
-                def exhausted_result(_: None) -> BoundaryResult:
+                    bracket_sample = (
+                        _sample_galilean_reflection_point_from_bracket_jax(
+                            key=boundary_key,
+                            inside_point=shrunk.inside_point,
+                            outside_point=proposal,
+                            strict_inside_fn=strict_inside_and_log_likelihood,
+                        )
+                    )
                     return BoundaryResult(
-                        next_point=old_point,
-                        next_step_size=carry.step_size,
-                        outside_point=proposal,
-                        exhausted=jnp.asarray(True, mp_policy.bool_dtype),
+                        next_point=bracket_sample.point,
+                        next_step_size=shrunk.search_step_size,
+                        outside_point=bracket_sample.outside_point,
                         num_likelihood_evaluations=(
                             shrunk.num_likelihood_evaluations
+                            + bracket_sample.num_likelihood_evaluations
                         ),
                     )
 
                 return jax.lax.cond(
-                    shrunk.found_inside,
-                    found_result,
-                    exhausted_result,
+                    at_support_boundary,
+                    reflect_at_current_support,
+                    shrink_to_inside,
                     operand=None,
                 )
 
-            boundary = jax.lax.cond(
+            return jax.lax.cond(
                 proposal_inside,
                 grow_from_inside,
                 shrink_from_outside,
                 operand=None,
             )
 
-            sample_key, next_key = random.split(carry.key)
-            selected_point, total_length = add_segment_sample(
-                sample_key,
-                carry.selected_point,
-                carry.total_length,
-                old_point,
-                boundary.next_point,
-            )
-            support_normal = _unit_cube_support_normal_jax(
-                boundary.outside_point
-            )
-            eps = jnp.asarray(1e-12, support_normal.dtype)
-            skip_gradient = (
-                    (jnp.linalg.norm(support_normal) > eps)
-                    | jnp.isneginf(constraint)
-                    | boundary.exhausted
+        def side_body(carry: SideCarry, _) -> tuple[SideCarry, tuple[FloatArray, FloatArray, FloatArray]]:
+            alignment = jnp.vdot(carry.current_direction, initial_direction)
+            active = (
+                    jnp.logical_not(carry.done)
+                    & (alignment >= jnp.asarray(0.0, alignment.dtype))
             )
 
-            def zero_gradient(_):
-                return jnp.zeros_like(boundary.next_point)
-
-            def likelihood_gradient(_):
-                gradient_tree = grad_log_likelihood_fn(
-                    unravel_fn(boundary.next_point)
+            def active_body(_: None) -> tuple[SideCarry, tuple[FloatArray, FloatArray, FloatArray]]:
+                old_point = carry.current_point
+                boundary_key, next_key = random.split(carry.key)
+                boundary = build_boundary(carry, boundary_key)
+                segment = boundary.next_point - old_point
+                segment_length = jnp.linalg.norm(segment)
+                valid_segment_length = jnp.where(
+                    segment_length > jnp.asarray(0.0, segment_length.dtype),
+                    segment_length,
+                    jnp.asarray(0.0, segment_length.dtype),
                 )
-                gradient, _ = _ravel_point(gradient_tree)
-                return gradient
 
-            gradient = jax.lax.cond(
-                skip_gradient,
-                zero_gradient,
-                likelihood_gradient,
+                support_normal = _unit_cube_support_normal_jax(
+                    boundary.outside_point,
+                    carry.current_direction,
+                )
+                eps = jnp.asarray(1e-12, support_normal.dtype)
+                skip_gradient = (
+                        (jnp.linalg.norm(support_normal) > eps)
+                        | jnp.isneginf(constraint)
+                )
+
+                def zero_gradient(_):
+                    return jnp.zeros_like(boundary.next_point)
+
+                def likelihood_gradient(_):
+                    gradient_tree = grad_log_likelihood_fn(
+                        unravel_fn(boundary.next_point)
+                    )
+                    gradient, _ = _ravel_point(gradient_tree)
+                    return gradient
+
+                gradient = jax.lax.cond(
+                    skip_gradient,
+                    zero_gradient,
+                    likelihood_gradient,
+                    operand=None,
+                )
+                next_direction = _reflect_galilean_direction_jax(
+                    carry.current_direction,
+                    gradient,
+                    support_normal,
+                )
+                next_alignment = jnp.vdot(next_direction, initial_direction)
+                next_done = next_alignment < jnp.asarray(
+                    0.0,
+                    next_alignment.dtype,
+                )
+                next_carry = SideCarry(
+                    current_point=boundary.next_point,
+                    current_direction=next_direction,
+                    step_size=boundary.next_step_size,
+                    key=next_key,
+                    done=next_done,
+                    num_likelihood_evaluations=(
+                        boundary.num_likelihood_evaluations
+                    ),
+                )
+                return next_carry, (
+                    old_point,
+                    boundary.next_point,
+                    valid_segment_length,
+                )
+
+            def inactive_body(_: None) -> tuple[SideCarry, tuple[FloatArray, FloatArray, FloatArray]]:
+                inactive_length = jnp.asarray(0.0, flat_u0.dtype)
+                next_carry = SideCarry(
+                    current_point=carry.current_point,
+                    current_direction=carry.current_direction,
+                    step_size=carry.step_size,
+                    key=carry.key,
+                    done=jnp.asarray(True, mp_policy.bool_dtype),
+                    num_likelihood_evaluations=(
+                        carry.num_likelihood_evaluations
+                    ),
+                )
+                return next_carry, (
+                    carry.current_point,
+                    carry.current_point,
+                    inactive_length,
+                )
+
+            return jax.lax.cond(
+                active,
+                active_body,
+                inactive_body,
                 operand=None,
             )
-            next_direction = _reflect_galilean_direction_jax(
-                carry.current_direction,
-                gradient,
-                support_normal,
-            )
-            next_direction = jnp.where(
-                boundary.exhausted,
-                -initial_direction,
-                next_direction,
-            )
-            return SideCarry(
-                current_point=boundary.next_point,
-                current_direction=next_direction,
-                step_size=boundary.next_step_size,
-                selected_point=selected_point,
-                total_length=total_length,
-                key=next_key,
-                num_likelihood_evaluations=(
-                    boundary.num_likelihood_evaluations
-                ),
-            )
 
-        final_carry = jax.lax.while_loop(
-            side_cond,
+        final_carry, side_segments = jax.lax.scan(
             side_body,
             SideCarry(
                 current_point=flat_u0,
                 current_direction=initial_direction,
                 step_size=step_size0,
-                selected_point=flat_u0,
-                total_length=jnp.asarray(0.0, flat_u0.dtype),
                 key=side_key,
+                done=jnp.asarray(False, mp_policy.bool_dtype),
                 num_likelihood_evaluations=jnp.zeros((), mp_policy.count_dtype),
             ),
+            xs=None,
+            length=max_reflections,
         )
-        return _GalileanStreamingSide(
-            selected_point=final_carry.selected_point,
-            total_length=final_carry.total_length,
+        segment_starts, segment_ends, segment_lengths = side_segments
+        return _GalileanFixedSide(
+            segment_starts=segment_starts,
+            segment_ends=segment_ends,
+            segment_lengths=segment_lengths,
             step_size=final_carry.step_size,
             num_likelihood_evaluations=(
                 final_carry.num_likelihood_evaluations
             ),
         )
 
-    positive_key, negative_key, side_key = random.split(key, 3)
+    positive_key, negative_key, sample_key = random.split(key, 3)
     positive_side = build_side(flat_direction, positive_key)
     negative_side = build_side(-flat_direction, negative_key)
-    total_length = positive_side.total_length + negative_side.total_length
-    positive_probability = jnp.where(
-        total_length > 0.0,
-        positive_side.total_length / total_length,
-        jnp.asarray(1.0, total_length.dtype),
+    segment_starts = jnp.concatenate(
+        [positive_side.segment_starts, negative_side.segment_starts],
+        axis=0,
     )
-    choose_positive = random.uniform(side_key, dtype=total_length.dtype) < (
-        positive_probability
+    segment_ends = jnp.concatenate(
+        [positive_side.segment_ends, negative_side.segment_ends],
+        axis=0,
     )
-    selected_point = jnp.where(
-        choose_positive,
-        positive_side.selected_point,
-        negative_side.selected_point,
+    segment_lengths = jnp.concatenate(
+        [positive_side.segment_lengths, negative_side.segment_lengths],
+        axis=0,
+    )
+    total_length = jnp.sum(segment_lengths)
+    path_key, alpha_key = random.split(sample_key)
+    path_position = random.uniform(
+        path_key,
+        dtype=total_length.dtype,
+        minval=jnp.asarray(0.0, total_length.dtype),
+        maxval=total_length,
+    )
+    cumulative_lengths = jnp.cumsum(segment_lengths)
+    segment_index = jnp.searchsorted(
+        cumulative_lengths,
+        path_position,
+        side="right",
+    )
+    segment_index = jnp.minimum(segment_index, segment_lengths.shape[0] - 1)
+    alpha = random.uniform(alpha_key, dtype=flat_u0.dtype)
+    sampled_segment = (
+        segment_ends[segment_index] - segment_starts[segment_index]
+    )
+    selected_point = (
+        segment_starts[segment_index] + alpha * sampled_segment
     )
     selected_point = jnp.where(
         total_length > 0.0,
@@ -1459,7 +1741,7 @@ def _sample_galilean_markov_transition_jax_with_step(
         flat_u0,
     )
     next_step_size = jnp.where(
-        choose_positive,
+        segment_index < max_reflections,
         positive_side.step_size,
         negative_side.step_size,
     )
@@ -1518,6 +1800,7 @@ def _sample_galilean_markov_transition_jax(
         log_likelihood_fn: Callable[[UType], FloatArray],
         grad_log_likelihood_fn: Callable[[UType], UType],
         initial_step_size: FloatArray,
+        max_reflections: int,
         max_step_halvings: int,
         max_step_doublings: int,
 ) -> tuple[TreeField[UType], FloatArray, IntArray]:
@@ -1532,6 +1815,7 @@ def _sample_galilean_markov_transition_jax(
             log_likelihood_fn=log_likelihood_fn,
             grad_log_likelihood_fn=grad_log_likelihood_fn,
             initial_step_size=initial_step_size,
+            max_reflections=max_reflections,
             max_step_halvings=max_step_halvings,
             max_step_doublings=max_step_doublings,
         )
@@ -1543,6 +1827,7 @@ def _sample_galilean_markov_transition_jax(
     jax.jit,
     static_argnames=[
         "log_likelihood_fn",
+        "max_reflections",
         "max_step_halvings",
         "max_step_doublings",
     ],
@@ -1556,6 +1841,7 @@ def _sample_galilean_markov_transition_jit(
         initial_step_size: FloatArray,
         *,
         log_likelihood_fn: Callable[[UType], FloatArray],
+        max_reflections: int,
         max_step_halvings: int,
         max_step_doublings: int,
 ) -> tuple[TreeField[UType], FloatArray, IntArray]:
@@ -1569,6 +1855,7 @@ def _sample_galilean_markov_transition_jit(
         log_likelihood_fn=log_likelihood_fn,
         grad_log_likelihood_fn=jax.grad(log_likelihood_fn),
         initial_step_size=initial_step_size,
+        max_reflections=max_reflections,
         max_step_halvings=max_step_halvings,
         max_step_doublings=max_step_doublings,
     )
@@ -1586,6 +1873,7 @@ def _sample_galilean_chain_impl(
         initial_step_size: FloatArray,
         num_slices: int,
         num_phantom: int,
+        max_reflections: int,
         max_step_halvings: int,
         max_step_doublings: int,
 ) -> tuple[UType, FloatArray, IntArray, PhantomSamples]:
@@ -1619,6 +1907,7 @@ def _sample_galilean_chain_impl(
                 log_likelihood_fn=log_likelihood_fn,
                 grad_log_likelihood_fn=grad_log_likelihood_fn,
                 initial_step_size=initial_step_size,
+                max_reflections=max_reflections,
                 max_step_halvings=max_step_halvings,
                 max_step_doublings=max_step_doublings,
             )
@@ -1690,6 +1979,7 @@ def _sample_galilean_chain_impl(
         "direction_kernel",
         "num_slices",
         "num_phantom",
+        "max_reflections",
         "max_step_halvings",
         "max_step_doublings",
     ],
@@ -1705,6 +1995,7 @@ def _sample_galilean_chain_jit(
         direction_kernel,
         num_slices: int,
         num_phantom: int,
+        max_reflections: int,
         max_step_halvings: int,
         max_step_doublings: int,
 ) -> tuple[UType, FloatArray, IntArray, PhantomSamples]:
@@ -1720,6 +2011,7 @@ def _sample_galilean_chain_jit(
         initial_step_size=initial_step_size,
         num_slices=num_slices,
         num_phantom=num_phantom,
+        max_reflections=max_reflections,
         max_step_halvings=max_step_halvings,
         max_step_doublings=max_step_doublings,
     )
@@ -2509,6 +2801,7 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
                         direction_kernel=direction_kernel,
                         num_slices=num_slices,
                         num_phantom=num_phantom,
+                        max_reflections=self.max_galilean_reflections,
                         max_step_halvings=(
                             self.max_galilean_step_halvings
                         ),
@@ -2527,6 +2820,7 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
                     initial_step_size=initial_step_size,
                     num_slices=num_slices,
                     num_phantom=num_phantom,
+                    max_reflections=self.max_galilean_reflections,
                     max_step_halvings=self.max_galilean_step_halvings,
                     max_step_doublings=self.max_galilean_step_doublings,
                 )

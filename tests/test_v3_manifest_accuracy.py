@@ -32,6 +32,14 @@ MC_SHRINKAGE_NUM_SAMPLES = 1000
 DISTRIBUTED_WORKER_SPECS = ("cpu:*:2",)
 
 
+@pytest.fixture(autouse=True)
+def _clear_jax_caches_between_manifest_rows():
+    """Keep parametrized standard rows from accumulating CPU XLA code memory."""
+    jax.clear_caches()
+    yield
+    jax.clear_caches()
+
+
 def _accuracy_row_params(suite: str) -> tuple[pytest.ParameterSet, ...]:
     return tuple(
         pytest.param(row, id=row.row_id)
@@ -45,6 +53,7 @@ def _build_standard_problem_sampler(row: V3PerformanceFeatureRow):
     sampler = UniDimSliceSampler(
         model=model,
         num_slices=STANDARD_NUM_SLICES,
+        no_step_out=row.no_step_out,
         phantom_burn_in=(
             STANDARD_PHANTOM_BURN_IN if row.phantom_enabled else None
         ),

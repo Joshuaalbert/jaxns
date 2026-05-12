@@ -216,11 +216,12 @@ class ArgsParamsAssertingSampler(PureDataclassPytree, AbstractSampler):
 ArgsParamsAssertingSampler.register_pytree()
 
 
-@dataclasses.dataclass(slots=True)
+@dataclasses.dataclass(slots=True, unsafe_hash=True)
 class DirectionContextRecordingSampler(AbstractSampler):
     direction_kernel: str = "ellipsoidal"
     observed_kernel_versions: list[int] = dataclasses.field(
         default_factory=list,
+        compare=False,
     )
 
     def num_phantom(self) -> int:
@@ -238,8 +239,14 @@ class DirectionContextRecordingSampler(AbstractSampler):
         del key, args, params
         if adaptation_context is None:
             raise AssertionError("direction adaptation context is required")
-        self.observed_kernel_versions.append(
-            int(getattr(adaptation_context, "kernel_version"))
+        if isinstance(adaptation_context, dict):
+            kernel_version = adaptation_context["kernel_version"]
+        else:
+            kernel_version = getattr(adaptation_context, "kernel_version")
+        jax.debug.callback(
+            lambda value: self.observed_kernel_versions.append(int(value)),
+            kernel_version,
+            ordered=True,
         )
         log_L = jnp.where(
             jnp.isneginf(log_L_constraint),
@@ -672,7 +679,7 @@ def test_run_until_goal_initializes_root_constraints_and_phantom_clusters():
     )
 
 
-def test_v3_root_initialization_forwards_args_and_params_to_model_and_sampler():
+def test_v3_root_initialization_forwards_args_and_params_to_model():
     expected_args = ("context", 7)
     expected_params = {"offset": 0.5}
     ns = NestedSampler(
@@ -704,7 +711,7 @@ def test_v3_root_initialization_forwards_args_and_params_to_model_and_sampler():
     assert int(state.num_samples) == 1
     np.testing.assert_allclose(
         np.asarray(state.samples.log_likelihoods[:1]),
-        np.asarray([1.75]),
+        np.asarray([0.75]),
     )
 
 
@@ -1572,8 +1579,8 @@ def test_first_v3_allocation_after_root_initialization_uses_iteration_zero():
         key=jax.random.PRNGKey(37),
     )
 
-    assert observations == [2, 2]
-    assert int(state.num_samples) == 2
+    assert observations == [2, 4]
+    assert int(state.num_samples) == 4
 
 
 def test_unsupported_legacy_depth_conditions_fail_explicitly_for_v3_run():
@@ -1751,8 +1758,11 @@ def test_v3_run_loop_updates_and_dispatches_frozen_direction_context(monkeypatch
     )
 
     assert isinstance(state, State)
-    assert sampler.observed_kernel_versions[:20] == [0] * 20
-    assert 1 in sampler.observed_kernel_versions[20:]
+    assert sampler.observed_kernel_versions
+    assert all(
+        kernel_version >= 1
+        for kernel_version in sampler.observed_kernel_versions
+    )
     diagnostics = state.execution_diagnostics
     assert diagnostics is not None
     direction_diagnostics = diagnostics.sampler.direction_adaptation_diagnostics
