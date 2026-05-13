@@ -111,6 +111,12 @@ def _require_speed_api():
     return module
 
 
+def _require_efficiency_grid_api():
+    return importlib.import_module(
+        "benchmarks.v3_performance.pure_core_efficiency_grid"
+    )
+
+
 def _as_mapping(value: Any) -> Mapping[str, Any]:
     if dataclasses.is_dataclass(value):
         return dataclasses.asdict(value)
@@ -813,6 +819,41 @@ def test_real_basic_mvn_builder_is_full_8d_reference():
     )
     assert log_z_ref == pytest.approx(expected_log_z_ref)
     assert log_z_ref == pytest.approx(-24.606462553878423)
+
+
+def test_pure_core_efficiency_grid_trims_state_before_result_conversion():
+    api = _require_efficiency_grid_api()
+    import jax.numpy as jnp
+
+    from jaxns.samples import PhantomSamples
+    from jaxns.samples import Samples
+
+    @dataclasses.dataclass(frozen=True)
+    class FakeState:
+        num_samples: int
+        samples: Samples
+
+    samples = Samples(
+        log_L_constraints=jnp.arange(5.0),
+        log_likelihoods=jnp.arange(10.0, 15.0),
+        U_samples=jnp.arange(10.0).reshape((5, 2)),
+        out_degree=jnp.arange(5),
+        num_likelihood_evaluations=jnp.arange(20, 25),
+        phantom_samples=PhantomSamples(
+            U_samples=None,
+            valid_mask=jnp.zeros((5, 0), dtype=bool),
+            log_L=jnp.zeros((5, 0)),
+        ),
+    )
+    state = FakeState(num_samples=3, samples=samples)
+
+    trimmed = api._trim_state_to_collected_samples(state)
+
+    assert trimmed.samples.log_likelihoods.shape == (3,)
+    assert trimmed.samples.U_samples.shape == (3, 2)
+    assert trimmed.samples.phantom_samples.U_samples is None
+    assert trimmed.samples.phantom_samples.valid_mask.shape == (3, 0)
+    assert state.samples.log_likelihoods.shape == (5,)
 
 
 def test_collect_pure_core_speed_record_uses_no_load_balancer_and_gate(

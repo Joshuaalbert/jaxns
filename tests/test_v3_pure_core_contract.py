@@ -721,6 +721,92 @@ def test_v3_root_initialization_keeps_static_capacity_and_sentinel_metadata():
     )
 
 
+def test_direct_pure_core_large_max_samples_uses_bounded_state_capacity():
+    nested_sampler = _make_deterministic_nested_sampler(
+        max_samples=10_000_000,
+        shell_size=2,
+    )
+
+    state = nested_sampler.run_until_goal(
+        goal_cond=lambda _: False,
+        depth_cond=TerminationCondition(max_samples=10),
+        allocation_target="uniform",
+        key=jax.random.PRNGKey(3),
+        max_goal_iterations=1,
+    )
+
+    assert int(state.num_samples) == 10
+    sample_capacity = int(state.samples.log_likelihoods.shape[0])
+    assert sample_capacity == 32
+    assert sample_capacity & (sample_capacity - 1) == 0
+    assert sample_capacity < int(nested_sampler.max_samples)
+    assert sample_capacity >= int(state.num_samples)
+
+
+def test_collected_sample_prefix_result_matches_trimmed_result():
+    nested_sampler = _make_deterministic_nested_sampler(
+        max_samples=64,
+        shell_size=2,
+    )
+    state = nested_sampler.run_until_goal(
+        goal_cond=lambda _: False,
+        depth_cond=TerminationCondition(max_samples=10),
+        allocation_target="uniform",
+        key=jax.random.PRNGKey(5),
+        max_goal_iterations=1,
+    )
+
+    prefix_result = (
+        core_module._state_with_collected_sample_prefix(state).to_result()
+    )
+    trimmed_result = state.to_result().trim()
+
+    assert int(prefix_result.total_num_samples) == 10
+    assert prefix_result.log_L.shape == (10,)
+    np.testing.assert_allclose(
+        np.asarray(prefix_result.log_Z_mean),
+        np.asarray(trimmed_result.log_Z_mean),
+    )
+    np.testing.assert_allclose(
+        np.asarray(prefix_result.log_Z_uncert),
+        np.asarray(trimmed_result.log_Z_uncert),
+    )
+    np.testing.assert_allclose(
+        np.asarray(prefix_result.v3_log_posterior_weights),
+        np.asarray(trimmed_result.v3_log_posterior_weights),
+    )
+
+
+def test_direct_pure_core_resume_grows_bounded_capacity_by_bucket():
+    nested_sampler = _make_deterministic_nested_sampler(
+        max_samples=10_000_000,
+        shell_size=2,
+    )
+    state = nested_sampler.run_until_goal(
+        goal_cond=lambda _: False,
+        depth_cond=TerminationCondition(max_samples=10),
+        allocation_target="uniform",
+        key=jax.random.PRNGKey(6),
+        max_goal_iterations=1,
+    )
+
+    resumed = nested_sampler.resume_until_goal(
+        state=state,
+        goal_cond=lambda _: False,
+        depth_cond=TerminationCondition(max_samples=34),
+        allocation_target="uniform",
+        key=jax.random.PRNGKey(7),
+        max_goal_iterations=1,
+    )
+
+    assert int(state.samples.log_likelihoods.shape[0]) == 32
+    assert int(resumed.num_samples) == 34
+    assert int(resumed.samples.log_likelihoods.shape[0]) == 64
+    assert int(resumed.samples.log_likelihoods.shape[0]) < int(
+        nested_sampler.max_samples
+    )
+
+
 def test_pure_core_work_batch_uses_right_side_plateau_for_strict_seed():
     state = _make_indexed_seed_state(
         root_out_degree=1,

@@ -59,14 +59,17 @@ from tensorflow_probability.substrates import jax as tfp
 from jaxns.constrained_sampler import UniDimSliceSampler
 from jaxns.core import NestedSampler
 from jaxns.model import Model
+from jaxns.race_tree import build_block_state
 from jaxns.termination_condition import TerminationCondition
+from jaxns.v3_shrinkage import classic_dirichlet_concentrations
+from jaxns.v3_shrinkage import expected_v3_evidence_summary
 from jaxctx.priors.prior import Prior
 
 
 tfpd = tfp.distributions
 perf_counter = time.perf_counter
 
-SCHEMA_VERSION = "v3_pure_core_efficiency_grid_v1"
+SCHEMA_VERSION = "v3_pure_core_efficiency_grid_v2"
 DEFAULT_ALLOCATION_TARGETS = (
     "uniform",
     "evidence_improving",
@@ -75,6 +78,7 @@ DEFAULT_ALLOCATION_TARGETS = (
 DEFAULT_LOGZ_UNCERT_TARGETS = (0.8, 0.5, 0.35)
 DEFAULT_SEEDS = (0, 17, 29)
 DEFAULT_PROBLEMS = ("basic_mvn", "spike_slab")
+DEFAULT_PHANTOM_MODES = (True,)
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -107,6 +111,7 @@ class EfficiencyGridConfig:
     logz_uncert_targets: tuple[float, ...] = DEFAULT_LOGZ_UNCERT_TARGETS
     seeds: tuple[int, ...] = DEFAULT_SEEDS
     sampler_settings: tuple[SamplerSetting, ...] = ()
+    phantom_modes: tuple[bool, ...] = DEFAULT_PHANTOM_MODES
     target_num_live_points: int = 30
     max_samples: int = 2400
     shell_size: int = 15
@@ -193,13 +198,21 @@ def run_efficiency_grid(config: EfficiencyGridConfig) -> tuple[list[dict[str, An
     records: list[dict[str, Any]] = []
     cases = list(iter_grid_cases(config))
     for run_index, case in enumerate(cases, start=1):
-        problem, logz_uncert_target, allocation_target, sampler_setting, seed = case
+        (
+            problem,
+            logz_uncert_target,
+            allocation_target,
+            sampler_setting,
+            phantoms_enabled,
+            seed,
+        ) = case
         print(
             (
                 f"[{run_index}/{len(cases)}] {problem.name} "
                 f"target={logz_uncert_target:g} "
                 f"alloc={allocation_target} "
                 f"setting={sampler_setting.setting_id} "
+                f"phantoms={'on' if phantoms_enabled else 'off'} "
                 f"seed={seed}"
             ),
             flush=True,
@@ -210,6 +223,7 @@ def run_efficiency_grid(config: EfficiencyGridConfig) -> tuple[list[dict[str, An
                 logz_uncert_target=float(logz_uncert_target),
                 allocation_target=allocation_target,
                 sampler_setting=sampler_setting,
+                phantoms_enabled=phantoms_enabled,
                 seed=int(seed),
                 config=config,
             )
@@ -229,13 +243,21 @@ def run_efficiency_grid_isolated(
     with tempfile.TemporaryDirectory(prefix="jaxns_efficiency_grid_") as tmp_dir:
         tmp_path = Path(tmp_dir)
         for run_index, case in enumerate(cases, start=1):
-            problem, logz_uncert_target, allocation_target, sampler_setting, seed = case
+            (
+                problem,
+                logz_uncert_target,
+                allocation_target,
+                sampler_setting,
+                phantoms_enabled,
+                seed,
+            ) = case
             print(
                 (
                     f"[{run_index}/{len(cases)}] {problem.name} "
                     f"target={logz_uncert_target:g} "
                     f"alloc={allocation_target} "
                     f"setting={sampler_setting.setting_id} "
+                    f"phantoms={'on' if phantoms_enabled else 'off'} "
                     f"seed={seed}"
                 ),
                 flush=True,
@@ -253,6 +275,8 @@ def run_efficiency_grid_isolated(
                 allocation_target,
                 "--setting",
                 sampler_setting.setting_id,
+                "--phantoms",
+                "on" if phantoms_enabled else "off",
                 "--logz-uncert-target",
                 str(float(logz_uncert_target)),
                 "--seed",
@@ -310,14 +334,16 @@ def iter_grid_cases(config: EfficiencyGridConfig):
         for logz_uncert_target in config.logz_uncert_targets:
             for allocation_target in config.allocation_targets:
                 for sampler_setting in config.sampler_settings:
-                    for seed in config.seeds:
-                        yield (
-                            problem,
-                            float(logz_uncert_target),
-                            allocation_target,
-                            sampler_setting,
-                            int(seed),
-                        )
+                    for phantoms_enabled in config.phantom_modes:
+                        for seed in config.seeds:
+                            yield (
+                                problem,
+                                float(logz_uncert_target),
+                                allocation_target,
+                                sampler_setting,
+                                bool(phantoms_enabled),
+                                int(seed),
+                            )
 
 
 def run_one_case(
@@ -326,19 +352,23 @@ def run_one_case(
         logz_uncert_target: float,
         allocation_target: str,
         sampler_setting: SamplerSetting,
+        phantoms_enabled: bool,
         seed: int,
         config: EfficiencyGridConfig,
 ) -> dict[str, Any]:
     """Run one pure-core benchmark case and build its JSON record."""
     setup_started = perf_counter()
     model, logz_ref = problem.build()
+    effective_phantom_burn_in = (
+        int(sampler_setting.phantom_burn_in) if phantoms_enabled else 0
+    )
     sampler = UniDimSliceSampler(
         model=model,
         num_slices=sampler_setting.num_slices,
         no_step_out=sampler_setting.no_step_out,
         max_shrinkage_steps=sampler_setting.max_shrinkage_steps,
-        collect_phantom_samples=True,
-        phantom_burn_in=sampler_setting.phantom_burn_in,
+        collect_phantom_samples=phantoms_enabled,
+        phantom_burn_in=effective_phantom_burn_in,
         direction_kernel=sampler_setting.direction_kernel,
         trajectory="straight_line",
     )
@@ -348,22 +378,29 @@ def run_one_case(
         target_num_live_points=config.target_num_live_points,
         max_samples=config.max_samples,
         shell_size=config.shell_size,
-        collect_phantom_samples=True,
-        store_phantom_samples=True,
+        collect_phantom_samples=phantoms_enabled,
+        store_phantom_samples=phantoms_enabled,
     )
     setup_seconds = perf_counter() - setup_started
 
     run_started = perf_counter()
+    goal_checks = 0
+    reached_goal_iteration_limit = False
 
     def goal_cond(state) -> bool:
-        result = state.to_result().trim()
-        reached_min_samples = int(result.total_num_samples) >= int(
-            config.min_samples
-        )
-        reached_uncert = float(result.log_Z_uncert) <= float(
+        nonlocal goal_checks
+        nonlocal reached_goal_iteration_limit
+        goal_checks += 1
+        reached_min_samples = int(state.num_samples) >= int(config.min_samples)
+        reached_uncert = float(_state_log_z_uncert(state)) <= float(
             logz_uncert_target
         )
-        return reached_min_samples and reached_uncert
+        reached_goal_iteration_limit = (
+            goal_checks >= int(config.max_goal_iterations)
+        )
+        return (
+            reached_min_samples and reached_uncert
+        ) or reached_goal_iteration_limit
 
     state = runner.run_until_goal(
         goal_cond=goal_cond,
@@ -373,11 +410,12 @@ def run_one_case(
         max_goal_iterations=config.max_goal_iterations,
         delta_K=config.delta_k,
     )
-    _block_until_ready(state.samples.log_likelihoods)
+    _block_until_ready(state.num_samples)
     run_seconds = perf_counter() - run_started
 
     result_started = perf_counter()
-    result = state.to_result().trim()
+    result = _trim_state_to_collected_samples(state).to_result()
+    _block_until_ready(result.log_Z_uncert)
     result_conversion_seconds = perf_counter() - result_started
 
     mc_started = perf_counter()
@@ -385,6 +423,7 @@ def run_one_case(
         problem.name,
         allocation_target,
         sampler_setting.setting_id,
+        "phantoms_on" if phantoms_enabled else "phantoms_off",
         logz_uncert_target,
         seed,
     )
@@ -399,10 +438,13 @@ def run_one_case(
     logz_mean = float(np.mean(logz_samples))
     logz_var = float(np.var(logz_samples))
     logz_std = float(np.sqrt(logz_var))
-    error = logz_mean - float(logz_ref)
-    squared_error = float(error * error)
-    accuracy_within_3_mc_std = bool(abs(error) <= 3.0 * logz_std)
-    abs_error_over_mc_std = float(abs(error) / max(logz_std, 1e-12))
+    expectation_logz_mean = float(result.log_Z_mean)
+    mc_error = logz_mean - float(logz_ref)
+    expectation_error = expectation_logz_mean - float(logz_ref)
+    mc_squared_error = float(mc_error * mc_error)
+    expectation_squared_error = float(expectation_error * expectation_error)
+    accuracy_within_3_mc_std = bool(abs(mc_error) <= 3.0 * logz_std)
+    abs_error_over_mc_std = float(abs(mc_error) / max(logz_std, 1e-12))
     likelihood_evaluations = int(result.total_num_likelihood_evaluations)
     total_seconds = float(
         setup_seconds + run_seconds + result_conversion_seconds + mc_seconds
@@ -422,9 +464,11 @@ def run_one_case(
             "allocation_target": allocation_target,
             "logz_uncert_target": float(logz_uncert_target),
             "sampler_setting": sampler_setting.setting_id,
+            "phantoms_enabled": bool(phantoms_enabled),
             "direction_kernel": sampler_setting.direction_kernel,
             "num_slices": int(sampler_setting.num_slices),
             "phantom_burn_in": int(sampler_setting.phantom_burn_in),
+            "effective_phantom_burn_in": int(effective_phantom_burn_in),
             "no_step_out": bool(sampler_setting.no_step_out),
             "max_shrinkage_steps": int(sampler_setting.max_shrinkage_steps),
             "target_num_live_points": int(config.target_num_live_points),
@@ -433,6 +477,7 @@ def run_one_case(
             "min_samples": int(config.min_samples),
             "delta_k": int(config.delta_k),
             "mc_sample_count": int(config.mc_sample_count),
+            "goal_checks": int(goal_checks),
             "mc_seed": int(mc_seed),
             "jax_platform": str(jax.default_backend()),
             "jax_devices": [str(device) for device in jax.devices()],
@@ -453,27 +498,38 @@ def run_one_case(
             "mc_log_Z_std": logz_std,
             "mc_log_Z_variance": logz_var,
             "logZ_ref": float(logz_ref),
-            "logZ_error": float(error),
-            "squared_error": squared_error,
+            "logZ_error": float(mc_error),
+            "mc_logZ_error": float(mc_error),
+            "expectation_logZ_error": float(expectation_error),
+            "squared_error": mc_squared_error,
+            "mc_squared_error": mc_squared_error,
+            "expectation_squared_error": expectation_squared_error,
             "accuracy_within_3_mc_std": accuracy_within_3_mc_std,
             "abs_error_over_mc_std": abs_error_over_mc_std,
             "likelihood_evals_times_logZ_variance": float(
                 likelihood_evaluations * logz_var
             ),
             "likelihood_evals_times_squared_error": float(
-                likelihood_evaluations * squared_error
+                likelihood_evaluations * mc_squared_error
+            ),
+            "likelihood_evals_times_expectation_squared_error": float(
+                likelihood_evaluations * expectation_squared_error
             ),
             "reached_uncert_target": bool(reached_uncert_target),
             "reached_min_samples": bool(
                 int(result.total_num_samples) >= int(config.min_samples)
             ),
             "reached_sample_cap": bool(reached_sample_cap),
+            "reached_goal_iteration_limit": bool(
+                reached_goal_iteration_limit
+                and not reached_uncert_target
+            ),
         },
     }
 
 
 def rollup_records(records: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
-    """Aggregate per-seed records by problem, target, allocation, and setting."""
+    """Aggregate per-seed records by problem, target, allocation, setting, and phantom mode."""
     groups: dict[tuple[Any, ...], list[Mapping[str, Any]]] = defaultdict(list)
     for record in records:
         metadata = record["metadata"]
@@ -482,12 +538,13 @@ def rollup_records(records: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]
             metadata["logz_uncert_target"],
             metadata["allocation_target"],
             metadata["sampler_setting"],
+            metadata["phantoms_enabled"],
         )
         groups[key].append(record)
 
     rollups: list[dict[str, Any]] = []
     for key, group in sorted(groups.items()):
-        problem, target, allocation_target, sampler_setting = key
+        problem, target, allocation_target, sampler_setting, phantoms_enabled = key
         evals = np.asarray(
             [item["results"]["likelihood_evaluations"] for item in group],
             dtype=float,
@@ -501,7 +558,24 @@ def rollup_records(records: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]
             dtype=float,
         )
         errors = np.asarray(
-            [item["results"]["logZ_error"] for item in group],
+            [item["results"]["mc_logZ_error"] for item in group],
+            dtype=float,
+        )
+        abs_errors = np.abs(errors)
+        expectation_errors = np.asarray(
+            [item["results"]["expectation_logZ_error"] for item in group],
+            dtype=float,
+        )
+        logz_uncerts = np.asarray(
+            [item["results"]["log_Z_uncert"] for item in group],
+            dtype=float,
+        )
+        mc_logz_means = np.asarray(
+            [item["results"]["mc_log_Z_mean"] for item in group],
+            dtype=float,
+        )
+        expectation_logz_means = np.asarray(
+            [item["results"]["log_Z_mean"] for item in group],
             dtype=float,
         )
         variances = np.asarray(
@@ -517,6 +591,8 @@ def rollup_records(records: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]
         )
         mse = float(np.mean(np.square(errors)))
         rmse = float(np.sqrt(mse))
+        expectation_mse = float(np.mean(np.square(expectation_errors)))
+        expectation_rmse = float(np.sqrt(expectation_mse))
         mean_evals = float(np.mean(evals))
         rollups.append(
             {
@@ -524,6 +600,7 @@ def rollup_records(records: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]
                 "logz_uncert_target": float(target),
                 "allocation_target": allocation_target,
                 "sampler_setting": sampler_setting,
+                "phantoms_enabled": bool(phantoms_enabled),
                 "num_seeds": int(len(group)),
                 "mean_likelihood_evaluations": mean_evals,
                 "median_likelihood_evaluations": float(np.median(evals)),
@@ -533,11 +610,31 @@ def rollup_records(records: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]
                 "median_run_seconds": float(np.median(run)),
                 "rmse_logZ": rmse,
                 "bias_logZ": float(np.mean(errors)),
+                "mean_abs_mc_logZ_error": float(np.mean(abs_errors)),
+                "mean_log_Z_uncert": float(np.mean(logz_uncerts)),
+                "mean_mc_logZ_mean": float(np.mean(mc_logz_means)),
+                "mc_bias_logZ": float(np.mean(errors)),
+                "rmse_mc_logZ": rmse,
+                "mean_expectation_logZ_mean": float(
+                    np.mean(expectation_logz_means)
+                ),
+                "expectation_bias_logZ": float(np.mean(expectation_errors)),
+                "rmse_expectation_logZ": expectation_rmse,
                 "mean_mc_logZ_variance": float(np.mean(variances)),
+                "mean_mc_logZ_std": float(np.mean(np.sqrt(variances))),
+                "rmse_over_mean_log_Z_uncert": float(
+                    rmse / max(float(np.mean(logz_uncerts)), 1e-12)
+                ),
+                "rmse_over_mean_mc_logZ_std": float(
+                    rmse / max(float(np.mean(np.sqrt(variances))), 1e-12)
+                ),
                 "mean_evals_times_variance": float(
                     np.mean(variance_efficiencies)
                 ),
                 "mean_evals_times_mse": float(mean_evals * mse),
+                "mean_evals_times_expectation_mse": float(
+                    mean_evals * expectation_mse
+                ),
                 "target_success_fraction": float(
                     np.mean(
                         [
@@ -570,9 +667,56 @@ def rollup_records(records: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]
                         ]
                     )
                 ),
+                "goal_iteration_limit_fraction": float(
+                    np.mean(
+                        [
+                            bool(
+                                item["results"].get(
+                                    "reached_goal_iteration_limit",
+                                    False,
+                                )
+                            )
+                            for item in group
+                        ]
+                    )
+                ),
             }
         )
     return rollups
+
+
+def _trim_state_to_collected_samples(state):
+    """Return a state whose sample arrays contain only accepted rows.
+
+    Args:
+        state: Nested-sampler state with fixed-capacity sample arrays.
+
+    Returns:
+        A shallow state copy whose `samples` leaves are sliced to
+        `[num_samples, ...]`.
+    """
+    num_samples = int(state.num_samples)
+    trimmed_samples = jax.tree.map(
+        lambda value: value[:num_samples, ...],
+        state.samples,
+    )
+    return dataclasses.replace(state, samples=trimmed_samples)
+
+
+@jax.jit
+def _state_log_z_uncert(state):
+    """Return the v3 expected log-evidence uncertainty for a state."""
+    # block arrays: [state sample capacity]
+    block_state = build_block_state(
+        state.samples,
+        root_out_degree=state.root_out_degree,
+        num_samples=state.num_samples,
+    )
+    concentrations = classic_dirichlet_concentrations(block_state)
+    return expected_v3_evidence_summary(
+        block_state,
+        concentrations,
+    ).log_Z_uncert
 
 
 def write_report(
@@ -619,7 +763,8 @@ def write_report(
             "The stopping target is `result.log_Z_uncert`; MC shrinkage "
             "variance and analytic-reference RMSE are reported separately. "
             "`mean_evals_times_mse` is `mean(evaluations) * mean(error^2)` "
-            "across seeds."
+            "across seeds. Compare `mean_log_Z_uncert`, `mean_mc_logZ_std`, "
+            "and `rmse_mc_logZ` to check uncertainty calibration."
         ),
         "",
         "## Configuration",
@@ -628,6 +773,7 @@ def write_report(
         f"- Allocation targets: `{', '.join(config.allocation_targets)}`",
         f"- LogZ uncertainty targets: `{', '.join(map(str, config.logz_uncert_targets))}`",
         f"- Seeds: `{', '.join(map(str, config.seeds))}`",
+        f"- Phantom modes: `{', '.join(_phantom_label(mode) for mode in config.phantom_modes)}`",
         f"- Target live points: `{config.target_num_live_points}`",
         f"- Max samples: `{config.max_samples}`",
         f"- Shell size: `{config.shell_size}`",
@@ -647,8 +793,17 @@ def write_report(
                 "logz_uncert_target",
                 "allocation_target",
                 "sampler_setting",
+                "phantoms_enabled",
                 "mean_likelihood_evaluations",
-                "rmse_logZ",
+                "mean_log_Z_uncert",
+                "mean_mc_logZ_std",
+                "mean_mc_logZ_mean",
+                "mc_bias_logZ",
+                "mean_expectation_logZ_mean",
+                "expectation_bias_logZ",
+                "rmse_mc_logZ",
+                "rmse_over_mean_log_Z_uncert",
+                "rmse_over_mean_mc_logZ_std",
                 "mean_evals_times_mse",
                 "mean_evals_times_variance",
                 "target_success_fraction",
@@ -671,8 +826,17 @@ def write_report(
                 "logz_uncert_target",
                 "allocation_target",
                 "sampler_setting",
+                "phantoms_enabled",
                 "mean_likelihood_evaluations",
-                "rmse_logZ",
+                "mean_log_Z_uncert",
+                "mean_mc_logZ_std",
+                "mean_mc_logZ_mean",
+                "mc_bias_logZ",
+                "mean_expectation_logZ_mean",
+                "expectation_bias_logZ",
+                "rmse_mc_logZ",
+                "rmse_over_mean_log_Z_uncert",
+                "rmse_over_mean_mc_logZ_std",
                 "mean_evals_times_mse",
                 "mean_evals_times_variance",
                 "target_success_fraction",
@@ -694,8 +858,17 @@ def write_report(
                 "logz_uncert_target",
                 "allocation_target",
                 "sampler_setting",
+                "phantoms_enabled",
                 "mean_likelihood_evaluations",
-                "rmse_logZ",
+                "mean_log_Z_uncert",
+                "mean_mc_logZ_std",
+                "mean_mc_logZ_mean",
+                "mc_bias_logZ",
+                "mean_expectation_logZ_mean",
+                "expectation_bias_logZ",
+                "rmse_mc_logZ",
+                "rmse_over_mean_log_Z_uncert",
+                "rmse_over_mean_mc_logZ_std",
                 "mean_evals_times_mse",
                 "mean_evals_times_variance",
                 "target_success_fraction",
@@ -712,19 +885,31 @@ def write_report(
                 "logz_uncert_target",
                 "allocation_target",
                 "sampler_setting",
+                "phantoms_enabled",
                 "num_seeds",
                 "mean_likelihood_evaluations",
                 "mean_run_seconds",
                 "mean_wall_seconds",
-                "rmse_logZ",
-                "bias_logZ",
+                "mean_log_Z_uncert",
+                "mean_mc_logZ_std",
+                "mean_mc_logZ_mean",
+                "mc_bias_logZ",
+                "mean_abs_mc_logZ_error",
+                "rmse_mc_logZ",
+                "rmse_over_mean_log_Z_uncert",
+                "rmse_over_mean_mc_logZ_std",
+                "mean_expectation_logZ_mean",
+                "expectation_bias_logZ",
+                "rmse_expectation_logZ",
                 "mean_mc_logZ_variance",
                 "mean_evals_times_variance",
                 "mean_evals_times_mse",
+                "mean_evals_times_expectation_mse",
                 "target_success_fraction",
                 "accuracy_success_fraction",
                 "min_sample_fraction",
                 "sample_cap_fraction",
+                "goal_iteration_limit_fraction",
             ],
         ),
         "",
@@ -737,21 +922,26 @@ def write_report(
                 "target",
                 "allocation",
                 "setting",
+                "phantoms",
                 "seed",
                 "evals",
                 "run_s",
                 "wall_s",
                 "logZ_ref",
                 "mc_logZ_mean",
+                "mc_bias",
+                "expectation_logZ_mean",
+                "expectation_bias",
                 "logZ_uncert",
                 "mc_logZ_std",
-                "error",
                 "evals_x_var",
                 "evals_x_sqerr",
+                "evals_x_exp_sqerr",
                 "err_over_std",
                 "accuracy_ok",
                 "target_ok",
                 "min_samples_ok",
+                "goal_limit",
             ],
         ),
         "",
@@ -817,25 +1007,35 @@ def per_seed_rows(records: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
                 "target": metadata["logz_uncert_target"],
                 "allocation": metadata["allocation_target"],
                 "setting": metadata["sampler_setting"],
+                "phantoms": _phantom_label(metadata["phantoms_enabled"]),
                 "seed": metadata["seed"],
                 "evals": results["likelihood_evaluations"],
                 "run_s": timings["run_seconds"],
                 "wall_s": timings["total_seconds"],
                 "logZ_ref": results["logZ_ref"],
                 "mc_logZ_mean": results["mc_log_Z_mean"],
+                "mc_bias": results["mc_logZ_error"],
+                "expectation_logZ_mean": results["log_Z_mean"],
+                "expectation_bias": results["expectation_logZ_error"],
                 "logZ_uncert": results["log_Z_uncert"],
                 "mc_logZ_std": results["mc_log_Z_std"],
-                "error": results["logZ_error"],
                 "evals_x_var": results[
                     "likelihood_evals_times_logZ_variance"
                 ],
                 "evals_x_sqerr": results[
                     "likelihood_evals_times_squared_error"
                 ],
+                "evals_x_exp_sqerr": results[
+                    "likelihood_evals_times_expectation_squared_error"
+                ],
                 "err_over_std": results["abs_error_over_mc_std"],
                 "accuracy_ok": results["accuracy_within_3_mc_std"],
                 "target_ok": results["reached_uncert_target"],
                 "min_samples_ok": results["reached_min_samples"],
+                "goal_limit": results.get(
+                    "reached_goal_iteration_limit",
+                    False,
+                ),
             }
         )
     return rows
@@ -853,7 +1053,11 @@ def first_pass_hypotheses(
     lines = []
     for problem, rows in sorted(best_by_problem.items()):
         settings = ", ".join(
-            f"{row['sampler_setting']}/{row['allocation_target']}"
+            (
+                f"{row['sampler_setting']}/"
+                f"{row['allocation_target']}/"
+                f"{_phantom_label(row['phantoms_enabled'])}"
+            )
             for row in rows
         )
         lines.append(
@@ -865,8 +1069,9 @@ def first_pass_hypotheses(
     if failed_targets:
         lines.append(
             "- Some rows did not reach the requested uncertainty. Check "
-            "`sample_cap_fraction` and `max_goal_iterations` before drawing "
-            "strong efficiency conclusions."
+            "`sample_cap_fraction`, `goal_iteration_limit_fraction`, and "
+            "`max_goal_iterations` before drawing strong efficiency "
+            "conclusions."
         )
     failed_accuracy = [
         row for row in rollups if float(row["accuracy_success_fraction"]) < 1.0
@@ -1089,6 +1294,11 @@ def _format_markdown_value(value: Any) -> str:
     return str(value)
 
 
+def _phantom_label(phantoms_enabled: bool) -> str:
+    """Return the compact label for a phantom-sampling mode."""
+    return "on" if bool(phantoms_enabled) else "off"
+
+
 def _stable_seed(*parts: Any) -> int:
     """Return a deterministic uint32 seed from benchmark row fields."""
     text = "|".join(str(part) for part in parts)
@@ -1106,6 +1316,7 @@ def config_to_json(config: EfficiencyGridConfig) -> dict[str, Any]:
         "sampler_settings": [
             dataclasses.asdict(setting) for setting in config.sampler_settings
         ],
+        "phantom_modes": list(config.phantom_modes),
         "target_num_live_points": int(config.target_num_live_points),
         "max_samples": int(config.max_samples),
         "shell_size": int(config.shell_size),
@@ -1125,6 +1336,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--logz-uncert-target", action="append", type=float)
     parser.add_argument("--seed", action="append", type=int)
     parser.add_argument("--setting", action="append")
+    parser.add_argument("--phantoms", action="append", choices=("on", "off"))
     parser.add_argument("--target-num-live-points", type=int, default=30)
     parser.add_argument("--max-samples", type=int, default=2400)
     parser.add_argument("--shell-size", type=int, default=15)
@@ -1185,6 +1397,9 @@ def config_from_args(args: argparse.Namespace) -> EfficiencyGridConfig:
         logz_uncert_targets=tuple(args.logz_uncert_target or default_targets),
         seeds=tuple(args.seed or default_seeds),
         sampler_settings=tuple(settings_by_id[name] for name in requested_settings),
+        phantom_modes=tuple(
+            mode == "on" for mode in (args.phantoms or ("on",))
+        ),
         target_num_live_points=int(args.target_num_live_points),
         max_samples=int(args.max_samples),
         shell_size=int(args.shell_size),
@@ -1215,14 +1430,20 @@ def main(argv: Sequence[str] | None = None) -> int:
         cases = list(iter_grid_cases(config))
         if len(cases) != 1:
             raise ValueError("--single-record-path requires exactly one grid row.")
-        problem, logz_uncert_target, allocation_target, sampler_setting, seed = (
-            cases[0]
-        )
+        (
+            problem,
+            logz_uncert_target,
+            allocation_target,
+            sampler_setting,
+            phantoms_enabled,
+            seed,
+        ) = cases[0]
         record = run_one_case(
             problem=problem,
             logz_uncert_target=logz_uncert_target,
             allocation_target=allocation_target,
             sampler_setting=sampler_setting,
+            phantoms_enabled=phantoms_enabled,
             seed=seed,
             config=config,
         )

@@ -111,9 +111,56 @@ CoreDepthEpochResult.register_pytree()
 
 CORE_BOUNDARY_SCHEMA_NAMES = ("CoreWorkBatch", "CoreResultBatch")
 
+_PURE_CORE_FULL_PREALLOC_MAX_SAMPLES = 4096
+
 # Retain the legacy helper export for external callers and monkeypatch-based
 # tests, while the v3 pure-core path below uses the JAX work planner instead.
 select_parent_work = _allocation_module.select_parent_work
+
+
+def _ceil_power_of_two(value: int) -> int:
+    value = int(value)
+    if value <= 1:
+        return 1
+    return 1 << (value - 1).bit_length()
+
+
+def _pure_core_sample_capacity(
+        *,
+        num_samples: int,
+        append_capacity: int,
+        max_samples: int,
+) -> int:
+    """Choose a bounded direct pure-core sample buffer capacity."""
+    num_samples = int(num_samples)
+    append_capacity = max(0, int(append_capacity))
+    max_samples = int(max_samples)
+    capacity_ceiling = max(max_samples, num_samples)
+    required_capacity = min(
+        capacity_ceiling,
+        num_samples + append_capacity,
+    )
+    if max_samples <= _PURE_CORE_FULL_PREALLOC_MAX_SAMPLES:
+        return capacity_ceiling
+
+    return min(capacity_ceiling, _ceil_power_of_two(required_capacity))
+
+
+def _ensure_sample_capacity(state: State, capacity: int) -> State:
+    current_capacity = int(state.samples.log_likelihoods.shape[0])
+    if current_capacity >= int(capacity):
+        return state
+    return dataclasses.replace(
+        state,
+        samples=state.samples.resize(int(capacity)),
+    )
+
+
+def _state_with_collected_sample_prefix(state: State) -> State:
+    """Return a state view with sample leaves sliced to `state.num_samples`."""
+    num_samples = int(state.num_samples)
+    samples = jax.tree.map(lambda value: value[:num_samples, ...], state.samples)
+    return dataclasses.replace(state, samples=samples)
 
 
 def _parse_v3_options(options: dict[str, Any]) -> tuple[int, bool]:
@@ -2299,7 +2346,7 @@ def _phantom_coordinates_like_state(
 def _state_direction_fitting_rows_and_weights(
         state: State,
 ) -> tuple[object, np.ndarray]:
-    result = state.to_result().trim()
+    result = _state_with_collected_sample_prefix(state).to_result()
     log_weights = np.asarray(result.v3_log_posterior_weights, dtype=float)
     finite = np.isfinite(log_weights)
     weights = np.zeros_like(log_weights, dtype=float)
@@ -2596,7 +2643,12 @@ class NestedSampler(PureDataclassPytree):
             batch_size=self.batch_size
         )
 
-    def _sample_v3_root_state(self, key: PRNGKey) -> State:
+    def _sample_v3_root_state(
+            self,
+            key: PRNGKey,
+            *,
+            sample_capacity: int | None = None,
+    ) -> State:
         """Draw only the v3 root children from the sentinel contour."""
         root_count = int(self.target_num_live_points)
         outputs = []
@@ -2729,7 +2781,9 @@ class NestedSampler(PureDataclassPytree):
                 new_samples=root_samples,
             ),
         )
-        samples = root_samples.resize(int(self.max_samples)).sort()
+        if sample_capacity is None:
+            sample_capacity = int(self.max_samples)
+        samples = root_samples.resize(int(sample_capacity)).sort()
         if not self.store_phantom_samples:
             samples.phantom_samples.U_samples = None
 
@@ -3050,7 +3104,18 @@ class NestedSampler(PureDataclassPytree):
         if key is None:
             key = jax.random.PRNGKey(42)
         key, init_key = jax.random.split(key)
-        state = self._sample_v3_root_state(init_key)
+        if type(self) is NestedSampler:
+            sample_capacity = _pure_core_sample_capacity(
+                num_samples=int(self.target_num_live_points),
+                append_capacity=0,
+                max_samples=int(self.max_samples),
+            )
+        else:
+            sample_capacity = int(self.max_samples)
+        state = self._sample_v3_root_state(
+            init_key,
+            sample_capacity=sample_capacity,
+        )
         return self._resume_until_goal(
             state=state,
             goal_cond=goal_cond,
@@ -3220,6 +3285,14 @@ class NestedSampler(PureDataclassPytree):
                     max_epoch_steps = 4
                     if _sampler_uses_galilean(self.sampler):
                         max_epoch_steps = 1
+                    current = _ensure_sample_capacity(
+                        current,
+                        _pure_core_sample_capacity(
+                            num_samples=int(current.num_samples),
+                            append_capacity=max_epoch_steps * shell_capacity,
+                            max_samples=int(self.max_samples),
+                        ),
+                    )
                     plan = build_allocation_plan(
                         state=current,
                         allocation_target=allocation_target,

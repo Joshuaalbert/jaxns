@@ -382,3 +382,35 @@ repeat mistakes specific to this project. Keep learnings compact.
   hit `log_Z_uncert < 0.7` too early and remain biased. Precision-target
   benchmarks should sweep live-point count and minimum depth together, not only
   sampler direction kernels.
+- The 2026-05-13 pure-core efficiency grid
+  `benchmarks/v3_performance/reports/pure_core_efficiency_grid_2026-05-13_020625.md`
+  used 40 live points / 1200 max samples / targets `0.5, 0.1, 0.05` / five
+  seeds / phantom on-off. Every rollup hit the sample cap before the uncertainty
+  target, so treat it as a cap-limited bias/phantom comparison rather than a
+  successful fixed-precision run. It is acceptable to use a very large
+  `max_samples` budget such as `10_000_000` for precision-target benchmarks;
+  benchmark harnesses that use such large fixed-capacity states must trim the
+  accepted sample prefix before calling `state.to_result()`. Calling
+  `state.to_result().trim()` still materializes full-capacity result arrays
+  first and can OOM. Phantom-off rows had MC logZ means collapse near the
+  deterministic expectation estimate and were badly biased (about `-13` for 8D
+  MVN and `-10.4` for 8D spike-slab), while phantom-on rows were much closer to
+  the analytic evidence.
+- Direct pure-core precision benchmarks with very large `max_samples` must keep
+  the global sample budget separate from the active JAX state capacity. A
+  `10_000_000` sample budget should use bounded, power-of-two sample buffers
+  that grow with the accepted prefix plus epoch reserve; otherwise
+  `build_block_state()` sorts/pads to the budget and can OOM or exhaust LLVM
+  section memory.
+- Benchmark goal checks that only need `log_Z_uncert` should compute the narrow
+  v3 evidence summary directly from `build_block_state()` and
+  `expected_v3_evidence_summary()`. Calling full `state.to_result()` at every
+  goal callback repeatedly builds posterior fields and model transforms, which
+  is too slow and causes excessive shape-specific compilation for growing
+  bounded states.
+- For fixed live points, increasing `max_samples` does not necessarily reduce
+  expected `log_Z_uncert`: 40 live points on the 8D MVN row stayed near
+  `0.747` after `10_240` samples and hit the benchmark goal-iteration limit
+  rather than target `0.5`, while 100 live points reached `0.5` in `1_380`
+  samples. Treat sub-floor precision targets as live-point/min-depth grid
+  issues, not as evidence that the sample cap is too small.
