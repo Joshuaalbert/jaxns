@@ -53,7 +53,7 @@ prefix_rule(
     decision = "forbidden",
     justification = "Discarding tracked changes is blocked. Review changes before reverting anything.",
     match = [
-        "git checkout -- package/src/bx_trading/example.py",
+        "git checkout -- src/jaxns/example.py",
     ],
     not_match = [
         "git checkout main",

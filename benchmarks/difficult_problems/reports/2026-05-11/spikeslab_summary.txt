@@ -1,0 +1,29 @@
+--------
+Termination Conditions:
+--------
+likelihood evals: 53793
+classic samples: 2000
+phantom samples: 38000
+likelihood evals / sample: 26.9
+--------
+logZ (classic)=-34.78 +- 0.61
+logZ (with phantom)=-28.08 +- 0.27
+max(logL)=-18.17
+H=15.46
+effective sample size (classic)=2.4
+effective sample size (with phantom)=120.3
+likelihood evals / ess(classic): 22537.4
+likelihood evals / ess(with phantom): 447.1
+--------
+z[#]: mean +- std.dev. | MAP est. | max(L) est.
+z[0]: 3.4 +- 1.6 | 1.5 | 1.5
+z[1]: 2.48 +- 0.94 | 3.22 | 3.22
+z[2]: -0.48 +- 0.95 | -1.15 | -1.15
+z[3]: 0.1 +- 0.85 | 0.4 | 0.4
+z[4]: 0.8 +- 1.6 | 2.4 | 2.4
+z[5]: 0.4 +- 1.4 | 0.8 | 0.8
+z[6]: -0.5 +- 1.4 | -0.7 | -0.7
+z[7]: -0.6 +- 1.4 | -2.3 | -2.3
+z[8]: 0.36 +- 0.87 | 0.42 | 0.42
+z[9]: 0.3 +- 1.2 | 1.0 | 1.0
+--------

@@ -213,6 +213,32 @@ def test_ctl_shutdown_immediate_logic():
         assert actor_proc.done
 
 
+def test_ctl_shutdown_immediate_logic_multiple_actors():
+    ctl_pub_addr = create_random_control_address()
+    ack_rep_addr = create_random_ack_address()
+    actors = [
+        MockActorCTLShutdown(
+            ctl_pub_addr=ctl_pub_addr,
+            ack_rep_addr=ack_rep_addr,
+        ),
+        MockActorCTLShutdown(
+            ctl_pub_addr=ctl_pub_addr,
+            ack_rep_addr=ack_rep_addr,
+        ),
+    ]
+    mgr = ProcessManager(
+        ctl_pub_addr=ctl_pub_addr,
+        ack_rep_addr=ack_rep_addr,
+        actors=actors,
+    )
+
+    mgr.start_all()
+    mgr.stop_all()
+    for actor_proc in mgr.actor_procs:
+        assert not actor_proc.proc.is_alive()
+        assert actor_proc.done
+
+
 def test_double_stop_shutdown_logic():
     ctl_pub_addr = create_random_control_address()
     ack_rep_addr = create_random_ack_address()

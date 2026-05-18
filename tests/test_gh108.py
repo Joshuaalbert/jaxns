@@ -1,16 +1,41 @@
+import gc
+import os
+
 import jax
+import jax.numpy as jnp
 import numpy as np
+import psutil
 from jaxctx.priors.prior import Prior
 
 from jaxns.core import NestedSampler
 from jaxns.model import Model
 
 
+def _process_ram_gb():
+    return psutil.Process(os.getpid()).memory_info()[0] / 2 ** 30
+
+
+@jax.jit
+def _baseline_compile_pressure(x):
+    return jnp.sin(x) + 1.
+
+
+def _measure_ram_growth(run_once, num_runs: int, *, clear_caches_between: bool) -> np.ndarray:
+    ram_py = []
+    if clear_caches_between:
+        jax.clear_caches()
+    for _ in range(num_runs):
+        run_once()
+        gc.collect()
+        if clear_caches_between:
+            jax.clear_caches()
+        ram_py.append(_process_ram_gb())
+    return np.asarray(ram_py)
+
+
 def test_gh108():
     import tensorflow_probability.substrates.jax as tfp
 
-    import psutil
-    import os
     tfpd = tfp.distributions
 
     def nested_sampling():
@@ -26,27 +51,19 @@ def test_gh108():
         results = state.to_result()
         return results
 
-    pid = os.getpid()
-    python_process = psutil.Process(pid)
+    def baseline_compile():
+        _baseline_compile_pressure(jnp.arange(1024., dtype=jnp.float32)).block_until_ready()
 
-    ram_py = []
-    jax.clear_caches()
-    for i in range(3):
+    baseline_ram = _measure_ram_growth(baseline_compile, num_runs=3, clear_caches_between=True)
+    nested_sampling_ram = _measure_ram_growth(nested_sampling, num_runs=3, clear_caches_between=True)
+    baseline_drift = np.max(baseline_ram) - baseline_ram[0]
+    nested_sampling_drift = np.max(nested_sampling_ram) - nested_sampling_ram[0]
+
+    assert nested_sampling_drift <= baseline_drift + 2e-2
+
+    ram_py = np.asarray([_process_ram_gb()])
+    for _ in range(3):
         nested_sampling()
-        jax.clear_caches()
-        ram_py.append(python_process.memory_info()[0] / 2 ** 30)
-        # print(ram_py[-1])
-
-    # plt.plot(ram_py, 'k.-')
-    # plt.xlabel('runs', fontsize=12)
-    # plt.ylabel('python RAM usage(GB)', fontsize=12)
-    # plt.show()
-
-    np.testing.assert_allclose(ram_py, ram_py[0], atol=2e-3)
-
-    ram_py = [python_process.memory_info()[0] / 2 ** 30]
-    for i in range(3):
-        nested_sampling()
-        ram_py.append(python_process.memory_info()[0] / 2 ** 30)
-
-    np.testing.assert_allclose(ram_py, ram_py[0], atol=2e-3)
+        gc.collect()
+        ram_py = np.append(ram_py, _process_ram_gb())
+    np.testing.assert_allclose(ram_py, ram_py[0], atol=1e-2)

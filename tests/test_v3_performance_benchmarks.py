@@ -1,0 +1,1871 @@
+from __future__ import annotations
+
+import copy
+import dataclasses
+import importlib
+import json
+import re
+from collections.abc import Mapping
+from types import SimpleNamespace
+from typing import Any
+
+import numpy as np
+import pytest
+
+
+DEFAULT_ALLOCATION_TARGETS = (
+    "uniform",
+    "evidence_improving",
+    "posterior_improving",
+)
+TICKET_0018_BEST_RUN_SECONDS = 216.54
+TICKET_0018_BEST_TOTAL_SECONDS = 218.90
+REQUIRED_TIMING_FIELDS = (
+    "setup_seconds",
+    "run_seconds",
+    "result_conversion_seconds",
+    "mc_shrinkage_seconds",
+    "total_seconds",
+)
+REQUIRED_FRACTION_FIELDS = (
+    "setup_fraction",
+    "run_fraction",
+    "result_conversion_fraction",
+    "mc_shrinkage_fraction",
+)
+REQUIRED_CONFIG_FIELDS = (
+    "seed",
+    "worker_specs",
+    "target_num_live_points",
+    "live_points_per_dimension",
+    "max_samples",
+    "shell_size",
+    "num_slices",
+    "phantom_burn_in",
+    "direction_kernel",
+    "mc_sample_count",
+)
+REQUIRED_LIKELIHOOD_DISPATCH_DIAGNOSTIC_FIELDS = (
+    "observed_node_count",
+    "node_ingress_process_count",
+    "observed_worker_process_count",
+    "worker_process_ids",
+    "observed_worker_device_classes",
+    "dispatch_eval_count",
+    "dispatch_latency_seconds_total",
+    "dispatch_latency_seconds_mean",
+    "dispatch_throughput_per_second",
+    "compile_count",
+    "cache_hit_count",
+    "rejected_shape_cache_count",
+    "distinct_compile_identity_count",
+    "max_active_evals_per_worker",
+    "max_active_evals_pool",
+    "completed_eval_count_by_worker",
+    "queued_eval_count",
+    "load_balancer_queue_length",
+    "node_queue_length",
+    "failed_eval_count",
+    "failed_eval_count_by_type",
+    "process_start_method",
+    "worker_shutdown_status",
+    "ipc_endpoint_cleanup_status",
+)
+LIKELIHOOD_DISPATCH_LATENCY_TAIL_FIELDS = (
+    "dispatch_latency_seconds_max",
+    "dispatch_latency_seconds_p95",
+)
+
+
+def _require_speed_api():
+    try:
+        module = importlib.import_module(
+            "benchmarks.v3_performance.standard_problem_speed"
+        )
+    except ModuleNotFoundError as error:
+        if error.name in {
+            "benchmarks.v3_performance",
+            "benchmarks.v3_performance.standard_problem_speed",
+        }:
+            raise AssertionError(
+                "Ticket 0016 requires a public "
+                "benchmarks.v3_performance.standard_problem_speed module."
+            ) from error
+        raise
+
+    required_callables = (
+        "default_standard_problem_speed_config",
+        "default_pure_core_standard_problem_speed_config",
+        "collect_standard_problem_speed_records",
+        "collect_pure_core_standard_problem_speed_records",
+        "assert_standard_problem_speed_record",
+        "assert_pure_core_isotropic_speed_gate",
+        "compute_timing_fractions",
+        "main",
+    )
+    for name in required_callables:
+        assert callable(getattr(module, name, None)), (
+            "benchmarks.v3_performance.standard_problem_speed must expose a "
+            f"callable {name}(...)."
+        )
+    return module
+
+
+def _require_efficiency_grid_api():
+    return importlib.import_module(
+        "benchmarks.v3_performance.pure_core_efficiency_grid"
+    )
+
+
+def _as_mapping(value: Any) -> Mapping[str, Any]:
+    if dataclasses.is_dataclass(value):
+        return dataclasses.asdict(value)
+    if hasattr(value, "_asdict"):
+        return value._asdict()
+    assert isinstance(value, Mapping), (
+        "benchmark config/records must be mappings or dataclasses that expose "
+        "their public fields."
+    )
+    return value
+
+
+def _diagnostics_mapping(record: Mapping[str, Any]) -> Mapping[str, Any]:
+    diagnostics = record.get("diagnostics")
+    assert isinstance(diagnostics, Mapping), (
+        "benchmark records must expose diagnostics as a mapping."
+    )
+    return diagnostics
+
+
+def _completed_worker_ids_from_diagnostics(
+        diagnostics: Mapping[str, Any],
+) -> set[str]:
+    completed_by_worker = diagnostics["completed_eval_count_by_worker"]
+    assert isinstance(completed_by_worker, Mapping)
+    return {
+        str(worker_id)
+        for worker_id, completed_count in completed_by_worker.items()
+        if int(completed_count) > 0
+    }
+
+
+def _assert_likelihood_dispatch_diagnostics_present(
+        record: Mapping[str, Any],
+) -> None:
+    diagnostics = _diagnostics_mapping(record)
+    missing = [
+        field_name
+        for field_name in REQUIRED_LIKELIHOOD_DISPATCH_DIAGNOSTIC_FIELDS
+        if field_name not in diagnostics
+    ]
+    assert not missing, (
+        "standard-problem speed records must include likelihood-dispatch "
+        f"diagnostic field(s): {', '.join(missing)}."
+    )
+    assert any(
+        field_name in diagnostics
+        for field_name in LIKELIHOOD_DISPATCH_LATENCY_TAIL_FIELDS
+    ), (
+        "standard-problem speed records must include a dispatch latency tail "
+        "summary, either dispatch_latency_seconds_max or "
+        "dispatch_latency_seconds_p95."
+    )
+    device_classes = diagnostics["observed_worker_device_classes"]
+    assert isinstance(device_classes, list | tuple)
+    assert device_classes
+    assert all(isinstance(item, str) and item for item in device_classes)
+    for field_name in (
+            "observed_node_count",
+            "node_ingress_process_count",
+            "observed_worker_process_count",
+    ):
+        value = diagnostics[field_name]
+        assert isinstance(value, int), f"{field_name} must be an integer."
+        assert value > 0, f"{field_name} must be positive."
+    assert diagnostics["node_ingress_process_count"] == (
+        diagnostics["observed_node_count"]
+    )
+    assert diagnostics["observed_worker_process_count"] == (
+        diagnostics["actual_worker_count"]
+    )
+    worker_process_ids = diagnostics["worker_process_ids"]
+    assert isinstance(worker_process_ids, list | tuple)
+    assert len(worker_process_ids) == diagnostics["observed_worker_process_count"]
+    assert len({int(pid) for pid in worker_process_ids}) == len(worker_process_ids)
+    assert all(int(pid) > 0 for pid in worker_process_ids)
+    for field_name in ("process_start_method", "worker_shutdown_status"):
+        value = diagnostics[field_name]
+        assert isinstance(value, str) and value
+    assert diagnostics["process_start_method"] in {
+        "spawn",
+        "forkserver",
+    }
+    assert diagnostics["worker_shutdown_status"] in {
+        "clean",
+        "shutdown",
+        "terminated",
+    }
+    assert diagnostics["ipc_endpoint_cleanup_status"] in {
+        "removed",
+        "clean",
+        "complete",
+    }
+    failed_by_type = diagnostics["failed_eval_count_by_type"]
+    assert isinstance(failed_by_type, Mapping)
+    assert all(
+        isinstance(key, str) and key
+        and isinstance(value, int) and value >= 0
+        for key, value in failed_by_type.items()
+    )
+    max_by_worker = diagnostics["max_active_evals_per_worker"]
+    assert isinstance(max_by_worker, Mapping)
+    assert max_by_worker
+    assert all(isinstance(value, int) and value <= 1
+               for value in max_by_worker.values())
+    completed_by_worker = diagnostics["completed_eval_count_by_worker"]
+    assert isinstance(completed_by_worker, Mapping)
+    assert completed_by_worker
+    assert all(
+        isinstance(value, int) and value >= 0
+        for value in completed_by_worker.values()
+    )
+    for field_name in (
+            "dispatch_eval_count",
+            "compile_count",
+            "cache_hit_count",
+            "rejected_shape_cache_count",
+            "distinct_compile_identity_count",
+            "max_active_evals_pool",
+            "queued_eval_count",
+            "load_balancer_queue_length",
+            "node_queue_length",
+            "failed_eval_count",
+    ):
+        value = diagnostics[field_name]
+        assert isinstance(value, int), f"{field_name} must be an integer."
+        assert value >= 0, f"{field_name} must be non-negative."
+    for field_name in (
+            "dispatch_latency_seconds_total",
+            "dispatch_latency_seconds_mean",
+            "dispatch_throughput_per_second",
+    ) + LIKELIHOOD_DISPATCH_LATENCY_TAIL_FIELDS:
+        if field_name not in diagnostics:
+            continue
+        value = diagnostics[field_name]
+        assert isinstance(value, int | float), f"{field_name} must be numeric."
+        assert np.isfinite(float(value)), f"{field_name} must be finite."
+        assert float(value) >= 0.0, f"{field_name} must be non-negative."
+
+
+def _speed_config(api, **overrides):
+    return api.default_standard_problem_speed_config(**overrides)
+
+
+def _complete_speed_record(**updates) -> dict[str, Any]:
+    record = {
+        "schema_version": "v3_standard_problem_speed_v1",
+        "metric_family": "standard_problem_speed",
+        "metadata": {
+            "problem": "basic_mvn",
+            "dimension": 8,
+            "allocation_target": "uniform",
+            "seed": 7,
+            "worker_specs": ["cpu:*:2"],
+            "target_num_live_points": 400,
+            "live_points_per_dimension": 50.0,
+            "live_point_policy": "50_per_dimension",
+            "max_samples": 12,
+            "shell_size": 15,
+            "num_slices": 24,
+            "phantom_burn_in": 4,
+            "direction_kernel": "ellipsoidal",
+            "mc_sample_count": 5,
+            "software_version": "3.0.0-test",
+        },
+        "timings": {
+            "setup_seconds": 1.0,
+            "run_seconds": 2.0,
+            "result_conversion_seconds": 4.0,
+            "mc_shrinkage_seconds": 5.0,
+            "total_seconds": 12.0,
+        },
+        "timing_fractions": {
+            "setup_fraction": 1.0 / 12.0,
+            "run_fraction": 2.0 / 12.0,
+            "result_conversion_fraction": 4.0 / 12.0,
+            "mc_shrinkage_fraction": 5.0 / 12.0,
+        },
+        "diagnostics": {
+            "worker_sampler_latency_seconds": 3.5,
+            "actual_worker_count": 2,
+            "observed_node_count": 1,
+            "node_ingress_process_count": 1,
+            "observed_worker_process_count": 2,
+            "worker_process_ids": [41001, 41002],
+            "observed_worker_device_classes": ["cpu"],
+            "dispatch_eval_count": 3,
+            "dispatch_latency_seconds_total": 1.5,
+            "dispatch_latency_seconds_mean": 0.5,
+            "dispatch_latency_seconds_max": 0.75,
+            "dispatch_throughput_per_second": 2.0,
+            "compile_count": 1,
+            "cache_hit_count": 2,
+            "rejected_shape_cache_count": 0,
+            "distinct_compile_identity_count": 1,
+            "max_active_evals_per_worker": {
+                "worker-000001": 1,
+                "worker-000002": 1,
+            },
+            "max_active_evals_pool": 2,
+            "completed_eval_count_by_worker": {
+                "worker-000001": 2,
+                "worker-000002": 1,
+            },
+            "queued_eval_count": 1,
+            "load_balancer_queue_length": 0,
+            "node_queue_length": 1,
+            "failed_eval_count": 0,
+            "failed_eval_count_by_type": {},
+            "process_start_method": "spawn",
+            "worker_shutdown_status": "clean",
+            "ipc_endpoint_cleanup_status": "removed",
+        },
+        "results": {
+            "likelihood_evaluations": 123,
+            "total_samples": 12,
+            "log_Z_mean": -50.125,
+            "log_Z_uncert": 0.25,
+            "logZ_ref": -50.0,
+        },
+    }
+    for key, value in updates.items():
+        record[key] = value
+    return record
+
+
+def _speed_record_for_worker_scaling(
+        *,
+        worker_count: int,
+        run_seconds: float,
+) -> dict[str, Any]:
+    record = _complete_speed_record()
+    record["metadata"]["worker_specs"] = [f"cpu:*:{worker_count}"]
+    record["timings"]["run_seconds"] = float(run_seconds)
+    record["timings"]["total_seconds"] = (
+        record["timings"]["setup_seconds"]
+        + record["timings"]["run_seconds"]
+        + record["timings"]["result_conversion_seconds"]
+        + record["timings"]["mc_shrinkage_seconds"]
+    )
+    total = record["timings"]["total_seconds"]
+    record["timing_fractions"] = {
+        "setup_fraction": record["timings"]["setup_seconds"] / total,
+        "run_fraction": record["timings"]["run_seconds"] / total,
+        "result_conversion_fraction": (
+            record["timings"]["result_conversion_seconds"] / total
+        ),
+        "mc_shrinkage_fraction": (
+            record["timings"]["mc_shrinkage_seconds"] / total
+        ),
+    }
+    diagnostics = record["diagnostics"]
+    diagnostics["actual_worker_count"] = worker_count
+    diagnostics["observed_worker_process_count"] = worker_count
+    diagnostics["worker_process_ids"] = [
+        43000 + idx + 1
+        for idx in range(worker_count)
+    ]
+    diagnostics["max_active_evals_per_worker"] = {
+        f"worker-{idx + 1:06d}": 1
+        for idx in range(worker_count)
+    }
+    diagnostics["max_active_evals_pool"] = min(worker_count, 2)
+    diagnostics["completed_eval_count_by_worker"] = {
+        f"worker-{idx + 1:06d}": (2 if idx == 0 else int(idx == 1))
+        for idx in range(worker_count)
+    }
+    return record
+
+
+def test_standard_problem_speed_schema_accepts_complete_records():
+    api = _require_speed_api()
+    record = _complete_speed_record()
+
+    api.assert_standard_problem_speed_record(record)
+    _assert_likelihood_dispatch_diagnostics_present(record)
+
+
+def test_standard_problem_speed_schema_rejects_missing_dispatch_diagnostics(
+):
+    api = _require_speed_api()
+    unguarded_fields = []
+    for field_name in REQUIRED_LIKELIHOOD_DISPATCH_DIAGNOSTIC_FIELDS:
+        record = _complete_speed_record()
+        record["diagnostics"].pop(field_name)
+        try:
+            api.assert_standard_problem_speed_record(record)
+        except AssertionError as error:
+            assert field_name in str(error)
+        else:
+            unguarded_fields.append(field_name)
+
+    assert unguarded_fields == []
+
+
+def test_standard_problem_speed_schema_requires_latency_tail_summary():
+    api = _require_speed_api()
+    record = _complete_speed_record()
+    for field_name in LIKELIHOOD_DISPATCH_LATENCY_TAIL_FIELDS:
+        record["diagnostics"].pop(field_name, None)
+
+    with pytest.raises(AssertionError, match="dispatch_latency_seconds"):
+        api.assert_standard_problem_speed_record(record)
+
+
+@pytest.mark.parametrize(
+    ("mutate", "match"),
+    [
+        (
+            lambda record: record["diagnostics"].__setitem__(
+                "dispatch_latency_seconds_total",
+                -0.01,
+            ),
+            "dispatch_latency_seconds_total|non-negative|>= 0",
+        ),
+        (
+            lambda record: record["diagnostics"].__setitem__(
+                "dispatch_latency_seconds_mean",
+                np.inf,
+            ),
+            "dispatch_latency_seconds_mean|finite",
+        ),
+        (
+            lambda record: record["diagnostics"].__setitem__(
+                "dispatch_latency_seconds_max",
+                np.nan,
+            ),
+            "dispatch_latency_seconds_max|finite",
+        ),
+        (
+            lambda record: record["diagnostics"].__setitem__(
+                "dispatch_throughput_per_second",
+                -1.0,
+            ),
+            "dispatch_throughput_per_second|non-negative|>= 0",
+        ),
+        (
+            lambda record: record["diagnostics"].__setitem__(
+                "dispatch_throughput_per_second",
+                np.inf,
+            ),
+            "dispatch_throughput_per_second|finite",
+        ),
+        (
+            lambda record: (
+                record["diagnostics"].__setitem__(
+                    "dispatch_latency_seconds_total",
+                    0.0,
+                ),
+                record["diagnostics"].__setitem__(
+                    "dispatch_latency_seconds_mean",
+                    0.0,
+                ),
+                record["diagnostics"].__setitem__(
+                    "dispatch_latency_seconds_max",
+                    0.0,
+                ),
+                record["diagnostics"].__setitem__(
+                    "dispatch_latency_seconds_p95",
+                    0.0,
+                ),
+                record["diagnostics"].__setitem__(
+                    "completed_eval_count_by_worker",
+                    {"worker-000001": 0, "worker-000002": 0},
+                ),
+            ),
+            "dispatch_eval_count|positive|latency|completed",
+        ),
+        (
+            lambda record: record["diagnostics"].__setitem__(
+                "max_active_evals_per_worker",
+                {"worker-000001": 2, "worker-000002": 1},
+            ),
+            "max_active_evals_per_worker|active|<= 1|per worker",
+        ),
+        (
+            lambda record: record["diagnostics"].__setitem__(
+                "observed_worker_device_classes",
+                [],
+            ),
+            "observed_worker_device_classes|device",
+        ),
+        (
+            lambda record: record["diagnostics"].__setitem__(
+                "observed_worker_device_classes",
+                ["cpu", ""],
+            ),
+            "observed_worker_device_classes|device|non-empty",
+        ),
+        (
+            lambda record: record["diagnostics"].__setitem__(
+                "observed_node_count",
+                0,
+            ),
+            "observed_node_count|positive|node",
+        ),
+        (
+            lambda record: record["diagnostics"].__setitem__(
+                "node_ingress_process_count",
+                2,
+            ),
+            "node_ingress_process_count|observed_node_count|one ingress",
+        ),
+        (
+            lambda record: record["diagnostics"].__setitem__(
+                "observed_worker_process_count",
+                1,
+            ),
+            "observed_worker_process_count|actual_worker_count|worker process",
+        ),
+        (
+            lambda record: record["diagnostics"].__setitem__(
+                "worker_process_ids",
+                [41001],
+            ),
+            "worker_process_ids|observed_worker_process_count",
+        ),
+        (
+            lambda record: record["diagnostics"].__setitem__(
+                "process_start_method",
+                "fork",
+            ),
+            "process_start_method|spawn|forkserver",
+        ),
+        (
+            lambda record: record["diagnostics"].__setitem__(
+                "ipc_endpoint_cleanup_status",
+                "leaked",
+            ),
+            "ipc_endpoint_cleanup_status|removed|clean|complete",
+        ),
+        (
+            lambda record: record["diagnostics"].__setitem__(
+                "completed_eval_count_by_worker",
+                {"worker-000001": 4, "worker-000002": 0},
+            ),
+            "completed_eval_count_by_worker|dispatch_eval_count|exceed",
+        ),
+        (
+            lambda record: record["diagnostics"].__setitem__(
+                "failed_eval_count",
+                1,
+            ),
+            "completed|failed|dispatch_eval_count|exceed",
+        ),
+        (
+            lambda record: (
+                record["diagnostics"].__setitem__(
+                    "dispatch_eval_count",
+                    4,
+                ),
+                record["diagnostics"].__setitem__(
+                    "dispatch_latency_seconds_mean",
+                    0.375,
+                ),
+                record["diagnostics"].__setitem__(
+                    "dispatch_throughput_per_second",
+                    4.0 / 1.5,
+                ),
+            ),
+            "dispatch_eval_count|completed|failed|equal",
+        ),
+        (
+            lambda record: record["diagnostics"].__setitem__(
+                "dispatch_latency_seconds_mean",
+                0.25,
+            ),
+            "dispatch_latency_seconds_mean|total latency|dispatch_eval_count",
+        ),
+    ],
+    ids=[
+        "negative-dispatch-latency-total",
+        "nonfinite-dispatch-latency-mean",
+        "nonfinite-dispatch-latency-tail",
+        "negative-dispatch-throughput",
+        "nonfinite-dispatch-throughput",
+        "positive-dispatch-count-with-no-evidence",
+        "worker-active-count-above-one",
+        "empty-device-classes",
+        "empty-device-class-entry",
+        "zero-observed-node-count",
+        "node-ingress-count-not-one-per-node",
+        "worker-process-count-mismatch",
+        "worker-process-pid-count-mismatch",
+        "unsupported-process-start-method",
+        "ipc-endpoint-cleanup-not-clean",
+        "completed-count-above-dispatch-count",
+        "completed-plus-failed-above-dispatch-count",
+        "dispatch-count-above-completed-plus-failed",
+        "latency-mean-not-derived-from-dispatch-count",
+    ],
+)
+def test_standard_problem_speed_schema_rejects_malformed_dispatch_diagnostics(
+        mutate,
+        match,
+):
+    api = _require_speed_api()
+    record = _complete_speed_record()
+    mutate(record)
+
+    with pytest.raises(AssertionError, match=match):
+        api.assert_standard_problem_speed_record(record)
+
+
+@pytest.mark.parametrize(
+    ("mutate", "match"),
+    [
+        (
+            lambda record: record["timings"].pop("run_seconds"),
+            "run_seconds|timing",
+        ),
+        (
+            lambda record: record["timings"].__setitem__(
+                "mc_shrinkage_seconds",
+                -0.01,
+            ),
+            "mc_shrinkage_seconds|non-negative|>= 0",
+        ),
+        (
+            lambda record: record["timings"].__setitem__(
+                "run_seconds",
+                np.inf,
+            ),
+            "run_seconds|finite",
+        ),
+        (
+            lambda record: record["timing_fractions"].__setitem__(
+                "run_fraction",
+                0.99,
+            ),
+            "run_fraction|fraction|timing",
+        ),
+        (
+            lambda record: record["metadata"].pop("live_point_policy"),
+            "live_point_policy|metadata",
+        ),
+        (
+            lambda record: record["results"].pop("logZ_ref"),
+            "logZ_ref|results",
+        ),
+        (
+            lambda record: record["results"].__setitem__(
+                "likelihood_evaluations",
+                0,
+            ),
+            "likelihood_evaluations|positive",
+        ),
+        (
+            lambda record: record["metadata"].__setitem__(
+                "worker_specs",
+                "cpu:*:2",
+            ),
+            "worker_specs|string|sequence",
+        ),
+        (
+            lambda record: record["metadata"].__setitem__(
+                "worker_specs",
+                ["cpu:*:2", ""],
+            ),
+            "worker_specs|non-empty|string",
+        ),
+        (
+            lambda record: record["diagnostics"].pop("actual_worker_count"),
+            "actual_worker_count|diagnostics",
+        ),
+    ],
+    ids=[
+        "missing-run-timing",
+        "negative-mc-timing",
+        "nonfinite-run-timing",
+        "fraction-not-derived",
+        "missing-live-point-policy",
+        "missing-reference-evidence",
+        "nonpositive-likelihood-evaluations",
+        "bare-string-worker-specs",
+        "empty-worker-spec",
+        "missing-actual-worker-count",
+    ],
+)
+def test_standard_problem_speed_schema_rejects_bad_timing_fields(
+        mutate,
+        match,
+):
+    api = _require_speed_api()
+    record = _complete_speed_record()
+    mutate(record)
+
+    with pytest.raises(AssertionError, match=match):
+        api.assert_standard_problem_speed_record(record)
+
+
+def test_timing_fractions_are_derived_from_measured_seconds():
+    api = _require_speed_api()
+    timings = {
+        "setup_seconds": 0.5,
+        "run_seconds": 1.0,
+        "result_conversion_seconds": 0.25,
+        "mc_shrinkage_seconds": 1.25,
+    }
+
+    fractions = api.compute_timing_fractions(timings)
+
+    total = sum(timings.values())
+    assert set(REQUIRED_FRACTION_FIELDS).issubset(fractions)
+    for timing_name, seconds in timings.items():
+        fraction_name = timing_name.removesuffix("_seconds") + "_fraction"
+        assert fractions[fraction_name] == pytest.approx(seconds / total)
+    assert sum(fractions[name] for name in REQUIRED_FRACTION_FIELDS) == (
+        pytest.approx(1.0)
+    )
+
+
+def test_worker_sampler_latency_is_not_part_of_wall_clock_fractions():
+    api = _require_speed_api()
+    record = _complete_speed_record()
+    record["diagnostics"]["worker_sampler_latency_seconds"] = 500.0
+
+    api.assert_standard_problem_speed_record(record)
+
+    total = record["timings"]["total_seconds"]
+    assert total == pytest.approx(12.0)
+    assert record["timing_fractions"]["run_fraction"] == pytest.approx(
+        record["timings"]["run_seconds"] / total
+    )
+
+
+def test_default_speed_config_covers_8d_basic_mvn_and_all_allocations():
+    api = _require_speed_api()
+    config = _as_mapping(_speed_config(api))
+
+    assert config["problem"] == "basic_mvn"
+    assert config["dimension"] == 8
+    assert tuple(config["allocation_targets"]) == DEFAULT_ALLOCATION_TARGETS
+    for field_name in REQUIRED_CONFIG_FIELDS:
+        assert field_name in config, (
+            "default standard-problem speed config must make "
+            f"{field_name!r} explicit."
+        )
+    assert config["target_num_live_points"] > 0
+    assert config["live_points_per_dimension"] == pytest.approx(
+        config["target_num_live_points"] / 8.0
+    )
+    assert config["live_point_policy"] in {
+        "accepted_standard_gate",
+        "50_per_dimension",
+    }
+
+
+def test_speed_config_can_express_historical_50d_live_point_policy():
+    api = _require_speed_api()
+    config = _as_mapping(_speed_config(
+        api,
+        live_points_per_dimension=50.0,
+    ))
+
+    assert config["dimension"] == 8
+    assert config["target_num_live_points"] == 400
+    assert config["live_points_per_dimension"] == pytest.approx(50.0)
+    assert config["live_point_policy"] == "50_per_dimension"
+
+
+def test_pure_core_speed_config_is_primary_isotropic_gate():
+    api = _require_speed_api()
+    config = _as_mapping(api.default_pure_core_standard_problem_speed_config())
+
+    assert config["feature_row_ids"] == (
+        "standard_basic_mvn_uniform",
+        "standard_basic_mvn_evidence_improving",
+        "standard_basic_mvn_posterior_improving",
+    )
+    assert config["allocation_targets"] == (
+        "uniform",
+        "evidence_improving",
+        "posterior_improving",
+    )
+    assert config["direction_kernel"] == "isotropic"
+    assert config["worker_specs"] == ("pure_core:local:1",)
+    assert config["max_samples"] == 1200
+    assert config["num_slices"] == 24
+
+
+def test_speed_config_rejects_invalid_phantom_burn_in_for_slice_count():
+    api = _require_speed_api()
+
+    with pytest.raises(ValueError, match="phantom_burn_in"):
+        _speed_config(api, num_slices=2, phantom_burn_in=4)
+
+
+def test_real_basic_mvn_builder_is_full_8d_reference():
+    api = _require_speed_api()
+
+    model, log_z_ref = api.build_basic_mvn_problem()
+
+    assert model.U_ndims() == 8
+    prior_mu, prior_cov, data_mu, data_cov = api._basic_mvn_parameters()
+    expected_log_z_ref = api._log_normal(
+        data_mu,
+        prior_mu,
+        prior_cov + data_cov,
+    )
+    assert log_z_ref == pytest.approx(expected_log_z_ref)
+    assert log_z_ref == pytest.approx(-24.606462553878423)
+
+
+def test_pure_core_efficiency_grid_trims_state_before_result_conversion():
+    api = _require_efficiency_grid_api()
+    import jax.numpy as jnp
+
+    from jaxns.samples import PhantomSamples
+    from jaxns.samples import Samples
+
+    @dataclasses.dataclass(frozen=True)
+    class FakeState:
+        num_samples: int
+        samples: Samples
+
+    samples = Samples(
+        log_L_constraints=jnp.arange(5.0),
+        log_likelihoods=jnp.arange(10.0, 15.0),
+        U_samples=jnp.arange(10.0).reshape((5, 2)),
+        out_degree=jnp.arange(5),
+        num_likelihood_evaluations=jnp.arange(20, 25),
+        phantom_samples=PhantomSamples(
+            U_samples=None,
+            valid_mask=jnp.zeros((5, 0), dtype=bool),
+            log_L=jnp.zeros((5, 0)),
+        ),
+    )
+    state = FakeState(num_samples=3, samples=samples)
+
+    trimmed = api._trim_state_to_collected_samples(state)
+
+    assert trimmed.samples.log_likelihoods.shape == (3,)
+    assert trimmed.samples.U_samples.shape == (3, 2)
+    assert trimmed.samples.phantom_samples.U_samples is None
+    assert trimmed.samples.phantom_samples.valid_mask.shape == (3, 0)
+    assert state.samples.log_likelihoods.shape == (5,)
+
+
+def test_collect_pure_core_speed_record_uses_no_load_balancer_and_gate(
+        monkeypatch,
+        tmp_path,
+):
+    api = _require_speed_api()
+    created_runners = _install_fake_pure_core_runtime(monkeypatch, api)
+    _install_fake_clock(monkeypatch, api)
+    config = api.default_pure_core_standard_problem_speed_config(
+        feature_row_ids=("standard_basic_mvn_uniform",),
+        seed=17,
+    )
+
+    records = api.collect_pure_core_standard_problem_speed_records(config=config)
+
+    assert len(records) == 1
+    assert len(created_runners) == 1
+    runner = created_runners[0]
+    assert runner.run_allocation_targets == ["uniform"]
+    assert runner.kwargs["target_num_live_points"] == 30
+    assert runner.kwargs["max_samples"] == 1200
+    sampler = runner.kwargs["sampler"]
+    assert sampler.direction_kernel == "isotropic"
+    assert sampler.num_slices == config.num_slices
+    assert sampler.phantom_burn_in == config.phantom_burn_in
+
+    record = records[0]
+    assert record["execution_mode"] == "pure_core"
+    assert record["metadata"]["feature_row_id"] == "standard_basic_mvn_uniform"
+    assert record["metadata"]["problem_fixture"] == "basic_mvn"
+    assert record["metadata"]["dimension"] == 8
+    assert record["metadata"]["allocation_target"] == "uniform"
+    assert record["metadata"]["direction_kernel"] == "isotropic"
+    assert record["results"]["accuracy_passed"] is True
+    assert record["results"]["total_samples"] == 1200
+    assert record["metadata"]["target_num_live_points"] == 30
+    assert record["metadata"]["max_samples"] == 1200
+    assert record["metadata"]["shell_size"] == 15
+    assert record["metadata"]["num_slices"] == 24
+    assert record["metadata"]["phantom_burn_in"] == 4
+    assert record["metadata"]["mc_sample_count"] == 1000
+    assert record["timings"]["run_seconds"] < 60.0
+    api.assert_pure_core_isotropic_speed_gate(record)
+    short_record = copy.deepcopy(record)
+    short_record["results"]["total_samples"] = 1
+    with pytest.raises(AssertionError, match="total_samples"):
+        api.assert_pure_core_isotropic_speed_gate(short_record)
+
+    report_path = api.write_v3_performance_split_markdown_report(
+        records=records,
+        report_dir=tmp_path,
+    )
+    report_text = report_path.read_text(encoding="utf-8")
+    assert report_path.name.startswith("v3_performance_split_")
+    assert "## Pure-Core Results" in report_text
+    assert "standard_basic_mvn_uniform" in report_text
+
+
+def test_pure_core_speed_record_covers_all_basic_mvn_benchmark_targets(
+        monkeypatch,
+):
+    api = _require_speed_api()
+    created_runners = _install_fake_pure_core_runtime(monkeypatch, api)
+    _install_fake_clock(monkeypatch, api)
+    config = api.default_pure_core_standard_problem_speed_config()
+
+    records = api.collect_pure_core_standard_problem_speed_records(config=config)
+
+    assert [
+        record["metadata"]["feature_row_id"]
+        for record in records
+    ] == list(config.feature_row_ids)
+    assert [
+        runner.run_allocation_targets[-1]
+        for runner in created_runners
+    ] == [
+        "uniform",
+        "evidence_improving",
+        "resume:posterior_improving",
+    ]
+
+
+def test_collect_speed_records_uses_one_local_load_balancer_per_target(
+        monkeypatch,
+):
+    api = _require_speed_api()
+    created_clients = _install_fake_runtime(monkeypatch, api)
+    _install_fake_clock(monkeypatch, api)
+    config = _speed_config(
+        api,
+        seed=17,
+        max_samples=9,
+        mc_sample_count=4,
+        target_num_live_points=16,
+        worker_specs=("cpu:*:2",),
+    )
+
+    records = api.collect_standard_problem_speed_records(config=config)
+
+    allocation_targets = [record["metadata"]["allocation_target"] for record in records]
+    assert tuple(allocation_targets) == DEFAULT_ALLOCATION_TARGETS
+    assert len(created_clients) == len(DEFAULT_ALLOCATION_TARGETS)
+    for client, allocation_target in zip(created_clients, DEFAULT_ALLOCATION_TARGETS):
+        assert client.address == "local"
+        assert client.entered
+        assert client.exited
+        assert client.worker_specs == [("cpu:*:2",)]
+        assert client.run_allocation_targets == [allocation_target]
+        assert len(client.get_nested_sampler_calls) == 1
+        call = client.get_nested_sampler_calls[0]
+        assert call["target_num_live_points"] == 16
+        assert call["max_samples"] == 9
+        assert call["shell_size"] == config.shell_size
+        assert bool(call["collect_phantoms"])
+        sampler = call["sampler"]
+        assert sampler.num_slices == config.num_slices
+        assert sampler.phantom_burn_in == config.phantom_burn_in
+        assert sampler.direction_kernel == config.direction_kernel
+
+
+def test_collect_speed_records_include_full_metadata_and_worker_inner_time(
+        monkeypatch,
+):
+    api = _require_speed_api()
+    _install_fake_runtime(monkeypatch, api)
+    _install_fake_clock(monkeypatch, api)
+    config = _speed_config(
+        api,
+        allocation_targets=("posterior_improving",),
+        seed=19,
+        max_samples=11,
+        mc_sample_count=6,
+        target_num_live_points=40,
+        worker_specs=("cpu:*:3",),
+    )
+
+    records = api.collect_standard_problem_speed_records(config=config)
+
+    assert len(records) == 1
+    record = records[0]
+    api.assert_standard_problem_speed_record(record)
+    _assert_likelihood_dispatch_diagnostics_present(record)
+    metadata = record["metadata"]
+    assert metadata["problem"] == "basic_mvn"
+    assert metadata["dimension"] == 8
+    assert metadata["allocation_target"] == "posterior_improving"
+    assert metadata["seed"] == 19
+    assert metadata["worker_specs"] == ["cpu:*:3"]
+    assert metadata["target_num_live_points"] == 40
+    assert metadata["live_points_per_dimension"] == pytest.approx(5.0)
+    assert metadata["live_point_policy"] == "custom"
+    assert metadata["max_samples"] == 11
+    assert metadata["mc_sample_count"] == 6
+    assert metadata["shell_size"] > 0
+    assert metadata["num_slices"] > 0
+    assert metadata["phantom_burn_in"] >= 0
+    assert metadata["direction_kernel"]
+    assert record["timings"]["run_seconds"] == pytest.approx(1.0)
+    assert record["timings"]["total_seconds"] == pytest.approx(4.0)
+    assert record["diagnostics"]["worker_sampler_latency_seconds"] == (
+        pytest.approx(1.25)
+    )
+
+
+def test_worker_scaling_records_vary_specs_and_report_observed_workers(
+        monkeypatch,
+):
+    api = _require_speed_api()
+    collect_worker_scaling = getattr(
+        api,
+        "collect_worker_scaling_speed_records",
+        None,
+    )
+    assert callable(collect_worker_scaling), (
+        "Ticket 0016 worker-scaling mode requires a public "
+        "collect_worker_scaling_speed_records(...) API."
+    )
+    created_clients = _install_fake_runtime(monkeypatch, api)
+    _install_fake_clock(monkeypatch, api)
+    worker_specs_grid = (
+        ("cpu:*:1",),
+        ("cpu:*:3",),
+    )
+    config = _speed_config(
+        api,
+        allocation_targets=("uniform",),
+        seed=29,
+        max_samples=7,
+        mc_sample_count=3,
+        target_num_live_points=24,
+    )
+
+    records = collect_worker_scaling(
+        config=config,
+        worker_specs_grid=worker_specs_grid,
+    )
+
+    assert len(records) == len(worker_specs_grid)
+    assert len(created_clients) == len(worker_specs_grid)
+    assert [
+        record["metadata"]["worker_specs"]
+        for record in records
+    ] == [list(worker_specs) for worker_specs in worker_specs_grid]
+    assert [
+        _observed_worker_count(record)
+        for record in records
+    ] == [
+        _fake_compute_sector_worker_count(worker_specs)
+        for worker_specs in worker_specs_grid
+    ]
+    for client, worker_specs, record in zip(
+            created_clients,
+            worker_specs_grid,
+            records,
+    ):
+        assert client.address == "local"
+        assert client.entered
+        assert client.exited
+        assert client.worker_specs == [tuple(worker_specs)]
+        assert client.run_allocation_targets == ["uniform"]
+        api.assert_standard_problem_speed_record(record)
+        _assert_likelihood_dispatch_diagnostics_present(record)
+        diagnostics = record["diagnostics"]
+        requested_worker_count = sum(
+            _requested_worker_count(worker_spec)
+            for worker_spec in worker_specs
+        )
+        if requested_worker_count >= 2:
+            assert diagnostics["max_active_evals_pool"] >= 2
+            assert len(
+                _completed_worker_ids_from_diagnostics(diagnostics)
+            ) >= 2
+        else:
+            assert diagnostics["max_active_evals_pool"] >= 1
+        assert diagnostics["compile_count"] >= 1
+        assert diagnostics["cache_hit_count"] >= 1
+
+    encoded = json.dumps(records, sort_keys=True)
+    assert json.loads(encoded) == records
+
+
+def test_worker_scaling_default_grid_covers_ticket_0019_worker_counts():
+    api = _require_speed_api()
+    default_worker_scaling_specs = getattr(
+        api,
+        "default_worker_scaling_specs",
+        None,
+    )
+    assert callable(default_worker_scaling_specs), (
+        "Ticket 0019 requires a public default_worker_scaling_specs() API "
+        "for the canonical 1/2/4/8 scaling grid."
+    )
+    assert default_worker_scaling_specs() == (
+        ("cpu:*:1",),
+        ("cpu:*:2",),
+        ("cpu:*:4",),
+        ("cpu:*:8",),
+    )
+
+
+def test_worker_scaling_validation_accepts_strict_ticket_0019_speedup():
+    api = _require_speed_api()
+    assert_scaling = getattr(
+        api,
+        "assert_worker_scaling_speed_records",
+        None,
+    )
+    assert callable(assert_scaling), (
+        "Ticket 0019 requires assert_worker_scaling_speed_records(...) to "
+        "validate the 1/2/4/8 wall-time scaling gate."
+    )
+    records = [
+        _speed_record_for_worker_scaling(worker_count=1, run_seconds=100.0),
+        _speed_record_for_worker_scaling(worker_count=2, run_seconds=70.0),
+        _speed_record_for_worker_scaling(worker_count=4, run_seconds=45.0),
+        _speed_record_for_worker_scaling(worker_count=8, run_seconds=25.0),
+    ]
+
+    assert_scaling(records)
+
+
+@pytest.mark.parametrize(
+    "records, error_pattern",
+    [
+        (
+            [
+                _speed_record_for_worker_scaling(
+                    worker_count=1,
+                    run_seconds=100.0,
+                ),
+                _speed_record_for_worker_scaling(
+                    worker_count=2,
+                    run_seconds=100.0,
+                ),
+                _speed_record_for_worker_scaling(
+                    worker_count=4,
+                    run_seconds=80.0,
+                ),
+                _speed_record_for_worker_scaling(
+                    worker_count=8,
+                    run_seconds=60.0,
+                ),
+            ],
+            "run_seconds|strictly decrease|1-worker|2-worker",
+        ),
+        (
+            [
+                _speed_record_for_worker_scaling(
+                    worker_count=1,
+                    run_seconds=100.0,
+                ),
+                _speed_record_for_worker_scaling(
+                    worker_count=2,
+                    run_seconds=120.0,
+                ),
+                _speed_record_for_worker_scaling(
+                    worker_count=4,
+                    run_seconds=90.0,
+                ),
+                _speed_record_for_worker_scaling(
+                    worker_count=8,
+                    run_seconds=80.0,
+                ),
+            ],
+            "run_seconds|1-worker|2-worker|regression",
+        ),
+        (
+            [
+                _speed_record_for_worker_scaling(
+                    worker_count=1,
+                    run_seconds=100.0,
+                ),
+                _speed_record_for_worker_scaling(
+                    worker_count=2,
+                    run_seconds=70.0,
+                ),
+                _speed_record_for_worker_scaling(
+                    worker_count=4,
+                    run_seconds=90.0,
+                ),
+                _speed_record_for_worker_scaling(
+                    worker_count=8,
+                    run_seconds=50.0,
+                ),
+            ],
+            "run_seconds|2-worker|4-worker|regression",
+        ),
+        (
+            [
+                _speed_record_for_worker_scaling(
+                    worker_count=1,
+                    run_seconds=100.0,
+                ),
+                _speed_record_for_worker_scaling(
+                    worker_count=2,
+                    run_seconds=70.0,
+                ),
+                _speed_record_for_worker_scaling(
+                    worker_count=4,
+                    run_seconds=45.0,
+                ),
+                _speed_record_for_worker_scaling(
+                    worker_count=8,
+                    run_seconds=60.0,
+                ),
+            ],
+            "8-worker|fastest|run_seconds",
+        ),
+        (
+            [
+                _speed_record_for_worker_scaling(
+                    worker_count=1,
+                    run_seconds=300.0,
+                ),
+                _speed_record_for_worker_scaling(
+                    worker_count=2,
+                    run_seconds=260.0,
+                ),
+                _speed_record_for_worker_scaling(
+                    worker_count=4,
+                    run_seconds=235.0,
+                ),
+                _speed_record_for_worker_scaling(
+                    worker_count=8,
+                    run_seconds=220.0,
+                ),
+            ],
+            "Ticket 0018|216.54|218.90|baseline",
+        ),
+    ],
+    ids=(
+        "two-worker-ties",
+        "two-worker-regresses",
+        "four-worker-regresses",
+        "eight-worker-not-fastest",
+        "eight-worker-misses-ticket-0018-baseline",
+    ),
+)
+def test_worker_scaling_validation_rejects_ticket_0019_failures(
+        records,
+        error_pattern,
+):
+    api = _require_speed_api()
+    assert_scaling = getattr(
+        api,
+        "assert_worker_scaling_speed_records",
+        None,
+    )
+    assert callable(assert_scaling), (
+        "Ticket 0019 requires assert_worker_scaling_speed_records(...) to "
+        "validate the 1/2/4/8 wall-time scaling gate."
+    )
+
+    with pytest.raises(AssertionError, match=error_pattern):
+        assert_scaling(records)
+
+
+def test_collect_speed_records_are_deterministic_and_json_serializable(
+        monkeypatch,
+):
+    api = _require_speed_api()
+    _install_fake_runtime(monkeypatch, api)
+    _install_fake_clock(monkeypatch, api)
+    config = _speed_config(
+        api,
+        allocation_targets=("uniform",),
+        seed=23,
+        max_samples=7,
+        mc_sample_count=3,
+        target_num_live_points=24,
+    )
+
+    first_records = api.collect_standard_problem_speed_records(config=config)
+    second_records = api.collect_standard_problem_speed_records(config=config)
+
+    assert first_records == second_records
+    encoded = json.dumps(first_records, sort_keys=True)
+    decoded = json.loads(encoded)
+    assert decoded == first_records
+
+
+def test_main_writes_json_records_with_fake_runtime(
+        monkeypatch,
+        capsys,
+        tmp_path,
+):
+    api = _require_speed_api()
+    _install_fake_runtime(monkeypatch, api)
+    _install_fake_clock(monkeypatch, api)
+
+    exit_code = api.main([
+        "--allocation-target",
+        "uniform",
+        "--max-samples",
+        "7",
+        "--target-num-live-points",
+        "24",
+        "--mc-sample-count",
+        "3",
+        "--report-dir",
+        str(tmp_path),
+    ])
+
+    assert exit_code == 0
+    decoded = json.loads(capsys.readouterr().out)
+    assert isinstance(decoded, list)
+    assert len(decoded) == 1
+    assert decoded[0]["metadata"]["allocation_target"] == "uniform"
+    api.assert_standard_problem_speed_record(decoded[0])
+    reports = list(tmp_path.glob("standard_problem_speed_*.md"))
+    assert len(reports) == 1
+    assert "uniform" in reports[0].read_text(encoding="utf-8")
+
+
+def test_main_pure_core_writes_split_report(monkeypatch, capsys, tmp_path):
+    api = _require_speed_api()
+    _install_fake_pure_core_runtime(monkeypatch, api)
+    _install_fake_clock(monkeypatch, api)
+
+    exit_code = api.main([
+        "--pure-core",
+        "--allocation-target",
+        "uniform",
+        "--report-dir",
+        str(tmp_path),
+    ])
+
+    assert exit_code == 0
+    decoded = json.loads(capsys.readouterr().out)
+    assert len(decoded) == 1
+    assert decoded[0]["execution_mode"] == "pure_core"
+    api.assert_pure_core_isotropic_speed_gate(decoded[0])
+    reports = list(tmp_path.glob("v3_performance_split_*.md"))
+    assert len(reports) == 1
+    assert "standard_basic_mvn_uniform" in reports[0].read_text(
+        encoding="utf-8",
+    )
+
+
+def test_main_worker_scaling_writes_json_records(monkeypatch, capsys, tmp_path):
+    api = _require_speed_api()
+    _install_fake_runtime(monkeypatch, api)
+    _install_fake_clock(monkeypatch, api)
+
+    exit_code = api.main([
+        "--worker-scaling",
+        "--allocation-target",
+        "uniform",
+        "--worker-spec",
+        "cpu:*:1",
+        "--worker-spec",
+        "cpu:*:3",
+        "--max-samples",
+        "7",
+        "--target-num-live-points",
+        "24",
+        "--mc-sample-count",
+        "3",
+        "--report-dir",
+        str(tmp_path),
+    ])
+
+    assert exit_code == 0
+    decoded = json.loads(capsys.readouterr().out)
+    assert [
+        record["metadata"]["worker_specs"]
+        for record in decoded
+    ] == [["cpu:*:1"], ["cpu:*:3"]]
+    assert [_observed_worker_count(record) for record in decoded] == [
+        _fake_compute_sector_worker_count(("cpu:*:1",)),
+        _fake_compute_sector_worker_count(("cpu:*:3",)),
+    ]
+    for record in decoded:
+        api.assert_standard_problem_speed_record(record)
+        _assert_likelihood_dispatch_diagnostics_present(record)
+        diagnostics = _diagnostics_mapping(record)
+        requested_worker_count = sum(
+            _requested_worker_count(worker_spec)
+            for worker_spec in record["metadata"]["worker_specs"]
+        )
+        if requested_worker_count >= 2:
+            assert diagnostics["max_active_evals_pool"] >= 2
+            assert len(
+                _completed_worker_ids_from_diagnostics(diagnostics)
+            ) >= 2
+    reports = list(tmp_path.glob("standard_problem_speed_*.md"))
+    assert len(reports) == 1
+    assert "cpu:*:3" in reports[0].read_text(encoding="utf-8")
+
+
+def test_main_explicit_default_worker_scaling_grid_is_reporting_only(
+        monkeypatch,
+        capsys,
+        tmp_path,
+):
+    api = _require_speed_api()
+    _install_fake_runtime(monkeypatch, api)
+    _install_fake_clock(monkeypatch, api)
+
+    exit_code = api.main([
+        "--worker-scaling",
+        "--allocation-target",
+        "uniform",
+        "--worker-spec",
+        "cpu:*:1",
+        "--worker-spec",
+        "cpu:*:2",
+        "--worker-spec",
+        "cpu:*:4",
+        "--worker-spec",
+        "cpu:*:8",
+        "--max-samples",
+        "7",
+        "--target-num-live-points",
+        "24",
+        "--mc-sample-count",
+        "3",
+        "--report-dir",
+        str(tmp_path),
+    ])
+
+    assert exit_code == 0
+    decoded = json.loads(capsys.readouterr().out)
+    assert [
+        record["metadata"]["worker_specs"]
+        for record in decoded
+    ] == [["cpu:*:1"], ["cpu:*:2"], ["cpu:*:4"], ["cpu:*:8"]]
+    assert [
+        record["timings"]["run_seconds"]
+        for record in decoded
+    ] == [1.0, 1.0, 1.0, 1.0]
+    for record in decoded:
+        api.assert_standard_problem_speed_record(record)
+        _assert_likelihood_dispatch_diagnostics_present(record)
+
+
+def test_mc_shrinkage_timing_synchronizes_samples_before_timer_stops(
+        monkeypatch,
+):
+    api = _require_speed_api()
+    clock = _McSynchronizationClock()
+    returned_samples: list[_FakeMcShrinkageSamples] = []
+
+    def sample_factory(num_samples: int) -> _FakeMcShrinkageSamples:
+        samples = _FakeMcShrinkageSamples(num_samples=num_samples)
+        returned_samples.append(samples)
+        clock.require_next_timer_after_sync(samples)
+        return samples
+
+    _install_fake_runtime(
+        monkeypatch,
+        api,
+        mc_shrinkage_sample_factory=sample_factory,
+    )
+    _install_fake_clock(monkeypatch, api, clock=clock)
+    config = _speed_config(
+        api,
+        allocation_targets=("uniform",),
+        seed=31,
+        max_samples=7,
+        mc_sample_count=3,
+        target_num_live_points=24,
+    )
+
+    records = api.collect_standard_problem_speed_records(config=config)
+
+    assert len(records) == 1
+    assert len(returned_samples) == 1
+    assert returned_samples[0].synchronized
+    assert returned_samples[0].events, (
+        "MC shrinkage timing must materialize or block returned samples before "
+        "stopping the timer."
+    )
+    api.assert_standard_problem_speed_record(records[0])
+
+
+class _StepClock:
+    def __init__(self):
+        self.current = 0.0
+
+    def __call__(self) -> float:
+        value = self.current
+        self.current += 1.0
+        return value
+
+
+class _McSynchronizationClock(_StepClock):
+    def __init__(self):
+        super().__init__()
+        self._pending_sample: _FakeMcShrinkageSamples | None = None
+
+    def require_next_timer_after_sync(
+            self,
+            samples: "_FakeMcShrinkageSamples",
+    ) -> None:
+        self._pending_sample = samples
+
+    def __call__(self) -> float:
+        if self._pending_sample is not None:
+            samples = self._pending_sample
+            self._pending_sample = None
+            assert samples.synchronized, (
+                "mc_shrinkage_seconds stopped before returned samples were "
+                "materialized or synchronized."
+            )
+        return super().__call__()
+
+
+class _FakeMcShrinkageSamples:
+    def __init__(self, *, num_samples: int):
+        self.events: list[str] = []
+        self.log_Z_samples = _FakeMaterializableSamples(
+            events=self.events,
+            values=[-50.1 + 0.01 * idx for idx in range(num_samples)],
+        )
+
+    @property
+    def synchronized(self) -> bool:
+        return bool(self.events)
+
+    def block_until_ready(self):
+        self.events.append("samples.block_until_ready")
+        return self
+
+
+class _FakeMaterializableSamples:
+    def __init__(self, *, events: list[str], values: list[float]):
+        self._events = events
+        self._values = values
+
+    def block_until_ready(self):
+        self._events.append("log_Z_samples.block_until_ready")
+        return self
+
+    def __array__(self, dtype=None):
+        self._events.append("log_Z_samples.__array__")
+        return np.asarray(self._values, dtype=dtype)
+
+    def tolist(self) -> list[float]:
+        self._events.append("log_Z_samples.tolist")
+        return list(self._values)
+
+
+class _FakeLoadBalancerClient:
+    def __init__(
+            self,
+            address: str,
+            created_clients: list[Any],
+            mc_shrinkage_sample_factory: Any = None,
+    ):
+        self.address = address
+        self.created_clients = created_clients
+        self.mc_shrinkage_sample_factory = mc_shrinkage_sample_factory
+        self.entered = False
+        self.exited = False
+        self.worker_specs: list[tuple[str, ...]] = []
+        self.get_nested_sampler_calls: list[dict[str, Any]] = []
+        self.run_allocation_targets: list[str] = []
+        self.compute_sectors = [SimpleNamespace(num_workers=0)]
+        created_clients.append(self)
+
+    def __enter__(self):
+        self.entered = True
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.exited = True
+        return False
+
+    def add_workers(self, worker_specs):
+        worker_specs = tuple(worker_specs)
+        self.worker_specs.append(worker_specs)
+        self.compute_sectors = [
+            SimpleNamespace(
+                num_workers=_fake_compute_sector_worker_count(worker_specs),
+            )
+        ]
+
+    def get_nested_sampler(self, **kwargs):
+        self.get_nested_sampler_calls.append(copy.deepcopy(kwargs))
+        return _FakeNestedSampler(self, kwargs)
+
+    def likelihood_dispatch_diagnostics(self):
+        worker_specs = self.worker_specs[-1] if self.worker_specs else ()
+        worker_count = _fake_compute_sector_worker_count(worker_specs)
+        completed_counts = {
+            f"worker-{idx + 1:06d}": (
+                2 if idx == 0 else int(idx == 1)
+            )
+            for idx in range(worker_count)
+        }
+        return SimpleNamespace(
+            observed_worker_count=worker_count,
+            observed_node_count=1,
+            node_ingress_process_count=1,
+            observed_worker_process_count=worker_count,
+            worker_process_ids=tuple(
+                42000 + idx + 1
+                for idx in range(worker_count)
+            ),
+            observed_worker_device_classes=("cpu",),
+            dispatch_eval_count=3,
+            dispatch_latency_seconds=(0.25, 0.50, 0.75),
+            dispatch_throughput_per_second=2.0,
+            compile_count=1,
+            cache_hit_count=2,
+            rejected_shape_cache_count=0,
+            distinct_compile_identity_count=1,
+            max_active_evals_per_worker={
+                f"worker-{idx + 1:06d}": 1
+                for idx in range(worker_count)
+            },
+            max_active_evals_pool=min(worker_count, 2),
+            completed_eval_count_by_worker=completed_counts,
+            queued_eval_count=1,
+            load_balancer_queue_length=0,
+            node_queue_length=1,
+            failed_eval_count=0,
+            failed_eval_count_by_type={},
+            process_start_method="spawn",
+            worker_shutdown_status="clean",
+            ipc_endpoint_cleanup_status="removed",
+        )
+
+    def get_likelihood_dispatch_diagnostics(self):
+        return self.likelihood_dispatch_diagnostics()
+
+
+class _FakeNestedSampler:
+    def __init__(self, client: _FakeLoadBalancerClient, kwargs: Mapping[str, Any]):
+        self.client = client
+        self.max_samples = int(kwargs["max_samples"])
+
+    def run_until_goal(self, *args, **kwargs):
+        del args
+        allocation_target = kwargs["allocation_target"]
+        self.client.run_allocation_targets.append(allocation_target)
+        return _FakeState(
+            allocation_target=allocation_target,
+            max_samples=self.max_samples,
+            mc_shrinkage_sample_factory=(
+                self.client.mc_shrinkage_sample_factory
+            ),
+        )
+
+
+class _FakePureCoreNestedSampler:
+    def __init__(
+            self,
+            *,
+            created_runners: list[Any],
+            mc_shrinkage_sample_factory: Any,
+            **kwargs,
+    ):
+        self.kwargs = kwargs
+        self.max_samples = int(kwargs["max_samples"])
+        self.run_allocation_targets: list[str] = []
+        self.mc_shrinkage_sample_factory = mc_shrinkage_sample_factory
+        created_runners.append(self)
+
+    def run_until_goal(self, *args, **kwargs):
+        del args
+        allocation_target = kwargs["allocation_target"]
+        self.run_allocation_targets.append(allocation_target)
+        return _FakeState(
+            allocation_target=allocation_target,
+            max_samples=self.max_samples,
+            mc_shrinkage_sample_factory=self.mc_shrinkage_sample_factory,
+        )
+
+    def resume_until_goal(self, *args, **kwargs):
+        del args
+        allocation_target = kwargs["allocation_target"]
+        self.run_allocation_targets.append(f"resume:{allocation_target}")
+        return _FakeState(
+            allocation_target=allocation_target,
+            max_samples=self.max_samples,
+            mc_shrinkage_sample_factory=self.mc_shrinkage_sample_factory,
+        )
+
+
+class _FakeState:
+    def __init__(
+            self,
+            *,
+            allocation_target: str,
+            max_samples: int,
+            mc_shrinkage_sample_factory: Any = None,
+    ):
+        self.allocation_target = allocation_target
+        self.max_samples = max_samples
+        self.mc_shrinkage_sample_factory = mc_shrinkage_sample_factory
+        self.samples = SimpleNamespace(log_likelihoods=[0.0] * max_samples)
+
+    def to_result(self):
+        return _FakeResult(
+            allocation_target=self.allocation_target,
+            max_samples=self.max_samples,
+            mc_shrinkage_sample_factory=self.mc_shrinkage_sample_factory,
+        )
+
+
+class _FakeResult:
+    def __init__(
+            self,
+            *,
+            allocation_target: str,
+            max_samples: int,
+            mc_shrinkage_sample_factory: Any = None,
+    ):
+        self.allocation_target = allocation_target
+        self.mc_shrinkage_sample_factory = mc_shrinkage_sample_factory
+        self.total_num_samples = max_samples
+        self.total_num_likelihood_evaluations = max_samples * 3
+        self.log_Z_mean = -50.0
+        self.log_Z_uncert = 0.25
+        self.execution_diagnostics = SimpleNamespace(
+            worker_runtime=SimpleNamespace(
+                dispatch_records=(
+                    {"sampler_execution_latency_seconds": 0.75},
+                    SimpleNamespace(sampler_execution_latency_seconds=0.50),
+                ),
+            ),
+        )
+
+    def trim(self):
+        return self
+
+    def sample_mc_shrinkage(self, *, num_samples: int, **kwargs):
+        del kwargs
+        if self.mc_shrinkage_sample_factory is not None:
+            return self.mc_shrinkage_sample_factory(num_samples)
+        return SimpleNamespace(
+            log_Z_samples=[-50.1 + 0.01 * idx for idx in range(num_samples)],
+        )
+
+    def get_diagnostics(self):
+        return self.execution_diagnostics
+
+
+def _observed_worker_count(record: Mapping[str, Any]) -> int:
+    for section_name in ("metadata", "diagnostics"):
+        section = record.get(section_name, {})
+        if not isinstance(section, Mapping):
+            continue
+        for field_name in ("actual_worker_count", "worker_count"):
+            if field_name in section:
+                worker_count = section[field_name]
+                assert isinstance(worker_count, int)
+                assert worker_count > 0
+                return worker_count
+    raise AssertionError(
+        "Speed records must report the actual worker count observed from "
+        "load-balancer compute sectors in metadata or diagnostics."
+    )
+
+
+def _fake_compute_sector_worker_count(worker_specs: tuple[str, ...]) -> int:
+    return sum(_requested_worker_count(worker_spec)
+               for worker_spec in worker_specs)
+
+
+def _requested_worker_count(worker_spec: str) -> int:
+    match = re.search(r":(\d+)$", worker_spec)
+    if match is None:
+        return 1
+    return int(match.group(1))
+
+
+def _install_fake_runtime(
+        monkeypatch,
+        api,
+        *,
+        mc_shrinkage_sample_factory: Any = None,
+) -> list[_FakeLoadBalancerClient]:
+    created_clients: list[_FakeLoadBalancerClient] = []
+
+    def fake_client_factory(address: str):
+        return _FakeLoadBalancerClient(
+            address=address,
+            created_clients=created_clients,
+            mc_shrinkage_sample_factory=mc_shrinkage_sample_factory,
+        )
+
+    monkeypatch.setattr(api, "LoadBalancerClient", fake_client_factory)
+    monkeypatch.setattr(
+        api,
+        "build_basic_mvn_problem",
+        lambda: (object(), -50.0),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        api,
+        "UniDimSliceSampler",
+        lambda **kwargs: SimpleNamespace(**kwargs),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        api,
+        "TerminationCondition",
+        lambda **kwargs: SimpleNamespace(**kwargs),
+        raising=False,
+    )
+    return created_clients
+
+
+def _install_fake_pure_core_runtime(monkeypatch, api) -> list[Any]:
+    created_runners: list[Any] = []
+
+    def mc_shrinkage_sample_factory(num_samples: int):
+        return SimpleNamespace(
+            log_Z_samples=[
+                -50.1 if idx % 2 == 0 else -49.9
+                for idx in range(num_samples)
+            ],
+        )
+
+    def fake_nested_sampler(**kwargs):
+        return _FakePureCoreNestedSampler(
+            created_runners=created_runners,
+            mc_shrinkage_sample_factory=mc_shrinkage_sample_factory,
+            **kwargs,
+        )
+
+    monkeypatch.setattr(api, "NestedSampler", fake_nested_sampler)
+    monkeypatch.setattr(api, "build_basic_mvn_problem", lambda: (object(), -50.0))
+    monkeypatch.setattr(
+        api,
+        "UniDimSliceSampler",
+        lambda **kwargs: SimpleNamespace(**kwargs),
+    )
+    monkeypatch.setattr(
+        api,
+        "TerminationCondition",
+        lambda **kwargs: SimpleNamespace(**kwargs),
+    )
+    monkeypatch.setattr(
+        api,
+        "LoadBalancerClient",
+        lambda *args, **kwargs: pytest.fail(
+            "pure-core benchmark must not create LoadBalancerClient"
+        ),
+    )
+    return created_runners
+
+
+def _install_fake_clock(monkeypatch, api, *, clock: Any = None) -> None:
+    if clock is None:
+        clock = _StepClock()
+    if hasattr(api, "perf_counter"):
+        monkeypatch.setattr(api, "perf_counter", clock)
+    if hasattr(api, "time"):
+        monkeypatch.setattr(api.time, "perf_counter", clock, raising=False)
+        monkeypatch.setattr(api.time, "time", clock, raising=False)

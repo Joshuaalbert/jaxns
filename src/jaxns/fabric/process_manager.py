@@ -39,12 +39,14 @@ class ProcessManager:
 
     def __init__(self, actors: list[ZMQActor], ctl_pub_addr: str, ack_rep_addr: str,
                  shutdown_timeout: float = 1.0,
-                 profile: bool = False):
+                 profile: bool = False,
+                 start_method: str = "forkserver"):
         self.actors = actors
         self.actor_procs: list[ActorProc] = []
         self.shutdown_timeout = shutdown_timeout
         self.ack_rep_addr = ack_rep_addr
         self.ctl_pub_addr = ctl_pub_addr
+        self.start_method = start_method
         self.ctx = zmq.Context()
         # Initialize the ZeroMQ context and control socket for process management
         self.ctl = self.ctx.socket(zmq.PUB)
@@ -69,7 +71,7 @@ class ProcessManager:
 
     def start_all(self):
         """Spawn a Process for each actor's run() method."""
-        spawn_ctx = multiprocessing.get_context("forkserver")
+        spawn_ctx = multiprocessing.get_context(self.start_method)
         ack_rep = self.ctx.socket(zmq.REP)
         ack_rep.bind(self.ack_rep_addr)
         poller = zmq.Poller()
@@ -179,10 +181,35 @@ class ProcessManager:
     def close(self):
         """Close the control socket and terminate the ZeroMQ context."""
         with self._lock:
-            if self.ctx is not None:
-                self.ctl.close(linger=0)
-                self.ctx.term()
-                self.ctx = None
+            self._close_unlocked()
+
+    def _close_unlocked(self):
+        if self.ctl is not None:
+            self.ctl.close(linger=0)
+            self.ctl = None
+        if self.ctx is not None:
+            self.ctx.term()
+            self.ctx = None
+
+    @staticmethod
+    def _recv_exception(actor_proc: ActorProc) -> Exception | None:
+        err_pipe = actor_proc.err_pipe
+        if err_pipe is None:
+            return None
+        try:
+            if not err_pipe.poll(timeout=0.1):
+                return None
+            return pickle.loads(err_pipe.recv())
+        except (EOFError, OSError):
+            return None
+
+    @staticmethod
+    def _mark_actor_done(actor_proc: ActorProc) -> None:
+        actor_proc.done = True
+        try:
+            actor_proc.err_pipe.close()
+        except (AttributeError, OSError):
+            pass
 
 
     def stop_all(self):
@@ -194,7 +221,8 @@ class ProcessManager:
             self.stopped = True
 
             jaxns_logger.info("Gracefully terminating all actor processes...")
-            self.ctl.send(b"TERMINATE")
+            if self.ctl is not None:
+                self.ctl.send(b"TERMINATE")
             time.sleep(3)  # Give actors time to process the signal
 
             # Our strategy for graceful shutdown is to send a control socket 'TERMINATE' message, which each actor should
@@ -210,21 +238,16 @@ class ProcessManager:
                 p.join(timeout=0)  # Check if process is still alive
                 if p.exitcode is not None:
                     if p.exitcode == 0:
-                        actor_proc.done = True
+                        self._mark_actor_done(actor_proc)
                     else:
                         # Process has terminated with an exit code != 0
-                        err_pipe = actor_proc.err_pipe
-                        try:
-                            e = pickle.loads(err_pipe.recv())
-                        except EOFError:
-                            # EOFError can occur if the pipe is closed before we read from it
-                            pass
-                        else:
+                        e = self._recv_exception(actor_proc)
+                        if e is not None:
                             a.set_exception(e)
                             jaxns_logger.error(
                                 f"Process {p.pid} ({a.__class__.__name__}) exited with code {p.exitcode}. "
                                 f"Error message: {e}")
-                        actor_proc.done = True
+                        self._mark_actor_done(actor_proc)
                 else:
                     # Process is still alive, attempt to terminate it gracefully
                     jaxns_logger.info(
@@ -240,26 +263,29 @@ class ProcessManager:
                 p.join(timeout=self.shutdown_timeout)
                 if p.exitcode is not None:
                     if p.exitcode == 0:
-                        actor_proc.done = True
+                        self._mark_actor_done(ap)
                     else:
                         # Process has terminated with an exit code != 0
-                        err_pipe = actor_proc.err_pipe
-                        e = err_pipe.recv()
-                        a.set_exception(e)
-                        jaxns_logger.error(f"Process {p.pid} ({a.__class__.__name__}) exited with code {p.exitcode}. "
-                                         f"Error message: {e}")
-                        actor_proc.done = True
+                        e = self._recv_exception(ap)
+                        if e is not None:
+                            a.set_exception(e)
+                            jaxns_logger.error(
+                                f"Process {p.pid} ({a.__class__.__name__}) exited with code {p.exitcode}. "
+                                f"Error message: {e}")
+                        self._mark_actor_done(ap)
                 else:
                     jaxns_logger.warning(f"Process {p.pid} ({a.__class__.__name__}) did not exit cleanly, killing it.")
                     p.kill()
                     p.join()  # Ensure we wait for the process to exit
                     a.set_exception(RuntimeError(
                         f"Process {p.pid} ({a.__class__.__name__}) was forcefully killed after not responding to SIGTERM."))
+                    self._mark_actor_done(ap)
                     force_kill_count += 1
             if force_kill_count > 0:
                 jaxns_logger.info(
                     f"{force_kill_count} of {len(self.actor_procs)} actors failed to forceful termination... Killed them.")
             self._maybe_aggregate_profiles()
+            self._close_unlocked()
 
     def _cleanup(self, signum, frame):
         """
