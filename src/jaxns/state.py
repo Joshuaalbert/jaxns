@@ -13,11 +13,11 @@ from jaxns.log_semiring import LogSpace, normalise_log_space
 from jaxns.mixed_precision import mp_policy
 from jaxns.model import Model
 from jaxns.pytree import PureDataclassPytree
+from jaxns.results import NestedSamplerResults
 from jaxns.samples import Samples, UType
 from jaxns.stats_utils import linear_to_log_stats, effective_sample_size_kish
 from jaxns.termination_condition import TerminationRegister
 from jaxns.types import IntArray, FloatArray
-from jaxns.results import NestedSamplerResults
 
 
 @dataclasses.dataclass(slots=True)
@@ -28,6 +28,8 @@ class State(PureDataclassPytree):
 
     log_L_supremum: FloatArray  # scalar, the maximum likelihood value seen so far, used for termination conditions and evidence calculation
     U_supremum: UType
+
+    goal_loop_iter: IntArray  # scalar, how many outer loop iterations have been done, each until a target depth condition.
 
     termination_reason: IntArray
 
@@ -88,19 +90,16 @@ class State(PureDataclassPytree):
         """
         return _sample_logZ(self, key, num_samples)
 
-    def compute_termination_register(self, target_num_live_points: int) -> TerminationRegister:
+    def compute_termination_register(self) -> TerminationRegister:
         """
         Compute the termination register, which contains all the information needed to evaluate the termination condition, and to compute the evidence if the run is terminated.
-
-        Args:
-            target_num_live_points: the number of live points to use off root, which is needed to compute the evidence shrinkage and efficiency shrinkage.
 
         Returns:
             a TerminationRegister containing all the information needed to evaluate the termination condition, and to compute the evidence if the run is terminated.
         """
-        return _compute_termination_register(self, target_num_live_points)
+        return _compute_termination_register(self)
 
-    def to_result(self: NestedSamplerResults) -> NestedSamplerResults:
+    def to_result(self) -> NestedSamplerResults:
         """
             Convert the current state to a NestedSamplerResults object, which contains all the information about the samples, evidence, and diagnostics.
 
@@ -109,10 +108,24 @@ class State(PureDataclassPytree):
         """
         return _to_result(self)
 
-
+    def trim(self) -> "State":
+        """
+        Trims to the number of samples.
+        
+        Returns:
+            the sample object but with no extra sample space
+        """
+        return _trim(self)
 
 
 State.register_pytree()
+
+
+@partial(jax.jit, inline=True)
+def _trim(self: State) -> State:
+    num_samples = int(self.num_samples)
+    return dataclasses.replace(self, samples=self.samples.slice(0, num_samples), num_samples=num_samples)
+
 
 @partial(jax.jit, inline=True)
 def _to_result(self: State) -> NestedSamplerResults:
@@ -120,13 +133,15 @@ def _to_result(self: State) -> NestedSamplerResults:
     total_num_samples = self.num_samples.astype(mp_policy.count_dtype)
     sample_mask = jnp.arange(max_samples) < total_num_samples
     evidence_calc, cum_evidence_calc = self.evaluate_evidence()
-    log_Z_mean, log_Z_var = linear_to_log_stats(evidence_calc.Z_mean.log_abs_val, log_f2_mean=evidence_calc.Z2_mean.log_abs_val)
+    log_Z_mean, log_Z_var = linear_to_log_stats(evidence_calc.Z_mean.log_abs_val,
+                                                log_f2_mean=evidence_calc.Z2_mean.log_abs_val)
     log_Z_uncert = jnp.sqrt(jnp.maximum(0, log_Z_var))
     ess = effective_sample_size_kish(
         evidence_calc.Z_mean.log_abs_val,
         evidence_calc.dZ2_mean.log_abs_val
     )
-    log_dZ_mean = jnp.where(sample_mask, cum_evidence_calc.dZ_mean.log_abs_val, jnp.asarray(-jnp.inf, mp_policy.measure_dtype))
+    log_dZ_mean = jnp.where(sample_mask, cum_evidence_calc.dZ_mean.log_abs_val,
+                            jnp.asarray(-jnp.inf, mp_policy.measure_dtype))
     dp_mean = normalise_log_space(LogSpace(log_dZ_mean))
     # E[log(L) - log(Z)]
     H_mean_instable = (
@@ -141,7 +156,8 @@ def _to_result(self: State) -> NestedSamplerResults:
     H_mean = jnp.where(jnp.isfinite(H_mean_instable), H_mean_instable, H_mean_stable)
     U_samples = self.samples.U_samples
     X_samples = jax.lax.map(lambda u: self.model.transform_to_X(u, args=self.args, params=self.params), U_samples)
-    X_samples = jax.tree.map(lambda x: jnp.where(sample_mask.reshape([-1] + [1] * (len(x.shape) - 1)), x, 0.), X_samples)
+    X_samples = jax.tree.map(lambda x: jnp.where(sample_mask.reshape([-1] + [1] * (len(x.shape) - 1)), x, 0.),
+                             X_samples)
     log_L = self.samples.log_likelihoods
     log_dp = dp_mean.log_abs_val
     log_X_mean = cum_evidence_calc.X_mean.log_abs_val
@@ -149,7 +165,8 @@ def _to_result(self: State) -> NestedSamplerResults:
         lambda u: self.model.log_prior(u, args=self.args, params=self.params), U_samples
     ) - log_Z_mean
     log_posterior_density = jnp.where(sample_mask, log_posterior_density, -jnp.inf)
-    num_live_points_per_sample = self.samples.compute_num_live_points_per_sample(root_out_degree=self.root_out_degree, num_samples=self.num_samples)
+    num_live_points_per_sample = self.samples.compute_num_live_points_per_sample(root_out_degree=self.root_out_degree,
+                                                                                 num_samples=self.num_samples)
     num_likelihood_evaluations_per_sample = self.samples.num_likelihood_evaluations.astype(mp_policy.count_dtype)
     total_phantom_samples = jnp.sum(self.samples.phantom_samples.valid_mask).astype(mp_policy.count_dtype)
     total_num_likelihood_evaluations = jnp.sum(num_likelihood_evaluations_per_sample)
@@ -197,21 +214,26 @@ def _to_result(self: State) -> NestedSamplerResults:
         valid_phantom=valid_phantom
     )
 
+
 @partial(jax.jit, inline=True)
 def _merge(self: State, other: State) -> 'State':
-    assert jax.tree.structure(self.model) == jax.tree.structure(other.model), "Cannot merge states with different models"
+    assert jax.tree.structure(self.model) == jax.tree.structure(
+        other.model), "Cannot merge states with different models"
     assert jax.tree.structure(self.args) == jax.tree.structure(other.args), "Cannot merge states with different args"
-    assert jax.tree.structure(self.params) == jax.tree.structure(other.params), "Cannot merge states with different params"
+    assert jax.tree.structure(self.params) == jax.tree.structure(
+        other.params), "Cannot merge states with different params"
     return State(
         root_out_degree=self.root_out_degree + other.root_out_degree,
         samples=self.samples.concat(other.samples),
         num_samples=self.num_samples + other.num_samples,
         log_L_supremum=jnp.maximum(self.log_L_supremum, other.log_L_supremum),
-        U_supremum=jax.tree.map(lambda x, y: jnp.where(self.log_L_supremum >= other.log_L_supremum, x, y), self.U_supremum, other.U_supremum),
+        U_supremum=jax.tree.map(lambda x, y: jnp.where(self.log_L_supremum >= other.log_L_supremum, x, y),
+                                self.U_supremum, other.U_supremum),
         termination_reason=jnp.where(self.termination_reason != 0, self.termination_reason, other.termination_reason),
+        goal_loop_iter=other.goal_loop_iter + self.goal_loop_iter,
         model=self.model,
         args=self.args,
-        params=self.params
+        params=self.params,
     )
 
 
@@ -230,10 +252,12 @@ def _determine_parent_graph(self: State):
         y = (next_parent_idx, child_node_idx)
         remaining_out_degrees = remaining_out_degrees - 1
         next_parent_idx = jnp.where(remaining_out_degrees <= 0, next_parent_idx + 1, next_parent_idx)
-        remaining_out_degrees = jnp.where(remaining_out_degrees <= 0, samples.out_degree[next_parent_idx], remaining_out_degrees)
+        remaining_out_degrees = jnp.where(remaining_out_degrees <= 0, samples.out_degree[next_parent_idx],
+                                          remaining_out_degrees)
         return (next_parent_idx, remaining_out_degrees), y
 
-    _, parent_edges = scan_or_while_loop(scan_fn, carry_init, (jnp.arange(self.samples.log_likelihoods.shape[0]),), length=self.num_samples, unroll=1)
+    _, parent_edges = scan_or_while_loop(scan_fn, carry_init, (jnp.arange(self.samples.log_likelihoods.shape[0]),),
+                                         length=self.num_samples, unroll=1)
     return parent_edges
 
 

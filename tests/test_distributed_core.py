@@ -14,7 +14,7 @@ from jaxns.fabric.node import RemoteNodeEvaluator, build_scheduler_process_manag
 from jaxns.fabric.process_manager import create_random_ack_address, create_random_control_address
 from jaxns.fabric.zmq_p2p import get_free_port
 from jaxns.samples import SeedPoint
-from jaxns.termination_condition import TerminationCondition
+from jaxns.termination_condition import DepthCondition
 from tests.distributed_support import QuadraticEvaluator, make_quadratic_node, make_toy_model
 
 
@@ -79,7 +79,7 @@ def test_distributed_nested_sampler_run_returns_valid_state_and_result():
         target_num_live_points=8,
         max_samples=24,
         shell_size=4,
-        termination_condition=TerminationCondition(max_samples=24),
+        termination_condition=DepthCondition(max_samples=24),
         store_phantom_samples=True,
     )
 
@@ -122,7 +122,7 @@ def test_distributed_nested_sampler_matches_non_distributed_results():
         target_num_live_points=8,
         max_samples=24,
         shell_size=4,
-        termination_condition=TerminationCondition(max_samples=24),
+        termination_condition=DepthCondition(max_samples=24),
         store_phantom_samples=True,
     )
     distributed_ns = NestedSamplerDistributed(
@@ -131,7 +131,7 @@ def test_distributed_nested_sampler_matches_non_distributed_results():
         target_num_live_points=8,
         max_samples=24,
         shell_size=4,
-        termination_condition=TerminationCondition(max_samples=24),
+        termination_condition=DepthCondition(max_samples=24),
         store_phantom_samples=True,
     )
 
@@ -193,7 +193,7 @@ def test_distributed_nested_sampler_runs_over_remote_node_evaluator():
                 target_num_live_points=4,
                 max_samples=8,
                 shell_size=2,
-                termination_condition=TerminationCondition(max_samples=8),
+                termination_condition=DepthCondition(max_samples=8),
             )
             state = ns.run(jax.random.PRNGKey(2))
 

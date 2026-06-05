@@ -82,7 +82,7 @@
 \newcommand{\ind}{\mathbf{1}}
 \newcommand{\Exp}{\mathrm{Exp}}
 \newcommand{\Beta}{\mathrm{Beta}}
-\newcommand{\Dir}{\mathrm{Dir}}
+\newcommand{\Dir}{\mathrm{Dirichlet}}
 \newcommand{\Unif}{\mathrm{Uniform}}
 \newcommand{\logit}{\mathrm{logit}}
 
@@ -99,11 +99,15 @@
 
 \begin{document}
 
-\title[Phantom-Boosted Nested Sampling]{Phantom-Boosted Nested Sampling}
+\title[Phantom-Conditioned Nested Sampling]{Phantom-Conditioned Nested Sampling}
 
-\author*[1]{\fnm{Joshua G.} \sur{Albert}}\email{albert@strw.leidenuniv.nl}
+\author*[1,2]{\fnm{Joshua G.} \sur{Albert}}\email{albert@strw.leidenuniv.nl}
 
-\affil*[1]{\orgdiv{Leiden Observatory}, \orgname{Leiden University}, \orgaddress{\street{PO Box 9513}, \city{Leiden}, \postcode{2300}, \country{The Netherlands}}}
+
+
+\affil[1]{\orgdiv{Leiden Observatory}, \orgname{Leiden University}, \orgaddress{\street{PO Box 9513}, \city{Leiden}, \postcode{2300}, \country{The Netherlands}}}
+
+\affil[2]{\orgdiv{Department of Astronomy}, \orgname{California Institute of Technology}, \orgaddress{\postcode{CA 91125}, \city{Pasadena},  \country{USA}}}
 
 \abstract{
 Nested sampling estimates the evidence by assigning prior volumes to an ordered sequence of likelihood contours.
@@ -114,7 +118,7 @@ We then present the open-source software package, JAXNS v3, and its implementati
 We validate JAXNS on difficult evidence and posterior-estimation benchmarks for accuracy and performance.
 }
 
-\keywords{Nested Sampling, Bayesian evidence, order statistics, exponential races, Monte Carlo, Markov-chain}
+\keywords{Nested Sampling, Bayesian evidence, order statistics, exponential races, Monte Carlo, Markov-chain, phantom samples}
 
 \maketitle
 
@@ -152,7 +156,7 @@ The contributions are as follows.
     \item First, we formulate NS shrinkage as exponential races of lineages, introducing the \textit{race tree}, which leads to a simplified dynamic nested sampling formulation.
     \item Second, we present a Bayesian formalism for NS which handles plateaus.
     \item Third, we introduce phantom-conditioned NS.
-    \item Finally, we present JAXNS v3, an open-source implementation of phantom-boosted NS.
+    \item Finally, we present JAXNS v3, an open-source implementation of phantom-conditioned NS.
 \end{itemize}
 
 The paper is structured in the following order.
@@ -197,7 +201,7 @@ Nested sampling quadrature estimates the evidence as,
 \end{align}
 The likelihood levels in Eq.~\ref{eq:strict_likelihooods} are an arbitrary \textit{schedule} of values, and the goal of NS is to assign each level $\lambda_g$ a random variable $X_g$ with known distribution.
 We call the subscript $g$ the \textit{block index}.
-In addition, an auxiliary output of NS is a set of weighted samples drawn from the posterior, with weights,
+In addition, an auxiliary output of NS is a set of weighted samples drawn from the posterior, with unnormalised weights,
 \begin{align}
     w_g \triangleq \lambda_g\, (X_{g-1}-X_g),\label{eq:post_weight_cont}
 \end{align}
@@ -236,21 +240,21 @@ The sentinel must have out-degree $d_0 > 0$ in order for the race tree to not be
 
 The crucial observation in NS is that a single sample generated from a parent $p(i) \to i$ shrinks the prior volume uniformly,
 \begin{align}
-    r_{p(i) \to i} \sim&\, \mathcal{U}[0,1]\\
+    r_{p(i) \to i} \triangleq \frac{X_{\lambda_{i}}}{X_{\lambda_{p(i)}}} \sim&\, \mathcal{U}[0,1]\\
     -\log r_{p(i) \to i} \sim&\, \mathrm{Exp}(1).
 \end{align}
-Define \textit{race time} $s \triangleq -\log X$ and \textit{race rank} $r=\exp -s$, and interpret the race tree as a set of lineages equipped with unit-rate clocks incrementally racing from one sample to the next sample.
+Define \textit{race time} $s \triangleq -\log X$ and \textit{race rank} $r\triangleq \exp -s$, and interpret the race tree as a set of lineages equipped with unit-rate clocks incrementally racing from one sample to the next sample.
 For any race $i-1 \to i$ there are $K_i$ active racing lineages.
 We have that the race time for $i-1 \to i$ is,
 \begin{align}
     s_{i-1 \to i} \sim& \mathrm{Exp}(K_i)\label{eq:race_increment}\\
-    r_{i-1 \to i} \triangleq& e^{-s_{i-1 \to i}}.\label{eq:beta_shrinkage}
+    r_{i-1 \to i} =& e^{-s_{i-1 \to i}}.\label{eq:beta_shrinkage}
 \end{align}
 As is well-known, $r_{i-1 \to i} \sim \mathrm{Beta}(K_i, 1)$.
 
 We start off with $K_1 = d_0$.
 After the race $i-1 \to i$ is done, that lineage segment $p(i) \to i$  terminates and $d_i$ child lineage segments begin at the corresponding strict contour.
-The active lineage count therefore updates as
+The active lineage count therefore updates as,
 \begin{align}
     K_{i+1} = K_i - 1 + d_{i}.\label{eq:K_recursion}
 \end{align}
@@ -267,7 +271,7 @@ Then $s_{i-1\to i}\sim\Exp(K_i)$, and afterwards the rate update is updated by E
 \begin{proof}
 The minimum of independent exponential clocks is exponential with rate equal to the sum of the rates.
 Once the arriving sample $i$ is observed, its lineage segment no longer contributes to the next segment of the race and its $d_i$ child lineage segments begin.
-This changes the active rate by $-1+d_i$, giving Eq.~\ref{eq:K_recursion}.
+This changes the active lineage count by $-1+d_i$, giving Eq.~\ref{eq:K_recursion}.
 \end{proof}
 
 In classic races there are no ties, however in the presence of a plateau, $m_g>1$, we have do have ties.
@@ -277,7 +281,8 @@ It can easily shown that the final sample in the plateau has known rank,
 \begin{align}
     r^{(m_g)}_{g-1 \to g} \sim\, \mathrm{Beta}(K_g - m_g + 1, m_g),\label{eq:end_block_dist}
 \end{align}
-however since all plateau samples are necessarily inside the atom, we have that $r^{(m_g)}_{g-1 \to g} \neq r_{g-1 \to g}$ almost surely.
+however since all plateau samples are strictly inside the atom none of them correspond exactly to the end of the block, i.e. we have that $r^{(m_g)}_{g-1 \to g} \neq r_{g-1 \to g}$ almost surely.
+This poses a problem because in order for shrinkage to proceed we need to know the race rank at the exact end of a block.
 This is depicted in Figure~\ref{fig:censor}.
 
 It will be helpful to define the following quantities,
@@ -300,7 +305,7 @@ We call this loss of knowledge \textit{plateau censorship}.
 \begin{figure*}[ht]
     \centering
     \includegraphics[width=0.9\linewidth]{images/censor.drawio.pdf}
-    \caption{The presence of an atom $L=L_g$ causes us to to lose exact knowledge of $p_{>g}$, since $r^{(m_g)}_{g-1 \to g} \in [p_{>g}, p_{>g} + p_{=g}]$. The atom can be seen as an interval in race rank just before finishing the race where samples loose identity.}
+    \caption{The presence of an atom $L=L_g$ causes us to to lose exact knowledge of $p_{>g}$, since $r^{(m_g)}_{g-1 \to g} \in [p_{>g}, p_{>g} + p_{=g}]$. The atom can be seen as an interval in race rank just before finishing the race where samples loose identity. None of the samples within the atom correspond exactly with the end of the block, whereas when $m_g=1$ it is exactly equivalent to the rank of the end of the block.}
     \label{fig:censor}
 \end{figure*}
 
@@ -326,14 +331,14 @@ These are independent categorical observations, therefore the likelihood of $p_g
 \end{align}
 We set a Dirichlet prior,
 \begin{align}
-    p(p_g) = \mathrm{Dir}(1, \epsilon_g, 1 - \epsilon_g),
+    p(p_g) = \mathrm{Dirichlet}(1, \epsilon_g, 1 - \epsilon_g),
 \end{align}
 which can be done be identifying the marginal of the Dirichlet, $\mathrm{Beta}(a_i, \sum_{j \neq i} a_j)$, with uniform shrinkage prior, $\mathcal{U}[0,1] \equiv \mathrm{Beta}(1, 1)$.
 The variable $\epsilon_g$ is a free parameter and should represent our belief of $\E[p_{=g}/(1 - p_{>g})]$.
 A fairly neutral choice would be, if $m_g=1$ then set $\epsilon_g=10^{-6}$, or else set $\epsilon_g=1/2$ if $m_g>1$.
 Using conjugacy of the Dirichlet and multinomial distributions the posterior becomes exactly,
 \begin{align}
-    &p_g \mid K_g, m_g \sim\, \mathrm{Dir}(a_{>g}, a_{=g}, a_{<g}),\\
+    &p_g \mid K_g, m_g \sim\, \mathrm{Dirichlet}(a_{>g}, a_{=g}, a_{<g}),\label{eq:post_pg}\\
     &a_{>g}= K_g - m_g + 1,\\
     &a_{=g}= m_g + \epsilon_g,\\
     &a_{<g}= 1 - \epsilon_g
@@ -366,67 +371,84 @@ whereas the posterior mass assigned to a non-plateau sample, mirroring Eq.~\ref{
 We are now equipped to use information from phantom samples to improve shrinkage.
 Let $\mathcal{P}_i$ be phantom samples associated with sample $i$, which we'll call a \textit{cluster} of phantom samples.
 They are correlated draws from $\pi_{\lambda_{p(i)}}$ produced in the process of realising sample $i$.
-Typically, this is because a Markov chain Monte Carlo (MCMC) approach is used to produce iid samples from $\pi_{\lambda_{p(i)}}$.
-Phantom samples are not independent, and thus cannot participate in the race tree, however we are perfectly well allowed to use them to construct unbiased MC estimates of expectations under $\pi_{\lambda_{p(i)}}$.
+Typically, this is because a Markov chain approach is used to produce iid samples from $\pi_{\lambda_{p(i)}}$.
+Since phantom samples are not independent they cannot participate in the race tree, however we are perfectly well able to use them to construct consistent unbiased MC estimates of expectations under $\pi_{\lambda_{p(i)}}$.
+We thus seek a procedure for sampling from $p_g \mid K_g, m_g, \bigcup_i \mathcal{P}_i$.
 
-Let the set of all phantom samples be $\mathcal{P} = \bigcup_i \mathcal{P}_i$ and define counts,
-\begin{align}
-    A_{g} =&\, \sum_{(x, L) \in \mathcal{P}} \mathbf{1}\{L(x) > L_{g-1}\}\\
-    B_{g} =&\, \sum_{(x, L) \in \mathcal{P}} \mathbf{1}\{L(x) > L_{g}\}\mathbf{1}\{L(x) > L_{g-1}\}\\
-    E_{g} =&\, \sum_{(x, L) \in \mathcal{P}} \mathbf{1}\{L(x) = L_{g}\} \mathbf{1}\{L(x) > L_{g-1}\}.
-\end{align}
-then an MC estimate of $p_g$ is,
-\begin{align}
-    \hat{p}_{g} =& \left(\frac{B_g}{A_g}, \frac{E_g}{A_g}, \frac{A_g - B_g - E_g}{A_g}\right).
-\end{align}
-Now, if the phantom points were independent draws then the observable $A_g \hat{p}_g$ would satisfy the multinomial likelihood.
-However, they are not independent.
-Let use propose instead that there are $A^{\rm eff}_{g} = \rho_g A_g$ effective samples, with $0 < \rho_g \le 1$, and that we can use the multinomial likelihood for $A^{\rm eff}_{g} \hat{p}_g$.
-Then following the same logic as above we get,
-\begin{align}
-    &p_g \mid K_g, m_g, \rho_g, \mathcal{P} \sim\, \mathrm{Dir}(b_{>g}, b_{=g}, b_{<g}),\\
-    &b_{>g}= K_g - m_g + 1 + \rho_g B_g,\\
-    &b_{=g}= m_g + \epsilon_g + \rho_g E_g,\\
-    &b_{<g}= 1 - \epsilon_g + \rho_g (A_g - B_g - E_g)
-\end{align}
-and the posterior marginals for $p_{>g}$ and $p_{=g}$ follow as in Eqs.~\ref{eq:posterior_pg} and \ref{eq:posterior_pe}.
+An important assumption we make is that phantom samples \textit{between} clusters are approximately independent, which is justified since initial chain points are randomly selected, while within-cluster phantom samples are allowed to be arbitrarily correlated.
+In fact, it's possible to redefine phantom clusters as any disjoint decomposition of phantom samples where each cluster is drawn from within the same parent, and samples from different clusters are independent.
+As will be shown below, it is best to make clusters as small as possible such that this is true.
+Hence, if a single cluster can be split into two disjoint clusters where independence between the two clusters is approximately true, then it is favourable from the perspective of information utilisation to do this.
 
-The role of $\rho_g$ is to make the effective multinomial likelihood reproduce the variance of the actual correlated phantom estimator.
-Thus, if the phantom samples are iid, then $\rho_g=1$, and for correlated Markov-chain phantom samples, $\rho_g<1$, with inflated multinomial covariance.
-We estimate this inflation by bootstrap to take into account the correlation between phantom samples both within and between clusters.
-We resample with replacement phantom clusters, compute the empirical covariance of $\hat p_g$, and match it to the analytic iid multinomial covariance.
+Lets define, per cluster $c$, block interval counts,
+\begin{align}
+    A_{cg} =&\, \sum_{(x, L) \in \mathcal{P}_c} \mathbf{1}\{L(x) > L_{g-1}\} \mathbf{1}\{L_{p(c)} \le L_{g-1}\}\\
+    B_{cg} =&\, \sum_{(x, L) \in \mathcal{P}_c} \mathbf{1}\{L(x) > L_{g}\} \mathbf{1}\{L_{p(c)} \le L_{g-1}\}\\
+    E_{cg} =&\, \sum_{(x, L) \in \mathcal{P}_c} \mathbf{1}\{L(x) = L_{g}\} \mathbf{1}\{L_{p(c)} \le L_{g-1}\}.
+\end{align}
+Then an MC estimate of $p_g$ is,
+\begin{align}
+    \hat{p}_{g} =& \frac{\sum_c \left( B_{cg}, E_{cg}, A_{cg} - B_{cg} - E_{cg}\right)^\top}{\sum_c A_{cg}}.
+\end{align}
+Now, if the phantom samples were independent then the observable $\sum_c A_{cg} \hat{p}_g$ would satisfy the multinomial likelihood.
+In this case, the exact same machinery as in Section~\ref{sec:bayesian_shrinkage} could be used, and phantom-conditioned posterior shrinkage would be a Dirichlet distribution.
+However, as they are not independent the posterior has no closed form.
 
-Since $|p_g|=1$ there are really only two degrees of freedom, so we consider the covariance of the first two components.
-Let $q_g=(\hat p_{>g},\hat p_{=g})^\top$, and let $\widehat\Sigma_g^{\rm boot}$ be the covariance of $q_g$ under cluster bootstrap.
-The analytic model covariance is,
+We attempted initially to try to use a multinomial likelihood with an effective count model, however effective count is hard to infer and wrongly takes into account correlations in joint shrinkage.
+This led to underestimated log-evidence variance.
+
+We instead propose an MC based approach that approaches the Dirichlet posterior in the limit of independent Phantom samples.
+To do this we will use the gamma construction of Dirichlet random variables to rewrite the race-induced posterior, Eq.~\ref{eq:post_pg},
 \begin{align}
-\widehat\Sigma_g =
-\frac{1}{A_g}\begin{pmatrix}
-\hat p_{>g}(1-\hat p_{>g}) & -\hat p_{>g}\hat p_{=g}\\
--\hat p_{>g}\hat p_{=g} & \hat p_{=g}(1-\hat p_{=g})
-\end{pmatrix}.
+    M_{>g} \sim&\, \mathrm{Gamma}(a_{>g}, 1)\\
+    M_{=g} \sim&\, \mathrm{Gamma}(a_{=g}, 1)\\
+    M_{<g} \sim&\, \mathrm{Gamma}(a_{<g}, 1)\\
+    \frac{(M_{>g}, M_{=g}, M_{<g})^\top}{M_{>g} + M_{=g} + M_{<g}} \sim&\, \mathrm{Dirichlet}(a_{>g}, a_{=g}, a_{<g}).\label{eq:gamma_dir}
 \end{align}
-The iid covariance would be $\widehat\Sigma_g$, while the effective-count model predicts $\widehat\Sigma_g/\rho_g$.
-Thus using that $\mathrm{tr}(\mathbf{A}^+\mathbf{A}) = \mathrm{rank}(\mathbf{A})$ we propose an estimator,
+Now consider how we would condition on iid phantom samples.
+In this case, we would decompose each phantom cluster into singletons, since this would be the most irreducible decomposition that maintains inter-cluster independence.
+Then, we would have that $A_{cg}, B_{cg}, E_{cg} \in \{0, 1\}$, that is each cluster would contribute at most one count observation to each block.
+Define a cluster weight $v_c$ and then define,
 \begin{align}
-\hat\rho_g
-=
-\frac{\mathrm{rank}(\widehat\Sigma_g)}
-{\mathrm{tr}\left(\widehat\Sigma_g^{+}\widehat\Sigma_g^{\rm boot}\right)},
+    M'_{>g} =& M_{>g} + \sum_c v_c B_{cg}\\
+    M'_{=g} =& M_{=g} + \sum_c v_c E_{cg}\\
+    M'_{<g} =& M_{<g} + \sum_c v_c A_{cg}\\
+    p_g =& \frac{(M'_{>g}, M'_{=g}, M'_{<g})^\top}{M'_{>g} + M'_{=g} + M'_{<g}}.
 \end{align}
-where ${}^+$ means Moore-Penrose inverse.
-Since individual $\hat\rho_g$ values are noisy, a better approach is to fit a low-order function approximator against normalised race time,
+Using additivity of identical-scale gamma random variables, we can then identify the natural cluster weight as,
 \begin{align}
-    \rho_g=c_0 + c_1\frac{s_g}{s_G} + c_2\left(\frac{s_g}{s_G}\right)^2.
+    v_c \sim\, \mathrm{Gamma}(1, 1).
 \end{align}
+With this choice, singleton clusters would exactly produce the Dirichlet posterior.
+
+Now, consider what happens when cluster sizes are not singleton, that is we have irreducible correlation structure.
+In this case, the gamma's do not add as the scales are not identical.
+Under multiplication gamma variance scales quadratically, compared to linearly under addition, whereas the mean scales linearly under both multiplication and addition.
+Thus, the net effect of correlated clusters is to inflate variance, while preserving the mean, which is precisely what we expect correlation to do.
+
+An important well-known consideration for conditioning on MC counts is that there should be enough independent counts to properly capture the variance of outcomes.
+This why using sparsely populated histograms to draw conclusions is a bad idea.
+We impose a minimum participating cluster count criterion in order for a block to condition on phantom count information.
+Specifically, we use a Kish-like quantity to measure effective participating cluster count,
+\begin{align}
+    C^{\rm Kish}_g = \frac{\left(\sum_c A_{cg}\right)^2}{\sum_c A_{cg}^2},
+\end{align}
+and then define a minimum threshold for condition, say $C_{\rm min} = 20$, and hence,
+\begin{align}
+    M'_{>g} =& M_{>g} + \mathbf{1}\{C^{\rm Kish}_g \ge C_{\rm min}\} \sum_c v_c B_{cg}\\
+    M'_{=g} =& M_{=g} + \mathbf{1}\{C^{\rm Kish}_g \ge C_{\rm min}\} \sum_c v_c E_{cg}\\
+    M'_{<g} =& M_{<g} + \mathbf{1}\{C^{\rm Kish}_g \ge C_{\rm min}\} \sum_c v_c A_{cg}\\
+    p_g =& \frac{(M'_{>g}, M'_{=g}, M'_{<g})^\top}{M'_{>g} + M'_{=g} + M'_{<g}}.
+\end{align}
+This provides a consistent generative shrinkage model that properly takes into account the race tree and phantom samples.
+The shrinkage at block $g$ is the the component $p_{>g}$, while the plateau atom size is $p_{=g}$.
+It is simple to calculate as the per-cluster counts are computed once, and then each draw from the joint posterior is just a set of draws from gamma distributions followed by reduction.
 
 Phantom-conditioning requires retained phantom states to be stationary enough that their marginal expectation under the parent contour is correct.
 The above formulation cannot correct for non-stationary phantom samples, thus a burn-in is suggested before collecting phantoms.
 
 
 \section{JAXNS v3 implementation}\label{sec:v3}
-% Dynamic structure
-
 
 The race tree permits new children to be generated from within any existing sample contour.
 This decouples correct lineage counting from the strategy of sample generation, and allows us to explore optimal allocation targets as an experimental design question.
@@ -512,10 +534,10 @@ Recalling the posterior shell masses, Eq.~\ref{eq:post_weight_cont}, let us use 
 \end{align}
 If a new sample lands in shell $h$, it splits the shell into two sub-shells.
 In this case $W$ is unchanged under additivity, and only $Q$ changes.
-Writing $u\sim\mathcal{U[0, 1]}$ for the fraction of the shell mass assigned to the lower sub-shell, the old contribution $w_h^2$ to $Q$ is replaced by $u^2 w_h^2+(1-u)^2 w_h^2$.
+Writing $u\sim\,\mathcal{U}[0, 1]$ for the fraction of the shell mass assigned to the lower sub-shell, the old contribution $w_h^2$ to $Q$ is replaced by $u^2 w_h^2+(1-u)^2 w_h^2$.
 Thus,
 \begin{align}
-    \mathrm{ESS}^{\rm Kish}_{h}
+    \mathrm{ESS}^{\rm Kish}_{h}(u)
     =\frac{W^2}{Q - 2u(1-u)w_h^2}.
 \end{align}
 If we marginalise over $u$ the change of $\mathrm{ESS}^{\rm Kish}$ due to splitting in $h$ we get,
@@ -590,7 +612,7 @@ In order to convert these block utilities into allocation targets we normalise u
 
 \medskip
 \Statex \textbf{Note 1:} For a parent, if there are no possible seeds from it, i.e. due to a plateau, then we change the parent to $0$ (the sentential).
-\Statex \textbf{Note 2:} We do not need to keep track of parents for each sample, since the algorithm only needs to know out-degree. If parent blocks were desired, they can be uniquely reconstructed from sorted likelihoods and out-degrees.
+\Statex \textbf{Note 2:} We do not need to keep track of parents for each sample, since the algorithm only needs to know out-degree. If parent blocks were desired, they could be uniquely reconstructed from sorted likelihoods and out-degrees.
 \end{algorithmic}
 \label{algo:jaxns}
 \end{algorithm}
@@ -631,24 +653,24 @@ In choosing $\mathcal{D}$, JAXNS makes available two choices: an isotropic Gauss
 For the later, a Gaussian mixture model of the posterior is constructed based on samples collected so far.
 The distribution $\mathcal{D}$ first samples a Gaussian component proportional to its integrated volume, and then samples the direction from that Gaussian.
 
-Concerning the construction of the trajectory, and sampling from it, there are two available methods in JAXNS.
-The first is perfect bracketing along a straight line, where the endpoints are chosen to be intersection with the bounds of the unit-hypercube representing the prior homogeneous measure.
+Concerning the construction of the trajectory for a single step in the chain, and sampling from it, there are two available methods in JAXNS.
+The first is perfect bracketing along a straight line, where the endpoints are chosen to be the intersection with the bounds of the unit-hypercube representing the prior homogeneous measure.
 This is the maximal interval possible and can be determined without any likelihood evaluations.
 Constrained sampling along this trajectory proceeds with uniform sampling and greedy trajectory shrinkage which exponentially contracts towards the current chain point, where the slice is necessarily satisfied.
-This approach trades off the zero-cost interval selection with extra likelihood evaluations to shrink the slice.
+This approach trades off the zero-cost trajectory determination with extra likelihood evaluations to uniformly sample the trajectory.
 However, in our experience this extra cost is negligible, and is compensated by better prior exploring.
 One problem with this approach is that it can lead to increased chance of mode evaporation, since a chain can easily move between modes.
 The probability of tunnelling between modes depends on the geometry of the problem, and can be ameliorated by the adaptive lineage allocation.
 Depth-first uniform growth in particular can rediscover modes.
 
 Another method of placing and sampling the trajectory is to use Galilean sampling, where Hausdorff reflections off the hard likelihood constraints are used to preserve reversibility, and thus detailed balance, and keep the trajectory inside the slice.
-The trajectory is constructed a from the seed point $x^i$ in both directions $\hat{n}$ and $-\hat{n}$ until the momentum vector is anti-aligned with the initial direction, a so-called \textit{U-turn}.
-Algorithm~\ref{algo:galilean} describes creating a single side of the trajectory from a seed point in one direction.
-The full trajectory is generally non-straight, that bounces off the hard boundary constraints.
-Since the trajectory \textit{should} fall within the slice, uniform sampling without trajectory shrinkage is used.
+The trajectory is constructed from the seed point $x^i$ in both directions $\hat{n}$ and $-\hat{n}$ until the momentum vector is anti-aligned with the initial direction, a so-called \textit{U-turn}.
+Algorithm~\ref{algo:galilean} describes creating a single leg of the trajectory from an initial point in one direction.
+The full trajectory is generally non-straight and bounces off the hard boundary constraints.
+Since the trajectory \textit{should} be contained within the slice, uniform sampling without trajectory shrinkage is used.
 This is done by selecting a segment of the trajectory proportionally to segment length, and then uniform sampling a point in the segment.
 \begin{algorithm}
-\caption{Galilean single-side trajectory building by bracketing the contour endpoint and Hausdorff reflecting from the inner point until a U-turn.}
+\caption{Galilean single-leg trajectory building by bracketing the contour endpoint and Hausdorff reflecting from the inner point until a U-turn.}
 \begin{algorithmic}[1]
 \Require Contour $\lambda$, initial point $x^0$ with $L(x^0) >\lambda$, initial direction $\hat{n}^0$ with $|\hat{n}^0| = 1$, initial step-size $\Delta t$.
 \State Set $i=0$.
@@ -656,33 +678,38 @@ This is done by selecting a segment of the trajectory proportionally to segment 
     \State Propose step forward $x' \to x^i + \Delta t \hat{n}^i$.
     \If{$L(x') \le \lambda$} \hfill\textit{Backtrack into contour}
         % backtrack until inside again
-        \State Set $\Delta t \to \Delta t/2$.
-        \State Propose step back $x' \to x^i + \Delta t \hat{n}^i$
+        % \State Set $\Delta t \to \Delta t/2$.
+        % \State Propose step back $x' \to x^i + \Delta t \hat{n}^i$
         \While{$L(x') \le \lambda$}
             \State Adapt step-size $\Delta t \to \Delta t / 2$.
             \State Propose step back, $x' \to x^i + \Delta t \hat{n}^i$.
         \EndWhile
         % Now we have a point outside and one inside, reflect from inner
-        \State Reflect $\hat{n}^{i+1} \to \hat{n}^i - 2(\hat{n}^i \cdot \nabla L(x')) \nabla L(x')$.
-        \State Normalise $\hat{n}^{i+1} \to \hat{n}^{i+1}/|\hat{n}^{i+1}|$.
-        \State Set $x^{i+1} \to x'$.
-        \State Set $i \to i+1$.
+        \State Set $x_{\rm in} \to x'$.
+        \State Set $x_{\rm out} \to x' + \Delta t \hat{n}^i$.
     \Else \hfill\textit{Step out of contour}
         % Step further.
-        \State Set $\Delta t \to 2 \Delta t$.
-        \State Set temporary $x'' \to x'$
-        \State Propose step forward $x' \to x^i + \Delta t \hat{n}^i$
         \While{$L(x') > \lambda$}
             \State Adapt step-size $\Delta t \to 2 \Delta t$.
-            \State Set temporary $x'' \to x'$
             \State Propose step forward, $x' \to x^i + \Delta t \hat{n}^i$.
         \EndWhile
         % Now we have a point outside and one inside, reflect from inner
-        \State Reflect $\hat{n}^{i+1} \to \hat{n}^i - 2 (\hat{n}^i \cdot \nabla L(x'')) \nabla L(x'')$.
-        \State Normalise $\hat{n}^{i+1} \to \hat{n}^{i+1}/|\hat{n}^{i+1}|$.
-        \State Set $x^{i+1} \to x''$.
-        \State Set $i \to i+1$.
+        \State Set $x_{\rm in} \to x' - \Delta t \hat{n}^i$.
+        \State Set $x_{\rm out} \to x'$.
     \EndIf
+    % Now uniformly sample edge of slice
+    \State Set $\alpha \sim\, \mathcal{U}[0, 1]$.  \hfill\textit{Uniformly sample edge of slice}
+    \State Set $x' \to x_{\rm in} + \alpha (x_{\rm out} - x_{\rm in})$.
+    \While{$L(x') \le \lambda$}
+        \State Set $x_{\rm out} \to x'$.
+        \State Set $\alpha \sim\, \mathcal{U}[0, 1]$.
+        \State Set $x' \to x_{\rm in} + \alpha (x_{\rm out} - x_{\rm in})$.
+    \EndWhile
+    \State Set $g \to \nabla L(x')$. \hfill\textit{Reflect}
+    \State Reflect $\hat{n}^{i+1} \to \hat{n}^i - 2 (\hat{n}^i \cdot g) g$.
+    \State Normalise $\hat{n}^{i+1} \to \hat{n}^{i+1}/|\hat{n}^{i+1}|$.
+    \State Set $x^{i+1} \to x'$.
+    \State Set $i \to i+1$.
 \EndWhile
 
 \State \Return $(\{x^j : j\in \{0 \ldots i\}\}, \Delta t)$
@@ -696,17 +723,18 @@ This is done by selecting a segment of the trajectory proportionally to segment 
 
 JAXNS is designed for easy heterogeneous parallel and distributed likelihood evaluation scaling from a laptop to clusters with thousands of nodes.
 A central process performs the coordination of the core algorithm, while a set of workers perform likelihood evaluations.
-Workers receive serialized likelihood models and are scheduled by load balancing.
-Communication is achieved with ZMQ, while serialisation is achieved with the Python's `pickle` functionality.
+Workers receive serialized likelihood models and are scheduled by load balancing with overlapping computation.
+Communication is achieved with ZMQ, while serialisation is achieved with the Python's `pickle' functionality.
 Arguments to likelihood model should consist of arbitrarily nested trees of literals and arrays.
 This allows constrained-sampling calls from different parent contours to overlap in wall-clock time.
-The race-tree formulation is key to this asynchronous setting because a completed child only updates the out-degree of its parent which is known before dispatching sample generation.
+The race-tree formulation is key to this asynchronous setting because a completed child only updates the out-degree of its parent which is known before dispatching a batch of sample generation.
 
 
 
 
 \section{Experimental protocol}\label{sec:experiments}
-{\color{red} Josh: The empirical results in this version are placeholders for new JAXNS benchmarks.}
+
+The empirical results in this version are placeholders for new JAXNS benchmarks.
 All reported experiments will average over many independent random seeds.
 They will compare baseline race-tree nested sampling, phantom-conditioned shrinkage, dynamic contour allocation, gradient-informed constrained sampling.
 
@@ -778,8 +806,8 @@ These metrics are kept separate from evidence calibration because a method can i
 
 \section{Conclusions}\label{sec:conclusion}
 
-This paper reformulates NS shrinkage as race lineages, which decouples the selection of contours from the sample generation process.
-We then introduce a rigorous Bayesian model for dealing with plateaus and phantom samples.
+This paper reformulates NS shrinkage as racing lineages, which decouples the shrinkage arithmetic from the sample generation process.
+We then introduce a rigorous Bayesian model for dealing with plateaus and conditioning on phantom samples.
 The endpoint of a plateau is separated from the strict endpoint needed to continue compression, and the Bayesian model is able to account for this.
 Phantom samples supply correlated Monte Carlo observations of constrained-prior probabilities.
 The resulting method uses information that Markov-chain constrained samplers already generate, while preserving the order-statistic law of the classic sequence.

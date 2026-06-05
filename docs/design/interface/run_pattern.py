@@ -9,7 +9,7 @@ from jaxns.model import Model
 from jaxns.phantom_eval import EvidenceSamples
 from jaxns.runtime import LoadBalancerClient
 from jaxns.state import State
-from jaxns.termination_condition import TerminationCondition
+from jaxns.termination_condition import DepthCondition
 
 tfpd = tfp.distributions
 
@@ -31,6 +31,8 @@ model_params: CtxParams = model.init_params(
 def goal_cond(state: State) -> bool:
     result = state.to_result()
     return result.log_Z_uncert < 0.1
+
+
 
 
 # A client for LB is what enables adding workers.
@@ -59,14 +61,14 @@ with LoadBalancerClient(address='local') as lb:
     # by the LB.
     state: State = ns.run_until_goal(
         goal_cond=goal_cond,
-        depth_cond=TerminationCondition(),
+        depth_cond=DepthCondition(),
         allocation_target='uniform'
     )
     # Resuming is possible
     state: State = ns.resume_until_goal(
         state=state,
         goal_cond=goal_cond,
-        depth_cond=TerminationCondition(),
+        depth_cond=DepthCondition(),
         allocation_target='evidence_improving'
     )
     # Results contain expectation based results

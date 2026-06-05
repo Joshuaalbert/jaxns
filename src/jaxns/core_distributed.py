@@ -15,7 +15,7 @@ from jaxns.model import Model
 from jaxns.random_utils import resample_indicies
 from jaxns.samples import PhantomSamples, Samples, SeedPoint
 from jaxns.state import State
-from jaxns.termination_condition import TerminationCondition
+from jaxns.termination_condition import DepthCondition
 
 
 def _map_parallel(items: Iterable[Any], fn, max_workers: int | None):
@@ -140,7 +140,7 @@ def _run_ns_distributed(
     args=(),
     sampler=None,
     params=None,
-    termination_condition: TerminationCondition | None = None,
+    termination_condition: DepthCondition | None = None,
     num_parallel_workers: int | None = None,
 ) -> State:
     while True:
@@ -299,7 +299,7 @@ class NestedSamplerDistributed:
     args: tuple = ()
     params: CtxParams | None = None
     sampler: Any | None = None
-    termination_condition: TerminationCondition | None = None
+    termination_condition: DepthCondition | None = None
     store_phantom_samples: bool = False
     collect_phantom_samples: bool = False
     batch_size: int | None = None
@@ -324,7 +324,7 @@ class NestedSamplerDistributed:
             raise ValueError("max_samples must be >= target_num_live_points.")
         max_samples = jnp.asarray(self.max_samples, dtype=mp_policy.count_dtype)
         if self.termination_condition is None:
-            self.termination_condition = TerminationCondition(dlogZ=1e-2, max_samples=max_samples)
+            self.termination_condition = DepthCondition(dlogZ=1e-2, max_samples=max_samples)
         elif self.termination_condition.max_samples is None:
             self.termination_condition.max_samples = max_samples
         else:
