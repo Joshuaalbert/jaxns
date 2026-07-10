@@ -17,7 +17,6 @@ from jaxns.random_utils import resample_indicies
 from jaxns.types import FloatArray, IntArray, XType
 
 __all__ = [
-    'summary',
     'bruteforce_posterior_samples',
     'bruteforce_evidence',
     'resample',

@@ -29,7 +29,8 @@ class State(PureDataclassPytree):
     log_L_supremum: FloatArray  # scalar, the maximum likelihood value seen so far, used for termination conditions and evidence calculation
     U_supremum: UType
 
-    goal_loop_iter: IntArray  # scalar, how many outer loop iterations have been done, each until a target depth condition.
+    depth_loop_iter: IntArray  # scalar, how many inner loop iterations have been done.
+    goal_loop_iter: IntArray  # scalar, how many outer loop iterations have been done.
 
     termination_reason: IntArray
 
@@ -73,7 +74,7 @@ class State(PureDataclassPytree):
         Evaluate evidence over the current state.
 
         Returns:
-            an evidence calculation, cumulative evdience calculation
+            an evidence calculation, cumulative evidence calculation
         """
         return _evaluate_evidence(self)
 
@@ -231,6 +232,7 @@ def _merge(self: State, other: State) -> 'State':
                                 self.U_supremum, other.U_supremum),
         termination_reason=jnp.where(self.termination_reason != 0, self.termination_reason, other.termination_reason),
         goal_loop_iter=other.goal_loop_iter + self.goal_loop_iter,
+        depth_loop_iter=other.depth_loop_iter + self.depth_loop_iter,
         model=self.model,
         args=self.args,
         params=self.params,
@@ -362,3 +364,44 @@ def _compute_termination_register(state: State, target_num_live_points: int) -> 
     )
 
     return register
+
+def py_sample_shrinkage(log_likelihoods: FloatArray, root_out_degree: IntArray, out_degree: IntArray, num_samples: IntArray):
+    X_i = LogSpace(0.)
+
+    m_i = 0
+
+    logL_g = []
+    m_g = []
+    logL_i = log_likelihoods[0]
+    K_i = root_out_degree
+    K_g = []
+    i_g = []
+    for i in range(1, num_samples):
+        if log_likelihoods[i] > logL_i:
+            i_g.append(i-1)
+            K_g.append(K_i)
+            m_g.append(m_i)
+            logL_g.append(logL_i)
+            m_i = 0
+        m_i += 1
+        K_i += - 1 + out_degree[i]
+        logL_i = log_likelihoods[i]
+    i_g.append(i - 1)
+    K_g.append(K_i)
+    m_g.append(m_i)
+    logL_g.append(logL_i)
+    print(i_g, K_g, m_g, logL_g)
+    return i_g, K_g, m_g, logL_g
+
+def test_py_sample_shrinkage():
+    log_likelihoods = [1,2,2,3]
+    expected_K_g = [2, 1, 0]
+    expected_m_g = [1,2,1]
+    expected_i_g = [0,2,3]
+    logL_g = [1,2,3]
+    root_out_degree = 2
+    out_degree = [1, 1, 0, 0]
+    num_samples = 4
+    py_sample_shrinkage(log_likelihoods, root_out_degree, out_degree, num_samples)
+
+

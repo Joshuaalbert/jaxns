@@ -58,9 +58,6 @@ class Samples(PureDataclassPytree):
     def sort(self) -> 'Samples':
         return _sort(self)
 
-    def perm_sort(self, key) -> 'Samples':
-        return _perm_sort(self, key)
-
     def compute_num_live_points_per_sample(self, root_out_degree: IntArray,
                                            num_samples: IntArray | None = None) -> IntArray:
         return _compute_num_live_points_per_sample(self, root_out_degree, num_samples)
@@ -112,24 +109,6 @@ def _sort(self: Samples) -> Samples:
 
 
 @partial(jax.jit, inline=True)
-def _perm_sort(self: Samples, key) -> Samples:
-    sort_keys = random.randint(
-        key,
-        shape=jnp.shape(self.log_likelihoods),
-        minval=0,
-        maxval=jnp.iinfo(jnp.uint32).max,
-        dtype=jnp.uint32
-    )
-    iota = jnp.arange(len(self.log_likelihoods))
-    (log_likelihoods, _, idxs) = jax.lax.sort(
-        (self.log_likelihoods, sort_keys, iota),
-        is_stable=False, num_keys=2)
-    self = jax.tree.map(lambda x: x[idxs], self)
-    self.log_likelihoods = log_likelihoods
-    return self
-
-
-@partial(jax.jit, inline=True)
 def _compute_num_live_points_per_sample(self: Samples, root_out_degree: IntArray,
                                         num_samples: IntArray | None = None) -> IntArray:
     # Cumulatively apply K[i+1] = K[i] - 1 + d(i)
@@ -169,6 +148,7 @@ def _resize(self: Samples, max_samples: int) -> Samples:
         )
 
     sample_atom = Samples(
+        log_L_constraints=jnp.asarray(jnp.inf, mp_policy.measure_dtype),
         log_likelihoods=jnp.asarray(jnp.inf, mp_policy.measure_dtype),
         out_degree=jnp.asarray(0, mp_policy.count_dtype),
         num_likelihood_evaluations=jnp.asarray(0, mp_policy.count_dtype),

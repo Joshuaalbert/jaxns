@@ -12,7 +12,6 @@ from jaxns.constrained_sampler import AbstractSampler, UniDimSliceSampler
 from jaxns.mixed_precision import mp_policy
 from jaxns.model import Model
 from jaxns.pytree import PureDataclassPytree
-from jaxns.random_utils import resample_indicies
 from jaxns.samples import Samples, SeedPoint, PhantomSamples
 from jaxns.state import State
 from jaxns.termination_condition import DepthCondition
@@ -76,7 +75,8 @@ def _sample_init_state(key, root_degree: int, max_samples: int, model: Model, nu
     def single_sample(key):
         key, subkey = jax.random.split(key)
         U_sample = model.sample_U(subkey)
-        log_L = model.log_likelihood(U_sample, args=args, params=params, allow_nan=False).astype(mp_policy.measure_dtype)
+        log_L = model.log_likelihood(U_sample, args=args, params=params, allow_nan=False).astype(
+            mp_policy.measure_dtype)
         num_likelihood_evaluations = jnp.array(1, dtype=mp_policy.count_dtype)
         carry = (key, U_sample, log_L, num_likelihood_evaluations)
 
@@ -162,9 +162,32 @@ def _sample_init_state(key, root_degree: int, max_samples: int, model: Model, nu
         args=args,
         params=params,
         termination_reason=jnp.array(0, dtype=mp_policy.index_dtype),
-        goal_loop_iter=jnp.array(0, dtype=mp_policy.index_dtype)
+        goal_loop_iter=jnp.array(0, dtype=mp_policy.index_dtype),
+        depth_loop_iter=jnp.array(0, dtype=mp_policy.index_dtype)
     )
     return state
+
+
+@partial(jax.jit, inline=True, static_argnames=['num_parents'])
+def _choose_parents(active_lineage_count: IntArray, target_lineage_count: IntArray, log_X: FloatArray,
+                    num_samples: IntArray, num_parents: int) -> IntArray:
+    """
+    Choose a set of parents.
+
+    Args:
+        active_lineage_count: [N]
+        target_lineage_count: [N]
+        log_X: [N]
+        num_samples: only the first `num_samples` are valid parents.
+        num_parents: the number of parents to select.
+
+    Returns:
+        parent_idxs: [num_parents] the indices of the selected parents.
+    """
+    # dK_i = K_i - T_i, dK_i ==> should try to add to i
+    # P(j->i) = X_i / X_j
+    # Utility of parent j is sum_i>j (X_i / X_j) 1{K_i < T_i}
+    ...
 
 
 @partial(jax.jit, inline=True, static_argnames=['target_num_live_points', 'shell_size', 'batch_size'])
@@ -214,19 +237,19 @@ def _run_single_iteration(
         active_lineage_count = outer_carry.state.samples.compute_num_live_points_per_sample(
             root_out_degree=outer_carry.state.root_out_degree,
             num_samples=outer_carry.state.num_samples
-        ) # [N]
-        target_active_lineage_count = allocation_target_fn.compute_target_active_lineage_count(
+        )  # [N]
+
+        target_lineage_count = allocation_target_fn.compute_target_active_lineage_count(
             outer_carry.state.samples.log_likelihoods
-        ) # [S] or scalar
-        K_next_sample = active_lineage_count - 1 + outer_carry.state.samples.out_degree
-        select_weights = jnp.where(
-            jnp.logical_and(
-                jnp.arange(K_next_sample.shape[0]) < outer_carry.state.num_samples,
-                K_next_sample < target_active_lineage_count
-            ), 0, -jnp.inf)
-        select_contours_key, key = jax.random.split(outer_carry.key, 2)
-        parent_idxs = resample_indicies(select_contours_key, log_weights=select_weights, S=shell_size,
-                                        replace=False)  # [S]
+        )  # [N] or scalar
+        parent_idxs = _choose_parents(
+            active_lineage_count=active_lineage_count,
+            target_lineage_count=target_lineage_count,
+            log_X=log_X,
+            num_samples=outer_carry.state.num_samples,
+            num_parents=shell_size
+        )  # [S]
+
         proposed_log_L_constraints = outer_carry.state.samples.log_likelihoods[parent_idxs]  # [S]
 
         # TODO: give sampling a multi-ellipsoidal clustering, then use to guide sampling along preferential axes.
@@ -240,6 +263,7 @@ def _run_single_iteration(
                 lambda i: i + 1,
                 parent_idx + 1
             )
+            # Reparent from root when there are no seeds.
             no_seeds = i_start == outer_carry.state.num_samples
             log_L_constraint = jnp.where(no_seeds, jnp.asarray(-jnp.inf, dtype=mp_policy.measure_dtype),
                                          log_L_constraint)
@@ -277,7 +301,6 @@ def _run_single_iteration(
         )
         if outer_carry.state.samples.phantom_samples.U_samples is None:
             new_samples.phantom_samples.U_samples = None
-
         candidate_supremum_candidate_iid = jnp.argmax(new_samples.log_likelihoods)
         candidate_log_L_supremum = new_samples.log_likelihoods[candidate_supremum_candidate_iid]
         candidate_U_supremum = jax.tree.map(lambda u: u[candidate_supremum_candidate_iid], new_samples.U_samples)
@@ -313,13 +336,15 @@ def _run_single_iteration(
                 samples=new_samples,
                 delta_parent_out_degree=delta_parent_out_degree,
             ).sort(),
-            num_samples=outer_carry.state.num_samples + len(new_samples),
+            num_samples=outer_carry.state.num_samples + jnp.full((), len(new_samples), mp_policy.count_dtype),
             log_L_supremum=log_L_supremum,
             U_supremum=U_supremum,
             model=outer_carry.state.model,
             args=outer_carry.state.args,
             params=outer_carry.state.params,
-            termination_reason=outer_carry.state.termination_reason
+            termination_reason=outer_carry.state.termination_reason,
+            goal_loop_iter=outer_carry.state.goal_loop_iter,
+            depth_loop_iter=outer_carry.state.depth_loop_iter + jnp.ones((), mp_policy.count_dtype),
         )
 
         return OuterCarry(key=key, state=state)
@@ -444,7 +469,6 @@ def _compute_allocation_target_fn(self: NestedSampler, state: State) -> Abstract
         raise ValueError(f'Unknown allocation target: {self.allocation_target}')
 
 
-
 def _run_until_goal(self: NestedSampler, state: State | None, goal_cond: Callable[[State], bool],
                     depth_cond: DepthCondition,
                     key: PRNGKey) -> State:
@@ -478,5 +502,6 @@ def _run_until_goal(self: NestedSampler, state: State | None, goal_cond: Callabl
             shell_size=self.shell_size,
             batch_size=self.batch_size,
         )
+        state.goal_loop_iter += jnp.ones((), mp_policy.count_dtype)
 
     return state

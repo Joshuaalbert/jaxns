@@ -53,8 +53,8 @@ class EvidenceCalculation(PureDataclassPytree):
         """
         return _update_evidence(self, K_total, log_L_next)
 
-    def update_from_samples(self, samples: Samples, root_out_degree: IntArray, num_samples: IntArray | None = None) -> tuple[
-        'EvidenceCalculation', 'EvidenceCalculation']:
+    def update_from_samples(self, samples: Samples, root_out_degree: IntArray, num_samples: IntArray | None = None
+                            ) -> tuple['EvidenceCalculation', 'EvidenceCalculation']:
         """
         Update the evidence calculation from a set of samples. The samples should be ordered in the order they were generated, and the root_out_degree should
         be the out degree of the root node (i.e. the number of live points at the start of the nested sampling run).
@@ -84,11 +84,13 @@ def _update_from_samples(self: EvidenceCalculation, samples: Samples, root_out_d
         self = self.update_evidence(K_i, log_L_i)
         return (K_ip1, self), self
 
-    (_, self), per_sample_state = scan_or_while_loop(scan_fn,
-                                                     (root_out_degree, self),
-                                                     (samples.out_degree.astype(root_out_degree.dtype), samples.log_likelihoods),
-                                                     length=num_samples,
-                                                     unroll=1)
+    (_, self), per_sample_state = scan_or_while_loop(
+        scan_fn,
+        (root_out_degree, self),
+        (samples.out_degree.astype(root_out_degree.dtype), samples.log_likelihoods),
+        length=num_samples,
+        unroll=1
+    )
     return self, per_sample_state
 
 

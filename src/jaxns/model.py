@@ -193,6 +193,14 @@ def _freeze_callable_identity(value):
 
 @dataclasses.dataclass(frozen=True, slots=True)
 class _HashableCallable:
+    """
+    Wraps a prior-model callable with content-based identity for JAX JIT caching.
+
+    JAX treats the Model as a pytree and the prior model as static auxiliary
+    data, so cache hits depend on a stable hash/equality relation for this
+    callable. Plain function identity would make equivalent reconstructed
+    callables look different to the JIT cache.
+    """
     fn: Callable
     fingerprint: tuple[Any, ...] = dataclasses.field(init=False, repr=False)
 
@@ -224,15 +232,11 @@ class _HashableCallable:
         return self.fingerprint == other.fingerprint
 
 
-def _coerce_ctx_params(params) -> CtxParams:
-    if params is None:
-        return CtxParams()
-    return params
-
-
 def _make_model_collections(*, params, U: UType | None = None) -> dict[str, CtxParams]:
+    if params is None:
+        params = CtxParams()
     collections = {
-        'params': _coerce_ctx_params(params),
+        'params': params,
         'X': CtxParams(),
         'log_prob': CtxParams(),
     }
@@ -241,6 +245,7 @@ def _make_model_collections(*, params, U: UType | None = None) -> dict[str, CtxP
     else:
         collections['U'] = CtxParams()
     return collections
+
 
 def _U_ndims(self: Model, args=(), params=None) -> int:
     u_example = jax.eval_shape(self.sample_U, jax.random.PRNGKey(0), args=args, params=params)

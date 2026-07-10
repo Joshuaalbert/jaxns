@@ -1,25 +1,29 @@
-sandbox_mode = "workspace-write"
-default_permissions = "workspace"
-approvals_reviewer = "guardian_subagent"
 approval_policy = "on-request"
+approvals_reviewer = "auto_review"
+default_permissions = "this_project_workspace"
 
 [features]
 guardian_approval = true
 
-[sandbox_workspace_write]
-writable_roots = []
-network_access = true
-exclude_tmpdir_env_var = false
-exclude_slash_tmp = false
+[permissions.this_project_workspace]
+description = "Workspace access for this project with enabled permissions for local ZMQ sockets."
+extends = ":workspace"
 
-[permissions.workspace.filesystem]
-"/tmp" = "write"
+[permissions.this_project_workspace.workspace_roots]
+"/tmp" = true
 
-[permissions.workspace.filesystem.":project_roots"]
+[permissions.this_project_workspace.filesystem.":workspace_roots"]
 "." = "write"
 
-[permissions.workspace.network]
+[permissions.this_project_workspace.network]
 enabled = true
-mode = "limited"
 allow_local_binding = true
-allow_unix_sockets = ["/tmp/*.ipc"]
+mode = "limited"
+
+[permissions.this_project_workspace.network.domains]
+"localhost" = "allow"
+"127.0.0.1" = "allow"
+"::1" = "allow"
+
+[permissions.this_project_workspace.network.unix_sockets]
+"/tmp/*.ipc" = "allow"

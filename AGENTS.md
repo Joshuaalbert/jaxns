@@ -27,6 +27,22 @@ conda run -n jaxns_py python -c "..."
 
 Note: we use conda to manage the python version in our local development environment. The env is called `jaxns_py`.
 
+
+## The primary goal of agent
+
+The primary goal of the agent is to implement code with a clear intention. The common pitfall is that agents don't
+understand the human intent and then human reviewers have difficulty asserting the intent.
+
+## How agents should ensure code intention
+
+- Linear non-refactored code: we prefer linear code that can be read top to bottom.
+- Comments in the code: for every non-obvious segment of code, add a comment explaining the intent. This is especially
+  important for things that have later consequences if altered. These prevent future humans/agents from making changes
+  that break the intent of the code.
+- Put full design doc in context: make sure to read the design doc and understand it entirely,
+  following links and reading supplementary code, so that the entire relevant context is loaded.
+
+
 ## Code Style Guidelines
 
 No formatter/type-checker is configured; aim for clean PEP-8 that passes `flake8` defaults.

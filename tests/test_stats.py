@@ -1,7 +1,6 @@
-import numpy as np
 from jax import numpy as jnp, random
 
-from jaxns.stats_utils import linear_to_log_stats, density_estimation
+from jaxns.stats_utils import linear_to_log_stats
 
 
 def test_linear_to_log_stats():
@@ -15,16 +14,3 @@ def test_linear_to_log_stats():
     assert jnp.isclose(log_mu1,  log_mu2, atol=1e-4)
     assert jnp.isclose(log_var1, log_var2, atol=1e-4)
 
-
-def test_density_estimation():
-    np.random.seed(42)
-    x = jnp.asarray(np.random.standard_gamma(1., 100))[:, None]
-    xstar = jnp.linspace(0., 20., 1000)[:, None]
-    assert density_estimation(xstar, x).size == 1000
-    #
-    # import pylab as plt
-    #
-    # plt.plot(xstar, density_estimation(xstar, x))
-    # plt.hist(np.random.standard_gamma(1., 10000), bins=np.linspace(0, 20, 100), density=True, alpha=0.5)
-    # plt.hist(x[:, 0], bins=np.linspace(0., 20, 100), density=True, alpha=0.5)
-    # plt.show()
