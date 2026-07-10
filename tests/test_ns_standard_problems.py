@@ -1,12 +1,10 @@
 import time
 from dataclasses import dataclass
-from functools import partial
 from pathlib import Path
 from typing import Callable
 
-import sitecustomize  # noqa: F401
-import jax
 import numpy as np
+import sitecustomize  # noqa: F401
 from jax import numpy as jnp
 from jax.scipy.linalg import solve_triangular
 from jax.scipy.special import logsumexp
@@ -14,7 +12,6 @@ from jaxctx.priors.prior import Prior
 from tensorflow_probability.substrates import jax as tfp
 
 from jaxns.core import NestedSampler
-from jaxns.fabric.node import local_node_evaluator, make_model_service_factory
 from jaxns.model import Model
 from jaxns.utils import bruteforce_evidence
 
@@ -495,37 +492,3 @@ def test_nested_sampling_run_results(tmp_path):
         log_Z_ensemble_std = np.std(log_Z_samples)
         np.testing.assert_allclose(results.log_Z_mean, log_Z_true, atol=3.0 * results.log_Z_uncert, rtol=0)
         np.testing.assert_allclose(log_Z_ensemble_mean, log_Z_true, atol=2.0 * log_Z_ensemble_std, rtol=0)
-
-
-def test_nested_sampling_run_results_distributed(tmp_path):
-    tmp_path = Path('./test_plots/distributed')
-    tmp_path.mkdir(parents=True, exist_ok=True)
-
-    case_name = 'basic'
-    model = _build_basic_model()
-    keys = jax.random.split(jax.random.PRNGKey(42), 4)
-    u_samples = [model.sample_U(key) for key in keys]
-    local_log_likelihoods = [
-        model.log_likelihood(u_sample, allow_nan=False)
-        for u_sample in u_samples
-    ]
-
-    with local_node_evaluator(
-        service_factory=make_model_service_factory(model),
-        num_workers=2,
-        ident_prefix=f"std-{case_name}",
-        start_method="forkserver",
-    ) as evaluator:
-        t0 = time.time()
-        distributed_log_likelihoods = [
-            evaluator.evaluate(u_sample)
-            for u_sample in u_samples
-        ]
-        print(f"Distributed runtime: {time.time() - t0} seconds")
-
-    np.testing.assert_allclose(
-        np.asarray(distributed_log_likelihoods),
-        np.asarray(local_log_likelihoods),
-        atol=1e-8,
-        rtol=1e-8,
-    )

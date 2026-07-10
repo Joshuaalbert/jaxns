@@ -4,7 +4,6 @@ from jax import numpy as jnp
 
 from jaxns.results import NestedSamplerResults
 
-
 matplotlib.use("Agg")
 
 

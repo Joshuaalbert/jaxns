@@ -1,17 +1,16 @@
-import matplotlib
 import jax
+import matplotlib
 import numpy as np
 import tensorflow_probability.substrates.jax as tfp
 from jax import numpy as jnp, random, vmap
 from jaxctx.priors.prior import Prior
 
-from jaxns.model import Model
-
 from jaxns.mixed_precision import mp_policy
-from jaxns.random_utils import random_ortho_matrix
+from jaxns.model import Model
 from jaxns.multi_ellipsoid_utils import log_ellipsoid_volume, ellipsoid_clustering, \
     bounding_ellipsoid, covariance_to_rotational, ellipsoid_params, point_in_ellipsoid, plot_ellipses, \
     EllipsoidParams, maha_ellipsoid, circle_to_ellipsoid, ellipsoid_to_circle
+from jaxns.random_utils import random_ortho_matrix
 
 matplotlib.use("Agg")
 import pylab as plt

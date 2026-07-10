@@ -3,7 +3,8 @@ import numpy as np
 import pytest
 from jax import numpy as jnp
 
-from jaxns.cumulative_ops import cumulative_op_static, cumulative_op_dynamic, scan_associative_cumulative_op, batch_reduce
+from jaxns.cumulative_ops import cumulative_op_static, cumulative_op_dynamic, scan_associative_cumulative_op, \
+    batch_reduce
 from jaxns.cumulative_ops import scan_or_while_loop
 from jaxns.mixed_precision import mp_policy
 

@@ -5,7 +5,6 @@ from tensorflow_probability.substrates import jax as tfp
 from jaxns.core import NestedSampler
 from jaxns.model import Model
 
-
 tfpd = tfp.distributions
 
 
