@@ -46,27 +46,6 @@ class UniformDepth(PureDataclassPytree, AbstractAllocationTargetFn):
 UniformDepth.register_pytree()
 
 
-@dataclasses.dataclass(slots=True, frozen=True)
-class InterpolatedAllocationTargetFn(PureDataclassPytree, AbstractAllocationTargetFn):
-    log_likelihoods_inputs: FloatArray
-    allocations: FloatArray
-
-    def add(self, other: 'InterpolatedAllocationTargetFn'):
-        # Combine the two by summing their allocations at the union of their log_likelihoods_inputs
-        new_allocations = (self.compute_target_active_lineage_count(other.log_likelihoods_inputs) +
-                           other.compute_target_active_lineage_count(other.log_likelihoods_inputs))
-        return InterpolatedAllocationTargetFn(
-            log_likelihoods_inputs=other.log_likelihoods_inputs,
-            allocations=new_allocations
-        )
-
-    def compute_target_active_lineage_count(self, log_likelihood: FloatArray) -> FloatArray:
-        return jnp.interp(log_likelihood, self.log_likelihoods_inputs, self.allocations)
-
-
-InterpolatedAllocationTargetFn.register_pytree()
-
-
 @partial(jax.jit, inline=True,
          static_argnames=['root_degree', 'num_phantom', 'max_samples', 'store_phantom_samples', 'batch_size'])
 def _sample_init_state(key, root_degree: int, max_samples: int, model: Model, num_phantom: int = 0, args=(),
@@ -187,6 +166,7 @@ def _choose_parents(active_lineage_count: IntArray, target_lineage_count: IntArr
     # dK_i = K_i - T_i, dK_i ==> should try to add to i
     # P(j->i) = X_i / X_j
     # Utility of parent j is sum_i>j (X_i / X_j) 1{K_i < T_i}
+    # Compute utility, take the top `num_parents`.
     ...
 
 

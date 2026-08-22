@@ -134,8 +134,8 @@ The evidence is
 Nested sampling proceeds by constructing likelihood contours and assigning prior volumes to them.
 The computational difficulty is not the one-dimensional quadrature once these volumes are known, but the stochastic inference of the volume sequence.
 
-The present paper introduces a version of nested sampling in which the volume sequence is treated as a random variable with a race-induced prior that can be conditioned on auxiliary Monte Carlo information.
-The auxiliary information comes from \textit{phantom samples}: intermediate states produced by a constrained-prior sampler while generating a classic sample.
+The present paper reframes nested sampling so that the volume sequence is treated as a random variable with a race-induced prior that can be conditioned on auxiliary Monte Carlo information.
+The auxiliary information comes from \textit{phantom samples}: intermediate states produced by a constrained-prior sampler while generating a \textit{classic sample}.
 Phantom samples are correlated and thus cannot be used in the classic shrinkage formalism.
 The reason can be understood in two ways.
 Under the race view, it is because the races are no longer independent, so winner rate is no longer the sum of all rates.
@@ -188,7 +188,7 @@ We shall call a \textit{sample} from a constrained prior a pair $(x_i \sim \pi_\
 % All shrinkage quantities in this paper are strict.
 % Inclusive constraints may be useful as a constrained-sampling device for exploring a plateau, but they do not define a second shrinkage law in the evidence calculation.
 
-Let $\lambda_0$ be the \textit{sentinel} likelihood associated with $X_{\lambda_0}=1$.
+Let $\lambda_0$ be a \textit{sentinel} likelihood associated with $X_{\lambda_0}=1$.
 For increasing distinct likelihood levels,
 \begin{align}
     \lambda_0 < \lambda_1 < \cdots < \lambda_G,\label{eq:strict_likelihooods}
@@ -200,13 +200,13 @@ Nested sampling quadrature estimates the evidence as,
     \label{eq:block_quadrature}
 \end{align}
 The likelihood levels in Eq.~\ref{eq:strict_likelihooods} are an arbitrary \textit{schedule} of values, and the goal of NS is to assign each level $\lambda_g$ a random variable $X_g$ with known distribution.
-We call the subscript $g$ the \textit{block index}.
-In addition, an auxiliary output of NS is a set of weighted samples drawn from the posterior, with unnormalised weights,
+We call the subscript $g$ the \textit{block index} associated with the level $\lambda_g$.
+In addition, an auxiliary output of NS is a set of weighted samples drawn from the posterior.
+In the absence of likelihood plateaus, we can associate each block index with a sample index, $g(i)$, and the unnormalised posterior sample weights are,
 \begin{align}
-    w_g \triangleq \lambda_g\, (X_{g-1}-X_g),\label{eq:post_weight_cont}
+    w_{g(i)} \triangleq \lambda_{g(i)}\, (X_{{g(i)}-1}-X_{g(i)}).\label{eq:post_weight_cont}
 \end{align}
-except in the case of samples that fall in likelihood plateaus.
-The weights for those will be shown later.
+The posterior weights for samples that fall in likelihood plateaus will be shown later.
 
 Let us introduce the concept of a race tree.
 Let there be a set of $N$ samples, as well as a sentential sample with sample index $0$ given likelihood value $L_0 = \lambda_0$.
@@ -223,7 +223,7 @@ The samples are non-strictly monotonic increasing,
 \begin{align}
      \lambda_0 = L_0<L_1 \le \ldots \le L_N,
 \end{align}
-and we define a \textit{block} for a level $\lambda_g$ as,
+and we define a \textit{block} for a level $\lambda_g$ as the set of all sample indices with likelihood equal to $\lambda_g$,
 \begin{align}
     \mathcal{B}_g \triangleq \{i:L_i=\lambda_g\},
     \qquad
@@ -232,7 +232,7 @@ and we define a \textit{block} for a level $\lambda_g$ as,
 \end{align}
 A block with $m_g > 1$ represents a plateau, where the ordering of samples in the block is not unique.
 
-The out-degree of sample $i$ is
+The out-degree of sample $i$ is,
 \begin{align}
     d_i \triangleq \#\{j:p(j)=i\}.
 \end{align}
@@ -274,10 +274,10 @@ Once the arriving sample $i$ is observed, its lineage segment no longer contribu
 This changes the active lineage count by $-1+d_i$, giving Eq.~\ref{eq:K_recursion}.
 \end{proof}
 
-In classic races there are no ties, however in the presence of a plateau, $m_g>1$, we have do have ties.
+In classic races there are no ties, however in the presence of a plateau, $m_g>1$, we do have ties.
 The correct way to handle this is to introduce a nuisance winner ordering parameter that decides the order of winners, and that the race is not over until all winners have been accounted for.
 While the race is proceeding the race clocks are still ticking, hence each sample $k$ of block $\mathcal{B}_g$ gets a different race rank, $r^{(k)}_{g-1 \to g}$ falling within the atom $L = L_g$.
-It can easily shown that the final sample in the plateau has known rank,
+It can easily be shown that the final sample in the plateau has known rank,
 \begin{align}
     r^{(m_g)}_{g-1 \to g} \sim\, \mathrm{Beta}(K_g - m_g + 1, m_g),\label{eq:end_block_dist}
 \end{align}
@@ -318,8 +318,8 @@ Define the block probability vector,
     p_g = (p_{>g}, p_{=g}, g_{<g}),
 \end{align}
 where clearly $|p_g| = 1$.
-Consider a block with $K_g$ incoming active lineages and $m_g$ block samples.
-Then, these define observations,
+Consider a block with $K_g$ incoming active lineages and $m_g>1$ block samples.
+Then, these define three observation categories,
 \begin{itemize}
     \item $K_g - m_g$ samples lie past the atom,
     \item $m_g$ samples fall in the atom,
@@ -335,7 +335,7 @@ We set a Dirichlet prior,
 \end{align}
 which can be done be identifying the marginal of the Dirichlet, $\mathrm{Beta}(a_i, \sum_{j \neq i} a_j)$, with uniform shrinkage prior, $\mathcal{U}[0,1] \equiv \mathrm{Beta}(1, 1)$.
 The variable $\epsilon_g$ is a free parameter and should represent our belief of $\E[p_{=g}/(1 - p_{>g})]$.
-A fairly neutral choice would be, if $m_g=1$ then set $\epsilon_g=10^{-6}$, or else set $\epsilon_g=1/2$ if $m_g>1$.
+A fairly neutral choice would be $\epsilon_g=1/2$, given that $m_g > 1$.
 Using conjugacy of the Dirichlet and multinomial distributions the posterior becomes exactly,
 \begin{align}
     &p_g \mid K_g, m_g \sim\, \mathrm{Dirichlet}(a_{>g}, a_{=g}, a_{<g}),\label{eq:post_pg}\\
@@ -350,12 +350,12 @@ therefore the posterior marginals for $p_{>g}$ and $p_{=g}$ are,
 \end{align}
 Comparing Eq.~\ref{eq:posterior_pg}, $\mathrm{Beta}(K_g - m_g + 1, m_g + 1)$ to Eq.~\ref{eq:end_block_dist}, $\mathrm{Beta}(K_g - m_g + 1, m_g)$, we see the difference, which proves censorship in a rigorous way.
 
-Evidence calculation can be done using,
+Evidence quadrature, Eq.~\ref{eq:block_quadrature}, is be done using,
 \begin{align}
     X_g = X_{g-1} p_{>g},
 \end{align}
-which admits producing samples of the evidence.
-Note, when we wish to assign posterior mass to plateau samples in a block this is done by equally assigning atom mass to each sample,
+which can be used for form evidence expectations, or to produce samples of the evidence.
+Now, coming back to assigning posterior mass to plateau samples, this this is done by equally assigning atom mass to each sample,
 \begin{align}
     w^{(k)}_{g} = \frac{\lambda_g}{m_g} X_{g-1} p_{=g}, \quad k\in\mathcal{B}_g,
 \end{align}
@@ -363,6 +363,7 @@ whereas the posterior mass assigned to a non-plateau sample, mirroring Eq.~\ref{
 \begin{align}
     w_g = \lambda_g X_{g-1}(1 - p_{>g}).
 \end{align}
+Note, when $m_g=1$ this Bayesian model would not make sense because there would be no evidence of an atom, and thus only a 2-class Dirichlet would make sense, which would give us again Eq.~\ref{eq:posterior_pg} as expected.
 
 
 \section{Phantom-conditioned shrinkage}
@@ -376,16 +377,17 @@ Since phantom samples are not independent they cannot participate in the race tr
 We thus seek a procedure for sampling from $p_g \mid K_g, m_g, \bigcup_i \mathcal{P}_i$.
 
 An important assumption we make is that phantom samples \textit{between} clusters are approximately independent, which is justified since initial chain points are randomly selected, while within-cluster phantom samples are allowed to be arbitrarily correlated.
-In fact, it's possible to redefine phantom clusters as any disjoint decomposition of phantom samples where each cluster is drawn from within the same parent, and samples from different clusters are independent.
+In fact, it's possible to redefine phantom clusters as any disjoint decomposition of phantom samples where each cluster is drawn stationarily from within the same parent, and samples from different clusters are independent.
 As will be shown below, it is best to make clusters as small as possible such that this is true.
 Hence, if a single cluster can be split into two disjoint clusters where independence between the two clusters is approximately true, then it is favourable from the perspective of information utilisation to do this.
 
 Lets define, per cluster $c$, block interval counts,
 \begin{align}
-    A_{cg} =&\, \sum_{(x, L) \in \mathcal{P}_c} \mathbf{1}\{L(x) > L_{g-1}\} \mathbf{1}\{L_{p(c)} \le L_{g-1}\}\\
-    B_{cg} =&\, \sum_{(x, L) \in \mathcal{P}_c} \mathbf{1}\{L(x) > L_{g}\} \mathbf{1}\{L_{p(c)} \le L_{g-1}\}\\
-    E_{cg} =&\, \sum_{(x, L) \in \mathcal{P}_c} \mathbf{1}\{L(x) = L_{g}\} \mathbf{1}\{L_{p(c)} \le L_{g-1}\}.
+    A_{cg} =&\, \sum_{(x, L) \in \mathcal{P}_c} \mathbf{1}\{L(x) > L_{g-1}\} \mathbf{1}\{L_{c} \le L_{g-1}\}\\
+    B_{cg} =&\, \sum_{(x, L) \in \mathcal{P}_c} \mathbf{1}\{L(x) > L_{g}\} \mathbf{1}\{L_{c} \le L_{g-1}\}\\
+    E_{cg} =&\, \sum_{(x, L) \in \mathcal{P}_c} \mathbf{1}\{L(x) = L_{g}\} \mathbf{1}\{L_{c} \le L_{g-1}\}.
 \end{align}
+These are counts of samples falling in each interval in Figure~\ref{fig:censor}.
 Then an MC estimate of $p_g$ is,
 \begin{align}
     \hat{p}_{g} =& \frac{\sum_c \left( B_{cg}, E_{cg}, A_{cg} - B_{cg} - E_{cg}\right)^\top}{\sum_c A_{cg}}.
@@ -412,14 +414,15 @@ Define a cluster weight $v_c$ and then define,
 \begin{align}
     M'_{>g} =& M_{>g} + \sum_c v_c B_{cg}\\
     M'_{=g} =& M_{=g} + \sum_c v_c E_{cg}\\
-    M'_{<g} =& M_{<g} + \sum_c v_c A_{cg}\\
+    M'_{<g} =& M_{<g} + \sum_c v_c (A_{cg} - B_{cg} - E_{cg})\\
     p_g =& \frac{(M'_{>g}, M'_{=g}, M'_{<g})^\top}{M'_{>g} + M'_{=g} + M'_{<g}}.
 \end{align}
 Using additivity of identical-scale gamma random variables, we can then identify the natural cluster weight as,
 \begin{align}
     v_c \sim\, \mathrm{Gamma}(1, 1).
 \end{align}
-With this choice, singleton clusters would exactly produce the Dirichlet posterior.
+With this choice, singleton clusters would exactly produce the Dirichlet posterior previously.
+% We need to reconcile the aspect that when m_g=1 a three-class setup is not allowed as previously we saw that the posterior is wrong from the known Beta(K_1, 1). THus we should also take that into account here and not condition on an atom unless we have a reason to suspect that there is a 3rd class. This is pretty important for correctness I think.
 
 Now, consider what happens when cluster sizes are not singleton, that is we have irreducible correlation structure.
 In this case, the gamma's do not add as the scales are not identical.
@@ -437,7 +440,7 @@ and then define a minimum threshold for condition, say $C_{\rm min} = 20$, and h
 \begin{align}
     M'_{>g} =& M_{>g} + \mathbf{1}\{C^{\rm Kish}_g \ge C_{\rm min}\} \sum_c v_c B_{cg}\\
     M'_{=g} =& M_{=g} + \mathbf{1}\{C^{\rm Kish}_g \ge C_{\rm min}\} \sum_c v_c E_{cg}\\
-    M'_{<g} =& M_{<g} + \mathbf{1}\{C^{\rm Kish}_g \ge C_{\rm min}\} \sum_c v_c A_{cg}\\
+    M'_{<g} =& M_{<g} + \mathbf{1}\{C^{\rm Kish}_g \ge C_{\rm min}\} \sum_c v_c (A_{cg} - B_{cg} - E_{cg})\\
     p_g =& \frac{(M'_{>g}, M'_{=g}, M'_{<g})^\top}{M'_{>g} + M'_{=g} + M'_{<g}}.
 \end{align}
 This provides a consistent generative shrinkage model that properly takes into account the race tree and phantom samples.
@@ -445,139 +448,39 @@ The shrinkage at block $g$ is the the component $p_{>g}$, while the plateau atom
 It is simple to calculate as the per-cluster counts are computed once, and then each draw from the joint posterior is just a set of draws from gamma distributions followed by reduction.
 
 Phantom-conditioning requires retained phantom states to be stationary enough that their marginal expectation under the parent contour is correct.
-The above formulation cannot correct for non-stationary phantom samples, thus a burn-in is suggested before collecting phantoms.
+The above formulation cannot correct for non-stationary phantom samples.
+We address this in Section~\ref{sec:v3}.
 
 
 \section{JAXNS v3 implementation}\label{sec:v3}
 
-The race tree permits new children to be generated from within any existing sample contour.
-This decouples correct lineage counting from the strategy of sample generation, and allows us to explore optimal allocation targets as an experimental design question.
+The race tree permits new children to be generated from any existing strict contour. We exploit this by representing allocation work as logical \textit{lineage threads}, which is an idea initially proposed in \citep{2019S&C....29..891H}.
+A thread is a single lineage from an initial parent, where the out-degree of each sample is one.
+An edge $i \to j$ adds one active lineage to every existing block $g$ whose contour it crosses, \begin{align}
+L_{i}<L_g\le L_j. \label{eq:edge_lineage_coverage}
+\end{align}
+Consequently, a completed thread beginning immediately before block $a$ and terminating once it reaches block $b$ adds one active lineage to every block $g\in\{a,\ldots,b\}$.
+We'll denote such a thread by $T(a,b)$.
+The final child may overshoot $L_b$, in which case the thread also provides additional lineage allocation beyond its requested terminal block.
+A thread is logical in nature, and thus its successive edges may be generated at different scheduling times.
+In particular there is no need for a synchronisation barrier.
+Given a lineage count $K_g$ for each block, and target $D_g$ we define the allocation gap,
+\begin{align}
+    G_g = (D_g - K_g)_+,
+\end{align}
+which is equivalent to the number of lineage threads that must contain block $g$.
+A schedule of sampling is done where $G_g$ is decomposed into a set of threads.
+This can be done in any manner.
+
 Algorithm~\ref{algo:jaxns} shows the core algorithm of JAXNS.
-There is an outer loop which sets a lineage allocation target as a function of likelihood, $K^k_*:\mathbb{R}_+ \to \mathbb{N}$.
-There is an inner loop which, given $K^k_*$, generates samples until a depth condition is met.
-Sample generation can be embarrassingly parallelised.
-The outer loop proceeds until a goal condition is met.
-During the inner loop samples are identified whose active lineage counts do not meet the allocation target, and a sampling contour is chosen with high probability of increasing the active lineage count.
-A strong way to choose a parent block with a high probability to reach block $g'$ is choose block $g$ with probability $(X_{g'}/X_g) \,\mathbf{1}\{X_{g'} < X_g\}$.
-The depth condition captures when there is little utility in continuing with the current allocation target, $K^k_*$.
+There is an outer loop which sets a lineage allocation target, and proceeds until a goal condition is met.
+There is an inner loop which recursively determines allocation gap $G_g$ and generates samples until a depth condition is met by advancing threads to fill the gaps, and terminated when there is little utility in continuing with the current allocation target.
 The depth conditions available in JAXNS are,
 \begin{align}
     \text{small remaining evidence},\qquad& \frac{L_G X_G}{\sum_g^G L_g(X_{g-1} - X_g) + L_G X_G} < \tau_Z\\
-    \text{small remaining posterior mass},\qquad& \frac{L_gX_g}{\max_{g'}(L_{g'}X_{g'})} < \tau_{\rm post}
+    \text{small remaining posterior mass},\qquad& \frac{L_gX_g}{\max_{g'\le g}(L_{g'}X_{g'})} < \tau_{\rm post}.
 \end{align}
-The goal condition is user specified, and can be any condition computable from the samples, for example until a target effective sample size or evidence uncertainty is met.
-
-The allocation targets define how likelihood evaluation work is dedicated per outer loop.
-The available allocation targets in JAXNS are,
-\begin{align}
-    \text{Depth-first uniform}, \qquad& K^k_*(L) = d_0 + k  \Delta K,\\
-    \text{Evidence improving}, \qquad& K^k_*(L) = d_0 + k \Delta K \bar{U}^Z(L),\\
-    \text{Posterior improving}, \qquad& K^k_*(L) = d_0 + k \Delta K \bar{U}^P(L),
-\end{align}
-where $\Delta K > 0$, and $\bar{U}^Z$ and $\bar{U}^P$ are defined below.
-
-Depth-first uniform allocation explores higher likelihood structure before shallower contours are over-refined.
-Each outer loop costs similar amounts of work, and progressively better resolves modes.
-This results in better cost management, rather than choosing an initial arbitrarily large root lineage count, $d_0$.
-
-Evidence improving allocation seeks to allocate new samples to contours such that there is a high probability of reducing the evidence variance, by maximising expected improvement.
-A key observation is that a new child generated from parent block $g$ changes the parent out-degree as $d_g\to d_g+1$, Eq.~\ref{eq:K_recursion}.
-The probability of that sample reaching $L_h$ is given by,
-\begin{align}
-    T^Z_{g h}
-    \triangleq
-    \Prob_{x\sim\pi_{L_g}}(L(x)>L_h)
-    = \frac{X_h}{X_g} \mathbf{1}\{h>g\}.
-    \label{eq:evidence_reach_probability}
-\end{align}
-That is, the probability that we add one additional active lineage count to blocks $g+1$ to $l$ is $T^Z_{g h}$.
-
-We will define utility function as the expected reduction in variance.
-To simplify calculation, we will use a first-order delta approximation to the log-evidence variance in terms of the log-shrinkage variance.
-Structurally, we have $\mathrm{Var}[f;\theta] \approx \sum_\theta (\partial_\theta f)^2\, \mathrm{Var}[\theta]$.
-Applying this to $\log Z$ given by Eq.~\ref{eq:block_quadrature} with block shrinkage $p_{>h} \sim \Beta(\alpha_h, \beta_h)$, and recalling that $X_h = p_{>h} X_{h-1} = \prod_j^h p_{>j}$ we have,
-\begin{align}
-    B_h \triangleq \frac{\partial \log Z}{\partial \log p_{>h}}
-    =&
-    \frac{
-    L_h X_h
-    -\sum_{j > h} L_j( X_{j-1}- X_j)
-    }{ Z},\label{eq:evidence_sensitivity}\\
-    \mathrm{Var}[\log p_{>h}] =& \psi_1(\alpha_h) - \psi_1(\alpha_h + \beta_h),
-\end{align}
-where $\psi_1$ is the tri-gamma function.
-The first term in Eq.~\ref{eq:evidence_sensitivity} is the contribution from changing the block $h$, and the second term is the accumulated downstream effect because $p_{>h}$ appears in every later term.
-Now the effect of adding one extra active lineage is that $\alpha_h \to \alpha_h + 1$, so the reduction in variance of log-evidence under this delta approximation is given by,
-\begin{align}
-    \Delta \mathrm{Var}[\log Z; h] \approx B_h^2 \left(\frac{1}{\alpha_h^2} - \frac{1}{(\alpha_h + \beta_h)^2}\right),\label{eq:delta_var_logZ}
-\end{align}
-where we used the relationship $\psi_1(z) - \psi_1(z + 1) = 1/z^2$.
-Now, the utility is the expectation of Eq.~\ref{eq:delta_var_logZ} over the transition probability, Eq.~\ref{eq:evidence_reach_probability},
-\begin{align}
-    U^Z_g = \frac{1}{X_g}\sum_{h > g} X_h B_h^2 \left(\frac{1}{\alpha_h^2} - \frac{1}{(\alpha_h + \beta_h)^2}\right).\label{eq:evidence_improving_utility}
-\end{align}
-This can be computed efficiently in two cumulative reductions.
-
-Posterior improving allocation seeks to increase the effective sample size, by allocating samples low-information shells defined by the half-open likelihood intervals, $(L_{h-1}, L_h]$.
-A key observation is that a uniform draw within contour $L_g$ will land in shell $h$ with probability,
-\begin{align}
-    T^P_{g h}
-    \triangleq
-    \Prob_{x\sim\,\pi_{L_{g}}}(L_{h-1} < L(x) \le L_h)
-    \approx \frac{ X_{h-1} -  X_{h}}{ X_g} \,\mathbf{1}\{h>g\}.
-\end{align}
-Recalling the posterior shell masses, Eq.~\ref{eq:post_weight_cont}, let us use Kish's effective sample size as a proxy for effective sample size,
-\begin{align}
-    \mathrm{ESS}^{\rm Kish} =& \frac{W^2}{Q}\\
-    W\triangleq& \sum_{j=1}^{G} w_j,\\
-    Q\triangleq& \sum_{j=1}^{G} w_j^2.
-\end{align}
-If a new sample lands in shell $h$, it splits the shell into two sub-shells.
-In this case $W$ is unchanged under additivity, and only $Q$ changes.
-Writing $u\sim\,\mathcal{U}[0, 1]$ for the fraction of the shell mass assigned to the lower sub-shell, the old contribution $w_h^2$ to $Q$ is replaced by $u^2 w_h^2+(1-u)^2 w_h^2$.
-Thus,
-\begin{align}
-    \mathrm{ESS}^{\rm Kish}_{h}(u)
-    =\frac{W^2}{Q - 2u(1-u)w_h^2}.
-\end{align}
-If we marginalise over $u$ the change of $\mathrm{ESS}^{\rm Kish}$ due to splitting in $h$ we get,
-\begin{align}
-    \Delta\mathrm{ESS}^{\rm Kish}_h
-    \triangleq&
-    \int_0^1
-    \left(\mathrm{ESS}^{\rm Kish}_h(u)-\mathrm{ESS}^{\rm Kish}\right)\,\dd u \\
-    &=
-    W^2\left[
-    \frac{
-    \tan^{-1}\left(\sqrt{w_h^2/(2Q-w_h^2)}\right)
-    }
-    {\sqrt{(Q-w_h^2/2)(w_h^2/2)}}
-    -\frac{1}{Q}
-    \right],
-    \label{eq:posterior_shell_value}
-\end{align}
-with the continuous limiting value $\Delta\mathrm{ESS}^{\rm Kish}_h \to 0$ as $w_h \to 0$.
-A simple conservative approximation is obtained by replacing the denominator with its expectation,
-\begin{align}
-    \Delta\mathrm{ESS}^{\rm Kish}_h
-    \approx
-    \frac{W^2}{Q - w_h^2/3} - \frac{W^2}{Q}.
-\end{align}
-This is conservative because $1/x$ is convex so $\E[1/x] \ge 1/\E[x]$.
-Now the utility is found by marginalising over the shell transition probabilities that a child from parent block $g$ lands in that shell $h$ gives the posterior-improving utility,
-\begin{align}
-    U^P_g
-    =
-    \frac{1}{X_g}\sum_{h > g}
-     (X_{h-1}- X_h)\,\Delta\mathrm{ESS}^{\rm Kish}_h .
-    \label{eq:posterior_improving_utility}
-\end{align}
-
-In order to convert these block utilities into allocation targets we normalise utility to unit peak and represent in terms of likelihood via linear interpolation, $\bar{U}(L)$, then allocate $k\Delta K$ proportionally,
-\begin{align}
-    K^k_*(L) = d_0 + k \Delta K \bar{U}(L),
-\end{align}
-
+The goal condition is user specified, and can be any condition computable from the samples, for example when a target effective sample size or evidence uncertainty is met.
 
 \begin{algorithm}
 \caption{The JAXNS core algorithm with dynamic lineage allocation, outer goal terminating loop, and inner depth termination loop.}
@@ -590,9 +493,10 @@ In order to convert these block utilities into allocation targets we normalise u
 \State Set outer iteration $k=0$
 
 \While{$\neg\, \mathbf{goal}$}
-    \State Choose allocation target function $K^{k}_*$.
+    \State Choose allocation target $T^{k}_g = d_0 + k \Delta K$.
     \While{$\neg\, \mathbf{depth}$}
-        \State Count lineages $K_i$ for $i\in\{1 \ldots N\}$.
+        \State Compute lineage count $K_i$ for $i\in\{1 \ldots N\}$.
+        \State Determine maximal threads
         \State Choose parents $\mathcal{Q} \subseteq \{j :L_j < L_i,\, K^k_{i} < K_*(L_{i})\}$.
         \For{$i \in \mathcal{Q}$}
             \State Set $N \to N + 1$
@@ -649,7 +553,12 @@ The trajectory must have end points that land outside the contour, and the end p
 Then, constrained sampling is performed along this trajectory, which can be done in any manner.
 A common approach is to randomly pick a point along the trajectory and greedily shrink the trajectory if the point falls outside the slice.
 
-In choosing $\mathcal{D}$, JAXNS makes available two choices: an isotropic Gaussian, and an ellipsoidal Gaussian.
+Choosing the seed point must be carefully done to maintain stationarity of the chain without requiring a burnin.
+Specifically, if sampling from parent $j$ with likelihood $L_j$, i.e. sampling from $\pi_{L_j}$, then we should choose a seed as some sample $i_0$ already satisfying stationarity.
+That is choose a $i_0$ such that $L_j < L_{i_0}$ and $L_{p(i_0)} \le L_j$.
+This is possible to do without tracking parent indices, simply by tracking the parent likelihood contour of each existing sample.
+
+In choosing direction proposal distribution $\mathcal{D}$, JAXNS makes available two choices: an isotropic Gaussian, and an ellipsoidal Gaussian.
 For the later, a Gaussian mixture model of the posterior is constructed based on samples collected so far.
 The distribution $\mathcal{D}$ first samples a Gaussian component proportional to its integrated volume, and then samples the direction from that Gaussian.
 
@@ -706,7 +615,7 @@ This is done by selecting a segment of the trajectory proportionally to segment 
         \State Set $x' \to x_{\rm in} + \alpha (x_{\rm out} - x_{\rm in})$.
     \EndWhile
     \State Set $g \to \nabla L(x')$. \hfill\textit{Reflect}
-    \State Reflect $\hat{n}^{i+1} \to \hat{n}^i - 2 (\hat{n}^i \cdot g) g$.
+    \State Reflect $\hat{n}^{i+1} \to \hat{n}^i - \frac{2}{\|g\|^2} (\hat{n}^i \cdot g) g$.
     \State Normalise $\hat{n}^{i+1} \to \hat{n}^{i+1}/|\hat{n}^{i+1}|$.
     \State Set $x^{i+1} \to x'$.
     \State Set $i \to i+1$.
@@ -824,9 +733,119 @@ Code and data required to reproduce the experiments will be provided in the JAXN
 
 JA would like to thank John Skilling and Do Kester for discussions around nested sampling, as well as Will Handley, Andrew Fowlie, and Johannes Buchner for pointing out flaws in earlier attempts to use phantom samples.
 
-% \begin{appendices}
-% \section{}
-% \end{appendices}
+\begin{appendices}
+
+\section{Alternative Allocation Targets}
+The allocation targets define how likelihood evaluation work is dedicated per outer loop.
+The available allocation targets in JAXNS are,
+\begin{align}
+    \text{Evidence improving}, \qquad& K^k_*(L) = d_0 + k \Delta K \bar{U}^Z(L),\\
+    \text{Posterior improving}, \qquad& K^k_*(L) = d_0 + k \Delta K \bar{U}^P(L),
+\end{align}
+where $\Delta K > 0$, and $\bar{U}^Z$ and $\bar{U}^P$ are defined below.
+
+Depth-first uniform allocation explores higher likelihood structure before shallower contours are over-refined.
+Each outer loop costs similar amounts of work, and progressively better resolves modes.
+This results in better cost management, rather than choosing an initial arbitrarily large root lineage count, $d_0$.
+
+Evidence improving allocation seeks to allocate new samples to contours such that there is a high probability of reducing the evidence variance, by maximising expected improvement.
+A key observation is that a new child generated from parent block $g$ changes the parent out-degree as $d_g\to d_g+1$, Eq.~\ref{eq:K_recursion}.
+The probability of that sample reaching $L_h$ is given by,
+\begin{align}
+    T^Z_{g h}
+    \triangleq
+    \Prob_{x\sim\pi_{L_g}}(L(x)>L_h)
+    = \frac{X_h}{X_g} \mathbf{1}\{h>g\}.
+    \label{eq:evidence_reach_probability}
+\end{align}
+That is, the probability that we add one additional active lineage count to blocks $g+1$ to $l$ is $T^Z_{g h}$.
+
+We will define utility function as the expected reduction in variance.
+To simplify calculation, we will use a first-order delta approximation to the log-evidence variance in terms of the log-shrinkage variance.
+Structurally, we have $\mathrm{Var}[f;\theta] \approx \sum_\theta (\partial_\theta f)^2\, \mathrm{Var}[\theta]$.
+Applying this to $\log Z$ given by Eq.~\ref{eq:block_quadrature} with block shrinkage $p_{>h} \sim \Beta(\alpha_h, \beta_h)$, and recalling that $X_h = p_{>h} X_{h-1} = \prod_j^h p_{>j}$ we have,
+\begin{align}
+    B_h \triangleq \frac{\partial \log Z}{\partial \log p_{>h}}
+    =&
+    \frac{
+    L_h X_h
+    -\sum_{j > h} L_j( X_{j-1}- X_j)
+    }{ Z},\label{eq:evidence_sensitivity}\\
+    \mathrm{Var}[\log p_{>h}] =& \psi_1(\alpha_h) - \psi_1(\alpha_h + \beta_h),
+\end{align}
+where $\psi_1$ is the tri-gamma function.
+The first term in Eq.~\ref{eq:evidence_sensitivity} is the contribution from changing the block $h$, and the second term is the accumulated downstream effect because $p_{>h}$ appears in every later term.
+Now the effect of adding one extra active lineage is that $\alpha_h \to \alpha_h + 1$, so the reduction in variance of log-evidence under this delta approximation is given by,
+\begin{align}
+    \Delta \mathrm{Var}[\log Z; h] \approx B_h^2 \left(\frac{1}{\alpha_h^2} - \frac{1}{(\alpha_h + \beta_h)^2}\right),\label{eq:delta_var_logZ}
+\end{align}
+where we used the relationship $\psi_1(z) - \psi_1(z + 1) = 1/z^2$.
+Now, the utility is the expectation of Eq.~\ref{eq:delta_var_logZ} over the transition probability, Eq.~\ref{eq:evidence_reach_probability},
+\begin{align}
+    U^Z_g = \frac{1}{X_g}\sum_{h > g} X_h B_h^2 \left(\frac{1}{\alpha_h^2} - \frac{1}{(\alpha_h + \beta_h)^2}\right).\label{eq:evidence_improving_utility}
+\end{align}
+This can be computed efficiently in two cumulative reductions.
+
+Posterior improving allocation seeks to increase the effective sample size, by allocating samples low-information shells defined by the half-open likelihood intervals, $(L_{h-1}, L_h]$.
+A key observation is that a uniform draw within contour $L_g$ will land in shell $h$ with probability,
+\begin{align}
+    T^P_{g h}
+    \triangleq
+    \Prob_{x\sim\,\pi_{L_{g}}}(L_{h-1} < L(x) \le L_h)
+    \approx \frac{ X_{h-1} -  X_{h}}{ X_g} \,\mathbf{1}\{h>g\}.
+\end{align}
+Recalling the posterior shell masses, Eq.~\ref{eq:post_weight_cont}, let us use Kish's effective sample size as a proxy for effective sample size,
+\begin{align}
+    \mathrm{ESS}^{\rm Kish} =& \frac{W^2}{Q}\\
+    W\triangleq& \sum_{j=1}^{G} w_j,\\
+    Q\triangleq& \sum_{j=1}^{G} w_j^2.
+\end{align}
+If a new sample lands in shell $h$, it splits the shell into two sub-shells.
+In this case $W$ is unchanged under additivity, and only $Q$ changes.
+Writing $u\sim\,\mathcal{U}[0, 1]$ for the fraction of the shell mass assigned to the lower sub-shell, the old contribution $w_h^2$ to $Q$ is replaced by $u^2 w_h^2+(1-u)^2 w_h^2$.
+Thus,
+\begin{align}
+    \mathrm{ESS}^{\rm Kish}_{h}(u)
+    =\frac{W^2}{Q - 2u(1-u)w_h^2}.
+\end{align}
+If we marginalise over $u$ the change of $\mathrm{ESS}^{\rm Kish}$ due to splitting in $h$ we get,
+\begin{align}
+    \Delta\mathrm{ESS}^{\rm Kish}_h
+    \triangleq&
+    \int_0^1
+    \left(\mathrm{ESS}^{\rm Kish}_h(u)-\mathrm{ESS}^{\rm Kish}\right)\,\dd u \\
+    &=
+    W^2\left[
+    \frac{
+    \tan^{-1}\left(\sqrt{w_h^2/(2Q-w_h^2)}\right)
+    }
+    {\sqrt{(Q-w_h^2/2)(w_h^2/2)}}
+    -\frac{1}{Q}
+    \right],
+    \label{eq:posterior_shell_value}
+\end{align}
+with the continuous limiting value $\Delta\mathrm{ESS}^{\rm Kish}_h \to 0$ as $w_h \to 0$.
+A simple conservative approximation is obtained by replacing the denominator with its expectation,
+\begin{align}
+    \Delta\mathrm{ESS}^{\rm Kish}_h
+    \approx
+    \frac{W^2}{Q - w_h^2/3} - \frac{W^2}{Q}.
+\end{align}
+This is conservative because $1/x$ is convex so $\E[1/x] \ge 1/\E[x]$.
+Now the utility is found by marginalising over the shell transition probabilities that a child from parent block $g$ lands in that shell $h$ gives the posterior-improving utility,
+\begin{align}
+    U^P_g
+    =
+    \frac{1}{X_g}\sum_{h > g}
+     (X_{h-1}- X_h)\,\Delta\mathrm{ESS}^{\rm Kish}_h .
+    \label{eq:posterior_improving_utility}
+\end{align}
+
+In order to convert these block utilities into allocation targets we normalise utility to unit peak and represent in terms of likelihood via linear interpolation, $\bar{U}(L)$, then allocate $k\Delta K$ proportionally,
+\begin{align}
+    K^k_*(L) = d_0 + k \Delta K \bar{U}(L),
+\end{align}
+\end{appendices}
 
 \bibliography{cite}
 

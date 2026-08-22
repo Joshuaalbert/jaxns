@@ -19,19 +19,17 @@ prefix_rule(
 )
 
 prefix_rule(
-    pattern = ["git", ["status", "diff", "show", "log"]],
+    pattern = ["git"],
     decision = "allow",
-    justification = "Read-only git inspection is always allowed.",
+    justification = "git for svc is allowed.",
     match = [
+        "git add package/src/bx_trading/example.py",
+        "git commit -m 'Update example.py'",
         "git status",
         "git diff -- package/src",
         "git show HEAD~1",
         "git log --oneline -5",
-    ],
-    not_match = [
-        "git add .",
-        "git commit -m test",
-    ],
+    ]
 )
 
 prefix_rule(
@@ -53,7 +51,7 @@ prefix_rule(
     decision = "forbidden",
     justification = "Discarding tracked changes is blocked. Review changes before reverting anything.",
     match = [
-        "git checkout -- src/jaxns/example.py",
+        "git checkout -- package/src/bx_trading/example.py",
     ],
     not_match = [
         "git checkout main",
