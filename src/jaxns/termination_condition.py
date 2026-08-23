@@ -1,39 +1,29 @@
+"""Cheap expectation-based conditions for the compiled depth loop."""
+
 import dataclasses
 from functools import partial
 
 import jax
 from jax import numpy as jnp
 
-from jaxns.evidence_calculation import EvidenceCalculation
-from jaxns.log_semiring import LogSpace
 from jaxns.mixed_precision import mp_policy
 from jaxns.pytree import PureDataclassPytree
-from jaxns.stats_utils import linear_to_log_stats, effective_sample_size_kish
-from jaxns.types import FloatArray, IntArray, BoolArray
+from jaxns.types import BoolArray, FloatArray, IntArray
 
 
-@dataclasses.dataclass(slots=True)
-class DepthCondition(PureDataclassPytree):
+@dataclasses.dataclass(slots=True, frozen=True)
+class TerminationCondition(PureDataclassPytree):
+    """Conditions that may bound a depth epoch or a default run.
+
+    All statistical fields are evaluated from the expected classic block
+    shrinkage path. Monte Carlo shrinkage, including optional phantom
+    conditioning, remains a result-level operation and is never placed in the
+    compiled depth-loop condition.
     """
-    Contains the termination conditions for the nested sampling run.
 
-    Args:
-        ess: The effective sample size, or an estimate, is greater than this the run will terminate.
-        evidence_uncert: The uncertainty in the evidence, if the uncertainty is less than this the run will terminate.
-        dlogZ: Terminate if dZ_last_shrinkage/Z < dlogZ.
-        max_samples: Terminate if the number of samples exceeds this.
-        max_num_likelihood_evaluations: Terminate if the number of likelihood evaluations exceeds this.
-        log_L_target: Terminate if any likelihood passes this peak (not only iid samples).
-        log_L_contour_target: Terminate if the likelihood contour passes this peak (i.e. all samples with log_L < log_L_contour_max have desired live point count)
-        efficiency_threshold: Terminate if the efficiency (num_samples / num_likelihood_evaluations) is less than this,
-            for the last shrinkage iteration.
-        rtol: finish when the relative value 2*|log_L_max - log_L_min|/|log_L_max + log_L_min| < rol
-        atol: finish when the absolute |log_L_max - log_L_min| < atol
-        cummax_XL_frac: Terminate when XL < cummax(XL) * cummax_XL_frac
-    """
     ess: FloatArray | None = None
     evidence_uncert: FloatArray | None = None
-    dlogZ: FloatArray | None = None  #
+    dlogZ: FloatArray | None = None
     max_samples: IntArray | None = None
     max_num_likelihood_evaluations: IntArray | None = None
     log_L_target: FloatArray | None = None
@@ -44,142 +34,121 @@ class DepthCondition(PureDataclassPytree):
     cummax_XL_frac: FloatArray | None = None
 
 
-DepthCondition.register_pytree()
+TerminationCondition.register_pytree()
 
 
-@dataclasses.dataclass(slots=True)
+@dataclasses.dataclass(slots=True, frozen=True)
 class TerminationRegister(PureDataclassPytree):
+    """Online expectation summary consumed by depth and goal conditions."""
+
     num_samples_used: IntArray
-    evidence_calc: EvidenceCalculation
-    dZ_shrinkage: LogSpace
     num_likelihood_evaluations: IntArray
+    log_Z_mean: FloatArray
+    log_Z_uncert: FloatArray
+    remaining_evidence_fraction: FloatArray
+    posterior_tail_fraction: FloatArray
+    ess: FloatArray
     log_L_max: FloatArray
     log_L_contour_max: FloatArray
     efficiency_shrinkage: FloatArray
     plateau: BoolArray
     no_seed_points: BoolArray
-    relative_spread: FloatArray  # 2*|log_L_max - log_L_min|/|log_L_max + log_L_min|
-    absolute_spread: FloatArray  # |log_L_max - log_L_min|
-    cummax_XL: LogSpace
+    relative_spread: FloatArray
+    absolute_spread: FloatArray
 
-    def is_done(self, depth_cond: DepthCondition) -> tuple[BoolArray, IntArray]:
-        """
-        Determine if termination should happen. Termination Flags are bits:
-            0-bit -> 1: used maximum allowed number of samples
-            1-bit -> 2: evidence uncert below threshold
-            2-bit -> 4: evidence from last shrinkage cycle below threshold (dZ/Z < dlogZ)
-            3-bit -> 8: effective sample size big enough
-            4-bit -> 16: used maxmimum allowed number of likelihood evaluations
-            5-bit -> 32: maximum log-likelihood reached
-            6-bit -> 64: maximum log-likelihood contour reached
-            7-bit -> 128: sampler efficiency too low
-            8-bit -> 256: all lineages on a single plateau
-            9-bit -> 512: relative spread of last shrinkage < rtol
-            10-bit -> 1024: absolute spread of last shrinkage < atol
-            11-bit -> 2048: no seed points left
-            12-bit -> 4096: XL < cummax(XL) * peak_XL_frac
-
-        Multiple flags are summed together
-
-        Args:
-            depth_cond: termination condition
-
-        Returns:
-            boolean done signal, and termination reason
-        """
-        return _is_done(self, depth_cond)
+    def is_done(
+            self,
+            term_cond: TerminationCondition,
+    ) -> tuple[BoolArray, IntArray]:
+        """Return a scalar done flag and the compatible bit-mask reason."""
+        return _is_done(self, term_cond)
 
 
 TerminationRegister.register_pytree()
 
 
 @partial(jax.jit, inline=True)
-def _is_done(self: TerminationRegister, depth_cond: DepthCondition) -> tuple[BoolArray, IntArray]:
-    termination_reason = jnp.asarray(0, mp_policy.count_dtype)
-    done = jnp.asarray(False, jnp.bool_)
-
-    def _set_done_bit(bit_done, bit_reason, done, termination_reason):
-        if bit_done.size > 1:
-            raise RuntimeError("bit_done must be a scalar.")
-        done = jnp.bitwise_or(bit_done, done)
-        termination_reason += jnp.where(bit_done,
-                                        jnp.asarray(2 ** bit_reason, mp_policy.count_dtype),
-                                        jnp.asarray(0, mp_policy.count_dtype))
-        return done, termination_reason
-
-    if depth_cond.max_samples is not None:
-        # used all points
-        reached_max_samples = self.num_samples_used >= depth_cond.max_samples
-        done, termination_reason = _set_done_bit(reached_max_samples, 0,
-                                                 done=done, termination_reason=termination_reason)
-    log_Z_mu, log_Z_var = linear_to_log_stats(
-        log_f_mean=self.evidence_calc.Z_mean.log_abs_val,
-        log_f2_mean=self.evidence_calc.Z2_mean.log_abs_val
+def _is_done(
+        self: TerminationRegister,
+        term_cond: TerminationCondition,
+) -> tuple[BoolArray, IntArray]:
+    done_values = (
+        jnp.asarray(False, mp_policy.bool_dtype),
+        jnp.asarray(0, mp_policy.count_dtype),
     )
 
-    if depth_cond.evidence_uncert is not None:
-        evidence_uncert_low_enough = log_Z_var <= jnp.square(depth_cond.evidence_uncert)
-        done, termination_reason = _set_done_bit(evidence_uncert_low_enough, 1,
-                                                 done=done, termination_reason=termination_reason)
-
-    if depth_cond.dlogZ is not None:
-        dZ_over_Z = (self.dZ_shrinkage / LogSpace(log_Z_mu)).value
-        small_remaining_evidence = jnp.less(dZ_over_Z, depth_cond.dlogZ)
-        done, termination_reason = _set_done_bit(small_remaining_evidence, 2,
-                                                 done=done, termination_reason=termination_reason)
-
-    if depth_cond.ess is not None:
-        # Kish's ESS = [sum weights]^2 / [sum weights^2]
-        ess = effective_sample_size_kish(
-            self.evidence_calc.Z_mean.log_abs_val,
-            self.evidence_calc.dZ2_mean.log_abs_val
+    def add(current, bit_done, bit):
+        next_done = jnp.logical_or(current[0], bit_done)
+        next_reason = current[1] + jnp.where(
+            bit_done,
+            jnp.asarray(2 ** bit, mp_policy.count_dtype),
+            jnp.asarray(0, mp_policy.count_dtype),
         )
-        ess_reached = ess >= depth_cond.ess
-        done, termination_reason = _set_done_bit(ess_reached, 3,
-                                                 done=done, termination_reason=termination_reason)
+        return next_done, next_reason
 
-    if depth_cond.max_num_likelihood_evaluations is not None:
-        num_likelihood_evaluations = self.num_likelihood_evaluations
-        too_max_likelihood_evaluations = num_likelihood_evaluations >= depth_cond.max_num_likelihood_evaluations
-        done, termination_reason = _set_done_bit(too_max_likelihood_evaluations, 4,
-                                                 done=done, termination_reason=termination_reason)
-
-    if depth_cond.log_L_target is not None:
-        likelihood_reached = self.log_L_max >= depth_cond.log_L_target
-        done, termination_reason = _set_done_bit(likelihood_reached, 5,
-                                                 done=done, termination_reason=termination_reason)
-
-    if depth_cond.log_L_contour_target is not None:
-        likelihood_contour_reached = self.log_L_contour_max >= depth_cond.log_L_contour_target
-        done, termination_reason = _set_done_bit(likelihood_contour_reached, 6,
-                                                 done=done, termination_reason=termination_reason)
-
-    if depth_cond.efficiency_threshold is not None:
-        efficiency_too_low = self.efficiency_shrinkage < depth_cond.efficiency_threshold
-        done, termination_reason = _set_done_bit(efficiency_too_low, 7,
-                                                 done=done, termination_reason=termination_reason)
-
-    done, termination_reason = _set_done_bit(self.plateau, 8,
-                                             done=done, termination_reason=termination_reason)
-
-    if depth_cond.rtol is not None:
-        relative_spread_low = self.relative_spread < depth_cond.rtol
-        done, termination_reason = _set_done_bit(relative_spread_low, 9,
-                                                 done=done, termination_reason=termination_reason)
-
-    if depth_cond.atol is not None:
-        absolute_spread_low = self.absolute_spread < depth_cond.atol
-        done, termination_reason = _set_done_bit(absolute_spread_low, 10,
-                                                 done=done, termination_reason=termination_reason)
-
-    # Sampler relies upon this termination condition to stop when no seed points are left.
-    done, termination_reason = _set_done_bit(self.no_seed_points, 11,
-                                             done=done, termination_reason=termination_reason)
-
-    if depth_cond.cummax_XL_frac is not None:
-        XL = self.evidence_calc.X_mean * self.evidence_calc.L
-        XL_reduction_reached = XL.log_abs_val < self.cummax_XL.log_abs_val + jnp.log(depth_cond.cummax_XL_frac)
-        done, termination_reason = _set_done_bit(XL_reduction_reached, 12,
-                                                 done=done, termination_reason=termination_reason)
-
-    return done, termination_reason
+    if term_cond.max_samples is not None:
+        done_values = add(
+            done_values,
+            self.num_samples_used >= term_cond.max_samples,
+            0,
+        )
+    if term_cond.evidence_uncert is not None:
+        done_values = add(
+            done_values,
+            self.log_Z_uncert <= term_cond.evidence_uncert,
+            1,
+        )
+    if term_cond.dlogZ is not None:
+        done_values = add(
+            done_values,
+            self.remaining_evidence_fraction < term_cond.dlogZ,
+            2,
+        )
+    if term_cond.ess is not None:
+        done_values = add(done_values, self.ess >= term_cond.ess, 3)
+    if term_cond.max_num_likelihood_evaluations is not None:
+        done_values = add(
+            done_values,
+            self.num_likelihood_evaluations
+            >= term_cond.max_num_likelihood_evaluations,
+            4,
+        )
+    if term_cond.log_L_target is not None:
+        done_values = add(
+            done_values,
+            self.log_L_max >= term_cond.log_L_target,
+            5,
+        )
+    if term_cond.log_L_contour_target is not None:
+        done_values = add(
+            done_values,
+            self.log_L_contour_max >= term_cond.log_L_contour_target,
+            6,
+        )
+    if term_cond.efficiency_threshold is not None:
+        done_values = add(
+            done_values,
+            self.efficiency_shrinkage < term_cond.efficiency_threshold,
+            7,
+        )
+    done_values = add(done_values, self.plateau, 8)
+    if term_cond.rtol is not None:
+        done_values = add(
+            done_values,
+            self.relative_spread < term_cond.rtol,
+            9,
+        )
+    if term_cond.atol is not None:
+        done_values = add(
+            done_values,
+            self.absolute_spread < term_cond.atol,
+            10,
+        )
+    done_values = add(done_values, self.no_seed_points, 11)
+    if term_cond.cummax_XL_frac is not None:
+        done_values = add(
+            done_values,
+            self.posterior_tail_fraction < term_cond.cummax_XL_frac,
+            12,
+        )
+    return done_values

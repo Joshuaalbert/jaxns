@@ -1,10 +1,9 @@
-import time
+from collections.abc import Callable
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Callable
 
+import jax
 import numpy as np
-import sitecustomize  # noqa: F401
+import pytest
 from jax import numpy as jnp
 from jax.scipy.linalg import solve_triangular
 from jax.scipy.special import logsumexp
@@ -21,7 +20,14 @@ tfpd = tfp.distributions
 tfb = tfp.bijectors
 
 
-@dataclass(frozen=True)
+@pytest.fixture(autouse=True)
+def _clear_case_specific_jax_executables():
+    """Bound memory while this module compiles many unrelated model shapes."""
+    yield
+    jax.clear_caches()
+
+
+@dataclass(frozen=True, slots=True)
 class StandardProblemCase:
     name: str
     build_case: Callable
@@ -432,63 +438,64 @@ def make_standard_problem_node(case_name: str) -> StandardProblemNode:
     return StandardProblemNode(case_name=case_name)
 
 
-def test_nested_sampling_run_results(tmp_path):
-    import pylab as plt
-    import os
+@pytest.mark.parametrize("collect_phantom_samples", [False, True])
+@pytest.mark.parametrize(
+    "case",
+    STANDARD_PROBLEM_CASES,
+    ids=lambda case: case.name,
+)
+def test_nested_sampling_run_results(case, collect_phantom_samples):
+    """Release gate for v2 tolerances and v3 expectation/MC agreement."""
+    model, log_Z_true = case.build_case()
+    ns = NestedSampler(
+        model=model,
+        collect_phantom_samples=collect_phantom_samples,
+    )
+    state = ns.run()
+    results = state.to_result().trim()
 
-    tmp_path = Path('./test_plots')
-    os.makedirs(tmp_path, exist_ok=True)
+    assert not np.isnan(results.log_Z_mean)
+    assert not np.isnan(results.log_Z_uncert)
+    if collect_phantom_samples:
+        assert results.log_L_phantom.shape[1] > 0
+        if int(state.depth_loop_iter) > 0:
+            assert int(results.total_phantom_samples) > 0
+    else:
+        assert results.log_L_phantom.shape[1] == 0
+        assert int(results.total_phantom_samples) == 0
 
-    for case in STANDARD_PROBLEM_CASES:
-        print(f"Checking {case.name}")
-        model, log_Z_true = case.build_case()
-        ns = NestedSampler(model=model, collect_phantom_samples=True)
-        t0 = time.time()
-        state = ns.run()
-        results = state.to_result().trim()
-        print(f"Runtime: {time.time() - t0} seconds")
-        results.summary(tmp_path / f"{case.name}_summary.txt")
+    conditioning = "phantom" if collect_phantom_samples else "classic"
+    mc_shrinkage = results.sample_evidence_mc(
+        num_samples=1000,
+        conditioning=conditioning,
+        key=jax.random.PRNGKey(20260823),
+    )
+    log_Z_samples = np.asarray(mc_shrinkage.log_Z_samples)
+    log_Z_ensemble_mean = np.mean(log_Z_samples)
+    log_Z_ensemble_std = np.std(log_Z_samples)
 
-        assert not np.isnan(results.log_Z_mean)
-        assert not np.isnan(results.log_Z_uncert)
-        assert results.log_L_phantom.shape[1] > 0, "rho/eta diagnostics require collected phantom samples."
-        mc_shrinkage_samples = results.sample_mc_shrinkage(num_samples=1000)
+    if not collect_phantom_samples:
+        # The analytic result and classic MC sample the same race posterior.
+        # Phantom conditioning is a different posterior informed by retained
+        # chain observations, so its calibration check is against truth below,
+        # not against the unconditioned classic centre.
+        np.testing.assert_allclose(
+            log_Z_ensemble_mean,
+            results.log_Z_mean,
+            atol=results.log_Z_uncert,
+            rtol=0,
+        )
 
-        rho_samples = mc_shrinkage_samples.rho_samples
-        eta_samples = mc_shrinkage_samples.eta_samples
-        rho_eta_samples = rho_samples * eta_samples
-        log_Z_samples = mc_shrinkage_samples.log_Z_samples
-
-        plt.hist(log_Z_samples, bins='auto')
-        plt.axvline(log_Z_true, color='k', linestyle='--', label='true log Z')
-        plt.axvline(results.log_Z_mean, color='r', linestyle='--', label='estimated log Z')
-        plt.axvline(results.log_Z_mean - results.log_Z_uncert, color='r', linestyle='dotted', label='+1sigma')
-        plt.axvline(results.log_Z_mean + results.log_Z_uncert, color='r', linestyle='dotted', label='-1sigma')
-
-        plt.legend()
-        plt.title(f"{case.name} log Z samples")
-        plt.savefig(tmp_path / f"{case.name}_logZ_samples.png")
-        plt.close()
-
-        plt.hist(rho_eta_samples, bins='auto')
-        plt.title(f"{case.name} rho_eta samples")
-        plt.savefig(tmp_path / f"{case.name}_rho_eta_samples.png")
-        plt.close()
-
-        plt.hist(rho_samples, bins='auto')
-        plt.title(f"{case.name} rho samples")
-        plt.savefig(tmp_path / f"{case.name}_rho_samples.png")
-        plt.close()
-
-        plt.hist(eta_samples, bins='auto')
-        plt.title(f"{case.name} eta samples")
-        plt.savefig(tmp_path / f"{case.name}_eta_samples.png")
-        plt.close()
-
-        results.plot_diagnostics(save_file=tmp_path / f"{case.name}_diagnostics.png")
-        results.plot_cornerplot(save_name=tmp_path / f"{case.name}_cornerplot.png")
-
-        log_Z_ensemble_mean = np.mean(log_Z_samples)
-        log_Z_ensemble_std = np.std(log_Z_samples)
-        np.testing.assert_allclose(results.log_Z_mean, log_Z_true, atol=3.0 * results.log_Z_uncert, rtol=0)
-        np.testing.assert_allclose(log_Z_ensemble_mean, log_Z_true, atol=2.0 * log_Z_ensemble_std, rtol=0)
+    # These are the unchanged v2 release tolerances. V3 must not weaken them.
+    np.testing.assert_allclose(
+        results.log_Z_mean,
+        log_Z_true,
+        atol=3.0 * results.log_Z_uncert,
+        rtol=0,
+    )
+    np.testing.assert_allclose(
+        log_Z_ensemble_mean,
+        log_Z_true,
+        atol=2.0 * log_Z_ensemble_std,
+        rtol=0,
+    )

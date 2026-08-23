@@ -90,7 +90,7 @@ complex_type = jnp.result_type(complex)
 bool_dtype = jnp.result_type(bool)
 
 
-@dataclasses.dataclass(slots=True)
+@dataclasses.dataclass(slots=True, frozen=True)
 class Policy:
     """Encapsulates casting for inputs, outputs and parameters."""
     measure_dtype: jnp.dtype = float_type
@@ -116,13 +116,17 @@ class Policy:
         """Context manager to temporarily set dtypes."""
         tmp_dtypes = (self.measure_dtype, self.index_dtype, self.count_dtype)
         if measure_dtype is not None:
-            self.measure_dtype = measure_dtype
+            object.__setattr__(self, "measure_dtype", measure_dtype)
         if index_dtype is not None:
-            self.index_dtype = index_dtype
+            object.__setattr__(self, "index_dtype", index_dtype)
         if count_dtype is not None:
-            self.count_dtype = count_dtype
-        yield self
-        self.measure_dtype, self.index_dtype, self.count_dtype = tmp_dtypes
+            object.__setattr__(self, "count_dtype", count_dtype)
+        try:
+            yield self
+        finally:
+            object.__setattr__(self, "measure_dtype", tmp_dtypes[0])
+            object.__setattr__(self, "index_dtype", tmp_dtypes[1])
+            object.__setattr__(self, "count_dtype", tmp_dtypes[2])
 
 
 mp_policy = Policy()

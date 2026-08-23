@@ -1,19 +1,34 @@
 import dataclasses
 import warnings
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from functools import partial
-from typing import Callable, NamedTuple, Any
+from typing import Any, NamedTuple
 
 import jax
-from jax import numpy as jnp, random
+from jax import numpy as jnp
+from jax import random
 
 from jaxns.cumulative_ops import cumulative_op_static
 from jaxns.mixed_precision import mp_policy
 from jaxns.model import Model
 from jaxns.pytree import PureDataclassPytree, TreeField
 from jaxns.random_utils import sample_uniformly_masked
-from jaxns.samples import Samples, SeedPoint, PhantomSamples
-from jaxns.types import FloatArray, IntArray, PRNGKey, UType, BoolArray
+from jaxns.samples import PhantomSamples, Samples, SeedPoint
+from jaxns.types import BoolArray, FloatArray, IntArray, PRNGKey, UType
+
+
+@dataclasses.dataclass(slots=True, frozen=True)
+class ConstrainedSampleBatch(PureDataclassPytree):
+    """Fixed-width output of concurrent constrained-sampler lanes."""
+
+    U_samples: UType
+    log_likelihoods: FloatArray
+    num_likelihood_evaluations: IntArray
+    phantom_samples: PhantomSamples
+
+
+ConstrainedSampleBatch.register_pytree()
 
 
 class AbstractSampler(ABC):
@@ -50,6 +65,7 @@ class AbstractSampler(ABC):
         """
         ...
 
+
 @partial(jax.jit, inline=True)
 def _sample_direction(key: PRNGKey, u0: TreeField[UType], radii: TreeField[UType] | None = None, rotation: UType | None = None) -> TreeField[UType]:
     """
@@ -73,6 +89,7 @@ def _sample_direction(key: PRNGKey, u0: TreeField[UType], radii: TreeField[UType
     eps = jnp.asarray(1e-6, direction.norm().dtype)
     norm = jnp.maximum(eps, direction.norm())
     return direction / norm
+
 
 @partial(jax.jit, inline=True)
 def _slice_bounds(point_U0: TreeField[UType], direction: TreeField[UType]) -> tuple[FloatArray, FloatArray]:
@@ -105,6 +122,7 @@ def _slice_bounds(point_U0: TreeField[UType], direction: TreeField[UType]) -> tu
     left_bound = jnp.maximum(t0_left, t1_left)
     return left_bound, right_bound
 
+
 @partial(jax.jit, inline=True)
 def _pick_point_in_interval(key: PRNGKey, point_U0: TreeField[UType], direction: TreeField[UType], left: FloatArray,
                             right: FloatArray) -> tuple[TreeField[UType], FloatArray]:
@@ -127,6 +145,7 @@ def _pick_point_in_interval(key: PRNGKey, point_U0: TreeField[UType], direction:
     point_U = point_U0 + direction * t
     return point_U, t
 
+
 @partial(jax.jit, inline=True)
 def _shrink_interval(t: FloatArray, left: FloatArray, right: FloatArray) -> tuple[FloatArray, FloatArray]:
     """
@@ -138,7 +157,7 @@ def _shrink_interval(t: FloatArray, left: FloatArray, right: FloatArray) -> tupl
 
     return left, right
 
-@partial(jax.jit, inline=True)
+
 def _new_proposal(
         key: PRNGKey,
         U0: TreeField[UType],
@@ -185,7 +204,7 @@ def _new_proposal(
         left, right = _shrink_interval(
             t=carry.t,
             left=carry.left,
-            right=carry.right
+            right=carry.right,
         )
         point_U, t = _pick_point_in_interval(
             key=t_key,
@@ -367,6 +386,11 @@ def get_seed_point(key: PRNGKey, samples: Samples, log_L_constraint: FloatArray)
     return seed_point
 
 
+def _take_phantom_prefix(cumulative_samples, num_phantom: int):
+    """Take retained generated transitions from the start of a chain."""
+    return jax.tree.map(lambda x: x[:num_phantom], cumulative_samples)
+
+
 @dataclasses.dataclass(slots=True, frozen=True)
 class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
     """
@@ -393,7 +417,6 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
     def flatten(cls, this) -> tuple[list[Any], tuple[Any, ...]]:
         return cls.build_flatten(this, ['num_slices', 'no_step_out', 'gradient_guided', 'collect_phantom_samples', 'phantom_burn_in'])
 
-
     def _check(self):
         if self.num_slices < 1:
             raise ValueError(f"num_slices should be >= 1, got {self.num_slices}.")
@@ -415,8 +438,13 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
             key: jax.Array
             alpha: jax.Array
 
-        log_likelihood_fn = lambda U: self.model.log_likelihood(U, args=args, params=params, allow_nan=False)
-        grad_fn = jax.grad(log_likelihood_fn)
+        def log_likelihood_fn(U):
+            return self.model.log_likelihood(
+                U,
+                args=args,
+                params=params,
+                allow_nan=False,
+            )
 
         class Carry(NamedTuple):
             U_sample: TreeField[UType]
@@ -453,7 +481,7 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
         init_direction = _sample_direction(direction_key, TreeField(seed_point.U0))
         slice_width_dtype = jax.tree.leaves(seed_point.U0)[0].dtype
 
-        #### initial proposal to get slice width for cumulative op with perfect stepout
+        # Initial proposal determines the width used by perfect bracketing.
         sample_key, init_sample_key = random.split(sample_key, 2)
 
         U_sample, log_L, num_likelihood_evaluations, init_direction, slice_width = _new_proposal(
@@ -493,11 +521,16 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
             cumulative_samples
         )
 
-        # Last sample is the final sample, the rest are potential phantom samples
-        # Take only the last num_phantom_save phantom samples
+        # The final transition is the classic replacement. Retain phantoms from
+        # the start of the generated chain so they are separated from that final
+        # state by the requested burn-in. The input seed is not a generated
+        # transition and is therefore never retained as a phantom.
         assert self.num_phantom() <= self.num_slices - 1, "num_phantom() should be in [0, num_slices - 1]"
 
-        phantom_fraction = jax.tree.map(lambda x: x[self.num_slices - 1 - self.num_phantom():-1], cumulative_samples)
+        phantom_fraction = _take_phantom_prefix(
+            cumulative_samples,
+            self.num_phantom(),
+        )
         phantom_samples = PhantomSamples(
             U_samples=phantom_fraction.U_sample.tree,
             log_L=phantom_fraction.log_L,

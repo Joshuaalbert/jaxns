@@ -3,16 +3,17 @@ from functools import partial
 
 import jax.lax
 import jax.tree
-from jax import numpy as jnp, random
+from jax import numpy as jnp
+from jax import random
 
 from jaxns.cumulative_ops import scan_or_while_loop
 from jaxns.logging import jaxns_logger
 from jaxns.mixed_precision import mp_policy
 from jaxns.pytree import PureDataclassPytree
-from jaxns.types import FloatArray, IntArray, UType, BoolArray
+from jaxns.types import BoolArray, FloatArray, IntArray, UType
 
 
-@dataclasses.dataclass(slots=True)
+@dataclasses.dataclass(slots=True, frozen=True)
 class SeedPoint(PureDataclassPytree):
     U0: UType
     log_L0: FloatArray
@@ -21,7 +22,7 @@ class SeedPoint(PureDataclassPytree):
 SeedPoint.register_pytree()
 
 
-@dataclasses.dataclass(slots=True)
+@dataclasses.dataclass(slots=True, frozen=True)
 class PhantomSamples(PureDataclassPytree):
     U_samples: UType | None  # [num_phantom, ...]
     valid_mask: BoolArray  # [num_phantom] whether the phantom sample is valid or not, used for book-keeping when resizing phantom samples
@@ -31,7 +32,7 @@ class PhantomSamples(PureDataclassPytree):
 PhantomSamples.register_pytree()
 
 
-@dataclasses.dataclass(slots=True)
+@dataclasses.dataclass(slots=True, frozen=True)
 class Samples(PureDataclassPytree):
     log_L_constraints: FloatArray  # [max_samples] the likelihood constraint for each sample, i.e. the likelihood of the parent sample
     log_likelihoods: FloatArray  # [max_samples]
@@ -39,6 +40,17 @@ class Samples(PureDataclassPytree):
     out_degree: IntArray  # [max_samples]
     num_likelihood_evaluations: IntArray  # [max_samples] incorperates
     phantom_samples: PhantomSamples  # [max_samples, ...]
+    # Stable storage identity of the parent. A value of -1 denotes the root
+    # sentinel. Keeping this identity avoids reconstructing ancestry from a
+    # likelihood sort after a batched replacement has completed.
+    parent_idx: IntArray | None = None
+    # Preserve the originally scheduled parent when seed availability forces
+    # reparenting to a shallower effective contour.
+    requested_parent_idx: IntArray | None = None
+    requested_log_L_constraint: FloatArray | None = None
+    # Exact seed identity used with parent ancestry to derive independent root
+    # lineages for phantom-cluster weighting and stationarity diagnostics.
+    seed_idx: IntArray | None = None
 
     def __len__(self):
         return self.log_likelihoods.shape[0]
@@ -58,6 +70,9 @@ class Samples(PureDataclassPytree):
     def sort(self) -> 'Samples':
         return _sort(self)
 
+    def perm_sort(self, key) -> 'Samples':
+        return _perm_sort(self, key)
+
     def compute_num_live_points_per_sample(self, root_out_degree: IntArray,
                                            num_samples: IntArray | None = None) -> IntArray:
         return _compute_num_live_points_per_sample(self, root_out_degree, num_samples)
@@ -68,7 +83,6 @@ class Samples(PureDataclassPytree):
 
     def resize(self, max_samples: int) -> 'Samples':
         return _resize(self, max_samples)
-
 
 
 Samples.register_pytree()
@@ -103,9 +117,25 @@ def _sort(self: Samples) -> Samples:
     (log_likelihoods, idxs) = jax.lax.sort(
         (self.log_likelihoods, iota),
         is_stable=False, num_keys=1)
-    self = jax.tree.map(lambda x: x[idxs], self)
-    self.log_likelihoods = log_likelihoods
-    return self
+    sorted_samples = jax.tree.map(lambda x: x[idxs], self)
+    return dataclasses.replace(sorted_samples, log_likelihoods=log_likelihoods)
+
+
+@partial(jax.jit, inline=True)
+def _perm_sort(self: Samples, key) -> Samples:
+    sort_keys = random.randint(
+        key,
+        shape=jnp.shape(self.log_likelihoods),
+        minval=0,
+        maxval=jnp.iinfo(jnp.uint32).max,
+        dtype=jnp.uint32
+    )
+    iota = jnp.arange(len(self.log_likelihoods))
+    (log_likelihoods, _, idxs) = jax.lax.sort(
+        (self.log_likelihoods, sort_keys, iota),
+        is_stable=False, num_keys=2)
+    sorted_samples = jax.tree.map(lambda x: x[idxs], self)
+    return dataclasses.replace(sorted_samples, log_likelihoods=log_likelihoods)
 
 
 @partial(jax.jit, inline=True)
@@ -125,12 +155,14 @@ def _compute_num_live_points_per_sample(self: Samples, root_out_degree: IntArray
 @partial(jax.jit, inline=True)
 def _append_samples(self: Samples, insert_idx: IntArray, parent_idxs: IntArray, samples: Samples,
                     delta_parent_out_degree: IntArray) -> Samples:
-    samples = self.set_slice(insert_idx, samples)
-    samples.out_degree = samples.out_degree.at[parent_idxs].add(delta_parent_out_degree)
-    return samples
+    appended = self.set_slice(insert_idx, samples)
+    out_degree = appended.out_degree.at[parent_idxs].add(
+        delta_parent_out_degree
+    )
+    return dataclasses.replace(appended, out_degree=out_degree)
 
 
-@partial(jax.jit, inline=True)
+@partial(jax.jit, inline=True, static_argnames=['max_samples'])
 def _resize(self: Samples, max_samples: int) -> Samples:
     if len(self) >= max_samples:
         jaxns_logger.warning(
@@ -155,9 +187,29 @@ def _resize(self: Samples, max_samples: int) -> Samples:
         U_samples=jax.tree.map(lambda x: jnp.zeros_like(x[0]), self.U_samples),
         phantom_samples=PhantomSamples(
             U_samples=jax.tree.map(lambda x: jnp.zeros_like(x[0]), self.phantom_samples.U_samples),
-            log_L=jnp.asarray(jnp.inf, mp_policy.measure_dtype),
-            valid_mask=jnp.asarray(False, mp_policy.bool_dtype)
-        )
+            log_L=jnp.full_like(self.phantom_samples.log_L[0], -jnp.inf),
+            valid_mask=jnp.zeros_like(self.phantom_samples.valid_mask[0])
+        ),
+        parent_idx=(
+            None
+            if self.parent_idx is None
+            else jnp.asarray(-1, mp_policy.index_dtype)
+        ),
+        requested_parent_idx=(
+            None
+            if self.requested_parent_idx is None
+            else jnp.asarray(-1, mp_policy.index_dtype)
+        ),
+        requested_log_L_constraint=(
+            None
+            if self.requested_log_L_constraint is None
+            else jnp.asarray(jnp.inf, mp_policy.measure_dtype)
+        ),
+        seed_idx=(
+            None
+            if self.seed_idx is None
+            else jnp.asarray(-1, mp_policy.index_dtype)
+        ),
     )
 
     return _concat(self, sample_atom)
