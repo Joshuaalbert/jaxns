@@ -100,10 +100,10 @@ Phantom-conditioned post-processing is the principal remaining performance
 cost: the current gamma construction materialises arrays proportional to MC
 draws times clusters/blocks. For example, basic-MVN final MC time is 5.054 s
 with phantoms versus 0.316 s without, and the process peak reaches 2,726.5 MiB.
-This cost is kept separate from core sampling time in the table. Also, as
-expected, a vmapped rejection batch advances at its slowest lane; likelihood
-evaluation parallelism without batching whole variable-length chains remains
-future work.
+This cost is kept separate from core sampling time in the table and its
+bounded-memory implementation is tracked in issue #249. Also, as expected, a
+vmapped rejection batch advances at its slowest lane; likelihood-evaluation
+parallelism without batching whole variable-length chains remains future work.
 
 A post-review representative current basic-MVN phantom depth program lowers in
 0.911 s, compiles in 2.048 s, and executes a warmed depth epoch in 1.255 s. Its
