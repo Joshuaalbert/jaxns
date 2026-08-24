@@ -445,7 +445,7 @@ def make_standard_problem_node(case_name: str) -> StandardProblemNode:
     ids=lambda case: case.name,
 )
 def test_nested_sampling_run_results(case, collect_phantom_samples):
-    """Release gate for v2 tolerances and v3 expectation/MC agreement."""
+    """Release gate for v2 tolerances and expectation/MC agreement."""
     model, log_Z_true = case.build_case()
     ns = NestedSampler(
         model=model,
@@ -464,29 +464,39 @@ def test_nested_sampling_run_results(case, collect_phantom_samples):
         assert results.log_L_phantom.shape[1] == 0
         assert int(results.total_phantom_samples) == 0
 
-    conditioning = "phantom" if collect_phantom_samples else "classic"
-    mc_shrinkage = results.sample_evidence_mc(
+    # The deterministic result is the expectation of the classic race model,
+    # so validate it against a classic MC ensemble even when this run also
+    # retained phantoms. Phantom conditioning is a distinct posterior update
+    # and is checked separately against the known evidence below.
+    classic_shrinkage = results.sample_evidence_mc(
         num_samples=1000,
-        conditioning=conditioning,
+        conditioning="classic",
         key=jax.random.PRNGKey(20260823),
     )
+    classic_log_Z_mean = np.mean(
+        np.asarray(classic_shrinkage.log_Z_samples)
+    )
+    np.testing.assert_allclose(
+        classic_log_Z_mean,
+        results.log_Z_mean,
+        atol=results.log_Z_uncert,
+        rtol=0,
+    )
+
+    if collect_phantom_samples:
+        mc_shrinkage = results.sample_evidence_mc(
+            num_samples=1000,
+            conditioning="phantom",
+            key=jax.random.PRNGKey(20260823),
+        )
+    else:
+        mc_shrinkage = classic_shrinkage
     log_Z_samples = np.asarray(mc_shrinkage.log_Z_samples)
     log_Z_ensemble_mean = np.mean(log_Z_samples)
     log_Z_ensemble_std = np.std(log_Z_samples)
 
-    if not collect_phantom_samples:
-        # The analytic result and classic MC sample the same race posterior.
-        # Phantom conditioning is a different posterior informed by retained
-        # chain observations, so its calibration check is against truth below,
-        # not against the unconditioned classic centre.
-        np.testing.assert_allclose(
-            log_Z_ensemble_mean,
-            results.log_Z_mean,
-            atol=results.log_Z_uncert,
-            rtol=0,
-        )
-
-    # These are the unchanged v2 release tolerances. V3 must not weaken them.
+    # These are the unchanged v2 release tolerances. The new core must not
+    # weaken them.
     np.testing.assert_allclose(
         results.log_Z_mean,
         log_Z_true,

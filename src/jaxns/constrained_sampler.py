@@ -22,10 +22,10 @@ from jaxns.types import BoolArray, FloatArray, IntArray, PRNGKey, UType
 class ConstrainedSampleBatch(PureDataclassPytree):
     """Fixed-width output of concurrent constrained-sampler lanes."""
 
-    U_samples: UType
-    log_likelihoods: FloatArray
-    num_likelihood_evaluations: IntArray
-    phantom_samples: PhantomSamples
+    U_samples: UType  # [S, ...] unit-hypercube pytree leaves
+    log_likelihoods: FloatArray  # [S]
+    num_likelihood_evaluations: IntArray  # [S]
+    phantom_samples: PhantomSamples  # [S, P, ...]
 
 
 ConstrainedSampleBatch.register_pytree()
@@ -154,7 +154,6 @@ def _shrink_interval(t: FloatArray, left: FloatArray, right: FloatArray) -> tupl
     zero = jnp.zeros_like(t)
     left = jnp.where(t < zero, t, left)
     right = jnp.where(t > zero, t, right)
-
     return left, right
 
 
@@ -521,10 +520,10 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
             cumulative_samples
         )
 
-        # The final transition is the classic replacement. Retain phantoms from
-        # the start of the generated chain so they are separated from that final
-        # state by the requested burn-in. The input seed is not a generated
-        # transition and is therefore never retained as a phantom.
+        # The final transition is the classic replacement. Retain generated
+        # transitions from the start of the chain, never the end adjacent to
+        # the classic sample. The input seed is an existing classic sample and
+        # is not duplicated as a phantom observation.
         assert self.num_phantom() <= self.num_slices - 1, "num_phantom() should be in [0, num_slices - 1]"
 
         phantom_fraction = _take_phantom_prefix(

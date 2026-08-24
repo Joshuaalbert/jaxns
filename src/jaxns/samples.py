@@ -15,8 +15,8 @@ from jaxns.types import BoolArray, FloatArray, IntArray, UType
 
 @dataclasses.dataclass(slots=True, frozen=True)
 class SeedPoint(PureDataclassPytree):
-    U0: UType
-    log_L0: FloatArray
+    U0: UType  # [...] one point in the unit-hypercube pytree
+    log_L0: FloatArray  # []
 
 
 SeedPoint.register_pytree()
@@ -24,9 +24,9 @@ SeedPoint.register_pytree()
 
 @dataclasses.dataclass(slots=True, frozen=True)
 class PhantomSamples(PureDataclassPytree):
-    U_samples: UType | None  # [num_phantom, ...]
-    valid_mask: BoolArray  # [num_phantom] whether the phantom sample is valid or not, used for book-keeping when resizing phantom samples
-    log_L: FloatArray  # [num_phantom] the likelihoods of the phantom samples, must be > than log_L_constraint
+    U_samples: UType | None  # [P, ...] unit-hypercube pytree leaves
+    valid_mask: BoolArray  # [P]
+    log_L: FloatArray  # [P]
 
 
 PhantomSamples.register_pytree()
@@ -34,23 +34,20 @@ PhantomSamples.register_pytree()
 
 @dataclasses.dataclass(slots=True, frozen=True)
 class Samples(PureDataclassPytree):
-    log_L_constraints: FloatArray  # [max_samples] the likelihood constraint for each sample, i.e. the likelihood of the parent sample
-    log_likelihoods: FloatArray  # [max_samples]
-    U_samples: UType  # [max_samples, ...]
-    out_degree: IntArray  # [max_samples]
-    num_likelihood_evaluations: IntArray  # [max_samples] incorperates
-    phantom_samples: PhantomSamples  # [max_samples, ...]
-    # Stable storage identity of the parent. A value of -1 denotes the root
-    # sentinel. Keeping this identity avoids reconstructing ancestry from a
-    # likelihood sort after a batched replacement has completed.
-    parent_idx: IntArray | None = None
-    # Preserve the originally scheduled parent when seed availability forces
-    # reparenting to a shallower effective contour.
-    requested_parent_idx: IntArray | None = None
-    requested_log_L_constraint: FloatArray | None = None
-    # Exact seed identity used with parent ancestry to derive independent root
-    # lineages for phantom-cluster weighting and stationarity diagnostics.
-    seed_idx: IntArray | None = None
+    """Append-order scientific samples sufficient to reconstruct the race.
+
+    The parent contour and per-sample out-degree are persistent. A concrete
+    parent storage index is deliberately absent: it is needed only transiently
+    when a child increments its parent's degree, and would become stale if
+    these rows were sorted.
+    """
+
+    log_L_constraints: FloatArray  # [N]
+    log_likelihoods: FloatArray  # [N]
+    U_samples: UType  # [N, ...] unit-hypercube pytree leaves
+    out_degree: IntArray  # [N]
+    num_likelihood_evaluations: IntArray  # [N]
+    phantom_samples: PhantomSamples  # [N, P, ...]
 
     def __len__(self):
         return self.log_likelihoods.shape[0]
@@ -79,6 +76,7 @@ class Samples(PureDataclassPytree):
 
     def append_samples(self, insert_idx: IntArray, parent_idxs: IntArray, samples: 'Samples',
                        delta_parent_out_degree: IntArray) -> 'Samples':
+        """Append a fixed batch and apply its transient parent degree updates."""
         return _append_samples(self, insert_idx, parent_idxs, samples, delta_parent_out_degree)
 
     def resize(self, max_samples: int) -> 'Samples':
@@ -155,6 +153,9 @@ def _compute_num_live_points_per_sample(self: Samples, root_out_degree: IntArray
 @partial(jax.jit, inline=True)
 def _append_samples(self: Samples, insert_idx: IntArray, parent_idxs: IntArray, samples: Samples,
                     delta_parent_out_degree: IntArray) -> Samples:
+    # Parent storage indices exist only for this scatter. The persistent child
+    # records its parent likelihood contour, while the updated degree is all
+    # that later race reconstruction and shrinkage require.
     appended = self.set_slice(insert_idx, samples)
     out_degree = appended.out_degree.at[parent_idxs].add(
         delta_parent_out_degree
@@ -189,26 +190,6 @@ def _resize(self: Samples, max_samples: int) -> Samples:
             U_samples=jax.tree.map(lambda x: jnp.zeros_like(x[0]), self.phantom_samples.U_samples),
             log_L=jnp.full_like(self.phantom_samples.log_L[0], -jnp.inf),
             valid_mask=jnp.zeros_like(self.phantom_samples.valid_mask[0])
-        ),
-        parent_idx=(
-            None
-            if self.parent_idx is None
-            else jnp.asarray(-1, mp_policy.index_dtype)
-        ),
-        requested_parent_idx=(
-            None
-            if self.requested_parent_idx is None
-            else jnp.asarray(-1, mp_policy.index_dtype)
-        ),
-        requested_log_L_constraint=(
-            None
-            if self.requested_log_L_constraint is None
-            else jnp.asarray(jnp.inf, mp_policy.measure_dtype)
-        ),
-        seed_idx=(
-            None
-            if self.seed_idx is None
-            else jnp.asarray(-1, mp_policy.index_dtype)
         ),
     )
 

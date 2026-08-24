@@ -1,4 +1,4 @@
-"""NumPy reference for the paper's v3 gamma-weighted evidence model.
+"""NumPy reference for the paper's gamma-weighted evidence model.
 
 This module deliberately favours linear loops and explicit arrays over JAX
 optimisations. It is the correctness oracle for phantom counts, Kish gating,
@@ -80,75 +80,75 @@ def _validate_phantom_metadata(
 
 @dataclasses.dataclass(frozen=True, slots=True)
 class PhantomCountMatrices:
-    A_cg: FloatArray
-    B_cg: FloatArray
-    E_cg: FloatArray
-    R_cg: FloatArray
-    A_g: FloatArray
-    B_g: FloatArray
-    E_g: FloatArray
-    R_g: FloatArray
-    kish_participating_cluster_counts: FloatArray
-    phantom_gate_active: BoolArray
+    A_cg: FloatArray  # [C, G]
+    B_cg: FloatArray  # [C, G]
+    E_cg: FloatArray  # [C, G]
+    R_cg: FloatArray  # [C, G]
+    A_g: FloatArray  # [G]
+    B_g: FloatArray  # [G]
+    E_g: FloatArray  # [G]
+    R_g: FloatArray  # [G]
+    kish_participating_cluster_counts: FloatArray  # [G]
+    phantom_gate_active: BoolArray  # [G]
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
 class GammaWeightedPhantomProbabilities:
-    p_gt: FloatArray
-    p_eq: FloatArray
-    p_lt: FloatArray
-    phantom_add_gt: FloatArray
-    phantom_add_eq: FloatArray
-    phantom_add_lt: FloatArray
-    kish_participating_cluster_counts: FloatArray
-    phantom_gate_active: BoolArray
+    p_gt: FloatArray  # [G]
+    p_eq: FloatArray  # [G]
+    p_lt: FloatArray  # [G]
+    phantom_add_gt: FloatArray  # [G]
+    phantom_add_eq: FloatArray  # [G]
+    phantom_add_lt: FloatArray  # [G]
+    kish_participating_cluster_counts: FloatArray  # [G]
+    phantom_gate_active: BoolArray  # [G]
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
 class GammaWeightedPhantomSamples:
-    p_gt_samples: FloatArray
-    p_eq_samples: FloatArray
-    p_lt_samples: FloatArray
-    phantom_add_gt_samples: FloatArray
-    phantom_add_eq_samples: FloatArray
-    phantom_add_lt_samples: FloatArray
-    kish_participating_cluster_counts: FloatArray
-    phantom_gate_active: BoolArray
-    race_gamma_gt: FloatArray
-    race_gamma_eq: FloatArray
-    race_gamma_lt: FloatArray
-    cluster_weights: FloatArray
+    p_gt_samples: FloatArray  # [M, G]
+    p_eq_samples: FloatArray  # [M, G]
+    p_lt_samples: FloatArray  # [M, G]
+    phantom_add_gt_samples: FloatArray  # [M, G]
+    phantom_add_eq_samples: FloatArray  # [M, G]
+    phantom_add_lt_samples: FloatArray  # [M, G]
+    kish_participating_cluster_counts: FloatArray  # [G]
+    phantom_gate_active: BoolArray  # [G]
+    race_gamma_gt: FloatArray  # [M, G]
+    race_gamma_eq: FloatArray  # [M, G]
+    race_gamma_lt: FloatArray  # [M, G]
+    cluster_weights: FloatArray  # [M, C]
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
 class EvidenceSamples:
-    log_Z_samples: FloatArray
-    H_samples: FloatArray
-    log_dZ_mean: FloatArray
-    log_dZ_var: FloatArray
-    log_L_blocks: FloatArray
-    block_first_idx: IntArray
-    block_size: IntArray
-    incoming_K: IntArray
-    kish_participating_cluster_counts: FloatArray
-    phantom_gate_active: BoolArray
-    phantom_A: FloatArray
-    phantom_B: FloatArray
-    phantom_E: FloatArray
-    phantom_R: FloatArray
-    classic_alpha_gt: FloatArray
-    classic_alpha_eq: FloatArray
-    classic_alpha_lt: FloatArray
-    epsilon: FloatArray
-    p_gt_samples: FloatArray
-    p_eq_samples: FloatArray
-    p_lt_samples: FloatArray
-    p_gt_mean: FloatArray
-    p_eq_mean: FloatArray
-    p_lt_mean: FloatArray
-    phantom_add_gt_samples: FloatArray
-    phantom_add_eq_samples: FloatArray
-    phantom_add_lt_samples: FloatArray
+    log_Z_samples: FloatArray  # [M]
+    H_samples: FloatArray  # [M]
+    log_dZ_mean: FloatArray  # [G]
+    log_dZ_var: FloatArray  # [G]
+    log_L_blocks: FloatArray  # [G]
+    block_first_idx: IntArray  # [G]
+    block_size: IntArray  # [G]
+    incoming_K: IntArray  # [G]
+    kish_participating_cluster_counts: FloatArray  # [G]
+    phantom_gate_active: BoolArray  # [G]
+    phantom_A: FloatArray  # [G]
+    phantom_B: FloatArray  # [G]
+    phantom_E: FloatArray  # [G]
+    phantom_R: FloatArray  # [G]
+    classic_alpha_gt: FloatArray  # [G]
+    classic_alpha_eq: FloatArray  # [G]
+    classic_alpha_lt: FloatArray  # [G]
+    epsilon: FloatArray  # [G]
+    p_gt_samples: FloatArray  # [M, G]
+    p_eq_samples: FloatArray  # [M, G]
+    p_lt_samples: FloatArray  # [M, G]
+    p_gt_mean: FloatArray  # [G]
+    p_eq_mean: FloatArray  # [G]
+    p_lt_mean: FloatArray  # [G]
+    phantom_add_gt_samples: FloatArray  # [M, G]
+    phantom_add_eq_samples: FloatArray  # [M, G]
+    phantom_add_lt_samples: FloatArray  # [M, G]
 
     @property
     def A_g(self) -> FloatArray:
@@ -351,15 +351,23 @@ def gamma_weighted_phantom_probabilities_from_draws(
     weights = np.asarray(cluster_weights, dtype=float)
     if weights.shape != (A.shape[0],):
         raise ValueError("cluster_weights shape must align with cluster axis.")
-    R = A - B - E
+    # Mirror the production model exactly: singleton blocks have no equality
+    # category, so their complement count is A-B rather than A-B-E.
+    atom_present = valid & (np.asarray(block_state.block_size) > 1)
+    model_E = np.where(atom_present[None, :], E, 0.0)
+    model_R = A - B - model_E
     kish = compute_kish_participating_cluster_counts(A)
     gate = compute_phantom_gate_active(A, C_min=C_min) & valid
     gate_float = gate.astype(float)
     add_gt = (weights @ B) * gate_float
-    add_eq = (weights @ E) * gate_float
-    add_lt = (weights @ R) * gate_float
+    add_eq = (weights @ model_E) * gate_float
+    add_lt = (weights @ model_R) * gate_float
     gt = np.asarray(race_gamma_gt, dtype=float) + add_gt
-    eq = np.asarray(race_gamma_eq, dtype=float) + add_eq
+    eq = np.where(
+        atom_present,
+        np.asarray(race_gamma_eq, dtype=float),
+        0.0,
+    ) + add_eq
     lt = np.asarray(race_gamma_lt, dtype=float) + add_lt
     total = gt + eq + lt
     total = np.where(total > 0.0, total, 1.0)
@@ -411,8 +419,10 @@ def sample_gamma_weighted_phantom_probabilities(
         E_cg=E,
         block_valid_mask=valid,
     )
-    R = A - B - E
     alpha, _ = _classic_alpha_from_block_state(block_state)
+    atom_present = valid & (alpha[:, 1] > 0.0)
+    model_E = np.where(atom_present[None, :], E, 0.0)
+    model_R = A - B - model_E
     safe_alpha = np.where(alpha > 0.0, alpha, 1.0)
     race_gt = rng.gamma(shape=safe_alpha[:, 0], size=(int(num_samples), alpha.shape[0]))
     race_eq = rng.gamma(shape=safe_alpha[:, 1], size=(int(num_samples), alpha.shape[0]))
@@ -431,8 +441,8 @@ def sample_gamma_weighted_phantom_probabilities(
     gate = compute_phantom_gate_active(A, C_min=C_min) & valid
     gate_float = gate.astype(float)[None, :]
     add_gt = (cluster_weights @ B) * gate_float
-    add_eq = (cluster_weights @ E) * gate_float
-    add_lt = (cluster_weights @ R) * gate_float
+    add_eq = (cluster_weights @ model_E) * gate_float
+    add_lt = (cluster_weights @ model_R) * gate_float
     gt = race_gt + add_gt
     eq = race_eq + add_eq
     lt = race_lt + add_lt

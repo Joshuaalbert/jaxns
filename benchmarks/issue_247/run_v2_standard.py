@@ -2,7 +2,7 @@
 
 Run this file from outside the checkout with the desired baseline package first
 on ``PYTHONPATH``. The emitted module path is an explicit guard against an
-accidental import of the editable v3 checkout.
+accidental import of the editable current checkout.
 """
 
 import argparse
@@ -291,7 +291,10 @@ def main():
     )
     parser.add_argument("--source-id", default="jaxns==2.6.9")
     parser.add_argument("--phantoms", action="store_true")
-    parser.add_argument("--seeds", default="11,23,37")
+    parser.add_argument(
+        "--seeds",
+        default=",".join(str(seed) for seed in range(30)),
+    )
     parser.add_argument("--root-multiplier", type=int)
     parser.add_argument("--mc-draws", type=int, default=1000)
     parser.add_argument("--output")

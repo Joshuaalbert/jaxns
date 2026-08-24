@@ -19,7 +19,7 @@ class LikelihoodOrder(PureDataclassPytree):
     or phantom pytrees.
     """
 
-    sample_indices: IntArray
+    sample_indices: IntArray  # [N]
 
     def insert(
             self,
@@ -138,17 +138,17 @@ def insert_likelihood_order(
 
 @dataclasses.dataclass(slots=True, frozen=True)
 class BlockState(PureDataclassPytree):
-    """Canonical v3 block view of race-tree samples."""
+    """Canonical block view of race-tree samples."""
 
-    log_L_blocks: FloatArray
-    block_first_idx: IntArray
-    block_size: IntArray
-    incoming_K: IntArray
-    block_out_degree: IntArray
-    valid: BoolArray
-    block_start: IntArray | None = None
-    block_stop: IntArray | None = None
-    block_sample_indices: IntArray | None = None
+    log_L_blocks: FloatArray  # [G]
+    block_first_idx: IntArray  # [G]
+    block_size: IntArray  # [G]
+    incoming_K: IntArray  # [G]
+    block_out_degree: IntArray  # [G]
+    valid: BoolArray  # [G]
+    block_start: IntArray | None = None  # [G]
+    block_stop: IntArray | None = None  # [G]
+    block_sample_indices: IntArray | None = None  # [N] or [G, M_g^max]
 
     @property
     def num_blocks(self) -> IntArray:

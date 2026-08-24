@@ -21,17 +21,17 @@ class TerminationCondition(PureDataclassPytree):
     compiled depth-loop condition.
     """
 
-    ess: FloatArray | None = None
-    evidence_uncert: FloatArray | None = None
-    dlogZ: FloatArray | None = None
-    max_samples: IntArray | None = None
-    max_num_likelihood_evaluations: IntArray | None = None
-    log_L_target: FloatArray | None = None
-    log_L_contour_target: FloatArray | None = None
-    efficiency_threshold: FloatArray | None = None
-    rtol: FloatArray | None = None
-    atol: FloatArray | None = None
-    cummax_XL_frac: FloatArray | None = None
+    ess: FloatArray | None = None  # []
+    evidence_uncert: FloatArray | None = None  # []
+    dlogZ: FloatArray | None = None  # []
+    max_samples: IntArray | None = None  # []
+    max_num_likelihood_evaluations: IntArray | None = None  # []
+    log_L_target: FloatArray | None = None  # []
+    log_L_contour_target: FloatArray | None = None  # []
+    efficiency_threshold: FloatArray | None = None  # []
+    rtol: FloatArray | None = None  # []
+    atol: FloatArray | None = None  # []
+    cummax_XL_frac: FloatArray | None = None  # []
 
 
 TerminationCondition.register_pytree()
@@ -41,20 +41,20 @@ TerminationCondition.register_pytree()
 class TerminationRegister(PureDataclassPytree):
     """Online expectation summary consumed by depth and goal conditions."""
 
-    num_samples_used: IntArray
-    num_likelihood_evaluations: IntArray
-    log_Z_mean: FloatArray
-    log_Z_uncert: FloatArray
-    remaining_evidence_fraction: FloatArray
-    posterior_tail_fraction: FloatArray
-    ess: FloatArray
-    log_L_max: FloatArray
-    log_L_contour_max: FloatArray
-    efficiency_shrinkage: FloatArray
-    plateau: BoolArray
-    no_seed_points: BoolArray
-    relative_spread: FloatArray
-    absolute_spread: FloatArray
+    num_samples_used: IntArray  # []
+    num_likelihood_evaluations: IntArray  # []
+    log_Z_mean: FloatArray  # []
+    log_Z_uncert: FloatArray  # []
+    remaining_evidence_fraction: FloatArray  # []
+    posterior_tail_fraction: FloatArray  # []
+    ess: FloatArray  # []
+    log_L_max: FloatArray  # []
+    log_L_contour_max: FloatArray  # []
+    efficiency_shrinkage: FloatArray  # []
+    plateau: BoolArray  # []
+    no_seed_points: BoolArray  # []
+    relative_spread: FloatArray  # []
+    absolute_spread: FloatArray  # []
 
     def is_done(
             self,

@@ -166,18 +166,20 @@ def test_jax_and_reference_explicit_gamma_conditioning_match():
         C_min=1,
     )
 
-    R_cg = A_cg - B_cg - E_cg
+    atom_present = np.asarray([False, True])
+    model_E_cg = np.where(atom_present[None, :], E_cg, 0.0)
+    model_R_cg = A_cg - B_cg - model_E_cg
     expected_gt = race_gt + cluster_weights @ B_cg
-    expected_eq = race_eq + cluster_weights @ E_cg
-    expected_lt = race_lt + cluster_weights @ R_cg
+    expected_eq = np.where(atom_present, race_eq, 0.0) + cluster_weights @ model_E_cg
+    expected_lt = race_lt + cluster_weights @ model_R_cg
     expected_total = expected_gt + expected_eq + expected_lt
     expected_by_field = {
         "p_gt": expected_gt / expected_total,
         "p_eq": expected_eq / expected_total,
         "p_lt": expected_lt / expected_total,
         "phantom_add_gt": cluster_weights @ B_cg,
-        "phantom_add_eq": cluster_weights @ E_cg,
-        "phantom_add_lt": cluster_weights @ R_cg,
+        "phantom_add_eq": cluster_weights @ model_E_cg,
+        "phantom_add_lt": cluster_weights @ model_R_cg,
         "kish_participating_cluster_counts": np.asarray(
             [
                 np.square(np.sum(A_cg[:, 0])) / np.sum(np.square(A_cg[:, 0])),
@@ -272,10 +274,9 @@ def test_jax_and_reference_sample_mc_shrinkage_emit_new_diagnostics():
         )
 
 
-def test_reused_seed_clusters_share_kish_independence_group():
+def test_each_retained_chain_is_one_kish_cluster():
     fixture = _fixture()
     counts = _count_call(jax_phantom, fixture)
-    group_idx = jnp.asarray([0, 0, 2, 3], dtype=jnp.int32)
     output = jax_phantom.sample_mc_shrinkage(
         key=jax.random.PRNGKey(19),
         log_L_constraints=jnp.asarray(fixture.log_L_constraints),
@@ -286,13 +287,11 @@ def test_reused_seed_clusters_share_kish_independence_group():
         num_samples=jnp.asarray(3, dtype=jnp.int32),
         num_Z_samples=8,
         C_min=1,
-        phantom_group_idx=group_idx,
     )
 
     A_cg = np.asarray(counts.A_cg[:3, :3])
-    grouped_A = np.stack([A_cg[0] + A_cg[1], A_cg[2]])
-    expected_kish = np.square(np.sum(grouped_A, axis=0)) / np.sum(
-        np.square(grouped_A),
+    expected_kish = np.square(np.sum(A_cg, axis=0)) / np.sum(
+        np.square(A_cg),
         axis=0,
     )
     np.testing.assert_allclose(

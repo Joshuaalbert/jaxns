@@ -1,4 +1,4 @@
-"""Depth-first nested sampling core described by the v3 paper."""
+"""Depth-first nested sampling core described by the paper."""
 
 import dataclasses
 from collections.abc import Callable
@@ -36,17 +36,12 @@ from jaxns.types import BoolArray, FloatArray, IntArray, PRNGKey
 class CoreWorkBatch(PureDataclassPytree):
     """Fixed-shape description of one vmapped replacement batch."""
 
-    valid: BoolArray
-    requested_parent_idx: IntArray
-    effective_parent_idx: IntArray
-    target_block_idx: IntArray
-    requested_parent_block_idx: IntArray
-    effective_parent_block_idx: IntArray
-    fallback_to_shallower: BoolArray
-    reused_seed: BoolArray
-    requested_log_L_constraint: FloatArray
-    log_L_constraint: FloatArray
-    seed_idx: IntArray
+    valid: BoolArray  # [S]
+    # This storage index is transient. It is retained only until acceptance
+    # increments the selected parent's out-degree, then it is discarded.
+    parent_idx: IntArray  # [S]
+    log_L_constraint: FloatArray  # [S]
+    seed_idx: IntArray  # [S]
 
     @property
     def num_valid(self) -> IntArray:
@@ -64,16 +59,18 @@ def _first_masked_index(mask: BoolArray) -> IntArray:
     )
 
 
-def _categorical_masked(key: PRNGKey, weights, mask: BoolArray) -> IntArray:
-    """Sample a masked index without materialising a candidate payload."""
-    weights = jnp.where(mask & jnp.isfinite(weights) & (weights > 0), weights, 0.0)
-    has_weight = jnp.sum(weights) > 0
-    logits = jnp.where(weights > 0, jnp.log(weights), -jnp.inf)
-    sampled = jax.random.categorical(
-        key,
-        jnp.where(has_weight, logits, jnp.zeros_like(logits)),
-    ).astype(mp_policy.index_dtype)
-    return jnp.where(has_weight, sampled, _first_masked_index(mask))
+def _uniform_ranked_masked(
+        unit_draw: FloatArray,
+        mask: BoolArray,
+) -> IntArray:
+    """Map a uniform draw to a uniform rank among masked entries."""
+    cumulative = jnp.cumsum(mask.astype(mp_policy.index_dtype))
+    count = cumulative[-1]
+    rank = jnp.minimum(
+        jnp.floor(unit_draw * count).astype(mp_policy.index_dtype),
+        jnp.maximum(count - 1, 0),
+    )
+    return _first_masked_index(mask & (cumulative > rank))
 
 
 def _depth_relevant_blocks(
@@ -81,6 +78,9 @@ def _depth_relevant_blocks(
         depth_cond: TerminationCondition,
 ) -> BoolArray:
     """Mask blocks before the expectation-based evidence/posterior cutoff."""
+    # This runs inside every compiled depth iteration. Use the deterministic
+    # expected volume path here; the more expensive MC shrinkage ensemble is a
+    # final-result calculation and may also be used by the Python goal loop.
     valid = plan.valid
     log_shell_mass = jnp.where(
         valid & (plan.volume_path.shell_mass > 0),
@@ -102,15 +102,30 @@ def _depth_relevant_blocks(
     )
     relevant = valid
     if depth_cond.dlogZ is not None:
-        relevant = relevant & (remaining_fraction >= depth_cond.dlogZ)
+        fails_depth = valid & (
+            remaining_fraction >= depth_cond.dlogZ
+        )
+        # L_g X_g may rise again before the posterior peak. The depth domain
+        # must therefore be the complete prefix through the last failing
+        # contour, not a pointwise mask with holes that strands lineage gaps.
+        before_depth = (
+            jnp.cumsum(fails_depth[::-1].astype(mp_policy.count_dtype))[::-1]
+            > 0
+        )
+        relevant = relevant & before_depth
 
     if depth_cond.cummax_XL_frac is not None:
         log_XL = jnp.where(valid, log_remaining, -jnp.inf)
         log_XL_peak = jax.lax.associative_scan(jnp.maximum, log_XL)
-        relevant = relevant & (
+        fails_depth = valid & (
             log_XL
             >= log_XL_peak + jnp.log(depth_cond.cummax_XL_frac)
         )
+        before_depth = (
+            jnp.cumsum(fails_depth[::-1].astype(mp_policy.count_dtype))[::-1]
+            > 0
+        )
+        relevant = relevant & before_depth
     return relevant
 
 
@@ -133,10 +148,7 @@ def _stationary_seed_mask(
         (state.samples.log_L_constraints <= log_L_constraint)
         & (state.samples.log_likelihoods > log_L_constraint)
     )
-    if state.samples.parent_idx is None:
-        root_child = jnp.isneginf(state.samples.log_L_constraints)
-    else:
-        root_child = state.samples.parent_idx == -1
+    root_child = jnp.isneginf(state.samples.log_L_constraints)
     return valid & jnp.where(from_root, root_child, interval_contains)
 
 
@@ -145,6 +157,12 @@ def _sample_parent_from_block(
         block_state: BlockState,
         block_idx: IntArray,
 ) -> IntArray:
+    """Choose the concrete sample whose out-degree will gain one child.
+
+    Samples tied in one likelihood block define the same strict contour, so
+    the scheduler may choose uniformly among them. The returned storage index
+    lives only until the acceptance scatter updates that sample's out-degree.
+    """
     safe_block_idx = jnp.maximum(block_idx, 0)
     start = block_state.block_start[safe_block_idx]
     size = block_state.block_size[safe_block_idx]
@@ -221,222 +239,108 @@ def _plan_work_batch(
         shell_size: int,
         max_valid_lanes: IntArray | None = None,
 ) -> CoreWorkBatch:
-    """Schedule a batch while accounting for its expected in-flight depth."""
+    """Schedule the next edges of maximal allocation-gap threads."""
     slots = jnp.arange(shell_size, dtype=mp_policy.index_dtype)
-    block_indices = jnp.arange(plan.valid.shape[0], dtype=mp_policy.index_dtype)
     plan_key, seed_draw_key = jax.random.split(key)
 
     if max_valid_lanes is None:
         max_valid_lanes = jnp.asarray(shell_size, mp_policy.index_dtype)
+    max_valid_lanes = jnp.maximum(max_valid_lanes, 0)
 
-    def plan_one(carry, slot):
-        expected_K, schedule_key = carry
-        (
-            target_key,
-            requested_block_key,
-            requested_parent_key,
-            fallback_parent_key,
-            next_key,
-        ) = jax.random.split(schedule_key, 5)
+    # A positive rise in G_g starts that many maximal threads at block g.
+    # If an edge falls short, the remaining gap rises after its new child, so
+    # a later depth iteration continues the logical thread without persisting
+    # either a thread identity or a parent index in scientific state.
+    gap = jnp.where(
+        relevant,
+        jnp.maximum(plan.target_K - plan.current_K, 0),
+        jnp.asarray(0, dtype=plan.current_K.dtype),
+    )
+    previous_gap = jnp.concatenate(
+        [jnp.zeros((1,), dtype=gap.dtype), gap[:-1]],
+    )
+    start_count = jnp.maximum(gap - previous_gap, 0)
+    cumulative_starts = jnp.cumsum(start_count)
+    num_starts = cumulative_starts[-1]
+    lane_valid = (slots < num_starts) & (slots < max_valid_lanes)
+    start_block_idx = jnp.searchsorted(
+        cumulative_starts,
+        slots,
+        side="right",
+    ).astype(mp_policy.index_dtype)
+    start_block_idx = jnp.minimum(
+        start_block_idx,
+        jnp.asarray(plan.valid.shape[0] - 1, mp_policy.index_dtype),
+    )
+    requested_block_idx = jnp.where(
+        lane_valid,
+        start_block_idx - 1,
+        jnp.asarray(-1, mp_policy.index_dtype),
+    )
 
-        deficits = jnp.maximum(
-            plan.target_K.astype(mp_policy.measure_dtype) - expected_K,
-            0.0,
-        )
-        target_mask = relevant & (deficits > 0)
-        lane_valid = jnp.any(target_mask) & (slot < max_valid_lanes)
-        last_relevant = jnp.max(
-            jnp.where(relevant, block_indices, jnp.asarray(0, block_indices.dtype))
-        )
-        fallback_target_mask = relevant & (block_indices == last_relevant)
-        target_idx = _categorical_masked(
-            target_key,
-            jnp.where(target_mask, deficits, 1.0),
-            jnp.where(jnp.any(target_mask), target_mask, fallback_target_mask),
-        )
-
-        # Candidate zero is the root sentinel (X=1); candidate h+1 is block h.
-        parent_X = jnp.concatenate(
-            [jnp.ones((1,), plan.volume_path.X.dtype), plan.volume_path.X]
-        )
-        parent_mask = jnp.concatenate(
-            [
-                jnp.ones((1,), mp_policy.bool_dtype),
-                plan.valid & (block_indices < target_idx),
-            ]
-        )
-        parent_weights = plan.volume_path.X[target_idx] / jnp.maximum(
-            parent_X,
-            jnp.finfo(parent_X.dtype).tiny,
-        )
-        requested_choice = _categorical_masked(
-            requested_block_key,
-            parent_weights,
-            parent_mask,
-        )
-        requested_block_idx = requested_choice - 1
-        requested_parent_idx = _sample_parent_from_block(
-            requested_parent_key,
-            block_state,
-            requested_block_idx,
-        )
-        effective_block_idx = _closest_seedable_parent_block(
+    # Reparent both the constraint and degree update together when the
+    # immediate contour has no seed. A shallower seed under the original
+    # constraint would not start a stationary Markov chain.
+    effective_block_idx = jax.vmap(
+        lambda block_idx: _closest_seedable_parent_block(
             state,
             block_state,
-            requested_block_idx,
+            block_idx,
         )
-        effective_constraint = jnp.where(
-            effective_block_idx >= 0,
-            plan.log_L_blocks[jnp.maximum(effective_block_idx, 0)],
-            jnp.asarray(-jnp.inf, mp_policy.measure_dtype),
-        )
-        requested_constraint = jnp.where(
-            requested_block_idx >= 0,
-            plan.log_L_blocks[jnp.maximum(requested_block_idx, 0)],
-            jnp.asarray(-jnp.inf, mp_policy.measure_dtype),
-        )
-        effective_parent_idx = jnp.where(
-            effective_block_idx == requested_block_idx,
-            requested_parent_idx,
-            _sample_parent_from_block(
-                fallback_parent_key,
-                block_state,
-                effective_block_idx,
-            ),
-        )
-
-        # Before likelihoods are known, a thread from X_parent reaches X_g
-        # with probability X_g / X_parent. Account for all S scheduled threads
-        # so later slots do not repeatedly target the same nominal deficit.
-        effective_parent_X = jnp.where(
-            effective_block_idx >= 0,
-            plan.volume_path.X[jnp.maximum(effective_block_idx, 0)],
-            1.0,
-        )
-        crosses_block = plan.valid & (block_indices > effective_block_idx)
-        expected_contribution = jnp.where(
-            crosses_block,
-            jnp.minimum(plan.volume_path.X / effective_parent_X, 1.0),
-            0.0,
-        )
-        expected_K = expected_K + jnp.where(
-            lane_valid,
-            expected_contribution,
-            0.0,
-        )
-        planned = (
-            lane_valid,
-            requested_parent_idx,
-            effective_parent_idx,
-            target_idx,
-            requested_block_idx,
-            effective_block_idx,
-            effective_block_idx != requested_block_idx,
-            requested_constraint,
-            effective_constraint,
-        )
-        return (expected_K, next_key), planned
-
-    (_, _), planned = jax.lax.scan(
-        plan_one,
-        (
-            plan.current_K.astype(mp_policy.measure_dtype),
-            plan_key,
-        ),
-        slots,
+    )(requested_block_idx)
+    effective_constraint = jnp.where(
+        effective_block_idx >= 0,
+        plan.log_L_blocks[jnp.maximum(effective_block_idx, 0)],
+        jnp.asarray(-jnp.inf, mp_policy.measure_dtype),
     )
-    (
-        lane_valid,
-        requested_parent_idx,
-        effective_parent_idx,
-        target_idx,
-        requested_block_idx,
-        effective_block_idx,
-        fallback_to_shallower,
-        requested_constraint,
-        effective_constraint,
-    ) = planned
+    parent_keys = jax.random.split(plan_key, shell_size)
+    parent_idx = jax.vmap(
+        lambda parent_key, block_idx: _sample_parent_from_block(
+            parent_key,
+            block_state,
+            block_idx,
+        )
+    )(parent_keys, effective_block_idx)
 
-    # Enforce distinct seeds only among lanes with the same stationary target
-    # distribution. Excluding a seed selected at a different contour biases
-    # nested eligibility sets: a deep lane can consume a high-likelihood seed
-    # and leave a shallow lane with a non-stationary low-ranked population.
-    # Sorting only the S lane identities groups equal contours without ever
-    # sorting or moving the N scientific payloads.
-    seed_lane_order = jnp.argsort(
-        jnp.where(lane_valid, effective_block_idx, plan.valid.shape[0]),
-        stable=True,
+    # Apply one random rotation to evenly spaced lane quantiles. Every lane's
+    # quantile remains Uniform[0, 1), hence its selected seed is exactly
+    # uniform on that lane's stationary set even when the contours differ.
+    # The stratification spreads a parallel batch over the lineage population
+    # without persistent seed-use state or likelihood-dependent exclusion.
+    rotation = jax.random.uniform(
+        seed_draw_key,
+        (),
+        dtype=mp_policy.measure_dtype,
     )
-    seed_keys = jax.random.split(seed_draw_key, shell_size)
+    seed_fraction = jnp.mod(
+        rotation
+        + slots.astype(mp_policy.measure_dtype)
+        / jnp.asarray(shell_size, mp_policy.measure_dtype),
+        1.0,
+    )
 
-    def choose_seed(carry, lane_idx):
-        current_block, used_at_block, used_in_batch, seed_indices, reused = carry
+    def choose_seed(lane_idx, seed_indices):
         lane_block = effective_block_idx[lane_idx]
-        same_block = lane_block == current_block
-        used_at_block = jnp.where(
-            same_block,
-            used_at_block,
-            jnp.zeros_like(used_at_block),
-        )
         seed_mask = _stationary_seed_mask(
             state,
             effective_constraint[lane_idx],
             lane_block < 0,
         )
-        unused_seed_mask = seed_mask & jnp.logical_not(used_at_block)
-        preferred_seed_mask = jnp.where(
-            jnp.any(unused_seed_mask),
-            unused_seed_mask,
+        seed_idx = _uniform_ranked_masked(
+            seed_fraction[lane_idx],
             seed_mask,
         )
-        seed_idx = _categorical_masked(
-            seed_keys[lane_idx],
-            jnp.ones(seed_mask.shape, mp_policy.measure_dtype),
-            preferred_seed_mask,
-        )
-        is_valid = lane_valid[lane_idx]
-        reused_seed = is_valid & used_in_batch[seed_idx]
-        used_at_block = used_at_block.at[seed_idx].set(
-            used_at_block[seed_idx] | is_valid
-        )
-        used_in_batch = used_in_batch.at[seed_idx].set(
-            used_in_batch[seed_idx] | is_valid
-        )
-        seed_indices = seed_indices.at[lane_idx].set(seed_idx)
-        reused = reused.at[lane_idx].set(reused_seed)
-        return lane_block, used_at_block, used_in_batch, seed_indices, reused
+        return seed_indices.at[lane_idx].set(seed_idx)
 
-    _, _, _, seed_idx, reused_seed = jax.lax.fori_loop(
+    seed_idx = jax.lax.fori_loop(
         0,
         shell_size,
-        lambda order_idx, carry: choose_seed(
-            carry,
-            seed_lane_order[order_idx],
-        ),
-        (
-            jnp.asarray(-2, dtype=mp_policy.index_dtype),
-            jnp.zeros(
-                state.samples.log_likelihoods.shape,
-                dtype=mp_policy.bool_dtype,
-            ),
-            jnp.zeros(
-                state.samples.log_likelihoods.shape,
-                dtype=mp_policy.bool_dtype,
-            ),
-            jnp.zeros((shell_size,), dtype=mp_policy.index_dtype),
-            jnp.zeros((shell_size,), dtype=mp_policy.bool_dtype),
-        ),
+        choose_seed,
+        jnp.zeros((shell_size,), dtype=mp_policy.index_dtype),
     )
     return CoreWorkBatch(
         valid=lane_valid,
-        requested_parent_idx=requested_parent_idx,
-        effective_parent_idx=effective_parent_idx,
-        target_block_idx=target_idx,
-        requested_parent_block_idx=requested_block_idx,
-        effective_parent_block_idx=effective_block_idx,
-        fallback_to_shallower=fallback_to_shallower,
-        reused_seed=reused_seed,
-        requested_log_L_constraint=requested_constraint,
+        parent_idx=parent_idx,
         log_L_constraint=effective_constraint,
         seed_idx=seed_idx,
     )
@@ -482,14 +386,12 @@ def _accept_work_batch(
         state: State,
         work: CoreWorkBatch,
         batch: ConstrainedSampleBatch,
-        *,
-        store_phantom_samples: bool,
 ) -> State:
     shell_size = batch.log_likelihoods.shape[0]
-    # V3 shrinkage needs phantom likelihoods and cluster identity, not phantom
-    # coordinates. Discarding coordinates keeps the persistent state compact;
-    # the legacy flag is retained only for constructor compatibility.
-    del store_phantom_samples
+    # Phantom shrinkage needs likelihoods and cluster identity, not phantom
+    # coordinates. Discarding coordinates keeps the persistent state compact.
+    # `NestedSampler.store_phantom_samples` remains a constructor-compatibility
+    # field, but is intentionally absent from this compiled hot path.
     stored_phantoms = dataclasses.replace(
         batch.phantom_samples,
         U_samples=None,
@@ -505,18 +407,20 @@ def _accept_work_batch(
             )
         ),
         phantom_samples=stored_phantoms,
-        parent_idx=work.effective_parent_idx,
-        requested_parent_idx=work.requested_parent_idx,
-        requested_log_L_constraint=work.requested_log_L_constraint,
-        seed_idx=work.seed_idx,
     )
-    appended = state.samples.set_slice(state.num_samples, new_samples)
-    parent_slots = jnp.maximum(work.effective_parent_idx, 0)
-    parent_delta = (work.valid & (work.effective_parent_idx >= 0)).astype(
-        appended.out_degree.dtype
+    # The static batch always has S rows, but valid lanes form the visible
+    # prefix. Invalid tail rows remain outside num_samples and are overwritten
+    # by a later batch. Only valid lanes can alter the race-tree degrees.
+    parent_slots = jnp.maximum(work.parent_idx, 0)
+    parent_delta = (work.valid & (work.parent_idx >= 0)).astype(
+        state.samples.out_degree.dtype
     )
-    out_degree = appended.out_degree.at[parent_slots].add(parent_delta)
-    appended = dataclasses.replace(appended, out_degree=out_degree)
+    appended = state.samples.append_samples(
+        state.num_samples,
+        parent_slots,
+        new_samples,
+        parent_delta,
+    )
 
     classic_idx = jnp.argmax(
         jnp.where(work.valid, batch.log_likelihoods, -jnp.inf)
@@ -531,7 +435,7 @@ def _accept_work_batch(
         state,
         root_out_degree=(
             state.root_out_degree
-            + jnp.sum(work.valid & (work.effective_parent_idx < 0)).astype(
+            + jnp.sum(work.valid & (work.parent_idx < 0)).astype(
                 state.root_out_degree.dtype
             )
         ),
@@ -554,18 +458,6 @@ def _accept_work_batch(
             1,
             state.depth_loop_iter.dtype,
         ),
-        num_reparented=(
-            state.num_reparented
-            + jnp.sum(work.valid & work.fallback_to_shallower).astype(
-                state.num_reparented.dtype
-            )
-        ),
-        num_reused_seeds=(
-            state.num_reused_seeds
-            + jnp.sum(work.valid & work.reused_seed).astype(
-                state.num_reused_seeds.dtype
-            )
-        ),
         likelihood_order=(
             None
             if state.likelihood_order is None
@@ -579,11 +471,11 @@ def _accept_work_batch(
 
 
 class _DepthCarry(NamedTuple):
-    key: PRNGKey
+    key: PRNGKey  # [2]
     state: State
     block_state: BlockState
     plan: AllocationPlan
-    relevant: BoolArray
+    relevant: BoolArray  # [G]
     register: TerminationRegister
 
 
@@ -592,8 +484,8 @@ class _DepthCarry(NamedTuple):
     static_argnames=(
         "shell_size",
         "allocation_target",
+        "root_degree",
         "delta_K",
-        "store_phantom_samples",
         "max_samples",
     ),
 )
@@ -605,13 +497,16 @@ def _run_depth(
         *,
         shell_size: int,
         allocation_target: str,
+        root_degree: int,
         delta_K: int,
-        store_phantom_samples: bool,
         max_samples: int,
 ) -> State:
     """Run one allocation depth epoch entirely in compiled JAX."""
 
     def build_depth_view(current_state):
+        # Out-degree changes alter K_g, the expected volume path, and the
+        # depth stopping estimate. Rebuild this compact block view after each
+        # batch while leaving the scientific sample pytrees in append order.
         block_state = build_block_state(
             current_state.samples,
             root_out_degree=current_state.root_out_degree,
@@ -623,6 +518,13 @@ def _run_depth(
             allocation_target=allocation_target,
             iteration=current_state.goal_loop_iter,
             delta_K=jnp.asarray(delta_K, mp_policy.count_dtype),
+            # d_0 is the fixed initial allocation. The sentinel's current
+            # out-degree grows when later epochs start root threads; using it
+            # here would make the target chase every accepted root child.
+            root_out_degree=jnp.asarray(
+                root_degree,
+                mp_policy.count_dtype,
+            ),
             block_state=block_state,
         )
         relevant = _depth_relevant_blocks(plan, depth_cond)
@@ -635,6 +537,9 @@ def _run_depth(
         return block_state, plan, relevant, register
 
     def cond(carry: _DepthCarry):
+        # The compiled depth epoch stops at the first of: filled allocation,
+        # exhausted storage/sample budget, or a scalar state/budget condition.
+        # The user goal condition remains outside this JAX loop.
         has_gap = jnp.any(carry.plan.under_allocated(carry.relevant))
         has_buffer = (
             carry.state.num_samples + shell_size
@@ -647,7 +552,17 @@ def _run_depth(
                 depth_cond.max_samples.astype(mp_policy.count_dtype),
             )
         below_global_limit = carry.state.num_samples < sample_limit
-        depth_done, _ = carry.register.is_done(depth_cond)
+        # dlogZ and posterior-tail thresholds are contour-local depth cuts:
+        # `_depth_relevant_blocks` already excludes work beyond them. Treating
+        # them again as scalar termination would permanently prevent a later
+        # outer epoch from filling a larger target on the still-relevant
+        # contours. Hard budgets and state failures remain scalar stops.
+        scalar_cond = dataclasses.replace(
+            depth_cond,
+            dlogZ=None,
+            cummax_XL_frac=None,
+        )
+        depth_done, _ = carry.register.is_done(scalar_cond)
         return (
             has_gap
             & has_buffer
@@ -685,7 +600,6 @@ def _run_depth(
             carry.state,
             work,
             sampled_batch,
-            store_phantom_samples=store_phantom_samples,
         )
         next_block_state, next_plan, next_relevant, next_register = (
             build_depth_view(next_state)
@@ -717,7 +631,6 @@ def _run_depth(
         "root_degree",
         "sample_capacity",
         "num_phantom",
-        "store_phantom_samples",
     ),
 )
 def _sample_init_state(
@@ -729,7 +642,6 @@ def _sample_init_state(
         root_degree: int,
         sample_capacity: int,
         num_phantom: int,
-        store_phantom_samples: bool,
 ) -> State:
     """Draw the root sentinel children with a single vectorised prior call."""
 
@@ -766,9 +678,10 @@ def _sample_init_state(
     U_samples, log_likelihoods, num_evals = jax.vmap(sample_root)(
         jax.random.split(key, root_degree)
     )
-    del store_phantom_samples
     phantom_U = None
     root_samples = Samples(
+        # -inf is the sentinel contour. It is also sufficient to recognise
+        # root children later; no persistent parent identity is required.
         log_L_constraints=jnp.full(
             (root_degree,),
             -jnp.inf,
@@ -789,26 +702,6 @@ def _sample_init_state(
                 -jnp.inf,
                 mp_policy.measure_dtype,
             ),
-        ),
-        parent_idx=jnp.full(
-            (root_degree,),
-            -1,
-            mp_policy.index_dtype,
-        ),
-        requested_parent_idx=jnp.full(
-            (root_degree,),
-            -1,
-            mp_policy.index_dtype,
-        ),
-        requested_log_L_constraint=jnp.full(
-            (root_degree,),
-            -jnp.inf,
-            mp_policy.measure_dtype,
-        ),
-        seed_idx=jnp.full(
-            (root_degree,),
-            -1,
-            mp_policy.index_dtype,
         ),
     ).resize(sample_capacity)
     supremum_idx = jnp.argmax(log_likelihoods)
@@ -831,7 +724,7 @@ def _sample_init_state(
 
 @dataclasses.dataclass(slots=True, frozen=True)
 class NestedSampler(PureDataclassPytree):
-    """Object-oriented configuration and Python goal-loop driver for v3."""
+    """Object-oriented configuration and Python goal-loop driver."""
 
     model: Model
     target_num_live_points: int | None = None
@@ -843,6 +736,8 @@ class NestedSampler(PureDataclassPytree):
     params: CtxParams | None = None
     sampler: AbstractSampler | None = None
     termination_condition: TerminationCondition | None = None
+    # Constructor-compatible legacy option. The evidence model stores phantom
+    # likelihoods only; high-dimensional phantom coordinates are not retained.
     store_phantom_samples: bool = False
     collect_phantom_samples: bool = False
     allocation_target: Literal[
@@ -906,9 +801,13 @@ class NestedSampler(PureDataclassPytree):
             )
         if isinstance(sampler, UniDimSliceSampler):
             if not sampler.no_step_out:
-                raise ValueError("v3 currently requires perfect/no-step-out bracketing.")
+                raise ValueError(
+                    "The current core requires perfect/no-step-out bracketing."
+                )
             if sampler.gradient_guided:
-                raise ValueError("Gradient-guided sampling is deferred from v3.")
+                raise ValueError(
+                    "Gradient-guided sampling is not implemented in this core."
+                )
 
         termination_condition = self.termination_condition
         if termination_condition is None:
@@ -978,7 +877,6 @@ class NestedSampler(PureDataclassPytree):
             root_degree=int(self.root_allocation_degree),
             sample_capacity=int(self.initial_capacity),
             num_phantom=int(self.sampler.num_phantom()),
-            store_phantom_samples=self.store_phantom_samples,
         )
         return dataclasses.replace(state, random_key=run_key)
 
@@ -1062,8 +960,8 @@ class NestedSampler(PureDataclassPytree):
                 depth_cond,
                 shell_size=int(self.shell_size),
                 allocation_target=self.allocation_target,
+                root_degree=int(self.root_allocation_degree),
                 delta_K=int(self.delta_K),
-                store_phantom_samples=self.store_phantom_samples,
                 max_samples=int(self.max_samples),
             )
             state = dataclasses.replace(
@@ -1122,8 +1020,8 @@ class NestedSampler(PureDataclassPytree):
             depth_cond,
             shell_size=int(self.shell_size),
             allocation_target=self.allocation_target,
+            root_degree=int(self.root_allocation_degree),
             delta_K=int(self.delta_K),
-            store_phantom_samples=self.store_phantom_samples,
             max_samples=int(self.max_samples),
         )
         return dataclasses.replace(next_state, random_key=next_key)

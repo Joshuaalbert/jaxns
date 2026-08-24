@@ -10,9 +10,9 @@ from jaxns.mixed_precision import mp_policy
 from jaxns.pytree import PureDataclassPytree
 from jaxns.race_tree import BlockState, build_block_state
 from jaxns.samples import Samples
+from jaxns.shrinkage import DirichletConcentrations, classic_dirichlet_concentrations
 from jaxns.state import State
 from jaxns.types import BoolArray, FloatArray, IntArray
-from jaxns.v3_shrinkage import DirichletConcentrations, classic_dirichlet_concentrations
 
 AllocationTarget = Literal[
     "uniform",
@@ -24,9 +24,9 @@ SUPPORTED_ALLOCATION_TARGETS = frozenset(get_args(AllocationTarget))
 
 @dataclasses.dataclass(slots=True, frozen=True)
 class VolumePath(PureDataclassPytree):
-    X_prev: FloatArray
-    X: FloatArray
-    shell_mass: FloatArray
+    X_prev: FloatArray  # [G]
+    X: FloatArray  # [G]
+    shell_mass: FloatArray  # [G]
 
 
 VolumePath.register_pytree()
@@ -34,11 +34,11 @@ VolumePath.register_pytree()
 
 @dataclasses.dataclass(slots=True, frozen=True)
 class AllocationPlan(PureDataclassPytree):
-    target_K: IntArray
-    current_K: IntArray
-    unit_peak_utility: FloatArray
-    log_L_blocks: FloatArray
-    valid: BoolArray
+    target_K: IntArray  # [G]
+    current_K: IntArray  # [G]
+    unit_peak_utility: FloatArray  # [G]
+    log_L_blocks: FloatArray  # [G]
+    valid: BoolArray  # [G]
     volume_path: VolumePath
 
     def allocation_gap(self) -> IntArray:
@@ -97,7 +97,7 @@ def expected_volume_path(
         concentrations: DirichletConcentrations,
         valid: BoolArray | None = None,
 ) -> VolumePath:
-    """Expected nested volume path from v3 Dirichlet block summaries."""
+    """Expected nested volume path from Dirichlet block summaries."""
     alpha0 = (
             concentrations.alpha_gt
             + concentrations.alpha_eq
@@ -282,7 +282,7 @@ def build_allocation_plan(
         posterior_utility: Literal["exact", "conservative"] = "exact",
         block_state: BlockState | None = None,
 ) -> AllocationPlan:
-    """Build the block-level v3 allocation target for one outer iteration."""
+    """Build the block-level allocation target for one outer iteration."""
     allocation_target = validate_allocation_target(allocation_target)
     _validate_delta_K(delta_K)
     if posterior_utility not in ("exact", "conservative"):
@@ -379,10 +379,9 @@ def stationary_seed_indices_python(
     constraints = np.asarray(samples.log_L_constraints[:num_samples])
     likelihoods = np.asarray(samples.log_likelihoods[:num_samples])
     if from_root:
-        if samples.parent_idx is None:
-            eligible = np.isneginf(constraints)
-        else:
-            eligible = np.asarray(samples.parent_idx[:num_samples]) == -1
+        # Root children are exactly the samples generated from the sentinel
+        # contour. No persistent parent identity is needed to recover them.
+        eligible = np.isneginf(constraints)
     else:
         eligible = (
             (constraints <= log_L_constraint)

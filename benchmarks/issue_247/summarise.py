@@ -38,13 +38,19 @@ def summarise(records):
         groups[(record["implementation"], record["case"], record["phantoms"])].append(record)
 
     lines = [
-        "| implementation | case | phantoms | n | expectation failures | MC failures | MC bias | MC RMSE | mean z | 2σ coverage | total s median [IQR] | evals median [IQR] | peak MiB | ESS/eval | gate active | reparented | reused seeds |",
-        "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "| implementation | case | phantoms | n | P/chain | phantom samples median [IQR] | expectation bias | expectation RMSE | expectation failures | MC bias | MC RMSE | mean z | SD z | 2σ coverage | MC failures | core s median [IQR] | result s median [IQR] | MC s median [IQR] | total s median [IQR] | evals median [IQR] | peak MiB | ESS/eval | gate active | Kish active median [IQR] |",
+        "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for key in sorted(groups):
         implementation, case, phantoms = key
         rows = groups[key]
+        expectation_error = np.asarray([
+            row["log_Z_error"] for row in rows
+        ])
         mc_error = np.asarray([row["mc_log_Z_error"] for row in rows])
+        z_scores = np.asarray([
+            row.get("mc_z_score", np.nan) for row in rows
+        ])
         coverage = np.asarray([
             abs(row["mc_log_Z_error"]) <= 2.0 * row["mc_log_Z_std"]
             for row in rows
@@ -71,18 +77,26 @@ def summarise(records):
         ]
         lines.append(
             f"| {implementation} | {case} | {phantoms} | {len(rows)} | "
-            f"{expectation_failures} | {mc_failures} | "
+            f"{int(np.median([row['num_retained_phantoms'] for row in rows]))} | "
+            f"{_format_median_iqr([row['phantom_samples'] for row in rows], 0)} | "
+            f"{np.mean(expectation_error):.4f} | "
+            f"{np.sqrt(np.mean(np.square(expectation_error))):.4f} | "
+            f"{expectation_failures} | "
             f"{np.mean(mc_error):.4f} | "
             f"{np.sqrt(np.mean(np.square(mc_error))):.4f} | "
-            f"{np.mean([row.get('mc_z_score', np.nan) for row in rows]):.2f} | "
+            f"{np.mean(z_scores):.2f} | "
+            f"{np.std(z_scores):.2f} | "
             f"{np.mean(coverage):.1%} | "
+            f"{mc_failures} | "
+            f"{_format_median_iqr([row['run_s'] for row in rows])} | "
+            f"{_format_median_iqr([row['result_s'] for row in rows])} | "
+            f"{_format_median_iqr([row['mc_s'] for row in rows])} | "
             f"{_format_median_iqr(total_time)} | "
             f"{_format_median_iqr([row['likelihood_evaluations'] for row in rows], 0)} | "
             f"{max(row['process_peak_rss_kib'] for row in rows) / 1024.0:.1f} | "
             f"{np.median(ess_per_eval):.3e} | "
             f"{np.median([row.get('phantom_gate_active_fraction', 0.0) for row in rows]):.1%} | "
-            f"{int(np.median([row.get('num_reparented', 0) for row in rows]))} | "
-            f"{int(np.median([row.get('num_reused_seeds', 0) for row in rows]))} |"
+            f"{_format_median_iqr([row.get('phantom_kish_median_active', 0.0) for row in rows], 1)} |"
         )
     return "\n".join(lines) + "\n"
 

@@ -17,49 +17,43 @@ from jaxns.model import Model
 from jaxns.phantom_eval import EvidenceSamples
 from jaxns.pytree import PureDataclassPytree
 from jaxns.race_tree import BlockState, LikelihoodOrder, build_block_state
-from jaxns.results import NestedSamplerResults
+from jaxns.results import BlockData, NestedSamplerResults
 from jaxns.samples import Samples, UType
+from jaxns.shrinkage import (
+    classic_dirichlet_concentrations,
+    dirichlet_probability_means,
+    expected_evidence_summary,
+    expected_log_posterior_weights,
+    sample_evidence,
+    validate_lineage_capacity,
+)
 from jaxns.stats_utils import effective_sample_size_kish
 from jaxns.termination_condition import TerminationRegister
 from jaxns.types import FloatArray, IntArray
-from jaxns.v3_shrinkage import (
-    classic_dirichlet_concentrations,
-    dirichlet_probability_means,
-    expected_v3_evidence_summary,
-    expected_v3_log_posterior_weights,
-    sample_v3_evidence,
-    validate_lineage_capacity,
-)
 
 
 @dataclasses.dataclass(slots=True, frozen=True)
 class State(PureDataclassPytree):
-    root_out_degree: IntArray  # scalar
+    root_out_degree: IntArray  # []
     samples: Samples
-    num_samples: IntArray  # scalar
+    num_samples: IntArray  # []
 
-    log_L_supremum: FloatArray  # scalar, the maximum likelihood value seen so far, used for termination conditions and evidence calculation
-    U_supremum: UType
+    log_L_supremum: FloatArray  # [] maximum likelihood seen so far
+    U_supremum: UType  # [...] one point in the unit-hypercube pytree
 
-    termination_reason: IntArray
+    termination_reason: IntArray  # [] bit mask
 
     model: Model
     args: tuple = ()
     params: CtxParams | None = None
-    goal_loop_iter: IntArray = dataclasses.field(
+    goal_loop_iter: IntArray = dataclasses.field(  # []
         default_factory=lambda: jnp.asarray(0, mp_policy.count_dtype)
     )
-    depth_loop_iter: IntArray = dataclasses.field(
+    depth_loop_iter: IntArray = dataclasses.field(  # []
         default_factory=lambda: jnp.asarray(0, mp_policy.count_dtype)
     )
     likelihood_order: LikelihoodOrder | None = None
-    random_key: jax.Array | None = None
-    num_reparented: IntArray = dataclasses.field(
-        default_factory=lambda: jnp.asarray(0, mp_policy.count_dtype)
-    )
-    num_reused_seeds: IntArray = dataclasses.field(
-        default_factory=lambda: jnp.asarray(0, mp_policy.count_dtype)
-    )
+    random_key: jax.Array | None = None  # [2]
 
     def merge(self, other: 'State') -> 'State':
         """
@@ -75,7 +69,10 @@ class State(PureDataclassPytree):
 
     def determine_parent_graph(self):
         """
-        Compute the parent graph from the out-degrees along the lineage. This is needed for book-keeping and for computing the evidence.
+        Reconstruct one compatible parent graph from likelihoods and out-degrees.
+
+        The graph is an optional derived view for inspection. Parent indices
+        are not persistent state and are not needed for evidence calculation.
 
         Returns:
             parent_edges: [num_samples, 2] array of (parent_idx, child_idx) edges, where parent_idx is the index of the parent sample, and child_idx is the
@@ -146,7 +143,7 @@ class State(PureDataclassPytree):
         Compute the termination register, which contains all the information needed to evaluate the termination condition, and to compute the evidence if the run is terminated.
 
         Args:
-            target_num_live_points: Deprecated compatibility argument. The v3
+            target_num_live_points: Deprecated compatibility argument. The
                 register is derived from the current race blocks.
 
         Returns:
@@ -229,14 +226,14 @@ def _to_result(self: State) -> NestedSamplerResults:
         likelihood_order=self.likelihood_order,
     )
     concentrations = classic_dirichlet_concentrations(block_state)
-    evidence_summary = expected_v3_evidence_summary(block_state, concentrations)
+    evidence_summary = expected_evidence_summary(block_state, concentrations)
     log_Z_mean = evidence_summary.log_Z_mean
     log_Z_uncert = evidence_summary.log_Z_uncert
     ess = effective_sample_size_kish(
         evidence_summary.log_Z_linear_mean,
         evidence_summary.log_dZ2_sum,
     )
-    log_dp = expected_v3_log_posterior_weights(block_state, concentrations)
+    log_dp = expected_log_posterior_weights(block_state, concentrations)
     log_dp = jnp.where(sample_mask, log_dp, jnp.asarray(-jnp.inf, mp_policy.measure_dtype))
     dp_mean = normalise_log_space(LogSpace(log_dp))
     # E[log(L) - log(Z)]
@@ -318,9 +315,7 @@ def _to_result(self: State) -> NestedSamplerResults:
         U_samples=U_samples,
         X_samples=X_samples,
         log_L=log_L,
-        log_L_blocks=block_state.log_L_blocks,
         log_dp=log_dp,
-        v3_log_posterior_weights=log_dp,
         log_X_mean=log_X_mean,
         log_posterior_density=log_posterior_density,
         num_live_points_per_sample=num_live_points_per_sample,
@@ -343,44 +338,33 @@ def _to_result(self: State) -> NestedSamplerResults:
         log_L_constraints=log_L_constraints,
         log_L_phantom=log_L_phantom,
         valid_phantom=valid_phantom,
-        block_first_idx=block_state.block_first_idx,
-        block_size=block_state.block_size,
-        block_incoming_K=block_state.incoming_K,
-        block_out_degree=block_state.block_out_degree,
-        block_start=block_state.block_start,
-        block_stop=block_state.block_stop,
-        block_sample_indices=block_state.block_sample_indices,
-        block_classic_alpha_gt=concentrations.alpha_gt,
-        block_classic_alpha_eq=concentrations.alpha_eq,
-        block_classic_alpha_lt=concentrations.alpha_lt,
-        block_epsilon=concentrations.epsilon,
-        block_classic_p_gt_mean=jnp.where(
-            block_state.valid,
-            block_p_gt_mean,
-            jnp.nan,
+        block_data=BlockData(
+            log_L=block_state.log_L_blocks,
+            first_idx=block_state.block_first_idx,
+            size=block_state.block_size,
+            incoming_K=block_state.incoming_K,
+            out_degree=block_state.block_out_degree,
+            valid=block_state.valid,
+            start=block_state.block_start,
+            stop=block_state.block_stop,
+            sample_indices=block_state.block_sample_indices,
+            alpha_gt=concentrations.alpha_gt,
+            alpha_eq=concentrations.alpha_eq,
+            alpha_lt=concentrations.alpha_lt,
+            epsilon=concentrations.epsilon,
+            p_gt_mean=jnp.where(
+                block_state.valid,
+                block_p_gt_mean,
+                jnp.nan,
+            ),
+            p_eq_mean=jnp.where(
+                block_state.valid,
+                block_p_eq_mean,
+                jnp.nan,
+            ),
+            # Phantom count matrices are potentially large and are evaluated
+            # lazily by result-level diagnostics or MC shrinkage.
         ),
-        block_classic_p_eq_mean=jnp.where(
-            block_state.valid,
-            block_p_eq_mean,
-            jnp.nan,
-        ),
-        # Phantom count matrices are potentially large and are not required
-        # for classic result construction. They are evaluated lazily by
-        # ``phantom_conditioning_diagnostics`` or MC shrinkage after trimming.
-        block_phantom_A=None,
-        block_phantom_B=None,
-        block_phantom_E=None,
-        block_phantom_R=None,
-        block_kish_participating_cluster_counts=None,
-        block_phantom_gate_active=None,
-        effective_parent_idx=self.samples.parent_idx,
-        requested_parent_idx=self.samples.requested_parent_idx,
-        requested_log_L_constraint=(
-            self.samples.requested_log_L_constraint
-        ),
-        phantom_seed_idx=self.samples.seed_idx,
-        num_reparented=self.num_reparented,
-        num_reused_seeds=self.num_reused_seeds,
     )
 
 
@@ -401,8 +385,6 @@ def _merge(self: State, other: State) -> 'State':
         params=self.params,
         goal_loop_iter=self.goal_loop_iter + other.goal_loop_iter,
         depth_loop_iter=self.depth_loop_iter + other.depth_loop_iter,
-        num_reparented=self.num_reparented + other.num_reparented,
-        num_reused_seeds=self.num_reused_seeds + other.num_reused_seeds,
         # Merging changes append identities, so rebuild this optional cache on
         # first use instead of pretending either input ordering is still valid.
         likelihood_order=None,
@@ -412,7 +394,9 @@ def _merge(self: State, other: State) -> 'State':
 
 @partial(jax.jit, inline=True)
 def _determine_parent_graph(self: State):
-    # Determine parent graph from out-degrees along
+    # This compatibility view chooses the likelihood-sorted nuisance ordering
+    # within plateaus. Scientific state deliberately stores only contours and
+    # out-degrees because concrete row identities would become stale on sort.
     samples = self.samples.sort()
     # Carry:
     # next_parent_idx, remaining_out_degrees
@@ -495,7 +479,7 @@ def _sample_logZ(self: State, key, num_samples: int) -> FloatArray:
         likelihood_order=self.likelihood_order,
     )
     concentrations = classic_dirichlet_concentrations(block_state)
-    return sample_v3_evidence(
+    return sample_evidence(
         key=key,
         block_state=block_state,
         concentrations=concentrations,

@@ -1,212 +1,197 @@
-# Issue 247 final accuracy and performance report
+# Issue 247 accuracy and performance report
 
 ## Scope and provenance
 
-Measurements were taken on an Intel Core i7-8750H CPU (6 physical cores,
-12 hardware threads) with the JAX CPU backend, float64 enabled, Python 3.12.9,
-JAX/JAXLIB 0.10.0, and Linux 6.8. The comparison uses all ten standard
-problems, phantoms off and on, and seeds 11, 23, and 37: 60 records per
-implementation. Each final evidence calculation uses 1,000 Monte Carlo draws.
+This is the final pre-review CPU comparison between the current implementation
+and `jaxns==2.6.9`, the latest PyPI v2 release. The checked `origin/main` commit
+`2f356d6d497ce3ac471fb9a06f9d22587487aaaa` has a byte-identical `jaxns`
+package tree to that wheel, excluding Python cache directories. Measurements
+used an Intel Core i7-8750H (6 cores, 12 threads), Python 3.12.9, JAX/JAXLIB
+0.10.0, the CPU backend, and float64.
 
-`n` counts independent nested-sampling runs, not MC draws. Thus each
-aggregate conditioning row has `n=30` (10 problems times 3 sampler seeds),
-while each per-problem version/mode entry below has `n=3` (seeds 11, 23, and
-37). Every one of those runs uses 1,000 MC evidence draws.
+The matrix contains all ten standard problems, with phantoms off and on, and
+30 independent nested-sampling seeds per row: 600 runs per implementation and
+1,200 runs in total. In the table, `n=30` means 30 independent complete nested
+sampling runs for that exact implementation/problem/phantom setting. It does
+not mean 30 live points or 30 Monte Carlo draws. Each run's final evidence
+calculation uses 1,000 Monte Carlo shrinkage draws.
 
-The baseline is `jaxns==2.6.9`, the latest PyPI release on 2026-08-23.
-`origin/main` at `2f356d6d497ce3ac471fb9a06f9d22587487aaaa`
-and the installed wheel have byte-identical `jaxns` package trees (excluding
-`__pycache__`), so the one baseline matrix represents both sources. Every raw
-record identifies the imported version and absolute module path.
+Both implementations use 30 independent root chains per dimension, five
+isotropic perfect-slice transitions per dimension, float64, and
+`dlogZ=log1p(1e-3)`. V2 is configured with `c=30D`; using its
+`num_live_points` interface would change the independent chain count when its
+released phantom option is enabled. The current implementation uses full
+`vmap` replacement with width `10D`, retains `D` generated states from the
+start of each chain when requested, and does not let phantom retention alter
+the race tree. The same scientific stopping threshold is used, although v2's
+released terminal register and the current paper-based block expectation are
+necessarily different implementations of that estimate.
 
-Common sampling settings are 30 root chains and five isotropic perfect slice
-transitions per dimension, float64, and `dlogZ=log1p(1e-3)`. V3 uses the
-paper scheduler's full vmap replacement width of ten chains per dimension.
-Phantom mode retains `D` generated states from the start of each chain; it does
-not change the v3 race tree.
+The exact commands and import isolation are documented in
+[README.md](README.md). Every raw JSONL record includes its import path and
+version; no failed or inconvenient seeds were dropped.
 
-The 30D chains and 5D slices are the actual released v2 defaults and are set
-explicitly in both runners. V2 uses `c=30D` directly because passing
-`num_live_points` would divide the independent chain count by `k+1` when
-phantoms are enabled. The active statistical termination threshold is
-identical. V2's storage cap is its released `100*c*(k+1)` because it stores
-classic and phantom outputs together; v3 uses `100*c` classic rows and stores
-phantoms separately. No matrix run reached either cap. The implementations
-necessarily estimate the common dlogZ condition differently: released v2 uses
-its existing register, while v3 uses the paper-required classic block
-expectation estimator.
+## Scientific interpretation
 
-## Required release gate
+Spike–Slab is deliberately a relative mode-weight benchmark. Its evidence error
+is driven by whether the separated modes are discovered and sampled with the
+correct relative weights. It should not be interpreted as merely a difficult
+one-dimensional evidence integral. The current scheduler improves that signal
+over v2 in the 30-seed matrix:
 
-`tests/test_ns_standard_problems.py` passes all 20 problem/mode combinations
-without weakening the v2 tolerances:
+- 8D classic MC RMSE is 0.2783 versus 0.3053; phantom-on RMSE is 0.2756
+  versus 0.2794, while the v2 phantom-on bias of +0.1567 falls to +0.0313.
+- 10D classic MC RMSE is 0.2299 versus 0.2669 and bias is -0.0558 versus
+  +0.1352; phantom-on RMSE is 0.2398 versus 0.2753.
+- The weakly curved 10D Spike–Slab phantom-conditioned RMSE is 0.1138 versus
+  0.1596, with 93.3% versus 73.3% two-sigma coverage.
 
-- deterministic expectation estimate within 3 reported standard deviations;
-- mean of 1,000 MC evidence draws within 2 empirical standard deviations;
-- finite results and non-empty phantom output when enabled.
+This does not make the mode-weight problem solved. The current 8D Spike–Slab
+coverage is 80% both with and without phantom conditioning, and the 10D
+phantom-conditioned coverage is 70%. Phantom conditioning changes uncertainty
+in the final shrinkage calculation; it cannot repair a classic race tree whose
+separated modes were already sampled in the wrong proportions. These rows are
+therefore retained as an explicit mode-allocation diagnostic, not explained
+away as phantom-conditioning failures.
 
-Result: **20 passed in 319.87 s**. The focused v3 implementation suite also
-passes **118 tests in 110.40 s**.
+For those current phantom-on rows, the sampler retains `P=8` and `P=10`
+early transitions per completed 8D and 10D chain. That is 40,960 and 64,000
+raw phantom states per run respectively. They are not treated as independent:
+the median active Kish participating-cluster counts are 351.7 and 456.2, with
+the gate active on 99.5% and 99.6% of valid blocks. The table reports these
+raw and effective-information diagnostics for every problem.
 
-## Three-seed accuracy matrix
+The current deterministic expectation estimate has zero three-sigma failures
+in all 600 current runs. Phantom conditioning materially improves current
+basic-MVN RMSE (0.2780 to 0.1559), but remains slightly worse than v2
+phantom-on RMSE (0.1416) and has 86.7% two-sigma coverage. This is a measured
+accuracy residual.
 
-| implementation | conditioning | n | expectation bias | expectation RMSE | 3σ failures | MC bias | MC RMSE | 2σ coverage (95% Wilson CI) |
-|---|---|---:|---:|---:|---:|---:|---:|---:|
-| v2.6.9/main | classic | 30 | +0.0595 | 0.1828 | 0 | +0.0655 | 0.1821 | 30/30 = 100% (88.6%, 100%) |
-| v2.6.9/main | phantom-recording run | 30 | +0.0410 | 0.1524 | 0 | +0.0465 | 0.1523 | 27/30 = 90.0% (74.4%, 96.5%) |
-| v3 | classic | 30 | +0.0344 | 0.1967 | 0 | +0.0358 | 0.1960 | 28/30 = 93.3% (78.7%, 98.2%) |
-| v3 | phantom-conditioned | 30 | +0.0344 | 0.1967 | 0 | +0.0334 | 0.1956 | 26/30 = 86.7% (70.3%, 94.7%) |
+### Representative Spike–Slab diagnostics
 
-V2's phantom-labelled row records phantoms but its evidence sampler remains the
-released classic shrinkage calculation. V3's phantom row uses the new
-Kish-gated, root-lineage-grouped phantom conditioning. Recording phantoms does
-not alter the v3 classic samples, hence its identical expectation columns.
+The tracked plots use the upper-median absolute phantom-conditioned evidence
+error among the 30 current runs, rather than selecting a visually favourable
+seed: seed 16 for 8D and seed 2 for 10D. They are generated by
+`generate_diagnostics.py` with the exact matrix configuration.
 
-Across all 60 records, v3 reduces absolute bias (expectation +0.0344 versus
-+0.0503; MC +0.0346 versus +0.0560), while its RMSE is higher (expectation
-0.1967 versus 0.1683; MC 0.1958 versus 0.1679). All deterministic estimates
-remain calibrated at 3σ. The descriptive MC matrix has 6/60 v3 2σ misses
-versus 3/60 in v2; the mode-specific Wilson intervals overlap. These misses
-are retained in the raw data and are not hidden by seed selection. The fixed
-release matrix above passes every MC gate.
+- 8D: [cornerplot](diagnostics/spike_slab_seed_16_cornerplot.png),
+  [standard diagnostics](diagnostics/spike_slab_seed_16_diagnostics.png), and
+  [phantom block diagnostics](diagnostics/spike_slab_seed_16_phantom_conditioning.png).
+- 10D: [cornerplot](diagnostics/spike_slab10_seed_2_cornerplot.png),
+  [standard diagnostics](diagnostics/spike_slab10_seed_2_diagnostics.png), and
+  [phantom block diagnostics](diagnostics/spike_slab10_seed_2_phantom_conditioning.png).
 
-### Per-standard-problem accuracy (v2 → v3)
+The cornerplots expose the separated posterior modes and their visibly unequal
+weights. The block plots show the classic and phantom-conditioned shrinkage
+means, the observed gated phantom ratio, and where the Kish threshold is
+active. These are diagnostics for the representative runs; the 30-seed table
+remains the calibration evidence.
 
-Each arrow is the released v2.6.9/main value followed by v3. In phantom-on
-rows, v2 records phantoms but still reports classic MC evidence; v3 reports
-phantom-conditioned MC evidence.
+## Performance interpretation
 
-| problem | mode | n each | expectation bias v2 → v3 | expectation RMSE v2 → v3 | 3σ failures v2 → v3 | MC bias v2 → v3 | MC RMSE v2 → v3 | 2σ coverage v2 → v3 |
-|---|---|---:|---:|---:|---:|---:|---:|---:|
-| basic | off: classic | 3 | -0.0104 → -0.0001 | 0.0549 → 0.0409 | 0 → 0 | +0.0062 → +0.0003 | 0.0544 → 0.0408 | 100.0% → 100.0% |
-| basic | on: recorded → conditioned | 3 | -0.0115 → -0.0001 | 0.0525 → 0.0409 | 0 → 0 | +0.0043 → +0.0003 | 0.0518 → 0.0417 | 100.0% → 100.0% |
-| basic2 | off: classic | 3 | -0.0054 → +0.0062 | 0.0886 → 0.0676 | 0 → 0 | +0.0115 → +0.0063 | 0.0894 → 0.0672 | 100.0% → 100.0% |
-| basic2 | on: recorded → conditioned | 3 | -0.0062 → +0.0062 | 0.0850 → 0.0676 | 0 → 0 | +0.0096 → +0.0052 | 0.0859 → 0.0702 | 100.0% → 100.0% |
-| basic3 | off: classic | 3 | -0.0114 → +0.0086 | 0.1967 → 0.1150 | 0 → 0 | -0.0024 → +0.0130 | 0.2022 → 0.1117 | 100.0% → 100.0% |
-| basic3 | on: recorded → conditioned | 3 | -0.0438 → +0.0086 | 0.1846 → 0.1150 | 0 → 0 | -0.0420 → +0.0028 | 0.1872 → 0.1731 | 100.0% → 100.0% |
-| plateau | off: classic | 3 | -0.0503 → -0.0322 | 0.0503 → 0.0322 | 0 → 0 | -0.0332 → -0.0324 | 0.0332 → 0.0324 | 100.0% → 100.0% |
-| plateau | on: recorded → conditioned | 3 | -0.0503 → -0.0322 | 0.0503 → 0.0322 | 0 → 0 | -0.0332 → -0.0328 | 0.0332 → 0.0328 | 100.0% → 100.0% |
-| basic_mvn | off: classic | 3 | +0.0402 → +0.0559 | 0.1717 → 0.2067 | 0 → 0 | +0.0424 → +0.0562 | 0.1727 → 0.2070 | 100.0% → 100.0% |
-| basic_mvn | on: recorded → conditioned | 3 | -0.0407 → +0.0559 | 0.0492 → 0.2067 | 0 → 0 | -0.0385 → +0.1516 | 0.0460 → 0.1984 | 100.0% → 66.7% |
-| spike_slab | off: classic | 3 | +0.0080 → +0.2178 | 0.2137 → 0.3720 | 0 → 0 | +0.0074 → +0.2174 | 0.2165 → 0.3703 | 100.0% → 66.7% |
-| spike_slab | on: recorded → conditioned | 3 | +0.1402 → +0.2178 | 0.3115 → 0.3720 | 0 → 0 | +0.1416 → +0.1622 | 0.3129 → 0.3484 | 66.7% → 66.7% |
-| spike_slab10 | off: classic | 3 | +0.1293 → +0.0803 | 0.2313 → 0.3807 | 0 → 0 | +0.1325 → +0.0833 | 0.2257 → 0.3797 | 100.0% → 66.7% |
-| spike_slab10 | on: recorded → conditioned | 3 | +0.0820 → +0.0803 | 0.1252 → 0.3807 | 0 → 0 | +0.0820 → +0.0527 | 0.1250 → 0.3615 | 66.7% → 33.3% |
-| weak_curved_mvn8 | off: classic | 3 | +0.0737 → +0.0109 | 0.1627 → 0.0578 | 0 → 0 | +0.0722 → +0.0126 | 0.1596 → 0.0579 | 100.0% → 100.0% |
-| weak_curved_mvn8 | on: recorded → conditioned | 3 | +0.1267 → +0.0109 | 0.1279 → 0.0578 | 0 → 0 | +0.1267 → -0.0358 | 0.1283 → 0.0796 | 100.0% → 100.0% |
-| weak_curved_spike_slab8 | off: classic | 3 | +0.1784 → +0.0394 | 0.1911 → 0.1712 | 0 → 0 | +0.1763 → +0.0421 | 0.1885 → 0.1730 | 100.0% → 100.0% |
-| weak_curved_spike_slab8 | on: recorded → conditioned | 3 | +0.0454 → +0.0394 | 0.0576 → 0.1712 | 0 → 0 | +0.0463 → +0.0190 | 0.0578 → 0.1331 | 100.0% → 100.0% |
-| weak_curved_spike_slab10 | off: classic | 3 | +0.2431 → -0.0430 | 0.3009 → 0.0872 | 0 → 0 | +0.2418 → -0.0406 | 0.2999 → 0.0842 | 100.0% → 100.0% |
-| weak_curved_spike_slab10 | on: recorded → conditioned | 3 | +0.1684 → -0.0430 | 0.2256 → 0.0872 | 0 → 0 | +0.1683 → +0.0085 | 0.2245 → 0.1713 | 66.7% → 100.0% |
+The current core is faster on the substantive high-dimensional cases despite
+using fully vmapped replacement: basic MVN is 1.710 s versus 3.229 s,
+Spike–Slab 8D is 1.178 s versus 1.816 s, Spike–Slab 10D is 2.510 s versus
+4.234 s, and weakly curved Spike–Slab 10D is 2.276 s versus 2.976 s. V2 remains
+faster for the tiny one-dimensional dispatch benchmarks, and weakly curved
+MVN is effectively tied (0.830 s versus 0.817 s).
 
-## Performance matrix
+Phantom-conditioned post-processing is the principal remaining performance
+cost: the current gamma construction materialises arrays proportional to MC
+draws times clusters/blocks. For example, basic-MVN final MC time is 5.054 s
+with phantoms versus 0.316 s without, and the process peak reaches 2,726.5 MiB.
+This cost is kept separate from core sampling time in the table. Also, as
+expected, a vmapped rejection batch advances at its slowest lane; likelihood
+evaluation parallelism without batching whole variable-length chains remains
+future work.
 
-| implementation | conditioning | median core run | warmed median core run | median end-to-end | median likelihood evals | total likelihood evals | median ESS/eval | max process RSS |
-|---|---|---:|---:|---:|---:|---:|---:|---:|
-| v2.6.9/main | classic | 1.407 s | 1.407 s | 4.025 s | 398,594 | 16,060,538 | 1.331e-3 | 1,132 MiB |
-| v2.6.9/main | phantom-recording run | 1.445 s | 1.445 s | 5.388 s | 398,594 | 16,060,538 | 1.465e-3 | 2,908 MiB |
-| v3 | classic | 4.910 s | 3.326 s | 7.434 s | 162,191 | 9,689,231 | 2.966e-3 | 1,324 MiB |
-| v3 | phantom-conditioned | 5.274 s | 3.338 s | 10.754 s | 162,191 | 9,689,231 | 2.966e-3 | 3,659 MiB |
+A post-review representative current basic-MVN phantom depth program lowers in
+0.911 s, compiles in 2.048 s, and executes a warmed depth epoch in 1.255 s. Its
+StableHLO text is 428,736 bytes; compiler memory analysis reports 771,948
+argument bytes, 772,052 output bytes, and 1,115,144 temporary bytes. It
+contains no `lax.map`, one scalar sort, and the intended full replacement
+`vmap`.
 
-The v3 core uses **39.7%** of the v2 likelihood evaluations (60.3% fewer) and
-has **2.13x** the median ESS per likelihood evaluation. On these deliberately
-cheap CPU likelihoods, that scientific-efficiency gain does not offset the
-compiled scheduler and vmap slowest-lane overhead: the paired warmed core-time
-ratio has median 2.43x (IQR 2.03x–2.84x). This is a measured residual wall-time
-regression, not presented as a speedup. More expensive user likelihoods should
-shift the trade-off toward the evaluation reduction, but that is an inference,
-not measured here.
+## Review findings incorporated
 
-Phantom evidence is also more expensive because v3 evaluates the paper's
-cluster-conditioned gamma model, whereas v2's evidence calculation is classic.
-The raw records separate core runtime, result construction, and MC time.
+The numerical, scheduling, and data-model findings from the
+performance-and-intent review were fixed before this matrix was collected:
 
-### Per-standard-problem performance (v2 → v3)
+- singleton blocks use the exact two-class `Beta(K, 1)` law in both classic
+  and phantom paths; an atom category is introduced only when a plateau is
+  observed;
+- root allocation remains anchored to the immutable initial root degree, and
+  depth relevance is a complete likelihood prefix;
+- stationary seeds are selected by a uniformly rotated rank stratification,
+  so every lane is marginally uniform over its own valid seed set without
+  persistent seed-use state;
+- sample identity is append-only and the depth loop merges scalar likelihood
+  identities rather than sorting scientific payloads;
+- the core stores parent likelihood and out-degree, not persistent parent
+  indices, and exposes neither reparenting nor seed-reuse diagnostics;
+- result block fields are grouped in a frozen, slotted `BlockData` pytree;
+  array-bearing state, sample, and result fields have shape comments;
+- early-chain phantom states are retained as one correlated cluster per
+  classic chain, with one shared `Gamma(1, 1)` cluster weight across its
+  states and blocks;
+- non-obvious stationarity, scheduling, allocation, batching, and topology
+  invariants are recorded as code-intent comments.
 
-The first run for each problem/mode includes call-site compilation; the warmed
-column uses seeds 23 and 37. End-to-end includes core execution, result
-construction, and the 1,000-draw evidence calculation.
+A final compatibility-only cleanup after the matrix removed the unused
+phantom-coordinate flag from static JIT arguments. This avoids a duplicate
+compiled specialization without changing array inputs, operations, or
+numerical behavior; the post-cleanup standard suite and depth executable are
+remeasured above. The post-cleanup seed-0 scientific outputs are bit-for-bit
+equal to the tracked matrix record, including sample/evaluation counts,
+expectation and MC evidence summaries, ESS, and phantom count.
 
-| problem | mode | n each | core s median [IQR] v2 → v3 | warmed core s v2 → v3 | end-to-end s median [IQR] v2 → v3 | evals median v2 → v3 | ESS/eval v2 → v3 | max RSS MiB v2 → v3 |
-|---|---|---:|---:|---:|---:|---:|---:|---:|
-| basic | off | 3 | 0.013 [0.013, 0.016] → 0.026 [0.025, 2.172] | 0.016 → 0.025 | 0.426 [0.421, 2.215] → 2.196 [1.147, 4.840] | 6,283 → 1,391 | 4.765e-03 → 2.955e-02 | 613 → 627 |
-| basic | on | 3 | 0.012 [0.010, 0.013] → 0.027 [0.025, 2.204] | 0.013 → 0.025 | 0.447 [0.438, 1.820] → 3.134 [1.666, 5.938] | 6,283 → 1,391 | 3.085e-03 → 2.955e-02 | 619 → 714 |
-| basic2 | off | 3 | 0.011 [0.010, 0.015] → 0.027 [0.024, 2.142] | 0.010 → 0.024 | 0.391 [0.387, 2.008] → 2.318 [2.146, 4.851] | 6,283 → 1,418 | 4.771e-03 → 2.931e-02 | 604 → 679 |
-| basic2 | on | 3 | 0.014 [0.013, 0.015] → 0.029 [0.026, 2.395] | 0.013 → 0.026 | 0.434 [0.422, 1.967] → 3.382 [3.336, 6.250] | 6,283 → 1,418 | 3.208e-03 → 2.931e-02 | 610 → 786 |
-| basic3 | off | 3 | 0.070 [0.062, 0.078] → 0.128 [0.127, 2.815] | 0.070 → 0.127 | 3.850 [2.215, 4.196] → 2.157 [1.195, 5.512] | 44,053 → 10,527 | 2.243e-03 → 1.272e-02 | 809 → 689 |
-| basic3 | on | 3 | 0.070 [0.060, 0.072] → 0.142 [0.136, 2.964] | 0.062 → 0.136 | 3.785 [2.235, 4.215] → 3.616 [2.114, 7.214] | 44,053 → 10,527 | 2.431e-03 → 1.272e-02 | 896 → 811 |
-| plateau | off | 3 | 0.000 [0.000, 0.000] → 0.003 [0.002, 2.069] | 0.000 → 0.002 | 0.351 [0.350, 1.805] → 0.162 [0.162, 3.689] | 30 → 30 | 5.119e-01 → 3.330e-02 | 593 → 611 |
-| plateau | on | 3 | 0.000 [0.000, 0.000] → 0.002 [0.002, 2.071] | 0.000 → 0.002 | 0.373 [0.369, 1.835] → 0.214 [0.206, 4.207] | 30 → 30 | 5.119e-01 → 3.330e-02 | 590 → 610 |
-| basic_mvn | off | 3 | 4.008 [3.884, 4.059] → 8.161 [7.911, 11.310] | 3.935 → 7.911 | 4.873 [4.694, 6.811] → 10.460 [10.083, 14.525] | 1,952,545 → 1,205,779 | 2.523e-04 → 3.682e-04 | 831 → 1106 |
-| basic_mvn | on | 3 | 4.263 [4.085, 4.272] → 7.967 [7.762, 11.134] | 4.085 → 7.762 | 7.855 [7.720, 9.992] → 16.028 [15.776, 19.368] | 1,952,545 → 1,205,779 | 2.905e-04 → 3.682e-04 | 1818 → 2556 |
-| spike_slab | off | 3 | 2.341 [2.232, 2.353] → 6.995 [6.969, 9.976] | 2.243 → 6.969 | 6.019 [4.576, 6.694] → 9.134 [8.244, 12.992] | 587,711 → 358,262 | 1.021e-03 → 1.927e-03 | 1046 → 1086 |
-| spike_slab | on | 3 | 2.451 [2.293, 2.521] → 6.997 [6.959, 9.922] | 2.293 → 6.959 | 9.026 [7.579, 9.783] → 15.080 [12.888, 18.687] | 587,711 → 358,262 | 1.131e-03 → 1.927e-03 | 2009 → 2465 |
-| spike_slab10 | off | 3 | 5.011 [4.957, 5.012] → 13.004 [12.808, 16.341] | 4.959 → 12.808 | 9.293 [7.564, 9.884] → 15.321 [15.161, 19.543] | 1,214,668 → 879,950 | 6.584e-04 → 1.151e-03 | 1099 → 1324 |
-| spike_slab10 | on | 3 | 4.852 [4.785, 4.917] → 12.935 [12.690, 16.256] | 4.785 → 12.690 | 14.032 [12.275, 14.724] → 23.149 [22.867, 27.002] | 1,214,668 → 879,950 | 7.232e-04 → 1.151e-03 | 2908 → 3659 |
-| weak_curved_mvn8 | off | 3 | 1.076 [1.043, 1.092] → 3.470 [3.251, 6.435] | 1.092 → 3.251 | 1.802 [1.792, 3.923] → 5.506 [5.295, 9.413] | 368,159 → 158,343 | 1.453e-03 → 3.618e-03 | 953 → 903 |
-| weak_curved_mvn8 | on | 3 | 1.182 [1.152, 1.190] → 3.520 [3.338, 6.486] | 1.159 → 3.338 | 3.806 [3.748, 6.130] → 8.762 [8.432, 13.110] | 368,159 → 158,343 | 1.567e-03 → 3.618e-03 | 1561 → 1653 |
-| weak_curved_spike_slab8 | off | 3 | 1.713 [1.709, 1.758] → 4.165 [3.674, 7.119] | 1.709 → 3.674 | 6.091 [4.243, 6.638] → 6.206 [5.747, 9.950] | 440,820 → 189,169 | 1.199e-03 → 2.767e-03 | 1132 → 937 |
-| weak_curved_spike_slab8 | on | 3 | 1.835 [1.764, 1.858] → 4.092 [3.588, 7.104] | 1.764 → 3.588 | 7.778 [6.192, 8.417] → 10.944 [9.591, 14.099] | 440,820 → 189,169 | 1.333e-03 → 2.767e-03 | 1800 → 1803 |
-| weak_curved_spike_slab10 | off | 3 | 3.218 [3.209, 3.285] → 8.249 [7.962, 11.741] | 3.285 → 7.962 | 7.800 [5.923, 8.294] → 10.442 [9.247, 14.780] | 773,245 → 423,829 | 9.808e-04 → 1.901e-03 | 1101 → 1092 |
-| weak_curved_spike_slab10 | on | 3 | 3.384 [3.380, 3.447] → 8.213 [7.949, 11.739] | 3.380 → 7.949 | 11.938 [9.993, 12.387] → 15.467 [13.825, 19.949] | 773,245 → 423,829 | 1.075e-03 → 1.901e-03 | 2494 → 2665 |
+The unchanged standard-problem release gate passed all 20 phantom-off/on cases
+in 263.20 s. The complete repository suite passed 199 tests in 352.96 s; the
+focused implementation suites and touched-file lint checks also pass.
+The full per-problem evidence follows; it is generated directly from the 1,200
+tracked raw records by `summarise.py`.
 
-## Compiler and batching observations
+## Full per-problem matrix
 
-For the representative 8D spike/slab case at width 80, the v3 depth program:
-
-- lowers in 1.28 s and compiles in 3.56 s;
-- has 499,924 bytes of StableHLO text;
-- reports 557,564 argument bytes, 557,716 output bytes, and 1,097,856 temporary
-  bytes from XLA memory analysis;
-- executes in 8.07 s on the second isolated warmed depth call;
-- contains 2 scalar-identity sort operations, 24 while operations (the depth,
-  scheduling, and data-dependent sampler loops), and 30 scatters in the
-  StableHLO text.
-
-The corresponding v2 whole-run executable lowers in 0.83 s, compiles in
-1.77 s, and has 304,907 bytes of StableHLO text. These are different
-specialisation boundaries, so they explain compile-plan size but are not a
-like-for-like device-runtime comparison.
-
-The implementation contains one full `jax.vmap` for replacement sampling and
-no `lax.map`. It sorts the root likelihood identities once, incrementally
-merges only the `S` new scalar likelihood identities, and never sorts the full
-scientific payload inside the depth loop. A width sweep on the same 8D case
-measured widths 16, 40, and 80 at 18.3 s, 15.7 s, and 11.4 s cold end-to-end;
-width 80 is the best measured choice. A separate 10D sweep rejected the former
-half-root width because 150 lanes took 215.6 s versus 20.9 s for 100 lanes,
-showing the expected vmap slowest-lane tail.
-
-## Review findings addressed
-
-The performance-and-intent review found and fixed the following before the
-final matrix:
-
-- nested-mask seed de-duplication biased shallow stationary seed ranks; seed
-  uniqueness is now enforced only among lanes sharing the exact contour;
-- singleton blocks now use the exact `Beta(K, 1)` inverse-CDF path, avoiding
-  unnecessary gamma fields while preserving the paper distribution;
-- `Gamma(1, 1)` fields use exact exponential draws, substantially reducing
-  final-MC cost and memory;
-- phantom independence is grouped by root race lineage rather than treating
-  finite Markov descendants as independent clusters;
-- result resampling clears topology metadata instead of exposing stale parent
-  and seed identities;
-- a superseded Python parent scheduler and an unused alternative phantom model
-  were removed so there is one readable implementation of each algorithm;
-- comments now state the stationary interval, in-flight allocation estimate,
-  early-chain phantom retention, batching, and reparenting invariants.
-
-Remaining performance risks are explicit: vmapped rejection sampling waits for
-the slowest lane, phantom MC materialises arrays proportional to draws times
-independence groups, and this CPU matrix does not measure expensive or
-accelerator-resident likelihoods. Likelihood-call parallelism, gradient-guided
-sampling, and ellipsoidal direction selection remain intentionally deferred to
-issues 244, 245, and 246.
-
-## Reproduction
-
-The commands, isolation setup, and interpretation rules are in
-`benchmarks/issue_247/README.md`. Final raw records are under
-`results/final_v2/` and `results/final_v3_final/`; `summarise.py` emits the
-per-problem table without dropping failed gates.
+| implementation | case | phantoms | n | P/chain | phantom samples median [IQR] | expectation bias | expectation RMSE | expectation failures | MC bias | MC RMSE | mean z | SD z | 2σ coverage | MC failures | core s median [IQR] | result s median [IQR] | MC s median [IQR] | total s median [IQR] | evals median [IQR] | peak MiB | ESS/eval | gate active | Kish active median [IQR] |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| current | basic | False | 30 | 0 | 0 [0, 0] | -0.0066 | 0.0395 | 0 | -0.0066 | 0.0399 | -0.10 | 0.92 | 96.7% | 1 | 0.013 [0.012, 0.013] | 0.005 [0.005, 0.006] | 0.015 [0.014, 0.017] | 0.033 [0.032, 0.037] | 5061 [4930, 5306] | 738.5 | 7.752e-03 | 0.0% | 0.0 [0.0, 0.0] |
+| current | basic | True | 30 | 1 | 227 [226, 228] | -0.0066 | 0.0395 | 0 | -0.0068 | 0.0398 | -0.10 | 0.91 | 93.3% | 2 | 0.013 [0.012, 0.013] | 0.005 [0.005, 0.007] | 0.180 [0.173, 0.323] | 0.198 [0.191, 0.340] | 5061 [4930, 5306] | 909.2 | 7.752e-03 | 78.8% | 30.0 [28.0, 31.0] |
+| current | basic2 | False | 30 | 0 | 0 [0, 0] | -0.0063 | 0.0691 | 0 | -0.0067 | 0.0698 | 0.03 | 0.94 | 96.7% | 1 | 0.015 [0.013, 0.018] | 0.079 [0.036, 0.148] | 1.465 [1.028, 1.971] | 1.607 [1.071, 2.150] | 4864 [4799, 4966] | 1084.4 | 8.365e-03 | 0.0% | 0.0 [0.0, 0.0] |
+| current | basic2 | True | 30 | 1 | 221 [216, 226] | -0.0063 | 0.0691 | 0 | -0.0067 | 0.0708 | 0.02 | 0.94 | 93.3% | 2 | 0.013 [0.012, 0.013] | 0.090 [0.038, 0.170] | 1.667 [0.774, 2.702] | 1.782 [0.825, 2.884] | 4864 [4799, 4966] | 1205.7 | 8.365e-03 | 82.6% | 30.0 [28.0, 31.0] |
+| current | basic3 | False | 30 | 0 | 0 [0, 0] | -0.0256 | 0.1767 | 0 | -0.0260 | 0.1773 | -0.12 | 0.88 | 96.7% | 1 | 0.050 [0.048, 0.053] | 0.154 [0.012, 0.155] | 1.101 [0.262, 1.365] | 1.305 [0.357, 2.816] | 38296 [37280, 39047] | 1427.9 | 3.699e-03 | 0.0% | 0.0 [0.0, 0.0] |
+| current | basic3 | True | 30 | 2 | 1298 [1280, 1306] | -0.0256 | 0.1767 | 0 | 0.0108 | 0.1691 | 0.09 | 1.14 | 96.7% | 1 | 0.052 [0.049, 0.054] | 0.173 [0.016, 0.179] | 2.520 [1.182, 2.670] | 2.747 [1.279, 2.977] | 38296 [37280, 39047] | 1597.3 | 3.699e-03 | 95.2% | 74.7 [72.1, 76.6] |
+| current | basic_mvn | False | 30 | 0 | 0 [0, 0] | -0.0383 | 0.2791 | 0 | -0.0386 | 0.2780 | -0.15 | 1.09 | 93.3% | 2 | 1.710 [1.681, 1.751] | 0.027 [0.026, 0.028] | 0.316 [0.304, 0.329] | 2.060 [2.016, 2.088] | 1830361 [1786774, 1868405] | 1060.8 | 4.039e-04 | 0.0% | 0.0 [0.0, 0.0] |
+| current | basic_mvn | True | 30 | 8 | 40960 [40960, 40960] | -0.0383 | 0.2791 | 0 | 0.0185 | 0.1559 | 0.18 | 1.30 | 86.7% | 4 | 1.758 [1.728, 1.817] | 0.028 [0.027, 0.029] | 5.054 [4.984, 5.124] | 6.864 [6.765, 6.982] | 1830361 [1786774, 1868405] | 2726.5 | 4.039e-04 | 99.6% | 419.8 [413.1, 424.5] |
+| current | plateau | False | 30 | 0 | 0 [0, 0] | -0.0322 | 0.0322 | 0 | -0.0322 | 0.0322 | -1.00 | 0.03 | 100.0% | 0 | 0.002 [0.002, 0.002] | 0.004 [0.004, 0.005] | 0.076 [0.075, 0.085] | 0.082 [0.081, 0.092] | 30 [30, 30] | 592.2 | 3.330e-02 | 0.0% | 0.0 [0.0, 0.0] |
+| current | plateau | True | 30 | 1 | 0 [0, 0] | -0.0322 | 0.0322 | 0 | -0.0323 | 0.0323 | -1.01 | 0.04 | 100.0% | 0 | 0.002 [0.002, 0.002] | 0.004 [0.004, 0.004] | 0.109 [0.102, 0.115] | 0.115 [0.109, 0.122] | 30 [30, 30] | 588.2 | 3.330e-02 | 0.0% | 0.0 [0.0, 0.0] |
+| current | spike_slab | False | 30 | 0 | 0 [0, 0] | 0.0244 | 0.2767 | 0 | 0.0243 | 0.2783 | 0.11 | 1.20 | 80.0% | 6 | 1.178 [1.154, 1.231] | 0.027 [0.027, 0.028] | 0.310 [0.306, 0.319] | 1.514 [1.491, 1.566] | 521536 [504770, 543303] | 1092.4 | 1.679e-03 | 0.0% | 0.0 [0.0, 0.0] |
+| current | spike_slab | True | 30 | 8 | 40960 [40960, 40960] | 0.0244 | 0.2767 | 0 | 0.0313 | 0.2756 | 0.22 | 1.76 | 80.0% | 6 | 1.259 [1.214, 1.296] | 0.028 [0.027, 0.028] | 5.053 [4.974, 5.235] | 6.347 [6.236, 6.500] | 521536 [504770, 543303] | 2755.2 | 1.679e-03 | 99.5% | 351.7 [347.8, 354.9] |
+| current | spike_slab10 | False | 30 | 0 | 0 [0, 0] | -0.0550 | 0.2283 | 0 | -0.0558 | 0.2299 | -0.24 | 1.02 | 96.7% | 1 | 2.510 [2.493, 2.548] | 0.034 [0.033, 0.035] | 0.400 [0.390, 0.418] | 2.944 [2.924, 2.981] | 1029893 [1009444, 1056311] | 1253.8 | 1.095e-03 | 0.0% | 0.0 [0.0, 0.0] |
+| current | spike_slab10 | True | 30 | 10 | 64000 [64000, 64000] | -0.0550 | 0.2283 | 0 | -0.0661 | 0.2398 | -0.46 | 1.65 | 70.0% | 9 | 2.554 [2.514, 2.613] | 0.035 [0.033, 0.035] | 6.606 [6.528, 6.961] | 9.210 [9.098, 9.575] | 1029893 [1009444, 1056311] | 3726.1 | 1.095e-03 | 99.6% | 456.2 [451.2, 462.0] |
+| current | weak_curved_mvn8 | False | 30 | 0 | 0 [0, 0] | -0.0176 | 0.1433 | 0 | -0.0194 | 0.1433 | -0.12 | 0.93 | 96.7% | 1 | 0.830 [0.803, 0.847] | 0.193 [0.192, 0.195] | 1.305 [1.240, 1.357] | 2.307 [2.261, 2.364] | 389402 [388124, 391647] | 2564.3 | 2.006e-03 | 0.0% | 0.0 [0.0, 0.0] |
+| current | weak_curved_mvn8 | True | 30 | 8 | 30408 [30276, 30642] | -0.0176 | 0.1433 | 0 | 0.0021 | 0.1329 | 0.04 | 1.22 | 90.0% | 3 | 0.852 [0.826, 0.886] | 0.192 [0.189, 0.193] | 5.804 [5.616, 6.084] | 6.882 [6.641, 7.116] | 389402 [388124, 391647] | 3855.3 | 2.006e-03 | 99.4% | 355.0 [350.4, 359.5] |
+| current | weak_curved_spike_slab10 | False | 30 | 0 | 0 [0, 0] | 0.0001 | 0.1806 | 0 | -0.0007 | 0.1817 | 0.01 | 1.09 | 96.7% | 1 | 2.276 [2.258, 2.306] | 0.213 [0.211, 0.217] | 1.455 [1.415, 1.503] | 3.952 [3.887, 4.000] | 868664 [863658, 871822] | 1837.2 | 1.300e-03 | 0.0% | 0.0 [0.0, 0.0] |
+| current | weak_curved_spike_slab10 | True | 30 | 10 | 59405 [58980, 59715] | 0.0001 | 0.1806 | 0 | 0.0238 | 0.1138 | 0.22 | 1.03 | 93.3% | 2 | 2.317 [2.269, 2.354] | 0.209 [0.203, 0.214] | 8.093 [7.848, 8.248] | 10.597 [10.374, 10.845] | 868664 [863658, 871822] | 4473.7 | 1.300e-03 | 99.6% | 465.7 [460.7, 471.0] |
+| current | weak_curved_spike_slab8 | False | 30 | 0 | 0 [0, 0] | 0.0048 | 0.1689 | 0 | 0.0055 | 0.1675 | 0.04 | 1.03 | 93.3% | 2 | 0.996 [0.986, 1.014] | 0.198 [0.194, 0.202] | 1.304 [1.270, 1.379] | 2.524 [2.457, 2.576] | 473354 [469811, 475392] | 2184.6 | 1.680e-03 | 0.0% | 0.0 [0.0, 0.0] |
+| current | weak_curved_spike_slab8 | True | 30 | 8 | 32152 [31968, 32334] | 0.0048 | 0.1689 | 0 | 0.0146 | 0.1497 | 0.14 | 1.40 | 80.0% | 6 | 1.046 [1.031, 1.073] | 0.193 [0.191, 0.197] | 5.879 [5.721, 6.100] | 7.136 [6.934, 7.375] | 473354 [469811, 475392] | 3997.6 | 1.680e-03 | 99.4% | 356.6 [352.9, 362.7] |
+| v2-pypi | basic | False | 30 | 0 | 0 [0, 0] | -0.0173 | 0.0496 | 0 | 0.0010 | 0.0465 | 0.10 | 1.03 | 96.7% | 1 | 0.006 [0.006, 0.007] | 0.165 [0.163, 0.168] | 0.148 [0.145, 0.164] | 0.322 [0.315, 0.334] | 5972 [5725, 6355] | 791.7 | 4.992e-03 | 0.0% | 0.0 [0.0, 0.0] |
+| v2-pypi | basic | True | 30 | 1 | 225 [225, 225] | -0.0150 | 0.0481 | 0 | 0.0025 | 0.0461 | 0.13 | 1.02 | 96.7% | 1 | 0.007 [0.006, 0.007] | 0.164 [0.163, 0.165] | 0.159 [0.157, 0.163] | 0.331 [0.326, 0.337] | 5972 [5725, 6355] | 813.5 | 3.324e-03 | 0.0% | 0.0 [0.0, 0.0] |
+| v2-pypi | basic2 | False | 30 | 0 | 0 [0, 0] | -0.0175 | 0.0798 | 0 | 0.0022 | 0.0778 | 0.17 | 1.05 | 93.3% | 2 | 0.006 [0.006, 0.007] | 0.163 [0.162, 0.166] | 0.147 [0.145, 0.154] | 0.320 [0.314, 0.334] | 5972 [5725, 6355] | 795.4 | 5.034e-03 | 0.0% | 0.0 [0.0, 0.0] |
+| v2-pypi | basic2 | True | 30 | 1 | 225 [225, 225] | -0.0143 | 0.0781 | 0 | 0.0042 | 0.0772 | 0.20 | 1.05 | 93.3% | 2 | 0.007 [0.006, 0.007] | 0.163 [0.162, 0.167] | 0.159 [0.155, 0.164] | 0.329 [0.324, 0.341] | 5972 [5725, 6355] | 810.5 | 3.516e-03 | 0.0% | 0.0 [0.0, 0.0] |
+| v2-pypi | basic3 | False | 30 | 0 | 0 [0, 0] | 0.1426 | 0.2991 | 1 | 0.1542 | 0.3049 | 0.73 | 1.22 | 86.7% | 4 | 0.048 [0.046, 0.050] | 0.192 [0.191, 0.194] | 0.172 [0.168, 0.176] | 0.414 [0.407, 0.423] | 44652 [43373, 45870] | 1058.6 | 2.182e-03 | 0.0% | 0.0 [0.0, 0.0] |
+| v2-pypi | basic3 | True | 30 | 2 | 1200 [1140, 1200] | 0.1160 | 0.2351 | 0 | 0.1203 | 0.2374 | 0.70 | 1.19 | 86.7% | 4 | 0.048 [0.046, 0.050] | 0.194 [0.192, 0.198] | 0.239 [0.236, 0.250] | 0.485 [0.475, 0.494] | 44652 [43373, 45870] | 1229.2 | 2.295e-03 | 0.0% | 0.0 [0.0, 0.0] |
+| v2-pypi | basic_mvn | False | 30 | 0 | 0 [0, 0] | 0.0185 | 0.2375 | 0 | 0.0193 | 0.2381 | 0.07 | 0.79 | 96.7% | 1 | 3.229 [3.199, 3.265] | 0.210 [0.208, 0.214] | 0.436 [0.430, 0.443] | 3.886 [3.839, 3.920] | 1906578 [1872900, 1935543] | 1287.6 | 2.661e-04 | 0.0% | 0.0 [0.0, 0.0] |
+| v2-pypi | basic_mvn | True | 30 | 8 | 38400 [38400, 38400] | 0.0146 | 0.1415 | 0 | 0.0148 | 0.1416 | 0.13 | 1.19 | 86.7% | 4 | 3.461 [3.296, 3.525] | 0.239 [0.236, 0.244] | 2.841 [2.788, 2.912] | 6.541 [6.417, 6.671] | 1906578 [1872900, 1935543] | 2412.4 | 2.957e-04 | 0.0% | 0.0 [0.0, 0.0] |
+| v2-pypi | plateau | False | 30 | 0 | 0 [0, 0] | -0.0503 | 0.0503 | 0 | -0.0334 | 0.0335 | -1.01 | 0.04 | 100.0% | 0 | 0.000 [0.000, 0.000] | 0.164 [0.163, 0.167] | 0.134 [0.133, 0.137] | 0.299 [0.296, 0.305] | 30 [30, 30] | 781.4 | 5.119e-01 | 0.0% | 0.0 [0.0, 0.0] |
+| v2-pypi | plateau | True | 30 | 1 | 0 [0, 0] | -0.0503 | 0.0503 | 0 | -0.0334 | 0.0335 | -1.01 | 0.04 | 100.0% | 0 | 0.000 [0.000, 0.000] | 0.165 [0.163, 0.167] | 0.135 [0.132, 0.139] | 0.299 [0.297, 0.306] | 30 [30, 30] | 788.5 | 5.119e-01 | 0.0% | 0.0 [0.0, 0.0] |
+| v2-pypi | spike_slab | False | 30 | 0 | 0 [0, 0] | 0.0622 | 0.3033 | 0 | 0.0634 | 0.3053 | 0.24 | 1.11 | 90.0% | 3 | 1.816 [1.763, 1.929] | 0.211 [0.209, 0.215] | 0.431 [0.424, 0.444] | 2.492 [2.404, 2.624] | 515702 [510643, 558377] | 1502.4 | 1.117e-03 | 0.0% | 0.0 [0.0, 0.0] |
+| v2-pypi | spike_slab | True | 30 | 8 | 38400 [38400, 38400] | 0.1566 | 0.2790 | 0 | 0.1567 | 0.2794 | 1.41 | 2.08 | 56.7% | 13 | 1.916 [1.840, 2.035] | 0.237 [0.234, 0.245] | 2.861 [2.767, 2.914] | 5.001 [4.890, 5.206] | 515702 [510643, 558377] | 2646.8 | 1.250e-03 | 0.0% | 0.0 [0.0, 0.0] |
+| v2-pypi | spike_slab10 | False | 30 | 0 | 0 [0, 0] | 0.1346 | 0.2677 | 0 | 0.1352 | 0.2669 | 0.53 | 0.91 | 96.7% | 1 | 4.234 [4.086, 4.387] | 0.213 [0.211, 0.216] | 0.538 [0.533, 0.546] | 4.993 [4.835, 5.129] | 1209068 [1191251, 1240492] | 1299.2 | 6.395e-04 | 0.0% | 0.0 [0.0, 0.0] |
+| v2-pypi | spike_slab10 | True | 30 | 10 | 66000 [64500, 66000] | 0.1591 | 0.2762 | 0 | 0.1592 | 0.2753 | 1.65 | 2.31 | 40.0% | 18 | 4.322 [4.173, 4.412] | 0.314 [0.307, 0.330] | 4.734 [4.643, 4.845] | 9.350 [9.253, 9.483] | 1209068 [1191251, 1240492] | 3549.6 | 7.158e-04 | 0.0% | 0.0 [0.0, 0.0] |
+| v2-pypi | weak_curved_mvn8 | False | 30 | 0 | 0 [0, 0] | 0.0276 | 0.1579 | 0 | 0.0304 | 0.1604 | 0.18 | 0.88 | 96.7% | 1 | 0.817 [0.796, 0.831] | 0.216 [0.213, 0.220] | 0.341 [0.338, 0.346] | 1.379 [1.356, 1.404] | 368841 [366668, 375992] | 1584.6 | 1.449e-03 | 0.0% | 0.0 [0.0, 0.0] |
+| v2-pypi | weak_curved_mvn8 | True | 30 | 8 | 26880 [26880, 26880] | 0.0632 | 0.1325 | 0 | 0.0634 | 0.1321 | 0.73 | 1.33 | 80.0% | 6 | 0.983 [0.942, 1.030] | 0.230 [0.228, 0.244] | 2.033 [1.969, 2.069] | 3.232 [3.187, 3.299] | 368841 [366668, 375992] | 2069.9 | 1.577e-03 | 0.0% | 0.0 [0.0, 0.0] |
+| v2-pypi | weak_curved_spike_slab10 | False | 30 | 0 | 0 [0, 0] | 0.0515 | 0.2027 | 0 | 0.0529 | 0.2033 | 0.27 | 0.99 | 96.7% | 1 | 2.976 [2.843, 3.036] | 0.219 [0.216, 0.225] | 0.458 [0.448, 0.467] | 3.682 [3.523, 3.744] | 787936 [783130, 794921] | 1302.2 | 9.875e-04 | 0.0% | 0.0 [0.0, 0.0] |
+| v2-pypi | weak_curved_spike_slab10 | True | 30 | 10 | 52500 [52500, 52500] | 0.0924 | 0.1594 | 0 | 0.0925 | 0.1596 | 1.13 | 1.58 | 73.3% | 8 | 2.871 [2.828, 2.909] | 0.285 [0.281, 0.289] | 3.792 [3.687, 3.854] | 6.949 [6.883, 7.041] | 787936 [783130, 794921] | 3078.3 | 1.078e-03 | 0.0% | 0.0 [0.0, 0.0] |
+| v2-pypi | weak_curved_spike_slab8 | False | 30 | 0 | 0 [0, 0] | 0.0187 | 0.2071 | 0 | 0.0215 | 0.2067 | 0.13 | 1.07 | 90.0% | 3 | 1.500 [1.484, 1.563] | 0.214 [0.211, 0.219] | 0.351 [0.347, 0.354] | 2.069 [2.057, 2.138] | 441272 [438790, 445270] | 1817.2 | 1.262e-03 | 0.0% | 0.0 [0.0, 0.0] |
+| v2-pypi | weak_curved_spike_slab8 | True | 30 | 8 | 28800 [28800, 28800] | 0.0651 | 0.1460 | 0 | 0.0652 | 0.1461 | 0.73 | 1.46 | 76.7% | 7 | 1.553 [1.514, 1.589] | 0.235 [0.232, 0.241] | 2.166 [2.098, 2.184] | 3.948 [3.900, 4.001] | 441272 [438790, 445270] | 2252.4 | 1.365e-03 | 0.0% | 0.0 [0.0, 0.0] |

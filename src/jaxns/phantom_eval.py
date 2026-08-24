@@ -8,8 +8,7 @@ from jax.scipy import special as jsp
 from jaxns.mixed_precision import mp_policy
 from jaxns.pytree import PureDataclassPytree
 from jaxns.race_tree import BlockState
-from jaxns.types import BoolArray, FloatArray, IntArray, PRNGKey
-from jaxns.v3_shrinkage import (
+from jaxns.shrinkage import (
     DirichletConcentrations,
     GammaWeightedPhantomProbabilitySamples,
     PhantomCountMatrices,
@@ -20,40 +19,41 @@ from jaxns.v3_shrinkage import (
     validate_lineage_capacity,
     validate_phantom_count_matrices,
 )
-from jaxns.v3_shrinkage import (
+from jaxns.shrinkage import (
     gamma_weighted_phantom_probabilities_from_draws as _gamma_weighted_phantom_probabilities_from_draws,
 )
+from jaxns.types import BoolArray, FloatArray, IntArray, PRNGKey
 
 
 @dataclasses.dataclass(slots=True, frozen=True)
 class EvidenceSamples(PureDataclassPytree):
-    log_Z_samples: FloatArray  # [num_Z_samples] samples of the evidence log Z from the MC shrinkage sampling
-    H_samples: FloatArray  # [num_Z_samples] the information E[log_L - log_Z]
-    log_dZ_mean: FloatArray  # [num_blocks] L_{g} * (X_{g-1} - X_g) averaged over MC chains
-    log_dZ_var: FloatArray  # [num_blocks] variance of L_{g} * (X_{g-1} - X_g) over MC chains
-    log_L_blocks: FloatArray  # [num_blocks] block levels derived from log_L_classic, padded with +inf
-    block_first_idx: IntArray  # [num_blocks] first classic index per block, -1 for padded blocks
-    block_size: IntArray  # [num_blocks] number of classic samples in each likelihood block
-    incoming_K: IntArray  # [num_blocks] canonical incoming active lineage count per block
-    kish_participating_cluster_counts: FloatArray  # [num_blocks] Kish participating-cluster count
-    phantom_gate_active: BoolArray  # [num_blocks] active gamma phantom conditioning gate
-    phantom_A: FloatArray | None = None  # [num_blocks] full-data phantom A_g counts
-    phantom_B: FloatArray | None = None  # [num_blocks] full-data phantom B_g counts
-    phantom_E: FloatArray | None = None  # [num_blocks] full-data phantom E_g counts
-    phantom_R: FloatArray | None = None  # [num_blocks] full-data phantom R_g counts
-    classic_alpha_gt: FloatArray | None = None  # [num_blocks] classic alpha for p_>
-    classic_alpha_eq: FloatArray | None = None  # [num_blocks] classic alpha for p_=
-    classic_alpha_lt: FloatArray | None = None  # [num_blocks] classic alpha for p_<
-    epsilon: FloatArray | None = None  # [num_blocks] equality-atom prior epsilon_g
-    p_gt_samples: FloatArray | None = None  # [num_Z_samples, num_blocks] sampled strict endpoint probabilities
-    p_eq_samples: FloatArray | None = None  # [num_Z_samples, num_blocks] sampled equality atom probabilities
-    p_lt_samples: FloatArray | None = None  # [num_Z_samples, num_blocks] sampled open-interval probabilities
-    p_gt_mean: FloatArray | None = None  # [num_blocks] posterior mean of p_>
-    p_eq_mean: FloatArray | None = None  # [num_blocks] posterior mean of p_=
-    p_lt_mean: FloatArray | None = None  # [num_blocks] posterior mean of p_<
-    phantom_add_gt_samples: FloatArray | None = None  # [num_Z_samples, num_blocks]
-    phantom_add_eq_samples: FloatArray | None = None  # [num_Z_samples, num_blocks]
-    phantom_add_lt_samples: FloatArray | None = None  # [num_Z_samples, num_blocks]
+    log_Z_samples: FloatArray  # [M]
+    H_samples: FloatArray  # [M]
+    log_dZ_mean: FloatArray  # [G]
+    log_dZ_var: FloatArray  # [G]
+    log_L_blocks: FloatArray  # [G]
+    block_first_idx: IntArray  # [G]
+    block_size: IntArray  # [G]
+    incoming_K: IntArray  # [G]
+    kish_participating_cluster_counts: FloatArray  # [G]
+    phantom_gate_active: BoolArray  # [G]
+    phantom_A: FloatArray | None = None  # [G]
+    phantom_B: FloatArray | None = None  # [G]
+    phantom_E: FloatArray | None = None  # [G]
+    phantom_R: FloatArray | None = None  # [G]
+    classic_alpha_gt: FloatArray | None = None  # [G]
+    classic_alpha_eq: FloatArray | None = None  # [G]
+    classic_alpha_lt: FloatArray | None = None  # [G]
+    epsilon: FloatArray | None = None  # [G]
+    p_gt_samples: FloatArray | None = None  # [M, G]
+    p_eq_samples: FloatArray | None = None  # [M, G]
+    p_lt_samples: FloatArray | None = None  # [M, G]
+    p_gt_mean: FloatArray | None = None  # [G]
+    p_eq_mean: FloatArray | None = None  # [G]
+    p_lt_mean: FloatArray | None = None  # [G]
+    phantom_add_gt_samples: FloatArray | None = None  # [M, G]
+    phantom_add_eq_samples: FloatArray | None = None  # [M, G]
+    phantom_add_lt_samples: FloatArray | None = None  # [M, G]
 
     @property
     def log_Z_mean(self) -> FloatArray:
@@ -67,12 +67,12 @@ class EvidenceSamples(PureDataclassPytree):
 
     @property
     def m_g(self) -> IntArray:
-        """Alias for the v3 block sizes."""
+        """Alias for the race-tree block sizes."""
         return self.block_size
 
     @property
     def K_g(self) -> IntArray:
-        """Alias for the v3 incoming active lineage counts."""
+        """Alias for the incoming active lineage counts."""
         return self.incoming_K
 
     @property
@@ -102,7 +102,7 @@ class EvidenceSamples(PureDataclassPytree):
 
     @property
     def classic_dirichlet_concentrations(self) -> DirichletConcentrations | None:
-        """Classic v3 block Dirichlet concentrations, if returned."""
+        """Classic block Dirichlet concentrations, if returned."""
         if self.classic_alpha_gt is None:
             return None
         return DirichletConcentrations(
@@ -244,7 +244,6 @@ def sample_mc_shrinkage(
         block_state: BlockState | None = None,
         batch_size: int | None = None,
         C_min: float = 20,
-        phantom_group_idx: IntArray | None = None,
 ) -> EvidenceSamples:
     """
     Monte-Carlo evidence sampling with gamma-weighted phantom shrinkage.
@@ -263,15 +262,11 @@ def sample_mc_shrinkage(
         log_L_phantom: ``[num_samples, num_phantom]`` phantom likelihoods.
         num_samples: Number of valid leading entries in classic arrays.
         num_Z_samples: Number of Monte-Carlo evidence samples.
-        block_state: Optional canonical v3 block state. When supplied, its
+        block_state: Optional canonical race-tree block state. When supplied, its
             block likelihoods, membership sizes, and incoming lineage counts are
             used instead of reconstructing blocks from per-sample live counts.
         batch_size: Reserved for API compatibility; currently unused.
         C_min: Kish participating-cluster gate threshold. Defaults to 20.
-        phantom_group_idx: Optional independence-group identity for each
-            stored cluster. Clusters with the same identity share one gamma
-            weight; omitted identities treat every cluster as independent.
-
     Returns:
         EvidenceSamples with:
           - ``log_Z_samples``: evidence samples ``[num_Z_samples]``;
@@ -292,22 +287,6 @@ def sample_mc_shrinkage(
         num_samples=num_samples,
         block_state=block_state,
     )
-    if phantom_group_idx is not None:
-        if jnp.shape(phantom_group_idx) != jnp.shape(log_L_classic):
-            raise ValueError(
-                "phantom_group_idx shape must match log_L_classic."
-            )
-        try:
-            groups = np.asarray(phantom_group_idx)
-            cluster_valid = np.asarray(valid_phantom, dtype=bool)
-            n = int(np.asarray(num_samples))
-        except (TypeError, ValueError):
-            pass
-        else:
-            if np.any(groups[:n][cluster_valid[:n]] < 0):
-                raise ValueError(
-                    "Valid phantom clusters require non-negative group identities."
-                )
     return _sample_mc_shrinkage(
         key=key,
         log_L_constraints=log_L_constraints,
@@ -320,7 +299,6 @@ def sample_mc_shrinkage(
         block_state=block_state,
         batch_size=batch_size,
         C_min=C_min,
-        phantom_group_idx=phantom_group_idx,
     )
 
 
@@ -997,7 +975,7 @@ def compute_phantom_block_counts(
         log_L_phantom: FloatArray,
         sample_mask: BoolArray,
 ) -> tuple[FloatArray, FloatArray, FloatArray]:
-    """Compute aggregate public v3 phantom `A_g`, `B_g`, and `E_g` counts."""
+    """Compute aggregate public phantom `A_g`, `B_g`, and `E_g` counts."""
     counts = compute_phantom_count_matrices(
         log_L_blocks=log_L_blocks,
         block_valid_mask=block_valid_mask,
@@ -1039,7 +1017,6 @@ def _sample_gamma_weighted_probabilities_from_events(
         sample_mask: BoolArray,
         num_Z_samples: int,
         C_min: float,
-        phantom_group_idx: IntArray,
 ):
     """Sample phantom-conditioned races without a clusters-by-block matrix.
 
@@ -1056,11 +1033,6 @@ def _sample_gamma_weighted_probabilities_from_events(
     num_clusters = log_L_constraints.shape[0]
     num_phantom = log_L_phantom.shape[1]
     effective_valid = valid_phantom & sample_mask
-    phantom_group_idx = jnp.clip(
-        phantom_group_idx.astype(jnp.int32),
-        0,
-        num_clusters - 1,
-    )
     num_valid_blocks = jnp.sum(block_valid_mask, dtype=jnp.int32)
 
     left_constraint = jnp.searchsorted(
@@ -1132,56 +1104,56 @@ def _sample_gamma_weighted_probabilities_from_events(
     A_g, B_g, E_g = aggregate(cluster_presence)
     R_g = A_g - B_g - E_g
 
-    # Chains assigned the same independence identity are one correlated
-    # cluster for weighting. Sweep sparse start/end events in (block, group)
-    # order to obtain the exact grouped Kish denominator without an N-by-N
-    # count matrix.
-    start_group = phantom_group_idx
+    # The paper treats every retained chain row as one cluster: its phantom
+    # states may be arbitrarily correlated, but different rows are the
+    # approximately independent units. Sweep each cluster's sparse interval
+    # events to obtain sum_c A_cg^2 without materialising an [N, G] matrix.
+    start_cluster = jnp.arange(num_clusters, dtype=jnp.int32)
     start_block = start_idx
     start_delta = jnp.where(
         effective_valid,
         count_A_start,
         jnp.zeros_like(count_A_start),
     )
-    end_group = phantom_group_idx[event_cluster_idx]
+    end_cluster = event_cluster_idx
     end_block = event_a_hi
     end_delta = jnp.where(
         effective_valid[event_cluster_idx] & event_A_active,
         -jnp.ones_like(event_a_hi, dtype=dtype),
         jnp.zeros_like(event_a_hi, dtype=dtype),
     )
-    event_group = jnp.concatenate([start_group, end_group])
+    event_cluster = jnp.concatenate([start_cluster, end_cluster])
     event_block = jnp.concatenate([start_block, end_block])
     event_delta = jnp.concatenate([start_delta, end_delta])
     composite_key = (
         event_block.astype(jnp.int64) * jnp.asarray(num_clusters, jnp.int64)
-        + event_group.astype(jnp.int64)
+        + event_cluster.astype(jnp.int64)
     )
     event_order = jnp.argsort(composite_key, stable=True)
-    sorted_group = event_group[event_order]
+    sorted_cluster = event_cluster[event_order]
     sorted_block = event_block[event_order]
     sorted_delta = event_delta[event_order]
 
-    def grouped_kish_step(carry, event):
-        group_counts, sum_squares = carry
-        group, delta = event
-        old_count = group_counts[group]
+    def cluster_kish_step(carry, event):
+        cluster_counts, sum_squares = carry
+        cluster, delta = event
+        old_count = cluster_counts[cluster]
         new_count = old_count + delta
         next_sum_squares = (
             sum_squares + jnp.square(new_count) - jnp.square(old_count)
         )
         return (
-            group_counts.at[group].set(new_count),
+            cluster_counts.at[cluster].set(new_count),
             next_sum_squares,
         ), next_sum_squares - sum_squares
 
     (_, _), sum_square_delta = jax.lax.scan(
-        grouped_kish_step,
+        cluster_kish_step,
         (
             jnp.zeros((num_clusters,), dtype=dtype),
             jnp.asarray(0.0, dtype=dtype),
         ),
-        (sorted_group, sorted_delta),
+        (sorted_cluster, sorted_delta),
     )
     sum_A2 = jnp.cumsum(
         jnp.bincount(
@@ -1200,6 +1172,7 @@ def _sample_gamma_weighted_probabilities_from_events(
 
     key_gt, key_eq, key_lt, key_cluster = jax.random.split(key, 4)
     concentrations = classic_dirichlet_concentrations(block_state)
+    atom_present = block_valid_mask & (concentrations.alpha_eq > 0.0)
     safe_gt = jnp.where(block_valid_mask, concentrations.alpha_gt, 1.0)
     draw_shape = (num_Z_samples, num_blocks)
     race_gt = jax.random.gamma(key_gt, safe_gt, shape=draw_shape)
@@ -1240,20 +1213,29 @@ def _sample_gamma_weighted_probabilities_from_events(
         sample_open_interval_gamma,
         key_lt,
     )
-    # Gamma(1, 1) is exactly Exponential(1); the direct primitive is much
-    # cheaper for the large [MC draw, cluster] field.
-    group_weights = jax.random.exponential(
+    # Draw one Gamma(1, 1) weight per retained chain cluster and reuse that
+    # same weight for all of the cluster's phantom states and every block.
+    # This preserves within-chain correlation instead of pretending its P
+    # states are independent observations. Gamma(1, 1) is Exponential(1), so
+    # the direct primitive is cheaper for the large [MC draw, cluster] field.
+    cluster_weights = jax.random.exponential(
         key_cluster,
         shape=(num_Z_samples, num_clusters),
         dtype=dtype,
     )
     weighted_A, weighted_B, weighted_E = jax.vmap(aggregate)(
-        group_weights[:, phantom_group_idx] * cluster_presence[None, :]
+        cluster_weights * cluster_presence[None, :]
     )
     gate_value = gate.astype(dtype)[None, :]
+    # A singleton block is structurally two-class. Exact equality
+    # observations therefore belong to the A-B complement; only a plateau
+    # block may allocate them to a separate equality mass.
+    model_weighted_E = jnp.where(atom_present[None, :], weighted_E, 0.0)
     phantom_add_gt = weighted_B * gate_value
-    phantom_add_eq = weighted_E * gate_value
-    phantom_add_lt = (weighted_A - weighted_B - weighted_E) * gate_value
+    phantom_add_eq = model_weighted_E * gate_value
+    phantom_add_lt = (
+            weighted_A - weighted_B - model_weighted_E
+    ) * gate_value
     mass_gt = race_gt + phantom_add_gt
     mass_eq = race_eq + phantom_add_eq
     mass_lt = race_lt + phantom_add_lt
@@ -1277,7 +1259,7 @@ def _sample_gamma_weighted_probabilities_from_events(
         race_gamma_gt=race_gt,
         race_gamma_eq=race_eq,
         race_gamma_lt=race_lt,
-        cluster_weights=group_weights,
+        cluster_weights=cluster_weights,
     )
     return probabilities, A_g, B_g, E_g, R_g, kish, gate
 
@@ -1295,15 +1277,12 @@ def _sample_mc_shrinkage(
         block_state: BlockState | None = None,
         batch_size: int | None = None,
         C_min: float = 20,
-        phantom_group_idx: IntArray | None = None,
 ) -> EvidenceSamples:
     del batch_size
     N = log_L_classic.shape[0]
     sample_valid_mask = jnp.arange(N, dtype=jnp.int32) < num_samples
     positive_live_mask = K_classic > 0
     effective_sample_mask = jnp.logical_and(sample_valid_mask, positive_live_mask)
-    if phantom_group_idx is None:
-        phantom_group_idx = jnp.arange(N, dtype=jnp.int32)
     if block_state is None:
         n = int(np.asarray(num_samples))
         log_l_np = np.asarray(log_L_classic, dtype=float)
@@ -1347,7 +1326,7 @@ def _sample_mc_shrinkage(
         block_sample_indices = block_state.block_sample_indices
 
     num_blocks = log_L_blocks.shape[0]
-    block_state_for_v3 = BlockState(
+    block_state = BlockState(
         log_L_blocks=log_L_blocks,
         block_first_idx=block_first_idx,
         block_size=block_size,
@@ -1358,11 +1337,12 @@ def _sample_mc_shrinkage(
         block_stop=block_stop,
         block_sample_indices=block_sample_indices,
     )
-    classic_concentrations = classic_dirichlet_concentrations(block_state_for_v3)
+    classic_concentrations = classic_dirichlet_concentrations(block_state)
     if log_L_phantom.shape[1] == 0:
-        # With phantoms disabled there is no cluster-conditioning problem to
-        # build. Bypass the clusters-by-block count matrices entirely and draw
-        # the independent classic race posterior directly.
+        # With phantoms disabled there are no cluster events or Kish gate to
+        # evaluate. Bypass that machinery and draw the classic race posterior
+        # directly; this keeps phantoms-off results both cheaper and easier to
+        # compare with the known Beta(K_g, 1) singleton law.
         p_gt_samples, p_eq_samples, p_lt_samples = sample_dirichlet_probabilities(
             key,
             classic_concentrations,
@@ -1447,14 +1427,13 @@ def _sample_mc_shrinkage(
         phantom_gate_active,
     ) = _sample_gamma_weighted_probabilities_from_events(
         key=key,
-        block_state=block_state_for_v3,
+        block_state=block_state,
         log_L_constraints=log_L_constraints,
         valid_phantom=valid_phantom,
         log_L_phantom=log_L_phantom,
         sample_mask=effective_sample_mask,
         num_Z_samples=num_Z_samples,
         C_min=C_min,
-        phantom_group_idx=phantom_group_idx,
     )
     p_gt_for_path = jnp.where(
         block_valid_mask[None, :],

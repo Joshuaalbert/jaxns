@@ -2,7 +2,8 @@ import dataclasses
 from typing import Literal
 
 import jax
-from jax import numpy as jnp, lax
+from jax import lax
+from jax import numpy as jnp
 from jax.scipy.special import logsumexp
 
 from jaxns.mixed_precision import mp_policy
@@ -58,7 +59,7 @@ def cumulative_logsumexp(u, sign=None, reverse=False, axis=0):
         if sign is not None:
             (u, u_sign) = X
             (accumulant, accumulant_sign) = state
-            new_accumulant, new_accumulant_sign = signed_logaddexp(accumulant, accumulant_sign, u, u_sign)
+            new_accumulant, _new_accumulant_sign = signed_logaddexp(accumulant, accumulant_sign, u, u_sign)
             return (new_accumulant, accumulant_sign), (new_accumulant, accumulant_sign)
         else:
             u = X
@@ -96,8 +97,8 @@ def cumulative_logsumexp(u, sign=None, reverse=False, axis=0):
 
 @dataclasses.dataclass(slots=True, frozen=True)
 class LogSpace(PureDataclassPytree):
-    log_abs_val: FloatArray
-    sign: FloatArray | None = None
+    log_abs_val: FloatArray  # [...]
+    sign: FloatArray | None = None  # [...] aligned with log_abs_val
 
     @property
     def naked(self) -> bool:
@@ -306,7 +307,7 @@ class LogSpace(PureDataclassPytree):
     def size(self):
         if self.naked:
             return self.log_abs_val.size
-        log_abs_val, sign = jnp.broadcast_arrays(self.log_abs_val, self.sign)
+        log_abs_val, _ = jnp.broadcast_arrays(self.log_abs_val, self.sign)
         return log_abs_val.size
 
     def __pow__(self, n):

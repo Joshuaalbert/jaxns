@@ -1,8 +1,8 @@
 import dataclasses
 import pickle
 import warnings
-from abc import abstractmethod, ABC
-from typing import Any, TypeVar, Generic, Union
+from abc import ABC, abstractmethod
+from typing import Any, Generic, TypeVar, Union
 
 import jax
 import numpy as np
@@ -51,7 +51,7 @@ class Pytree(ABC):
                         f"Failed to pickle {self.__class__.__name__}. "
                         f"It's possibly locally defined. Make sure it is globally defined."
                     )
-                    raise e
+                    raise
 
     @staticmethod
     def load(filename: str):
@@ -76,7 +76,7 @@ class Pytree(ABC):
         if hasattr(this, '__dataclass_fields__'):
             # Only the fields, ignore set attrs
             fields = this.__dataclass_fields__
-            contents = dict((f, getattr(this, f)) for f in fields)
+            contents = {f: getattr(this, f) for f in fields}
 
         children_dict = dict(item for item in contents.items() if item[0] not in aux_names)
         aux_data_dict = dict(item for item in contents.items() if item[0] in aux_names)
@@ -213,7 +213,7 @@ PV = TypeVar('PV')
 
 @dataclasses.dataclass(slots=True, frozen=True)
 class TreeField(PureDataclassPytree, Generic[PV]):
-    tree: Union['TreeField[PV]', Any]
+    tree: Union['TreeField[PV]', Any]  # [...] arbitrary aligned pytree leaves
 
     def batch_dim(self) -> int:
         leaves = jax.tree.leaves(self.tree)
@@ -240,7 +240,7 @@ class TreeField(PureDataclassPytree, Generic[PV]):
 
     def __matmul__(self, other: 'TreeField[PV]') -> jax.Array:
         if not isinstance(other, TreeField):
-            raise ValueError("Only works on other same matching trees.")
+            raise TypeError("Only works on other same matching trees.")
         return jax.vmap(lambda x: _tree_dot(x, other))(self)
 
     def __rsub__(self, other: Union['TreeField[PV]', Any]) -> 'TreeField[PV]':

@@ -9,7 +9,7 @@ from jaxns.log_semiring import LogSpace
 from jaxns.mixed_precision import mp_policy
 from jaxns.pytree import PureDataclassPytree
 from jaxns.samples import Samples
-from jaxns.types import IntArray, FloatArray
+from jaxns.types import FloatArray, IntArray
 
 
 @dataclasses.dataclass(slots=True, frozen=True)
@@ -17,14 +17,14 @@ class EvidenceCalculation(PureDataclassPytree):
     """
     Contains a running estimate of evidence and related quantities.
     """
-    L: LogSpace
-    X_mean: LogSpace
-    X2_mean: LogSpace
-    Z_mean: LogSpace
-    ZX_mean: LogSpace
-    Z2_mean: LogSpace
-    dZ_mean: LogSpace
-    dZ2_mean: LogSpace
+    L: LogSpace  # [...] scalar online value or [N] cumulative values
+    X_mean: LogSpace  # [...] scalar online value or [N] cumulative values
+    X2_mean: LogSpace  # [...] scalar online value or [N] cumulative values
+    Z_mean: LogSpace  # [...] scalar online value or [N] cumulative values
+    ZX_mean: LogSpace  # [...] scalar online value or [N] cumulative values
+    Z2_mean: LogSpace  # [...] scalar online value or [N] cumulative values
+    dZ_mean: LogSpace  # [...] scalar online value or [N] cumulative values
+    dZ2_mean: LogSpace  # [...] scalar online value or [N] cumulative values
 
     @staticmethod
     def initialise() -> 'EvidenceCalculation':

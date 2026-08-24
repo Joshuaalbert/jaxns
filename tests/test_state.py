@@ -9,12 +9,12 @@ from jaxns.core import NestedSampler
 from jaxns.model import Model
 from jaxns.race_tree import build_block_state
 from jaxns.samples import PhantomSamples, Samples
+from jaxns.shrinkage import (
+    classic_dirichlet_concentrations,
+    expected_evidence_summary,
+)
 from jaxns.state import State
 from jaxns.stats_utils import linear_to_log_stats
-from jaxns.v3_shrinkage import (
-    classic_dirichlet_concentrations,
-    expected_v3_evidence_summary,
-)
 from tests.distributed_support import make_toy_model
 
 tfpd = tfp.distributions
@@ -90,11 +90,11 @@ def test_to_result_marks_no_phantoms_invalid():
     assert hasattr(diagnostics, "phantom_gate_active")
     np.testing.assert_allclose(
         np.asarray(diagnostics.kish_participating_cluster_counts),
-        np.zeros_like(np.asarray(results.log_L_blocks), dtype=float),
+        np.zeros_like(np.asarray(results.block_data.log_L), dtype=float),
     )
     np.testing.assert_array_equal(
         np.asarray(diagnostics.phantom_gate_active, dtype=bool),
-        np.zeros_like(np.asarray(results.log_L_blocks), dtype=bool),
+        np.zeros_like(np.asarray(results.block_data.log_L), dtype=bool),
     )
 
     evidence_samples = results.sample_mc_shrinkage(num_samples=16, C_min=20)
@@ -206,7 +206,7 @@ def test_state_to_result_rejects_strict_contour_equality():
         state.to_result()
 
 
-def test_state_sample_logZ_uses_public_v3_path():
+def test_state_sample_logZ_uses_public_block_path():
     samples = Samples(
         log_L_constraints=jnp.array([-jnp.inf, 0.0]),
         log_likelihoods=jnp.array([0.0, 1.0]),
@@ -242,7 +242,7 @@ def test_state_sample_logZ_rejects_invalid_plateau_capacity():
         state.sample_logZ(random.PRNGKey(5), num_samples=2)
 
 
-def test_state_to_result_evidence_summary_uses_v3_block_model():
+def test_state_to_result_evidence_summary_uses_block_model():
     samples = Samples(
         log_L_constraints=jnp.array([-jnp.inf, -jnp.inf, -jnp.inf]),
         log_likelihoods=jnp.array([0.0, 1.0, 1.0]),
@@ -271,7 +271,7 @@ def test_state_to_result_evidence_summary_uses_v3_block_model():
         num_samples=state.num_samples,
         validate=True,
     )
-    expected_summary = expected_v3_evidence_summary(
+    expected_summary = expected_evidence_summary(
         block_state,
         classic_dirichlet_concentrations(block_state),
     )
@@ -287,7 +287,9 @@ def test_state_to_result_evidence_summary_uses_v3_block_model():
         np.asarray(expected_summary.log_Z_uncert),
     )
     np.testing.assert_array_equal(
-        np.asarray(results.block_incoming_K)[np.isfinite(np.asarray(results.log_L_blocks))],
+        np.asarray(results.block_data.incoming_K)[
+            np.isfinite(np.asarray(results.block_data.log_L))
+        ],
         np.array([2, 2], dtype=np.int32),
     )
 
