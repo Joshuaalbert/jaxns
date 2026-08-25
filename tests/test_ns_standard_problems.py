@@ -2,6 +2,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 import jax
+import matplotlib
 import numpy as np
 import pytest
 from jax import numpy as jnp
@@ -14,7 +15,7 @@ from jaxns.core import NestedSampler
 from jaxns.model import Model
 from jaxns.utils import bruteforce_evidence
 
-# matplotlib.use("Agg")
+matplotlib.use("Agg")
 
 tfpd = tfp.distributions
 tfb = tfp.bijectors

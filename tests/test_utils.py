@@ -3,10 +3,24 @@ from typing import NamedTuple
 import jax
 import numpy as np
 import pytest
-from jax import random, numpy as jnp
+from jax import numpy as jnp
+from jax import random
+from jaxctx.priors.prior import Prior
+from tensorflow_probability.substrates import jax as tfp
 
+from jaxns.model import Model
 from jaxns.results import _weighted_percentile
-from jaxns.utils import resample, _bit_mask, save_pytree, load_pytree, insert_index_diagnostic
+from jaxns.utils import (
+    _bit_mask,
+    bruteforce_evidence,
+    bruteforce_posterior_samples,
+    insert_index_diagnostic,
+    load_pytree,
+    resample,
+    save_pytree,
+)
+
+tfpd = tfp.distributions
 
 
 def test_resample():
@@ -28,6 +42,36 @@ def test_weighted_percentile():
     log_weights = np.asarray([0, 0, 0, 0, 0])
     percentiles = [50]
     assert np.allclose(_weighted_percentile(samples, log_weights, percentiles), 3.0)
+
+
+def test_bruteforce_utilities_preserve_model_unit_dtypes():
+    def prior_model():
+        x = Prior(
+            tfpd.Uniform(
+                low=jnp.asarray(0.0, dtype=jnp.float32),
+                high=jnp.asarray(1.0, dtype=jnp.float32),
+            ),
+            name='x',
+        ).realise()
+        y = Prior(
+            tfpd.Uniform(
+                low=jnp.asarray(0.0, dtype=jnp.float64),
+                high=jnp.asarray(1.0, dtype=jnp.float64),
+            ),
+            name='y',
+        ).realise()
+        return -jnp.square(x.astype(jnp.float64)) - jnp.square(y)
+
+    model = Model(prior_model=prior_model)
+
+    # jaxctx validates each realised U leaf against the corresponding prior.
+    # Exercising mixed precision proves that grid flattening does not erase
+    # those leaf-level dtype contracts.
+    log_evidence = bruteforce_evidence(model=model, grid_res=4)
+    _, weights = bruteforce_posterior_samples(model=model, grid_res=4)
+
+    assert jnp.isfinite(log_evidence)
+    assert jnp.all(jnp.isfinite(weights.log_abs_val))
 
 
 class MockPyTree171(NamedTuple):

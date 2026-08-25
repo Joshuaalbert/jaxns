@@ -1,18 +1,17 @@
-from functools import partial
 import pickle
+from functools import partial
 from pathlib import Path
 from typing import Any
 
 import jax
 import numpy as np
 from jax import numpy as jnp
+from jax.flatten_util import ravel_pytree
 from jaxctx import CtxParams
 from scipy.stats import kstwobign
 
 from jaxns.log_semiring import LogSpace, normalise_log_space
-from jaxns.mixed_precision import mp_policy
 from jaxns.model import Model
-from jaxns.pytree import pytree_ravel
 from jaxns.random_utils import resample_indicies
 from jaxns.types import FloatArray, IntArray, XType
 
@@ -82,10 +81,18 @@ def bruteforce_posterior_samples(model: Model, args=(), params: CtxParams | None
     Returns:
         samples, dp
     """
-    u_vec = jnp.linspace(jnp.finfo(mp_policy.measure_dtype).eps, 1. - jnp.finfo(mp_policy.measure_dtype).eps, grid_res)
-    du = u_vec[1] - u_vec[0]
     u_example = model.sample_U(jax.random.PRNGKey(0), args=args, params=params)
-    u_example_flat, unravel_fn = pytree_ravel(u_example)
+    u_example_flat, unravel_fn = ravel_pytree(u_example)
+    # The regular grid must follow the model's U-space dtype contract. The
+    # standard unravel function also restores each leaf's original dtype when
+    # a model mixes precisions, as required by jaxctx's prior realisation.
+    u_vec = jnp.linspace(
+        jnp.finfo(u_example_flat.dtype).eps,
+        1. - jnp.finfo(u_example_flat.dtype).eps,
+        grid_res,
+        dtype=u_example_flat.dtype,
+    )
+    du = u_vec[1] - u_vec[0]
     U_ndims = model.U_ndims(args=args, params=params)
     u_flat = jnp.stack([x.flatten() for x in jnp.meshgrid(*[u_vec] * U_ndims, indexing='ij')], axis=-1)
     x, log_L = jax.lax.map(
@@ -113,10 +120,17 @@ def bruteforce_evidence(model: Model, args=(), params: CtxParams | None = None, 
         log(Z)
     """
 
-    u_vec = jnp.linspace(jnp.finfo(mp_policy.measure_dtype).eps, 1. - jnp.finfo(mp_policy.measure_dtype).eps, grid_res)
-    du = u_vec[1] - u_vec[0]
     u_example = model.sample_U(jax.random.PRNGKey(0), args=args, params=params)
-    u_example_flat, unravel_fn = pytree_ravel(u_example)
+    u_example_flat, unravel_fn = ravel_pytree(u_example)
+    # Keep the grid compatible with model U-space and let the standard
+    # unravel function restore heterogeneous leaf dtypes before evaluation.
+    u_vec = jnp.linspace(
+        jnp.finfo(u_example_flat.dtype).eps,
+        1. - jnp.finfo(u_example_flat.dtype).eps,
+        grid_res,
+        dtype=u_example_flat.dtype,
+    )
+    du = u_vec[1] - u_vec[0]
     U_ndims = model.U_ndims(args=args, params=params)
     u_flat = jnp.stack([x.flatten() for x in jnp.meshgrid(*[u_vec] * U_ndims, indexing='ij')], axis=-1)
     log_L = jax.lax.map(
