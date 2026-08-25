@@ -119,7 +119,7 @@ def scan_associative_cumulative_op(op: Callable[[V, Y], V], init: V, xs: Y, pre_
 def scan_or_while_loop(scan_fn, carry_init, xs, length: IntArray | None = None, unroll: int = 1) -> tuple:
     # if length is None or static use scan, other wise use while_loop
     if length is None or isinstance(length, int):
-        return jax.jax.lax.scan(scan_fn, carry_init, xs, length=length, unroll=unroll)
+        return jax.lax.scan(scan_fn, carry_init, xs, length=length, unroll=unroll)
 
     def cond_fn(carry):
         i, _, _ = carry
@@ -137,7 +137,7 @@ def scan_or_while_loop(scan_fn, carry_init, xs, length: IntArray | None = None, 
     carry_struct, ys_struct = jax.eval_shape(scan_fn, carry_init, jax.tree.map(lambda x: x[0], xs))
     ys_init = jax.tree.map(lambda y: jnp.zeros((max_length,) + y.shape, dtype=y.dtype), ys_struct)
     carry = (0, carry_init, ys_init)
-    _, carry_inner, ys = jax.jax.lax.while_loop(cond_fn, body_fn, carry)
+    _, carry_inner, ys = jax.lax.while_loop(cond_fn, body_fn, carry)
     return carry_inner, ys
 
 
@@ -153,7 +153,7 @@ def _scan_leaf(leaf, batch_elems, num_batches, batch_size):
     aval = jax.typeof(leaf)
     if aval.sharding.spec[0] is not None:
         raise ValueError(
-            '0th dimension of leaf passed to `jax.jax.lax.map` should be replicated.'
+            '0th dimension of leaf passed to `jax.lax.map` should be replicated.'
             f' Got {aval.str_short(True, True)}')
     if isinstance(aval.sharding, NamedSharding):
         out_s = NamedSharding(
@@ -289,7 +289,7 @@ def batch_reduce(
                 batch_sum = _reduce_tree_axis0(jnp.sum, batch_ys)
                 return (), batch_sum
 
-            _, batch_sums = jax.jax.lax.scan(per_batch, (), scan_xs)  # [num_batches,...]
+            _, batch_sums = jax.lax.scan(per_batch, (), scan_xs)  # [num_batches,...]
             sum_scan = _reduce_tree_axis0(jnp.sum, batch_sums)  # [...]
 
             total_sum = sum_scan
@@ -325,7 +325,7 @@ def batch_reduce(
             batch_red = _reduce_tree_axis0(reduce_fn, batch_ys)  # [...]
             return (), batch_red
 
-        _, batch_reduced = jax.jax.lax.scan(per_batch, (), scan_xs)  # [num_batches,...]
+        _, batch_reduced = jax.lax.scan(per_batch, (), scan_xs)  # [num_batches,...]
         batch_total = _reduce_tree_axis0(reduce_fn, batch_reduced)  # [...]
         partial_reduced_chunks.append(batch_total)
 
