@@ -105,6 +105,8 @@ The exact text following each `- Invariant:` prefix is the stable key used by
 - Invariant: Dependence within a phantom cluster is preserved by sharing one random cluster
   weight across all observations and all blocks contributed by that cluster in one shrinkage
   draw.
+- Invariant: Changing how independent final Monte Carlo draws are batched does not change
+  phantom-cluster identity, the joint shrinkage law, or the evidence distribution.
 - Invariant: Phantom clusters treated as independent contributions originate from independently
   initialized stationary chains.
 - Invariant: A phantom contributes to a block only when its cluster parent contour is no
@@ -177,6 +179,9 @@ The exact text following each `- Invariant:` prefix is the stable key used by
   measure and preserves the function's pytree structure.
 - Invariant: Summary and plotting operations do not mutate the scientific result from which they
   are produced.
+- Invariant: Importing and using the non-plotting scientific API does not require plotting
+  dependencies, while requesting an unavailable optional feature fails with an actionable
+  installation remedy.
 
 ## Randomness, Numerics, And Validation
 

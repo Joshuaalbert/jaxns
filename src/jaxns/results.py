@@ -8,7 +8,6 @@ from typing import Literal, TextIO, TypeVar
 
 import jax
 import numpy as np
-import pylab as plt
 from jax import numpy as jnp
 from jaxctx.context import CtxParams
 from scipy.stats import gaussian_kde
@@ -16,14 +15,12 @@ from scipy.stats import gaussian_kde
 from jaxns.cumulative_ops import batch_reduce
 from jaxns.log_semiring import LogSpace, cumulative_logsumexp, normalise_log_space
 from jaxns.mixed_precision import mp_policy
+from jaxns.optional import import_matplotlib
 from jaxns.phantom_eval import (
     EvidenceSamples,
     compute_phantom_count_matrices,
     sample_mc_shrinkage,
     validate_sample_mc_shrinkage_inputs,
-)
-from jaxns.phantom_eval import (
-    _sample_mc_shrinkage as _phantom_eval_sample_mc_shrinkage,
 )
 from jaxns.pytree import PureDataclassPytree
 from jaxns.race_tree import BlockState
@@ -33,6 +30,7 @@ from jaxns.types import BoolArray, FloatArray, IntArray, PRNGKey, UType, XType
 
 MF = TypeVar('MF')
 EvidenceConditioning = Literal["classic", "phantom"]
+DEFAULT_MC_BATCH_SIZE = 64
 
 
 @dataclasses.dataclass(slots=True, frozen=True)
@@ -271,7 +269,8 @@ class NestedSamplerResults(PureDataclassPytree):
 
         Args:
             num_samples: number of evidence samples to draw
-            batch_size: optional, how many samples to process in a batch when applying the function.
+            batch_size: Maximum simultaneous evidence draws. ``None`` uses
+                the same bounded 64-draw default as ``sample_evidence_mc``.
             key: optional, PRNGKey for resampling
 
         Returns:
@@ -288,6 +287,7 @@ class NestedSamplerResults(PureDataclassPytree):
             key: PRNGKey | None = None,
             C_min: float = 20,
             conditioning: Literal["auto", "classic", "phantom"] = "auto",
+            diagnostics: bool = True,
     ) -> EvidenceSamples:
         """
         Sample the evidence using the MC shrinkage method.
@@ -296,6 +296,10 @@ class NestedSamplerResults(PureDataclassPytree):
             num_samples: number of evidence samples to draw
             batch_size: optional, how many samples to process in a batch when applying the function.
             key: optional, PRNGKey for resampling
+            C_min: Minimum participating-cluster Kish count.
+            conditioning: Whether to use retained phantom clusters.
+            diagnostics: Whether to retain full per-draw, per-block arrays.
+                These arrays have shape ``[num_samples, num_blocks]``.
 
         Returns:
             EvidenceSamples object containing samples of the evidence and related statistics.
@@ -332,6 +336,7 @@ class NestedSamplerResults(PureDataclassPytree):
                 batch_size=batch_size,
                 key=key,
                 C_min=C_min,
+                diagnostics=diagnostics,
             )
         return _sample_mc_shrinkage(
             results,
@@ -339,6 +344,7 @@ class NestedSamplerResults(PureDataclassPytree):
             batch_size=batch_size,
             key=key,
             C_min=C_min,
+            diagnostics=diagnostics,
         )
 
     def sample_evidence_mc(
@@ -349,6 +355,7 @@ class NestedSamplerResults(PureDataclassPytree):
             key: PRNGKey,
             batch_size: int | None = None,
             C_min: float = 20,
+            diagnostics: bool = False,
     ) -> EvidenceSamples:
         """Draw the authoritative final evidence ensemble.
 
@@ -357,8 +364,12 @@ class NestedSamplerResults(PureDataclassPytree):
             conditioning: ``"classic"`` ignores retained phantoms;
                 ``"phantom"`` uses retained clusters subject to the Kish gate.
             key: Explicit JAX PRNG key.
-            batch_size: Optional compatibility batching parameter.
+            batch_size: Maximum number of draws evaluated at once. ``None``
+                uses an automatically bounded batch of at most 64 draws.
             C_min: Minimum participating-cluster Kish count for conditioning.
+            diagnostics: Whether to retain full ``[num_samples, num_blocks]``
+                probability and phantom-addition arrays. Defaults to the
+                economical evidence-summary path.
 
         Returns:
             Evidence draws whose ``log_Z_mean`` and ``log_Z_uncert``
@@ -373,12 +384,15 @@ class NestedSamplerResults(PureDataclassPytree):
                 "Phantom conditioning was requested, but no phantom slots "
                 "were collected."
             )
+        if batch_size is None:
+            batch_size = min(num_samples, DEFAULT_MC_BATCH_SIZE)
         return self.sample_mc_shrinkage(
             num_samples=num_samples,
             batch_size=batch_size,
             key=key,
             C_min=C_min,
             conditioning=conditioning,
+            diagnostics=diagnostics,
         )
 
     def phantom_conditioning_diagnostics(
@@ -676,6 +690,9 @@ def plot_diagnostics(results: NestedSamplerResults, save_file=None):
         save_file: file to save figure to.
     """
 
+    # Plotting is optional so importing the scientific result type does not
+    # force non-plotting users to install a GUI-oriented dependency stack.
+    plt = import_matplotlib()
     num_samples = int(results.total_num_samples)
     fig, axs = plt.subplots(6, 1, sharex=True, figsize=(8, 15))
     log_X = np.asarray(results.log_X_mean[:num_samples])
@@ -743,6 +760,8 @@ def plot_diagnostics(results: NestedSamplerResults, save_file=None):
 
 def _sample_evidence(self: NestedSamplerResults,
                      num_samples: int = 100, batch_size: int | None = None, key: PRNGKey | None = None) -> FloatArray:
+    if batch_size is None:
+        batch_size = min(num_samples, DEFAULT_MC_BATCH_SIZE)
     evidence_samples = sample_mc_shrinkage(
         key=key,
         log_L_constraints=self.log_L_constraints,
@@ -754,6 +773,7 @@ def _sample_evidence(self: NestedSamplerResults,
         num_Z_samples=num_samples,
         block_state=_block_state_from_results(self),
         batch_size=batch_size,
+        diagnostics=False,
     )
     return evidence_samples.log_Z_samples
 
@@ -761,7 +781,8 @@ def _sample_evidence(self: NestedSamplerResults,
 def _sample_mc_shrinkage(self: NestedSamplerResults,
                          num_samples: int = 100, batch_size: int | None = None,
                          key: PRNGKey | None = None,
-                         C_min: float = 20) -> EvidenceSamples:
+                         C_min: float = 20,
+                         diagnostics: bool = True) -> EvidenceSamples:
     evidence_samples = sample_mc_shrinkage(
         key=key,
         log_L_constraints=self.log_L_constraints,
@@ -774,6 +795,7 @@ def _sample_mc_shrinkage(self: NestedSamplerResults,
         block_state=_block_state_from_results(self),
         batch_size=batch_size,
         C_min=C_min,
+        diagnostics=diagnostics,
     )
     return evidence_samples
 
@@ -786,49 +808,21 @@ def _sample_mc_shrinkage_with_block_state(
         batch_size: int | None = None,
         key: PRNGKey,
         C_min: float = 20,
+        diagnostics: bool = True,
 ) -> EvidenceSamples:
-    return _sample_mc_shrinkage_with_block_state_jit(
+    return sample_mc_shrinkage(
         key=key,
         log_L_constraints=results.log_L_constraints,
         log_L_classic=results.log_L,
         K_classic=results.num_live_points_per_sample,
         valid_phantom=results.valid_phantom,
         log_L_phantom=results.log_L_phantom,
-        total_num_samples=results.total_num_samples,
+        num_samples=results.total_num_samples,
         num_Z_samples=num_samples,
         block_state=block_state,
         batch_size=batch_size,
         C_min=C_min,
-    )
-
-
-@partial(jax.jit, inline=True, static_argnames=["num_Z_samples", "batch_size"])
-def _sample_mc_shrinkage_with_block_state_jit(
-        *,
-        key: PRNGKey,
-        log_L_constraints: FloatArray,
-        log_L_classic: FloatArray,
-        K_classic: IntArray,
-        valid_phantom: BoolArray,
-        log_L_phantom: FloatArray,
-        total_num_samples: IntArray,
-        num_Z_samples: int,
-        block_state: BlockState,
-        batch_size: int | None = None,
-        C_min: float = 20,
-) -> EvidenceSamples:
-    return _phantom_eval_sample_mc_shrinkage(
-        key=key,
-        log_L_constraints=log_L_constraints,
-        log_L_classic=log_L_classic,
-        K_classic=K_classic,
-        valid_phantom=valid_phantom,
-        log_L_phantom=log_L_phantom,
-        num_samples=total_num_samples,
-        num_Z_samples=num_Z_samples,
-        block_state=block_state,
-        batch_size=batch_size,
-        C_min=C_min,
+        diagnostics=diagnostics,
     )
 
 
@@ -860,6 +854,9 @@ def plot_cornerplot(results: NestedSamplerResults, variables: list[str] | None =
         save_name: file to save result to.
         kde_overlay: whether to overlay a KDE on the histograms.
     """
+    # Keep the optional dependency behind the operation that needs it and
+    # provide one consistent installation remedy when it is unavailable.
+    plt = import_matplotlib()
     num_samples = int(results.total_num_samples)
     sample_items = list(results.X_samples.iter_items())
     sample_map = dict(sample_items)

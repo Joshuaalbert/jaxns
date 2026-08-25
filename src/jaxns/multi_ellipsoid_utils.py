@@ -1,15 +1,16 @@
-from typing import NamedTuple, Literal
+from typing import Literal, NamedTuple
 
 import jax
 import numpy as np
-import pylab as plt
-from jax import numpy as jnp, vmap, random, lax
+from jax import lax, random, vmap
+from jax import numpy as jnp
 from jax._src.scipy.special import gammaln
 
+from jaxns.em_gmm import em_gmm
 from jaxns.log_semiring import LogSpace
 from jaxns.mixed_precision import mp_policy
-from jaxns.types import PRNGKey, FloatArray, IntArray, BoolArray, UType
-from jaxns.em_gmm import em_gmm
+from jaxns.optional import import_matplotlib
+from jaxns.types import BoolArray, FloatArray, IntArray, PRNGKey, UType
 
 __all__ = [
     'ellipsoid_clustering',
@@ -625,6 +626,7 @@ def plot_ellipses(params: EllipsoidParams, show: bool = True):
         params: ellipsoid parameters to plot
         show: whether to show figure
     """
+    plt = import_matplotlib()
     theta = jnp.linspace(0., 2 * jnp.pi, 100)
     circle = jnp.stack([jnp.cos(theta), jnp.sin(theta)], axis=1)
     for mu, radii, rotation in zip(params.mu, params.radii, params.rotation):

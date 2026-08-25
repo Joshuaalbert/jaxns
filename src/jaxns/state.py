@@ -129,12 +129,26 @@ class State(PureDataclassPytree):
             key: jax.Array,
             batch_size: int | None = None,
             C_min: float = 20,
+            diagnostics: bool = False,
     ) -> EvidenceSamples:
         """Draw final evidence samples from this immutable state.
 
         This is a thin state-level forwarder to the same result implementation
         used after a run. ``conditioning`` must explicitly be ``"classic"``
         or ``"phantom"``; the depth-loop expectation register is not used.
+
+        Args:
+            num_samples: Number of evidence draws.
+            conditioning: Whether to use only the classic race or condition
+                on retained phantom clusters.
+            key: Explicit JAX random key.
+            batch_size: Maximum simultaneous evidence draws. ``None`` uses
+                the bounded result-level default.
+            C_min: Minimum participating-cluster Kish count.
+            diagnostics: Whether to retain full per-draw, per-block arrays.
+
+        Returns:
+            The evidence ensemble and its block-aligned summaries.
         """
         return self.to_result().trim().sample_evidence_mc(
             num_samples=num_samples,
@@ -142,6 +156,7 @@ class State(PureDataclassPytree):
             key=key,
             batch_size=batch_size,
             C_min=C_min,
+            diagnostics=diagnostics,
         )
 
     def compute_termination_register(

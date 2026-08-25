@@ -51,6 +51,16 @@ properties that must hold independently of implementation live in
   than bespoke serialization hidden in individual algorithms.
 - Requirement: Serializing and restoring a supported state or result preserves its scientific
   arrays, model association, and posterior and evidence behavior.
+- Requirement: Runtime and optional dependencies are declared only in `pyproject.toml`, with the
+  rationale and public entry-point audit recorded in `docs/design/DEPENDENCIES.md`.
+- Requirement: The base install includes JAX, JAXCTX, NumPy, SciPy, and TFP because these support
+  the documented model-authoring, local nested-sampling, and public diagnostic workflow.
+- Requirement: JAX selects its compatible `jaxlib`; JAXNS does not independently constrain that
+  transitive runtime or interfere with accelerator-specific JAX installations.
+- Requirement: Matplotlib is supplied by the `plotting` extra and imported only when a plotting
+  operation is requested; maintained examples and tests declare plotting explicitly.
+- Requirement: Distributed dependencies and command-line entry points are not published until
+  the distributed process, serialization, and failure design is accepted and implemented.
 
 ## Core Run Architecture
 
@@ -149,6 +159,13 @@ properties that must hold independently of implementation live in
   reused for all counts and blocks from that cluster.
 - Requirement: Monte Carlo shrinkage supports bounded batching so requested draw count does not
   require materializing every draw and every block at once.
+- Requirement: Final evidence sampling defaults to an economical result without per-draw block
+  diagnostics and evaluates at most 64 independent draws per batch unless explicitly changed.
+- Requirement: Evidence batches execute sequentially at device runtime, or synchronize at a
+  host batching boundary, so asynchronous dispatch cannot make several nominally bounded
+  workspaces live concurrently.
+- Requirement: Batched per-block evidence moments are merged from first and second sufficient
+  statistics; batches are not averaged with equal weight when the final batch is partial.
 - Requirement: Phantom coordinates are not required for evidence conditioning once likelihoods,
   validity, cluster identity, and parent-contour metadata have been retained.
 
