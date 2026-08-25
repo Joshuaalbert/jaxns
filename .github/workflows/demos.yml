@@ -1,0 +1,51 @@
+name: Demos
+
+on:
+  push:
+    branches: [ "develop" ]
+  workflow_dispatch:
+
+jobs:
+  demos:
+    runs-on: ubuntu-latest
+
+    env:
+      PIP_DISABLE_PIP_VERSION_CHECK: "1"
+      PIP_PROGRESS_BAR: "off"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            requirements.txt
+            requirements-tests.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install .[tests]
+
+      - name: Run demos in directory order
+        run: |
+          set -euo pipefail
+
+          demo_count=0
+          while IFS= read -r demo; do
+            demo_count=$((demo_count + 1))
+            echo "::group::${demo}"
+            python "${demo}"
+            echo "::endgroup::"
+          done < <(
+            find cicd/demos -type f -name '*.py' | LC_ALL=C sort
+          )
+
+          if [ "${demo_count}" -eq 0 ]; then
+            echo "No Python demos found under cicd/demos"
+            exit 1
+          fi
