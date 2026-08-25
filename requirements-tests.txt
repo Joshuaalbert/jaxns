@@ -1,6 +1,0 @@
-scikit-learn
-networkx
-psutil
-pytest
-flake8
-ruff

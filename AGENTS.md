@@ -8,7 +8,7 @@
 - Packaging: `setuptools` via `pyproject.toml` (`build-backend = setuptools.build_meta`)
 - Python: `>=3.10`
 - Layout: `src/` (code lives in `src/jaxns/...`)
-- Deps: `requirements.txt`, `requirements-tests.txt`, and `requirements-examples.txt` (if needed)
+- Deps: `[project].dependencies` and `[project.optional-dependencies]` in `pyproject.toml`
 - Tests: `pytest.ini` sets `python_files=test*` (name tests `test_*.py`)
 
 ### Run Things (all packages)
@@ -70,7 +70,7 @@ No formatter/type-checker is configured; aim for clean PEP-8 that passes `flake8
   fields without breaking existing tests.
 - Avoid overusing fixtures for simple test data; sometimes it's clearer to just
   define the data in the test function.
-- Dependencies: runtime deps in `requirements.txt`; test/lint deps in `requirements-tests.txt`.
+- Dependencies: runtime deps and test/lint extras in `pyproject.toml`.
 - Prefer Google style docstrings for APIs; include Args, Returns, Raises sections as appropriate; keep them up to
   date, and concise.
 - Linter: `ruff`

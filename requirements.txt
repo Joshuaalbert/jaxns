@@ -1,8 +1,0 @@
-jax>=0.6.0
-jaxlib
-jaxctx>=1.1.5
-matplotlib
-numpy
-scipy
-tfp-nightly
-zmq

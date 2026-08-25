@@ -299,7 +299,7 @@ Sampling paper](https://arxiv.org/abs/2312.11330).
 
 **Notes:**
 
-1. JAXNS requires >= Python 3.9. It is always highly recommended to use the latest version of Python.
+1. JAXNS requires >= Python 3.10. It is always highly recommended to use the latest version of Python.
 2. It is always highly recommended to use a unique virtual environment for each project.
    To use **miniconda**, ensure it is installed on your system, then run the following commands:
 
@@ -323,10 +323,7 @@ Clone repo `git clone https://www.github.com/JoshuaAlbert/jaxns.git`, and instal
 
 ```bash
 cd jaxns
-pip install -r requirements.txt
-pip install -r requirements-tests.txt
-pip install -r requirements-examples.txt
-pip install .
+pip install -e ".[tests,examples]"
 ```
 
 # Getting help and contributing examples
