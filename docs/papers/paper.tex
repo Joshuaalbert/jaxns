@@ -363,7 +363,11 @@ whereas the posterior mass assigned to a non-plateau sample, mirroring Eq.~\ref{
 \begin{align}
     w_g = \lambda_g X_{g-1}(1 - p_{>g}).
 \end{align}
-Note, when $m_g=1$ this Bayesian model would not make sense because there would be no evidence of an atom, and thus only a 2-class Dirichlet would make sense, which would give us again Eq.~\ref{eq:posterior_pg} as expected.
+Note, when $m_g=1$ this three-class Bayesian model would not make sense because there would be no evidence of an atom.
+The equality category is then absent and a two-class model recovers the exact classic shrinkage,
+\begin{align}
+    p_{>g} \mid K_g, m_g=1 \sim\, \mathrm{Beta}(K_g,1).
+\end{align}
 
 
 \section{Phantom-conditioned shrinkage}
@@ -422,7 +426,6 @@ Using additivity of identical-scale gamma random variables, we can then identify
     v_c \sim\, \mathrm{Gamma}(1, 1).
 \end{align}
 With this choice, singleton clusters would exactly produce the Dirichlet posterior previously.
-% We need to reconcile the aspect that when m_g=1 a three-class setup is not allowed as previously we saw that the posterior is wrong from the known Beta(K_1, 1). THus we should also take that into account here and not condition on an atom unless we have a reason to suspect that there is a 3rd class. This is pretty important for correctness I think.
 
 Now, consider what happens when cluster sizes are not singleton, that is we have irreducible correlation structure.
 In this case, the gamma's do not add as the scales are not identical.
@@ -446,6 +449,30 @@ and then define a minimum threshold for condition, say $C_{\rm min} = 20$, and h
 This provides a consistent generative shrinkage model that properly takes into account the race tree and phantom samples.
 The shrinkage at block $g$ is the the component $p_{>g}$, while the plateau atom size is $p_{=g}$.
 It is simple to calculate as the per-cluster counts are computed once, and then each draw from the joint posterior is just a set of draws from gamma distributions followed by reduction.
+
+The three-class construction above applies only when there is evidence for an equality atom, which in the classic sequence means $m_g>1$.
+When $m_g=1$ and there is no other evidence for an atom, the equality category is structurally absent,
+\begin{align}
+    M_{=g} = M'_{=g} = p_{=g} = 0,
+\end{align}
+and the race remains two-class.
+The phantom-conditioned construction then becomes,
+\begin{align}
+    M_{>g} \sim&\, \mathrm{Gamma}(K_g, 1),\\
+    M_{<g} \sim&\, \mathrm{Gamma}(1, 1),\\
+    M'_{>g} =&\, M_{>g} + \mathbf{1}\{C^{\rm Kish}_g \ge C_{\rm min}\} \sum_c v_c B_{cg},\\
+    M'_{<g} =&\, M_{<g} + \mathbf{1}\{C^{\rm Kish}_g \ge C_{\rm min}\} \sum_c v_c (A_{cg} - B_{cg}),\\
+    p_g =&\, \frac{(M'_{>g}, M'_{<g})^\top}{M'_{>g} + M'_{<g}}.
+\end{align}
+For independent singleton phantom clusters this gives,
+\begin{align}
+    p_{>g} \mid \bigcup_c \mathcal{P}_c
+    \sim \mathrm{Beta}\left(
+        K_g + \sum_c B_{cg},
+        1 + \sum_c (A_{cg} - B_{cg})
+    \right).
+\end{align}
+Thus, with no participating phantom clusters it recovers exactly $p_{>g}\sim\mathrm{Beta}(K_g,1)$, and phantom conditioning cannot introduce equality mass when the model has no evidence for an atom.
 
 Phantom-conditioning requires retained phantom states to be stationary enough that their marginal expectation under the parent contour is correct.
 The above formulation cannot correct for non-stationary phantom samples.

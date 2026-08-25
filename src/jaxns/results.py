@@ -1,9 +1,10 @@
 import dataclasses
 import io
 import warnings
+from collections.abc import Callable
 from functools import partial
 from pathlib import Path
-from typing import Callable, TypeVar, TextIO, Optional, Union
+from typing import Literal, TextIO, TypeVar
 
 import jax
 import numpy as np
@@ -15,50 +16,168 @@ from scipy.stats import gaussian_kde
 from jaxns.cumulative_ops import batch_reduce
 from jaxns.log_semiring import LogSpace, cumulative_logsumexp, normalise_log_space
 from jaxns.mixed_precision import mp_policy
-from jaxns.phantom_eval import EvidenceSamples, sample_mc_shrinkage
+from jaxns.phantom_eval import (
+    EvidenceSamples,
+    compute_phantom_count_matrices,
+    sample_mc_shrinkage,
+    validate_sample_mc_shrinkage_inputs,
+)
+from jaxns.phantom_eval import (
+    _sample_mc_shrinkage as _phantom_eval_sample_mc_shrinkage,
+)
 from jaxns.pytree import PureDataclassPytree
+from jaxns.race_tree import BlockState
 from jaxns.random_utils import resample_indicies
-from jaxns.types import FloatArray, IntArray, UType, XType, PRNGKey, BoolArray
+from jaxns.shrinkage import DirichletConcentrations, PhantomCountMatrices
+from jaxns.types import BoolArray, FloatArray, IntArray, PRNGKey, UType, XType
 
 MF = TypeVar('MF')
+EvidenceConditioning = Literal["classic", "phantom"]
 
 
-@dataclasses.dataclass(slots=True)
+@dataclasses.dataclass(slots=True, frozen=True)
+class BlockData(PureDataclassPytree):
+    """Block-aligned race-tree data and shrinkage diagnostics.
+
+    Keeping this secondary schema nested prevents implementation-facing
+    block buffers from obscuring the sample, evidence, and posterior fields
+    that scientific users access most often.
+    """
+
+    log_L: FloatArray  # [G]
+    first_idx: IntArray  # [G]
+    size: IntArray  # [G]
+    incoming_K: IntArray  # [G]
+    out_degree: IntArray  # [G]
+    valid: BoolArray  # [G]
+    start: IntArray | None = None  # [G]
+    stop: IntArray | None = None  # [G]
+    sample_indices: IntArray | None = None  # [N] or [G, M_g^max]
+    alpha_gt: FloatArray | None = None  # [G]
+    alpha_eq: FloatArray | None = None  # [G]
+    alpha_lt: FloatArray | None = None  # [G]
+    epsilon: FloatArray | None = None  # [G]
+    p_gt_mean: FloatArray | None = None  # [G]
+    p_eq_mean: FloatArray | None = None  # [G]
+    phantom_A: FloatArray | None = None  # [G]
+    phantom_B: FloatArray | None = None  # [G]
+    phantom_E: FloatArray | None = None  # [G]
+    phantom_R: FloatArray | None = None  # [G]
+    kish_participating_cluster_counts: FloatArray | None = None  # [G]
+    phantom_gate_active: BoolArray | None = None  # [G]
+
+    @property
+    def m_g(self) -> IntArray:
+        """Block multiplicities."""
+        return self.size
+
+    @property
+    def K_g(self) -> IntArray:
+        """Incoming active lineage counts."""
+        return self.incoming_K
+
+    @property
+    def L(self) -> FloatArray:
+        """Likelihood-scale block levels."""
+        return jnp.exp(self.log_L)
+
+    @property
+    def A_g(self) -> FloatArray | None:
+        return self.phantom_A
+
+    @property
+    def B_g(self) -> FloatArray | None:
+        return self.phantom_B
+
+    @property
+    def E_g(self) -> FloatArray | None:
+        return self.phantom_E
+
+    @property
+    def R_g(self) -> FloatArray | None:
+        return self.phantom_R
+
+    @property
+    def concentrations(self) -> DirichletConcentrations | None:
+        """Classic block Dirichlet concentrations."""
+        if self.alpha_gt is None:
+            return None
+        return DirichletConcentrations(
+            alpha_gt=self.alpha_gt,
+            alpha_eq=self.alpha_eq,
+            alpha_lt=self.alpha_lt,
+            epsilon=self.epsilon,
+        )
+
+    def to_block_state(self) -> BlockState:
+        """Return the scheduler/shrinkage view of these blocks."""
+        return BlockState(
+            log_L_blocks=self.log_L,
+            block_first_idx=self.first_idx,
+            block_size=self.size,
+            incoming_K=self.incoming_K,
+            block_out_degree=self.out_degree,
+            valid=self.valid,
+            block_start=self.start,
+            block_stop=self.stop,
+            block_sample_indices=self.sample_indices,
+        )
+
+    def trim(self, size: int) -> "BlockData":
+        """Trim padded block buffers along their leading axis."""
+        return jax.tree.map(lambda value: value[:size, ...], self)
+
+
+BlockData.register_pytree()
+
+
+@dataclasses.dataclass(slots=True, frozen=True)
 class NestedSamplerResults(PureDataclassPytree):
     """
     Results of the nested sampling run.
     """
-    log_Z_mean: FloatArray  # estimate of E[log(Z)]
-    log_Z_uncert: FloatArray  # estimate of StdDev[log(Z)]
-    ess: FloatArray  # estimate of Kish's effective sample size
-    H_mean: FloatArray  # estimate of E[int log(L) L dp/Z]
-    total_num_samples: IntArray  # int, the total number of samples collected.
-    total_phantom_samples: IntArray  # int, the total number of phantom samples collected.
-    total_num_likelihood_evaluations: IntArray  # how many likelihood evaluations were made in total
-    log_efficiency: FloatArray  # log(total_num_samples / total_num_likelihood_evaluations)
-    termination_reason: IntArray  # this will be an int reflecting the reason for termination
+    log_Z_mean: FloatArray  # [] estimate of E[log(Z)]
+    log_Z_uncert: FloatArray  # [] estimate of StdDev[log(Z)]
+    ess: FloatArray  # [] estimate of Kish's effective sample size
+    H_mean: FloatArray  # [] estimate of E[int log(L) L dp/Z]
+    total_num_samples: IntArray  # [] number of classic samples collected
+    total_phantom_samples: IntArray  # [] number of phantom samples collected
+    total_num_likelihood_evaluations: IntArray  # []
+    log_efficiency: FloatArray  # [] log(N / likelihood evaluations)
+    termination_reason: IntArray  # [] bit mask
 
-    U_samples: UType  # [num_samples] samples in homogeneous unit hypercube.
-    X_samples: XType  # [num_samples] samples in the constrained space.
-    log_L_constraints: FloatArray  # [num_samples] the likelihood constraint for each sample, i.e. the likelihood contour that the sample was drawn from.
-    log_L_phantom: FloatArray  # [num_samples, num_phantom] the likelihood of the phantom point used for each sample, or -inf if no phantom point was used.
-    valid_phantom: BoolArray  # [num_samples] whether the phantoms are valid for each sample, i.e. whether the phantom points were used for the sample or not.
-    log_L: FloatArray  # log(L) of each sample
-    log_dp: FloatArray  # log(weight) of each sample, i.e. log(dp) = log(L) + log(dX) - log(Z)
-    log_X_mean: FloatArray  # log(E[U]) of each sample
-    log_posterior_density: FloatArray  # log(P( theta | D )) log posteriori density
-    num_live_points_per_sample: IntArray  # how many live points were taken for the samples.
-    num_likelihood_evaluations_per_sample: IntArray  # how many likelihood evaluations were made per sample
+    U_samples: UType  # [N, ...] unit-hypercube pytree leaves
+    X_samples: XType  # [N, ...] transformed parameter pytree leaves
+    log_L_constraints: FloatArray  # [N]
+    log_L_phantom: FloatArray  # [N, P]
+    valid_phantom: BoolArray  # [N]
+    log_L: FloatArray  # [N]
+    log_dp: FloatArray  # [N] plateau-aware log posterior weights
+    log_X_mean: FloatArray  # [N]
+    log_posterior_density: FloatArray  # [N]
+    num_live_points_per_sample: IntArray  # [N]
+    num_likelihood_evaluations_per_sample: IntArray  # [N]
 
-    ## pointwise estimates
+    # Pointwise estimates.
     # max(L)
-    log_L_supremum: FloatArray  # max(L) of the samples, used for diagnostics and resampling
-    U_supremum: UType  # the U point with the largest likelihood, used for diagnostics and resampling
-    X_supremum: XType  # the X point with the largest likelihood, used for diagnostics and resampling
+    log_L_supremum: FloatArray  # [] max(log L)
+    U_supremum: UType  # [...] unit-hypercube pytree point at max(log L)
+    X_supremum: XType  # [...] parameter pytree point at max(log L)
     # max(L p)
-    log_L_map: FloatArray  # max(L p) of the samples, used for diagnostics and resampling
-    U_map: UType  # the U point with the largest posterior density, used for diagnostics and resampling
-    X_map: XType  # the X point with the largest posterior density, used for diagnostics and resampling
+    log_L_map: FloatArray  # [] log likelihood at the sampled MAP point
+    U_map: UType  # [...] unit-hypercube pytree MAP point
+    X_map: XType  # [...] parameter pytree MAP point
+    block_data: BlockData | None = None
+
+    @property
+    def expected_log_Z_mean(self) -> FloatArray:
+        """Deterministic block-moment estimate used for lightweight output."""
+        return self.log_Z_mean
+
+    @property
+    def expected_log_Z_uncert(self) -> FloatArray:
+        """Deterministic block-moment uncertainty approximation."""
+        return self.log_Z_uncert
 
     def trim(self) -> 'NestedSamplerResults':
         num_samples = int(self.total_num_samples)
@@ -66,21 +185,29 @@ class NestedSamplerResults(PureDataclassPytree):
         if num_samples > initial_size:
             raise ValueError(
                 f"num_samples ({num_samples}) is greater than the number of samples collected ({initial_size}). You probably set max_samples too low.")
-        sample_data = dict(
-            U_samples=self.U_samples,
-            X_samples=self.X_samples,
-            log_L=self.log_L,
-            log_dp=self.log_dp,
-            log_X_mean=self.log_X_mean,
-            log_posterior_density=self.log_posterior_density,
-            num_live_points_per_sample=self.num_live_points_per_sample,
-            num_likelihood_evaluations_per_sample=self.num_likelihood_evaluations_per_sample,
-            log_L_constraints=self.log_L_constraints,
-            log_L_phantom=self.log_L_phantom,
-            valid_phantom=self.valid_phantom,
-        )
+        sample_data = {
+            "U_samples": self.U_samples,
+            "X_samples": self.X_samples,
+            "log_L": self.log_L,
+            "log_dp": self.log_dp,
+            "log_X_mean": self.log_X_mean,
+            "log_posterior_density": self.log_posterior_density,
+            "num_live_points_per_sample": self.num_live_points_per_sample,
+            "num_likelihood_evaluations_per_sample": self.num_likelihood_evaluations_per_sample,
+            "log_L_constraints": self.log_L_constraints,
+            "log_L_phantom": self.log_L_phantom,
+            "valid_phantom": self.valid_phantom,
+        }
         sample_data = jax.tree.map(lambda s: s[:num_samples, ...], sample_data)
-        return dataclasses.replace(self, **sample_data)
+        return dataclasses.replace(
+            self,
+            **sample_data,
+            block_data=(
+                None
+                if self.block_data is None
+                else self.block_data.trim(num_samples)
+            ),
+        )
 
     def summary(self, f_obj: str | TextIO | Path | None = None):
         """
@@ -154,7 +281,14 @@ class NestedSamplerResults(PureDataclassPytree):
             key = jax.random.PRNGKey(42)
         return _sample_evidence(self, num_samples=num_samples, batch_size=batch_size, key=key)
 
-    def sample_mc_shrinkage(self, num_samples: int, batch_size: int | None = None, key: PRNGKey | None = None) -> EvidenceSamples:
+    def sample_mc_shrinkage(
+            self,
+            num_samples: int,
+            batch_size: int | None = None,
+            key: PRNGKey | None = None,
+            C_min: float = 20,
+            conditioning: Literal["auto", "classic", "phantom"] = "auto",
+    ) -> EvidenceSamples:
         """
         Sample the evidence using the MC shrinkage method.
 
@@ -166,9 +300,117 @@ class NestedSamplerResults(PureDataclassPytree):
         Returns:
             EvidenceSamples object containing samples of the evidence and related statistics.
         """
+        if conditioning not in ("auto", "classic", "phantom"):
+            raise ValueError(
+                "conditioning must be 'auto', 'classic', or 'phantom'."
+            )
         if key is None:
             key = jax.random.PRNGKey(42)
-        return _sample_mc_shrinkage(self, num_samples=num_samples, batch_size=batch_size, key=key)
+        if conditioning == "classic":
+            results = dataclasses.replace(
+                self,
+                valid_phantom=jnp.zeros_like(self.valid_phantom),
+                log_L_phantom=self.log_L_phantom[:, :0],
+            )
+        else:
+            results = self
+        block_state = _block_state_from_results(self)
+        validate_sample_mc_shrinkage_inputs(
+            log_L_constraints=results.log_L_constraints,
+            log_L_classic=results.log_L,
+            K_classic=results.num_live_points_per_sample,
+            valid_phantom=results.valid_phantom,
+            log_L_phantom=results.log_L_phantom,
+            num_samples=results.total_num_samples,
+            block_state=block_state,
+        )
+        if block_state is not None:
+            return _sample_mc_shrinkage_with_block_state(
+                results=results,
+                block_state=block_state,
+                num_samples=num_samples,
+                batch_size=batch_size,
+                key=key,
+                C_min=C_min,
+            )
+        return _sample_mc_shrinkage(
+            results,
+            num_samples=num_samples,
+            batch_size=batch_size,
+            key=key,
+            C_min=C_min,
+        )
+
+    def sample_evidence_mc(
+            self,
+            num_samples: int,
+            *,
+            conditioning: EvidenceConditioning,
+            key: PRNGKey,
+            batch_size: int | None = None,
+            C_min: float = 20,
+    ) -> EvidenceSamples:
+        """Draw the authoritative final evidence ensemble.
+
+        Args:
+            num_samples: Number of shrinkage/evidence draws.
+            conditioning: ``"classic"`` ignores retained phantoms;
+                ``"phantom"`` uses retained clusters subject to the Kish gate.
+            key: Explicit JAX PRNG key.
+            batch_size: Optional compatibility batching parameter.
+            C_min: Minimum participating-cluster Kish count for conditioning.
+
+        Returns:
+            Evidence draws whose ``log_Z_mean`` and ``log_Z_uncert``
+            properties are the final Monte Carlo evidence summary.
+        """
+        if conditioning not in ("classic", "phantom"):
+            raise ValueError(
+                "conditioning must be explicitly 'classic' or 'phantom'."
+            )
+        if conditioning == "phantom" and self.log_L_phantom.shape[1] == 0:
+            raise ValueError(
+                "Phantom conditioning was requested, but no phantom slots "
+                "were collected."
+            )
+        return self.sample_mc_shrinkage(
+            num_samples=num_samples,
+            batch_size=batch_size,
+            key=key,
+            C_min=C_min,
+            conditioning=conditioning,
+        )
+
+    def phantom_conditioning_diagnostics(
+            self,
+            C_min: float = 20,
+    ) -> PhantomCountMatrices:
+        """Return block-aligned gamma phantom-conditioning diagnostics."""
+        num_samples = self.total_num_samples.astype(mp_policy.count_dtype)
+        sample_mask = (
+            jnp.arange(self.log_L.shape[0], dtype=mp_policy.count_dtype)
+            < num_samples
+        )
+        block_state = _block_state_from_results(self)
+        if block_state is None:
+            log_L_blocks = jnp.unique(
+                self.log_L,
+                size=self.log_L.shape[0],
+                fill_value=jnp.inf,
+            )
+            block_valid_mask = jnp.isfinite(log_L_blocks)
+        else:
+            log_L_blocks = block_state.log_L_blocks
+            block_valid_mask = block_state.valid
+        return compute_phantom_count_matrices(
+            log_L_blocks=log_L_blocks,
+            block_valid_mask=block_valid_mask,
+            log_L_constraints=self.log_L_constraints,
+            valid_phantom=self.valid_phantom,
+            log_L_phantom=self.log_L_phantom,
+            sample_mask=sample_mask,
+            C_min=C_min,
+        )
 
     def ess_with_phantom(self, num_samples: int = 512, batch_size: int | None = None, key: PRNGKey | None = None) -> FloatArray:
         """
@@ -191,6 +433,12 @@ class NestedSamplerResults(PureDataclassPytree):
 NestedSamplerResults.register_pytree()
 
 
+def _block_state_from_results(self: NestedSamplerResults) -> BlockState | None:
+    if self.block_data is None:
+        return None
+    return self.block_data.to_block_state()
+
+
 @partial(jax.jit, inline=True, static_argnames=['num_samples', 'batch_size'])
 def _ess_with_phantom(self: NestedSamplerResults, num_samples: int, batch_size: int | None = None, key: PRNGKey | None = None) -> FloatArray:
     evidence_samples = self.sample_mc_shrinkage(num_samples=num_samples, batch_size=batch_size, key=key)
@@ -201,24 +449,41 @@ def _ess_with_phantom(self: NestedSamplerResults, num_samples: int, batch_size: 
     return H_mean / log_Z_var
 
 
+def _posterior_log_weights(self: NestedSamplerResults) -> FloatArray:
+    return self.log_dp
+
+
 @partial(jax.jit, inline=True, static_argnames=['num_samples', 'replace'])
 def _resample(self: NestedSamplerResults, key: PRNGKey, num_samples: int, replace: bool = True) -> NestedSamplerResults:
-    idx = resample_indicies(key, self.log_dp, S=num_samples, replace=replace)
+    log_weights = _posterior_log_weights(self)
+    idx = resample_indicies(key, log_weights, S=num_samples, replace=replace)
     # after resampling, the weights are uniform, so log_dp = log(1/N) = -log(N)
-    sample_data = dict(
-        U_samples=self.U_samples,
-        X_samples=self.X_samples,
-        log_L=self.log_L,
-        log_dp=jnp.full(self.log_dp.shape, -jnp.log(num_samples), mp_policy.measure_dtype),
-        log_X_mean=self.log_X_mean,
-        log_posterior_density=self.log_posterior_density,
-        num_live_points_per_sample=self.num_live_points_per_sample,
-        num_likelihood_evaluations_per_sample=self.num_likelihood_evaluations_per_sample,
-    )
+    sample_data = {
+        "U_samples": self.U_samples,
+        "X_samples": self.X_samples,
+        "log_L": self.log_L,
+        "log_dp": jnp.full(
+            self.log_dp.shape,
+            -jnp.log(num_samples),
+            mp_policy.measure_dtype,
+        ),
+        "log_X_mean": self.log_X_mean,
+        "log_posterior_density": self.log_posterior_density,
+        "num_live_points_per_sample": self.num_live_points_per_sample,
+        "num_likelihood_evaluations_per_sample": self.num_likelihood_evaluations_per_sample,
+        "log_L_constraints": self.log_L_constraints,
+        "log_L_phantom": self.log_L_phantom,
+        "valid_phantom": self.valid_phantom,
+    }
     sample_data = jax.tree.map(lambda s: s[idx, ...], sample_data)
     sort_idxs = jnp.argsort(sample_data['log_L'])
     sample_data = jax.tree.map(lambda s: s[sort_idxs, ...], sample_data)
-    return dataclasses.replace(self, **sample_data)
+    return dataclasses.replace(
+        self,
+        **sample_data,
+        total_num_samples=jnp.asarray(num_samples, dtype=mp_policy.count_dtype),
+        block_data=None,
+    )
 
 
 @partial(jax.jit, inline=True, static_argnames=['fn', 'semi_positive', 'batch_size'])
@@ -236,7 +501,7 @@ def _integrate_fn_over_posterior(self: NestedSamplerResults, fn: Callable[[XType
 
         return jax.tree.map(_increment, Y)
 
-    weights = LogSpace(self.log_dp)
+    weights = LogSpace(_posterior_log_weights(self))
     return batch_reduce(kernel, xs=(weights, self.X_samples), reduce_fn=jnp.sum, batch_size=batch_size, vectorised_kernel=False)
 
 
@@ -281,9 +546,9 @@ def _summary(results: NestedSamplerResults, f_obj: str | TextIO | None = None):
         v = float(v)
         uncert_v = float(uncert_v)
         try:
-            sig_figs = -int("{:e}".format(uncert_v).split('e')[1]) + 1
+            sig_figs = -int(f"{uncert_v:e}".split('e')[1]) + 1
             return round(float(v), sig_figs)
-        except:
+        except (OverflowError, ValueError):
             return float(v)
 
     def _print_termination_reason(_termination_reason: int):
@@ -372,7 +637,7 @@ def _summary(results: NestedSamplerResults, f_obj: str | TextIO | None = None):
         _x_ml = results.X_supremum.get_dotted(name).reshape((-1,))
         ndims = _x_mean.shape[0]
         _print("--------")
-        var_name = name if ndims == 1 else "{}[#]".format(name)
+        var_name = name if ndims == 1 else f"{name}[#]"
         _print(
             f"{var_name}: mean +- std.dev. | MAP est. | max(L) est."
         )
@@ -381,11 +646,11 @@ def _summary(results: NestedSamplerResults, f_obj: str | TextIO | None = None):
             # two sig-figs based on uncert
             sig_figs = 1 - int(f"{_uncert:e}".split('e')[1])
 
-            def _round(ar):
-                return round(float(ar), sig_figs)
+            def _round(ar, digits=sig_figs):
+                return round(float(ar), digits)
 
             _print("{}: {} +- {} | {} | {}".format(
-                name if ndims == 1 else "{}[{}]".format(name, dim),
+                name if ndims == 1 else f"{name}[{dim}]",
                 _round(_x_mean[dim]), _round(_uncert),
                 _round(_x_map[dim]),
                 _round(_x_ml[dim])
@@ -417,7 +682,7 @@ def plot_diagnostics(results: NestedSamplerResults, save_file=None):
     num_live_points_per_sample = np.asarray(results.num_live_points_per_sample[:num_samples])
     log_L = np.asarray(results.log_L[:num_samples])
     max_log_likelihood = np.max(log_L)
-    log_dp = np.asarray(results.log_dp[:num_samples])
+    log_dp = np.asarray(_posterior_log_weights(results)[:num_samples])
     log_cum_evidence = cumulative_logsumexp(log_dp)
     cum_evidence = np.exp(log_cum_evidence)
     log_Z_mean = np.asarray(results.log_Z_mean)
@@ -476,7 +741,6 @@ def plot_diagnostics(results: NestedSamplerResults, save_file=None):
         plt.show()
 
 
-@partial(jax.jit, inline=True, static_argnames=['num_samples'])
 def _sample_evidence(self: NestedSamplerResults,
                      num_samples: int = 100, batch_size: int | None = None, key: PRNGKey | None = None) -> FloatArray:
     evidence_samples = sample_mc_shrinkage(
@@ -488,14 +752,16 @@ def _sample_evidence(self: NestedSamplerResults,
         log_L_phantom=self.log_L_phantom,
         num_samples=self.total_num_samples,
         num_Z_samples=num_samples,
-        batch_size=batch_size
+        block_state=_block_state_from_results(self),
+        batch_size=batch_size,
     )
     return evidence_samples.log_Z_samples
 
 
-@partial(jax.jit, inline=True, static_argnames=['num_samples'])
 def _sample_mc_shrinkage(self: NestedSamplerResults,
-                         num_samples: int = 100, batch_size: int | None = None, key: PRNGKey | None = None) -> EvidenceSamples:
+                         num_samples: int = 100, batch_size: int | None = None,
+                         key: PRNGKey | None = None,
+                         C_min: float = 20) -> EvidenceSamples:
     evidence_samples = sample_mc_shrinkage(
         key=key,
         log_L_constraints=self.log_L_constraints,
@@ -505,9 +771,65 @@ def _sample_mc_shrinkage(self: NestedSamplerResults,
         log_L_phantom=self.log_L_phantom,
         num_samples=self.total_num_samples,
         num_Z_samples=num_samples,
-        batch_size=batch_size
+        block_state=_block_state_from_results(self),
+        batch_size=batch_size,
+        C_min=C_min,
     )
     return evidence_samples
+
+
+def _sample_mc_shrinkage_with_block_state(
+        *,
+        results: NestedSamplerResults,
+        block_state: BlockState,
+        num_samples: int = 100,
+        batch_size: int | None = None,
+        key: PRNGKey,
+        C_min: float = 20,
+) -> EvidenceSamples:
+    return _sample_mc_shrinkage_with_block_state_jit(
+        key=key,
+        log_L_constraints=results.log_L_constraints,
+        log_L_classic=results.log_L,
+        K_classic=results.num_live_points_per_sample,
+        valid_phantom=results.valid_phantom,
+        log_L_phantom=results.log_L_phantom,
+        total_num_samples=results.total_num_samples,
+        num_Z_samples=num_samples,
+        block_state=block_state,
+        batch_size=batch_size,
+        C_min=C_min,
+    )
+
+
+@partial(jax.jit, inline=True, static_argnames=["num_Z_samples", "batch_size"])
+def _sample_mc_shrinkage_with_block_state_jit(
+        *,
+        key: PRNGKey,
+        log_L_constraints: FloatArray,
+        log_L_classic: FloatArray,
+        K_classic: IntArray,
+        valid_phantom: BoolArray,
+        log_L_phantom: FloatArray,
+        total_num_samples: IntArray,
+        num_Z_samples: int,
+        block_state: BlockState,
+        batch_size: int | None = None,
+        C_min: float = 20,
+) -> EvidenceSamples:
+    return _phantom_eval_sample_mc_shrinkage(
+        key=key,
+        log_L_constraints=log_L_constraints,
+        log_L_classic=log_L_classic,
+        K_classic=K_classic,
+        valid_phantom=valid_phantom,
+        log_L_phantom=log_L_phantom,
+        num_samples=total_num_samples,
+        num_Z_samples=num_Z_samples,
+        block_state=block_state,
+        batch_size=batch_size,
+        C_min=C_min,
+    )
 
 
 def _tuple_prod(t):
@@ -528,7 +850,7 @@ def _tuple_prod(t):
     return res
 
 
-def plot_cornerplot(results: NestedSamplerResults, variables: Optional[list[str]] = None, save_name: Optional[str] = None, kde_overlay: bool = False):
+def plot_cornerplot(results: NestedSamplerResults, variables: list[str] | None = None, save_name: str | None = None, kde_overlay: bool = False):
     """
     Plots a cornerplot of the posterior samples.
 
@@ -587,7 +909,10 @@ def plot_cornerplot(results: NestedSamplerResults, variables: Optional[list[str]
 
     # Get the weight of each sample
     log_weights = np.asarray(
-        normalise_log_space(LogSpace(results.log_dp[:num_samples]), norm_type='max').log_abs_val)
+        normalise_log_space(
+            LogSpace(_posterior_log_weights(results)[:num_samples]),
+            norm_type='max',
+        ).log_abs_val)
 
     figsize = min(20, max(4, int(2 * ndims)))
     fig, axs = plt.subplots(ndims, ndims, figsize=(figsize, figsize), squeeze=False)
@@ -600,7 +925,7 @@ def plot_cornerplot(results: NestedSamplerResults, variables: Optional[list[str]
 
     # Loop over the variables, and plot the marginal distributions on the diagonal setting a title above
     # each plot with the mean+-stddev, 5%/50%/95%, and MAP
-    param_limits = dict()  # Store the 1_per and 99_per for each parameter
+    param_limits = {}  # Store the 1_per and 99_per for each parameter
     for row in range(ndims):
         for col in range(ndims):
             ax = axs[row][col]
@@ -721,7 +1046,7 @@ def plot_cornerplot(results: NestedSamplerResults, variables: Optional[list[str]
 
 
 def _weighted_percentile(samples: np.ndarray, log_weights: np.ndarray,
-                         percentiles: list[Union[float, int]]) -> np.ndarray:
+                         percentiles: list[float | int]) -> np.ndarray:
     """
     Compute weighted percentiles of a set of samples.
 
