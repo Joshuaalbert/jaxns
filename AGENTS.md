@@ -1,6 +1,10 @@
 # Agent Notes (jaxns)
 
 - The Agent should have read LEARNINGS.md.
+- Optional orientation: if the intended system behavior, scientific model, or
+  collaboration style is still unclear, read [COMMON_CONTEXT.md](COMMON_CONTEXT.md)
+  before acting. It is a mental-model aid, not a substitute for the current
+  requirements, invariants, design docs, paper, or code.
 
 ## Repo Layout
 
@@ -94,6 +98,34 @@ Additional conventions (helpful when adding new code):
 
 ## Agent Workflow Expectations
 
+- Assume other agents may be working in parallel. For work intended for a PR,
+  create a dedicated worktree and PR branch from the correct base; do not edit
+  the primary checkout unless the user explicitly asks you to update that
+  checkout directly.
+- Worktree isolation prevents file conflicts, not design conflicts. Before
+  changing code, identify the feature's ownership and existing semantic
+  boundaries. Do not force a new feature into a nearby pattern merely because
+  the pattern exists; first verify that its intent, lifecycle, and consumers
+  actually match.
+- Work may span many files when it remains inside an understood boundary and
+  the human and agent share a strong, concrete intention and the human
+  understands and owns the scientific or product decision being made. If the
+  work would change a shared contract, cross into another feature's ownership,
+  or create a new boundary, stop before implementing that part and explain the
+  crossing to the user. Recommend coordination with the relevant contributors
+  rather than designing a shared boundary in isolation.
+- Help the user see boundary crossings early. A surprising need to reach into
+  another subsystem is evidence that the task or human intent may not yet be
+  understood; trace the ownership and data flow, then clarify instead of
+  allowing the feature to diffuse through unrelated code.
+- Every PR must track its work in a GitHub issue. If the user requests a PR but
+  does not provide an issue, create one and link the PR to it. Ephemeral
+  investigation and exploratory work do not require an issue unless the user
+  asks for one; if that work becomes a PR, create or identify its issue before
+  opening the PR.
+- After a PR is merged, remove its worktree. If its remote branch was deleted,
+  delete the local PR branch too. Keep the primary checkout on the intended
+  base branch and do not accumulate stale worktrees or branches.
 - Keep changes scoped to one package unless intentionally cross-cutting.
 - Add/adjust tests with behavior changes; run `pytest` + `flake8` + `ruff` for the touched package.
 - Don’t add repo-wide tooling/config unless asked; propose it if it would materially help.

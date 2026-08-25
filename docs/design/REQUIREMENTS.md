@@ -83,8 +83,9 @@ properties that must hold independently of implementation live in
 - Requirement: The default finite maximum capacity is proportional to the root out-degree, with
   a target default of approximately one thousand samples per root lineage unless the user
   supplies a limit.
-- Requirement: The initial physical allocation is smaller than a large finite maximum and is
-  large enough for the root batch plus at least one replacement batch.
+- Requirement: The initial physical allocation is the root batch plus approximately 64
+  replacement batches, clamped to a finite maximum; it is smaller than a large finite maximum
+  so unused padding does not dominate compiled block operations.
 - Requirement: When unlimited growth is enabled and a depth epoch fills storage, the Python goal
   loop doubles physical capacity sufficiently to fit the next full replacement batch and resumes
   transparently after recompilation.

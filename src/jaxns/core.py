@@ -31,6 +31,13 @@ from jaxns.termination_condition import (
 )
 from jaxns.types import BoolArray, FloatArray, IntArray, PRNGKey
 
+# The default finite ceiling permits substantial runs without silently opting
+# into unlimited memory. Physical storage starts smaller and grows on demand;
+# keeping both policies singular lets benchmark evidence revise either one.
+SAMPLES_PER_ROOT = 1000
+INITIAL_BATCHES = 64
+MAX_SAMPLES_REACHED = 1
+
 
 @dataclasses.dataclass(slots=True, frozen=True)
 class CoreWorkBatch(PureDataclassPytree):
@@ -490,7 +497,6 @@ class _DepthCarry(NamedTuple):
     ),
 )
 def _run_depth(
-        key: PRNGKey,
         state: State,
         sampler: AbstractSampler,
         depth_cond: TerminationCondition,
@@ -499,9 +505,14 @@ def _run_depth(
         allocation_target: str,
         root_degree: int,
         delta_K: int,
-        max_samples: int,
+        max_samples: int | None,
 ) -> State:
-    """Run one allocation depth epoch entirely in compiled JAX."""
+    """Run one allocation depth epoch entirely in compiled JAX.
+
+    The returned state atomically carries the continuation key and exactly one
+    exit outcome. A physical-capacity return may therefore be resized and
+    resumed without changing the logical allocation epoch or random stream.
+    """
 
     def build_depth_view(current_state):
         # Out-degree changes alter K_g, the expected volume path, and the
@@ -542,10 +553,15 @@ def _run_depth(
         # The user goal condition remains outside this JAX loop.
         has_gap = jnp.any(carry.plan.under_allocated(carry.relevant))
         has_buffer = (
-            carry.state.num_samples + shell_size
-            <= carry.state.samples.log_likelihoods.shape[0]
+            carry.state.num_samples
+            < carry.state.samples.log_likelihoods.shape[0]
         )
-        sample_limit = jnp.asarray(max_samples, mp_policy.count_dtype)
+        sample_limit = jnp.asarray(
+            carry.state.samples.log_likelihoods.shape[0],
+            mp_policy.count_dtype,
+        )
+        if max_samples is not None:
+            sample_limit = jnp.asarray(max_samples, mp_policy.count_dtype)
         if depth_cond.max_samples is not None:
             sample_limit = jnp.minimum(
                 sample_limit,
@@ -572,7 +588,12 @@ def _run_depth(
 
     def body(carry: _DepthCarry):
         plan_key, sample_key, next_key = jax.random.split(carry.key, 3)
-        sample_limit = jnp.asarray(max_samples, mp_policy.count_dtype)
+        sample_limit = jnp.asarray(
+            carry.state.samples.log_likelihoods.shape[0],
+            mp_policy.count_dtype,
+        )
+        if max_samples is not None:
+            sample_limit = jnp.asarray(max_samples, mp_policy.count_dtype)
         if depth_cond.max_samples is not None:
             sample_limit = jnp.minimum(
                 sample_limit,
@@ -586,7 +607,13 @@ def _run_depth(
             carry.relevant,
             shell_size,
             max_valid_lanes=(
-                sample_limit.astype(mp_policy.index_dtype)
+                jnp.minimum(
+                    sample_limit,
+                    jnp.asarray(
+                        carry.state.samples.log_likelihoods.shape[0],
+                        mp_policy.count_dtype,
+                    ),
+                ).astype(mp_policy.index_dtype)
                 - carry.state.num_samples.astype(mp_policy.index_dtype)
             ),
         )
@@ -613,16 +640,90 @@ def _run_depth(
             register=next_register,
         )
 
+    # A normal depth boundary starts the same per-depth split used before
+    # transparent growth existed. A growth resume instead uses `random_key`
+    # as the exact inner continuation after the last completed batch, while
+    # `goal_key` retains the already-derived key for the next logical epoch.
+    new_depth_key, next_goal_key = jax.random.split(state.random_key)
+    depth_key = jnp.where(
+        state.depth_reached,
+        new_depth_key,
+        state.random_key,
+    )
+    goal_key = jnp.where(
+        state.depth_reached,
+        next_goal_key,
+        state.goal_key,
+    )
     block_state, plan, relevant, register = build_depth_view(state)
+    initial_state = dataclasses.replace(
+        state,
+        random_key=depth_key,
+        goal_key=goal_key,
+        needs_growth=jnp.asarray(False, mp_policy.bool_dtype),
+        depth_reached=jnp.asarray(False, mp_policy.bool_dtype),
+    )
     initial_carry = _DepthCarry(
-        key=key,
-        state=state,
+        key=depth_key,
+        state=initial_state,
         block_state=block_state,
         plan=plan,
         relevant=relevant,
         register=register,
     )
-    return jax.lax.while_loop(cond, body, initial_carry).state
+    final_carry = jax.lax.while_loop(cond, body, initial_carry)
+
+    # Classify the single reason the compiled loop returned. Terminal reasons
+    # take precedence over a full physical buffer, while a growable buffer
+    # takes precedence over ordinary completion of the allocation/depth work.
+    scalar_cond = dataclasses.replace(
+        depth_cond,
+        dlogZ=None,
+        cummax_XL_frac=None,
+    )
+    scalar_done, scalar_reason = final_carry.register.is_done(scalar_cond)
+    hard_limit_reached = jnp.asarray(False, mp_policy.bool_dtype)
+    if max_samples is not None:
+        hard_limit_reached = final_carry.state.num_samples >= max_samples
+    termination_reason = jnp.where(
+        final_carry.state.termination_reason != 0,
+        final_carry.state.termination_reason,
+        jnp.where(
+            scalar_done,
+            scalar_reason,
+            jnp.where(
+                hard_limit_reached,
+                jnp.asarray(MAX_SAMPLES_REACHED, mp_policy.count_dtype),
+                jnp.asarray(0, mp_policy.count_dtype),
+            ),
+        ),
+    )
+    terminal = termination_reason != 0
+    has_gap = jnp.any(
+        final_carry.plan.under_allocated(final_carry.relevant)
+    )
+    storage_full = (
+        final_carry.state.num_samples
+        >= final_carry.state.samples.log_likelihoods.shape[0]
+    )
+    needs_growth = jnp.logical_and(
+        jnp.logical_not(terminal),
+        has_gap & storage_full,
+    )
+    depth_reached = jnp.logical_not(terminal | needs_growth)
+    continuation_key = jnp.where(
+        needs_growth,
+        final_carry.key,
+        goal_key,
+    )
+    return dataclasses.replace(
+        final_carry.state,
+        termination_reason=termination_reason,
+        needs_growth=needs_growth,
+        depth_reached=depth_reached,
+        random_key=continuation_key,
+        goal_key=goal_key,
+    )
 
 
 @partial(
@@ -724,7 +825,14 @@ def _sample_init_state(
 
 @dataclasses.dataclass(slots=True, frozen=True)
 class NestedSampler(PureDataclassPytree):
-    """Object-oriented configuration and Python goal-loop driver."""
+    """Object-oriented configuration and Python goal-loop driver.
+
+    Sample arrays have a static leading dimension during each compiled depth
+    call. Finite storage is the default: ``max_samples`` is a hard maximum and
+    physical buffers grow only up to it. Set ``unlimited_samples=True`` to opt
+    into unbounded geometric growth and its associated memory use and one-time
+    recompilation pause for each new shape.
+    """
 
     model: Model
     target_num_live_points: int | None = None
@@ -747,6 +855,7 @@ class NestedSampler(PureDataclassPytree):
     ] = "uniform"
     delta_K: int | None = None
     initial_capacity: int | None = None
+    unlimited_samples: bool = False
 
     def __post_init__(self):
         U_ndims = int(self.model.U_ndims(self.args, self.params))
@@ -773,10 +882,19 @@ class NestedSampler(PureDataclassPytree):
             # former half-root width on multimodal problems.
             shell_size = min(root_degree, max(1, 10 * U_ndims))
         max_samples = self.max_samples
-        if max_samples is None:
-            max_samples = max(root_degree + shell_size, 100 * root_degree)
-        if max_samples < root_degree:
-            raise ValueError("max_samples must hold all root samples.")
+        if self.unlimited_samples and max_samples is not None:
+            raise ValueError(
+                "unlimited_samples=True conflicts with a finite max_samples."
+            )
+        if not self.unlimited_samples:
+            if max_samples is None:
+                max_samples = max(
+                    root_degree + shell_size,
+                    SAMPLES_PER_ROOT * root_degree,
+                )
+            max_samples = int(max_samples)
+            if max_samples < root_degree:
+                raise ValueError("max_samples must hold all root samples.")
         delta_K = self.delta_K
         if delta_K is None:
             # One outer allocation step should normally create one full
@@ -818,25 +936,36 @@ class NestedSampler(PureDataclassPytree):
                 dlogZ=jnp.log1p(
                     jnp.asarray(1e-3, mp_policy.measure_dtype)
                 ),
-                max_samples=jnp.asarray(max_samples, mp_policy.count_dtype),
+                max_samples=(
+                    None
+                    if max_samples is None
+                    else jnp.asarray(max_samples, mp_policy.count_dtype)
+                ),
             )
-        elif termination_condition.max_samples is None:
+        elif (
+            max_samples is not None
+            and termination_condition.max_samples is None
+        ):
             termination_condition = dataclasses.replace(
                 termination_condition,
                 max_samples=jnp.asarray(max_samples, mp_policy.count_dtype),
             )
         initial_capacity = self.initial_capacity
         if initial_capacity is None:
-            initial_capacity = min(
-                max_samples + shell_size - 1,
-                max(root_degree + shell_size, root_degree + 64 * shell_size),
-            )
-        initial_capacity = max(root_degree, int(initial_capacity))
+            # Preallocating the full default maximum makes every fixed-shape
+            # block scan pay for unused padding. Start with enough room for a
+            # useful number of replacement batches, then grow geometrically.
+            initial_capacity = root_degree + INITIAL_BATCHES * shell_size
+        initial_capacity = int(initial_capacity)
+        if initial_capacity < root_degree:
+            raise ValueError("initial_capacity must hold all root samples.")
+        if max_samples is not None:
+            initial_capacity = min(initial_capacity, max_samples)
 
         object.__setattr__(self, "target_num_live_points", root_degree)
         object.__setattr__(self, "root_allocation_degree", root_degree)
         object.__setattr__(self, "shell_size", int(shell_size))
-        object.__setattr__(self, "max_samples", int(max_samples))
+        object.__setattr__(self, "max_samples", max_samples)
         object.__setattr__(self, "sampler", sampler)
         object.__setattr__(self, "termination_condition", termination_condition)
         object.__setattr__(self, "initial_capacity", initial_capacity)
@@ -857,6 +986,7 @@ class NestedSampler(PureDataclassPytree):
                 "allocation_target",
                 "delta_K",
                 "initial_capacity",
+                "unlimited_samples",
             ],
         )
 
@@ -878,7 +1008,15 @@ class NestedSampler(PureDataclassPytree):
             sample_capacity=int(self.initial_capacity),
             num_phantom=int(self.sampler.num_phantom()),
         )
-        return dataclasses.replace(state, random_key=run_key)
+        return dataclasses.replace(
+            state,
+            random_key=run_key,
+            goal_key=run_key,
+            # Initialisation is a Python goal boundary. Marking it this way
+            # makes the first compiled call perform the ordinary per-depth key
+            # split, while a capacity resume remains distinguishable.
+            depth_reached=jnp.asarray(True, mp_policy.bool_dtype),
+        )
 
     def run(self, key: PRNGKey | None = None) -> State:
         """Run until the default expectation-based goal is satisfied."""
@@ -935,26 +1073,31 @@ class NestedSampler(PureDataclassPytree):
     ) -> State:
         if depth_cond is None:
             depth_cond = self.termination_condition
-        if key is None:
-            key = state.random_key
-        if key is None:
-            key = jax.random.PRNGKey(42)
-        consecutive_no_progress = 0
-        while not bool(goal_cond(state)):
-            num_samples = int(state.num_samples)
-            capacity = state.samples.log_likelihoods.shape[0]
-            if num_samples + self.shell_size > capacity:
-                storage_capacity = self.max_samples + self.shell_size - 1
-                if capacity >= storage_capacity:
-                    break
-                new_capacity = min(
-                    storage_capacity,
-                    max(capacity * 2, num_samples + 64 * self.shell_size),
-                )
-                state = state.resize(new_capacity)
-            depth_key, key = jax.random.split(key)
-            next_state = _run_depth(
-                depth_key,
+        if key is not None:
+            state = dataclasses.replace(
+                state,
+                random_key=key,
+                goal_key=key,
+                depth_reached=jnp.asarray(True, mp_policy.bool_dtype),
+            )
+        elif state.random_key is None:
+            state = dataclasses.replace(
+                state,
+                random_key=jax.random.PRNGKey(42),
+                goal_key=jax.random.PRNGKey(42),
+                depth_reached=jnp.asarray(True, mp_policy.bool_dtype),
+            )
+        elif state.goal_key is None:
+            state = dataclasses.replace(
+                state,
+                goal_key=state.random_key,
+                depth_reached=jnp.asarray(True, mp_policy.bool_dtype),
+            )
+        while (
+            int(state.termination_reason) == 0
+            and not bool(goal_cond(state))
+        ):
+            state = _run_depth(
                 state,
                 self.sampler,
                 depth_cond,
@@ -962,39 +1105,72 @@ class NestedSampler(PureDataclassPytree):
                 allocation_target=self.allocation_target,
                 root_degree=int(self.root_allocation_degree),
                 delta_K=int(self.delta_K),
-                max_samples=int(self.max_samples),
+                max_samples=self.max_samples,
             )
-            state = dataclasses.replace(
-                next_state,
-                goal_loop_iter=next_state.goal_loop_iter + jnp.asarray(
-                    1,
-                    next_state.goal_loop_iter.dtype,
-                ),
-                random_key=key,
+            if bool(state.needs_growth):
+                capacity = state.samples.log_likelihoods.shape[0]
+                required_capacity = int(state.num_samples) + int(
+                    self.shell_size
+                )
+                new_capacity = max(2 * capacity, required_capacity)
+                if self.max_samples is not None:
+                    new_capacity = min(new_capacity, self.max_samples)
+                if new_capacity <= capacity:
+                    # This branch is defensive: the compiled classifier should
+                    # already report a finite hard maximum as terminal.
+                    state = dataclasses.replace(
+                        state,
+                        termination_reason=jnp.asarray(
+                            MAX_SAMPLES_REACHED,
+                            mp_policy.count_dtype,
+                        ),
+                        needs_growth=jnp.asarray(
+                            False,
+                            mp_policy.bool_dtype,
+                        ),
+                        depth_reached=jnp.asarray(
+                            False,
+                            mp_policy.bool_dtype,
+                        ),
+                    )
+                    break
+                # Growth resumes the same allocation target and key. Clearing
+                # only the transient request prevents this implementation
+                # boundary from becoming a logical goal iteration.
+                state = dataclasses.replace(
+                    state.resize(new_capacity),
+                    needs_growth=jnp.asarray(False, mp_policy.bool_dtype),
+                    depth_reached=jnp.asarray(False, mp_policy.bool_dtype),
+                )
+                continue
+            if int(state.termination_reason) != 0:
+                break
+            if bool(state.depth_reached):
+                state = dataclasses.replace(
+                    state,
+                    goal_loop_iter=(
+                        state.goal_loop_iter
+                        + jnp.asarray(1, state.goal_loop_iter.dtype)
+                    ),
+                )
+                continue
+            raise RuntimeError(
+                "Compiled depth returned without termination, growth, or "
+                "normal depth completion."
             )
-            if int(state.num_samples) == num_samples:
-                consecutive_no_progress += 1
-            else:
-                consecutive_no_progress = 0
-            # The paper schedule deliberately spends its first epoch exposing
-            # the root allocation before it can request work. A second empty
-            # epoch means the supplied depth condition cannot advance this
-            # state, so returning control is safer than spinning in Python.
-            if consecutive_no_progress >= 2:
-                break
-            if int(state.num_samples) >= self.max_samples:
-                break
-        done, reason = state.compute_termination_register().is_done(
-            self.termination_condition
-        )
-        return dataclasses.replace(
-            state,
-            termination_reason=jnp.where(
-                done,
-                reason,
-                state.termination_reason,
-            ),
-        )
+
+        if int(state.termination_reason) == 0:
+            done, reason = state.compute_termination_register().is_done(
+                self.termination_condition
+            )
+            if bool(done):
+                state = dataclasses.replace(
+                    state,
+                    termination_reason=reason,
+                    needs_growth=jnp.asarray(False, mp_policy.bool_dtype),
+                    depth_reached=jnp.asarray(False, mp_policy.bool_dtype),
+                )
+        return state
 
     def run_single_iteration(
             self,
@@ -1005,16 +1181,29 @@ class NestedSampler(PureDataclassPytree):
         """Run exactly one compiled depth epoch."""
         if state is None:
             state = self.initialise(key)
-            key = state.random_key
-        elif key is None:
-            key = state.random_key
-        if key is None:
-            key = jax.random.PRNGKey(42)
+        elif key is not None:
+            state = dataclasses.replace(
+                state,
+                random_key=key,
+                goal_key=key,
+                depth_reached=jnp.asarray(True, mp_policy.bool_dtype),
+            )
+        elif state.random_key is None:
+            state = dataclasses.replace(
+                state,
+                random_key=jax.random.PRNGKey(42),
+                goal_key=jax.random.PRNGKey(42),
+                depth_reached=jnp.asarray(True, mp_policy.bool_dtype),
+            )
+        elif state.goal_key is None:
+            state = dataclasses.replace(
+                state,
+                goal_key=state.random_key,
+                depth_reached=jnp.asarray(True, mp_policy.bool_dtype),
+            )
         if depth_cond is None:
             depth_cond = self.termination_condition
-        depth_key, next_key = jax.random.split(key)
-        next_state = _run_depth(
-            depth_key,
+        return _run_depth(
             state,
             self.sampler,
             depth_cond,
@@ -1022,9 +1211,8 @@ class NestedSampler(PureDataclassPytree):
             allocation_target=self.allocation_target,
             root_degree=int(self.root_allocation_degree),
             delta_K=int(self.delta_K),
-            max_samples=int(self.max_samples),
+            max_samples=self.max_samples,
         )
-        return dataclasses.replace(next_state, random_key=next_key)
 
 
 NestedSampler.register_pytree()

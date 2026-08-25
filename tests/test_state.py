@@ -1,3 +1,5 @@
+import dataclasses
+
 import numpy as np
 import pytest
 from jax import numpy as jnp
@@ -7,7 +9,7 @@ from tensorflow_probability.substrates import jax as tfp
 
 from jaxns.core import NestedSampler
 from jaxns.model import Model
-from jaxns.race_tree import build_block_state
+from jaxns.race_tree import build_block_state, initialise_likelihood_order
 from jaxns.samples import PhantomSamples, Samples
 from jaxns.shrinkage import (
     classic_dirichlet_concentrations,
@@ -183,6 +185,82 @@ def test_samples_resize_preserves_constraints_and_provenance_fields():
         np.asarray(resized.out_degree[2:]),
         np.array([0, 0], dtype=np.int32),
     )
+
+
+def test_state_resize_grows_all_sample_buffers_and_preserves_continuation():
+    state = _make_strict_contour_violation_state()
+    order = initialise_likelihood_order(
+        state.samples.log_likelihoods,
+        state.num_samples,
+    )
+    key = random.PRNGKey(91)
+    state = dataclasses.replace(
+        state,
+        likelihood_order=order,
+        random_key=key,
+        goal_key=key,
+        needs_growth=jnp.asarray(True),
+    )
+
+    resized = state.resize(4)
+
+    assert resized.samples.log_likelihoods.shape == (4,)
+    assert resized.samples.log_L_constraints.shape == (4,)
+    assert resized.samples.U_samples.shape == (4, 1)
+    assert resized.samples.out_degree.shape == (4,)
+    assert resized.samples.num_likelihood_evaluations.shape == (4,)
+    assert resized.samples.phantom_samples.valid_mask.shape == (4, 0)
+    assert resized.samples.phantom_samples.log_L.shape == (4, 0)
+    assert resized.samples.phantom_samples.U_samples.shape == (4, 0, 1)
+    assert resized.likelihood_order.sample_indices.shape == (4,)
+    np.testing.assert_array_equal(np.asarray(resized.random_key), key)
+    np.testing.assert_array_equal(np.asarray(resized.goal_key), key)
+    assert bool(resized.needs_growth)
+    assert not bool(resized.depth_reached)
+    assert int(resized.termination_reason) == 0
+
+    trimmed = resized.trim()
+    assert trimmed.samples.log_likelihoods.shape == (1,)
+    assert trimmed.likelihood_order.sample_indices.shape == (1,)
+    np.testing.assert_array_equal(np.asarray(trimmed.random_key), key)
+    np.testing.assert_array_equal(np.asarray(trimmed.goal_key), key)
+    assert bool(trimmed.needs_growth)
+
+    with pytest.raises(ValueError, match="only supports growth"):
+        resized.resize(3)
+
+
+def test_state_merge_applies_terminal_growth_depth_precedence():
+    base = dataclasses.replace(
+        _make_strict_contour_violation_state(),
+        random_key=random.PRNGKey(92),
+    )
+    terminal = dataclasses.replace(
+        base,
+        termination_reason=jnp.asarray(2, dtype=jnp.int32),
+        needs_growth=jnp.asarray(True),
+        depth_reached=jnp.asarray(True),
+    )
+    growth = dataclasses.replace(
+        base,
+        needs_growth=jnp.asarray(True),
+        depth_reached=jnp.asarray(False),
+    )
+
+    merged_terminal = terminal.merge(growth)
+    assert int(merged_terminal.termination_reason) == 2
+    assert not bool(merged_terminal.needs_growth)
+    assert not bool(merged_terminal.depth_reached)
+
+    completed = dataclasses.replace(
+        base,
+        needs_growth=jnp.asarray(False),
+        depth_reached=jnp.asarray(True),
+    )
+    merged_growth = growth.merge(completed)
+    assert int(merged_growth.termination_reason) == 0
+    assert bool(merged_growth.needs_growth)
+    assert not bool(merged_growth.depth_reached)
 
 
 def test_state_consistency_rejects_strict_contour_violation():

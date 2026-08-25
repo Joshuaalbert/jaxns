@@ -435,7 +435,7 @@ def test_resume_uses_stored_key_and_matches_uninterrupted_run():
         np.testing.assert_array_equal(np.asarray(left), np.asarray(right))
 
 
-def test_python_goal_loop_returns_after_depth_cannot_make_progress():
+def test_python_goal_loop_reports_terminal_depth_budget_without_iteration():
     ns = NestedSampler(
         model=make_toy_model(),
         target_num_live_points=2,
@@ -452,7 +452,196 @@ def test_python_goal_loop_returns_after_depth_cannot_make_progress():
     )
 
     assert int(state.num_samples) == 2
-    assert int(state.goal_loop_iter) == 2
+    assert int(state.goal_loop_iter) == 0
+    assert int(state.termination_reason) == core.MAX_SAMPLES_REACHED
+    assert not bool(state.needs_growth)
+    assert not bool(state.depth_reached)
+
+
+def test_sample_storage_modes_are_explicit_and_inspectable():
+    finite_default = NestedSampler(
+        model=make_toy_model(),
+        target_num_live_points=2,
+        shell_size=1,
+        sampler=DeterministicSampler(),
+    )
+    assert finite_default.max_samples == 2 * core.SAMPLES_PER_ROOT
+    assert finite_default.initial_capacity == 2 + core.INITIAL_BATCHES
+    assert not finite_default.unlimited_samples
+
+    finite_large = NestedSampler(
+        model=make_toy_model(),
+        target_num_live_points=2,
+        shell_size=1,
+        max_samples=5000,
+        sampler=DeterministicSampler(),
+    )
+    assert finite_large.max_samples == 5000
+    assert finite_large.initial_capacity == 2 + core.INITIAL_BATCHES
+
+    unlimited = NestedSampler(
+        model=make_toy_model(),
+        target_num_live_points=2,
+        shell_size=1,
+        unlimited_samples=True,
+        sampler=DeterministicSampler(),
+    )
+    assert unlimited.max_samples is None
+    assert unlimited.initial_capacity == 2 + core.INITIAL_BATCHES
+
+    with pytest.raises(ValueError, match="conflicts"):
+        NestedSampler(
+            model=make_toy_model(),
+            max_samples=100,
+            unlimited_samples=True,
+        )
+
+
+def _assert_single_depth_outcome(state):
+    outcomes = (
+        int(state.termination_reason) != 0,
+        bool(state.needs_growth),
+        bool(state.depth_reached),
+    )
+    assert sum(outcomes) == 1
+
+
+def test_compiled_depth_classifies_normal_growth_and_terminal_returns():
+    common = {
+        "model": make_toy_model(),
+        "target_num_live_points": 2,
+        "shell_size": 1,
+        "delta_K": 1,
+        "sampler": DeterministicSampler(),
+    }
+    normal_sampler = NestedSampler(
+        max_samples=4,
+        initial_capacity=4,
+        **common,
+    )
+    normal_state = normal_sampler.initialise(jax.random.PRNGKey(31))
+    _, normal_goal_key = jax.random.split(normal_state.random_key)
+    normal = normal_sampler.run_single_iteration(
+        normal_state,
+        depth_cond=TerminationCondition(dlogZ=jnp.asarray(1.1)),
+    )
+    _assert_single_depth_outcome(normal)
+    assert bool(normal.depth_reached)
+    np.testing.assert_array_equal(normal.random_key, normal_goal_key)
+
+    growth_sampler = NestedSampler(
+        unlimited_samples=True,
+        initial_capacity=2,
+        termination_condition=TerminationCondition(),
+        **common,
+    )
+    growth_state = dataclasses.replace(
+        growth_sampler.initialise(jax.random.PRNGKey(32)),
+        goal_loop_iter=jnp.asarray(1, dtype=jnp.int32),
+    )
+    growth_depth_key, growth_goal_key = jax.random.split(
+        growth_state.random_key
+    )
+    growth = growth_sampler.run_single_iteration(
+        growth_state,
+        depth_cond=TerminationCondition(dlogZ=jnp.asarray(0.5)),
+    )
+    _assert_single_depth_outcome(growth)
+    assert bool(growth.needs_growth)
+    assert int(growth.goal_loop_iter) == 1
+    np.testing.assert_array_equal(growth.random_key, growth_depth_key)
+    np.testing.assert_array_equal(growth.goal_key, growth_goal_key)
+
+    terminal_sampler = NestedSampler(
+        max_samples=2,
+        initial_capacity=2,
+        **common,
+    )
+    terminal_state = dataclasses.replace(
+        terminal_sampler.initialise(jax.random.PRNGKey(33)),
+        goal_loop_iter=jnp.asarray(1, dtype=jnp.int32),
+    )
+    terminal = terminal_sampler.run_single_iteration(terminal_state)
+    _assert_single_depth_outcome(terminal)
+    assert int(terminal.termination_reason) == core.MAX_SAMPLES_REACHED
+    assert int(terminal.goal_loop_iter) == 1
+
+
+def test_unlimited_growth_matches_preallocated_scientific_continuation():
+    common = {
+        "model": make_toy_model(),
+        "target_num_live_points": 2,
+        "shell_size": 1,
+        "delta_K": 1,
+        "unlimited_samples": True,
+        "sampler": DeterministicSampler(),
+        "termination_condition": TerminationCondition(),
+    }
+    tiny = NestedSampler(initial_capacity=2, **common)
+    preallocated = NestedSampler(initial_capacity=32, **common)
+
+    def goal(state):
+        return int(state.goal_loop_iter) >= 2
+
+    key = jax.random.PRNGKey(34)
+
+    depth_cond = TerminationCondition(dlogZ=jnp.asarray(0.5))
+    grown = tiny.run_until_goal(goal, depth_cond=depth_cond, key=key)
+    reference = preallocated.run_until_goal(
+        goal,
+        depth_cond=depth_cond,
+        key=key,
+    )
+
+    # Capacity 2 -> 4 -> 8 proves that more than one shape boundary was
+    # crossed. The valid scientific prefix and continuation state must remain
+    # independent of those implementation-only boundaries.
+    assert grown.samples.log_likelihoods.shape[0] == 8
+    assert reference.samples.log_likelihoods.shape[0] == 32
+    assert int(grown.goal_loop_iter) == int(reference.goal_loop_iter) == 2
+    assert int(grown.num_samples) == int(reference.num_samples) == 5
+    grown = grown.trim()
+    reference = reference.trim()
+    for left, right in zip(
+        jax.tree.leaves(grown),
+        jax.tree.leaves(reference),
+        strict=True,
+    ):
+        np.testing.assert_array_equal(np.asarray(left), np.asarray(right))
+
+
+def test_finite_capacity_terminates_below_and_exactly_at_hard_maximum():
+    common = {
+        "model": make_toy_model(),
+        "target_num_live_points": 2,
+        "shell_size": 2,
+        "delta_K": 2,
+        "max_samples": 5,
+        "sampler": DeterministicSampler(),
+    }
+    below = NestedSampler(initial_capacity=5, **common).run_until_goal(
+        lambda state: False,
+        depth_cond=TerminationCondition(max_samples=3),
+        key=jax.random.PRNGKey(35),
+    )
+    assert int(below.num_samples) == 3
+    assert below.samples.log_likelihoods.shape[0] == 5
+    assert int(below.termination_reason) == core.MAX_SAMPLES_REACHED
+    _assert_single_depth_outcome(below)
+
+    exact = NestedSampler(initial_capacity=3, **common).run_until_goal(
+        lambda state: False,
+        depth_cond=TerminationCondition(),
+        key=jax.random.PRNGKey(36),
+    )
+    assert int(exact.num_samples) == 5
+    assert exact.samples.log_likelihoods.shape[0] == 5
+    assert int(exact.termination_reason) == core.MAX_SAMPLES_REACHED
+    _assert_single_depth_outcome(exact)
+    assert (
+        int(exact.to_result().termination_reason)
+        == core.MAX_SAMPLES_REACHED
+    )
 
 
 def test_state_checkpoint_round_trip_preserves_resume_key_and_order():
