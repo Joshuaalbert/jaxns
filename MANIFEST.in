@@ -1,2 +1,2 @@
-requirements.txt
-requirements-*.txt
+include requirements.txt
+include requirements-*.txt

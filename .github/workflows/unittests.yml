@@ -5,9 +5,12 @@ name: Python package
 
 on:
   pull_request:
-    branches: [ "main", "develop" ]
+    branches: [ "main", "develop", "v2" ]
   push:
-    branches: [ "main" ]
+    branches: [ "main", "v2" ]
+
+env:
+  MPLBACKEND: Agg
 
 jobs:
   build:

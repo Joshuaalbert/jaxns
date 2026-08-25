@@ -359,6 +359,10 @@ before importing JAXNS.
 
 # Change Log
 
+25 Aug, 2026 -- JAXNS 2.7.0 maintenance line started from the published 2.6.9 source. This branch will continue to
+receive compatible v2 fixes for users who are not upgrading to v3. Fixed source distributions to include the
+requirement files needed for installation.
+
 7 Dec, 2024 -- JAXNS 2.6.7 released. Fix pip dependencies install.
 
 13 Nov, 2024 -- JAXNS 2.6.6 released. Minor improvements to plotting.
