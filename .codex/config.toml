@@ -1,0 +1,29 @@
+approval_policy = "on-request"
+approvals_reviewer = "auto_review"
+default_permissions = "this_project_workspace"
+
+[features]
+guardian_approval = true
+
+[permissions.this_project_workspace]
+description = "Workspace access for this project with enabled permissions for local ZMQ sockets."
+extends = ":workspace"
+
+[permissions.this_project_workspace.workspace_roots]
+"/tmp" = true
+
+[permissions.this_project_workspace.filesystem.":workspace_roots"]
+"." = "write"
+
+[permissions.this_project_workspace.network]
+enabled = true
+allow_local_binding = true
+mode = "limited"
+
+[permissions.this_project_workspace.network.domains]
+"localhost" = "allow"
+"127.0.0.1" = "allow"
+"::1" = "allow"
+
+[permissions.this_project_workspace.network.unix_sockets]
+"/tmp/*.ipc" = "allow"

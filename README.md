@@ -83,11 +83,11 @@ from jaxns.framework.prior import Prior
 
 
 def prior_model():
-    mu = yield Prior(tfpd.Normal(loc=0., scale=1.))
+    mu = Prior(tfpd.Normal(loc=0., scale=1.))
     # Let's make sigma a parameterised variable
-    sigma = yield Prior(tfpd.Exponential(rate=1.), name='sigma').parametrised()
-    x = yield Prior(tfpd.Cauchy(loc=mu, scale=sigma), name='x')
-    uncert = yield Prior(tfpd.Exponential(rate=1.), name='uncert')
+    sigma = Prior(tfpd.Exponential(rate=1.), name='sigma').parametrised()
+    x = Prior(tfpd.Cauchy(loc=mu, scale=sigma), name='x')
+    uncert = Prior(tfpd.Exponential(rate=1.), name='uncert')
     return x, uncert
 
 
@@ -112,7 +112,9 @@ There are two spaces of samples:
 
 ```python
 # Sample the prior in U-space (base measure)
-U = model.sample_U(key=jax.random.PRNGKey(0))
+import jaxns.types
+
+U = model.sample_U(key=jaxns.types.PRNGKey(0))
 # Transform to X-space
 X = model.transform(U=U)
 # Only named Bayesian prior variables are returned, the rest are treated as hidden variables.
@@ -153,12 +155,13 @@ Given a probabilistic model, JAXNS can perform nested sampling on it. This allow
 posterior samples.
 
 ```python
+import jaxns.types
 from jaxns import NestedSampler
 
 ns = NestedSampler(model=model, max_samples=1e5)
 
 # Run the sampler
-termination_reason, state = ns(jax.random.PRNGKey(42))
+termination_reason, state = ns(jaxns.types.PRNGKey(42))
 # Get the results
 results = ns.to_results(termination_reason=termination_reason, state=state)
 ```
@@ -167,7 +170,9 @@ results = ns.to_results(termination_reason=termination_reason, state=state)
 
 ```python
 # Ahead of time compilation (sometimes useful)
-ns_aot = jax.jit(ns).lower(jax.random.PRNGKey(42)).compile()
+import jaxns.types
+
+ns_aot = jax.jit(ns).lower(jaxns.types.PRNGKey(42)).compile()
 
 # Just-in-time compilation (usually useful)
 ns_jit = jax.jit(ns)
@@ -222,14 +227,15 @@ Nested sampling produces weighted posterior samples. To use for most use cases, 
 replacement).
 
 ```python
+import jaxns.types
 from jaxns import resample
 
 samples = resample(
-    key=jax.random.PRNGKey(0),
-    samples=results.samples,
-    log_weights=results.log_dp_mean,
-    S=1000,
-    replace=True
+   key=jaxns.types.PRNGKey(0),
+   samples=results.samples,
+   log_weights=results.log_dp,
+   S=1000,
+   replace=True
 )
 ```
 
@@ -293,7 +299,7 @@ Sampling paper](https://arxiv.org/abs/2312.11330).
 
 **Notes:**
 
-1. JAXNS requires >= Python 3.9. It is always highly recommended to use the latest version of Python.
+1. JAXNS requires >= Python 3.10. It is always highly recommended to use the latest version of Python.
 2. It is always highly recommended to use a unique virtual environment for each project.
    To use **miniconda**, ensure it is installed on your system, then run the following commands:
 
@@ -317,10 +323,7 @@ Clone repo `git clone https://www.github.com/JoshuaAlbert/jaxns.git`, and instal
 
 ```bash
 cd jaxns
-pip install -r requirements.txt
-pip install -r requirements-tests.txt
-pip install -r requirements-examples.txt
-pip install .
+pip install -e ".[tests,examples]"
 ```
 
 # Getting help and contributing examples
@@ -358,6 +361,8 @@ your CPUs by placing `os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_devi
 before importing JAXNS.
 
 # Change Log
+
+3 Aug, 2025 -- JAXNS 2.6.9 released. Fix sdist, and TFP dependency.
 
 7 Dec, 2024 -- JAXNS 2.6.7 released. Fix pip dependencies install.
 
