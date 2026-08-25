@@ -1,37 +1,16 @@
-from typing import Union
-
 import jax
 import numpy as np
 from jaxctx.context import CtxParams
 
 PRNGKey = jax.Array
-Array = Union[
-    jax.Array,  # JAX array type
-    np.ndarray,  # NumPy array type
-]
-FloatArray = Union[
-    jax.Array,  # JAX array type
-    np.ndarray,  # NumPy array type
-    float,  # valid scalars
-]
-IntArray = Union[
-    jax.Array,  # JAX array type
-    np.ndarray,  # NumPy array type
-    int,  # valid scalars
-]
-BoolArray = Union[
-    jax.Array,  # JAX array type
-    np.ndarray,  # NumPy array type
-    np.bool_, bool,  # valid scalars
-]
+# Type annotation for JAX and NumPy arrays, with no scalar types.
+Array = jax.Array | np.ndarray
+# Type annotation for JAX and NumPy arrays, including float scalars.
+FloatArray = jax.Array | np.ndarray | float
+# Type annotation for JAX and NumPy arrays, including integer scalars.
+IntArray = jax.Array | np.ndarray | int
+# Type annotation for JAX and NumPy arrays, including boolean scalars.
+BoolArray = jax.Array | np.ndarray | np.bool_ | bool
 
 UType = CtxParams  # Sample space type
 XType = CtxParams  # Prior variable type
-
-Array.__doc__ = "Type annotation for JAX array-like objects, with no scalar types."
-
-FloatArray.__doc__ = "Type annotation for JAX array-like objects, with float scalar types."
-
-IntArray.__doc__ = "Type annotation for JAX array-like objects, with int scalar types."
-
-BoolArray.__doc__ = "Type annotation for JAX array-like objects, with bool scalar types."
