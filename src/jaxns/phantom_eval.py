@@ -27,6 +27,12 @@ from jaxns.types import BoolArray, FloatArray, IntArray, PRNGKey
 
 @dataclasses.dataclass(slots=True, frozen=True)
 class EvidenceSamples(PureDataclassPytree):
+    """Monte Carlo evidence draws and block-aligned sufficient statistics.
+
+    The economical path retains the ``[M]`` evidence ensemble and ``[G]``
+    summaries while leaving the optional ``[M, G]`` diagnostic arrays unset.
+    """
+
     log_Z_samples: FloatArray  # [M]
     H_samples: FloatArray  # [M]
     log_dZ_mean: FloatArray  # [G]
@@ -114,6 +120,52 @@ class EvidenceSamples(PureDataclassPytree):
 
 
 EvidenceSamples.register_pytree()
+
+
+@dataclasses.dataclass(slots=True, frozen=True)
+class PhantomEvents(PureDataclassPytree):
+    """Sparse interval events shared by all Monte Carlo draw batches."""
+
+    start_idx: IntArray  # [C]
+    count_A_start: FloatArray  # [C]
+    count_B_start: FloatArray  # [C]
+    event_cluster_idx: IntArray  # [E]
+    event_a_hi: IntArray  # [E]
+    event_b_hi: IntArray  # [E]
+    event_A_active: BoolArray  # [E]
+    event_B_active: BoolArray  # [E]
+    event_eq_idx: IntArray  # [E]
+    event_eq_active: BoolArray  # [E]
+    cluster_presence: FloatArray  # [C]
+    A: FloatArray  # [G]
+    B: FloatArray  # [G]
+    E: FloatArray  # [G]
+    R: FloatArray  # [G]
+    kish: FloatArray  # [G]
+    gate: BoolArray  # [G]
+
+    def aggregate(
+            self,
+            cluster_multiplicity: FloatArray,
+    ) -> tuple[FloatArray, FloatArray, FloatArray]:
+        """Aggregate weighted cluster counts over the sparse block events."""
+        return _boundary_counts_from_multiplicity(
+            cluster_multiplicity=cluster_multiplicity,
+            start_idx=self.start_idx,
+            count_A_start_per_cluster=self.count_A_start,
+            count_B_start_per_cluster=self.count_B_start,
+            event_cluster_idx=self.event_cluster_idx,
+            event_a_hi=self.event_a_hi,
+            event_b_hi=self.event_b_hi,
+            event_A_active=self.event_A_active,
+            event_B_active=self.event_B_active,
+            event_eq_idx=self.event_eq_idx,
+            event_eq_active=self.event_eq_active,
+            num_blocks=self.A.shape[0],
+        )
+
+
+PhantomEvents.register_pytree()
 
 
 def _logsumexp(x: FloatArray, axis: int | None = None) -> FloatArray:
@@ -244,6 +296,7 @@ def sample_mc_shrinkage(
         block_state: BlockState | None = None,
         batch_size: int | None = None,
         C_min: float = 20,
+        diagnostics: bool = True,
 ) -> EvidenceSamples:
     """
     Monte-Carlo evidence sampling with gamma-weighted phantom shrinkage.
@@ -265,8 +318,14 @@ def sample_mc_shrinkage(
         block_state: Optional canonical race-tree block state. When supplied, its
             block likelihoods, membership sizes, and incoming lineage counts are
             used instead of reconstructing blocks from per-sample live counts.
-        batch_size: Reserved for API compatibility; currently unused.
+        batch_size: Maximum number of independent Monte Carlo draws evaluated
+            at once. A final partial batch is supported. Batching bounds
+            working memory but full diagnostics still have an unavoidable
+            ``[num_Z_samples, num_blocks]`` output cost.
         C_min: Kish participating-cluster gate threshold. Defaults to 20.
+        diagnostics: Whether to retain per-draw, per-block probability and
+            phantom-addition arrays. Set this to false for the economical
+            evidence-summary path.
     Returns:
         EvidenceSamples with:
           - ``log_Z_samples``: evidence samples ``[num_Z_samples]``;
@@ -287,7 +346,11 @@ def sample_mc_shrinkage(
         num_samples=num_samples,
         block_state=block_state,
     )
-    return _sample_mc_shrinkage(
+    draws = _validate_mc_batching(
+        num_Z_samples=num_Z_samples,
+        batch_size=batch_size,
+    )
+    return _sample_mc_shrinkage_batches(
         key=key,
         log_L_constraints=log_L_constraints,
         log_L_classic=log_L_classic,
@@ -295,11 +358,38 @@ def sample_mc_shrinkage(
         valid_phantom=valid_phantom,
         log_L_phantom=log_L_phantom,
         num_samples=num_samples,
-        num_Z_samples=num_Z_samples,
+        num_Z_samples=draws,
         block_state=block_state,
         batch_size=batch_size,
         C_min=C_min,
+        diagnostics=diagnostics,
     )
+
+
+def _validate_mc_batching(
+        *,
+        num_Z_samples: int,
+        batch_size: int | None,
+) -> int:
+    """Validate static Monte Carlo draw counts at the Python boundary."""
+    if isinstance(num_Z_samples, bool) or not isinstance(
+            num_Z_samples,
+            (int, np.integer),
+    ):
+        raise TypeError("num_Z_samples must be a positive integer.")
+    draws = int(num_Z_samples)
+    if draws <= 0:
+        raise ValueError("num_Z_samples must be a positive integer.")
+    if batch_size is None:
+        return draws
+    if isinstance(batch_size, bool) or not isinstance(
+            batch_size,
+            (int, np.integer),
+    ):
+        raise TypeError("batch_size must be a positive integer or None.")
+    if int(batch_size) <= 0:
+        raise ValueError("batch_size must be a positive integer or None.")
+    return draws
 
 
 def validate_sample_mc_shrinkage_inputs(
@@ -1007,24 +1097,62 @@ def _summarise_gamma_log_dz_samples(
     return log_dZ_mean, log_dZ_var, weights
 
 
-def _sample_gamma_weighted_probabilities_from_events(
+def _evidence_batch_from_probabilities(
         *,
-        key: PRNGKey,
+        p_gt: FloatArray,
+        block_state: BlockState,
+) -> tuple[FloatArray, FloatArray, FloatArray]:
+    """Convert one ``[B, G]`` probability batch to evidence quantities."""
+    valid = block_state.valid
+    log_L = block_state.log_L_blocks
+    batch_size = p_gt.shape[0]
+    path_probability = jnp.where(
+        valid[None, :],
+        p_gt,
+        jnp.ones_like(p_gt),
+    )
+    path_probability = jnp.clip(path_probability, 1e-300, 1.0)
+    log_X = jnp.cumsum(jnp.log(path_probability), axis=-1)
+    log_X_prev = jnp.concatenate(
+        [
+            jnp.zeros((batch_size, 1), dtype=log_X.dtype),
+            log_X[:, :-1],
+        ],
+        axis=-1,
+    )
+    log_dX = _logdiffexp(log_X_prev, log_X)
+    log_dZ = jnp.where(
+        valid[None, :],
+        log_dX + log_L[None, :],
+        -jnp.inf,
+    )
+    log_Z = _logsumexp(log_dZ, axis=-1)
+    weights = jnp.exp(log_dZ - log_Z[:, None])
+    entropy_terms = jnp.where(
+        valid[None, :],
+        log_L[None, :] - log_Z[:, None],
+        0.0,
+    )
+    H = jnp.sum(weights * entropy_terms, axis=-1)
+    return log_Z, H, log_dZ
+
+
+def _prepare_phantom_events(
+        *,
         block_state: BlockState,
         log_L_constraints: FloatArray,
         valid_phantom: BoolArray,
         log_L_phantom: FloatArray,
         sample_mask: BoolArray,
-        num_Z_samples: int,
         C_min: float,
-):
-    """Sample phantom-conditioned races without a clusters-by-block matrix.
+) -> PhantomEvents:
+    """Build the sparse cluster events reused by every MC draw batch.
 
     Each phantom contributes interval boundaries in block index. Weighted
     cluster counts are therefore accumulated with difference arrays and
     cumulative sums. This is algebraically identical to multiplying the dense
-    A/B/E matrices by shared cluster gamma weights, but it keeps the MC path's
-    memory linear in clusters, events, blocks, and requested MC draws.
+    A/B/E matrices by shared cluster gamma weights without materialising a
+    clusters-by-block matrix.
     """
     log_L_blocks = block_state.log_L_blocks
     block_valid_mask = block_state.valid
@@ -1170,6 +1298,41 @@ def _sample_gamma_weighted_probabilities_from_events(
         & block_valid_mask
     )
 
+    return PhantomEvents(
+        start_idx=start_idx,
+        count_A_start=count_A_start,
+        count_B_start=count_B_start,
+        event_cluster_idx=event_cluster_idx,
+        event_a_hi=event_a_hi,
+        event_b_hi=event_b_hi,
+        event_A_active=event_A_active,
+        event_B_active=event_B_active,
+        event_eq_idx=event_eq_idx,
+        event_eq_active=event_eq_active,
+        cluster_presence=cluster_presence,
+        A=jnp.where(block_valid_mask, A_g, 0.0),
+        B=jnp.where(block_valid_mask, B_g, 0.0),
+        E=jnp.where(block_valid_mask, E_g, 0.0),
+        R=jnp.where(block_valid_mask, R_g, 0.0),
+        kish=jnp.where(block_valid_mask, kish, 0.0),
+        gate=gate,
+    )
+
+
+def _sample_gamma_weighted_probabilities_from_prepared_events(
+        *,
+        key: PRNGKey,
+        block_state: BlockState,
+        events: PhantomEvents,
+        num_Z_samples: int,
+) -> GammaWeightedPhantomProbabilitySamples:
+    """Draw races while reusing one deterministic sparse event plan."""
+    log_L_blocks = block_state.log_L_blocks
+    block_valid_mask = block_state.valid
+    dtype = log_L_blocks.dtype
+    num_blocks = log_L_blocks.shape[0]
+    num_clusters = events.cluster_presence.shape[0]
+
     key_gt, key_eq, key_lt, key_cluster = jax.random.split(key, 4)
     concentrations = classic_dirichlet_concentrations(block_state)
     atom_present = block_valid_mask & (concentrations.alpha_eq > 0.0)
@@ -1223,10 +1386,10 @@ def _sample_gamma_weighted_probabilities_from_events(
         shape=(num_Z_samples, num_clusters),
         dtype=dtype,
     )
-    weighted_A, weighted_B, weighted_E = jax.vmap(aggregate)(
-        cluster_weights * cluster_presence[None, :]
+    weighted_A, weighted_B, weighted_E = jax.vmap(events.aggregate)(
+        cluster_weights * events.cluster_presence[None, :]
     )
-    gate_value = gate.astype(dtype)[None, :]
+    gate_value = events.gate.astype(dtype)[None, :]
     # A singleton block is structurally two-class. Exact equality
     # observations therefore belong to the A-B complement; only a plateau
     # block may allocate them to a separate equality mass.
@@ -1252,16 +1415,53 @@ def _sample_gamma_weighted_probabilities_from_events(
         phantom_add_lt_samples=phantom_add_lt,
         kish_participating_cluster_counts=jnp.where(
             block_valid_mask,
-            kish,
+            events.kish,
             0.0,
         ),
-        phantom_gate_active=gate,
+        phantom_gate_active=events.gate,
         race_gamma_gt=race_gt,
         race_gamma_eq=race_eq,
         race_gamma_lt=race_lt,
         cluster_weights=cluster_weights,
     )
-    return probabilities, A_g, B_g, E_g, R_g, kish, gate
+    return probabilities
+
+
+def _sample_gamma_weighted_probabilities_from_events(
+        *,
+        key: PRNGKey,
+        block_state: BlockState,
+        log_L_constraints: FloatArray,
+        valid_phantom: BoolArray,
+        log_L_phantom: FloatArray,
+        sample_mask: BoolArray,
+        num_Z_samples: int,
+        C_min: float,
+):
+    """Sample phantom-conditioned races without dense count matrices."""
+    events = _prepare_phantom_events(
+        block_state=block_state,
+        log_L_constraints=log_L_constraints,
+        valid_phantom=valid_phantom,
+        log_L_phantom=log_L_phantom,
+        sample_mask=sample_mask,
+        C_min=C_min,
+    )
+    probabilities = _sample_gamma_weighted_probabilities_from_prepared_events(
+        key=key,
+        block_state=block_state,
+        events=events,
+        num_Z_samples=num_Z_samples,
+    )
+    return (
+        probabilities,
+        events.A,
+        events.B,
+        events.E,
+        events.R,
+        events.kish,
+        events.gate,
+    )
 
 
 def _sample_mc_shrinkage(
@@ -1275,10 +1475,9 @@ def _sample_mc_shrinkage(
         num_Z_samples: int,
         *,
         block_state: BlockState | None = None,
-        batch_size: int | None = None,
         C_min: float = 20,
+        diagnostics: bool = True,
 ) -> EvidenceSamples:
-    del batch_size
     N = log_L_classic.shape[0]
     sample_valid_mask = jnp.arange(N, dtype=jnp.int32) < num_samples
     positive_live_mask = K_classic > 0
@@ -1381,9 +1580,13 @@ def _sample_mc_shrinkage(
         )
         H_samples = jnp.sum(weights * entropy_terms, axis=-1)
         zeros = jnp.zeros((num_blocks,), dtype=log_L_blocks.dtype)
-        zero_additions = jnp.zeros(
-            (num_Z_samples, num_blocks),
-            dtype=log_L_blocks.dtype,
+        zero_additions = (
+            jnp.zeros(
+                (num_Z_samples, num_blocks),
+                dtype=log_L_blocks.dtype,
+            )
+            if diagnostics
+            else None
         )
         return EvidenceSamples(
             log_Z_samples=log_Z_samples,
@@ -1407,9 +1610,9 @@ def _sample_mc_shrinkage(
             classic_alpha_eq=classic_concentrations.alpha_eq,
             classic_alpha_lt=classic_concentrations.alpha_lt,
             epsilon=classic_concentrations.epsilon,
-            p_gt_samples=p_gt_samples,
-            p_eq_samples=p_eq_samples,
-            p_lt_samples=p_lt_samples,
+            p_gt_samples=p_gt_samples if diagnostics else None,
+            p_eq_samples=p_eq_samples if diagnostics else None,
+            p_lt_samples=p_lt_samples if diagnostics else None,
             p_gt_mean=jnp.mean(p_gt_samples, axis=0),
             p_eq_mean=jnp.mean(p_eq_samples, axis=0),
             p_lt_mean=jnp.mean(p_lt_samples, axis=0),
@@ -1494,13 +1697,403 @@ def _sample_mc_shrinkage(
         classic_alpha_eq=classic_concentrations.alpha_eq,
         classic_alpha_lt=classic_concentrations.alpha_lt,
         epsilon=classic_concentrations.epsilon,
-        p_gt_samples=probability_samples.p_gt_samples,
-        p_eq_samples=probability_samples.p_eq_samples,
-        p_lt_samples=probability_samples.p_lt_samples,
+        p_gt_samples=(
+            probability_samples.p_gt_samples if diagnostics else None
+        ),
+        p_eq_samples=(
+            probability_samples.p_eq_samples if diagnostics else None
+        ),
+        p_lt_samples=(
+            probability_samples.p_lt_samples if diagnostics else None
+        ),
         p_gt_mean=jnp.where(block_valid_mask, p_gt_mean, jnp.nan),
         p_eq_mean=jnp.where(block_valid_mask, p_eq_mean, jnp.nan),
         p_lt_mean=jnp.where(block_valid_mask, p_lt_mean, jnp.nan),
-        phantom_add_gt_samples=probability_samples.phantom_add_gt_samples,
-        phantom_add_eq_samples=probability_samples.phantom_add_eq_samples,
-        phantom_add_lt_samples=probability_samples.phantom_add_lt_samples,
+        phantom_add_gt_samples=(
+            probability_samples.phantom_add_gt_samples
+            if diagnostics
+            else None
+        ),
+        phantom_add_eq_samples=(
+            probability_samples.phantom_add_eq_samples
+            if diagnostics
+            else None
+        ),
+        phantom_add_lt_samples=(
+            probability_samples.phantom_add_lt_samples
+            if diagnostics
+            else None
+        ),
+    )
+
+
+def _sample_mc_shrinkage_summary(
+        key: PRNGKey,
+        log_L_constraints: FloatArray,
+        log_L_classic: FloatArray,
+        K_classic: IntArray,
+        valid_phantom: BoolArray,
+        log_L_phantom: FloatArray,
+        num_samples: IntArray,
+        num_Z_samples: int,
+        *,
+        block_state: BlockState,
+        batch_size: int,
+        C_min: float,
+) -> EvidenceSamples:
+    """Stream bounded batches inside one compiled evidence program."""
+    sample_mask = (
+        jnp.arange(log_L_classic.shape[0], dtype=jnp.int32) < num_samples
+    ) & (K_classic > 0)
+    concentrations = classic_dirichlet_concentrations(block_state)
+    valid = block_state.valid
+    dtype = block_state.log_L_blocks.dtype
+    num_blocks = block_state.log_L_blocks.shape[0]
+    num_batches = (num_Z_samples + batch_size - 1) // batch_size
+    draw_indices = jnp.arange(batch_size, dtype=jnp.int32)
+
+    if log_L_phantom.shape[1] == 0:
+        events = None
+        zeros = jnp.zeros((num_blocks,), dtype=dtype)
+        kish = zeros
+        gate = jnp.zeros((num_blocks,), dtype=mp_policy.bool_dtype)
+        phantom_A = zeros
+        phantom_B = zeros
+        phantom_E = zeros
+        phantom_R = zeros
+    else:
+        # Sorting and Kish-count preparation depend only on the completed
+        # race tree. Keep them outside the scan so increasing the number of
+        # MC batches does not repeat deterministic work.
+        events = _prepare_phantom_events(
+            block_state=block_state,
+            log_L_constraints=log_L_constraints,
+            valid_phantom=valid_phantom,
+            log_L_phantom=log_L_phantom,
+            sample_mask=sample_mask,
+            C_min=C_min,
+        )
+        kish = events.kish
+        gate = events.gate
+        phantom_A = events.A
+        phantom_B = events.B
+        phantom_E = events.E
+        phantom_R = events.R
+
+    def sample_batch(carry, batch_index):
+        # A scan makes batches sequential at device runtime, bounding the
+        # workspace while retaining vmap within each independent draw batch.
+        # This is separate from replacement sampling, whose width remains one
+        # parallel vmap in the nested-sampling depth loop.
+        batch_key = (
+            key
+            if num_batches == 1
+            else jax.random.fold_in(key, batch_index)
+        )
+        if events is None:
+            p_gt, p_eq, p_lt = sample_dirichlet_probabilities(
+                batch_key,
+                concentrations,
+                num_samples=batch_size,
+            )
+        else:
+            probability_samples = (
+                _sample_gamma_weighted_probabilities_from_prepared_events(
+                    key=batch_key,
+                    block_state=block_state,
+                    events=events,
+                    num_Z_samples=batch_size,
+                )
+            )
+            p_gt = probability_samples.p_gt_samples
+            p_eq = probability_samples.p_eq_samples
+            p_lt = probability_samples.p_lt_samples
+        log_Z, H, log_dZ = _evidence_batch_from_probabilities(
+            p_gt=p_gt,
+            block_state=block_state,
+        )
+        draw_mask = (
+            batch_index * batch_size + draw_indices < num_Z_samples
+        )
+        masked_log_dZ = jnp.where(draw_mask[:, None], log_dZ, -jnp.inf)
+        (
+            log_dZ_sum,
+            log_dZ_second_sum,
+            p_gt_sum,
+            p_eq_sum,
+            p_lt_sum,
+        ) = carry
+        # Only the required [M] evidence ensemble is emitted by the scan.
+        # Block summaries stay in the [G] carry, so even batch_size=1 cannot
+        # recreate a hidden [num_batches, G] memory cost.
+        updated = (
+            jnp.logaddexp(
+                log_dZ_sum,
+                _logsumexp(masked_log_dZ, axis=0),
+            ),
+            jnp.logaddexp(
+                log_dZ_second_sum,
+                _logsumexp(2.0 * masked_log_dZ, axis=0),
+            ),
+            p_gt_sum + jnp.sum(
+                jnp.where(draw_mask[:, None], p_gt, 0.0),
+                axis=0,
+            ),
+            p_eq_sum + jnp.sum(
+                jnp.where(draw_mask[:, None], p_eq, 0.0),
+                axis=0,
+            ),
+            p_lt_sum + jnp.sum(
+                jnp.where(draw_mask[:, None], p_lt, 0.0),
+                axis=0,
+            ),
+        )
+        emitted = (
+            jnp.where(draw_mask, log_Z, 0.0),
+            jnp.where(draw_mask, H, 0.0),
+        )
+        return updated, emitted
+
+    initial = (
+        jnp.full((num_blocks,), -jnp.inf, dtype=dtype),
+        jnp.full((num_blocks,), -jnp.inf, dtype=dtype),
+        jnp.zeros((num_blocks,), dtype=dtype),
+        jnp.zeros((num_blocks,), dtype=dtype),
+        jnp.zeros((num_blocks,), dtype=dtype),
+    )
+    summaries, batches = jax.lax.scan(
+        sample_batch,
+        initial,
+        jnp.arange(num_batches, dtype=jnp.int32),
+    )
+    (
+        log_dZ_sums,
+        log_dZ_second_sums,
+        p_gt_sums,
+        p_eq_sums,
+        p_lt_sums,
+    ) = summaries
+    log_Z_batches, H_batches = batches
+    log_draws = jnp.log(jnp.asarray(num_Z_samples, dtype=dtype))
+    log_dZ_mean = log_dZ_sums - log_draws
+    log_dZ_second = log_dZ_second_sums - log_draws
+    log_dZ_mean_sq = 2.0 * log_dZ_mean
+    log_dZ_var = jnp.where(
+        log_dZ_second > log_dZ_mean_sq,
+        _logdiffexp(log_dZ_second, log_dZ_mean_sq),
+        jnp.full_like(log_dZ_mean, -jnp.inf),
+    )
+    p_gt_mean = p_gt_sums / num_Z_samples
+    p_eq_mean = p_eq_sums / num_Z_samples
+    p_lt_mean = p_lt_sums / num_Z_samples
+    return EvidenceSamples(
+        log_Z_samples=log_Z_batches.reshape((-1,))[:num_Z_samples],
+        H_samples=H_batches.reshape((-1,))[:num_Z_samples],
+        log_dZ_mean=jnp.where(valid, log_dZ_mean, -jnp.inf),
+        log_dZ_var=jnp.where(valid, log_dZ_var, -jnp.inf),
+        log_L_blocks=block_state.log_L_blocks,
+        block_first_idx=block_state.block_first_idx.astype(jnp.int32),
+        block_size=block_state.block_size.astype(jnp.int32),
+        incoming_K=block_state.incoming_K.astype(jnp.int32),
+        kish_participating_cluster_counts=kish,
+        phantom_gate_active=gate,
+        phantom_A=phantom_A,
+        phantom_B=phantom_B,
+        phantom_E=phantom_E,
+        phantom_R=phantom_R,
+        classic_alpha_gt=concentrations.alpha_gt,
+        classic_alpha_eq=concentrations.alpha_eq,
+        classic_alpha_lt=concentrations.alpha_lt,
+        epsilon=concentrations.epsilon,
+        p_gt_samples=None,
+        p_eq_samples=None,
+        p_lt_samples=None,
+        p_gt_mean=jnp.where(valid, p_gt_mean, jnp.nan),
+        p_eq_mean=jnp.where(valid, p_eq_mean, jnp.nan),
+        p_lt_mean=jnp.where(valid, p_lt_mean, jnp.nan),
+        phantom_add_gt_samples=None,
+        phantom_add_eq_samples=None,
+        phantom_add_lt_samples=None,
+    )
+
+
+_sample_mc_shrinkage_jit = jax.jit(
+    _sample_mc_shrinkage,
+    static_argnames=("num_Z_samples", "diagnostics"),
+)
+
+_sample_mc_shrinkage_summary_jit = jax.jit(
+    _sample_mc_shrinkage_summary,
+    static_argnames=("num_Z_samples", "batch_size"),
+)
+
+
+def _sample_mc_shrinkage_batches(
+        key: PRNGKey,
+        log_L_constraints: FloatArray,
+        log_L_classic: FloatArray,
+        K_classic: IntArray,
+        valid_phantom: BoolArray,
+        log_L_phantom: FloatArray,
+        num_samples: IntArray,
+        num_Z_samples: int,
+        *,
+        block_state: BlockState | None,
+        batch_size: int | None,
+        C_min: float,
+        diagnostics: bool,
+) -> EvidenceSamples:
+    """Run independent draw batches and merge their sufficient statistics."""
+    size = num_Z_samples if batch_size is None else min(
+        int(batch_size),
+        num_Z_samples,
+    )
+    if not diagnostics and block_state is not None:
+        return _sample_mc_shrinkage_summary_jit(
+            key=key,
+            log_L_constraints=log_L_constraints,
+            log_L_classic=log_L_classic,
+            K_classic=K_classic,
+            valid_phantom=valid_phantom,
+            log_L_phantom=log_L_phantom,
+            num_samples=num_samples,
+            num_Z_samples=num_Z_samples,
+            block_state=block_state,
+            batch_size=size,
+            C_min=C_min,
+        )
+    batch_draws = [
+        min(size, num_Z_samples - start)
+        for start in range(0, num_Z_samples, size)
+    ]
+    # Preserve the original fixed-key result when no batching is necessary.
+    # Multiple batches receive independent streams, but a boundary never
+    # changes the definition or weight of a phantom cluster within a draw.
+    keys = (
+        [key]
+        if len(batch_draws) == 1
+        else list(jax.random.split(key, len(batch_draws)))
+    )
+    kernel = (
+        _sample_mc_shrinkage
+        if block_state is None
+        else _sample_mc_shrinkage_jit
+    )
+    log_Z_batches = []
+    H_batches = []
+    log_dZ_sums = []
+    log_dZ_second_sums = []
+    p_gt_sums = []
+    p_eq_sums = []
+    p_lt_sums = []
+    p_gt_batches = [] if diagnostics else None
+    p_eq_batches = [] if diagnostics else None
+    p_lt_batches = [] if diagnostics else None
+    add_gt_batches = [] if diagnostics else None
+    add_eq_batches = [] if diagnostics else None
+    add_lt_batches = [] if diagnostics else None
+    first = None
+
+    for batch_key, draws in zip(keys, batch_draws):
+        samples = kernel(
+            key=batch_key,
+            log_L_constraints=log_L_constraints,
+            log_L_classic=log_L_classic,
+            K_classic=K_classic,
+            valid_phantom=valid_phantom,
+            log_L_phantom=log_L_phantom,
+            num_samples=num_samples,
+            num_Z_samples=draws,
+            block_state=block_state,
+            C_min=C_min,
+            diagnostics=diagnostics,
+        )
+        # JAX dispatch is asynchronous. Waiting here prevents several batch
+        # workspaces from being live concurrently and makes `batch_size` a
+        # real peak-memory bound rather than only a nominal array shape.
+        jax.block_until_ready(samples)
+        if first is None:
+            first = samples
+        log_Z_batches.append(samples.log_Z_samples)
+        H_batches.append(samples.H_samples)
+        dtype = samples.log_dZ_mean.dtype
+        log_count = jnp.log(jnp.asarray(draws, dtype=dtype))
+        log_dZ_sums.append(samples.log_dZ_mean + log_count)
+        log_dZ_second_sums.append(
+            jnp.logaddexp(
+                samples.log_dZ_var,
+                2.0 * samples.log_dZ_mean,
+            ) + log_count
+        )
+        p_gt_sums.append(samples.p_gt_mean * draws)
+        p_eq_sums.append(samples.p_eq_mean * draws)
+        p_lt_sums.append(samples.p_lt_mean * draws)
+        if diagnostics:
+            p_gt_batches.append(samples.p_gt_samples)
+            p_eq_batches.append(samples.p_eq_samples)
+            p_lt_batches.append(samples.p_lt_samples)
+            add_gt_batches.append(samples.phantom_add_gt_samples)
+            add_eq_batches.append(samples.phantom_add_eq_samples)
+            add_lt_batches.append(samples.phantom_add_lt_samples)
+
+    dtype = first.log_dZ_mean.dtype
+    log_draws = jnp.log(jnp.asarray(num_Z_samples, dtype=dtype))
+    log_dZ_mean = _logsumexp(jnp.stack(log_dZ_sums), axis=0) - log_draws
+    log_dZ_second = (
+        _logsumexp(jnp.stack(log_dZ_second_sums), axis=0) - log_draws
+    )
+    log_dZ_mean_sq = 2.0 * log_dZ_mean
+    log_dZ_var = jnp.where(
+        log_dZ_second > log_dZ_mean_sq,
+        _logdiffexp(log_dZ_second, log_dZ_mean_sq),
+        jnp.full_like(log_dZ_mean, -jnp.inf),
+    )
+    p_gt_mean = jnp.sum(jnp.stack(p_gt_sums), axis=0) / num_Z_samples
+    p_eq_mean = jnp.sum(jnp.stack(p_eq_sums), axis=0) / num_Z_samples
+    p_lt_mean = jnp.sum(jnp.stack(p_lt_sums), axis=0) / num_Z_samples
+    # Block membership is the canonical validity marker. A finite-likelihood
+    # test would incorrectly reject a legitimate positive-infinite contour.
+    valid = first.block_size > 0
+    return EvidenceSamples(
+        log_Z_samples=jnp.concatenate(log_Z_batches),
+        H_samples=jnp.concatenate(H_batches),
+        log_dZ_mean=jnp.where(valid, log_dZ_mean, -jnp.inf),
+        log_dZ_var=jnp.where(valid, log_dZ_var, -jnp.inf),
+        log_L_blocks=first.log_L_blocks,
+        block_first_idx=first.block_first_idx,
+        block_size=first.block_size,
+        incoming_K=first.incoming_K,
+        kish_participating_cluster_counts=(
+            first.kish_participating_cluster_counts
+        ),
+        phantom_gate_active=first.phantom_gate_active,
+        phantom_A=first.phantom_A,
+        phantom_B=first.phantom_B,
+        phantom_E=first.phantom_E,
+        phantom_R=first.phantom_R,
+        classic_alpha_gt=first.classic_alpha_gt,
+        classic_alpha_eq=first.classic_alpha_eq,
+        classic_alpha_lt=first.classic_alpha_lt,
+        epsilon=first.epsilon,
+        p_gt_samples=(
+            jnp.concatenate(p_gt_batches) if diagnostics else None
+        ),
+        p_eq_samples=(
+            jnp.concatenate(p_eq_batches) if diagnostics else None
+        ),
+        p_lt_samples=(
+            jnp.concatenate(p_lt_batches) if diagnostics else None
+        ),
+        p_gt_mean=jnp.where(valid, p_gt_mean, jnp.nan),
+        p_eq_mean=jnp.where(valid, p_eq_mean, jnp.nan),
+        p_lt_mean=jnp.where(valid, p_lt_mean, jnp.nan),
+        phantom_add_gt_samples=(
+            jnp.concatenate(add_gt_batches) if diagnostics else None
+        ),
+        phantom_add_eq_samples=(
+            jnp.concatenate(add_eq_batches) if diagnostics else None
+        ),
+        phantom_add_lt_samples=(
+            jnp.concatenate(add_lt_batches) if diagnostics else None
+        ),
     )

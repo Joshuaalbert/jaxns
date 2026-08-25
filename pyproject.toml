@@ -21,32 +21,31 @@ classifiers = [
 urls = { "Homepage" = "https://github.com/joshuaalbert/jaxns" }
 dependencies = [
     "jax>=0.6.0",
-    "jaxlib",
     "jaxctx>=1.1.5",
-    "matplotlib",
     "numpy",
     "scipy",
     "tfp-nightly",
-    "zmq",
 ]
 
 [project.optional-dependencies]
+plotting = [
+    "matplotlib",
+]
 examples = [
+    "matplotlib",
     "scikit-learn",
     "optax",
 ]
 tests = [
+    "matplotlib",
     "scikit-learn",
     "networkx",
     "psutil",
     "pytest",
     "flake8",
     "ruff",
+    "tomli; python_version < '3.11'",
 ]
-
-[project.scripts]
-jaxns-fabric-scheduler = "jaxns.fabric.scheduler_launcher:main"
-jaxns-fabric-worker = "jaxns.fabric.worker_launcher:main"
 
 [tool.setuptools]
 include-package-data = true

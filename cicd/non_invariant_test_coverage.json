@@ -1,6 +1,26 @@
 {
   "schema_version": 1,
   "tests": {
+    "test_dependency_metadata_matches_feature_boundaries": {
+      "note": "Checks the current packaging classification and optional-extra metadata rather than an implementation-agnostic scientific contract.",
+      "path": "tests/test_optional_dependencies.py",
+      "reason": "packaging_boundary"
+    },
+    "test_full_diagnostics_support_a_partial_final_batch": {
+      "note": "Checks the opt-in full-diagnostic output schema over a partial final batch.",
+      "path": "tests/test_phantom_results.py",
+      "reason": "architecture_boundary"
+    },
+    "test_legacy_sample_evidence_uses_the_bounded_default": {
+      "note": "Checks that the legacy evidence convenience method shares the bounded default.",
+      "path": "tests/test_phantom_results.py",
+      "reason": "architecture_boundary"
+    },
+    "test_sample_evidence_mc_batches_have_exact_requested_shape": {
+      "note": "Checks the current bounded-batch result schema and batch-size edge cases.",
+      "path": "tests/test_phantom_results.py",
+      "reason": "architecture_boundary"
+    },
     "test_bruteforce_utilities_preserve_model_unit_dtypes": {
       "note": "Checks compatibility between the regular-grid diagnostic utilities and jaxctx's per-prior U-space dtype validation.",
       "path": "tests/test_utils.py",

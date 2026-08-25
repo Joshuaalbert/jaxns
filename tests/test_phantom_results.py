@@ -467,6 +467,196 @@ def test_results_sample_mc_shrinkage_uses_gamma_conditioning_when_gate_active():
     )
 
 
+@pytest.mark.parametrize("batch_size", [1, 4, 10, 64])
+def test_sample_evidence_mc_batches_have_exact_requested_shape(batch_size):
+    """Cover single, partial-final, exact, and larger-than-request batches."""
+    results = _make_single_block_gamma_public_result()
+
+    samples = results.sample_evidence_mc(
+        num_samples=10,
+        conditioning="phantom",
+        key=jax.random.PRNGKey(211),
+        batch_size=batch_size,
+    )
+
+    assert samples.log_Z_samples.shape == (10,)
+    assert samples.H_samples.shape == (10,)
+    assert samples.p_gt_samples is None
+    assert samples.p_eq_samples is None
+    assert samples.p_lt_samples is None
+    assert samples.phantom_add_gt_samples is None
+    assert np.all(np.isfinite(np.asarray(samples.log_Z_samples)))
+
+
+def test_sample_evidence_mc_batching_is_reproducible_and_matches_moments():
+    """A fixed key is repeatable and batching preserves the sampled law."""
+    results = _make_single_block_gamma_public_result()
+    key = jax.random.PRNGKey(223)
+    num_draws = 4096
+
+    batched = results.sample_evidence_mc(
+        num_samples=num_draws,
+        conditioning="phantom",
+        key=key,
+        batch_size=257,
+    )
+    repeated = results.sample_evidence_mc(
+        num_samples=num_draws,
+        conditioning="phantom",
+        key=key,
+        batch_size=257,
+    )
+    unbatched = results.sample_mc_shrinkage(
+        num_samples=num_draws,
+        conditioning="phantom",
+        key=key,
+        diagnostics=False,
+    )
+
+    np.testing.assert_array_equal(
+        np.asarray(batched.log_Z_samples),
+        np.asarray(repeated.log_Z_samples),
+    )
+    np.testing.assert_allclose(
+        float(batched.log_Z_mean),
+        float(unbatched.log_Z_mean),
+        atol=0.03,
+        rtol=0.0,
+    )
+    np.testing.assert_allclose(
+        float(batched.log_Z_uncert),
+        float(unbatched.log_Z_uncert),
+        atol=0.03,
+        rtol=0.0,
+    )
+    np.testing.assert_allclose(
+        np.asarray(batched.p_gt_mean),
+        np.asarray(unbatched.p_gt_mean),
+        atol=0.02,
+        rtol=0.0,
+    )
+    np.testing.assert_allclose(
+        np.exp(np.asarray(batched.log_dZ_mean)),
+        np.exp(np.asarray(unbatched.log_dZ_mean)),
+        atol=0.02,
+        rtol=0.0,
+    )
+
+
+def test_sample_evidence_mc_one_batch_preserves_fixed_key_draws():
+    results = _make_single_block_gamma_public_result()
+    key = jax.random.PRNGKey(227)
+
+    unbatched = results.sample_mc_shrinkage(
+        num_samples=10,
+        conditioning="phantom",
+        key=key,
+        diagnostics=False,
+    )
+    larger_batch = results.sample_evidence_mc(
+        num_samples=10,
+        conditioning="phantom",
+        key=key,
+        batch_size=100,
+    )
+
+    np.testing.assert_array_equal(
+        np.asarray(larger_batch.log_Z_samples),
+        np.asarray(unbatched.log_Z_samples),
+    )
+    np.testing.assert_array_equal(
+        np.asarray(larger_batch.H_samples),
+        np.asarray(unbatched.H_samples),
+    )
+
+
+@pytest.mark.parametrize("batch_size", [0, -1])
+def test_sample_evidence_mc_rejects_invalid_batch_sizes(batch_size):
+    results = _make_single_block_gamma_public_result()
+
+    with pytest.raises(ValueError, match="batch_size.*positive integer"):
+        results.sample_evidence_mc(
+            num_samples=10,
+            conditioning="phantom",
+            key=jax.random.PRNGKey(229),
+            batch_size=batch_size,
+        )
+
+
+def test_batched_summary_preserves_block_models_and_kish_gate():
+    plateau = _make_single_block_gamma_public_result()
+    active = plateau.sample_evidence_mc(
+        num_samples=128,
+        conditioning="phantom",
+        key=jax.random.PRNGKey(233),
+        batch_size=31,
+        C_min=20,
+    )
+    inactive = plateau.sample_evidence_mc(
+        num_samples=128,
+        conditioning="phantom",
+        key=jax.random.PRNGKey(233),
+        batch_size=31,
+        C_min=21,
+    )
+    singleton = _make_result_case().results.sample_evidence_mc(
+        num_samples=32,
+        conditioning="phantom",
+        key=jax.random.PRNGKey(239),
+        batch_size=7,
+        C_min=1,
+    )
+    classic = _make_padded_plateau_result(0).sample_evidence_mc(
+        num_samples=9,
+        conditioning="classic",
+        key=jax.random.PRNGKey(241),
+        batch_size=1,
+    )
+
+    assert bool(np.asarray(active.phantom_gate_active)[0])
+    assert not bool(np.asarray(inactive.phantom_gate_active)[0])
+    assert float(np.asarray(active.p_eq_mean)[0]) > 0.0
+    np.testing.assert_array_equal(
+        np.asarray(singleton.p_eq_mean),
+        np.zeros_like(np.asarray(singleton.p_eq_mean)),
+    )
+    np.testing.assert_array_equal(
+        np.asarray(classic.phantom_gate_active),
+        np.zeros_like(np.asarray(classic.phantom_gate_active), dtype=bool),
+    )
+
+
+def test_full_diagnostics_support_a_partial_final_batch():
+    results = _make_single_block_gamma_public_result()
+
+    samples = results.sample_evidence_mc(
+        num_samples=10,
+        conditioning="phantom",
+        key=jax.random.PRNGKey(251),
+        batch_size=4,
+        diagnostics=True,
+    )
+
+    assert samples.p_gt_samples.shape == (10, 1)
+    assert samples.p_eq_samples.shape == (10, 1)
+    assert samples.p_lt_samples.shape == (10, 1)
+    assert samples.phantom_add_gt_samples.shape == (10, 1)
+
+
+def test_legacy_sample_evidence_uses_the_bounded_default():
+    results = _make_single_block_gamma_public_result()
+    key = jax.random.PRNGKey(257)
+
+    default = results.sample_evidence(num_samples=100, key=key)
+    explicit = results.sample_evidence(
+        num_samples=100,
+        batch_size=64,
+        key=key,
+    )
+
+    np.testing.assert_array_equal(np.asarray(default), np.asarray(explicit))
+
+
 def test_results_sample_mc_shrinkage_matches_explicit_block_state_public_call():
     results = _make_single_block_gamma_public_result()
     block_state = results_module._block_state_from_results(results)

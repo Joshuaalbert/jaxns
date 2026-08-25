@@ -72,6 +72,11 @@
   "Dependence within a phantom cluster is preserved by sharing one random cluster weight across all observations and all blocks contributed by that cluster in one shrinkage draw.": [
     "test_deterministic_gamma_helper_reuses_cluster_weights_across_blocks_and_components"
   ],
+  "Changing how independent final Monte Carlo draws are batched does not change phantom-cluster identity, the joint shrinkage law, or the evidence distribution.": [
+    "test_sample_evidence_mc_batching_is_reproducible_and_matches_moments",
+    "test_sample_evidence_mc_one_batch_preserves_fixed_key_draws",
+    "test_batched_summary_preserves_block_models_and_kish_gate"
+  ],
   "A phantom contributes to a block only when its cluster parent contour is no stricter than the preceding block contour and the phantom lies beyond that preceding contour.": [
     "test_per_cluster_counts_are_parent_contour_gated_with_equality_and_open_interval",
     "test_reference_count_matrices_expose_parent_gated_R_and_aggregates"
@@ -145,7 +150,11 @@
     "test_count_matrix_validation_rejects_malformed_count_relations",
     "test_count_input_validation_rejects_stale_and_malformed_metadata",
     "test_results_sample_mc_shrinkage_rejects_malformed_arrays_before_jit",
-    "test_public_sample_mc_shrinkage_rejects_stale_block_likelihoods_before_jit"
+    "test_public_sample_mc_shrinkage_rejects_stale_block_likelihoods_before_jit",
+    "test_sample_evidence_mc_rejects_invalid_batch_sizes"
+  ],
+  "Importing and using the non-plotting scientific API does not require plotting dependencies, while requesting an unavailable optional feature fails with an actionable installation remedy.": [
+    "test_missing_plotting_dependency_has_actionable_error"
   ],
   "Numerically stable evidence arithmetic represents values across the supported likelihood dynamic range without converting avoidable underflow or overflow into finite scientific conclusions.": [
     "test_log_space",
