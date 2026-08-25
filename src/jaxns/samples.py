@@ -156,7 +156,36 @@ def _append_samples(self: Samples, insert_idx: IntArray, parent_idxs: IntArray, 
     # Parent storage indices exist only for this scatter. The persistent child
     # records its parent likelihood contour, while the updated degree is all
     # that later race reconstruction and shrinkage require.
-    appended = self.set_slice(insert_idx, samples)
+    batch_size = samples.log_likelihoods.shape[0]
+
+    def append_full_batch(_):
+        # Preserve the single dynamic-update operation on the ordinary hot
+        # path; a general scatter would add indexing work to every batch.
+        return self.set_slice(insert_idx, samples)
+
+    def append_partial_tail(_):
+        # A finite hard maximum need not be divisible by the static replacement
+        # width. Drop out-of-range inactive lanes so the valid prefix can fill
+        # the final physical slots without an S-1 allocation beyond the limit.
+        sample_indices = insert_idx + jnp.arange(
+            batch_size,
+            dtype=mp_policy.index_dtype,
+        )
+        return jax.tree.map(
+            lambda destination, source: destination.at[sample_indices].set(
+                source,
+                mode="drop",
+            ),
+            self,
+            samples,
+        )
+
+    appended = jax.lax.cond(
+        insert_idx + batch_size <= self.log_likelihoods.shape[0],
+        append_full_batch,
+        append_partial_tail,
+        operand=None,
+    )
     out_degree = appended.out_degree.at[parent_idxs].add(
         delta_parent_out_degree
     )

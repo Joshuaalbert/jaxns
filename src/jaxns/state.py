@@ -29,7 +29,7 @@ from jaxns.shrinkage import (
 )
 from jaxns.stats_utils import effective_sample_size_kish
 from jaxns.termination_condition import TerminationRegister
-from jaxns.types import FloatArray, IntArray
+from jaxns.types import BoolArray, FloatArray, IntArray
 
 
 @dataclasses.dataclass(slots=True, frozen=True)
@@ -54,6 +54,15 @@ class State(PureDataclassPytree):
     )
     likelihood_order: LikelihoodOrder | None = None
     random_key: jax.Array | None = None  # [2]
+    # While growth interrupts a depth epoch, this preserves the already-split
+    # key for the next Python goal boundary.
+    goal_key: jax.Array | None = None  # [2]
+    needs_growth: BoolArray = dataclasses.field(  # []
+        default_factory=lambda: jnp.asarray(False, mp_policy.bool_dtype)
+    )
+    depth_reached: BoolArray = dataclasses.field(  # []
+        default_factory=lambda: jnp.asarray(False, mp_policy.bool_dtype)
+    )
 
     def merge(self, other: 'State') -> 'State':
         """
@@ -166,7 +175,29 @@ class State(PureDataclassPytree):
         return _trim(self)
 
     def resize(self, max_samples: int) -> "State":
-        """Return a state with larger preallocated sample buffers."""
+        """Return a state with larger sample-indexed buffers.
+
+        Control status and the continuation key are preserved. The Python
+        runner, which owns the resize boundary, clears ``needs_growth`` only
+        immediately before it resumes the interrupted depth epoch.
+
+        Args:
+            max_samples: New physical leading dimension.
+
+        Returns:
+            A state with every sample-indexed buffer grown consistently.
+
+        Raises:
+            ValueError: If ``max_samples`` would shrink existing storage.
+        """
+        current_size = self.samples.log_likelihoods.shape[0]
+        if max_samples < current_size:
+            raise ValueError(
+                "State.resize only supports growth: "
+                f"current size is {current_size}, requested {max_samples}."
+            )
+        if max_samples == current_size:
+            return self
         return dataclasses.replace(
             self,
             samples=self.samples.resize(max_samples),
@@ -373,13 +404,26 @@ def _merge(self: State, other: State) -> 'State':
     assert jax.tree.structure(self.model) == jax.tree.structure(other.model), "Cannot merge states with different models"
     assert jax.tree.structure(self.args) == jax.tree.structure(other.args), "Cannot merge states with different args"
     assert jax.tree.structure(self.params) == jax.tree.structure(other.params), "Cannot merge states with different params"
+    termination_reason = jnp.bitwise_or(
+        self.termination_reason,
+        other.termination_reason,
+    )
+    terminal = termination_reason != 0
+    needs_growth = jnp.logical_and(
+        jnp.logical_not(terminal),
+        jnp.logical_or(self.needs_growth, other.needs_growth),
+    )
+    # A merge is a completed Python-level operation. If neither input is
+    # terminal nor requesting growth, the merged continuation is at a normal
+    # depth boundary rather than an ambiguous all-false control state.
+    depth_reached = jnp.logical_not(terminal | needs_growth)
     return State(
         root_out_degree=self.root_out_degree + other.root_out_degree,
         samples=self.samples.concat(other.samples),
         num_samples=self.num_samples + other.num_samples,
         log_L_supremum=jnp.maximum(self.log_L_supremum, other.log_L_supremum),
         U_supremum=jax.tree.map(lambda x, y: jnp.where(self.log_L_supremum >= other.log_L_supremum, x, y), self.U_supremum, other.U_supremum),
-        termination_reason=jnp.where(self.termination_reason != 0, self.termination_reason, other.termination_reason),
+        termination_reason=termination_reason,
         model=self.model,
         args=self.args,
         params=self.params,
@@ -389,6 +433,9 @@ def _merge(self: State, other: State) -> 'State':
         # first use instead of pretending either input ordering is still valid.
         likelihood_order=None,
         random_key=self.random_key,
+        goal_key=self.goal_key,
+        needs_growth=needs_growth,
+        depth_reached=depth_reached,
     )
 
 

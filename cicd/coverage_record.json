@@ -117,13 +117,15 @@
     "test_missing_stationary_seed_reparents_to_closest_shallower_contour"
   ],
   "Resuming a state with its stored random-stream position is scientifically equivalent to uninterrupted continuation under the same conditions.": [
-    "test_resume_uses_stored_key_and_matches_uninterrupted_run"
+    "test_resume_uses_stored_key_and_matches_uninterrupted_run",
+    "test_unlimited_growth_matches_preallocated_scientific_continuation"
   ],
   "A finite scientific sample limit is never exceeded, including by a partially filled replacement batch.": [
+    "test_finite_capacity_terminates_below_and_exactly_at_hard_maximum",
     "test_partial_batch_respects_non_multiple_max_samples"
   ],
   "A run that cannot satisfy its goal returns its resumable state rather than silently claiming that the goal was met.": [
-    "test_python_goal_loop_returns_after_depth_cannot_make_progress"
+    "test_python_goal_loop_reports_terminal_depth_budget_without_iteration"
   ],
   "Converting a state to results preserves every valid classic sample and excludes every unused capacity entry from user-facing sample statistics.": [
     "test_trim_keeps_log_l_blocks_aligned_to_trimmed_sample_size"

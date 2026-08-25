@@ -51,6 +51,26 @@
       "path": "tests/test_core.py",
       "reason": "architecture_boundary"
     },
+    "test_compiled_depth_classifies_normal_growth_and_terminal_returns": {
+      "note": "Checks the concrete state-carried control-status representation and precedence used at compiled depth boundaries.",
+      "path": "tests/test_core.py",
+      "reason": "architecture_boundary"
+    },
+    "test_sample_storage_modes_are_explicit_and_inspectable": {
+      "note": "Checks the public finite/unlimited storage configuration and resolved physical-capacity policy.",
+      "path": "tests/test_core.py",
+      "reason": "configuration_contract"
+    },
+    "test_state_merge_applies_terminal_growth_depth_precedence": {
+      "note": "Checks the current state-merge control-status representation and precedence.",
+      "path": "tests/test_state.py",
+      "reason": "architecture_boundary"
+    },
+    "test_state_resize_grows_all_sample_buffers_and_preserves_continuation": {
+      "note": "Checks the current sample-indexed buffer schema and immutable resize wiring.",
+      "path": "tests/test_state.py",
+      "reason": "architecture_boundary"
+    },
     "test_allocation_utilities_handle_tiny_positive_volume_without_inf": {
       "note": "Checks the current allocation utility, normalization, and target construction rather than an implementation-agnostic scientific contract.",
       "path": "tests/test_allocation.py",
