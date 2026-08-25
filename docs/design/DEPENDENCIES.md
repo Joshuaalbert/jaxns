@@ -25,7 +25,8 @@ operation consumes it. The source of truth for package metadata remains
   notebook and example feature set. Base modeling dependencies are inherited
   from JAXNS itself.
 - `tests`: Matplotlib, scikit-learn, NetworkX, psutil, pytest, flake8, and
-  Ruff, matching imports and tooling used by the test and review workflows.
+  Ruff, plus TOMLI on Python 3.10, matching imports and tooling used by the
+  test and review workflows.
 
 Distributed execution is intentionally not an extra yet. Publishing an empty
 or ZMQ-only extra would imply that a distributed JAXNS entry point exists when
@@ -49,7 +50,7 @@ development environment.
 
 ## Issue 256 validation record
 
-The built wheel is 113,365 bytes and declares only JAX, JAXCTX, NumPy, SciPy,
+The built wheel is 113,385 bytes and declares only JAX, JAXCTX, NumPy, SciPy,
 and TFP-nightly in base metadata. Its three extras contain exactly the packages
 listed above, and it has no console-entry-point metadata for the absent fabric
 implementation.
@@ -62,7 +63,7 @@ on the review machine; the range is dominated by wheel download variability.
 The Python 3.12 base environment occupied 752 MiB. The parent develop wheel
 installed into an otherwise equivalent environment occupied 982 MiB and took
 42.3 seconds because it additionally downloaded and installed the Matplotlib
-stack and the `zmq` shim plus PyZMQ. The candidate wheel itself is 4,367 bytes
+stack and the `zmq` shim plus PyZMQ. The candidate wheel itself is 4,387 bytes
 larger due to the lazy-import helper and bounded-MC implementation; wheel size
 is not the install-size driver.
 

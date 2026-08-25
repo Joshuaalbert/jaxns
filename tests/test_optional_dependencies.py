@@ -2,7 +2,11 @@ import builtins
 from pathlib import Path
 
 import pytest
-import tomllib
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python 3.10 test environment.
+    import tomli as tomllib
 
 from jaxns.optional import import_matplotlib
 
@@ -39,4 +43,5 @@ def test_dependency_metadata_matches_feature_boundaries():
     assert extras["plotting"] == ["matplotlib"]
     assert "matplotlib" in extras["examples"]
     assert "matplotlib" in extras["tests"]
+    assert "tomli; python_version < '3.11'" in extras["tests"]
     assert "scripts" not in project
