@@ -387,6 +387,71 @@ def _validate_race_tree_inputs(
             f"expected num_samples={num_samples}."
         )
 
+    # The global degree total alone cannot detect moving a child between
+    # contours. Cross-check the recorded edge origins so an internally
+    # balanced but scientifically different race cannot reach shrinkage.
+    root_children = int(np.sum(np.isneginf(log_L_constraints)))
+    if root_children != root_out_degree:
+        raise ValueError(
+            "Invalid race tree root out-degree: "
+            f"root_out_degree={root_out_degree}, but {root_children} "
+            "classic samples record the sentinel parent contour."
+        )
+
+    likelihood_contours, likelihood_inverse = np.unique(
+        log_likelihoods,
+        return_inverse=True,
+    )
+    degree_by_contour = np.zeros(likelihood_contours.shape, dtype=np.int64)
+    np.add.at(degree_by_contour, likelihood_inverse, out_degree)
+    parent_contours, children_by_contour = np.unique(
+        log_L_constraints,
+        return_counts=True,
+    )
+    finite_parent_contours = parent_contours[np.isfinite(parent_contours)]
+    contours = np.unique(
+        np.concatenate([likelihood_contours, finite_parent_contours])
+    )
+
+    # Aggregate both sides once. Re-scanning every sample for every contour
+    # would make result validation quadratic on the ordinary all-distinct
+    # likelihood path.
+    degree_positions = np.searchsorted(likelihood_contours, contours)
+    degree_matches = degree_positions < likelihood_contours.size
+    degree_matches &= (
+        likelihood_contours[np.minimum(
+            degree_positions,
+            likelihood_contours.size - 1,
+        )] == contours
+    )
+    recorded_degrees = np.zeros(contours.shape, dtype=np.int64)
+    recorded_degrees[degree_matches] = degree_by_contour[
+        degree_positions[degree_matches]
+    ]
+
+    child_positions = np.searchsorted(parent_contours, contours)
+    child_matches = child_positions < parent_contours.size
+    child_matches &= (
+        parent_contours[np.minimum(
+            child_positions,
+            parent_contours.size - 1,
+        )] == contours
+    )
+    recorded_children = np.zeros(contours.shape, dtype=np.int64)
+    recorded_children[child_matches] = children_by_contour[
+        child_positions[child_matches]
+    ]
+
+    mismatches = np.flatnonzero(recorded_degrees != recorded_children)
+    if mismatches.size:
+        bad = int(mismatches[0])
+        raise ValueError(
+            "Invalid race tree contour out-degree at "
+            f"log_L={contours[bad]}: block out-degree="
+            f"{recorded_degrees[bad]}, but {recorded_children[bad]} classic "
+            "samples record that parent contour."
+        )
+
 
 def validate_block_state(block_state: BlockState) -> None:
     """Validate block-level race-tree invariants with Python exceptions."""

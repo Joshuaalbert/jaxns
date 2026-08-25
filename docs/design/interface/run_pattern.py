@@ -94,7 +94,8 @@ with LoadBalancerClient(address='local') as lb:
     )
     # Model comparison science should be done with sampling shrinkage
     shrinkage_samples: EvidenceSamples = results.sample_mc_shrinkage(
-        num_samples=1000
+        num_samples=1000,
+        conditioning="classic",
     )
     log_Z_samples = shrinkage_samples.log_Z_samples  # [num_samples]
     plt.plot(results.log_L_blocks, shrinkage_samples.rho_values)

@@ -348,6 +348,14 @@ def _run_mixed_validity_probe():
     return ns.run(jax.random.PRNGKey(23))
 
 
+def _state_array_snapshot(state) -> list[np.ndarray]:
+    return [
+        np.array(leaf, copy=True)
+        for leaf in jax.tree.leaves(state)
+        if hasattr(leaf, "dtype")
+    ]
+
+
 def test_results_expose_public_phantom_conditioning_diagnostics():
     result_case = _make_result_case()
 
@@ -382,11 +390,30 @@ def test_results_expose_public_phantom_conditioning_diagnostics():
     np.testing.assert_allclose(np.asarray(diagnostics.R_g), [0.0, 0.0, 0.0])
 
 
+def test_posthoc_phantom_evidence_sampling_does_not_mutate_state():
+    state = _run_high_phantom_probe()
+    before = _state_array_snapshot(state)
+
+    evidence = state.sample_evidence_mc(
+        num_samples=64,
+        conditioning="phantom",
+        key=jax.random.PRNGKey(29),
+        C_min=0,
+    )
+    jax.block_until_ready(evidence)
+
+    after = _state_array_snapshot(state)
+    assert len(after) == len(before)
+    for before_array, after_array in zip(before, after, strict=True):
+        np.testing.assert_array_equal(after_array, before_array)
+
+
 def test_results_sample_mc_shrinkage_exposes_kish_gate_diagnostics_not_target_rho():
     result_case = _make_result_case()
 
     evidence_samples = result_case.results.sample_mc_shrinkage(
         num_samples=4,
+        conditioning="phantom",
         key=jax.random.PRNGKey(7),
         C_min=2,
     )
@@ -421,11 +448,13 @@ def test_results_sample_mc_shrinkage_uses_gamma_conditioning_when_gate_active():
 
     active = results.sample_mc_shrinkage(
         num_samples=num_draws,
+        conditioning="phantom",
         key=jax.random.PRNGKey(103),
         C_min=20,
     )
     inactive = results.sample_mc_shrinkage(
         num_samples=num_draws,
+        conditioning="phantom",
         key=jax.random.PRNGKey(103),
         C_min=21,
     )
@@ -475,6 +504,7 @@ def test_results_sample_mc_shrinkage_matches_explicit_block_state_public_call():
     key = jax.random.PRNGKey(107)
     result_samples = results.sample_mc_shrinkage(
         num_samples=16,
+        conditioning="phantom",
         key=key,
         C_min=20,
     )
@@ -532,6 +562,7 @@ def test_results_sample_mc_shrinkage_uses_block_state_helper(monkeypatch):
 
     got = results.sample_mc_shrinkage(
         num_samples=4,
+        conditioning="phantom",
         key=jax.random.PRNGKey(109),
         C_min=20,
     )
@@ -576,6 +607,7 @@ def test_trim_keeps_log_l_blocks_aligned_to_trimmed_sample_size():
     assert trimmed.block_data.log_L.shape == (2,)
     evidence_samples = trimmed.sample_mc_shrinkage(
         num_samples=4,
+        conditioning="phantom",
         key=jax.random.PRNGKey(13),
     )
     np.testing.assert_allclose(
@@ -592,6 +624,7 @@ def test_plateau_result_with_padded_inf_block_has_finite_h_samples(
 
     evidence_samples = results.sample_mc_shrinkage(
         num_samples=8,
+        conditioning="phantom" if num_phantom else "classic",
         key=jax.random.PRNGKey(53 + num_phantom),
     )
 
@@ -701,6 +734,7 @@ def test_results_sample_mc_shrinkage_rejects_malformed_arrays_before_jit():
     ):
         results.sample_mc_shrinkage(
             num_samples=4,
+            conditioning="phantom",
             key=jax.random.PRNGKey(31),
         )
 
@@ -718,6 +752,7 @@ def test_results_sample_mc_shrinkage_rejects_strict_contour_equality():
     with pytest.raises(ValueError, match="Strict contour.*must be greater"):
         results.sample_mc_shrinkage(
             num_samples=4,
+            conditioning="phantom",
             key=jax.random.PRNGKey(41),
         )
 
@@ -820,6 +855,7 @@ def test_results_sample_mc_shrinkage_rejects_stale_block_likelihoods_before_jit(
     ):
         results.sample_mc_shrinkage(
             num_samples=2,
+            conditioning="phantom",
             key=jax.random.PRNGKey(49),
         )
 
@@ -838,6 +874,31 @@ def test_results_cluster_block_fields_in_block_data():
     assert isinstance(block_data, PureDataclassPytree)
     with pytest.raises(dataclasses.FrozenInstanceError):
         block_data.size = jnp.asarray([1], dtype=mp_policy.count_dtype)
+
+
+def test_final_evidence_sampling_requires_explicit_conditioning():
+    results = _make_result_case().results
+    key = jax.random.PRNGKey(59)
+
+    with pytest.raises(TypeError, match="conditioning"):
+        results.sample_evidence(num_samples=2, key=key)
+    with pytest.raises(TypeError, match="conditioning"):
+        results.sample_mc_shrinkage(num_samples=2, key=key)
+    with pytest.raises(TypeError, match="conditioning"):
+        results.sample_evidence_mc(num_samples=2, key=key)
+
+    classic = results.sample_evidence(
+        num_samples=2,
+        conditioning="classic",
+        key=key,
+    )
+    phantom = results.sample_evidence(
+        num_samples=2,
+        conditioning="phantom",
+        key=key,
+    )
+    assert np.asarray(classic).shape == (2,)
+    assert np.asarray(phantom).shape == (2,)
 
 
 def test_nested_sampler_keeps_phantom_likelihood_only_with_legacy_flag():

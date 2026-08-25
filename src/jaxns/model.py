@@ -1,7 +1,8 @@
 import dataclasses
 import pickle
+from collections.abc import Callable
 from functools import partial
-from typing import Any, Callable
+from typing import Any
 
 import jax
 import numpy as np
@@ -10,7 +11,7 @@ from jaxctx import CtxParams, transform
 
 from jaxns.logging import jaxns_logger
 from jaxns.pytree import PureDataclassPytree
-from jaxns.types import PRNGKey, FloatArray, UType, XType
+from jaxns.types import FloatArray, PRNGKey, UType, XType
 
 __all__ = [
     'Model'
@@ -138,8 +139,7 @@ class Model(PureDataclassPytree):
         return _log_joint(self, U, args=args, params=params, allow_nan=allow_nan)
 
     def sanity_check(self, key: PRNGKey, args=(), params=None, num_samples: int = 100):
-        """
-        Performs a sanity check on the model.
+        """Validate representative prior draws and likelihood outputs.
 
         Args:
             key: PRNGKey
@@ -148,17 +148,42 @@ class Model(PureDataclassPytree):
             num_samples: number of samples to check
 
         Raises:
-            AssertionError: if any of the sampled prior variables are nan, or log_likelihood is +inf.
+            ValueError: If a sampled unit-hypercube leaf is non-finite or the
+                log-likelihood is not one scalar, is NaN, or is positive
+                infinity. Negative infinity is a valid zero-likelihood value.
         """
         jaxns_logger.info("Sanity check...")
-        for key in jax.random.split(key, num_samples):
-            u_sample = self.sample_U(key, args=args, params=params)
+        for sample_key in jax.random.split(key, num_samples):
+            u_sample = self.sample_U(sample_key, args=args, params=params)
+            for leaf_idx, leaf in enumerate(jax.tree.leaves(u_sample)):
+                leaf_array = np.asarray(leaf)
+                if not np.all(np.isfinite(leaf_array)):
+                    raise ValueError(
+                        "Model prior produced a non-finite unit-hypercube "
+                        f"leaf at index {leaf_idx}: {leaf_array}."
+                    )
 
-            log_likelihood = self.log_likelihood(u_sample, args=args, params=params, allow_nan=True)
-            if not jnp.isfinite(log_likelihood):
-                jaxns_logger.info(f"Found bad point:"
-                                  f"\n{u_sample} -> {self.transform_to_X(u_sample, args=args, params=params)}"
-                                  f"\nlog_likelihood: {log_likelihood}")
+            log_likelihood = self.log_likelihood(
+                u_sample,
+                args=args,
+                params=params,
+                allow_nan=True,
+            )
+            log_likelihood_array = np.asarray(log_likelihood)
+            invalid_likelihood = (
+                log_likelihood_array.shape != ()
+                or np.isnan(log_likelihood_array)
+                or np.isposinf(log_likelihood_array)
+            )
+            if invalid_likelihood:
+                raise ValueError(
+                    "Model log-likelihood must return one scalar per prior "
+                    "draw and cannot be NaN or positive infinity. Found bad "
+                    "point:"
+                    f"\n{u_sample} -> "
+                    f"{self.transform_to_X(u_sample, args=args, params=params)}"
+                    f"\nlog_likelihood: {log_likelihood_array}"
+                )
         jaxns_logger.info("Sanity check passed")
 
 

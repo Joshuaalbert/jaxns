@@ -47,7 +47,7 @@ jobs:
           matrix.python-version == '3.12' &&
           (github.event_name == 'push' ||
           (github.event_name == 'pull_request' &&
-          github.base_ref == 'main' && github.head_ref == 'develop'))
+          github.base_ref == 'main'))
         run: python -m pytest cicd/system_tests
 
       - name: Pre-release autochecks
@@ -55,5 +55,5 @@ jobs:
           matrix.python-version == '3.12' &&
           (github.event_name == 'push' ||
           (github.event_name == 'pull_request' &&
-          github.base_ref == 'main' && github.head_ref == 'develop'))
+          github.base_ref == 'main'))
         run: python cicd/pre_release_autochecks/check_all_invariants_covered.py

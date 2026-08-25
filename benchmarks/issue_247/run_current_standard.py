@@ -14,14 +14,20 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT))
 
+# Source selection must precede imports from the candidate checkout.
 import jax
 import numpy as np
 from jax import numpy as jnp
 
 import jaxns
+from benchmarks.v2_v3.io import append_record, completed_seeds
+from benchmarks.v2_v3.posterior import posterior_diagnostics
 from jaxns.constrained_sampler import UniDimSliceSampler
 from jaxns.core import NestedSampler, _run_depth
-from tests.test_ns_standard_problems import STANDARD_PROBLEM_CASES_BY_NAME
+from jaxns.shrinkage import scatter_block_values_to_samples
+from tests.test_ns_standard_problems import (
+    STANDARD_PROBLEM_CASES_BY_NAME,
+)
 
 
 def _environment():
@@ -41,7 +47,7 @@ def _environment():
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--case", required=True)
-    parser.add_argument("--source-id", default="working-tree")
+    parser.add_argument("--source-id", required=True)
     parser.add_argument("--phantoms", action="store_true")
     parser.add_argument(
         "--seeds",
@@ -57,8 +63,19 @@ def main():
     parser.add_argument("--output")
     args = parser.parse_args()
     output_path = None if args.output is None else Path(args.output)
-    if output_path is not None:
-        output_path.touch(exist_ok=False)
+    finished_seeds = completed_seeds(
+        output_path,
+        implementation="v3",
+        source_id=args.source_id,
+        case=args.case,
+        phantoms=args.phantoms,
+    )
+    requested_seeds = [int(value) for value in args.seeds.split(",")]
+    pending_seeds = [
+        seed for seed in requested_seeds if seed not in finished_seeds
+    ]
+    if not pending_seeds:
+        return
 
     case = STANDARD_PROBLEM_CASES_BY_NAME[args.case]
     model, truth = case.build_case()
@@ -158,10 +175,11 @@ def main():
                 if hasattr(memory, name)
             }
     base = {
-        "implementation": "current",
+        "implementation": "v3",
         "source_id": args.source_id,
         "case": args.case,
         "phantoms": args.phantoms,
+        "conditioning": "phantom" if args.phantoms else "classic",
         "truth_log_Z": float(truth),
         "ndims": ndims,
         "root_degree": root_degree,
@@ -180,7 +198,7 @@ def main():
         "environment": _environment(),
     }
     conditioning = "phantom" if args.phantoms else "classic"
-    for seed in [int(value) for value in args.seeds.split(",")]:
+    for seed in pending_seeds:
         key = jax.random.PRNGKey(seed)
         run_start = time.perf_counter()
         state = ns.run(key)
@@ -288,11 +306,27 @@ def main():
                 resource.RUSAGE_SELF
             ).ru_maxrss,
         })
+        if results.block_data is None:
+            raise ValueError(
+                "Posterior diagnostics require retained likelihood-block data."
+            )
+        # MC evidence is block aligned. Divide each block contribution among
+        # its equal-likelihood members before comparing posterior mode weights.
+        block_log_weights = evidence.log_dZ_mean - jnp.log(
+            jnp.maximum(results.block_data.size, 1)
+        )
+        posterior_log_weights = scatter_block_values_to_samples(
+            results.block_data.to_block_state(),
+            block_log_weights,
+        )
+        record.update(posterior_diagnostics(
+            args.case,
+            results.X_samples,
+            posterior_log_weights,
+        ))
         line = json.dumps(record, sort_keys=True)
         print(line, flush=True)
-        if output_path is not None:
-            with output_path.open("a") as output_file:
-                output_file.write(line + "\n")
+        append_record(output_path, line)
 
 
 if __name__ == "__main__":

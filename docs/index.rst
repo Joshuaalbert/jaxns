@@ -51,6 +51,14 @@ Our mission is to make nested sampling faster, easier, and more powerful.
 
 .. toctree::
    :maxdepth: 1
+   :caption: Release Notes
+   :glob:
+
+   releases/*
+
+
+.. toctree::
+   :maxdepth: 1
    :caption: API Reference
    :glob:
 

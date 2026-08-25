@@ -99,7 +99,11 @@ def test_to_result_marks_no_phantoms_invalid():
         np.zeros_like(np.asarray(results.block_data.log_L), dtype=bool),
     )
 
-    evidence_samples = results.sample_mc_shrinkage(num_samples=16, C_min=20)
+    evidence_samples = results.sample_mc_shrinkage(
+        num_samples=16,
+        conditioning="classic",
+        C_min=20,
+    )
     np.testing.assert_allclose(
         np.asarray(evidence_samples.kish_participating_cluster_counts),
         np.zeros_like(np.asarray(evidence_samples.log_L_blocks), dtype=float),
@@ -274,7 +278,11 @@ def test_state_sample_logZ_rejects_strict_contour_equality():
     state = _make_strict_contour_violation_state()
 
     with pytest.raises(ValueError, match="Strict contour.*must be greater"):
-        state.sample_logZ(random.PRNGKey(7), num_samples=2)
+        state.sample_logZ(
+            random.PRNGKey(7),
+            num_samples=2,
+            conditioning="classic",
+        )
 
 
 def test_state_to_result_rejects_strict_contour_equality():
@@ -307,7 +315,11 @@ def test_state_sample_logZ_uses_public_block_path():
         model=_make_basic_model(),
     )
 
-    log_Z = state.sample_logZ(random.PRNGKey(3), num_samples=5)
+    log_Z = state.sample_logZ(
+        random.PRNGKey(3),
+        num_samples=5,
+        conditioning="classic",
+    )
 
     assert np.asarray(log_Z).shape == (5,)
     assert np.all(np.isfinite(np.asarray(log_Z)))
@@ -316,13 +328,22 @@ def test_state_sample_logZ_uses_public_block_path():
 def test_state_sample_logZ_rejects_invalid_plateau_capacity():
     state = _make_invalid_plateau_capacity_state()
 
-    with pytest.raises(ValueError, match="K_g|m_g|incoming|plateau"):
-        state.sample_logZ(random.PRNGKey(5), num_samples=2)
+    # The malformed plateau also records two root children for a root degree
+    # of one, so edge-provenance validation may reject it before K_g < m_g.
+    with pytest.raises(
+        ValueError,
+        match="K_g|m_g|incoming|plateau|root out-degree",
+    ):
+        state.sample_logZ(
+            random.PRNGKey(5),
+            num_samples=2,
+            conditioning="classic",
+        )
 
 
 def test_state_to_result_evidence_summary_uses_block_model():
     samples = Samples(
-        log_L_constraints=jnp.array([-jnp.inf, -jnp.inf, -jnp.inf]),
+        log_L_constraints=jnp.array([-jnp.inf, -jnp.inf, 0.0]),
         log_likelihoods=jnp.array([0.0, 1.0, 1.0]),
         U_samples=jnp.array([0.20, 0.50, 0.80]),
         out_degree=jnp.array([1, 0, 0], dtype=jnp.int32),
@@ -451,5 +472,10 @@ def test_state_to_result_preserves_phantom_provenance_for_kish_diagnostics():
 def test_state_to_result_rejects_invalid_plateau_capacity():
     state = _make_invalid_plateau_capacity_state()
 
-    with pytest.raises(ValueError, match="K_g|m_g|incoming|plateau"):
+    # The malformed plateau also records two root children for a root degree
+    # of one, so edge-provenance validation may reject it before K_g < m_g.
+    with pytest.raises(
+        ValueError,
+        match="K_g|m_g|incoming|plateau|root out-degree",
+    ):
         state.to_result()

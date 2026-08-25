@@ -30,6 +30,7 @@ for case_name in "${cases[@]}"; do
     if [[ "${implementation}" == "current" ]]; then
       conda run --no-capture-output -n jaxns_py python \
         "${repo_root}/benchmarks/issue_247/run_current_standard.py" \
+        --source-id "$(git -C "${repo_root}" rev-parse HEAD)" \
         --case "${case_name}" \
         --seeds "${seeds}" \
         --mc-draws 1000 \

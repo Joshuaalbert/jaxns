@@ -15,6 +15,11 @@ REQUIRED_PATHS = (
     "cicd/demos/README.md",
     "cicd/benchmarks/README.md",
     "cicd/system_tests/README.md",
+    "benchmarks/v2_v3/README.md",
+    "benchmarks/v2_v3/environment-v2.yml",
+    "benchmarks/v2_v3/environment-v3.yml",
+    "benchmarks/v2_v3/prepare_environments.sh",
+    "benchmarks/v2_v3/run_release_matrix.sh",
 )
 
 ARRAY_ANNOTATION_MARKERS = (

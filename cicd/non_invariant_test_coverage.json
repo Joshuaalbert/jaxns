@@ -1,6 +1,26 @@
 {
   "schema_version": 1,
   "tests": {
+    "test_release_benchmark_output_resumes_only_matching_groups": {
+      "note": "Checks append-only orchestration identity guards and restart behavior for release artifacts.",
+      "path": "tests/test_release_benchmark.py",
+      "reason": "benchmark_harness"
+    },
+    "test_release_benchmark_posterior_reference_reports_mode_errors": {
+      "note": "Checks the maintained benchmark's analytic posterior diagnostic calculation rather than a production sampler invariant.",
+      "path": "tests/test_release_benchmark.py",
+      "reason": "benchmark_harness"
+    },
+    "test_release_benchmark_schema_accepts_complete_matched_matrix": {
+      "note": "Checks completeness and matched-setting validation for versioned release evidence.",
+      "path": "tests/test_release_benchmark.py",
+      "reason": "benchmark_harness"
+    },
+    "test_release_benchmark_schema_rejects_duplicates_and_setting_drift": {
+      "note": "Checks that malformed or scientifically unmatched release artifacts fail before summarization.",
+      "path": "tests/test_release_benchmark.py",
+      "reason": "benchmark_harness"
+    },
     "test_bruteforce_utilities_preserve_model_unit_dtypes": {
       "note": "Checks compatibility between the regular-grid diagnostic utilities and jaxctx's per-prior U-space dtype validation.",
       "path": "tests/test_utils.py",
@@ -21,20 +41,10 @@
       "path": "tests/test_phantom_results.py",
       "reason": "architecture_boundary"
     },
-    "test_state_to_result_evidence_summary_uses_block_model": {
-      "note": "Checks that state-to-result wiring selects the current block-model implementation.",
-      "path": "tests/test_state.py",
-      "reason": "result_schema_regression"
-    },
     "test_canonical_block_state_has_no_persisted_parent_field": {
       "note": "Checks the storage-schema requirement that parent indices remain derived rather than persistent.",
       "path": "tests/test_race_tree.py",
       "reason": "architecture_boundary"
-    },
-    "test_canonical_block_state_is_invariant_to_generation_order": {
-      "note": "Checks block-construction order independence without also exercising the broader evidence and posterior invariant.",
-      "path": "tests/test_race_tree.py",
-      "reason": "implementation_regression"
     },
     "test_phantom_likelihoods_do_not_drive_supremum_or_map_outputs": {
       "note": "Checks current result point-estimate wiring but does not prove that phantoms never enter the race tree.",
@@ -116,11 +126,6 @@
       "path": "tests/test_allocation.py",
       "reason": "implementation_formula"
     },
-    "test_build_utility_allocation_plan_uses_summaries_and_shared_targets": {
-      "note": "Checks the current allocation utility, normalization, and target construction rather than an implementation-agnostic scientific contract.",
-      "path": "tests/test_allocation.py",
-      "reason": "implementation_formula"
-    },
     "test_covariance_to_rotational": {
       "note": "Checks ellipsoidal geometry utilities which are outside the current release sampler.",
       "path": "tests/test_multi_ellipsoid.py",
@@ -151,11 +156,6 @@
       "path": "tests/test_allocation.py",
       "reason": "implementation_formula"
     },
-    "test_depth_relevance_is_a_complete_prefix_when_remaining_mass_rises": {
-      "note": "Checks the current compiled scheduler, append-order index, batching, or pytree architecture.",
-      "path": "tests/test_core.py",
-      "reason": "architecture_boundary"
-    },
     "test_ellipsoid_clustering": {
       "note": "Checks ellipsoidal geometry utilities which are outside the current release sampler.",
       "path": "tests/test_multi_ellipsoid.py",
@@ -175,11 +175,6 @@
       "note": "Checks Gaussian-mixture utilities reserved for future direction proposals.",
       "path": "tests/test_em_gmm.py",
       "reason": "deferred_sampler_utility"
-    },
-    "test_evidence_and_posterior_utilities_can_drive_different_targets": {
-      "note": "Checks the current allocation utility, normalization, and target construction rather than an implementation-agnostic scientific contract.",
-      "path": "tests/test_allocation.py",
-      "reason": "implementation_formula"
     },
     "test_evidence_improvement_nonpositive_evidence_falls_back_to_zero": {
       "note": "Checks the current allocation utility, normalization, and target construction rather than an implementation-agnostic scientific contract.",
@@ -336,11 +331,6 @@
       "path": "tests/test_allocation.py",
       "reason": "implementation_formula"
     },
-    "test_public_data_objects_are_frozen_and_slotted": {
-      "note": "Checks the current compiled scheduler, append-order index, batching, or pytree architecture.",
-      "path": "tests/test_core.py",
-      "reason": "architecture_boundary"
-    },
     "test_public_mc_shrinkage_rejects_invalid_plateau_capacity": {
       "note": "Checks a shrinkage helper, validation path, or diagnostic compatibility detail beyond mapped invariants.",
       "path": "tests/test_shrinkage.py",
@@ -490,11 +480,6 @@
       "note": "Checks the current compiled scheduler, append-order index, batching, or pytree architecture.",
       "path": "tests/test_core.py",
       "reason": "architecture_boundary"
-    },
-    "test_to_result_marks_no_phantoms_invalid": {
-      "note": "Checks current state/result wiring or validation timing beyond mapped scientific invariants.",
-      "path": "tests/test_state.py",
-      "reason": "result_schema_regression"
     },
     "test_treefield_arithmetic_preserves_wrapper_contract": {
       "note": "Checks generic pytree arithmetic and wrapper behavior.",

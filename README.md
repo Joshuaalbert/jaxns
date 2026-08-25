@@ -2,6 +2,12 @@
 [![PyPI](https://badge.fury.io/py/jaxns.svg)](https://badge.fury.io/py/jaxns)
 [![Documentation Status](https://readthedocs.org/projects/jaxns/badge/?version=latest)](https://jaxns.readthedocs.io/en/latest/?badge=latest)
 
+JAXNS v3 is the active release line. V2.6.9 is preserved on the
+[`v2` maintenance branch](https://github.com/Joshuaalbert/jaxns/tree/v2).
+Scientific users upgrading from v2 should read the
+[v2-to-v3 benchmark and migration guide](docs/user-guide/v2-to-v3.rst) and
+[version-support policy](docs/user-guide/version-support.rst).
+
 Main
 Status: ![Workflow name](https://github.com/JoshuaAlbert/jaxns/actions/workflows/unittests.yml/badge.svg?branch=main)
 
@@ -361,6 +367,11 @@ your CPUs by placing `os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_devi
 before importing JAXNS.
 
 # Change Log
+
+25 Aug, 2026 -- JAXNS 3.0.0 release candidate prepared. Introduces the race-tree core,
+resumable immutable state, explicit classic/phantom evidence inference, and a
+maintained v2-versus-v3 scientific release benchmark. The final v2.6.9 line is
+retained on the `v2` maintenance branch.
 
 3 Aug, 2025 -- JAXNS 2.6.9 released. Fix sdist, and TFP dependency.
 

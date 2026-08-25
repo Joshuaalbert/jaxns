@@ -1,5 +1,9 @@
 # Issue 247 accuracy and performance evidence
 
+This directory is the immutable initial v3.0 evidence corpus. New release
+comparisons use the pinned, commit-addressed harness in
+[`benchmarks/v2_v3`](../v2_v3/).
+
 This directory contains the version-isolated benchmark used for the review
 gate. `run_v2_standard.py` targets both the PyPI wheel and `main`; the two
 sources are measured through different import roots. `run_current_standard.py`
@@ -80,6 +84,7 @@ The `main` command substitutes
 ```bash
 conda run -n jaxns_py python \
   benchmarks/issue_247/run_current_standard.py \
+  --source-id "$(git rev-parse HEAD)" \
   --case spike_slab \
   --seeds 0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29 \
   --mc-draws 1000

@@ -8,6 +8,7 @@ import jax
 import numpy as np
 import pytest
 from jax import numpy as jnp
+from jaxctx import CtxParams
 
 from jaxns import core
 from jaxns.allocation import (
@@ -368,7 +369,9 @@ def test_partial_batch_respects_non_multiple_max_samples():
         termination_condition=TerminationCondition(max_samples=3),
     )
     state = dataclasses.replace(
-        ns.initialise(jax.random.PRNGKey(8)),
+        # Retain one physical padding row so the inactive second vmap lane is
+        # observable after the one-sample finite tail has been accepted.
+        ns.initialise(jax.random.PRNGKey(8)).resize(4),
         goal_loop_iter=jnp.asarray(1, dtype=jnp.int32),
     )
     next_state = ns.run_single_iteration(state)
@@ -379,6 +382,46 @@ def test_partial_batch_respects_non_multiple_max_samples():
         + int(jnp.sum(next_state.samples.out_degree[:3]))
         == 3
     )
+    np.testing.assert_array_equal(
+        np.asarray(next_state.samples.num_likelihood_evaluations),
+        np.asarray([1, 1, 1, 0]),
+    )
+    assert int(
+        next_state.to_result().total_num_likelihood_evaluations
+    ) == 3
+
+
+def test_state_to_result_preserves_model_args_and_params():
+    args = (jnp.asarray([1.5, 2.5]),)
+    params = CtxParams({"scale": jnp.asarray(3.0)})
+    sampler = NestedSampler(
+        model=make_toy_model(),
+        args=args,
+        params=params,
+        root_allocation_degree=2,
+        shell_size=1,
+        max_samples=3,
+        initial_capacity=3,
+    )
+    state = sampler.initialise(jax.random.PRNGKey(82))
+
+    results = state.to_result().trim()
+
+    assert results.model == state.model
+    assert jax.tree.structure(results.args) == jax.tree.structure(state.args)
+    assert jax.tree.structure(results.params) == jax.tree.structure(state.params)
+    for expected, actual in zip(
+            jax.tree.leaves(state.args),
+            jax.tree.leaves(results.args),
+            strict=True,
+    ):
+        np.testing.assert_array_equal(np.asarray(actual), np.asarray(expected))
+    for expected, actual in zip(
+            jax.tree.leaves(state.params),
+            jax.tree.leaves(results.params),
+            strict=True,
+    ):
+        np.testing.assert_array_equal(np.asarray(actual), np.asarray(expected))
 
 
 def test_outer_target_uses_fixed_initial_degree_not_mutable_root_degree():

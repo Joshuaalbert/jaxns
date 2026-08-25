@@ -11,9 +11,14 @@ import json
 import os
 import platform
 import resource
+import sys
 import time
 from pathlib import Path
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO_ROOT))
+
+# Source selection must precede imports from the isolated v2 environment.
 import jax
 import numpy as np
 from jax import numpy as jnp
@@ -22,11 +27,15 @@ from jax.scipy.special import erf, logsumexp
 from jaxns.framework.bases import PriorModelGen
 from jaxns.framework.model import Model
 from jaxns.framework.prior import Prior
-from jaxns.nested_samplers.common.types import TerminationCondition
+from jaxns.nested_samplers.common.types import (
+    TerminationCondition,
+)
 from jaxns.public import NestedSampler
 from tensorflow_probability.substrates import jax as tfp
 
 import jaxns
+from benchmarks.v2_v3.io import append_record, completed_seeds
+from benchmarks.v2_v3.posterior import posterior_diagnostics
 from jaxns.utils import sample_evidence
 
 tfpd = tfp.distributions
@@ -286,10 +295,10 @@ def main():
     parser.add_argument("--case", required=True)
     parser.add_argument(
         "--implementation-label",
-        choices=("v2-pypi", "main"),
-        default="v2-pypi",
+        choices=("v2", "v2-pypi", "main"),
+        default="v2",
     )
-    parser.add_argument("--source-id", default="jaxns==2.6.9")
+    parser.add_argument("--source-id", required=True)
     parser.add_argument("--phantoms", action="store_true")
     parser.add_argument(
         "--seeds",
@@ -300,8 +309,19 @@ def main():
     parser.add_argument("--output")
     args = parser.parse_args()
     output_path = None if args.output is None else Path(args.output)
-    if output_path is not None:
-        output_path.touch(exist_ok=False)
+    finished_seeds = completed_seeds(
+        output_path,
+        implementation=args.implementation_label,
+        source_id=args.source_id,
+        case=args.case,
+        phantoms=args.phantoms,
+    )
+    requested_seeds = [int(value) for value in args.seeds.split(",")]
+    pending_seeds = [
+        seed for seed in requested_seeds if seed not in finished_seeds
+    ]
+    if not pending_seeds:
+        return
 
     model, _, ndims = build_case(args.case)
     truth = jnp.asarray(STANDARD_TRUTH[args.case])
@@ -338,6 +358,7 @@ def main():
         "source_id": args.source_id,
         "case": args.case,
         "phantoms": args.phantoms,
+        "conditioning": "phantom" if args.phantoms else "classic",
         "truth_log_Z": float(truth),
         "ndims": ndims,
         "root_degree": root_degree,
@@ -350,7 +371,7 @@ def main():
         "hlo_text_bytes": len(lowered.as_text().encode()),
         "environment": _environment(),
     }
-    for seed in [int(value) for value in args.seeds.split(",")]:
+    for seed in pending_seeds:
         key = jax.random.PRNGKey(seed)
         run_start = time.perf_counter()
         reason, state = compiled(key)
@@ -395,11 +416,14 @@ def main():
                 resource.RUSAGE_SELF
             ).ru_maxrss,
         })
+        record.update(posterior_diagnostics(
+            args.case,
+            results.samples,
+            results.log_dp_mean,
+        ))
         line = json.dumps(record, sort_keys=True)
         print(line, flush=True)
-        if output_path is not None:
-            with output_path.open("a") as output_file:
-                output_file.write(line + "\n")
+        append_record(output_path, line)
 
 
 if __name__ == "__main__":

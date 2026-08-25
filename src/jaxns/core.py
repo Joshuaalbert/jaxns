@@ -7,6 +7,7 @@ from typing import Any, Literal, NamedTuple
 
 import jax
 import jax.numpy as jnp
+import numpy as np
 from jaxctx import CtxParams
 
 from jaxns.allocation import AllocationPlan, build_allocation_plan
@@ -389,6 +390,37 @@ def _sample_work_batch(
     )
 
 
+def _validate_initial_state_model_outputs(state: State) -> None:
+    """Reject malformed model outputs before exposing a sampling state."""
+    num_samples = int(np.asarray(state.num_samples))
+    log_likelihoods = np.asarray(
+        state.samples.log_likelihoods[:num_samples]
+    )
+    if log_likelihoods.shape != (num_samples,):
+        raise ValueError(
+            "Model log-likelihood must return one scalar per prior draw; "
+            f"root likelihoods have shape {log_likelihoods.shape}."
+        )
+    invalid_likelihood = np.flatnonzero(~np.isfinite(log_likelihoods))
+    if invalid_likelihood.size:
+        bad_idx = int(invalid_likelihood[0])
+        raise ValueError(
+            "Model log-likelihood must return one finite scalar per prior "
+            f"draw; root sample {bad_idx} returned "
+            f"{log_likelihoods[bad_idx]}."
+        )
+
+    # The state stores U directly, so malformed prior draws must be rejected at
+    # this same boundary instead of surviving as apparently valid samples.
+    for leaf_idx, leaf in enumerate(jax.tree.leaves(state.samples.U_samples)):
+        leaf_array = np.asarray(leaf[:num_samples])
+        if not np.all(np.isfinite(leaf_array)):
+            raise ValueError(
+                "Model prior produced a non-finite unit-hypercube leaf at "
+                f"index {leaf_idx}."
+            )
+
+
 def _accept_work_batch(
         state: State,
         work: CoreWorkBatch,
@@ -408,10 +440,13 @@ def _accept_work_batch(
         log_likelihoods=batch.log_likelihoods,
         U_samples=batch.U_samples,
         out_degree=jnp.zeros((shell_size,), mp_policy.count_dtype),
-        num_likelihood_evaluations=(
-            batch.num_likelihood_evaluations.astype(
-                mp_policy.count_dtype
-            )
+        num_likelihood_evaluations=jnp.where(
+            # All S lanes execute under vmap, but an inactive partial-batch
+            # lane generates no scientific sample. Its physical work must not
+            # be attributed to the valid sample prefix or later result totals.
+            work.valid,
+            batch.num_likelihood_evaluations.astype(mp_policy.count_dtype),
+            jnp.asarray(0, mp_policy.count_dtype),
         ),
         phantom_samples=stored_phantoms,
     )
@@ -753,7 +788,10 @@ def _sample_init_state(
                 U,
                 args=args,
                 params=params,
-                allow_nan=False,
+                # Preserve invalid values until the public initialise boundary
+                # can report them. Mapping NaN to -inf here would turn a model
+                # error into an unbounded root-redraw loop.
+                allow_nan=True,
             ).astype(mp_policy.measure_dtype)
             return draw_key, U, log_L, jnp.asarray(1, mp_policy.count_dtype)
 
@@ -995,7 +1033,13 @@ class NestedSampler(PureDataclassPytree):
         return cls.build_unflatten(aux_data, children)
 
     def initialise(self, key: PRNGKey | None = None) -> State:
-        """Create a resumable immutable root state."""
+        """Create a resumable immutable root state.
+
+        Raises:
+            ValueError: If the model produces a non-finite unit-hypercube
+                sample or does not return one finite scalar log-likelihood per
+                root draw.
+        """
         if key is None:
             key = jax.random.PRNGKey(42)
         init_key, run_key = jax.random.split(key)
@@ -1008,6 +1052,7 @@ class NestedSampler(PureDataclassPytree):
             sample_capacity=int(self.initial_capacity),
             num_phantom=int(self.sampler.num_phantom()),
         )
+        _validate_initial_state_model_outputs(state)
         return dataclasses.replace(
             state,
             random_key=run_key,

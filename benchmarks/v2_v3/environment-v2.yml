@@ -1,0 +1,15 @@
+name: jaxns-v2-benchmark
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12.9
+  - pip=25.1
+  - setuptools=78.1.1
+  - wheel=0.45.1
+  - pip:
+      - jax==0.10.0
+      - jaxlib==0.10.0
+      - matplotlib==3.10.3
+      - numpy==2.2.6
+      - scipy==1.15.3
+      - tfp-nightly==0.26.0.dev20260823

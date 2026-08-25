@@ -1,0 +1,18 @@
+JAXNS 3.0.0
+===========
+
+Release candidate prepared 25 August 2026.
+
+JAXNS 3.0 introduces the race-tree nested-sampling core, immutable resumable
+state, explicit classic and phantom-conditioned MC evidence inference, and
+bounded Python orchestration around compiled depth epochs. The v2.6.9 baseline
+is preserved on the ``v2`` maintenance branch.
+
+Before upgrading, read :doc:`../user-guide/v2-to-v3` for the matched
+30-seed-per-problem scientific comparison, changed APIs and defaults, known
+mode-allocation and phantom-memory residuals, and links to raw data and plots.
+The :doc:`../user-guide/version-support` page defines v2 backports and its
+support window.
+
+The release evidence and invariant-coverage gate are tracked by issues #247
+and #251. The maintained reproduction tooling is in ``benchmarks/v2_v3``.

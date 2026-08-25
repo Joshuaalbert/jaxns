@@ -1,4 +1,7 @@
 {
+  "A model defines a likelihood over a normalized prior measure, and the evidence is the prior expectation of that likelihood.": [
+    "test_nested_sampling_run_results"
+  ],
   "Every nested-sampling contour is strict: a point satisfies contour lambda exactly when its likelihood is greater than lambda.": [
     "test_block_state_rejects_strict_contour_violation",
     "test_state_consistency_rejects_strict_contour_violation",
@@ -7,6 +10,15 @@
   ],
   "A seed used for a constrained chain is stationary for the requested parent contour before the chain starts.": [
     "test_stationary_seed_mask_uses_generation_interval_not_suffix"
+  ],
+  "Every emitted classic child satisfies its recorded parent contour strictly.": [
+    "test_nested_sampling_run_results"
+  ],
+  "Every classic sample has exactly one parent contour, while the sentinel root has no parent and has strictly positive out-degree.": [
+    "test_parent_contour_child_counts_match_root_and_block_out_degrees"
+  ],
+  "A sample's out-degree is exactly the number of classic children generated from that sample's contour.": [
+    "test_parent_contour_child_counts_match_root_and_block_out_degrees"
   ],
   "The sentinel out-degree plus all classic-sample out-degrees equals the number of classic samples in a complete stored race tree.": [
     "test_block_state_rejects_inconsistent_out_degree_total"
@@ -19,6 +31,12 @@
   ],
   "Every valid race arrival has a strictly positive incoming active-lineage count.": [
     "test_canonical_block_state_rejects_plateau_with_too_few_lineages"
+  ],
+  "The likelihood contours and out-degrees determine the race shrinkage law independently of the physical storage order of samples.": [
+    "test_canonical_block_state_is_invariant_to_generation_order"
+  ],
+  "Permuting samples within an equal-likelihood block does not change block lineage counts, shrinkage, evidence, or posterior mass.": [
+    "test_equal_likelihood_permutation_preserves_shrinkage_evidence_and_posterior"
   ],
   "All classic samples at the same likelihood form one block, and distinct valid blocks are ordered by strictly increasing likelihood.": [
     "test_canonical_block_state_groups_plateaus_and_incoming_K_g"
@@ -55,8 +73,15 @@
   "The initial prior volume is one and the valid strict prior-volume sequence is non-increasing and remains between zero and one.": [
     "test_expected_volume_path_uses_dirichlet_p_gt_means"
   ],
+  "Every valid evidence contribution and unnormalized posterior weight is non-negative.": [
+    "test_sample_evidence_uses_strict_endpoint_recurrence",
+    "test_posterior_weights_split_plateau_equality_atom_mass"
+  ],
   "Evidence and posterior calculations use the strict volume beyond each block rather than a race rank censored inside a plateau.": [
     "test_sample_evidence_uses_strict_endpoint_recurrence"
+  ],
+  "Normalized posterior weights over valid samples sum to one whenever the evidence is finite and positive.": [
+    "test_posterior_weights_split_plateau_equality_atom_mass"
   ],
   "Classic Monte Carlo shrinkage draws follow the same block probability model used by the corresponding classic expectation calculation.": [
     "test_mc_linear_evidence_moments_match_deterministic_expectations",
@@ -64,6 +89,9 @@
   ],
   "Increasing the number of independent shrinkage draws makes Monte Carlo evidence summaries converge to the moments implied by the classic shrinkage model.": [
     "test_mc_linear_evidence_moments_match_deterministic_expectations"
+  ],
+  "Evidence and posterior results are invariant to a compatible reordering of stored classic samples.": [
+    "test_equal_likelihood_permutation_preserves_shrinkage_evidence_and_posterior"
   ],
   "Every phantom cluster is associated with one classic child and contains only retained chain states generated under that child's recorded parent contour.": [
     "test_each_retained_chain_is_one_kish_cluster",
@@ -116,9 +144,27 @@
   "Reparenting caused by a lack of stationary seeds preserves the constrained-prior law required by the newly recorded parent contour.": [
     "test_missing_stationary_seed_reparents_to_closest_shallower_contour"
   ],
+  "Allocation strategy may change where precision is added but cannot change the shrinkage law implied by the completed race tree.": [
+    "test_evidence_and_posterior_utilities_can_drive_different_targets",
+    "test_state_to_result_evidence_summary_uses_block_model"
+  ],
+  "A state contains all scientific data and random-stream position needed to continue its run without hidden mutable sampler state.": [
+    "test_resume_uses_stored_key_and_matches_uninterrupted_run"
+  ],
   "Resuming a state with its stored random-stream position is scientifically equivalent to uninterrupted continuation under the same conditions.": [
     "test_resume_uses_stored_key_and_matches_uninterrupted_run",
     "test_unlimited_growth_matches_preallocated_scientific_continuation"
+  ],
+  "The user-supplied goal condition is evaluated against complete immutable run states and determines successful user-goal termination.": [
+    "test_resume_uses_stored_key_and_matches_uninterrupted_run",
+    "test_public_data_objects_are_frozen_and_slotted"
+  ],
+  "A depth condition bounds one allocation epoch without being reported as successful satisfaction of the user's outer goal.": [
+    "test_python_goal_loop_reports_terminal_depth_budget_without_iteration"
+  ],
+  "Depth-loop evidence and posterior-tail conditions use online expectation estimates from classic samples and do not use phantom-conditioned Monte Carlo draws.": [
+    "test_build_utility_allocation_plan_uses_summaries_and_shared_targets",
+    "test_depth_relevance_is_a_complete_prefix_when_remaining_mass_rises"
   ],
   "A finite scientific sample limit is never exceeded, including by a partially filled replacement batch.": [
     "test_finite_capacity_terminates_below_and_exactly_at_hard_maximum",
@@ -130,6 +176,9 @@
   "Converting a state to results preserves every valid classic sample and excludes every unused capacity entry from user-facing sample statistics.": [
     "test_trim_keeps_log_l_blocks_aligned_to_trimmed_sample_size"
   ],
+  "Phantom evidence sampling fails clearly when the state lacks the metadata required for valid conditioning.": [
+    "test_to_result_marks_no_phantoms_invalid"
+  ],
   "Classic evidence sampling remains available whether or not phantom samples were collected.": [
     "test_reference_sample_mc_shrinkage_no_phantoms_uses_classic_gamma_path",
     "test_sample_mc_shrinkage_no_phantom_path_does_not_require_old_rho_diagnostics",
@@ -140,6 +189,9 @@
   ],
   "Independent logical random choices use non-overlapping random streams derived from the run key.": [
     "test_gamma_race_components_and_cluster_weights_are_independent_draws"
+  ],
+  "Repeating a run with the same model, configuration, inputs, and random key reproduces the same scientific state on the same supported execution platform.": [
+    "test_resume_uses_stored_key_and_matches_uninterrupted_run"
   ],
   "Invalid shapes, invalid lineage capacity, inconsistent block membership, or incompatible phantom metadata fail visibly before producing scientific summaries.": [
     "test_count_matrix_validation_rejects_malformed_count_relations",
@@ -155,5 +207,74 @@
   ],
   "Public effective-sample-size, uncertainty, and diagnostic quantities are finite whenever their mathematical inputs are finite and non-degenerate, and otherwise report the degenerate case explicitly.": [
     "test_linear_to_log_stats"
+  ],
+  "Sampling the model's unit-hypercube representation and transforming it to parameter space produces draws from the declared prior, including declared parameter dependencies.": [
+    "test_unit_cube_transform_matches_dependent_prior_likelihood_and_dimension"
+  ],
+  "Evaluating a model through its unit-hypercube representation gives the same likelihood as evaluating the corresponding transformed parameter values.": [
+    "test_unit_cube_transform_matches_dependent_prior_likelihood_and_dimension"
+  ],
+  "Model arguments and parameters used to create a run remain the arguments and parameters associated with every state and result derived from that run.": [
+    "test_state_to_result_preserves_model_args_and_params"
+  ],
+  "A model's reported unit-hypercube dimensionality equals the number of scalar unit-hypercube coordinates consumed by its prior transformation.": [
+    "test_unit_cube_transform_matches_dependent_prior_likelihood_and_dimension"
+  ],
+  "Invalid model outputs fail visibly rather than entering nested-sampling state as apparently valid scientific samples.": [
+    "test_initialise_rejects_nonfinite_model_outputs_before_returning_state",
+    "test_model_sanity_check_accepts_zero_likelihood_prior_draws"
+  ],
+  "A classic child associated with a parent contour has the constrained-prior marginal distribution above that parent contour.": [
+    "test_slice_sampler_preserves_stationary_constrained_uniform_distribution"
+  ],
+  "A constrained-sampling transition leaves the parent constrained-prior distribution invariant.": [
+    "test_slice_sampler_preserves_stationary_constrained_uniform_distribution"
+  ],
+  "Changing how valid constrained-sampling work is batched or scheduled does not change the marginal law of any classic child.": [
+    "test_slice_sampler_outputs_are_invariant_to_vmap_batch_partitioning"
+  ],
+  "Likelihood-evaluation accounting for a generated sample counts every likelihood evaluation used to generate that sample and no evaluations belonging to another sample.": [
+    "test_partial_batch_respects_non_multiple_max_samples"
+  ],
+  "Phantom samples are auxiliary constrained-prior observations and never participate as arrivals or lineages in the classic race tree.": [
+    "test_enabling_phantom_retention_does_not_change_classic_transition",
+    "test_retained_phantoms_are_generated_chain_prefix"
+  ],
+  "Retained phantom states have the constrained-prior marginal distribution of their cluster's parent contour.": [
+    "test_slice_sampler_preserves_stationary_constrained_uniform_distribution"
+  ],
+  "Phantom clusters treated as independent contributions originate from independently initialized stationary chains.": [
+    "test_slice_sampler_preserves_stationary_constrained_uniform_distribution",
+    "test_slice_sampler_outputs_are_invariant_to_vmap_batch_partitioning"
+  ],
+  "Collecting or retaining phantoms does not change the classic samples, race tree, or classic-conditioned result for the same random run.": [
+    "test_enabling_phantom_retention_does_not_change_classic_transition"
+  ],
+  "Phantom-conditioned evidence is an optional final inference over a completed state and does not alter the state used to generate the race.": [
+    "test_posthoc_phantom_evidence_sampling_does_not_mutate_state"
+  ],
+  "User-facing evidence sampling requires an explicit choice between classic and phantom conditioning.": [
+    "test_final_evidence_sampling_requires_explicit_conditioning"
+  ],
+  "Integrating a function over the posterior uses the result's normalized posterior measure and preserves the function's pytree structure.": [
+    "test_integrate_fn_over_posterior_normalizes_and_preserves_pytree"
+  ],
+  "Summary and plotting operations do not mutate the scientific result from which they are produced.": [
+    "test_summary_and_plots_do_not_mutate_scientific_results"
+  ],
+  "Changing only the random key may change a realization but does not change the target nested-sampling law.": [
+    "test_slice_sampler_preserves_stationary_constrained_uniform_distribution"
+  ],
+  "On a problem with known evidence, repeated normalized evidence errors are centered at zero and have unit-scale dispersion when the reported uncertainty is calibrated.": [
+    "test_known_evidence_normalized_errors_are_centered_and_unit_scale"
+  ],
+  "On a problem with a known posterior, posterior estimates converge to the known posterior as independent nested-sampling information increases.": [
+    "test_known_posterior_ensemble_converges_to_analytic_mean"
+  ],
+  "On a likelihood with known equality atoms, inferred strict volume and atom mass converge to their known values without treating singleton observations as atom evidence.": [
+    "test_known_likelihood_atom_recovers_strict_volume_and_atom_mass"
+  ],
+  "Enabling valid phantom conditioning may reduce uncertainty but does not introduce systematic evidence or posterior bias.": [
+    "test_phantom_conditioning_does_not_introduce_systematic_evidence_bias"
   ]
 }

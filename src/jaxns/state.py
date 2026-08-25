@@ -107,19 +107,40 @@ class State(PureDataclassPytree):
         """
         return _evaluate_evidence(self)
 
-    def sample_logZ(self, key, num_samples: int) -> FloatArray:
-        """
-        Samples log-evidence from the current state.
+    def sample_logZ(
+            self,
+            key,
+            num_samples: int,
+            *,
+            conditioning: Literal["classic", "phantom"],
+    ) -> FloatArray:
+        """Sample final log-evidence with explicit conditioning.
 
         Args:
             key: PRNGKey
             num_samples: how many sampels to produce.
+            conditioning: ``"classic"`` ignores retained phantoms;
+                ``"phantom"`` uses retained clusters subject to the Kish gate.
 
         Returns:
             samples of log-evidence.
         """
-        _validate_evidence_block_capacity(self)
-        return _sample_logZ(self, key, num_samples)
+        if conditioning not in ("classic", "phantom"):
+            raise ValueError(
+                "conditioning must be explicitly 'classic' or 'phantom'."
+            )
+        if conditioning == "classic":
+            # The classic state path needs only race blocks. Keep it independent
+            # of parameter-space transformation so evidence remains available
+            # on valid scientific states that have not been materialized as
+            # user-facing results.
+            _validate_evidence_block_capacity(self)
+            return _sample_logZ(self, key, num_samples)
+        return self.sample_evidence_mc(
+            num_samples=num_samples,
+            conditioning=conditioning,
+            key=key,
+        ).log_Z_samples
 
     def sample_evidence_mc(
             self,
@@ -369,6 +390,9 @@ def _to_result(self: State) -> NestedSamplerResults:
         log_L_constraints=log_L_constraints,
         log_L_phantom=log_L_phantom,
         valid_phantom=valid_phantom,
+        model=self.model,
+        args=self.args,
+        params=self.params,
         block_data=BlockData(
             log_L=block_state.log_L_blocks,
             first_idx=block_state.block_first_idx,

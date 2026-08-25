@@ -5,9 +5,16 @@ from typing import NamedTuple
 import numpy as np
 import pytest
 from jax import numpy as jnp
+from jax import random
 
 from jaxns.race_tree import build_block_state
 from jaxns.samples import PhantomSamples, Samples
+from jaxns.shrinkage import (
+    classic_dirichlet_concentrations,
+    expected_evidence_summary,
+    expected_log_posterior_weights,
+    sample_evidence,
+)
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -47,7 +54,7 @@ def _plateau_race_tree_fixture() -> RaceTreeFixture:
         ),
         log_likelihoods=np.array([2.0, 1.0, 2.0, 4.0, 3.0, 3.0]),
         log_L_constraints=np.array(
-            [1.0, -np.inf, -np.inf, 3.0, 2.0, 1.0],
+            [1.0, -np.inf, -np.inf, -np.inf, 2.0, 1.0],
         ),
         out_degree=np.array([1, 2, 0, 0, 0, 0], dtype=np.int32),
     )
@@ -160,6 +167,140 @@ def test_canonical_block_state_is_invariant_to_generation_order() -> None:
     _assert_blocks_match_expected(blocks, expected)
 
 
+def test_parent_contour_child_counts_match_root_and_block_out_degrees() -> None:
+    fixture = _plateau_race_tree_fixture()
+
+    # The sentinel is not a stored sample. Its out-degree is represented by
+    # the number of classic samples whose one recorded parent contour is the
+    # sentinel contour, -inf.
+    assert fixture.root_out_degree > 0
+    assert fixture.log_L_constraints.shape == fixture.log_likelihoods.shape
+    assert (
+        np.sum(np.isneginf(fixture.log_L_constraints))
+        == fixture.root_out_degree
+    )
+    for contour in np.unique(fixture.log_likelihoods):
+        block_degree = np.sum(
+            fixture.out_degree[fixture.log_likelihoods == contour]
+        )
+        generated_children = np.sum(
+            fixture.log_L_constraints == contour
+        )
+        assert block_degree == generated_children
+
+    _derive_blocks(fixture)
+
+    bad_root = dataclasses.replace(
+        fixture,
+        root_out_degree=4,
+        out_degree=np.array([1, 1, 0, 0, 0, 0], dtype=np.int32),
+    )
+    with pytest.raises(ValueError, match="root out-degree"):
+        _derive_blocks(bad_root)
+
+    # Keep the global degree total unchanged while moving one child from its
+    # recorded finite parent contour to the root. Only the per-contour check
+    # can distinguish this scientifically different race.
+    bad_contours = dataclasses.replace(
+        fixture,
+        log_L_constraints=np.array(
+            [1.0, -np.inf, -np.inf, -np.inf, 1.0, 1.0],
+        ),
+    )
+    with pytest.raises(ValueError, match="contour out-degree"):
+        _derive_blocks(bad_contours)
+
+
+def test_equal_likelihood_permutation_preserves_shrinkage_evidence_and_posterior() -> None:
+    fixture = dataclasses.replace(
+        _plateau_race_tree_fixture(),
+        sample_indices=np.arange(6, dtype=np.int32),
+    )
+    equal_block_permutation = np.array(
+        [0, 1, 2, 3, 5, 4],
+        dtype=np.int32,
+    )
+    storage_permutation = np.array(
+        [5, 3, 0, 2, 1, 4],
+        dtype=np.int32,
+    )
+
+    reference_blocks = _derive_blocks(fixture)
+    reference_concentrations = classic_dirichlet_concentrations(
+        reference_blocks
+    )
+    reference_summary = expected_evidence_summary(
+        reference_blocks,
+        reference_concentrations,
+    )
+    reference_posterior = expected_log_posterior_weights(
+        reference_blocks,
+        reference_concentrations,
+    )
+    reference_draws = sample_evidence(
+        random.PRNGKey(29),
+        reference_blocks,
+        reference_concentrations,
+        num_samples=32,
+    )
+
+    for permutation in (equal_block_permutation, storage_permutation):
+        permuted_blocks = _derive_blocks(fixture.permute(permutation))
+        permuted_concentrations = classic_dirichlet_concentrations(
+            permuted_blocks
+        )
+        permuted_summary = expected_evidence_summary(
+            permuted_blocks,
+            permuted_concentrations,
+        )
+        permuted_posterior = expected_log_posterior_weights(
+            permuted_blocks,
+            permuted_concentrations,
+        )
+        permuted_draws = sample_evidence(
+            random.PRNGKey(29),
+            permuted_blocks,
+            permuted_concentrations,
+            num_samples=32,
+        )
+
+        for field_name in (
+            "log_L_blocks",
+            "block_size",
+            "incoming_K",
+            "block_out_degree",
+            "block_sample_indices",
+        ):
+            np.testing.assert_array_equal(
+                np.asarray(getattr(permuted_blocks, field_name)),
+                np.asarray(getattr(reference_blocks, field_name)),
+            )
+        for field_name in (
+            "log_Z_mean",
+            "log_Z_uncert",
+            "log_Z_linear_mean",
+            "log_Z2_linear_mean",
+            "log_dZ_mean",
+            "log_X_mean",
+        ):
+            np.testing.assert_allclose(
+                np.asarray(getattr(permuted_summary, field_name)),
+                np.asarray(getattr(reference_summary, field_name)),
+            )
+        np.testing.assert_allclose(
+            np.asarray(permuted_posterior),
+            np.asarray(reference_posterior),
+        )
+        np.testing.assert_allclose(
+            np.asarray(permuted_draws.log_Z_samples),
+            np.asarray(reference_draws.log_Z_samples),
+        )
+        np.testing.assert_allclose(
+            np.asarray(permuted_draws.log_dZ_samples),
+            np.asarray(reference_draws.log_dZ_samples),
+        )
+
+
 def test_canonical_block_state_has_no_persisted_parent_field() -> None:
     forbidden_names = {
         "parent",
@@ -192,7 +333,13 @@ def test_canonical_block_state_rejects_plateau_with_too_few_lineages() -> None:
         out_degree=np.array([1, 0], dtype=np.int32),
     )
 
-    with pytest.raises(ValueError, match="K_g|m_g|incoming|lineage"):
+    # A plateau wider than the incoming root population is already
+    # inconsistent with the sentinel's recorded child count. Either the edge
+    # provenance check or the downstream K_g check may reject it first.
+    with pytest.raises(
+        ValueError,
+        match="K_g|m_g|incoming|lineage|root out-degree",
+    ):
         _derive_blocks(fixture)
 
 

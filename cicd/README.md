@@ -30,8 +30,10 @@ The normal lifecycle is:
 
 1. A feature pull request into `develop` runs unit tests and reviewer checks.
 2. A push to `develop` runs the executable demos.
-3. A `develop` to `main` pull request additionally runs system tests and the
-   complete-invariant-coverage release gate.
+3. Any pull request targeting `main` additionally runs system tests and the
+   complete-invariant-coverage release gate. The release PR normally
+   integrates `develop`, even when its branch was created from the final
+   release baseline for transition bookkeeping.
 4. Maintained benchmarks are run deliberately on controlled hardware and
    attached to release or performance-review evidence; noisy shared-runner
    timing is not a pull-request gate.

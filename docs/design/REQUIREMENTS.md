@@ -182,6 +182,29 @@ properties that must hold independently of implementation live in
 - Requirement: JAXNS v3 must be at least as accurate and performant as the latest released v2 on
   the maintained standard-problem benchmark, with regressions explained and resolved before
   release.
+- Requirement: Maintained release evidence is produced from full source commits in separate
+  pinned v2 and v3 environments; a mutable working tree or ambient editable install is not a
+  release artifact.
+- Requirement: The release benchmark rejects missing or duplicate seeds, non-finite results,
+  mixed source commits, and drift in matched termination, root allocation, slice effort, or
+  analytic truth before generating a release summary.
+- Requirement: Posterior diagnostics report analytic posterior-mean error where available and
+  explicit mode weights, missed modes, and incorrectly weighted modes for Gaussian-mixture
+  problems.
+
+## Release-Line Maintenance
+
+- Requirement: The `v2` maintenance branch begins at commit
+  `2f356d6d497ce3ac471fb9a06f9d22587487aaaa`, the exact final v2.6.9 commit on `main` before the
+  v3 transition.
+- Requirement: V2 backports are limited to demonstrated correctness, security, documented
+  regressions, packaging compatibility, and documentation that prevents materially incorrect
+  scientific use.
+- Requirement: A backport that cannot be cleanly cherry-picked is independently implemented and
+  reviewed against the active-line scientific contract without importing v3-only architecture.
+- Requirement: V2 maintenance releases are tagged from `v2`, retain their pinned environment and
+  benchmark evidence, and follow the support window documented in
+  `docs/user-guide/version-support.rst`.
 
 ## CI/CD Test Ownership
 

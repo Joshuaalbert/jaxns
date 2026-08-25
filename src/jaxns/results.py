@@ -16,6 +16,7 @@ from scipy.stats import gaussian_kde
 from jaxns.cumulative_ops import batch_reduce
 from jaxns.log_semiring import LogSpace, cumulative_logsumexp, normalise_log_space
 from jaxns.mixed_precision import mp_policy
+from jaxns.model import Model
 from jaxns.phantom_eval import (
     EvidenceSamples,
     compute_phantom_count_matrices,
@@ -168,6 +169,12 @@ class NestedSamplerResults(PureDataclassPytree):
     U_map: UType  # [...] unit-hypercube pytree MAP point
     X_map: XType  # [...] parameter pytree MAP point
     block_data: BlockData | None = None
+    # Results retain their originating run context so later transformations,
+    # serialization, and user inspection cannot silently detach the samples
+    # from the model and inputs that gave them scientific meaning.
+    model: Model | None = None
+    args: tuple = ()
+    params: CtxParams | None = None
 
     @property
     def expected_log_Z_mean(self) -> FloatArray:
@@ -265,12 +272,20 @@ class NestedSamplerResults(PureDataclassPytree):
 
         return _integrate_fn_over_posterior(self, fn, semi_positive=semi_positive, batch_size=batch_size)
 
-    def sample_evidence(self, num_samples: int, batch_size: int | None = None, key: PRNGKey | None = None) -> FloatArray:
-        """
-        Sample the evidence using the shrinkage method.
+    def sample_evidence(
+            self,
+            num_samples: int,
+            *,
+            conditioning: EvidenceConditioning,
+            batch_size: int | None = None,
+            key: PRNGKey | None = None,
+    ) -> FloatArray:
+        """Sample final log-evidence with explicit conditioning.
 
         Args:
             num_samples: number of evidence samples to draw
+            conditioning: ``"classic"`` ignores retained phantoms;
+                ``"phantom"`` uses retained clusters subject to the Kish gate.
             batch_size: optional, how many samples to process in a batch when applying the function.
             key: optional, PRNGKey for resampling
 
@@ -279,30 +294,43 @@ class NestedSamplerResults(PureDataclassPytree):
         """
         if key is None:
             key = jax.random.PRNGKey(42)
-        return _sample_evidence(self, num_samples=num_samples, batch_size=batch_size, key=key)
+        return self.sample_evidence_mc(
+            num_samples=num_samples,
+            conditioning=conditioning,
+            batch_size=batch_size,
+            key=key,
+        ).log_Z_samples
 
     def sample_mc_shrinkage(
             self,
             num_samples: int,
+            *,
+            conditioning: EvidenceConditioning,
             batch_size: int | None = None,
             key: PRNGKey | None = None,
             C_min: float = 20,
-            conditioning: Literal["auto", "classic", "phantom"] = "auto",
     ) -> EvidenceSamples:
-        """
-        Sample the evidence using the MC shrinkage method.
+        """Sample final evidence and shrinkage with explicit conditioning.
 
         Args:
             num_samples: number of evidence samples to draw
+            conditioning: ``"classic"`` ignores retained phantoms;
+                ``"phantom"`` uses retained clusters subject to the Kish gate.
             batch_size: optional, how many samples to process in a batch when applying the function.
             key: optional, PRNGKey for resampling
+            C_min: Minimum participating-cluster Kish count for conditioning.
 
         Returns:
             EvidenceSamples object containing samples of the evidence and related statistics.
         """
-        if conditioning not in ("auto", "classic", "phantom"):
+        if conditioning not in ("classic", "phantom"):
             raise ValueError(
-                "conditioning must be 'auto', 'classic', or 'phantom'."
+                "conditioning must be explicitly 'classic' or 'phantom'."
+            )
+        if conditioning == "phantom" and self.log_L_phantom.shape[1] == 0:
+            raise ValueError(
+                "Phantom conditioning was requested, but no phantom slots "
+                "were collected."
             )
         if key is None:
             key = jax.random.PRNGKey(42)
@@ -441,7 +469,12 @@ def _block_state_from_results(self: NestedSamplerResults) -> BlockState | None:
 
 @partial(jax.jit, inline=True, static_argnames=['num_samples', 'batch_size'])
 def _ess_with_phantom(self: NestedSamplerResults, num_samples: int, batch_size: int | None = None, key: PRNGKey | None = None) -> FloatArray:
-    evidence_samples = self.sample_mc_shrinkage(num_samples=num_samples, batch_size=batch_size, key=key)
+    evidence_samples = self.sample_mc_shrinkage(
+        num_samples=num_samples,
+        conditioning="phantom",
+        batch_size=batch_size,
+        key=key,
+    )
     # make sure finite mask is same for both numerator and denominator
     finite_mask = jnp.isfinite(evidence_samples.H_samples) & jnp.isfinite(evidence_samples.log_Z_samples)
     H_mean = jnp.nanmean(jnp.where(finite_mask, evidence_samples.H_samples, jnp.nan))
@@ -494,7 +527,10 @@ def _integrate_fn_over_posterior(self: NestedSamplerResults, fn: Callable[[XType
 
         def _increment(y):
             if semi_positive:
-                f = LogSpace(y)
+                # ``fn`` returns ordinary values. Convert those values to the
+                # log semiring; treating them as already logarithmic would
+                # turn a constant-one normalization check into ``e``.
+                f = LogSpace(jnp.log(y))
             else:
                 f = LogSpace.from_signed_value(y)
             return (weight * f).value
@@ -593,7 +629,10 @@ def _summary(results: NestedSamplerResults, f_obj: str | TextIO | None = None):
         f"logZ (classic)={_round(results.log_Z_mean, results.log_Z_uncert)} +- {_round(results.log_Z_uncert, results.log_Z_uncert)}"
     )
     if results.total_phantom_samples > 0:
-        log_Z_samples = results.sample_evidence(num_samples=512)
+        log_Z_samples = results.sample_evidence(
+            num_samples=512,
+            conditioning="phantom",
+        )
         _log_Z_samples_mean = jnp.nanmean(log_Z_samples)
         _log_Z_samples_uncert = jnp.nanstd(log_Z_samples)
         _print(
