@@ -1,3 +1,15 @@
+*_cornerplot.png
+*_diagnostics.png
+*_samples.png
+*_summary.txt
+*.pdf
+*.prof
+.idea/
+*.ipynb_timestamp
+*.npz
+*.pkl
+*.json
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

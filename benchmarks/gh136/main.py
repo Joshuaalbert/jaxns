@@ -7,13 +7,11 @@ import numpy as np
 import pkg_resources
 import tensorflow_probability.substrates.jax as tfp
 from jax._src.scipy.linalg import solve_triangular
+from jaxctx.priors.prior import Prior
 
-from jaxns import Model, Prior
-
-try:
-    from jaxns import NestedSampler
-except ImportError:
-    from jaxns import DefaultNestedSampler as NestedSampler
+from jaxns.constrained_sampler import UniDimSliceSampler
+from jaxns.core import NestedSampler
+from jaxns.model import Model
 
 tfpd = tfp.distributions
 
@@ -45,20 +43,22 @@ def build_run_model(num_slices, gradient_guided, ndims):
         # print("True H={}".format(H_true))
 
         def prior_model():
-            x = yield Prior(
+            x = Prior(
                 tfpd.MultivariateNormalTriL(loc=prior_mu, scale_tril=jnp.linalg.cholesky(prior_cov)),
-                name='x')
-            return x
-
-        def log_likelihood(x):
+                name='x'
+            ).realise()
             return tfpd.MultivariateNormalTriL(loc=data_mu, scale_tril=jnp.linalg.cholesky(data_cov)).log_prob(x)
 
-        model = Model(prior_model=prior_model, log_likelihood=log_likelihood)
+        model = Model(prior_model=prior_model)
+        sampler = UniDimSliceSampler(
+            model=model,
+            num_slices=num_slices,
+            gradient_guided=gradient_guided
+        )
+        ns = NestedSampler(model=model, sampler=sampler)
 
-        ns = NestedSampler(model=model, verbose=False, k=0, num_slices=num_slices, gradient_guided=gradient_guided)
-
-        termination_reason, state = ns(key)
-        results = ns.to_results(termination_reason=termination_reason, state=state, trim=False)
+        state = ns.run(key)
+        results = state.to_result()
 
         error = results.H_mean - H_true
         log_Z_error = results.log_Z_mean - true_logZ

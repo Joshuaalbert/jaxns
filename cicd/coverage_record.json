@@ -1,0 +1,159 @@
+{
+  "Every nested-sampling contour is strict: a point satisfies contour lambda exactly when its likelihood is greater than lambda.": [
+    "test_block_state_rejects_strict_contour_violation",
+    "test_state_consistency_rejects_strict_contour_violation",
+    "test_results_sample_mc_shrinkage_rejects_strict_contour_equality",
+    "test_public_sample_mc_shrinkage_rejects_strict_contour_equality"
+  ],
+  "A seed used for a constrained chain is stationary for the requested parent contour before the chain starts.": [
+    "test_stationary_seed_mask_uses_generation_interval_not_suffix"
+  ],
+  "The sentinel out-degree plus all classic-sample out-degrees equals the number of classic samples in a complete stored race tree.": [
+    "test_block_state_rejects_inconsistent_out_degree_total"
+  ],
+  "The first race has active lineage count equal to the sentinel out-degree.": [
+    "test_canonical_block_state_groups_plateaus_and_incoming_K_g"
+  ],
+  "After one sample arrives with out-degree d, the active lineage count changes from K to K minus one plus d.": [
+    "test_canonical_block_state_groups_plateaus_and_incoming_K_g"
+  ],
+  "Every valid race arrival has a strictly positive incoming active-lineage count.": [
+    "test_canonical_block_state_rejects_plateau_with_too_few_lineages"
+  ],
+  "All classic samples at the same likelihood form one block, and distinct valid blocks are ordered by strictly increasing likelihood.": [
+    "test_canonical_block_state_groups_plateaus_and_incoming_K_g"
+  ],
+  "A block's multiplicity is the number of classic samples at its likelihood and its out-degree is the sum of their out-degrees.": [
+    "test_canonical_block_state_groups_plateaus_and_incoming_K_g"
+  ],
+  "A block cannot contain more race arrivals than its incoming active lineage count.": [
+    "test_canonical_block_state_rejects_plateau_with_too_few_lineages",
+    "test_dirichlet_concentrations_reject_K_g_less_than_m_g"
+  ],
+  "The probability beyond a block is the strict prior-volume ratio across that block, the equality probability is the atom at the block likelihood, and the remaining probability is the open race interval.": [
+    "test_sample_evidence_uses_strict_endpoint_recurrence",
+    "test_plateau_equality_mass_and_R_component_are_separate_gamma_targets"
+  ],
+  "The beyond, equality, and open-interval probabilities of every valid block are non-negative and sum to one.": [
+    "test_jax_gamma_weighted_samples_are_raw_per_draw_normalization",
+    "test_reference_gamma_weighted_samples_are_raw_per_draw_normalization"
+  ],
+  "A singleton block is not evidence for a likelihood atom and uses the exact two-class shrinkage law Beta(K, 1).": [
+    "test_singleton_block_stays_two_class_and_correlated_cluster_inflates_variance",
+    "test_gamma_weighted_helper_keeps_singleton_block_two_class"
+  ],
+  "A plateau block with multiplicity greater than one uses a three-class model that separates strict volume beyond the plateau, equality-atom mass, and the open race interval.": [
+    "test_dirichlet_concentrations_use_plateau_epsilon_policy",
+    "test_gamma_weighted_helper_keeps_plateau_equality_and_open_interval_separate"
+  ],
+  "Equality-atom posterior mass for a plateau is divided equally among the classic samples in that plateau.": [
+    "test_posterior_weights_split_plateau_equality_atom_mass"
+  ],
+  "Strict prior volume after a plateau excludes the plateau's equality-atom mass.": [
+    "test_sample_evidence_uses_strict_endpoint_recurrence"
+  ],
+  "The initial prior volume is one and the valid strict prior-volume sequence is non-increasing and remains between zero and one.": [
+    "test_expected_volume_path_uses_dirichlet_p_gt_means"
+  ],
+  "Evidence and posterior calculations use the strict volume beyond each block rather than a race rank censored inside a plateau.": [
+    "test_sample_evidence_uses_strict_endpoint_recurrence"
+  ],
+  "Classic Monte Carlo shrinkage draws follow the same block probability model used by the corresponding classic expectation calculation.": [
+    "test_mc_linear_evidence_moments_match_deterministic_expectations",
+    "test_no_phantom_mc_shrinkage_uses_canonical_plateau_blocks"
+  ],
+  "Increasing the number of independent shrinkage draws makes Monte Carlo evidence summaries converge to the moments implied by the classic shrinkage model.": [
+    "test_mc_linear_evidence_moments_match_deterministic_expectations"
+  ],
+  "Every phantom cluster is associated with one classic child and contains only retained chain states generated under that child's recorded parent contour.": [
+    "test_each_retained_chain_is_one_kish_cluster",
+    "test_retained_phantoms_are_generated_chain_prefix"
+  ],
+  "Dependence within a phantom cluster is preserved by sharing one random cluster weight across all observations and all blocks contributed by that cluster in one shrinkage draw.": [
+    "test_deterministic_gamma_helper_reuses_cluster_weights_across_blocks_and_components"
+  ],
+  "A phantom contributes to a block only when its cluster parent contour is no stricter than the preceding block contour and the phantom lies beyond that preceding contour.": [
+    "test_per_cluster_counts_are_parent_contour_gated_with_equality_and_open_interval",
+    "test_reference_count_matrices_expose_parent_gated_R_and_aggregates"
+  ],
+  "For a plateau block, an eligible phantom is classified exactly once as beyond the block, equal to the block, or in the open race interval.": [
+    "test_per_cluster_counts_are_parent_contour_gated_with_equality_and_open_interval",
+    "test_jax_and_reference_per_cluster_counts_match_plateau_fixture"
+  ],
+  "For a singleton block, phantom conditioning remains a two-class model: an eligible phantom is either beyond the block or in its complement, and no equality class is introduced.": [
+    "test_singleton_block_stays_two_class_and_correlated_cluster_inflates_variance",
+    "test_gamma_weighted_helper_keeps_singleton_block_two_class"
+  ],
+  "Phantom conditioning is applied to a block only when the participating clusters provide the configured minimum effective independent information.": [
+    "test_kish_gate_default_C_min_configurable_and_requires_independent_clusters",
+    "test_phantom_gate_rejects_zero_participation_when_threshold_is_zero"
+  ],
+  "When phantom conditioning is inactive for a block, that block has exactly the classic shrinkage law.": [
+    "test_no_phantom_and_gate_inactive_blocks_reduce_to_classic_race_gammas",
+    "test_gamma_weighted_helper_inactive_gate_ignores_phantom_counts_exactly"
+  ],
+  "When all eligible phantom clusters are independent singletons, phantom conditioning reduces to ordinary conjugate categorical-count conditioning.": [
+    "test_results_sample_mc_shrinkage_uses_gamma_conditioning_when_gate_active"
+  ],
+  "A generated edge from parent likelihood L_i to child likelihood L_j adds one active lineage to every existing block whose likelihood satisfies L_i less than L_g less than or equal to L_j.": [
+    "test_scheduler_marks_maximal_thread_prefix_and_stratifies_seeds"
+  ],
+  "The allocation gap at a block is the positive part of its target lineage count minus its current lineage count.": [
+    "test_scheduler_starts_one_thread_for_one_gap_rise"
+  ],
+  "Advancing a logical thread fills allocation gaps only along contours crossed by the generated lineage.": [
+    "test_scheduler_starts_one_thread_for_one_gap_rise"
+  ],
+  "A parent selected for new work is chosen from a contour with an outstanding allocation gap or from a scientifically equivalent seedable reparenting contour.": [
+    "test_missing_stationary_seed_reparents_to_closest_shallower_contour"
+  ],
+  "A seed is eligible for parent contour lambda only when its likelihood is greater than lambda and the contour from which it was generated is no greater than lambda.": [
+    "test_stationary_seed_mask_uses_generation_interval_not_suffix"
+  ],
+  "Concurrent children requested from the same parent contour use distinct eligible seeds whenever enough distinct eligible seeds exist.": [
+    "test_scheduler_marks_maximal_thread_prefix_and_stratifies_seeds"
+  ],
+  "Reparenting caused by a lack of stationary seeds preserves the constrained-prior law required by the newly recorded parent contour.": [
+    "test_missing_stationary_seed_reparents_to_closest_shallower_contour"
+  ],
+  "Resuming a state with its stored random-stream position is scientifically equivalent to uninterrupted continuation under the same conditions.": [
+    "test_resume_uses_stored_key_and_matches_uninterrupted_run",
+    "test_unlimited_growth_matches_preallocated_scientific_continuation"
+  ],
+  "A finite scientific sample limit is never exceeded, including by a partially filled replacement batch.": [
+    "test_finite_capacity_terminates_below_and_exactly_at_hard_maximum",
+    "test_partial_batch_respects_non_multiple_max_samples"
+  ],
+  "A run that cannot satisfy its goal returns its resumable state rather than silently claiming that the goal was met.": [
+    "test_python_goal_loop_reports_terminal_depth_budget_without_iteration"
+  ],
+  "Converting a state to results preserves every valid classic sample and excludes every unused capacity entry from user-facing sample statistics.": [
+    "test_trim_keeps_log_l_blocks_aligned_to_trimmed_sample_size"
+  ],
+  "Classic evidence sampling remains available whether or not phantom samples were collected.": [
+    "test_reference_sample_mc_shrinkage_no_phantoms_uses_classic_gamma_path",
+    "test_sample_mc_shrinkage_no_phantom_path_does_not_require_old_rho_diagnostics",
+    "test_nested_sampling_run_results"
+  ],
+  "Posterior resampling draws from the normalized posterior weights represented by the result.": [
+    "test_resample_keeps_phantom_likelihood_metadata_aligned"
+  ],
+  "Independent logical random choices use non-overlapping random streams derived from the run key.": [
+    "test_gamma_race_components_and_cluster_weights_are_independent_draws"
+  ],
+  "Invalid shapes, invalid lineage capacity, inconsistent block membership, or incompatible phantom metadata fail visibly before producing scientific summaries.": [
+    "test_count_matrix_validation_rejects_malformed_count_relations",
+    "test_count_input_validation_rejects_stale_and_malformed_metadata",
+    "test_results_sample_mc_shrinkage_rejects_malformed_arrays_before_jit",
+    "test_public_sample_mc_shrinkage_rejects_stale_block_likelihoods_before_jit"
+  ],
+  "Numerically stable evidence arithmetic represents values across the supported likelihood dynamic range without converting avoidable underflow or overflow into finite scientific conclusions.": [
+    "test_log_space",
+    "test_signed_logaddexp",
+    "test_cumulative_logsumexp",
+    "test_logaddexp"
+  ],
+  "Public effective-sample-size, uncertainty, and diagnostic quantities are finite whenever their mathematical inputs are finite and non-degenerate, and otherwise report the degenerate case explicitly.": [
+    "test_linear_to_log_stats"
+  ]
+}

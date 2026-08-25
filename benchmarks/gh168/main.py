@@ -6,13 +6,10 @@ import numpy as np
 import pkg_resources
 import tensorflow_probability.substrates.jax as tfp
 from jax._src.scipy.linalg import solve_triangular
+from jaxctx.priors.prior import Prior
 
-from jaxns import Model, Prior
-
-try:
-    from jaxns import NestedSampler
-except ImportError:
-    from jaxns import DefaultNestedSampler as NestedSampler
+from jaxns.core import NestedSampler
+from jaxns.model import Model
 
 tfpd = tfp.distributions
 
@@ -34,20 +31,18 @@ def run_model(key, prior_mu, prior_cov, data_mu, data_cov):
     # print(f"True log Z: {log_Z_true}")
 
     def prior_model():
-        x = yield Prior(
+        x = Prior(
             tfpd.MultivariateNormalTriL(loc=prior_mu, scale_tril=jnp.linalg.cholesky(prior_cov)),
-            name='x')
-        return x
-
-    def log_likelihood(x):
+            name='x'
+        ).realise()
         return tfpd.MultivariateNormalTriL(loc=data_mu, scale_tril=jnp.linalg.cholesky(data_cov)).log_prob(x)
 
-    model = Model(prior_model=prior_model, log_likelihood=log_likelihood)
+    model = Model(prior_model=prior_model)
 
-    ns = NestedSampler(model=model, max_samples=100000, verbose=False)
+    ns = NestedSampler(model=model, max_samples=100000)
 
-    termination_reason, state = ns(key)
-    results = ns.to_results(termination_reason=termination_reason, state=state, trim=False)
+    state = ns.run(key)
+    results = state.to_result()
     return results.log_Z_mean - log_Z_true, results.log_Z_uncert
 
 

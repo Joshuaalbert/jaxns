@@ -16,18 +16,20 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: [ "3.10", "3.11", "3.12", "3.13" ]
+        python-version: [ "3.10", "3.11", "3.12", "3.13", "3.14" ]
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v3
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install .[tests]
+          python -m pip install .[tests]
       - name: Lint with flake8
         run: |
           # stop the build if there are Python syntax errors or undefined names
@@ -35,5 +37,23 @@ jobs:
           # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
           flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
       - name: Test with pytest
-        run: |
-          pytest -s
+        run: python -m pytest -s tests
+
+      - name: Reviewer autochecks
+        run: python -m pytest cicd/reviewer_autochecks
+
+      - name: System tests
+        if: >-
+          matrix.python-version == '3.12' &&
+          (github.event_name == 'push' ||
+          (github.event_name == 'pull_request' &&
+          github.base_ref == 'main' && github.head_ref == 'develop'))
+        run: python -m pytest cicd/system_tests
+
+      - name: Pre-release autochecks
+        if: >-
+          matrix.python-version == '3.12' &&
+          (github.event_name == 'push' ||
+          (github.event_name == 'pull_request' &&
+          github.base_ref == 'main' && github.head_ref == 'develop'))
+        run: python cicd/pre_release_autochecks/check_all_invariants_covered.py

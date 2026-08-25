@@ -6,9 +6,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null && pwd)"
 echo "Script dir $SCRIPT_DIR"
 
-pip install -r "$SCRIPT_DIR"/../../requirements.txt
-pip install -r "$SCRIPT_DIR"/../../requirements-examples.txt
-pip install "$SCRIPT_DIR"/../..
+pip install "${SCRIPT_DIR}/../..[examples]"
 
 # Convert each notebook if no change since last run (stored variable)
 for file in *.ipynb; do

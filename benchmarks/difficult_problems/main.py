@@ -4,8 +4,10 @@ from typing import Dict
 import jax
 import jax.numpy as jnp
 import tensorflow_probability.substrates.jax as tfp
+from jaxctx.priors.prior import Prior
 
-from jaxns import Model, Prior, NestedSampler
+from jaxns.core import NestedSampler
+from jaxns.model import Model
 
 tfpd = tfp.distributions
 
@@ -22,18 +24,14 @@ def build_eggbox_model(ndim: int) -> Model:
     """
 
     def prior_model():
-        z = yield Prior(tfpd.Uniform(low=jnp.zeros(ndim), high=10. * jnp.pi * jnp.ones(ndim)), name='z')
-        return z
-
-    def log_likelihood(z):
+        z = Prior(tfpd.Uniform(low=jnp.zeros(ndim), high=10. * jnp.pi * jnp.ones(ndim)), name='z').realise()
         y = 1
         for i in range(ndim):
             y *= jnp.cos(z[i] / 2)
         y = jnp.power(2. + y, 5)
         return y
 
-    model = Model(prior_model=prior_model,
-                  log_likelihood=log_likelihood)
+    model = Model(prior_model=prior_model)
     return model
 
 
@@ -51,18 +49,14 @@ def build_rastrigin_model(ndim: int) -> Model:
     def prior_model():
         x_min = -5.12
         x_max = 5.12
-        z = yield Prior(tfpd.Uniform(low=x_min * jnp.ones(ndim), high=x_max * jnp.ones(ndim)), name='z')
-        return z
-
-    def log_likelihood(z):
+        z = Prior(tfpd.Uniform(low=x_min * jnp.ones(ndim), high=x_max * jnp.ones(ndim)), name='z').realise()
         a = jnp.asarray(10.)
         y = a * ndim
         for i in range(ndim):
             y += jnp.power(z[i], 2) - a * jnp.cos(2 * jnp.pi * z[i])
         return -y
 
-    model = Model(prior_model=prior_model,
-                  log_likelihood=log_likelihood)
+    model = Model(prior_model=prior_model)
     return model
 
 
@@ -78,16 +72,13 @@ def build_rosenbrock_model(ndim: int) -> Model:
     """
 
     def prior_model():
-        z = yield Prior(tfpd.Uniform(low=-5 * jnp.ones(ndim), high=5 * jnp.ones(ndim)), name='z')
-        return z
-
-    def log_likelihood(z):
+        z = Prior(tfpd.Uniform(low=-5 * jnp.ones(ndim), high=5 * jnp.ones(ndim)), name='z').realise()
         y = 0.
         for i in range(ndim - 1):
             y += (100. * jnp.power(z[i + 1] - jnp.power(z[i], 2), 2) + jnp.power(1 - z[i], 2))
         return -y
 
-    model = Model(prior_model=prior_model, log_likelihood=log_likelihood)
+    model = Model(prior_model=prior_model)
 
     return model
 
@@ -104,10 +95,7 @@ def build_spikeslab_model(ndim: int) -> Model:
     """
 
     def prior_model():
-        z = yield Prior(tfpd.Uniform(low=-4. * jnp.ones(ndim), high=8. * jnp.ones(ndim)), name='z')
-        return z
-
-    def log_likelihood(z):
+        z = Prior(tfpd.Uniform(low=-4. * jnp.ones(ndim), high=8. * jnp.ones(ndim)), name='z').realise()
         mean_1 = jnp.array([6., 6.])
         mean_2 = jnp.array([2.5, 2.5])
         for i in range(ndim - 2):
@@ -120,12 +108,12 @@ def build_spikeslab_model(ndim: int) -> Model:
         y = jnp.logaddexp(gauss_1, gauss_2)
         return y
 
-    model = Model(prior_model=prior_model, log_likelihood=log_likelihood)
+    model = Model(prior_model=prior_model)
 
     return model
 
 
-def all_models() -> Dict[str, Model]:
+def all_models() -> dict[str, Model]:
     """
     Return all the models
 
@@ -151,21 +139,17 @@ class Timer:
 def main():
     for model_name, model in all_models().items():
         print(f"Testing model {model_name}")
-        model.sanity_check(jax.random.PRNGKey(0), 1000)
-        ns = NestedSampler(
-            model=model,
-            difficult_model=True,
-            parameter_estimation=True
-        )
-        ns_jit = jax.jit(lambda key: ns(key))
+        model.sanity_check(jax.random.PRNGKey(0), num_samples=1000)
+        ns = NestedSampler(model=model)
+        ns_jit = jax.jit(lambda key: ns.run(key))
         ns_compiled = ns_jit.lower(jax.random.PRNGKey(42)).compile()
         with Timer():
-            termination_reason, state = ns_compiled(jax.random.PRNGKey(42))
-            termination_reason.block_until_ready()
-        results = ns.to_results(termination_reason=termination_reason, state=state)
-        ns.plot_diagnostics(results, save_name=f"{model_name}_diagnostics.png")
-        ns.plot_cornerplot(results, save_name=f"{model_name}_cornerplot.png")
-        ns.summary(results, f_obj=f"{model_name}_summary.txt")
+            state = ns_compiled(jax.random.PRNGKey(42))
+            state.num_samples.block_until_ready()
+        results = state.to_result().trim()
+        results.plot_diagnostics(save_file=f"{model_name}_diagnostics.png")
+        results.plot_cornerplot(save_name=f"{model_name}_cornerplot.png")
+        results.summary(f_obj=f"{model_name}_summary.txt")
 
 
 if __name__ == '__main__':
