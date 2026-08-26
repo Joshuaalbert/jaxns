@@ -22,9 +22,6 @@ properties that must hold independently of implementation live in
 
 - Requirement: Production code lives under `src/jaxns`, tests remain outside `src`, and the
   package supports Python 3.10 and newer.
-- Requirement: Ordinary model authoring uses `jaxns.Prior` and `jaxns.special_priors`; these are
-  lazy aliases of the exact JAXCTX implementations, not wrappers, so the convenient public
-  surface does not make root import or CLI configuration validation eagerly import JAX or TFP.
 - Requirement: State, samples, result, block-data, shrinkage-data, and scheduler-data containers
   use frozen, slotted dataclasses registered through `PureDataclassPytree` where their contents
   are JAX-compatible data.

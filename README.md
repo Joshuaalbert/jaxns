@@ -62,20 +62,12 @@ pip install -e ".[tests,examples]"
 
 # Quick start
 
-## Define a v3 model
+## Define a model with JAXCTX
 
 A v3 `Model` contains one prior-model function. Calls to
-`jaxns.Prior(...).realise()` create Bayesian variables, and calls to
-`jaxns.Prior(...).parameter()` create point parameters. Most users do not need
-to import JAXCTX directly; JAXNS exposes the common prior interface while
-JAXCTX remains available for advanced context and parameter use. Priors with
-special transforms, including discrete and empirical priors, are available
-under `jaxns.special_priors`.
-
-This is an important change from v2. A v2 model supplied a prior-model function
-and a separate log-likelihood function. In v3 there is one prior-model
-function: it realises the priors and returns the scalar log likelihood for the
-supplied data.
+`Prior(...).realise()` create Bayesian variables, and the scalar returned by
+the function is the log likelihood. Calls to `Prior(...).parameter()` create
+point parameters managed by JAXCTX.
 
 Pass observations and other runtime inputs through `args`, and initialise and
 pass model parameters through `params`. Keeping these values explicit avoids
@@ -85,8 +77,8 @@ distributed workers.
 
 ```python
 import jax
-import jaxns
 from jax import numpy as jnp
+from jaxctx.priors.prior import Prior
 from tensorflow_probability.substrates import jax as tfp
 
 from jaxns.model import Model
@@ -95,11 +87,11 @@ tfpd = tfp.distributions
 
 
 def prior_model(observations, measurement_uncertainty):
-    location = jaxns.Prior(
+    location = Prior(
         tfpd.Normal(loc=0.0, scale=2.0),
         name="location",
     ).realise()
-    intrinsic_uncertainty = jaxns.Prior(
+    intrinsic_uncertainty = Prior(
         tfpd.Exponential(rate=1.0),
         name="intrinsic_uncertainty",
     ).parameter()
@@ -228,7 +220,6 @@ Parallel replacement has two independent dimensions:
    available to them. One logical task credit per live lane fills the pool
    without speculative work beyond its measured capacity. There is no
    pool-wide sampling wave barrier.
-
 For one machine, omit `[network]`; `jaxns-cli up` starts a local coordinator and
 the configured IPC workers. For multiple machines, first generate CurveZMQ
 identities. Keep secret files on their owning nodes and install only each
@@ -370,9 +361,6 @@ requests.
   user-goal loop, and JIT-compiled depth epochs with `vmap` replacement.
 - Made model data and parameters explicit through JAXCTX `args` and `params`,
   and made scientific state and result objects immutable pytree dataclasses.
-- Exposed ordinary model declarations as `jaxns.Prior` and
-  `jaxns.special_priors`, while retaining direct JAXCTX access for advanced
-  users.
 - Added plateau-correct shrinkage and bounded final Monte Carlo evidence draws,
   with explicit classic or phantom conditioning using retained early-chain
   phantom states.
