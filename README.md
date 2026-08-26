@@ -2,365 +2,305 @@
 [![PyPI](https://badge.fury.io/py/jaxns.svg)](https://badge.fury.io/py/jaxns)
 [![Documentation Status](https://readthedocs.org/projects/jaxns/badge/?version=latest)](https://jaxns.readthedocs.io/en/latest/?badge=latest)
 
-Main
-Status: ![Workflow name](https://github.com/JoshuaAlbert/jaxns/actions/workflows/unittests.yml/badge.svg?branch=main)
+Main: ![Main tests](https://github.com/JoshuaAlbert/jaxns/actions/workflows/unittests.yml/badge.svg?branch=main)
 
-Develop
-Status: ![Workflow name](https://github.com/JoshuaAlbert/jaxns/actions/workflows/unittests.yml/badge.svg?branch=develop)
+Develop: ![Develop tests](https://github.com/JoshuaAlbert/jaxns/actions/workflows/unittests.yml/badge.svg?branch=develop)
 
 ![JAXNS](https://github.com/JoshuaAlbert/jaxns/raw/main/jaxns_logo.png)
 
 ## Mission: _To make nested sampling **faster, easier, and more powerful**_
 
-# What is it?
-
-JAXNS is:
-
-1) a simple and powerful probabilistic programming framework using nested sampling as the engine;
-2) coded in JAX in a manner that allows lowering the entire inference algorithm to XLA primitives, which are
-   JIT-compiled for high performance;
-3) continuously improving on its mission of making nested sampling faster, easier, and more powerful; and
-4) citable, use the [(old) pre-print here](https://arxiv.org/abs/2012.15286).
-
-What can you do with JAXNS?
-
-1) Compute the Bayesian evidence of a model or hypothesis (the ultimate scientific method);
-2) Produce high-quality samples from the posterior distribution;
-3) Easily handle degenerate difficult multi-modal posteriors;
-4) Model both discrete and continuous priors and likelihoods;
-5) Encode complex constraints on the prior space;
-6) Easily embed neural networks or any other ML model in the likelihood/prior;
-
-## JAXNS Probabilistic Programming Framework
-
-JAXNS provides a powerful JAX-based probabilistic programming framework, which allows you to define probabilistic
-models easily, and use them for advanced purposes. Probabilistic models can have both Bayesian and parameterised
-variables.
-Bayesian variables are random variables, and are sampled from a prior distribution.
-Parameterised variables are point-wise representations of a prior distribution, and are thus not random.
-Associated with them is the log-probability of the prior distribution at that point.
-
-Let's break apart an example of a simple probabilistic model. Note, this example can also be followed
-in [docs/examples/intro_example.ipynb](docs/examples/intro_example.ipynb).
-
-### Defining a probabilistic model
-
-Prior models are functions that produce generators of `Prior` objects.
-The function must eventually return the inputs to the likelihood function.
-The returned values of a yielded `Prior` is a simple JAX array, i.e. you can do anything you want to it with JAX ops.
-The rules of static programming apply, i.e. you cannot dynamically allocate arrays.
-
-JAXNS makes use of the Tensorflow Probability library for defining prior distributions, thus you can use __almost__
-any of the TFP distributions. You can also use any of the TFP bijectors to define transformed distributions.
-
-Distributions do have some requirements to be valid for use in JAXNS.
-
-1. They must have a quantile function, i.e. `dist.quantile(dist.cdf(x)) == x`.
-2. They must have a `log_prob` method that returns the log-probability of the distribution at a given value.
-
-Most of the TFP distributions satisfy these requirements.
-
-JAXNS has some special priors defined that can't be defined from TFP, see `jaxns.framework.special_priors`. You can
-always request more if you need them.
-
-Prior variables __may__ be named but don't have to be. If they are named then they can be collected later via a
-transformation, otherwise they are deemed hidden variables.
-
-The output values of prior models are the inputs to the likelihood function. They can be PyTree's,
-e.g. `typing.NamedTuple`'s.
-
-Finally, priors can become point-wise estimates of the prior distribution, by calling `parametrised()`. This turns a
-Bayesian variable into a parameterised variable, e.g. one which can be used in optimisation.
-
-```python
-import jax
-import tensorflow_probability.substrates.jax as tfp
-
-tfpd = tfp.distributions
-
-from jaxns.framework.model import Model
-from jaxns.framework.prior import Prior
-
-
-def prior_model():
-    mu = Prior(tfpd.Normal(loc=0., scale=1.))
-    # Let's make sigma a parameterised variable
-    sigma = Prior(tfpd.Exponential(rate=1.), name='sigma').parametrised()
-    x = Prior(tfpd.Cauchy(loc=mu, scale=sigma), name='x')
-    uncert = Prior(tfpd.Exponential(rate=1.), name='uncert')
-    return x, uncert
-
-
-def log_likelihood(x, uncert):
-    return tfpd.Normal(loc=0., scale=uncert).log_prob(x)
-
-
-model = Model(prior_model=prior_model, log_likelihood=log_likelihood)
-
-# You can sanity check the model (always a good idea when exploring)
-model.sanity_check(key=jax.random.PRNGKey(0), S=100)
-
-# The size of the Bayesian part of the prior space is `model.U_ndims`.
-```
-
-### Sampling and transforming variables
-
-There are two spaces of samples:
-
-1. U-space: samples in base measure space, and is dimensionless, or rather has units of probability.
-2. X-space: samples in the space of the model, and has units of the prior variable.
-
-```python
-# Sample the prior in U-space (base measure)
-import jaxns.types
-
-U = model.sample_U(key=jaxns.types.PRNGKey(0))
-# Transform to X-space
-X = model.transform(U=U)
-# Only named Bayesian prior variables are returned, the rest are treated as hidden variables.
-assert set(X.keys()) == {'x', 'uncert'}
-
-# Get the return value of the prior model, i.e. the input to the likelihood
-x_sample, uncert_sample = model.prepare_input(U=U)
-```
-
-### Computing log-probabilities
-
-All computations are based on the U-space variables.
-
-```python
-# Evaluate different parts of the model
-log_prob_prior = model.log_prob_prior(U)
-log_prob_likelihood = model.log_prob_likelihood(U, allow_nan=False)
-log_prob_joint = model.log_prob_joint(U, allow_nan=False)
-```
-
-### Computing gradients of the joint probability w.r.t. parameters
-
-```python
-init_params = model.params
-
-
-def log_prob_joint_fn(params, U):
-    # Calling model with params returns a new model with the params set
-    return model(params).log_prob_joint(U, allow_nan=False)
-
-
-value, grad = jax.value_and_grad(log_prob_joint_fn)(init_params, U)
-```
-
-## Nested Sampling Engine
-
-Given a probabilistic model, JAXNS can perform nested sampling on it. This allows computing the Bayesian evidence and
-posterior samples.
-
-```python
-import jaxns.types
-from jaxns import NestedSampler
-
-ns = NestedSampler(model=model, max_samples=1e5)
-
-# Run the sampler
-termination_reason, state = ns(jaxns.types.PRNGKey(42))
-# Get the results
-results = ns.to_results(termination_reason=termination_reason, state=state)
-```
-
-#### To AOT or JIT-compile the sampler
-
-```python
-# Ahead of time compilation (sometimes useful)
-import jaxns.types
-
-ns_aot = jax.jit(ns).lower(jaxns.types.PRNGKey(42)).compile()
-
-# Just-in-time compilation (usually useful)
-ns_jit = jax.jit(ns)
-```
-
-You can inspect the results, and plot them.
-
-```python
-from jaxns import summary, plot_diagnostics, plot_cornerplot, save_results, load_results
-
-# Optionally save the results to file
-save_results(results, 'results.json')
-# To load the results back use this
-results = load_results('results.json')
-
-summary(results)
-plot_diagnostics(results)
-plot_cornerplot(results)
-```
-
-Output:
-
-```
---------
-Termination Conditions:
-Small remaining evidence
---------
-likelihood evals: 149918
-samples: 3780
-phantom samples: 1710
-likelihood evals / sample: 39.7
-phantom fraction (%): 45.2%
---------
-logZ=-1.65 +- 0.15
-H=-1.13
-ESS=132
---------
-uncert: mean +- std.dev. | 10%ile / 50%ile / 90%ile | MAP est. | max(L) est.
-uncert: 0.68 +- 0.58 | 0.13 / 0.48 / 1.37 | 0.0 | 0.0
---------
-x: mean +- std.dev. | 10%ile / 50%ile / 90%ile | MAP est. | max(L) est.
-x: 0.07 +- 0.62 | -0.57 / 0.06 / 0.73 | 0.0 | 0.0
---------
-```
-
-![](docs/examples/intro_diagnostics.png)
-![](docs/examples/intro_cornerplot.png)
-
-### Using the posterior samples
-
-Nested sampling produces weighted posterior samples. To use for most use cases, you can simply resample (with
-replacement).
-
-```python
-import jaxns.types
-from jaxns import resample
-
-samples = resample(
-   key=jaxns.types.PRNGKey(0),
-   samples=results.samples,
-   log_weights=results.log_dp,
-   S=1000,
-   replace=True
-)
-```
-
-### Maximising the evidence
-
-The Bayesian evidence is the ultimate model selection density, and choosing a model that maximises the evidence is
-the best way to select a model. We can use the evidence maximisation algorithm to optimise the parametrised variables
-of the model, in the manner that maximises the evidence. Below `EvidenceMaximisation` does this for the model we defined
-above, where the parametrised variables are
-automatically constrained to be in the right range, and numerical stability is ensured with proper scaling.
-
-We see that the evidence maximisation chooses a `sigma` the is very small.
-
-```python
-from jaxns.experimental import EvidenceMaximisation
-
-# Let's train the sigma parameter to maximise the evidence
-
-em = EvidenceMaximisation(model)
-results, params = em.train(num_steps=5)
-
-summary(results, with_parametrised=True)
-```
-
-Output:
-
-```
---------
-Termination Conditions:
-Small remaining evidence
---------
-likelihood evals: 72466
-samples: 1440
-phantom samples: 0
-likelihood evals / sample: 50.3
-phantom fraction (%): 0.0%
---------
-logZ=-1.119 +- 0.098
-H=-0.93
-ESS=241
---------
-sigma: mean +- std.dev. | 10%ile / 50%ile / 90%ile | MAP est. | max(L) est.
-sigma: 5.40077599e-05 +- 3.6e-12 | 5.40077563e-05 / 5.40077563e-05 / 5.40077563e-05 | 5.40077563e-05 | 5.40077563e-05
---------
-uncert: mean +- std.dev. | 10%ile / 50%ile / 90%ile | MAP est. | max(L) est.
-uncert: 0.6 +- 0.54 | 0.05 / 0.45 / 1.37 | 0.0 | 0.0
---------
-x: mean +- std.dev. | 10%ile / 50%ile / 90%ile | MAP est. | max(L) est.
-x: 0.01 +- 0.56 | -0.6 / -0.0 / 0.69 | 0.0 | -0.0
---------
-```
-
-# Documentation
-
-You can read the documentation [here](https://jaxns.readthedocs.io/en/latest/#). In addition, JAXNS is partially
-described in the
-[original paper](https://arxiv.org/abs/2012.15286), as well as the paper on [Phantom-Powered Nested
-Sampling paper](https://arxiv.org/abs/2312.11330).
+# What is JAXNS?
+
+JAXNS is a nested-sampling library and probabilistic programming interface built
+with JAX. It is intended for scientific problems that need Bayesian evidence,
+weighted posterior samples, or exploration of difficult constrained priors.
+
+JAXNS v3 implements nested sampling as a race tree with dynamic lineage
+allocation. A Python goal loop evaluates a user-defined scientific stopping
+condition, while each depth epoch—including batched constrained-prior
+replacement—is compiled with JAX. Scientific state and results are immutable,
+slotted pytree dataclasses with methods for the operations users perform on
+them.
+
+JAXNS can:
+
+1. Estimate the Bayesian evidence of a model or hypothesis.
+2. Produce weighted or resampled posterior samples.
+3. Explore degenerate and multimodal constrained priors.
+4. Model continuous and discrete variables using JAX-compatible distributions.
+5. Retain stationary phantom states and optionally condition final Monte Carlo
+   evidence estimates on them.
+6. Run locally on one JAX device or dispatch constrained-sampling chains to a
+   trusted pool of heterogeneous devices on the same machine.
+
+The original JAXNS paper is available on
+[arXiv](https://arxiv.org/abs/2012.15286), as is the paper on
+[phantom-powered nested sampling](https://arxiv.org/abs/2312.11330).
 
 # Install
 
-**Notes:**
-
-1. JAXNS requires >= Python 3.10. It is always highly recommended to use the latest version of Python.
-2. It is always highly recommended to use a unique virtual environment for each project.
-   To use **miniconda**, ensure it is installed on your system, then run the following commands:
-
-```bash
-# To create a new env, if necessary
-conda create -n jaxns_py python=3.12
-conda activate jaxns_py
-```
-
-## For end users
-
-Install directly from PyPi,
+JAXNS requires Python 3.10 or later. Install the default package from PyPI:
 
 ```bash
 pip install jaxns
 ```
 
-## For development
-
-Clone repo `git clone https://www.github.com/JoshuaAlbert/jaxns.git`, and install:
+The distributed runtime has two additional dependencies and is opt-in:
 
 ```bash
+pip install "jaxns[distributed]"
+```
+
+For development, clone the repository and install the test and example extras:
+
+```bash
+git clone https://www.github.com/JoshuaAlbert/jaxns.git
 cd jaxns
 pip install -e ".[tests,examples]"
 ```
 
-# Getting help and contributing examples
-
-Do you have a neat Bayesian problem, and want to solve it with JAXNS?
-I'm really encourage anyone in either the scientific community or industry to get involved and join the discussion
-forum.
-Please use the [github discussion forum](https://github.com/JoshuaAlbert/jaxns/discussions) for getting help, or
-contributing examples/neat use cases.
-
 # Quick start
 
-Checkout the examples [here](https://jaxns.readthedocs.io/en/latest/#).
+## Define a model with JAXCTX
 
-## Caveats
+A v3 `Model` contains one prior-model function. Calls to
+`Prior(...).realise()` create Bayesian variables, and the scalar returned by
+the function is the log likelihood. Calls to `Prior(...).parameter()` create
+point parameters managed by JAXCTX.
 
-The caveat is that you need to be able to define your likelihood function with JAX. UPDATE: now you can just
-use the `@jaxify_likelihood` decorator to run with arbitrary pythonic likelihoods.
+Pass observations and other runtime inputs through `args`, and initialise and
+pass model parameters through `params`. Keeping these values explicit avoids
+capturing changing data or parameters in Python closures, gives JAX a stable
+program identity, and makes the same model straightforward to serialise for
+distributed workers.
 
-# Speed test comparison with other nested sampling packages
+```python
+import jax
+from jax import numpy as jnp
+from jaxctx.priors.prior import Prior
+from tensorflow_probability.substrates import jax as tfp
 
-JAXNS is really fast because it uses JAX.
-JAXNS is much faster than PolyChord, MultiNEST, and dynesty, typically achieving two to three orders of magnitude
-improvement in run time, for models with cheap likelihood evaluations.
-This is shown in (https://arxiv.org/abs/2012.15286).
+from jaxns.model import Model
 
-Recently JAXNS has implemented Phantom-Powered Nested Sampling, which helps for parameter inference. This is shown
-in (https://arxiv.org/abs/2312.11330).
+tfpd = tfp.distributions
 
-# Note on performance with parallelisation and GPUS
 
-To use parallel computing, you can simply pass `devices` to the `NestedSampler` constructor. This will distributed
-sampling over the devices. To use GPUs you can pass `jax.devices('gpu')` to the `devices` argument. You can also se all
-your CPUs by placing `os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={os.cpu_count()}"`
-before importing JAXNS.
+def prior_model(observations, measurement_uncertainty):
+    location = Prior(
+        tfpd.Normal(loc=0.0, scale=2.0),
+        name="location",
+    ).realise()
+    intrinsic_uncertainty = Prior(
+        tfpd.Exponential(rate=1.0),
+        name="intrinsic_uncertainty",
+    ).parameter()
+    scale = jnp.sqrt(
+        jnp.square(measurement_uncertainty)
+        + jnp.square(intrinsic_uncertainty)
+    )
+    return jnp.sum(tfpd.Normal(location, scale).log_prob(observations))
+
+
+model = Model(prior_model=prior_model)
+args = (
+    jnp.asarray([-0.15, 0.05, 0.20, 0.30]),
+    jnp.asarray(0.10),
+)
+params = model.init_params(
+    key=jax.random.PRNGKey(0),
+    args=args,
+)
+model.sanity_check(
+    key=jax.random.PRNGKey(1),
+    args=args,
+    params=params,
+)
+```
+
+The model exposes the same explicit `args` and `params` on its lower-level
+operations, including `sample_U`, `transform_to_X`, `log_likelihood`,
+`log_prior`, and `log_joint`.
+
+## Run nested sampling locally
+
+```python
+from jaxns.core import NestedSampler
+
+sampler = NestedSampler(
+    model=model,
+    args=args,
+    params=params,
+    collect_phantom_samples=True,
+)
+state = sampler.run(key=jax.random.PRNGKey(2))
+results = state.to_result().trim()
+
+results.summary()
+results.plot_diagnostics()
+results.plot_cornerplot()
+```
+
+`NestedSampler.run()` uses the default expectation-based termination goal. For
+a custom scientific goal, provide a Python condition over the immutable
+`State`:
+
+```python
+def goal_cond(state):
+    return state.to_result().log_Z_uncert < 0.1
+
+
+state = sampler.run_until_goal(
+    goal_cond=goal_cond,
+    key=jax.random.PRNGKey(3),
+)
+```
+
+The lightweight expectation estimates on `State` are suitable for frequent
+goal and depth decisions. Final user-facing evidence should be drawn with the
+Monte Carlo shrinkage model. Phantom conditioning is explicit, so the same run
+can be assessed both ways:
+
+```python
+classic = results.sample_evidence_mc(
+    num_samples=1_000,
+    conditioning="classic",
+    key=jax.random.PRNGKey(4),
+)
+phantom = results.sample_evidence_mc(
+    num_samples=1_000,
+    conditioning="phantom",
+    key=jax.random.PRNGKey(5),
+)
+
+print(classic.log_Z_mean, classic.log_Z_uncert)
+print(phantom.log_Z_mean, phantom.log_Z_uncert)
+posterior = results.resample(
+    num_samples=1_000,
+    key=jax.random.PRNGKey(6),
+)
+```
+
+Finite sample capacity is the default. Physical buffers begin smaller and grow
+between compiled depth epochs up to `max_samples`. Users who intentionally want
+an unbounded geometric growth policy can set `unlimited_samples=True`; each new
+buffer shape incurs a one-time compilation pause and may consume unbounded
+memory.
+
+The isotropic one-dimensional slice direction is the reference default. An
+opt-in, warm-refined Gaussian-mixture direction is documented under
+[ellipsoidal directions](docs/user-guide/ellipsoidal_directions.rst).
+
+# Distributed nested sampling
+
+The v3 distributed runtime is useful when constrained likelihood evaluations
+are expensive enough to outweigh process and IPC overhead and a machine has
+multiple useful devices. The local core remains the preferred path for one
+device or cheap likelihoods.
+
+The first distributed release is deliberately a trusted, same-user,
+same-machine `ipc://` design; it is not yet a cluster-wide network protocol.
+One supervisor owns a declarative worker stack, and each worker process is
+pinned to one configured CPU, GPU, or TPU device. A worker with `batch_size =
+1` samples one chain without `vmap`; larger batches use `jax.vmap` and should be
+chosen from workload evidence because all lanes wait for the slowest chain.
+
+Create `workers.toml`:
+
+```toml
+[runtime]
+stack_id = "local-science"
+runtime_dir = ".runtime"
+log_dir = ".logs"
+program_cache_size = 4
+
+[[workers]]
+name = "gpu-0"
+platform = "gpu"
+device = 0
+batch_size = 1
+
+[[workers]]
+name = "gpu-1"
+platform = "gpu"
+device = 1
+batch_size = 1
+```
+
+For a CPU-only stack, change `platform` to `"cpu"` and select a visible JAX CPU
+device. Validate and start the stack before running the scientific process:
+
+```bash
+jaxns-cli --config workers.toml config validate
+jaxns-cli --config workers.toml up
+jaxns-cli --config workers.toml status
+```
+
+The distributed runner wraps the same configured local sampler, so the model,
+termination behavior, allocation policy, and returned scientific results stay
+aligned:
+
+```python
+from jaxns.distributed_core import DistributedNestedSampler
+
+local_sampler = NestedSampler(
+    model=model,
+    args=args,
+    params=params,
+    collect_phantom_samples=True,
+)
+distributed_sampler = DistributedNestedSampler(
+    nested_sampler=local_sampler,
+    config="workers.toml",
+)
+checkpoint = distributed_sampler.run(
+    key=jax.random.PRNGKey(7),
+)
+results = checkpoint.to_result().trim()
+results.summary()
+```
+
+Stop the stack explicitly when it is no longer needed. Both `up` and `down`
+are idempotent for the same configuration:
+
+```bash
+jaxns-cli --config workers.toml down
+```
+
+The worker configuration is fixed while a stack is running. To add, remove, or
+retarget workers, finish or checkpoint the current drained run, stop the stack,
+edit the TOML, start it again, and resume. See the executable
+[run-pattern design](docs/design/interface/run_pattern.py) for checkpoint
+resumption and custom-goal examples.
+
+# Documentation and support
+
+Read the [JAXNS documentation](https://jaxns.readthedocs.io/en/latest/) and the
+[repository examples](docs/examples). Likelihood and prior-model calculations
+must use JAX-compatible operations.
+
+For scientific questions, use the
+[GitHub discussion forum](https://github.com/JoshuaAlbert/jaxns/discussions).
+Bug reports and contributions are welcome through GitHub issues and pull
+requests.
 
 # Change Log
+
+26 Aug, 2026 -- JAXNS 3.0.0. Major paper-driven core and public API update:
+
+- Added race-tree nested sampling with dynamic lineage allocation, a Python
+  user-goal loop, and JIT-compiled depth epochs with `vmap` replacement.
+- Made model data and parameters explicit through JAXCTX `args` and `params`,
+  and made scientific state and result objects immutable pytree dataclasses.
+- Added plateau-correct shrinkage and bounded final Monte Carlo evidence draws,
+  with explicit classic or phantom conditioning using retained early-chain
+  phantom states.
+- Added opt-in warm-refined ellipsoidal slice directions and transparent
+  finite or explicitly unlimited sample-buffer growth.
+- Added an opt-in trusted-local asynchronous worker runtime and `jaxns-cli` for
+  declarative, device-pinned worker stacks.
+- Removed v2-only APIs, including evidence maximisation. Public v3 classes are
+  imported from their defining modules.
 
 3 Aug, 2025 -- JAXNS 2.6.9 released. Fix sdist, and TFP dependency.
 

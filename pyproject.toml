@@ -26,9 +26,14 @@ dependencies = [
     "numpy",
     "scipy",
     "tfp-nightly",
+    "tomli; python_version < '3.11'",
 ]
 
 [project.optional-dependencies]
+distributed = [
+    "cloudpickle>=3",
+    "pyzmq>=25",
+]
 examples = [
     "scikit-learn",
     "optax",
@@ -40,8 +45,12 @@ tests = [
     "pytest",
     "flake8",
     "ruff",
-    "tomli; python_version < '3.11'",
+    "cloudpickle>=3",
+    "pyzmq>=25",
 ]
+
+[project.scripts]
+jaxns-cli = "jaxns.cli:main"
 
 [tool.setuptools]
 include-package-data = true

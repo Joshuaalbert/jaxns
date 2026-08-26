@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import dataclasses
 import warnings
 from abc import ABC, abstractmethod
@@ -32,6 +34,110 @@ class ConstrainedSampleBatch(PureDataclassPytree):
 
 
 ConstrainedSampleBatch.register_pytree()
+
+
+@dataclasses.dataclass(slots=True, frozen=True)
+class ConstrainedSampleRequest(PureDataclassPytree):
+    """Self-contained worker input for one constrained-sampling batch.
+
+    The model, arguments, parameters, and sampler configuration are registered
+    once per worker session. A request therefore carries only data that can
+    change between batches. Keeping seed coordinates in the request also means
+    an in-flight task never points back into a coordinator device buffer.
+    """
+
+    keys: PRNGKey  # [S, 2]
+    valid: BoolArray  # [S]
+    log_L_constraints: FloatArray  # [S]
+    seed_points: SeedPoint  # U0 [S, ...], log_L0 [S]
+    sampler_data: SamplerData | None  # [K, D, D] and aligned component data
+
+
+ConstrainedSampleRequest.register_pytree()
+
+
+def sample_request(
+        sampler: AbstractSampler,
+        request: ConstrainedSampleRequest,
+        *,
+        args=(),
+        params=None,
+) -> ConstrainedSampleBatch:
+    """Execute one worker request with scalar or vmapped chain sampling.
+
+    Worker batch size is a static process configuration. A scalar worker does
+    not pay for a one-row ``vmap``; wider workers retain the current concurrent
+    replacement behavior and its deliberate slowest-lane trade-off.
+    """
+
+    def sample_one(sample_key, constraint, seed_u, seed_log_likelihood):
+        seed = SeedPoint(U0=seed_u, log_L0=seed_log_likelihood)
+        if isinstance(sampler, UniDimSliceSampler):
+            if sampler.direction is not None:
+                return sampler.get_sample_with_diagnostics(
+                    sample_key,
+                    constraint,
+                    seed,
+                    args=args,
+                    params=params,
+                    sampler_data=request.sampler_data,
+                )
+            return sampler.get_sample(
+                sample_key,
+                constraint,
+                seed,
+                args=args,
+                params=params,
+                sampler_data=None,
+            )
+        return sampler.get_sample(
+            sample_key,
+            constraint,
+            seed,
+            args=args,
+            params=params,
+        )
+
+    batch_size = request.log_L_constraints.shape[0]
+    if batch_size == 1:
+        sampled = sample_one(
+            request.keys[0],
+            request.log_L_constraints[0],
+            jax.tree.map(lambda values: values[0], request.seed_points.U0),
+            request.seed_points.log_L0[0],
+        )
+        sampled = jax.tree.map(lambda value: value[None], sampled)
+    else:
+        sampled = jax.vmap(sample_one)(
+            request.keys,
+            request.log_L_constraints,
+            request.seed_points.U0,
+            request.seed_points.log_L0,
+        )
+    if (
+        isinstance(sampler, UniDimSliceSampler)
+        and sampler.direction is not None
+    ):
+        (
+            U_samples,
+            log_likelihoods,
+            num_evals,
+            phantom_samples,
+            num_directions,
+            num_isotropic,
+        ) = sampled
+    else:
+        U_samples, log_likelihoods, num_evals, phantom_samples = sampled
+        num_directions = jnp.zeros_like(num_evals)
+        num_isotropic = jnp.zeros_like(num_evals)
+    return ConstrainedSampleBatch(
+        U_samples=U_samples,
+        log_likelihoods=log_likelihoods,
+        num_likelihood_evaluations=num_evals,
+        phantom_samples=phantom_samples,
+        num_directions=num_directions,
+        num_isotropic=num_isotropic,
+    )
 
 
 class AbstractSampler(ABC):

@@ -9,6 +9,8 @@ import numpy as np
 import pytest
 from jax import numpy as jnp
 
+from cicd.tests.core_fixtures import make_state
+from cicd.tests.distributed_support import make_toy_model
 from jaxns import core
 from jaxns.allocation import (
     AllocationPlan,
@@ -31,8 +33,6 @@ from jaxns.race_tree import (
 )
 from jaxns.samples import PhantomSamples, SeedPoint
 from jaxns.termination_condition import TerminationCondition
-from tests.core_fixtures import make_state
-from tests.distributed_support import make_toy_model
 
 
 @dataclasses.dataclass(slots=True, frozen=True)

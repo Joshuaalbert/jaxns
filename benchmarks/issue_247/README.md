@@ -8,7 +8,7 @@ phantom-conditioned MC evidence APIs.
 
 ## Predeclared comparison
 
-- Cases: every case in `tests/test_ns_standard_problems.py`.
+- Cases: every case in `cicd/tests/test_ns_standard_problems.py`.
 - Modes: phantom retention disabled and enabled.
 - Seeds: `0` through `29`; the MC shrinkage key is deterministically folded
   from each run key and uses 1,000 draws.
@@ -27,7 +27,7 @@ phantom-conditioned MC evidence APIs.
   default.
 - Scientific release gate: no non-finite runs and no failures of the unchanged
   `3 sigma` expectation and `2 sigma` MC truth checks in
-  `tests/test_ns_standard_problems.py`. The independent 30-seed matrix is a
+  `cicd/tests/test_ns_standard_problems.py`. The independent 30-seed matrix is a
   descriptive calibration check: bias, RMSE, coverage, and every failure are
   reported without selecting or dropping runs.
 - Runtime non-inferiority: compare warmed end-to-end run plus result conversion

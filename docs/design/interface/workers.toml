@@ -1,0 +1,23 @@
+[runtime]
+stack_id = "local-science"
+runtime_dir = ".runtime"
+log_dir = ".logs"
+startup_timeout_s = 120
+shutdown_timeout_s = 20
+task_timeout_s = 300
+program_cache_size = 4
+
+# One process owns one configured JAX device. Batch size one is the measured
+# CPU default because a wider vmap waits for its most rejection-heavy chain.
+[[workers]]
+name = "cpu"
+platform = "cpu"
+device = 0
+batch_size = 1
+
+# Accelerator batching is opt-in and should be chosen from workload evidence.
+# [[workers]]
+# name = "gpu"
+# platform = "gpu"
+# device = 0
+# batch_size = 8

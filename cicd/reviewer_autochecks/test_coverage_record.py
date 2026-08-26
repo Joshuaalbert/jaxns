@@ -11,7 +11,7 @@ NON_INVARIANT_TEST_COVERAGE = (
     REPO_ROOT / "cicd" / "non_invariant_test_coverage.json"
 )
 INVARIANTS = REPO_ROOT / "docs" / "design" / "INVARIANTS.md"
-UNIT_TEST_ROOT = REPO_ROOT / "tests"
+UNIT_TEST_ROOT = REPO_ROOT / "cicd" / "tests"
 INVARIANT_PREFIX = "- Invariant: "
 
 
@@ -160,8 +160,9 @@ def _load_non_invariant_tests(
         path = metadata.get("path")
         reason = metadata.get("reason")
         note = metadata.get("note")
-        assert isinstance(path, str) and path.startswith("tests/"), (
-            f"Non-invariant test {test_name!r} must declare its tests/ path."
+        assert isinstance(path, str) and path.startswith("cicd/tests/"), (
+            f"Non-invariant test {test_name!r} must declare its "
+            "cicd/tests/ path."
         )
         assert isinstance(reason, str) and reason, (
             f"Non-invariant test {test_name!r} must declare a reason."
@@ -170,7 +171,7 @@ def _load_non_invariant_tests(
             f"Non-invariant test {test_name!r} must include a note."
         )
         assert test_name in unit_tests, (
-            f"Non-invariant test {test_name!r} does not exist under tests/."
+            f"Non-invariant test {test_name!r} does not exist under cicd/tests/."
         )
         expected_path = unit_tests[test_name].relative_to(REPO_ROOT).as_posix()
         assert path == expected_path, (
@@ -212,7 +213,7 @@ def test_coverage_record_entries_match_invariants_and_unit_tests() -> None:
     }
     missing_tests = sorted(referenced_tests - set(unit_tests))
     assert not missing_tests, (
-        "Coverage-record tests must exist under tests/:\n"
+        "Coverage-record tests must exist under cicd/tests/:\n"
         + "\n".join(missing_tests)
     )
 

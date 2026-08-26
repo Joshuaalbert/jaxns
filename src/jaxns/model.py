@@ -77,7 +77,10 @@ class Model(PureDataclassPytree):
         Returns:
             initialized parameters
         """
-        return _init_params(key, args=args, params=params)
+        # The model is part of the transformed program identity. Forward it
+        # explicitly so runtime args and an optional parameter initialisation
+        # can stay outside the prior-model closure.
+        return _init_params(self, key, args=args, params=params)
 
     def transform_to_X(self, U: UType, args=(), params=None) -> XType:
         """
@@ -256,10 +259,13 @@ def _U_ndims(self: Model, args=(), params=None) -> int:
 @partial(jax.jit, inline=True)
 def _sample_U(self: Model, key: PRNGKey, args=(), params=None) -> UType:
     u_key, params_key = jax.random.split(key, 2)
+    # JAXCTX takes runtime model arguments after its two control arguments.
+    # Passing these controls by keyword would let the expanded model args bind
+    # them positionally and fail as soon as a model accepts explicit data.
     init_return = transform(self.prior_model).init(
-        rngs={'params': params_key, 'U': u_key},
-        collections=_make_model_collections(params=params),
-        *args
+        {'params': params_key, 'U': u_key},
+        _make_model_collections(params=params),
+        *args,
     )
     return init_return.collections['U']
 
@@ -268,9 +274,9 @@ def _sample_U(self: Model, key: PRNGKey, args=(), params=None) -> UType:
 def _init_params(self: Model, key: PRNGKey, args=(), params=None) -> CtxParams:
     u_key, params_key = jax.random.split(key, 2)
     init_return = transform(self.prior_model).init(
-        rngs={'params': params_key, 'U': u_key},
-        collections=_make_model_collections(params=params),
-        *args
+        {'params': params_key, 'U': u_key},
+        _make_model_collections(params=params),
+        *args,
     )
     return init_return.collections['params']
 
@@ -278,9 +284,9 @@ def _init_params(self: Model, key: PRNGKey, args=(), params=None) -> CtxParams:
 @partial(jax.jit, inline=True)
 def _transform_to_X(self: Model, U: UType, args=(), params=None) -> XType:
     apply_return = transform(self.prior_model).apply(
-        rngs=None,
-        collections=_make_model_collections(params=params, U=U),
-        *args
+        None,
+        _make_model_collections(params=params, U=U),
+        *args,
     )
     return apply_return.collections['X']
 
@@ -288,9 +294,9 @@ def _transform_to_X(self: Model, U: UType, args=(), params=None) -> XType:
 @partial(jax.jit, inline=True, static_argnames=('allow_nan',))
 def _log_likelihood(self: Model, U: UType, args=(), params=None, *, allow_nan: bool = True) -> FloatArray:
     apply_return = transform(self.prior_model).apply(
-        rngs=None,
-        collections=_make_model_collections(params=params, U=U),
-        *args
+        None,
+        _make_model_collections(params=params, U=U),
+        *args,
     )
     log_likelihood = apply_return.fn_val
     if allow_nan:
@@ -302,9 +308,9 @@ def _log_likelihood(self: Model, U: UType, args=(), params=None, *, allow_nan: b
 @partial(jax.jit, inline=True)
 def _log_prior(self: Model, U: UType, args=(), params=None) -> FloatArray:
     apply_return = transform(self.prior_model).apply(
-        rngs=None,
-        collections=_make_model_collections(params=params, U=U),
-        *args
+        None,
+        _make_model_collections(params=params, U=U),
+        *args,
     )
     log_prob_collection = apply_return.collections.get('log_prob', None)
     if log_prob_collection is None:

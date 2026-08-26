@@ -15,20 +15,22 @@ operation consumes it. The source of truth for package metadata remains
 | `scipy` | Public diagnostics | Keep in base. Corner diagnostics use `scipy.stats.gaussian_kde` and `insert_index_diagnostic` uses `scipy.stats.kstwobign`; JAX also requires SciPy. Moving it would not produce a genuinely SciPy-free core install. |
 | `tfp-nightly` | Public model authoring | Keep in base. The README, installation demo, standard problems, and JAXCTX `Prior` implementation use TensorFlow Probability JAX distributions. JAXCTX 1.1.5 imports TFP for its public prior module but does not declare that dependency itself, so JAXNS must supply it for the documented workflow. |
 | `matplotlib` | Public plotting API | Keep in base. Diagnostic and corner plots are part of the ordinary scientific-results workflow. Plotting entry points still import it lazily so importing JAXNS does not eagerly initialise a plotting backend. |
-| `zmq` | Unimplemented distributed execution | Remove. There is no `jaxns.fabric` package in this release, so the old dependency and console entry points described functionality that cannot run. A `distributed` extra will be introduced only after the tracked design validation and implementation exist; the eventual package would be `pyzmq`, not the stale `zmq` name. |
+| `tomli` | Python 3.10 configuration parser | Keep conditionally in base for Python below 3.11. The installed CLI validates TOML without requiring the distributed extra; newer Python uses `tomllib`. |
+| `pyzmq` | Distributed process transport | Keep only in `distributed`. Local `NestedSampler` and CLI config validation do not import it; supervisor lifecycle and worker routing do. The similarly named `zmq` shim is not used. |
+| `cloudpickle` | Distributed model registration | Keep only in `distributed`. It serializes notebook, script, and closure-defined model code once per trusted local worker session; per-task array payloads retain standard pickle. |
 
 ## Extras
 
 - `examples`: scikit-learn and Optax, matching the maintained notebook and
   example feature set. Base modeling and plotting dependencies are inherited
   from JAXNS itself.
-- `tests`: scikit-learn, NetworkX, psutil, pytest, flake8, and Ruff, plus TOMLI
-  on Python 3.10, matching imports and tooling used by the test and review
+- `tests`: scikit-learn, NetworkX, psutil, pytest, flake8, Ruff, Cloudpickle,
+  and PyZMQ,
+  matching imports and tooling used by the test and review
   workflows. Matplotlib is inherited from the base installation.
-
-Distributed execution is intentionally not an extra yet. Publishing an empty
-or ZMQ-only extra would imply that a distributed JAXNS entry point exists when
-it does not.
+- `distributed`: PyZMQ for the accepted trusted local supervisor and worker
+  transport, plus Cloudpickle for one-time model registration. JAX and
+  scientific dependencies are inherited from JAXNS itself.
 
 ## Public entry-point behavior
 
@@ -38,6 +40,9 @@ complete a small local nested-sampling run, and write diagnostic plots under a
 non-interactive backend. Importing results or multi-ellipsoid utilities must
 not eagerly import Matplotlib. If a broken environment lacks Matplotlib, the
 plotting call itself must identify that the default installation is incomplete.
+The base wheel installs `jaxns-cli`; `config validate` works from that base
+environment, while `up`, `status`, and `down` explain that
+`jaxns[distributed]` is required when PyZMQ is absent.
 
 Wheel validation inspects `Requires-Dist` rather than only the source table,
 because the built metadata is what pip consumes. Clean-environment smokes are
@@ -80,9 +85,10 @@ After the base smoke, the former `jaxns[plotting]` extra supported an Agg
 backend plot and file write. Issue 260 moved that requirement back into the
 base metadata, so the same smoke now runs immediately after the base install.
 The missing-Matplotlib unit test confirms that base import remains lazy and a
-plotting request explains that the installation is incomplete. There is intentionally no distributed smoke:
-no distributed public operation or extra exists yet, and advertising one
-before its separately tracked design validation would be misleading.
+plotting request explains that the installation is incomplete. Issue 252 later
+accepted a separate trusted-local distributed extra and `jaxns-cli`; its real
+worker smoke and lifecycle checks now live under `cicd/tests/` rather than
+being retroactively attributed to the issue 256 evidence above.
 
 The pull-request unit-test matrix installs `jaxns[tests]`; its pip cache is
 keyed by `pyproject.toml`. The maintained demo workflow now deliberately

@@ -3,9 +3,9 @@
 import numpy as np
 from jax import numpy as jnp
 
+from cicd.tests.distributed_support import make_toy_model
 from jaxns.samples import PhantomSamples, Samples
 from jaxns.state import State
-from tests.distributed_support import make_toy_model
 
 
 def make_state(

@@ -162,6 +162,12 @@ The exact text following each `- Invariant:` prefix is the stable key used by
   replacement batch.
 - Invariant: A run that cannot satisfy its goal returns its resumable state rather than silently
   claiming that the goal was met.
+- Invariant: Retrying one logical sampling task preserves its original random choices and can
+  change committed scientific state at most once.
+- Invariant: A resumable distributed checkpoint identifies every outstanding logical sample and
+  its random stream without treating an unreturned sample as an observed race-tree arrival.
+- Invariant: A completed distributed state exposed to a user contains no provisional lineage or
+  uncommitted sampling work.
 
 ## User-Facing Results
 

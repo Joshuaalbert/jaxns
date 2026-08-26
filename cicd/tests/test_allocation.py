@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 from jax import numpy as jnp
 
+from cicd.tests.core_fixtures import make_state as _make_state
 from jaxns import allocation
 from jaxns.allocation import (
     VolumePath,
@@ -21,7 +22,6 @@ from jaxns.shrinkage import (
     DirichletConcentrations,
     classic_dirichlet_concentrations,
 )
-from tests.core_fixtures import make_state as _make_state
 
 
 @pytest.mark.parametrize(

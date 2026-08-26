@@ -19,9 +19,9 @@ import numpy as np
 from jax import numpy as jnp
 
 import jaxns
+from cicd.tests.test_ns_standard_problems import STANDARD_PROBLEM_CASES_BY_NAME
 from jaxns.constrained_sampler import UniDimSliceSampler
 from jaxns.core import NestedSampler, _run_depth
-from tests.test_ns_standard_problems import STANDARD_PROBLEM_CASES_BY_NAME
 
 
 def _environment():

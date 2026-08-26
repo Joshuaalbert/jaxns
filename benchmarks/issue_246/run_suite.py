@@ -6,7 +6,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from tests.test_ns_standard_problems import (
+from cicd.tests.test_ns_standard_problems import (
     STANDARD_PROBLEM_CASES_BY_NAME,
 )
 

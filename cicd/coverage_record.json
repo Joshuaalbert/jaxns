@@ -131,7 +131,8 @@
   ],
   "A finite scientific sample limit is never exceeded, including by a partially filled replacement batch.": [
     "test_finite_capacity_terminates_below_and_exactly_at_hard_maximum",
-    "test_partial_batch_respects_non_multiple_max_samples"
+    "test_partial_batch_respects_non_multiple_max_samples",
+    "test_worker_slots_are_not_refilled_after_sample_budget_terminates"
   ],
   "A run that cannot satisfy its goal returns its resumable state rather than silently claiming that the goal was met.": [
     "test_python_goal_loop_reports_terminal_depth_budget_without_iteration"
@@ -169,5 +170,26 @@
   ],
   "Public effective-sample-size, uncertainty, and diagnostic quantities are finite whenever their mathematical inputs are finite and non-degenerate, and otherwise report the degenerate case explicitly.": [
     "test_linear_to_log_stats"
+  ],
+  "Changing how valid constrained-sampling work is batched or scheduled does not change the marginal law of any classic child.": [
+    "test_worker_request_uses_scalar_and_vmap_paths_above_strict_contour",
+    "test_real_pool_runs_scalar_vmap_retries_and_cli_lifecycle"
+  ],
+  "Every emitted classic child satisfies its recorded parent contour strictly.": [
+    "test_worker_request_uses_scalar_and_vmap_paths_above_strict_contour",
+    "test_real_pool_runs_scalar_vmap_retries_and_cli_lifecycle"
+  ],
+  "Retrying one logical sampling task preserves its original random choices and can change committed scientific state at most once.": [
+    "test_real_pool_runs_scalar_vmap_retries_and_cli_lifecycle",
+    "test_supervisor_deduplicates_task_identity_until_acknowledgement",
+    "test_task_timeout_requeues_byte_identical_payload_on_compatible_worker"
+  ],
+  "A resumable distributed checkpoint identifies every outstanding logical sample and its random stream without treating an unreturned sample as an observed race-tree arrival.": [
+    "test_distributed_checkpoint_preserves_unreturned_task_and_keys",
+    "test_submit_failure_exposes_newest_resumable_checkpoint"
+  ],
+  "A completed distributed state exposed to a user contains no provisional lineage or uncommitted sampling work.": [
+    "test_reservations_are_planning_data_until_once_only_acceptance",
+    "test_real_pool_runs_scalar_vmap_retries_and_cli_lifecycle"
   ]
 }

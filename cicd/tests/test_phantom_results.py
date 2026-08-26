@@ -7,6 +7,7 @@ import pytest
 from jax import numpy as jnp
 
 import jaxns.results as results_module
+from cicd.tests.distributed_support import make_toy_model
 from jaxns.constrained_sampler import AbstractSampler
 from jaxns.core import NestedSampler
 from jaxns.mixed_precision import mp_policy
@@ -16,7 +17,6 @@ from jaxns.race_tree import BlockState
 from jaxns.results import BlockData, NestedSamplerResults
 from jaxns.samples import PhantomSamples
 from jaxns.termination_condition import TerminationCondition
-from tests.distributed_support import make_toy_model
 
 
 class ResultCase(NamedTuple):

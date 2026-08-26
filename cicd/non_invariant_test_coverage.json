@@ -3,583 +3,618 @@
   "tests": {
     "test_ellipsoidal_direction_jit_vmap_and_degenerate_fallback": {
       "note": "Checks the current compiled direction-kernel batching, normalization, and degenerate-geometry fallback wiring.",
-      "path": "tests/test_constrained_sampler.py",
+      "path": "cicd/tests/test_constrained_sampler.py",
       "reason": "architecture_boundary"
     },
     "test_masked_non_finite_storage_cannot_poison_fit": {
       "note": "Checks that masked physical padding cannot contaminate the current fixed-shape GMM implementation.",
-      "path": "tests/test_em_gmm.py",
+      "path": "cicd/tests/test_em_gmm.py",
       "reason": "implementation_regression"
     },
     "test_sampler_data_warm_update_retains_geometry_after_failed_fit": {
       "note": "Checks the current warm-fit state representation and its recovery from a singular candidate geometry.",
-      "path": "tests/test_multi_ellipsoid.py",
+      "path": "cicd/tests/test_multi_ellipsoid.py",
       "reason": "implementation_regression"
     },
     "test_state_merge_keeps_recent_geometry_and_cumulative_direction_work": {
       "note": "Checks the concrete state-merge policy for sampler geometry and internal direction-work counters.",
-      "path": "tests/test_state.py",
+      "path": "cicd/tests/test_state.py",
       "reason": "architecture_boundary"
     },
     "test_warm_weighted_fit_matches_numpy_reference": {
       "note": "Checks numerical parity between the accelerated weighted GMM update and its pure NumPy reference.",
-      "path": "tests/test_em_gmm.py",
+      "path": "cicd/tests/test_em_gmm.py",
       "reason": "reference_parity"
     },
     "test_dependency_metadata_matches_feature_boundaries": {
       "note": "Checks the current packaging classification and optional-extra metadata rather than an implementation-agnostic scientific contract.",
-      "path": "tests/test_optional_dependencies.py",
+      "path": "cicd/tests/test_optional_dependencies.py",
       "reason": "packaging_boundary"
     },
     "test_full_diagnostics_support_a_partial_final_batch": {
       "note": "Checks the opt-in full-diagnostic output schema over a partial final batch.",
-      "path": "tests/test_phantom_results.py",
+      "path": "cicd/tests/test_phantom_results.py",
       "reason": "architecture_boundary"
     },
     "test_legacy_sample_evidence_uses_the_bounded_default": {
       "note": "Checks that the legacy evidence convenience method shares the bounded default.",
-      "path": "tests/test_phantom_results.py",
+      "path": "cicd/tests/test_phantom_results.py",
       "reason": "architecture_boundary"
     },
     "test_sample_evidence_mc_batches_have_exact_requested_shape": {
       "note": "Checks the current bounded-batch result schema and batch-size edge cases.",
-      "path": "tests/test_phantom_results.py",
+      "path": "cicd/tests/test_phantom_results.py",
       "reason": "architecture_boundary"
     },
     "test_bruteforce_utilities_preserve_model_unit_dtypes": {
       "note": "Checks compatibility between the regular-grid diagnostic utilities and jaxctx's per-prior U-space dtype validation.",
-      "path": "tests/test_utils.py",
+      "path": "cicd/tests/test_utils.py",
       "reason": "utility_behavior"
     },
     "test_plateau_result_with_padded_inf_block_has_finite_h_samples": {
       "note": "Checks that the current padded block-buffer representation cannot contaminate an evidence diagnostic.",
-      "path": "tests/test_phantom_results.py",
+      "path": "cicd/tests/test_phantom_results.py",
       "reason": "result_schema_regression"
     },
     "test_results_cluster_block_fields_in_block_data": {
       "note": "Checks the current nested BlockData schema and its immutability requirement.",
-      "path": "tests/test_phantom_results.py",
+      "path": "cicd/tests/test_phantom_results.py",
       "reason": "architecture_boundary"
     },
     "test_results_sample_mc_shrinkage_uses_block_state_helper": {
       "note": "Checks the current result-to-block helper routing rather than an implementation-agnostic result property.",
-      "path": "tests/test_phantom_results.py",
+      "path": "cicd/tests/test_phantom_results.py",
       "reason": "architecture_boundary"
     },
     "test_state_to_result_evidence_summary_uses_block_model": {
       "note": "Checks that state-to-result wiring selects the current block-model implementation.",
-      "path": "tests/test_state.py",
+      "path": "cicd/tests/test_state.py",
       "reason": "result_schema_regression"
     },
     "test_canonical_block_state_has_no_persisted_parent_field": {
       "note": "Checks the storage-schema requirement that parent indices remain derived rather than persistent.",
-      "path": "tests/test_race_tree.py",
+      "path": "cicd/tests/test_race_tree.py",
       "reason": "architecture_boundary"
     },
     "test_canonical_block_state_is_invariant_to_generation_order": {
       "note": "Checks block-construction order independence without also exercising the broader evidence and posterior invariant.",
-      "path": "tests/test_race_tree.py",
+      "path": "cicd/tests/test_race_tree.py",
       "reason": "implementation_regression"
     },
     "test_phantom_likelihoods_do_not_drive_supremum_or_map_outputs": {
       "note": "Checks current result point-estimate wiring but does not prove that phantoms never enter the race tree.",
-      "path": "tests/test_phantom_results.py",
+      "path": "cicd/tests/test_phantom_results.py",
       "reason": "result_schema_regression"
     },
     "test_results_sample_mc_shrinkage_matches_explicit_block_state_public_call": {
       "note": "Checks parity between two public and internal result paths without asserting state immutability across final inference.",
-      "path": "tests/test_phantom_results.py",
+      "path": "cicd/tests/test_phantom_results.py",
       "reason": "reference_parity"
     },
     "test_state_checkpoint_round_trip_preserves_resume_key_and_order": {
       "note": "Checks selected checkpoint fields but not full scientific behavior after serialization and resumed execution.",
-      "path": "tests/test_core.py",
+      "path": "cicd/tests/test_core.py",
       "reason": "architecture_boundary"
     },
     "test_compiled_depth_classifies_normal_growth_and_terminal_returns": {
       "note": "Checks the concrete state-carried control-status representation and precedence used at compiled depth boundaries.",
-      "path": "tests/test_core.py",
+      "path": "cicd/tests/test_core.py",
       "reason": "architecture_boundary"
     },
     "test_sample_storage_modes_are_explicit_and_inspectable": {
       "note": "Checks the public finite/unlimited storage configuration and resolved physical-capacity policy.",
-      "path": "tests/test_core.py",
+      "path": "cicd/tests/test_core.py",
       "reason": "configuration_contract"
     },
     "test_state_merge_applies_terminal_growth_depth_precedence": {
       "note": "Checks the current state-merge control-status representation and precedence.",
-      "path": "tests/test_state.py",
+      "path": "cicd/tests/test_state.py",
       "reason": "architecture_boundary"
     },
     "test_state_resize_grows_all_sample_buffers_and_preserves_continuation": {
       "note": "Checks the current sample-indexed buffer schema and immutable resize wiring.",
-      "path": "tests/test_state.py",
+      "path": "cicd/tests/test_state.py",
       "reason": "architecture_boundary"
     },
     "test_allocation_utilities_handle_tiny_positive_volume_without_inf": {
       "note": "Checks the current allocation utility, normalization, and target construction rather than an implementation-agnostic scientific contract.",
-      "path": "tests/test_allocation.py",
+      "path": "cicd/tests/test_allocation.py",
       "reason": "implementation_formula"
     },
     "test_batch_reduce": {
       "note": "Checks generic cumulative and batched reduction utilities.",
-      "path": "tests/test_cumulative_ops.py",
+      "path": "cicd/tests/test_cumulative_ops.py",
       "reason": "utility_behavior"
     },
     "test_batch_reduce_vec_kernel": {
       "note": "Checks generic cumulative and batched reduction utilities.",
-      "path": "tests/test_cumulative_ops.py",
+      "path": "cicd/tests/test_cumulative_ops.py",
       "reason": "utility_behavior"
     },
     "test_bit_mask": {
       "note": "Checks generic reporting, resampling, percentile, or diagnostic utilities.",
-      "path": "tests/test_utils.py",
+      "path": "cicd/tests/test_utils.py",
       "reason": "utility_behavior"
     },
     "test_blob_decomp": {
       "note": "Checks Gaussian-mixture utilities reserved for future direction proposals.",
-      "path": "tests/test_em_gmm.py",
+      "path": "cicd/tests/test_em_gmm.py",
       "reason": "deferred_sampler_utility"
     },
     "test_bounding_ellipsoid": {
       "note": "Checks ellipsoidal geometry utilities which are outside the current release sampler.",
-      "path": "tests/test_multi_ellipsoid.py",
+      "path": "cicd/tests/test_multi_ellipsoid.py",
       "reason": "deferred_sampler_utility"
     },
     "test_build_allocation_plan_can_use_fixed_initial_root_out_degree": {
       "note": "Checks the current allocation utility, normalization, and target construction rather than an implementation-agnostic scientific contract.",
-      "path": "tests/test_allocation.py",
+      "path": "cicd/tests/test_allocation.py",
       "reason": "implementation_formula"
     },
     "test_build_posterior_allocation_plan_selects_conservative_utility": {
       "note": "Checks the current allocation utility, normalization, and target construction rather than an implementation-agnostic scientific contract.",
-      "path": "tests/test_allocation.py",
+      "path": "cicd/tests/test_allocation.py",
       "reason": "implementation_formula"
     },
     "test_build_uniform_allocation_plan_uses_exact_outer_iteration_targets": {
       "note": "Checks the current allocation utility, normalization, and target construction rather than an implementation-agnostic scientific contract.",
-      "path": "tests/test_allocation.py",
+      "path": "cicd/tests/test_allocation.py",
       "reason": "implementation_formula"
     },
     "test_build_utility_allocation_plan_uses_summaries_and_shared_targets": {
       "note": "Checks the current allocation utility, normalization, and target construction rather than an implementation-agnostic scientific contract.",
-      "path": "tests/test_allocation.py",
+      "path": "cicd/tests/test_allocation.py",
       "reason": "implementation_formula"
     },
     "test_covariance_to_rotational": {
       "note": "Checks ellipsoidal geometry utilities which are outside the current release sampler.",
-      "path": "tests/test_multi_ellipsoid.py",
+      "path": "cicd/tests/test_multi_ellipsoid.py",
       "reason": "deferred_sampler_utility"
     },
     "test_cumulative_op_dynamic": {
       "note": "Checks generic cumulative and batched reduction utilities.",
-      "path": "tests/test_cumulative_ops.py",
+      "path": "cicd/tests/test_cumulative_ops.py",
       "reason": "utility_behavior"
     },
     "test_cumulative_op_static": {
       "note": "Checks generic cumulative and batched reduction utilities.",
-      "path": "tests/test_cumulative_ops.py",
+      "path": "cicd/tests/test_cumulative_ops.py",
       "reason": "utility_behavior"
     },
     "test_default_block_state_keeps_negative_infinity_likelihood_block": {
       "note": "Checks a race-tree representation detail not used as evidence for a broader invariant.",
-      "path": "tests/test_race_tree.py",
+      "path": "cicd/tests/test_race_tree.py",
       "reason": "implementation_regression"
     },
     "test_depth_epoch_appends_without_reordering_coordinate_payload": {
       "note": "Checks the current compiled scheduler, append-order index, batching, or pytree architecture.",
-      "path": "tests/test_core.py",
+      "path": "cicd/tests/test_core.py",
       "reason": "architecture_boundary"
     },
     "test_depth_first_uniform_targets_follow_k_delta_k_formula": {
       "note": "Checks the current allocation utility, normalization, and target construction rather than an implementation-agnostic scientific contract.",
-      "path": "tests/test_allocation.py",
+      "path": "cicd/tests/test_allocation.py",
       "reason": "implementation_formula"
     },
     "test_depth_relevance_is_a_complete_prefix_when_remaining_mass_rises": {
       "note": "Checks the current compiled scheduler, append-order index, batching, or pytree architecture.",
-      "path": "tests/test_core.py",
+      "path": "cicd/tests/test_core.py",
       "reason": "architecture_boundary"
     },
     "test_ellipsoid_clustering": {
       "note": "Checks ellipsoidal geometry utilities which are outside the current release sampler.",
-      "path": "tests/test_multi_ellipsoid.py",
+      "path": "cicd/tests/test_multi_ellipsoid.py",
       "reason": "deferred_sampler_utility"
     },
     "test_ellipsoid_params": {
       "note": "Checks ellipsoidal geometry utilities which are outside the current release sampler.",
-      "path": "tests/test_multi_ellipsoid.py",
+      "path": "cicd/tests/test_multi_ellipsoid.py",
       "reason": "deferred_sampler_utility"
     },
     "test_ellipsoid_transforms": {
       "note": "Checks ellipsoidal geometry utilities which are outside the current release sampler.",
-      "path": "tests/test_multi_ellipsoid.py",
+      "path": "cicd/tests/test_multi_ellipsoid.py",
       "reason": "deferred_sampler_utility"
     },
     "test_em_gmm": {
       "note": "Checks Gaussian-mixture utilities reserved for future direction proposals.",
-      "path": "tests/test_em_gmm.py",
+      "path": "cicd/tests/test_em_gmm.py",
       "reason": "deferred_sampler_utility"
     },
     "test_evidence_and_posterior_utilities_can_drive_different_targets": {
       "note": "Checks the current allocation utility, normalization, and target construction rather than an implementation-agnostic scientific contract.",
-      "path": "tests/test_allocation.py",
+      "path": "cicd/tests/test_allocation.py",
       "reason": "implementation_formula"
     },
     "test_evidence_improvement_nonpositive_evidence_falls_back_to_zero": {
       "note": "Checks the current allocation utility, normalization, and target construction rather than an implementation-agnostic scientific contract.",
-      "path": "tests/test_allocation.py",
+      "path": "cicd/tests/test_allocation.py",
       "reason": "implementation_formula"
     },
     "test_evidence_improvement_utility_matches_reference_loop": {
       "note": "Checks the current allocation utility, normalization, and target construction rather than an implementation-agnostic scientific contract.",
-      "path": "tests/test_allocation.py",
+      "path": "cicd/tests/test_allocation.py",
       "reason": "implementation_formula"
     },
     "test_evidence_utility_shape_is_invariant_to_large_log_likelihood_shift": {
       "note": "Checks the current allocation utility, normalization, and target construction rather than an implementation-agnostic scientific contract.",
-      "path": "tests/test_allocation.py",
+      "path": "cicd/tests/test_allocation.py",
       "reason": "implementation_formula"
     },
     "test_fractional_utility_targets_ceil_and_clip_after_scaling": {
       "note": "Checks the current allocation utility, normalization, and target construction rather than an implementation-agnostic scientific contract.",
-      "path": "tests/test_allocation.py",
+      "path": "cicd/tests/test_allocation.py",
       "reason": "implementation_formula"
     },
     "test_gh108": {
       "note": "Preserves a focused historical regression without claiming broad invariant coverage.",
-      "path": "tests/test_gh108.py",
+      "path": "cicd/tests/test_gh108.py",
       "reason": "regression_case"
     },
     "test_gh171": {
       "note": "Checks generic reporting, resampling, percentile, or diagnostic utilities.",
-      "path": "tests/test_utils.py",
+      "path": "cicd/tests/test_utils.py",
       "reason": "utility_behavior"
     },
     "test_insert_index_diagnostic_nonuniform": {
       "note": "Checks generic reporting, resampling, percentile, or diagnostic utilities.",
-      "path": "tests/test_utils.py",
+      "path": "cicd/tests/test_utils.py",
       "reason": "utility_behavior"
     },
     "test_insert_index_diagnostic_uniform": {
       "note": "Checks generic reporting, resampling, percentile, or diagnostic utilities.",
-      "path": "tests/test_utils.py",
+      "path": "cicd/tests/test_utils.py",
       "reason": "utility_behavior"
+    },
+    "test_init_params_forwards_model_and_explicit_args": {
+      "note": "Preserves the explicit JAXCTX model-argument forwarding regression without claiming full state and result preservation coverage.",
+      "path": "cicd/tests/test_model.py",
+      "reason": "regression_case"
     },
     "test_invalid_allocation_target_and_delta_k_fail_explicitly": {
       "note": "Checks the current allocation utility, normalization, and target construction rather than an implementation-agnostic scientific contract.",
-      "path": "tests/test_allocation.py",
+      "path": "cicd/tests/test_allocation.py",
       "reason": "implementation_formula"
     },
     "test_is_complex": {
       "note": "Checks a log-semiring helper not already mapped to numerical evidence stability.",
-      "path": "tests/test_log_semiring.py",
+      "path": "cicd/tests/test_log_semiring.py",
       "reason": "utility_behavior"
     },
     "test_jax_and_reference_explicit_gamma_conditioning_match": {
       "note": "Checks JAX/reference implementation parity or current diagnostic schema.",
-      "path": "tests/test_phantom_eval_jax.py",
+      "path": "cicd/tests/test_phantom_eval_jax.py",
       "reason": "reference_parity"
     },
     "test_jax_and_reference_sample_mc_shrinkage_emit_new_diagnostics": {
       "note": "Checks JAX/reference implementation parity or current diagnostic schema.",
-      "path": "tests/test_phantom_eval_jax.py",
+      "path": "cicd/tests/test_phantom_eval_jax.py",
       "reason": "reference_parity"
     },
     "test_jax_count_matrices_are_jittable_and_preserve_R_component": {
       "note": "Checks JAX/reference implementation parity or current diagnostic schema.",
-      "path": "tests/test_phantom_eval_jax.py",
+      "path": "cicd/tests/test_phantom_eval_jax.py",
       "reason": "reference_parity"
     },
     "test_jaxify_likelihood": {
       "note": "Checks the Python-to-JAX likelihood adapter implementation.",
-      "path": "tests/test_jaxify.py",
+      "path": "cicd/tests/test_jaxify.py",
       "reason": "utility_behavior"
     },
     "test_likelihood_order_merges_only_integer_identities": {
       "note": "Checks the current compiled scheduler, append-order index, batching, or pytree architecture.",
-      "path": "tests/test_core.py",
+      "path": "cicd/tests/test_core.py",
       "reason": "architecture_boundary"
     },
     "test_likelihood_order_rank_merge_matches_stable_reference": {
       "note": "Checks the current compiled scheduler, append-order index, batching, or pytree architecture.",
-      "path": "tests/test_core.py",
+      "path": "cicd/tests/test_core.py",
       "reason": "architecture_boundary"
     },
     "test_log_ellipsoid_volume": {
       "note": "Checks ellipsoidal geometry utilities which are outside the current release sampler.",
-      "path": "tests/test_multi_ellipsoid.py",
+      "path": "cicd/tests/test_multi_ellipsoid.py",
       "reason": "deferred_sampler_utility"
     },
     "test_nested_sampler_keeps_phantom_likelihood_only_with_legacy_flag": {
       "note": "Checks current result wiring, validation timing, or diagnostic schema beyond a mapped user-facing invariant.",
-      "path": "tests/test_phantom_results.py",
+      "path": "cicd/tests/test_phantom_results.py",
       "reason": "result_schema_regression"
     },
     "test_new_proposal_nonperfect_finite_width_clips_and_steps_out": {
       "note": "Exercises finite-width step-out behavior which is outside the current release sampler requirement.",
-      "path": "tests/test_constrained_sampler.py",
+      "path": "cicd/tests/test_constrained_sampler.py",
       "reason": "deferred_sampler_mode"
     },
     "test_new_proposal_nonperfect_first_uses_full_slice_width": {
       "note": "Exercises finite-width step-out behavior which is outside the current release sampler requirement.",
-      "path": "tests/test_constrained_sampler.py",
+      "path": "cicd/tests/test_constrained_sampler.py",
       "reason": "deferred_sampler_mode"
     },
     "test_new_proposal_nonperfect_reuses_previous_width": {
       "note": "Exercises finite-width step-out behavior which is outside the current release sampler requirement.",
-      "path": "tests/test_constrained_sampler.py",
+      "path": "cicd/tests/test_constrained_sampler.py",
       "reason": "deferred_sampler_mode"
     },
     "test_no_phantom_mc_shrinkage_uses_supplied_block_incoming_K": {
       "note": "Checks a shrinkage helper, validation path, or diagnostic compatibility detail beyond mapped invariants.",
-      "path": "tests/test_shrinkage.py",
+      "path": "cicd/tests/test_shrinkage.py",
       "reason": "implementation_regression"
     },
     "test_outer_target_uses_fixed_initial_degree_not_mutable_root_degree": {
       "note": "Checks the current compiled scheduler, append-order index, batching, or pytree architecture.",
-      "path": "tests/test_core.py",
+      "path": "cicd/tests/test_core.py",
       "reason": "architecture_boundary"
     },
     "test_parallel_replacement_uses_full_vmap_not_sequential_lax_map": {
       "note": "Checks the current compiled scheduler, append-order index, batching, or pytree architecture.",
-      "path": "tests/test_core.py",
+      "path": "cicd/tests/test_core.py",
       "reason": "architecture_boundary"
     },
     "test_plot_cornerplot_writes_file": {
       "note": "Checks that plotting produces an artifact, not the underlying scientific result contract.",
-      "path": "tests/test_results_plotting.py",
+      "path": "cicd/tests/test_results_plotting.py",
       "reason": "output_smoke"
     },
     "test_plot_diagnostics_writes_file": {
       "note": "Checks that plotting produces an artifact, not the underlying scientific result contract.",
-      "path": "tests/test_results_plotting.py",
+      "path": "cicd/tests/test_results_plotting.py",
       "reason": "output_smoke"
     },
     "test_posterior_improvement_tiny_positive_weight_limit_is_continuous": {
       "note": "Checks the current allocation utility, normalization, and target construction rather than an implementation-agnostic scientific contract.",
-      "path": "tests/test_allocation.py",
+      "path": "cicd/tests/test_allocation.py",
       "reason": "implementation_formula"
     },
     "test_posterior_improvement_utility_matches_exact_and_conservative_references": {
       "note": "Checks the current allocation utility, normalization, and target construction rather than an implementation-agnostic scientific contract.",
-      "path": "tests/test_allocation.py",
+      "path": "cicd/tests/test_allocation.py",
       "reason": "implementation_formula"
     },
     "test_posterior_improvement_zero_shell_mass_does_not_create_work": {
       "note": "Checks the current allocation utility, normalization, and target construction rather than an implementation-agnostic scientific contract.",
-      "path": "tests/test_allocation.py",
+      "path": "cicd/tests/test_allocation.py",
       "reason": "implementation_formula"
     },
     "test_posterior_improvement_zero_weight_limit_is_zero": {
       "note": "Checks the current allocation utility, normalization, and target construction rather than an implementation-agnostic scientific contract.",
-      "path": "tests/test_allocation.py",
+      "path": "cicd/tests/test_allocation.py",
       "reason": "implementation_formula"
     },
     "test_posterior_plan_shape_is_invariant_to_large_log_likelihood_shift": {
       "note": "Checks the current allocation utility, normalization, and target construction rather than an implementation-agnostic scientific contract.",
-      "path": "tests/test_allocation.py",
+      "path": "cicd/tests/test_allocation.py",
       "reason": "implementation_formula"
     },
     "test_public_data_objects_are_frozen_and_slotted": {
       "note": "Checks the current compiled scheduler, append-order index, batching, or pytree architecture.",
-      "path": "tests/test_core.py",
+      "path": "cicd/tests/test_core.py",
       "reason": "architecture_boundary"
     },
     "test_public_mc_shrinkage_rejects_invalid_plateau_capacity": {
       "note": "Checks a shrinkage helper, validation path, or diagnostic compatibility detail beyond mapped invariants.",
-      "path": "tests/test_shrinkage.py",
+      "path": "cicd/tests/test_shrinkage.py",
       "reason": "implementation_regression"
     },
     "test_public_mc_shrinkage_rejects_plateau_when_first_K_too_small": {
       "note": "Checks a shrinkage helper, validation path, or diagnostic compatibility detail beyond mapped invariants.",
-      "path": "tests/test_shrinkage.py",
+      "path": "cicd/tests/test_shrinkage.py",
       "reason": "implementation_regression"
     },
     "test_public_phantom_eval_sample_mc_shrinkage_uses_gamma_conditioning_when_gate_active": {
       "note": "Checks a shrinkage helper, validation path, or diagnostic compatibility detail beyond mapped invariants.",
-      "path": "tests/test_shrinkage.py",
+      "path": "cicd/tests/test_shrinkage.py",
       "reason": "implementation_regression"
     },
     "test_public_sample_mc_shrinkage_preserves_means_and_inflates_correlated_cluster_variance": {
       "note": "Checks a shrinkage helper, validation path, or diagnostic compatibility detail beyond mapped invariants.",
-      "path": "tests/test_shrinkage.py",
+      "path": "cicd/tests/test_shrinkage.py",
       "reason": "implementation_regression"
     },
     "test_random_ortho_matrix": {
       "note": "Checks generic random-matrix or resampling helpers.",
-      "path": "tests/test_random.py",
+      "path": "cicd/tests/test_random.py",
       "reason": "utility_behavior"
     },
     "test_random_ortho_normal_matrix": {
       "note": "Checks generic random-matrix or resampling helpers.",
-      "path": "tests/test_random.py",
+      "path": "cicd/tests/test_random.py",
       "reason": "utility_behavior"
     },
     "test_reference_gamma_sampler_rejects_malformed_count_matrices": {
       "note": "Checks the NumPy reference implementation or its validation surface.",
-      "path": "tests/test_phantom_eval_ref.py",
+      "path": "cicd/tests/test_phantom_eval_ref.py",
       "reason": "reference_implementation"
     },
     "test_reference_phantom_gate_rejects_zero_participation_when_threshold_is_zero": {
       "note": "Checks the NumPy reference implementation or its validation surface.",
-      "path": "tests/test_phantom_eval_ref.py",
+      "path": "cicd/tests/test_phantom_eval_ref.py",
       "reason": "reference_implementation"
     },
     "test_reference_rejects_malformed_per_phantom_validity_mask": {
       "note": "Checks the NumPy reference implementation or its validation surface.",
-      "path": "tests/test_phantom_eval_ref.py",
+      "path": "cicd/tests/test_phantom_eval_ref.py",
       "reason": "reference_implementation"
     },
     "test_reference_sample_mc_shrinkage_runs_with_kish_gate_diagnostics": {
       "note": "Checks the NumPy reference implementation or its validation surface.",
-      "path": "tests/test_phantom_eval_ref.py",
+      "path": "cicd/tests/test_phantom_eval_ref.py",
       "reason": "reference_implementation"
     },
     "test_resample": {
       "note": "Checks generic reporting, resampling, percentile, or diagnostic utilities.",
-      "path": "tests/test_utils.py",
+      "path": "cicd/tests/test_utils.py",
       "reason": "utility_behavior"
     },
     "test_resample_indicies": {
       "note": "Checks generic random-matrix or resampling helpers.",
-      "path": "tests/test_random.py",
+      "path": "cicd/tests/test_random.py",
       "reason": "utility_behavior"
     },
     "test_result_point_estimates_do_not_have_or_use_phantom_coordinates": {
       "note": "Checks current result wiring, validation timing, or diagnostic schema beyond a mapped user-facing invariant.",
-      "path": "tests/test_phantom_results.py",
+      "path": "cicd/tests/test_phantom_results.py",
       "reason": "result_schema_regression"
     },
     "test_results_expose_public_phantom_conditioning_diagnostics": {
       "note": "Checks current result wiring, validation timing, or diagnostic schema beyond a mapped user-facing invariant.",
-      "path": "tests/test_phantom_results.py",
+      "path": "cicd/tests/test_phantom_results.py",
       "reason": "result_schema_regression"
     },
     "test_results_sample_mc_shrinkage_exposes_kish_gate_diagnostics_not_target_rho": {
       "note": "Checks current result wiring, validation timing, or diagnostic schema beyond a mapped user-facing invariant.",
-      "path": "tests/test_phantom_results.py",
+      "path": "cicd/tests/test_phantom_results.py",
       "reason": "result_schema_regression"
     },
     "test_results_sample_mc_shrinkage_rejects_stale_block_likelihoods_before_jit": {
       "note": "Checks current result wiring, validation timing, or diagnostic schema beyond a mapped user-facing invariant.",
-      "path": "tests/test_phantom_results.py",
+      "path": "cicd/tests/test_phantom_results.py",
       "reason": "result_schema_regression"
     },
     "test_samples_resize_preserves_constraints_and_provenance_fields": {
       "note": "Checks current state/result wiring or validation timing beyond mapped scientific invariants.",
-      "path": "tests/test_state.py",
+      "path": "cicd/tests/test_state.py",
       "reason": "result_schema_regression"
     },
     "test_scan_associative_cumulative_not_associative_op": {
       "note": "Checks generic cumulative and batched reduction utilities.",
-      "path": "tests/test_cumulative_ops.py",
+      "path": "cicd/tests/test_cumulative_ops.py",
       "reason": "utility_behavior"
     },
     "test_scan_associative_cumulative_op": {
       "note": "Checks generic cumulative and batched reduction utilities.",
-      "path": "tests/test_cumulative_ops.py",
+      "path": "cicd/tests/test_cumulative_ops.py",
       "reason": "utility_behavior"
     },
     "test_scan_associative_cumulative_op_likelihoods": {
       "note": "Checks generic cumulative and batched reduction utilities.",
-      "path": "tests/test_cumulative_ops.py",
+      "path": "cicd/tests/test_cumulative_ops.py",
       "reason": "utility_behavior"
     },
     "test_scan_associative_cumulative_op_with_pytrees": {
       "note": "Checks generic cumulative and batched reduction utilities.",
-      "path": "tests/test_cumulative_ops.py",
+      "path": "cicd/tests/test_cumulative_ops.py",
       "reason": "utility_behavior"
     },
     "test_scan_or_while_loop": {
       "note": "Checks generic cumulative and batched reduction utilities.",
-      "path": "tests/test_cumulative_ops.py",
+      "path": "cicd/tests/test_cumulative_ops.py",
       "reason": "utility_behavior"
     },
     "test_state_sample_logZ_rejects_invalid_plateau_capacity": {
       "note": "Checks current state/result wiring or validation timing beyond mapped scientific invariants.",
-      "path": "tests/test_state.py",
+      "path": "cicd/tests/test_state.py",
       "reason": "result_schema_regression"
     },
     "test_state_sample_logZ_rejects_strict_contour_equality": {
       "note": "Checks current state/result wiring or validation timing beyond mapped scientific invariants.",
-      "path": "tests/test_state.py",
+      "path": "cicd/tests/test_state.py",
       "reason": "result_schema_regression"
     },
     "test_state_sample_logZ_uses_public_block_path": {
       "note": "Checks current state/result wiring or validation timing beyond mapped scientific invariants.",
-      "path": "tests/test_state.py",
+      "path": "cicd/tests/test_state.py",
       "reason": "result_schema_regression"
     },
     "test_state_to_result_preserves_per_cluster_phantom_validity": {
       "note": "Checks current result wiring, validation timing, or diagnostic schema beyond a mapped user-facing invariant.",
-      "path": "tests/test_phantom_results.py",
+      "path": "cicd/tests/test_phantom_results.py",
       "reason": "result_schema_regression"
     },
     "test_state_to_result_preserves_phantom_provenance_for_kish_diagnostics": {
       "note": "Checks current state/result wiring or validation timing beyond mapped scientific invariants.",
-      "path": "tests/test_state.py",
+      "path": "cicd/tests/test_state.py",
       "reason": "result_schema_regression"
     },
     "test_state_to_result_rejects_invalid_plateau_capacity": {
       "note": "Checks current state/result wiring or validation timing beyond mapped scientific invariants.",
-      "path": "tests/test_state.py",
+      "path": "cicd/tests/test_state.py",
       "reason": "result_schema_regression"
     },
     "test_state_to_result_rejects_strict_contour_equality": {
       "note": "Checks current state/result wiring or validation timing beyond mapped scientific invariants.",
-      "path": "tests/test_state.py",
+      "path": "cicd/tests/test_state.py",
       "reason": "result_schema_regression"
     },
     "test_stratified_seed_rank_is_uniform_for_each_stationary_set": {
       "note": "Checks the current compiled scheduler, append-order index, batching, or pytree architecture.",
-      "path": "tests/test_core.py",
+      "path": "cicd/tests/test_core.py",
       "reason": "architecture_boundary"
     },
     "test_to_result_marks_no_phantoms_invalid": {
       "note": "Checks current state/result wiring or validation timing beyond mapped scientific invariants.",
-      "path": "tests/test_state.py",
+      "path": "cicd/tests/test_state.py",
       "reason": "result_schema_regression"
     },
     "test_treefield_arithmetic_preserves_wrapper_contract": {
       "note": "Checks generic pytree arithmetic and wrapper behavior.",
-      "path": "tests/test_pytree.py",
+      "path": "cicd/tests/test_pytree.py",
       "reason": "utility_behavior"
     },
     "test_treefield_helper_methods_return_wrapped_treefield": {
       "note": "Checks generic pytree arithmetic and wrapper behavior.",
-      "path": "tests/test_pytree.py",
+      "path": "cicd/tests/test_pytree.py",
       "reason": "utility_behavior"
     },
     "test_treefield_matmul_matches_dense_matrix_product": {
       "note": "Checks generic pytree arithmetic and wrapper behavior.",
-      "path": "tests/test_pytree.py",
+      "path": "cicd/tests/test_pytree.py",
       "reason": "utility_behavior"
     },
     "test_utility_fallbacks_are_deterministic_for_zero_tied_and_nonfinite_inputs": {
       "note": "Checks the current allocation utility, normalization, and target construction rather than an implementation-agnostic scientific contract.",
-      "path": "tests/test_allocation.py",
+      "path": "cicd/tests/test_allocation.py",
       "reason": "implementation_formula"
     },
     "test_utility_normalisation_and_integer_targets_are_deterministic": {
       "note": "Checks the current allocation utility, normalization, and target construction rather than an implementation-agnostic scientific contract.",
-      "path": "tests/test_allocation.py",
+      "path": "cicd/tests/test_allocation.py",
       "reason": "implementation_formula"
     },
     "test_utility_normalisation_falls_back_to_uniform_over_valid_blocks": {
       "note": "Checks the current allocation utility, normalization, and target construction rather than an implementation-agnostic scientific contract.",
-      "path": "tests/test_allocation.py",
+      "path": "cicd/tests/test_allocation.py",
       "reason": "implementation_formula"
     },
     "test_validate_allocation_target_accepts_public_literals": {
       "note": "Checks the current allocation utility, normalization, and target construction rather than an implementation-agnostic scientific contract.",
-      "path": "tests/test_allocation.py",
+      "path": "cicd/tests/test_allocation.py",
       "reason": "implementation_formula"
     },
     "test_weighted_percentile": {
       "note": "Checks generic reporting, resampling, percentile, or diagnostic utilities.",
-      "path": "tests/test_utils.py",
+      "path": "cicd/tests/test_utils.py",
       "reason": "utility_behavior"
+    },
+    "test_config_expands_workers_and_fingerprints_resolved_behavior": {
+      "note": "Checks the selected TOML schema, worker expansion, and CLI validation mechanics.",
+      "path": "cicd/tests/test_distributed_runtime.py",
+      "reason": "runtime_architecture"
+    },
+    "test_failed_cli_startup_forcibly_cleans_up_owned_supervisor": {
+      "note": "Checks the selected bounded process-escalation policy after a CLI-owned supervisor fails startup.",
+      "path": "cicd/tests/test_distributed_runtime.py",
+      "reason": "runtime_architecture"
+    },
+    "test_growth_preserves_pending_payload_and_logical_depth": {
+      "note": "Checks the current immutable buffer-growth implementation while distributed work is pending.",
+      "path": "cicd/tests/test_distributed_core.py",
+      "reason": "runtime_architecture"
+    },
+    "test_reservations_match_linear_python_reference": {
+      "note": "Checks the accelerated reservation scatter against a linear host reference.",
+      "path": "cicd/tests/test_distributed_core.py",
+      "reason": "reference_equivalence"
+    },
+    "test_supervisor_and_config_validation_avoid_scientific_imports": {
+      "note": "Checks the selected JAX-free supervisor and lightweight configuration-validation process boundaries.",
+      "path": "cicd/tests/test_distributed_runtime.py",
+      "reason": "runtime_architecture"
+    },
+    "test_supervisor_rotates_dispatch_fairly_between_sessions": {
+      "note": "Checks the selected supervisor round-robin queue policy between active clients.",
+      "path": "cicd/tests/test_distributed_runtime.py",
+      "reason": "runtime_architecture"
     }
   }
 }
