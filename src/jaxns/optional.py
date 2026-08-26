@@ -8,13 +8,13 @@ def import_matplotlib():
         The imported ``matplotlib.pyplot`` module.
 
     Raises:
-        ImportError: If the plotting extra is not installed correctly.
+        ImportError: If the default installation is incomplete.
     """
     try:
         from matplotlib import pyplot
     except ImportError as error:
         raise ImportError(
-            "JAXNS plotting requires the optional plotting dependencies. "
-            "Install them with `pip install 'jaxns[plotting]'`."
+            "JAXNS plotting requires Matplotlib, which is part of the default "
+            "installation. Reinstall it with `pip install jaxns`."
         ) from error
     return pyplot

@@ -7,14 +7,10 @@ Install the stable version with,
 
    pip install jaxns
 
-This base installation includes JAXNS model authoring and local nested
-sampling. Plotting is optional and can be installed with,
+This base installation includes JAXNS model authoring, local nested sampling,
+and plotting.
 
-.. code-block:: bash
-
-   pip install 'jaxns[plotting]'
-
-The maintained examples additionally use plotting, scikit-learn, and Optax:
+The maintained examples additionally use scikit-learn and Optax:
 
 .. code-block:: bash
 

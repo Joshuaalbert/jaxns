@@ -16,8 +16,14 @@ from jaxns.allocation import (
     closest_seedable_parent_block_python,
     stationary_seed_indices_python,
 )
-from jaxns.constrained_sampler import AbstractSampler, _take_phantom_prefix
+from jaxns.constrained_sampler import (
+    AbstractSampler,
+    EllipsoidalDirection,
+    UniDimSliceSampler,
+    _take_phantom_prefix,
+)
 from jaxns.core import NestedSampler
+from jaxns.multi_ellipsoid_utils import empty_sampler_data
 from jaxns.pytree import PureDataclassPytree
 from jaxns.race_tree import (
     build_block_state,
@@ -66,6 +72,34 @@ class DeterministicSampler(PureDataclassPytree, AbstractSampler):
 
 
 DeterministicSampler.register_pytree()
+
+
+@dataclasses.dataclass(slots=True, frozen=True)
+class TwoDimensionalModel(PureDataclassPytree):
+    """Small vector model for exercising direction geometry in the core."""
+
+    def U_ndims(self, args=(), params=None) -> int:
+        del args, params
+        return 2
+
+    def sample_U(self, key, args=(), params=None):
+        del args, params
+        return jax.random.uniform(key, shape=(2,))
+
+    def transform_to_X(self, U, args=(), params=None):
+        del args, params
+        return U
+
+    def log_likelihood(self, U, args=(), params=None, *, allow_nan=True):
+        del args, params, allow_nan
+        return -jnp.sum(jnp.square(U - jnp.asarray([0.3, 0.7])))
+
+    def log_prior(self, U, args=(), params=None):
+        del args, params
+        return jnp.where(jnp.all((U >= 0.0) & (U <= 1.0)), 0.0, -jnp.inf)
+
+
+TwoDimensionalModel.register_pytree()
 
 
 def test_stationary_seed_mask_uses_generation_interval_not_suffix():
@@ -665,6 +699,115 @@ def test_state_checkpoint_round_trip_preserves_resume_key_and_order():
     )
 
 
+def test_ellipsoidal_state_survives_checkpoint_growth_and_resume():
+    model = TwoDimensionalModel()
+    sampler = UniDimSliceSampler(
+        model=model,
+        num_slices=4,
+        direction=EllipsoidalDirection(
+            num_components=1,
+            min_effective_samples=3,
+            num_iterations=3,
+            population_size=12,
+        ),
+    )
+    common = {
+        "model": model,
+        "root_allocation_degree": 6,
+        "shell_size": 2,
+        "delta_K": 2,
+        "unlimited_samples": True,
+        "sampler": sampler,
+        "termination_condition": TerminationCondition(),
+    }
+    small = NestedSampler(initial_capacity=6, **common)
+    large = NestedSampler(initial_capacity=48, **common)
+
+    def goal(state):
+        return int(state.goal_loop_iter) >= 2
+
+    depth_cond = TerminationCondition()
+    key = jax.random.PRNGKey(246)
+
+    grown = small.run_until_goal(goal, depth_cond=depth_cond, key=key)
+    reference = large.run_until_goal(goal, depth_cond=depth_cond, key=key)
+    assert grown.samples.log_likelihoods.shape[0] > 6
+    assert int(grown.sampler_data.num_updates) > 0
+    assert bool(jnp.any(grown.sampler_data.valid))
+    assert int(grown.sampler_data.num_directions) == (
+        int(grown.num_samples) - 6
+    ) * sampler.num_slices
+    assert 0 <= int(grown.sampler_data.num_isotropic) <= int(
+        grown.sampler_data.num_directions
+    )
+
+    grown = grown.trim()
+    reference = reference.trim()
+    for left, right in zip(
+        jax.tree.leaves(grown.samples),
+        jax.tree.leaves(reference.samples),
+        strict=True,
+    ):
+        left = np.asarray(left)
+        right = np.asarray(right)
+        if np.issubdtype(left.dtype, np.inexact):
+            # Reductions over different padded capacities may differ by the
+            # final floating-point bit while representing the same immutable
+            # fit and scientific continuation.
+            np.testing.assert_allclose(left, right, rtol=2e-15, atol=0.0)
+        else:
+            np.testing.assert_array_equal(left, right)
+    np.testing.assert_array_equal(grown.random_key, reference.random_key)
+    np.testing.assert_array_equal(grown.goal_key, reference.goal_key)
+    np.testing.assert_allclose(
+        np.sort(np.asarray(grown.samples.log_likelihoods)),
+        np.sort(np.asarray(reference.samples.log_likelihoods)),
+        rtol=2e-15,
+        atol=0.0,
+    )
+    for left, right in zip(
+        jax.tree.leaves(grown.sampler_data),
+        jax.tree.leaves(reference.sampler_data),
+        strict=True,
+    ):
+        left = np.asarray(left)
+        right = np.asarray(right)
+        if np.issubdtype(left.dtype, np.inexact):
+            np.testing.assert_allclose(left, right, rtol=2e-15, atol=0.0)
+        else:
+            np.testing.assert_array_equal(left, right)
+
+    restored = pickle.loads(pickle.dumps(grown))
+    for left, right in zip(
+        jax.tree.leaves(restored.sampler_data),
+        jax.tree.leaves(grown.sampler_data),
+        strict=True,
+    ):
+        np.testing.assert_array_equal(np.asarray(left), np.asarray(right))
+
+    def next_goal(state):
+        return int(state.goal_loop_iter) >= 3
+
+    # A checkpoint is useful only if the restored geometry drives the same
+    # subsequent chains, not merely if its arrays survive serialization.
+    continued = small.resume_until_goal(
+        grown,
+        next_goal,
+        depth_cond=depth_cond,
+    ).trim()
+    resumed = small.resume_until_goal(
+        restored,
+        next_goal,
+        depth_cond=depth_cond,
+    ).trim()
+    for left, right in zip(
+        jax.tree.leaves(continued),
+        jax.tree.leaves(resumed),
+        strict=True,
+    ):
+        np.testing.assert_array_equal(np.asarray(left), np.asarray(right))
+
+
 def test_public_data_objects_are_frozen_and_slotted():
     ns = NestedSampler(
         model=make_toy_model(),
@@ -675,11 +818,15 @@ def test_public_data_objects_are_frozen_and_slotted():
         sampler=DeterministicSampler(),
     )
     state = ns.initialise(jax.random.PRNGKey(4))
+    direction = EllipsoidalDirection()
+    sampler_data = empty_sampler_data(num_components=1, dimension=1)
 
     for value, field_name in (
         (ns, "max_samples"),
         (state, "num_samples"),
         (state.samples, "out_degree"),
+        (direction, "num_components"),
+        (sampler_data, "centres"),
     ):
         assert hasattr(type(value), "__slots__")
         with pytest.raises(dataclasses.FrozenInstanceError):

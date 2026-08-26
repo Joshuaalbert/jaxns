@@ -9,6 +9,7 @@ from tensorflow_probability.substrates import jax as tfp
 
 from jaxns.core import NestedSampler
 from jaxns.model import Model
+from jaxns.multi_ellipsoid_utils import empty_sampler_data
 from jaxns.race_tree import build_block_state, initialise_likelihood_order
 from jaxns.samples import PhantomSamples, Samples
 from jaxns.shrinkage import (
@@ -261,6 +262,38 @@ def test_state_merge_applies_terminal_growth_depth_precedence():
     assert int(merged_growth.termination_reason) == 0
     assert bool(merged_growth.needs_growth)
     assert not bool(merged_growth.depth_reached)
+
+
+def test_state_merge_keeps_recent_geometry_and_cumulative_direction_work():
+    base = _make_strict_contour_violation_state()
+    left_data = dataclasses.replace(
+        empty_sampler_data(num_components=1, dimension=1),
+        centres=jnp.asarray([[1.0]]),
+        num_samples=jnp.asarray(10),
+        num_attempted=jnp.asarray(10),
+        num_updates=jnp.asarray(2),
+        num_directions=jnp.asarray(100),
+        num_isotropic=jnp.asarray(10),
+    )
+    right_data = dataclasses.replace(
+        empty_sampler_data(num_components=1, dimension=1),
+        centres=jnp.asarray([[2.0]]),
+        num_samples=jnp.asarray(20),
+        num_attempted=jnp.asarray(20),
+        num_updates=jnp.asarray(3),
+        num_directions=jnp.asarray(200),
+        num_isotropic=jnp.asarray(20),
+    )
+
+    merged = dataclasses.replace(base, sampler_data=left_data).merge(
+        dataclasses.replace(base, sampler_data=right_data)
+    )
+
+    np.testing.assert_array_equal(merged.sampler_data.centres, [[2.0]])
+    assert int(merged.sampler_data.num_samples) == 20
+    assert int(merged.sampler_data.num_updates) == 5
+    assert int(merged.sampler_data.num_directions) == 300
+    assert int(merged.sampler_data.num_isotropic) == 30
 
 
 def test_state_consistency_rejects_strict_contour_violation():

@@ -22,22 +22,18 @@ urls = { "Homepage" = "https://github.com/joshuaalbert/jaxns" }
 dependencies = [
     "jax>=0.6.0",
     "jaxctx>=1.1.5",
+    "matplotlib",
     "numpy",
     "scipy",
     "tfp-nightly",
 ]
 
 [project.optional-dependencies]
-plotting = [
-    "matplotlib",
-]
 examples = [
-    "matplotlib",
     "scikit-learn",
     "optax",
 ]
 tests = [
-    "matplotlib",
     "scikit-learn",
     "networkx",
     "psutil",

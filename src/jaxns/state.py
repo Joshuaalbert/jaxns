@@ -14,6 +14,7 @@ from jaxns.evidence_calculation import EvidenceCalculation
 from jaxns.log_semiring import LogSpace, normalise_log_space
 from jaxns.mixed_precision import mp_policy
 from jaxns.model import Model
+from jaxns.multi_ellipsoid_utils import SamplerData
 from jaxns.phantom_eval import EvidenceSamples
 from jaxns.pytree import PureDataclassPytree
 from jaxns.race_tree import BlockState, LikelihoodOrder, build_block_state
@@ -63,6 +64,10 @@ class State(PureDataclassPytree):
     depth_reached: BoolArray = dataclasses.field(  # []
         default_factory=lambda: jnp.asarray(False, mp_policy.bool_dtype)
     )
+    # Direction geometry is continuation data, not a user-facing scientific
+    # result. Keeping it on State makes capacity growth and checkpoint/resume
+    # reproduce the same future transition kernels without hidden mutation.
+    sampler_data: SamplerData | None = None
 
     def merge(self, other: 'State') -> 'State':
         """
@@ -432,6 +437,39 @@ def _merge(self: State, other: State) -> 'State':
     # terminal nor requesting growth, the merged continuation is at a normal
     # depth boundary rather than an ambiguous all-false control state.
     depth_reached = jnp.logical_not(terminal | needs_growth)
+    if self.sampler_data is None:
+        sampler_data = other.sampler_data
+    elif other.sampler_data is None:
+        sampler_data = self.sampler_data
+    else:
+        # A merged race remains valid under either symmetric direction law.
+        # Continue from the more recently informed geometry, while preserving
+        # cumulative work counters from both independent runs.
+        use_self = (
+            self.sampler_data.num_samples
+            >= other.sampler_data.num_samples
+        )
+        sampler_data = jax.tree.map(
+            lambda left, right: jnp.where(use_self, left, right),
+            self.sampler_data,
+            other.sampler_data,
+        )
+        sampler_data = dataclasses.replace(
+            sampler_data,
+            num_updates=(
+                self.sampler_data.num_updates
+                + other.sampler_data.num_updates
+            ),
+            num_directions=(
+                self.sampler_data.num_directions
+                + other.sampler_data.num_directions
+            ),
+            num_isotropic=(
+                self.sampler_data.num_isotropic
+                + other.sampler_data.num_isotropic
+            ),
+        )
+
     return State(
         root_out_degree=self.root_out_degree + other.root_out_degree,
         samples=self.samples.concat(other.samples),
@@ -451,6 +489,7 @@ def _merge(self: State, other: State) -> 'State':
         goal_key=self.goal_key,
         needs_growth=needs_growth,
         depth_reached=depth_reached,
+        sampler_data=sampler_data,
     )
 
 

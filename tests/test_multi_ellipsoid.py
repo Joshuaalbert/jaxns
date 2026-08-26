@@ -1,19 +1,31 @@
 import jax
-import matplotlib
+import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow_probability.substrates.jax as tfp
-from jax import numpy as jnp, random, vmap
+from jax import numpy as jnp
+from jax import random, vmap
 from jaxctx.priors.prior import Prior
 
 from jaxns.mixed_precision import mp_policy
 from jaxns.model import Model
-from jaxns.multi_ellipsoid_utils import log_ellipsoid_volume, ellipsoid_clustering, \
-    bounding_ellipsoid, covariance_to_rotational, ellipsoid_params, point_in_ellipsoid, plot_ellipses, \
-    EllipsoidParams, maha_ellipsoid, circle_to_ellipsoid, ellipsoid_to_circle
+from jaxns.multi_ellipsoid_utils import (
+    EllipsoidParams,
+    bounding_ellipsoid,
+    circle_to_ellipsoid,
+    covariance_to_rotational,
+    ellipsoid_clustering,
+    ellipsoid_params,
+    ellipsoid_to_circle,
+    empty_sampler_data,
+    log_ellipsoid_volume,
+    maha_ellipsoid,
+    plot_ellipses,
+    point_in_ellipsoid,
+    update_sampler_data,
+)
 from jaxns.random_utils import random_ortho_matrix
 
-matplotlib.use("Agg")
-import pylab as plt
+plt.switch_backend("Agg")
 
 tfpd = tfp.distributions
 
@@ -140,3 +152,58 @@ def test_ellipsoid_transforms():
                                                mu, random_radii, random_rotation))(X)
 
     np.testing.assert_allclose(X_out, X, atol=1e-6)
+
+
+def test_sampler_data_warm_update_retains_geometry_after_failed_fit():
+    first = random.normal(random.PRNGKey(20), shape=(16, 2)) * 0.05 + 0.2
+    second = random.normal(random.PRNGKey(21), shape=(16, 2)) * 0.08 + 0.8
+    points = jnp.concatenate([first, second], axis=0)
+    log_L = -jnp.sum(jnp.square(points - 0.5), axis=1)
+    mask = jnp.ones((32,), jnp.bool_)
+    log_weights = jnp.full((32,), -jnp.log(32.0))
+    initial = empty_sampler_data(num_components=2, dimension=2)
+
+    fitted = jax.jit(
+        update_sampler_data,
+        static_argnames=(
+            "n_iters",
+            "min_effective_samples",
+            "regularisation",
+        ),
+    )(
+        random.PRNGKey(22),
+        initial,
+        points,
+        log_L,
+        log_weights,
+        mask,
+        jnp.asarray(32),
+        n_iters=5,
+        min_effective_samples=8,
+        regularisation=1e-6,
+    )
+    assert jnp.all(fitted.valid)
+    assert int(fitted.num_updates) == 1
+    assert jnp.all(jnp.isfinite(fitted.log_volumes))
+
+    # An exactly collapsed population contains no full-dimensional component.
+    # The attempted warm update must retain every previously valid parameter
+    # rather than installing ridge-created but scientifically false geometry.
+    collapsed = jnp.full_like(points, 0.5)
+    retained = update_sampler_data(
+        random.PRNGKey(23),
+        fitted,
+        collapsed,
+        jnp.zeros_like(log_L),
+        log_weights,
+        mask,
+        jnp.asarray(64),
+        n_iters=3,
+        min_effective_samples=8,
+        regularisation=1e-6,
+    )
+    np.testing.assert_array_equal(retained.centres, fitted.centres)
+    np.testing.assert_array_equal(retained.radii, fitted.radii)
+    np.testing.assert_array_equal(retained.rotations, fitted.rotations)
+    assert int(retained.num_updates) == 1
+    assert int(retained.num_attempted) == 64
