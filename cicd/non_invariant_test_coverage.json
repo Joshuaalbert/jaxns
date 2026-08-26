@@ -586,6 +586,11 @@
       "path": "cicd/tests/test_distributed_runtime.py",
       "reason": "runtime_architecture"
     },
+    "test_failed_cli_startup_forcibly_cleans_up_owned_supervisor": {
+      "note": "Checks the selected bounded process-escalation policy after a CLI-owned supervisor fails startup.",
+      "path": "cicd/tests/test_distributed_runtime.py",
+      "reason": "runtime_architecture"
+    },
     "test_growth_preserves_pending_payload_and_logical_depth": {
       "note": "Checks the current immutable buffer-growth implementation while distributed work is pending.",
       "path": "cicd/tests/test_distributed_core.py",

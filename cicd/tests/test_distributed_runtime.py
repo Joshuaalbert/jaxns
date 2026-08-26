@@ -18,6 +18,7 @@ import pytest
 from jax import numpy as jnp
 
 from cicd.tests.distributed_support import make_toy_model
+from jaxns.cli import _stop_started_process
 from jaxns.constrained_sampler import (
     ConstrainedSampleRequest,
     UniDimSliceSampler,
@@ -170,6 +171,42 @@ def test_supervisor_and_config_validation_avoid_scientific_imports(tmp_path):
         text=True,
     )
     assert '"stack_id": "distributed-test"' in validation.stdout
+
+
+def test_failed_cli_startup_forcibly_cleans_up_owned_supervisor():
+    class Process:
+        def __init__(self):
+            self.returncode = None
+            self.terminated = False
+            self.killed = False
+            self.waits = 0
+
+        def poll(self):
+            return self.returncode
+
+        def terminate(self):
+            self.terminated = True
+
+        def wait(self, timeout=None):
+            del timeout
+            self.waits += 1
+            if self.waits == 1:
+                raise subprocess.TimeoutExpired("supervisor", 0.1)
+            self.returncode = -signal.SIGKILL
+            return self.returncode
+
+        def kill(self):
+            self.killed = True
+
+    process = Process()
+    _stop_started_process(
+        SimpleNamespace(shutdown_timeout_s=0.1),
+        process,
+    )
+
+    assert process.terminated
+    assert process.killed
+    assert process.waits == 2
 
 
 def test_supervisor_deduplicates_task_identity_until_acknowledgement():
