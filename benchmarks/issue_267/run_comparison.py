@@ -13,10 +13,10 @@ from pathlib import Path
 import jax
 import jax.numpy as jnp
 import numpy as np
+from jaxctx.priors.prior import Prior
 from scipy.special import erf
 from tensorflow_probability.substrates import jax as tfp
 
-import jaxns
 from jaxns.constrained_sampler import UniDimSliceSampler
 from jaxns.core import NestedSampler
 from jaxns.distributed_core import DistributedNestedSampler
@@ -27,7 +27,7 @@ tfpd = tfp.distributions
 
 
 def prior_model():
-    u = jaxns.Prior(tfpd.Uniform(0.0, 1.0), name="u").realise()
+    u = Prior(tfpd.Uniform(0.0, 1.0), name="u").realise()
     return -jnp.square(u - 0.25)
 
 

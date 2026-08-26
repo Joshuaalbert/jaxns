@@ -12,12 +12,13 @@ from pathlib import Path
 
 import jax
 import jax.numpy as jnp
+from jaxctx.priors.prior import Prior
 from tensorflow_probability.substrates import jax as tfp
 
-import jaxns
 from jaxns.constrained_sampler import (
     ConstrainedSampleRequest,
     UniDimSliceSampler,
+    sample_request,
 )
 from jaxns.distributed_core import WorkerSession
 from jaxns.model import Model
@@ -28,7 +29,7 @@ tfpd = tfp.distributions
 
 
 def prior_model():
-    u = jaxns.Prior(tfpd.Uniform(0.0, 1.0), name="u").realise()
+    u = Prior(tfpd.Uniform(0.0, 1.0), name="u").realise()
     return -jnp.square(u - 0.25)
 
 
@@ -77,6 +78,86 @@ def request(key, seed_u, seed_log_likelihood) -> ConstrainedSampleRequest:
         ),
         sampler_data=None,
     )
+
+
+def batched_request(keys, seed_u, seed_log_likelihood):
+    """Build the exact worker sampling request at a local vmap width."""
+    width = keys.shape[0]
+    return ConstrainedSampleRequest(
+        keys=keys,
+        valid=jnp.ones((width,), dtype=jnp.bool_),
+        log_L_constraints=jnp.full((width,), -1.0),
+        seed_points=SeedPoint(
+            U0=jax.tree.map(
+                lambda value: jnp.repeat(value[None], width, axis=0),
+                seed_u,
+            ),
+            log_L0=jnp.repeat(seed_log_likelihood[None], width, axis=0),
+        ),
+        sampler_data=None,
+    )
+
+
+def measure_local_width(
+        sampler,
+        width: int,
+        tasks: int,
+        repeats: int,
+        seed_u,
+        seed_log_likelihood,
+) -> dict[str, object]:
+    """Measure the local core's compiled, vmapped sampler execution layer."""
+    if tasks % width != 0:
+        raise ValueError(f"Task count {tasks} is not divisible by width {width}.")
+    batches = tasks // width
+
+    # Keep the batch loop on device, as it is in the jitted local depth loop.
+    # Returning only work counters prevents materialising every sample while
+    # retaining all rejection-loop computation needed to produce each result.
+    def sample_all(keys):
+        def body(total, batch):
+            result = sample_request(
+                sampler,
+                batched_request(batch, seed_u, seed_log_likelihood),
+            )
+            return total + jnp.sum(result.num_likelihood_evaluations), None
+
+        total, _ = jax.lax.scan(
+            body,
+            jnp.asarray(0, dtype=jnp.int64),
+            keys,
+        )
+        return total
+
+    program = jax.jit(sample_all)
+    warm_keys = jax.random.split(
+        jax.random.PRNGKey(1_000_000 + width),
+        tasks,
+    ).reshape((batches, width, 2))
+    compile_started = time.perf_counter()
+    jax.block_until_ready(program(warm_keys))
+    compile_and_warm_s = time.perf_counter() - compile_started
+
+    elapsed = []
+    likelihood_evaluations = []
+    for repeat in range(repeats):
+        # Every width receives the same per-repeat scalar random-key stream.
+        # Reshaping changes only execution grouping, not scientific work.
+        keys = jax.random.split(
+            jax.random.PRNGKey(2_000_000 + repeat),
+            tasks,
+        ).reshape((batches, width, 2))
+        started = time.perf_counter()
+        total = jax.block_until_ready(program(keys))
+        elapsed.append(time.perf_counter() - started)
+        likelihood_evaluations.append(int(total))
+    return {
+        "width": width,
+        "elapsed_s": elapsed,
+        "samples_per_s": [tasks / value for value in elapsed],
+        "likelihood_evaluations": likelihood_evaluations,
+        "compile_and_warm_s": compile_and_warm_s,
+    }
 
 
 def run_round(
@@ -164,6 +245,15 @@ def main() -> int:
     parser.add_argument("--repeats", type=int, default=7)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
+    model = Model(prior_model=prior_model)
+    sampler = UniDimSliceSampler(model=model, num_slices=10)
+    seed_u = model.sample_U(jax.random.PRNGKey(0))
+    seed_log_likelihood = model.log_likelihood(seed_u)
+    widths = tuple(
+        width
+        for width in (1, 2, 3, 4, 6, 10, 12)
+        if args.tasks % width == 0
+    )
     output = {
         "environment": {
             "device": str(jax.devices()[0]),
@@ -172,12 +262,23 @@ def main() -> int:
             "x64": bool(jax.config.x64_enabled),
         },
         "tasks_per_repeat": args.tasks,
-        "records": [
+        "distributed_records": [
             {
                 "workers": workers,
                 **measure(workers, args.tasks, args.repeats),
             }
             for workers in (1, 2, 3)
+        ],
+        "local_vmap_records": [
+            measure_local_width(
+                sampler,
+                width,
+                args.tasks,
+                args.repeats,
+                seed_u,
+                seed_log_likelihood,
+            )
+            for width in widths
         ],
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)

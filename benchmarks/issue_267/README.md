@@ -20,7 +20,8 @@ This cheap model is a transport-overhead stress case, not the workload for
 which distributed execution is recommended. The unchanged-tolerance standard
 problem suite remains the release accuracy gate.
 
-Complete-chain pool throughput is reproduced with:
+Complete-chain pool throughput and the matched local-core `vmap` scaling are
+reproduced with:
 
 ```bash
 PYTHONPATH=src conda run -n jaxns_py python \
