@@ -8,13 +8,7 @@ from jax import numpy as jnp
 from jax._src.scipy.special import gammaln
 from jax.scipy.special import logsumexp
 
-from jaxns.em_gmm import (
-    GaussianMixture,
-    e_step,
-    em_gmm,
-    fit_gmm,
-    initialise_gmm,
-)
+from jaxns.em_gmm import GaussianMixture, em_gmm, fit_gmm, initialise_gmm
 from jaxns.log_semiring import LogSpace
 from jaxns.mixed_precision import mp_policy
 from jaxns.optional import import_matplotlib
@@ -40,19 +34,6 @@ class MultEllipsoidState(NamedTuple):
 
 
 @dataclasses.dataclass(slots=True, frozen=True)
-class MixtureMoments(PureDataclassPytree):
-    """Cumulative online-EM statistics for an equal-weight classic stream."""
-
-    mass: FloatArray  # [K]
-    squared_mass: FloatArray  # [K]
-    first: FloatArray  # [K, D]
-    second: FloatArray  # [K, D, D]
-
-
-MixtureMoments.register_pytree()
-
-
-@dataclasses.dataclass(slots=True, frozen=True)
 class SamplerData(PureDataclassPytree):
     """Persistent GMM and bounding geometry used only by the sampler."""
 
@@ -63,7 +44,6 @@ class SamplerData(PureDataclassPytree):
     log_volumes: FloatArray  # [K]
     log_L_max: FloatArray  # [K]
     valid: BoolArray  # [K]
-    moments: MixtureMoments | None
     num_samples: IntArray  # [] samples used by the last successful update
     num_attempted: IntArray  # [] sample count at the last attempted update
     num_updates: IntArray  # [] successful updates
@@ -77,7 +57,6 @@ SamplerData.register_pytree()
 def empty_sampler_data(
         num_components: int,
         dimension: int,
-        streaming: bool = False,
 ) -> SamplerData:
     """Create fixed-shape invalid geometry for an isotropic startup."""
     centres = jnp.zeros(
@@ -100,23 +79,6 @@ def empty_sampler_data(
         ),
         valid=valid,
     )
-    moments = None
-    if streaming:
-        moments = MixtureMoments(
-            mass=jnp.zeros((num_components,), mp_policy.measure_dtype),
-            squared_mass=jnp.zeros(
-                (num_components,),
-                mp_policy.measure_dtype,
-            ),
-            first=jnp.zeros(
-                (num_components, dimension),
-                mp_policy.measure_dtype,
-            ),
-            second=jnp.zeros(
-                (num_components, dimension, dimension),
-                mp_policy.measure_dtype,
-            ),
-        )
     return SamplerData(
         mixture=mixture,
         centres=centres,
@@ -137,7 +99,6 @@ def empty_sampler_data(
             mp_policy.measure_dtype,
         ),
         valid=valid,
-        moments=moments,
         num_samples=jnp.asarray(0, mp_policy.count_dtype),
         num_attempted=jnp.asarray(0, mp_policy.count_dtype),
         num_updates=jnp.asarray(0, mp_policy.count_dtype),
@@ -397,7 +358,6 @@ def update_sampler_data(
             log_volumes=log_volumes,
             log_L_max=log_L_max,
             valid=combined_valid,
-            moments=data.moments,
             num_samples=num_samples.astype(mp_policy.count_dtype),
             num_attempted=num_samples.astype(mp_policy.count_dtype),
             num_updates=data.num_updates + jnp.asarray(
@@ -425,301 +385,6 @@ def update_sampler_data(
         )
 
     return jax.lax.cond(enough_information, fit, skip, operand=None)
-
-
-def _accumulate_mixture_moments(
-        moments: MixtureMoments,
-        points: FloatArray,
-        responsibilities: FloatArray,
-        mask: BoolArray,
-) -> MixtureMoments:
-    """Add one fixed-width batch to online sufficient statistics."""
-    safe_points = jnp.where(mask[:, None], points, 0.0)
-    assigned = jnp.where(mask[None, :], responsibilities, 0.0)
-    return MixtureMoments(
-        mass=moments.mass + jnp.sum(assigned, axis=1),
-        squared_mass=(
-            moments.squared_mass + jnp.sum(jnp.square(assigned), axis=1)
-        ),
-        first=(
-            moments.first + jnp.einsum("kn,nd->kd", assigned, safe_points)
-        ),
-        second=(
-            moments.second
-            + jnp.einsum(
-                "kn,nd,ne->kde",
-                assigned,
-                safe_points,
-                safe_points,
-            )
-        ),
-    )
-
-
-def accumulate_mixture_moments_reference(
-        moments: MixtureMoments,
-        points: np.ndarray,
-        responsibilities: np.ndarray,
-        mask: np.ndarray,
-) -> MixtureMoments:
-    """Pure NumPy reference for cumulative sufficient-statistic updates."""
-    points = np.asarray(points)
-    responsibilities = np.asarray(responsibilities)
-    mask = np.asarray(mask, dtype=bool)
-    safe_points = np.where(mask[:, None], points, 0.0)
-    assigned = np.where(mask[None, :], responsibilities, 0.0)
-    return MixtureMoments(
-        mass=jnp.asarray(np.asarray(moments.mass) + np.sum(assigned, axis=1)),
-        squared_mass=jnp.asarray(
-            np.asarray(moments.squared_mass)
-            + np.sum(np.square(assigned), axis=1)
-        ),
-        first=jnp.asarray(
-            np.asarray(moments.first)
-            + np.einsum("kn,nd->kd", assigned, safe_points)
-        ),
-        second=jnp.asarray(
-            np.asarray(moments.second)
-            + np.einsum(
-                "kn,nd,ne->kde",
-                assigned,
-                safe_points,
-                safe_points,
-            )
-        ),
-    )
-
-
-def _streaming_geometry(
-        data: SamplerData,
-        moments: MixtureMoments,
-        points: FloatArray,
-        log_L: FloatArray,
-        responsibilities: FloatArray,
-        mask: BoolArray,
-        regularisation: float,
-) -> SamplerData:
-    """Build direction geometry from cumulative moments without replay."""
-    if data.moments is None:
-        raise ValueError("Streaming updates require persistent moments.")
-
-    dimension = points.shape[1]
-    floor = jnp.asarray(
-        jnp.finfo(points.dtype).eps,
-        mp_policy.measure_dtype,
-    )
-    safe_mass = jnp.maximum(moments.mass, floor)
-    centres = moments.first / safe_mass[:, None]
-    second = moments.second / safe_mass[:, None, None]
-    covariances = second - jnp.einsum("kd,ke->kde", centres, centres)
-    # Roundoff in a long stream can make the two triangles differ by a few
-    # ulps. Symmetrising before the eigendecomposition prevents that history
-    # from selecting different axes after checkpoint/resume.
-    covariances = 0.5 * (
-        covariances + jnp.swapaxes(covariances, 1, 2)
-    )
-    eigenvalues = jnp.linalg.eigvalsh(covariances)
-    largest_eigenvalue = jnp.max(eigenvalues, axis=1)
-    well_conditioned = (
-        (largest_eigenvalue > 0.0)
-        & (
-            jnp.min(eigenvalues, axis=1)
-            > floor * dimension * largest_eigenvalue
-        )
-    )
-    variance_scale = jnp.trace(covariances, axis1=1, axis2=2) / jnp.asarray(
-        dimension,
-        mp_policy.measure_dtype,
-    )
-    ridge = jnp.asarray(
-        regularisation,
-        mp_policy.measure_dtype,
-    ) * jnp.maximum(variance_scale, floor)
-    identity = jnp.eye(dimension, dtype=mp_policy.measure_dtype)
-    covariances = covariances + ridge[:, None, None] * identity[None, :, :]
-    radii, rotations = jax.vmap(covariance_to_rotational)(covariances)
-    log_volumes = jax.vmap(log_ellipsoid_volume)(radii)
-    effective = jnp.square(moments.mass) / jnp.maximum(
-        moments.squared_mass,
-        floor,
-    )
-    finite = (
-        jnp.all(jnp.isfinite(centres), axis=1)
-        & jnp.all(jnp.isfinite(covariances), axis=(1, 2))
-        & jnp.all(jnp.isfinite(radii), axis=1)
-        & jnp.all(radii > 0.0, axis=1)
-        & jnp.all(jnp.isfinite(rotations), axis=(1, 2))
-        & jnp.isfinite(log_volumes)
-    )
-    candidate_valid = (
-        finite & well_conditioned & (effective >= dimension + 1)
-    )
-
-    mixture_valid = finite & (moments.mass > floor)
-    masses = jnp.where(mixture_valid, moments.mass, 0.0)
-    masses = masses / jnp.maximum(jnp.sum(masses), 1.0)
-    mixture = GaussianMixture(
-        centres=jnp.where(
-            mixture_valid[:, None],
-            centres,
-            data.mixture.centres,
-        ),
-        covariances=jnp.where(
-            mixture_valid[:, None, None],
-            covariances,
-            data.mixture.covariances,
-        ),
-        log_masses=jnp.where(mixture_valid, jnp.log(masses), -jnp.inf),
-        valid=mixture_valid | data.mixture.valid,
-    )
-
-    # Peak masking is based on hard membership. Giving every component the
-    # maximum of a soft-assigned batch would make a vanished mode look
-    # eligible above its last observed contour.
-    assignments = jnp.argmax(responsibilities, axis=0)
-    components = jnp.arange(data.centres.shape[0], dtype=assignments.dtype)
-    observed_peak = jax.vmap(
-        lambda component: jnp.max(jnp.where(
-            mask & (assignments == component),
-            log_L,
-            -jnp.inf,
-        ))
-    )(components)
-    log_L_max = jnp.maximum(data.log_L_max, observed_peak)
-
-    return dataclasses.replace(
-        data,
-        mixture=mixture,
-        centres=jnp.where(
-            candidate_valid[:, None],
-            centres,
-            data.centres,
-        ),
-        radii=jnp.where(
-            candidate_valid[:, None],
-            radii,
-            data.radii,
-        ),
-        rotations=jnp.where(
-            candidate_valid[:, None, None],
-            rotations,
-            data.rotations,
-        ),
-        log_volumes=jnp.where(
-            candidate_valid,
-            log_volumes,
-            data.log_volumes,
-        ),
-        log_L_max=log_L_max,
-        valid=candidate_valid | data.valid,
-        moments=moments,
-    )
-
-
-def initialise_streaming_sampler_data(
-        key: PRNGKey,
-        data: SamplerData,
-        points: FloatArray,
-        log_L: FloatArray,
-        mask: BoolArray,
-        num_samples: IntArray,
-        *,
-        n_iters: int,
-        min_effective_samples: int,
-        regularisation: float,
-) -> SamplerData:
-    """Fit once, then initialise equal-weight online-EM statistics.
-
-    Expected posterior weights cannot be used here: adding a race-tree edge
-    can change old block weights non-uniformly, while fixed-size sufficient
-    statistics cannot replay those old observations. This candidate instead
-    has the explicit target of one equal contribution per classic sample and
-    applies no forgetting.
-    """
-    if data.moments is None:
-        raise ValueError("Streaming initialisation requires moments.")
-    log_weights = jnp.where(mask, 0.0, -jnp.inf)
-    fitted = update_sampler_data(
-        key,
-        data,
-        points,
-        log_L,
-        log_weights,
-        mask,
-        num_samples,
-        n_iters=n_iters,
-        min_effective_samples=min_effective_samples,
-        regularisation=regularisation,
-    )
-
-    def install(_):
-        log_responsibilities = e_step(
-            points,
-            fitted.mixture.centres,
-            fitted.mixture.covariances,
-            fitted.mixture.log_masses,
-            mask,
-        )
-        responsibilities = jnp.exp(log_responsibilities)
-        moments = _accumulate_mixture_moments(
-            data.moments,
-            points,
-            responsibilities,
-            mask,
-        )
-        return dataclasses.replace(fitted, moments=moments)
-
-    return jax.lax.cond(
-        jnp.any(fitted.valid),
-        install,
-        lambda unused: fitted,
-        operand=None,
-    )
-
-
-def stream_sampler_data(
-        data: SamplerData,
-        points: FloatArray,
-        log_L: FloatArray,
-        mask: BoolArray,
-        num_samples: IntArray,
-        *,
-        regularisation: float,
-) -> SamplerData:
-    """Consume each newly accepted classic sample exactly once."""
-    if data.moments is None:
-        raise ValueError("Streaming updates require persistent moments.")
-    log_responsibilities = e_step(
-        points,
-        data.mixture.centres,
-        data.mixture.covariances,
-        data.mixture.log_masses,
-        mask,
-    )
-    responsibilities = jnp.exp(log_responsibilities)
-    moments = _accumulate_mixture_moments(
-        data.moments,
-        points,
-        responsibilities,
-        mask,
-    )
-    updated = _streaming_geometry(
-        data,
-        moments,
-        points,
-        log_L,
-        responsibilities,
-        mask,
-        regularisation,
-    )
-    return dataclasses.replace(
-        updated,
-        num_samples=num_samples.astype(mp_policy.count_dtype),
-        num_attempted=num_samples.astype(mp_policy.count_dtype),
-        num_updates=(
-            data.num_updates + jnp.asarray(1, mp_policy.count_dtype)
-        ),
-    )
 
 
 def component_probabilities(

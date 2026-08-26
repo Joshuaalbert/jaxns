@@ -177,5 +177,3 @@ def test_ellipsoidal_configuration_validation():
             num_slices=2,
             direction=EllipsoidalDirection(prob_isotropic=1.1),
         )
-    with np.testing.assert_raises_regex(ValueError, "update"):
-        EllipsoidalDirection(update="batch")

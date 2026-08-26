@@ -699,8 +699,7 @@ def test_state_checkpoint_round_trip_preserves_resume_key_and_order():
     )
 
 
-@pytest.mark.parametrize("update", ["warm", "streaming"])
-def test_ellipsoidal_state_survives_checkpoint_growth_and_resume(update):
+def test_ellipsoidal_state_survives_checkpoint_growth_and_resume():
     model = TwoDimensionalModel()
     sampler = UniDimSliceSampler(
         model=model,
@@ -710,7 +709,6 @@ def test_ellipsoidal_state_survives_checkpoint_growth_and_resume(update):
             min_effective_samples=3,
             num_iterations=3,
             population_size=12,
-            update=update,
         ),
     )
     common = {

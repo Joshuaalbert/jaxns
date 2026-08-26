@@ -46,10 +46,8 @@ def main() -> None:
     unknown_cases = set(cases) - set(STANDARD_PROBLEM_CASES_BY_NAME)
     if unknown_cases:
         raise ValueError(f"Unknown standard problems: {sorted(unknown_cases)}")
-    if set(directions) - {"isotropic", "ellipsoidal", "streaming"}:
-        raise ValueError(
-            "directions must contain isotropic, ellipsoidal, or streaming."
-        )
+    if set(directions) - {"isotropic", "ellipsoidal"}:
+        raise ValueError("directions must contain isotropic or ellipsoidal.")
     if set(phantom_settings) - {"off", "on"}:
         raise ValueError("phantom-settings must contain off or on.")
 

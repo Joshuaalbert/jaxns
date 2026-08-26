@@ -10,8 +10,6 @@ from jaxns.mixed_precision import mp_policy
 from jaxns.model import Model
 from jaxns.multi_ellipsoid_utils import (
     EllipsoidParams,
-    _accumulate_mixture_moments,
-    accumulate_mixture_moments_reference,
     bounding_ellipsoid,
     circle_to_ellipsoid,
     covariance_to_rotational,
@@ -19,12 +17,10 @@ from jaxns.multi_ellipsoid_utils import (
     ellipsoid_params,
     ellipsoid_to_circle,
     empty_sampler_data,
-    initialise_streaming_sampler_data,
     log_ellipsoid_volume,
     maha_ellipsoid,
     plot_ellipses,
     point_in_ellipsoid,
-    stream_sampler_data,
     update_sampler_data,
 )
 from jaxns.random_utils import random_ortho_matrix
@@ -211,187 +207,3 @@ def test_sampler_data_warm_update_retains_geometry_after_failed_fit():
     np.testing.assert_array_equal(retained.rotations, fitted.rotations)
     assert int(retained.num_updates) == 1
     assert int(retained.num_attempted) == 64
-
-
-def test_streaming_moments_match_reference_and_do_not_forget_old_rows():
-    data = empty_sampler_data(
-        num_components=2,
-        dimension=2,
-        streaming=True,
-    )
-    points = jnp.asarray([
-        [-1.1, -0.9],
-        [-0.9, -1.1],
-        [0.9, 1.1],
-        [1.1, 0.9],
-    ])
-    responsibilities = jnp.asarray([
-        [0.9, 0.8, 0.2, 0.1],
-        [0.1, 0.2, 0.8, 0.9],
-    ])
-    mask = jnp.asarray([True, True, True, False])
-    observed = jax.jit(_accumulate_mixture_moments)(
-        data.moments,
-        points,
-        responsibilities,
-        mask,
-    )
-    reference = accumulate_mixture_moments_reference(
-        data.moments,
-        np.asarray(points),
-        np.asarray(responsibilities),
-        np.asarray(mask),
-    )
-    for actual, expected in zip(
-        jax.tree.leaves(observed),
-        jax.tree.leaves(reference),
-        strict=True,
-    ):
-        np.testing.assert_allclose(actual, expected, rtol=1e-15)
-    # Responsibilities sum to one per valid row, so cumulative component
-    # mass records three observations exactly; no decay erased older rows.
-    np.testing.assert_allclose(jnp.sum(observed.mass), 3.0, rtol=1e-15)
-
-
-def test_streaming_update_discovers_higher_contour_and_survives_collapse():
-    first = random.normal(random.PRNGKey(30), shape=(16, 2)) * 0.05 + 0.2
-    second = random.normal(random.PRNGKey(31), shape=(16, 2)) * 0.05 + 0.8
-    points = jnp.concatenate([first, second], axis=0)
-    log_L = -jnp.sum(jnp.square(points - 0.5), axis=1)
-    mask = jnp.ones((32,), jnp.bool_)
-    initial = empty_sampler_data(
-        num_components=2,
-        dimension=2,
-        streaming=True,
-    )
-    fitted = jax.jit(
-        initialise_streaming_sampler_data,
-        static_argnames=(
-            "n_iters",
-            "min_effective_samples",
-            "regularisation",
-        ),
-    )(
-        random.PRNGKey(32),
-        initial,
-        points,
-        log_L,
-        mask,
-        jnp.asarray(32),
-        n_iters=5,
-        min_effective_samples=8,
-        regularisation=1e-6,
-    )
-    assert fitted.moments is not None
-    assert jnp.all(fitted.valid)
-    np.testing.assert_allclose(
-        jnp.sum(fitted.moments.mass),
-        32.0,
-        rtol=1e-14,
-    )
-
-    new_points = random.normal(
-        random.PRNGKey(33),
-        shape=(8, 2),
-    ) * 0.02 + 0.8
-    new_log_L = jnp.arange(8, dtype=mp_policy.measure_dtype) + 10.0
-    updated = jax.jit(
-        stream_sampler_data,
-        static_argnames=("regularisation",),
-    )(
-        fitted,
-        new_points,
-        new_log_L,
-        jnp.ones((8,), jnp.bool_),
-        jnp.asarray(40),
-        regularisation=1e-6,
-    )
-    np.testing.assert_allclose(
-        jnp.sum(updated.moments.mass),
-        40.0,
-        rtol=1e-14,
-    )
-    assert jnp.max(updated.log_L_max) == 17.0
-    assert int(updated.num_samples) == 40
-    assert int(updated.num_updates) == 2
-
-    # A degenerate new batch must not replace full-dimensional direction
-    # geometry with a singular component. Persistent statistics may record
-    # the observation, while the last healthy geometry remains usable.
-    collapsed = stream_sampler_data(
-        updated,
-        jnp.full((8, 2), 0.8),
-        jnp.full((8,), 18.0),
-        jnp.ones((8,), jnp.bool_),
-        jnp.asarray(48),
-        regularisation=1e-6,
-    )
-    assert jnp.any(collapsed.valid)
-    assert jnp.all(jnp.isfinite(collapsed.radii[collapsed.valid]))
-    assert jnp.max(collapsed.log_L_max) == 18.0
-
-
-def test_streaming_soft_responsibilities_can_discover_a_later_mode():
-    initial_points = (
-        random.normal(random.PRNGKey(40), shape=(32, 2)) * 0.08 - 1.0
-    )
-    data = initialise_streaming_sampler_data(
-        random.PRNGKey(41),
-        empty_sampler_data(2, 2, streaming=True),
-        initial_points,
-        -jnp.sum(jnp.square(initial_points), axis=1),
-        jnp.ones((32,), jnp.bool_),
-        jnp.asarray(32),
-        n_iters=5,
-        min_effective_samples=8,
-        regularisation=1e-6,
-    )
-    assert jnp.all(data.valid)
-
-    # The second mode did not exist during initial training. Repeated new
-    # observations must be able to pull one existing component across without
-    # deleting the mass already accumulated by the first mode.
-    for step in range(8):
-        points = (
-            random.normal(
-                random.PRNGKey(42 + step),
-                shape=(16, 2),
-            ) * 0.08 + 1.0
-        )
-        data = stream_sampler_data(
-            data,
-            points,
-            jnp.full((16,), float(step + 1)),
-            jnp.ones((16,), jnp.bool_),
-            jnp.asarray(32 + 16 * (step + 1)),
-            regularisation=1e-6,
-        )
-    assert jnp.max(data.mixture.centres[:, 0]) > 0.5
-    np.testing.assert_allclose(
-        jnp.sum(data.moments.mass),
-        160.0,
-        rtol=1e-14,
-    )
-
-
-def test_streaming_singular_initial_population_retries_without_pseudo_data():
-    points = jnp.full((16, 2), 0.5)
-    initial = empty_sampler_data(2, 2, streaming=True)
-    attempted = initialise_streaming_sampler_data(
-        random.PRNGKey(51),
-        initial,
-        points,
-        jnp.zeros((16,)),
-        jnp.ones((16,), jnp.bool_),
-        jnp.asarray(16),
-        n_iters=3,
-        min_effective_samples=8,
-        regularisation=1e-6,
-    )
-    assert not jnp.any(attempted.valid)
-    assert int(attempted.num_attempted) == 16
-    assert int(attempted.num_updates) == 0
-    np.testing.assert_array_equal(
-        attempted.moments.mass,
-        initial.moments.mass,
-    )
