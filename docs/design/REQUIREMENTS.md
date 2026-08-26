@@ -57,8 +57,8 @@ properties that must hold independently of implementation live in
   the documented model-authoring, local nested-sampling, and public diagnostic workflow.
 - Requirement: JAX selects its compatible `jaxlib`; JAXNS does not independently constrain that
   transitive runtime or interfere with accelerator-specific JAX installations.
-- Requirement: Matplotlib is supplied by the `plotting` extra and imported only when a plotting
-  operation is requested; maintained examples and tests declare plotting explicitly.
+- Requirement: Matplotlib is supplied by the base installation but imported only when a plotting
+  operation is requested; extras do not repeat dependencies already supplied by the base.
 - Requirement: Distributed dependencies and command-line entry points are not published until
   the distributed process, serialization, and failure design is accepted and implemented.
 
@@ -129,11 +129,16 @@ properties that must hold independently of implementation live in
 
 ## Constrained Sampler
 
-- Requirement: The release sampler uses isotropic directions and perfect unit-hypercube
-  bracketing with greedy interval shrinkage.
-- Requirement: Gradient-guided directions, ellipsoidal directions, Galilean trajectories, and
-  step-out bracketing are not accepted by the release core until separately implemented and
-  validated.
+- Requirement: The release sampler defaults to isotropic directions and perfect unit-hypercube
+  bracketing with greedy interval shrinkage, preserving isotropic directions as an explicit
+  correctness reference and fallback.
+- Requirement: Opt-in ellipsoidal directions use persistent warm-started GMM geometry, select
+  contour-eligible components by ellipsoidal volume, and independently retain an isotropic
+  transition probability of one percent by default.
+- Requirement: A direction-geometry update occurs at most once before a replacement batch, and
+  the fit and parent contour remain fixed for each complete constrained chain in that batch.
+- Requirement: Gradient-guided directions, Galilean trajectories, and step-out bracketing are
+  not accepted by the release core until separately implemented and validated.
 - Requirement: Constrained chains are sampled in parallel at fixed replacement width even though
   their likelihood-evaluation counts may differ.
 - Requirement: Parallelizing individual likelihood calls independently of chain sampling is

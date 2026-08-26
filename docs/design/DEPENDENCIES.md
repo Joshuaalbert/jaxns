@@ -14,19 +14,17 @@ operation consumes it. The source of truth for package metadata remains
 | `numpy` | Core and host validation | Keep in base. Public validation, result summaries, serialization helpers, and reference calculations use NumPy directly. |
 | `scipy` | Public diagnostics | Keep in base. Corner diagnostics use `scipy.stats.gaussian_kde` and `insert_index_diagnostic` uses `scipy.stats.kstwobign`; JAX also requires SciPy. Moving it would not produce a genuinely SciPy-free core install. |
 | `tfp-nightly` | Public model authoring | Keep in base. The README, installation demo, standard problems, and JAXCTX `Prior` implementation use TensorFlow Probability JAX distributions. JAXCTX 1.1.5 imports TFP for its public prior module but does not declare that dependency itself, so JAXNS must supply it for the documented workflow. |
-| `matplotlib` | Plotting | Move to `plotting`. Scientific result imports and local runs do not need it. Plotting entry points import it lazily and explain how to install `jaxns[plotting]` when absent. |
+| `matplotlib` | Public plotting API | Keep in base. Diagnostic and corner plots are part of the ordinary scientific-results workflow. Plotting entry points still import it lazily so importing JAXNS does not eagerly initialise a plotting backend. |
 | `zmq` | Unimplemented distributed execution | Remove. There is no `jaxns.fabric` package in this release, so the old dependency and console entry points described functionality that cannot run. A `distributed` extra will be introduced only after the tracked design validation and implementation exist; the eventual package would be `pyzmq`, not the stale `zmq` name. |
 
 ## Extras
 
-- `plotting`: Matplotlib and only the dependency needed by result and
-  ellipsoid plotting entry points.
-- `examples`: Matplotlib, scikit-learn, and Optax, matching the maintained
-  notebook and example feature set. Base modeling dependencies are inherited
+- `examples`: scikit-learn and Optax, matching the maintained notebook and
+  example feature set. Base modeling and plotting dependencies are inherited
   from JAXNS itself.
-- `tests`: Matplotlib, scikit-learn, NetworkX, psutil, pytest, flake8, and
-  Ruff, plus TOMLI on Python 3.10, matching imports and tooling used by the
-  test and review workflows.
+- `tests`: scikit-learn, NetworkX, psutil, pytest, flake8, and Ruff, plus TOMLI
+  on Python 3.10, matching imports and tooling used by the test and review
+  workflows. Matplotlib is inherited from the base installation.
 
 Distributed execution is intentionally not an extra yet. Publishing an empty
 or ZMQ-only extra would imply that a distributed JAXNS entry point exists when
@@ -36,11 +34,10 @@ it does not.
 
 The base environment must import `jaxns.core`, `jaxns.model`, `jaxns.state`,
 `jaxns.results`, and `jaxns.utils`, author the README-style TFP/JAXCTX model,
-and complete a small local nested-sampling run. Importing results or
-multi-ellipsoid utilities must not import Matplotlib. Plotting with the extra
-installed must continue to write files under a non-interactive backend;
-without the extra, the plotting call itself must fail with the
-`jaxns[plotting]` installation command.
+complete a small local nested-sampling run, and write diagnostic plots under a
+non-interactive backend. Importing results or multi-ellipsoid utilities must
+not eagerly import Matplotlib. If a broken environment lacks Matplotlib, the
+plotting call itself must identify that the default installation is incomplete.
 
 Wheel validation inspects `Requires-Dist` rather than only the source table,
 because the built metadata is what pip consumes. Clean-environment smokes are
@@ -50,10 +47,10 @@ development environment.
 
 ## Issue 256 validation record
 
-The built wheel is 113,385 bytes and declares only JAX, JAXCTX, NumPy, SciPy,
-and TFP-nightly in base metadata. Its three extras contain exactly the packages
-listed above, and it has no console-entry-point metadata for the absent fabric
-implementation.
+This historical record describes the dependency audit before issue 260
+restored Matplotlib to the base installation. The built wheel was 113,385 bytes
+and declared only JAX, JAXCTX, NumPy, SciPy, and TFP-nightly in base metadata.
+It had no console-entry-point metadata for the absent fabric implementation.
 
 Clean base-wheel environments passed imports of `jaxns`, `core`, `model`,
 `results`, `state`, and `utils`, followed by the maintained local
@@ -79,11 +76,11 @@ The version differences are pip's supported-wheel resolution for each Python
 interpreter, not JAXNS pins. Removing the independent `jaxlib` declaration
 still produced the matching JAXLIB version in every row.
 
-After the base smoke, installing `jaxns[plotting]` alone supported an Agg
-backend plot and file write. Installing `jaxns[examples]` supported Matplotlib,
-Optax, and scikit-learn imports together. The missing-Matplotlib unit test
-confirms that base import remains successful and a plotting request names the
-exact `jaxns[plotting]` remedy. There is intentionally no distributed smoke:
+After the base smoke, the former `jaxns[plotting]` extra supported an Agg
+backend plot and file write. Issue 260 moved that requirement back into the
+base metadata, so the same smoke now runs immediately after the base install.
+The missing-Matplotlib unit test confirms that base import remains lazy and a
+plotting request explains that the installation is incomplete. There is intentionally no distributed smoke:
 no distributed public operation or extra exists yet, and advertising one
 before its separately tracked design validation would be misleading.
 

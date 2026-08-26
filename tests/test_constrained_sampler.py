@@ -1,7 +1,21 @@
-import numpy as np
-from jax import numpy as jnp, random
+import dataclasses
 
-from jaxns.constrained_sampler import _new_proposal
+import jax
+import numpy as np
+from jax import numpy as jnp
+from jax import random
+
+from jaxns.constrained_sampler import (
+    EllipsoidalDirection,
+    UniDimSliceSampler,
+    _new_proposal,
+    _sample_ellipsoidal_direction,
+)
+from jaxns.multi_ellipsoid_utils import (
+    component_probabilities,
+    component_probabilities_reference,
+    empty_sampler_data,
+)
 from jaxns.pytree import TreeField
 
 
@@ -14,7 +28,7 @@ def test_new_proposal_nonperfect_first_uses_full_slice_width():
     U0 = TreeField(jnp.asarray([0.5]))
     direction = TreeField(jnp.asarray([1.0]))
 
-    point_U, log_L, num_evals, _, next_slice_width = _new_proposal(
+    point_U, log_L, num_evals, _, next_slice_width, _ = _new_proposal(
         key=random.PRNGKey(0),
         U0=U0,
         direction=direction,
@@ -35,7 +49,7 @@ def test_new_proposal_nonperfect_finite_width_clips_and_steps_out():
     U0 = TreeField(jnp.asarray([0.95]))
     direction = TreeField(jnp.asarray([1.0]))
 
-    _, _, num_evals, _, next_slice_width = _new_proposal(
+    _, _, num_evals, _, next_slice_width, _ = _new_proposal(
         key=random.PRNGKey(1),
         U0=U0,
         direction=direction,
@@ -55,7 +69,7 @@ def test_new_proposal_nonperfect_reuses_previous_width():
     U0 = TreeField(jnp.asarray([0.5]))
     direction = TreeField(jnp.asarray([1.0]))
 
-    point_U, _, _, direction_1, slice_width_1 = _new_proposal(
+    point_U, _, _, direction_1, slice_width_1, _ = _new_proposal(
         key=random.PRNGKey(2),
         U0=U0,
         direction=direction,
@@ -66,7 +80,7 @@ def test_new_proposal_nonperfect_reuses_previous_width():
         log_likelihood_fn=_log_likelihood_1d,
     )
 
-    _, _, num_evals_2, _, slice_width_2 = _new_proposal(
+    _, _, num_evals_2, _, slice_width_2, _ = _new_proposal(
         key=random.PRNGKey(3),
         U0=point_U,
         direction=direction_1,
@@ -84,3 +98,82 @@ def test_new_proposal_nonperfect_reuses_previous_width():
     np.testing.assert_allclose(slice_width_1, 2.0)
     assert int(num_evals_2) > 1
     assert float(slice_width_2) > 0.0
+
+
+def test_component_selection_is_strict_and_volume_weighted():
+    data = empty_sampler_data(num_components=3, dimension=2)
+    data = dataclasses.replace(
+        data,
+        log_volumes=jnp.log(jnp.asarray([1.0, 3.0, 8.0])),
+        log_L_max=jnp.asarray([0.0, 2.0, 5.0]),
+        valid=jnp.asarray([True, True, False]),
+    )
+    probabilities = component_probabilities(data, jnp.asarray(0.0))
+    reference = component_probabilities_reference(
+        np.log(np.asarray([1.0, 3.0, 8.0])),
+        np.asarray([0.0, 2.0, 5.0]),
+        np.asarray([True, True, False]),
+        0.0,
+    )
+
+    # The first peak equals the strict contour and is therefore ineligible;
+    # invalid high-volume geometry must not leak into selection either.
+    np.testing.assert_allclose(probabilities, reference)
+    np.testing.assert_allclose(probabilities, np.asarray([0.0, 1.0, 0.0]))
+
+
+def test_ellipsoidal_direction_jit_vmap_and_degenerate_fallback():
+    data = empty_sampler_data(num_components=2, dimension=2)
+    data = dataclasses.replace(
+        data,
+        radii=jnp.asarray([[8.0, 1.0], [1.0, 8.0]]),
+        rotations=jnp.repeat(jnp.eye(2)[None, :, :], 2, axis=0),
+        log_volumes=jnp.zeros((2,)),
+        log_L_max=jnp.asarray([0.0, 2.0]),
+        valid=jnp.asarray([True, True]),
+    )
+    keys = random.split(random.PRNGKey(13), 2048)
+    draw = jax.jit(jax.vmap(
+        lambda key: _sample_ellipsoidal_direction(
+            key,
+            TreeField(jnp.asarray([0.5, 0.5])),
+            jnp.asarray(0.0),
+            data,
+            0.0,
+        ).tree
+    ))
+    directions = draw(keys)
+    np.testing.assert_allclose(
+        jnp.linalg.norm(directions, axis=1),
+        1.0,
+        rtol=1e-6,
+    )
+    assert jnp.mean(jnp.square(directions[:, 1])) > 0.75
+
+    invalid = dataclasses.replace(
+        data,
+        radii=jnp.full_like(data.radii, jnp.nan),
+        valid=jnp.zeros_like(data.valid),
+    )
+    fallback = _sample_ellipsoidal_direction(
+        random.PRNGKey(14),
+        TreeField(jnp.asarray([0.5, 0.5])),
+        jnp.asarray(10.0),
+        invalid,
+        0.0,
+    ).tree
+    assert jnp.all(jnp.isfinite(fallback))
+    np.testing.assert_allclose(jnp.linalg.norm(fallback), 1.0, rtol=1e-6)
+
+
+def test_ellipsoidal_configuration_validation():
+    with np.testing.assert_raises_regex(ValueError, "num_components"):
+        EllipsoidalDirection(num_components=0)
+
+    # A concrete model is unnecessary for checking the static configuration.
+    with np.testing.assert_raises_regex(ValueError, "prob_isotropic"):
+        UniDimSliceSampler(
+            model=None,
+            num_slices=2,
+            direction=EllipsoidalDirection(prob_isotropic=1.1),
+        )

@@ -3,7 +3,8 @@
     "test_block_state_rejects_strict_contour_violation",
     "test_state_consistency_rejects_strict_contour_violation",
     "test_results_sample_mc_shrinkage_rejects_strict_contour_equality",
-    "test_public_sample_mc_shrinkage_rejects_strict_contour_equality"
+    "test_public_sample_mc_shrinkage_rejects_strict_contour_equality",
+    "test_component_selection_is_strict_and_volume_weighted"
   ],
   "A seed used for a constrained chain is stationary for the requested parent contour before the chain starts.": [
     "test_stationary_seed_mask_uses_generation_interval_not_suffix"
@@ -125,6 +126,9 @@
     "test_resume_uses_stored_key_and_matches_uninterrupted_run",
     "test_unlimited_growth_matches_preallocated_scientific_continuation"
   ],
+  "A state contains all scientific data and random-stream position needed to continue its run without hidden mutable sampler state.": [
+    "test_ellipsoidal_state_survives_checkpoint_growth_and_resume"
+  ],
   "A finite scientific sample limit is never exceeded, including by a partially filled replacement batch.": [
     "test_finite_capacity_terminates_below_and_exactly_at_hard_maximum",
     "test_partial_batch_respects_non_multiple_max_samples"
@@ -151,9 +155,10 @@
     "test_count_input_validation_rejects_stale_and_malformed_metadata",
     "test_results_sample_mc_shrinkage_rejects_malformed_arrays_before_jit",
     "test_public_sample_mc_shrinkage_rejects_stale_block_likelihoods_before_jit",
-    "test_sample_evidence_mc_rejects_invalid_batch_sizes"
+    "test_sample_evidence_mc_rejects_invalid_batch_sizes",
+    "test_ellipsoidal_configuration_validation"
   ],
-  "Importing and using the non-plotting scientific API does not require plotting dependencies, while requesting an unavailable optional feature fails with an actionable installation remedy.": [
+  "The default installation supplies plotting dependencies, scientific imports do not eagerly import them, and requesting plotting when they are unavailable fails with an actionable installation remedy.": [
     "test_missing_plotting_dependency_has_actionable_error"
   ],
   "Numerically stable evidence arithmetic represents values across the supported likelihood dynamic range without converting avoidable underflow or overflow into finite scientific conclusions.": [

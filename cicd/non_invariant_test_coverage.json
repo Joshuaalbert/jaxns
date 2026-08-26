@@ -1,6 +1,31 @@
 {
   "schema_version": 1,
   "tests": {
+    "test_ellipsoidal_direction_jit_vmap_and_degenerate_fallback": {
+      "note": "Checks the current compiled direction-kernel batching, normalization, and degenerate-geometry fallback wiring.",
+      "path": "tests/test_constrained_sampler.py",
+      "reason": "architecture_boundary"
+    },
+    "test_masked_non_finite_storage_cannot_poison_fit": {
+      "note": "Checks that masked physical padding cannot contaminate the current fixed-shape GMM implementation.",
+      "path": "tests/test_em_gmm.py",
+      "reason": "implementation_regression"
+    },
+    "test_sampler_data_warm_update_retains_geometry_after_failed_fit": {
+      "note": "Checks the current warm-fit state representation and its recovery from a singular candidate geometry.",
+      "path": "tests/test_multi_ellipsoid.py",
+      "reason": "implementation_regression"
+    },
+    "test_state_merge_keeps_recent_geometry_and_cumulative_direction_work": {
+      "note": "Checks the concrete state-merge policy for sampler geometry and internal direction-work counters.",
+      "path": "tests/test_state.py",
+      "reason": "architecture_boundary"
+    },
+    "test_warm_weighted_fit_matches_numpy_reference": {
+      "note": "Checks numerical parity between the accelerated weighted GMM update and its pure NumPy reference.",
+      "path": "tests/test_em_gmm.py",
+      "reason": "reference_parity"
+    },
     "test_dependency_metadata_matches_feature_boundaries": {
       "note": "Checks the current packaging classification and optional-extra metadata rather than an implementation-agnostic scientific contract.",
       "path": "tests/test_optional_dependencies.py",

@@ -179,9 +179,9 @@ The exact text following each `- Invariant:` prefix is the stable key used by
   measure and preserves the function's pytree structure.
 - Invariant: Summary and plotting operations do not mutate the scientific result from which they
   are produced.
-- Invariant: Importing and using the non-plotting scientific API does not require plotting
-  dependencies, while requesting an unavailable optional feature fails with an actionable
-  installation remedy.
+- Invariant: The default installation supplies plotting dependencies, scientific imports do not
+  eagerly import them, and requesting plotting when they are unavailable fails with an
+  actionable installation remedy.
 
 ## Randomness, Numerics, And Validation
 

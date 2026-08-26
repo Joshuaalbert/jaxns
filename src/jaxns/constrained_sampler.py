@@ -12,7 +12,8 @@ from jax import random
 from jaxns.cumulative_ops import cumulative_op_static
 from jaxns.mixed_precision import mp_policy
 from jaxns.model import Model
-from jaxns.pytree import PureDataclassPytree, TreeField
+from jaxns.multi_ellipsoid_utils import SamplerData
+from jaxns.pytree import PureDataclassPytree, TreeField, pytree_ravel
 from jaxns.random_utils import sample_uniformly_masked
 from jaxns.samples import PhantomSamples, Samples, SeedPoint
 from jaxns.types import BoolArray, FloatArray, IntArray, PRNGKey, UType
@@ -26,6 +27,8 @@ class ConstrainedSampleBatch(PureDataclassPytree):
     log_likelihoods: FloatArray  # [S]
     num_likelihood_evaluations: IntArray  # [S]
     phantom_samples: PhantomSamples  # [S, P, ...]
+    num_directions: IntArray  # [S]
+    num_isotropic: IntArray  # [S]
 
 
 ConstrainedSampleBatch.register_pytree()
@@ -89,6 +92,76 @@ def _sample_direction(key: PRNGKey, u0: TreeField[UType], radii: TreeField[UType
     eps = jnp.asarray(1e-6, direction.norm().dtype)
     norm = jnp.maximum(eps, direction.norm())
     return direction / norm
+
+
+def _sample_ellipsoidal_direction(
+        key: PRNGKey,
+        u0: TreeField[UType],
+        log_L_constraint: FloatArray,
+        data: SamplerData,
+        prob_isotropic: float,
+) -> TreeField[UType]:
+    """Draw from fixed contour-eligible geometry or its isotropic fallback."""
+    direction, _ = _draw_ellipsoidal_direction(
+        key,
+        u0,
+        log_L_constraint,
+        data,
+        prob_isotropic,
+    )
+    return direction
+
+
+def _draw_ellipsoidal_direction(
+        key: PRNGKey,
+        u0: TreeField[UType],
+        log_L_constraint: FloatArray,
+        data: SamplerData,
+        prob_isotropic: float,
+) -> tuple[TreeField[UType], BoolArray]:
+    """Draw a direction and report whether the isotropic kernel was used."""
+    isotropic_key, choice_key, component_key, normal_key = random.split(key, 4)
+    eligible = data.valid & (data.log_L_max > log_L_constraint)
+    use_isotropic = (
+        jnp.logical_not(jnp.any(eligible))
+        | (
+            random.uniform(choice_key, dtype=mp_policy.measure_dtype)
+            < jnp.asarray(prob_isotropic, mp_policy.measure_dtype)
+        )
+    )
+
+    def draw_ellipsoidal(_):
+        # Selection mass is geometric volume, not the EM mixture mass. The
+        # latter describes the weighted sample population and would bias this
+        # direction law towards densely sampled rather than spatially broad
+        # components.
+        logits = jnp.where(eligible, data.log_volumes, -jnp.inf)
+        component = random.categorical(component_key, logits).astype(
+            mp_policy.index_dtype
+        )
+        # The current values are intentionally ignored. Only their flattened
+        # structure and dtype define the direction space, keeping this law
+        # independent of the chain's current point.
+        flat, unravel = pytree_ravel(u0.tree)
+        normal = random.normal(normal_key, flat.shape, dtype=flat.dtype)
+        rotation = data.rotations[component].astype(flat.dtype)
+        radii = data.radii[component].astype(flat.dtype)
+        transformed = rotation @ (
+            radii * normal
+        )
+        norm = jnp.maximum(
+            jnp.linalg.norm(transformed),
+            jnp.asarray(1e-6, transformed.dtype),
+        )
+        return TreeField(unravel(transformed / norm))
+
+    direction = jax.lax.cond(
+        use_isotropic,
+        lambda unused: _sample_direction(isotropic_key, u0),
+        draw_ellipsoidal,
+        operand=None,
+    )
+    return direction, use_isotropic
 
 
 @partial(jax.jit, inline=True)
@@ -166,7 +239,16 @@ def _new_proposal(
         gradient_guided: bool,
         log_L_constraint: FloatArray,
         log_likelihood_fn: Callable[[UType], FloatArray],
-) -> tuple[TreeField[UType], FloatArray, IntArray, TreeField[UType], FloatArray]:
+        sampler_data: SamplerData | None = None,
+        prob_isotropic: float = 1.0,
+) -> tuple[
+    TreeField[UType],
+    FloatArray,
+    IntArray,
+    TreeField[UType],
+    FloatArray,
+    BoolArray,
+]:
     """
     Sample from a slice about a seed point.
 
@@ -356,9 +438,26 @@ def _new_proposal(
         raise NotImplementedError("Gradient guided slice sampler not implemented.")
     else:
         # Randomly choose a new direction
-        direction = _sample_direction(after_key, direction)
+        if sampler_data is None:
+            direction = _sample_direction(after_key, direction)
+            direction_isotropic = jnp.asarray(True, mp_policy.bool_dtype)
+        else:
+            direction, direction_isotropic = _draw_ellipsoidal_direction(
+                after_key,
+                direction,
+                log_L_constraint,
+                sampler_data,
+                prob_isotropic,
+            )
     next_slice_width = 2 * (carry.right - carry.left)
-    return carry.point_U, carry.log_L, num_likelihood_evaluations, direction, next_slice_width
+    return (
+        carry.point_U,
+        carry.log_L,
+        num_likelihood_evaluations,
+        direction,
+        next_slice_width,
+        direction_isotropic,
+    )
 
 
 @partial(jax.jit, inline=True)
@@ -391,6 +490,47 @@ def _take_phantom_prefix(cumulative_samples, num_phantom: int):
 
 
 @dataclasses.dataclass(slots=True, frozen=True)
+class EllipsoidalDirection:
+    """Configuration for opt-in warm-refined ellipsoidal directions.
+
+    Args:
+        num_components: Fixed maximum number of Gaussian components.
+        min_effective_samples: Kish effective sample gate. ``None`` uses four
+            times the full-covariance minimum per component.
+        num_iterations: Bounded EM iterations performed at each update.
+        population_size: Fixed number of likelihood-ordered classic rows used
+            by a fit. This keeps compiled fit shapes independent of sample
+            storage capacity.
+        prob_isotropic: Independent isotropic fallback probability per slice
+            transition.
+        regularisation: Dimensionless covariance ridge relative to variance.
+    """
+
+    num_components: int = 4
+    min_effective_samples: int | None = None
+    num_iterations: int = 10
+    population_size: int = 1024
+    prob_isotropic: float = 1e-2
+    regularisation: float = 1e-6
+
+    def __post_init__(self):
+        if self.num_components < 1:
+            raise ValueError("num_components must be positive.")
+        if self.min_effective_samples is not None and self.min_effective_samples < 1:
+            raise ValueError("min_effective_samples must be positive.")
+        if self.num_iterations < 1:
+            raise ValueError("num_iterations must be positive.")
+        if self.population_size < self.num_components:
+            raise ValueError(
+                "population_size must be at least num_components."
+            )
+        if not 0.0 <= self.prob_isotropic <= 1.0:
+            raise ValueError("prob_isotropic must be between zero and one.")
+        if self.regularisation <= 0.0:
+            raise ValueError("regularisation must be positive.")
+
+
+@dataclasses.dataclass(slots=True, frozen=True)
 class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
     """
     Slice sampler for a single dimension.
@@ -411,10 +551,18 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
     gradient_guided: bool = False
     collect_phantom_samples: bool = False
     phantom_burn_in: int | None = None
+    direction: EllipsoidalDirection | None = None
 
     @classmethod
     def flatten(cls, this) -> tuple[list[Any], tuple[Any, ...]]:
-        return cls.build_flatten(this, ['num_slices', 'no_step_out', 'gradient_guided', 'collect_phantom_samples', 'phantom_burn_in'])
+        return cls.build_flatten(this, [
+            'num_slices',
+            'no_step_out',
+            'gradient_guided',
+            'collect_phantom_samples',
+            'phantom_burn_in',
+            'direction',
+        ])
 
     def _check(self):
         if self.num_slices < 1:
@@ -431,7 +579,42 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
             return self.num_slices - 1 - burn_in
         return 0
 
-    def get_sample(self, key, log_L_constraint: FloatArray, seed_point: SeedPoint, args=(), params=None) -> tuple[UType, FloatArray, IntArray, PhantomSamples]:
+    def get_sample(
+            self,
+            key,
+            log_L_constraint: FloatArray,
+            seed_point: SeedPoint,
+            args=(),
+            params=None,
+            sampler_data: SamplerData | None = None,
+    ) -> tuple[UType, FloatArray, IntArray, PhantomSamples]:
+        output = self.get_sample_with_diagnostics(
+            key,
+            log_L_constraint,
+            seed_point,
+            args=args,
+            params=params,
+            sampler_data=sampler_data,
+        )
+        return output[:4]
+
+    def get_sample_with_diagnostics(
+            self,
+            key,
+            log_L_constraint: FloatArray,
+            seed_point: SeedPoint,
+            args=(),
+            params=None,
+            sampler_data: SamplerData | None = None,
+    ) -> tuple[
+        UType,
+        FloatArray,
+        IntArray,
+        PhantomSamples,
+        IntArray,
+        IntArray,
+    ]:
+        """Sample one chain and return internal direction-use counters."""
 
         class XType(NamedTuple):
             key: jax.Array
@@ -452,9 +635,19 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
             num_likelihood_evaluations: IntArray
             direction: TreeField[UType]
             slice_width: FloatArray
+            direction_isotropic: BoolArray
+            num_directions: IntArray
+            num_isotropic: IntArray
 
         def propose_op(carry: Carry, x: XType) -> Carry:
-            U_sample, log_L, num_likelihood_evaluations, direction, slice_width = _new_proposal(
+            (
+                U_sample,
+                log_L,
+                num_likelihood_evaluations,
+                direction,
+                slice_width,
+                direction_isotropic,
+            ) = _new_proposal(
                 key=x.key,
                 U0=carry.U_sample,
                 direction=carry.direction,
@@ -463,6 +656,12 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
                 gradient_guided=self.gradient_guided,
                 log_L_constraint=carry.log_L_constraint,
                 log_likelihood_fn=log_likelihood_fn,
+                sampler_data=sampler_data,
+                prob_isotropic=(
+                    1.0
+                    if self.direction is None
+                    else self.direction.prob_isotropic
+                ),
             )
 
             carry = Carry(
@@ -471,19 +670,53 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
                 log_L=log_L,
                 num_likelihood_evaluations=num_likelihood_evaluations + carry.num_likelihood_evaluations,
                 direction=direction,
-                slice_width=slice_width
+                slice_width=slice_width,
+                direction_isotropic=direction_isotropic,
+                num_directions=(
+                    carry.num_directions
+                    + jnp.asarray(1, mp_policy.count_dtype)
+                ),
+                num_isotropic=(
+                    carry.num_isotropic
+                    + carry.direction_isotropic.astype(mp_policy.count_dtype)
+                ),
             )
             return carry
 
         direction_key, sample_key = jax.random.split(key, 2)
 
-        init_direction = _sample_direction(direction_key, TreeField(seed_point.U0))
+        if sampler_data is None:
+            init_direction = _sample_direction(
+                direction_key,
+                TreeField(seed_point.U0),
+            )
+            init_direction_isotropic = jnp.asarray(
+                True,
+                mp_policy.bool_dtype,
+            )
+        else:
+            init_direction, init_direction_isotropic = (
+                _draw_ellipsoidal_direction(
+                    direction_key,
+                    TreeField(seed_point.U0),
+                    log_L_constraint,
+                    sampler_data,
+                    self.direction.prob_isotropic,
+                )
+            )
         slice_width_dtype = jax.tree.leaves(seed_point.U0)[0].dtype
 
         # Initial proposal determines the width used by perfect bracketing.
         sample_key, init_sample_key = random.split(sample_key, 2)
 
-        U_sample, log_L, num_likelihood_evaluations, init_direction, slice_width = _new_proposal(
+        (
+            U_sample,
+            log_L,
+            num_likelihood_evaluations,
+            init_direction,
+            slice_width,
+            next_direction_isotropic,
+        ) = _new_proposal(
             key=init_sample_key,
             U0=TreeField(seed_point.U0),
             direction=init_direction,
@@ -492,6 +725,12 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
             gradient_guided=self.gradient_guided,
             log_L_constraint=log_L_constraint,
             log_likelihood_fn=log_likelihood_fn,
+            sampler_data=sampler_data,
+            prob_isotropic=(
+                1.0
+                if self.direction is None
+                else self.direction.prob_isotropic
+            ),
         )
 
         init_carry = Carry(
@@ -500,7 +739,12 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
             log_L=log_L,
             num_likelihood_evaluations=num_likelihood_evaluations,
             direction=init_direction,
-            slice_width=slice_width
+            slice_width=slice_width,
+            direction_isotropic=next_direction_isotropic,
+            num_directions=jnp.asarray(1, mp_policy.count_dtype),
+            num_isotropic=init_direction_isotropic.astype(
+                mp_policy.count_dtype
+            ),
         )
 
         xs = XType(
@@ -540,7 +784,14 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
         log_L_sample = final_carry.log_L
         num_likelihood_evaluations = final_carry.num_likelihood_evaluations
 
-        return U_sample, log_L_sample, num_likelihood_evaluations, phantom_samples
+        return (
+            U_sample,
+            log_L_sample,
+            num_likelihood_evaluations,
+            phantom_samples,
+            final_carry.num_directions,
+            final_carry.num_isotropic,
+        )
 
 
 UniDimSliceSampler.register_pytree()
