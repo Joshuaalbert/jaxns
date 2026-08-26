@@ -14,8 +14,9 @@ properties that must hold independently of implementation live in
   distributed run pattern changes.
 - Requirement: Design requirements and invariants use unversioned scientific names; source
   files, classes, and variables do not acquire `v3` prefixes or suffixes.
-- Requirement: Distributed execution remains out of release scope until its process,
-  serialization, failure, scheduling, and reproducibility design has been validated explicitly.
+- Requirement: Distributed execution follows the accepted process, serialization, failure,
+  scheduling, and reproducibility decision recorded on issue 252; changes to those boundaries
+  require new evidence and an updated design decision.
 
 ## Package And Public API
 
@@ -59,8 +60,57 @@ properties that must hold independently of implementation live in
   transitive runtime or interfere with accelerator-specific JAX installations.
 - Requirement: Matplotlib is supplied by the base installation but imported only when a plotting
   operation is requested; extras do not repeat dependencies already supplied by the base.
-- Requirement: Distributed dependencies and command-line entry points are not published until
-  the distributed process, serialization, and failure design is accepted and implemented.
+- Requirement: ZeroMQ and Cloudpickle are isolated in the `distributed` extra, while the
+  installed `jaxns-cli` configuration-validation command remains usable without importing JAX,
+  ZeroMQ, or model-serialization support.
+
+## Distributed Execution
+
+- Requirement: Distributed execution is an opt-in `DistributedNestedSampler`; the established
+  local `NestedSampler` remains the compiled, dependency-light execution path.
+- Requirement: `jaxns-cli` owns one named local stack and provides idempotent `config validate`,
+  `up`, `status`, and `down` operations from a TOML configuration.
+- Requirement: The first distributed transport is trusted same-user `ipc://` only; Python pickle
+  and Cloudpickle payloads are never accepted over TCP or presented as safe input from another
+  user or machine.
+- Requirement: The supervisor imports no JAX or model code and routes opaque registration,
+  request, and result bytes between scientific clients and workers.
+- Requirement: Each worker is one OS process with one configured JAX device and one fixed batch
+  size; size one calls the scalar chain directly and larger sizes use `jax.vmap`, never
+  `jax.lax.map`.
+- Requirement: A worker executes a complete constrained-sampling chain or vmapped chain batch;
+  individual likelihood evaluations inside data-dependent sampler loops never cross IPC.
+- Requirement: The first distributed release bootstraps the finite root prior batch in the main
+  process and distributes complete constrained replacement chains; root-batch distribution is
+  not silently claimed as part of its measured scaling.
+- Requirement: Model, sampler, arguments, and parameters are registered once per scientific
+  session; task messages contain only task-specific keys, strict contours, stationary seeds,
+  validity, and direction state.
+- Requirement: Each worker keeps a small bounded cache of compiled session programs keyed by the
+  exact registration payload so releasing and later resuming the same model does not force an
+  avoidable recompilation or create unbounded executable retention.
+- Requirement: The main scientific process exclusively owns nested-sampling state, parent
+  out-degree commits, PRNG assignment, task identity, allocation, growth, and goal evaluation.
+- Requirement: Dispatch creates a separate provisional lineage reservation before transport;
+  reservations influence allocation planning but are not observations in user-facing `State`.
+- Requirement: The asynchronous pool refills capacity after any completion and does not impose a
+  wave barrier; an unknown pending endpoint is conservatively reserved beyond known contours.
+- Requirement: Physical capacity accounts for committed and reserved rows, and capacity growth
+  preserves the active depth epoch and already dispatched immutable task payloads.
+- Requirement: Task submission is idempotent by session and task identity, a retry retains the
+  exact scientific payload and keys, and a completed payload remains replayable until the client
+  acknowledges its exactly-once commit.
+- Requirement: Worker death or task timeout requeues an unchanged task when compatible capacity
+  remains, reports degraded capacity visibly, and does not hide failure through automatic worker
+  restart.
+- Requirement: The supervisor fairly rotates among registered sessions with dispatchable work;
+  one client cannot permanently monopolize every compatible idle worker.
+- Requirement: Goal conditions run only at a drained depth boundary; pending results and
+  provisional reservations are committed or explicitly retained in a resumable distributed
+  checkpoint before results can be exposed.
+- Requirement: Exact samples may differ when worker topology or completion latency changes, but
+  every topology preserves the constrained-prior and race-tree laws; topology invariance is not
+  promised as bitwise reproducibility.
 
 ## Core Run Architecture
 
@@ -185,7 +235,7 @@ properties that must hold independently of implementation live in
   live-point count, slice count, phantom setting, hardware, precision, and compilation
   treatment.
 - Requirement: Standard-problem acceptance retains the established tolerances in
-  `tests/test_ns_standard_problems.py`; v3 may not pass by loosening those tolerances.
+  `cicd/tests/test_ns_standard_problems.py`; v3 may not pass by loosening those tolerances.
 - Requirement: Standard-problem tests exercise phantom collection both disabled and enabled and
   assess Monte Carlo evidence estimates against known expectations.
 - Requirement: Release evidence uses approximately thirty independent seeds per standard problem

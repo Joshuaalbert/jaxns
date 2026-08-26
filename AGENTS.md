@@ -57,7 +57,7 @@ No formatter/type-checker is configured; aim for clean PEP-8 that passes `flake8
   `Any`.
 - Naming: modules `snake_case.py`; functions/vars `snake_case`; classes `PascalCase`; consts `UPPER_SNAKE_CASE`; private
   `_name`.
-- Structure: production code in `src/jaxns/...`; tests in `tests/...`; Don't put anything inside `__init__.py` files.
+- Structure: production code in `src/jaxns/...`; tests in `cicd/tests/...`; Don't put anything inside `__init__.py` files.
 - Errors: fail fast with validation; raise specific exceptions; no bare `except:`; add context with `raise ... from e`.
 - Logging: prefer package logger over ad-hoc config; log actionable context; avoid spam in tight loops.
 - Logging setup: package provides `jaxns.logging.jaxns_logger` that calls `dictConfig(...)` and exposes a

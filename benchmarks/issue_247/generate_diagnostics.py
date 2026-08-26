@@ -11,9 +11,9 @@ import jax
 import numpy as np
 from matplotlib import pyplot as plt
 
+from cicd.tests.test_ns_standard_problems import STANDARD_PROBLEM_CASES_BY_NAME
 from jaxns.constrained_sampler import UniDimSliceSampler
 from jaxns.core import NestedSampler
-from tests.test_ns_standard_problems import STANDARD_PROBLEM_CASES_BY_NAME
 
 plt.switch_backend("Agg")
 

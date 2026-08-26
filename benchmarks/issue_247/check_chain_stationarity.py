@@ -17,9 +17,9 @@ import jax
 import numpy as np
 from jax import numpy as jnp
 
+from cicd.tests.test_ns_standard_problems import STANDARD_PROBLEM_CASES_BY_NAME
 from jaxns.constrained_sampler import UniDimSliceSampler
 from jaxns.samples import SeedPoint
-from tests.test_ns_standard_problems import STANDARD_PROBLEM_CASES_BY_NAME
 
 
 def main():

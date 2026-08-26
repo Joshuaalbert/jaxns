@@ -19,10 +19,10 @@ sys.path.insert(0, str(REPO_ROOT))
 import jax
 
 import jaxns
+from cicd.tests.test_ns_standard_problems import STANDARD_PROBLEM_CASES_BY_NAME
 from jaxns.constrained_sampler import UniDimSliceSampler
 from jaxns.core import NestedSampler
 from jaxns.results import _block_state_from_results
-from tests.test_ns_standard_problems import STANDARD_PROBLEM_CASES_BY_NAME
 
 
 def _compiled_program_record(results, *, key, draws, batch_size):

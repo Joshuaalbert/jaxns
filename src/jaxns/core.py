@@ -722,6 +722,50 @@ class _DepthCarry(NamedTuple):
     register: TerminationRegister
 
 
+def _build_depth_view(
+        state: State,
+        depth_cond: TerminationCondition,
+        *,
+        allocation_target: str,
+        root_degree: int,
+        delta_K: int,
+) -> tuple[BlockState, AllocationPlan, BoolArray, TerminationRegister]:
+    """Build the compact allocation and stopping view of append-order state.
+
+    Local and distributed depth execution differ only at the sampling
+    boundary. Sharing this calculation ensures they assign lineage gaps and
+    expectation-based depth relevance with exactly the same scientific model.
+    """
+    # Out-degree changes alter K_g, the expected volume path, and the depth
+    # stopping estimate. Rebuild this compact block view after each accepted
+    # batch while leaving the scientific sample pytrees in append order.
+    block_state = build_block_state(
+        state.samples,
+        root_out_degree=state.root_out_degree,
+        num_samples=state.num_samples,
+        likelihood_order=state.likelihood_order,
+    )
+    plan = build_allocation_plan(
+        state=state,
+        allocation_target=allocation_target,
+        iteration=state.goal_loop_iter,
+        delta_K=jnp.asarray(delta_K, mp_policy.count_dtype),
+        # d_0 is the fixed initial allocation. The sentinel's current
+        # out-degree grows when later epochs start root threads; using it here
+        # would make the target chase every accepted root child.
+        root_out_degree=jnp.asarray(root_degree, mp_policy.count_dtype),
+        block_state=block_state,
+    )
+    relevant = _depth_relevant_blocks(plan, depth_cond)
+    register = termination_register_from_volume_path(
+        state,
+        block_state,
+        plan.volume_path.X,
+        plan.volume_path.shell_mass,
+    )
+    return block_state, plan, relevant, register
+
+
 @partial(
     jax.jit,
     static_argnames=(
@@ -749,39 +793,6 @@ def _run_depth(
     exit outcome. A physical-capacity return may therefore be resized and
     resumed without changing the logical allocation epoch or random stream.
     """
-
-    def build_depth_view(current_state):
-        # Out-degree changes alter K_g, the expected volume path, and the
-        # depth stopping estimate. Rebuild this compact block view after each
-        # batch while leaving the scientific sample pytrees in append order.
-        block_state = build_block_state(
-            current_state.samples,
-            root_out_degree=current_state.root_out_degree,
-            num_samples=current_state.num_samples,
-            likelihood_order=current_state.likelihood_order,
-        )
-        plan = build_allocation_plan(
-            state=current_state,
-            allocation_target=allocation_target,
-            iteration=current_state.goal_loop_iter,
-            delta_K=jnp.asarray(delta_K, mp_policy.count_dtype),
-            # d_0 is the fixed initial allocation. The sentinel's current
-            # out-degree grows when later epochs start root threads; using it
-            # here would make the target chase every accepted root child.
-            root_out_degree=jnp.asarray(
-                root_degree,
-                mp_policy.count_dtype,
-            ),
-            block_state=block_state,
-        )
-        relevant = _depth_relevant_blocks(plan, depth_cond)
-        register = termination_register_from_volume_path(
-            current_state,
-            block_state,
-            plan.volume_path.X,
-            plan.volume_path.shell_mass,
-        )
-        return block_state, plan, relevant, register
 
     def cond(carry: _DepthCarry):
         # The compiled depth epoch stops at the first of: filled allocation,
@@ -894,7 +905,13 @@ def _run_depth(
             sampled_batch,
         )
         next_block_state, next_plan, next_relevant, next_register = (
-            build_depth_view(next_state)
+            _build_depth_view(
+                next_state,
+                depth_cond,
+                allocation_target=allocation_target,
+                root_degree=root_degree,
+                delta_K=delta_K,
+            )
         )
         return _DepthCarry(
             key=next_key,
@@ -920,7 +937,13 @@ def _run_depth(
         next_goal_key,
         state.goal_key,
     )
-    block_state, plan, relevant, register = build_depth_view(state)
+    block_state, plan, relevant, register = _build_depth_view(
+        state,
+        depth_cond,
+        allocation_target=allocation_target,
+        root_degree=root_degree,
+        delta_K=delta_K,
+    )
     initial_state = dataclasses.replace(
         state,
         random_key=depth_key,

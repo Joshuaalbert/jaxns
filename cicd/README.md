@@ -8,16 +8,15 @@ This directory separates checks by lifecycle and intent.
 - `pre_release_autochecks/` runs for `develop` to `main`. It may fail during
   feature development and requires every design invariant to have recorded
   test coverage before release.
+- `tests/` contains the complete deterministic unit and regression suite.
 - `system_tests/` contains composed public-API tests with matching design
   specifications under `docs/design/system_tests/`.
 - `demos/` contains deterministic executable examples of supported workflows.
 - `benchmarks/` catalogues maintained performance and accuracy measurements.
 - `testing/` contains support code shared by demos and system tests.
 
-JAXNS keeps its existing unit tests in the repository-level `tests/` folder,
-rather than moving them under `cicd/`. This preserves the conventional
-setuptools `src/` layout while retaining the same ownership model used by the
-`bx_trading` CI/CD structure.
+All maintained tests and their support code live under `cicd/`; production
+package discovery remains independently rooted at `src/`.
 
 `coverage_record.json` maps exact text from
 `docs/design/INVARIANTS.md` to tests that exercise it.

@@ -16,14 +16,14 @@ from jax import numpy as jnp
 from jax.scipy.special import logsumexp
 
 import jaxns
+from cicd.tests.test_ns_standard_problems import (
+    STANDARD_PROBLEM_CASES_BY_NAME,
+)
 from jaxns.constrained_sampler import (
     EllipsoidalDirection,
     UniDimSliceSampler,
 )
 from jaxns.core import NestedSampler, _run_depth
-from tests.test_ns_standard_problems import (
-    STANDARD_PROBLEM_CASES_BY_NAME,
-)
 
 MODE_PROBLEMS = {
     "spike_slab": {

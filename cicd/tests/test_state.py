@@ -7,6 +7,7 @@ from jax import random
 from jaxctx.priors.prior import Prior
 from tensorflow_probability.substrates import jax as tfp
 
+from cicd.tests.distributed_support import make_toy_model
 from jaxns.core import NestedSampler
 from jaxns.model import Model
 from jaxns.multi_ellipsoid_utils import empty_sampler_data
@@ -18,7 +19,6 @@ from jaxns.shrinkage import (
 )
 from jaxns.state import State
 from jaxns.stats_utils import linear_to_log_stats
-from tests.distributed_support import make_toy_model
 
 tfpd = tfp.distributions
 

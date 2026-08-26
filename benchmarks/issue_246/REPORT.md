@@ -21,7 +21,7 @@ mode-mass RMSE, so the conservative gate remains.
 ## Protocol
 
 - 30 paired seeds per problem, direction policy, and phantom setting (`n=30`).
-- All ten cases from `tests/test_ns_standard_problems.py`.
+- All ten cases from `cicd/tests/test_ns_standard_problems.py`.
 - Root allocation `30 * dimension`, replacement width `10 * dimension`, and
   slice transitions `5 * dimension` for both policies.
 - Identical default termination, `dlogZ = log1p(1e-3)`.
