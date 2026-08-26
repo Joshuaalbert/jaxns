@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import dataclasses
+import time
 from collections.abc import Callable
 from functools import partial
 from pathlib import Path
-from typing import TYPE_CHECKING, NamedTuple
+from typing import TYPE_CHECKING, Literal, NamedTuple
 from uuid import uuid4
 
 import jax
@@ -29,6 +30,7 @@ from jaxns.core import (
     _prepare_sampler_data,
 )
 from jaxns.mixed_precision import mp_policy
+from jaxns.model import Model
 from jaxns.pytree import PureDataclassPytree
 from jaxns.samples import SeedPoint
 from jaxns.state import State
@@ -99,8 +101,8 @@ class PendingTask(PureDataclassPytree):
     """One retry-stable task and the reservation it will discharge."""
 
     task_id: int
-    work: CoreWorkBatch
-    request: ConstrainedSampleRequest
+    work: CoreWorkBatch  # [1] one logical lineage edge
+    request: ConstrainedSampleRequest  # [1] one constrained chain
 
 
 PendingTask.register_pytree()
@@ -133,8 +135,8 @@ DistributedState.register_pytree()
 class PreparedTask(NamedTuple):
     state: State
     reservations: ReservationState
-    work: CoreWorkBatch
-    request: ConstrainedSampleRequest
+    work: CoreWorkBatch  # [S] static seed-stratification window
+    request: ConstrainedSampleRequest  # [S] static planning window
     has_work: BoolArray  # []
 
 
@@ -238,6 +240,7 @@ def _prepare_task(
         depth_cond: TerminationCondition,
         *,
         dispatch_width: int,
+        max_threads: IntArray,
         allocation_target: str,
         root_degree: int,
         delta_K: int,
@@ -281,6 +284,10 @@ def _prepare_task(
         jnp.minimum(physical_free, global_free),
         0,
     ).astype(mp_policy.index_dtype)
+    available = jnp.minimum(
+        available,
+        max_threads.astype(mp_policy.index_dtype),
+    )
     work = _plan_work_batch(
         plan_key,
         state,
@@ -462,22 +469,82 @@ def _depth_status(
 
 @dataclasses.dataclass(frozen=True, slots=True)
 class DistributedNestedSampler:
-    """Run a local JAXNS core over a trusted asynchronous worker stack.
+    """Run nested sampling over an asynchronous multi-node worker pool.
 
-    ``jaxns-cli`` owns the local supervisor and worker lifecycle. This object
-    owns scientific state, reservations, keys, and the Python goal/depth event
-    loop; the supervisor never interprets nested-sampling state.
+    Distributed allocation has no shell width. One pending task represents one
+    logical lineage thread, and idle pool lanes are continuously filled from
+    currently known allocation gaps. A worker's ``batch_size`` is a private
+    device-execution choice used to combine compatible scalar tasks with
+    ``jax.vmap``.
 
     Args:
-        nested_sampler: Scientific model, sampler, allocation, and capacity
-            configuration shared with the established local runner.
-        config: TOML file identifying an already started local worker stack.
+        model: Scientific prior and scalar log-likelihood model.
+        config: Main-node TOML identifying an already started coordinator.
         receive_timeout_s: Maximum time to wait for one task completion.
     """
 
-    nested_sampler: NestedSampler
+    model: Model
     config: str | Path
+    target_num_live_points: int | None = None
+    root_allocation_degree: int | None = None
+    max_samples: int | None = None
+    args: tuple = ()
+    params: CtxParams | None = None
+    sampler: AbstractSampler | None = None
+    termination_condition: TerminationCondition | None = None
+    store_phantom_samples: bool = False
+    collect_phantom_samples: bool = False
+    allocation_target: Literal[
+        "uniform",
+        "evidence_improving",
+        "posterior_improving",
+    ] = "uniform"
+    delta_K: int | None = None
+    initial_capacity: int | None = None
+    unlimited_samples: bool = False
     receive_timeout_s: float = 300.0
+    _core: NestedSampler = dataclasses.field(init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        root_degree = self.root_allocation_degree
+        if root_degree is None:
+            root_degree = self.target_num_live_points
+        if root_degree is None:
+            root_degree = max(1, 30 * int(self.model.U_ndims(self.args, self.params)))
+        # Allocation depth is scientific policy, not worker topology. A root-
+        # sized default exposes enough independent lineage work for a pool
+        # without changing when workers join or leave.
+        delta_K = root_degree if self.delta_K is None else self.delta_K
+        initial_capacity = self.initial_capacity
+        if initial_capacity is None:
+            initial_capacity = root_degree + 10 * delta_K
+        core = NestedSampler(
+            model=self.model,
+            target_num_live_points=self.target_num_live_points,
+            root_allocation_degree=self.root_allocation_degree,
+            max_samples=self.max_samples,
+            # This width is used only by NestedSampler configuration and root
+            # storage initialization. Distributed replacement never reads it.
+            shell_size=1,
+            args=self.args,
+            params=self.params,
+            sampler=self.sampler,
+            termination_condition=self.termination_condition,
+            store_phantom_samples=self.store_phantom_samples,
+            collect_phantom_samples=self.collect_phantom_samples,
+            allocation_target=self.allocation_target,
+            delta_K=delta_K,
+            initial_capacity=initial_capacity,
+            unlimited_samples=self.unlimited_samples,
+        )
+        object.__setattr__(self, "_core", core)
+        object.__setattr__(self, "target_num_live_points", core.target_num_live_points)
+        object.__setattr__(self, "root_allocation_degree", core.root_allocation_degree)
+        object.__setattr__(self, "max_samples", core.max_samples)
+        object.__setattr__(self, "sampler", core.sampler)
+        object.__setattr__(self, "termination_condition", core.termination_condition)
+        object.__setattr__(self, "delta_K", core.delta_K)
+        object.__setattr__(self, "initial_capacity", core.initial_capacity)
 
     def initialise(self, key: PRNGKey | None = None) -> DistributedState:
         """Create an immutable distributed checkpoint from a run key.
@@ -489,7 +556,7 @@ class DistributedNestedSampler:
         # this one-time vmap on the coordinator preserves the established
         # initial-state construction; the repeated expensive replacement work
         # begins at the worker boundary documented for this first release.
-        state = self.nested_sampler.initialise(key)
+        state = self._core.initialise(key)
         capacity = state.samples.log_likelihoods.shape[0]
         return DistributedState(
             state=state,
@@ -508,7 +575,7 @@ class DistributedNestedSampler:
             if int(state.goal_loop_iter) == 0:
                 return False
             done, _ = state.compute_termination_register().is_done(
-                self.nested_sampler.termination_condition
+                self.termination_condition
             )
             return bool(done)
 
@@ -552,9 +619,9 @@ class DistributedNestedSampler:
         from jaxns.runtime_client import SupervisorClient
 
         if depth_cond is None:
-            depth_cond = self.nested_sampler.termination_condition
+            depth_cond = self.termination_condition
         session = WorkerSession(
-            sampler=self.nested_sampler.sampler,
+            sampler=self.sampler,
             args=distributed.state.args,
             params=distributed.state.params,
         )
@@ -571,7 +638,6 @@ class DistributedNestedSampler:
                     )
                 completed = self._run_connected(
                     client,
-                    capacities,
                     distributed,
                     goal_cond,
                     depth_cond,
@@ -590,11 +656,11 @@ class DistributedNestedSampler:
     def _run_connected(
             self,
             client: SupervisorClient,
-            capacities: tuple[int, ...],
             distributed: DistributedState,
             goal_cond: Callable[[State], bool],
             depth_cond: TerminationCondition,
     ) -> DistributedState:
+        completed_tasks: dict[int, ConstrainedSampleBatch] = {}
         while True:
             state = distributed.state
             if (
@@ -626,34 +692,41 @@ class DistributedNestedSampler:
                 )
 
             distributed = self._grow_if_needed(distributed, depth_cond)
-            distributed = self._fill_workers(
+            distributed = self._dispatch_threads(
                 client,
-                capacities,
                 distributed,
                 depth_cond,
             )
             if distributed.pending:
-                try:
-                    task_id, batch = client.receive(
-                        distributed.session_id,
-                        timeout_s=self.receive_timeout_s,
-                    )
-                except Exception as exc:
-                    raise DistributedRunError(
-                        f"Waiting for distributed task failed: {exc}",
-                        distributed,
-                    ) from exc
-                matching = tuple(
-                    task
-                    for task in distributed.pending
-                    if task.task_id == task_id
+                # Sampling completion is asynchronous, but scientific commits
+                # follow task identity. Runtime latency (including the extra
+                # bytes produced by phantom collection) must not choose a
+                # different race tree for the same assigned random stream.
+                pending = min(
+                    distributed.pending,
+                    key=lambda task: task.task_id,
                 )
-                if not matching:
-                    # The supervisor retains results until ACK. A replayed
-                    # result for an already committed task is safe to discard.
-                    client.acknowledge(distributed.session_id, task_id)
-                    continue
-                pending = matching[0]
+                while pending.task_id not in completed_tasks:
+                    try:
+                        task_id, batch = client.receive(
+                            distributed.session_id,
+                            timeout_s=self.receive_timeout_s,
+                        )
+                    except Exception as exc:
+                        raise DistributedRunError(
+                            f"Waiting for distributed task failed: {exc}",
+                            distributed,
+                        ) from exc
+                    if not any(
+                        task.task_id == task_id
+                        for task in distributed.pending
+                    ):
+                        # A replay for an already committed task is safe to
+                        # release because its state mutation already happened.
+                        client.acknowledge(distributed.session_id, task_id)
+                        continue
+                    completed_tasks[task_id] = batch
+                batch = completed_tasks.pop(pending.task_id)
                 accepted = _accept_task(
                     distributed.state,
                     distributed.reservations,
@@ -662,10 +735,13 @@ class DistributedNestedSampler:
                 )
                 if not bool(accepted.accepted):
                     raise DistributedRunError(
-                        f"Worker task {task_id} violated its strict contour.",
+                        f"Worker task {pending.task_id} violated its strict contour.",
                         distributed,
                     )
-                client.acknowledge(distributed.session_id, task_id)
+                client.acknowledge(
+                    distributed.session_id,
+                    pending.task_id,
+                )
                 distributed = dataclasses.replace(
                     distributed,
                     state=accepted.state,
@@ -673,7 +749,7 @@ class DistributedNestedSampler:
                     pending=tuple(
                         task
                         for task in distributed.pending
-                        if task.task_id != task_id
+                        if task.task_id != pending.task_id
                     ),
                 )
                 continue
@@ -718,66 +794,130 @@ class DistributedNestedSampler:
                     depth_active=False,
                 )
                 continue
+            if bool(status.has_work):
+                # A pool may temporarily have no live lanes while an operator
+                # replaces a node. Keep the immutable scientific state in the
+                # same depth and allow a dynamically joined worker to resume
+                # it, bounded by the ordinary receive timeout.
+                deadline = time.monotonic() + self.receive_timeout_s
+                while time.monotonic() < deadline:
+                    remaining_s = max(0.0, deadline - time.monotonic())
+                    try:
+                        lanes = client.capacity(
+                            distributed.session_id,
+                            timeout_s=remaining_s,
+                        )
+                    except Exception as exc:
+                        raise DistributedRunError(
+                            f"Observing distributed capacity failed: {exc}",
+                            distributed,
+                        ) from exc
+                    if lanes > 0:
+                        break
+                    time.sleep(0.1)
+                else:
+                    raise DistributedRunError(
+                        "No distributed worker capacity became available "
+                        "before the receive timeout.",
+                        distributed,
+                    )
+                continue
             raise DistributedRunError(
                 "Distributed depth made no dispatch, growth, completion, "
                 "or termination progress.",
                 distributed,
             )
 
-    def _fill_workers(
+    def _dispatch_threads(
             self,
             client: SupervisorClient,
-            capacities: tuple[int, ...],
             distributed: DistributedState,
             depth_cond: TerminationCondition,
+            lane_capacity: int | None = None,
     ) -> DistributedState:
-        occupied: dict[int, int] = {}
-        for task in distributed.pending:
-            width = task.request.log_L_constraints.shape[0]
-            occupied[width] = occupied.get(width, 0) + 1
-        available: dict[int, int] = {}
-        for width in capacities:
-            available[width] = available.get(width, 0) + 1
-
-        for width, count in available.items():
-            free = count - occupied.get(width, 0)
-            for _ in range(max(0, free)):
-                # Re-evaluate the stop boundary after every reservation.
-                # Planning gaps alone are insufficient: scalar budgets may
-                # already have ended this depth, and another reservation can
-                # fill the remaining physical capacity.
-                status = self._status(distributed, depth_cond)
-                if not bool(status.has_work):
-                    break
-                prepared = _prepare_task(
-                    distributed.state,
-                    distributed.reservations,
-                    self.nested_sampler.sampler,
-                    depth_cond,
-                    dispatch_width=width,
-                    allocation_target=self.nested_sampler.allocation_target,
-                    root_degree=int(
-                        self.nested_sampler.root_allocation_degree
-                    ),
-                    delta_K=int(self.nested_sampler.delta_K),
-                    max_samples=self.nested_sampler.max_samples,
+        # Keep every compatible live lane fed without imposing a sampling
+        # wave. One task credit per live lane fills the whole pool immediately
+        # and avoids speculative scientific work beyond measured capacity.
+        if lane_capacity is None:
+            try:
+                capacity = client.capacity(
+                    distributed.session_id,
+                    timeout_s=self.receive_timeout_s,
                 )
-                if not bool(prepared.has_work):
-                    break
-                task = PendingTask(
-                    task_id=distributed.next_task_id,
-                    work=prepared.work,
-                    request=prepared.request,
-                )
-                # Add the immutable reservation before transport. If submit
-                # fails, the returned checkpoint still owns the exact task.
-                distributed = dataclasses.replace(
+            except Exception as exc:
+                raise DistributedRunError(
+                    f"Observing distributed capacity failed: {exc}",
                     distributed,
-                    state=prepared.state,
-                    reservations=prepared.reservations,
-                    pending=distributed.pending + (task,),
-                    next_task_id=distributed.next_task_id + 1,
+                ) from exc
+        else:
+            capacity = lane_capacity
+        pending_limit = capacity
+        free = max(0, pending_limit - len(distributed.pending))
+        planning_width = int(self.delta_K)
+        while free > 0 and bool(self._status(distributed, depth_cond).has_work):
+            prepared = _prepare_task(
+                distributed.state,
+                distributed.reservations,
+                self.sampler,
+                depth_cond,
+                # This is a seed-stratification window, not an execution
+                # batch. Every valid lane becomes its own transport task.
+                dispatch_width=planning_width,
+                max_threads=jnp.asarray(free, mp_policy.index_dtype),
+                allocation_target=self.allocation_target,
+                root_degree=int(self.root_allocation_degree),
+                delta_K=int(self.delta_K),
+                max_samples=self.max_samples,
+            )
+            if not bool(prepared.has_work):
+                break
+            num_tasks = int(prepared.work.num_valid)
+            # One transfer per planning window avoids a device synchronization
+            # for every scalar task when pickle asks each JAX leaf for bytes.
+            host_work, host_request = jax.device_get(
+                (prepared.work, prepared.request)
+            )
+            tasks = tuple(
+                PendingTask(
+                    task_id=distributed.next_task_id + lane,
+                    work=CoreWorkBatch(
+                        valid=host_work.valid[lane:lane + 1],
+                        parent_idx=host_work.parent_idx[lane:lane + 1],
+                        log_L_constraint=(
+                            host_work.log_L_constraint[lane:lane + 1]
+                        ),
+                        seed_idx=host_work.seed_idx[lane:lane + 1],
+                    ),
+                    request=ConstrainedSampleRequest(
+                        keys=host_request.keys[lane:lane + 1],
+                        valid=host_request.valid[lane:lane + 1],
+                        log_L_constraints=(
+                            host_request.log_L_constraints[lane:lane + 1]
+                        ),
+                        seed_points=SeedPoint(
+                            U0=jax.tree.map(
+                                lambda values, lane=lane: values[lane:lane + 1],
+                                host_request.seed_points.U0,
+                            ),
+                            log_L0=(
+                                host_request.seed_points.log_L0[lane:lane + 1]
+                            ),
+                        ),
+                        sampler_data=host_request.sampler_data,
+                    ),
                 )
+                for lane in range(num_tasks)
+            )
+            # Store the reservation before transport. A submit failure returns
+            # a checkpoint that still owns the exact random key and parent.
+            distributed = dataclasses.replace(
+                distributed,
+                state=prepared.state,
+                reservations=prepared.reservations,
+                pending=distributed.pending + tasks,
+                next_task_id=distributed.next_task_id + num_tasks,
+            )
+            for task in tasks:
                 try:
                     client.submit(
                         distributed.session_id,
@@ -789,6 +929,7 @@ class DistributedNestedSampler:
                         f"Submitting distributed task failed: {exc}",
                         distributed,
                     ) from exc
+            free -= num_tasks
         return distributed
 
     def _status(
@@ -800,10 +941,10 @@ class DistributedNestedSampler:
             distributed.state,
             distributed.reservations,
             depth_cond,
-            allocation_target=self.nested_sampler.allocation_target,
-            root_degree=int(self.nested_sampler.root_allocation_degree),
-            delta_K=int(self.nested_sampler.delta_K),
-            max_samples=self.nested_sampler.max_samples,
+            allocation_target=self.allocation_target,
+            root_degree=int(self.root_allocation_degree),
+            delta_K=int(self.delta_K),
+            max_samples=self.max_samples,
         )
 
     def _grow_if_needed(
@@ -828,10 +969,10 @@ class DistributedNestedSampler:
             ))
         )
         new_capacity = max(2 * capacity, required)
-        if self.nested_sampler.max_samples is not None:
+        if self.max_samples is not None:
             new_capacity = min(
                 new_capacity,
-                self.nested_sampler.max_samples,
+                self.max_samples,
             )
         if new_capacity <= capacity:
             return dataclasses.replace(

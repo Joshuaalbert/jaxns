@@ -71,16 +71,34 @@ properties that must hold independently of implementation live in
 
 - Requirement: Distributed execution is an opt-in `DistributedNestedSampler`; the established
   local `NestedSampler` remains the compiled, dependency-light execution path.
-- Requirement: `jaxns-cli` owns one named local stack and provides idempotent `config validate`,
-  `up`, `status`, and `down` operations from a TOML configuration.
-- Requirement: The first distributed transport is trusted same-user `ipc://` only; Python pickle
-  and Cloudpickle payloads are never accepted over TCP or presented as safe input from another
-  user or machine.
+- Requirement: `jaxns-cli` owns one named coordinator or worker node and provides idempotent
+  `config validate`, `up`, `status`, and `down` operations from a TOML configuration, plus
+  explicit CurveZMQ certificate creation.
+- Requirement: A coordinator publishes a versioned same-user ownership manifest containing its
+  IPC endpoint, advertised TCP endpoint, protocol version, process identity, and resolved
+  configuration fingerprint. Remote nodes use an explicit TOML endpoint when they cannot read
+  that local discovery record.
+- Requirement: The scientific client and same-machine workers discover and use same-user IPC;
+  remote workers use encrypted CurveZMQ TCP and only public keys installed in the coordinator's
+  authorization directory may connect. Pickle and Cloudpickle are never exposed over
+  unauthenticated TCP or presented as safe input from an untrusted node.
 - Requirement: The supervisor imports no JAX or model code and routes opaque registration,
   request, and result bytes between scientific clients and workers.
+- Requirement: Protocol headers and payloads have explicit size limits, and model registration
+  rejects workers whose Python, JAXNS, JAX/JAXLIB, x64, or measure-dtype semantics differ from
+  the scientific process. Device platform may differ intentionally.
 - Requirement: Each worker is one OS process with one configured JAX device and one fixed batch
-  size; size one calls the scalar chain directly and larger sizes use `jax.vmap`, never
-  `jax.lax.map`.
+  capacity; size one calls a scalar chain directly and larger compatible groups use `jax.vmap`,
+  never `jax.lax.map`.
+- Requirement: Distributed scientific scheduling has no shell size. The main process submits
+  scalar logical lineage threads continuously to fill compatible live pool lanes from currently
+  known allocation gaps; worker batch size is only a device-execution choice and cannot change
+  allocation targets or random task identity.
+- Requirement: Task credits are bounded by compatible live pool capacity. Every lane can begin
+  immediately, but the scheduler does not speculate beyond the currently measured pool.
+- Requirement: The coordinator groups only tasks from the same session and direction-state
+  specialization. A partial group may run after a short bounded fill interval so a wide worker
+  cannot deadlock a sparsely populated queue.
 - Requirement: A worker executes a complete constrained-sampling chain or vmapped chain batch;
   individual likelihood evaluations inside data-dependent sampler loops never cross IPC.
 - Requirement: The first distributed release bootstraps the finite root prior batch in the main
@@ -96,16 +114,33 @@ properties that must hold independently of implementation live in
   out-degree commits, PRNG assignment, task identity, allocation, growth, and goal evaluation.
 - Requirement: Dispatch creates a separate provisional lineage reservation before transport;
   reservations influence allocation planning but are not observations in user-facing `State`.
-- Requirement: The asynchronous pool refills capacity after any completion and does not impose a
-  wave barrier; an unknown pending endpoint is conservatively reserved beyond known contours.
+- Requirement: The asynchronous pool consumes the shared logical-thread queue without a wave
+  barrier; an unknown pending endpoint is conservatively reserved beyond known contours and a
+  newly joined worker can immediately consume already queued work.
 - Requirement: Physical capacity accounts for committed and reserved rows, and capacity growth
   preserves the active depth epoch and already dispatched immutable task payloads.
 - Requirement: Task submission is idempotent by session and task identity, a retry retains the
   exact scientific payload and keys, and a completed payload remains replayable until the client
   acknowledges its exactly-once commit.
+- Requirement: Results are committed to scientific state in stable task-ID order while workers
+  continue asynchronously. Completion latency, including phantom payload size, cannot select a
+  different race tree for the same assigned random stream.
 - Requirement: Worker death or task timeout requeues an unchanged task when compatible capacity
   remains, reports degraded capacity visibly, and does not hide failure through automatic worker
   restart.
+- Requirement: Coordinator restart is explicit rather than transparent. Its ownership lock fences
+  a second local owner; old worker leases become invalid, workers self-quarantine, node stacks are
+  restarted by the operator, and the scientific process resumes its immutable checkpoint.
+- Requirement: Every worker has a coordinator-issued lease and sends heartbeats independently of
+  data-dependent JAX sampling. Two missed heartbeats fence and drop the worker; two missed lease
+  acknowledgements make the worker self-quarantine, and assignment generations reject late
+  results from an old lease.
+- Requirement: A worker node may join an active session and receives its immutable registration
+  before work. Removing a node drains running work before stopping its processes; an ungraceful
+  loss remains bounded by heartbeat detection and exact task requeue.
+- Requirement: Coordinator status exposes node identity, worker identity, device specialization,
+  readiness, busy/draining/dropped state, compile time, execution time, and memory high-water
+  mark without exposing authentication secrets.
 - Requirement: The supervisor fairly rotates among registered sessions with dispatchable work;
   one client cannot permanently monopolize every compatible idle worker.
 - Requirement: Goal conditions run only at a drained depth boundary; pending results and

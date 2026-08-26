@@ -1,0 +1,19 @@
+[runtime]
+stack_id = "cluster-science"
+node_id = "main"
+runtime_dir = ".runtime"
+log_dir = ".logs"
+heartbeat_interval_s = 2
+missed_heartbeats = 2
+program_cache_size = 4
+
+# Bind on all interfaces, but advertise a hostname that worker nodes can
+# actually resolve. CurveZMQ encrypts the connection and authorizes node keys.
+[network]
+listen = "tcp://0.0.0.0:5555"
+advertise = "tcp://main.example.org:5555"
+server_public_key = "keys/main/coordinator.key"
+server_secret_key = "keys/main/coordinator.key_secret"
+authorized_clients = "keys/authorized"
+
+# The coordinator may also own local device workers by adding [[workers]].

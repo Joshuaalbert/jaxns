@@ -192,16 +192,15 @@ def test_distributed_checkpoint_preserves_unreturned_task_and_keys():
 
 def test_growth_preserves_pending_payload_and_logical_depth():
     model = make_toy_model()
-    nested_sampler = NestedSampler(
+    runner = DistributedNestedSampler(
         model=model,
+        config="unused.toml",
         root_allocation_degree=2,
-        shell_size=1,
         delta_K=1,
         unlimited_samples=True,
         initial_capacity=2,
     )
-    runner = DistributedNestedSampler(nested_sampler, config="unused.toml")
-    state = nested_sampler.initialise(jax.random.PRNGKey(8))
+    state = runner.initialise(jax.random.PRNGKey(8)).state
     work = CoreWorkBatch(
         valid=jnp.asarray([True]),
         parent_idx=jnp.asarray([0], dtype=jnp.int32),
@@ -249,22 +248,21 @@ def test_submit_failure_exposes_newest_resumable_checkpoint():
             raise RuntimeError("transport unavailable")
 
     model = make_toy_model()
-    nested = NestedSampler(
+    runner = DistributedNestedSampler(
         model=model,
+        config="unused.toml",
         root_allocation_degree=2,
-        shell_size=1,
         delta_K=1,
         max_samples=8,
         initial_capacity=8,
     )
-    runner = DistributedNestedSampler(nested, config="unused.toml")
     checkpoint = runner.initialise(jax.random.PRNGKey(11))
     try:
-        runner._fill_workers(
+        runner._dispatch_threads(
             Client(),
-            (1,),
             checkpoint,
             TerminationCondition(),
+            lane_capacity=1,
         )
     except DistributedRunError as exc:
         failed = exc.checkpoint
@@ -277,6 +275,26 @@ def test_submit_failure_exposes_newest_resumable_checkpoint():
     assert int(failed.reservations.num_reserved) == 1
     assert int(failed.state.num_samples) == 2
 
+    class UnavailableClient:
+        def capacity(self, session_id, timeout_s):
+            del session_id, timeout_s
+            raise RuntimeError("coordinator unavailable")
+
+    try:
+        runner._dispatch_threads(
+            UnavailableClient(),
+            checkpoint,
+            TerminationCondition(),
+        )
+    except DistributedRunError as exc:
+        unavailable = exc.checkpoint
+    else:  # pragma: no cover - defensive assertion form
+        raise AssertionError("Capacity failure did not expose a checkpoint.")
+
+    assert unavailable.next_task_id == checkpoint.next_task_id
+    assert unavailable.pending == checkpoint.pending
+    assert int(unavailable.state.num_samples) == int(checkpoint.state.num_samples)
+
 
 def test_worker_slots_are_not_refilled_after_sample_budget_terminates():
     class Client:
@@ -288,28 +306,63 @@ def test_worker_slots_are_not_refilled_after_sample_budget_terminates():
             self.submitted += 1
 
     model = make_toy_model()
-    nested = NestedSampler(
+    runner = DistributedNestedSampler(
         model=model,
+        config="unused.toml",
         root_allocation_degree=2,
-        shell_size=1,
         delta_K=1,
         max_samples=2,
         initial_capacity=2,
     )
-    runner = DistributedNestedSampler(nested, config="unused.toml")
     checkpoint = runner.initialise(jax.random.PRNGKey(12))
     client = Client()
 
-    returned = runner._fill_workers(
+    returned = runner._dispatch_threads(
         client,
-        (1, 1),
         checkpoint,
         TerminationCondition(),
+        lane_capacity=2,
     )
 
     assert client.submitted == 0
     assert not returned.pending
     assert int(returned.reservations.num_reserved) == 0
+
+
+def test_distributed_dispatch_queues_scalar_threads_without_shell_barrier():
+    class Client:
+        def __init__(self):
+            self.requests = []
+
+        def submit(self, session_id, task_id, request):
+            del session_id, task_id
+            self.requests.append(request)
+
+    model = make_toy_model()
+    runner = DistributedNestedSampler(
+        model=model,
+        config="unused.toml",
+        root_allocation_degree=4,
+        delta_K=4,
+        max_samples=16,
+        initial_capacity=12,
+    )
+    checkpoint = runner.initialise(jax.random.PRNGKey(31))
+    client = Client()
+
+    queued = runner._dispatch_threads(
+        client,
+        checkpoint,
+        TerminationCondition(),
+        lane_capacity=8,
+    )
+
+    assert len(client.requests) > 1
+    assert len(client.requests) == len(queued.pending)
+    assert all(
+        request.log_L_constraints.shape == (1,)
+        for request in client.requests
+    )
 
 
 def test_worker_request_uses_scalar_and_vmap_paths_above_strict_contour():

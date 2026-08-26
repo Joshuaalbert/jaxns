@@ -1,6 +1,21 @@
 {
   "schema_version": 1,
   "tests": {
+    "test_capacity_counts_only_workers_registered_for_session": {
+      "note": "Checks that scheduler capacity excludes workers which failed or have not completed the concrete compatibility registration handshake.",
+      "path": "cicd/tests/test_distributed_runtime.py",
+      "reason": "architecture_boundary"
+    },
+    "test_incompatible_worker_is_rejected_before_model_registration": {
+      "note": "Checks the concrete Python/JAXNS/JAX/JAXLIB/x64/dtype compatibility handshake before Cloudpickle transfer.",
+      "path": "cicd/tests/test_distributed_runtime.py",
+      "reason": "architecture_boundary"
+    },
+    "test_authenticated_node_joins_runs_and_drains_over_tcp": {
+      "note": "Exercises the concrete CurveZMQ topology, CLI node lifecycle, dynamic registration, and drain protocol.",
+      "path": "cicd/tests/test_distributed_runtime.py",
+      "reason": "architecture_boundary"
+    },
     "test_root_import_keeps_cli_dependency_boundary": {
       "note": "Checks the lazy root-module implementation that preserves lightweight CLI configuration validation.",
       "path": "cicd/tests/test_public_api.py",

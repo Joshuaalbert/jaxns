@@ -1,4 +1,4 @@
-"""Command-line lifecycle control for local JAXNS worker stacks."""
+"""Command-line lifecycle control for JAXNS coordinator and worker nodes."""
 
 from __future__ import annotations
 
@@ -53,12 +53,32 @@ def _try_ping(
 
 
 def _validate(config: RuntimeConfig) -> int:
+    network = config.network
     _print({
         "config": str(config.source),
         "config_fingerprint": config.fingerprint,
         "endpoint": config.endpoint,
+        "node_id": config.node_id,
+        "role": config.role,
+        "worker_endpoint": config.worker_endpoint,
+        "network": None if network is None else {
+            "advertise": network.advertise,
+            "authorized_clients": (
+                None
+                if network.authorized_clients is None
+                else str(network.authorized_clients)
+            ),
+            "coordinator": network.coordinator,
+            "listen": network.listen,
+            "server_public_key": (
+                None
+                if network.server_public_key is None
+                else str(network.server_public_key)
+            ),
+        },
         "log_dir": str(config.log_dir),
         "program_cache_size": config.program_cache_size,
+        "max_payload_bytes": config.max_payload_bytes,
         "runtime_dir": str(config.runtime_dir),
         "stack_id": config.stack_id,
         "startup_timeout_s": config.startup_timeout_s,
@@ -111,13 +131,19 @@ def _up(config: RuntimeConfig) -> int:
             "Inspect its supervisor log before retrying."
         )
 
-    # The supervisor is the single long-lived owner. It creates and records
-    # every worker, so an interrupted CLI cannot orphan unnamed processes.
+    # One durable owner creates every local device process. On the main node it
+    # also coordinates scientific work; remote nodes connect their workers to
+    # that coordinator over authenticated TCP.
+    module = (
+        "jaxns.runtime_supervisor"
+        if config.role == "coordinator"
+        else "jaxns.runtime_node"
+    )
     process = subprocess.Popen(
         [
             sys.executable,
             "-m",
-            "jaxns.runtime_supervisor",
+            module,
             "--config",
             str(config.source),
         ],
@@ -161,9 +187,13 @@ def _up(config: RuntimeConfig) -> int:
                     "A configured worker exited during startup. Inspect "
                     f"{config.log_dir}: {exited}"
                 )
-            if len(workers) == len(config.workers) and all(
-                isinstance(worker, dict) and worker.get("ready") is True
-                for worker in workers
+            local_workers = [
+                worker for worker in workers
+                if isinstance(worker, dict)
+                and worker.get("node_id", config.node_id) == config.node_id
+            ]
+            if len(local_workers) == len(config.workers) and all(
+                worker.get("ready") is True for worker in local_workers
             ):
                 last_status["idempotent"] = False
                 _print(last_status)
@@ -222,7 +252,7 @@ def _down(config: RuntimeConfig) -> int:
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="jaxns-cli")
-    parser.add_argument("--config", required=True, type=Path)
+    parser.add_argument("--config", type=Path)
     commands = parser.add_subparsers(dest="command", required=True)
     config = commands.add_parser("config")
     config_commands = config.add_subparsers(
@@ -233,12 +263,27 @@ def _parser() -> argparse.ArgumentParser:
     commands.add_parser("up")
     commands.add_parser("status")
     commands.add_parser("down")
+    auth = commands.add_parser("auth")
+    auth_commands = auth.add_subparsers(dest="auth_command", required=True)
+    create = auth_commands.add_parser("create")
+    create.add_argument("--directory", required=True, type=Path)
+    create.add_argument("--name", required=True)
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
+        if args.command == "auth":
+            if args.auth_command != "create":
+                raise RuntimeError(f"Unsupported auth command {args.auth_command!r}.")
+            from jaxns.runtime_transport import create_curve_certificate
+
+            public, secret = create_curve_certificate(args.directory, args.name)
+            _print({"public_key": str(public), "secret_key": str(secret)})
+            return 0
+        if args.config is None:
+            raise ValueError("--config is required for this command.")
         config = load_runtime_config(args.config)
         if args.command == "config":
             return _validate(config)

@@ -16,8 +16,8 @@ operation consumes it. The source of truth for package metadata remains
 | `tfp-nightly` | Public model authoring | Keep in base. The README, installation demo, standard problems, and JAXCTX `Prior` implementation use TensorFlow Probability JAX distributions. JAXCTX 1.1.5 imports TFP for its public prior module but does not declare that dependency itself, so JAXNS must supply it for the documented workflow. |
 | `matplotlib` | Public plotting API | Keep in base. Diagnostic and corner plots are part of the ordinary scientific-results workflow. Plotting entry points still import it lazily so importing JAXNS does not eagerly initialise a plotting backend. |
 | `tomli` | Python 3.10 configuration parser | Keep conditionally in base for Python below 3.11. The installed CLI validates TOML without requiring the distributed extra; newer Python uses `tomllib`. |
-| `pyzmq` | Distributed process transport | Keep only in `distributed`. Local `NestedSampler` and CLI config validation do not import it; supervisor lifecycle and worker routing do. The similarly named `zmq` shim is not used. |
-| `cloudpickle` | Distributed model registration | Keep only in `distributed`. It serializes notebook, script, and closure-defined model code once per trusted local worker session; per-task array payloads retain standard pickle. |
+| `pyzmq` | Distributed process transport | Keep only in `distributed`. Local `NestedSampler` and CLI config validation do not import it; coordinator/node lifecycle, CurveZMQ authentication, and worker routing do. The similarly named `zmq` shim is not used. |
+| `cloudpickle` | Distributed model registration | Keep only in `distributed`. It serializes notebook, script, and closure-defined model code once per authorized worker session; per-task array payloads retain standard pickle. |
 
 ## Extras
 
@@ -28,9 +28,9 @@ operation consumes it. The source of truth for package metadata remains
   and PyZMQ,
   matching imports and tooling used by the test and review
   workflows. Matplotlib is inherited from the base installation.
-- `distributed`: PyZMQ for the accepted trusted local supervisor and worker
-  transport, plus Cloudpickle for one-time model registration. JAX and
-  scientific dependencies are inherited from JAXNS itself.
+- `distributed`: PyZMQ for local IPC and authenticated multi-node CurveZMQ,
+  plus Cloudpickle for one-time model registration. JAX and scientific
+  dependencies are inherited from JAXNS itself.
 
 ## Public entry-point behavior
 
