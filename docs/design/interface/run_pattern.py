@@ -8,8 +8,8 @@ import jax
 import matplotlib.pyplot as plt
 import tensorflow_probability.substrates.jax as tfp
 from jaxctx import CtxParams
-from jaxctx.priors.prior import Prior
 
+import jaxns
 from jaxns.core import NestedSampler
 from jaxns.distributed_core import DistributedNestedSampler, DistributedState
 from jaxns.model import Model
@@ -24,8 +24,8 @@ tfpd = tfp.distributions
 # easiest to audit and cache; the distributed extra also supports notebook and
 # closure definitions through Cloudpickle.
 def prior_model(a, b):
-    x = Prior(tfpd.Uniform(0.0, a), name="x").realise()
-    y = Prior(tfpd.Uniform(0.0, b), name="y").parameter()
+    x = jaxns.Prior(tfpd.Uniform(0.0, a), name="x").realise()
+    y = jaxns.Prior(tfpd.Uniform(0.0, b), name="y").parameter()
     return x.sum() + y
 
 

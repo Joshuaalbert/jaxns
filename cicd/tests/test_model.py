@@ -1,8 +1,8 @@
 import jax
 from jax import numpy as jnp
-from jaxctx.priors.prior import Prior
 from tensorflow_probability.substrates import jax as tfp
 
+import jaxns
 from jaxns.model import Model
 
 tfpd = tfp.distributions
@@ -12,11 +12,11 @@ def test_init_params_forwards_model_and_explicit_args() -> None:
     """Model data and parameters remain explicit rather than closure-bound."""
 
     def prior_model(observations):
-        location = Prior(
+        location = jaxns.Prior(
             tfpd.Normal(loc=0.0, scale=1.0),
             name="location",
         ).realise()
-        uncertainty = Prior(
+        uncertainty = jaxns.Prior(
             tfpd.Exponential(rate=1.0),
             name="uncertainty",
         ).parameter()

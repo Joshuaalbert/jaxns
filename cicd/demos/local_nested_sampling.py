@@ -3,9 +3,9 @@
 import jax
 import numpy as np
 from jax import numpy as jnp
-from jaxctx.priors.prior import Prior
 from tensorflow_probability.substrates import jax as tfp
 
+import jaxns
 from jaxns.core import NestedSampler
 from jaxns.model import Model
 
@@ -16,7 +16,10 @@ def build_standard_model() -> Model:
     """Build the complete demo model without repository-local imports."""
 
     def prior_model():
-        x = Prior(tfpd.Uniform(low=-1.0, high=1.0), name="x").realise()
+        x = jaxns.Prior(
+            tfpd.Uniform(low=-1.0, high=1.0),
+            name="x",
+        ).realise()
         return -0.5 * jnp.square((x - 0.2) / 0.25)
 
     return Model(prior_model=prior_model)

@@ -1,6 +1,21 @@
 {
   "schema_version": 1,
   "tests": {
+    "test_root_import_keeps_cli_dependency_boundary": {
+      "note": "Checks the lazy root-module implementation that preserves lightweight CLI configuration validation.",
+      "path": "cicd/tests/test_public_api.py",
+      "reason": "architecture_boundary"
+    },
+    "test_root_prior_is_exact_jaxctx_class": {
+      "note": "Checks exact alias identity for the convenience facade rather than a scientific prior-measure property.",
+      "path": "cicd/tests/test_public_api.py",
+      "reason": "public_api_contract"
+    },
+    "test_special_prior_facade_is_exact_and_complete": {
+      "note": "Checks the explicit special-prior export list and upstream class identities.",
+      "path": "cicd/tests/test_public_api.py",
+      "reason": "public_api_contract"
+    },
     "test_ellipsoidal_direction_jit_vmap_and_degenerate_fallback": {
       "note": "Checks the current compiled direction-kernel batching, normalization, and degenerate-geometry fallback wiring.",
       "path": "cicd/tests/test_constrained_sampler.py",

@@ -62,12 +62,20 @@ pip install -e ".[tests,examples]"
 
 # Quick start
 
-## Define a model with JAXCTX
+## Define a v3 model
 
 A v3 `Model` contains one prior-model function. Calls to
-`Prior(...).realise()` create Bayesian variables, and the scalar returned by
-the function is the log likelihood. Calls to `Prior(...).parameter()` create
-point parameters managed by JAXCTX.
+`jaxns.Prior(...).realise()` create Bayesian variables, and calls to
+`jaxns.Prior(...).parameter()` create point parameters. Most users do not need
+to import JAXCTX directly; JAXNS exposes the common prior interface while
+JAXCTX remains available for advanced context and parameter use. Priors with
+special transforms, including discrete and empirical priors, are available
+under `jaxns.special_priors`.
+
+This is an important change from v2. A v2 model supplied a prior-model function
+and a separate log-likelihood function. In v3 there is one prior-model
+function: it realises the priors and returns the scalar log likelihood for the
+supplied data.
 
 Pass observations and other runtime inputs through `args`, and initialise and
 pass model parameters through `params`. Keeping these values explicit avoids
@@ -77,8 +85,8 @@ distributed workers.
 
 ```python
 import jax
+import jaxns
 from jax import numpy as jnp
-from jaxctx.priors.prior import Prior
 from tensorflow_probability.substrates import jax as tfp
 
 from jaxns.model import Model
@@ -87,11 +95,11 @@ tfpd = tfp.distributions
 
 
 def prior_model(observations, measurement_uncertainty):
-    location = Prior(
+    location = jaxns.Prior(
         tfpd.Normal(loc=0.0, scale=2.0),
         name="location",
     ).realise()
-    intrinsic_uncertainty = Prior(
+    intrinsic_uncertainty = jaxns.Prior(
         tfpd.Exponential(rate=1.0),
         name="intrinsic_uncertainty",
     ).parameter()
@@ -200,10 +208,18 @@ device or cheap likelihoods.
 
 The first distributed release is deliberately a trusted, same-user,
 same-machine `ipc://` design; it is not yet a cluster-wide network protocol.
-One supervisor owns a declarative worker stack, and each worker process is
-pinned to one configured CPU, GPU, or TPU device. A worker with `batch_size =
-1` samples one chain without `vmap`; larger batches use `jax.vmap` and should be
-chosen from workload evidence because all lanes wait for the slowest chain.
+Parallel replacement has two independent dimensions:
+
+1. **Lanes within one sampler call.** The standard local core advances
+   `shell_size` replacement chains together with `jax.vmap`. A distributed
+   worker does the same for its configured `batch_size`; `batch_size = 1`
+   executes a scalar chain without `vmap`. Wider lane batches can improve
+   device utilization, but every lane in one call waits for its most
+   rejection-heavy chain, so widths should be chosen from workload evidence.
+2. **Workers in the distributed pool.** One supervisor owns a declarative set
+   of worker processes, each pinned to one configured CPU, GPU, or TPU device.
+   Workers finish and receive new sampler calls independently, so a slow worker
+   does not impose a global wave barrier on the rest of the pool.
 
 Create `workers.toml`:
 
@@ -292,6 +308,9 @@ requests.
   user-goal loop, and JIT-compiled depth epochs with `vmap` replacement.
 - Made model data and parameters explicit through JAXCTX `args` and `params`,
   and made scientific state and result objects immutable pytree dataclasses.
+- Exposed ordinary model declarations as `jaxns.Prior` and
+  `jaxns.special_priors`, while retaining direct JAXCTX access for advanced
+  users.
 - Added plateau-correct shrinkage and bounded final Monte Carlo evidence draws,
   with explicit classic or phantom conditioning using retained early-chain
   phantom states.
