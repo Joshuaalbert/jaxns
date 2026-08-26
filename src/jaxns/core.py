@@ -17,7 +17,12 @@ from jaxns.constrained_sampler import (
 )
 from jaxns.mixed_precision import mp_policy
 from jaxns.model import Model
-from jaxns.multi_ellipsoid_utils import empty_sampler_data, update_sampler_data
+from jaxns.multi_ellipsoid_utils import (
+    empty_sampler_data,
+    initialise_streaming_sampler_data,
+    stream_sampler_data,
+    update_sampler_data,
+)
 from jaxns.pytree import PureDataclassPytree, pytree_ravel
 from jaxns.race_tree import (
     BlockState,
@@ -428,6 +433,132 @@ def _sample_work_batch(
     )
 
 
+def _prepare_streaming_sampler_data(
+        key: PRNGKey,
+        state: State,
+        sampler: UniDimSliceSampler,
+        work: CoreWorkBatch,
+) -> State:
+    """Initialise once, then consume only newly appended classic rows."""
+    if sampler.direction is None or state.sampler_data is None:
+        raise ValueError("Streaming directions require sampler_data on State.")
+    if state.sampler_data.moments is None:
+        raise ValueError("Streaming directions require persistent moments.")
+
+    direction = sampler.direction
+    dimension = state.sampler_data.centres.shape[1]
+    min_effective_samples = direction.min_effective_samples
+    if min_effective_samples is None:
+        min_effective_samples = (
+            4 * direction.num_components * (dimension + 1)
+        )
+    retry_increment = max(1, min_effective_samples // 2)
+    ready = jnp.any(state.sampler_data.valid)
+
+    def initialise(_):
+        # The initial batch is a bounded deterministic representation of all
+        # classic rows available at the gate. Standard configurations fit
+        # before this bound is reached; the bound still keeps compiled shapes
+        # independent of State's physical storage capacity.
+        population_size = direction.population_size
+        slots = jnp.arange(population_size, dtype=mp_policy.index_dtype)
+        use_all = state.num_samples <= population_size
+        spread = jnp.floor(
+            slots.astype(mp_policy.measure_dtype)
+            * state.num_samples.astype(mp_policy.measure_dtype)
+            / jnp.asarray(population_size, mp_policy.measure_dtype)
+        ).astype(mp_policy.index_dtype)
+        positions = jnp.where(use_all, slots, spread)
+        mask = jnp.where(
+            use_all,
+            slots < state.num_samples,
+            jnp.ones((population_size,), mp_policy.bool_dtype),
+        )
+        positions = jnp.minimum(
+            positions,
+            jnp.maximum(state.num_samples - 1, 0),
+        )
+        selected_U = jax.tree.map(
+            lambda values: values[positions],
+            state.samples.U_samples,
+        )
+        points = jax.vmap(lambda sample: pytree_ravel(sample)[0])(
+            selected_U
+        )
+        log_L = state.samples.log_likelihoods[positions]
+        data = initialise_streaming_sampler_data(
+            key,
+            state.sampler_data,
+            points,
+            log_L,
+            mask,
+            state.num_samples,
+            n_iters=direction.num_iterations,
+            min_effective_samples=min_effective_samples,
+            regularisation=direction.regularisation,
+        )
+        return dataclasses.replace(state, sampler_data=data)
+
+    def update(_):
+        # A completed replacement batch appends at most S physical rows. Read
+        # precisely that interval so no historical row is replayed and no new
+        # row is forgotten. Padding retains the existing vmapped batch width.
+        slots = jnp.arange(
+            work.log_L_constraint.shape[0],
+            dtype=mp_policy.index_dtype,
+        )
+        positions = (
+            state.sampler_data.num_samples.astype(mp_policy.index_dtype)
+            + slots
+        )
+        mask = positions < state.num_samples
+        positions = jnp.minimum(
+            positions,
+            jnp.maximum(state.num_samples - 1, 0),
+        )
+        selected_U = jax.tree.map(
+            lambda values: values[positions],
+            state.samples.U_samples,
+        )
+        points = jax.vmap(lambda sample: pytree_ravel(sample)[0])(
+            selected_U
+        )
+        log_L = state.samples.log_likelihoods[positions]
+        data = stream_sampler_data(
+            state.sampler_data,
+            points,
+            log_L,
+            mask,
+            state.num_samples,
+            regularisation=direction.regularisation,
+        )
+        return dataclasses.replace(state, sampler_data=data)
+
+    first_attempt = state.sampler_data.num_attempted == 0
+    enough_rows = state.num_samples >= min_effective_samples
+    enough_new_rows = (
+        state.num_samples
+        >= state.sampler_data.num_attempted + retry_increment
+    )
+    should_initialise = jnp.where(
+        first_attempt,
+        enough_rows,
+        enough_new_rows,
+    )
+    has_new_rows = state.num_samples > state.sampler_data.num_samples
+    return jax.lax.cond(
+        ready & has_new_rows,
+        update,
+        lambda unused: jax.lax.cond(
+            jnp.logical_not(ready) & should_initialise,
+            initialise,
+            lambda ignored: state,
+            operand=None,
+        ),
+        operand=None,
+    )
+
+
 def _prepare_sampler_data(
         key: PRNGKey,
         state: State,
@@ -442,6 +573,8 @@ def _prepare_sampler_data(
         raise ValueError("Ellipsoidal sampling requires sampler_data on State.")
 
     direction = sampler.direction
+    if direction.update == "streaming":
+        return _prepare_streaming_sampler_data(key, state, sampler, work)
     dimension = state.sampler_data.centres.shape[1]
     min_effective_samples = direction.min_effective_samples
     if min_effective_samples is None:
@@ -1296,6 +1429,7 @@ class NestedSampler(PureDataclassPytree):
             sampler_data = empty_sampler_data(
                 self.sampler.direction.num_components,
                 int(self.model.U_ndims(self.args, self.params)),
+                streaming=(self.sampler.direction.update == "streaming"),
             )
         return dataclasses.replace(
             state,

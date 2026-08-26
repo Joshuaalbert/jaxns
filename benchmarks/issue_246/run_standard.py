@@ -4,6 +4,7 @@ import argparse
 import dataclasses
 import importlib.metadata
 import json
+import math
 import os
 import platform
 import resource
@@ -88,6 +89,28 @@ MODE_PROBLEMS = {
     },
 }
 
+GAUSSIAN_POSTERIORS = {
+    "basic_mvn": {
+        "prior_mean": np.full(8, 6.0),
+        "prior_covariance": np.full((8, 8), 0.99) + 0.01 * np.eye(8),
+        "likelihood_mean": np.zeros(8),
+        "likelihood_covariance": np.eye(8),
+    },
+    "weak_curved_mvn8": {
+        "prior_mean": np.zeros(8),
+        "prior_covariance": np.diag(
+            np.asarray([2.5, 1.7, 2.0, 1.5, 1.8, 1.6, 1.4, 1.9])
+        ),
+        "likelihood_mean": np.asarray([
+            2.0, -1.0, 0.8, -0.4, 0.2, -0.3, 1.2, -0.7,
+        ]),
+        "likelihood_covariance": np.diag(
+            np.asarray([0.25, 0.45, 0.3, 0.35, 0.5, 0.4, 0.28, 0.32])
+        ),
+        "beta": 0.18,
+    },
+}
+
 
 def _environment() -> dict:
     return {
@@ -154,6 +177,80 @@ def _mode_mass(case_name: str, results) -> tuple[float | None, float | None]:
     return estimated, truth
 
 
+def _posterior_mean_error(case_name: str, results) -> float | None:
+    """Return per-coordinate posterior-mean error where truth is analytic."""
+    samples = np.asarray(jax.tree.leaves(results.X_samples)[0])
+    if samples.ndim == 1:
+        samples = samples[:, None]
+    weights = np.exp(np.asarray(results.log_dp))
+
+    if case_name == "basic":
+        truth = np.asarray([
+            (1.0 - math.exp(-1.0))
+            / (math.sqrt(math.pi) * math.erf(1.0))
+        ])
+    elif case_name == "basic2":
+        truth = np.asarray([3.0 / 8.0])
+    elif case_name == "plateau":
+        truth = np.asarray([0.5])
+    elif case_name in GAUSSIAN_POSTERIORS:
+        config = GAUSSIAN_POSTERIORS[case_name]
+        if "beta" in config:
+            samples = samples.copy()
+            samples[:, 1] -= config["beta"] * (
+                np.square(samples[:, 0])
+                - config["prior_covariance"][0, 0]
+            )
+        prior_precision = np.linalg.inv(config["prior_covariance"])
+        likelihood_precision = np.linalg.inv(
+            config["likelihood_covariance"]
+        )
+        covariance = np.linalg.inv(prior_precision + likelihood_precision)
+        truth = covariance @ (
+            prior_precision @ config["prior_mean"]
+            + likelihood_precision @ config["likelihood_mean"]
+        )
+    elif case_name in MODE_PROBLEMS:
+        config = MODE_PROBLEMS[case_name]
+        if "beta" in config:
+            samples = samples.copy()
+            samples[:, 1] -= config["beta"] * (
+                np.square(samples[:, 0]) - config["prior_variance"][0]
+            )
+        posterior_variance = 1.0 / (
+            1.0 / config["prior_variance"][None, :]
+            + 1.0 / config["variances"]
+        )
+        posterior_means = (
+            posterior_variance
+            * config["means"]
+            / config["variances"]
+        )
+        component_log_evidence = np.asarray([
+            np.log(mass)
+            + _normal_log_density(
+                mean,
+                np.zeros_like(mean),
+                config["prior_variance"] + variance,
+            )
+            for mass, mean, variance in zip(
+                config["masses"],
+                config["means"],
+                config["variances"],
+                strict=True,
+            )
+        ])
+        component_weights = np.exp(
+            component_log_evidence - logsumexp(component_log_evidence)
+        )
+        truth = component_weights @ posterior_means
+    else:
+        return None
+
+    estimated = weights @ samples
+    return float(np.sqrt(np.mean(np.square(estimated - truth))))
+
+
 def _depth_program(ns: NestedSampler) -> dict:
     state = dataclasses.replace(
         ns.initialise(jax.random.PRNGKey(0)),
@@ -197,7 +294,7 @@ def main() -> None:
     parser.add_argument("--case", required=True)
     parser.add_argument(
         "--direction",
-        choices=("isotropic", "ellipsoidal"),
+        choices=("isotropic", "ellipsoidal", "streaming"),
         required=True,
     )
     parser.add_argument("--phantoms", action="store_true")
@@ -226,13 +323,16 @@ def main() -> None:
     shell_size = min(root_degree, 10 * dimension)
     retained_phantoms = dimension if args.phantoms else 0
     direction = None
-    if args.direction == "ellipsoidal":
+    if args.direction in ("ellipsoidal", "streaming"):
         direction = EllipsoidalDirection(
             num_components=args.components,
             min_effective_samples=args.min_effective_samples,
             num_iterations=args.iterations,
             population_size=args.population_size,
             prob_isotropic=args.prob_isotropic,
+            update=(
+                "streaming" if args.direction == "streaming" else "warm"
+            ),
         )
     sampler = UniDimSliceSampler(
         model=model,
@@ -272,6 +372,7 @@ def main() -> None:
         "num_iterations": None if direction is None else direction.num_iterations,
         "population_size": None if direction is None else direction.population_size,
         "prob_isotropic": None if direction is None else direction.prob_isotropic,
+        "update": None if direction is None else direction.update,
         "environment": _environment(),
         **program,
     }
@@ -297,6 +398,7 @@ def main() -> None:
         jax.block_until_ready(evidence)
         mc_s = time.perf_counter() - start
         mode_mass, mode_mass_truth = _mode_mass(args.case, results)
+        posterior_mean_error = _posterior_mean_error(args.case, results)
         sampler_data = state.sampler_data
         record = dict(base)
         record.update({
@@ -324,6 +426,7 @@ def main() -> None:
             "mode_mass_error": (
                 None if mode_mass is None else mode_mass - mode_mass_truth
             ),
+            "posterior_mean_error": posterior_mean_error,
             "fit_updates": (
                 0 if sampler_data is None else int(sampler_data.num_updates)
             ),

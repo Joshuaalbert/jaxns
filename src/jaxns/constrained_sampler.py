@@ -3,7 +3,7 @@ import warnings
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from functools import partial
-from typing import Any, NamedTuple
+from typing import Any, Literal, NamedTuple
 
 import jax
 from jax import numpy as jnp
@@ -504,6 +504,10 @@ class EllipsoidalDirection:
         prob_isotropic: Independent isotropic fallback probability per slice
             transition.
         regularisation: Dimensionless covariance ridge relative to variance.
+        update: ``"warm"`` periodically refits the bounded weighted
+            population. ``"streaming"`` performs the same initial fit and
+            then consumes each new classic sample once with cumulative online
+            sufficient statistics.
     """
 
     num_components: int = 4
@@ -512,6 +516,7 @@ class EllipsoidalDirection:
     population_size: int = 1024
     prob_isotropic: float = 1e-2
     regularisation: float = 1e-6
+    update: Literal["warm", "streaming"] = "warm"
 
     def __post_init__(self):
         if self.num_components < 1:
@@ -528,6 +533,8 @@ class EllipsoidalDirection:
             raise ValueError("prob_isotropic must be between zero and one.")
         if self.regularisation <= 0.0:
             raise ValueError("regularisation must be positive.")
+        if self.update not in ("warm", "streaming"):
+            raise ValueError("update must be 'warm' or 'streaming'.")
 
 
 @dataclasses.dataclass(slots=True, frozen=True)
