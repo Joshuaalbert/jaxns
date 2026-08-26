@@ -266,6 +266,11 @@
       "path": "cicd/tests/test_utils.py",
       "reason": "utility_behavior"
     },
+    "test_init_params_forwards_model_and_explicit_args": {
+      "note": "Preserves the explicit JAXCTX model-argument forwarding regression without claiming full state and result preservation coverage.",
+      "path": "cicd/tests/test_model.py",
+      "reason": "regression_case"
+    },
     "test_invalid_allocation_target_and_delta_k_fail_explicitly": {
       "note": "Checks the current allocation utility, normalization, and target construction rather than an implementation-agnostic scientific contract.",
       "path": "cicd/tests/test_allocation.py",
