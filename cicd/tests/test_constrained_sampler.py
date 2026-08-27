@@ -191,11 +191,16 @@ def test_slice_continuations_preserve_gmm_direction_law():
         expected = np.asarray(expected)
         actual = np.asarray(actual)
         if np.issubdtype(expected.dtype, np.inexact):
+            # A transition-ordered scan preserves the reference reduction
+            # order up to ordinary machine roundoff. Keep this deliberately
+            # much tighter than a scientific tolerance: a larger discrepancy
+            # can change a difficult chain's subsequent slice path.
+            tolerance = 32 * np.finfo(expected.dtype).eps
             np.testing.assert_allclose(
                 actual,
                 expected,
-                rtol=1e-5,
-                atol=1e-6,
+                rtol=tolerance,
+                atol=tolerance,
             )
         else:
             np.testing.assert_array_equal(actual, expected)

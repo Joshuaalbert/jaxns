@@ -60,12 +60,33 @@ Across all 70 batches, median physical reduction was 58.8% and median wall
 ratio was 0.521.  Individual physical reductions ranged from 35.6% to 65.7%; no
 batch regressed in steady wall time (wall ratios 0.350 to 0.869).
 
-Logical likelihood counts matched in 70/70 batches.  Discrete outputs matched
-in 70/70.  Forty batches were bitwise identical; every floating output was
-within `rtol=1e-5, atol=1e-6`, with maximum absolute difference `5.16e-5`.
-Fixed-stream floating differences arise from differently grouped vector
-arithmetic and will be followed by end-to-end standard-problem calibration in
-the implementation PR.
+Logical likelihood counts matched in 70/70 batches. Discrete outputs matched
+in 70/70. This initial mechanism matrix batched both the chain and transition
+axes when precomputing GMM directions. Forty isotropic batches were bitwise
+identical, while the GMM batches were within `rtol=1e-5, atol=1e-6`, with
+maximum absolute difference `5.16e-5`.
+
+CI against JAX/JAXLIB 0.11.1 showed why that apparently small discrepancy was
+not acceptable: the changed matrix-reduction order sent the deterministic
+weak-curved spike--slab chain down a different path and failed its unchanged
+standard-problem tolerance. The final implementation scans direction
+transitions in the same order as the complete-chain reference while still
+vmapping lanes. The failing standard problem then passed unchanged on 0.11.1,
+and the focused GMM discrepancy fell to `2.78e-17` on 0.10.0. A subsequent
+production-path rerun gave bitwise equality in all 40 GMM batches:
+
+| Problem | width | transitions | physical calls reduced | median wall ratio | bitwise batches |
+|---|---:|---:|---:|---:|---:|
+| spike--slab 8D + GMM | 80 | 32 | 58.2% | 0.834 | 10/10 |
+| spike--slab 8D + GMM | 8 | 40 | 39.8% | 1.075 | 10/10 |
+| weak curved spike--slab 8D + GMM | 80 | 40 | 60.0% | 0.721 | 10/10 |
+| spike--slab 10D + GMM | 100 | 50 | 59.9% | 0.748 | 10/10 |
+
+The width-eight result is an explicit 7.5% bookkeeping trade-off on a cheap
+likelihood for a 39.8% reduction in physical likelihood calls. It remains the
+selected lower boundary because issue 244 prioritises likelihood efficiency
+provided wall time does not regress materially; width four had already shown a
+larger 36.9% wall regression for only 26.7% physical savings.
 
 ## Decision boundaries
 
@@ -78,10 +99,10 @@ distributed problems.
 |---|---:|---:|---:|---:|---|
 | basic 1D | 10 | 5 | 31.3% | 1.098 | complete chains |
 | basic 2D | 20 | 10 | 46.2% | 1.371 | complete chains |
-| spike--slab 8D + GMM | 80 | 32 | 58.2% | 0.545 | continuation |
+| spike--slab 8D + GMM | 80 | 32 | 58.2% | 0.834 | continuation |
 | spike--slab 8D + GMM | 2 | 40 | 12.9% | 1.208 | complete chains |
 | spike--slab 8D + GMM | 4 | 40 | 26.7% | 1.369 | complete chains |
-| spike--slab 8D + GMM | 8 | 40 | 41.7% | 0.835 | continuation |
+| spike--slab 8D + GMM | 8 | 40 | 39.8% | 1.075 | continuation |
 | spike--slab 8D + GMM | 16 | 40 | 47.7% | 0.662 | continuation |
 
 The full 30-seed standard-problem table is in `END_TO_END.md`. Current and
@@ -125,9 +146,11 @@ an aggregate timing.
   compile time rises 1.29--1.70x. These are accepted explicit trade-offs for
   the steady physical-work reduction.
 - Vmapped conditions select between cheap state updates, but fitted direction
-  draws are hoisted because batching a condition evaluates both branches. This
-  preserves one fixed direction law per parent contour without repeating GMM
-  direction work on rejected proposals.
+  draws are hoisted because batching a condition evaluates both branches. The
+  transition stream uses a scan matching the reference reduction order, while
+  the independent chain dimension remains vmapped. This preserves one fixed
+  direction law per parent contour without repeating GMM direction work on
+  rejected proposals or changing difficult chains through roundoff.
 - The local depth loop and worker program remain the sole JIT boundaries.
   Helper-level nested JIT was rejected because registered distributed `args`
   may intentionally contain notebook functions captured by the worker session.
@@ -141,4 +164,5 @@ sampler defaults, termination conditions, and 30 PRNG seeds for the candidate
 and a fresh `develop` checkout. The raw files are `end_to_end.json` plus the
 final short-chain and `basic_mvn` overrides, `develop_end_to_end.json`, and the
 same-process `paired_basic_mvn.json`. `boundaries.json` contains the transition-
-and worker-width decision matrix.
+and worker-width decision matrix. `scan_order_summary.json` records the final
+post-CI GMM rerun summarised above.

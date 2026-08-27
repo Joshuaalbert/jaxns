@@ -26,6 +26,46 @@
       "path": "cicd/tests/test_constrained_sampler.py",
       "reason": "architecture_boundary"
     },
+    "test_continuation_outer_jit_captures_registered_function_args": {
+      "note": "Checks that the current compositional JIT boundary captures registered non-array model arguments instead of abstracting them as runtime arrays.",
+      "path": "cicd/tests/test_constrained_sampler.py",
+      "reason": "architecture_boundary"
+    },
+    "test_narrow_batch_keeps_complete_chain_reference": {
+      "note": "Checks the evidence-selected lane-width boundary between the continuation scheduler and the complete-chain reference implementation.",
+      "path": "cicd/tests/test_constrained_sampler.py",
+      "reason": "implementation_regression"
+    },
+    "test_nonperfect_batch_keeps_complete_chain_reference": {
+      "note": "Checks that trajectory modes not represented by the continuation scheduler remain owned by the complete-chain reference implementation.",
+      "path": "cicd/tests/test_constrained_sampler.py",
+      "reason": "architecture_boundary"
+    },
+    "test_slice_continuations_do_not_execute_scheduler_padding": {
+      "note": "Checks the current distinction between logical scheduler padding, physical filler evaluations, and retained phantom validity.",
+      "path": "cicd/tests/test_constrained_sampler.py",
+      "reason": "implementation_regression"
+    },
+    "test_slice_continuations_handle_one_scalar_transition": {
+      "note": "Checks the scalar and one-transition compatibility boundary of the current batch implementation.",
+      "path": "cicd/tests/test_constrained_sampler.py",
+      "reason": "architecture_boundary"
+    },
+    "test_slice_continuations_preserve_complete_chain_outputs": {
+      "note": "Checks that the continuation scheduler preserves the concrete complete-chain random stream, phantom prefix, outputs, and counters.",
+      "path": "cicd/tests/test_constrained_sampler.py",
+      "reason": "implementation_regression"
+    },
+    "test_slice_continuations_preserve_gmm_direction_law": {
+      "note": "Checks that transition-ordered ellipsoidal direction generation remains numerically equivalent to the complete-chain reference path.",
+      "path": "cicd/tests/test_constrained_sampler.py",
+      "reason": "implementation_regression"
+    },
+    "test_state_to_result_excludes_storage_tail_likelihood_counts": {
+      "note": "Checks that fixed-capacity storage padding cannot enter the current result-level likelihood or phantom accounting reductions.",
+      "path": "cicd/tests/test_state.py",
+      "reason": "implementation_regression"
+    },
     "test_masked_non_finite_storage_cannot_poison_fit": {
       "note": "Checks that masked physical padding cannot contaminate the current fixed-shape GMM implementation.",
       "path": "cicd/tests/test_em_gmm.py",
@@ -366,7 +406,7 @@
       "path": "cicd/tests/test_core.py",
       "reason": "architecture_boundary"
     },
-    "test_parallel_replacement_uses_full_vmap_not_sequential_lax_map": {
+    "test_parallel_replacement_delegates_batching_without_sequential_map": {
       "note": "Checks the current compiled scheduler, append-order index, batching, or pytree architecture.",
       "path": "cicd/tests/test_core.py",
       "reason": "architecture_boundary"

@@ -21,9 +21,10 @@ from jaxns.samples import PhantomSamples, Samples, SeedPoint
 from jaxns.types import BoolArray, FloatArray, IntArray, PRNGKey, UType
 
 # Continuation bookkeeping dominates cheap, short or narrow batches. The
-# issue-244 matrix first improves both physical work and wall time at 32 slice
-# transitions and eight lanes; smaller requests keep the complete-chain
-# reference until evidence supports moving either boundary.
+# issue-244 matrix shows material physical-work savings at 32 slice transitions
+# and eight lanes. At eight lanes this costs 7.5% on a cheap GMM benchmark but
+# removes 39.8% of physical calls; narrower requests keep the complete-chain
+# reference because their bookkeeping cost outweighed the smaller saving.
 MIN_CONTINUATION_SLICES = 32
 MIN_CONTINUATION_CHAINS = 8
 
@@ -770,9 +771,22 @@ def _initialise_slice_chains(
                 _, _, _, after_key = random.split(transition_key, 4)
                 return draw_direction(after_key)
 
-            later_directions, later_is_isotropic = jax.vmap(
-                draw_later_direction
-            )(transition_keys[:-1])
+            # The scalar reference draws one direction per scan step. Keep
+            # that transition ordering so XLA performs the same matrix-vector
+            # reductions for ellipsoidal directions; batching the transition
+            # axis itself can change floating-point reduction order enough to
+            # send a difficult chain down a different slice path.
+            def scan_direction(unused, transition_key):
+                return unused, draw_later_direction(transition_key)
+
+            _, (
+                later_directions,
+                later_is_isotropic,
+            ) = jax.lax.scan(
+                scan_direction,
+                None,
+                transition_keys[:-1],
+            )
             directions = jax.tree.map(
                 lambda initial, later: jnp.concatenate(
                     [initial[None], later],
