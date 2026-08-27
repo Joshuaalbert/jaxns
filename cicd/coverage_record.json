@@ -189,6 +189,20 @@
     "test_supervisor_deduplicates_task_identity_until_acknowledgement",
     "test_task_timeout_requeues_byte_identical_payload_on_compatible_worker"
   ],
+  "In distributed execution every likelihood evaluation, including root initialization, executes on a registered worker and not in the scientific coordinator process.": [
+    "test_distributed_initialisation_dispatches_every_likelihood"
+  ],
+  "Joining, losing, or replacing worker capacity cannot discard or duplicate a logical task, and cannot permanently close an active run to later compatible capacity.": [
+    "test_remote_restart_request_waits_for_node_heartbeat_and_acknowledgement",
+    "test_node_restart_request_fences_only_the_named_worker_instance",
+    "test_fenced_worker_forces_process_exit_for_supervisor_restart",
+    "test_fresh_worker_instance_supersedes_live_stale_lease",
+    "test_node_joins_runs_restarts_and_drains_over_tcp"
+  ],
+  "Losing every distributed worker leaves scientific state unchanged and waits for compatible capacity rather than converting worker starvation into a scientific run failure.": [
+    "test_worker_starvation_waits_until_results_or_capacity_recover",
+    "test_node_joins_runs_restarts_and_drains_over_tcp"
+  ],
   "A resumable distributed checkpoint identifies every outstanding logical sample and its random stream without treating an unreturned sample as an observed race-tree arrival.": [
     "test_distributed_checkpoint_preserves_unreturned_task_and_keys",
     "test_submit_failure_exposes_newest_resumable_checkpoint"

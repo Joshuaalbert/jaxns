@@ -21,11 +21,6 @@
       "path": "cicd/tests/test_distributed_runtime.py",
       "reason": "architecture_boundary"
     },
-    "test_authenticated_node_joins_runs_and_drains_over_tcp": {
-      "note": "Exercises the concrete CurveZMQ topology, CLI node lifecycle, dynamic registration, and drain protocol.",
-      "path": "cicd/tests/test_distributed_runtime.py",
-      "reason": "architecture_boundary"
-    },
     "test_ellipsoidal_direction_jit_vmap_and_degenerate_fallback": {
       "note": "Checks the current compiled direction-kernel batching, normalization, and degenerate-geometry fallback wiring.",
       "path": "cicd/tests/test_constrained_sampler.py",

@@ -478,7 +478,6 @@ def _depth_status(
     )
 
 
-@dataclasses.dataclass(slots=True)
 class DistributedNestedSampler:
     """Run nested sampling over an asynchronous multi-node worker pool.
 
@@ -498,29 +497,69 @@ class DistributedNestedSampler:
             empty pool is a recoverable operational state.
     """
 
-    model: Model
-    coordinator_port: int
-    target_num_live_points: int | None = None
-    root_allocation_degree: int | None = None
-    max_samples: int | None = None
-    args: tuple = ()
-    params: CtxParams | None = None
-    sampler: AbstractSampler | None = None
-    termination_condition: TerminationCondition | None = None
-    store_phantom_samples: bool = False
-    collect_phantom_samples: bool = False
-    allocation_target: Literal[
-        "uniform",
-        "evidence_improving",
-        "posterior_improving",
-    ] = "uniform"
-    delta_K: int | None = None
-    initial_capacity: int | None = None
-    unlimited_samples: bool = False
-    receive_timeout_s: float = 300.0
-    _core: NestedSampler = dataclasses.field(init=False, repr=False)
+    __slots__ = (
+        "_core",
+        "allocation_target",
+        "args",
+        "collect_phantom_samples",
+        "coordinator_port",
+        "delta_K",
+        "initial_capacity",
+        "max_samples",
+        "model",
+        "params",
+        "receive_timeout_s",
+        "root_allocation_degree",
+        "sampler",
+        "store_phantom_samples",
+        "target_num_live_points",
+        "termination_condition",
+        "unlimited_samples",
+    )
 
-    def __post_init__(self) -> None:
+    def __init__(
+            self,
+            model: Model,
+            coordinator_port: int,
+            target_num_live_points: int | None = None,
+            root_allocation_degree: int | None = None,
+            max_samples: int | None = None,
+            args: tuple = (),
+            params: CtxParams | None = None,
+            sampler: AbstractSampler | None = None,
+            termination_condition: TerminationCondition | None = None,
+            store_phantom_samples: bool = False,
+            collect_phantom_samples: bool = False,
+            allocation_target: Literal[
+                "uniform",
+                "evidence_improving",
+                "posterior_improving",
+            ] = "uniform",
+            delta_K: int | None = None,
+            initial_capacity: int | None = None,
+            unlimited_samples: bool = False,
+            receive_timeout_s: float = 300.0,
+    ) -> None:
+        # This object owns a runtime service configuration and is deliberately
+        # mutable. Manual slots make that lifecycle explicit without posing as
+        # one of the immutable scientific-state dataclasses.
+        self.model = model
+        self.coordinator_port = coordinator_port
+        self.target_num_live_points = target_num_live_points
+        self.root_allocation_degree = root_allocation_degree
+        self.max_samples = max_samples
+        self.args = args
+        self.params = params
+        self.sampler = sampler
+        self.termination_condition = termination_condition
+        self.store_phantom_samples = store_phantom_samples
+        self.collect_phantom_samples = collect_phantom_samples
+        self.allocation_target = allocation_target
+        self.delta_K = delta_K
+        self.initial_capacity = initial_capacity
+        self.unlimited_samples = unlimited_samples
+        self.receive_timeout_s = receive_timeout_s
+
         if (
             type(self.coordinator_port) is not int
             or not 1 <= self.coordinator_port <= 65_535

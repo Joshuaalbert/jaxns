@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import dataclasses
 import fcntl
 import json
 import logging
@@ -43,18 +42,41 @@ from jaxns.runtime_supervisor import _start_worker_process
 logger = logging.getLogger(__name__)
 
 
-@dataclasses.dataclass(slots=True)
 class NodeWorker:
     """One configured process that is replaced after lease loss or exit."""
 
-    config: WorkerConfig
-    process: subprocess.Popen | None = None
-    log_file: object | None = None
-    started_s: float = 0.0
-    restart_at_s: float = 0.0
-    restart_count: int = 0
-    exit_code: int | None = None
-    instance_id: str = ""
+    __slots__ = (
+        "config",
+        "exit_code",
+        "instance_id",
+        "log_file",
+        "process",
+        "restart_at_s",
+        "restart_count",
+        "started_s",
+    )
+
+    def __init__(
+            self,
+            config: WorkerConfig,
+            process: subprocess.Popen | None = None,
+            log_file: object | None = None,
+            started_s: float = 0.0,
+            restart_at_s: float = 0.0,
+            restart_count: int = 0,
+            exit_code: int | None = None,
+            instance_id: str = "",
+    ) -> None:
+        # Process observations change as a worker exits and is replaced. Keep
+        # that operational mutability out of immutable scientific dataclasses.
+        self.config = config
+        self.process = process
+        self.log_file = log_file
+        self.started_s = started_s
+        self.restart_at_s = restart_at_s
+        self.restart_count = restart_count
+        self.exit_code = exit_code
+        self.instance_id = instance_id
 
 
 class NodeSupervisor:
