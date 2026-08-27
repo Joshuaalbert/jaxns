@@ -1111,7 +1111,7 @@ def _sample_init_state(
     )
 
 
-@dataclasses.dataclass(slots=True, frozen=True)
+@dataclasses.dataclass(slots=True)
 class NestedSampler(PureDataclassPytree):
     """Object-oriented configuration and Python goal-loop driver.
 
@@ -1265,14 +1265,14 @@ class NestedSampler(PureDataclassPytree):
         if max_samples is not None:
             initial_capacity = min(initial_capacity, max_samples)
 
-        object.__setattr__(self, "target_num_live_points", root_degree)
-        object.__setattr__(self, "root_allocation_degree", root_degree)
-        object.__setattr__(self, "shell_size", int(shell_size))
-        object.__setattr__(self, "max_samples", max_samples)
-        object.__setattr__(self, "sampler", sampler)
-        object.__setattr__(self, "termination_condition", termination_condition)
-        object.__setattr__(self, "initial_capacity", initial_capacity)
-        object.__setattr__(self, "delta_K", int(delta_K))
+        self.target_num_live_points = root_degree
+        self.root_allocation_degree = root_degree
+        self.shell_size = int(shell_size)
+        self.max_samples = max_samples
+        self.sampler = sampler
+        self.termination_condition = termination_condition
+        self.initial_capacity = initial_capacity
+        self.delta_K = int(delta_K)
 
     @classmethod
     def flatten(cls, this) -> tuple[list[Any], tuple[Any, ...]]:

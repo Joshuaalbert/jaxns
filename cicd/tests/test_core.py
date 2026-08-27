@@ -808,7 +808,7 @@ def test_ellipsoidal_state_survives_checkpoint_growth_and_resume():
         np.testing.assert_array_equal(np.asarray(left), np.asarray(right))
 
 
-def test_public_data_objects_are_frozen_and_slotted():
+def test_public_scientific_data_objects_are_frozen_and_slotted():
     ns = NestedSampler(
         model=make_toy_model(),
         target_num_live_points=2,
@@ -821,8 +821,14 @@ def test_public_data_objects_are_frozen_and_slotted():
     direction = EllipsoidalDirection()
     sampler_data = empty_sampler_data(num_components=1, dimension=1)
 
+    # NestedSampler is mutable configuration whose dependent defaults are
+    # normalised with ordinary typed assignments during construction. The
+    # scientific state it produces remains immutable.
+    assert hasattr(type(ns), "__slots__")
+    ns.store_phantom_samples = True
+    assert ns.store_phantom_samples
+
     for value, field_name in (
-        (ns, "max_samples"),
         (state, "num_samples"),
         (state.samples, "out_degree"),
         (direction, "num_components"),
