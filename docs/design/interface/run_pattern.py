@@ -1,7 +1,8 @@
-"""Supported local and trusted-process run patterns.
+"""Supported local and trusted-network multi-node run patterns.
 
-This file is executable-shaped design documentation. Distributed execution is
-local same-user IPC in its first release; it is not a remote pickle protocol.
+The scientific client always connects to a same-user IPC coordinator. Local
+workers use that IPC endpoint; remote workers connect to the coordinator's TCP
+port on the trusted scientific network.
 """
 
 import jax
@@ -65,10 +66,14 @@ local_state = local.run_until_goal(
 # The main process still owns allocation, random keys, immutable checkpoints,
 # capacity growth, and goal evaluation. Workers receive complete constrained-
 # sampling requests, so data-dependent likelihood loops remain inside JAX. The
-# one-time finite root prior batch is bootstrapped locally in this first design.
+# root coordinates are drawn locally, while their likelihood evaluations and
+# all constrained-chain likelihood evaluations run only in worker processes.
 distributed = DistributedNestedSampler(
-    nested_sampler=local,
-    config="docs/design/interface/workers.toml",
+    model=model,
+    coordinator_port=5555,
+    args=model_args,
+    params=model_params,
+    collect_phantom_samples=True,
 )
 checkpoint: DistributedState = distributed.run_until_goal(
     goal_cond=goal_cond,

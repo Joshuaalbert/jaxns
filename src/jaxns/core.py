@@ -17,7 +17,7 @@ from jaxns.constrained_sampler import (
 )
 from jaxns.mixed_precision import mp_policy
 from jaxns.model import Model
-from jaxns.multi_ellipsoid_utils import empty_sampler_data, update_sampler_data
+from jaxns.multi_ellipsoid_utils import update_sampler_data
 from jaxns.pytree import PureDataclassPytree, pytree_ravel
 from jaxns.race_tree import (
     BlockState,
@@ -371,30 +371,13 @@ def _sample_work_batch(
             U0=jax.tree.map(lambda u: u[seed_idx], state.samples.U_samples),
             log_L0=state.samples.log_likelihoods[seed_idx],
         )
-        if isinstance(sampler, UniDimSliceSampler):
-            if sampler.direction is not None:
-                return sampler.get_sample_with_diagnostics(
-                    sample_key,
-                    constraint,
-                    seed,
-                    args=state.args,
-                    params=state.params,
-                    sampler_data=state.sampler_data,
-                )
-            return sampler.get_sample(
-                sample_key,
-                constraint,
-                seed,
-                args=state.args,
-                params=state.params,
-                sampler_data=None,
-            )
-        return sampler.get_sample(
+        return sampler.get_sample_with_diagnostics(
             sample_key,
             constraint,
             seed,
             args=state.args,
             params=state.params,
+            sampler_data=state.sampler_data,
         )
 
     sampled = jax.vmap(sample_one)(
@@ -402,22 +385,14 @@ def _sample_work_batch(
         work.log_L_constraint,
         work.seed_idx,
     )
-    if (
-        isinstance(sampler, UniDimSliceSampler)
-        and sampler.direction is not None
-    ):
-        (
-            U_samples,
-            log_likelihoods,
-            num_evals,
-            phantom_samples,
-            num_directions,
-            num_isotropic,
-        ) = sampled
-    else:
-        U_samples, log_likelihoods, num_evals, phantom_samples = sampled
-        num_directions = jnp.zeros_like(num_evals)
-        num_isotropic = jnp.zeros_like(num_evals)
+    (
+        U_samples,
+        log_likelihoods,
+        num_evals,
+        phantom_samples,
+        num_directions,
+        num_isotropic,
+    ) = sampled
     return ConstrainedSampleBatch(
         U_samples=U_samples,
         log_likelihoods=log_likelihoods,
@@ -431,17 +406,19 @@ def _sample_work_batch(
 def _prepare_sampler_data(
         key: PRNGKey,
         state: State,
-        sampler: UniDimSliceSampler,
+        sampler: AbstractSampler,
         work: CoreWorkBatch,
         block_state: BlockState,
 ) -> State:
     """Update opt-in direction geometry once before the replacement vmap."""
-    if sampler.direction is None:
-        return state
+    direction = sampler.direction_config()
+    if direction is None:
+        raise ValueError(
+            "Adaptive direction sampling requires a direction configuration."
+        )
     if state.sampler_data is None:
         raise ValueError("Ellipsoidal sampling requires sampler_data on State.")
 
-    direction = sampler.direction
     dimension = state.sampler_data.centres.shape[1]
     min_effective_samples = direction.min_effective_samples
     if min_effective_samples is None:
@@ -834,10 +811,7 @@ def _run_depth(
         )
 
     def body(carry: _DepthCarry):
-        if (
-            isinstance(sampler, UniDimSliceSampler)
-            and sampler.direction is not None
-        ):
+        if sampler.uses_adaptive_directions():
             plan_key, fit_key, sample_key, next_key = jax.random.split(
                 carry.key,
                 4,
@@ -878,10 +852,7 @@ def _run_depth(
             ),
         )
         sampling_state = carry.state
-        if (
-            isinstance(sampler, UniDimSliceSampler)
-            and sampler.direction is not None
-        ):
+        if sampler.uses_adaptive_directions():
             # This scalar conditional is outside the replacement vmap. The
             # current geometry and each lane's parent contour then remain
             # fixed for the complete Markov chain, as required for a common
@@ -1067,6 +1038,36 @@ def _sample_init_state(
     U_samples, log_likelihoods, num_evals = jax.vmap(sample_root)(
         jax.random.split(key, root_degree)
     )
+    return _build_init_state(
+        model,
+        args,
+        params,
+        U_samples,
+        log_likelihoods,
+        num_evals,
+        sample_capacity=sample_capacity,
+        num_phantom=num_phantom,
+    )
+
+
+@partial(
+    jax.jit,
+    inline=True,
+    static_argnames=("sample_capacity", "num_phantom"),
+)
+def _build_init_state(
+        model: Model,
+        args,
+        params,
+        U_samples,
+        log_likelihoods,
+        num_evals,
+        *,
+        sample_capacity: int,
+        num_phantom: int,
+) -> State:
+    """Build root race state from already evaluated prior-space points."""
+    root_degree = log_likelihoods.shape[0]
     phantom_U = None
     root_samples = Samples(
         # -inf is the sentinel contour. It is also sufficient to recognise
@@ -1205,30 +1206,7 @@ class NestedSampler(PureDataclassPytree):
                 collect_phantom_samples=self.collect_phantom_samples,
                 phantom_burn_in=max(0, phantom_burn_in),
             )
-        if isinstance(sampler, UniDimSliceSampler):
-            if not sampler.no_step_out:
-                raise ValueError(
-                    "The current core requires perfect/no-step-out bracketing."
-                )
-            if sampler.gradient_guided:
-                raise ValueError(
-                    "Gradient-guided sampling is not implemented in this core."
-                )
-            if sampler.direction is not None:
-                min_effective_samples = (
-                    sampler.direction.min_effective_samples
-                )
-                if min_effective_samples is None:
-                    min_effective_samples = (
-                        4
-                        * sampler.direction.num_components
-                        * (U_ndims + 1)
-                    )
-                if min_effective_samples > sampler.direction.population_size:
-                    raise ValueError(
-                        "EllipsoidalDirection.population_size must be at "
-                        "least its resolved min_effective_samples."
-                    )
+        sampler.validate_core(U_ndims)
 
         termination_condition = self.termination_condition
         if termination_condition is None:
@@ -1311,15 +1289,9 @@ class NestedSampler(PureDataclassPytree):
             sample_capacity=int(self.initial_capacity),
             num_phantom=int(self.sampler.num_phantom()),
         )
-        sampler_data = None
-        if (
-            isinstance(self.sampler, UniDimSliceSampler)
-            and self.sampler.direction is not None
-        ):
-            sampler_data = empty_sampler_data(
-                self.sampler.direction.num_components,
-                int(self.model.U_ndims(self.args, self.params)),
-            )
+        sampler_data = self.sampler.initial_sampler_data(
+            int(self.model.U_ndims(self.args, self.params))
+        )
         return dataclasses.replace(
             state,
             sampler_data=sampler_data,

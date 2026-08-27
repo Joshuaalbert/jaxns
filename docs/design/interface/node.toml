@@ -1,0 +1,15 @@
+[runtime]
+stack_id = "cluster-science"
+node_id = "gpu-node"
+runtime_dir = ".runtime"
+log_dir = ".logs"
+
+[network]
+coordinator = "tcp://main.example.org:5555"
+
+# Each process owns one device. This width is worker-local and does not enter
+# distributed lineage allocation; values above one use jax.vmap internally.
+[[workers]]
+platform = "gpu"
+device = 0
+batch_size = 4

@@ -1,10 +1,11 @@
-"""JAX-free framing constants for trusted local supervisor IPC."""
+"""JAX-free framing constants for local IPC and cluster TCP."""
 
 from __future__ import annotations
 
 import json
 
-PROTOCOL_VERSION = 1
+PROTOCOL_VERSION = 5
+MAX_HEADER_BYTES = 65_536
 ROLE = "role"
 PING = "ping"
 STATUS = "status"
@@ -16,10 +17,23 @@ RELEASE = "release"
 RELEASED = "released"
 TASK = "task"
 RESULT = "result"
+SAMPLE = "sample"
+EVALUATE = "evaluate"
 ACK = "ack"
+CAPACITY = "capacity"
 ERROR = "error"
 STOP = "stop"
 STOPPED = "stopped"
+LEASED = "leased"
+HEARTBEAT = "heartbeat"
+HEARTBEAT_ACK = "heartbeat_ack"
+DRAIN = "drain"
+DRAINED = "drained"
+NODE_STOPPED = "node_stopped"
+NODE_STATUS = "node_status"
+NODE_HEARTBEAT = "node_heartbeat"
+NODE_HEARTBEAT_ACK = "node_heartbeat_ack"
+NODE_RESTARTED = "node_restarted"
 
 
 def encode_header(command: str, **fields) -> bytes:
@@ -37,6 +51,8 @@ def encode_header(command: str, **fields) -> bytes:
 
 def decode_header(value: bytes) -> dict[str, object]:
     """Decode and validate one routing header."""
+    if len(value) > MAX_HEADER_BYTES:
+        raise ValueError("Runtime protocol header exceeds 65,536 bytes.")
     try:
         header = json.loads(value.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:

@@ -19,8 +19,10 @@ conda run -n jaxns_py bash benchmarks/issue_247/run_matrix.sh
 
 Benchmarks are reviewed evidence, not timing assertions on shared CI runners.
 
-The distributed-runtime decision evidence is recorded on issue 252. Its
-maintained benchmark must report complete-chain throughput for scalar and
-vmapped workers, asynchronous versus barrier scheduling under homogeneous and
-uneven task latency, compile time, IPC round-trip cost, and per-process peak
-memory. GPU batching is not claimed without GPU measurements.
+The original distributed-runtime decision evidence is recorded on issue 252.
+The topology-aware scalar-thread evidence is maintained in
+`benchmarks/issue_267/`: thirty paired accuracy seeds with phantoms off/on,
+scientific work, compile/warm and steady wall time, and complete-chain scaling
+across explicit CPU worker counts. The authenticated TCP lifecycle is covered
+by a real process integration test. GPU batching is not claimed without GPU
+measurements.

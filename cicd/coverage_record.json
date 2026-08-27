@@ -1,4 +1,7 @@
 {
+  "Collecting or retaining phantoms does not change the classic samples, race tree, or classic-conditioned result for the same random run.": [
+    "test_phantom_payload_does_not_change_vector_worker_trajectory"
+  ],
   "Every nested-sampling contour is strict: a point satisfies contour lambda exactly when its likelihood is greater than lambda.": [
     "test_block_state_rejects_strict_contour_violation",
     "test_state_consistency_rejects_strict_contour_violation",
@@ -172,6 +175,7 @@
     "test_linear_to_log_stats"
   ],
   "Changing how valid constrained-sampling work is batched or scheduled does not change the marginal law of any classic child.": [
+    "test_distributed_dispatch_queues_scalar_threads_without_shell_barrier",
     "test_worker_request_uses_scalar_and_vmap_paths_above_strict_contour",
     "test_real_pool_runs_scalar_vmap_retries_and_cli_lifecycle"
   ],
@@ -180,9 +184,24 @@
     "test_real_pool_runs_scalar_vmap_retries_and_cli_lifecycle"
   ],
   "Retrying one logical sampling task preserves its original random choices and can change committed scientific state at most once.": [
+    "test_two_missed_heartbeats_fence_lease_and_requeue",
     "test_real_pool_runs_scalar_vmap_retries_and_cli_lifecycle",
     "test_supervisor_deduplicates_task_identity_until_acknowledgement",
     "test_task_timeout_requeues_byte_identical_payload_on_compatible_worker"
+  ],
+  "In distributed execution every likelihood evaluation, including root initialization, executes on a registered worker and not in the scientific coordinator process.": [
+    "test_distributed_initialisation_dispatches_every_likelihood"
+  ],
+  "Joining, losing, or replacing worker capacity cannot discard or duplicate a logical task, and cannot permanently close an active run to later compatible capacity.": [
+    "test_remote_restart_request_waits_for_node_heartbeat_and_acknowledgement",
+    "test_node_restart_request_fences_only_the_named_worker_instance",
+    "test_fenced_worker_forces_process_exit_for_supervisor_restart",
+    "test_fresh_worker_instance_supersedes_live_stale_lease",
+    "test_node_joins_runs_restarts_and_drains_over_tcp"
+  ],
+  "Losing every distributed worker leaves scientific state unchanged and waits for compatible capacity rather than converting worker starvation into a scientific run failure.": [
+    "test_worker_starvation_waits_until_results_or_capacity_recover",
+    "test_node_joins_runs_restarts_and_drains_over_tcp"
   ],
   "A resumable distributed checkpoint identifies every outstanding logical sample and its random stream without treating an unreturned sample as an observed race-tree arrival.": [
     "test_distributed_checkpoint_preserves_unreturned_task_and_keys",

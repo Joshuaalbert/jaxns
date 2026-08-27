@@ -1,6 +1,26 @@
 {
   "schema_version": 1,
   "tests": {
+    "test_batch_group_ignores_direction_diagnostics_but_not_geometry": {
+      "note": "Checks the concrete worker specialization key and protects the premise that observational GMM counters cannot affect a constrained-sampling call.",
+      "path": "cicd/tests/test_distributed_runtime.py",
+      "reason": "implementation_regression"
+    },
+    "test_supervisor_validates_atomic_task_group_before_queue_mutation": {
+      "note": "Checks transactional validation of the current multipart task protocol before its retry table is mutated.",
+      "path": "cicd/tests/test_distributed_runtime.py",
+      "reason": "implementation_regression"
+    },
+    "test_capacity_counts_only_workers_registered_for_session": {
+      "note": "Checks that scheduler capacity excludes workers which failed or have not completed the concrete compatibility registration handshake.",
+      "path": "cicd/tests/test_distributed_runtime.py",
+      "reason": "architecture_boundary"
+    },
+    "test_incompatible_worker_is_rejected_before_model_registration": {
+      "note": "Checks the concrete Python/JAXNS/JAX/JAXLIB/x64/dtype compatibility handshake before Cloudpickle transfer.",
+      "path": "cicd/tests/test_distributed_runtime.py",
+      "reason": "architecture_boundary"
+    },
     "test_ellipsoidal_direction_jit_vmap_and_degenerate_fallback": {
       "note": "Checks the current compiled direction-kernel batching, normalization, and degenerate-geometry fallback wiring.",
       "path": "cicd/tests/test_constrained_sampler.py",

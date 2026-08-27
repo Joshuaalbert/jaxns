@@ -31,8 +31,8 @@ JAXNS can:
 4. Model continuous and discrete variables using JAX-compatible distributions.
 5. Retain stationary phantom states and optionally condition final Monte Carlo
    evidence estimates on them.
-6. Run locally on one JAX device or dispatch constrained-sampling chains to a
-   trusted pool of heterogeneous devices on the same machine.
+6. Run locally on one JAX device or dispatch likelihood and constrained-chain
+   work to a trusted heterogeneous pool across one or more machines.
 
 The original JAXNS paper is available on
 [arXiv](https://arxiv.org/abs/2012.15286), as is the paper on
@@ -198,60 +198,100 @@ are expensive enough to outweigh process and IPC overhead and a machine has
 multiple useful devices. The local core remains the preferred path for one
 device or cheap likelihoods.
 
-The first distributed release is deliberately a trusted, same-user,
-same-machine `ipc://` design; it is not yet a cluster-wide network protocol.
-One supervisor owns a declarative worker stack, and each worker process is
-pinned to one configured CPU, GPU, or TPU device. A worker with `batch_size =
-1` samples one chain without `vmap`; larger batches use `jax.vmap` and should be
-chosen from workload evidence because all lanes wait for the slowest chain.
+The same runtime covers one machine and multiple nodes. The scientific process
+connects to its local coordinator through same-user `ipc://`; it identifies
+that coordinator by TCP port and does not read the runtime TOML. Workers on the
+coordinator node also use IPC automatically, while remote nodes use TCP. Model
+registration uses Python serialization, so the coordinator and workers must be
+run only on a trusted scientific network.
 
-Create `workers.toml`:
+Parallel replacement has two independent dimensions:
+
+1. **Lanes within one sampler call.** The standard local core advances
+   `shell_size` chains together with `jax.vmap`. Distributed allocation has no
+   shell size: it continuously fills compatible live pool lanes with scalar
+   logical lineage threads as soon as their parent and stationary seed are
+   known. A worker may combine compatible queued threads up to its configured
+   `batch_size`; size one takes the scalar path, while larger batches use
+   `jax.vmap`. Every lane in one call waits for its most rejection-heavy chain,
+   so worker widths should be chosen from evidence.
+2. **Workers in the pool.** Each process is pinned to one configured CPU, GPU,
+   or TPU device. Workers complete and receive work independently, nodes may
+   join while a session is active, and already queued threads are immediately
+   available to them. One logical task credit per live lane fills the pool
+   without speculative work beyond its measured capacity. There is no
+   pool-wide sampling wave barrier.
+For one machine, use one coordinator config with a port and one or more local
+workers. For multiple machines, the main-node config still needs only the port:
+the coordinator always listens on all interfaces. Local workers may be added
+with `[[workers]]`; a pure coordinator needs none.
 
 ```toml
 [runtime]
-stack_id = "local-science"
+stack_id = "science"
+node_id = "main"
 runtime_dir = ".runtime"
 log_dir = ".logs"
 program_cache_size = 4
+heartbeat_interval_s = 2
+missed_heartbeats = 2
+
+[network]
+port = 5555
+```
+
+Each worker machine has its own config pointing at the main node. Several
+worker entries can pin processes to different devices on that machine. Worker
+names are derived exactly as `{platform}-{device}`.
+
+```toml
+[runtime]
+stack_id = "science"
+node_id = "gpu-node"
+runtime_dir = ".runtime"
+log_dir = ".logs"
+
+[network]
+coordinator = "tcp://main.example.org:5555"
 
 [[workers]]
-name = "gpu-0"
 platform = "gpu"
 device = 0
-batch_size = 1
-
-[[workers]]
-name = "gpu-1"
-platform = "gpu"
-device = 1
-batch_size = 1
+batch_size = 4
 ```
 
-For a CPU-only stack, change `platform` to `"cpu"` and select a visible JAX CPU
-device. Validate and start the stack before running the scientific process:
+Start the coordinator, then run the same lifecycle command on every worker
+node. Order is deliberately flexible: a node supervisor stays alive while the
+coordinator is unavailable, and the scientific registration waits without a
+deadline when no compatible worker is online. Nodes can therefore be started,
+removed, repaired, or restarted days into a run.
 
 ```bash
-jaxns-cli --config workers.toml config validate
-jaxns-cli --config workers.toml up
-jaxns-cli --config workers.toml status
+# Main machine
+jaxns-cli --config coordinator.toml config validate
+jaxns-cli --config coordinator.toml up
+
+# Each worker machine
+jaxns-cli --config node.toml config validate
+jaxns-cli --config node.toml up
+jaxns-cli --config node.toml status
 ```
 
-The distributed runner wraps the same configured local sampler, so the model,
-termination behavior, allocation policy, and returned scientific results stay
-aligned:
+The main scientific process needs only the coordinator port. Distributed
+initialization dispatches root likelihood evaluations to workers as a separate
+operation, so the scientific process never needs a likelihood-capable device.
+Distributed sampling does not accept `shell_size`; `delta_K` controls
+scientific allocation depth, while worker TOMLs control execution widths:
 
 ```python
 from jaxns.distributed_core import DistributedNestedSampler
 
-local_sampler = NestedSampler(
+distributed_sampler = DistributedNestedSampler(
     model=model,
+    coordinator_port=5555,
     args=args,
     params=params,
     collect_phantom_samples=True,
-)
-distributed_sampler = DistributedNestedSampler(
-    nested_sampler=local_sampler,
-    config="workers.toml",
 )
 checkpoint = distributed_sampler.run(
     key=jax.random.PRNGKey(7),
@@ -260,18 +300,48 @@ results = checkpoint.to_result().trim()
 results.summary()
 ```
 
-Stop the stack explicitly when it is no longer needed. Both `up` and `down`
-are idempotent for the same configuration:
+`down` on a worker node first marks its workers draining, lets current tasks
+finish, then removes the node. Abrupt process or partition failures are also
+recoverable: after two missed heartbeats the coordinator fences the old lease,
+requeues its exact task IDs and random keys, and rejects late results. The node
+supervisor maintains its own outbound heartbeat; the coordinator returns an
+instance-targeted restart request on that connection and retains the request
+until it is acknowledged or a fresh lease proves it obsolete. A new instance
+of the same `{platform}-{device}` identity supersedes a stale lease.
+
+If the last worker disappears, the scientific process logs the loss of
+capacity and waits without a deadline. Its state and retry-stable tasks remain
+unchanged and queued until a compatible worker recovers or joins; worker loss
+does not raise `DistributedRunError`. Registrations remain open throughout the
+scientific session, so newly repaired capacity joins without restarting the
+run. Before model registration, the coordinator also verifies Python, JAXNS,
+JAX/JAXLIB, x64, and measure-dtype compatibility. CPU, GPU, and TPU platforms
+may differ intentionally within one heterogeneous pool.
+
+Worker processes automatically set `XLA_PYTHON_CLIENT_PREALLOCATE=false`
+before importing JAX. This permits multiple worker processes to share an
+accelerator's memory; users may still choose the JAX x64 setting appropriate
+for their scientific run.
+
+Lifecycle commands are idempotent for the same config:
 
 ```bash
-jaxns-cli --config workers.toml down
+jaxns-cli --config node.toml down
+jaxns-cli --config coordinator.toml down
 ```
 
-The worker configuration is fixed while a stack is running. To add, remove, or
-retarget workers, finish or checkpoint the current drained run, stop the stack,
-edit the TOML, start it again, and resume. See the executable
-[run-pattern design](docs/design/interface/run_pattern.py) for checkpoint
-resumption and custom-goal examples.
+`jaxns-cli status` distinguishes connecting, ready, busy, draining, dropped,
+disconnected, and exited workers and reports lease generation, heartbeat age,
+device, batch capacity, compilation/execution time, and RSS high-water mark.
+Worker processes are automatically restarted with bounded backoff. After a
+coordinator restart, old leases are invalid and workers self-quarantine; the
+still-running node supervisors keep replacing them until the coordinator is
+reachable again. The scientific process then resumes the immutable
+`DistributedRunError.checkpoint`. Coordinator recovery remains explicit, and
+the ownership lock prevents duplicate local owners for one configured stack.
+
+See the executable [run-pattern design](docs/design/interface/run_pattern.py)
+for local IPC, checkpoint resumption, and custom-goal examples.
 
 # Documentation and support
 
@@ -297,8 +367,10 @@ requests.
   phantom states.
 - Added opt-in warm-refined ellipsoidal slice directions and transparent
   finite or explicitly unlimited sample-buffer growth.
-- Added an opt-in trusted-local asynchronous worker runtime and `jaxns-cli` for
-  declarative, device-pinned worker stacks.
+- Added an opt-in asynchronous worker runtime and `jaxns-cli` for local IPC or
+  trusted-network multi-node TCP pools with dynamic registration, restartable
+  heartbeat leases, worker-only likelihood execution, scalar logical-thread
+  dispatch, and device-local `vmap` batching.
 - Removed v2-only APIs, including evidence maximisation. Public v3 classes are
   imported from their defining modules.
 

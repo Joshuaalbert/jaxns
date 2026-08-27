@@ -1,4 +1,4 @@
-"""Command-line lifecycle control for local JAXNS worker stacks."""
+"""Command-line lifecycle control for JAXNS coordinator and worker nodes."""
 
 from __future__ import annotations
 
@@ -53,10 +53,18 @@ def _try_ping(
 
 
 def _validate(config: RuntimeConfig) -> int:
+    network = config.network
     _print({
         "config": str(config.source),
         "config_fingerprint": config.fingerprint,
         "endpoint": config.endpoint,
+        "node_id": config.node_id,
+        "role": config.role,
+        "worker_endpoint": config.worker_endpoint,
+        "network": {
+            "coordinator": network.coordinator,
+            "port": network.port,
+        },
         "log_dir": str(config.log_dir),
         "program_cache_size": config.program_cache_size,
         "runtime_dir": str(config.runtime_dir),
@@ -68,7 +76,6 @@ def _validate(config: RuntimeConfig) -> int:
             {
                 "batch_size": worker.batch_size,
                 "device": worker.device,
-                "name": worker.name,
                 "platform": worker.platform,
             }
             for worker in config.workers
@@ -111,13 +118,19 @@ def _up(config: RuntimeConfig) -> int:
             "Inspect its supervisor log before retrying."
         )
 
-    # The supervisor is the single long-lived owner. It creates and records
-    # every worker, so an interrupted CLI cannot orphan unnamed processes.
+    # One durable owner creates every local device process. On the main node it
+    # also coordinates scientific work; remote nodes connect their workers to
+    # that coordinator over TCP on the trusted scientific network.
+    module = (
+        "jaxns.runtime_supervisor"
+        if config.role == "coordinator"
+        else "jaxns.runtime_node"
+    )
     process = subprocess.Popen(
         [
             sys.executable,
             "-m",
-            "jaxns.runtime_supervisor",
+            module,
             "--config",
             str(config.source),
         ],
@@ -142,10 +155,10 @@ def _up(config: RuntimeConfig) -> int:
             time.sleep(0.05)
             continue
         workers = last_status.get("workers", [])
-        if isinstance(workers, list):
+        if type(workers) is list:
             exited = [
                 worker for worker in workers
-                if isinstance(worker, dict)
+                if type(worker) is dict
                 and worker.get("exit_code") is not None
             ]
             if exited:
@@ -161,10 +174,20 @@ def _up(config: RuntimeConfig) -> int:
                     "A configured worker exited during startup. Inspect "
                     f"{config.log_dir}: {exited}"
                 )
-            if len(workers) == len(config.workers) and all(
-                isinstance(worker, dict) and worker.get("ready") is True
-                for worker in workers
-            ):
+            local_workers = [
+                worker for worker in workers
+                if type(worker) is dict
+                and worker.get("node_id", config.node_id) == config.node_id
+            ]
+            workers_started = len(local_workers) == len(config.workers)
+            # A remote node is a durable desired-state owner. Its workers may
+            # remain connecting through a long partition and register when
+            # the coordinator becomes reachable, so `up` must not kill the
+            # node supervisor merely because no lease exists yet.
+            workers_ready = config.role == "node" or all(
+                worker.get("ready") is True for worker in local_workers
+            )
+            if workers_started and workers_ready:
                 last_status["idempotent"] = False
                 _print(last_status)
                 return 0
@@ -222,7 +245,7 @@ def _down(config: RuntimeConfig) -> int:
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="jaxns-cli")
-    parser.add_argument("--config", required=True, type=Path)
+    parser.add_argument("--config", type=Path)
     commands = parser.add_subparsers(dest="command", required=True)
     config = commands.add_parser("config")
     config_commands = config.add_subparsers(
@@ -239,6 +262,8 @@ def _parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
+        if args.config is None:
+            raise ValueError("--config is required for this command.")
         config = load_runtime_config(args.config)
         if args.command == "config":
             return _validate(config)

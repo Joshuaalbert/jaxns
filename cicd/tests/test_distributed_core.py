@@ -12,6 +12,7 @@ from cicd.tests.distributed_support import make_toy_model
 from jaxns.constrained_sampler import (
     ConstrainedSampleBatch,
     ConstrainedSampleRequest,
+    LikelihoodEvaluation,
     UniDimSliceSampler,
     sample_request,
 )
@@ -26,8 +27,141 @@ from jaxns.distributed_core import (
     _change_reservations,
     _planning_state,
 )
+from jaxns.runtime_client import RuntimeUnavailableError
 from jaxns.samples import PhantomSamples, SeedPoint
 from jaxns.termination_condition import TerminationCondition
+
+
+def _local_checkpoint(
+        runner: DistributedNestedSampler,
+        key,
+) -> DistributedState:
+    """Build planning state without requiring the process-runtime boundary."""
+    state = runner._core.initialise(key)
+    return DistributedState(
+        state=state,
+        reservations=ReservationState.empty(
+            state.samples.log_likelihoods.shape[0]
+        ),
+        pending=(),
+        next_task_id=0,
+        session_id="unit-test",
+        depth_active=False,
+        goal_key=state.goal_key,
+    )
+
+
+def test_distributed_initialisation_dispatches_every_likelihood():
+    class Client:
+        evaluations = 0
+        reject_first = True
+
+        def __init__(self):
+            self.results = []
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            del exc_type, exc_value, traceback
+
+        def register(self, session_id, session):
+            del session_id, session
+            return (2,)
+
+        def evaluate_many(self, session_id, tasks):
+            del session_id
+            for task_id, request in tasks:
+                Client.evaluations += 1
+                if Client.reject_first:
+                    likelihood = jnp.full((1,), -jnp.inf)
+                    Client.reject_first = False
+                else:
+                    likelihood = -jnp.square(request.U_samples - 0.25)
+                self.results.append((
+                    task_id,
+                    LikelihoodEvaluation(log_likelihoods=likelihood),
+                ))
+
+        def receive_group(self, session_id, timeout_s):
+            del session_id, timeout_s
+            results = tuple(self.results)
+            self.results.clear()
+            return results
+
+        def acknowledge(self, session_id, task_id):
+            del session_id, task_id
+
+        def release(self, session_id):
+            del session_id
+
+    runner = DistributedNestedSampler(
+        model=make_toy_model(),
+        coordinator_port=5555,
+        root_allocation_degree=3,
+        initial_capacity=6,
+    )
+
+    checkpoint = runner._initialise_connected(
+        Client(),
+        "initialisation-test",
+        jax.random.PRNGKey(41),
+    )
+
+    assert Client.evaluations == 4
+    assert int(checkpoint.state.num_samples) == 3
+    assert checkpoint.next_task_id == 4
+    np.testing.assert_array_equal(
+        np.asarray(checkpoint.state.samples.num_likelihood_evaluations[:3]),
+        np.asarray([2, 1, 1], dtype=np.int32),
+    )
+    assert bool(jnp.all(
+        checkpoint.state.samples.log_likelihoods[:3] > -jnp.inf
+    ))
+
+
+def test_worker_starvation_waits_until_results_or_capacity_recover():
+    class ResultClient:
+        def __init__(self):
+            self.receive_calls = 0
+            self.capacity_calls = 0
+
+        def receive_group(self, session_id, timeout_s):
+            del session_id, timeout_s
+            self.receive_calls += 1
+            if self.receive_calls == 1:
+                raise RuntimeUnavailableError("no result yet")
+            return ((7, "result"),)
+
+        def capacity(self, session_id, timeout_s):
+            del session_id, timeout_s
+            self.capacity_calls += 1
+            return 0
+
+    class CapacityClient:
+        def __init__(self):
+            self.capacities = iter((0, 0, 2))
+
+        def capacity(self, session_id, timeout_s):
+            del session_id, timeout_s
+            return next(self.capacities)
+
+    runner = DistributedNestedSampler(
+        model=make_toy_model(),
+        coordinator_port=5555,
+        root_allocation_degree=2,
+        receive_timeout_s=0.01,
+    )
+    result_client = ResultClient()
+
+    group = runner._receive_group_waiting_for_workers(
+        result_client,
+        "session",
+    )
+
+    assert group == ((7, "result"),)
+    assert result_client.capacity_calls == 1
+    runner._wait_for_worker_capacity(CapacityClient(), "session")
 
 
 def _work() -> CoreWorkBatch:
@@ -192,16 +326,15 @@ def test_distributed_checkpoint_preserves_unreturned_task_and_keys():
 
 def test_growth_preserves_pending_payload_and_logical_depth():
     model = make_toy_model()
-    nested_sampler = NestedSampler(
+    runner = DistributedNestedSampler(
         model=model,
+        coordinator_port=5555,
         root_allocation_degree=2,
-        shell_size=1,
         delta_K=1,
         unlimited_samples=True,
         initial_capacity=2,
     )
-    runner = DistributedNestedSampler(nested_sampler, config="unused.toml")
-    state = nested_sampler.initialise(jax.random.PRNGKey(8))
+    state = _local_checkpoint(runner, jax.random.PRNGKey(8)).state
     work = CoreWorkBatch(
         valid=jnp.asarray([True]),
         parent_idx=jnp.asarray([0], dtype=jnp.int32),
@@ -244,27 +377,26 @@ def test_growth_preserves_pending_payload_and_logical_depth():
 
 def test_submit_failure_exposes_newest_resumable_checkpoint():
     class Client:
-        def submit(self, session_id, task_id, request):
-            del session_id, task_id, request
+        def submit_many(self, session_id, tasks):
+            del session_id, tasks
             raise RuntimeError("transport unavailable")
 
     model = make_toy_model()
-    nested = NestedSampler(
+    runner = DistributedNestedSampler(
         model=model,
+        coordinator_port=5555,
         root_allocation_degree=2,
-        shell_size=1,
         delta_K=1,
         max_samples=8,
         initial_capacity=8,
     )
-    runner = DistributedNestedSampler(nested, config="unused.toml")
-    checkpoint = runner.initialise(jax.random.PRNGKey(11))
+    checkpoint = _local_checkpoint(runner, jax.random.PRNGKey(11))
     try:
-        runner._fill_workers(
+        runner._dispatch_threads(
             Client(),
-            (1,),
             checkpoint,
             TerminationCondition(),
+            lane_capacity=1,
         )
     except DistributedRunError as exc:
         failed = exc.checkpoint
@@ -277,6 +409,26 @@ def test_submit_failure_exposes_newest_resumable_checkpoint():
     assert int(failed.reservations.num_reserved) == 1
     assert int(failed.state.num_samples) == 2
 
+    class UnavailableClient:
+        def capacity(self, session_id, timeout_s):
+            del session_id, timeout_s
+            raise RuntimeError("coordinator unavailable")
+
+    try:
+        runner._dispatch_threads(
+            UnavailableClient(),
+            checkpoint,
+            TerminationCondition(),
+        )
+    except DistributedRunError as exc:
+        unavailable = exc.checkpoint
+    else:  # pragma: no cover - defensive assertion form
+        raise AssertionError("Capacity failure did not expose a checkpoint.")
+
+    assert unavailable.next_task_id == checkpoint.next_task_id
+    assert unavailable.pending == checkpoint.pending
+    assert int(unavailable.state.num_samples) == int(checkpoint.state.num_samples)
+
 
 def test_worker_slots_are_not_refilled_after_sample_budget_terminates():
     class Client:
@@ -288,28 +440,63 @@ def test_worker_slots_are_not_refilled_after_sample_budget_terminates():
             self.submitted += 1
 
     model = make_toy_model()
-    nested = NestedSampler(
+    runner = DistributedNestedSampler(
         model=model,
+        coordinator_port=5555,
         root_allocation_degree=2,
-        shell_size=1,
         delta_K=1,
         max_samples=2,
         initial_capacity=2,
     )
-    runner = DistributedNestedSampler(nested, config="unused.toml")
-    checkpoint = runner.initialise(jax.random.PRNGKey(12))
+    checkpoint = _local_checkpoint(runner, jax.random.PRNGKey(12))
     client = Client()
 
-    returned = runner._fill_workers(
+    returned = runner._dispatch_threads(
         client,
-        (1, 1),
         checkpoint,
         TerminationCondition(),
+        lane_capacity=2,
     )
 
     assert client.submitted == 0
     assert not returned.pending
     assert int(returned.reservations.num_reserved) == 0
+
+
+def test_distributed_dispatch_queues_scalar_threads_without_shell_barrier():
+    class Client:
+        def __init__(self):
+            self.requests = []
+
+        def submit_many(self, session_id, tasks):
+            del session_id
+            self.requests.extend(request for _, request in tasks)
+
+    model = make_toy_model()
+    runner = DistributedNestedSampler(
+        model=model,
+        coordinator_port=5555,
+        root_allocation_degree=4,
+        delta_K=4,
+        max_samples=16,
+        initial_capacity=12,
+    )
+    checkpoint = _local_checkpoint(runner, jax.random.PRNGKey(31))
+    client = Client()
+
+    queued = runner._dispatch_threads(
+        client,
+        checkpoint,
+        TerminationCondition(),
+        lane_capacity=8,
+    )
+
+    assert len(client.requests) > 1
+    assert len(client.requests) == len(queued.pending)
+    assert all(
+        request.log_L_constraints.shape == (1,)
+        for request in client.requests
+    )
 
 
 def test_worker_request_uses_scalar_and_vmap_paths_above_strict_contour():
