@@ -6,14 +6,10 @@ log_dir = ".logs"
 
 [network]
 coordinator = "tcp://main.example.org:5555"
-server_public_key = "keys/main/coordinator.key"
-client_public_key = "keys/gpu-node/gpu-node.key"
-client_secret_key = "keys/gpu-node/gpu-node.key_secret"
 
 # Each process owns one device. This width is worker-local and does not enter
 # distributed lineage allocation; values above one use jax.vmap internally.
 [[workers]]
-name = "gpu"
 platform = "gpu"
 device = 0
 batch_size = 4

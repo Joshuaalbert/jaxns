@@ -2,8 +2,8 @@
 
 Environment: JAX/JAXLIB 0.10.0, CPU, x64 enabled. Raw per-seed and per-repeat
 records are in `results.json`, `standard_spike_slab.json`,
-`standard_spike_slab_phantoms.json`, and `throughput.json`; the commands are
-described in `README.md`.
+`standard_spike_slab_phantoms.json`, `standard_worker_likelihood_smoke.json`,
+and `throughput.json`; the commands are described in `README.md`.
 
 ## Accuracy and scientific cost
 
@@ -72,6 +72,17 @@ runner/seed pairs for classic log evidence, sample count, likelihood count,
 mode mass, GMM updates, direction count, and isotropic-direction count. Thus
 phantom payload transport no longer changes the scientific sampling path.
 
+After moving root likelihood evaluation out of the scientific process, the
+current protocol replayed spike--slab seed 0 as a focused regression. Every
+scientific field for both local and distributed runners is bitwise identical
+to its corresponding record in the 30-seed artifact: log evidence, MC evidence,
+sample and likelihood counts, ESS, mode mass, GMM updates, direction counts,
+and isotropic counts. The current distributed core time was 29.676 s versus
+29.802 s in the earlier record, within ordinary run-to-run timing variation.
+This smoke is recorded in `standard_worker_likelihood_smoke.json`; the 30-seed
+calibration statistics therefore remain applicable to the unchanged
+scientific trajectories.
+
 The local/distributed expectation-bias difference is 0.0680, approximately
 one combined standard error (0.0669), and expectation RMS differs by 0.0121.
 This does not resolve an accuracy regression at 30 seeds. The distributed
@@ -104,15 +115,16 @@ invariant. Worker lanes already complete together, but the supervisor formerly
 sent their result payloads as separate messages. Retained phantom bytes could
 therefore change whether the next refill arrived within the worker's bounded
 batch-fill interval, changing later `vmap` groups despite stable task-ID commit
-order. Protocol version 3 now returns and replays a complete worker assignment
-as one protocol group, and the scientific core commits its contiguous stable-ID
-prefix before refill. Scalar task identity, acknowledgements, and exact retry
-remain unchanged. The phantoms-off/on matrix reported here is also a paired
+order. Protocol version 5 returns and replays a complete worker assignment as
+one protocol group, and distinguishes root likelihood operations from complete
+constrained-chain operations. The scientific core commits its contiguous
+stable-ID prefix before refill. Scalar task identity, acknowledgements, and
+exact retry remain unchanged. The phantoms-off/on matrix reported here is a paired
 trajectory check for that transport invariant.
 
 ## Scheduler and GMM interaction
 
-An equal-work scheduler control used 300 already-authorized ten-slice tasks,
+An equal-work scheduler control used 300 already-registered ten-slice tasks,
 two workers with `batch_size = 3`, and seven repeats. Task IDs, random keys,
 contours, seeds, numerical result digests, and likelihood-evaluation counts
 were identical within every comparison. With zero synthetic planner latency,
@@ -137,13 +149,14 @@ weights.
 ## Wall time and complete-chain throughput
 
 The analytic model is intentionally too cheap for process distribution.
-Median steady wall time was 3.47 ms local (IQR 3.28--3.75) versus 45.92 ms
-distributed (43.33--47.79) with phantoms off, and 3.50 ms (3.34--3.82) versus
-46.64 ms (45.10--48.91) with phantoms on. The distributed path is about 13.3x
-slower here. This is a fixed transport/Python overhead stress case and supports
-keeping distributed execution opt-in for expensive likelihoods. Moving each
-planning window to the host once before scalar serialization reduced this
-overhead from the earlier 17x review measurement.
+Median steady wall time was 2.63 ms local (IQR 2.56--2.74) versus 40.50 ms
+distributed (39.10--42.35) with phantoms off, and 2.66 ms (2.55--2.76) versus
+42.70 ms (39.88--45.26) with phantoms on. The distributed path is about
+15--16x slower here. This is a fixed transport/Python overhead stress case and
+supports keeping distributed execution opt-in for expensive likelihoods.
+Keeping one registration from worker-only root evaluation through constrained
+sampling and moving each planning window to the host once before scalar
+serialization avoid additional fixed overhead.
 
 A separate real perfect-bracketing slice benchmark ran 300 logical threads per
 repeat after compilation, for seven repeats. Each sample used ten slice
@@ -152,13 +165,13 @@ local measurements below were collected together on the same host.
 
 | Scalar CPU workers | Median samples/s | IQR samples/s | Mean samples/s | Median speedup |
 |---:|---:|---:|---:|---:|
-| 1 | 667.4 | 662.3--675.7 | 669.5 | 1.00x |
-| 2 | 1,051.2 | 1,005.0--1,088.1 | 1,049.2 | 1.58x |
-| 3 | 1,056.9 | 1,021.0--1,083.4 | 1,041.5 | 1.58x |
+| 1 | 682.3 | 645.7--687.8 | 665.1 | 1.00x |
+| 2 | 970.8 | 917.4--1,001.9 | 957.2 | 1.42x |
+| 3 | 905.5 | 888.2--913.3 | 905.1 | 1.33x |
 
-Two processes improve throughput materially on this host. A third changes the
-median by only 0.5%, has a slightly lower mean, and consumes another process's
-memory; its IQR overlaps the two-worker result. This is evidence for explicit
+Two processes improve median throughput by about 42% on this host. A third is
+about 7% slower than two at the median and consumes another process's memory;
+their IQRs overlap. This is evidence for explicit
 per-node worker configuration rather than automatically launching one process
 per apparent device or core. No GPU was available, so no GPU batching or
 scaling claim is made.
@@ -168,18 +181,30 @@ shape: `sample_request` vmapped at a fixed width inside one compiled JAX loop.
 Every width received the same scalar random-key stream and performed exactly
 3,000 logical likelihood evaluations per repeat.
 
+The final sampler-interface review compared the pre-refactor PR commit with
+the explicit `AbstractSampler` contract added to remove concrete-type
+inspection. At width 12, both lowered HLOs contained 1,170 lines and seven
+while operations, and every one of seven repeats performed exactly 3,000
+likelihood evaluations. The pre-refactor median was 151,773 samples/s and the
+explicit-interface median was 183,188 samples/s; compile-and-warm measurements
+were 0.869 s and 0.892 s respectively. These sub-millisecond repeats are too
+variable to claim a speedup, but they exclude a resolved execution regression.
+The review initially found a larger 1,190-line HLO because isotropic direction
+counters had accidentally become observable; restoring their existing zero
+diagnostic contract returned the HLO operation structure to the reference.
+
 | Local vmap width | Median samples/s | IQR samples/s | Mean samples/s | Median speedup |
 |---:|---:|---:|---:|---:|
-| 1 | 42,232 | 41,757--43,708 | 42,872 | 1.00x |
-| 2 | 111,614 | 109,608--112,380 | 111,232 | 2.64x |
-| 3 | 138,629 | 133,607--140,587 | 136,986 | 3.28x |
-| 4 | 71,180 | 64,947--73,657 | 70,011 | 1.69x |
-| 6 | 100,659 | 94,952--116,767 | 109,700 | 2.38x |
-| 10 | 111,624 | 106,541--133,080 | 119,743 | 2.64x |
-| 12 | 161,473 | 139,649--174,028 | 157,380 | 3.82x |
+| 1 | 66,904 | 62,253--67,480 | 62,630 | 1.00x |
+| 2 | 57,827 | 57,718--100,635 | 77,346 | 0.86x |
+| 3 | 93,639 | 81,842--130,074 | 105,270 | 1.40x |
+| 4 | 121,429 | 104,834--124,762 | 114,092 | 1.81x |
+| 6 | 157,596 | 156,036--159,874 | 157,205 | 2.36x |
+| 10 | 147,520 | 143,292--148,446 | 142,446 | 2.21x |
+| 12 | 177,964 | 139,555--181,942 | 162,815 | 2.66x |
 
-Width 12 had the highest measured median. It was 3.82x faster than the local
-scalar execution shape and 152.8x faster than the best distributed result.
+Width 12 had the highest measured median. It was 2.66x faster than the local
+scalar execution shape and 183.3x faster than the best distributed result.
 This is a sampler-execution-layer comparison, not an end-to-end nested-sampler
 speedup: allocation, sorting, and result construction are intentionally absent.
 The existing end-to-end cheap-model comparison above shows the smaller but
@@ -188,28 +213,33 @@ still material process/transport penalty.
 The constraint in this throughput control admits the entire one-dimensional
 prior, so all chains take exactly the same ten likelihood evaluations. It is
 therefore the best case for `vmap` and deliberately contains no slowest-lane
-penalty. The measured 3.82x local batching gain is sufficient to reject a
+penalty. The measured 2.66x local batching gain is sufficient to reject a
 scalar-only distributed protocol: removing worker-local batching would remove
 a useful execution shape. Variable-rejection evidence should instead guide a
 user's choice of worker `batch_size`, for which scalar execution remains
 available as size one.
 
-Worker-reported process RSS high-water marks were approximately 353 MiB for one
-worker, 352/355 MiB for two, and 358/355/358 MiB for three. These are measured
+Worker-reported process RSS high-water marks were approximately 354 MiB for one
+worker, 355/356 MiB for two, and 353/355/355 MiB for three. These are measured
 per-process RSS, not unique physical-memory measurements because shared pages
 may be counted in more than one process. This linear worker-state cost is
 another reason not to start more processes than measured throughput justifies.
 
 The same run measures the GMM direction-state compatibility change selected in
 this PR. Giving each task byte-distinct fit counters while holding every key,
-seed, contour, and direction-defining array fixed took a median 0.807 s
-(IQR 0.792--0.815) when the full sampler state split batching, versus 0.656 s
-(0.643--0.683) when observational counters were excluded. That is 18.7% lower
+seed, contour, and direction-defining array fixed took a median 0.850 s
+(IQR 0.833--0.862) when the full sampler state split batching, versus 0.679 s
+(0.670--0.709) when observational counters were excluded. That is 20.2% lower
 wall time with exactly 3,000 likelihood evaluations and matching numerical
 outputs in every repeat.
 
 The real lifecycle integration additionally runs a complete nested-sampling
-depth over authenticated loopback TCP, dynamically adds the remote node after
-the coordinator is ready, and drains/removes it without changing scientific
-ownership. Loopback is protocol evidence, not a physical inter-machine latency
-claim.
+depth over trusted-network loopback TCP, dynamically adds a remote node, kills
+and automatically replaces its worker under a fresh lease, and drains/removes
+it without changing scientific ownership. It also removes the only node during
+an active run, leaves the scientific process starved for five times its 0.1 s
+coordinator-health timeout, then rejoins the node and completes the same run
+without a distributed exception or a changed checkpoint. Coordinator restart
+requests are retained by exact worker instance and replayed on the node's next
+outbound supervisor heartbeat. Loopback is protocol evidence, not a physical
+inter-machine latency claim.

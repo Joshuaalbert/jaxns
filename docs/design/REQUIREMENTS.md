@@ -69,24 +69,27 @@ properties that must hold independently of implementation live in
 - Requirement: Distributed execution is an opt-in `DistributedNestedSampler`; the established
   local `NestedSampler` remains the compiled, dependency-light execution path.
 - Requirement: `jaxns-cli` owns one named coordinator or worker node and provides idempotent
-  `config validate`, `up`, `status`, and `down` operations from a TOML configuration, plus
-  explicit CurveZMQ certificate creation.
+  `config validate`, `up`, `status`, and `down` operations from a TOML configuration.
 - Requirement: A coordinator publishes a versioned same-user ownership manifest containing its
-  IPC endpoint, advertised TCP endpoint, protocol version, process identity, and resolved
-  configuration fingerprint. Remote nodes use an explicit TOML endpoint when they cannot read
-  that local discovery record.
+  IPC endpoint, TCP port, protocol version, process identity, and resolved configuration
+  fingerprint. Remote nodes use an explicit TOML endpoint because they cannot read that local
+  discovery record.
 - Requirement: The scientific client and same-machine workers discover and use same-user IPC;
-  remote workers use encrypted CurveZMQ TCP and only public keys installed in the coordinator's
-  authorization directory may connect. Pickle and Cloudpickle are never exposed over
-  unauthenticated TCP or presented as safe input from an untrusted node.
+  remote workers use TCP on a trusted scientific network. Pickle and Cloudpickle registration
+  payloads are explicitly not a safe interface for untrusted nodes.
 - Requirement: The supervisor imports no JAX or model code and routes opaque registration,
   request, and result bytes between scientific clients and workers.
-- Requirement: Protocol headers and payloads have explicit size limits, and model registration
-  rejects workers whose Python, JAXNS, JAX/JAXLIB, x64, or measure-dtype semantics differ from
-  the scientific process. Device platform may differ intentionally.
+- Requirement: Protocol headers have a defensive size limit, while scientific payload sizes are
+  not artificially capped. Model registration rejects workers whose Python, JAXNS, JAX/JAXLIB,
+  x64, or measure-dtype semantics differ from the scientific process. Device platform may differ
+  intentionally.
 - Requirement: Each worker is one OS process with one configured JAX device and one fixed batch
   capacity; size one calls a scalar chain directly and larger compatible groups use `jax.vmap`,
   never `jax.lax.map`.
+- Requirement: A worker's public name is derived exactly as `{platform}-{device}`; configuration
+  does not introduce a second user-selected name for the same physical specialization.
+- Requirement: Every worker process sets `XLA_PYTHON_CLIENT_PREALLOCATE=false` before importing
+  JAX so multiple worker processes can share accelerator memory.
 - Requirement: Distributed scientific scheduling has no shell size. The main process submits
   scalar logical lineage threads continuously to fill compatible live pool lanes from currently
   known allocation gaps; worker batch size is only a device-execution choice and cannot change
@@ -101,9 +104,10 @@ properties that must hold independently of implementation live in
   counters; observational counter changes alone do not split an otherwise compatible `vmap`.
 - Requirement: A worker executes a complete constrained-sampling chain or vmapped chain batch;
   individual likelihood evaluations inside data-dependent sampler loops never cross IPC.
-- Requirement: The first distributed release bootstraps the finite root prior batch in the main
-  process and distributes complete constrained replacement chains; root-batch distribution is
-  not silently claimed as part of its measured scaling.
+- Requirement: The scientific process performs no likelihood evaluation in distributed mode.
+  Root unit-hypercube points are drawn before state construction, their likelihoods are dispatched
+  through an explicit worker operation, and constrained chains keep their internal likelihood
+  loops entirely within workers.
 - Requirement: Model, sampler, arguments, and parameters are registered once per scientific
   session; task messages contain only task-specific keys, strict contours, stationary seeds,
   validity, and direction state.
@@ -127,9 +131,18 @@ properties that must hold independently of implementation live in
   protocol group; the scientific core commits its contiguous stable-ID prefix before refill.
   Result framing and phantom payload size cannot subdivide that prefix into timing-dependent
   refill decisions.
-- Requirement: Worker death or task timeout requeues an unchanged task when compatible capacity
-  remains, reports degraded capacity visibly, and does not hide failure through automatic worker
-  restart.
+- Requirement: Worker death, missed heartbeats, or task timeout requeues an unchanged task and
+  causes its local or remote node supervisor to create a replacement process with bounded
+  backoff. Replacement attempts remain unbounded so transient partitions do not permanently
+  starve a long run.
+- Requirement: A remote node supervisor maintains a node-initiated bidirectional control
+  heartbeat. The coordinator retains an instance-targeted restart request until the node
+  acknowledges it or a fresh lease proves it obsolete, and replays the request when that node
+  reconnects. Worker nodes require no inbound connection from the coordinator.
+- Requirement: Zero compatible worker capacity is an indefinite operational wait state. The
+  scientific process logs starvation once, preserves queued tasks and immutable scientific
+  state, and resumes when capacity returns; only loss of the coordinator/control protocol is a
+  resumable distributed error.
 - Requirement: Coordinator restart is explicit rather than transparent. Its ownership lock fences
   a second local owner; old worker leases become invalid, workers self-quarantine, node stacks are
   restarted by the operator, and the scientific process resumes its immutable checkpoint.
@@ -138,11 +151,13 @@ properties that must hold independently of implementation live in
   acknowledgements make the worker self-quarantine, and assignment generations reject late
   results from an old lease.
 - Requirement: A worker node may join an active session and receives its immutable registration
-  before work. Removing a node drains running work before stopping its processes; an ungraceful
-  loss remains bounded by heartbeat detection and exact task requeue.
+  before work. Registration remains open without a deadline for the complete scientific session.
+  Removing a node drains running work before stopping its processes; an ungraceful loss remains
+  bounded by heartbeat detection and exact task requeue. A fresh worker instance with the same
+  logical identity supersedes and fences any stale lease left by a non-graceful node restart.
 - Requirement: Coordinator status exposes node identity, worker identity, device specialization,
   readiness, busy/draining/dropped state, compile time, execution time, and memory high-water
-  mark without exposing authentication secrets.
+  mark without exposing registered scientific model or sampler payloads.
 - Requirement: The supervisor fairly rotates among registered sessions with dispatchable work;
   one client cannot permanently monopolize every compatible idle worker.
 - Requirement: Goal conditions run only at a drained depth boundary; pending results and

@@ -21,7 +21,6 @@ except ModuleNotFoundError:  # pragma: no cover - Python 3.10 dependency
 class WorkerConfig:
     """One process/device specialization owned by this node."""
 
-    name: str
     platform: str
     device: str
     batch_size: int
@@ -29,16 +28,10 @@ class WorkerConfig:
 
 @dataclasses.dataclass(frozen=True, slots=True)
 class NetworkConfig:
-    """Authenticated TCP topology, absent for a local-only coordinator."""
+    """Coordinator port or reachable remote-coordinator endpoint."""
 
-    listen: str | None
-    advertise: str | None
+    port: int | None
     coordinator: str | None
-    server_public_key: Path | None
-    server_secret_key: Path | None
-    client_public_key: Path | None
-    client_secret_key: Path | None
-    authorized_clients: Path | None
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -62,9 +55,8 @@ class RuntimeConfig:
     heartbeat_interval_s: float
     missed_heartbeats: int
     batch_wait_s: float
-    max_payload_bytes: int
     program_cache_size: int
-    network: NetworkConfig | None
+    network: NetworkConfig
     workers: tuple[WorkerConfig, ...]
 
 
@@ -92,16 +84,15 @@ def load_runtime_config(path: str | Path) -> RuntimeConfig:
             "heartbeat_interval_s",
             "missed_heartbeats",
             "batch_wait_s",
-            "max_payload_bytes",
             "program_cache_size",
         },
         "runtime",
     )
 
     stack_id = _identifier(runtime.get("stack_id"), "runtime.stack_id")
-    network = _network_config(source.parent, document.get("network"))
-    role = "node" if network is not None and network.coordinator else "coordinator"
-    default_node = stack_id if network is None else socket.gethostname()
+    network = _network_config(document.get("network"))
+    role = "node" if network.coordinator is not None else "coordinator"
+    default_node = stack_id if role == "coordinator" else socket.gethostname()
     node_id = _identifier(runtime.get("node_id", default_node), "runtime.node_id")
 
     runtime_root = _configured_path(
@@ -116,15 +107,15 @@ def load_runtime_config(path: str | Path) -> RuntimeConfig:
         source.parent / "logs",
         "runtime.log_dir",
     )
-    # Networked nodes may share a filesystem. Node-qualified directories and
-    # ownership records prevent one machine from claiming another's process.
-    if network is None:
-        runtime_dir = runtime_root / stack_id
-        log_dir = log_root / stack_id
-    else:
-        runtime_dir = runtime_root / stack_id / node_id
-        log_dir = log_root / stack_id / node_id
-    endpoint = f"ipc://{runtime_dir / ('pool.ipc' if role == 'coordinator' else 'node.ipc')}"
+    # Nodes may share a filesystem. Node-qualified directories and ownership
+    # records prevent one machine from claiming another's process.
+    runtime_dir = runtime_root / stack_id / node_id
+    log_dir = log_root / stack_id / node_id
+    endpoint = (
+        coordinator_endpoint(network.port)
+        if role == "coordinator"
+        else f"ipc://{runtime_dir / 'node.ipc'}"
+    )
     worker_endpoint = (
         endpoint
         if role == "coordinator"
@@ -159,12 +150,9 @@ def load_runtime_config(path: str | Path) -> RuntimeConfig:
     program_cache_size = runtime.get("program_cache_size", 4)
     if type(program_cache_size) is not int or program_cache_size < 1:
         raise ValueError("runtime.program_cache_size must be positive.")
-    max_payload_bytes = runtime.get("max_payload_bytes", 536_870_912)
-    if type(max_payload_bytes) is not int or max_payload_bytes < 1:
-        raise ValueError("runtime.max_payload_bytes must be positive.")
     workers = _worker_configs(
         document.get("workers"),
-        allow_empty=role == "coordinator" and network is not None,
+        allow_empty=role == "coordinator",
     )
 
     behavior = {
@@ -180,8 +168,7 @@ def load_runtime_config(path: str | Path) -> RuntimeConfig:
         "missed_heartbeats": missed_heartbeats,
         "batch_wait_s": batch_wait_s,
         "program_cache_size": program_cache_size,
-        "max_payload_bytes": max_payload_bytes,
-        "network": _json_network(network),
+        "network": dataclasses.asdict(network),
         "workers": [dataclasses.asdict(worker) for worker in workers],
     }
     fingerprint = hashlib.sha256(json.dumps(
@@ -190,7 +177,7 @@ def load_runtime_config(path: str | Path) -> RuntimeConfig:
         separators=(",", ":"),
     ).encode("utf-8")).hexdigest()
     ownership = Path(tempfile.gettempdir()) / f"jaxns-{os.getuid()}" / "ownership"
-    owner = stack_id if network is None else f"{stack_id}-{node_id}"
+    owner = f"{stack_id}-{node_id}"
     return RuntimeConfig(
         source=source,
         fingerprint=fingerprint,
@@ -210,77 +197,46 @@ def load_runtime_config(path: str | Path) -> RuntimeConfig:
         missed_heartbeats=missed_heartbeats,
         batch_wait_s=batch_wait_s,
         program_cache_size=program_cache_size,
-        max_payload_bytes=max_payload_bytes,
         network=network,
         workers=workers,
     )
 
 
-def _network_config(parent: Path, value: object) -> NetworkConfig | None:
-    if value is None:
-        return None
+def _network_config(value: object) -> NetworkConfig:
     if type(value) is not dict:
-        raise ValueError("network must be a table.")
-    _reject_unknown(
-        value,
-        {
-            "listen",
-            "advertise",
-            "coordinator",
-            "server_public_key",
-            "server_secret_key",
-            "client_public_key",
-            "client_secret_key",
-            "authorized_clients",
-        },
-        "network",
-    )
-    listen = _optional_tcp(value.get("listen"), "network.listen", wildcard=True)
-    advertise = _optional_tcp(
-        value.get("advertise"),
-        "network.advertise",
-        wildcard=False,
-    )
+        raise ValueError("Configuration requires a [network] table.")
+    _reject_unknown(value, {"port", "coordinator"}, "network")
+    port = value.get("port")
+    if port is not None and (
+        type(port) is not int or not 1 <= port <= 65_535
+    ):
+        raise ValueError("network.port must be an integer from 1 to 65,535.")
     coordinator = _optional_tcp(
         value.get("coordinator"),
         "network.coordinator",
         wildcard=False,
     )
-    if (listen is None) == (coordinator is None):
+    if (port is None) == (coordinator is None):
         raise ValueError(
-            "network must define exactly one of listen or coordinator."
-        )
-    if listen is not None:
-        if advertise is None:
-            raise ValueError("A coordinator network requires network.advertise.")
-        required = (
-            "server_public_key",
-            "server_secret_key",
-            "authorized_clients",
-        )
-    else:
-        if advertise is not None:
-            raise ValueError("A worker node cannot define network.advertise.")
-        required = (
-            "server_public_key",
-            "client_public_key",
-            "client_secret_key",
-        )
-    missing = [name for name in required if value.get(name) is None]
-    if missing:
-        raise ValueError(
-            f"Missing network field(s): {', '.join(sorted(missing))}."
+            "network must define exactly one of port or coordinator."
         )
     return NetworkConfig(
-        listen=listen,
-        advertise=advertise,
+        port=port,
         coordinator=coordinator,
-        server_public_key=_optional_path(parent, value.get("server_public_key")),
-        server_secret_key=_optional_path(parent, value.get("server_secret_key")),
-        client_public_key=_optional_path(parent, value.get("client_public_key")),
-        client_secret_key=_optional_path(parent, value.get("client_secret_key")),
-        authorized_clients=_optional_path(parent, value.get("authorized_clients")),
     )
+
+
+def coordinator_endpoint(port: int | None) -> str:
+    """Derive the same-user scientific IPC endpoint from the TCP port."""
+    if port is None:
+        raise ValueError("A coordinator configuration requires network.port.")
+    path = (
+        Path(tempfile.gettempdir())
+        / f"jaxns-{os.getuid()}"
+        / "coordinators"
+        / f"{port}.ipc"
+    )
+    return f"ipc://{path}"
 
 
 def _worker_configs(
@@ -299,14 +255,12 @@ def _worker_configs(
             raise ValueError(f"workers[{index}] must be a table.")
         _reject_unknown(
             item,
-            {"name", "platform", "device", "batch_size", "count"},
+            {"platform", "device", "batch_size"},
             f"workers[{index}]",
         )
-        name = _identifier(item.get("name"), f"workers[{index}].name")
         platform = item.get("platform")
         device = item.get("device", "0")
         batch_size = item.get("batch_size", 1)
-        count = item.get("count", 1)
         if type(platform) is not str or platform not in ("cpu", "gpu", "tpu"):
             raise ValueError(f"workers[{index}].platform must be cpu, gpu, or tpu.")
         if type(device) not in (str, int):
@@ -326,20 +280,22 @@ def _worker_configs(
             raise ValueError(f"workers[{index}].device cannot be empty.")
         if type(batch_size) is not int or batch_size < 1:
             raise ValueError(f"workers[{index}].batch_size must be positive.")
-        if type(count) is not int or count < 1:
-            raise ValueError(f"workers[{index}].count must be positive.")
-        for instance in range(count):
-            resolved = name if count == 1 else f"{name}-{instance}"
-            if resolved in names:
-                raise ValueError(f"Worker name {resolved!r} is duplicated.")
-            names.add(resolved)
-            workers.append(WorkerConfig(
-                name=resolved,
-                platform=platform,
-                device=str(device),
-                batch_size=batch_size,
-            ))
+        worker = WorkerConfig(
+            platform=platform,
+            device=str(device),
+            batch_size=batch_size,
+        )
+        name = worker_name(worker)
+        if name in names:
+            raise ValueError(f"Worker {name!r} is duplicated.")
+        names.add(name)
+        workers.append(worker)
     return tuple(workers)
+
+
+def worker_name(worker: WorkerConfig) -> str:
+    """Return the fixed public name for one configured device process."""
+    return f"{worker.platform}-{worker.device}"
 
 
 def _configured_path(parent: Path, value: object, default: Path, name: str) -> Path:
@@ -347,15 +303,6 @@ def _configured_path(parent: Path, value: object, default: Path, name: str) -> P
         return default.resolve()
     if type(value) is not str:
         raise ValueError(f"{name} must be a path string.")
-    path = Path(value).expanduser()
-    return (parent / path if not path.is_absolute() else path).resolve()
-
-
-def _optional_path(parent: Path, value: object) -> Path | None:
-    if value is None:
-        return None
-    if type(value) is not str or not value:
-        raise ValueError("Network key locations must be non-empty path strings.")
     path = Path(value).expanduser()
     return (parent / path if not path.is_absolute() else path).resolve()
 
@@ -399,18 +346,6 @@ def _identifier(value: object, name: str) -> str:
             f"{name} may contain only letters, digits, '.', '_', or '-'."
         )
     return value
-
-
-def _json_network(network: NetworkConfig | None) -> dict[str, str | None] | None:
-    if network is None:
-        return None
-    return {
-        field.name: (
-            str(value) if isinstance(value, Path) else value
-        )
-        for field in dataclasses.fields(network)
-        if (value := getattr(network, field.name)) is not None
-    }
 
 
 def _reject_unknown(values: dict[str, object], allowed: set[str], name: str) -> None:

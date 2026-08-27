@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import socket
 import subprocess
 import sys
 import tempfile
@@ -28,8 +30,21 @@ def write_config(
         path: Path,
         workers: int,
         batch_size: int,
-) -> None:
+) -> int:
     """Write one reproducible local topology for the distributed candidate."""
+    with socket.socket() as listener:
+        listener.bind(("127.0.0.1", 0))
+        port = listener.getsockname()[1]
+    worker_tables = "\n\n".join(
+        f"""[[workers]]
+platform = "cpu"
+device = {device}
+batch_size = {batch_size}"""
+        for device in range(workers)
+    )
+    os.environ["XLA_FLAGS"] = (
+        f"--xla_force_host_platform_device_count={workers}"
+    )
     path.write_text(
         f"""
 [runtime]
@@ -40,15 +55,14 @@ startup_timeout_s = 120
 shutdown_timeout_s = 30
 task_timeout_s = 600
 
-[[workers]]
-name = "cpu"
-platform = "cpu"
-device = 0
-batch_size = {batch_size}
-count = {workers}
+[network]
+port = {port}
+
+{worker_tables}
 """.strip() + "\n",
         encoding="utf-8",
     )
+    return port
 
 
 def cli(config: Path, command: str) -> None:
@@ -276,11 +290,15 @@ def main() -> int:
                 prefix="jaxns-issue-267-standard-",
         ) as directory:
             config = Path(directory) / "workers.toml"
-            write_config(config, args.workers, args.batch_size)
+            coordinator_port = write_config(
+                config,
+                args.workers,
+                args.batch_size,
+            )
             cli(config, "up")
             try:
                 distributed = DistributedNestedSampler(
-                    config=config,
+                    coordinator_port=coordinator_port,
                     initial_capacity=root_degree + 10 * replacement_width,
                     **common,
                 )

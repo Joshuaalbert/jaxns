@@ -4,7 +4,8 @@ This maintained comparison isolates the scheduling and transport change on an
 analytic one-dimensional problem. Local and distributed runs use the same
 model, run keys, root degree 6, allocation increment 6, three perfect-bracket
 slice steps, `dlogZ=0.1`, and finite sample budget. The distributed setting has
-three scalar CPU workers so worker-local batching cannot change the chain law.
+three logical host CPU devices with one scalar worker each, so worker-local
+batching cannot change the chain law.
 
 The seed-zero compile/warm run is recorded but excluded from steady summaries.
 Thirty measured seeds are run with phantom collection off and on:
@@ -84,5 +85,11 @@ fitting. Evidence records contain both the expectation estimate and a
 1,000-draw final Monte Carlo calculation; phantom runs use phantom conditioning
 for that final calculation while the depth loop remains classic and
 expectation based.
+
+The worker-only root-likelihood boundary was also replayed on spike--slab seed
+0 after the 30-seed artifacts were collected. Reproduce the focused comparison
+with the first standard command changed to `--seeds 1` and output
+`standard_worker_likelihood_smoke.json`; the report lists the scientific fields
+checked bitwise against `standard_spike_slab.json`.
 
 See `REPORT.md` for the reviewed tables and interpretation.

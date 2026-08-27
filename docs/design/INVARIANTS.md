@@ -164,6 +164,12 @@ The exact text following each `- Invariant:` prefix is the stable key used by
   claiming that the goal was met.
 - Invariant: Retrying one logical sampling task preserves its original random choices and can
   change committed scientific state at most once.
+- Invariant: In distributed execution every likelihood evaluation, including root
+  initialization, executes on a registered worker and not in the scientific coordinator process.
+- Invariant: Joining, losing, or replacing worker capacity cannot discard or duplicate a logical
+  task, and cannot permanently close an active run to later compatible capacity.
+- Invariant: Losing every distributed worker leaves scientific state unchanged and waits for
+  compatible capacity rather than converting worker starvation into a scientific run failure.
 - Invariant: A resumable distributed checkpoint identifies every outstanding logical sample and
   its random stream without treating an unreturned sample as an observed race-tree arrival.
 - Invariant: A completed distributed state exposed to a user contains no provisional lineage or

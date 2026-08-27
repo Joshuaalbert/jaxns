@@ -1,10 +1,10 @@
-"""JAX-free framing constants for local IPC and authenticated cluster TCP."""
+"""JAX-free framing constants for local IPC and cluster TCP."""
 
 from __future__ import annotations
 
 import json
 
-PROTOCOL_VERSION = 3
+PROTOCOL_VERSION = 5
 MAX_HEADER_BYTES = 65_536
 ROLE = "role"
 PING = "ping"
@@ -17,6 +17,8 @@ RELEASE = "release"
 RELEASED = "released"
 TASK = "task"
 RESULT = "result"
+SAMPLE = "sample"
+EVALUATE = "evaluate"
 ACK = "ack"
 CAPACITY = "capacity"
 ERROR = "error"
@@ -29,6 +31,9 @@ DRAIN = "drain"
 DRAINED = "drained"
 NODE_STOPPED = "node_stopped"
 NODE_STATUS = "node_status"
+NODE_HEARTBEAT = "node_heartbeat"
+NODE_HEARTBEAT_ACK = "node_heartbeat_ack"
+NODE_RESTARTED = "node_restarted"
 
 
 def encode_header(command: str, **fields) -> bytes:

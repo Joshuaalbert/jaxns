@@ -8,6 +8,7 @@ import importlib.metadata
 import os
 import pickle
 import resource
+import signal
 import sys
 import threading
 import time
@@ -18,7 +19,8 @@ from uuid import uuid4
 def _run(
         config_path: str,
         endpoint: str,
-        name: str,
+        platform: str,
+        configured_device: str,
         batch_size: int,
         device_index: int,
         program_cache_size: int,
@@ -33,31 +35,35 @@ def _run(
 
     from jaxns.constrained_sampler import (
         ConstrainedSampleRequest,
+        LikelihoodRequest,
+        evaluate_request,
         sample_request,
     )
     from jaxns.runtime_config import load_runtime_config
     from jaxns.runtime_protocol import (
         ERROR,
+        EVALUATE,
         LEASED,
         READY,
         REGISTER,
         REGISTERED,
         RELEASE,
         RESULT,
+        SAMPLE,
         STOP,
         STOPPED,
         TASK,
         decode_header,
         encode_header,
     )
-    from jaxns.runtime_transport import configure_curve_client
     from jaxns.samples import SeedPoint
 
     config = load_runtime_config(config_path)
+    name = f"{platform}-{configured_device}"
     worker_id = f"{config.node_id}/{name}"
 
-    def make_program(registered):
-        def program(request):
+    def make_sample_program(registered):
+        def sample_program(request):
             return sample_request(
                 registered.sampler,
                 request,
@@ -65,14 +71,31 @@ def _run(
                 params=registered.params,
             )
 
-        return program
+        return sample_program
+
+    def make_likelihood_program(registered):
+        def likelihood_program(request):
+            return evaluate_request(
+                registered.model,
+                request,
+                args=registered.args,
+                params=registered.params,
+            )
+
+        return likelihood_program
 
     class Program:
-        __slots__ = ("compiled", "program")
+        __slots__ = ("compiled", "programs")
 
-        def __init__(self, program):
-            self.program = jax.jit(program)
-            self.compiled: dict[int, object] = {}
+        def __init__(self, registered):
+            self.programs = {
+                SAMPLE: jax.jit(make_sample_program(registered)),
+                EVALUATE: jax.jit(make_likelihood_program(registered)),
+            }
+            self.compiled: dict[str, dict[int, object]] = {
+                SAMPLE: {},
+                EVALUATE: {},
+            }
 
     devices = jax.devices()
     if not 0 <= device_index < len(devices):
@@ -86,10 +109,6 @@ def _run(
     identity = f"worker:{worker_id}:{instance_id}"
     socket.setsockopt(zmq.IDENTITY, identity.encode())
     socket.setsockopt(zmq.LINGER, 0)
-    if endpoint.startswith("tcp://"):
-        if config.network is None:
-            raise ValueError("TCP workers require an authenticated network table.")
-        configure_curve_client(socket, config.network)
     socket.connect(endpoint)
     socket.send_multipart([
         encode_header(
@@ -97,7 +116,8 @@ def _run(
             role="worker",
             worker_id=worker_id,
             node_id=config.node_id,
-            name=name,
+            configured_platform=platform,
+            configured_device=configured_device,
             instance_id=instance_id,
             batch_size=batch_size,
             platform=jax.default_backend(),
@@ -132,7 +152,6 @@ def _run(
         target=_heartbeat_loop,
         args=(
             context,
-            config,
             endpoint,
             worker_id,
             instance_id,
@@ -178,7 +197,7 @@ def _run(
                     record = cache.get(fingerprint)
                     if record is None:
                         session = cloudpickle.loads(payloads[0])
-                        record = Program(make_program(session))
+                        record = Program(session)
                         cache[fingerprint] = record
                         while len(cache) > program_cache_size:
                             cache.popitem(last=False)
@@ -217,6 +236,7 @@ def _run(
 
             session_id = _string_field(header, "session_id")
             assignment_id = _string_field(header, "assignment_id")
+            operation = _string_field(header, "operation")
             task_ids = _integer_list(header, "task_ids")
             compile_s = 0.0
             started = time.perf_counter()
@@ -230,16 +250,36 @@ def _run(
                 if len(payloads) != len(task_ids):
                     raise ValueError("Worker task IDs and payloads have different lengths.")
                 requests = [pickle.loads(payload) for payload in payloads]
-                request = _combine_requests(requests, ConstrainedSampleRequest, SeedPoint, jnp, jax)
+                if operation == SAMPLE:
+                    request = _combine_requests(
+                        requests,
+                        ConstrainedSampleRequest,
+                        SeedPoint,
+                        jnp,
+                        jax,
+                    )
+                elif operation == EVALUATE:
+                    request = _combine_likelihood_requests(
+                        requests,
+                        LikelihoodRequest,
+                        jnp,
+                        jax,
+                    )
+                else:
+                    raise ValueError(
+                        f"Worker received unsupported operation {operation!r}."
+                    )
                 record = programs[session_id]
                 width = len(task_ids)
                 with jax.default_device(device):
-                    compiled = record.compiled.get(width)
+                    compiled = record.compiled[operation].get(width)
                     if compiled is None:
                         compile_started = time.perf_counter()
-                        compiled = record.program.lower(request).compile()
+                        compiled = record.programs[operation].lower(
+                            request
+                        ).compile()
                         compile_s = time.perf_counter() - compile_started
-                        record.compiled[width] = compiled
+                        record.compiled[operation][width] = compiled
                     batch = jax.device_get(compiled(request))
                 if not alive.is_set():
                     return
@@ -253,12 +293,6 @@ def _run(
                     )
                     for index in range(width)
                 ]
-                result_bytes = sum(len(result) for result in results)
-                if result_bytes > config.max_payload_bytes:
-                    raise ValueError(
-                        f"Worker result is {result_bytes} bytes; configured "
-                        f"maximum is {config.max_payload_bytes} bytes."
-                    )
                 socket.send_multipart([
                     encode_header(
                         RESULT,
@@ -300,7 +334,6 @@ def _run(
 
 def _heartbeat_loop(
         context,
-        config,
         endpoint: str,
         worker_id: str,
         instance_id: str,
@@ -320,16 +353,12 @@ def _heartbeat_loop(
         decode_header,
         encode_header,
     )
-    from jaxns.runtime_transport import configure_curve_client
-
     socket = context.socket(zmq.DEALER)
     socket.setsockopt(
         zmq.IDENTITY,
         f"heartbeat:{worker_id}:{instance_id}:{uuid4().hex}".encode(),
     )
     socket.setsockopt(zmq.LINGER, 0)
-    if endpoint.startswith("tcp://"):
-        configure_curve_client(socket, config.network)
     socket.connect(endpoint)
     missed = 0
     try:
@@ -354,12 +383,12 @@ def _heartbeat_loop(
                 ):
                     missed = 0
                 else:
-                    alive.clear()
+                    _fence_process(alive, stopping)
                     return
             else:
                 missed += 1
                 if missed >= missed_limit:
-                    alive.clear()
+                    _fence_process(alive, stopping)
                     return
             # An immediate acknowledgement must not turn this control thread
             # into a tight network loop. Preserve one heartbeat per configured
@@ -368,6 +397,21 @@ def _heartbeat_loop(
             stopping.wait(max(0.0, interval_s - elapsed_s))
     finally:
         socket.close(linger=0)
+
+
+def _fence_process(
+        alive: threading.Event,
+        stopping: threading.Event,
+) -> None:
+    """Terminate a fenced worker even while its JAX call is still blocked."""
+    alive.clear()
+    if stopping.is_set():
+        return
+    # A worker owns no scientific state. Abrupt exit is intentional here: the
+    # coordinator has already retained/requeued the immutable task, while the
+    # node supervisor must observe process death before it can create a fresh
+    # lease. Waiting for a blocked device call could starve this device forever.
+    os.kill(os.getpid(), signal.SIGTERM)
 
 
 def _combine_requests(requests, request_type, seed_type, jnp, jax):
@@ -403,6 +447,20 @@ def _combine_requests(requests, request_type, seed_type, jnp, jax):
     )
 
 
+def _combine_likelihood_requests(requests, request_type, jnp, jax):
+    """Stack scalar prior-space points for one worker likelihood call."""
+
+    def concatenate(*values):
+        return jnp.concatenate(values, axis=0)
+
+    return request_type(
+        U_samples=jax.tree.map(
+            concatenate,
+            *(request.U_samples for request in requests),
+        )
+    )
+
+
 def _string_field(header: dict[str, object], name: str) -> str:
     value = header.get(name)
     if type(value) is not str:
@@ -419,7 +477,7 @@ def _integer_field(header: dict[str, object], name: str) -> int:
 
 def _integer_list(header: dict[str, object], name: str) -> list[int]:
     value = header.get(name)
-    if not isinstance(value, list) or not value or not all(
+    if type(value) is not list or not value or not all(
         type(item) is int for item in value
     ):
         raise ValueError(f"Protocol field {name!r} must be integer list.")
@@ -430,7 +488,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", required=True)
     parser.add_argument("--endpoint", required=True)
-    parser.add_argument("--name", required=True)
+    parser.add_argument("--platform", required=True)
+    parser.add_argument("--configured-device", required=True)
     parser.add_argument("--batch-size", required=True, type=int)
     parser.add_argument("--device-index", required=True, type=int)
     parser.add_argument("--program-cache-size", required=True, type=int)
@@ -439,7 +498,8 @@ def main(argv: list[str] | None = None) -> int:
     _run(
         args.config,
         args.endpoint,
-        args.name,
+        args.platform,
+        args.configured_device,
         args.batch_size,
         args.device_index,
         args.program_cache_size,

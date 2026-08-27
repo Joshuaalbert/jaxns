@@ -1,8 +1,8 @@
-"""Supported local and authenticated multi-node run patterns.
+"""Supported local and trusted-network multi-node run patterns.
 
 The scientific client always connects to a same-user IPC coordinator. Local
-workers use that IPC endpoint; explicitly authorized remote workers connect to
-the coordinator's CurveZMQ TCP endpoint.
+workers use that IPC endpoint; remote workers connect to the coordinator's TCP
+port on the trusted scientific network.
 """
 
 import jax
@@ -66,10 +66,11 @@ local_state = local.run_until_goal(
 # The main process still owns allocation, random keys, immutable checkpoints,
 # capacity growth, and goal evaluation. Workers receive complete constrained-
 # sampling requests, so data-dependent likelihood loops remain inside JAX. The
-# one-time finite root prior batch is bootstrapped locally in this first design.
+# root coordinates are drawn locally, while their likelihood evaluations and
+# all constrained-chain likelihood evaluations run only in worker processes.
 distributed = DistributedNestedSampler(
     model=model,
-    config="docs/design/interface/workers.toml",
+    coordinator_port=5555,
     args=model_args,
     params=model_params,
     collect_phantom_samples=True,

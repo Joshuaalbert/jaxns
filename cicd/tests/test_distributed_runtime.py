@@ -6,15 +6,16 @@ import dataclasses
 import hashlib
 import json
 import os
-import shutil
 import signal
 import socket
 import subprocess
 import sys
+import threading
 import time
 from collections import deque
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import jax
 import pytest
@@ -34,11 +35,21 @@ from jaxns.distributed_core import (
 )
 from jaxns.multi_ellipsoid_utils import empty_sampler_data
 from jaxns.runtime_client import SupervisorClient, _sampler_batch_group
-from jaxns.runtime_config import WorkerConfig, load_runtime_config
+from jaxns.runtime_config import (
+    WorkerConfig,
+    load_runtime_config,
+    worker_name,
+)
+from jaxns.runtime_node import NodeSupervisor, NodeWorker
 from jaxns.runtime_protocol import (
+    ACK,
     CAPACITY,
     MAX_HEADER_BYTES,
+    NODE_HEARTBEAT,
+    NODE_HEARTBEAT_ACK,
+    NODE_RESTARTED,
     PROTOCOL_VERSION,
+    SAMPLE,
     decode_header,
 )
 from jaxns.runtime_supervisor import (
@@ -47,7 +58,7 @@ from jaxns.runtime_supervisor import (
     TaskRecord,
     WorkerRecord,
 )
-from jaxns.runtime_transport import create_curve_certificate
+from jaxns.runtime_worker import _fence_process
 from jaxns.samples import SeedPoint
 from jaxns.termination_condition import TerminationCondition
 
@@ -105,7 +116,22 @@ def test_batch_group_ignores_direction_diagnostics_but_not_geometry():
     )
 
 
+def _free_tcp_port() -> int:
+    with socket.socket() as listener:
+        listener.bind(("127.0.0.1", 0))
+        return listener.getsockname()[1]
+
+
+def _config_port(path: Path) -> int:
+    if path.exists():
+        port = load_runtime_config(path).network.port
+        if port is not None:
+            return port
+    return _free_tcp_port()
+
+
 def _write_config(path: Path, *, task_timeout_s: float = 30.0) -> None:
+    port = _config_port(path)
     path.write_text(
         f"""
 [runtime]
@@ -116,18 +142,13 @@ startup_timeout_s = 30
 shutdown_timeout_s = 15
 task_timeout_s = {task_timeout_s}
 
+[network]
+port = {port}
+
 [[workers]]
-name = "vector"
 platform = "cpu"
 device = 0
 batch_size = 2
-
-[[workers]]
-name = "scalar"
-platform = "cpu"
-device = 0
-batch_size = 1
-count = 2
 """.strip()
         + "\n",
         encoding="utf-8",
@@ -136,8 +157,9 @@ count = 2
 
 def _write_batch_config(path: Path) -> None:
     """Write one deterministic vmap worker for trajectory invariance tests."""
+    port = _config_port(path)
     path.write_text(
-        """
+        f"""
 [runtime]
 stack_id = "distributed-batch-test"
 runtime_dir = "runtime"
@@ -146,8 +168,10 @@ startup_timeout_s = 30
 shutdown_timeout_s = 15
 task_timeout_s = 30
 
+[network]
+port = {port}
+
 [[workers]]
-name = "vector"
 platform = "cpu"
 device = 0
 batch_size = 2
@@ -178,26 +202,9 @@ def _status(config: Path) -> dict[str, object]:
     return json.loads(_cli(config, "status").stdout)
 
 
-def _free_tcp_endpoint() -> str:
-    with socket.socket() as listener:
-        listener.bind(("127.0.0.1", 0))
-        port = listener.getsockname()[1]
-    return f"tcp://127.0.0.1:{port}"
-
-
 def _write_network_configs(directory: Path) -> tuple[Path, Path]:
-    endpoint = _free_tcp_endpoint()
-    server_public, server_secret = create_curve_certificate(
-        directory / "server-keys",
-        "coordinator",
-    )
-    node_public, node_secret = create_curve_certificate(
-        directory / "node-keys",
-        "worker-node",
-    )
-    authorized = directory / "authorized"
-    authorized.mkdir()
-    shutil.copy2(node_public, authorized / node_public.name)
+    port = _free_tcp_port()
+    endpoint = f"tcp://127.0.0.1:{port}"
     coordinator = directory / "coordinator.toml"
     coordinator.write_text(
         f"""
@@ -213,11 +220,7 @@ heartbeat_interval_s = 0.25
 missed_heartbeats = 2
 
 [network]
-listen = "{endpoint}"
-advertise = "{endpoint}"
-server_public_key = "{server_public}"
-server_secret_key = "{server_secret}"
-authorized_clients = "{authorized}"
+port = {port}
 """.strip() + "\n",
         encoding="utf-8",
     )
@@ -237,12 +240,8 @@ missed_heartbeats = 2
 
 [network]
 coordinator = "{endpoint}"
-server_public_key = "{server_public}"
-client_public_key = "{node_public}"
-client_secret_key = "{node_secret}"
 
 [[workers]]
-name = "cpu"
 platform = "cpu"
 device = 0
 batch_size = 2
@@ -258,12 +257,8 @@ def test_config_expands_workers_and_fingerprints_resolved_behavior(tmp_path):
     config = load_runtime_config(config_path)
 
     assert config.stack_id == "distributed-test"
-    assert [worker.name for worker in config.workers] == [
-        "vector",
-        "scalar-0",
-        "scalar-1",
-    ]
-    assert [worker.batch_size for worker in config.workers] == [2, 1, 1]
+    assert [worker_name(worker) for worker in config.workers] == ["cpu-0"]
+    assert [worker.batch_size for worker in config.workers] == [2]
     assert config.endpoint.startswith("ipc://")
     validated = json.loads(_cli(config_path, "config", "validate").stdout)
     assert validated["config_fingerprint"] == config.fingerprint
@@ -284,18 +279,14 @@ def test_config_expands_workers_and_fingerprints_resolved_behavior(tmp_path):
     malformed = tmp_path / "malformed.toml"
     malformed.write_text(
         config_path.read_text(encoding="utf-8").replace(
-            'name = "vector"',
-            'name = "../vector"',
+            "device = 0",
+            'device = "../device"',
         ),
         encoding="utf-8",
     )
-    with pytest.raises(ValueError, match="may contain only"):
+    with pytest.raises(ValueError, match="non-negative integer"):
         load_runtime_config(malformed)
 
-    bounded = object.__new__(SupervisorClient)
-    bounded._max_payload_bytes = 2
-    with pytest.raises(ValueError, match="configured maximum"):
-        bounded._check_payload(b"too large")
     with pytest.raises(ValueError, match="header exceeds"):
         decode_header(b" " * (MAX_HEADER_BYTES + 1))
 
@@ -381,11 +372,11 @@ def test_supervisor_deduplicates_task_identity_until_acknowledgement():
     supervisor.sessions = {"session": session}
     sent = []
     supervisor._send = lambda *frames: sent.append(frames)
-    supervisor._report_missing_capacity = lambda batch_size: None
     header = {
         "session_id": "session",
         "task_ids": [5, 6],
         "batch_groups": ["direction-state", "direction-state"],
+        "operations": [SAMPLE, SAMPLE],
     }
     payloads = [b"request-five", b"request-six"]
 
@@ -421,6 +412,7 @@ def test_supervisor_validates_atomic_task_group_before_queue_mutation():
         "session_id": "session",
         "task_ids": [1, 2],
         "batch_groups": ["direction-state"],
+        "operations": [SAMPLE, SAMPLE],
     }
 
     with pytest.raises(ValueError, match="disagree"):
@@ -456,18 +448,19 @@ def test_task_timeout_requeues_byte_identical_payload_on_compatible_worker():
         def kill(self):
             self.returncode = -signal.SIGKILL
 
-    config = WorkerConfig("first", "cpu", "0", 1)
+    config = WorkerConfig("cpu", "0", 1)
     active = WorkerRecord(config, Process(), None, b"worker:first")
     active.ready = True
     active.task = (("session", 6),)
     active.started_s = time.monotonic() - 2.0
-    spare_config = WorkerConfig("second", "cpu", "0", 1)
+    spare_config = WorkerConfig("gpu", "0", 1)
     spare = WorkerRecord(spare_config, Process(), None, b"worker:second")
     spare.ready = True
     payload = b"scientific-request"
     task = TaskRecord(
         6,
         "direction-state",
+        SAMPLE,
         hashlib.sha256(payload).hexdigest(),
         payload,
     )
@@ -496,7 +489,7 @@ def test_task_timeout_requeues_byte_identical_payload_on_compatible_worker():
 
 
 def test_two_missed_heartbeats_fence_lease_and_requeue():
-    worker_config = WorkerConfig("worker", "cpu", "0", 1)
+    worker_config = WorkerConfig("cpu", "0", 1)
     worker = WorkerRecord(worker_config, None, None, b"worker")
     worker.ready = True
     worker.last_heartbeat_s = time.monotonic() - 0.21
@@ -505,6 +498,7 @@ def test_two_missed_heartbeats_fence_lease_and_requeue():
     task = TaskRecord(
         4,
         "direction-state",
+        SAMPLE,
         hashlib.sha256(payload).hexdigest(),
         payload,
     )
@@ -519,6 +513,7 @@ def test_two_missed_heartbeats_fence_lease_and_requeue():
     )
     supervisor.workers = {worker.identity: worker}
     supervisor.sessions = {session.session_id: session}
+    supervisor.restart_requests = {}
     supervisor._expire_workers()
 
     assert worker.dropped
@@ -527,15 +522,215 @@ def test_two_missed_heartbeats_fence_lease_and_requeue():
     assert task.payload == payload
 
 
+def test_remote_restart_request_waits_for_node_heartbeat_and_acknowledgement():
+    worker = WorkerRecord(
+        WorkerConfig("cpu", "0", 1),
+        None,
+        None,
+        b"worker:remote/cpu-0:old",
+        node_id="remote",
+        instance_id="old",
+    )
+    worker.ready = True
+    worker.lease_generation = 3
+    supervisor = object.__new__(Supervisor)
+    supervisor.workers = {worker.identity: worker}
+    supervisor.sessions = {}
+    supervisor.restart_requests = {}
+    sent = []
+    supervisor._send = lambda *args, **kwargs: sent.append((args, kwargs))
+
+    supervisor._drop_worker(worker, "missed heartbeat lease")
+
+    requests = supervisor.restart_requests["remote"]
+    assert len(requests) == 1
+    request_id = next(iter(requests))
+    supervisor._receive_node(
+        object(),
+        b"node:remote:heartbeat",
+        NODE_HEARTBEAT,
+        {"node_id": "remote"},
+    )
+    heartbeat = decode_header(sent[-1][0][1])
+    assert heartbeat["command"] == NODE_HEARTBEAT_ACK
+    assert heartbeat["restart_requests"] == [{
+        "instance_id": "old",
+        "lease_generation": 3,
+        "reason": "missed heartbeat lease",
+        "request_id": request_id,
+        "worker_name": "cpu-0",
+    }]
+
+    supervisor._receive_node(
+        object(),
+        b"node:remote:heartbeat",
+        NODE_RESTARTED,
+        {"node_id": "remote", "request_ids": [request_id]},
+    )
+    acknowledged = decode_header(sent[-1][0][1])
+    assert acknowledged["command"] == ACK
+    assert supervisor.restart_requests == {}
+
+
+def test_node_restart_request_fences_only_the_named_worker_instance():
+    class Process:
+        def __init__(self):
+            self.terminated = False
+
+        def poll(self):
+            return -signal.SIGTERM if self.terminated else None
+
+        def terminate(self):
+            self.terminated = True
+
+    class Coordinator:
+        def __init__(self):
+            self.messages = []
+
+        def send_multipart(self, frames):
+            self.messages.append(frames)
+
+    process = Process()
+    worker = NodeWorker(
+        config=WorkerConfig("cpu", "0", 1),
+        process=process,
+        instance_id="old",
+    )
+    node = object.__new__(NodeSupervisor)
+    node.config = SimpleNamespace(node_id="remote")
+    node.workers = [worker]
+    node.coordinator = Coordinator()
+    request = {
+        "request_id": "restart-1",
+        "worker_name": "cpu-0",
+        "instance_id": "old",
+        "lease_generation": 3,
+        "reason": "missed heartbeat lease",
+    }
+
+    node._handle_restart_requests([request])
+
+    assert process.terminated
+    acknowledgement = decode_header(node.coordinator.messages[-1][0])
+    assert acknowledgement["command"] == NODE_RESTARTED
+    assert acknowledgement["request_ids"] == ["restart-1"]
+
+    # An acknowledgement may be lost. Replaying the old request after the
+    # replacement has a new instance ID must not kill that replacement.
+    replacement = Process()
+    worker.process = replacement
+    worker.instance_id = "new"
+    node._handle_restart_requests([request])
+    assert not replacement.terminated
+
+
+def test_fenced_worker_forces_process_exit_for_supervisor_restart():
+    alive = threading.Event()
+    alive.set()
+    stopping = threading.Event()
+    signals = []
+    with patch(
+        "jaxns.runtime_worker.os.kill",
+        lambda process_id, process_signal: signals.append((
+            process_id,
+            process_signal,
+        )),
+    ):
+        _fence_process(alive, stopping)
+
+    assert not alive.is_set()
+    assert signals == [(os.getpid(), signal.SIGTERM)]
+
+    # An ordinary shutdown has already arranged process termination and must
+    # not race it with a second signal from the heartbeat thread.
+    alive.set()
+    stopping.set()
+    signals.clear()
+    with patch("jaxns.runtime_worker.os.kill"):
+        _fence_process(alive, stopping)
+    assert not alive.is_set()
+    assert signals == []
+
+
+def test_fresh_worker_instance_supersedes_live_stale_lease():
+    config = WorkerConfig("cpu", "0", 1)
+    old = WorkerRecord(
+        config,
+        None,
+        None,
+        b"worker:node/cpu-0:old",
+        node_id="node",
+        instance_id="old",
+    )
+    old.ready = True
+    old.lease_generation = 7
+    old.task = (("session", 9),)
+    task = TaskRecord(
+        9,
+        "direction-state",
+        SAMPLE,
+        "fingerprint",
+        b"payload",
+    )
+    task.state = "running"
+    task.worker = old.identity
+    session = SessionRecord("session", "model", b"model", b"client")
+    session.tasks[9] = task
+
+    supervisor = object.__new__(Supervisor)
+    supervisor.config = SimpleNamespace(
+        heartbeat_interval_s=1.0,
+        missed_heartbeats=2,
+    )
+    supervisor.workers = {old.identity: old}
+    supervisor.worker_ids = {old.worker_id: old.identity}
+    supervisor.sessions = {session.session_id: session}
+    supervisor.restart_requests = {}
+    supervisor._send = lambda *args, **kwargs: None
+
+    new_identity = b"worker:node/cpu-0:new"
+    supervisor._lease_worker(
+        object(),
+        new_identity,
+        {
+            "worker_id": "node/cpu-0",
+            "node_id": "node",
+            "configured_platform": "cpu",
+            "configured_device": "0",
+            "instance_id": "new",
+            "batch_size": 1,
+            "platform": "cpu",
+            "device": "TFRT_CPU_0",
+            "capabilities": {},
+            "process_id": 123,
+        },
+    )
+
+    replacement = supervisor.workers[new_identity]
+    assert old.identity not in supervisor.workers
+    assert replacement.ready
+    assert replacement.lease_generation == 8
+    assert supervisor.worker_ids[replacement.worker_id] == new_identity
+    assert task.state == "queued"
+    assert task.worker is None
+    assert list(session.queue) == [9]
+
+
 def test_supervisor_rotates_dispatch_fairly_between_sessions():
-    config = WorkerConfig("worker", "cpu", "0", 1)
+    config = WorkerConfig("cpu", "0", 1)
     worker = WorkerRecord(config, object(), None, b"worker")
     worker.ready = True
     worker.registered.update(("first", "second"))
     first = SessionRecord("first", "one", b"model", b"client-one")
     second = SessionRecord("second", "two", b"model", b"client-two")
     for session, task_id in ((first, 1), (second, 2)):
-        task = TaskRecord(task_id, "direction-state", str(task_id), b"payload")
+        task = TaskRecord(
+            task_id,
+            "direction-state",
+            SAMPLE,
+            str(task_id),
+            b"payload",
+        )
         session.tasks[task_id] = task
         session.queue.append(task_id)
 
@@ -552,7 +747,7 @@ def test_supervisor_rotates_dispatch_fairly_between_sessions():
 
 def test_incompatible_worker_is_rejected_before_model_registration():
     worker = WorkerRecord(
-        WorkerConfig("worker", "cpu", "0", 1),
+        WorkerConfig("cpu", "0", 1),
         None,
         None,
         b"worker",
@@ -602,7 +797,7 @@ def test_incompatible_worker_is_rejected_before_model_registration():
 
 def test_capacity_counts_only_workers_registered_for_session():
     compatible = WorkerRecord(
-        WorkerConfig("compatible", "cpu", "0", 2),
+        WorkerConfig("cpu", "0", 2),
         None,
         None,
         b"compatible",
@@ -610,7 +805,7 @@ def test_capacity_counts_only_workers_registered_for_session():
     compatible.ready = True
     compatible.registered.add("session")
     incompatible = WorkerRecord(
-        WorkerConfig("incompatible", "gpu", "0", 8),
+        WorkerConfig("gpu", "0", 8),
         None,
         None,
         b"incompatible",
@@ -652,7 +847,9 @@ def test_phantom_payload_does_not_change_vector_worker_trajectory(tmp_path):
             )
             runner = DistributedNestedSampler(
                 model=model,
-                config=config_path,
+                coordinator_port=load_runtime_config(
+                    config_path
+                ).network.port,
                 root_allocation_degree=4,
                 delta_K=4,
                 max_samples=16,
@@ -675,16 +872,38 @@ def test_phantom_payload_does_not_change_vector_worker_trajectory(tmp_path):
         # same stable task IDs and random streams must create the same race.
         assert classic_count == phantom_count
         assert int(classic.root_out_degree) == int(phantom.root_out_degree)
-        for field in (
+        paired_fields = (
+            (
                 "log_L_constraints",
+                classic.samples.log_L_constraints,
+                phantom.samples.log_L_constraints,
+            ),
+            (
                 "log_likelihoods",
+                classic.samples.log_likelihoods,
+                phantom.samples.log_likelihoods,
+            ),
+            (
                 "U_samples",
+                classic.samples.U_samples,
+                phantom.samples.U_samples,
+            ),
+            (
                 "out_degree",
+                classic.samples.out_degree,
+                phantom.samples.out_degree,
+            ),
+            (
                 "num_likelihood_evaluations",
-        ):
-            left = getattr(classic.samples, field)[:classic_count]
-            right = getattr(phantom.samples, field)[:phantom_count]
-            assert bool(jnp.array_equal(left, right)), field
+                classic.samples.num_likelihood_evaluations,
+                phantom.samples.num_likelihood_evaluations,
+            ),
+        )
+        for field, left, right in paired_fields:
+            assert bool(jnp.array_equal(
+                left[:classic_count],
+                right[:phantom_count],
+            )), field
         assert not bool(jnp.any(
             classic.samples.phantom_samples.valid_mask[:classic_count]
         ))
@@ -704,7 +923,7 @@ def test_real_pool_runs_scalar_vmap_retries_and_cli_lifecycle(tmp_path):
         config = load_runtime_config(config_path)
         manifest = json.loads(config.manifest.read_text(encoding="utf-8"))
         assert manifest["protocol_version"] == PROTOCOL_VERSION
-        assert manifest["transports"] == ["ipc"]
+        assert manifest["transports"] == ["ipc", "tcp"]
         idempotent = json.loads(_cli(config_path, "up").stdout)
         assert idempotent["idempotent"] is True
         assert all(worker["ready"] for worker in idempotent["workers"])
@@ -718,7 +937,7 @@ def test_real_pool_runs_scalar_vmap_retries_and_cli_lifecycle(tmp_path):
         )
         distributed = DistributedNestedSampler(
             model=model,
-            config=config_path,
+            coordinator_port=config.network.port,
             root_allocation_degree=4,
             delta_K=4,
             max_samples=16,
@@ -742,13 +961,14 @@ def test_real_pool_runs_scalar_vmap_retries_and_cli_lifecycle(tmp_path):
             state.samples.phantom_samples.valid_mask[4:state.num_samples]
         ))
 
-        # Exercise both worker specializations explicitly. The scheduler is
-        # allowed to leave capacity idle once all scientific gaps are already
-        # reserved, so pool conformance does not rely on incidental gap width.
-        conformance_id = "scalar-vector"
+        # Exercise worker-local vmap explicitly. A partially filled worker
+        # takes the scalar path after batch_wait_s, while two compatible queued
+        # tasks use its configured two-lane vmap.
+        conformance_id = "worker-programs"
         # The local lambda proves one-time model/session registration supports
         # notebook and closure code rather than only importable module symbols.
         conformance = WorkerSession(
+            model=model,
             sampler=sampler,
             args=(lambda value: value,),
             params=None,
@@ -783,11 +1003,6 @@ def test_real_pool_runs_scalar_vmap_retries_and_cli_lifecycle(tmp_path):
 
         workers = _status(config_path)["workers"]
         assert workers[0]["compile_s"] > 0.0
-        assert any(
-            worker["compile_s"] > 0.0
-            for worker in workers
-            if worker["batch_size"] == 1
-        )
         compile_before_resume = {
             worker["name"]: worker["compile_s"] for worker in workers
         }
@@ -808,11 +1023,16 @@ def test_real_pool_runs_scalar_vmap_retries_and_cli_lifecycle(tmp_path):
         }
         assert compile_after_resume == compile_before_resume
 
-        # Register a new uncompiled session, kill its active scalar worker,
-        # and observe the unchanged task complete on the other scalar worker.
+        # Register a new uncompiled session, kill its active worker, and
+        # observe the unchanged task complete after an automatic replacement.
         session_id = "worker-loss"
         loss_sampler = UniDimSliceSampler(model=model, num_slices=50)
-        session = WorkerSession(sampler=loss_sampler, args=(), params=None)
+        session = WorkerSession(
+            model=model,
+            sampler=loss_sampler,
+            args=(),
+            params=None,
+        )
         request = ConstrainedSampleRequest(
             keys=jax.random.split(jax.random.PRNGKey(22), 1),
             valid=jnp.asarray([True]),
@@ -831,7 +1051,7 @@ def test_real_pool_runs_scalar_vmap_retries_and_cli_lifecycle(tmp_path):
             deadline = time.monotonic() + 5.0
             while time.monotonic() < deadline and busy is None:
                 for worker in _status(config_path)["workers"]:
-                    if worker["batch_size"] == 1 and worker["busy"]:
+                    if worker["busy"]:
                         busy = worker
                         break
                 if busy is None:
@@ -844,15 +1064,10 @@ def test_real_pool_runs_scalar_vmap_retries_and_cli_lifecycle(tmp_path):
             client.acknowledge(session_id, task_id)
             client.release(session_id)
 
-        degraded = _status(config_path)
-        assert sum(
-            worker["ready"] and worker["batch_size"] == 1
-            for worker in degraded["workers"]
-        ) == 1
-        assert any(
-            worker["exit_code"] is not None
-            for worker in degraded["workers"]
-        )
+        healed = _status(config_path)
+        assert len(healed["workers"]) == 1
+        assert healed["workers"][0]["ready"]
+        assert healed["workers"][0]["process_id"] != busy["process_id"]
 
         # A live stack rejects changed behavior rather than spawning another
         # owner, while `down` still finds the old endpoint through its manifest.
@@ -868,7 +1083,7 @@ def test_real_pool_runs_scalar_vmap_retries_and_cli_lifecycle(tmp_path):
     assert second_down["idempotent"] is True
 
 
-def test_authenticated_node_joins_runs_and_drains_over_tcp(tmp_path):
+def test_node_joins_runs_restarts_and_drains_over_tcp(tmp_path):
     coordinator, node = _write_network_configs(tmp_path)
     _cli(coordinator, "up")
     try:
@@ -882,7 +1097,7 @@ def test_authenticated_node_joins_runs_and_drains_over_tcp(tmp_path):
                 remote = next(
                     (
                         worker for worker in workers
-                        if worker["worker_id"] == "remote/cpu"
+                        if worker["worker_id"] == "remote/cpu-0"
                         and worker["ready"]
                     ),
                     None,
@@ -892,11 +1107,39 @@ def test_authenticated_node_joins_runs_and_drains_over_tcp(tmp_path):
                 time.sleep(0.05)
             assert remote is not None
 
+            # The node supervisor owns desired device state. An abrupt worker
+            # loss creates a fresh instance with the same logical name, and
+            # the coordinator advances the lease generation rather than
+            # permanently starving that device from the pool.
+            old_process_id = remote["process_id"]
+            old_generation = remote["lease_generation"]
+            os.kill(old_process_id, signal.SIGKILL)
+            deadline = time.monotonic() + 15.0
+            replacement = None
+            while time.monotonic() < deadline:
+                replacement = next(
+                    (
+                        worker
+                        for worker in _status(coordinator)["workers"]
+                        if worker["worker_id"] == "remote/cpu-0"
+                        and worker["ready"]
+                        and worker["process_id"] != old_process_id
+                    ),
+                    None,
+                )
+                if replacement is not None:
+                    break
+                time.sleep(0.05)
+            assert replacement is not None
+            assert replacement["lease_generation"] > old_generation
+
             model = make_toy_model()
             sampler = UniDimSliceSampler(model=model, num_slices=2)
             distributed = DistributedNestedSampler(
                 model=model,
-                config=coordinator,
+                coordinator_port=load_runtime_config(
+                    coordinator
+                ).network.port,
                 root_allocation_degree=3,
                 delta_K=3,
                 max_samples=12,
@@ -910,6 +1153,68 @@ def test_authenticated_node_joins_runs_and_drains_over_tcp(tmp_path):
             )
             assert not checkpoint.pending
             assert int(checkpoint.state.num_samples) > 3
+
+            # Removing the only node is an operational pause, not a failed
+            # scientific run. Keep the same thread and checkpoint alive beyond
+            # its coordinator-health timeout, then let a fresh node instance
+            # register and consume the coordinator's queued work.
+            slow_sampler = UniDimSliceSampler(model=model, num_slices=100)
+            starved = DistributedNestedSampler(
+                model=model,
+                coordinator_port=load_runtime_config(
+                    coordinator
+                ).network.port,
+                root_allocation_degree=3,
+                delta_K=3,
+                max_samples=60,
+                initial_capacity=12,
+                sampler=slow_sampler,
+                receive_timeout_s=0.1,
+            )
+            outcome = {}
+
+            def run_while_capacity_changes():
+                try:
+                    outcome["checkpoint"] = starved.run_until_goal(
+                        lambda state: int(state.goal_loop_iter) >= 3,
+                        depth_cond=TerminationCondition(
+                            dlogZ=jnp.asarray(0.5)
+                        ),
+                        key=jax.random.PRNGKey(78),
+                    )
+                except BaseException as exc:  # noqa: BLE001
+                    outcome["error"] = exc
+
+            science = threading.Thread(
+                target=run_while_capacity_changes,
+                name="jaxns-starvation-test",
+            )
+            science.start()
+            deadline = time.monotonic() + 15.0
+            busy = False
+            while time.monotonic() < deadline and not busy:
+                busy = any(
+                    worker["worker_id"] == "remote/cpu-0"
+                    and worker["busy"]
+                    for worker in _status(coordinator)["workers"]
+                )
+                if not busy:
+                    time.sleep(0.02)
+            assert busy, "Scientific work never reached the only remote node."
+
+            stopped = _cli(node, "down", check=False)
+            assert stopped.returncode == 0, stopped.stderr
+            # This exceeds receive_timeout_s by a wide margin. The old path
+            # raised here; the new path must retain and wait on queued tasks.
+            time.sleep(0.5)
+            assert science.is_alive()
+            _cli(node, "up")
+            science.join(timeout=45.0)
+            assert not science.is_alive()
+            assert "error" not in outcome
+            recovered = outcome["checkpoint"]
+            assert not recovered.pending
+            assert int(recovered.state.goal_loop_iter) >= 3
         finally:
             stopped = _cli(node, "down", check=False)
             assert stopped.returncode == 0, stopped.stderr
@@ -921,41 +1226,13 @@ def test_authenticated_node_joins_runs_and_drains_over_tcp(tmp_path):
             state = next(
                 worker["state"]
                 for worker in workers
-                if worker["worker_id"] == "remote/cpu"
+                if worker["worker_id"] == "remote/cpu-0"
             )
             if state == "dropped":
                 break
             time.sleep(0.05)
         assert state == "dropped"
 
-        # A certificate that was not installed in the coordinator's allowlist
-        # never reaches the pickle-bearing worker protocol.
-        unauthorized_public, unauthorized_secret = create_curve_certificate(
-            tmp_path / "unauthorized-keys",
-            "unauthorized",
-        )
-        node_config = load_runtime_config(node)
-        bad_node = tmp_path / "unauthorized.toml"
-        bad_node.write_text(
-            node.read_text(encoding="utf-8")
-            .replace('node_id = "remote"', 'node_id = "unauthorized"')
-            .replace("startup_timeout_s = 30", "startup_timeout_s = 2")
-            .replace(
-                str(node_config.network.client_public_key),
-                str(unauthorized_public),
-            )
-            .replace(
-                str(node_config.network.client_secret_key),
-                str(unauthorized_secret),
-            ),
-            encoding="utf-8",
-        )
-        rejected = _cli(bad_node, "up", check=False)
-        assert rejected.returncode == 1
-        assert all(
-            worker["node_id"] != "unauthorized"
-            for worker in _status(coordinator)["workers"]
-        )
     finally:
         stopped = _cli(coordinator, "down", check=False)
         assert stopped.returncode == 0, stopped.stderr

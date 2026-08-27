@@ -55,6 +55,10 @@ No formatter/type-checker is configured; aim for clean PEP-8 that passes `flake8
 - Formatting: 4 spaces; no tabs; wrap long lines (~88-100); trailing commas in multi-line; f-strings.
 - Types: use 3.10 typing (`List[int]`, `Dict[str, Any]`, `X | Y`); type public APIs and non-trivial internals; avoid
   `Any`.
+- Do not implement behavior through reflective or dynamic-type branching such
+  as `hasattr`, `isinstance`, `setattr`, or `getattr`. Define an explicit typed
+  interface on the owning class instead. At serialization boundaries, validate
+  the exact wire schema rather than using subclass-aware dispatch.
 - Naming: modules `snake_case.py`; functions/vars `snake_case`; classes `PascalCase`; consts `UPPER_SNAKE_CASE`; private
   `_name`.
 - Structure: production code in `src/jaxns/...`; tests in `cicd/tests/...`; Don't put anything inside `__init__.py` files.

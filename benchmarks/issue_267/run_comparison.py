@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import socket
 import subprocess
 import sys
 import tempfile
@@ -21,6 +23,7 @@ from jaxns.constrained_sampler import UniDimSliceSampler
 from jaxns.core import NestedSampler
 from jaxns.distributed_core import DistributedNestedSampler
 from jaxns.model import Model
+from jaxns.runtime_config import load_runtime_config
 from jaxns.termination_condition import TerminationCondition
 
 tfpd = tfp.distributions
@@ -61,11 +64,11 @@ def local_runner(model: Model, phantoms: bool) -> NestedSampler:
 def distributed_runner(
         model: Model,
         phantoms: bool,
-        config: Path,
+        coordinator_port: int,
 ) -> DistributedNestedSampler:
     return DistributedNestedSampler(
         model=model,
-        config=config,
+        coordinator_port=coordinator_port,
         root_allocation_degree=6,
         delta_K=6,
         max_samples=512,
@@ -97,8 +100,19 @@ def measure(runner, seed: int) -> dict[str, float | int]:
 
 
 def write_local_config(path: Path) -> None:
+    with socket.socket() as listener:
+        listener.bind(("127.0.0.1", 0))
+        port = listener.getsockname()[1]
+    workers = "\n\n".join(
+        f"""[[workers]]
+platform = "cpu"
+device = {device}
+batch_size = 1"""
+        for device in range(3)
+    )
+    os.environ["XLA_FLAGS"] = "--xla_force_host_platform_device_count=3"
     path.write_text(
-        """
+        f"""
 [runtime]
 stack_id = "issue-267-benchmark"
 runtime_dir = "runtime"
@@ -107,12 +121,10 @@ startup_timeout_s = 60
 shutdown_timeout_s = 20
 task_timeout_s = 120
 
-[[workers]]
-name = "cpu"
-platform = "cpu"
-device = 0
-batch_size = 1
-count = 3
+[network]
+port = {port}
+
+{workers}
 """.strip() + "\n",
         encoding="utf-8",
     )
@@ -154,7 +166,11 @@ def main() -> int:
             for phantoms in (False, True):
                 runners = {
                     "local": local_runner(model, phantoms),
-                    "distributed": distributed_runner(model, phantoms, config),
+                    "distributed": distributed_runner(
+                        model,
+                        phantoms,
+                        load_runtime_config(config).network.port,
+                    ),
                 }
                 for name, runner in runners.items():
                     warm = measure(runner, 0)

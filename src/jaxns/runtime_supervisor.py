@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import collections
+import dataclasses
 import fcntl
 import hashlib
 import json
@@ -18,16 +19,25 @@ from uuid import uuid4
 
 import zmq
 
-from jaxns.runtime_config import RuntimeConfig, WorkerConfig, load_runtime_config
+from jaxns.runtime_config import (
+    RuntimeConfig,
+    WorkerConfig,
+    load_runtime_config,
+    worker_name,
+)
 from jaxns.runtime_protocol import (
     ACK,
     CAPACITY,
     DRAIN,
     DRAINED,
     ERROR,
+    EVALUATE,
     HEARTBEAT,
     HEARTBEAT_ACK,
     LEASED,
+    NODE_HEARTBEAT,
+    NODE_HEARTBEAT_ACK,
+    NODE_RESTARTED,
     NODE_STATUS,
     NODE_STOPPED,
     PING,
@@ -38,6 +48,7 @@ from jaxns.runtime_protocol import (
     RELEASE,
     RELEASED,
     RESULT,
+    SAMPLE,
     SHUTDOWN,
     STATUS,
     STOP,
@@ -46,12 +57,19 @@ from jaxns.runtime_protocol import (
     decode_header,
     encode_header,
 )
-from jaxns.runtime_transport import (
-    configure_curve_server,
-    start_curve_authenticator,
-)
 
 logger = logging.getLogger(__name__)
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class RestartRequest:
+    """Idempotent request to replace one dropped remote worker instance."""
+
+    request_id: str
+    worker_name: str
+    instance_id: str
+    lease_generation: int
+    reason: str
 
 
 class WorkerRecord:
@@ -80,6 +98,8 @@ class WorkerRecord:
         "ready",
         "registered",
         "reported_process_id",
+        "restart_at_s",
+        "restart_count",
         "router",
         "started_s",
         "task",
@@ -103,7 +123,8 @@ class WorkerRecord:
         self.log_file = log_file
         self.identity = identity
         self.node_id = node_id
-        self.worker_id = f"{node_id}/{config.name}" if node_id else config.name
+        name = worker_name(config)
+        self.worker_id = f"{node_id}/{name}" if node_id else name
         self.instance_id = instance_id
         self.router = router
         self.lease_id = ""
@@ -113,6 +134,8 @@ class WorkerRecord:
         self.dropped = False
         self.registered: set[str] = set()
         self.reported_process_id = 0
+        self.restart_at_s = 0.0
+        self.restart_count = 0
         self.task: tuple[tuple[str, int], ...] | None = None
         self.assignment_id = ""
         self.started_s = 0.0
@@ -126,12 +149,13 @@ class WorkerRecord:
 
 
 class TaskRecord:
-    """Retry-stable scalar thread retained until client acknowledgement."""
+    """Retry-stable worker operation retained until client acknowledgement."""
 
     __slots__ = (
         "batch_group",
         "completion_group",
         "fingerprint",
+        "operation",
         "payload",
         "queued_s",
         "result_header",
@@ -145,11 +169,13 @@ class TaskRecord:
             self,
             task_id: int,
             batch_group: str,
+            operation: str,
             fingerprint: str,
             payload: bytes,
     ) -> None:
         self.task_id = task_id
         self.batch_group = batch_group
+        self.operation = operation
         self.completion_group = f"task:{task_id}"
         self.fingerprint = fingerprint
         self.payload = payload
@@ -195,7 +221,7 @@ class SessionRecord:
 
 
 class Supervisor:
-    """Route opaque scalar threads across local and remote device workers."""
+    """Route opaque scalar operations across local and remote workers."""
 
     def __init__(self, config: RuntimeConfig):
         if config.role != "coordinator":
@@ -203,15 +229,16 @@ class Supervisor:
         self.config = config
         self.context = zmq.Context()
         self.socket = self._router()
-        self.network_socket = None
-        self.authenticator = None
+        self.network_socket = self._router()
         self.poller = zmq.Poller()
         self.poller.register(self.socket, zmq.POLLIN)
+        self.poller.register(self.network_socket, zmq.POLLIN)
         self.workers: dict[bytes, WorkerRecord] = {}
         self.worker_ids: dict[str, bytes] = {}
         self.sessions: dict[str, SessionRecord] = {}
         self.session_order: collections.deque[str] = collections.deque()
         self.drains: dict[str, tuple[object, bytes]] = {}
+        self.restart_requests: dict[str, dict[str, RestartRequest]] = {}
         self.stopping = False
         self.lock_file = None
 
@@ -225,19 +252,16 @@ class Supervisor:
         self._acquire_ownership()
         self.socket.bind(self.config.endpoint)
         network = self.config.network
-        if network is not None and network.listen is not None:
-            self.authenticator = start_curve_authenticator(self.context, network)
-            self.network_socket = self._router()
-            configure_curve_server(self.network_socket, network)
-            self.network_socket.bind(network.listen)
-            self.poller.register(self.network_socket, zmq.POLLIN)
+        if network.port is None:  # pragma: no cover - validated by role
+            raise ValueError("A coordinator requires a TCP port.")
+        self.network_socket.bind(f"tcp://0.0.0.0:{network.port}")
         self._write_manifest()
         self._start_workers()
         logger.info(
-            "Coordinator %s listening locally at %s and remotely at %s",
+            "Coordinator %s listening locally at %s and on TCP port %d",
             self.config.stack_id,
             self.config.endpoint,
-            None if network is None else network.advertise,
+            network.port,
         )
         try:
             while not self.stopping:
@@ -248,9 +272,10 @@ class Supervisor:
                 events = dict(self.poller.poll(poll_ms))
                 if self.socket in events:
                     self._receive(self.socket)
-                if self.network_socket is not None and self.network_socket in events:
+                if self.network_socket in events:
                     self._receive(self.network_socket)
                 self._reap_workers()
+                self._restart_workers()
                 self._expire_workers()
                 self._expire_tasks()
                 self._dispatch()
@@ -264,10 +289,14 @@ class Supervisor:
         self.stopping = True
 
     def _prepare_runtime(self) -> None:
+        scientific_endpoint = Path(
+            self.config.endpoint.removeprefix("ipc://")
+        ).parent
         for directory in (
             self.config.runtime_dir,
             self.config.log_dir,
             self.config.lock.parent,
+            scientific_endpoint,
         ):
             directory.mkdir(parents=True, exist_ok=True, mode=0o700)
             directory.chmod(0o700)
@@ -283,7 +312,6 @@ class Supervisor:
             ) from exc
 
     def _write_manifest(self) -> None:
-        network = self.config.network
         document = {
             "schema_version": 2,
             "protocol_version": PROTOCOL_VERSION,
@@ -293,10 +321,8 @@ class Supervisor:
             "config_fingerprint": self.config.fingerprint,
             "process_id": os.getpid(),
             "endpoint": self.config.endpoint,
-            "advertise": None if network is None else network.advertise,
-            "transports": (
-                ["ipc"] if network is None else ["ipc", "curve-tcp"]
-            ),
+            "port": self.config.network.port,
+            "transports": ["ipc", "tcp"],
             "started_ns": time.time_ns(),
         }
         temporary = self.config.manifest.with_suffix(".tmp")
@@ -307,8 +333,9 @@ class Supervisor:
     def _start_workers(self) -> None:
         for worker in self.config.workers:
             instance_id = uuid4().hex
+            name = worker_name(worker)
             identity = (
-                f"worker:{self.config.node_id}/{worker.name}:{instance_id}"
+                f"worker:{self.config.node_id}/{name}:{instance_id}"
             ).encode()
             process, log_file = _start_worker_process(
                 self.config,
@@ -335,12 +362,6 @@ class Supervisor:
             return
         identity, raw_header, *payloads = frames
         try:
-            payload_bytes = sum(len(payload) for payload in payloads)
-            if payload_bytes > self.config.max_payload_bytes:
-                raise ValueError(
-                    f"Message payload is {payload_bytes} bytes; configured "
-                    f"maximum is {self.config.max_payload_bytes} bytes."
-                )
             header = decode_header(raw_header)
             command = header["command"]
             if command == HEARTBEAT:
@@ -445,12 +466,22 @@ class Supervisor:
             raise ValueError(f"Unsupported worker command {command!r}.")
 
     def _lease_worker(self, router, identity: bytes, header: dict[str, object]) -> None:
+        had_capacity = any(
+            candidate.ready and not candidate.draining
+            for candidate in self.workers.values()
+        )
         worker_id = _string_field(header, "worker_id")
         node_id = _string_field(header, "node_id")
-        name = _string_field(header, "name")
+        configured_platform = _string_field(header, "configured_platform")
+        configured_device = _string_field(header, "configured_device")
         instance_id = _string_field(header, "instance_id")
         batch_size = _integer_field(header, "batch_size")
-        if worker_id != f"{node_id}/{name}":
+        config = WorkerConfig(
+            platform=configured_platform,
+            device=configured_device,
+            batch_size=batch_size,
+        )
+        if worker_id != f"{node_id}/{worker_name(config)}":
             raise ValueError("Worker identity fields are inconsistent.")
         existing_identity = self.worker_ids.get(worker_id)
         previous_generation = 0
@@ -459,14 +490,19 @@ class Supervisor:
             if existing_identity is not None:
                 existing = self.workers[existing_identity]
                 previous_generation = existing.lease_generation
-                if existing.ready:
-                    raise ValueError(f"Worker {worker_id!r} already has a live lease.")
-            config = WorkerConfig(
-                name=name,
-                platform=_string_field(header, "platform"),
-                device=_string_field(header, "device"),
-                batch_size=batch_size,
-            )
+                # A node can disappear without completing its shutdown
+                # handshake and then be restarted by an operator much later.
+                # The new process is authoritative for this logical device;
+                # fencing the old lease also requeues every unfinished task.
+                if existing.process is not None and existing.process.poll() is None:
+                    existing.process.terminate()
+                self._drop_worker(
+                    existing,
+                    "superseded by a fresh worker instance",
+                    request_restart=False,
+                    log_starvation=False,
+                )
+                del self.workers[existing_identity]
             worker = WorkerRecord(
                 config,
                 None,
@@ -495,7 +531,16 @@ class Supervisor:
         worker.ready = True
         worker.draining = False
         worker.dropped = False
+        worker.restart_count = 0
         worker.last_heartbeat_s = time.monotonic()
+        # A fresh lease proves that this logical device has already been
+        # replaced. Retire any at-least-once request targeting an older
+        # instance, even if its explicit acknowledgement was lost.
+        self._clear_restart_requests(
+            node_id,
+            worker_name(config),
+            current_instance_id=instance_id,
+        )
         self._send(
             identity,
             encode_header(
@@ -510,6 +555,8 @@ class Supervisor:
         for session in self.sessions.values():
             self._send_registration(worker, session)
         logger.info("Leased worker %s with capacity %d", worker_id, batch_size)
+        if not had_capacity:
+            logger.info("Distributed worker capacity is available again")
 
     def _receive_heartbeat(
             self,
@@ -564,10 +611,54 @@ class Supervisor:
                 ),
                 router=router,
             )
+        elif command == NODE_HEARTBEAT:
+            # The node initiates this bidirectional control connection, so no
+            # inbound worker-node port is required. Restart requests remain in
+            # coordinator memory until acknowledged or made obsolete by a
+            # fresh lease, and are therefore replayed after a partition.
+            requests = self.restart_requests.get(node_id, {})
+            self._send(
+                identity,
+                encode_header(
+                    NODE_HEARTBEAT_ACK,
+                    node_id=node_id,
+                    restart_requests=[
+                        {
+                            "request_id": request.request_id,
+                            "worker_name": request.worker_name,
+                            "instance_id": request.instance_id,
+                            "lease_generation": request.lease_generation,
+                            "reason": request.reason,
+                        }
+                        for request in requests.values()
+                    ],
+                ),
+                router=router,
+            )
+        elif command == NODE_RESTARTED:
+            request_ids = _string_list(header, "request_ids")
+            requests = self.restart_requests.get(node_id, {})
+            for request_id in request_ids:
+                requests.pop(request_id, None)
+            if not requests:
+                self.restart_requests.pop(node_id, None)
+            self._send(
+                identity,
+                encode_header(
+                    ACK,
+                    node_id=node_id,
+                    request_ids=request_ids,
+                ),
+                router=router,
+            )
         elif command == NODE_STOPPED:
             for worker in tuple(self.workers.values()):
                 if worker.node_id == node_id and worker.ready:
-                    self._drop_worker(worker, "node stopped")
+                    self._drop_worker(
+                        worker,
+                        "node stopped",
+                        request_restart=False,
+                    )
             self._send(
                 identity,
                 encode_header(ACK, node_id=node_id),
@@ -583,8 +674,6 @@ class Supervisor:
             payload: bytes,
     ) -> None:
         session_id = _string_field(header, "session_id")
-        if _string_field(header, "config_fingerprint") != self.config.fingerprint:
-            raise ValueError("Scientific client configuration does not match coordinator.")
         fingerprint = hashlib.sha256(payload).hexdigest()
         capabilities = _dictionary_field(header, "capabilities")
         session = self.sessions.get(session_id)
@@ -607,23 +696,15 @@ class Supervisor:
         else:
             session.client = identity
             session.registration_notified = False
-        live = [
+        compatible = [
             worker
             for worker in self.workers.values()
             if worker.ready
-        ]
-        compatible = [
-            worker for worker in live
             if self._compatible(worker, session)
         ]
-        if live and not compatible:
-            raise RuntimeError(
-                "No ready worker has compatible Python, JAXNS, JAX/JAXLIB, "
-                "x64, and dtype capabilities."
-            )
-        # An empty coordinator is a valid dynamic-pool state. Keep the session
-        # registered; SupervisorClient.register() remains bounded by its
-        # timeout and a later worker lease completes this handshake.
+        # No compatible worker is a valid dynamic-pool state. The session
+        # remains registered indefinitely so a repaired or newly added node
+        # can complete the handshake even days into the scientific run.
         for worker in compatible:
             if session_id not in worker.registered:
                 self._send_registration(worker, session)
@@ -703,15 +784,25 @@ class Supervisor:
         session_id = _string_field(header, "session_id")
         task_ids = _integer_list(header, "task_ids")
         batch_groups = _string_list(header, "batch_groups")
-        if len(task_ids) != len(batch_groups) or len(task_ids) != len(payloads):
-            raise ValueError("Task IDs, batch groups, and payloads disagree.")
+        operations = _string_list(header, "operations")
+        if (
+            len(task_ids) != len(batch_groups)
+            or len(task_ids) != len(operations)
+            or len(task_ids) != len(payloads)
+        ):
+            raise ValueError(
+                "Task IDs, batch groups, operations, and payloads disagree."
+            )
+        if any(operation not in (SAMPLE, EVALUATE) for operation in operations):
+            raise ValueError("Distributed task operation is unsupported.")
         if len(set(task_ids)) != len(task_ids):
             raise ValueError("Task IDs within one atomic submission must be unique.")
         session = self._session_owned(identity, session_id)
         prepared = []
-        for task_id, batch_group, payload in zip(
+        for task_id, batch_group, operation, payload in zip(
                 task_ids,
                 batch_groups,
+                operations,
                 payloads,
                 strict=True,
         ):
@@ -719,9 +810,15 @@ class Supervisor:
             existing = session.tasks.get(task_id)
             if existing is not None and existing.fingerprint != fingerprint:
                 raise ValueError(f"Task {task_id} changed its payload.")
+            if existing is not None and (
+                existing.batch_group != batch_group
+                or existing.operation != operation
+            ):
+                raise ValueError(f"Task {task_id} changed its execution group.")
             prepared.append((
                 task_id,
                 batch_group,
+                operation,
                 fingerprint,
                 payload,
                 existing,
@@ -730,7 +827,14 @@ class Supervisor:
         # Validate the whole transport batch before mutating the retry table.
         # A malformed sibling cannot leave a partially queued reservation.
         completed = []
-        for task_id, batch_group, fingerprint, payload, existing in prepared:
+        for (
+            task_id,
+            batch_group,
+            operation,
+            fingerprint,
+            payload,
+            existing,
+        ) in prepared:
             if existing is not None:
                 if existing.state == "completed":
                     completed.append(existing)
@@ -741,7 +845,13 @@ class Supervisor:
                         existing.result_payload,
                     )
                 continue
-            task = TaskRecord(task_id, batch_group, fingerprint, payload)
+            task = TaskRecord(
+                task_id,
+                batch_group,
+                operation,
+                fingerprint,
+                payload,
+            )
             session.tasks[task_id] = task
             session.queue.append(task_id)
         self._replay_completed(session, tuple(completed))
@@ -806,6 +916,7 @@ class Supervisor:
                     TASK,
                     session_id=session.session_id,
                     task_ids=[task.task_id for task in tasks],
+                    operation=tasks[0].operation,
                     assignment_id=assignment_id,
                     lease_id=worker.lease_id,
                 ),
@@ -833,7 +944,12 @@ class Supervisor:
             if not queued:
                 continue
             group = queued[0].batch_group
-            compatible = [task for task in queued if task.batch_group == group]
+            operation = queued[0].operation
+            compatible = [
+                task
+                for task in queued
+                if task.batch_group == group and task.operation == operation
+            ]
             width = min(worker.config.batch_size, len(compatible))
             if (
                 width < worker.config.batch_size
@@ -909,7 +1025,7 @@ class Supervisor:
     def _worker_error(self, worker: WorkerRecord, header: dict[str, object]) -> None:
         task_ids = header.get("task_ids")
         session_id = header.get("session_id")
-        if type(session_id) is str and isinstance(task_ids, list):
+        if type(session_id) is str and type(task_ids) is list:
             session = self.sessions.get(session_id)
             if session is not None:
                 for task_id in task_ids:
@@ -951,12 +1067,57 @@ class Supervisor:
             worker.exit_code = exit_code
             if worker.ready:
                 self._drop_worker(worker, f"process exited with code {exit_code}")
+            if worker.log_file is not None:
+                worker.log_file.close()
+                worker.log_file = None
+            worker.restart_count += 1
+            delay_s = min(30.0, 0.25 * 2 ** min(worker.restart_count, 7))
+            worker.restart_at_s = time.monotonic() + delay_s
+
+    def _restart_workers(self) -> None:
+        """Replace configured local processes under a fresh worker lease."""
+        now = time.monotonic()
+        for identity, worker in tuple(self.workers.items()):
+            if (
+                worker.process is None
+                or worker.exit_code is None
+                or now < worker.restart_at_s
+            ):
+                continue
+            instance_id = uuid4().hex
+            name = worker_name(worker.config)
+            next_identity = (
+                f"worker:{self.config.node_id}/{name}:{instance_id}"
+            ).encode()
+            process, log_file = _start_worker_process(
+                self.config,
+                worker.config,
+                self.config.endpoint,
+                instance_id,
+            )
+            replacement = WorkerRecord(
+                worker.config,
+                process,
+                log_file,
+                next_identity,
+                node_id=self.config.node_id,
+                instance_id=instance_id,
+                router=self.socket,
+            )
+            replacement.lease_generation = worker.lease_generation
+            replacement.restart_count = worker.restart_count
+            del self.workers[identity]
+            self.workers[next_identity] = replacement
+            self.worker_ids[replacement.worker_id] = next_identity
+            logger.info("Restarted worker %s as a fresh instance", name)
 
     def _expire_workers(self) -> None:
         deadline = self.config.heartbeat_interval_s * self.config.missed_heartbeats
         now = time.monotonic()
         for worker in self.workers.values():
             if worker.ready and now - worker.last_heartbeat_s > deadline:
+                if worker.process is not None and worker.process.poll() is None:
+                    worker.process.terminate()
                 self._drop_worker(worker, "missed heartbeat lease")
 
     def _expire_tasks(self) -> None:
@@ -968,7 +1129,14 @@ class Supervisor:
                 worker.process.terminate()
             self._drop_worker(worker, "task timeout")
 
-    def _drop_worker(self, worker: WorkerRecord, reason: str) -> None:
+    def _drop_worker(
+            self,
+            worker: WorkerRecord,
+            reason: str,
+            *,
+            request_restart: bool = True,
+            log_starvation: bool = True,
+    ) -> None:
         if worker.dropped:
             return
         logger.warning("Dropping worker %s: %s", worker.worker_id, reason)
@@ -979,6 +1147,65 @@ class Supervisor:
         worker.registered.clear()
         for session in self.sessions.values():
             session.registered.discard(worker.identity)
+        if request_restart and worker.process is None and worker.node_id:
+            self._queue_restart_request(worker, reason)
+        if log_starvation and not any(
+            candidate.ready and not candidate.draining
+            for candidate in self.workers.values()
+        ):
+            logger.warning(
+                "Distributed worker pool has no live capacity; queued work "
+                "will wait for a worker to recover or join"
+            )
+
+    def _queue_restart_request(
+            self,
+            worker: WorkerRecord,
+            reason: str,
+    ) -> None:
+        """Retain one restart request until its remote node acknowledges it."""
+        requests = self.restart_requests.setdefault(worker.node_id, {})
+        for request in requests.values():
+            if (
+                request.worker_name == worker_name(worker.config)
+                and request.instance_id == worker.instance_id
+            ):
+                return
+        request = RestartRequest(
+            request_id=uuid4().hex,
+            worker_name=worker_name(worker.config),
+            instance_id=worker.instance_id,
+            lease_generation=worker.lease_generation,
+            reason=reason,
+        )
+        requests[request.request_id] = request
+        logger.info(
+            "Queued restart request for remote worker %s instance %s",
+            worker.worker_id,
+            worker.instance_id,
+        )
+
+    def _clear_restart_requests(
+            self,
+            node_id: str,
+            name: str,
+            *,
+            current_instance_id: str,
+    ) -> None:
+        """Retire requests made obsolete by a fresh worker lease."""
+        requests = self.restart_requests.get(node_id)
+        if requests is None:
+            return
+        obsolete = [
+            request_id
+            for request_id, request in requests.items()
+            if request.worker_name == name
+            and request.instance_id != current_instance_id
+        ]
+        for request_id in obsolete:
+            del requests[request_id]
+        if not requests:
+            del self.restart_requests[node_id]
 
     def _requeue(self, worker: WorkerRecord) -> None:
         if worker.task is None:
@@ -1013,10 +1240,6 @@ class Supervisor:
             )
             del self.drains[node_id]
 
-    def _report_missing_capacity(self, batch_size: int) -> None:
-        """Compatibility shim: scalar tasks are valid on every worker width."""
-        del batch_size
-
     def _session_owned(self, identity: bytes, session_id: str) -> SessionRecord:
         session = self.sessions.get(session_id)
         if session is None:
@@ -1046,6 +1269,10 @@ class Supervisor:
                 sum(task.state == "completed" for task in session.tasks.values())
                 for session in self.sessions.values()
             ),
+            "pending_restarts": sum(
+                len(requests)
+                for requests in self.restart_requests.values()
+            ),
         }
 
     def _worker_status(self, worker: WorkerRecord) -> dict[str, object]:
@@ -1060,7 +1287,7 @@ class Supervisor:
         else:
             state = "connecting"
         return {
-            "name": worker.config.name,
+            "name": worker_name(worker.config),
             "worker_id": worker.worker_id,
             "node_id": worker.node_id,
             "configured_platform": worker.config.platform,
@@ -1124,15 +1351,11 @@ class Supervisor:
 
     def _cleanup(self) -> None:
         for router in (self.socket, self.network_socket):
-            if router is None:
-                continue
             try:
                 self.poller.unregister(router)
             except KeyError:
                 pass
             router.close(linger=0)
-        if self.authenticator is not None:
-            self.authenticator.stop()
         self.context.term()
         try:
             self.config.manifest.unlink()
@@ -1170,9 +1393,13 @@ def _start_worker_process(
         endpoint: str,
         instance_id: str,
 ) -> tuple[subprocess.Popen, object]:
-    log_path = config.log_dir / f"{worker.name}.log"
+    name = worker_name(worker)
+    log_path = config.log_dir / f"{name}.log"
     log_file = log_path.open("ab", buffering=0)
     environment = os.environ.copy()
+    # Workers are intentionally multi-process and may share an accelerator.
+    # Each process must claim only the memory its program actually needs.
+    environment["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
     if worker.platform == "gpu":
         environment["CUDA_VISIBLE_DEVICES"] = worker.device
         environment["JAX_PLATFORMS"] = "cuda"
@@ -1189,8 +1416,10 @@ def _start_worker_process(
             str(config.source),
             "--endpoint",
             endpoint,
-            "--name",
-            worker.name,
+            "--platform",
+            worker.platform,
+            "--configured-device",
+            worker.device,
             "--batch-size",
             str(worker.batch_size),
             "--device-index",
@@ -1225,7 +1454,7 @@ def _integer_field(header: dict[str, object], name: str) -> int:
 
 def _integer_list(header: dict[str, object], name: str) -> list[int]:
     value = header.get(name)
-    if not isinstance(value, list) or not value or not all(
+    if type(value) is not list or not value or not all(
         type(item) is int for item in value
     ):
         raise ValueError(f"Protocol field {name!r} must be an integer list.")
@@ -1234,7 +1463,7 @@ def _integer_list(header: dict[str, object], name: str) -> list[int]:
 
 def _string_list(header: dict[str, object], name: str) -> list[str]:
     value = header.get(name)
-    if not isinstance(value, list) or not value or not all(
+    if type(value) is not list or not value or not all(
         type(item) is str for item in value
     ):
         raise ValueError(f"Protocol field {name!r} must be a string list.")

@@ -61,24 +61,12 @@ def _validate(config: RuntimeConfig) -> int:
         "node_id": config.node_id,
         "role": config.role,
         "worker_endpoint": config.worker_endpoint,
-        "network": None if network is None else {
-            "advertise": network.advertise,
-            "authorized_clients": (
-                None
-                if network.authorized_clients is None
-                else str(network.authorized_clients)
-            ),
+        "network": {
             "coordinator": network.coordinator,
-            "listen": network.listen,
-            "server_public_key": (
-                None
-                if network.server_public_key is None
-                else str(network.server_public_key)
-            ),
+            "port": network.port,
         },
         "log_dir": str(config.log_dir),
         "program_cache_size": config.program_cache_size,
-        "max_payload_bytes": config.max_payload_bytes,
         "runtime_dir": str(config.runtime_dir),
         "stack_id": config.stack_id,
         "startup_timeout_s": config.startup_timeout_s,
@@ -88,7 +76,6 @@ def _validate(config: RuntimeConfig) -> int:
             {
                 "batch_size": worker.batch_size,
                 "device": worker.device,
-                "name": worker.name,
                 "platform": worker.platform,
             }
             for worker in config.workers
@@ -133,7 +120,7 @@ def _up(config: RuntimeConfig) -> int:
 
     # One durable owner creates every local device process. On the main node it
     # also coordinates scientific work; remote nodes connect their workers to
-    # that coordinator over authenticated TCP.
+    # that coordinator over TCP on the trusted scientific network.
     module = (
         "jaxns.runtime_supervisor"
         if config.role == "coordinator"
@@ -168,10 +155,10 @@ def _up(config: RuntimeConfig) -> int:
             time.sleep(0.05)
             continue
         workers = last_status.get("workers", [])
-        if isinstance(workers, list):
+        if type(workers) is list:
             exited = [
                 worker for worker in workers
-                if isinstance(worker, dict)
+                if type(worker) is dict
                 and worker.get("exit_code") is not None
             ]
             if exited:
@@ -189,12 +176,18 @@ def _up(config: RuntimeConfig) -> int:
                 )
             local_workers = [
                 worker for worker in workers
-                if isinstance(worker, dict)
+                if type(worker) is dict
                 and worker.get("node_id", config.node_id) == config.node_id
             ]
-            if len(local_workers) == len(config.workers) and all(
+            workers_started = len(local_workers) == len(config.workers)
+            # A remote node is a durable desired-state owner. Its workers may
+            # remain connecting through a long partition and register when
+            # the coordinator becomes reachable, so `up` must not kill the
+            # node supervisor merely because no lease exists yet.
+            workers_ready = config.role == "node" or all(
                 worker.get("ready") is True for worker in local_workers
-            ):
+            )
+            if workers_started and workers_ready:
                 last_status["idempotent"] = False
                 _print(last_status)
                 return 0
@@ -263,25 +256,12 @@ def _parser() -> argparse.ArgumentParser:
     commands.add_parser("up")
     commands.add_parser("status")
     commands.add_parser("down")
-    auth = commands.add_parser("auth")
-    auth_commands = auth.add_subparsers(dest="auth_command", required=True)
-    create = auth_commands.add_parser("create")
-    create.add_argument("--directory", required=True, type=Path)
-    create.add_argument("--name", required=True)
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
-        if args.command == "auth":
-            if args.auth_command != "create":
-                raise RuntimeError(f"Unsupported auth command {args.auth_command!r}.")
-            from jaxns.runtime_transport import create_curve_certificate
-
-            public, secret = create_curve_certificate(args.directory, args.name)
-            _print({"public_key": str(public), "secret_key": str(secret)})
-            return 0
         if args.config is None:
             raise ValueError("--config is required for this command.")
         config = load_runtime_config(args.config)

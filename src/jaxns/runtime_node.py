@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import fcntl
 import json
 import logging
@@ -15,11 +16,20 @@ from uuid import uuid4
 
 import zmq
 
-from jaxns.runtime_config import RuntimeConfig, load_runtime_config
+from jaxns.runtime_config import (
+    RuntimeConfig,
+    WorkerConfig,
+    load_runtime_config,
+    worker_name,
+)
 from jaxns.runtime_protocol import (
     ACK,
     DRAIN,
     DRAINED,
+    ERROR,
+    NODE_HEARTBEAT,
+    NODE_HEARTBEAT_ACK,
+    NODE_RESTARTED,
     NODE_STATUS,
     NODE_STOPPED,
     PING,
@@ -29,25 +39,51 @@ from jaxns.runtime_protocol import (
     encode_header,
 )
 from jaxns.runtime_supervisor import _start_worker_process
-from jaxns.runtime_transport import configure_curve_client
 
 logger = logging.getLogger(__name__)
+
+
+@dataclasses.dataclass(slots=True)
+class NodeWorker:
+    """One configured process that is replaced after lease loss or exit."""
+
+    config: WorkerConfig
+    process: subprocess.Popen | None = None
+    log_file: object | None = None
+    started_s: float = 0.0
+    restart_at_s: float = 0.0
+    restart_count: int = 0
+    exit_code: int | None = None
+    instance_id: str = ""
 
 
 class NodeSupervisor:
     """Own local device processes while the central coordinator owns work."""
 
     def __init__(self, config: RuntimeConfig):
-        if config.role != "node" or config.network is None:
+        if config.role != "node":
             raise ValueError("runtime_node requires a remote worker-node config.")
         self.config = config
         self.context = zmq.Context()
         self.socket = self.context.socket(zmq.ROUTER)
         self.socket.setsockopt(zmq.LINGER, 0)
+        self.coordinator = self.context.socket(zmq.DEALER)
+        self.coordinator.setsockopt(
+            zmq.IDENTITY,
+            f"node:{self.config.node_id}:heartbeat".encode(),
+        )
+        self.coordinator.setsockopt(zmq.LINGER, 0)
+        # Do not accumulate days of stale heartbeat messages through a
+        # partition. The next periodic heartbeat is sufficient to recover the
+        # bidirectional control channel after ZeroMQ reconnects.
+        self.coordinator.setsockopt(zmq.IMMEDIATE, 1)
+        self.coordinator.setsockopt(zmq.SNDHWM, 1)
+        self.coordinator.connect(self.config.worker_endpoint)
         self.poller = zmq.Poller()
         self.poller.register(self.socket, zmq.POLLIN)
-        self.processes: list[tuple[object, object, str]] = []
-        self.reported_exits: set[int] = set()
+        self.poller.register(self.coordinator, zmq.POLLIN)
+        self.workers: list[NodeWorker] = []
+        self.next_heartbeat_s = 0.0
         self.leased = False
         self.stopping = False
         self.lock_file = None
@@ -58,13 +94,14 @@ class NodeSupervisor:
         self.socket.bind(self.config.endpoint)
         self._write_manifest()
         self._start_workers()
-        self._wait_until_leased()
-        self.leased = True
         try:
             while not self.stopping:
+                self._send_heartbeat_if_due()
                 events = dict(self.poller.poll(100))
                 if self.socket in events:
                     self._receive()
+                if self.coordinator in events:
+                    self._receive_coordinator()
                 self._observe_processes()
         finally:
             self._drain(
@@ -114,14 +151,25 @@ class NodeSupervisor:
         temporary.replace(self.config.manifest)
 
     def _start_workers(self) -> None:
-        for worker in self.config.workers:
-            process, log_file = _start_worker_process(
-                self.config,
-                worker,
-                self.config.worker_endpoint,
-                uuid4().hex,
-            )
-            self.processes.append((process, log_file, worker.name))
+        for config in self.config.workers:
+            worker = NodeWorker(config=config)
+            self.workers.append(worker)
+            self._start_worker(worker)
+
+    def _start_worker(self, worker: NodeWorker) -> None:
+        instance_id = uuid4().hex
+        process, log_file = _start_worker_process(
+            self.config,
+            worker.config,
+            self.config.worker_endpoint,
+            instance_id,
+        )
+        worker.process = process
+        worker.log_file = log_file
+        worker.instance_id = instance_id
+        worker.started_s = time.monotonic()
+        worker.restart_at_s = 0.0
+        worker.exit_code = None
 
     def _receive(self) -> None:
         frames = self.socket.recv_multipart()
@@ -147,19 +195,156 @@ class NodeSupervisor:
             raise ValueError(f"Unsupported node command {command!r}.")
         self.socket.send_multipart([identity, response, b""])
 
+    def _send_heartbeat_if_due(self) -> None:
+        """Offer one bounded control heartbeat to the central coordinator."""
+        now = time.monotonic()
+        if now < self.next_heartbeat_s:
+            return
+        self.next_heartbeat_s = now + self.config.heartbeat_interval_s
+        try:
+            self.coordinator.send_multipart(
+                [
+                    encode_header(
+                        NODE_HEARTBEAT,
+                        node_id=self.config.node_id,
+                    ),
+                    b"",
+                ],
+                flags=zmq.NOBLOCK,
+            )
+        except zmq.Again:
+            # IMMEDIATE plus a one-message HWM makes an unreachable
+            # coordinator a quiet retry state rather than an unbounded queue.
+            return
+
+    def _receive_coordinator(self) -> None:
+        """Apply commands returned over the node-initiated control socket."""
+        frames = self.coordinator.recv_multipart()
+        if len(frames) != 2:
+            logger.warning(
+                "Coordinator returned %d node-control frames",
+                len(frames),
+            )
+            return
+        header = decode_header(frames[0])
+        command = header["command"]
+        if command == NODE_HEARTBEAT_ACK:
+            self._handle_restart_requests(header.get("restart_requests"))
+        elif command == ACK:
+            return
+        elif command == ERROR:
+            logger.warning(
+                "Coordinator rejected node control message: %s",
+                header.get("error", "unknown error"),
+            )
+        else:
+            logger.warning("Unexpected coordinator command %r", command)
+
+    def _handle_restart_requests(self, values) -> None:
+        """Fence only the exact remote instances named by the coordinator."""
+        if type(values) is not list:
+            logger.warning("Coordinator returned invalid restart requests")
+            return
+        workers = {
+            worker_name(worker.config): worker
+            for worker in self.workers
+        }
+        handled = []
+        for value in values:
+            if type(value) is not dict:
+                logger.warning("Coordinator returned an invalid restart request")
+                continue
+            request_id = value.get("request_id")
+            name = value.get("worker_name")
+            instance_id = value.get("instance_id")
+            generation = value.get("lease_generation")
+            reason = value.get("reason")
+            if (
+                type(request_id) is not str
+                or type(name) is not str
+                or type(instance_id) is not str
+                or type(generation) is not int
+                or type(reason) is not str
+            ):
+                logger.warning("Coordinator returned an invalid restart request")
+                continue
+            worker = workers.get(name)
+            if worker is None or worker.instance_id != instance_id:
+                # Missing configuration or a different current instance means
+                # this at-least-once request is already obsolete.
+                handled.append(request_id)
+                continue
+            process = worker.process
+            if process is not None and process.poll() is None:
+                try:
+                    process.terminate()
+                except OSError:
+                    logger.exception(
+                        "Could not fence worker %s instance %s",
+                        name,
+                        instance_id,
+                    )
+                    continue
+                logger.warning(
+                    "Coordinator fenced worker %s lease %d: %s",
+                    name,
+                    generation,
+                    reason,
+                )
+            handled.append(request_id)
+        if handled:
+            self.coordinator.send_multipart([
+                encode_header(
+                    NODE_RESTARTED,
+                    node_id=self.config.node_id,
+                    request_ids=handled,
+                ),
+                b"",
+            ])
+
     def _observe_processes(self) -> None:
-        for process, _, name in self.processes:
-            if process.poll() is not None and process.pid not in self.reported_exits:
-                logger.error("Worker %s exited with code %s", name, process.returncode)
-                self.reported_exits.add(process.pid)
+        now = time.monotonic()
+        healthy_s = max(
+            10.0,
+            2.0
+            * self.config.heartbeat_interval_s
+            * self.config.missed_heartbeats,
+        )
+        for worker in self.workers:
+            process = worker.process
+            if process is not None and process.poll() is None:
+                if now - worker.started_s >= healthy_s:
+                    worker.restart_count = 0
+                continue
+            if process is not None:
+                worker.exit_code = process.returncode
+                logger.warning(
+                    "Worker %s exited with code %s; scheduling replacement",
+                    worker_name(worker.config),
+                    process.returncode,
+                )
+                if worker.log_file is not None:
+                    worker.log_file.close()
+                worker.process = None
+                worker.log_file = None
+                worker.restart_count += 1
+                # A partition can repeatedly fence a newly started process.
+                # Backoff prevents a hot restart loop while remaining
+                # unbounded so the node heals whenever connectivity returns.
+                delay_s = min(30.0, 0.25 * 2 ** min(worker.restart_count, 7))
+                worker.restart_at_s = now + delay_s
+            if not self.stopping and now >= worker.restart_at_s:
+                self._start_worker(worker)
 
     def _status(self) -> dict[str, object]:
         remote = self._coordinator_status(timeout_s=1.0)
         remote_workers = {
             worker["name"]: worker
             for worker in remote.get("workers", [])
-            if isinstance(worker, dict) and type(worker.get("name")) is str
+            if type(worker) is dict and type(worker.get("name")) is str
         }
+        if any(worker.get("ready") is True for worker in remote_workers.values()):
+            self.leased = True
         return {
             "stack_id": self.config.stack_id,
             "node_id": self.config.node_id,
@@ -169,45 +354,34 @@ class NodeSupervisor:
             "coordinator": self.config.worker_endpoint,
             "workers": [
                 {
-                    "name": name,
-                    "process_id": process.pid,
+                    "name": worker_name(worker.config),
+                    "process_id": (
+                        None if worker.process is None else worker.process.pid
+                    ),
                     "ready": (
-                        process.poll() is None
-                        and remote_workers.get(name, {}).get("ready") is True
+                        worker.process is not None
+                        and worker.process.poll() is None
+                        and remote_workers.get(
+                            worker_name(worker.config), {}
+                        ).get("ready") is True
                     ),
-                    "state": remote_workers.get(name, {}).get(
+                    "state": remote_workers.get(
+                        worker_name(worker.config), {}
+                    ).get(
                         "state",
-                        "disconnected" if process.poll() is None else "exited",
+                        (
+                            "connecting"
+                            if worker.process is not None
+                            and worker.process.poll() is None
+                            else "restarting"
+                        ),
                     ),
-                    "exit_code": process.poll(),
+                    "exit_code": worker.exit_code,
+                    "restart_count": worker.restart_count,
                 }
-                for process, _, name in self.processes
+                for worker in self.workers
             ],
         }
-
-    def _wait_until_leased(self) -> None:
-        deadline = time.monotonic() + self.config.startup_timeout_s
-        expected = {worker.name for worker in self.config.workers}
-        while time.monotonic() < deadline:
-            for process, _, name in self.processes:
-                if process.poll() is not None:
-                    raise RuntimeError(
-                        f"Worker {name!r} exited during node startup with "
-                        f"code {process.returncode}."
-                    )
-            status = self._coordinator_status(timeout_s=0.5)
-            ready = {
-                worker["name"]
-                for worker in status.get("workers", [])
-                if isinstance(worker, dict) and worker.get("ready") is True
-            }
-            if expected <= ready:
-                return
-            time.sleep(0.05)
-        raise RuntimeError(
-            f"Workers on node {self.config.node_id!r} did not receive "
-            "coordinator leases before startup timeout."
-        )
 
     def _coordinator_status(self, timeout_s: float) -> dict[str, object]:
         manager = self._manager()
@@ -232,7 +406,6 @@ class NodeSupervisor:
             f"node:{self.config.node_id}:{uuid4().hex}".encode(),
         )
         socket.setsockopt(zmq.LINGER, 0)
-        configure_curve_client(socket, self.config.network)
         socket.connect(self.config.worker_endpoint)
         return socket
 
@@ -254,17 +427,19 @@ class NodeSupervisor:
 
     def _stop_workers(self) -> None:
         deadline = time.monotonic() + self.config.shutdown_timeout_s
-        for process, _, _ in self.processes:
-            if process.poll() is None:
-                process.terminate()
-        for process, log_file, _ in self.processes:
-            if process.poll() is None:
+        for worker in self.workers:
+            if worker.process is not None and worker.process.poll() is None:
+                worker.process.terminate()
+        for worker in self.workers:
+            process = worker.process
+            if process is not None and process.poll() is None:
                 try:
                     process.wait(timeout=max(0.0, deadline - time.monotonic()))
                 except subprocess.TimeoutExpired:
                     process.kill()
                     process.wait()
-            log_file.close()
+            if worker.log_file is not None:
+                worker.log_file.close()
 
     def _notify_stopped(self) -> None:
         manager = self._manager()
@@ -282,7 +457,9 @@ class NodeSupervisor:
 
     def _cleanup(self) -> None:
         self.poller.unregister(self.socket)
+        self.poller.unregister(self.coordinator)
         self.socket.close(linger=0)
+        self.coordinator.close(linger=0)
         self.context.term()
         try:
             self.config.manifest.unlink()

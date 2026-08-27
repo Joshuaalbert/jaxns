@@ -6,7 +6,9 @@ import argparse
 import dataclasses
 import hashlib
 import json
+import os
 import pickle
+import socket
 import subprocess
 import sys
 import tempfile
@@ -40,6 +42,19 @@ def prior_model():
 
 
 def write_config(path: Path, workers: int, batch_size: int = 1) -> None:
+    with socket.socket() as listener:
+        listener.bind(("127.0.0.1", 0))
+        port = listener.getsockname()[1]
+    worker_tables = "\n\n".join(
+        f"""[[workers]]
+platform = "cpu"
+device = {device}
+batch_size = {batch_size}"""
+        for device in range(workers)
+    )
+    os.environ["XLA_FLAGS"] = (
+        f"--xla_force_host_platform_device_count={workers}"
+    )
     path.write_text(
         f"""
 [runtime]
@@ -50,12 +65,10 @@ startup_timeout_s = 60
 shutdown_timeout_s = 20
 task_timeout_s = 120
 
-[[workers]]
-name = "cpu"
-platform = "cpu"
-device = 0
-batch_size = {batch_size}
-count = {workers}
+[network]
+port = {port}
+
+{worker_tables}
 """.strip() + "\n",
         encoding="utf-8",
     )
@@ -199,7 +212,12 @@ def run_round(
 def measure(workers: int, tasks: int, repeats: int) -> dict[str, object]:
     model = Model(prior_model=prior_model)
     sampler = UniDimSliceSampler(model=model, num_slices=10)
-    session = WorkerSession(sampler=sampler, args=(), params=None)
+    session = WorkerSession(
+        model=model,
+        sampler=sampler,
+        args=(),
+        params=None,
+    )
     seed_u = model.sample_U(jax.random.PRNGKey(0))
     seed_log_likelihood = model.log_likelihood(seed_u)
     with tempfile.TemporaryDirectory(prefix="jaxns-throughput-") as directory:
@@ -322,7 +340,12 @@ def measure_batch_grouping(tasks: int, repeats: int) -> dict[str, object]:
         num_slices=10,
         direction=EllipsoidalDirection(num_components=2),
     )
-    session = WorkerSession(sampler=sampler, args=(), params=None)
+    session = WorkerSession(
+        model=model,
+        sampler=sampler,
+        args=(),
+        params=None,
+    )
     seed_u = model.sample_U(jax.random.PRNGKey(0))
     seed_log_likelihood = model.log_likelihood(seed_u)
     sampler_data = empty_sampler_data(num_components=2, dimension=1)

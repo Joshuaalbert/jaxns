@@ -14,11 +14,58 @@ from jax import random
 from jaxns.cumulative_ops import cumulative_op_static
 from jaxns.mixed_precision import mp_policy
 from jaxns.model import Model
-from jaxns.multi_ellipsoid_utils import SamplerData
+from jaxns.multi_ellipsoid_utils import SamplerData, empty_sampler_data
 from jaxns.pytree import PureDataclassPytree, TreeField, pytree_ravel
 from jaxns.random_utils import sample_uniformly_masked
 from jaxns.samples import PhantomSamples, Samples, SeedPoint
 from jaxns.types import BoolArray, FloatArray, IntArray, PRNGKey, UType
+
+
+@dataclasses.dataclass(slots=True, frozen=True)
+class LikelihoodRequest(PureDataclassPytree):
+    """Unit-hypercube points whose likelihoods must run on a worker."""
+
+    U_samples: UType  # [S, ...] unit-hypercube pytree leaves
+
+
+LikelihoodRequest.register_pytree()
+
+
+@dataclasses.dataclass(slots=True, frozen=True)
+class LikelihoodEvaluation(PureDataclassPytree):
+    """Worker-computed likelihood values aligned with one request."""
+
+    log_likelihoods: FloatArray  # [S]
+
+
+LikelihoodEvaluation.register_pytree()
+
+
+def evaluate_request(
+        model: Model,
+        request: LikelihoodRequest,
+        *,
+        args=(),
+        params=None,
+) -> LikelihoodEvaluation:
+    """Evaluate likelihoods without involving constrained-chain state."""
+
+    def evaluate_one(U):
+        return model.log_likelihood(
+            U,
+            args=args,
+            params=params,
+            allow_nan=False,
+        ).astype(mp_policy.measure_dtype)
+
+    batch_size = jax.tree.leaves(request.U_samples)[0].shape[0]
+    if batch_size == 1:
+        log_likelihoods = evaluate_one(
+            jax.tree.map(lambda values: values[0], request.U_samples)
+        )[None]
+    else:
+        log_likelihoods = jax.vmap(evaluate_one)(request.U_samples)
+    return LikelihoodEvaluation(log_likelihoods=log_likelihoods)
 
 
 @dataclasses.dataclass(slots=True, frozen=True)
@@ -72,30 +119,13 @@ def sample_request(
 
     def sample_one(sample_key, constraint, seed_u, seed_log_likelihood):
         seed = SeedPoint(U0=seed_u, log_L0=seed_log_likelihood)
-        if isinstance(sampler, UniDimSliceSampler):
-            if sampler.direction is not None:
-                return sampler.get_sample_with_diagnostics(
-                    sample_key,
-                    constraint,
-                    seed,
-                    args=args,
-                    params=params,
-                    sampler_data=request.sampler_data,
-                )
-            return sampler.get_sample(
-                sample_key,
-                constraint,
-                seed,
-                args=args,
-                params=params,
-                sampler_data=None,
-            )
-        return sampler.get_sample(
+        return sampler.get_sample_with_diagnostics(
             sample_key,
             constraint,
             seed,
             args=args,
             params=params,
+            sampler_data=request.sampler_data,
         )
 
     batch_size = request.log_L_constraints.shape[0]
@@ -114,22 +144,14 @@ def sample_request(
             request.seed_points.U0,
             request.seed_points.log_L0,
         )
-    if (
-        isinstance(sampler, UniDimSliceSampler)
-        and sampler.direction is not None
-    ):
-        (
-            U_samples,
-            log_likelihoods,
-            num_evals,
-            phantom_samples,
-            num_directions,
-            num_isotropic,
-        ) = sampled
-    else:
-        U_samples, log_likelihoods, num_evals, phantom_samples = sampled
-        num_directions = jnp.zeros_like(num_evals)
-        num_isotropic = jnp.zeros_like(num_evals)
+    (
+        U_samples,
+        log_likelihoods,
+        num_evals,
+        phantom_samples,
+        num_directions,
+        num_isotropic,
+    ) = sampled
     return ConstrainedSampleBatch(
         U_samples=U_samples,
         log_likelihoods=log_likelihoods,
@@ -173,6 +195,54 @@ class AbstractSampler(ABC):
             phantom_samples: samples that satisfy the constraint but were not accepted. Can be used for various things, e.g. estimating evidence uncertainty.
         """
         ...
+
+    def get_sample_with_diagnostics(
+            self,
+            key,
+            log_L_constraint: FloatArray,
+            seed_point: SeedPoint,
+            args=(),
+            params=None,
+            sampler_data: SamplerData | None = None,
+    ) -> tuple[
+        UType,
+        FloatArray,
+        IntArray,
+        PhantomSamples,
+        IntArray,
+        IntArray,
+    ]:
+        """Sample through the uniform core interface with zero diagnostics."""
+        if sampler_data is not None:
+            raise ValueError(
+                "This sampler does not accept adaptive direction data."
+            )
+        U_sample, log_L, num_evals, phantom = self.get_sample(
+            key,
+            log_L_constraint,
+            seed_point,
+            args=args,
+            params=params,
+        )
+        zero = jnp.asarray(0, mp_policy.count_dtype)
+        return U_sample, log_L, num_evals, phantom, zero, zero
+
+    def uses_adaptive_directions(self) -> bool:
+        """Return whether the core must maintain contour direction geometry."""
+        return False
+
+    def direction_config(self) -> EllipsoidalDirection | None:
+        """Return adaptive direction configuration through an explicit API."""
+        return None
+
+    def initial_sampler_data(self, dimension: int) -> SamplerData | None:
+        """Construct optional sampler state for a new nested-sampling run."""
+        del dimension
+        return None
+
+    def validate_core(self, dimension: int) -> None:
+        """Validate sampler compatibility with the current race-tree core."""
+        del dimension
 
 
 @partial(jax.jit, inline=True)
@@ -685,6 +755,42 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
             return self.num_slices - 1 - burn_in
         return 0
 
+    def uses_adaptive_directions(self) -> bool:
+        return self.direction is not None
+
+    def direction_config(self) -> EllipsoidalDirection | None:
+        return self.direction
+
+    def initial_sampler_data(self, dimension: int) -> SamplerData | None:
+        if self.direction is None:
+            return None
+        return empty_sampler_data(
+            self.direction.num_components,
+            dimension,
+        )
+
+    def validate_core(self, dimension: int) -> None:
+        if not self.no_step_out:
+            raise ValueError(
+                "The current core requires perfect/no-step-out bracketing."
+            )
+        if self.gradient_guided:
+            raise ValueError(
+                "Gradient-guided sampling is not implemented in this core."
+            )
+        if self.direction is None:
+            return
+        min_effective_samples = self.direction.min_effective_samples
+        if min_effective_samples is None:
+            min_effective_samples = (
+                4 * self.direction.num_components * (dimension + 1)
+            )
+        if min_effective_samples > self.direction.population_size:
+            raise ValueError(
+                "EllipsoidalDirection.population_size must be at least its "
+                "resolved min_effective_samples."
+            )
+
     def get_sample(
             self,
             key,
@@ -694,7 +800,7 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
             params=None,
             sampler_data: SamplerData | None = None,
     ) -> tuple[UType, FloatArray, IntArray, PhantomSamples]:
-        output = self.get_sample_with_diagnostics(
+        output = self._get_sample_with_diagnostics(
             key,
             log_L_constraint,
             seed_point,
@@ -720,7 +826,40 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
         IntArray,
         IntArray,
     ]:
-        """Sample one chain and return internal direction-use counters."""
+        """Sample one chain and expose diagnostics only for adaptive directions."""
+        output = self._get_sample_with_diagnostics(
+            key,
+            log_L_constraint,
+            seed_point,
+            args=args,
+            params=params,
+            sampler_data=sampler_data,
+        )
+        if self.direction is not None:
+            return output
+        # The existing isotropic core reports no direction diagnostics. Keep
+        # those internal counters unobserved so XLA can eliminate their work
+        # and the explicit sampler API does not change user-facing results.
+        zero = jnp.asarray(0, mp_policy.count_dtype)
+        return *output[:4], zero, zero
+
+    def _get_sample_with_diagnostics(
+            self,
+            key,
+            log_L_constraint: FloatArray,
+            seed_point: SeedPoint,
+            args=(),
+            params=None,
+            sampler_data: SamplerData | None = None,
+    ) -> tuple[
+        UType,
+        FloatArray,
+        IntArray,
+        PhantomSamples,
+        IntArray,
+        IntArray,
+    ]:
+        """Execute the slice chain and return its complete internal counters."""
 
         class XType(NamedTuple):
             key: jax.Array

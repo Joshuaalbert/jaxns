@@ -13,17 +13,23 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
-from jaxns.runtime_config import RuntimeConfig, load_runtime_config
+from jaxns.runtime_config import (
+    RuntimeConfig,
+    coordinator_endpoint,
+    load_runtime_config,
+)
 from jaxns.runtime_protocol import (
     ACK,
     CAPACITY,
     ERROR,
+    EVALUATE,
     PING,
     REGISTER,
     REGISTERED,
     RELEASE,
     RELEASED,
     RESULT,
+    SAMPLE,
     SHUTDOWN,
     STATUS,
     TASK,
@@ -35,6 +41,8 @@ if TYPE_CHECKING:
     from jaxns.constrained_sampler import (
         ConstrainedSampleBatch,
         ConstrainedSampleRequest,
+        LikelihoodEvaluation,
+        LikelihoodRequest,
     )
     from jaxns.distributed_core import WorkerSession
     from jaxns.multi_ellipsoid_utils import SamplerData
@@ -74,9 +82,8 @@ def _sampler_batch_group(sampler_data: SamplerData | None) -> str:
 class SupervisorClient:
     """Connect one scientific session to its local coordinator.
 
-    Model code enters the coordinator only through same-user IPC. The
-    coordinator may forward it to explicitly authorized CurveZMQ workers, but
-    this code-executing boundary is never exposed as unauthenticated TCP.
+    Model code enters the coordinator only through same-user IPC. The TCP port
+    is merely the stable local identifier from which that IPC path is derived.
     """
 
     def __init__(
@@ -84,8 +91,6 @@ class SupervisorClient:
             endpoint: str,
             *,
             default_timeout_s: float,
-            config_fingerprint: str,
-            max_payload_bytes: int = 536_870_912,
     ):
         if not endpoint.startswith("ipc://"):
             raise ValueError("The local runtime accepts only ipc:// endpoints.")
@@ -107,13 +112,11 @@ class SupervisorClient:
         self._poller = zmq.Poller()
         self._poller.register(self._socket, zmq.POLLIN)
         self._default_timeout_s = default_timeout_s
-        self._config_fingerprint = config_fingerprint
-        self._max_payload_bytes = max_payload_bytes
         self._results: deque[
             tuple[dict[str, object], tuple[bytes, ...]]
         ] = deque()
         self._decoded_results: deque[
-            tuple[int, ConstrainedSampleBatch]
+            tuple[int, ConstrainedSampleBatch | LikelihoodEvaluation]
         ] = deque()
 
     @classmethod
@@ -128,8 +131,14 @@ class SupervisorClient:
         return cls(
             endpoint,
             default_timeout_s=config.startup_timeout_s,
-            config_fingerprint=config.fingerprint,
-            max_payload_bytes=config.max_payload_bytes,
+        )
+
+    @classmethod
+    def from_port(cls, port: int) -> SupervisorClient:
+        """Connect a scientific process using only its local coordinator port."""
+        return cls(
+            coordinator_endpoint(port),
+            default_timeout_s=120.0,
         )
 
     def close(self) -> None:
@@ -183,26 +192,26 @@ class SupervisorClient:
                 "`pip install jaxns[distributed]`."
             ) from exc
         # Model definitions commonly originate in notebooks, scripts, or
-        # closures. Cloudpickle preserves that Python code boundary; the
-        # Loading this payload can execute code. It enters through local IPC
-        # and reaches only worker public keys authorized by the coordinator.
+        # closures. Cloudpickle preserves that Python code boundary. Loading
+        # this payload can execute code, so distributed pools are a trusted
+        # scientific-compute boundary rather than a public service endpoint.
         payload = cloudpickle.dumps(
             session,
             protocol=pickle.HIGHEST_PROTOCOL,
         )
-        self._check_payload(payload)
         self._socket.send_multipart([
             encode_header(
                 REGISTER,
                 session_id=session_id,
-                config_fingerprint=self._config_fingerprint,
                 capabilities=_scientific_capabilities(),
             ),
             payload,
         ])
-        deadline = time.monotonic() + self._default_timeout_s
         while True:
-            header, result_payloads = self._receive_until(deadline)
+            # A scientific job may start before its workers and may remain
+            # open for nodes that join days later. Registration therefore has
+            # no wall-clock deadline; interruption remains under user control.
+            header, result_payloads = self._receive_until(None)
             command = header["command"]
             if command == RESULT:
                 self._results.append((header, result_payloads))
@@ -216,7 +225,7 @@ class SupervisorClient:
             if header.get("session_id") != session_id:
                 raise RuntimeError("Supervisor registered an unexpected session.")
             capacities = header.get("capacities")
-            if not isinstance(capacities, list) or not all(
+            if type(capacities) is not list or not all(
                 type(value) is int and value > 0 for value in capacities
             ):
                 raise RuntimeError("Supervisor returned invalid worker capacities.")
@@ -272,13 +281,62 @@ class SupervisorClient:
                 request,
                 protocol=pickle.HIGHEST_PROTOCOL,
             ))
-        self._check_payloads(payloads)
+        self._submit_payloads(
+            session_id,
+            task_ids,
+            batch_groups,
+            [SAMPLE] * len(task_ids),
+            payloads,
+        )
+
+    def evaluate_many(
+            self,
+            session_id: str,
+            tasks: tuple[tuple[int, LikelihoodRequest], ...],
+    ) -> None:
+        """Queue scalar likelihood evaluations without sampling a chain."""
+        import jax
+
+        if not tasks:
+            raise ValueError("At least one likelihood task is required.")
+        task_ids = []
+        payloads = []
+        for task_id, request in tasks:
+            width = jax.tree.leaves(request.U_samples)[0].shape[0]
+            if width != 1:
+                raise ValueError(
+                    "Distributed likelihood tasks are scalar; worker "
+                    "batch_size controls vmap grouping."
+                )
+            task_ids.append(task_id)
+            payloads.append(pickle.dumps(
+                request,
+                protocol=pickle.HIGHEST_PROTOCOL,
+            ))
+        self._submit_payloads(
+            session_id,
+            task_ids,
+            [EVALUATE] * len(task_ids),
+            [EVALUATE] * len(task_ids),
+            payloads,
+        )
+
+    def _submit_payloads(
+            self,
+            session_id: str,
+            task_ids: list[int],
+            batch_groups: list[str],
+            operations: list[str],
+            payloads: list[bytes],
+    ) -> None:
+        """Send one atomically validated group of opaque scalar tasks."""
         self._socket.send_multipart([
             encode_header(
                 TASK,
                 session_id=session_id,
                 task_ids=task_ids,
                 batch_groups=batch_groups,
+                operations=operations,
             ),
             *payloads,
         ])
@@ -288,7 +346,7 @@ class SupervisorClient:
             session_id: str,
             *,
             timeout_s: float | None = None,
-    ) -> tuple[int, ConstrainedSampleBatch]:
+    ) -> tuple[int, ConstrainedSampleBatch | LikelihoodEvaluation]:
         """Receive whichever task completes first for the registered session."""
         if not self._decoded_results:
             group = self.receive_group(session_id, timeout_s=timeout_s)
@@ -300,7 +358,9 @@ class SupervisorClient:
             session_id: str,
             *,
             timeout_s: float | None = None,
-    ) -> tuple[tuple[int, ConstrainedSampleBatch], ...]:
+    ) -> tuple[
+        tuple[int, ConstrainedSampleBatch | LikelihoodEvaluation], ...
+    ]:
         """Receive one complete worker assignment without a lane barrier leak."""
         if self._decoded_results:
             result = tuple(self._decoded_results)
@@ -320,7 +380,7 @@ class SupervisorClient:
             raise RuntimeError("Supervisor returned a result for another session.")
         task_ids = header.get("task_ids")
         if (
-            not isinstance(task_ids, list)
+            type(task_ids) is not list
             or not task_ids
             or not all(type(task_id) is int for task_id in task_ids)
         ):
@@ -329,7 +389,6 @@ class SupervisorClient:
             raise RuntimeError("Worker result IDs and payloads disagree.")
         results = []
         try:
-            self._check_payloads(payloads)
             for task_id, payload in zip(task_ids, payloads, strict=True):
                 results.append((task_id, pickle.loads(payload)))
         except Exception as exc:
@@ -371,10 +430,13 @@ class SupervisorClient:
 
     def _receive_until(
             self,
-            deadline: float,
+            deadline: float | None,
     ) -> tuple[dict[str, object], tuple[bytes, ...]]:
-        remaining_ms = max(0, int((deadline - time.monotonic()) * 1000))
-        events = dict(self._poller.poll(remaining_ms))
+        if deadline is None:
+            events = dict(self._poller.poll())
+        else:
+            remaining_ms = max(0, int((deadline - time.monotonic()) * 1000))
+            events = dict(self._poller.poll(remaining_ms))
         if self._socket not in events:
             raise RuntimeUnavailableError(
                 "The local JAXNS supervisor did not answer before the timeout."
@@ -383,20 +445,6 @@ class SupervisorClient:
         if len(frames) < 2:
             raise RuntimeError("Supervisor returned an invalid frame count.")
         return decode_header(frames[0]), tuple(frames[1:])
-
-    def _check_payload(self, payload: bytes) -> None:
-        self._check_payloads((payload,))
-
-    def _check_payloads(
-            self,
-            payloads: tuple[bytes, ...] | list[bytes],
-    ) -> None:
-        size = sum(len(payload) for payload in payloads)
-        if size > self._max_payload_bytes:
-            raise ValueError(
-                f"Runtime payload is {size} bytes; configured maximum "
-                f"is {self._max_payload_bytes} bytes."
-            )
 
 
 def _manifest_endpoint(config: RuntimeConfig) -> str:

@@ -31,8 +31,8 @@ JAXNS can:
 4. Model continuous and discrete variables using JAX-compatible distributions.
 5. Retain stationary phantom states and optionally condition final Monte Carlo
    evidence estimates on them.
-6. Run locally on one JAX device or dispatch constrained-sampling chains to a
-   trusted pool of heterogeneous devices on the same machine.
+6. Run locally on one JAX device or dispatch likelihood and constrained-chain
+   work to a trusted heterogeneous pool across one or more machines.
 
 The original JAXNS paper is available on
 [arXiv](https://arxiv.org/abs/2012.15286), as is the paper on
@@ -198,11 +198,12 @@ are expensive enough to outweigh process and IPC overhead and a machine has
 multiple useful devices. The local core remains the preferred path for one
 device or cheap likelihoods.
 
-The same runtime covers one machine and multiple nodes. Scientific model code
-enters the coordinator through same-user `ipc://`. Workers on the coordinator
-node also use IPC automatically; remote workers use authenticated and encrypted
-CurveZMQ over TCP. Python model payloads are never accepted over unauthenticated
-TCP.
+The same runtime covers one machine and multiple nodes. The scientific process
+connects to its local coordinator through same-user `ipc://`; it identifies
+that coordinator by TCP port and does not read the runtime TOML. Workers on the
+coordinator node also use IPC automatically, while remote nodes use TCP. Model
+registration uses Python serialization, so the coordinator and workers must be
+run only on a trusted scientific network.
 
 Parallel replacement has two independent dimensions:
 
@@ -220,21 +221,10 @@ Parallel replacement has two independent dimensions:
    available to them. One logical task credit per live lane fills the pool
    without speculative work beyond its measured capacity. There is no
    pool-wide sampling wave barrier.
-For one machine, omit `[network]`; `jaxns-cli up` starts a local coordinator and
-the configured IPC workers. For multiple machines, first generate CurveZMQ
-identities. Keep secret files on their owning nodes and install only each
-worker node's public `.key` file in the coordinator's authorized directory:
-
-```bash
-jaxns-cli auth create --directory keys/main --name coordinator
-jaxns-cli auth create --directory keys/gpu-node --name gpu-node
-mkdir -p keys/authorized
-cp keys/gpu-node/gpu-node.key keys/authorized/
-```
-
-The main-node configuration names both the bind address and the address other
-machines can reach. Local workers may be added with `[[workers]]`; a pure
-coordinator needs none:
+For one machine, use one coordinator config with a port and one or more local
+workers. For multiple machines, the main-node config still needs only the port:
+the coordinator always listens on all interfaces. Local workers may be added
+with `[[workers]]`; a pure coordinator needs none.
 
 ```toml
 [runtime]
@@ -247,15 +237,12 @@ heartbeat_interval_s = 2
 missed_heartbeats = 2
 
 [network]
-listen = "tcp://0.0.0.0:5555"
-advertise = "tcp://main.example.org:5555"
-server_public_key = "keys/main/coordinator.key"
-server_secret_key = "keys/main/coordinator.key_secret"
-authorized_clients = "keys/authorized"
+port = 5555
 ```
 
-Each worker machine has its own config pointing at the advertised coordinator.
-Several worker entries can pin processes to different devices on that machine:
+Each worker machine has its own config pointing at the main node. Several
+worker entries can pin processes to different devices on that machine. Worker
+names are derived exactly as `{platform}-{device}`.
 
 ```toml
 [runtime]
@@ -266,20 +253,18 @@ log_dir = ".logs"
 
 [network]
 coordinator = "tcp://main.example.org:5555"
-server_public_key = "keys/main/coordinator.key"
-client_public_key = "keys/gpu-node/gpu-node.key"
-client_secret_key = "keys/gpu-node/gpu-node.key_secret"
 
 [[workers]]
-name = "gpu"
 platform = "gpu"
 device = 0
 batch_size = 4
 ```
 
 Start the coordinator, then run the same lifecycle command on every worker
-node. Additional nodes can be started later without restarting the scientific
-run:
+node. Order is deliberately flexible: a node supervisor stays alive while the
+coordinator is unavailable, and the scientific registration waits without a
+deadline when no compatible worker is online. Nodes can therefore be started,
+removed, repaired, or restarted days into a run.
 
 ```bash
 # Main machine
@@ -292,16 +277,18 @@ jaxns-cli --config node.toml up
 jaxns-cli --config node.toml status
 ```
 
-The main scientific process uses the coordinator config. Distributed sampling
-does not accept `shell_size`; `delta_K` controls scientific allocation depth,
-while worker TOMLs control execution widths:
+The main scientific process needs only the coordinator port. Distributed
+initialization dispatches root likelihood evaluations to workers as a separate
+operation, so the scientific process never needs a likelihood-capable device.
+Distributed sampling does not accept `shell_size`; `delta_K` controls
+scientific allocation depth, while worker TOMLs control execution widths:
 
 ```python
 from jaxns.distributed_core import DistributedNestedSampler
 
 distributed_sampler = DistributedNestedSampler(
     model=model,
-    config="coordinator.toml",
+    coordinator_port=5555,
     args=args,
     params=params,
     collect_phantom_samples=True,
@@ -314,14 +301,27 @@ results.summary()
 ```
 
 `down` on a worker node first marks its workers draining, lets current tasks
-finish, then removes the node. New work continues on the remaining pool. Each
-worker sends heartbeats independently of JAX sampling; after two missed
-heartbeats the coordinator fences its lease, requeues the exact task IDs and
-random keys, and rejects late results. The worker also exits after missing two
-lease acknowledgements, so a partition cannot create two accepted owners.
-Before model registration, the coordinator also verifies Python, JAXNS,
+finish, then removes the node. Abrupt process or partition failures are also
+recoverable: after two missed heartbeats the coordinator fences the old lease,
+requeues its exact task IDs and random keys, and rejects late results. The node
+supervisor maintains its own outbound heartbeat; the coordinator returns an
+instance-targeted restart request on that connection and retains the request
+until it is acknowledged or a fresh lease proves it obsolete. A new instance
+of the same `{platform}-{device}` identity supersedes a stale lease.
+
+If the last worker disappears, the scientific process logs the loss of
+capacity and waits without a deadline. Its state and retry-stable tasks remain
+unchanged and queued until a compatible worker recovers or joins; worker loss
+does not raise `DistributedRunError`. Registrations remain open throughout the
+scientific session, so newly repaired capacity joins without restarting the
+run. Before model registration, the coordinator also verifies Python, JAXNS,
 JAX/JAXLIB, x64, and measure-dtype compatibility. CPU, GPU, and TPU platforms
 may differ intentionally within one heterogeneous pool.
+
+Worker processes automatically set `XLA_PYTHON_CLIENT_PREALLOCATE=false`
+before importing JAX. This permits multiple worker processes to share an
+accelerator's memory; users may still choose the JAX x64 setting appropriate
+for their scientific run.
 
 Lifecycle commands are idempotent for the same config:
 
@@ -333,11 +333,12 @@ jaxns-cli --config coordinator.toml down
 `jaxns-cli status` distinguishes connecting, ready, busy, draining, dropped,
 disconnected, and exited workers and reports lease generation, heartbeat age,
 device, batch capacity, compilation/execution time, and RSS high-water mark.
-Worker processes are not silently restarted. After a coordinator restart, old
-leases are invalid, workers self-quarantine, and the operator restarts the node
-stacks before resuming the immutable `DistributedRunError.checkpoint`. This
-keeps recovery explicit; the ownership lock prevents duplicate local owners
-for one configured stack.
+Worker processes are automatically restarted with bounded backoff. After a
+coordinator restart, old leases are invalid and workers self-quarantine; the
+still-running node supervisors keep replacing them until the coordinator is
+reachable again. The scientific process then resumes the immutable
+`DistributedRunError.checkpoint`. Coordinator recovery remains explicit, and
+the ownership lock prevents duplicate local owners for one configured stack.
 
 See the executable [run-pattern design](docs/design/interface/run_pattern.py)
 for local IPC, checkpoint resumption, and custom-goal examples.
@@ -367,8 +368,9 @@ requests.
 - Added opt-in warm-refined ellipsoidal slice directions and transparent
   finite or explicitly unlimited sample-buffer growth.
 - Added an opt-in asynchronous worker runtime and `jaxns-cli` for local IPC or
-  authenticated multi-node TCP pools with dynamic membership, heartbeat
-  leases, scalar logical-thread dispatch, and device-local `vmap` batching.
+  trusted-network multi-node TCP pools with dynamic registration, restartable
+  heartbeat leases, worker-only likelihood execution, scalar logical-thread
+  dispatch, and device-local `vmap` batching.
 - Removed v2-only APIs, including evidence maximisation. Public v3 classes are
   imported from their defining modules.
 
