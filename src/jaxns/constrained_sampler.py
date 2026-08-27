@@ -20,6 +20,13 @@ from jaxns.random_utils import sample_uniformly_masked
 from jaxns.samples import PhantomSamples, Samples, SeedPoint
 from jaxns.types import BoolArray, FloatArray, IntArray, PRNGKey, UType
 
+# Continuation bookkeeping dominates cheap, short or narrow batches. The
+# issue-244 matrix first improves both physical work and wall time at 32 slice
+# transitions and eight lanes; smaller requests keep the complete-chain
+# reference until evidence supports moving either boundary.
+MIN_CONTINUATION_SLICES = 32
+MIN_CONTINUATION_CHAINS = 8
+
 
 @dataclasses.dataclass(slots=True, frozen=True)
 class LikelihoodRequest(PureDataclassPytree):
@@ -125,7 +132,6 @@ def sample_request(
     )
 
 
-@partial(jax.jit, inline=True)
 def _sample_complete_chains(
         sampler: AbstractSampler,
         request: ConstrainedSampleRequest,
@@ -133,7 +139,13 @@ def _sample_complete_chains(
         args=(),
         params=None,
 ) -> ConstrainedSampleBatch:
-    """Run the reference complete-chain scalar or ``vmap`` implementation."""
+    """Run the reference complete-chain scalar or ``vmap`` implementation.
+
+    The local depth loop and worker program own the enclosing JIT boundary.
+    Keeping this compositional helper undecorated lets those boundaries capture
+    registered session objects such as notebook functions in ``args``; a
+    nested JIT would instead try to interpret them as dynamic arrays.
+    """
 
     def sample_one(sample_key, constraint, seed_u, seed_log_likelihood):
         seed = SeedPoint(U0=seed_u, log_L0=seed_log_likelihood)
@@ -708,6 +720,7 @@ def _initialise_slice_chains(
 
     def initialise_one(
             key,
+            valid,
             log_L_constraint,
             seed_u,
             seed_log_likelihood,
@@ -810,7 +823,11 @@ def _initialise_slice_chains(
             run_key=run_key,
             transition_keys=transition_keys,
             transition_index=jnp.asarray(0, mp_policy.index_dtype),
-            done=jnp.asarray(False, mp_policy.bool_dtype),
+            # Static scheduler padding is not a logical chain. Mark it done
+            # immediately so an unused lane cannot extend the physical loop;
+            # it still occupies the fixed likelihood width as neutral filler
+            # while any valid chain remains active.
+            done=jnp.bitwise_not(valid),
             num_likelihood_evaluations=jnp.asarray(
                 0,
                 mp_policy.count_dtype,
@@ -825,13 +842,13 @@ def _initialise_slice_chains(
 
     return jax.vmap(initialise_one)(
         request.keys,
+        request.valid,
         request.log_L_constraints,
         request.seed_points.U0,
         request.seed_points.log_L0,
     )
 
 
-@partial(jax.jit, inline=True)
 def _continue_slice_chains(
         sampler: UniDimSliceSampler,
         request: ConstrainedSampleRequest,
@@ -846,6 +863,10 @@ def _continue_slice_chains(
     complete chain finishes. These filler calls are substantially fewer than
     the masked calls introduced by a barrier after every slice transition,
     while the reported counter remains the exact logical count.
+
+    As with the complete-chain reference, the enclosing local or worker
+    program owns JIT compilation so registered non-array session objects remain
+    captured Python closure values.
     """
     num_chains = request.log_L_constraints.shape[0]
     num_slices = sampler.num_slices
@@ -1065,9 +1086,9 @@ def _continue_slice_chains(
     phantom_samples = PhantomSamples(
         U_samples=state.phantom_samples,
         log_L=state.phantom_log_likelihoods,
-        valid_mask=jnp.ones(
+        valid_mask=jnp.broadcast_to(
+            request.valid[:, None],
             (num_chains, num_phantom),
-            mp_policy.bool_dtype,
         ),
     )
     if sampler.direction is None:
@@ -1314,7 +1335,12 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
             params=None,
     ) -> ConstrainedSampleBatch:
         """Continue slice chains between fixed-width likelihood calls."""
-        if not self.no_step_out or self.gradient_guided:
+        if (
+            not self.no_step_out
+            or self.gradient_guided
+            or self.num_slices < MIN_CONTINUATION_SLICES
+            or request.log_L_constraints.shape[0] < MIN_CONTINUATION_CHAINS
+        ):
             # Continuations model the release sampler's perfect bracket. Keep
             # the scalar implementation as the explicit reference and as the
             # compatibility owner for other trajectory constructions.

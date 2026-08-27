@@ -11,7 +11,7 @@ from jax import numpy as jnp
 
 from cicd.tests.core_fixtures import make_state
 from cicd.tests.distributed_support import make_toy_model
-from jaxns import core
+from jaxns import constrained_sampler, core
 from jaxns.allocation import (
     AllocationPlan,
     VolumePath,
@@ -847,7 +847,7 @@ def test_public_scientific_data_objects_are_frozen_and_slotted():
 
 def test_parallel_replacement_delegates_batching_without_sequential_map():
     core_source = inspect.getsource(core)
-    sampler_source = inspect.getsource(UniDimSliceSampler)
+    sampler_source = inspect.getsource(constrained_sampler)
     assert "sample_request(" in core_source
     assert "_continue_slice_chains(" in sampler_source
     assert "jax.lax.map(" not in core_source

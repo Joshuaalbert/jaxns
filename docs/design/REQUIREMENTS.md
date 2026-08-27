@@ -84,8 +84,9 @@ properties that must hold independently of implementation live in
   x64, or measure-dtype semantics differ from the scientific process. Device platform may differ
   intentionally.
 - Requirement: Each worker is one OS process with one configured JAX device and one fixed batch
-  capacity; size one evaluates one ready chain proposal directly and larger compatible groups
-  use `jax.vmap`, never `jax.lax.map`.
+  capacity; evidence-backed long-chain groups of at least eight batch ready proposals with
+  `jax.vmap`, while narrower groups retain complete-chain execution and size one is scalar.
+  `jax.lax.map` is never used.
 - Requirement: A worker's public name is derived exactly as `{platform}-{device}`; configuration
   does not introduce a second user-selected name for the same physical specialization.
 - Requirement: Every worker process sets `XLA_PYTHON_CLIENT_PREALLOCATE=false` before importing
@@ -250,6 +251,9 @@ properties that must hold independently of implementation live in
   IDs even though their likelihood-evaluation counts differ. Each physical likelihood call is a
   fixed-width batch of the chains' ready proposals; finished lanes use `U=0.5` filler whose result
   never enters scientific state or logical evaluation counts.
+- Requirement: Short or narrow chain batches retain complete-chain execution until representative
+  evidence shows that continuation bookkeeping is worthwhile; the current evidence-backed
+  boundaries are 32 slice transitions and eight lanes.
 - Requirement: Continuation batching preserves every chain's scalar PRNG stream, strict parent
   contour, stationary seed, generated phantom order, classic child, and logical likelihood count.
 - Requirement: Retained phantoms are the earliest eligible post-burn-in intermediate states of a

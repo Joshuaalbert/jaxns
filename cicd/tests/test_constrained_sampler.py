@@ -64,11 +64,11 @@ def test_slice_continuations_preserve_complete_chain_outputs():
     model = QuadraticModel(centre=jnp.asarray([0.45, 0.55]))
     sampler = UniDimSliceSampler(
         model=model,
-        num_slices=5,
+        num_slices=32,
         collect_phantom_samples=True,
-        phantom_burn_in=2,
+        phantom_burn_in=29,
     )
-    request = _request(width=6)
+    request = _request(width=8)
     reference = jax.jit(
         lambda value: _sample_complete_chains(sampler, value)
     )(request)
@@ -120,6 +120,138 @@ def test_nonperfect_batch_keeps_complete_chain_reference():
         strict=True,
     ):
         np.testing.assert_array_equal(np.asarray(actual), np.asarray(expected))
+
+
+def test_narrow_batch_keeps_complete_chain_reference():
+    model = QuadraticModel(centre=jnp.asarray([0.45, 0.55]))
+    sampler = UniDimSliceSampler(model=model, num_slices=40)
+    request = _request(width=4)
+    reference = _sample_complete_chains(sampler, request)
+    observed = sample_request(sampler, request)
+
+    for expected, actual in zip(
+        jax.tree.leaves(reference),
+        jax.tree.leaves(observed),
+        strict=True,
+    ):
+        np.testing.assert_array_equal(np.asarray(actual), np.asarray(expected))
+
+
+def test_continuation_outer_jit_captures_registered_function_args():
+    model = QuadraticModel(centre=jnp.asarray([0.45, 0.55]))
+    sampler = UniDimSliceSampler(model=model, num_slices=32)
+    request = _request(width=8)
+    registered_args = (lambda value: value,)
+
+    observed = jax.jit(
+        lambda value: sample_request(
+            sampler,
+            value,
+            args=registered_args,
+        )
+    )(request)
+
+    assert observed.log_likelihoods.shape == (8,)
+    assert np.all(np.asarray(observed.log_likelihoods) > -0.25)
+
+
+def test_slice_continuations_preserve_gmm_direction_law():
+    model = QuadraticModel(centre=jnp.asarray([0.45, 0.55]))
+    direction = EllipsoidalDirection(
+        num_components=1,
+        min_effective_samples=3,
+        population_size=3,
+        prob_isotropic=0.01,
+    )
+    sampler = UniDimSliceSampler(
+        model=model,
+        num_slices=32,
+        collect_phantom_samples=True,
+        phantom_burn_in=29,
+        direction=direction,
+    )
+    data = empty_sampler_data(num_components=1, dimension=2)
+    data = dataclasses.replace(
+        data,
+        radii=jnp.asarray([[2.0, 0.5]]),
+        rotations=jnp.eye(2)[None],
+        log_volumes=jnp.zeros((1,)),
+        log_L_max=jnp.ones((1,)),
+        valid=jnp.ones((1,), dtype=jnp.bool_),
+    )
+    request = dataclasses.replace(_request(width=8), sampler_data=data)
+    reference = _sample_complete_chains(sampler, request)
+    continued = sample_request(sampler, request)
+
+    for expected, actual in zip(
+        jax.tree.leaves(reference),
+        jax.tree.leaves(continued),
+        strict=True,
+    ):
+        expected = np.asarray(expected)
+        actual = np.asarray(actual)
+        if np.issubdtype(expected.dtype, np.inexact):
+            np.testing.assert_allclose(
+                actual,
+                expected,
+                rtol=1e-5,
+                atol=1e-6,
+            )
+        else:
+            np.testing.assert_array_equal(actual, expected)
+
+
+def test_slice_continuations_do_not_execute_scheduler_padding():
+    model = QuadraticModel(centre=jnp.asarray([0.45, 0.55]))
+    sampler = UniDimSliceSampler(
+        model=model,
+        num_slices=32,
+        collect_phantom_samples=True,
+        phantom_burn_in=30,
+    )
+    request = _request(width=8)
+    padded_request = dataclasses.replace(
+        request,
+        valid=jnp.asarray([True] + [False] * 7),
+    )
+    scalar_request = ConstrainedSampleRequest(
+        keys=request.keys[:1],
+        valid=request.valid[:1],
+        log_L_constraints=request.log_L_constraints[:1],
+        seed_points=SeedPoint(
+            U0=jax.tree.map(
+                lambda values: values[:1],
+                request.seed_points.U0,
+            ),
+            log_L0=request.seed_points.log_L0[:1],
+        ),
+        sampler_data=None,
+    )
+
+    reference = sample_request(sampler, scalar_request)
+    continued = sample_request(sampler, padded_request)
+
+    # An invalid tail lane is transport/storage padding, not a logical chain.
+    # It remains a filler device lane only while the valid chain is active.
+    assert int(continued.num_likelihood_evaluations[1]) == 0
+    assert not bool(continued.phantom_samples.valid_mask[1, 0])
+    np.testing.assert_allclose(
+        np.asarray(continued.log_likelihoods[0]),
+        np.asarray(reference.log_likelihoods[0]),
+        rtol=1e-5,
+        atol=1e-6,
+    )
+    for expected, actual in zip(
+        jax.tree.leaves(reference.U_samples),
+        jax.tree.leaves(continued.U_samples),
+        strict=True,
+    ):
+        np.testing.assert_allclose(
+            np.asarray(actual[0]),
+            np.asarray(expected[0]),
+            rtol=1e-5,
+            atol=1e-6,
+        )
 
 
 def _log_likelihood_1d(U):

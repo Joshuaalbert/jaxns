@@ -208,15 +208,19 @@ run only on a trusted scientific network.
 Parallel replacement has two independent dimensions:
 
 1. **Lanes within one sampler call.** The standard local core advances
-   `shell_size` logical chains together. Each chain continues independently
-   across slice transitions, while their ready likelihood proposals are
-   evaluated together with `jax.vmap`; a finished lane uses a neutral filler
-   point until the slowest complete chain finishes. Distributed allocation has
+   `shell_size` logical chains together. For evidence-backed long chains, each
+   chain continues independently across slice transitions while their ready
+   likelihood proposals are evaluated together with `jax.vmap`; a finished
+   lane uses a neutral filler point until the slowest complete chain finishes.
+   Short or narrower-than-eight batches retain the complete-chain `vmap`
+   reference. Distributed
+   allocation has
    no shell size: it continuously fills compatible live pool lanes with scalar
    logical lineage threads as soon as their parent and stationary seed are
    known. A worker may combine compatible queued threads up to its configured
-   `batch_size`; size one evaluates one ready proposal directly, while larger
-   batches use the same continuation engine and device-local `jax.vmap`.
+   `batch_size`; sizes below eight run complete chains (with no `vmap` at size
+   one), while evidence-backed long-chain batches of at least eight use the
+   same continuation engine and device-local `jax.vmap`.
 2. **Workers in the pool.** Each process is pinned to one configured CPU, GPU,
    or TPU device. Workers complete and receive work independently, nodes may
    join while a session is active, and already queued threads are immediately

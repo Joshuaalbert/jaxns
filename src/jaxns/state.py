@@ -340,17 +340,32 @@ def _to_result(self: State) -> NestedSamplerResults:
         block_state.incoming_K[sample_block_idx],
         jnp.asarray(0, mp_policy.count_dtype),
     )
+    # Physical storage tail rows may contain ignored scheduler work or stale
+    # overwritten batches. They are not classic samples and must contribute
+    # neither a per-sample logical count nor the user-facing total.
     num_likelihood_evaluations_per_sample = (
-        self.samples.num_likelihood_evaluations.astype(mp_policy.count_dtype)
+        jnp.where(
+            sample_mask,
+            self.samples.num_likelihood_evaluations,
+            jnp.asarray(0, mp_policy.count_dtype),
+        ).astype(mp_policy.count_dtype)
     )
-    total_phantom_samples = jnp.sum(self.samples.phantom_samples.valid_mask).astype(mp_policy.count_dtype)
+    # Phantom validity follows the same logical sample prefix; ignored static
+    # lanes cannot create user-visible clusters merely because their storage
+    # rows still contain a shaped phantom buffer.
+    phantom_valid_mask = (
+        self.samples.phantom_samples.valid_mask
+        & sample_mask[:, None]
+    )
+    total_phantom_samples = jnp.sum(phantom_valid_mask).astype(
+        mp_policy.count_dtype
+    )
     total_num_likelihood_evaluations = jnp.sum(num_likelihood_evaluations_per_sample)
     log_efficiency = jnp.log(total_num_samples) - jnp.log(total_num_likelihood_evaluations)
     log_L_constraints = self.samples.log_L_constraints
     log_L_phantom = self.samples.phantom_samples.log_L
     # A cluster is one statistical unit with a shared gamma weight. Partially
     # populated rows are excluded rather than silently changing cluster size.
-    phantom_valid_mask = self.samples.phantom_samples.valid_mask
     if phantom_valid_mask.shape[-1] == 0:
         valid_phantom = jnp.zeros(phantom_valid_mask.shape[:-1], dtype=mp_policy.bool_dtype)
     else:
