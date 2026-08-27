@@ -614,7 +614,10 @@ def test_unlimited_growth_matches_preallocated_scientific_continuation():
     tiny = NestedSampler(initial_capacity=2, **common)
     preallocated = NestedSampler(initial_capacity=32, **common)
 
+    observed_goal_boundaries = []
+
     def goal(state):
+        observed_goal_boundaries.append(bool(state.depth_reached))
         return int(state.goal_loop_iter) >= 2
 
     key = jax.random.PRNGKey(34)
@@ -632,6 +635,9 @@ def test_unlimited_growth_matches_preallocated_scientific_continuation():
     # independent of those implementation-only boundaries.
     assert grown.samples.log_likelihoods.shape[0] == 8
     assert reference.samples.log_likelihoods.shape[0] == 32
+    # Resizing is an implementation detail inside one depth epoch. A custom
+    # scientific goal must only observe initial or completed depth boundaries.
+    assert all(observed_goal_boundaries)
     assert int(grown.goal_loop_iter) == int(reference.goal_loop_iter) == 2
     assert int(grown.num_samples) == int(reference.num_samples) == 5
     grown = grown.trim()
@@ -808,7 +814,7 @@ def test_ellipsoidal_state_survives_checkpoint_growth_and_resume():
         np.testing.assert_array_equal(np.asarray(left), np.asarray(right))
 
 
-def test_public_data_objects_are_frozen_and_slotted():
+def test_public_scientific_data_objects_are_frozen_and_slotted():
     ns = NestedSampler(
         model=make_toy_model(),
         target_num_live_points=2,
@@ -821,8 +827,14 @@ def test_public_data_objects_are_frozen_and_slotted():
     direction = EllipsoidalDirection()
     sampler_data = empty_sampler_data(num_components=1, dimension=1)
 
+    # NestedSampler is mutable configuration whose dependent defaults are
+    # normalised with ordinary typed assignments during construction. The
+    # scientific state it produces remains immutable.
+    assert hasattr(type(ns), "__slots__")
+    ns.store_phantom_samples = True
+    assert ns.store_phantom_samples
+
     for value, field_name in (
-        (ns, "max_samples"),
         (state, "num_samples"),
         (state.samples, "out_degree"),
         (direction, "num_components"),
