@@ -614,7 +614,10 @@ def test_unlimited_growth_matches_preallocated_scientific_continuation():
     tiny = NestedSampler(initial_capacity=2, **common)
     preallocated = NestedSampler(initial_capacity=32, **common)
 
+    observed_goal_boundaries = []
+
     def goal(state):
+        observed_goal_boundaries.append(bool(state.depth_reached))
         return int(state.goal_loop_iter) >= 2
 
     key = jax.random.PRNGKey(34)
@@ -632,6 +635,9 @@ def test_unlimited_growth_matches_preallocated_scientific_continuation():
     # independent of those implementation-only boundaries.
     assert grown.samples.log_likelihoods.shape[0] == 8
     assert reference.samples.log_likelihoods.shape[0] == 32
+    # Resizing is an implementation detail inside one depth epoch. A custom
+    # scientific goal must only observe initial or completed depth boundaries.
+    assert all(observed_goal_boundaries)
     assert int(grown.goal_loop_iter) == int(reference.goal_loop_iter) == 2
     assert int(grown.num_samples) == int(reference.num_samples) == 5
     grown = grown.trim()

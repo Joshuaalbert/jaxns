@@ -1408,7 +1408,13 @@ class NestedSampler(PureDataclassPytree):
             )
         while (
             int(state.termination_reason) == 0
-            and not bool(goal_cond(state))
+            # A resized sample buffer resumes the same compiled depth epoch.
+            # Only let the Python goal observe completed allocation rounds so
+            # physical capacity cannot change the scientific stopping point.
+            and (
+                not bool(state.depth_reached)
+                or not bool(goal_cond(state))
+            )
         ):
             state = _run_depth(
                 state,

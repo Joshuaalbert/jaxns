@@ -323,11 +323,6 @@ def _measure(
         "goal_log_Z_uncert": goal_log_z_uncert,
         "goal_register_log_Z_uncert": goal_register_log_z_uncert,
         "goal_reached": goal_register_log_z_uncert <= goal_log_z_uncert,
-        "final_allocation_target": (
-            int(nested_sampler.root_allocation_degree)
-            + max(int(state.goal_loop_iter) - 1, 0)
-            * int(nested_sampler.delta_K)
-        ),
         "fit_updates": int(sampler_data.num_updates),
         "directions": int(sampler_data.num_directions),
         "isotropic_directions": int(sampler_data.num_isotropic),
