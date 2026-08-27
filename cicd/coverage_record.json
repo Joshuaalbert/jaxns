@@ -1,4 +1,7 @@
 {
+  "Collecting or retaining phantoms does not change the classic samples, race tree, or classic-conditioned result for the same random run.": [
+    "test_phantom_payload_does_not_change_vector_worker_trajectory"
+  ],
   "Every nested-sampling contour is strict: a point satisfies contour lambda exactly when its likelihood is greater than lambda.": [
     "test_block_state_rejects_strict_contour_violation",
     "test_state_consistency_rejects_strict_contour_violation",
