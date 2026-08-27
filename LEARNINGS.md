@@ -27,3 +27,6 @@ repeat mistakes specific to this project. Keep learnings compact.
 - Phantom clusters descended from one root race lineage are not independent
   after finite Markov transitions. Share their gamma weight; grouping only
   exact repeated seeds understated uncertainty on the 10D curved release gate.
+- Sample-buffer growth resumes an unfinished compiled depth epoch. Do not run
+  a custom scientific goal at that physical boundary; initial capacity must
+  not change the logical allocation round or stopping point.
