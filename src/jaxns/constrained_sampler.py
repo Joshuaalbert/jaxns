@@ -110,12 +110,30 @@ def sample_request(
         args=(),
         params=None,
 ) -> ConstrainedSampleBatch:
-    """Execute one worker request with scalar or vmapped chain sampling.
+    """Execute one local or worker-side constrained-sampling batch.
 
-    Worker batch size is a static process configuration. A scalar worker does
-    not pay for a one-row ``vmap``; wider workers retain the current concurrent
-    replacement behavior and its deliberate slowest-lane trade-off.
+    Samplers own their batch execution because only the sampler knows whether
+    its data-dependent work can be continued between likelihood evaluations.
+    The base implementation retains complete-chain ``vmap`` as the reference
+    and fallback for samplers without an explicit batching strategy.
     """
+
+    return sampler.get_samples(
+        request,
+        args=args,
+        params=params,
+    )
+
+
+@partial(jax.jit, inline=True)
+def _sample_complete_chains(
+        sampler: AbstractSampler,
+        request: ConstrainedSampleRequest,
+        *,
+        args=(),
+        params=None,
+) -> ConstrainedSampleBatch:
+    """Run the reference complete-chain scalar or ``vmap`` implementation."""
 
     def sample_one(sample_key, constraint, seed_u, seed_log_likelihood):
         seed = SeedPoint(U0=seed_u, log_L0=seed_log_likelihood)
@@ -226,6 +244,25 @@ class AbstractSampler(ABC):
         )
         zero = jnp.asarray(0, mp_policy.count_dtype)
         return U_sample, log_L, num_evals, phantom, zero, zero
+
+    def get_samples(
+            self,
+            request: ConstrainedSampleRequest,
+            *,
+            args=(),
+            params=None,
+    ) -> ConstrainedSampleBatch:
+        """Sample a batch through the complete-chain reference path.
+
+        Subclasses may override this when they can preserve their scalar law
+        while scheduling likelihood evaluations more efficiently.
+        """
+        return _sample_complete_chains(
+            self,
+            request,
+            args=args,
+            params=params,
+        )
 
     def uses_adaptive_directions(self) -> bool:
         """Return whether the core must maintain contour direction geometry."""
@@ -636,6 +673,432 @@ def _new_proposal(
     )
 
 
+@dataclasses.dataclass(slots=True, frozen=True)
+class SliceBatchState(PureDataclassPytree):
+    """Logical slice chains continued between batched likelihood calls."""
+
+    anchor: UType  # [S, ...] last accepted point in each chain
+    log_likelihood: FloatArray  # [S]
+    directions: UType  # [S, T, ...] direction for each transition
+    direction_is_isotropic: BoolArray  # [S, T]
+    left: FloatArray  # [S]
+    right: FloatArray  # [S]
+    t: FloatArray  # [S]
+    proposal: UType  # [S, ...] point awaiting likelihood evaluation
+    run_key: PRNGKey  # [S, 2]
+    transition_keys: PRNGKey  # [S, T, 2]
+    transition_index: IntArray  # [S]
+    done: BoolArray  # [S]
+    num_likelihood_evaluations: IntArray  # [S] logical calls only
+    phantom_samples: UType  # [S, P, ...] retained start prefix
+    phantom_log_likelihoods: FloatArray  # [S, P]
+
+
+SliceBatchState.register_pytree()
+
+
+def _initialise_slice_chains(
+        sampler: UniDimSliceSampler,
+        request: ConstrainedSampleRequest,
+) -> SliceBatchState:
+    """Prepare one unevaluated proposal per logical slice chain."""
+    num_slices = sampler.num_slices
+    num_phantom = sampler.num_phantom()
+    sampler_data = request.sampler_data
+
+    def initialise_one(
+            key,
+            log_L_constraint,
+            seed_u,
+            seed_log_likelihood,
+    ):
+        def draw_direction(direction_key):
+            if sampler_data is None:
+                return (
+                    _sample_direction(direction_key, TreeField(seed_u)),
+                    jnp.asarray(True, mp_policy.bool_dtype),
+                )
+            return _draw_ellipsoidal_direction(
+                direction_key,
+                TreeField(seed_u),
+                log_L_constraint,
+                sampler_data,
+                sampler.direction.prob_isotropic,
+            )
+
+        # Preserve the scalar sampler's random-key schedule exactly. Pool
+        # execution order must never change a logical chain's random stream.
+        direction_key, sample_key = random.split(key, 2)
+        initial_direction, initial_is_isotropic = draw_direction(
+            direction_key
+        )
+        sample_key, initial_key = random.split(sample_key, 2)
+        later_keys = random.split(sample_key, num_slices - 1)
+        transition_keys = jnp.concatenate(
+            [initial_key[None], later_keys],
+            axis=0,
+        )
+
+        # Direction proposals depend on the fixed parent contour and unit-cube
+        # structure, not on accepted chain coordinates. Hoisting this stream
+        # avoids evaluating both direction branches inside a vmapped condition
+        # for every rejected proposal, while preserving the scalar direction
+        # law and the requirement that every transition uses the same law.
+        # The compile, memory, and execution trade-off is recorded in
+        # benchmarks/issue_244/REPORT.md.
+        if num_slices == 1:
+            directions = jax.tree.map(
+                lambda value: value[None],
+                initial_direction.tree,
+            )
+            directions_are_isotropic = initial_is_isotropic[None]
+        else:
+            def draw_later_direction(transition_key):
+                _, _, _, after_key = random.split(transition_key, 4)
+                return draw_direction(after_key)
+
+            later_directions, later_is_isotropic = jax.vmap(
+                draw_later_direction
+            )(transition_keys[:-1])
+            directions = jax.tree.map(
+                lambda initial, later: jnp.concatenate(
+                    [initial[None], later],
+                    axis=0,
+                ),
+                initial_direction.tree,
+                later_directions.tree,
+            )
+            directions_are_isotropic = jnp.concatenate(
+                [initial_is_isotropic[None], later_is_isotropic],
+                axis=0,
+            )
+
+        # Perfect bracketing always has exactly one proposal ready. A rejected
+        # likelihood shrinks this interval; an accepted likelihood advances
+        # this logical chain to its next slice transition without a barrier.
+        run_key, t_key, _, _ = random.split(transition_keys[0], 4)
+        left, right = _slice_bounds(
+            TreeField(seed_u),
+            initial_direction,
+        )
+        proposal, t = _pick_point_in_interval(
+            t_key,
+            TreeField(seed_u),
+            initial_direction,
+            left,
+            right,
+        )
+        phantom_samples = jax.tree.map(
+            lambda value: jnp.zeros(
+                (num_phantom,) + value.shape,
+                value.dtype,
+            ),
+            seed_u,
+        )
+        return SliceBatchState(
+            anchor=seed_u,
+            log_likelihood=jnp.asarray(
+                seed_log_likelihood,
+                log_L_constraint.dtype,
+            ),
+            directions=directions,
+            direction_is_isotropic=directions_are_isotropic,
+            left=left,
+            right=right,
+            t=t,
+            proposal=proposal.tree,
+            run_key=run_key,
+            transition_keys=transition_keys,
+            transition_index=jnp.asarray(0, mp_policy.index_dtype),
+            done=jnp.asarray(False, mp_policy.bool_dtype),
+            num_likelihood_evaluations=jnp.asarray(
+                0,
+                mp_policy.count_dtype,
+            ),
+            phantom_samples=phantom_samples,
+            phantom_log_likelihoods=jnp.full(
+                (num_phantom,),
+                -jnp.inf,
+                log_L_constraint.dtype,
+            ),
+        )
+
+    return jax.vmap(initialise_one)(
+        request.keys,
+        request.log_L_constraints,
+        request.seed_points.U0,
+        request.seed_points.log_L0,
+    )
+
+
+@partial(jax.jit, inline=True)
+def _continue_slice_chains(
+        sampler: UniDimSliceSampler,
+        request: ConstrainedSampleRequest,
+        *,
+        args=(),
+        params=None,
+) -> ConstrainedSampleBatch:
+    """Batch ready likelihoods while each logical chain advances freely.
+
+    The physical likelihood width equals the logical request width. A finished
+    lane evaluates the neutral unit-cube point ``U=0.5`` until the slowest
+    complete chain finishes. These filler calls are substantially fewer than
+    the masked calls introduced by a barrier after every slice transition,
+    while the reported counter remains the exact logical count.
+    """
+    num_chains = request.log_L_constraints.shape[0]
+    num_slices = sampler.num_slices
+    num_phantom = sampler.num_phantom()
+    assert 0 <= num_phantom <= num_slices - 1, (
+        "num_phantom() should be in [0, num_slices - 1]"
+    )
+
+    def evaluate_one(u_sample):
+        return sampler.model.log_likelihood(
+            u_sample,
+            args=args,
+            params=params,
+            allow_nan=False,
+        ).astype(request.log_L_constraints.dtype)
+
+    def prepare_transition(
+            chain,
+            anchor,
+            direction,
+            transition_index,
+    ):
+        transition_key = chain.transition_keys[transition_index]
+        run_key, t_key, _, _ = random.split(transition_key, 4)
+        left, right = _slice_bounds(
+            TreeField(anchor),
+            direction,
+        )
+        proposal, t = _pick_point_in_interval(
+            t_key,
+            TreeField(anchor),
+            direction,
+            left,
+            right,
+        )
+        return dataclasses.replace(
+            chain,
+            anchor=anchor,
+            left=left,
+            right=right,
+            t=t,
+            proposal=proposal.tree,
+            run_key=run_key,
+        )
+
+    def consume_one(chain, log_likelihood, active, constraint):
+        def consume(active_chain):
+            transition_index = active_chain.transition_index
+            active_chain = dataclasses.replace(
+                active_chain,
+                log_likelihood=log_likelihood,
+                num_likelihood_evaluations=(
+                    active_chain.num_likelihood_evaluations
+                    + jnp.asarray(1, mp_policy.count_dtype)
+                ),
+            )
+
+            def accept(accepted_chain):
+                if num_phantom == 0:
+                    phantom_samples = accepted_chain.phantom_samples
+                    phantom_log_likelihoods = (
+                        accepted_chain.phantom_log_likelihoods
+                    )
+                else:
+                    phantom_index = jnp.minimum(
+                        transition_index,
+                        num_phantom - 1,
+                    )
+                    retain = transition_index < num_phantom
+                    phantom_samples = jax.tree.map(
+                        lambda history, value: history.at[
+                            phantom_index
+                        ].set(
+                            jnp.where(
+                                retain,
+                                value,
+                                history[phantom_index],
+                            )
+                        ),
+                        accepted_chain.phantom_samples,
+                        accepted_chain.proposal,
+                    )
+                    phantom_log_likelihoods = (
+                        accepted_chain.phantom_log_likelihoods.at[
+                            phantom_index
+                        ].set(
+                            jnp.where(
+                                retain,
+                                log_likelihood,
+                                accepted_chain.phantom_log_likelihoods[
+                                    phantom_index
+                                ],
+                            )
+                        )
+                    )
+                next_index = transition_index + jnp.asarray(
+                    1,
+                    mp_policy.index_dtype,
+                )
+                finished = next_index == num_slices
+                accepted_chain = dataclasses.replace(
+                    accepted_chain,
+                    anchor=accepted_chain.proposal,
+                    phantom_samples=phantom_samples,
+                    phantom_log_likelihoods=phantom_log_likelihoods,
+                    transition_index=next_index,
+                    done=finished,
+                )
+
+                def prepare_next(unfinished_chain):
+                    # A batched ``cond`` traces this branch for a finished lane
+                    # too. The safe index makes that unused value explicit and
+                    # avoids relying on out-of-range gather clamping.
+                    safe_index = jnp.minimum(next_index, num_slices - 1)
+                    direction = TreeField(
+                        jax.tree.map(
+                            lambda values: values[safe_index],
+                            unfinished_chain.directions,
+                        )
+                    )
+                    return prepare_transition(
+                        unfinished_chain,
+                        unfinished_chain.anchor,
+                        direction,
+                        safe_index,
+                    )
+
+                return jax.lax.cond(
+                    finished,
+                    lambda value: value,
+                    prepare_next,
+                    accepted_chain,
+                )
+
+            def reject(rejected_chain):
+                run_key, t_key = random.split(
+                    rejected_chain.run_key,
+                    2,
+                )
+                left, right = _shrink_interval(
+                    rejected_chain.t,
+                    rejected_chain.left,
+                    rejected_chain.right,
+                )
+                direction = TreeField(
+                    jax.tree.map(
+                        lambda values: values[transition_index],
+                        rejected_chain.directions,
+                    )
+                )
+                proposal, t = _pick_point_in_interval(
+                    t_key,
+                    TreeField(rejected_chain.anchor),
+                    direction,
+                    left,
+                    right,
+                )
+                return dataclasses.replace(
+                    rejected_chain,
+                    left=left,
+                    right=right,
+                    t=t,
+                    proposal=proposal.tree,
+                    run_key=run_key,
+                )
+
+            return jax.lax.cond(
+                log_likelihood > constraint,
+                accept,
+                reject,
+                active_chain,
+            )
+
+        return jax.lax.cond(
+            active,
+            consume,
+            lambda value: value,
+            chain,
+        )
+
+    def continue_condition(state):
+        return jnp.any(jnp.bitwise_not(state.done))
+
+    def continue_body(state):
+        active = jnp.bitwise_not(state.done)
+        # Static-width filler keeps one likelihood program and lets scientific
+        # likelihoods retain ordinary vmap semantics. Filler results never
+        # enter chain state or the user-visible logical evaluation count.
+        proposals = jax.tree.map(
+            lambda values: jnp.where(
+                active.reshape(
+                    (num_chains,) + (1,) * (values.ndim - 1)
+                ),
+                values,
+                jnp.full_like(values, 0.5),
+            ),
+            state.proposal,
+        )
+        if num_chains == 1:
+            log_likelihoods = evaluate_one(
+                jax.tree.map(lambda values: values[0], proposals)
+            )[None]
+        else:
+            log_likelihoods = jax.vmap(evaluate_one)(proposals)
+        return jax.vmap(consume_one)(
+            state,
+            log_likelihoods,
+            active,
+            request.log_L_constraints,
+        )
+
+    state = jax.lax.while_loop(
+        continue_condition,
+        continue_body,
+        _initialise_slice_chains(sampler, request),
+    )
+    phantom_samples = PhantomSamples(
+        U_samples=state.phantom_samples,
+        log_L=state.phantom_log_likelihoods,
+        valid_mask=jnp.ones(
+            (num_chains, num_phantom),
+            mp_policy.bool_dtype,
+        ),
+    )
+    if sampler.direction is None:
+        num_directions = jnp.zeros(
+            (num_chains,),
+            mp_policy.count_dtype,
+        )
+        num_isotropic = jnp.zeros(
+            (num_chains,),
+            mp_policy.count_dtype,
+        )
+    else:
+        num_directions = jnp.full(
+            (num_chains,),
+            num_slices,
+            mp_policy.count_dtype,
+        )
+        num_isotropic = jnp.sum(
+            state.direction_is_isotropic.astype(mp_policy.count_dtype),
+            axis=1,
+        )
+    return ConstrainedSampleBatch(
+        U_samples=state.anchor,
+        log_likelihoods=state.log_likelihood,
+        num_likelihood_evaluations=state.num_likelihood_evaluations,
+        phantom_samples=phantom_samples,
+        num_directions=num_directions,
+        num_isotropic=num_isotropic,
+    )
+
+
 @partial(jax.jit, inline=True)
 def get_seed_point(key: PRNGKey, samples: Samples, log_L_constraint: FloatArray) -> SeedPoint:
     """
@@ -842,6 +1305,31 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
         # and the explicit sampler API does not change user-facing results.
         zero = jnp.asarray(0, mp_policy.count_dtype)
         return *output[:4], zero, zero
+
+    def get_samples(
+            self,
+            request: ConstrainedSampleRequest,
+            *,
+            args=(),
+            params=None,
+    ) -> ConstrainedSampleBatch:
+        """Continue slice chains between fixed-width likelihood calls."""
+        if not self.no_step_out or self.gradient_guided:
+            # Continuations model the release sampler's perfect bracket. Keep
+            # the scalar implementation as the explicit reference and as the
+            # compatibility owner for other trajectory constructions.
+            return _sample_complete_chains(
+                self,
+                request,
+                args=args,
+                params=params,
+            )
+        return _continue_slice_chains(
+            self,
+            request,
+            args=args,
+            params=params,
+        )
 
     def _get_sample_with_diagnostics(
             self,

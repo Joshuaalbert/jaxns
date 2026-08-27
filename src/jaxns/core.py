@@ -13,7 +13,9 @@ from jaxns.allocation import AllocationPlan, build_allocation_plan
 from jaxns.constrained_sampler import (
     AbstractSampler,
     ConstrainedSampleBatch,
+    ConstrainedSampleRequest,
     UniDimSliceSampler,
+    sample_request,
 )
 from jaxns.mixed_precision import mp_policy
 from jaxns.model import Model
@@ -363,43 +365,30 @@ def _sample_work_batch(
         sampler: AbstractSampler,
         work: CoreWorkBatch,
 ) -> ConstrainedSampleBatch:
-    """Run every replacement lane concurrently with one full ``vmap``."""
+    """Execute the planned batch through the sampler-owned batch strategy."""
     keys = jax.random.split(key, work.seed_idx.shape[0])
-
-    def sample_one(sample_key, constraint, seed_idx):
-        seed = SeedPoint(
-            U0=jax.tree.map(lambda u: u[seed_idx], state.samples.U_samples),
-            log_L0=state.samples.log_likelihoods[seed_idx],
-        )
-        return sampler.get_sample_with_diagnostics(
-            sample_key,
-            constraint,
-            seed,
-            args=state.args,
-            params=state.params,
-            sampler_data=state.sampler_data,
-        )
-
-    sampled = jax.vmap(sample_one)(
-        keys,
-        work.log_L_constraint,
-        work.seed_idx,
+    seed_points = SeedPoint(
+        U0=jax.tree.map(
+            lambda values: values[work.seed_idx],
+            state.samples.U_samples,
+        ),
+        log_L0=state.samples.log_likelihoods[work.seed_idx],
     )
-    (
-        U_samples,
-        log_likelihoods,
-        num_evals,
-        phantom_samples,
-        num_directions,
-        num_isotropic,
-    ) = sampled
-    return ConstrainedSampleBatch(
-        U_samples=U_samples,
-        log_likelihoods=log_likelihoods,
-        num_likelihood_evaluations=num_evals,
-        phantom_samples=phantom_samples,
-        num_directions=num_directions,
-        num_isotropic=num_isotropic,
+    # Parent planning and race accounting remain outside constrained sampling.
+    # A self-contained request is shared by the local depth loop and workers,
+    # so both execution modes use exactly the same continuation law.
+    request = ConstrainedSampleRequest(
+        keys=keys,
+        valid=work.valid,
+        log_L_constraints=work.log_L_constraint,
+        seed_points=seed_points,
+        sampler_data=state.sampler_data,
+    )
+    return sample_request(
+        sampler,
+        request,
+        args=state.args,
+        params=state.params,
     )
 
 

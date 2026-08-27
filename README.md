@@ -208,13 +208,15 @@ run only on a trusted scientific network.
 Parallel replacement has two independent dimensions:
 
 1. **Lanes within one sampler call.** The standard local core advances
-   `shell_size` chains together with `jax.vmap`. Distributed allocation has no
-   shell size: it continuously fills compatible live pool lanes with scalar
+   `shell_size` logical chains together. Each chain continues independently
+   across slice transitions, while their ready likelihood proposals are
+   evaluated together with `jax.vmap`; a finished lane uses a neutral filler
+   point until the slowest complete chain finishes. Distributed allocation has
+   no shell size: it continuously fills compatible live pool lanes with scalar
    logical lineage threads as soon as their parent and stationary seed are
    known. A worker may combine compatible queued threads up to its configured
-   `batch_size`; size one takes the scalar path, while larger batches use
-   `jax.vmap`. Every lane in one call waits for its most rejection-heavy chain,
-   so worker widths should be chosen from evidence.
+   `batch_size`; size one evaluates one ready proposal directly, while larger
+   batches use the same continuation engine and device-local `jax.vmap`.
 2. **Workers in the pool.** Each process is pinned to one configured CPU, GPU,
    or TPU device. Workers complete and receive work independently, nodes may
    join while a session is active, and already queued threads are immediately
@@ -359,7 +361,8 @@ requests.
 26 Aug, 2026 -- JAXNS 3.0.0. Major paper-driven core and public API update:
 
 - Added race-tree nested sampling with dynamic lineage allocation, a Python
-  user-goal loop, and JIT-compiled depth epochs with `vmap` replacement.
+  user-goal loop, JIT-compiled depth epochs, and continuation-batched
+  likelihood evaluation across replacement chains.
 - Made model data and parameters explicit through JAXCTX `args` and `params`,
   and made scientific state and result objects immutable pytree dataclasses.
 - Added plateau-correct shrinkage and bounded final Monte Carlo evidence draws,
@@ -370,7 +373,7 @@ requests.
 - Added an opt-in asynchronous worker runtime and `jaxns-cli` for local IPC or
   trusted-network multi-node TCP pools with dynamic registration, restartable
   heartbeat leases, worker-only likelihood execution, scalar logical-thread
-  dispatch, and device-local `vmap` batching.
+  dispatch, and device-local continuation batching.
 - Removed v2-only APIs, including evidence maximisation. Public v3 classes are
   imported from their defining modules.
 

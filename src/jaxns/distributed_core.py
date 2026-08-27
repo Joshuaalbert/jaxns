@@ -484,8 +484,9 @@ class DistributedNestedSampler:
     Distributed allocation has no shell width. One pending task represents one
     logical lineage thread, and idle pool lanes are continuously filled from
     currently known allocation gaps. A worker's ``batch_size`` is a private
-    device-execution choice used to combine compatible scalar tasks with
-    ``jax.vmap``.
+    device-execution choice used to combine compatible tasks and batch their
+    ready likelihood proposals while each constrained chain continues
+    independently.
 
     Args:
         model: Scientific prior and scalar log-likelihood model.

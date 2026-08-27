@@ -845,10 +845,13 @@ def test_public_scientific_data_objects_are_frozen_and_slotted():
             setattr(value, field_name, None)
 
 
-def test_parallel_replacement_uses_full_vmap_not_sequential_lax_map():
-    source = inspect.getsource(core)
-    assert "jax.vmap(sample_one)" in source
-    assert "jax.lax.map(" not in source
+def test_parallel_replacement_delegates_batching_without_sequential_map():
+    core_source = inspect.getsource(core)
+    sampler_source = inspect.getsource(UniDimSliceSampler)
+    assert "sample_request(" in core_source
+    assert "_continue_slice_chains(" in sampler_source
+    assert "jax.lax.map(" not in core_source
+    assert "jax.lax.map(" not in sampler_source
 
 
 def test_retained_phantoms_are_generated_chain_prefix():

@@ -79,5 +79,7 @@ the implementation PR.
 - Retaining all accepted transitions is unnecessary.  Only the start-of-chain
   phantom prefix is stored.
 
-Raw records are in `suite_final.json`; the exact mechanism and instrumentation
-are in `compare_batching.py`, with the matrix driver in `run_suite.py`.
+Raw mechanism records are in `suite_final.json`. End-to-end accuracy and
+performance use the maintained `benchmarks/issue_247/run_current_standard.py`
+and `run_matrix.sh` drivers so the candidate and `develop` receive identical
+standard-problem configurations and termination conditions.
