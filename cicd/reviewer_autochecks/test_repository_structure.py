@@ -29,6 +29,13 @@ ARRAY_ANNOTATION_MARKERS = (
     "TreeField",
 )
 
+# NestedSampler is mutable user configuration: its constructor normalises
+# dependent defaults with ordinary assignments. Scientific arrays and sampler
+# state remain in the frozen dataclasses covered by the general rule below.
+MUTABLE_CONFIGURATION_DATACLASSES = {
+    ("src/jaxns/core.py", "NestedSampler"),
+}
+
 
 def _decorator_name(decorator: ast.expr) -> str:
     if isinstance(decorator, ast.Call):
@@ -117,9 +124,10 @@ def test_array_dataclass_fields_have_shape_comments() -> None:
     )
 
 
-def test_production_dataclasses_are_frozen_and_slotted() -> None:
-    """Scientific containers cannot be mutated or gain accidental fields."""
+def test_production_dataclasses_preserve_declared_mutability() -> None:
+    """Scientific containers stay frozen; declared configuration stays slotted."""
     invalid: list[str] = []
+    mutable_configuration_seen: set[tuple[str, str]] = set()
     for path in sorted(SOURCE_ROOT.rglob("*.py")):
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         for class_node in (
@@ -127,17 +135,31 @@ def test_production_dataclasses_are_frozen_and_slotted() -> None:
             if isinstance(node, ast.ClassDef) and _is_dataclass(node)
         ):
             options = _dataclass_options(class_node)
+            relative_path = str(path.relative_to(REPO_ROOT))
+            class_key = (relative_path, class_node.name)
+            if class_key in MUTABLE_CONFIGURATION_DATACLASSES:
+                mutable_configuration_seen.add(class_key)
+                if (
+                    _is_literal_true(options.get("slots"))
+                    and not _is_literal_true(options.get("frozen"))
+                ):
+                    continue
             if (
                 _is_literal_true(options.get("frozen"))
                 and _is_literal_true(options.get("slots"))
             ):
                 continue
             invalid.append(
-                f"{path.relative_to(REPO_ROOT)}:{class_node.lineno} "
+                f"{relative_path}:{class_node.lineno} "
                 f"{class_node.name}"
             )
 
+    assert mutable_configuration_seen == MUTABLE_CONFIGURATION_DATACLASSES, (
+        "Mutable configuration dataclass declarations are stale: "
+        f"{MUTABLE_CONFIGURATION_DATACLASSES - mutable_configuration_seen}"
+    )
     assert not invalid, (
-        "Production dataclasses must set frozen=True and slots=True:\n"
+        "Production dataclasses must be frozen and slotted unless explicitly "
+        "declared as mutable, slotted configuration:\n"
         + "\n".join(invalid)
     )

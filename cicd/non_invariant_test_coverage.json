@@ -406,8 +406,8 @@
       "path": "cicd/tests/test_allocation.py",
       "reason": "implementation_formula"
     },
-    "test_public_data_objects_are_frozen_and_slotted": {
-      "note": "Checks the current compiled scheduler, append-order index, batching, or pytree architecture.",
+    "test_public_scientific_data_objects_are_frozen_and_slotted": {
+      "note": "Checks that mutable sampler configuration remains separate from frozen scientific state and result data.",
       "path": "cicd/tests/test_core.py",
       "reason": "architecture_boundary"
     },
