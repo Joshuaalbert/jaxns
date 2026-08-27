@@ -80,10 +80,12 @@ def _environment(repository_root: Path) -> dict[str, object]:
 
 
 def _git_commit(repository_root: Path) -> str:
-    """Return the exact commit without adding a runtime dependency on GitPython."""
+    """Return the commit without adding a runtime GitPython dependency."""
     head = (repository_root / ".git").read_text(encoding="utf-8").strip()
     if not head.startswith("gitdir: "):
-        raise RuntimeError("This benchmark expects to run from a Git worktree.")
+        raise RuntimeError(
+            "This benchmark expects to run from a Git worktree."
+        )
     git_directory = Path(head.removeprefix("gitdir: "))
     commit = (git_directory / "HEAD").read_text(encoding="utf-8").strip()
     if commit.startswith("ref: "):

@@ -186,8 +186,15 @@ def main() -> int:
     lines = [
         "# Issue 269 allocation-cadence screen",
         "",
-        "| Schedule | N | Goal hit | Mode loss | Mode RMS | Evidence RMS | z SD | Evaluations / ESS | Goal iterations | Final roots | Run seconds |",
-        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+        (
+            "| Schedule | N | Goal hit | Mode loss | Mode RMS | "
+            "Evidence RMS | z SD | Evaluations / ESS | Goal iterations | "
+            "Final roots | Run seconds |"
+        ),
+        (
+            "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | "
+            "---: | ---: | ---: |"
+        ),
     ]
     for schedule in configured_schedules:
         if schedule not in summary:
@@ -216,7 +223,10 @@ def main() -> int:
         "",
         "Mode-loss improvement is an absolute percentage-point reduction.",
         "",
-        "| Schedule | Mode-loss improvement | Mode RMS improvement | Evidence RMS regression | Evaluations / ESS regression |",
+        (
+            "| Schedule | Mode-loss improvement | Mode RMS improvement | "
+            "Evidence RMS regression | Evaluations / ESS regression |"
+        ),
         "| --- | ---: | ---: | ---: | ---: |",
     ])
     for schedule in configured_schedules:
