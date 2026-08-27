@@ -152,6 +152,10 @@ The exact text following each `- Invariant:` prefix is the stable key used by
   its run without hidden mutable sampler state.
 - Invariant: Resuming a state with its stored random-stream position is scientifically
   equivalent to uninterrupted continuation under the same conditions.
+- Invariant: Automatic checkpoint resume restores exactly the last committed full run state,
+  including its random stream and any retry-stable distributed work.
+- Invariant: An interrupted or corrupted checkpoint cannot be accepted as a valid run state,
+  and corrupted state bytes are rejected before deserialization.
 - Invariant: The user-supplied goal condition is evaluated against complete immutable run states
   and determines successful user-goal termination.
 - Invariant: A depth condition bounds one allocation epoch without being reported as successful

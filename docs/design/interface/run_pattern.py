@@ -55,7 +55,14 @@ local_state = local.run_until_goal(
     goal_cond=goal_cond,
     depth_cond=TerminationCondition(),
     key=jax.random.PRNGKey(1),
+    checkpoint_dir="checkpoints/local",
+    checkpoint_cadence=3600.0,
 )
+
+# Re-running this call with the same checkpoint directory loads the complete
+# last committed State automatically. Checkpoint integrity is verified before
+# pickle deserialization; compatible model and sampler configuration remain
+# the scientific caller's responsibility.
 
 
 # The opt-in distributed path uses a stack started separately with:
@@ -79,6 +86,8 @@ checkpoint: DistributedState = distributed.run_until_goal(
     goal_cond=goal_cond,
     depth_cond=TerminationCondition(),
     key=jax.random.PRNGKey(2),
+    checkpoint_dir="checkpoints/distributed",
+    checkpoint_cadence=3600.0,
 )
 
 # A checkpoint contains retry-stable pending tasks if execution was interrupted.
@@ -88,6 +97,8 @@ checkpoint = distributed.resume_until_goal(
     checkpoint,
     goal_cond=goal_cond,
     depth_cond=TerminationCondition(),
+    checkpoint_dir="checkpoints/distributed",
+    checkpoint_cadence=3600.0,
 )
 results = checkpoint.to_result()
 results.summary()

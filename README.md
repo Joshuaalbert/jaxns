@@ -156,6 +156,30 @@ state = sampler.run_until_goal(
 )
 ```
 
+Long runs can opt into automatic full-state checkpoints. The default cadence
+is one hour, checked between completed depth epochs. A changed final state is
+also saved, and invoking the same run again with the same directory resumes
+the committed random stream automatically:
+
+```python
+state = sampler.run_until_goal(
+    goal_cond=goal_cond,
+    key=jax.random.PRNGKey(3),
+    checkpoint_dir="checkpoints/science-run",
+    checkpoint_cadence=3600.0,
+)
+```
+
+Each state is written through the ordinary Pytree serialization surface and
+published atomically through a checksum-bearing `CHECKPOINT` manifest. JAXNS
+rejects incomplete or corrupted storage before deserialization. Checkpoint
+directories contain trusted Python pickle data; use them only with the model,
+arguments, sampler, and environment appropriate for that scientific run.
+One process holds the directory lock for the complete run. The newest two
+generations are retained, but corruption fails closed with
+`CheckpointCorruptionError` rather than silently rolling back; a competing
+writer receives `CheckpointInUseError`.
+
 The lightweight expectation estimates on `State` are suitable for frequent
 goal and depth decisions. Final user-facing evidence should be drawn with the
 Monte Carlo shrinkage model. Phantom conditioning is explicit, so the same run
@@ -301,6 +325,8 @@ distributed_sampler = DistributedNestedSampler(
 )
 checkpoint = distributed_sampler.run(
     key=jax.random.PRNGKey(7),
+    checkpoint_dir="checkpoints/distributed-run",
+    checkpoint_cadence=3600.0,
 )
 results = checkpoint.to_result().trim()
 results.summary()
@@ -367,6 +393,8 @@ requests.
 - Added race-tree nested sampling with dynamic lineage allocation, a Python
   user-goal loop, JIT-compiled depth epochs, and continuation-batched
   likelihood evaluation across replacement chains.
+- Added opt-in, hourly full-state checkpoints with automatic local and
+  distributed resume, atomic manifest publication, and corruption detection.
 - Made model data and parameters explicit through JAXCTX `args` and `params`,
   and made scientific state and result objects immutable pytree dataclasses.
 - Added plateau-correct shrinkage and bounded final Monte Carlo evidence draws,

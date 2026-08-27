@@ -944,12 +944,22 @@ def test_real_pool_runs_scalar_vmap_retries_and_cli_lifecycle(tmp_path):
             initial_capacity=8,
             sampler=sampler,
         )
+        checkpoint_dir = tmp_path / "distributed-checkpoint"
+        first_checkpoint = distributed.run_until_goal(
+            lambda state: int(state.goal_loop_iter) >= 1,
+            depth_cond=TerminationCondition(dlogZ=jnp.asarray(0.5)),
+            key=jax.random.PRNGKey(21),
+            checkpoint_dir=checkpoint_dir,
+        )
         checkpoint = distributed.run_until_goal(
             lambda state: int(state.goal_loop_iter) >= 2,
             depth_cond=TerminationCondition(dlogZ=jnp.asarray(0.5)),
-            key=jax.random.PRNGKey(21),
+            # The persisted state owns the exact continuation stream.
+            key=jax.random.PRNGKey(999),
+            checkpoint_dir=checkpoint_dir,
         )
 
+        assert int(first_checkpoint.state.goal_loop_iter) >= 1
         assert not checkpoint.pending
         assert int(checkpoint.reservations.num_reserved) == 0
         state = checkpoint.state

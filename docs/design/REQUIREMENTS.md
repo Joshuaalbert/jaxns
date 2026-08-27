@@ -218,6 +218,34 @@ properties that must hold independently of implementation live in
 - Requirement: A result is built only after block capacity and lineage consistency have been
   validated over the valid sample prefix.
 
+## Automatic Checkpointing
+
+- Requirement: Local and distributed run, run-until-goal, explicit-resume, and single-depth run
+  entry points accept a checkpoint directory and a cadence in seconds; checkpointing performs no
+  filesystem operation when the directory is omitted.
+- Requirement: Automatic checkpointing is opt-in and defaults to a one-hour cadence when a
+  checkpoint directory is supplied. Cadence is checked only at coherent Python depth boundaries,
+  and a changed final state is saved regardless of elapsed cadence.
+- Requirement: A checkpoint serializes the entire `State` or `DistributedState` through the
+  shared `Pytree.save` surface. Model, arguments, sampler, and runner compatibility are the
+  caller's responsibility and are not fingerprinted or inferred by the checkpoint layer.
+- Requirement: A state generation is written to a same-directory temporary file, flushed and
+  fsynced, checksummed with SHA-256, and atomically published before a final atomic `CHECKPOINT`
+  manifest commit. The containing directory is fsynced at each publication boundary on platforms
+  that support directory fsync.
+- Requirement: Loading verifies the exact manifest schema and state checksum before
+  deserialization. Missing, malformed, unsupported, incomplete, and checksum-mismatched
+  checkpoints fail with an actionable error rather than silently starting or rolling back.
+- Requirement: The newest two state generations are retained, but recovery never silently falls
+  back from a corrupt committed generation to an older state.
+- Requirement: One process owns a checkpoint-directory lock for the complete run so two writers
+  cannot resume and publish competing continuations.
+- Requirement: A retryable distributed execution error checkpoints the complete
+  `DistributedState`, including pending task identities, immutable requests, and provisional
+  reservations, before exposing the error when checkpointing is enabled.
+- Requirement: Checkpoints use trusted Python pickle serialization and are recovery artifacts for
+  a compatible Python environment, not a safe untrusted-data or archival interchange format.
+
 ## Allocation And Seed Scheduling
 
 - Requirement: Supported allocation targets are uniform, evidence improving, and posterior

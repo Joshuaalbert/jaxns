@@ -27,6 +27,9 @@ repeat mistakes specific to this project. Keep learnings compact.
 - Phantom clusters descended from one root race lineage are not independent
   after finite Markov transitions. Share their gamma weight; grouping only
   exact repeated seeds understated uncertainty on the 10D curved release gate.
+- Automatic checkpoints are opt-in full `State` or `DistributedState` Pytree
+  saves. The checkpoint layer owns atomic publication and corruption detection;
+  callers own model, arguments, sampler, and runner compatibility on resume.
 - Sample-buffer growth resumes an unfinished compiled depth epoch. Do not run
   a custom scientific goal at that physical boundary; initial capacity must
   not change the logical allocation round or stopping point.

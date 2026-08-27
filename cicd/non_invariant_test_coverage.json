@@ -671,6 +671,21 @@
       "path": "cicd/tests/test_distributed_runtime.py",
       "reason": "runtime_architecture"
     },
+    "test_checkpoint_cadence_uses_monotonic_seconds_and_retains_two_generations": {
+      "note": "Checks the selected one-hour monotonic cadence and two-generation retention policy.",
+      "path": "cicd/tests/test_checkpoint.py",
+      "reason": "checkpoint_implementation"
+    },
+    "test_checkpoint_cadence_rejects_invalid_seconds": {
+      "note": "Checks fail-fast validation for the public cadence unit and finite-value contract.",
+      "path": "cicd/tests/test_checkpoint.py",
+      "reason": "configuration_contract"
+    },
+    "test_checkpoint_directory_has_one_writer_for_whole_run": {
+      "note": "Checks the concrete advisory-lock implementation used to exclude concurrent checkpoint writers.",
+      "path": "cicd/tests/test_checkpoint.py",
+      "reason": "checkpoint_implementation"
+    },
     "test_supervisor_rotates_dispatch_fairly_between_sessions": {
       "note": "Checks the selected supervisor round-robin queue policy between active clients.",
       "path": "cicd/tests/test_distributed_runtime.py",
