@@ -415,6 +415,42 @@ def test_state_to_result_evidence_summary_uses_block_model():
     )
 
 
+def test_state_to_result_excludes_storage_tail_likelihood_counts():
+    samples = Samples(
+        log_L_constraints=jnp.asarray([-jnp.inf, -jnp.inf, -jnp.inf]),
+        log_likelihoods=jnp.asarray([0.0, 1.0, -jnp.inf]),
+        U_samples=jnp.asarray([0.20, 0.50, 0.0]),
+        out_degree=jnp.asarray([1, 0, 0], dtype=jnp.int32),
+        num_likelihood_evaluations=jnp.asarray(
+            [3, 5, 999],
+            dtype=jnp.int32,
+        ),
+        phantom_samples=PhantomSamples(
+            U_samples=jnp.zeros((3, 1)),
+            valid_mask=jnp.ones((3, 1), dtype=jnp.bool_),
+            log_L=jnp.asarray([[0.5], [1.5], [999.0]]),
+        ),
+    )
+    state = State(
+        root_out_degree=jnp.asarray(1, dtype=jnp.int32),
+        samples=samples,
+        num_samples=jnp.asarray(2, dtype=jnp.int32),
+        log_L_supremum=jnp.asarray(1.0),
+        U_supremum=jnp.asarray(0.50),
+        termination_reason=jnp.asarray(0, dtype=jnp.int32),
+        model=make_toy_model(),
+    )
+
+    results = state.to_result().trim()
+
+    np.testing.assert_array_equal(
+        np.asarray(results.num_likelihood_evaluations_per_sample),
+        np.asarray([3, 5]),
+    )
+    assert int(results.total_num_likelihood_evaluations) == 8
+    assert int(results.total_phantom_samples) == 2
+
+
 def test_state_to_result_preserves_phantom_provenance_for_kish_diagnostics():
     samples = Samples(
         log_L_constraints=jnp.asarray([-jnp.inf, -jnp.inf, 0.0]),

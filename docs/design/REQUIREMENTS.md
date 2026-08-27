@@ -84,8 +84,9 @@ properties that must hold independently of implementation live in
   x64, or measure-dtype semantics differ from the scientific process. Device platform may differ
   intentionally.
 - Requirement: Each worker is one OS process with one configured JAX device and one fixed batch
-  capacity; size one calls a scalar chain directly and larger compatible groups use `jax.vmap`,
-  never `jax.lax.map`.
+  capacity; evidence-backed long-chain groups of at least eight batch ready proposals with
+  `jax.vmap`, while narrower groups retain complete-chain execution and size one is scalar.
+  `jax.lax.map` is never used.
 - Requirement: A worker's public name is derived exactly as `{platform}-{device}`; configuration
   does not introduce a second user-selected name for the same physical specialization.
 - Requirement: Every worker process sets `XLA_PYTHON_CLIENT_PREALLOCATE=false` before importing
@@ -101,9 +102,10 @@ properties that must hold independently of implementation live in
   cannot deadlock a sparsely populated queue.
 - Requirement: Direction-state batch compatibility includes every value that can affect the
   worker's sampling law and excludes GMM fit bookkeeping and completed-chain diagnostic
-  counters; observational counter changes alone do not split an otherwise compatible `vmap`.
-- Requirement: A worker executes a complete constrained-sampling chain or vmapped chain batch;
-  individual likelihood evaluations inside data-dependent sampler loops never cross IPC.
+  counters; observational counter changes alone do not split an otherwise compatible batch.
+- Requirement: A worker executes complete constrained-sampling tasks and keeps their continuation
+  state locally; individual likelihood evaluations inside data-dependent sampler loops never
+  cross IPC.
 - Requirement: The scientific process performs no likelihood evaluation in distributed mode.
   Root unit-hypercube points are drawn before state construction, their likelihoods are dispatched
   through an explicit worker operation, and constrained chains keep their internal likelihood
@@ -127,7 +129,7 @@ properties that must hold independently of implementation live in
   exact scientific payload and keys, and a completed payload remains replayable until the client
   acknowledges its exactly-once commit.
 - Requirement: Results are committed to scientific state in stable task-ID order while workers
-  continue asynchronously. One vmapped worker assignment is returned and replayed as one
+  continue asynchronously. One worker assignment is returned and replayed as one
   protocol group; the scientific core commits its contiguous stable-ID prefix before refill.
   Result framing and phantom payload size cannot subdivide that prefix into timing-dependent
   refill decisions.
@@ -175,8 +177,9 @@ properties that must hold independently of implementation live in
 - Requirement: The compiled depth loop computes allocation gaps, selects parents, selects
   stationary seeds, reparents seedless work, samples a fixed replacement width, and accepts that
   work without host callbacks.
-- Requirement: Parallel replacement sampling uses `jax.vmap`; `jax.lax.map` is not used for the
-  replacement batch.
+- Requirement: Parallel replacement likelihood evaluation uses `jax.vmap`; logical chains
+  continue independently across slice-transition boundaries, and `jax.lax.map` is not used for
+  the replacement batch.
 - Requirement: Replacement width is static for a compiled depth epoch, while a validity mask
   prevents unused lanes from changing scientific state or likelihood counts.
 - Requirement: The default allocation increment fills one replacement batch so ordinary outer
@@ -244,10 +247,15 @@ properties that must hold independently of implementation live in
   the fit and parent contour remain fixed for each complete constrained chain in that batch.
 - Requirement: Gradient-guided directions, Galilean trajectories, and step-out bracketing are
   not accepted by the release core until separately implemented and validated.
-- Requirement: Constrained chains are sampled in parallel at fixed replacement width even though
-  their likelihood-evaluation counts may differ.
-- Requirement: Parallelizing individual likelihood calls independently of chain sampling is
-  future work and must preserve the non-deterministic number of evaluations used by each chain.
+- Requirement: Constrained chains are sampled at fixed replacement width and keep stable logical
+  IDs even though their likelihood-evaluation counts differ. Each physical likelihood call is a
+  fixed-width batch of the chains' ready proposals; finished lanes use `U=0.5` filler whose result
+  never enters scientific state or logical evaluation counts.
+- Requirement: Short or narrow chain batches retain complete-chain execution until representative
+  evidence shows that continuation bookkeeping is worthwhile; the current evidence-backed
+  boundaries are 32 slice transitions and eight lanes.
+- Requirement: Continuation batching preserves every chain's scalar PRNG stream, strict parent
+  contour, stationary seed, generated phantom order, classic child, and logical likelihood count.
 - Requirement: Retained phantoms are the earliest eligible post-burn-in intermediate states of a
   chain, are ordered as generated, and exclude the final classic child.
 - Requirement: Merely enabling phantom retention cannot change the number of slice transitions
