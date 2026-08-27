@@ -376,7 +376,10 @@ def _combine_requests(requests, request_type, seed_type, jnp, jax):
     # The local scientific client fingerprints direction state and the
     # JAX-free coordinator groups only matching fingerprints. Re-serializing
     # potentially large ellipsoid state here would put host work on every
-    # worker hot path.
+    # worker hot path. Fit bookkeeping and completed-chain counters may differ
+    # within a group, but the sampler never reads them; every field that can
+    # affect a direction is identical, so using the first execution state is
+    # intentional.
 
     def concatenate(*values):
         return jnp.concatenate(values, axis=0)

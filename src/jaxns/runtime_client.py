@@ -37,10 +37,38 @@ if TYPE_CHECKING:
         ConstrainedSampleRequest,
     )
     from jaxns.distributed_core import WorkerSession
+    from jaxns.multi_ellipsoid_utils import SamplerData
 
 
 class RuntimeUnavailableError(RuntimeError):
     """The configured local supervisor did not answer before the deadline."""
+
+
+def _sampler_batch_group(sampler_data: SamplerData | None) -> str:
+    """Fingerprint direction state while excluding observational counters.
+
+    GMM fit bookkeeping and completed-chain counters travel in ``State`` for
+    diagnostics and warm-refit policy, but workers do not read them when they
+    draw a direction. Including those counters would make otherwise identical
+    refills incompatible and silently collapse a worker's configured vmap.
+    """
+    execution_state = (
+        None
+        if sampler_data is None
+        else (
+            sampler_data.mixture,
+            sampler_data.centres,
+            sampler_data.radii,
+            sampler_data.rotations,
+            sampler_data.log_volumes,
+            sampler_data.log_L_max,
+            sampler_data.valid,
+        )
+    )
+    return hashlib.sha256(pickle.dumps(
+        execution_state,
+        protocol=pickle.HIGHEST_PROTOCOL,
+    )).hexdigest()
 
 
 class SupervisorClient:
@@ -81,7 +109,12 @@ class SupervisorClient:
         self._default_timeout_s = default_timeout_s
         self._config_fingerprint = config_fingerprint
         self._max_payload_bytes = max_payload_bytes
-        self._results: deque[tuple[dict[str, object], bytes]] = deque()
+        self._results: deque[
+            tuple[dict[str, object], tuple[bytes, ...]]
+        ] = deque()
+        self._decoded_results: deque[
+            tuple[int, ConstrainedSampleBatch]
+        ] = deque()
 
     @classmethod
     def from_config(
@@ -169,10 +202,10 @@ class SupervisorClient:
         ])
         deadline = time.monotonic() + self._default_timeout_s
         while True:
-            header, result_payload = self._receive_until(deadline)
+            header, result_payloads = self._receive_until(deadline)
             command = header["command"]
             if command == RESULT:
-                self._results.append((header, result_payload))
+                self._results.append((header, result_payloads))
                 continue
             if command == ERROR:
                 _raise_runtime_error(header)
@@ -195,10 +228,10 @@ class SupervisorClient:
             encode_header(RELEASE, session_id=session_id),
             b"",
         ])
-        header, payload = self._receive_until(
+        header, payloads = self._receive_until(
             time.monotonic() + self._default_timeout_s
         )
-        del payload
+        del payloads
         if header["command"] == ERROR:
             _raise_runtime_error(header)
         if header["command"] != RELEASED:
@@ -213,26 +246,41 @@ class SupervisorClient:
             request: ConstrainedSampleRequest,
     ) -> None:
         """Submit one retry-stable logical lineage thread."""
-        width = int(request.log_L_constraints.shape[0])
-        if width != 1:
-            raise ValueError(
-                "Distributed tasks are scalar logical threads; worker-local "
-                "batch_size controls vmap grouping."
-            )
-        payload = pickle.dumps(request, protocol=pickle.HIGHEST_PROTOCOL)
-        self._check_payload(payload)
-        batch_group = hashlib.sha256(pickle.dumps(
-            request.sampler_data,
-            protocol=pickle.HIGHEST_PROTOCOL,
-        )).hexdigest()
+        self.submit_many(session_id, ((task_id, request),))
+
+    def submit_many(
+            self,
+            session_id: str,
+            tasks: tuple[tuple[int, ConstrainedSampleRequest], ...],
+    ) -> None:
+        """Atomically queue one transport group of scalar scientific tasks."""
+        if not tasks:
+            raise ValueError("At least one distributed task is required.")
+        task_ids = []
+        batch_groups = []
+        payloads = []
+        for task_id, request in tasks:
+            width = int(request.log_L_constraints.shape[0])
+            if width != 1:
+                raise ValueError(
+                    "Distributed tasks are scalar logical threads; worker-local "
+                    "batch_size controls vmap grouping."
+                )
+            task_ids.append(task_id)
+            batch_groups.append(_sampler_batch_group(request.sampler_data))
+            payloads.append(pickle.dumps(
+                request,
+                protocol=pickle.HIGHEST_PROTOCOL,
+            ))
+        self._check_payloads(payloads)
         self._socket.send_multipart([
             encode_header(
                 TASK,
                 session_id=session_id,
-                task_id=task_id,
-                batch_group=batch_group,
+                task_ids=task_ids,
+                batch_groups=batch_groups,
             ),
-            payload,
+            *payloads,
         ])
 
     def receive(
@@ -242,11 +290,27 @@ class SupervisorClient:
             timeout_s: float | None = None,
     ) -> tuple[int, ConstrainedSampleBatch]:
         """Receive whichever task completes first for the registered session."""
+        if not self._decoded_results:
+            group = self.receive_group(session_id, timeout_s=timeout_s)
+            self._decoded_results.extend(group)
+        return self._decoded_results.popleft()
+
+    def receive_group(
+            self,
+            session_id: str,
+            *,
+            timeout_s: float | None = None,
+    ) -> tuple[tuple[int, ConstrainedSampleBatch], ...]:
+        """Receive one complete worker assignment without a lane barrier leak."""
+        if self._decoded_results:
+            result = tuple(self._decoded_results)
+            self._decoded_results.clear()
+            return result
         if self._results:
-            header, payload = self._results.popleft()
+            header, payloads = self._results.popleft()
         else:
             timeout = self._default_timeout_s if timeout_s is None else timeout_s
-            header, payload = self._receive_until(time.monotonic() + timeout)
+            header, payloads = self._receive_until(time.monotonic() + timeout)
         command = header["command"]
         if command == ERROR:
             _raise_runtime_error(header)
@@ -254,15 +318,23 @@ class SupervisorClient:
             raise RuntimeError(f"Expected a worker result, received {command!r}.")
         if header.get("session_id") != session_id:
             raise RuntimeError("Supervisor returned a result for another session.")
-        task_id = header.get("task_id")
-        if type(task_id) is not int:
-            raise RuntimeError("Worker result has no integer task ID.")
+        task_ids = header.get("task_ids")
+        if (
+            not isinstance(task_ids, list)
+            or not task_ids
+            or not all(type(task_id) is int for task_id in task_ids)
+        ):
+            raise RuntimeError("Worker result has no integer task IDs.")
+        if len(task_ids) != len(payloads):
+            raise RuntimeError("Worker result IDs and payloads disagree.")
+        results = []
         try:
-            self._check_payload(payload)
-            batch = pickle.loads(payload)
+            self._check_payloads(payloads)
+            for task_id, payload in zip(task_ids, payloads, strict=True):
+                results.append((task_id, pickle.loads(payload)))
         except Exception as exc:
             raise RuntimeError("Worker result payload could not be decoded.") from exc
-        return task_id, batch
+        return tuple(results)
 
     def acknowledge(self, session_id: str, task_id: int) -> None:
         """Allow the supervisor to release one committed result payload."""
@@ -282,12 +354,12 @@ class SupervisorClient:
         timeout = self._default_timeout_s if timeout_s is None else timeout_s
         deadline = time.monotonic() + timeout
         while True:
-            header, payload = self._receive_until(deadline)
+            header, payloads = self._receive_until(deadline)
             observed = header["command"]
             if observed == RESULT:
                 # Capacity/status requests can race task completions on the
                 # same DEALER socket. Preserve those results for receive().
-                self._results.append((header, payload))
+                self._results.append((header, payloads))
                 continue
             if observed == ERROR:
                 _raise_runtime_error(header)
@@ -300,7 +372,7 @@ class SupervisorClient:
     def _receive_until(
             self,
             deadline: float,
-    ) -> tuple[dict[str, object], bytes]:
+    ) -> tuple[dict[str, object], tuple[bytes, ...]]:
         remaining_ms = max(0, int((deadline - time.monotonic()) * 1000))
         events = dict(self._poller.poll(remaining_ms))
         if self._socket not in events:
@@ -308,14 +380,21 @@ class SupervisorClient:
                 "The local JAXNS supervisor did not answer before the timeout."
             )
         frames = self._socket.recv_multipart()
-        if len(frames) != 2:
+        if len(frames) < 2:
             raise RuntimeError("Supervisor returned an invalid frame count.")
-        return decode_header(frames[0]), frames[1]
+        return decode_header(frames[0]), tuple(frames[1:])
 
     def _check_payload(self, payload: bytes) -> None:
-        if len(payload) > self._max_payload_bytes:
+        self._check_payloads((payload,))
+
+    def _check_payloads(
+            self,
+            payloads: tuple[bytes, ...] | list[bytes],
+    ) -> None:
+        size = sum(len(payload) for payload in payloads)
+        if size > self._max_payload_bytes:
             raise ValueError(
-                f"Runtime payload is {len(payload)} bytes; configured maximum "
+                f"Runtime payload is {size} bytes; configured maximum "
                 f"is {self._max_payload_bytes} bytes."
             )
 

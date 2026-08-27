@@ -130,6 +130,7 @@ class TaskRecord:
 
     __slots__ = (
         "batch_group",
+        "completion_group",
         "fingerprint",
         "payload",
         "queued_s",
@@ -149,6 +150,7 @@ class TaskRecord:
     ) -> None:
         self.task_id = task_id
         self.batch_group = batch_group
+        self.completion_group = f"task:{task_id}"
         self.fingerprint = fingerprint
         self.payload = payload
         self.queued_s = time.monotonic()
@@ -348,7 +350,7 @@ class Supervisor:
             elif identity.startswith(b"node:"):
                 self._receive_node(router, identity, command, header)
             elif router is self.socket:
-                self._receive_client(identity, command, header, payloads[0])
+                self._receive_client(identity, command, header, payloads)
             else:
                 raise ValueError("Scientific clients must use local IPC.")
         except Exception as exc:
@@ -364,7 +366,7 @@ class Supervisor:
             identity: bytes,
             command: str,
             header: dict[str, object],
-            payload: bytes,
+            payloads: list[bytes],
     ) -> None:
         if command == PING:
             self._send(identity, encode_header(
@@ -398,11 +400,15 @@ class Supervisor:
             self._send(identity, encode_header(SHUTDOWN, accepted=True))
             self.stopping = True
         elif command == REGISTER:
-            self._register_client(identity, header, payload)
+            self._register_client(
+                identity,
+                header,
+                _single_payload(payloads, REGISTER),
+            )
         elif command == RELEASE:
             self._release_client(identity, header)
         elif command == TASK:
-            self._queue_task(identity, header, payload)
+            self._queue_tasks(identity, header, payloads)
         elif command == ACK:
             self._acknowledge(identity, header)
         else:
@@ -622,9 +628,14 @@ class Supervisor:
             if session_id not in worker.registered:
                 self._send_registration(worker, session)
         self._complete_registration(session)
-        for task in session.tasks.values():
-            if task.state == "completed":
-                self._send(identity, task.result_header, task.result_payload)
+        self._replay_completed(
+            session,
+            tuple(
+                task
+                for task in session.tasks.values()
+                if task.state == "completed"
+            ),
+        )
 
     def _release_client(self, identity: bytes, header: dict[str, object]) -> None:
         session_id = _string_field(header, "session_id")
@@ -683,27 +694,80 @@ class Supervisor:
         )
         session.registration_notified = True
 
-    def _queue_task(
+    def _queue_tasks(
             self,
             identity: bytes,
             header: dict[str, object],
-            payload: bytes,
+            payloads: list[bytes],
     ) -> None:
         session_id = _string_field(header, "session_id")
-        task_id = _integer_field(header, "task_id")
-        batch_group = _string_field(header, "batch_group")
+        task_ids = _integer_list(header, "task_ids")
+        batch_groups = _string_list(header, "batch_groups")
+        if len(task_ids) != len(batch_groups) or len(task_ids) != len(payloads):
+            raise ValueError("Task IDs, batch groups, and payloads disagree.")
+        if len(set(task_ids)) != len(task_ids):
+            raise ValueError("Task IDs within one atomic submission must be unique.")
         session = self._session_owned(identity, session_id)
-        fingerprint = hashlib.sha256(payload).hexdigest()
-        existing = session.tasks.get(task_id)
-        if existing is not None:
-            if existing.fingerprint != fingerprint:
+        prepared = []
+        for task_id, batch_group, payload in zip(
+                task_ids,
+                batch_groups,
+                payloads,
+                strict=True,
+        ):
+            fingerprint = hashlib.sha256(payload).hexdigest()
+            existing = session.tasks.get(task_id)
+            if existing is not None and existing.fingerprint != fingerprint:
                 raise ValueError(f"Task {task_id} changed its payload.")
-            if existing.state in ("completed", "failed"):
-                self._send(identity, existing.result_header, existing.result_payload)
+            prepared.append((
+                task_id,
+                batch_group,
+                fingerprint,
+                payload,
+                existing,
+            ))
+
+        # Validate the whole transport batch before mutating the retry table.
+        # A malformed sibling cannot leave a partially queued reservation.
+        completed = []
+        for task_id, batch_group, fingerprint, payload, existing in prepared:
+            if existing is not None:
+                if existing.state == "completed":
+                    completed.append(existing)
+                elif existing.state == "failed":
+                    self._send(
+                        identity,
+                        existing.result_header,
+                        existing.result_payload,
+                    )
+                continue
+            task = TaskRecord(task_id, batch_group, fingerprint, payload)
+            session.tasks[task_id] = task
+            session.queue.append(task_id)
+        self._replay_completed(session, tuple(completed))
+
+    def _replay_completed(
+            self,
+            session: SessionRecord,
+            tasks: tuple[TaskRecord, ...],
+    ) -> None:
+        """Replay completed siblings as one coordinator-to-client message."""
+        if not tasks:
             return
-        task = TaskRecord(task_id, batch_group, fingerprint, payload)
-        session.tasks[task_id] = task
-        session.queue.append(task_id)
+        grouped = {}
+        for task in sorted(tasks, key=lambda value: value.task_id):
+            grouped.setdefault(task.completion_group, []).append(task)
+        for group in grouped.values():
+            self._send(
+                session.client,
+                encode_header(
+                    RESULT,
+                    session_id=session.session_id,
+                    task_ids=[task.task_id for task in group],
+                    replayed=True,
+                ),
+                *[task.result_payload for task in group],
+            )
 
     def _acknowledge(self, identity: bytes, header: dict[str, object]) -> None:
         session = self._session_owned(
@@ -807,18 +871,34 @@ class Supervisor:
         for task_id, payload in zip(task_ids, payloads, strict=True):
             task = session.tasks[task_id]
             task.state = "completed"
+            task.completion_group = assignment_id
             task.worker = None
             task.result_header = encode_header(
                 RESULT,
                 session_id=session_id,
-                task_id=task_id,
+                task_ids=[task_id],
                 worker_id=worker.worker_id,
                 elapsed_s=header.get("elapsed_s", 0.0),
                 compile_s=header.get("compile_s", 0.0),
                 peak_rss_kib=header.get("peak_rss_kib", 0),
             )
             task.result_payload = payload
-            self._send(session.client, task.result_header, payload)
+        # A worker's lanes already synchronize inside one compiled vmap. Send
+        # that assignment to the scientific process atomically so result byte
+        # size cannot change which subset is committed and refilled together.
+        self._send(
+            session.client,
+            encode_header(
+                RESULT,
+                session_id=session_id,
+                task_ids=task_ids,
+                worker_id=worker.worker_id,
+                elapsed_s=header.get("elapsed_s", 0.0),
+                compile_s=header.get("compile_s", 0.0),
+                peak_rss_kib=header.get("peak_rss_kib", 0),
+            ),
+            *payloads,
+        )
         worker.task = None
         worker.assignment_id = ""
         worker.started_s = 0.0
@@ -1150,6 +1230,21 @@ def _integer_list(header: dict[str, object], name: str) -> list[int]:
     ):
         raise ValueError(f"Protocol field {name!r} must be an integer list.")
     return value
+
+
+def _string_list(header: dict[str, object], name: str) -> list[str]:
+    value = header.get(name)
+    if not isinstance(value, list) or not value or not all(
+        type(item) is str for item in value
+    ):
+        raise ValueError(f"Protocol field {name!r} must be a string list.")
+    return value
+
+
+def _single_payload(payloads: list[bytes], command: str) -> bytes:
+    if len(payloads) != 1:
+        raise ValueError(f"{command} requires exactly one payload.")
+    return payloads[0]
 
 
 def _dictionary_field(

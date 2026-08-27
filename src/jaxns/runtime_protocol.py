@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-PROTOCOL_VERSION = 2
+PROTOCOL_VERSION = 3
 MAX_HEADER_BYTES = 65_536
 ROLE = "role"
 PING = "ping"

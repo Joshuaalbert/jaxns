@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import argparse
+import dataclasses
+import hashlib
 import json
+import pickle
 import subprocess
 import sys
 import tempfile
@@ -15,13 +18,16 @@ import jax.numpy as jnp
 from jaxctx.priors.prior import Prior
 from tensorflow_probability.substrates import jax as tfp
 
+from jaxns import runtime_client
 from jaxns.constrained_sampler import (
     ConstrainedSampleRequest,
+    EllipsoidalDirection,
     UniDimSliceSampler,
     sample_request,
 )
 from jaxns.distributed_core import WorkerSession
 from jaxns.model import Model
+from jaxns.multi_ellipsoid_utils import empty_sampler_data
 from jaxns.runtime_client import SupervisorClient
 from jaxns.samples import SeedPoint
 
@@ -33,11 +39,11 @@ def prior_model():
     return -jnp.square(u - 0.25)
 
 
-def write_config(path: Path, workers: int) -> None:
+def write_config(path: Path, workers: int, batch_size: int = 1) -> None:
     path.write_text(
         f"""
 [runtime]
-stack_id = "issue-267-throughput-{workers}"
+stack_id = "issue-267-throughput-{workers}-{batch_size}"
 runtime_dir = "runtime"
 log_dir = "logs"
 startup_timeout_s = 60
@@ -48,7 +54,7 @@ task_timeout_s = 120
 name = "cpu"
 platform = "cpu"
 device = 0
-batch_size = 1
+batch_size = {batch_size}
 count = {workers}
 """.strip() + "\n",
         encoding="utf-8",
@@ -67,7 +73,12 @@ def cli(config: Path, command: str) -> None:
         raise RuntimeError(completed.stderr.strip())
 
 
-def request(key, seed_u, seed_log_likelihood) -> ConstrainedSampleRequest:
+def request(
+        key,
+        seed_u,
+        seed_log_likelihood,
+        sampler_data=None,
+) -> ConstrainedSampleRequest:
     return ConstrainedSampleRequest(
         keys=key[None],
         valid=jnp.asarray([True]),
@@ -76,7 +87,7 @@ def request(key, seed_u, seed_log_likelihood) -> ConstrainedSampleRequest:
             U0=jax.tree.map(lambda value: value[None], seed_u),
             log_L0=jnp.asarray([seed_log_likelihood]),
         ),
-        sampler_data=None,
+        sampler_data=sampler_data,
     )
 
 
@@ -239,6 +250,172 @@ def measure(workers: int, tasks: int, repeats: int) -> dict[str, object]:
             cli(config, "down")
 
 
+def _full_sampler_batch_group(sampler_data) -> str:
+    """Reproduce the pre-fix fingerprint for a matched baseline."""
+    return hashlib.sha256(pickle.dumps(
+        sampler_data,
+        protocol=pickle.HIGHEST_PROTOCOL,
+    )).hexdigest()
+
+
+def run_batch_group_round(
+        client,
+        session_id: str,
+        first: int,
+        tasks: int,
+        repeat: int,
+        seed_u,
+        seed_log_likelihood,
+        sampler_data,
+        group_fn,
+) -> dict[str, object]:
+    """Run equal chains whose direction diagnostics differ by task."""
+    original = runtime_client._sampler_batch_group
+    runtime_client._sampler_batch_group = group_fn
+    try:
+        started = time.perf_counter()
+        for lane in range(tasks):
+            # Only counters differ. They are planner diagnostics and cannot
+            # affect the direction law executed by a worker.
+            diagnostics = dataclasses.replace(
+                sampler_data,
+                num_samples=jnp.asarray(lane + 1),
+                num_attempted=jnp.asarray(lane + 1),
+                num_updates=jnp.asarray(lane % 5),
+                num_directions=jnp.asarray(10 * lane),
+                num_isotropic=jnp.asarray(lane),
+            )
+            client.submit(
+                session_id,
+                first + lane,
+                request(
+                    jax.random.PRNGKey(3_000_000 + repeat * tasks + lane),
+                    seed_u,
+                    seed_log_likelihood,
+                    sampler_data=diagnostics,
+                ),
+            )
+        records = {}
+        for _ in range(tasks):
+            task_id, batch = client.receive(session_id, timeout_s=120.0)
+            lane = task_id - first
+            records[lane] = (
+                int(batch.num_likelihood_evaluations[0]),
+                float(batch.log_likelihoods[0]),
+            )
+            client.acknowledge(session_id, task_id)
+        elapsed_s = time.perf_counter() - started
+    finally:
+        runtime_client._sampler_batch_group = original
+    return {
+        "elapsed_s": elapsed_s,
+        "likelihood_evaluations": sum(value[0] for value in records.values()),
+        "log_likelihoods": [records[lane][1] for lane in range(tasks)],
+    }
+
+
+def measure_batch_grouping(tasks: int, repeats: int) -> dict[str, object]:
+    """Measure the marginal value of ignoring non-execution counters."""
+    model = Model(prior_model=prior_model)
+    sampler = UniDimSliceSampler(
+        model=model,
+        num_slices=10,
+        direction=EllipsoidalDirection(num_components=2),
+    )
+    session = WorkerSession(sampler=sampler, args=(), params=None)
+    seed_u = model.sample_U(jax.random.PRNGKey(0))
+    seed_log_likelihood = model.log_likelihood(seed_u)
+    sampler_data = empty_sampler_data(num_components=2, dimension=1)
+    policies = {
+        "full_state": _full_sampler_batch_group,
+        "execution_state": runtime_client._sampler_batch_group,
+    }
+    records = []
+    with tempfile.TemporaryDirectory(prefix="jaxns-batch-group-") as directory:
+        config = Path(directory) / "workers.toml"
+        write_config(config, workers=1, batch_size=3)
+        cli(config, "up")
+        try:
+            with SupervisorClient.from_config(config) as client:
+                session_id = "batch-group"
+                client.register(session_id, session)
+                first = 1
+                # Compile both scalar and width-three execution shapes before
+                # timing. The comparison is steady-state scheduling only.
+                for name, group_fn in policies.items():
+                    run_batch_group_round(
+                        client,
+                        session_id,
+                        first,
+                        12,
+                        -1,
+                        seed_u,
+                        seed_log_likelihood,
+                        sampler_data,
+                        group_fn,
+                    )
+                    first += 12
+                for repeat in range(repeats):
+                    names = tuple(policies)
+                    offset = repeat % len(names)
+                    matching = []
+                    for name in names[offset:] + names[:offset]:
+                        result = run_batch_group_round(
+                            client,
+                            session_id,
+                            first,
+                            tasks,
+                            repeat,
+                            seed_u,
+                            seed_log_likelihood,
+                            sampler_data,
+                            policies[name],
+                        )
+                        first += tasks
+                        record = {
+                            "policy": name,
+                            "repeat": repeat,
+                            **result,
+                        }
+                        records.append(record)
+                        matching.append(record)
+                    if len({
+                        record["likelihood_evaluations"]
+                        for record in matching
+                    }) != 1:
+                        raise RuntimeError(
+                            "Batch grouping changed likelihood work."
+                        )
+                    values = jnp.asarray([
+                        record["log_likelihoods"] for record in matching
+                    ])
+                    max_abs_difference = float(jnp.max(jnp.abs(
+                        values[0] - values[1]
+                    )))
+                    if max_abs_difference > 1e-12:
+                        raise RuntimeError(
+                            "Batch grouping changed numerical results."
+                        )
+                    for record in matching:
+                        log_likelihoods = record.pop("log_likelihoods")
+                        record["log_likelihood_digest"] = hashlib.sha256(
+                            pickle.dumps(
+                                log_likelihoods,
+                                protocol=pickle.HIGHEST_PROTOCOL,
+                            )
+                        ).hexdigest()
+                        record["paired_max_abs_difference"] = (
+                            max_abs_difference
+                        )
+                client.release(session_id)
+        finally:
+            cli(config, "down")
+    return {
+        "worker_batch_size": 3,
+        "records": records,
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--tasks", type=int, default=300)
@@ -280,6 +457,10 @@ def main() -> int:
             )
             for width in widths
         ],
+        "batch_group_records": measure_batch_grouping(
+            args.tasks,
+            args.repeats,
+        ),
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(output, indent=2), encoding="utf-8")

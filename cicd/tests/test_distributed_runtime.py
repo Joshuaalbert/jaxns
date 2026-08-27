@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import json
 import os
@@ -23,13 +24,16 @@ from cicd.tests.distributed_support import make_toy_model
 from jaxns.cli import _stop_started_process
 from jaxns.constrained_sampler import (
     ConstrainedSampleRequest,
+    EllipsoidalDirection,
     UniDimSliceSampler,
+    sample_request,
 )
 from jaxns.distributed_core import (
     DistributedNestedSampler,
     WorkerSession,
 )
-from jaxns.runtime_client import SupervisorClient
+from jaxns.multi_ellipsoid_utils import empty_sampler_data
+from jaxns.runtime_client import SupervisorClient, _sampler_batch_group
 from jaxns.runtime_config import WorkerConfig, load_runtime_config
 from jaxns.runtime_protocol import (
     CAPACITY,
@@ -48,6 +52,57 @@ from jaxns.samples import SeedPoint
 from jaxns.termination_condition import TerminationCondition
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def test_batch_group_ignores_direction_diagnostics_but_not_geometry():
+    data = empty_sampler_data(num_components=2, dimension=1)
+    diagnostics = dataclasses.replace(
+        data,
+        num_samples=jnp.asarray(100),
+        num_attempted=jnp.asarray(90),
+        num_updates=jnp.asarray(4),
+        num_directions=jnp.asarray(500),
+        num_isotropic=jnp.asarray(5),
+    )
+    geometry = dataclasses.replace(
+        data,
+        radii=jnp.ones_like(data.radii),
+    )
+
+    assert _sampler_batch_group(data) == _sampler_batch_group(diagnostics)
+    assert _sampler_batch_group(data) != _sampler_batch_group(geometry)
+
+    # Protect the premise behind that grouping rule: diagnostic fields must
+    # remain observational and cannot enter the worker's direction law.
+    model = make_toy_model()
+    sampler = UniDimSliceSampler(
+        model=model,
+        num_slices=2,
+        direction=EllipsoidalDirection(num_components=2),
+    )
+    request = ConstrainedSampleRequest(
+        keys=jax.random.split(jax.random.PRNGKey(4), 1),
+        valid=jnp.asarray([True]),
+        log_L_constraints=jnp.asarray([-1.0]),
+        seed_points=SeedPoint(
+            U0=jnp.asarray([0.5]),
+            log_L0=jnp.asarray([-0.0625]),
+        ),
+        sampler_data=data,
+    )
+    reference = sample_request(sampler, request)
+    observed = sample_request(
+        sampler,
+        dataclasses.replace(request, sampler_data=diagnostics),
+    )
+    assert all(
+        bool(jnp.array_equal(left, right))
+        for left, right in zip(
+            jax.tree.leaves(reference),
+            jax.tree.leaves(observed),
+            strict=True,
+        )
+    )
 
 
 def _write_config(path: Path, *, task_timeout_s: float = 30.0) -> None:
@@ -75,6 +130,28 @@ batch_size = 1
 count = 2
 """.strip()
         + "\n",
+        encoding="utf-8",
+    )
+
+
+def _write_batch_config(path: Path) -> None:
+    """Write one deterministic vmap worker for trajectory invariance tests."""
+    path.write_text(
+        """
+[runtime]
+stack_id = "distributed-batch-test"
+runtime_dir = "runtime"
+log_dir = "logs"
+startup_timeout_s = 30
+shutdown_timeout_s = 15
+task_timeout_s = 30
+
+[[workers]]
+name = "vector"
+platform = "cpu"
+device = 0
+batch_size = 2
+""".strip() + "\n",
         encoding="utf-8",
     )
 
@@ -307,23 +384,58 @@ def test_supervisor_deduplicates_task_identity_until_acknowledgement():
     supervisor._report_missing_capacity = lambda batch_size: None
     header = {
         "session_id": "session",
-        "task_id": 5,
-        "batch_group": "direction-state",
+        "task_ids": [5, 6],
+        "batch_groups": ["direction-state", "direction-state"],
+    }
+    payloads = [b"request-five", b"request-six"]
+
+    supervisor._queue_tasks(b"client", header, payloads)
+    supervisor._queue_tasks(b"client", header, payloads)
+    assert list(session.queue) == [5, 6]
+    assert list(session.tasks) == [5, 6]
+
+    for task_id in (5, 6):
+        task = session.tasks[task_id]
+        task.state = "completed"
+        task.completion_group = "assignment"
+        task.result_header = b"result-header"
+        task.result_payload = f"result-{task_id}".encode()
+    supervisor._queue_tasks(b"client", header, payloads)
+    assert len(sent) == 1
+    assert decode_header(sent[0][1])["task_ids"] == [5, 6]
+    assert sent[0][2:] == (b"result-5", b"result-6")
+    for task_id in (5, 6):
+        supervisor._acknowledge(
+            b"client",
+            {"session_id": "session", "task_id": task_id},
+        )
+    assert not session.tasks
+
+
+def test_supervisor_validates_atomic_task_group_before_queue_mutation():
+    supervisor = object.__new__(Supervisor)
+    session = SessionRecord("session", "registration", b"model", b"client")
+    supervisor.sessions = {"session": session}
+    supervisor._send = lambda *frames: None
+    header = {
+        "session_id": "session",
+        "task_ids": [1, 2],
+        "batch_groups": ["direction-state"],
     }
 
-    supervisor._queue_task(b"client", header, b"request")
-    supervisor._queue_task(b"client", header, b"request")
-    assert list(session.queue) == [5]
-    assert list(session.tasks) == [5]
+    with pytest.raises(ValueError, match="disagree"):
+        supervisor._queue_tasks(b"client", header, [b"one", b"two"])
 
-    task = session.tasks[5]
-    task.state = "completed"
-    task.result_header = b"result-header"
-    task.result_payload = b"result-payload"
-    supervisor._queue_task(b"client", header, b"request")
-    assert sent == [(b"client", b"result-header", b"result-payload")]
-    supervisor._acknowledge(b"client", header)
     assert not session.tasks
+    assert not session.queue
+
+    header["batch_groups"] = ["direction-state", "direction-state"]
+    header["task_ids"] = [1, 1]
+    with pytest.raises(ValueError, match="unique"):
+        supervisor._queue_tasks(b"client", header, [b"one", b"one"])
+
+    assert not session.tasks
+    assert not session.queue
 
 
 def test_task_timeout_requeues_byte_identical_payload_on_compatible_worker():
@@ -522,6 +634,66 @@ def test_capacity_counts_only_workers_registered_for_session():
     header = decode_header(sent[0][0][1])
     assert header["lanes"] == 2
     assert header["workers"] == 1
+
+
+def test_phantom_payload_does_not_change_vector_worker_trajectory(tmp_path):
+    config_path = tmp_path / "batch-workers.toml"
+    _write_batch_config(config_path)
+    _cli(config_path, "up")
+    try:
+        model = make_toy_model()
+
+        def run(collect_phantoms):
+            sampler = UniDimSliceSampler(
+                model=model,
+                num_slices=2,
+                collect_phantom_samples=collect_phantoms,
+                phantom_burn_in=0,
+            )
+            runner = DistributedNestedSampler(
+                model=model,
+                config=config_path,
+                root_allocation_degree=4,
+                delta_K=4,
+                max_samples=16,
+                initial_capacity=8,
+                collect_phantom_samples=collect_phantoms,
+                sampler=sampler,
+            )
+            return runner.run_until_goal(
+                lambda state: int(state.goal_loop_iter) >= 2,
+                depth_cond=TerminationCondition(dlogZ=jnp.asarray(0.5)),
+                key=jax.random.PRNGKey(52),
+            ).state
+
+        classic = run(False)
+        phantom = run(True)
+        classic_count = int(classic.num_samples)
+        phantom_count = int(phantom.num_samples)
+
+        # Phantom collection changes only retained intermediate states. The
+        # same stable task IDs and random streams must create the same race.
+        assert classic_count == phantom_count
+        assert int(classic.root_out_degree) == int(phantom.root_out_degree)
+        for field in (
+                "log_L_constraints",
+                "log_likelihoods",
+                "U_samples",
+                "out_degree",
+                "num_likelihood_evaluations",
+        ):
+            left = getattr(classic.samples, field)[:classic_count]
+            right = getattr(phantom.samples, field)[:phantom_count]
+            assert bool(jnp.array_equal(left, right)), field
+        assert not bool(jnp.any(
+            classic.samples.phantom_samples.valid_mask[:classic_count]
+        ))
+        assert bool(jnp.any(
+            phantom.samples.phantom_samples.valid_mask[:phantom_count]
+        ))
+    finally:
+        stopped = _cli(config_path, "down", check=False)
+        assert stopped.returncode == 0, stopped.stderr
 
 
 def test_real_pool_runs_scalar_vmap_retries_and_cli_lifecycle(tmp_path):

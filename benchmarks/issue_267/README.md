@@ -31,4 +31,58 @@ PYTHONPATH=src conda run -n jaxns_py python \
   --output benchmarks/issue_267/throughput.json
 ```
 
+That command also measures the GMM batch-compatibility rule. It gives each
+task byte-distinct fit bookkeeping while holding every direction-defining
+array, key, seed, and contour fixed, then compares the old full-state hash with
+the execution-state hash used by the worker pool.
+
+The representative scientific comparison uses the maintained 8D spike--slab
+problem rather than the analytic transport control. It includes initial GMM
+training, warm contour-triggered refits, ellipsoid selection by volume, and the
+1% isotropic safety kernel. The local and distributed runners use the same 240
+root lineages, allocation increment 80, 40 slice transitions, finite sample
+limit, and termination condition. This host's measured topology is one CPU
+worker with `batch_size = 3`; a second identical worker contended for the same
+cores and did not improve the smoke run.
+
+```bash
+PYTHONPATH=src:. MPLCONFIGDIR=/tmp/jaxns-matplotlib-267 \
+  conda run -n jaxns_py python \
+  benchmarks/issue_267/run_standard_comparison.py \
+  --case spike_slab \
+  --seeds 30 \
+  --runner both \
+  --workers 1 \
+  --batch-size 3 \
+  --output benchmarks/issue_267/standard_spike_slab.json
+
+# Repeat with retained phantoms and phantom-conditioned final MC evidence.
+PYTHONPATH=src:. MPLCONFIGDIR=/tmp/jaxns-matplotlib-267 \
+  conda run -n jaxns_py python \
+  benchmarks/issue_267/run_standard_comparison.py \
+  --case spike_slab \
+  --seeds 30 \
+  --runner both \
+  --workers 1 \
+  --batch-size 3 \
+  --phantoms \
+  --output benchmarks/issue_267/standard_spike_slab_phantoms.json
+
+PYTHONPATH=src:. conda run -n jaxns_py python \
+  benchmarks/issue_267/summarise_standard.py \
+  benchmarks/issue_267/standard_spike_slab.json
+```
+
+The standard runner checkpoints after every completed seed because a scalar or
+small-width worker comparison is intentionally much slower than the local
+width-80 `vmap`. Add `--resume` with the same scientific configuration to skip
+already-checkpointed runner/seed pairs after an interruption. The harness
+rejects mismatched configuration metadata before combining records. GMM update
+counts and isotropic-direction fractions are part of every record, so a
+scheduling candidate cannot appear faster merely by skipping direction
+fitting. Evidence records contain both the expectation estimate and a
+1,000-draw final Monte Carlo calculation; phantom runs use phantom conditioning
+for that final calculation while the depth loop remains classic and
+expectation based.
+
 See `REPORT.md` for the reviewed tables and interpretation.

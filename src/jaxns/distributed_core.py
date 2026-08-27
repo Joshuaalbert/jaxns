@@ -630,11 +630,13 @@ class DistributedNestedSampler:
                 capacities = client.register(distributed.session_id, session)
                 if not capacities:
                     raise RuntimeError("The supervisor has no ready workers.")
-                for pending in distributed.pending:
-                    client.submit(
+                if distributed.pending:
+                    client.submit_many(
                         distributed.session_id,
-                        pending.task_id,
-                        pending.request,
+                        tuple(
+                            (pending.task_id, pending.request)
+                            for pending in distributed.pending
+                        ),
                     )
                 completed = self._run_connected(
                     client,
@@ -660,7 +662,11 @@ class DistributedNestedSampler:
             goal_cond: Callable[[State], bool],
             depth_cond: TerminationCondition,
     ) -> DistributedState:
-        completed_tasks: dict[int, ConstrainedSampleBatch] = {}
+        completed_tasks: dict[
+            int,
+            tuple[ConstrainedSampleBatch, int],
+        ] = {}
+        next_completion_group = 0
         while True:
             state = distributed.state
             if (
@@ -708,7 +714,7 @@ class DistributedNestedSampler:
                 )
                 while pending.task_id not in completed_tasks:
                     try:
-                        task_id, batch = client.receive(
+                        completed_group = client.receive_group(
                             distributed.session_id,
                             timeout_s=self.receive_timeout_s,
                         )
@@ -717,41 +723,66 @@ class DistributedNestedSampler:
                             f"Waiting for distributed task failed: {exc}",
                             distributed,
                         ) from exc
-                    if not any(
-                        task.task_id == task_id
-                        for task in distributed.pending
-                    ):
-                        # A replay for an already committed task is safe to
-                        # release because its state mutation already happened.
-                        client.acknowledge(distributed.session_id, task_id)
-                        continue
-                    completed_tasks[task_id] = batch
-                batch = completed_tasks.pop(pending.task_id)
-                accepted = _accept_task(
-                    distributed.state,
-                    distributed.reservations,
-                    pending.work,
-                    batch,
-                )
-                if not bool(accepted.accepted):
-                    raise DistributedRunError(
-                        f"Worker task {pending.task_id} violated its strict contour.",
-                        distributed,
+                    completion_group = next_completion_group
+                    next_completion_group += 1
+                    for task_id, batch in completed_group:
+                        if not any(
+                            task.task_id == task_id
+                            for task in distributed.pending
+                        ):
+                            # A replay for an already committed task is safe to
+                            # release because its state mutation already happened.
+                            client.acknowledge(
+                                distributed.session_id,
+                                task_id,
+                            )
+                            continue
+                        completed_tasks[task_id] = (
+                            batch,
+                            completion_group,
+                        )
+
+                # Results from one worker vmap arrive atomically. Commit only
+                # the contiguous IDs in that assignment before refill. A
+                # faster sibling worker may already have returned later IDs,
+                # but network timing must not merge two scientific boundaries.
+                commit_group = completed_tasks[pending.task_id][1]
+                while distributed.pending:
+                    pending = min(
+                        distributed.pending,
+                        key=lambda task: task.task_id,
                     )
-                client.acknowledge(
-                    distributed.session_id,
-                    pending.task_id,
-                )
-                distributed = dataclasses.replace(
-                    distributed,
-                    state=accepted.state,
-                    reservations=accepted.reservations,
-                    pending=tuple(
-                        task
-                        for task in distributed.pending
-                        if task.task_id != pending.task_id
-                    ),
-                )
+                    if pending.task_id not in completed_tasks:
+                        break
+                    batch, completion_group = completed_tasks[pending.task_id]
+                    if completion_group != commit_group:
+                        break
+                    completed_tasks.pop(pending.task_id)
+                    accepted = _accept_task(
+                        distributed.state,
+                        distributed.reservations,
+                        pending.work,
+                        batch,
+                    )
+                    if not bool(accepted.accepted):
+                        raise DistributedRunError(
+                            f"Worker task {pending.task_id} violated its strict contour.",
+                            distributed,
+                        )
+                    client.acknowledge(
+                        distributed.session_id,
+                        pending.task_id,
+                    )
+                    distributed = dataclasses.replace(
+                        distributed,
+                        state=accepted.state,
+                        reservations=accepted.reservations,
+                        pending=tuple(
+                            task
+                            for task in distributed.pending
+                            if task.task_id != pending.task_id
+                        ),
+                    )
                 continue
 
             status = self._status(distributed, depth_cond)
@@ -835,9 +866,10 @@ class DistributedNestedSampler:
             depth_cond: TerminationCondition,
             lane_capacity: int | None = None,
     ) -> DistributedState:
-        # Keep every compatible live lane fed without imposing a sampling
-        # wave. One task credit per live lane fills the whole pool immediately
-        # and avoids speculative scientific work beyond measured capacity.
+        # Fill every currently measured worker lane without imposing a
+        # completion barrier. The capacity bound also prevents scheduling
+        # policy from changing the number of scientific observations merely
+        # because a large allocation gap is visible to the coordinator.
         if lane_capacity is None:
             try:
                 capacity = client.capacity(
@@ -917,18 +949,20 @@ class DistributedNestedSampler:
                 pending=distributed.pending + tasks,
                 next_task_id=distributed.next_task_id + num_tasks,
             )
-            for task in tasks:
-                try:
-                    client.submit(
-                        distributed.session_id,
-                        task.task_id,
-                        task.request,
-                    )
-                except Exception as exc:
-                    raise DistributedRunError(
-                        f"Submitting distributed task failed: {exc}",
-                        distributed,
-                    ) from exc
+            try:
+                client.submit_many(
+                    distributed.session_id,
+                    tuple(
+                        (task.task_id, task.request)
+                        for task in tasks
+                    ),
+                )
+            except Exception as exc:
+                raise DistributedRunError(
+                    "Submitting distributed tasks failed: "
+                    f"{exc}",
+                    distributed,
+                ) from exc
             free -= num_tasks
         return distributed
 

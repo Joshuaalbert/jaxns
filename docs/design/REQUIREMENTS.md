@@ -96,6 +96,9 @@ properties that must hold independently of implementation live in
 - Requirement: The coordinator groups only tasks from the same session and direction-state
   specialization. A partial group may run after a short bounded fill interval so a wide worker
   cannot deadlock a sparsely populated queue.
+- Requirement: Direction-state batch compatibility includes every value that can affect the
+  worker's sampling law and excludes GMM fit bookkeeping and completed-chain diagnostic
+  counters; observational counter changes alone do not split an otherwise compatible `vmap`.
 - Requirement: A worker executes a complete constrained-sampling chain or vmapped chain batch;
   individual likelihood evaluations inside data-dependent sampler loops never cross IPC.
 - Requirement: The first distributed release bootstraps the finite root prior batch in the main
@@ -120,8 +123,10 @@ properties that must hold independently of implementation live in
   exact scientific payload and keys, and a completed payload remains replayable until the client
   acknowledges its exactly-once commit.
 - Requirement: Results are committed to scientific state in stable task-ID order while workers
-  continue asynchronously. Completion latency, including phantom payload size, cannot select a
-  different race tree for the same assigned random stream.
+  continue asynchronously. One vmapped worker assignment is returned and replayed as one
+  protocol group; the scientific core commits its contiguous stable-ID prefix before refill.
+  Result framing and phantom payload size cannot subdivide that prefix into timing-dependent
+  refill decisions.
 - Requirement: Worker death or task timeout requeues an unchanged task when compatible capacity
   remains, reports degraded capacity visibly, and does not hide failure through automatic worker
   restart.

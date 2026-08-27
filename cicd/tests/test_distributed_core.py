@@ -243,8 +243,8 @@ def test_growth_preserves_pending_payload_and_logical_depth():
 
 def test_submit_failure_exposes_newest_resumable_checkpoint():
     class Client:
-        def submit(self, session_id, task_id, request):
-            del session_id, task_id, request
+        def submit_many(self, session_id, tasks):
+            del session_id, tasks
             raise RuntimeError("transport unavailable")
 
     model = make_toy_model()
@@ -334,9 +334,9 @@ def test_distributed_dispatch_queues_scalar_threads_without_shell_barrier():
         def __init__(self):
             self.requests = []
 
-        def submit(self, session_id, task_id, request):
-            del session_id, task_id
-            self.requests.append(request)
+        def submit_many(self, session_id, tasks):
+            del session_id
+            self.requests.extend(request for _, request in tasks)
 
     model = make_toy_model()
     runner = DistributedNestedSampler(
