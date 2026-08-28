@@ -44,8 +44,8 @@ if TYPE_CHECKING:
         LikelihoodEvaluation,
         LikelihoodRequest,
     )
-    from jaxns.sampling.ellipsoid import SamplerData
     from jaxns.runtime.session import WorkerSession
+    from jaxns.sampling.ellipsoid import SamplerData
 
 
 class RuntimeUnavailableError(RuntimeError):

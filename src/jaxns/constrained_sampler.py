@@ -3,7 +3,6 @@ from __future__ import annotations
 import dataclasses
 import warnings
 from abc import ABC, abstractmethod
-from functools import partial
 from typing import Any, NamedTuple
 
 import jax
@@ -196,7 +195,6 @@ class AbstractSampler(ABC):
         del dimension
 
 
-@partial(jax.jit, inline=True)
 def _take_phantom_prefix(cumulative_samples, num_phantom: int):
     """Take retained generated transitions from the start of a chain."""
     return jax.tree.map(lambda x: x[:num_phantom], cumulative_samples)

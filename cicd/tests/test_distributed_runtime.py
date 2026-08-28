@@ -32,7 +32,6 @@ from jaxns.constrained_sampler import (
 from jaxns.distributed_core import (
     DistributedNestedSampler,
 )
-from jaxns.sampling.ellipsoid import empty_sampler_data
 from jaxns.runtime.client import SupervisorClient, _sampler_batch_group
 from jaxns.runtime.config import (
     WorkerConfig,
@@ -60,6 +59,7 @@ from jaxns.runtime.protocol import (
 from jaxns.runtime.session import WorkerSession
 from jaxns.runtime.worker import _fence_process
 from jaxns.samples import SeedPoint
+from jaxns.sampling.ellipsoid import empty_sampler_data
 from jaxns.termination_condition import TerminationCondition
 
 REPO_ROOT = Path(__file__).resolve().parents[2]

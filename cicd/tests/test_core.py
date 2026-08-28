@@ -18,6 +18,10 @@ from jaxns.algorithm.allocation import (
     closest_seedable_parent_block_python,
     stationary_seed_indices_python,
 )
+from jaxns.algorithm.race_tree import (
+    build_block_state,
+    initialise_likelihood_order,
+)
 from jaxns.constrained_sampler import (
     AbstractSampler,
     EllipsoidalDirection,
@@ -25,13 +29,9 @@ from jaxns.constrained_sampler import (
     _take_phantom_prefix,
 )
 from jaxns.core import NestedSampler
-from jaxns.sampling.ellipsoid import empty_sampler_data
 from jaxns.pytree import PureDataclassPytree
-from jaxns.algorithm.race_tree import (
-    build_block_state,
-    initialise_likelihood_order,
-)
 from jaxns.samples import PhantomSamples, SeedPoint
+from jaxns.sampling.ellipsoid import empty_sampler_data
 from jaxns.termination_condition import TerminationCondition
 
 

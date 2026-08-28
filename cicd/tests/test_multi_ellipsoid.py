@@ -8,6 +8,7 @@ from jaxctx.priors.prior import Prior
 
 from jaxns.mixed_precision import mp_policy
 from jaxns.model import Model
+from jaxns.random_utils import random_ortho_matrix
 from jaxns.sampling.ellipsoid import (
     EllipsoidParams,
     bounding_ellipsoid,
@@ -23,7 +24,6 @@ from jaxns.sampling.ellipsoid import (
     point_in_ellipsoid,
     update_sampler_data,
 )
-from jaxns.random_utils import random_ortho_matrix
 
 plt.switch_backend("Agg")
 
