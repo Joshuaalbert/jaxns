@@ -12,7 +12,7 @@ from jax import numpy as jnp
 from cicd.tests.core_fixtures import make_state
 from cicd.tests.distributed_support import make_toy_model
 from jaxns import constrained_sampler, core
-from jaxns.allocation import (
+from jaxns.algorithm.allocation import (
     AllocationPlan,
     VolumePath,
     closest_seedable_parent_block_python,
@@ -27,7 +27,7 @@ from jaxns.constrained_sampler import (
 from jaxns.core import NestedSampler
 from jaxns.multi_ellipsoid_utils import empty_sampler_data
 from jaxns.pytree import PureDataclassPytree
-from jaxns.race_tree import (
+from jaxns.algorithm.race_tree import (
     build_block_state,
     initialise_likelihood_order,
 )

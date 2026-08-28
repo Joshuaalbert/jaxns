@@ -9,6 +9,7 @@ from jax import numpy as jnp
 
 from cicd.tests.core_fixtures import make_state
 from cicd.tests.distributed_support import make_toy_model
+from jaxns.algorithm.depth import CoreWorkBatch
 from jaxns.constrained_sampler import (
     ConstrainedSampleBatch,
     ConstrainedSampleRequest,
@@ -16,7 +17,7 @@ from jaxns.constrained_sampler import (
     UniDimSliceSampler,
     sample_request,
 )
-from jaxns.core import CoreWorkBatch, NestedSampler
+from jaxns.core import NestedSampler
 from jaxns.distributed_core import (
     DistributedNestedSampler,
     DistributedRunError,

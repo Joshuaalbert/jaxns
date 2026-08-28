@@ -7,7 +7,7 @@ from jax.scipy import special as jsp
 
 from jaxns.mixed_precision import mp_policy
 from jaxns.pytree import PureDataclassPytree
-from jaxns.race_tree import BlockState
+from jaxns.algorithm.race_tree import BlockState
 from jaxns.shrinkage import (
     DirichletConcentrations,
     GammaWeightedPhantomProbabilitySamples,

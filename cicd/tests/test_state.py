@@ -11,7 +11,7 @@ from cicd.tests.distributed_support import make_toy_model
 from jaxns.core import NestedSampler
 from jaxns.model import Model
 from jaxns.multi_ellipsoid_utils import empty_sampler_data
-from jaxns.race_tree import build_block_state, initialise_likelihood_order
+from jaxns.algorithm.race_tree import build_block_state, initialise_likelihood_order
 from jaxns.samples import PhantomSamples, Samples
 from jaxns.shrinkage import (
     classic_dirichlet_concentrations,

@@ -16,6 +16,15 @@ import jax.numpy as jnp
 import numpy as np
 from jaxctx import CtxParams
 
+from jaxns.algorithm.depth import (
+    MAX_SAMPLES_REACHED,
+    CoreWorkBatch,
+    _accept_work_batch,
+    _build_depth_view,
+    _plan_work_batch,
+    _prepare_sampler_data,
+)
+from jaxns.algorithm.initialisation import _build_init_state
 from jaxns.checkpoint import (
     CHECKPOINT_CADENCE_SECONDS,
     CheckpointManager,
@@ -27,16 +36,7 @@ from jaxns.constrained_sampler import (
     LikelihoodEvaluation,
     LikelihoodRequest,
 )
-from jaxns.core import (
-    MAX_SAMPLES_REACHED,
-    CoreWorkBatch,
-    NestedSampler,
-    _accept_work_batch,
-    _build_depth_view,
-    _build_init_state,
-    _plan_work_batch,
-    _prepare_sampler_data,
-)
+from jaxns.core import NestedSampler
 from jaxns.logging import jaxns_logger
 from jaxns.mixed_precision import mp_policy
 from jaxns.model import Model

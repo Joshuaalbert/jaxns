@@ -8,7 +8,7 @@ from jax import random
 
 from jaxns import shrinkage
 from jaxns.phantom_eval import sample_mc_shrinkage
-from jaxns.race_tree import BlockState
+from jaxns.algorithm.race_tree import BlockState
 from jaxns.shrinkage import (
     DirichletConcentrations,
     classic_dirichlet_concentrations,

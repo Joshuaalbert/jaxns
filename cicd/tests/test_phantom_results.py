@@ -13,7 +13,7 @@ from jaxns.core import NestedSampler
 from jaxns.mixed_precision import mp_policy
 from jaxns.phantom_eval import sample_mc_shrinkage
 from jaxns.pytree import PureDataclassPytree
-from jaxns.race_tree import BlockState
+from jaxns.algorithm.race_tree import BlockState
 from jaxns.results import BlockData, NestedSamplerResults
 from jaxns.samples import PhantomSamples
 from jaxns.termination_condition import TerminationCondition

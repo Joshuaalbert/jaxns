@@ -17,7 +17,7 @@ from jaxns.model import Model
 from jaxns.multi_ellipsoid_utils import SamplerData
 from jaxns.phantom_eval import EvidenceSamples
 from jaxns.pytree import PureDataclassPytree
-from jaxns.race_tree import BlockState, LikelihoodOrder, build_block_state
+from jaxns.algorithm.race_tree import BlockState, LikelihoodOrder, build_block_state
 from jaxns.results import BlockData, NestedSamplerResults
 from jaxns.samples import Samples, UType
 from jaxns.shrinkage import (

@@ -22,7 +22,7 @@ from jaxns.phantom_eval import (
     validate_sample_mc_shrinkage_inputs,
 )
 from jaxns.pytree import PureDataclassPytree
-from jaxns.race_tree import BlockState
+from jaxns.algorithm.race_tree import BlockState
 from jaxns.random_utils import resample_indicies
 from jaxns.shrinkage import DirichletConcentrations, PhantomCountMatrices
 from jaxns.types import BoolArray, FloatArray, IntArray, PRNGKey, UType, XType

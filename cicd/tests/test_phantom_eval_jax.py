@@ -6,7 +6,7 @@ from jax import numpy as jnp
 
 import jaxns.phantom_eval as jax_phantom
 import jaxns.phantom_eval_ref as ref_phantom
-from jaxns.race_tree import BlockState
+from jaxns.algorithm.race_tree import BlockState
 
 
 class PhantomEvalFixture(NamedTuple):
