@@ -23,7 +23,7 @@ from jaxns.constrained_sampler import UniDimSliceSampler
 from jaxns.core import NestedSampler
 from jaxns.distributed_core import DistributedNestedSampler
 from jaxns.model import Model
-from jaxns.runtime_config import load_runtime_config
+from jaxns.runtime.config import load_runtime_config
 from jaxns.termination_condition import TerminationCondition
 
 tfpd = tfp.distributions

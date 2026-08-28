@@ -20,17 +20,17 @@ import jax.numpy as jnp
 from jaxctx.priors.prior import Prior
 from tensorflow_probability.substrates import jax as tfp
 
-from jaxns import runtime_client
 from jaxns.constrained_sampler import (
     ConstrainedSampleRequest,
     EllipsoidalDirection,
     UniDimSliceSampler,
     sample_request,
 )
-from jaxns.distributed_core import WorkerSession
 from jaxns.model import Model
 from jaxns.multi_ellipsoid_utils import empty_sampler_data
-from jaxns.runtime_client import SupervisorClient
+from jaxns.runtime import client as runtime_client
+from jaxns.runtime.client import SupervisorClient
+from jaxns.runtime.session import WorkerSession
 from jaxns.samples import SeedPoint
 
 tfpd = tfp.distributions

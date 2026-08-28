@@ -31,17 +31,22 @@ from jaxns.constrained_sampler import (
 )
 from jaxns.distributed_core import (
     DistributedNestedSampler,
-    WorkerSession,
 )
 from jaxns.multi_ellipsoid_utils import empty_sampler_data
-from jaxns.runtime_client import SupervisorClient, _sampler_batch_group
-from jaxns.runtime_config import (
+from jaxns.runtime.client import SupervisorClient, _sampler_batch_group
+from jaxns.runtime.config import (
     WorkerConfig,
     load_runtime_config,
     worker_name,
 )
-from jaxns.runtime_node import NodeSupervisor, NodeWorker
-from jaxns.runtime_protocol import (
+from jaxns.runtime.coordinator import (
+    SessionRecord,
+    Supervisor,
+    TaskRecord,
+    WorkerRecord,
+)
+from jaxns.runtime.node import NodeSupervisor, NodeWorker
+from jaxns.runtime.protocol import (
     ACK,
     CAPACITY,
     MAX_HEADER_BYTES,
@@ -52,13 +57,8 @@ from jaxns.runtime_protocol import (
     SAMPLE,
     decode_header,
 )
-from jaxns.runtime_supervisor import (
-    SessionRecord,
-    Supervisor,
-    TaskRecord,
-    WorkerRecord,
-)
-from jaxns.runtime_worker import _fence_process
+from jaxns.runtime.session import WorkerSession
+from jaxns.runtime.worker import _fence_process
 from jaxns.samples import SeedPoint
 from jaxns.termination_condition import TerminationCondition
 
@@ -299,7 +299,7 @@ def test_supervisor_and_config_validation_avoid_scientific_imports(tmp_path):
             sys.executable,
             "-c",
             (
-                "import sys; import jaxns.runtime_supervisor; "
+                "import sys; import jaxns.runtime.coordinator; "
                 "assert 'jax' not in sys.modules"
             ),
         ],
@@ -630,7 +630,7 @@ def test_fenced_worker_forces_process_exit_for_supervisor_restart():
     stopping = threading.Event()
     signals = []
     with patch(
-        "jaxns.runtime_worker.os.kill",
+        "jaxns.runtime.worker.os.kill",
         lambda process_id, process_signal: signals.append((
             process_id,
             process_signal,
@@ -646,7 +646,7 @@ def test_fenced_worker_forces_process_exit_for_supervisor_restart():
     alive.set()
     stopping.set()
     signals.clear()
-    with patch("jaxns.runtime_worker.os.kill"):
+    with patch("jaxns.runtime.worker.os.kill"):
         _fence_process(alive, stopping)
     assert not alive.is_set()
     assert signals == []

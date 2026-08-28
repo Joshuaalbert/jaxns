@@ -10,8 +10,8 @@ import sys
 import time
 from pathlib import Path
 
-from jaxns.runtime_client import RuntimeUnavailableError
-from jaxns.runtime_config import RuntimeConfig, load_runtime_config
+from jaxns.runtime.client import RuntimeUnavailableError
+from jaxns.runtime.config import RuntimeConfig, load_runtime_config
 
 
 def _print(document: dict[str, object]) -> None:
@@ -36,7 +36,7 @@ def _ownership_is_held(config: RuntimeConfig) -> bool:
 
 
 def _connect(config: RuntimeConfig):
-    from jaxns.runtime_client import SupervisorClient
+    from jaxns.runtime.client import SupervisorClient
 
     return SupervisorClient.from_config(config.source, use_manifest=True)
 
@@ -122,9 +122,9 @@ def _up(config: RuntimeConfig) -> int:
     # also coordinates scientific work; remote nodes connect their workers to
     # that coordinator over TCP on the trusted scientific network.
     module = (
-        "jaxns.runtime_supervisor"
+        "jaxns.runtime.coordinator"
         if config.role == "coordinator"
-        else "jaxns.runtime_node"
+        else "jaxns.runtime.node"
     )
     process = subprocess.Popen(
         [

@@ -27,7 +27,7 @@ from jaxns.distributed_core import (
     _change_reservations,
     _planning_state,
 )
-from jaxns.runtime_client import RuntimeUnavailableError
+from jaxns.runtime.client import RuntimeUnavailableError
 from jaxns.samples import PhantomSamples, SeedPoint
 from jaxns.termination_condition import TerminationCondition
 
