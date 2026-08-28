@@ -21,7 +21,7 @@ classifiers = [
 urls = { "Homepage" = "https://github.com/joshuaalbert/jaxns" }
 dependencies = [
     "jax>=0.6.0",
-    "jaxctx>=1.1.5",
+    "jaxctx>=1.2.0",
     "matplotlib",
     "numpy",
     "scipy",

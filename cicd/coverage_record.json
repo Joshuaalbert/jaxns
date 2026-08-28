@@ -1,4 +1,16 @@
 {
+  "A declared continuous periodic coordinate identifies its two unit-hypercube endpoints while preserving the normalized prior measure and canonical storage in the half-open unit interval.": [
+    "test_periodic_coordinates_expand_in_sampler_order",
+    "test_periodic_coordinates_report_all_false_topology",
+    "test_periodic_slice_continuations_preserve_complete_chain_outputs",
+    "test_random_charts_preserve_uniform_circular_measure",
+    "test_distributed_worker_replays_the_configured_periodic_sampler",
+    "test_periodic_sampler_executes_in_real_worker_processes"
+  ],
+  "Changing the chart origin of a periodic coordinate does not change the constrained target, while non-periodic coordinates retain their hard unit-hypercube endpoints.": [
+    "test_periodic_evidence_and_moment_are_rotation_invariant",
+    "test_mixed_cylinder_crosses_only_the_periodic_seam"
+  ],
   "Collecting or retaining phantoms does not change the classic samples, race tree, or classic-conditioned result for the same random run.": [
     "test_phantom_payload_does_not_change_vector_worker_trajectory"
   ],
@@ -193,6 +205,7 @@
   "Changing how valid constrained-sampling work is batched or scheduled does not change the marginal law of any classic child.": [
     "test_distributed_dispatch_queues_scalar_threads_without_shell_barrier",
     "test_worker_request_uses_scalar_and_vmap_paths_above_strict_contour",
+    "test_periodic_scalar_and_vmapped_chains_share_one_transition_law",
     "test_real_pool_runs_scalar_vmap_retries_and_cli_lifecycle"
   ],
   "Every emitted classic child satisfies its recorded parent contour strictly.": [

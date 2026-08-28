@@ -2,6 +2,7 @@ import dataclasses
 
 import jax
 import numpy as np
+import pytest
 from jax import numpy as jnp
 from jax import random
 
@@ -44,6 +45,52 @@ class QuadraticModel(PureDataclassPytree):
 QuadraticModel.register_pytree()
 
 
+@dataclasses.dataclass(slots=True, frozen=True)
+class CircularModel(PureDataclassPytree):
+    """Traceable likelihood using minimum-image circular displacement."""
+
+    centre: jax.Array  # [D]
+
+    def log_likelihood(
+            self,
+            U,
+            args=(),
+            params=None,
+            *,
+            allow_nan=True,
+    ):
+        del args, params, allow_nan
+        displacement = jnp.mod(U - self.centre + 0.5, 1.0) - 0.5
+        return -jnp.sum(jnp.square(displacement))
+
+
+CircularModel.register_pytree()
+
+
+@dataclasses.dataclass(slots=True, frozen=True)
+class CylinderModel(PureDataclassPytree):
+    """Traceable likelihood with one circular and one hard coordinate."""
+
+    centre: jax.Array  # [2]
+
+    def log_likelihood(
+            self,
+            U,
+            args=(),
+            params=None,
+            *,
+            allow_nan=True,
+    ):
+        del args, params, allow_nan
+        circular = jnp.mod(U[0] - self.centre[0] + 0.5, 1.0) - 0.5
+        hard = U[1] - self.centre[1]
+        displacement = jnp.asarray([circular, hard])
+        return -jnp.sum(jnp.square(displacement / 0.1))
+
+
+CylinderModel.register_pytree()
+
+
 def _request(width: int) -> ConstrainedSampleRequest:
     seeds = jnp.linspace(0.35, 0.65, width * 2).reshape((width, 2))
     model = QuadraticModel(centre=jnp.asarray([0.45, 0.55]))
@@ -52,6 +99,22 @@ def _request(width: int) -> ConstrainedSampleRequest:
         keys=random.split(random.PRNGKey(244), width),
         valid=jnp.ones((width,), dtype=jnp.bool_),
         log_L_constraints=jnp.full((width,), -0.25),
+        seed_points=SeedPoint(
+            U0=seeds,
+            log_L0=log_likelihoods,
+        ),
+        sampler_data=None,
+    )
+
+
+def _periodic_request(width: int) -> ConstrainedSampleRequest:
+    seeds = jnp.linspace(0.01, 0.99, width * 2).reshape((width, 2))
+    model = CircularModel(centre=jnp.asarray([0.99, 0.01]))
+    log_likelihoods = jax.vmap(model.log_likelihood)(seeds)
+    return ConstrainedSampleRequest(
+        keys=random.split(random.PRNGKey(275), width),
+        valid=jnp.ones((width,), dtype=jnp.bool_),
+        log_L_constraints=jnp.full((width,), -0.5),
         seed_points=SeedPoint(
             U0=seeds,
             log_L0=log_likelihoods,
@@ -84,6 +147,174 @@ def test_slice_continuations_preserve_complete_chain_outputs():
         strict=True,
     ):
         np.testing.assert_array_equal(np.asarray(actual), np.asarray(expected))
+
+
+def test_periodic_slice_continuations_preserve_complete_chain_outputs():
+    """The pool scheduler preserves each random-chart scalar transition."""
+    model = CircularModel(centre=jnp.asarray([0.99, 0.01]))
+    sampler = UniDimSliceSampler(
+        model=model,
+        num_slices=32,
+        collect_phantom_samples=True,
+        phantom_burn_in=29,
+    )._with_periodic((True, True))
+    request = _periodic_request(width=8)
+    reference = jax.jit(
+        lambda value: _sample_complete_chains(sampler, value)
+    )(request)
+    continued = jax.jit(
+        lambda value: sample_request(sampler, value)
+    )(request)
+
+    for expected, actual in zip(
+        jax.tree.leaves(reference),
+        jax.tree.leaves(continued),
+        strict=True,
+    ):
+        expected = np.asarray(expected)
+        actual = np.asarray(actual)
+        if np.issubdtype(expected.dtype, np.inexact):
+            # Separate complete-chain and continuation lowering can reassociate
+            # the final circular subtraction by ordinary machine roundoff.
+            tolerance = 32 * np.finfo(expected.dtype).eps
+            np.testing.assert_allclose(
+                actual,
+                expected,
+                rtol=tolerance,
+                atol=tolerance,
+            )
+        else:
+            np.testing.assert_array_equal(actual, expected)
+    canonical_values = (
+        *jax.tree.leaves(continued.U_samples),
+        *jax.tree.leaves(continued.phantom_samples.U_samples),
+    )
+    for leaf in canonical_values:
+        assert np.all(np.asarray(leaf) >= 0.0)
+        assert np.all(np.asarray(leaf) < 1.0)
+
+
+def test_periodic_scalar_and_vmapped_chains_share_one_transition_law():
+    """Batch width changes execution only, not a logical chain's result."""
+    width = 4
+    model = CircularModel(centre=jnp.asarray([0.99, 0.01]))
+    sampler = UniDimSliceSampler(
+        model=model,
+        num_slices=8,
+    )._with_periodic((True, True))
+    request = _periodic_request(width)
+
+    vmapped = sample_request(sampler, request)
+    scalar_results = []
+    for lane in range(width):
+        scalar_request = jax.tree.map(
+            lambda value, index=lane: value[index:index + 1],
+            request,
+        )
+        scalar_results.append(sample_request(sampler, scalar_request))
+    scalar = jax.tree.map(
+        lambda *values: jnp.concatenate(values, axis=0),
+        *scalar_results,
+    )
+
+    for expected, actual in zip(
+        jax.tree.leaves(vmapped),
+        jax.tree.leaves(scalar),
+        strict=True,
+    ):
+        expected = np.asarray(expected)
+        actual = np.asarray(actual)
+        if np.issubdtype(expected.dtype, np.inexact):
+            tolerance = 32 * np.finfo(expected.dtype).eps
+            np.testing.assert_allclose(
+                actual,
+                expected,
+                rtol=tolerance,
+                atol=tolerance,
+            )
+        else:
+            np.testing.assert_array_equal(actual, expected)
+
+
+def test_random_charts_preserve_uniform_circular_measure():
+    """A flat circular slice remains uniform after random chart mixtures."""
+    U0 = TreeField(jnp.asarray([0.99]))
+    direction = TreeField(jnp.asarray([1.0]))
+
+    def draw(key):
+        point, _, _, _, _, _ = _new_proposal(
+            key=key,
+            U0=U0,
+            direction=direction,
+            slice_width=jnp.asarray(jnp.inf),
+            no_step_out=True,
+            gradient_guided=False,
+            log_L_constraint=jnp.asarray(-1.0),
+            log_likelihood_fn=lambda value: jnp.asarray(0.0),
+            periodic=(True,),
+        )
+        return point.tree[0]
+
+    samples = jax.jit(jax.vmap(draw))(
+        random.split(random.PRNGKey(276), 8192)
+    )
+    histogram, _ = np.histogram(
+        np.asarray(samples),
+        bins=8,
+        range=(0.0, 1.0),
+    )
+
+    np.testing.assert_allclose(np.mean(samples), 0.5, atol=0.02)
+    np.testing.assert_allclose(
+        histogram,
+        np.full((8,), 1024),
+        rtol=0.15,
+    )
+    assert np.all(np.asarray(samples) >= 0.0)
+    assert np.all(np.asarray(samples) < 1.0)
+
+
+def test_periodic_coordinates_reject_euclidean_ellipsoids():
+    """A seam-splitting Euclidean GMM cannot silently choose directions."""
+    sampler = UniDimSliceSampler(
+        model=CircularModel(centre=jnp.asarray([0.5])),
+        num_slices=5,
+        direction=EllipsoidalDirection(num_components=2),
+    )._with_periodic((True,))
+
+    with pytest.raises(ValueError, match="EllipsoidalDirection"):
+        sampler.validate_core(1)
+
+
+def test_mixed_cylinder_crosses_only_the_periodic_seam():
+    """Endpoint adjacency is periodic while the companion cube face is hard."""
+    width = 256
+    centre = jnp.asarray([0.99, 0.5])
+    model = CylinderModel(centre=centre)
+    seeds = jnp.broadcast_to(centre, (width, 2))
+    request = ConstrainedSampleRequest(
+        keys=random.split(random.PRNGKey(278), width),
+        valid=jnp.ones((width,), dtype=jnp.bool_),
+        log_L_constraints=jnp.full((width,), -2.0),
+        seed_points=SeedPoint(
+            U0=seeds,
+            log_L0=jnp.zeros((width,)),
+        ),
+        sampler_data=None,
+    )
+    sampler = UniDimSliceSampler(
+        model=model,
+        num_slices=16,
+    )._with_periodic((True, False))
+
+    samples = np.asarray(sample_request(sampler, request).U_samples)
+
+    assert np.any(samples[:, 0] < 0.1)
+    assert np.any(samples[:, 0] > 0.9)
+    assert np.all(samples[:, 1] > 0.35)
+    assert np.all(samples[:, 1] < 0.65)
+    assert np.all(samples >= 0.0)
+    assert np.all(samples < 1.0)
 
 
 def test_slice_continuations_handle_one_scalar_transition():

@@ -193,6 +193,16 @@ properties that must hold independently of implementation live in
   break if changed.
 - Requirement: Accelerated block, shrinkage, and phantom calculations retain a clear NumPy or
   pure-Python reference implementation for correctness comparison.
+- Requirement: JAXCTX owns periodic prior declarations and their scoped metadata; JAXNS resolves
+  that metadata once per run into the constrained sampler and does not expose a second flat-index
+  topology API.
+- Requirement: Every isotropic slice transition draws a fresh state-independent random chart for
+  periodic coordinates, retains that chart across proposal retries, evaluates likelihoods in
+  canonical coordinates, and stores classic and phantom samples in the half-open unit cube.
+- Requirement: Static all-false periodic metadata preserves the exact ordinary sampler random-key
+  schedule and compiled hot path without modulo operations or device mask materialisation.
+- Requirement: Periodic coordinates fail during sampler validation when combined with the current
+  Euclidean ellipsoidal direction model; toroidal direction geometry requires separate evidence.
 
 ## Capacity And Return State
 

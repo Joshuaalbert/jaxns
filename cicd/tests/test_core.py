@@ -78,6 +78,11 @@ DeterministicSampler.register_pytree()
 class TwoDimensionalModel(PureDataclassPytree):
     """Small vector model for exercising direction geometry in the core."""
 
+    def _periodic_coordinates(self, args=(), params=None) -> tuple[bool, ...]:
+        """Match the internal model geometry contract used by runners."""
+        del args, params
+        return False, False
+
     def U_ndims(self, args=(), params=None) -> int:
         del args, params
         return 2

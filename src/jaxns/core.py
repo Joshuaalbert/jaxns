@@ -1142,7 +1142,14 @@ class NestedSampler(PureDataclassPytree):
     unlimited_samples: bool = False
 
     def __post_init__(self):
-        U_ndims = int(self.model.U_ndims(self.args, self.params))
+        periodic = self.model._periodic_coordinates(self.args, self.params)
+        # The aligned metadata already carries one flag per scalar base-space
+        # coordinate, so it also supplies dimension without a second model
+        # init trace. Collapse all-false flags before sampler construction to
+        # preserve the exact pre-periodic key schedule and compiled hot path.
+        U_ndims = len(periodic)
+        if not any(periodic):
+            periodic = ()
         root_degree = self.root_allocation_degree
         if root_degree is None:
             root_degree = self.target_num_live_points
@@ -1201,6 +1208,7 @@ class NestedSampler(PureDataclassPytree):
                 collect_phantom_samples=self.collect_phantom_samples,
                 phantom_burn_in=max(0, phantom_burn_in),
             )
+        sampler = sampler._with_periodic(periodic)
         sampler.validate_core(U_ndims)
 
         termination_condition = self.termination_condition

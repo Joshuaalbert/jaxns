@@ -10,7 +10,7 @@ from jaxctx import CtxParams, transform
 
 from jaxns.logging import jaxns_logger
 from jaxns.pytree import PureDataclassPytree
-from jaxns.types import PRNGKey, FloatArray, UType, XType
+from jaxns.types import FloatArray, PRNGKey, UType, XType
 
 __all__ = [
     'Model'
@@ -50,6 +50,30 @@ class Model(PureDataclassPytree):
             the number of dimensions in flattened U-space
         """
         return int(_U_ndims(self, args=args, params=params))
+
+    def _periodic_coordinates(
+            self,
+            args=(),
+            params=None,
+    ) -> tuple[bool, ...]:
+        """Return the static periodic flags in flattened U-space order.
+
+        JAXCTX owns the scoped topology declaration. JAXNS expands each
+        whole-prior declaration once because constrained sampling operates on
+        scalar U-space directions rather than named prior variables.
+
+        Args:
+            args: Additional arguments for the model.
+            params: Parameters of the model.
+
+        Returns:
+            Periodic flags in the same scalar order used by ``pytree_ravel``.
+        """
+        return _resolve_periodic_coordinates(
+            self,
+            args=args,
+            params=params,
+        )
 
     def sample_U(self, key: PRNGKey, args=(), params=None) -> UType:
         """
@@ -254,6 +278,54 @@ def _U_ndims(self: Model, args=(), params=None) -> int:
     u_example = jax.eval_shape(self.sample_U, jax.random.PRNGKey(0), args=args, params=params)
     U_ndims = sum(map(lambda x: np.prod(x.shape), jax.tree.leaves(u_example)))
     return int(U_ndims)
+
+
+def _resolve_periodic_coordinates(
+        self: Model,
+        args=(),
+        params=None,
+) -> tuple[bool, ...]:
+    # Topology is static init metadata. Shape evaluation discovers it without
+    # performing a scientific likelihood evaluation or placing masks on a
+    # device. This happens once while the runner configures its sampler.
+    def initialise(model_args, model_params):
+        init_return = transform(self.prior_model).init(
+            {
+                'params': jax.random.PRNGKey(0),
+                'U': jax.random.PRNGKey(1),
+            },
+            _make_model_collections(params=model_params),
+            *model_args,
+        )
+        return init_return
+
+    init_return = jax.eval_shape(initialise, args, params)
+    U = init_return.collections['U']
+    # [...] each Boolean leaf has the shape of its corresponding U leaf.
+    periodic = jax.tree.map(
+        lambda value: np.zeros(value.shape, dtype=np.bool_),
+        U,
+    )
+    periodic_dict = periodic.to_dict()
+    for entry in init_return.meta.periodic:
+        if entry.collection != 'U':
+            continue
+        node = periodic_dict
+        for scope in entry.scope:
+            node = node[scope]
+        node[entry.name] = np.full(
+            entry.base_shape,
+            entry.periodic,
+            dtype=np.bool_,
+        )
+
+    # [D] immutable scalar geometry used as JAX static auxiliary data.
+    flattened = tuple(
+        bool(value)
+        for leaf in jax.tree.leaves(periodic)
+        for value in np.ravel(leaf)
+    )
+    return flattened
 
 
 @partial(jax.jit, inline=True)

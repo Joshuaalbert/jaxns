@@ -21,7 +21,7 @@ import jax
 import pytest
 from jax import numpy as jnp
 
-from cicd.tests.distributed_support import make_toy_model
+from cicd.tests.distributed_support import make_periodic_model, make_toy_model
 from jaxns.cli import _stop_started_process
 from jaxns.constrained_sampler import (
     ConstrainedSampleRequest,
@@ -910,6 +910,42 @@ def test_phantom_payload_does_not_change_vector_worker_trajectory(tmp_path):
         assert bool(jnp.any(
             phantom.samples.phantom_samples.valid_mask[:phantom_count]
         ))
+    finally:
+        stopped = _cli(config_path, "down", check=False)
+        assert stopped.returncode == 0, stopped.stderr
+
+
+def test_periodic_sampler_executes_in_real_worker_processes(tmp_path):
+    """Wire serialisation retains topology and canonical worker outputs."""
+    config_path = tmp_path / "periodic-workers.toml"
+    _write_batch_config(config_path)
+    _cli(config_path, "up")
+    try:
+        model = make_periodic_model()
+        runner = DistributedNestedSampler(
+            model=model,
+            coordinator_port=load_runtime_config(config_path).network.port,
+            root_allocation_degree=4,
+            delta_K=4,
+            max_samples=12,
+            initial_capacity=8,
+            sampler=UniDimSliceSampler(model=model, num_slices=4),
+        )
+
+        checkpoint = runner.run_until_goal(
+            lambda state: int(state.goal_loop_iter) >= 1,
+            depth_cond=TerminationCondition(dlogZ=jnp.asarray(0.5)),
+            key=jax.random.PRNGKey(275),
+        )
+
+        assert runner.sampler._periodic == (True,)
+        assert int(checkpoint.state.num_samples) > 4
+        num_samples = int(checkpoint.state.num_samples)
+        for value in jax.tree.leaves(checkpoint.state.samples.U_samples):
+            # [N, ...] workers always return the canonical half-open chart.
+            value = value[:num_samples]
+            assert jnp.all(value >= 0.0)
+            assert jnp.all(value < 1.0)
     finally:
         stopped = _cli(config_path, "down", check=False)
         assert stopped.returncode == 0, stopped.stderr

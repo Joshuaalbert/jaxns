@@ -1,6 +1,11 @@
 {
   "schema_version": 1,
   "tests": {
+    "test_periodic_coordinates_reject_euclidean_ellipsoids": {
+      "note": "Checks the current isotropic-only feature boundary until a toroidal GMM direction model has supporting evidence.",
+      "path": "cicd/tests/test_constrained_sampler.py",
+      "reason": "architecture_boundary"
+    },
     "test_batch_group_ignores_direction_diagnostics_but_not_geometry": {
       "note": "Checks the concrete worker specialization key and protects the premise that observational GMM counters cannot affect a constrained-sampling call.",
       "path": "cicd/tests/test_distributed_runtime.py",
