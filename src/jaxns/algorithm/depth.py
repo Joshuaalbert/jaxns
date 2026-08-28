@@ -19,10 +19,10 @@ from jaxns.constrained_sampler import (
     sample_request,
 )
 from jaxns.mixed_precision import mp_policy
-from jaxns.sampling.ellipsoid import update_sampler_data
 from jaxns.pytree import PureDataclassPytree, pytree_ravel
 from jaxns.samples import Samples, SeedPoint
-from jaxns.shrinkage import (
+from jaxns.sampling.ellipsoid import update_sampler_data
+from jaxns.shrinkage.classic import (
     classic_dirichlet_concentrations,
 )
 from jaxns.state import State, termination_register_from_volume_path

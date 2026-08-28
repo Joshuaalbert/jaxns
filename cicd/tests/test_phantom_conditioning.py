@@ -6,8 +6,8 @@ import numpy as np
 import pytest
 from jax import numpy as jnp
 
-import jaxns.phantom_eval as jax_phantom
-import jaxns.phantom_eval_ref as ref_phantom
+import jaxns.shrinkage.phantom as jax_phantom
+import jaxns.shrinkage.reference as ref_phantom
 from jaxns import shrinkage
 from jaxns.algorithm.race_tree import BlockState
 

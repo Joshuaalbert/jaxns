@@ -7,6 +7,7 @@ from typing import Literal, TextIO, TypeVar
 import jax
 from jax import numpy as jnp
 
+from jaxns.algorithm.race_tree import BlockState
 from jaxns.cumulative_ops import batch_reduce
 from jaxns.diagnostics.plotting import (
     plot_cornerplot,
@@ -15,16 +16,15 @@ from jaxns.diagnostics.plotting import (
 from jaxns.diagnostics.summary import _summary
 from jaxns.log_semiring import LogSpace
 from jaxns.mixed_precision import mp_policy
-from jaxns.phantom_eval import (
+from jaxns.pytree import PureDataclassPytree
+from jaxns.random_utils import resample_indicies
+from jaxns.shrinkage.classic import DirichletConcentrations, PhantomCountMatrices
+from jaxns.shrinkage.phantom import (
     EvidenceSamples,
     compute_phantom_count_matrices,
     sample_mc_shrinkage,
     validate_sample_mc_shrinkage_inputs,
 )
-from jaxns.pytree import PureDataclassPytree
-from jaxns.algorithm.race_tree import BlockState
-from jaxns.random_utils import resample_indicies
-from jaxns.shrinkage import DirichletConcentrations, PhantomCountMatrices
 from jaxns.types import BoolArray, FloatArray, IntArray, PRNGKey, UType, XType
 
 MF = TypeVar('MF')

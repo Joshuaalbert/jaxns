@@ -5,10 +5,10 @@ import numpy as np
 from jax import numpy as jnp
 from jax.scipy import special as jsp
 
+from jaxns.algorithm.race_tree import BlockState
 from jaxns.mixed_precision import mp_policy
 from jaxns.pytree import PureDataclassPytree
-from jaxns.algorithm.race_tree import BlockState
-from jaxns.shrinkage import (
+from jaxns.shrinkage.classic import (
     DirichletConcentrations,
     GammaWeightedPhantomProbabilitySamples,
     PhantomCountMatrices,
@@ -19,7 +19,7 @@ from jaxns.shrinkage import (
     validate_lineage_capacity,
     validate_phantom_count_matrices,
 )
-from jaxns.shrinkage import (
+from jaxns.shrinkage.classic import (
     gamma_weighted_phantom_probabilities_from_draws as _gamma_weighted_phantom_probabilities_from_draws,
 )
 from jaxns.types import BoolArray, FloatArray, IntArray, PRNGKey

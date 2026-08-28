@@ -8,12 +8,12 @@ from jaxctx.priors.prior import Prior
 from tensorflow_probability.substrates import jax as tfp
 
 from cicd.tests.distributed_support import make_toy_model
+from jaxns.algorithm.race_tree import build_block_state, initialise_likelihood_order
 from jaxns.core import NestedSampler
 from jaxns.model import Model
-from jaxns.sampling.ellipsoid import empty_sampler_data
-from jaxns.algorithm.race_tree import build_block_state, initialise_likelihood_order
 from jaxns.samples import PhantomSamples, Samples
-from jaxns.shrinkage import (
+from jaxns.sampling.ellipsoid import empty_sampler_data
+from jaxns.shrinkage.classic import (
     classic_dirichlet_concentrations,
     expected_evidence_summary,
 )

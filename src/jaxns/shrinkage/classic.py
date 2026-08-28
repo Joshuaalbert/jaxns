@@ -5,10 +5,10 @@ import numpy as np
 from jax import numpy as jnp
 from jax.scipy.special import logsumexp
 
+from jaxns.algorithm.race_tree import BlockState
 from jaxns.log_semiring import LogSpace, normalise_log_space
 from jaxns.mixed_precision import mp_policy
 from jaxns.pytree import PureDataclassPytree
-from jaxns.algorithm.race_tree import BlockState
 from jaxns.types import BoolArray, FloatArray, PRNGKey
 
 

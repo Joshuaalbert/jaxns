@@ -9,18 +9,16 @@ from jax import numpy as jnp
 from jax.scipy.special import logsumexp
 from jaxctx import CtxParams
 
+from jaxns.algorithm.race_tree import BlockState, LikelihoodOrder, build_block_state
 from jaxns.cumulative_ops import scan_or_while_loop
-from jaxns.evidence_calculation import EvidenceCalculation
 from jaxns.log_semiring import LogSpace, normalise_log_space
 from jaxns.mixed_precision import mp_policy
 from jaxns.model import Model
-from jaxns.sampling.ellipsoid import SamplerData
-from jaxns.phantom_eval import EvidenceSamples
 from jaxns.pytree import PureDataclassPytree
-from jaxns.algorithm.race_tree import BlockState, LikelihoodOrder, build_block_state
 from jaxns.results import BlockData, NestedSamplerResults
 from jaxns.samples import Samples, UType
-from jaxns.shrinkage import (
+from jaxns.sampling.ellipsoid import SamplerData
+from jaxns.shrinkage.classic import (
     classic_dirichlet_concentrations,
     dirichlet_probability_means,
     expected_evidence_summary,
@@ -28,6 +26,8 @@ from jaxns.shrinkage import (
     sample_evidence,
     validate_lineage_capacity,
 )
+from jaxns.shrinkage.online import EvidenceCalculation
+from jaxns.shrinkage.phantom import EvidenceSamples
 from jaxns.stats_utils import effective_sample_size_kish
 from jaxns.termination_condition import TerminationRegister
 from jaxns.types import BoolArray, FloatArray, IntArray

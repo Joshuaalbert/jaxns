@@ -14,7 +14,7 @@ from jaxctx.priors.prior import Prior
 from jaxns.core import NestedSampler
 from jaxns.distributed_core import DistributedNestedSampler, DistributedState
 from jaxns.model import Model
-from jaxns.phantom_eval import EvidenceSamples
+from jaxns.shrinkage.phantom import EvidenceSamples
 from jaxns.state import State
 from jaxns.termination_condition import TerminationCondition
 

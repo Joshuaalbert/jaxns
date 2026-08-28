@@ -18,7 +18,7 @@ from jaxns.algorithm.allocation import (
     validate_allocation_target,
 )
 from jaxns.algorithm.race_tree import build_block_state
-from jaxns.shrinkage import (
+from jaxns.shrinkage.classic import (
     DirichletConcentrations,
     classic_dirichlet_concentrations,
 )
