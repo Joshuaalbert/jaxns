@@ -69,9 +69,10 @@ A v3 `Model` contains one prior-model function. Calls to
 the function is the log likelihood. Calls to `Prior(...).parameter()` create
 point parameters managed by JAXCTX.
 
-Pass observations and other runtime inputs through `args`, and initialise and
-pass model parameters through `params`. Keeping these values explicit avoids
-capturing changing data or parameters in Python closures, gives JAX a stable
+Pass observations and other runtime inputs through `args`. If a model has point
+parameters, initialise them with `model.init_params(...)` and pass the returned
+`params` to the sampler and lower-level model operations. Keeping runtime values
+explicit avoids capturing changing data in Python closures, gives JAX a stable
 program identity, and makes the same model straightforward to serialise for
 distributed workers.
 
@@ -86,35 +87,33 @@ from jaxns.model import Model
 tfpd = tfp.distributions
 
 
-def prior_model(observations, measurement_uncertainty):
-    location = Prior(
-        tfpd.Normal(loc=0.0, scale=2.0),
-        name="location",
+def prior_model(predictor, observations, measurement_uncertainty):
+    intercept = Prior(
+        tfpd.Normal(loc=0.0, scale=1.0),
+        name="intercept",
     ).realise()
-    intrinsic_uncertainty = Prior(
-        tfpd.Exponential(rate=1.0),
-        name="intrinsic_uncertainty",
-    ).parameter()
-    scale = jnp.sqrt(
-        jnp.square(measurement_uncertainty)
-        + jnp.square(intrinsic_uncertainty)
+    slope = Prior(
+        tfpd.Normal(loc=0.0, scale=2.0),
+        name="slope",
+    ).realise()
+    prediction = intercept + slope * predictor
+    return jnp.sum(
+        tfpd.Normal(
+            loc=prediction,
+            scale=measurement_uncertainty,
+        ).log_prob(observations)
     )
-    return jnp.sum(tfpd.Normal(location, scale).log_prob(observations))
 
 
 model = Model(prior_model=prior_model)
 args = (
-    jnp.asarray([-0.15, 0.05, 0.20, 0.30]),
-    jnp.asarray(0.10),
-)
-params = model.init_params(
-    key=jax.random.PRNGKey(0),
-    args=args,
+    jnp.linspace(0.0, 1.0, 6),
+    jnp.asarray([0.15, 0.32, 0.83, 1.08, 1.52, 1.77]),
+    jnp.asarray(0.15),
 )
 model.sanity_check(
     key=jax.random.PRNGKey(1),
     args=args,
-    params=params,
 )
 ```
 
@@ -159,7 +158,9 @@ from jaxns.core import NestedSampler
 sampler = NestedSampler(
     model=model,
     args=args,
-    params=params,
+    root_allocation_degree=60,
+    shell_size=20,
+    max_samples=10_000,
     collect_phantom_samples=True,
 )
 state = sampler.run(key=jax.random.PRNGKey(2))
@@ -167,8 +168,48 @@ results = state.to_result().trim()
 
 results.summary()
 results.plot_diagnostics()
-results.plot_cornerplot()
+results.plot_cornerplot(variables=["intercept", "slope"])
 ```
+
+A fixed-seed CPU run of the example above produces this summary:
+
+```text
+--------
+Termination Conditions:
+Small remaining evidence
+--------
+likelihood evals: 48086
+classic samples: 813
+phantom samples: 1506
+likelihood evals / sample: 59.1
+--------
+logZ (classic)=-0.3 +- 0.27
+logZ (with phantom)=-0.5 +- 0.19
+max(logL)=5.31
+H=4.5
+effective sample size (classic)=114.3
+effective sample size (with phantom)=127.4
+likelihood evals / ess(classic): 420.7
+likelihood evals / ess(with phantom): 377.5
+--------
+intercept: mean +- std.dev. | MAP est. | max(L) est.
+intercept: 0.09 +- 0.11 | 0.1 | 0.09
+--------
+slope: mean +- std.dev. | MAP est. | max(L) est.
+slope: 1.71 +- 0.18 | 1.7 | 1.71
+--------
+```
+
+| Nested-sampling diagnostics | Posterior corner plot |
+|:---:|:---:|
+| ![Nested-sampling diagnostics for the quick-start regression](docs/_static/readme_quick_start/diagnostics.png) | ![Posterior intercept and slope for the quick-start regression](docs/_static/readme_quick_start/cornerplot.png) |
+
+The corner plot makes the expected intercept--slope trade-off visible. The
+diagnostics show how live lineages, likelihood, evidence, efficiency, and
+`X * L` evolve through the run.
+
+The summary and plots are regenerated headlessly from the same code with
+`conda run -n jaxns_py python cicd/demos/readme_quick_start.py --write-assets`.
 
 `NestedSampler.run()` uses the default expectation-based termination goal. For
 a custom scientific goal, provide a Python condition over the immutable
