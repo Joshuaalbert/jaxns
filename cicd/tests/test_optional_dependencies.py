@@ -33,7 +33,7 @@ def test_dependency_metadata_matches_feature_boundaries():
     base = set(project["dependencies"])
     extras = project["optional-dependencies"]
     assert "jax>=0.6.0" in base
-    assert "jaxctx>=1.1.5" in base
+    assert "jaxctx>=1.2.0" in base
     assert "matplotlib" in base
     assert "numpy" in base
     assert "scipy" in base

@@ -21,6 +21,9 @@ The exact text following each `- Invariant:` prefix is the stable key used by
   parameters associated with every state and result derived from that run.
 - Invariant: A model's reported unit-hypercube dimensionality equals the number of scalar
   unit-hypercube coordinates consumed by its prior transformation.
+- Invariant: A declared continuous periodic coordinate identifies its two unit-hypercube
+  endpoints while preserving the normalized prior measure and canonical storage in the
+  half-open unit interval.
 - Invariant: Invalid model outputs fail visibly rather than entering nested-sampling state as
   apparently valid scientific samples.
 
@@ -37,6 +40,8 @@ The exact text following each `- Invariant:` prefix is the stable key used by
   before the chain starts.
 - Invariant: Changing how valid constrained-sampling work is batched or scheduled does not
   change the marginal law of any classic child.
+- Invariant: Changing the chart origin of a periodic coordinate does not change the constrained
+  target, while non-periodic coordinates retain their hard unit-hypercube endpoints.
 - Invariant: Likelihood-evaluation accounting for a generated sample counts every likelihood
   evaluation used to generate that sample and no evaluations belonging to another sample.
 

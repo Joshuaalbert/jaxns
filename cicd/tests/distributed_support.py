@@ -5,8 +5,13 @@ import time
 
 import jax
 import jax.numpy as jnp
+from jaxctx.priors.prior import Prior
+from tensorflow_probability.substrates import jax as tfp
 
+from jaxns.model import Model
 from jaxns.pytree import PureDataclassPytree
+
+tfpd = tfp.distributions
 
 
 class OffsetNode:
@@ -57,6 +62,11 @@ def quadratic_log_likelihood(u, centre: float = 0.25):
 class ToyModel(PureDataclassPytree):
     centre: float = 0.25
 
+    def _periodic_coordinates(self, args=(), params=None) -> tuple[bool, ...]:
+        """Match the internal model geometry contract used by runners."""
+        del args, params
+        return (False,)
+
     def U_ndims(self, args=(), params=None) -> int:
         del args, params
         return 1
@@ -69,7 +79,14 @@ class ToyModel(PureDataclassPytree):
         del args, params
         return U
 
-    def log_likelihood(self, U, args=(), params=None, *, allow_nan: bool = True):
+    def log_likelihood(
+            self,
+            U,
+            args=(),
+            params=None,
+            *,
+            allow_nan: bool = True,
+    ):
         del args, params, allow_nan
         return quadratic_log_likelihood(U, centre=self.centre)
 
@@ -79,7 +96,8 @@ class ToyModel(PureDataclassPytree):
         return jnp.where(inside, 0.0, -jnp.inf)
 
     def log_joint(self, U, args=(), params=None, *, allow_nan: bool = True):
-        return self.log_prior(U, args=args, params=params) + self.log_likelihood(
+        log_prior = self.log_prior(U, args=args, params=params)
+        return log_prior + self.log_likelihood(
             U,
             args=args,
             params=params,
@@ -89,6 +107,19 @@ class ToyModel(PureDataclassPytree):
 
 def make_toy_model() -> ToyModel:
     return ToyModel()
+
+
+def periodic_prior_model():
+    """Small serialisable model that requires circular seam traversal."""
+    angle = Prior(
+        tfpd.Uniform(low=-jnp.pi, high=jnp.pi),
+        name="angle",
+    ).realise(periodic=True)
+    return 12.0 * jnp.cos(angle + jnp.pi - 0.03)
+
+
+def make_periodic_model() -> Model:
+    return Model(prior_model=periodic_prior_model)
 
 
 ToyModel.register_pytree()

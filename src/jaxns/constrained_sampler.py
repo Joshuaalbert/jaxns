@@ -8,6 +8,7 @@ from functools import partial
 from typing import Any, NamedTuple
 
 import jax
+import numpy as np
 from jax import numpy as jnp
 from jax import random
 
@@ -290,6 +291,15 @@ class AbstractSampler(ABC):
         del dimension
         return None
 
+    def _with_periodic(self, periodic: tuple[bool, ...]) -> AbstractSampler:
+        """Return a sampler configured for static U-space topology."""
+        if periodic:
+            raise ValueError(
+                f"{type(self).__name__} does not support periodic U-space "
+                "coordinates."
+            )
+        return self
+
     def validate_core(self, dimension: int) -> None:
         """Validate sampler compatibility with the current race-tree core."""
         del dimension
@@ -318,6 +328,93 @@ def _sample_direction(key: PRNGKey, u0: TreeField[UType], radii: TreeField[UType
     eps = jnp.asarray(1e-6, direction.norm().dtype)
     norm = jnp.maximum(eps, direction.norm())
     return direction / norm
+
+
+def _periodic_tree(
+        point: TreeField[UType],
+        periodic: tuple[bool, ...],
+) -> TreeField[UType]:
+    """Expand static scalar flags to the structure of one U-space point."""
+    leaves, structure = jax.tree.flatten(point.tree)
+    masks = []
+    offset = 0
+    for leaf in leaves:
+        size = int(np.prod(leaf.shape))
+        # [...] mask is constant in the compiled program and aligned to leaf.
+        mask = jnp.asarray(
+            periodic[offset:offset + size],
+            dtype=mp_policy.bool_dtype,
+        ).reshape(leaf.shape)
+        masks.append(mask)
+        offset += size
+    if offset != len(periodic):
+        raise ValueError(
+            "Periodic U-space topology does not match the sampled U shape."
+        )
+    return TreeField(jax.tree.unflatten(structure, masks))
+
+
+def _open_chart(
+        key: PRNGKey,
+        point: TreeField[UType],
+        periodic: tuple[bool, ...],
+) -> tuple[TreeField[UType], TreeField[UType]]:
+    """Translate periodic coordinates into an independent random chart."""
+    offset = point.random_uniform_like(key)
+    # The offset is state-independent. For a fixed offset this is a
+    # measure-preserving torus translation, so mixing over offsets preserves
+    # reversibility of the existing cube-bracket transition.
+    return _to_chart(point, offset, periodic), offset
+
+
+def _to_chart(
+        point: TreeField[UType],
+        offset: TreeField[UType],
+        periodic: tuple[bool, ...],
+) -> TreeField[UType]:
+    """Map a canonical point into an already selected random chart."""
+    mask = _periodic_tree(point, periodic)
+    return TreeField(jax.tree.map(
+        lambda value, shift, select: jnp.where(
+            select,
+            jnp.mod(value + shift, 1.0),
+            value,
+        ),
+        point.tree,
+        offset.tree,
+        mask.tree,
+    ))
+
+
+def _close_chart(
+        point: TreeField[UType],
+        offset: TreeField[UType],
+        periodic: tuple[bool, ...],
+) -> TreeField[UType]:
+    """Return a chart point to canonical U in the half-open unit cube."""
+    mask = _periodic_tree(point, periodic)
+    return TreeField(jax.tree.map(
+        lambda value, shift, select: jnp.where(
+            select,
+            jnp.mod(value - shift, 1.0),
+            value,
+        ),
+        point.tree,
+        offset.tree,
+        mask.tree,
+    ))
+
+
+def _slice_keys(
+        key: PRNGKey,
+        periodic: tuple[bool, ...],
+) -> tuple[PRNGKey, PRNGKey, PRNGKey, PRNGKey, PRNGKey]:
+    """Assign one independent chart key without perturbing the ordinary path."""
+    chart_key = key
+    if periodic:
+        chart_key, key = random.split(key, 2)
+    run_key, t_key, step_key, after_key = random.split(key, 4)
+    return chart_key, run_key, t_key, step_key, after_key
 
 
 def _sample_ellipsoidal_direction(
@@ -465,6 +562,7 @@ def _new_proposal(
         gradient_guided: bool,
         log_L_constraint: FloatArray,
         log_likelihood_fn: Callable[[UType], FloatArray],
+        periodic: tuple[bool, ...] = (),
         sampler_data: SamplerData | None = None,
         prob_isotropic: float = 1.0,
 ) -> tuple[
@@ -536,7 +634,24 @@ def _new_proposal(
     # Chose the direction to go
     num_likelihood_evaluations = jnp.full((), 0, mp_policy.count_dtype)
 
-    run_key, t_key, step_key, after_key = random.split(key, 4)
+    chart_key, run_key, t_key, step_key, after_key = _slice_keys(
+        key,
+        periodic,
+    )
+    chart_offset = None
+    if periodic:
+        # Perfect bracketing remains finite because it runs in a randomly cut
+        # cube chart. Likelihoods and retained samples always use canonical U.
+        U0, chart_offset = _open_chart(chart_key, U0, periodic)
+        canonical_log_likelihood_fn = log_likelihood_fn
+
+        def log_likelihood_fn(value):
+            canonical = _close_chart(
+                TreeField(value),
+                chart_offset,
+                periodic,
+            )
+            return canonical_log_likelihood_fn(canonical.tree)
 
     (left_bound, right_bound) = _slice_bounds(
         point_U0=U0,
@@ -676,8 +791,11 @@ def _new_proposal(
                 prob_isotropic,
             )
     next_slice_width = 2 * (carry.right - carry.left)
+    point_U = carry.point_U
+    if periodic:
+        point_U = _close_chart(point_U, chart_offset, periodic)
     return (
-        carry.point_U,
+        point_U,
         carry.log_L,
         num_likelihood_evaluations,
         direction,
@@ -691,6 +809,7 @@ class SliceBatchState(PureDataclassPytree):
     """Logical slice chains continued between batched likelihood calls."""
 
     anchor: UType  # [S, ...] last accepted point in each chain
+    chart_offset: UType | None  # [S, ...] periodic chart shift; otherwise None
     log_likelihood: FloatArray  # [S]
     directions: UType  # [S, T, ...] direction for each transition
     direction_is_isotropic: BoolArray  # [S, T]
@@ -768,7 +887,10 @@ def _initialise_slice_chains(
             directions_are_isotropic = initial_is_isotropic[None]
         else:
             def draw_later_direction(transition_key):
-                _, _, _, after_key = random.split(transition_key, 4)
+                _, _, _, _, after_key = _slice_keys(
+                    transition_key,
+                    sampler._periodic,
+                )
                 return draw_direction(after_key)
 
             # The scalar reference draws one direction per scan step. Keep
@@ -803,18 +925,35 @@ def _initialise_slice_chains(
         # Perfect bracketing always has exactly one proposal ready. A rejected
         # likelihood shrinks this interval; an accepted likelihood advances
         # this logical chain to its next slice transition without a barrier.
-        run_key, t_key, _, _ = random.split(transition_keys[0], 4)
+        chart_key, run_key, t_key, _, _ = _slice_keys(
+            transition_keys[0],
+            sampler._periodic,
+        )
+        chart_offset = None
+        chart_seed = TreeField(seed_u)
+        if sampler._periodic:
+            chart_seed, chart_offset = _open_chart(
+                chart_key,
+                chart_seed,
+                sampler._periodic,
+            )
         left, right = _slice_bounds(
-            TreeField(seed_u),
+            chart_seed,
             initial_direction,
         )
         proposal, t = _pick_point_in_interval(
             t_key,
-            TreeField(seed_u),
+            chart_seed,
             initial_direction,
             left,
             right,
         )
+        if sampler._periodic:
+            proposal = _close_chart(
+                proposal,
+                chart_offset,
+                sampler._periodic,
+            )
         phantom_samples = jax.tree.map(
             lambda value: jnp.zeros(
                 (num_phantom,) + value.shape,
@@ -824,6 +963,9 @@ def _initialise_slice_chains(
         )
         return SliceBatchState(
             anchor=seed_u,
+            chart_offset=(
+                None if chart_offset is None else chart_offset.tree
+            ),
             log_likelihood=jnp.asarray(
                 seed_log_likelihood,
                 log_L_constraint.dtype,
@@ -904,21 +1046,41 @@ def _continue_slice_chains(
             transition_index,
     ):
         transition_key = chain.transition_keys[transition_index]
-        run_key, t_key, _, _ = random.split(transition_key, 4)
+        chart_key, run_key, t_key, _, _ = _slice_keys(
+            transition_key,
+            sampler._periodic,
+        )
+        chart_offset = None
+        chart_anchor = TreeField(anchor)
+        if sampler._periodic:
+            chart_anchor, chart_offset = _open_chart(
+                chart_key,
+                chart_anchor,
+                sampler._periodic,
+            )
         left, right = _slice_bounds(
-            TreeField(anchor),
+            chart_anchor,
             direction,
         )
         proposal, t = _pick_point_in_interval(
             t_key,
-            TreeField(anchor),
+            chart_anchor,
             direction,
             left,
             right,
         )
+        if sampler._periodic:
+            proposal = _close_chart(
+                proposal,
+                chart_offset,
+                sampler._periodic,
+            )
         return dataclasses.replace(
             chain,
             anchor=anchor,
+            chart_offset=(
+                None if chart_offset is None else chart_offset.tree
+            ),
             left=left,
             right=right,
             t=t,
@@ -1031,13 +1193,32 @@ def _continue_slice_chains(
                         rejected_chain.directions,
                     )
                 )
+                chart_anchor = TreeField(rejected_chain.anchor)
+                if sampler._periodic:
+                    chart_offset = TreeField(
+                        rejected_chain.chart_offset
+                    )
+                    # Retrying a rejected proposal must retain the transition's
+                    # existing chart; drawing another seam here would change
+                    # the slice interval and invalidate shrinkage.
+                    chart_anchor = _to_chart(
+                        chart_anchor,
+                        chart_offset,
+                        sampler._periodic,
+                    )
                 proposal, t = _pick_point_in_interval(
                     t_key,
-                    TreeField(rejected_chain.anchor),
+                    chart_anchor,
                     direction,
                     left,
                     right,
                 )
+                if sampler._periodic:
+                    proposal = _close_chart(
+                        proposal,
+                        chart_offset,
+                        sampler._periodic,
+                    )
                 return dataclasses.replace(
                     rejected_chain,
                     left=left,
@@ -1226,6 +1407,9 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
     collect_phantom_samples: bool = False
     phantom_burn_in: int | None = None
     direction: EllipsoidalDirection | None = None
+    # Internal scalar topology derived from JAXCTX metadata by NestedSampler.
+    # Keeping this private avoids a second user-supplied flat-index API.
+    _periodic: tuple[bool, ...] = ()
 
     @classmethod
     def flatten(cls, this) -> tuple[list[Any], tuple[Any, ...]]:
@@ -1236,6 +1420,7 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
             'collect_phantom_samples',
             'phantom_burn_in',
             'direction',
+            '_periodic',
         ])
 
     def _check(self):
@@ -1267,6 +1452,13 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
             dimension,
         )
 
+    def _with_periodic(
+            self,
+            periodic: tuple[bool, ...],
+    ) -> UniDimSliceSampler:
+        """Install the model-derived static topology on this sampler."""
+        return dataclasses.replace(self, _periodic=periodic)
+
     def validate_core(self, dimension: int) -> None:
         if not self.no_step_out:
             raise ValueError(
@@ -1275,6 +1467,15 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
         if self.gradient_guided:
             raise ValueError(
                 "Gradient-guided sampling is not implemented in this core."
+            )
+        if self._periodic and len(self._periodic) != dimension:
+            raise ValueError(
+                "Periodic U-space topology does not match model dimension."
+            )
+        if self._periodic and self.direction is not None:
+            raise ValueError(
+                "EllipsoidalDirection does not yet support periodic U-space "
+                "coordinates; use isotropic directions."
             )
         if self.direction is None:
             return
@@ -1429,6 +1630,7 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
                 gradient_guided=self.gradient_guided,
                 log_L_constraint=carry.log_L_constraint,
                 log_likelihood_fn=log_likelihood_fn,
+                periodic=self._periodic,
                 sampler_data=sampler_data,
                 prob_isotropic=(
                     1.0
@@ -1498,6 +1700,7 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
             gradient_guided=self.gradient_guided,
             log_L_constraint=log_L_constraint,
             log_likelihood_fn=log_likelihood_fn,
+            periodic=self._periodic,
             sampler_data=sampler_data,
             prob_isotropic=(
                 1.0

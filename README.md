@@ -122,6 +122,35 @@ The model exposes the same explicit `args` and `params` on its lower-level
 operations, including `sample_U`, `transform_to_X`, `log_likelihood`,
 `log_prior`, and `log_joint`.
 
+## Declare continuous periodic parameters
+
+Use `realise(periodic=True)` when the two endpoints of a continuous prior's
+base coordinate represent the same physical point. For example, an angular
+location can cross the `-pi`/`pi` chart seam:
+
+```python
+def angular_model(observed_angle, concentration):
+    angle = Prior(
+        tfpd.Uniform(low=-jnp.pi, high=jnp.pi),
+        name="angle",
+    ).realise(periodic=True)
+    return concentration * jnp.cos(angle - observed_angle)
+```
+
+This is an endpoint-equivalence assertion, not a synonym for a bounded prior.
+JAXNS keeps canonical samples in the half-open unit cube and draws an
+independent random chart for every isotropic slice transition, allowing the
+chain to move across an artificial seam without changing the prior measure.
+The declaration applies to the complete realised prior; cyclic categorical
+variables are not supported.
+
+Periodic coordinates currently require isotropic slice directions. Combining
+them with `EllipsoidalDirection` fails during sampler construction because the
+Euclidean GMM can split a seam-crossing mode; toroidal GMM geometry is tracked
+in [issue #276](https://github.com/Joshuaalbert/jaxns/issues/276). The
+[Jones-scalar example](docs/examples/Jones_scalar_modelling.ipynb) demonstrates
+a periodic calibration phase together with DTEC, clock, and unknown noise.
+
 ## Run nested sampling locally
 
 ```python
@@ -402,6 +431,9 @@ requests.
   phantom states.
 - Added opt-in warm-refined ellipsoidal slice directions and transparent
   finite or explicitly unlimited sample-buffer growth.
+- Added reversible random-chart slice sampling for continuous periodic prior
+  coordinates declared with JAXCTX `realise(periodic=True)`; isotropic
+  directions are required until toroidal GMM geometry is available.
 - Added an opt-in asynchronous worker runtime and `jaxns-cli` for local IPC or
   trusted-network multi-node TCP pools with dynamic registration, restartable
   heartbeat leases, worker-only likelihood execution, scalar logical-thread

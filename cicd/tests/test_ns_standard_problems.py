@@ -32,6 +32,7 @@ def _clear_case_specific_jax_executables():
 class StandardProblemCase:
     name: str
     build_case: Callable
+    run_seed: int = 42
 
 
 def _log_normal(x, mean, cov):
@@ -127,6 +128,86 @@ def _plateau_model_case():
     model = Model(prior_model=prior_model)
     log_Z_true = jnp.asarray(0.0)
     return model, log_Z_true
+
+
+def _jones_scalar_model_case():
+    """Infer dispersive, clock, periodic phase, and noise gain terms."""
+    dtype = jnp.float64
+    num_channels = 20
+    frequencies_mhz = jnp.linspace(
+        700.0,
+        702.6,
+        num_channels,
+        dtype=dtype,
+    )
+    tec_conversion = jnp.asarray(-8.4479745, dtype=dtype)
+    clock_conversion = jnp.asarray(2.0e-3 * jnp.pi, dtype=dtype)
+    true_dtec_mtecu = jnp.asarray(90.0, dtype=dtype)
+    true_clock_ns = jnp.asarray(0.5, dtype=dtype)
+    true_constant = jnp.asarray(jnp.pi - 0.03, dtype=dtype)
+    true_uncertainty = jnp.asarray(0.1, dtype=dtype)
+    phase = (
+        true_dtec_mtecu * tec_conversion / frequencies_mhz
+        + true_clock_ns * clock_conversion * frequencies_mhz
+        + true_constant
+    )
+    # [2 N] observed real components followed by imaginary components.
+    gain_mean = jnp.concatenate([jnp.cos(phase), jnp.sin(phase)])
+    key = jax.random.PRNGKey(275)
+    gains = gain_mean + true_uncertainty * jax.random.normal(
+        key,
+        shape=(2 * num_channels,),
+        dtype=dtype,
+    )
+
+    def prior_model():
+        dtec_mtecu = Prior(
+            tfpd.Uniform(
+                low=jnp.asarray(-300.0, dtype=dtype),
+                high=jnp.asarray(300.0, dtype=dtype),
+            ),
+            name='dtec_mtecu',
+        ).realise()
+        clock_ns = Prior(
+            tfpd.Uniform(
+                low=jnp.asarray(-2.0, dtype=dtype),
+                high=jnp.asarray(2.0, dtype=dtype),
+            ),
+            name='clock_ns',
+        ).realise()
+        constant = Prior(
+            tfpd.Uniform(
+                low=jnp.asarray(-jnp.pi, dtype=dtype),
+                high=jnp.asarray(jnp.pi, dtype=dtype),
+            ),
+            name='constant',
+        ).realise(periodic=True)
+        uncertainty = Prior(
+            tfpd.HalfNormal(
+                scale=jnp.asarray(0.25, dtype=dtype),
+            ),
+            name='uncertainty',
+        ).realise()
+
+        # DTEC is in mTECU and clock in ns. Frequencies are MHz, hence the
+        # 1e-3 factor in the non-dispersive 2 pi nu clock conversion.
+        model_phase = (
+            dtec_mtecu * tec_conversion / frequencies_mhz
+            + clock_ns * clock_conversion * frequencies_mhz
+            + constant
+        )
+        # [2 N] predicted real components followed by imaginary components.
+        mean = jnp.concatenate([
+            jnp.cos(model_phase),
+            jnp.sin(model_phase),
+        ])
+        return jnp.sum(tfpd.Normal(mean, uncertainty).log_prob(gains))
+
+    # Independent nested quadrature integrates the periodic constant and
+    # uncertainty before tensor quadrature over DTEC and clock. See
+    # benchmarks/issue_275/jones_reference.py for the convergence evidence.
+    log_Z_true = jnp.asarray(34.803948945405, dtype=dtype)
+    return Model(prior_model=prior_model), log_Z_true
 
 
 def _basic_mvn_model_case():
@@ -404,6 +485,11 @@ STANDARD_PROBLEM_CASES = [
     StandardProblemCase('basic2', _basic2_model_case),
     StandardProblemCase('basic3', _basic3_model_case),
     StandardProblemCase('plateau', _plateau_model_case),
+    StandardProblemCase(
+        'jones_scalar',
+        _jones_scalar_model_case,
+        run_seed=1001,
+    ),
     StandardProblemCase('basic_mvn', _basic_mvn_model_case),
     StandardProblemCase('spike_slab', _spike_slab_model_case),
     StandardProblemCase('spike_slab10', _spike_slab10_model_case),
@@ -452,7 +538,7 @@ def test_nested_sampling_run_results(case, collect_phantom_samples):
         model=model,
         collect_phantom_samples=collect_phantom_samples,
     )
-    state = ns.run()
+    state = ns.run(jax.random.PRNGKey(case.run_seed))
     results = state.to_result().trim()
 
     assert not np.isnan(results.log_Z_mean)

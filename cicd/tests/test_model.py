@@ -1,5 +1,6 @@
 import jax
 from jax import numpy as jnp
+from jaxctx import scope
 from jaxctx.priors.prior import Prior
 from tensorflow_probability.substrates import jax as tfp
 
@@ -64,3 +65,43 @@ def test_init_params_forwards_model_and_explicit_args() -> None:
         log_joint,
     ])))
     assert jnp.allclose(log_joint, log_prior + log_likelihood)
+
+
+def test_periodic_coordinates_expand_in_sampler_order() -> None:
+    """Whole-prior declarations become scalar flags without changing U."""
+
+    def prior_model():
+        with scope("calibration"):
+            angles = Prior(
+                tfpd.Uniform(
+                    low=jnp.zeros((2,)),
+                    high=jnp.ones((2,)),
+                ),
+                name="angles",
+            ).realise(periodic=True)
+            radius = Prior(
+                tfpd.Uniform(low=0.0, high=1.0),
+                name="radius",
+            ).realise()
+        return -jnp.sum(jnp.square(angles)) - jnp.square(radius)
+
+    model = Model(prior_model=prior_model)
+    sample = model.sample_U(jax.random.PRNGKey(2))
+
+    assert model._periodic_coordinates() == (True, True, False)
+    assert jax.tree.structure(sample) == jax.tree.structure(
+        model.sample_U(jax.random.PRNGKey(3))
+    )
+
+
+def test_periodic_coordinates_report_all_false_topology() -> None:
+    """Ordinary models retain an aligned all-false topology."""
+
+    def prior_model():
+        value = Prior(
+            tfpd.Uniform(low=0.0, high=1.0),
+            name="value",
+        ).realise()
+        return -jnp.square(value)
+
+    assert Model(prior_model=prior_model)._periodic_coordinates() == (False,)
