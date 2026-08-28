@@ -7,21 +7,25 @@ from jax import numpy as jnp
 from jax import random
 
 from jaxns.constrained_sampler import (
-    ConstrainedSampleRequest,
     EllipsoidalDirection,
     UniDimSliceSampler,
-    _new_proposal,
-    _sample_complete_chains,
-    _sample_ellipsoidal_direction,
     sample_request,
 )
-from jaxns.multi_ellipsoid_utils import (
+from jaxns.pytree import PureDataclassPytree, TreeField
+from jaxns.samples import SeedPoint
+from jaxns.sampling.batching import (
+    sample_complete_chains as _sample_complete_chains,
+)
+from jaxns.sampling.ellipsoid import (
     component_probabilities,
     component_probabilities_reference,
     empty_sampler_data,
 )
-from jaxns.pytree import PureDataclassPytree, TreeField
-from jaxns.samples import SeedPoint
+from jaxns.sampling.protocol import ConstrainedSampleRequest
+from jaxns.sampling.slice import (
+    _new_proposal,
+    _sample_ellipsoidal_direction,
+)
 
 
 @dataclasses.dataclass(slots=True, frozen=True)

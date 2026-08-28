@@ -8,11 +8,11 @@ from jax import numpy as jnp
 from jax._src.scipy.special import gammaln
 from jax.scipy.special import logsumexp
 
-from jaxns.em_gmm import GaussianMixture, em_gmm, fit_gmm, initialise_gmm
 from jaxns.log_semiring import LogSpace
 from jaxns.mixed_precision import mp_policy
 from jaxns.optional import import_matplotlib
 from jaxns.pytree import PureDataclassPytree
+from jaxns.sampling.gmm import GaussianMixture, em_gmm, fit_gmm, initialise_gmm
 from jaxns.types import BoolArray, FloatArray, IntArray, PRNGKey, UType
 
 __all__ = [

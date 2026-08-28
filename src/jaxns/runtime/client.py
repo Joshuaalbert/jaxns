@@ -44,7 +44,7 @@ if TYPE_CHECKING:
         LikelihoodEvaluation,
         LikelihoodRequest,
     )
-    from jaxns.multi_ellipsoid_utils import SamplerData
+    from jaxns.sampling.ellipsoid import SamplerData
     from jaxns.runtime.session import WorkerSession
 
 

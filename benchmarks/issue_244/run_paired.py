@@ -18,9 +18,11 @@ from jaxns.constrained_sampler import (
     ConstrainedSampleBatch,
     ConstrainedSampleRequest,
     UniDimSliceSampler,
-    _sample_complete_chains,
 )
 from jaxns.core import NestedSampler
+from jaxns.sampling.batching import (
+    sample_complete_chains as _sample_complete_chains,
+)
 
 
 @dataclasses.dataclass(slots=True, frozen=True)

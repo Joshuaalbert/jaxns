@@ -19,7 +19,7 @@ from jaxns.constrained_sampler import (
     sample_request,
 )
 from jaxns.mixed_precision import mp_policy
-from jaxns.multi_ellipsoid_utils import update_sampler_data
+from jaxns.sampling.ellipsoid import update_sampler_data
 from jaxns.pytree import PureDataclassPytree, pytree_ravel
 from jaxns.samples import Samples, SeedPoint
 from jaxns.shrinkage import (

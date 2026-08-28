@@ -32,7 +32,7 @@ from jaxns.constrained_sampler import (
 from jaxns.distributed_core import (
     DistributedNestedSampler,
 )
-from jaxns.multi_ellipsoid_utils import empty_sampler_data
+from jaxns.sampling.ellipsoid import empty_sampler_data
 from jaxns.runtime.client import SupervisorClient, _sampler_batch_group
 from jaxns.runtime.config import (
     WorkerConfig,

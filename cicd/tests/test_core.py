@@ -25,7 +25,7 @@ from jaxns.constrained_sampler import (
     _take_phantom_prefix,
 )
 from jaxns.core import NestedSampler
-from jaxns.multi_ellipsoid_utils import empty_sampler_data
+from jaxns.sampling.ellipsoid import empty_sampler_data
 from jaxns.pytree import PureDataclassPytree
 from jaxns.algorithm.race_tree import (
     build_block_state,

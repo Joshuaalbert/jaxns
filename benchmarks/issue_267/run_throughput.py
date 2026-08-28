@@ -27,7 +27,7 @@ from jaxns.constrained_sampler import (
     sample_request,
 )
 from jaxns.model import Model
-from jaxns.multi_ellipsoid_utils import empty_sampler_data
+from jaxns.sampling.ellipsoid import empty_sampler_data
 from jaxns.runtime import client as runtime_client
 from jaxns.runtime.client import SupervisorClient
 from jaxns.runtime.session import WorkerSession

@@ -8,7 +8,7 @@ import time
 import jax
 from jax import numpy as jnp
 
-from jaxns.multi_ellipsoid_utils import (
+from jaxns.sampling.ellipsoid import (
     empty_sampler_data,
     update_sampler_data,
 )

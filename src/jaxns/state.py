@@ -14,7 +14,7 @@ from jaxns.evidence_calculation import EvidenceCalculation
 from jaxns.log_semiring import LogSpace, normalise_log_space
 from jaxns.mixed_precision import mp_policy
 from jaxns.model import Model
-from jaxns.multi_ellipsoid_utils import SamplerData
+from jaxns.sampling.ellipsoid import SamplerData
 from jaxns.phantom_eval import EvidenceSamples
 from jaxns.pytree import PureDataclassPytree
 from jaxns.algorithm.race_tree import BlockState, LikelihoodOrder, build_block_state
