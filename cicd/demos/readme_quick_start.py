@@ -20,6 +20,9 @@ tfpd = tfp.distributions
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 ASSET_DIRECTORY = REPOSITORY_ROOT / "docs" / "_static" / "readme_quick_start"
+PREDICTOR = jnp.linspace(0.0, 1.0, 6)
+OBSERVATIONS = jnp.asarray([0.15, 0.32, 0.83, 1.08, 1.52, 1.77])
+MEASUREMENT_UNCERTAINTY = jnp.asarray(0.15)
 
 
 def prior_model(predictor, observations, measurement_uncertainty):
@@ -45,9 +48,9 @@ def run_quick_start() -> NestedSamplerResults:
     """Run the exact model and sampler configuration shown in the README."""
     model = Model(prior_model=prior_model)
     args = (
-        jnp.linspace(0.0, 1.0, 6),
-        jnp.asarray([0.15, 0.32, 0.83, 1.08, 1.52, 1.77]),
-        jnp.asarray(0.15),
+        PREDICTOR,
+        OBSERVATIONS,
+        MEASUREMENT_UNCERTAINTY,
     )
     model.sanity_check(
         key=jax.random.PRNGKey(1),
@@ -67,6 +70,36 @@ def run_quick_start() -> NestedSamplerResults:
     return state.to_result().trim()
 
 
+def exact_log_evidence() -> float:
+    """Evaluate the linear-Gaussian model's analytic log-evidence."""
+    predictor = np.asarray(PREDICTOR)
+    observations = np.asarray(OBSERVATIONS)
+    design = np.stack([np.ones_like(predictor), predictor], axis=1)
+    prior_covariance = np.diag([1.0, 4.0])
+    noise_covariance = np.multiply(
+        float(MEASUREMENT_UNCERTAINTY) ** 2,
+        np.eye(observations.size),
+    )
+    marginal_model_covariance = design @ prior_covariance @ design.T
+    covariance = noise_covariance + marginal_model_covariance
+    covariance_sign, covariance_log_determinant = np.linalg.slogdet(
+        covariance
+    )
+    if covariance_sign <= 0:
+        raise ValueError(
+            "The analytic observation covariance must be positive."
+        )
+    normalisation = observations.size * np.log(2.0 * np.pi)
+    mahalanobis = observations @ np.linalg.solve(
+        covariance,
+        observations,
+    )
+    negative_log_density = (
+        normalisation + covariance_log_determinant + mahalanobis
+    )
+    return float(-0.5 * negative_log_density)
+
+
 def write_outputs(
         results: NestedSamplerResults,
         output_directory: Path,
@@ -76,12 +109,20 @@ def write_outputs(
     summary_file = output_directory / "summary.txt"
     diagnostics_file = output_directory / "diagnostics.png"
     cornerplot_file = output_directory / "cornerplot.png"
+    evidence_file = output_directory / "evidence.png"
 
     results.summary(f_obj=summary_file)
     results.plot_diagnostics(save_file=diagnostics_file)
     results.plot_cornerplot(
         variables=["intercept", "slope"],
         save_name=cornerplot_file,
+    )
+    results.plot_evidence(
+        num_samples=4096,
+        conditionings=("classic", "phantom"),
+        key=jax.random.PRNGKey(3),
+        exact_log_Z=exact_log_evidence(),
+        save_name=evidence_file,
     )
 
     summary = summary_file.read_text(encoding="utf-8")
@@ -93,6 +134,7 @@ def write_outputs(
     assert "slope: mean +- std.dev." in summary
     assert diagnostics_file.stat().st_size > 0
     assert cornerplot_file.stat().st_size > 0
+    assert evidence_file.stat().st_size > 0
     return summary
 
 
