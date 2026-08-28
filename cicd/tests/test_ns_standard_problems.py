@@ -130,7 +130,7 @@ def _plateau_model_case():
     return model, log_Z_true
 
 
-def _jones_scalar_model_case():
+def _jones_scalar_model_case(periodic: bool = True):
     """Infer dispersive, clock, periodic phase, and noise gain terms."""
     dtype = jnp.float64
     num_channels = 20
@@ -181,7 +181,7 @@ def _jones_scalar_model_case():
                 high=jnp.asarray(jnp.pi, dtype=dtype),
             ),
             name='constant',
-        ).realise(periodic=True)
+        ).realise(periodic=periodic)
         uncertainty = Prior(
             tfpd.HalfNormal(
                 scale=jnp.asarray(0.25, dtype=dtype),
