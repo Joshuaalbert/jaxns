@@ -397,6 +397,15 @@ def test_state_to_result_evidence_summary_uses_block_model():
         np.asarray(results.log_Z_uncert),
         np.asarray(expected_summary.log_Z_uncert),
     )
+    posterior_weights = np.exp(np.asarray(results.log_dp))
+    expected_posterior_ess = (
+        np.sum(posterior_weights) ** 2
+        / np.sum(np.square(posterior_weights))
+    )
+    np.testing.assert_allclose(
+        np.asarray(results.ess),
+        expected_posterior_ess,
+    )
     np.testing.assert_array_equal(
         np.asarray(results.block_data.incoming_K)[
             np.isfinite(np.asarray(results.block_data.log_L))

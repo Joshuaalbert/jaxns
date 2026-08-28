@@ -10,8 +10,8 @@ likelihood evals / sample: 61.7
 logZ (classic expected)=-0.38 +- 0.28
 max(logL)=5.31
 H=4.74
-posterior ESS (Kish)=109.5
-likelihood evals / posterior ESS: 460.8
+posterior ESS (Kish)=237.3
+likelihood evals / posterior ESS: 212.5
 --------
 intercept: mean +- std.dev. | MAP est. | max(L) est.
 intercept: 0.09 +- 0.11 | 0.1 | 0.09

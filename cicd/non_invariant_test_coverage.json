@@ -1,6 +1,11 @@
 {
   "schema_version": 1,
   "tests": {
+    "test_effective_sample_size_kish_uses_posterior_weights": {
+      "note": "Checks that the reported posterior ESS is Kish's quantity for the actual posterior weights, independent of evidence moments or phantom states.",
+      "path": "cicd/tests/test_stats.py",
+      "reason": "utility_behavior"
+    },
     "test_plot_diagnostics_orders_append_results_by_negative_log_x": {
       "note": "Checks append-order result rendering and cumulative evidence traversal in nested prior-volume order.",
       "path": "cicd/tests/test_results_plotting.py",

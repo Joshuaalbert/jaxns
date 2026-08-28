@@ -12,6 +12,7 @@ from jaxns.cumulative_ops import batch_reduce
 from jaxns.diagnostics.plotting import (
     plot_cornerplot,
     plot_diagnostics,
+    plot_evidence,
 )
 from jaxns.diagnostics.summary import _summary
 from jaxns.log_semiring import LogSpace
@@ -224,11 +225,46 @@ class NestedSamplerResults(PureDataclassPytree):
         """
         plot_diagnostics(self, save_file=save_file)
 
-    def plot_cornerplot(self, variables: list[str] | None = None, save_name: str | Path | None = None, kde_overlay: bool = False):
+    def plot_evidence(
+            self,
+            *,
+            num_samples: int = 512,
+            conditionings: tuple[EvidenceConditioning, ...] = ("classic",),
+            key: PRNGKey | None = None,
+            exact_log_Z: float | None = None,
+            save_name: str | Path | None = None,
+    ) -> None:
+        """Plot Monte Carlo log-evidence ensembles.
+
+        Args:
+            num_samples: Number of shrinkage draws per conditioning mode.
+            conditionings: Explicit evidence conditioning modes to compare.
+            key: Optional base random key. Defaults to a fixed plotting key.
+            exact_log_Z: Optional known log-evidence to mark for calibration.
+            save_name: File to save the figure to. If None, shows the figure.
         """
-        Plots a cornerplot of the posterior samples.
-        """
-        plot_cornerplot(self, variables=variables, save_name=save_name, kde_overlay=kde_overlay)
+        plot_evidence(
+            self,
+            num_samples=num_samples,
+            conditionings=conditionings,
+            key=key,
+            exact_log_Z=exact_log_Z,
+            save_name=save_name,
+        )
+
+    def plot_cornerplot(
+            self,
+            variables: list[str] | None = None,
+            save_name: str | Path | None = None,
+            kde_overlay: bool = False,
+    ) -> None:
+        """Plot posterior samples using classic expected shrinkage weights."""
+        plot_cornerplot(
+            self,
+            variables=variables,
+            save_name=save_name,
+            kde_overlay=kde_overlay,
+        )
 
     def resample(self, num_samples: int, replace: bool = True, key: PRNGKey | None = None) -> 'NestedSamplerResults':
         """

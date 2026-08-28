@@ -100,15 +100,10 @@ def _summary(results: NestedSamplerResults, f_obj: str | TextIO | None = None):
     )
     _print("--------")
     _print(
-        f"logZ (classic)={_round(results.log_Z_mean, results.log_Z_uncert)} +- {_round(results.log_Z_uncert, results.log_Z_uncert)}"
+        f"logZ (classic expected)="
+        f"{_round(results.log_Z_mean, results.log_Z_uncert)} +- "
+        f"{_round(results.log_Z_uncert, results.log_Z_uncert)}"
     )
-    if results.total_phantom_samples > 0:
-        log_Z_samples = results.sample_evidence(num_samples=512)
-        _log_Z_samples_mean = jnp.nanmean(log_Z_samples)
-        _log_Z_samples_uncert = jnp.nanstd(log_Z_samples)
-        _print(
-            f"logZ (with phantom)={_round(_log_Z_samples_mean, _log_Z_samples_uncert)} +- {_round(_log_Z_samples_uncert, _log_Z_samples_uncert)}"
-        )
     _print(
         f"max(logL)={_round(results.log_L_supremum, results.log_Z_uncert)}"
     )
@@ -117,21 +112,11 @@ def _summary(results: NestedSamplerResults, f_obj: str | TextIO | None = None):
     _print(
         f"H={_round(results.H_mean, 0.1)}"
     )
+    _print(f"posterior ESS (Kish)={results.ess:.1f}")
     _print(
-        f"effective sample size (classic)={results.ess:.1f}"
+        "likelihood evals / posterior ESS: "
+        f"{float(results.total_num_likelihood_evaluations / results.ess):.1f}"
     )
-    if results.total_phantom_samples > 0:
-        ess_with_phantom = results.ess_with_phantom()
-        _print(
-            f"effective sample size (with phantom)={ess_with_phantom:.1f}"
-        )
-    _print(
-        f"likelihood evals / ess(classic): {float(results.total_num_likelihood_evaluations / results.ess):.1f}"
-    )
-    if results.total_phantom_samples > 0:
-        _print(
-            f"likelihood evals / ess(with phantom): {float(results.total_num_likelihood_evaluations / ess_with_phantom):.1f}"
-        )
 
     def moments(x):
         x2 = jax.tree.map(jnp.square, x)
@@ -175,4 +160,3 @@ def _summary(results: NestedSamplerResults, f_obj: str | TextIO | None = None):
             f_obj.write(out)
         else:
             raise TypeError(f"Invalid f_obj: {type(f_obj)}")
-

@@ -280,13 +280,17 @@ def _to_result(self: State) -> NestedSamplerResults:
     evidence_summary = expected_evidence_summary(block_state, concentrations)
     log_Z_mean = evidence_summary.log_Z_mean
     log_Z_uncert = evidence_summary.log_Z_uncert
-    ess = effective_sample_size_kish(
-        evidence_summary.log_Z_linear_mean,
-        evidence_summary.log_dZ2_sum,
-    )
     log_dp = expected_log_posterior_weights(block_state, concentrations)
-    log_dp = jnp.where(sample_mask, log_dp, jnp.asarray(-jnp.inf, mp_policy.measure_dtype))
+    log_dp = jnp.where(
+        sample_mask,
+        log_dp,
+        jnp.asarray(-jnp.inf, mp_policy.measure_dtype),
+    )
     dp_mean = normalise_log_space(LogSpace(log_dp))
+    # ESS describes the posterior representation, so derive it only from the
+    # classic posterior weights. Retained phantom states are not posterior
+    # samples and therefore cannot increase this quantity.
+    ess = effective_sample_size_kish(log_dp)
     # E[log(L) - log(Z)]
     log_l_for_h = jnp.where(
         jnp.isneginf(dp_mean.log_abs_val),

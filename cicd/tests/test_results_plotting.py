@@ -7,7 +7,8 @@ import numpy as np
 from jax import numpy as jnp
 from jax import tree_util
 
-from jaxns.results import NestedSamplerResults, _weighted_percentile
+from jaxns.diagnostics.plotting import _weighted_percentile
+from jaxns.results import NestedSamplerResults
 
 matplotlib.use("Agg")
 
