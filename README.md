@@ -24,10 +24,8 @@ JAXNS can:
 1. Estimate the Bayesian evidence of a model or hypothesis.
 2. Produce weighted or resampled posterior samples.
 3. Explore degenerate, multimodal posteriors.
-4. Model continuous and discrete variables using JAX-compatible distributions.
-5. Retain stationary phantom states and optionally condition final Monte Carlo
-   evidence estimates on them.
-6. Run locally on one JAX device or dispatch likelihood and constrained-chain
+4. Model continuous and discrete variables.
+5. Run locally on one JAX device or dispatch likelihood and constrained-chain
    work to a trusted heterogeneous pool across one or more machines.
 
 The original JAXNS paper is available on
