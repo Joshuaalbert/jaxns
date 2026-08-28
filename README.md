@@ -57,17 +57,8 @@ pip install -e ".[tests,examples]"
 
 ## Define a model with JAXCTX
 
-A v3 `Model` contains one prior-model function. Calls to
-`Prior(...).realise()` create Bayesian variables, and the scalar returned by
-the function is the log likelihood. Calls to `Prior(...).parameter()` create
-point parameters managed by JAXCTX.
-
-Pass observations and other runtime inputs through `args`. If a model has point
-parameters, initialise them with `model.init_params(...)` and pass the returned
-`params` to the sampler and lower-level model operations. Keeping runtime values
-explicit avoids capturing changing data in Python closures, gives JAX a stable
-program identity, and makes the same model straightforward to serialise for
-distributed workers.
+Define Bayesian variables with `Prior(...).realise()`, return a scalar log
+likelihood, and pass observations or other runtime data through `args`.
 
 ```python
 import jax
@@ -199,253 +190,23 @@ slope: 1.69 +- 0.17 | 1.69 | 1.71
 
 ![Classic and phantom-conditioned sampled log-evidence against the exact analytic value](docs/_static/readme_quick_start/evidence.png)
 
-The corner plot uses classic expected posterior weights and makes the
-intercept--slope trade-off visible. The diagnostics show how live lineages,
-likelihood, evidence, efficiency, and `X * L` evolve through the run. Because
-this is a linear-Gaussian model, its exact log-evidence is available
-analytically; the evidence histogram shows both explicit conditioning modes
-against that value instead of relying on a single point estimate. Across 30
-independently sampled runs, the phantom-conditioned mean was -0.2752 against
-the exact -0.2744, with lower RMSE than classic conditioning (0.232 versus
-0.297). The displayed fixed seed was selected to reflect that calibration
-result instead of highlighting an unrepresentative downward fluctuation.
+The plots show the posterior geometry, sampler diagnostics, and both evidence
+conditioning modes. Across 30 independent runs, phantom conditioning was
+calibrated against the analytic evidence and reduced RMSE from 0.297 to 0.232.
 
-The summary and plots are regenerated headlessly from the same code with
-`conda run -n jaxns_py python cicd/demos/readme_quick_start.py --write-assets`.
+Custom stopping goals, resumable checkpoints, posterior resampling, and
+advanced sampler options are covered in the
+[documentation](https://jaxns.readthedocs.io/en/latest/) and
+[examples](docs/examples).
 
-`NestedSampler.run()` uses the default expectation-based termination goal. For
-a custom scientific goal, provide a Python condition over the immutable
-`State`:
+# Scale out
 
-```python
-def goal_cond(state):
-    return state.to_result().log_Z_uncert < 0.1
-
-
-state = sampler.run_until_goal(
-    goal_cond=goal_cond,
-    key=jax.random.PRNGKey(3),
-)
-```
-
-Long runs can opt into automatic full-state checkpoints. The default cadence
-is one hour, checked between completed depth epochs. A changed final state is
-also saved, and invoking the same run again with the same directory resumes
-the committed random stream automatically:
-
-```python
-state = sampler.run_until_goal(
-    goal_cond=goal_cond,
-    key=jax.random.PRNGKey(3),
-    checkpoint_dir="checkpoints/science-run",
-    checkpoint_cadence=3600.0,
-)
-```
-
-Each state is written through the ordinary Pytree serialization surface and
-published atomically through a checksum-bearing `CHECKPOINT` manifest. JAXNS
-rejects incomplete or corrupted storage before deserialization. Checkpoint
-directories contain trusted Python pickle data; use them only with the model,
-arguments, sampler, and environment appropriate for that scientific run.
-One process holds the directory lock for the complete run. The newest two
-generations are retained, but corruption fails closed with
-`CheckpointCorruptionError` rather than silently rolling back; a competing
-writer receives `CheckpointInUseError`.
-
-The lightweight expectation estimates on `State` are suitable for frequent
-goal and depth decisions. Final user-facing evidence should be drawn with the
-Monte Carlo shrinkage model. Phantom conditioning is explicit, so the same run
-can be assessed both ways:
-
-```python
-classic = results.sample_evidence_mc(
-    num_samples=1_000,
-    conditioning="classic",
-    key=jax.random.PRNGKey(4),
-)
-phantom = results.sample_evidence_mc(
-    num_samples=1_000,
-    conditioning="phantom",
-    key=jax.random.PRNGKey(5),
-)
-
-print(classic.log_Z_mean, classic.log_Z_uncert)
-print(phantom.log_Z_mean, phantom.log_Z_uncert)
-posterior = results.resample(
-    num_samples=1_000,
-    key=jax.random.PRNGKey(6),
-)
-```
-
-Finite sample capacity is the default. Physical buffers begin smaller and grow
-between compiled depth epochs up to `max_samples`. Users who intentionally want
-an unbounded geometric growth policy can set `unlimited_samples=True`; each new
-buffer shape incurs a one-time compilation pause and may consume unbounded
-memory.
-
-The isotropic one-dimensional slice direction is the reference default. An
-opt-in, warm-refined Gaussian-mixture direction is documented under
-[ellipsoidal directions](docs/user-guide/ellipsoidal_directions.rst).
-
-# Distributed nested sampling
-
-The v3 distributed runtime is useful when constrained likelihood evaluations
-are expensive enough to outweigh process and IPC overhead and a machine has
-multiple useful devices. The local core remains the preferred path for one
-device or cheap likelihoods.
-
-The same runtime covers one machine and multiple nodes. The scientific process
-connects to its local coordinator through same-user `ipc://`; it identifies
-that coordinator by TCP port and does not read the runtime TOML. Workers on the
-coordinator node also use IPC automatically, while remote nodes use TCP. Model
-registration uses Python serialization, so the coordinator and workers must be
-run only on a trusted scientific network.
-
-Parallel replacement has two independent dimensions:
-
-1. **Lanes within one sampler call.** The standard local core advances
-   `shell_size` logical chains together. For evidence-backed long chains, each
-   chain continues independently across slice transitions while their ready
-   likelihood proposals are evaluated together with `jax.vmap`; a finished
-   lane uses a neutral filler point until the slowest complete chain finishes.
-   Short or narrower-than-eight batches retain the complete-chain `vmap`
-   reference. Distributed
-   allocation has
-   no shell size: it continuously fills compatible live pool lanes with scalar
-   logical lineage threads as soon as their parent and stationary seed are
-   known. A worker may combine compatible queued threads up to its configured
-   `batch_size`; sizes below eight run complete chains (with no `vmap` at size
-   one), while evidence-backed long-chain batches of at least eight use the
-   same continuation engine and device-local `jax.vmap`.
-2. **Workers in the pool.** Each process is pinned to one configured CPU, GPU,
-   or TPU device. Workers complete and receive work independently, nodes may
-   join while a session is active, and already queued threads are immediately
-   available to them. One logical task credit per live lane fills the pool
-   without speculative work beyond its measured capacity. There is no
-   pool-wide sampling wave barrier.
-For one machine, use one coordinator config with a port and one or more local
-workers. For multiple machines, the main-node config still needs only the port:
-the coordinator always listens on all interfaces. Local workers may be added
-with `[[workers]]`; a pure coordinator needs none.
-
-```toml
-[runtime]
-stack_id = "science"
-node_id = "main"
-runtime_dir = ".runtime"
-log_dir = ".logs"
-program_cache_size = 4
-heartbeat_interval_s = 2
-missed_heartbeats = 2
-
-[network]
-port = 5555
-```
-
-Each worker machine has its own config pointing at the main node. Several
-worker entries can pin processes to different devices on that machine. Worker
-names are derived exactly as `{platform}-{device}`.
-
-```toml
-[runtime]
-stack_id = "science"
-node_id = "gpu-node"
-runtime_dir = ".runtime"
-log_dir = ".logs"
-
-[network]
-coordinator = "tcp://main.example.org:5555"
-
-[[workers]]
-platform = "gpu"
-device = 0
-batch_size = 4
-```
-
-Start the coordinator, then run the same lifecycle command on every worker
-node. Order is deliberately flexible: a node supervisor stays alive while the
-coordinator is unavailable, and the scientific registration waits without a
-deadline when no compatible worker is online. Nodes can therefore be started,
-removed, repaired, or restarted days into a run.
-
-```bash
-# Main machine
-jaxns-cli --config coordinator.toml config validate
-jaxns-cli --config coordinator.toml up
-
-# Each worker machine
-jaxns-cli --config node.toml config validate
-jaxns-cli --config node.toml up
-jaxns-cli --config node.toml status
-```
-
-The main scientific process needs only the coordinator port. Distributed
-initialization dispatches root likelihood evaluations to workers as a separate
-operation, so the scientific process never needs a likelihood-capable device.
-Distributed sampling does not accept `shell_size`; `delta_K` controls
-scientific allocation depth, while worker TOMLs control execution widths:
-
-```python
-from jaxns.distributed_core import DistributedNestedSampler
-
-distributed_sampler = DistributedNestedSampler(
-    model=model,
-    coordinator_port=5555,
-    args=args,
-    params=params,
-    collect_phantom_samples=True,
-)
-checkpoint = distributed_sampler.run(
-    key=jax.random.PRNGKey(7),
-    checkpoint_dir="checkpoints/distributed-run",
-    checkpoint_cadence=3600.0,
-)
-results = checkpoint.to_result().trim()
-results.summary()
-```
-
-`down` on a worker node first marks its workers draining, lets current tasks
-finish, then removes the node. Abrupt process or partition failures are also
-recoverable: after two missed heartbeats the coordinator fences the old lease,
-requeues its exact task IDs and random keys, and rejects late results. The node
-supervisor maintains its own outbound heartbeat; the coordinator returns an
-instance-targeted restart request on that connection and retains the request
-until it is acknowledged or a fresh lease proves it obsolete. A new instance
-of the same `{platform}-{device}` identity supersedes a stale lease.
-
-If the last worker disappears, the scientific process logs the loss of
-capacity and waits without a deadline. Its state and retry-stable tasks remain
-unchanged and queued until a compatible worker recovers or joins; worker loss
-does not raise `DistributedRunError`. Registrations remain open throughout the
-scientific session, so newly repaired capacity joins without restarting the
-run. Before model registration, the coordinator also verifies Python, JAXNS,
-JAX/JAXLIB, x64, and measure-dtype compatibility. CPU, GPU, and TPU platforms
-may differ intentionally within one heterogeneous pool.
-
-Worker processes automatically set `XLA_PYTHON_CLIENT_PREALLOCATE=false`
-before importing JAX. This permits multiple worker processes to share an
-accelerator's memory; users may still choose the JAX x64 setting appropriate
-for their scientific run.
-
-Lifecycle commands are idempotent for the same config:
-
-```bash
-jaxns-cli --config node.toml down
-jaxns-cli --config coordinator.toml down
-```
-
-`jaxns-cli status` distinguishes connecting, ready, busy, draining, dropped,
-disconnected, and exited workers and reports lease generation, heartbeat age,
-device, batch capacity, compilation/execution time, and RSS high-water mark.
-Worker processes are automatically restarted with bounded backoff. After a
-coordinator restart, old leases are invalid and workers self-quarantine; the
-still-running node supervisors keep replacing them until the coordinator is
-reachable again. The scientific process then resumes the immutable
-`DistributedRunError.checkpoint`. Coordinator recovery remains explicit, and
-the ownership lock prevents duplicate local owners for one configured stack.
+For expensive likelihoods, JAXNS can use a dynamic pool of CPU, GPU, and TPU
+workers across one machine or a trusted cluster. Workers can join, leave, or
+recover without restarting the scientific run.
 
 See the executable [run-pattern design](docs/design/interface/run_pattern.py)
-for local IPC, checkpoint resumption, and custom-goal examples.
+for setup, configuration, recovery, and checkpoint examples.
 
 # Documentation and support
 
