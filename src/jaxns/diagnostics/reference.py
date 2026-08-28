@@ -12,8 +12,13 @@ from jaxns.model import Model
 from jaxns.types import FloatArray, XType
 
 
-def bruteforce_posterior_samples(model: Model, args=(), params: CtxParams | None = None, grid_res: int = 60, batch_size: int | None = None) -> tuple[
-    XType, LogSpace]:
+def bruteforce_posterior_samples(
+    model: Model,
+    args=(),
+    params: CtxParams | None = None,
+    grid_res: int = 60,
+    batch_size: int | None = None,
+) -> tuple[XType, LogSpace]:
     """
     Compute the posterior with brute-force over a regular grid.
 
