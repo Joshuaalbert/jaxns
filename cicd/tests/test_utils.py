@@ -73,6 +73,27 @@ def test_bruteforce_utilities_preserve_model_unit_dtypes():
     assert jnp.all(jnp.isfinite(weights.log_abs_val))
 
 
+def test_bruteforce_evidence_assigns_unit_volume_to_constant_likelihood():
+    """A regular U-space grid must integrate the unit likelihood to one."""
+
+    def prior_model():
+        Prior(
+            tfpd.Uniform(
+                low=jnp.zeros(2),
+                high=jnp.ones(2),
+            ),
+            name='x',
+        ).realise()
+        return jnp.asarray(0.0)
+
+    log_evidence = bruteforce_evidence(
+        model=Model(prior_model=prior_model),
+        grid_res=4,
+    )
+
+    np.testing.assert_allclose(log_evidence, 0.0, atol=1e-8)
+
+
 @dataclasses.dataclass(frozen=True, slots=True)
 class MockPyTree171(PureDataclassPytree):
     x: jax.Array  # [N]

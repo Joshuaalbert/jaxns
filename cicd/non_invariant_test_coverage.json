@@ -116,6 +116,16 @@
       "path": "cicd/tests/test_utils.py",
       "reason": "utility_behavior"
     },
+    "test_bruteforce_evidence_assigns_unit_volume_to_constant_likelihood": {
+      "note": "Checks that midpoint grid weights integrate a constant likelihood over exactly one unit of prior volume.",
+      "path": "cicd/tests/test_utils.py",
+      "reason": "utility_behavior"
+    },
+    "test_integrate_semi_positive_values_over_posterior": {
+      "note": "Checks that the semi-positive posterior integration utility consumes ordinary non-negative values rather than treating them as logarithms.",
+      "path": "cicd/tests/test_phantom_results.py",
+      "reason": "utility_behavior"
+    },
     "test_plateau_result_with_padded_inf_block_has_finite_h_samples": {
       "note": "Checks that the current padded block-buffer representation cannot contaminate an evidence diagnostic.",
       "path": "cicd/tests/test_phantom_results.py",
