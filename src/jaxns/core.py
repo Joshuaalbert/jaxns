@@ -2,6 +2,7 @@
 
 import dataclasses
 from collections.abc import Callable
+from contextlib import nullcontext
 from functools import partial
 from pathlib import Path
 from typing import Any, Literal, NamedTuple
@@ -1360,30 +1361,13 @@ class NestedSampler(PureDataclassPytree):
         Returns:
             The completed or terminal immutable state.
         """
-        if checkpoint_dir is not None:
-            with CheckpointManager[State](
-                checkpoint_dir,
-                checkpoint_cadence,
-            ) as checkpoint_manager:
-                state = checkpoint_manager.load()
-                if state is None:
-                    state = self.initialise(key)
-                state = self._resume_until_goal(
-                    state,
-                    goal_cond,
-                    depth_cond=depth_cond,
-                    key=None,
-                    checkpoint_manager=checkpoint_manager,
-                )
-                checkpoint_manager.save_if_changed(state)
-                return state
-        state = self.initialise(key)
         return self._resume_until_goal(
-            state,
+            None,
             goal_cond,
             depth_cond=depth_cond,
-            key=None,
-            checkpoint_manager=None,
+            key=key,
+            checkpoint_dir=checkpoint_dir,
+            checkpoint_cadence=checkpoint_cadence,
         )
 
     def resume_until_goal(
@@ -1414,33 +1398,55 @@ class NestedSampler(PureDataclassPytree):
         Returns:
             The completed or terminal immutable state.
         """
-        if checkpoint_dir is not None:
-            with CheckpointManager[State](
-                checkpoint_dir,
-                checkpoint_cadence,
-            ) as checkpoint_manager:
-                restored = checkpoint_manager.load()
-                if restored is not None:
-                    state = restored
-                    key = None
-                state = self._resume_until_goal(
-                    state,
-                    goal_cond,
-                    depth_cond=depth_cond,
-                    key=key,
-                    checkpoint_manager=checkpoint_manager,
-                )
-                checkpoint_manager.save_if_changed(state)
-                return state
         return self._resume_until_goal(
             state,
             goal_cond,
             depth_cond=depth_cond,
             key=key,
-            checkpoint_manager=None,
+            checkpoint_dir=checkpoint_dir,
+            checkpoint_cadence=checkpoint_cadence,
         )
 
     def _resume_until_goal(
+            self,
+            state: State | None,
+            goal_cond: Callable[[State], bool],
+            *,
+            depth_cond: TerminationCondition | None,
+            key: PRNGKey | None,
+            checkpoint_dir: str | Path | None,
+            checkpoint_cadence: float,
+    ) -> State:
+        """Resolve checkpoint precedence, then continue one goal loop."""
+        checkpoint_context = (
+            CheckpointManager[State](
+                checkpoint_dir,
+                checkpoint_cadence,
+            )
+            if checkpoint_dir is not None
+            else nullcontext()
+        )
+        with checkpoint_context as checkpoint_manager:
+            if checkpoint_manager is not None:
+                restored = checkpoint_manager.load()
+                if restored is not None:
+                    state = restored
+                    key = None
+            if state is None:
+                state = self.initialise(key)
+                key = None
+            completed = self._run_goal_loop(
+                state,
+                goal_cond,
+                depth_cond=depth_cond,
+                key=key,
+                checkpoint_manager=checkpoint_manager,
+            )
+            if checkpoint_manager is not None:
+                checkpoint_manager.save_if_changed(completed)
+            return completed
+
+    def _run_goal_loop(
             self,
             state: State,
             goal_cond: Callable[[State], bool],
@@ -1449,6 +1455,7 @@ class NestedSampler(PureDataclassPytree):
             key: PRNGKey | None,
             checkpoint_manager: CheckpointManager[State] | None,
     ) -> State:
+        """Continue compiled depths after checkpoint ownership is resolved."""
         if depth_cond is None:
             depth_cond = self.termination_condition
         if key is not None:

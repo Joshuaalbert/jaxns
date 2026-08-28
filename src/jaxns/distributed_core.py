@@ -5,6 +5,7 @@ from __future__ import annotations
 import dataclasses
 import time
 from collections.abc import Callable
+from contextlib import nullcontext
 from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, NamedTuple
@@ -918,33 +919,13 @@ class DistributedNestedSampler:
             A drained distributed checkpoint suitable for results or
             resumption.
         """
-        if checkpoint_dir is not None:
-            with CheckpointManager[DistributedState](
-                checkpoint_dir,
-                checkpoint_cadence,
-            ) as checkpoint_manager:
-                distributed = checkpoint_manager.load()
-                if distributed is None:
-                    completed = self._run_until_goal(
-                        goal_cond,
-                        depth_cond=depth_cond,
-                        key=key,
-                        checkpoint_manager=checkpoint_manager,
-                    )
-                else:
-                    completed = self._resume_until_goal(
-                        distributed,
-                        goal_cond,
-                        depth_cond=depth_cond,
-                        checkpoint_manager=checkpoint_manager,
-                    )
-                checkpoint_manager.save_if_changed(completed)
-                return completed
-        return self._run_until_goal(
+        return self._resume_until_goal(
+            None,
             goal_cond,
             depth_cond=depth_cond,
             key=key,
-            checkpoint_manager=None,
+            checkpoint_dir=checkpoint_dir,
+            checkpoint_cadence=checkpoint_cadence,
         )
 
     def _run_until_goal(
@@ -1036,30 +1017,58 @@ class DistributedNestedSampler:
                 field contains every reservation and task created before the
                 failure and can be passed back to this method.
         """
-        if checkpoint_dir is not None:
-            with CheckpointManager[DistributedState](
+        return self._resume_until_goal(
+            distributed,
+            goal_cond,
+            depth_cond=depth_cond,
+            key=None,
+            checkpoint_dir=checkpoint_dir,
+            checkpoint_cadence=checkpoint_cadence,
+        )
+
+    def _resume_until_goal(
+            self,
+            distributed: DistributedState | None,
+            goal_cond: Callable[[State], bool],
+            *,
+            depth_cond: TerminationCondition | None,
+            key: PRNGKey | None,
+            checkpoint_dir: str | Path | None,
+            checkpoint_cadence: float,
+    ) -> DistributedState:
+        """Resolve checkpoint precedence before starting or resuming."""
+        checkpoint_context = (
+            CheckpointManager[DistributedState](
                 checkpoint_dir,
                 checkpoint_cadence,
-            ) as checkpoint_manager:
+            )
+            if checkpoint_dir is not None
+            else nullcontext()
+        )
+        with checkpoint_context as checkpoint_manager:
+            if checkpoint_manager is not None:
                 restored = checkpoint_manager.load()
                 if restored is not None:
                     distributed = restored
-                completed = self._resume_until_goal(
+            if distributed is None:
+                completed = self._run_until_goal(
+                    goal_cond,
+                    depth_cond=depth_cond,
+                    key=key,
+                    checkpoint_manager=checkpoint_manager,
+                )
+            else:
+                completed = self._resume_distributed_goal_loop(
                     distributed,
                     goal_cond,
                     depth_cond=depth_cond,
                     checkpoint_manager=checkpoint_manager,
                 )
+            if checkpoint_manager is not None:
                 checkpoint_manager.save_if_changed(completed)
-                return completed
-        return self._resume_until_goal(
-            distributed,
-            goal_cond,
-            depth_cond=depth_cond,
-            checkpoint_manager=None,
-        )
+            return completed
 
-    def _resume_until_goal(
+    def _resume_distributed_goal_loop(
             self,
             distributed: DistributedState,
             goal_cond: Callable[[State], bool],
