@@ -6,7 +6,7 @@ import pytest
 from jax import numpy as jnp
 from jax import random
 
-from jaxns import shrinkage
+import jaxns.shrinkage.classic as shrinkage
 from jaxns.algorithm.race_tree import BlockState
 from jaxns.shrinkage.classic import (
     DirichletConcentrations,
