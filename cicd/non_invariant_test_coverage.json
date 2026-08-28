@@ -16,8 +16,8 @@
       "path": "cicd/tests/test_results_plotting.py",
       "reason": "output_behavior"
     },
-    "test_phantom_ess_alias_names_evidence_equivalent_live_points": {
-      "note": "Checks the explicit evidence-equivalent live-point diagnostic and the deprecated compatibility alias that was historically mislabeled as posterior ESS.",
+    "test_evidence_equivalent_live_points_is_not_posterior_ess": {
+      "note": "Checks the explicitly named evidence-equivalent live-point diagnostic and that the misleading phantom posterior-ESS API is absent.",
       "path": "cicd/tests/test_results_plotting.py",
       "reason": "result_schema_regression"
     },

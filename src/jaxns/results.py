@@ -425,22 +425,54 @@ class NestedSamplerResults(PureDataclassPytree):
             C_min=C_min,
         )
 
-    def ess_with_phantom(self, num_samples: int = 512, batch_size: int | None = None, key: PRNGKey | None = None) -> FloatArray:
-        """
-        Compute the ESS including phantoms.
+    def evidence_equivalent_live_points(
+            self,
+            num_samples: int = 512,
+            *,
+            conditioning: EvidenceConditioning,
+            key: PRNGKey,
+            batch_size: int | None = None,
+            C_min: float = 20,
+    ) -> FloatArray:
+        """Estimate a live-point count from sampled evidence uncertainty.
+
+        This diagnostic inverts ``Var(log Z) ~= H / K``. It is not a
+        posterior Kish effective sample size and does not count phantom
+        coordinates as posterior samples.
 
         Args:
-            num_samples: number of samples to draw
-            batch_size: optional, how many samples to process in a batch when applying the function.
-            key: optional, PRNGKey for resampling
+            num_samples: Number of shrinkage/evidence draws.
+            conditioning: Explicit shrinkage conditioning mode.
+            key: Explicit JAX PRNG key.
+            batch_size: Maximum simultaneous evidence draws.
+            C_min: Minimum participating-cluster Kish count.
 
         Returns:
-            scalar, the ESS including phantoms.
+            Evidence-equivalent live-point count.
         """
-        if key is None:
-            key = jax.random.PRNGKey(42)
-
-        return _ess_with_phantom(self, num_samples=num_samples, batch_size=batch_size, key=key)
+        evidence_samples = self.sample_evidence_mc(
+            num_samples=num_samples,
+            conditioning=conditioning,
+            key=key,
+            batch_size=batch_size,
+            C_min=C_min,
+            diagnostics=False,
+        )
+        finite_mask = jnp.logical_and(
+            jnp.isfinite(evidence_samples.H_samples),
+            jnp.isfinite(evidence_samples.log_Z_samples),
+        )
+        H_mean = jnp.nanmean(
+            jnp.where(finite_mask, evidence_samples.H_samples, jnp.nan)
+        )
+        log_Z_var = jnp.nanvar(
+            jnp.where(
+                finite_mask,
+                evidence_samples.log_Z_samples,
+                jnp.nan,
+            )
+        )
+        return H_mean / log_Z_var
 
 
 NestedSamplerResults.register_pytree()
@@ -450,16 +482,6 @@ def _block_state_from_results(self: NestedSamplerResults) -> BlockState | None:
     if self.block_data is None:
         return None
     return self.block_data.to_block_state()
-
-
-@partial(jax.jit, inline=True, static_argnames=['num_samples', 'batch_size'])
-def _ess_with_phantom(self: NestedSamplerResults, num_samples: int, batch_size: int | None = None, key: PRNGKey | None = None) -> FloatArray:
-    evidence_samples = self.sample_mc_shrinkage(num_samples=num_samples, batch_size=batch_size, key=key)
-    # make sure finite mask is same for both numerator and denominator
-    finite_mask = jnp.isfinite(evidence_samples.H_samples) & jnp.isfinite(evidence_samples.log_Z_samples)
-    H_mean = jnp.nanmean(jnp.where(finite_mask, evidence_samples.H_samples, jnp.nan))
-    log_Z_var = jnp.nanvar(jnp.where(finite_mask, evidence_samples.log_Z_samples, jnp.nan))
-    return H_mean / log_Z_var
 
 
 def _posterior_log_weights(self: NestedSamplerResults) -> FloatArray:

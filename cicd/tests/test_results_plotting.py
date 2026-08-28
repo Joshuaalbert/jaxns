@@ -4,7 +4,6 @@ from types import SimpleNamespace
 
 import matplotlib
 import numpy as np
-import pytest
 from jax import numpy as jnp
 from jax import tree_util
 
@@ -257,7 +256,7 @@ def test_plot_evidence_compares_explicit_conditionings_and_exact_value(
     assert output_file.stat().st_size > 0
 
 
-def test_phantom_ess_alias_names_evidence_equivalent_live_points(monkeypatch):
+def test_evidence_equivalent_live_points_is_not_posterior_ess(monkeypatch):
     calls = []
 
     def _sample_evidence_mc(
@@ -294,18 +293,11 @@ def test_phantom_ess_alias_names_evidence_equivalent_live_points(monkeypatch):
         batch_size=2,
         C_min=12,
     )
-    with pytest.deprecated_call(match="not a posterior ESS"):
-        legacy = results.ess_with_phantom(
-            num_samples=3,
-            key=jnp.asarray([0, 1], dtype=jnp.uint32),
-            batch_size=2,
-        )
 
     np.testing.assert_allclose(explicit, expected)
-    np.testing.assert_allclose(legacy, expected)
+    assert not hasattr(results, "ess_with_phantom")
     assert calls == [
         (3, "phantom", 2, 12, False),
-        (3, "phantom", 2, 20, False),
     ]
 
 
