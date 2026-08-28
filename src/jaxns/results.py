@@ -506,7 +506,9 @@ def _integrate_fn_over_posterior(self: NestedSamplerResults, fn: Callable[[XType
 
         def _increment(y):
             if semi_positive:
-                f = LogSpace(y)
+                # ``fn`` returns ordinary values. Convert non-negative values
+                # to log space before multiplying by posterior weights.
+                f = LogSpace(jnp.log(y))
             else:
                 f = LogSpace.from_signed_value(y)
             return (weight * f).value

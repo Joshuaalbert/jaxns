@@ -176,6 +176,30 @@ def _make_result_case() -> ResultCase:
     )
 
 
+def test_integrate_semi_positive_values_over_posterior():
+    """The semi-positive path must average values, not exponentiate them."""
+    results = dataclasses.replace(
+        _make_result_case().results,
+        X_samples=jnp.asarray(
+            [0.0, 1.0, 2.0],
+            dtype=mp_policy.measure_dtype,
+        ),
+        log_dp=jnp.log(
+            jnp.asarray(
+                [0.25, 0.75, 0.0],
+                dtype=mp_policy.measure_dtype,
+            )
+        ),
+    )
+
+    posterior_mean = results.integrate_fn_over_posterior(
+        lambda x: x,
+        semi_positive=True,
+    )
+
+    np.testing.assert_allclose(posterior_mean, 0.75)
+
+
 def _make_padded_plateau_result(num_phantom: int) -> NestedSamplerResults:
     u_samples = jnp.asarray([0.10, 0.20], dtype=mp_policy.measure_dtype)
     log_l = jnp.asarray([0.0, 0.0], dtype=mp_policy.measure_dtype)
