@@ -209,7 +209,7 @@ def test_summary_does_not_compare_incommensurate_phantom_statistics():
 
     summary = output.getvalue()
     assert "logZ (classic expected)=" in summary
-    assert "posterior Kish ESS (classic expected weights)=" in summary
+    assert "posterior ESS (Kish)=" in summary
     assert "with phantom" not in summary
 
 
