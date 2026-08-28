@@ -8,17 +8,16 @@ from jax import random
 from jaxctx.priors.prior import Prior
 from tensorflow_probability.substrates import jax as tfp
 
-from jaxns.model import Model
-from jaxns.results import _weighted_percentile
-from jaxns.utils import (
-    _bit_mask,
+from jaxns.diagnostics.insertion import insert_index_diagnostic
+from jaxns.diagnostics.plotting import _weighted_percentile
+from jaxns.diagnostics.reference import (
     bruteforce_evidence,
     bruteforce_posterior_samples,
-    insert_index_diagnostic,
-    load_pytree,
-    resample,
-    save_pytree,
 )
+from jaxns.diagnostics.summary import _bit_mask
+from jaxns.model import Model
+from jaxns.pytree import load_pytree, save_pytree
+from jaxns.random_utils import resample
 
 tfpd = tfp.distributions
 
