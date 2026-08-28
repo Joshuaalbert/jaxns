@@ -35,7 +35,8 @@ operation consumes it. The source of truth for package metadata remains
 ## Public entry-point behavior
 
 The base environment must import `jaxns.core`, `jaxns.model`, `jaxns.state`,
-`jaxns.results`, and `jaxns.utils`, author the README-style TFP/JAXCTX model,
+`jaxns.results`, and `jaxns.diagnostics.reference`, author the README-style
+TFP/JAXCTX model,
 complete a small local nested-sampling run, and write diagnostic plots under a
 non-interactive backend. Importing results or multi-ellipsoid utilities must
 not eagerly import Matplotlib. If a broken environment lacks Matplotlib, the

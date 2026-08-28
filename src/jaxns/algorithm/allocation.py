@@ -6,11 +6,14 @@ from typing import Literal, cast, get_args
 import numpy as np
 from jax import numpy as jnp
 
+from jaxns.algorithm.race_tree import BlockState, build_block_state
 from jaxns.mixed_precision import mp_policy
 from jaxns.pytree import PureDataclassPytree
-from jaxns.race_tree import BlockState, build_block_state
 from jaxns.samples import Samples
-from jaxns.shrinkage import DirichletConcentrations, classic_dirichlet_concentrations
+from jaxns.shrinkage.classic import (
+    DirichletConcentrations,
+    classic_dirichlet_concentrations,
+)
 from jaxns.state import State
 from jaxns.types import BoolArray, FloatArray, IntArray
 

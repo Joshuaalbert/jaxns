@@ -14,6 +14,7 @@ from jax import numpy as jnp
 import jaxns.checkpoint as checkpoint_module
 from cicd.tests.core_fixtures import make_state
 from cicd.tests.distributed_support import make_toy_model
+from jaxns.algorithm.depth import CoreWorkBatch
 from jaxns.checkpoint import (
     CHECKPOINT_CADENCE_SECONDS,
     CheckpointCorruptionError,
@@ -24,7 +25,7 @@ from jaxns.constrained_sampler import (
     ConstrainedSampleRequest,
     UniDimSliceSampler,
 )
-from jaxns.core import CoreWorkBatch, NestedSampler
+from jaxns.core import NestedSampler
 from jaxns.distributed_core import (
     DistributedState,
     PendingTask,

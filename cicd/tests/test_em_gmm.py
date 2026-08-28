@@ -5,7 +5,7 @@ from jax import numpy as jnp
 from sklearn.datasets import make_blobs
 from sklearn.metrics import adjusted_rand_score
 
-from jaxns.em_gmm import (
+from jaxns.sampling.gmm import (
     em_gmm,
     em_gmm_reference,
     fit_gmm,

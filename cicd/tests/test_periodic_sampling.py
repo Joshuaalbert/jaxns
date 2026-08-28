@@ -13,8 +13,9 @@ from jaxns.constrained_sampler import (
     sample_request,
 )
 from jaxns.core import NestedSampler
-from jaxns.distributed_core import DistributedNestedSampler, WorkerSession
+from jaxns.distributed_core import DistributedNestedSampler
 from jaxns.model import Model
+from jaxns.runtime.session import WorkerSession
 from jaxns.samples import SeedPoint
 
 tfpd = tfp.distributions

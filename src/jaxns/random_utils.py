@@ -1,15 +1,18 @@
-from typing import Optional
 
 import jax
-from jax import random, numpy as jnp
+from jax import numpy as jnp
+from jax import random
 from jax.scipy import special
 
 from jaxns.log_semiring import cumulative_logsumexp
 from jaxns.mixed_precision import mp_policy
-from jaxns.types import PRNGKey, FloatArray, IntArray
+from jaxns.types import FloatArray, IntArray, PRNGKey
 
-__all__ = ['random_ortho_matrix',
-           'resample_indicies']
+__all__ = [
+    'random_ortho_matrix',
+    'resample',
+    'resample_indicies',
+]
 
 
 def random_ortho_matrix(key, n, special_orthogonal: bool = False):
@@ -31,8 +34,8 @@ def random_ortho_matrix(key, n, special_orthogonal: bool = False):
     return Q
 
 
-def resample_indicies(key: PRNGKey, log_weights: Optional[FloatArray] = None, S: Optional[int] = None,
-                      replace: bool = True, num_total: Optional[int] = None) -> IntArray:
+def resample_indicies(key: PRNGKey, log_weights: FloatArray | None = None, S: int | None = None,
+                      replace: bool = True, num_total: int | None = None) -> IntArray:
     """
     Get resample indicies according to a given weighting, with or without replacement.
 
@@ -74,6 +77,25 @@ def resample_indicies(key: PRNGKey, log_weights: Optional[FloatArray] = None, S:
         # idx = jnp.argsort(g)[:S]
         _, idx = jax.lax.top_k(-g, k=S)
     return idx
+
+
+def resample(
+        key: PRNGKey,
+        samples,
+        log_weights: FloatArray,
+        S: int | None = None,
+        replace: bool = True,
+):
+    """Resample aligned pytree leaves according to log weights."""
+    if S is None:
+        S = int(jnp.size(log_weights))
+    indices = resample_indicies(
+        key=key,
+        log_weights=log_weights,
+        S=S,
+        replace=replace,
+    )
+    return jax.tree.map(lambda sample: sample[indices, ...], samples)
 
 
 def sample_uniformly_masked(key, v, select_mask, num_samples: int, squeeze: bool = False):

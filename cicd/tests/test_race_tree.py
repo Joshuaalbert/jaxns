@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 from jax import numpy as jnp
 
-from jaxns.race_tree import build_block_state
+from jaxns.algorithm.race_tree import build_block_state
 from jaxns.samples import PhantomSamples, Samples
 
 

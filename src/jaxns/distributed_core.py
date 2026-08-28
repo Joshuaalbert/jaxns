@@ -16,6 +16,15 @@ import jax.numpy as jnp
 import numpy as np
 from jaxctx import CtxParams
 
+from jaxns.algorithm.depth import (
+    MAX_SAMPLES_REACHED,
+    CoreWorkBatch,
+    _accept_work_batch,
+    _build_depth_view,
+    _plan_work_batch,
+    _prepare_sampler_data,
+)
+from jaxns.algorithm.initialisation import _build_init_state
 from jaxns.checkpoint import (
     CHECKPOINT_CADENCE_SECONDS,
     CheckpointManager,
@@ -27,20 +36,12 @@ from jaxns.constrained_sampler import (
     LikelihoodEvaluation,
     LikelihoodRequest,
 )
-from jaxns.core import (
-    MAX_SAMPLES_REACHED,
-    CoreWorkBatch,
-    NestedSampler,
-    _accept_work_batch,
-    _build_depth_view,
-    _build_init_state,
-    _plan_work_batch,
-    _prepare_sampler_data,
-)
+from jaxns.core import NestedSampler
 from jaxns.logging import jaxns_logger
 from jaxns.mixed_precision import mp_policy
 from jaxns.model import Model
 from jaxns.pytree import PureDataclassPytree
+from jaxns.runtime.session import WorkerSession
 from jaxns.samples import SeedPoint
 from jaxns.state import State
 from jaxns.termination_condition import TerminationCondition
@@ -48,20 +49,7 @@ from jaxns.types import BoolArray, IntArray, PRNGKey
 
 if TYPE_CHECKING:
     from jaxns.results import NestedSamplerResults
-    from jaxns.runtime_client import SupervisorClient
-
-
-@dataclasses.dataclass(frozen=True, slots=True)
-class WorkerSession(PureDataclassPytree):
-    """Model and sampler data registered once in every worker process."""
-
-    model: Model
-    sampler: AbstractSampler
-    args: tuple  # [...] arbitrary model argument pytrees
-    params: CtxParams | None  # [...] arbitrary parameter pytree leaves
-
-
-WorkerSession.register_pytree()
+    from jaxns.runtime.client import SupervisorClient
 
 
 class DistributedRunError(RuntimeError):
@@ -623,7 +611,7 @@ class DistributedNestedSampler:
         unit-hypercube coordinates locally, but every root likelihood is an
         explicit worker task just like later constrained-chain evaluations.
         """
-        from jaxns.runtime_client import SupervisorClient
+        from jaxns.runtime.client import SupervisorClient
 
         session_id = uuid4().hex
         session = WorkerSession(
@@ -792,7 +780,7 @@ class DistributedNestedSampler:
             session_id: str,
     ):
         """Wait for results while distinguishing starvation from coordinator loss."""
-        from jaxns.runtime_client import RuntimeUnavailableError
+        from jaxns.runtime.client import RuntimeUnavailableError
 
         waiting_for_workers = False
         probe_s = min(5.0, max(0.1, self.receive_timeout_s))
@@ -937,7 +925,7 @@ class DistributedNestedSampler:
             checkpoint_manager: CheckpointManager[DistributedState] | None,
     ) -> DistributedState:
         """Start a new distributed session after checkpoint resolution."""
-        from jaxns.runtime_client import SupervisorClient
+        from jaxns.runtime.client import SupervisorClient
 
         if depth_cond is None:
             depth_cond = self.termination_condition
@@ -1077,7 +1065,7 @@ class DistributedNestedSampler:
             checkpoint_manager: CheckpointManager[DistributedState] | None,
     ) -> DistributedState:
         """Reconnect one resolved immutable distributed state."""
-        from jaxns.runtime_client import SupervisorClient
+        from jaxns.runtime.client import SupervisorClient
 
         if depth_cond is None:
             depth_cond = self.termination_condition

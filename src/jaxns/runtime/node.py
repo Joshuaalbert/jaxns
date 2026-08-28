@@ -15,13 +15,14 @@ from uuid import uuid4
 
 import zmq
 
-from jaxns.runtime_config import (
+from jaxns.runtime.config import (
     RuntimeConfig,
     WorkerConfig,
     load_runtime_config,
     worker_name,
 )
-from jaxns.runtime_protocol import (
+from jaxns.runtime.coordinator import _start_worker_process
+from jaxns.runtime.protocol import (
     ACK,
     DRAIN,
     DRAINED,
@@ -37,7 +38,6 @@ from jaxns.runtime_protocol import (
     decode_header,
     encode_header,
 )
-from jaxns.runtime_supervisor import _start_worker_process
 
 logger = logging.getLogger(__name__)
 

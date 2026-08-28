@@ -472,7 +472,7 @@ def _block_state_from_arrays(
         K_classic: IntArray,
         num_samples: IntArray,
 ):
-    from jaxns.race_tree import BlockState
+    from jaxns.algorithm.race_tree import BlockState
 
     N = log_L_classic.shape[0]
     n = int(np.asarray(num_samples).item())

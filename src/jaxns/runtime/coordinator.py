@@ -19,13 +19,13 @@ from uuid import uuid4
 
 import zmq
 
-from jaxns.runtime_config import (
+from jaxns.runtime.config import (
     RuntimeConfig,
     WorkerConfig,
     load_runtime_config,
     worker_name,
 )
-from jaxns.runtime_protocol import (
+from jaxns.runtime.protocol import (
     ACK,
     CAPACITY,
     DRAIN,
@@ -1411,7 +1411,7 @@ def _start_worker_process(
         [
             sys.executable,
             "-m",
-            "jaxns.runtime_worker",
+            "jaxns.runtime.worker",
             "--config",
             str(config.source),
             "--endpoint",

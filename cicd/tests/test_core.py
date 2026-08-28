@@ -12,11 +12,16 @@ from jax import numpy as jnp
 from cicd.tests.core_fixtures import make_state
 from cicd.tests.distributed_support import make_toy_model
 from jaxns import constrained_sampler, core
-from jaxns.allocation import (
+from jaxns.algorithm import depth
+from jaxns.algorithm.allocation import (
     AllocationPlan,
     VolumePath,
     closest_seedable_parent_block_python,
     stationary_seed_indices_python,
+)
+from jaxns.algorithm.race_tree import (
+    build_block_state,
+    initialise_likelihood_order,
 )
 from jaxns.constrained_sampler import (
     AbstractSampler,
@@ -25,13 +30,9 @@ from jaxns.constrained_sampler import (
     _take_phantom_prefix,
 )
 from jaxns.core import NestedSampler
-from jaxns.multi_ellipsoid_utils import empty_sampler_data
 from jaxns.pytree import PureDataclassPytree
-from jaxns.race_tree import (
-    build_block_state,
-    initialise_likelihood_order,
-)
 from jaxns.samples import PhantomSamples, SeedPoint
+from jaxns.sampling.ellipsoid import empty_sampler_data
 from jaxns.termination_condition import TerminationCondition
 
 
@@ -115,7 +116,7 @@ def test_stationary_seed_mask_uses_generation_interval_not_suffix():
         out_degree=(1, 1, 0, 0),
         max_samples=4,
     )
-    stationary = core._stationary_seed_mask(
+    stationary = depth._stationary_seed_mask(
         state,
         jnp.asarray(1.0),
         jnp.asarray(False),
@@ -134,7 +135,7 @@ def test_stationary_seed_mask_uses_generation_interval_not_suffix():
         np.asarray([1]),
     )
 
-    root_stationary = core._stationary_seed_mask(
+    root_stationary = depth._stationary_seed_mask(
         state,
         jnp.asarray(-jnp.inf),
         jnp.asarray(True),
@@ -162,7 +163,7 @@ def test_missing_stationary_seed_reparents_to_closest_shallower_contour():
     # lambda=2 has no sample whose generation interval contains it. The
     # closest shallower lambda=1 contour has sample 1 as an exact stationary
     # seed and must be the effective parent block.
-    effective = core._closest_seedable_parent_block(
+    effective = depth._closest_seedable_parent_block(
         state,
         block_state,
         jnp.asarray(1, dtype=jnp.int32),
@@ -236,7 +237,7 @@ def test_scheduler_marks_maximal_thread_prefix_and_stratifies_seeds():
             shell_mass=jnp.zeros((4,)),
         ),
     )
-    work = core._plan_work_batch(
+    work = depth._plan_work_batch(
         jax.random.PRNGKey(7),
         state,
         block_state,
@@ -262,7 +263,7 @@ def test_stratified_seed_rank_is_uniform_for_each_stationary_set():
         jnp.asarray([False, True, False, True]),
     ):
         selected = jax.vmap(
-            lambda draw, stationary=mask: core._uniform_ranked_masked(
+            lambda draw, stationary=mask: depth._uniform_ranked_masked(
                 draw,
                 stationary,
             )
@@ -293,7 +294,7 @@ def test_depth_relevance_is_a_complete_prefix_when_remaining_mass_rises():
     # The middle contour falls below the threshold, but the sharp likelihood
     # rise at the third contour makes the tail important again. Skipping the
     # middle block would leave an impossible hole in lineage coverage.
-    relevant = core._depth_relevant_blocks(
+    relevant = depth._depth_relevant_blocks(
         plan,
         TerminationCondition(dlogZ=jnp.asarray(0.85)),
     )
@@ -327,7 +328,7 @@ def test_scheduler_starts_one_thread_for_one_gap_rise():
         ),
     )
 
-    work = core._plan_work_batch(
+    work = depth._plan_work_batch(
         jax.random.PRNGKey(11),
         state,
         block_state,
@@ -492,7 +493,7 @@ def test_python_goal_loop_reports_terminal_depth_budget_without_iteration():
 
     assert int(state.num_samples) == 2
     assert int(state.goal_loop_iter) == 0
-    assert int(state.termination_reason) == core.MAX_SAMPLES_REACHED
+    assert int(state.termination_reason) == depth.MAX_SAMPLES_REACHED
     assert not bool(state.needs_growth)
     assert not bool(state.depth_reached)
 
@@ -602,7 +603,7 @@ def test_compiled_depth_classifies_normal_growth_and_terminal_returns():
     )
     terminal = terminal_sampler.run_single_iteration(terminal_state)
     _assert_single_depth_outcome(terminal)
-    assert int(terminal.termination_reason) == core.MAX_SAMPLES_REACHED
+    assert int(terminal.termination_reason) == depth.MAX_SAMPLES_REACHED
     assert int(terminal.goal_loop_iter) == 1
 
 
@@ -671,7 +672,7 @@ def test_finite_capacity_terminates_below_and_exactly_at_hard_maximum():
     )
     assert int(below.num_samples) == 3
     assert below.samples.log_likelihoods.shape[0] == 5
-    assert int(below.termination_reason) == core.MAX_SAMPLES_REACHED
+    assert int(below.termination_reason) == depth.MAX_SAMPLES_REACHED
     _assert_single_depth_outcome(below)
 
     exact = NestedSampler(initial_capacity=3, **common).run_until_goal(
@@ -681,11 +682,11 @@ def test_finite_capacity_terminates_below_and_exactly_at_hard_maximum():
     )
     assert int(exact.num_samples) == 5
     assert exact.samples.log_likelihoods.shape[0] == 5
-    assert int(exact.termination_reason) == core.MAX_SAMPLES_REACHED
+    assert int(exact.termination_reason) == depth.MAX_SAMPLES_REACHED
     _assert_single_depth_outcome(exact)
     assert (
         int(exact.to_result().termination_reason)
-        == core.MAX_SAMPLES_REACHED
+        == depth.MAX_SAMPLES_REACHED
     )
 
 
@@ -851,11 +852,11 @@ def test_public_scientific_data_objects_are_frozen_and_slotted():
 
 
 def test_parallel_replacement_delegates_batching_without_sequential_map():
-    core_source = inspect.getsource(core)
+    depth_source = inspect.getsource(depth)
     sampler_source = inspect.getsource(constrained_sampler)
-    assert "sample_request(" in core_source
+    assert "sample_request(" in depth_source
     assert "_continue_slice_chains(" in sampler_source
-    assert "jax.lax.map(" not in core_source
+    assert "jax.lax.map(" not in depth_source
     assert "jax.lax.map(" not in sampler_source
 
 

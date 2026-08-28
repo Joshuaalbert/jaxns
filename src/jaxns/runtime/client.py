@@ -13,12 +13,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
-from jaxns.runtime_config import (
+from jaxns.runtime.config import (
     RuntimeConfig,
     coordinator_endpoint,
     load_runtime_config,
 )
-from jaxns.runtime_protocol import (
+from jaxns.runtime.protocol import (
     ACK,
     CAPACITY,
     ERROR,
@@ -44,8 +44,8 @@ if TYPE_CHECKING:
         LikelihoodEvaluation,
         LikelihoodRequest,
     )
-    from jaxns.distributed_core import WorkerSession
-    from jaxns.multi_ellipsoid_utils import SamplerData
+    from jaxns.runtime.session import WorkerSession
+    from jaxns.sampling.ellipsoid import SamplerData
 
 
 class RuntimeUnavailableError(RuntimeError):

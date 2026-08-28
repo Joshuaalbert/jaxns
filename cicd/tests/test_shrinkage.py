@@ -6,16 +6,16 @@ import pytest
 from jax import numpy as jnp
 from jax import random
 
-from jaxns import shrinkage
-from jaxns.phantom_eval import sample_mc_shrinkage
-from jaxns.race_tree import BlockState
-from jaxns.shrinkage import (
+import jaxns.shrinkage.classic as shrinkage
+from jaxns.algorithm.race_tree import BlockState
+from jaxns.shrinkage.classic import (
     DirichletConcentrations,
     classic_dirichlet_concentrations,
     expected_evidence_summary,
     expected_log_posterior_weights,
     sample_evidence,
 )
+from jaxns.shrinkage.phantom import sample_mc_shrinkage
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -337,7 +337,7 @@ def test_no_phantom_mc_shrinkage_uses_supplied_block_incoming_K() -> None:
 
 def _require_callable(name: str):
     fn = getattr(shrinkage, name, None)
-    assert callable(fn), f"jaxns.shrinkage.{name} is required by Ticket 0013."
+    assert callable(fn), f"jaxns.shrinkage.classic.{name} is required by Ticket 0013."
     return fn
 
 

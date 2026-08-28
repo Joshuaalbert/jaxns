@@ -12,8 +12,8 @@ from jaxctx.priors.prior import Prior
 from tensorflow_probability.substrates import jax as tfp
 
 from jaxns.core import NestedSampler
+from jaxns.diagnostics.reference import bruteforce_evidence
 from jaxns.model import Model
-from jaxns.utils import bruteforce_evidence
 
 matplotlib.use("Agg")
 

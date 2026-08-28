@@ -8,14 +8,14 @@ from jax import numpy as jnp
 
 import jaxns.results as results_module
 from cicd.tests.distributed_support import make_toy_model
+from jaxns.algorithm.race_tree import BlockState
 from jaxns.constrained_sampler import AbstractSampler
 from jaxns.core import NestedSampler
 from jaxns.mixed_precision import mp_policy
-from jaxns.phantom_eval import sample_mc_shrinkage
 from jaxns.pytree import PureDataclassPytree
-from jaxns.race_tree import BlockState
 from jaxns.results import BlockData, NestedSamplerResults
 from jaxns.samples import PhantomSamples
+from jaxns.shrinkage.phantom import sample_mc_shrinkage
 from jaxns.termination_condition import TerminationCondition
 
 

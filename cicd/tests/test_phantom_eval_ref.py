@@ -1,12 +1,12 @@
 import numpy as np
 import pytest
 
-import jaxns.phantom_eval_ref as ref_phantom
+import jaxns.shrinkage.reference as ref_phantom
 
 
 def _require_callable(name: str):
     fn = getattr(ref_phantom, name, None)
-    assert callable(fn), f"jaxns.phantom_eval_ref.{name} is required by Ticket 0013."
+    assert callable(fn), f"jaxns.shrinkage.reference.{name} is required by Ticket 0013."
     return fn
 
 

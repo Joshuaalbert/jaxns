@@ -39,8 +39,8 @@ def _run(
         evaluate_request,
         sample_request,
     )
-    from jaxns.runtime_config import load_runtime_config
-    from jaxns.runtime_protocol import (
+    from jaxns.runtime.config import load_runtime_config
+    from jaxns.runtime.protocol import (
         ERROR,
         EVALUATE,
         LEASED,
@@ -347,7 +347,7 @@ def _heartbeat_loop(
     """Keep liveness independent from data-dependent JAX sampler latency."""
     import zmq
 
-    from jaxns.runtime_protocol import (
+    from jaxns.runtime.protocol import (
         HEARTBEAT,
         HEARTBEAT_ACK,
         decode_header,

@@ -7,8 +7,8 @@ import pytest
 from jax import numpy as jnp
 
 from cicd.tests.core_fixtures import make_state as _make_state
-from jaxns import allocation
-from jaxns.allocation import (
+from jaxns.algorithm import allocation
+from jaxns.algorithm.allocation import (
     VolumePath,
     evidence_improvement_utility,
     expected_volume_path,
@@ -17,8 +17,8 @@ from jaxns.allocation import (
     posterior_improvement_utility,
     validate_allocation_target,
 )
-from jaxns.race_tree import build_block_state
-from jaxns.shrinkage import (
+from jaxns.algorithm.race_tree import build_block_state
+from jaxns.shrinkage.classic import (
     DirichletConcentrations,
     classic_dirichlet_concentrations,
 )
