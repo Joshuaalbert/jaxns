@@ -5,7 +5,9 @@ from __future__ import annotations
 import dataclasses
 import time
 from collections.abc import Callable
+from contextlib import nullcontext
 from functools import partial
+from pathlib import Path
 from typing import TYPE_CHECKING, Literal, NamedTuple
 from uuid import uuid4
 
@@ -14,6 +16,10 @@ import jax.numpy as jnp
 import numpy as np
 from jaxctx import CtxParams
 
+from jaxns.checkpoint import (
+    CHECKPOINT_CADENCE_SECONDS,
+    CheckpointManager,
+)
 from jaxns.constrained_sampler import (
     AbstractSampler,
     ConstrainedSampleBatch,
@@ -851,8 +857,24 @@ class DistributedNestedSampler:
                 waiting_logged = True
             time.sleep(min(1.0, max(0.1, self.receive_timeout_s)))
 
-    def run(self, key: PRNGKey | None = None) -> DistributedState:
-        """Run until the configured expectation-based goal is met."""
+    def run(
+            self,
+            key: PRNGKey | None = None,
+            checkpoint_dir: str | Path | None = None,
+            checkpoint_cadence: float = CHECKPOINT_CADENCE_SECONDS,
+    ) -> DistributedState:
+        """Run until the configured expectation-based goal is met.
+
+        Args:
+            key: Random key used only when starting a new run.
+            checkpoint_dir: Optional directory for automatic full-state
+                checkpointing and resume.
+            checkpoint_cadence: Minimum seconds between drained depth-boundary
+                checkpoints. The final state is always saved when changed.
+
+        Returns:
+            A drained distributed state suitable for results or resumption.
+        """
 
         def default_goal(state: State) -> bool:
             if int(state.goal_loop_iter) == 0:
@@ -862,24 +884,59 @@ class DistributedNestedSampler:
             )
             return bool(done)
 
-        return self.run_until_goal(default_goal, key=key)
+        return self.run_until_goal(
+            default_goal,
+            key=key,
+            checkpoint_dir=checkpoint_dir,
+            checkpoint_cadence=checkpoint_cadence,
+        )
 
     def run_until_goal(
             self,
             goal_cond: Callable[[State], bool],
             depth_cond: TerminationCondition | None = None,
             key: PRNGKey | None = None,
+            checkpoint_dir: str | Path | None = None,
+            checkpoint_cadence: float = CHECKPOINT_CADENCE_SECONDS,
     ) -> DistributedState:
         """Initialise and run the asynchronous Python goal/depth loops.
+
+        A valid checkpoint in ``checkpoint_dir`` takes precedence over
+        ``key`` and resumes its stored random stream and pending work. JAXNS
+        verifies storage integrity, while compatible model, sampler, and run
+        configuration remain the caller's responsibility.
 
         Args:
             goal_cond: User goal evaluated only on drained immutable states.
             depth_cond: Expectation-based boundary for each allocation epoch.
             key: Run random key; a deterministic default is used when absent.
+            checkpoint_dir: Optional directory for automatic full-state
+                checkpointing and resume.
+            checkpoint_cadence: Minimum seconds between drained depth-boundary
+                checkpoints. The default is one hour.
 
         Returns:
-            A drained distributed checkpoint suitable for results or resumption.
+            A drained distributed checkpoint suitable for results or
+            resumption.
         """
+        return self._resume_until_goal(
+            None,
+            goal_cond,
+            depth_cond=depth_cond,
+            key=key,
+            checkpoint_dir=checkpoint_dir,
+            checkpoint_cadence=checkpoint_cadence,
+        )
+
+    def _run_until_goal(
+            self,
+            goal_cond: Callable[[State], bool],
+            *,
+            depth_cond: TerminationCondition | None,
+            key: PRNGKey | None,
+            checkpoint_manager: CheckpointManager[DistributedState] | None,
+    ) -> DistributedState:
+        """Start a new distributed session after checkpoint resolution."""
         from jaxns.runtime_client import SupervisorClient
 
         if depth_cond is None:
@@ -908,35 +965,118 @@ class DistributedNestedSampler:
                     distributed,
                     goal_cond,
                     depth_cond,
+                    checkpoint_manager,
                 )
                 distributed = completed
                 client.release(session_id)
                 return completed
-            except DistributedRunError:
+            except DistributedRunError as exc:
+                if checkpoint_manager is not None:
+                    checkpoint_manager.save_if_changed(exc.checkpoint)
                 raise
             except Exception as exc:
                 if distributed is None:
                     raise RuntimeError(
                         f"Distributed initialization failed: {exc}"
                     ) from exc
-                raise DistributedRunError(
+                error = DistributedRunError(
                     f"Distributed execution failed: {exc}",
                     distributed,
-                ) from exc
+                )
+                if checkpoint_manager is not None:
+                    checkpoint_manager.save_if_changed(distributed)
+                raise error from exc
 
     def resume_until_goal(
             self,
             distributed: DistributedState,
             goal_cond: Callable[[State], bool],
             depth_cond: TerminationCondition | None = None,
+            checkpoint_dir: str | Path | None = None,
+            checkpoint_cadence: float = CHECKPOINT_CADENCE_SECONDS,
     ) -> DistributedState:
         """Resume an immutable checkpoint, including retry-stable tasks.
+
+        If ``checkpoint_dir`` already contains a valid checkpoint, its state
+        takes precedence over the explicit ``distributed`` state.
+
+        Args:
+            distributed: Explicit state used when no checkpoint exists.
+            goal_cond: User goal evaluated only on drained immutable states.
+            depth_cond: Expectation-based boundary for each allocation epoch.
+            checkpoint_dir: Optional directory for automatic full-state
+                checkpointing and resume.
+            checkpoint_cadence: Minimum seconds between drained depth-boundary
+                checkpoints. The default is one hour.
+
+        Returns:
+            A drained distributed state suitable for results or resumption.
 
         Raises:
             DistributedRunError: If runtime work fails. Its ``checkpoint``
                 field contains every reservation and task created before the
                 failure and can be passed back to this method.
         """
+        return self._resume_until_goal(
+            distributed,
+            goal_cond,
+            depth_cond=depth_cond,
+            key=None,
+            checkpoint_dir=checkpoint_dir,
+            checkpoint_cadence=checkpoint_cadence,
+        )
+
+    def _resume_until_goal(
+            self,
+            distributed: DistributedState | None,
+            goal_cond: Callable[[State], bool],
+            *,
+            depth_cond: TerminationCondition | None,
+            key: PRNGKey | None,
+            checkpoint_dir: str | Path | None,
+            checkpoint_cadence: float,
+    ) -> DistributedState:
+        """Resolve checkpoint precedence before starting or resuming."""
+        checkpoint_context = (
+            CheckpointManager[DistributedState](
+                checkpoint_dir,
+                checkpoint_cadence,
+            )
+            if checkpoint_dir is not None
+            else nullcontext()
+        )
+        with checkpoint_context as checkpoint_manager:
+            if checkpoint_manager is not None:
+                restored = checkpoint_manager.load()
+                if restored is not None:
+                    distributed = restored
+            if distributed is None:
+                completed = self._run_until_goal(
+                    goal_cond,
+                    depth_cond=depth_cond,
+                    key=key,
+                    checkpoint_manager=checkpoint_manager,
+                )
+            else:
+                completed = self._resume_distributed_goal_loop(
+                    distributed,
+                    goal_cond,
+                    depth_cond=depth_cond,
+                    checkpoint_manager=checkpoint_manager,
+                )
+            if checkpoint_manager is not None:
+                checkpoint_manager.save_if_changed(completed)
+            return completed
+
+    def _resume_distributed_goal_loop(
+            self,
+            distributed: DistributedState,
+            goal_cond: Callable[[State], bool],
+            *,
+            depth_cond: TerminationCondition | None,
+            checkpoint_manager: CheckpointManager[DistributedState] | None,
+    ) -> DistributedState:
+        """Reconnect one resolved immutable distributed state."""
         from jaxns.runtime_client import SupervisorClient
 
         if depth_cond is None:
@@ -965,17 +1105,23 @@ class DistributedNestedSampler:
                     distributed,
                     goal_cond,
                     depth_cond,
+                    checkpoint_manager,
                 )
                 distributed = completed
                 client.release(completed.session_id)
                 return completed
-            except DistributedRunError:
+            except DistributedRunError as exc:
+                if checkpoint_manager is not None:
+                    checkpoint_manager.save_if_changed(exc.checkpoint)
                 raise
             except Exception as exc:
-                raise DistributedRunError(
+                error = DistributedRunError(
                     f"Distributed execution failed: {exc}",
                     distributed,
-                ) from exc
+                )
+                if checkpoint_manager is not None:
+                    checkpoint_manager.save_if_changed(distributed)
+                raise error from exc
 
     def _run_connected(
             self,
@@ -983,6 +1129,7 @@ class DistributedNestedSampler:
             distributed: DistributedState,
             goal_cond: Callable[[State], bool],
             depth_cond: TerminationCondition,
+            checkpoint_manager: CheckpointManager[DistributedState] | None,
     ) -> DistributedState:
         completed_tasks: dict[
             int,
@@ -1146,6 +1293,11 @@ class DistributedNestedSampler:
                     state=state,
                     depth_active=False,
                 )
+                # At this point every task from the depth is committed and no
+                # provisional reservation is present. The checkpoint therefore
+                # exposes exactly the same immutable state seen by goal_cond.
+                if checkpoint_manager is not None:
+                    checkpoint_manager.maybe_save(distributed)
                 continue
             if bool(status.has_work):
                 # A pool may temporarily have no live lanes while an operator

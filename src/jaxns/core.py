@@ -2,7 +2,9 @@
 
 import dataclasses
 from collections.abc import Callable
+from contextlib import nullcontext
 from functools import partial
+from pathlib import Path
 from typing import Any, Literal, NamedTuple
 
 import jax
@@ -10,6 +12,10 @@ import jax.numpy as jnp
 from jaxctx import CtxParams
 
 from jaxns.allocation import AllocationPlan, build_allocation_plan
+from jaxns.checkpoint import (
+    CHECKPOINT_CADENCE_SECONDS,
+    CheckpointManager,
+)
 from jaxns.constrained_sampler import (
     AbstractSampler,
     ConstrainedSampleBatch,
@@ -1292,8 +1298,24 @@ class NestedSampler(PureDataclassPytree):
             depth_reached=jnp.asarray(True, mp_policy.bool_dtype),
         )
 
-    def run(self, key: PRNGKey | None = None) -> State:
-        """Run until the default expectation-based goal is satisfied."""
+    def run(
+            self,
+            key: PRNGKey | None = None,
+            checkpoint_dir: str | Path | None = None,
+            checkpoint_cadence: float = CHECKPOINT_CADENCE_SECONDS,
+    ) -> State:
+        """Run until the default expectation-based goal is satisfied.
+
+        Args:
+            key: Random key used only when starting a new run.
+            checkpoint_dir: Optional directory for automatic full-state
+                checkpointing and resume.
+            checkpoint_cadence: Minimum seconds between depth-boundary
+                checkpoints. The final state is always saved when changed.
+
+        Returns:
+            The completed or terminal immutable state.
+        """
         if key is None:
             key = jax.random.PRNGKey(42)
 
@@ -1305,21 +1327,47 @@ class NestedSampler(PureDataclassPytree):
             )
             return bool(done)
 
-        return self.run_until_goal(default_goal, key=key)
+        return self.run_until_goal(
+            default_goal,
+            key=key,
+            checkpoint_dir=checkpoint_dir,
+            checkpoint_cadence=checkpoint_cadence,
+        )
 
     def run_until_goal(
             self,
             goal_cond: Callable[[State], bool],
             depth_cond: TerminationCondition | None = None,
             key: PRNGKey | None = None,
+            checkpoint_dir: str | Path | None = None,
+            checkpoint_cadence: float = CHECKPOINT_CADENCE_SECONDS,
     ) -> State:
-        """Run a Python goal loop around compiled JAX depth epochs."""
-        state = self.initialise(key)
+        """Run a Python goal loop around compiled JAX depth epochs.
+
+        A valid checkpoint in ``checkpoint_dir`` takes precedence over
+        ``key`` and resumes its stored random stream. JAXNS verifies the
+        checkpoint schema and checksum; the caller is responsible for using a
+        compatible model, sampler, arguments, and run configuration.
+
+        Args:
+            goal_cond: Python goal evaluated at complete depth boundaries.
+            depth_cond: Optional condition bounding one allocation epoch.
+            key: Random key used only when no checkpoint exists.
+            checkpoint_dir: Optional directory for automatic full-state
+                checkpointing and resume.
+            checkpoint_cadence: Minimum seconds between depth-boundary
+                checkpoints. The default is one hour.
+
+        Returns:
+            The completed or terminal immutable state.
+        """
         return self._resume_until_goal(
-            state,
+            None,
             goal_cond,
             depth_cond=depth_cond,
-            key=None,
+            key=key,
+            checkpoint_dir=checkpoint_dir,
+            checkpoint_cadence=checkpoint_cadence,
         )
 
     def resume_until_goal(
@@ -1328,23 +1376,86 @@ class NestedSampler(PureDataclassPytree):
             goal_cond: Callable[[State], bool],
             depth_cond: TerminationCondition | None = None,
             key: PRNGKey | None = None,
+            checkpoint_dir: str | Path | None = None,
+            checkpoint_cadence: float = CHECKPOINT_CADENCE_SECONDS,
     ) -> State:
-        """Resume an immutable state under a user-provided Python goal."""
+        """Resume an immutable state under a user-provided Python goal.
+
+        If ``checkpoint_dir`` already contains a valid checkpoint, its state
+        takes precedence over the explicit ``state`` and ``key``.
+
+        Args:
+            state: Explicit state used when no checkpoint exists.
+            goal_cond: Python goal evaluated at complete depth boundaries.
+            depth_cond: Optional condition bounding one allocation epoch.
+            key: Optional replacement continuation key when no checkpoint
+                exists.
+            checkpoint_dir: Optional directory for automatic full-state
+                checkpointing and resume.
+            checkpoint_cadence: Minimum seconds between depth-boundary
+                checkpoints. The default is one hour.
+
+        Returns:
+            The completed or terminal immutable state.
+        """
         return self._resume_until_goal(
             state,
             goal_cond,
             depth_cond=depth_cond,
             key=key,
+            checkpoint_dir=checkpoint_dir,
+            checkpoint_cadence=checkpoint_cadence,
         )
 
     def _resume_until_goal(
+            self,
+            state: State | None,
+            goal_cond: Callable[[State], bool],
+            *,
+            depth_cond: TerminationCondition | None,
+            key: PRNGKey | None,
+            checkpoint_dir: str | Path | None,
+            checkpoint_cadence: float,
+    ) -> State:
+        """Resolve checkpoint precedence, then continue one goal loop."""
+        checkpoint_context = (
+            CheckpointManager[State](
+                checkpoint_dir,
+                checkpoint_cadence,
+            )
+            if checkpoint_dir is not None
+            else nullcontext()
+        )
+        with checkpoint_context as checkpoint_manager:
+            if checkpoint_manager is not None:
+                restored = checkpoint_manager.load()
+                if restored is not None:
+                    state = restored
+                    key = None
+            if state is None:
+                state = self.initialise(key)
+                key = None
+            completed = self._run_goal_loop(
+                state,
+                goal_cond,
+                depth_cond=depth_cond,
+                key=key,
+                checkpoint_manager=checkpoint_manager,
+            )
+            if checkpoint_manager is not None:
+                checkpoint_manager.save_if_changed(completed)
+            return completed
+
+    def _run_goal_loop(
             self,
             state: State,
             goal_cond: Callable[[State], bool],
             *,
             depth_cond: TerminationCondition | None,
             key: PRNGKey | None,
+            checkpoint_manager: CheckpointManager[State] | None,
     ) -> State:
+        """Continue compiled depths after checkpoint ownership is resolved."""
         if depth_cond is None:
             depth_cond = self.termination_condition
         if key is not None:
@@ -1433,6 +1544,11 @@ class NestedSampler(PureDataclassPytree):
                         + jnp.asarray(1, state.goal_loop_iter.dtype)
                     ),
                 )
+                # Checkpoint only after the logical depth is complete. A
+                # capacity return is a physical interruption of the same
+                # epoch and must not become a persisted goal boundary.
+                if checkpoint_manager is not None:
+                    checkpoint_manager.maybe_save(state)
                 continue
             raise RuntimeError(
                 "Compiled depth returned without termination, growth, or "
@@ -1457,8 +1573,58 @@ class NestedSampler(PureDataclassPytree):
             state: State | None = None,
             depth_cond: TerminationCondition | None = None,
             key: PRNGKey | None = None,
+            checkpoint_dir: str | Path | None = None,
+            checkpoint_cadence: float = CHECKPOINT_CADENCE_SECONDS,
     ) -> State:
-        """Run exactly one compiled depth epoch."""
+        """Run exactly one compiled depth epoch.
+
+        When checkpointing is enabled, an existing committed state takes
+        precedence over ``state`` and the returned state is persisted. The
+        cadence does not defer that final save because this method has only
+        one Python depth boundary.
+
+        Args:
+            state: Optional explicit continuation state.
+            depth_cond: Optional condition bounding the allocation epoch.
+            key: Random key used only when starting or explicitly overriding
+                a state without a checkpoint.
+            checkpoint_dir: Optional directory for automatic full-state
+                checkpointing and resume.
+            checkpoint_cadence: Checkpoint cadence in seconds, retained for a
+                consistent run API.
+
+        Returns:
+            The immutable state returned by one compiled depth epoch.
+        """
+        if checkpoint_dir is not None:
+            with CheckpointManager[State](
+                checkpoint_dir,
+                checkpoint_cadence,
+            ) as checkpoint_manager:
+                restored = checkpoint_manager.load()
+                if restored is not None:
+                    state = restored
+                    key = None
+                state = self._run_single_iteration(
+                    state=state,
+                    depth_cond=depth_cond,
+                    key=key,
+                )
+                checkpoint_manager.save_if_changed(state)
+                return state
+        return self._run_single_iteration(
+            state=state,
+            depth_cond=depth_cond,
+            key=key,
+        )
+
+    def _run_single_iteration(
+            self,
+            state: State | None,
+            depth_cond: TerminationCondition | None,
+            key: PRNGKey | None,
+    ) -> State:
+        """Execute one depth epoch after checkpoint ownership is resolved."""
         if state is None:
             state = self.initialise(key)
         elif key is not None:

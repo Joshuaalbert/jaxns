@@ -127,7 +127,23 @@
   ],
   "Resuming a state with its stored random-stream position is scientifically equivalent to uninterrupted continuation under the same conditions.": [
     "test_resume_uses_stored_key_and_matches_uninterrupted_run",
-    "test_unlimited_growth_matches_preallocated_scientific_continuation"
+    "test_unlimited_growth_matches_preallocated_scientific_continuation",
+    "test_local_automatic_resume_matches_uninterrupted_random_stream"
+  ],
+  "Automatic checkpoint resume restores exactly the last committed full run state, including its random stream and any retry-stable distributed work.": [
+    "test_checkpoint_round_trip_publishes_manifest_after_complete_state",
+    "test_local_automatic_resume_matches_uninterrupted_random_stream",
+    "test_run_single_iteration_automatically_loads_and_advances_checkpoint",
+    "test_complete_distributed_pending_state_round_trips_without_task_loss",
+    "test_real_pool_runs_scalar_vmap_retries_and_cli_lifecycle"
+  ],
+  "An interrupted or corrupted checkpoint cannot be accepted as a valid run state, and corrupted state bytes are rejected before deserialization.": [
+    "test_checksum_mismatch_fails_closed_before_deserialization",
+    "test_interrupted_state_write_preserves_previous_commit",
+    "test_interrupted_manifest_publication_preserves_previous_commit",
+    "test_missing_manifest_with_state_file_is_incomplete_checkpoint",
+    "test_malformed_manifest_fails_before_state_lookup",
+    "test_missing_state_file_and_unsupported_schema_fail_clearly"
   ],
   "A state contains all scientific data and random-stream position needed to continue its run without hidden mutable sampler state.": [
     "test_ellipsoidal_state_survives_checkpoint_growth_and_resume"
@@ -205,7 +221,8 @@
   ],
   "A resumable distributed checkpoint identifies every outstanding logical sample and its random stream without treating an unreturned sample as an observed race-tree arrival.": [
     "test_distributed_checkpoint_preserves_unreturned_task_and_keys",
-    "test_submit_failure_exposes_newest_resumable_checkpoint"
+    "test_submit_failure_exposes_newest_resumable_checkpoint",
+    "test_complete_distributed_pending_state_round_trips_without_task_loss"
   ],
   "A completed distributed state exposed to a user contains no provisional lineage or uncommitted sampling work.": [
     "test_reservations_are_planning_data_until_once_only_acceptance",
