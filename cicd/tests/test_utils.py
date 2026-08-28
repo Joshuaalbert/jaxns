@@ -1,4 +1,4 @@
-from typing import NamedTuple
+import dataclasses
 
 import jax
 import numpy as np
@@ -16,7 +16,7 @@ from jaxns.diagnostics.reference import (
 )
 from jaxns.diagnostics.summary import _bit_mask
 from jaxns.model import Model
-from jaxns.pytree import load_pytree, save_pytree
+from jaxns.pytree import PureDataclassPytree
 from jaxns.random_utils import resample
 
 tfpd = tfp.distributions
@@ -73,14 +73,19 @@ def test_bruteforce_utilities_preserve_model_unit_dtypes():
     assert jnp.all(jnp.isfinite(weights.log_abs_val))
 
 
-class MockPyTree171(NamedTuple):
-    x: jax.Array
+@dataclasses.dataclass(frozen=True, slots=True)
+class MockPyTree171(PureDataclassPytree):
+    x: jax.Array  # [N]
+
+
+MockPyTree171.register_pytree()
 
 
 def test_gh171(tmp_path):
     pytree = MockPyTree171(jnp.array([1., 2., 3.]))
-    save_pytree(pytree, str(tmp_path / "results.json"))
-    loaded_pytree = load_pytree(str(tmp_path / "results.json"))
+    filename = str(tmp_path / "results.pkl")
+    pytree.save(filename)
+    loaded_pytree = MockPyTree171.load(filename)
     np.testing.assert_allclose(loaded_pytree.x, pytree.x)
 
 

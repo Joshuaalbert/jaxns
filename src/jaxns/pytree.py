@@ -2,26 +2,11 @@ import dataclasses
 import pickle
 import warnings
 from abc import ABC, abstractmethod
-from pathlib import Path
 from typing import Any, Generic, TypeVar, Union
 
 import jax
 import numpy as np
 from jax import numpy as jnp
-
-
-def save_pytree(pytree: Any, filename: str) -> None:
-    """Persist an arbitrary pytree using Python's pickle protocol."""
-    path = Path(filename)
-    with path.open('wb') as file:
-        pickle.dump(pytree, file)
-
-
-def load_pytree(filename: str):
-    """Load a pytree written by :func:`save_pytree`."""
-    path = Path(filename)
-    with path.open('rb') as file:
-        return pickle.load(file)
 
 
 class Pytree(ABC):
