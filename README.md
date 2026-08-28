@@ -17,11 +17,7 @@ with JAX. It is intended for scientific problems that need Bayesian evidence,
 weighted posterior samples, or exploration of difficult constrained priors.
 
 JAXNS v3 implements nested sampling as a race tree with dynamic lineage
-allocation. A Python goal loop evaluates a user-defined scientific stopping
-condition, while each depth epoch—including batched constrained-prior
-replacement—is compiled with JAX. Scientific state and results are immutable,
-slotted pytree dataclasses with methods for the operations users perform on
-them.
+allocation.
 
 JAXNS can:
 
