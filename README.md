@@ -25,8 +25,7 @@ JAXNS can:
 2. Produce weighted or resampled posterior samples.
 3. Explore degenerate, multimodal posteriors.
 4. Model continuous and discrete variables.
-5. Run locally on one JAX device or dispatch likelihood and constrained-chain
-   work to a trusted heterogeneous pool across one or more machines.
+5. Scale from a laptop to a cluster of thousands of accelerators.
 
 The original JAXNS paper is available on
 [arXiv](https://arxiv.org/abs/2012.15286), as is the paper on
