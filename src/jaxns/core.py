@@ -135,52 +135,25 @@ class NestedSampler(PureDataclassPytree):
         sampler = self.sampler
         if sampler is None:
             num_slices = max(1, 5 * U_ndims)
-            if self.collect_phantom_samples:
-                if self.max_phantom_samples is None:
-                    # One dimension of stationary transitions is a useful
-                    # default without retaining the complete 5D slice chain.
-                    max_phantom_samples = min(
-                        U_ndims,
-                        num_slices - 1,
-                    )
-                else:
-                    try:
-                        max_phantom_samples = operator.index(
-                            self.max_phantom_samples
-                        )
-                    except TypeError as error:
-                        raise TypeError(
-                            "max_phantom_samples must be an integer or None."
-                        ) from error
-            else:
-                if self.max_phantom_samples is not None:
-                    raise ValueError(
-                        "max_phantom_samples requires "
-                        "collect_phantom_samples=True."
-                    )
-                max_phantom_samples = None
             sampler = UniDimSliceSampler(
                 model=self.model,
                 num_slices=num_slices,
                 no_step_out=True,
                 gradient_guided=False,
                 collect_phantom_samples=self.collect_phantom_samples,
-                max_phantom_samples=max_phantom_samples,
             )
-        elif self.max_phantom_samples is not None:
+        max_phantom_samples = self.max_phantom_samples
+        if max_phantom_samples is not None:
             try:
-                requested_phantoms = operator.index(
-                    self.max_phantom_samples
-                )
+                max_phantom_samples = operator.index(max_phantom_samples)
             except TypeError as error:
                 raise TypeError(
                     "max_phantom_samples must be an integer or None."
                 ) from error
-            if requested_phantoms != sampler.num_phantom():
-                raise ValueError(
-                    "max_phantom_samples must match the capacity configured "
-                    "on a custom sampler."
-                )
+        sampler = sampler._with_phantom_capacity(
+            max_phantom_samples,
+            U_ndims,
+        )
         sampler = sampler._with_periodic(periodic)
         sampler.validate_core(U_ndims)
 

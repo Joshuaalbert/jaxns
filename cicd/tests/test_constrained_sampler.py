@@ -205,6 +205,14 @@ def test_phantom_capacity_retains_start_prefix_and_excludes_classic():
 def test_phantom_capacity_validation_and_burn_in_deprecation():
     model = QuadraticModel(centre=jnp.asarray([0.45, 0.55]))
 
+    for non_python_integer in (np.int64(2), jnp.asarray(2)):
+        with pytest.raises(TypeError, match="Python integer"):
+            UniDimSliceSampler(
+                model=model,
+                num_slices=4,
+                collect_phantom_samples=True,
+                max_phantom_samples=non_python_integer,
+            )
     with pytest.raises(ValueError, match="positive"):
         UniDimSliceSampler(
             model=model,

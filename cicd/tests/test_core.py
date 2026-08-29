@@ -883,6 +883,43 @@ def test_nested_sampler_resolves_and_preserves_phantom_capacity():
     assert bounded.max_phantom_samples == 5
     assert bounded.sampler.num_phantom() == 5
 
+    # NestedSampler owns the high-level D-sized default even when the caller
+    # supplies an otherwise unbounded built-in slice sampler. Direct low-level
+    # use remains capable of retaining every eligible transition.
+    custom_unbounded = UniDimSliceSampler(
+        model=model,
+        num_slices=10,
+        collect_phantom_samples=True,
+    )
+    assert custom_unbounded.num_phantom() == 9
+    custom_default = NestedSampler(model=model, sampler=custom_unbounded)
+    assert custom_default.max_phantom_samples == 2
+    assert custom_default.sampler.num_phantom() == 2
+
+    custom_explicit = NestedSampler(
+        model=model,
+        sampler=custom_unbounded,
+        max_phantom_samples=np.int64(4),
+    )
+    assert custom_explicit.max_phantom_samples is int(
+        custom_explicit.max_phantom_samples
+    )
+    assert custom_explicit.max_phantom_samples == 4
+    assert custom_explicit.sampler.num_phantom() == 4
+
+    sampler_capacity = dataclasses.replace(
+        custom_unbounded,
+        max_phantom_samples=5,
+    )
+    sampler_precedence = NestedSampler(model=model, sampler=sampler_capacity)
+    assert sampler_precedence.max_phantom_samples == 5
+    with pytest.raises(ValueError, match="disagrees"):
+        NestedSampler(
+            model=model,
+            sampler=sampler_capacity,
+            max_phantom_samples=4,
+        )
+
     restored_sampler = pickle.loads(pickle.dumps(bounded))
     assert restored_sampler.max_phantom_samples == 5
     assert restored_sampler.sampler.num_phantom() == 5

@@ -27,7 +27,9 @@ The final transition remains the classic replacement and is never stored as a
 phantom. With no explicit bound, the default slice sampler retains up to one
 model dimension of states, capped by ``num_slices - 1``. A larger bound can be
 useful for later sensitivity checks, at the cost of wider result and checkpoint
-arrays.
+arrays. The same dimension-sized default is resolved when an otherwise
+unbounded ``UniDimSliceSampler`` is supplied to ``NestedSampler``. Set a direct
+capacity on that low-level sampler when it should take precedence instead.
 
 Conditioning owns computation
 -----------------------------
