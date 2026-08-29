@@ -12,6 +12,7 @@ from jaxns.cumulative_ops import batch_reduce
 from jaxns.diagnostics.plotting import (
     plot_cornerplot,
     plot_diagnostics,
+    plot_evidence,
 )
 from jaxns.diagnostics.summary import _summary
 from jaxns.log_semiring import LogSpace
@@ -224,11 +225,46 @@ class NestedSamplerResults(PureDataclassPytree):
         """
         plot_diagnostics(self, save_file=save_file)
 
-    def plot_cornerplot(self, variables: list[str] | None = None, save_name: str | Path | None = None, kde_overlay: bool = False):
+    def plot_evidence(
+            self,
+            *,
+            num_samples: int = 512,
+            conditionings: tuple[EvidenceConditioning, ...] = ("classic",),
+            key: PRNGKey | None = None,
+            exact_log_Z: float | None = None,
+            save_name: str | Path | None = None,
+    ) -> None:
+        """Plot Monte Carlo log-evidence ensembles.
+
+        Args:
+            num_samples: Number of shrinkage draws per conditioning mode.
+            conditionings: Explicit evidence conditioning modes to compare.
+            key: Optional base random key. Defaults to a fixed plotting key.
+            exact_log_Z: Optional known log-evidence to mark for calibration.
+            save_name: File to save the figure to. If None, shows the figure.
         """
-        Plots a cornerplot of the posterior samples.
-        """
-        plot_cornerplot(self, variables=variables, save_name=save_name, kde_overlay=kde_overlay)
+        plot_evidence(
+            self,
+            num_samples=num_samples,
+            conditionings=conditionings,
+            key=key,
+            exact_log_Z=exact_log_Z,
+            save_name=save_name,
+        )
+
+    def plot_cornerplot(
+            self,
+            variables: list[str] | None = None,
+            save_name: str | Path | None = None,
+            kde_overlay: bool = False,
+    ) -> None:
+        """Plot posterior samples using classic expected shrinkage weights."""
+        plot_cornerplot(
+            self,
+            variables=variables,
+            save_name=save_name,
+            kde_overlay=kde_overlay,
+        )
 
     def resample(self, num_samples: int, replace: bool = True, key: PRNGKey | None = None) -> 'NestedSamplerResults':
         """
@@ -425,22 +461,54 @@ class NestedSamplerResults(PureDataclassPytree):
             C_min=C_min,
         )
 
-    def ess_with_phantom(self, num_samples: int = 512, batch_size: int | None = None, key: PRNGKey | None = None) -> FloatArray:
-        """
-        Compute the ESS including phantoms.
+    def evidence_equivalent_live_points(
+            self,
+            num_samples: int = 512,
+            *,
+            conditioning: EvidenceConditioning,
+            key: PRNGKey,
+            batch_size: int | None = None,
+            C_min: float = 20,
+    ) -> FloatArray:
+        """Estimate a live-point count from sampled evidence uncertainty.
+
+        This diagnostic inverts ``Var(log Z) ~= H / K``. It is not a
+        posterior Kish effective sample size and does not count phantom
+        coordinates as posterior samples.
 
         Args:
-            num_samples: number of samples to draw
-            batch_size: optional, how many samples to process in a batch when applying the function.
-            key: optional, PRNGKey for resampling
+            num_samples: Number of shrinkage/evidence draws.
+            conditioning: Explicit shrinkage conditioning mode.
+            key: Explicit JAX PRNG key.
+            batch_size: Maximum simultaneous evidence draws.
+            C_min: Minimum participating-cluster Kish count.
 
         Returns:
-            scalar, the ESS including phantoms.
+            Evidence-equivalent live-point count.
         """
-        if key is None:
-            key = jax.random.PRNGKey(42)
-
-        return _ess_with_phantom(self, num_samples=num_samples, batch_size=batch_size, key=key)
+        evidence_samples = self.sample_evidence_mc(
+            num_samples=num_samples,
+            conditioning=conditioning,
+            key=key,
+            batch_size=batch_size,
+            C_min=C_min,
+            diagnostics=False,
+        )
+        finite_mask = jnp.logical_and(
+            jnp.isfinite(evidence_samples.H_samples),
+            jnp.isfinite(evidence_samples.log_Z_samples),
+        )
+        H_mean = jnp.nanmean(
+            jnp.where(finite_mask, evidence_samples.H_samples, jnp.nan)
+        )
+        log_Z_var = jnp.nanvar(
+            jnp.where(
+                finite_mask,
+                evidence_samples.log_Z_samples,
+                jnp.nan,
+            )
+        )
+        return H_mean / log_Z_var
 
 
 NestedSamplerResults.register_pytree()
@@ -450,16 +518,6 @@ def _block_state_from_results(self: NestedSamplerResults) -> BlockState | None:
     if self.block_data is None:
         return None
     return self.block_data.to_block_state()
-
-
-@partial(jax.jit, inline=True, static_argnames=['num_samples', 'batch_size'])
-def _ess_with_phantom(self: NestedSamplerResults, num_samples: int, batch_size: int | None = None, key: PRNGKey | None = None) -> FloatArray:
-    evidence_samples = self.sample_mc_shrinkage(num_samples=num_samples, batch_size=batch_size, key=key)
-    # make sure finite mask is same for both numerator and denominator
-    finite_mask = jnp.isfinite(evidence_samples.H_samples) & jnp.isfinite(evidence_samples.log_Z_samples)
-    H_mean = jnp.nanmean(jnp.where(finite_mask, evidence_samples.H_samples, jnp.nan))
-    log_Z_var = jnp.nanvar(jnp.where(finite_mask, evidence_samples.log_Z_samples, jnp.nan))
-    return H_mean / log_Z_var
 
 
 def _posterior_log_weights(self: NestedSamplerResults) -> FloatArray:

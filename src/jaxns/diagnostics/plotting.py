@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import warnings
+from pathlib import Path
 from typing import TYPE_CHECKING
 
+import jax
 import numpy as np
-from jax import numpy as jnp
 from scipy.stats import gaussian_kde
 
 from jaxns.log_semiring import (
@@ -35,14 +36,25 @@ def plot_diagnostics(results: NestedSamplerResults, save_file=None):
     num_samples = int(results.total_num_samples)
     fig, axs = plt.subplots(6, 1, sharex=True, figsize=(8, 15))
     log_X = np.asarray(results.log_X_mean[:num_samples])
-    num_live_points_per_sample = np.asarray(results.num_live_points_per_sample[:num_samples])
-    log_L = np.asarray(results.log_L[:num_samples])
+    negative_log_X = -log_X
+    # V3 retains samples in append order. Every panel below is a function of
+    # prior volume, so align all quantities under one stable volume ordering.
+    sample_order = np.argsort(negative_log_X, kind="stable")
+    log_X = log_X[sample_order]
+    negative_log_X = negative_log_X[sample_order]
+    num_live_points_per_sample = np.asarray(
+        results.num_live_points_per_sample[:num_samples]
+    )[sample_order]
+    log_L = np.asarray(results.log_L[:num_samples])[sample_order]
     max_log_likelihood = np.max(log_L)
-    log_dp = np.asarray(results.log_dp[:num_samples])
+    log_dp = np.asarray(results.log_dp[:num_samples])[sample_order]
+    # Accumulating in append order would mix unrelated volume regions.
     log_cum_evidence = cumulative_logsumexp(log_dp)
-    cum_evidence = np.exp(log_cum_evidence)
+    cum_evidence = np.exp(np.asarray(log_cum_evidence))
     log_Z_mean = np.asarray(results.log_Z_mean)
-    num_likelihood_evaluations_per_sample = np.asarray(results.num_likelihood_evaluations_per_sample[:num_samples])
+    num_likelihood_evaluations_per_sample = np.asarray(
+        results.num_likelihood_evaluations_per_sample[:num_samples]
+    )[sample_order]
     mean_efficiency = np.exp(results.log_efficiency)
     if np.any(num_likelihood_evaluations_per_sample == 0):
         warnings.warn("Found samples with zero likelihood evaluations.")
@@ -57,26 +69,26 @@ def plot_diagnostics(results: NestedSamplerResults, save_file=None):
         efficiency = 1. / num_likelihood_evaluations_per_sample
 
     # Plot the number of live points
-    axs[0].plot(-log_X, num_live_points_per_sample, c='black')
+    axs[0].plot(negative_log_X, num_live_points_per_sample, c='black')
     axs[0].set_ylabel(r'$n_{\rm live}$')
     # detect if too small log likelihood
     rel_log_L = log_L - max_log_likelihood
-    axs[1].plot(-log_X, np.exp(rel_log_L), c='black')
+    axs[1].plot(negative_log_X, np.exp(rel_log_L), c='black')
     axs[1].axhline(1., color='black', ls='dashed',
                    label=rf"$\log L_{{\rm max}}={max_log_likelihood:.1f}$")
     axs[1].set_ylabel(r'$L/L_{\rm max}$')
     axs[1].legend()
-    axs[2].plot(-log_X, np.exp(log_dp), c='black')
+    axs[2].plot(negative_log_X, np.exp(log_dp), c='black')
     axs[2].axvline(results.H_mean, color='black', ls='dashed',
                    label=rf'$H={results.H_mean:.1f}$')
     axs[2].set_ylabel(r'$Z^{-1}L dX$')
     axs[2].legend()
-    axs[3].plot(-log_X, cum_evidence, c='black')
+    axs[3].plot(negative_log_X, cum_evidence, c='black')
     axs[3].axhline(1., color='black', ls='dashed',
                    label=rf"$\log Z={log_Z_mean:.1f}$")
-    axs[3].set_ylabel(r'$Z(\lambda > L)/Z$')
+    axs[3].set_ylabel('cumulative evidence / Z')
     axs[3].legend()
-    axs[4].scatter(-log_X, efficiency, s=2, c='black')
+    axs[4].scatter(negative_log_X, efficiency, s=2, c='black')
 
     axs[4].axhline(mean_efficiency, color='black', ls='dashed',
                    label=f'avg. eff.={mean_efficiency:.3f}')
@@ -86,12 +98,106 @@ def plot_diagnostics(results: NestedSamplerResults, save_file=None):
 
     # Plot X*L vs -log(X)
     XL = (LogSpace(log_X) * LogSpace(log_L)).value
-    axs[5].plot(-log_X, XL, c='black')
+    axs[5].plot(negative_log_X, XL, c='black')
     axs[5].set_ylabel(r'$X L$')
 
     axs[5].set_xlabel(r'$- \log X$')
     if save_file is not None:
         fig.savefig(save_file, bbox_inches='tight', dpi=300, pad_inches=0.0)
+        plt.close(fig)
+    else:
+        plt.show()
+
+
+def plot_evidence(
+        results: NestedSamplerResults,
+        *,
+        num_samples: int = 512,
+        conditionings: tuple[str, ...] = ("classic",),
+        key=None,
+        exact_log_Z: float | None = None,
+        save_name: str | Path | None = None,
+) -> None:
+    """Plot explicitly conditioned Monte Carlo log-evidence ensembles."""
+    if num_samples <= 0:
+        raise ValueError("num_samples must be positive.")
+    if len(conditionings) == 0:
+        raise ValueError("conditionings must be non-empty.")
+    if len(set(conditionings)) != len(conditionings):
+        raise ValueError("conditionings must not contain duplicates.")
+    invalid_conditionings = [
+        conditioning
+        for conditioning in conditionings
+        if conditioning not in ("classic", "phantom")
+    ]
+    if len(invalid_conditionings) > 0:
+        raise ValueError(
+            f"Unsupported evidence conditionings: {invalid_conditionings}"
+        )
+    if key is None:
+        key = jax.random.PRNGKey(42)
+
+    # Give each displayed ensemble an independent, reproducible stream.
+    keys = jax.random.split(key, len(conditionings))
+    log_Z_ensembles = []
+    labels = []
+    for conditioning, conditioning_key in zip(
+            conditionings,
+            keys,
+            strict=True,
+    ):
+        evidence_samples = results.sample_evidence_mc(
+            num_samples=num_samples,
+            conditioning=conditioning,
+            key=conditioning_key,
+            diagnostics=False,
+        )
+        log_Z_samples = np.asarray(evidence_samples.log_Z_samples)
+        finite = np.isfinite(log_Z_samples)
+        if not np.all(finite):
+            warnings.warn(
+                f"Ignoring {np.sum(~finite)} non-finite {conditioning} "
+                "log-evidence draws."
+            )
+            log_Z_samples = log_Z_samples[finite]
+        if log_Z_samples.size == 0:
+            raise ValueError(
+                f"No finite {conditioning} log-evidence draws to plot."
+            )
+        label = (
+            "phantom-conditioned"
+            if conditioning == "phantom"
+            else "classic"
+        )
+        labels.append(
+            f"{label}: {np.mean(log_Z_samples):.3f} "
+            f"± {np.std(log_Z_samples):.3f}"
+        )
+        log_Z_ensembles.append(log_Z_samples)
+
+    plt = import_matplotlib()
+    fig, ax = plt.subplots(figsize=(7, 4))
+    num_bins = max(10, min(80, int(np.sqrt(num_samples))))
+    ax.hist(
+        log_Z_ensembles,
+        bins=num_bins,
+        density=True,
+        histtype="step",
+        linewidth=1.5,
+        label=labels,
+    )
+    if exact_log_Z is not None:
+        ax.axvline(
+            exact_log_Z,
+            color="black",
+            linestyle="dashed",
+            label=rf"exact $\log Z={exact_log_Z:.3f}$",
+        )
+    ax.set_xlabel(r"sampled $\log Z$")
+    ax.set_ylabel("density")
+    ax.legend()
+    if save_name is not None:
+        fig.savefig(save_name, bbox_inches="tight", dpi=300, pad_inches=0.0)
         plt.close(fig)
     else:
         plt.show()
@@ -105,9 +211,13 @@ def _tuple_prod(shape: tuple[int, ...]) -> int:
     return product
 
 
-def plot_cornerplot(results: NestedSamplerResults, variables: list[str] | None = None, save_name: str | None = None, kde_overlay: bool = False):
-    """
-    Plots a cornerplot of the posterior samples.
+def plot_cornerplot(
+        results: NestedSamplerResults,
+        variables: list[str] | None = None,
+        save_name: str | Path | None = None,
+        kde_overlay: bool = False,
+) -> None:
+    """Plot posterior samples using classic expected shrinkage weights.
 
     Args:
         results: NestedSamplerResult
@@ -157,13 +267,16 @@ def plot_cornerplot(results: NestedSamplerResults, variables: list[str] | None =
                 indices = np.unravel_index(i, shape)
                 parameters.append(f"{key}[{','.join([str(j) for j in indices])}]")
 
-    # Get the maximum likelihood and MAP samples
-    log_L_samples = np.asarray(results.log_L[:num_samples])
-    log_posterior_density = np.asarray(results.log_posterior_density[:num_samples])
-    max_like_idx = np.argmax(log_L_samples)
-    map_idx = np.argmax(log_posterior_density)
-    max_like_sample = leaves[max_like_idx]
-    map_sample = leaves[map_idx]
+    # Use the authoritative point estimates retained by result construction.
+    # Recomputing sample argmax indices can disagree for resampled results.
+    max_like_point = dict(results.X_supremum.iter_items())
+    map_point = dict(results.X_map.iter_items())
+    max_like_sample = np.concatenate(
+        [np.asarray(max_like_point[key]).reshape((-1,)) for key in variables]
+    )
+    map_sample = np.concatenate(
+        [np.asarray(map_point[key]).reshape((-1,)) for key in variables]
+    )
 
     # Get the weight of each sample
     log_weights = np.asarray(
@@ -172,14 +285,17 @@ def plot_cornerplot(results: NestedSamplerResults, variables: list[str] | None =
             norm_type='max',
         ).log_abs_val)
 
-    figsize = min(20, max(4, int(2 * ndims)))
+    figsize = min(20, max(5, 2.5 * ndims))
     fig, axs = plt.subplots(ndims, ndims, figsize=(figsize, figsize), squeeze=False)
+    title_fontsize = max(7, min(10, 11 - 0.25 * ndims))
 
     # Get the number of bins for the histograms based on the effective sample size
-    if np.isnan(np.asarray(results.ess)):
+    posterior_ess = float(results.ess)
+    if not np.isfinite(posterior_ess) or posterior_ess <= 0.0:
         nbins = 10
     else:
-        nbins = max(10, int(jnp.sqrt(results.ess)))
+        # Bound visual noise and the square 2D histogram allocation.
+        nbins = max(10, min(100, int(np.sqrt(posterior_ess))))
 
     # Loop over the variables, and plot the marginal distributions on the diagonal setting a title above
     # each plot with the mean+-stddev, 5%/50%/95%, and MAP
@@ -211,17 +327,22 @@ def plot_cornerplot(results: NestedSamplerResults, variables: list[str] | None =
             # Plot the mean and standard deviation
             sample_mean = np.average(_samples, weights=_weights)
             sample_std = np.sqrt(np.average((_samples - sample_mean) ** 2, weights=_weights))
-            ax.axvline(sample_mean, linestyle='dashed', color='red')
-            ax.axvline(sample_mean + sample_std, linestyle='dotted', color='red')
-            ax.axvline(sample_mean - sample_std, linestyle='dotted', color='red')
+            ax.axvline(sample_mean, linestyle='dashed', color='blue')
+            ax.axvline(sample_mean + sample_std, linestyle='dotted', color='blue')
+            ax.axvline(sample_mean - sample_std, linestyle='dotted', color='blue')
 
             # Set the title
+            lower_interval = per_50 - per_5
+            upper_interval = per_95 - per_50
             title = [
-                rf"${per_50:.2f}_{{{per_5:.2f}}}^{{{per_95:.2f}}}$",
+                (
+                    rf"${per_50:.2f}_{{-{lower_interval:.2f}}}^"
+                    rf"{{+{upper_interval:.2f}}}$"
+                ),
                 rf"${sample_mean:.2f}\pm{sample_std:.2f}$",
                 rf"MAP ${map_sample[row]:.2f}$ | ML ${max_like_sample[row]:.2f}$"
             ]
-            ax.set_title("\n".join(title))
+            ax.set_title("\n".join(title), fontsize=title_fontsize, pad=8)
             # Set the limits to 1 to 99 percentiles
             ax.set_xlim(per_1, per_99)
             param_limits[_parameter] = (per_1, per_99)
@@ -287,8 +408,11 @@ def plot_cornerplot(results: NestedSamplerResults, variables: list[str] | None =
             axs[row][col].set_yticklabels([])
     # Set the labels on the bottom row and left column
     for i in range(ndims):
-        axs[-1][i].set_xlabel(parameters[i], rotation=30, ha='right')
-        axs[i][0].set_ylabel(parameters[i], rotation=30, ha='right')
+        axs[-1][i].set_xlabel(parameters[i])
+        if i == 0:
+            axs[i][0].set_ylabel("density")
+        else:
+            axs[i][0].set_ylabel(parameters[i])
     # Remove upper diagonal
     for row in range(ndims):
         for col in range(ndims):
@@ -318,21 +442,44 @@ def _weighted_percentile(samples: np.ndarray, log_weights: np.ndarray,
     """
     if len(percentiles) == 0:
         raise ValueError("percentiles must be a non-empty list")
-    # Convert log weights to actual weights
-    weights = LogSpace(log_weights - np.max(log_weights))  # Subtract max to avoid overflow
-    weights = normalise_log_space(weights, norm_type='sum')  # Normalize weights
+    samples = np.asarray(samples)
+    log_weights = np.asarray(log_weights)
+    percentiles_array = np.asarray(percentiles, dtype=float)
+    if samples.ndim != 1 or log_weights.ndim != 1:
+        raise ValueError("samples and log_weights must be one-dimensional")
+    if samples.size == 0 or samples.size != log_weights.size:
+        raise ValueError(
+            "samples and log_weights must be non-empty and have equal size"
+        )
+    if not np.all(np.isfinite(samples)):
+        raise ValueError("samples must be finite")
+    if np.any(np.isnan(log_weights)) or np.any(np.isposinf(log_weights)):
+        raise ValueError("log_weights must be finite or negative infinity")
+    if not np.any(np.isfinite(log_weights)):
+        raise ValueError("at least one log weight must be finite")
+    if np.any((percentiles_array < 0.0) | (percentiles_array > 100.0)):
+        raise ValueError("percentiles must lie between zero and 100")
+
+    # Work relative to the largest log weight, then discard exact numerical
+    # zeros so the interpolation coordinates remain strictly increasing.
+    weights = np.exp(log_weights - np.max(log_weights))
 
     # Sort samples and weights
-    sorted_indices = np.argsort(samples)
+    sorted_indices = np.argsort(samples, kind="stable")
     sorted_samples = samples[sorted_indices]
     sorted_weights = weights[sorted_indices]
+    positive_weight = sorted_weights > 0.0
+    sorted_samples = sorted_samples[positive_weight]
+    sorted_weights = sorted_weights[positive_weight]
 
-    # Compute cumulative weights
-    cumulative_weights = sorted_weights.cumsum()
-    cumulative_weights = cumulative_weights - cumulative_weights[0]
-    cumulative_weights = cumulative_weights / cumulative_weights[-1]
-    # Add zero to start of cumulative weights
-
-    # Compute weighted percentiles
-    percentile_values = np.interp(np.asarray(percentiles) / 100.0, cumulative_weights.value, sorted_samples)
+    # Center each sample within its probability mass. Subtracting the first
+    # weight would silently discard the lowest sample's mass.
+    cumulative_weights = np.cumsum(sorted_weights)
+    cumulative_midpoints = cumulative_weights - 0.5 * sorted_weights
+    cumulative_midpoints /= cumulative_weights[-1]
+    percentile_values = np.interp(
+        percentiles_array / 100.0,
+        cumulative_midpoints,
+        sorted_samples,
+    )
     return percentile_values

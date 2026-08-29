@@ -1,6 +1,41 @@
 {
   "schema_version": 1,
   "tests": {
+    "test_effective_sample_size_kish_uses_posterior_weights": {
+      "note": "Checks that the reported posterior ESS is Kish's quantity for the actual posterior weights, independent of evidence moments or phantom states.",
+      "path": "cicd/tests/test_stats.py",
+      "reason": "utility_behavior"
+    },
+    "test_plot_diagnostics_orders_append_results_by_negative_log_x": {
+      "note": "Checks append-order result rendering and cumulative evidence traversal in nested prior-volume order.",
+      "path": "cicd/tests/test_results_plotting.py",
+      "reason": "output_behavior"
+    },
+    "test_plot_cornerplot_uses_authoritative_map_and_supremum": {
+      "note": "Checks that corner-plot point annotations use authoritative result fields rather than recomputed sample argmax indices.",
+      "path": "cicd/tests/test_results_plotting.py",
+      "reason": "result_schema_regression"
+    },
+    "test_plot_evidence_compares_explicit_conditionings_and_exact_value": {
+      "note": "Checks explicit evidence-conditioning selection and exact-evidence rendering in the result plotting utility.",
+      "path": "cicd/tests/test_results_plotting.py",
+      "reason": "output_behavior"
+    },
+    "test_evidence_equivalent_live_points_is_not_posterior_ess": {
+      "note": "Checks the explicitly named evidence-equivalent live-point diagnostic and that the misleading phantom posterior-ESS API is absent.",
+      "path": "cicd/tests/test_results_plotting.py",
+      "reason": "result_schema_regression"
+    },
+    "test_summary_does_not_compare_incommensurate_phantom_statistics": {
+      "note": "Checks that the text summary does not label an effective-live-point diagnostic as phantom posterior Kish ESS or compare it with the classic ESS.",
+      "path": "cicd/tests/test_results_plotting.py",
+      "reason": "output_behavior"
+    },
+    "test_weighted_percentile_retains_dominant_boundary_sample_mass": {
+      "note": "Checks that corner-plot weighted quantiles retain the full mass of boundary samples under midpoint CDF interpolation.",
+      "path": "cicd/tests/test_results_plotting.py",
+      "reason": "utility_behavior"
+    },
     "test_periodic_coordinates_reject_euclidean_ellipsoids": {
       "note": "Checks the current isotropic-only feature boundary until a toroidal GMM direction model has supporting evidence.",
       "path": "cicd/tests/test_constrained_sampler.py",

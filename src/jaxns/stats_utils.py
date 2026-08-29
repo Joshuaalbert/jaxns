@@ -1,6 +1,6 @@
-from jax import numpy as jnp, vmap
+from jax import numpy as jnp
 
-from jaxns.log_semiring import LogSpace
+from jaxns.log_semiring import LogSpace, normalise_log_space
 from jaxns.mixed_precision import mp_policy
 
 
@@ -40,18 +40,20 @@ def linear_to_log_stats(log_f_mean, *, log_f2_mean=None, log_f_var=None):
         f2_mean = LogSpace(log_f2_mean)
     mu = f_mean.square() / f2_mean.sqrt()
     sigma2 = f2_mean / f_mean.square()
-    return mu.log_abs_val, jnp.maximum(sigma2.log_abs_val, jnp.finfo(mp_policy.measure_dtype).eps)
+    return mu.log_abs_val, jnp.maximum(
+        sigma2.log_abs_val,
+        jnp.finfo(mp_policy.measure_dtype).eps,
+    )
 
 
+def effective_sample_size_kish(log_weights):
+    """Compute Kish's effective sample size from log weights.
 
+    Args:
+        log_weights: Unnormalised log weights of posterior samples.
 
-def effective_sample_size_kish(log_Z_mean, log_dZ2_mean):
+    Returns:
+        The scalar ``1 / sum(normalised_weights**2)``.
     """
-    Computes Kish's ESS = [sum dZ]^2 / [sum dZ^2]
-
-    :param log_Z_mean:
-    :param log_dZ2_mean:
-    :return:
-    """
-    ess = LogSpace(log_Z_mean).square() / LogSpace(log_dZ2_mean)
-    return ess.value
+    weights = normalise_log_space(LogSpace(log_weights), norm_type="sum")
+    return jnp.reciprocal(weights.square().sum().value)
