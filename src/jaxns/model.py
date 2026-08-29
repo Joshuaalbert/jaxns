@@ -411,6 +411,12 @@ def _sample_sanity_check_outputs(
             _make_model_collections(params=params, U=U),
             *args,
         )
+        likelihood_shape = jnp.shape(apply_return.fn_val)
+        if likelihood_shape != ():
+            raise ValueError(
+                "Model prior_model must return a scalar log likelihood, got "
+                f"shape {likelihood_shape}."
+            )
         return U, apply_return.collections['X'], apply_return.fn_val
 
     return jax.vmap(sample_and_evaluate)(keys)

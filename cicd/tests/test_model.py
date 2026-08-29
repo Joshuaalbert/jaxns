@@ -56,6 +56,12 @@ def test_sanity_check_rejects_invalid_model_outputs() -> None:
             num_samples=0,
         )
 
+    with pytest.raises(ValueError, match="scalar log likelihood"):
+        model_with_likelihood(jnp.zeros((1,))).sanity_check(
+            jax.random.PRNGKey(4),
+            num_samples=4,
+        )
+
 
 def test_init_params_forwards_model_and_explicit_args() -> None:
     """Model data and parameters remain explicit rather than closure-bound."""
@@ -78,8 +84,14 @@ def test_init_params_forwards_model_and_explicit_args() -> None:
         key=jax.random.PRNGKey(0),
         args=args,
     )
-    sample = model.sample_U(
+    model.sanity_check(
         key=jax.random.PRNGKey(1),
+        args=args,
+        params=params,
+        num_samples=4,
+    )
+    sample = model.sample_U(
+        key=jax.random.PRNGKey(2),
         args=args,
         params=params,
     )
