@@ -50,6 +50,12 @@ def test_sanity_check_rejects_invalid_model_outputs() -> None:
         num_samples=4,
     )
 
+    with pytest.raises(ValueError, match="num_samples must be positive"):
+        model_with_likelihood(0.0).sanity_check(
+            jax.random.PRNGKey(3),
+            num_samples=0,
+        )
+
 
 def test_init_params_forwards_model_and_explicit_args() -> None:
     """Model data and parameters remain explicit rather than closure-bound."""
