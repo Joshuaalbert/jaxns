@@ -12,7 +12,8 @@
     "test_mixed_cylinder_crosses_only_the_periodic_seam"
   ],
   "Collecting or retaining phantoms does not change the classic samples, race tree, or classic-conditioned result for the same random run.": [
-    "test_phantom_payload_does_not_change_vector_worker_trajectory"
+    "test_phantom_payload_does_not_change_vector_worker_trajectory",
+    "test_additional_retained_phantoms_leave_classic_run_invariant"
   ],
   "Every nested-sampling contour is strict: a point satisfies contour lambda exactly when its likelihood is greater than lambda.": [
     "test_block_state_rejects_strict_contour_violation",
@@ -81,9 +82,10 @@
   "Increasing the number of independent shrinkage draws makes Monte Carlo evidence summaries converge to the moments implied by the classic shrinkage model.": [
     "test_mc_linear_evidence_moments_match_deterministic_expectations"
   ],
-  "Every phantom cluster is associated with one classic child and contains only retained chain states generated under that child's recorded parent contour.": [
+  "Every phantom cluster is associated with one classic child and contains only a start-prefix of retained chain states generated under that child's recorded parent contour, with the final classic replacement excluded.": [
     "test_each_retained_chain_is_one_kish_cluster",
-    "test_retained_phantoms_are_generated_chain_prefix"
+    "test_retained_phantoms_are_generated_chain_prefix",
+    "test_phantom_capacity_retains_start_prefix_and_excludes_classic"
   ],
   "Dependence within a phantom cluster is preserved by sharing one random cluster weight across all observations and all blocks contributed by that cluster in one shrinkage draw.": [
     "test_deterministic_gamma_helper_reuses_cluster_weights_across_blocks_and_components"
@@ -92,6 +94,9 @@
     "test_sample_evidence_mc_batching_is_reproducible_and_matches_moments",
     "test_sample_evidence_mc_one_batch_preserves_fixed_key_draws",
     "test_batched_summary_preserves_block_models_and_kish_gate"
+  ],
+  "Selecting a shorter phantom-conditioning prefix uses the first requested retained states of every cluster and is equivalent to physically truncating the result's phantom axis to that prefix.": [
+    "test_sample_evidence_mc_prefix_matches_physically_sliced_result"
   ],
   "A phantom contributes to a block only when its cluster parent contour is no stricter than the preceding block contour and the phantom lies beyond that preceding contour.": [
     "test_per_cluster_counts_are_parent_contour_gated_with_equality_and_open_interval",
@@ -188,7 +193,8 @@
     "test_results_sample_mc_shrinkage_rejects_malformed_arrays_before_jit",
     "test_public_sample_mc_shrinkage_rejects_stale_block_likelihoods_before_jit",
     "test_sample_evidence_mc_rejects_invalid_batch_sizes",
-    "test_ellipsoidal_configuration_validation"
+    "test_ellipsoidal_configuration_validation",
+    "test_sample_evidence_mc_rejects_invalid_phantom_prefix"
   ],
   "The default installation supplies plotting dependencies, scientific imports do not eagerly import them, and requesting plotting when they are unavailable fails with an actionable installation remedy.": [
     "test_missing_plotting_dependency_has_actionable_error"

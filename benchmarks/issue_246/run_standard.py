@@ -238,7 +238,9 @@ def main() -> None:
         model=model,
         num_slices=num_slices,
         collect_phantom_samples=args.phantoms,
-        phantom_burn_in=num_slices - 1 - retained_phantoms,
+        max_phantom_samples=(
+            retained_phantoms if args.phantoms else None
+        ),
         direction=direction,
     )
     nested_sampler = NestedSampler(

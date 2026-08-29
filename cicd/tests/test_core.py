@@ -864,3 +864,95 @@ def test_retained_phantoms_are_generated_chain_prefix():
     chain = jnp.asarray([10.0, 20.0, 30.0, 40.0])
     retained = _take_phantom_prefix(chain, 2)
     np.testing.assert_array_equal(np.asarray(retained), [10.0, 20.0])
+
+
+def test_nested_sampler_resolves_and_preserves_phantom_capacity():
+    model = TwoDimensionalModel()
+    default = NestedSampler(
+        model=model,
+        collect_phantom_samples=True,
+    )
+    bounded = NestedSampler(
+        model=model,
+        collect_phantom_samples=True,
+        max_phantom_samples=5,
+    )
+
+    assert default.max_phantom_samples == 2
+    assert default.sampler.num_phantom() == 2
+    assert bounded.max_phantom_samples == 5
+    assert bounded.sampler.num_phantom() == 5
+
+    restored_sampler = pickle.loads(pickle.dumps(bounded))
+    assert restored_sampler.max_phantom_samples == 5
+    assert restored_sampler.sampler.num_phantom() == 5
+
+    state = bounded.initialise(jax.random.PRNGKey(284))
+    restored_state = pickle.loads(pickle.dumps(state))
+    assert restored_state.samples.phantom_samples.log_L.shape[1] == 5
+
+    with pytest.raises(ValueError, match="collect_phantom_samples"):
+        NestedSampler(model=model, max_phantom_samples=1)
+    with pytest.raises(ValueError, match="num_slices - 1"):
+        NestedSampler(
+            model=model,
+            collect_phantom_samples=True,
+            max_phantom_samples=10,
+        )
+
+
+def test_additional_retained_phantoms_leave_classic_run_invariant():
+    model = TwoDimensionalModel()
+    common = {
+        "model": model,
+        "collect_phantom_samples": True,
+        "root_allocation_degree": 4,
+        "shell_size": 2,
+        "max_samples": 6,
+        "initial_capacity": 6,
+        "termination_condition": TerminationCondition(max_samples=6),
+    }
+    short = NestedSampler(max_phantom_samples=1, **common)
+    long = NestedSampler(max_phantom_samples=9, **common)
+    key = jax.random.PRNGKey(1284)
+
+    short_state = short.run(key)
+    long_state = long.run(key)
+
+    for short_value, long_value in (
+        (short_state.num_samples, long_state.num_samples),
+        (short_state.termination_reason, long_state.termination_reason),
+        (
+            short_state.samples.log_L_constraints,
+            long_state.samples.log_L_constraints,
+        ),
+        (
+            short_state.samples.log_likelihoods,
+            long_state.samples.log_likelihoods,
+        ),
+        (short_state.samples.U_samples, long_state.samples.U_samples),
+        (short_state.samples.out_degree, long_state.samples.out_degree),
+        (
+            short_state.samples.num_likelihood_evaluations,
+            long_state.samples.num_likelihood_evaluations,
+        ),
+    ):
+        np.testing.assert_array_equal(short_value, long_value)
+
+    short_result = short_state.to_result().trim()
+    long_result = long_state.to_result().trim()
+    evidence_key = jax.random.PRNGKey(2284)
+    short_evidence = short_result.sample_evidence_mc(
+        num_samples=16,
+        conditioning="classic",
+        key=evidence_key,
+    )
+    long_evidence = long_result.sample_evidence_mc(
+        num_samples=16,
+        conditioning="classic",
+        key=evidence_key,
+    )
+    np.testing.assert_array_equal(
+        short_evidence.log_Z_samples,
+        long_evidence.log_Z_samples,
+    )

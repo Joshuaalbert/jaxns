@@ -594,6 +594,126 @@ def test_sample_evidence_mc_one_batch_preserves_fixed_key_draws():
     )
 
 
+def test_sample_evidence_mc_prefix_matches_physically_sliced_result():
+    one_phantom = _make_single_block_gamma_public_result()
+    retained = dataclasses.replace(
+        one_phantom,
+        log_L_phantom=jnp.concatenate(
+            [
+                one_phantom.log_L_phantom,
+                one_phantom.log_L_phantom - 0.25,
+                one_phantom.log_L_phantom + 0.25,
+            ],
+            axis=1,
+        ),
+        total_phantom_samples=3 * one_phantom.total_phantom_samples,
+    )
+    physically_sliced = dataclasses.replace(
+        retained,
+        log_L_phantom=retained.log_L_phantom[:, :2],
+    )
+    key = jax.random.PRNGKey(284)
+
+    selected = retained.sample_evidence_mc(
+        num_samples=32,
+        conditioning="phantom",
+        num_phantoms=2,
+        key=key,
+        batch_size=11,
+        diagnostics=True,
+    )
+    expected = physically_sliced.sample_evidence_mc(
+        num_samples=32,
+        conditioning="phantom",
+        key=key,
+        batch_size=11,
+        diagnostics=True,
+    )
+    all_default = retained.sample_evidence_mc(
+        num_samples=32,
+        conditioning="phantom",
+        key=key,
+        batch_size=11,
+    )
+    all_explicit = retained.sample_evidence_mc(
+        num_samples=32,
+        conditioning="phantom",
+        num_phantoms=3,
+        key=key,
+        batch_size=11,
+    )
+
+    for actual, reference in zip(
+        jax.tree.leaves(selected),
+        jax.tree.leaves(expected),
+        strict=True,
+    ):
+        np.testing.assert_array_equal(actual, reference)
+    for actual, reference in zip(
+        jax.tree.leaves(all_default),
+        jax.tree.leaves(all_explicit),
+        strict=True,
+    ):
+        np.testing.assert_array_equal(actual, reference)
+
+
+@pytest.mark.parametrize("num_phantoms", [0, -1, 4])
+def test_sample_evidence_mc_rejects_invalid_phantom_prefix(num_phantoms):
+    one_phantom = _make_single_block_gamma_public_result()
+    retained = dataclasses.replace(
+        one_phantom,
+        log_L_phantom=jnp.tile(one_phantom.log_L_phantom, (1, 3)),
+    )
+
+    with pytest.raises(ValueError, match="num_phantoms"):
+        retained.sample_evidence_mc(
+            num_samples=4,
+            conditioning="phantom",
+            num_phantoms=num_phantoms,
+            key=jax.random.PRNGKey(1284),
+        )
+
+
+def test_sample_evidence_mc_rejects_prefix_for_classic_conditioning():
+    results = _make_single_block_gamma_public_result()
+
+    with pytest.raises(ValueError, match="only valid with phantom"):
+        results.sample_evidence_mc(
+            num_samples=4,
+            conditioning="classic",
+            num_phantoms=1,
+            key=jax.random.PRNGKey(2284),
+        )
+
+
+def test_state_sample_evidence_mc_forwards_phantom_prefix():
+    state = _run_mixed_validity_probe()
+    results = state.to_result().trim()
+    key = jax.random.PRNGKey(3284)
+
+    from_state = state.sample_evidence_mc(
+        num_samples=8,
+        conditioning="phantom",
+        num_phantoms=1,
+        key=key,
+        C_min=1,
+    )
+    from_results = results.sample_evidence_mc(
+        num_samples=8,
+        conditioning="phantom",
+        num_phantoms=1,
+        key=key,
+        C_min=1,
+    )
+
+    for actual, expected in zip(
+        jax.tree.leaves(from_state),
+        jax.tree.leaves(from_results),
+        strict=True,
+    ):
+        np.testing.assert_array_equal(actual, expected)
+
+
 @pytest.mark.parametrize("batch_size", [0, -1])
 def test_sample_evidence_mc_rejects_invalid_batch_sizes(batch_size):
     results = _make_single_block_gamma_public_result()

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+import operator
 import warnings
 from abc import ABC, abstractmethod
 from typing import Any, NamedTuple
@@ -253,7 +254,12 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
             Otherwise, uses a doubling procedure (exponentially finding bracket).
             Note: Perfect is a misnomer, as perfection also depends on the number of slices between acceptance.
         gradient_guided: if true then do HMC with householder reflections.
-        collect_phantom_samples: if true, then collect phantom samples
+        collect_phantom_samples: Whether to retain intermediate chain states.
+        max_phantom_samples: Maximum number of intermediate states retained
+            from the start of each chain. ``None`` retains every eligible
+            transition. The final transition is always the classic sample.
+        phantom_burn_in: Deprecated inverse spelling for retained phantom
+            capacity. Use ``max_phantom_samples`` instead.
     """
 
     model: Model
@@ -263,6 +269,7 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
     collect_phantom_samples: bool = False
     phantom_burn_in: int | None = None
     direction: EllipsoidalDirection | None = None
+    max_phantom_samples: int | None = None
     # Internal scalar topology derived from JAXCTX metadata by NestedSampler.
     # Keeping this private avoids a second user-supplied flat-index API.
     _periodic: tuple[bool, ...] = ()
@@ -274,25 +281,79 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
             'no_step_out',
             'gradient_guided',
             'collect_phantom_samples',
+            'max_phantom_samples',
             'phantom_burn_in',
             'direction',
             '_periodic',
         ])
 
-    def _check(self):
+    def __post_init__(self):
         if self.num_slices < 1:
             raise ValueError(f"num_slices should be >= 1, got {self.num_slices}.")
         if self.gradient_guided:
             warnings.warn("Gradient guided slice sampler is experimental and will likely change.")
+        if (
+            self.max_phantom_samples is not None
+            and self.phantom_burn_in is not None
+        ):
+            raise ValueError(
+                "max_phantom_samples and the deprecated phantom_burn_in "
+                "cannot both be specified."
+            )
+        if (
+            not self.collect_phantom_samples
+            and self.max_phantom_samples is not None
+        ):
+            raise ValueError(
+                "A phantom capacity requires collect_phantom_samples=True."
+            )
+        if self.max_phantom_samples is not None:
+            try:
+                max_phantom_samples = operator.index(
+                    self.max_phantom_samples
+                )
+            except TypeError as error:
+                raise TypeError(
+                    "max_phantom_samples must be an integer or None."
+                ) from error
+            if max_phantom_samples < 1:
+                raise ValueError("max_phantom_samples must be positive.")
+            if max_phantom_samples > self.num_slices - 1:
+                raise ValueError(
+                    "max_phantom_samples cannot exceed num_slices - 1: "
+                    f"got {max_phantom_samples} for "
+                    f"num_slices={self.num_slices}."
+                )
+        if self.phantom_burn_in is not None:
+            warnings.warn(
+                "phantom_burn_in is deprecated; specify the direct "
+                "max_phantom_samples capacity instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            try:
+                phantom_burn_in = operator.index(self.phantom_burn_in)
+            except TypeError as error:
+                raise TypeError(
+                    "phantom_burn_in must be an integer or None."
+                ) from error
+            if not 0 <= phantom_burn_in <= self.num_slices - 1:
+                raise ValueError(
+                    "phantom_burn_in must be in [0, num_slices - 1]."
+                )
 
     def num_phantom(self) -> int:
-        if self.collect_phantom_samples:
-            if self.phantom_burn_in is None:
-                burn_in = int(self.num_slices * 0.1)
-            else:
-                burn_in = self.phantom_burn_in
-            return self.num_slices - 1 - burn_in
-        return 0
+        if not self.collect_phantom_samples:
+            return 0
+        if self.phantom_burn_in is not None:
+            return self.num_slices - 1 - operator.index(
+                self.phantom_burn_in
+            )
+        if self.max_phantom_samples is not None:
+            return operator.index(self.max_phantom_samples)
+        # A low-level sampler with no explicit memory bound retains the whole
+        # eligible prefix. NestedSampler supplies its dimension-sized default.
+        return self.num_slices - 1
 
     def uses_adaptive_directions(self) -> bool:
         return self.direction is not None

@@ -79,7 +79,9 @@ def main():
         no_step_out=True,
         gradient_guided=False,
         collect_phantom_samples=args.phantoms,
-        phantom_burn_in=num_slices - 1 - retained_phantoms,
+        max_phantom_samples=(
+            retained_phantoms if args.phantoms else None
+        ),
     )
     ns = NestedSampler(
         model=model,

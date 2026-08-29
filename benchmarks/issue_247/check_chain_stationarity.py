@@ -63,7 +63,7 @@ def main():
         num_slices=5 * ndims,
         no_step_out=True,
         collect_phantom_samples=True,
-        phantom_burn_in=4 * ndims - 1,
+        max_phantom_samples=ndims,
     )
 
     def sample_one(sample_key, u0, log_l0):

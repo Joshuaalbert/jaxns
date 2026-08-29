@@ -133,7 +133,7 @@ def test_slice_continuations_preserve_complete_chain_outputs():
         model=model,
         num_slices=32,
         collect_phantom_samples=True,
-        phantom_burn_in=29,
+        max_phantom_samples=2,
     )
     request = _request(width=8)
     reference = jax.jit(
@@ -153,6 +153,88 @@ def test_slice_continuations_preserve_complete_chain_outputs():
         np.testing.assert_array_equal(np.asarray(actual), np.asarray(expected))
 
 
+def test_phantom_capacity_retains_start_prefix_and_excludes_classic():
+    model = QuadraticModel(centre=jnp.asarray([0.45, 0.55]))
+    seed = SeedPoint(
+        U0=jnp.asarray([0.35, 0.65]),
+        log_L0=model.log_likelihood(jnp.asarray([0.35, 0.65])),
+    )
+    complete_prefix_sampler = UniDimSliceSampler(
+        model=model,
+        num_slices=4,
+        collect_phantom_samples=True,
+    )
+    bounded_sampler = UniDimSliceSampler(
+        model=model,
+        num_slices=4,
+        collect_phantom_samples=True,
+        max_phantom_samples=2,
+    )
+    key = random.PRNGKey(284)
+
+    complete = complete_prefix_sampler.get_sample(
+        key,
+        jnp.asarray(-0.25),
+        seed,
+    )
+    bounded = bounded_sampler.get_sample(
+        key,
+        jnp.asarray(-0.25),
+        seed,
+    )
+
+    # Four generated transitions contain exactly three eligible phantoms; the
+    # fourth output is reserved for the classic replacement. Changing only the
+    # retained width cannot change that replacement or its evaluation count.
+    assert complete[3].log_L.shape == (3,)
+    assert bounded[3].log_L.shape == (2,)
+    np.testing.assert_array_equal(bounded[3].log_L, complete[3].log_L[:2])
+    np.testing.assert_array_equal(
+        bounded[3].U_samples,
+        complete[3].U_samples[:2],
+    )
+    np.testing.assert_array_equal(bounded[0], complete[0])
+    np.testing.assert_array_equal(bounded[1], complete[1])
+    np.testing.assert_array_equal(bounded[2], complete[2])
+    assert not np.array_equal(
+        np.asarray(complete[0]),
+        complete[3].U_samples[-1],
+    )
+
+
+def test_phantom_capacity_validation_and_burn_in_deprecation():
+    model = QuadraticModel(centre=jnp.asarray([0.45, 0.55]))
+
+    with pytest.raises(ValueError, match="positive"):
+        UniDimSliceSampler(
+            model=model,
+            num_slices=4,
+            collect_phantom_samples=True,
+            max_phantom_samples=0,
+        )
+    with pytest.raises(ValueError, match="num_slices - 1"):
+        UniDimSliceSampler(
+            model=model,
+            num_slices=4,
+            collect_phantom_samples=True,
+            max_phantom_samples=4,
+        )
+    with pytest.raises(ValueError, match="collect_phantom_samples"):
+        UniDimSliceSampler(
+            model=model,
+            num_slices=4,
+            max_phantom_samples=1,
+        )
+    with pytest.warns(DeprecationWarning, match="phantom_burn_in"):
+        legacy = UniDimSliceSampler(
+            model=model,
+            num_slices=4,
+            collect_phantom_samples=True,
+            phantom_burn_in=1,
+        )
+    assert legacy.num_phantom() == 2
+
+
 def test_periodic_slice_continuations_preserve_complete_chain_outputs():
     """The pool scheduler preserves each random-chart scalar transition."""
     model = CircularModel(centre=jnp.asarray([0.99, 0.01]))
@@ -160,7 +242,7 @@ def test_periodic_slice_continuations_preserve_complete_chain_outputs():
         model=model,
         num_slices=32,
         collect_phantom_samples=True,
-        phantom_burn_in=29,
+        max_phantom_samples=2,
     )._with_periodic((True, True))
     request = _periodic_request(width=8)
     reference = jax.jit(
@@ -402,7 +484,7 @@ def test_slice_continuations_preserve_gmm_direction_law():
         model=model,
         num_slices=32,
         collect_phantom_samples=True,
-        phantom_burn_in=29,
+        max_phantom_samples=2,
         direction=direction,
     )
     data = empty_sampler_data(num_components=1, dimension=2)
@@ -447,7 +529,7 @@ def test_slice_continuations_do_not_execute_scheduler_padding():
         model=model,
         num_slices=32,
         collect_phantom_samples=True,
-        phantom_burn_in=30,
+        max_phantom_samples=1,
     )
     request = _request(width=8)
     padded_request = dataclasses.replace(

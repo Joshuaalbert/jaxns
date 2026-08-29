@@ -500,6 +500,7 @@ class DistributedNestedSampler:
         "coordinator_port",
         "delta_K",
         "initial_capacity",
+        "max_phantom_samples",
         "max_samples",
         "model",
         "params",
@@ -525,6 +526,7 @@ class DistributedNestedSampler:
             termination_condition: TerminationCondition | None = None,
             store_phantom_samples: bool = False,
             collect_phantom_samples: bool = False,
+            max_phantom_samples: int | None = None,
             allocation_target: Literal[
                 "uniform",
                 "evidence_improving",
@@ -549,6 +551,7 @@ class DistributedNestedSampler:
         self.termination_condition = termination_condition
         self.store_phantom_samples = store_phantom_samples
         self.collect_phantom_samples = collect_phantom_samples
+        self.max_phantom_samples = max_phantom_samples
         self.allocation_target = allocation_target
         self.delta_K = delta_K
         self.initial_capacity = initial_capacity
@@ -590,6 +593,7 @@ class DistributedNestedSampler:
             termination_condition=self.termination_condition,
             store_phantom_samples=self.store_phantom_samples,
             collect_phantom_samples=self.collect_phantom_samples,
+            max_phantom_samples=self.max_phantom_samples,
             allocation_target=self.allocation_target,
             delta_K=delta_K,
             initial_capacity=initial_capacity,
@@ -600,6 +604,7 @@ class DistributedNestedSampler:
         self.root_allocation_degree = core.root_allocation_degree
         self.max_samples = core.max_samples
         self.sampler = core.sampler
+        self.max_phantom_samples = core.max_phantom_samples
         self.termination_condition = core.termination_condition
         self.delta_K = core.delta_K
         self.initial_capacity = core.initial_capacity

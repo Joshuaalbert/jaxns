@@ -1,4 +1,5 @@
 import dataclasses
+import operator
 from collections.abc import Callable
 from functools import partial
 from pathlib import Path
@@ -388,6 +389,7 @@ class NestedSamplerResults(PureDataclassPytree):
             *,
             conditioning: EvidenceConditioning,
             key: PRNGKey,
+            num_phantoms: int | None = None,
             batch_size: int | None = None,
             C_min: float = 20,
             diagnostics: bool = False,
@@ -399,6 +401,9 @@ class NestedSamplerResults(PureDataclassPytree):
             conditioning: ``"classic"`` ignores retained phantoms;
                 ``"phantom"`` uses retained clusters subject to the Kish gate.
             key: Explicit JAX PRNG key.
+            num_phantoms: Number of retained states to use from the start of
+                each phantom cluster. ``None`` uses every saved state. This is
+                only valid with ``conditioning="phantom"``.
             batch_size: Maximum number of draws evaluated at once. ``None``
                 uses an automatically bounded batch of at most 64 draws.
             C_min: Minimum participating-cluster Kish count for conditioning.
@@ -414,14 +419,48 @@ class NestedSamplerResults(PureDataclassPytree):
             raise ValueError(
                 "conditioning must be explicitly 'classic' or 'phantom'."
             )
-        if conditioning == "phantom" and self.log_L_phantom.shape[1] == 0:
-            raise ValueError(
-                "Phantom conditioning was requested, but no phantom slots "
-                "were collected."
+        results = self
+        if conditioning == "classic":
+            if num_phantoms is not None:
+                raise ValueError(
+                    "num_phantoms is only valid with phantom conditioning."
+                )
+        else:
+            retained_phantoms = self.log_L_phantom.shape[1]
+            if retained_phantoms == 0:
+                raise ValueError(
+                    "Phantom conditioning was requested, but no phantom "
+                    "slots were collected."
+                )
+            if num_phantoms is None:
+                num_phantoms = retained_phantoms
+            else:
+                try:
+                    num_phantoms = operator.index(num_phantoms)
+                except TypeError as error:
+                    raise TypeError(
+                        "num_phantoms must be an integer or None."
+                    ) from error
+                if num_phantoms <= 0:
+                    raise ValueError(
+                        "num_phantoms must be positive for phantom "
+                        "conditioning."
+                    )
+                if num_phantoms > retained_phantoms:
+                    raise ValueError(
+                        "num_phantoms cannot exceed the retained phantom "
+                        f"capacity of {retained_phantoms}."
+                    )
+            # This physical prefix slice changes the static P axis seen by
+            # the jitted MC kernel. An unused suffix therefore contributes no
+            # device work or compiler memory, rather than merely being masked.
+            results = dataclasses.replace(
+                self,
+                log_L_phantom=self.log_L_phantom[:, :num_phantoms],
             )
         if batch_size is None:
             batch_size = min(num_samples, DEFAULT_MC_BATCH_SIZE)
-        return self.sample_mc_shrinkage(
+        return results.sample_mc_shrinkage(
             num_samples=num_samples,
             batch_size=batch_size,
             key=key,

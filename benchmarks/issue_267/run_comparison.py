@@ -44,7 +44,7 @@ def sampler(model: Model, phantoms: bool) -> UniDimSliceSampler:
         model=model,
         num_slices=3,
         collect_phantom_samples=phantoms,
-        phantom_burn_in=0,
+        max_phantom_samples=2 if phantoms else None,
     )
 
 
