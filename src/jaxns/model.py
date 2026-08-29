@@ -185,8 +185,8 @@ class Model(PureDataclassPytree):
 
         Raises:
             ValueError: If ``num_samples`` is not positive, a transformed
-                prior value is non-finite, or a likelihood is NaN or positive
-                infinity.
+                prior value is non-finite, or a likelihood is non-scalar,
+                NaN, or positive infinity.
         """
         if num_samples <= 0:
             raise ValueError("num_samples must be positive.")
