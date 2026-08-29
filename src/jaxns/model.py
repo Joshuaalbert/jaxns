@@ -164,28 +164,78 @@ class Model(PureDataclassPytree):
         """
         return _log_joint(self, U, args=args, params=params, allow_nan=allow_nan)
 
-    def sanity_check(self, key: PRNGKey, args=(), params=None, num_samples: int = 100):
-        """
-        Performs a sanity check on the model.
+    def sanity_check(
+            self,
+            key: PRNGKey,
+            args=(),
+            params=None,
+            num_samples: int = 100,
+    ) -> None:
+        """Check sampled prior states for invalid model outputs.
+
+        Negative-infinite log likelihood is valid and represents zero
+        likelihood. NaN and positive-infinite likelihoods cannot define a
+        finite nested-sampling target and therefore fail visibly.
 
         Args:
             key: PRNGKey
             args: additional arguments for the sanity check
             params: parameters of the model
-            num_samples: number of samples to check
+            num_samples: Number of independent prior samples to check.
 
         Raises:
-            AssertionError: if any of the sampled prior variables are nan, or log_likelihood is +inf.
+            ValueError: If ``num_samples`` is not positive, a transformed
+                prior value is non-finite, or a likelihood is NaN or positive
+                infinity.
         """
-        jaxns_logger.info("Sanity check...")
-        for key in jax.random.split(key, num_samples):
-            u_sample = self.sample_U(key, args=args, params=params)
+        if num_samples <= 0:
+            raise ValueError("num_samples must be positive.")
 
-            log_likelihood = self.log_likelihood(u_sample, args=args, params=params, allow_nan=True)
-            if not jnp.isfinite(log_likelihood):
-                jaxns_logger.info(f"Found bad point:"
-                                  f"\n{u_sample} -> {self.transform_to_X(u_sample, args=args, params=params)}"
-                                  f"\nlog_likelihood: {log_likelihood}")
+        jaxns_logger.info("Sanity check...")
+        keys = jax.random.split(key, num_samples)
+        u_samples, x_samples, log_likelihoods = (
+            _sample_sanity_check_outputs(
+                self,
+                keys,
+                args=args,
+                params=params,
+            )
+        )
+        jax.block_until_ready((x_samples, log_likelihoods))
+
+        invalid_x = np.zeros(num_samples, dtype=bool)
+        for leaf in jax.tree.leaves(x_samples):
+            values = np.asarray(leaf)
+            # The leading dimension is the sampled-prior axis introduced by
+            # vmap. Collapse only the value axes so the reported index still
+            # identifies the complete offending model state.
+            finite_per_sample = np.all(
+                np.isfinite(values).reshape(num_samples, -1),
+                axis=1,
+            )
+            invalid_x |= np.logical_not(finite_per_sample)
+
+        likelihood_values = np.asarray(log_likelihoods)
+        invalid_likelihood = np.logical_or(
+            np.isnan(likelihood_values),
+            np.isposinf(likelihood_values),
+        )
+        invalid = np.logical_or(invalid_x, invalid_likelihood)
+        if np.any(invalid):
+            sample_index = int(np.flatnonzero(invalid)[0])
+            u_sample = jax.tree.map(
+                lambda value: value[sample_index],
+                u_samples,
+            )
+            x_sample = jax.tree.map(
+                lambda value: value[sample_index],
+                x_samples,
+            )
+            raise ValueError(
+                "Model sanity check found an invalid prior sample at index "
+                f"{sample_index}:\n{u_sample} -> {x_sample}\n"
+                f"log_likelihood: {likelihood_values[sample_index]}"
+            )
         jaxns_logger.info("Sanity check passed")
 
 
@@ -340,6 +390,30 @@ def _sample_U(self: Model, key: PRNGKey, args=(), params=None) -> UType:
         *args,
     )
     return init_return.collections['U']
+
+
+@partial(jax.jit)
+def _sample_sanity_check_outputs(
+        self: Model,
+        keys: PRNGKey,
+        args=(),
+        params=None,
+):
+    """Sample and evaluate each diagnostic state in one compiled program."""
+
+    def sample_and_evaluate(key):
+        U = _sample_U(self, key, args=args, params=params)
+        # The transformed values and likelihood share one prior-model apply.
+        # Keeping that work together avoids tracing and executing the model a
+        # second time solely to diagnose the state that produced a bad value.
+        apply_return = transform(self.prior_model).apply(
+            None,
+            _make_model_collections(params=params, U=U),
+            *args,
+        )
+        return U, apply_return.collections['X'], apply_return.fn_val
+
+    return jax.vmap(sample_and_evaluate)(keys)
 
 
 @partial(jax.jit, inline=True)
