@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+import operator
 import warnings
 from abc import ABC, abstractmethod
 from typing import Any, NamedTuple
@@ -190,6 +191,23 @@ class AbstractSampler(ABC):
             )
         return self
 
+    def _with_phantom_capacity(
+            self,
+            max_phantom_samples: int | None,
+            dimension: int,
+    ) -> AbstractSampler:
+        """Apply a high-level retained capacity through an explicit API."""
+        del dimension
+        if (
+            max_phantom_samples is not None
+            and max_phantom_samples != self.num_phantom()
+        ):
+            raise ValueError(
+                "max_phantom_samples must match the fixed capacity of a "
+                "custom sampler."
+            )
+        return self
+
     def validate_core(self, dimension: int) -> None:
         """Validate sampler compatibility with the current race-tree core."""
         del dimension
@@ -253,7 +271,12 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
             Otherwise, uses a doubling procedure (exponentially finding bracket).
             Note: Perfect is a misnomer, as perfection also depends on the number of slices between acceptance.
         gradient_guided: if true then do HMC with householder reflections.
-        collect_phantom_samples: if true, then collect phantom samples
+        collect_phantom_samples: Whether to retain intermediate chain states.
+        max_phantom_samples: Maximum number of intermediate states retained
+            from the start of each chain. ``None`` retains every eligible
+            transition. The final transition is always the classic sample.
+        phantom_burn_in: Deprecated inverse spelling for retained phantom
+            capacity. Use ``max_phantom_samples`` instead.
     """
 
     model: Model
@@ -263,6 +286,7 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
     collect_phantom_samples: bool = False
     phantom_burn_in: int | None = None
     direction: EllipsoidalDirection | None = None
+    max_phantom_samples: int | None = None
     # Internal scalar topology derived from JAXCTX metadata by NestedSampler.
     # Keeping this private avoids a second user-supplied flat-index API.
     _periodic: tuple[bool, ...] = ()
@@ -274,25 +298,93 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
             'no_step_out',
             'gradient_guided',
             'collect_phantom_samples',
+            'max_phantom_samples',
             'phantom_burn_in',
             'direction',
             '_periodic',
         ])
 
-    def _check(self):
-        if self.num_slices < 1:
+    def __post_init__(self):
+        try:
+            num_slices = operator.index(self.num_slices)
+        except TypeError as error:
+            raise TypeError("num_slices must be a Python integer.") from error
+        if num_slices is not self.num_slices:
+            raise TypeError("num_slices must be a Python integer.")
+        if num_slices < 1:
             raise ValueError(f"num_slices should be >= 1, got {self.num_slices}.")
         if self.gradient_guided:
             warnings.warn("Gradient guided slice sampler is experimental and will likely change.")
+        if (
+            self.max_phantom_samples is not None
+            and self.phantom_burn_in is not None
+        ):
+            raise ValueError(
+                "max_phantom_samples and the deprecated phantom_burn_in "
+                "cannot both be specified."
+            )
+        if (
+            not self.collect_phantom_samples
+            and self.max_phantom_samples is not None
+        ):
+            raise ValueError(
+                "A phantom capacity requires collect_phantom_samples=True."
+            )
+        if self.max_phantom_samples is not None:
+            try:
+                max_phantom_samples = operator.index(
+                    self.max_phantom_samples
+                )
+            except TypeError as error:
+                raise TypeError(
+                    "max_phantom_samples must be a Python integer or None."
+                ) from error
+            if max_phantom_samples is not self.max_phantom_samples:
+                raise TypeError(
+                    "max_phantom_samples must be a Python integer or None."
+                )
+            if max_phantom_samples < 1:
+                raise ValueError("max_phantom_samples must be positive.")
+            if max_phantom_samples > self.num_slices - 1:
+                raise ValueError(
+                    "max_phantom_samples cannot exceed num_slices - 1: "
+                    f"got {max_phantom_samples} for "
+                    f"num_slices={self.num_slices}."
+                )
+        if self.phantom_burn_in is not None:
+            warnings.warn(
+                "phantom_burn_in is deprecated; specify the direct "
+                "max_phantom_samples capacity instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            try:
+                phantom_burn_in = operator.index(self.phantom_burn_in)
+            except TypeError as error:
+                raise TypeError(
+                    "phantom_burn_in must be a Python integer or None."
+                ) from error
+            if phantom_burn_in is not self.phantom_burn_in:
+                raise TypeError(
+                    "phantom_burn_in must be a Python integer or None."
+                )
+            if not 0 <= phantom_burn_in <= self.num_slices - 1:
+                raise ValueError(
+                    "phantom_burn_in must be in [0, num_slices - 1]."
+                )
 
     def num_phantom(self) -> int:
-        if self.collect_phantom_samples:
-            if self.phantom_burn_in is None:
-                burn_in = int(self.num_slices * 0.1)
-            else:
-                burn_in = self.phantom_burn_in
-            return self.num_slices - 1 - burn_in
-        return 0
+        if not self.collect_phantom_samples:
+            return 0
+        if self.phantom_burn_in is not None:
+            return self.num_slices - 1 - operator.index(
+                self.phantom_burn_in
+            )
+        if self.max_phantom_samples is not None:
+            return operator.index(self.max_phantom_samples)
+        # A low-level sampler with no explicit memory bound retains the whole
+        # eligible prefix. NestedSampler supplies its dimension-sized default.
+        return self.num_slices - 1
 
     def uses_adaptive_directions(self) -> bool:
         return self.direction is not None
@@ -314,6 +406,53 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
     ) -> UniDimSliceSampler:
         """Install the model-derived static topology on this sampler."""
         return dataclasses.replace(self, _periodic=periodic)
+
+    def _with_phantom_capacity(
+            self,
+            max_phantom_samples: int | None,
+            dimension: int,
+    ) -> UniDimSliceSampler:
+        """Resolve NestedSampler's default or explicit retained capacity."""
+        if not self.collect_phantom_samples:
+            if max_phantom_samples is not None:
+                raise ValueError(
+                    "max_phantom_samples requires "
+                    "collect_phantom_samples=True."
+                )
+            return self
+        if max_phantom_samples is None:
+            if (
+                self.max_phantom_samples is not None
+                or self.phantom_burn_in is not None
+            ):
+                # A capacity set directly on the low-level sampler is already
+                # explicit and takes precedence over the high-level default.
+                return self
+            max_phantom_samples = min(dimension, self.num_slices - 1)
+        elif (
+            self.max_phantom_samples is not None
+            and max_phantom_samples != self.max_phantom_samples
+        ):
+            raise ValueError(
+                "max_phantom_samples disagrees with the capacity configured "
+                "on the custom slice sampler."
+            )
+        elif (
+            self.phantom_burn_in is not None
+            and max_phantom_samples != self.num_phantom()
+        ):
+            raise ValueError(
+                "max_phantom_samples disagrees with the deprecated "
+                "phantom_burn_in capacity."
+            )
+        if max_phantom_samples == 0:
+            return self
+        if max_phantom_samples == self.num_phantom():
+            return self
+        return dataclasses.replace(
+            self,
+            max_phantom_samples=max_phantom_samples,
+        )
 
     def validate_core(self, dimension: int) -> None:
         if not self.no_step_out:

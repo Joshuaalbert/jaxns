@@ -55,7 +55,7 @@ def build_run_model(k):
             model=model,
             num_slices=num_slices,
             collect_phantom_samples=(k > 0),
-            phantom_burn_in=(num_slices - 1 - k) if k > 0 else None
+            max_phantom_samples=k if k > 0 else None,
         )
         ns = NestedSampler(model=model, sampler=sampler)
 

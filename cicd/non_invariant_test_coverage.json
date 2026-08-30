@@ -1,6 +1,26 @@
 {
   "schema_version": 1,
   "tests": {
+    "test_nested_sampler_resolves_and_preserves_phantom_capacity": {
+      "note": "Checks the public retained-capacity configuration, resolved dimension-sized default, and current pytree/checkpoint representation.",
+      "path": "cicd/tests/test_core.py",
+      "reason": "configuration_contract"
+    },
+    "test_phantom_capacity_validation_and_burn_in_deprecation": {
+      "note": "Checks fail-fast bounds for the direct retained capacity and the compatibility warning for the inverse legacy option.",
+      "path": "cicd/tests/test_constrained_sampler.py",
+      "reason": "configuration_contract"
+    },
+    "test_sample_evidence_mc_rejects_prefix_for_classic_conditioning": {
+      "note": "Checks that the explicit classic-conditioning API remains independent of the phantom-prefix option.",
+      "path": "cicd/tests/test_phantom_results.py",
+      "reason": "configuration_contract"
+    },
+    "test_state_sample_evidence_mc_forwards_phantom_prefix": {
+      "note": "Checks parity between the thin State forwarder and the authoritative result-level phantom-prefix implementation.",
+      "path": "cicd/tests/test_phantom_results.py",
+      "reason": "reference_parity"
+    },
     "test_effective_sample_size_kish_uses_posterior_weights": {
       "note": "Checks that the reported posterior ESS is Kish's quantity for the actual posterior weights, independent of evidence moments or phantom states.",
       "path": "cicd/tests/test_stats.py",

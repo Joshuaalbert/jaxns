@@ -103,8 +103,9 @@ The exact text following each `- Invariant:` prefix is the stable key used by
 
 - Invariant: Phantom samples are auxiliary constrained-prior observations and never participate
   as arrivals or lineages in the classic race tree.
-- Invariant: Every phantom cluster is associated with one classic child and contains only
-  retained chain states generated under that child's recorded parent contour.
+- Invariant: Every phantom cluster is associated with one classic child and contains only a
+  start-prefix of retained chain states generated under that child's recorded parent contour,
+  with the final classic replacement excluded.
 - Invariant: Retained phantom states have the constrained-prior marginal distribution of their
   cluster's parent contour.
 - Invariant: Dependence within a phantom cluster is preserved by sharing one random cluster
@@ -112,6 +113,9 @@ The exact text following each `- Invariant:` prefix is the stable key used by
   draw.
 - Invariant: Changing how independent final Monte Carlo draws are batched does not change
   phantom-cluster identity, the joint shrinkage law, or the evidence distribution.
+- Invariant: Selecting a shorter phantom-conditioning prefix uses the first requested retained
+  states of every cluster and is equivalent to physically truncating the result's phantom axis
+  to that prefix.
 - Invariant: Phantom clusters treated as independent contributions originate from independently
   initialized stationary chains.
 - Invariant: A phantom contributes to a block only when its cluster parent contour is no

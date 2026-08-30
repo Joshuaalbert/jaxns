@@ -67,7 +67,6 @@ def main() -> int:
         dimension = int(model.U_ndims())
         num_slices = 5 * dimension
         phantom_count = dimension if phantoms else 0
-        burn_in = num_slices - 1 - phantom_count
         candidate = NestedSampler(
             model=model,
             collect_phantom_samples=phantoms,
@@ -79,7 +78,7 @@ def main() -> int:
                 model=model,
                 num_slices=num_slices,
                 collect_phantom_samples=phantoms,
-                phantom_burn_in=max(0, burn_in),
+                max_phantom_samples=(phantom_count if phantoms else None),
             ),
         )
         for seed in range(args.seeds):

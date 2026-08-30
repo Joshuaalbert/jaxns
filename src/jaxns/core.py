@@ -1,6 +1,7 @@
 """Depth-first nested sampling core described by the paper."""
 
 import dataclasses
+import operator
 from collections.abc import Callable
 from contextlib import nullcontext
 from pathlib import Path
@@ -45,6 +46,12 @@ class NestedSampler(PureDataclassPytree):
     physical buffers grow only up to it. Set ``unlimited_samples=True`` to opt
     into unbounded geometric growth and its associated memory use and one-time
     recompilation pause for each new shape.
+
+    When ``collect_phantom_samples=True``, ``max_phantom_samples`` bounds the
+    leading stationary chain prefix stored per classic replacement. ``None``
+    resolves to ``min(model dimension, num_slices - 1)`` for the default slice
+    sampler. The retained width is independent of the shorter prefix that can
+    later be selected by ``sample_evidence_mc``.
     """
 
     model: Model
@@ -61,6 +68,7 @@ class NestedSampler(PureDataclassPytree):
     # likelihoods only; high-dimensional phantom coordinates are not retained.
     store_phantom_samples: bool = False
     collect_phantom_samples: bool = False
+    max_phantom_samples: int | None = None
     allocation_target: Literal[
         "uniform",
         "evidence_improving",
@@ -127,16 +135,25 @@ class NestedSampler(PureDataclassPytree):
         sampler = self.sampler
         if sampler is None:
             num_slices = max(1, 5 * U_ndims)
-            retained_phantoms = U_ndims if self.collect_phantom_samples else 0
-            phantom_burn_in = num_slices - 1 - retained_phantoms
             sampler = UniDimSliceSampler(
                 model=self.model,
                 num_slices=num_slices,
                 no_step_out=True,
                 gradient_guided=False,
                 collect_phantom_samples=self.collect_phantom_samples,
-                phantom_burn_in=max(0, phantom_burn_in),
             )
+        max_phantom_samples = self.max_phantom_samples
+        if max_phantom_samples is not None:
+            try:
+                max_phantom_samples = operator.index(max_phantom_samples)
+            except TypeError as error:
+                raise TypeError(
+                    "max_phantom_samples must be an integer or None."
+                ) from error
+        sampler = sampler._with_phantom_capacity(
+            max_phantom_samples,
+            U_ndims,
+        )
         sampler = sampler._with_periodic(periodic)
         sampler.validate_core(U_ndims)
 
@@ -180,6 +197,9 @@ class NestedSampler(PureDataclassPytree):
         self.shell_size = int(shell_size)
         self.max_samples = max_samples
         self.sampler = sampler
+        # Publish the resolved static width, including custom samplers, so a
+        # caller can distinguish retained capacity from later MC prefix use.
+        self.max_phantom_samples = int(sampler.num_phantom())
         self.termination_condition = termination_condition
         self.initial_capacity = initial_capacity
         self.delta_K = int(delta_K)
@@ -196,6 +216,7 @@ class NestedSampler(PureDataclassPytree):
                 "batch_size",
                 "store_phantom_samples",
                 "collect_phantom_samples",
+                "max_phantom_samples",
                 "allocation_target",
                 "delta_K",
                 "initial_capacity",

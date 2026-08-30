@@ -843,7 +843,7 @@ def test_phantom_payload_does_not_change_vector_worker_trajectory(tmp_path):
                 model=model,
                 num_slices=2,
                 collect_phantom_samples=collect_phantoms,
-                phantom_burn_in=0,
+                max_phantom_samples=(1 if collect_phantoms else None),
             )
             runner = DistributedNestedSampler(
                 model=model,
@@ -969,7 +969,7 @@ def test_real_pool_runs_scalar_vmap_retries_and_cli_lifecycle(tmp_path):
             model=model,
             num_slices=2,
             collect_phantom_samples=True,
-            phantom_burn_in=0,
+            max_phantom_samples=1,
         )
         distributed = DistributedNestedSampler(
             model=model,

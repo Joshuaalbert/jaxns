@@ -132,6 +132,7 @@ class State(PureDataclassPytree):
             *,
             conditioning: Literal["classic", "phantom"],
             key: jax.Array,
+            num_phantoms: int | None = None,
             batch_size: int | None = None,
             C_min: float = 20,
             diagnostics: bool = False,
@@ -147,6 +148,8 @@ class State(PureDataclassPytree):
             conditioning: Whether to use only the classic race or condition
                 on retained phantom clusters.
             key: Explicit JAX random key.
+            num_phantoms: Number of retained states to use from the start of
+                each phantom cluster. ``None`` uses every saved state.
             batch_size: Maximum simultaneous evidence draws. ``None`` uses
                 the bounded result-level default.
             C_min: Minimum participating-cluster Kish count.
@@ -159,6 +162,7 @@ class State(PureDataclassPytree):
             num_samples=num_samples,
             conditioning=conditioning,
             key=key,
+            num_phantoms=num_phantoms,
             batch_size=batch_size,
             C_min=C_min,
             diagnostics=diagnostics,

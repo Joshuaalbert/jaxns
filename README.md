@@ -143,6 +143,7 @@ sampler = NestedSampler(
     model=model,
     args=args,
     collect_phantom_samples=True,
+    max_phantom_samples=2,
 )
 state = sampler.run(key=jax.random.PRNGKey(6))
 results = state.to_result().trim()
@@ -156,7 +157,25 @@ results.plot_evidence(
     key=jax.random.PRNGKey(3),
     exact_log_Z=-0.274366,
 )
+
+# Reuse the same retained clusters with a shorter conditioning prefix.
+prefix_evidence = results.sample_evidence_mc(
+    num_samples=4096,
+    conditioning="phantom",
+    num_phantoms=1,
+    key=jax.random.PRNGKey(4),
+)
 ```
+
+Phantom collection and evidence conditioning are separate choices. The
+sampler retains the first `max_phantom_samples` eligible transitions from each
+chain and always reserves the final transition for the classic replacement.
+Omitting the bound keeps one model dimension of phantom states by default.
+At evidence time, `num_phantoms=None` uses every retained state; an explicit
+value uses that many states from the same start prefix without rerunning nested
+sampling. Retaining more states increases result/checkpoint memory, while a
+shorter evidence prefix is physically sliced before JAX compilation so its
+unused suffix adds no MC-kernel work.
 
 A fixed-seed CPU run of the example above produces this summary:
 

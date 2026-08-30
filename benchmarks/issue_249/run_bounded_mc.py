@@ -108,7 +108,7 @@ def main():
         no_step_out=True,
         gradient_guided=False,
         collect_phantom_samples=True,
-        phantom_burn_in=num_slices - 1 - ndims,
+        max_phantom_samples=ndims,
     )
     nested_sampler = NestedSampler(
         model=model,
