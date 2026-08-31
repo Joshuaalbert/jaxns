@@ -10,7 +10,7 @@ from jax import numpy as jnp
 from cicd.tests.core_fixtures import make_state
 from cicd.tests.distributed_support import make_toy_model
 from jaxns.algorithm.depth import (
-    SEED_SOURCE_REFRESH_BATCHES,
+    SEED_SOURCE_REFRESH_WINDOWS,
     CoreWorkBatch,
     _start_schedule_round,
 )
@@ -626,7 +626,7 @@ def test_distributed_seed_refresh_waits_for_no_pending_tasks():
     )
     refresh_rows = (
         schedule.seed_reservoir_idx.shape[0]
-        * SEED_SOURCE_REFRESH_BATCHES
+        * SEED_SOURCE_REFRESH_WINDOWS
     )
     state = dataclasses.replace(
         state,

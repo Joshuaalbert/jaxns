@@ -143,6 +143,7 @@
     "test_appended_seed_population_remains_distinct_when_large_enough",
     "test_distributed_refill_reserves_pending_same_contour_seed",
     "test_distributed_refills_reserve_starts_beyond_worker_capacity",
+    "test_nonroot_start_reservation_is_not_bounded_by_batch_width",
     "test_pending_same_contour_seeds_are_reserved_across_refills",
     "test_same_contour_parallel_threads_use_distinct_stationary_seeds",
     "test_same_contour_thread_starts_remain_distinct_across_batches",

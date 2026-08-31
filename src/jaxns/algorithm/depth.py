@@ -42,9 +42,11 @@ from jaxns.types import BoolArray, FloatArray, IntArray, PRNGKey
 # runners expose the same resumable storage-boundary contract.
 MAX_SAMPLES_REACHED = 1
 # A bounded seed population is refreshed before rejection through a long
-# frozen schedule dominates coordination. Thirty-two batches amortise the
-# population rebuild while bounding work independently of schedule length.
-SEED_SOURCE_REFRESH_BATCHES = 32
+# frozen schedule dominates coordination. Thirty-two reservoir-width windows
+# amortise the population rebuild while bounding work independently of
+# schedule length. A window can be wider than a replacement batch when the
+# root population determines the reservoir size.
+SEED_SOURCE_REFRESH_WINDOWS = 32
 
 
 @dataclasses.dataclass(slots=True, frozen=True)
@@ -330,7 +332,7 @@ def _new_thread_schedule(
     # is crossed. This fixed queue therefore covers the cadence plus one
     # reservoir-width window without depending on the number of threads.
     continuation_size = (
-        (SEED_SOURCE_REFRESH_BATCHES + 1) * seed_reservoir_size
+        (SEED_SOURCE_REFRESH_WINDOWS + 1) * seed_reservoir_size
     )
     gap = jnp.where(
         relevant,
@@ -621,7 +623,7 @@ def _seed_source_refresh_due(
 ) -> BoolArray:
     """Return whether this schedule should publish a new frozen seed source."""
     refresh_rows = (
-        SEED_SOURCE_REFRESH_BATCHES
+        SEED_SOURCE_REFRESH_WINDOWS
         * schedule.seed_reservoir_idx.shape[0]
     )
     return (

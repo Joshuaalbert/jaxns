@@ -780,7 +780,7 @@ def test_seed_source_refresh_is_bounded_by_planning_width():
         tail_K=jnp.asarray(0, dtype=jnp.int32),
     )
     refresh_rows = (
-        depth.SEED_SOURCE_REFRESH_BATCHES
+        depth.SEED_SOURCE_REFRESH_WINDOWS
         * schedule.seed_reservoir_idx.shape[0]
     )
     assert schedule.continuation_parent_idx.shape[0] == (

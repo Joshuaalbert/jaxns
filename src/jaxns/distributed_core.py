@@ -18,7 +18,7 @@ from jaxctx import CtxParams
 
 from jaxns.algorithm.depth import (
     MAX_SAMPLES_REACHED,
-    SEED_SOURCE_REFRESH_BATCHES,
+    SEED_SOURCE_REFRESH_WINDOWS,
     CoreWorkBatch,
     _accept_work_batch,
     _continue_schedule_round,
@@ -1467,7 +1467,7 @@ class DistributedNestedSampler:
                 schedule.seed_reservoir_idx.shape[0],
             )
             continuation_size = (
-                (SEED_SOURCE_REFRESH_BATCHES + 1) * reservoir_size
+                (SEED_SOURCE_REFRESH_WINDOWS + 1) * reservoir_size
             )
             distributed = dataclasses.replace(
                 distributed,
