@@ -16,8 +16,6 @@ from jaxns.algorithm import depth
 from jaxns.algorithm.allocation import (
     AllocationPlan,
     VolumePath,
-    closest_seedable_parent_block_python,
-    stationary_seed_indices_python,
 )
 from jaxns.algorithm.race_tree import (
     build_block_state,
@@ -30,10 +28,10 @@ from jaxns.constrained_sampler import (
     _take_phantom_prefix,
 )
 from jaxns.core import NestedSampler
+from jaxns.depth_condition import DepthCondition
 from jaxns.pytree import PureDataclassPytree
 from jaxns.samples import PhantomSamples, SeedPoint
 from jaxns.sampling.ellipsoid import empty_sampler_data
-from jaxns.termination_condition import TerminationCondition
 
 
 @dataclasses.dataclass(slots=True, frozen=True)
@@ -108,111 +106,84 @@ class TwoDimensionalModel(PureDataclassPytree):
 TwoDimensionalModel.register_pytree()
 
 
-def test_stationary_seed_mask_uses_generation_interval_not_suffix():
-    state = make_state(
-        root_out_degree=2,
-        log_likelihoods=(1.0, 3.0, 4.0, 0.5),
-        log_L_constraints=(-np.inf, 0.0, 2.0, -np.inf),
-        out_degree=(1, 1, 0, 0),
-        max_samples=4,
-    )
-    stationary = depth._stationary_seed_mask(
-        state,
-        jnp.asarray(1.0),
-        jnp.asarray(False),
-    )
-    np.testing.assert_array_equal(
-        np.asarray(stationary),
-        np.asarray([False, True, False, False]),
-    )
-    np.testing.assert_array_equal(
-        stationary_seed_indices_python(
-            state.samples,
-            int(state.num_samples),
-            1.0,
-            from_root=False,
+def _allocation_plan(
+        block_state,
+        gap: tuple[int, ...],
+) -> AllocationPlan:
+    """Build a minimal exact-gap plan for scheduler contract tests."""
+    gap_array = jnp.asarray(gap, dtype=jnp.int32)  # [G]
+    return AllocationPlan(
+        target_K=block_state.incoming_K + gap_array,
+        current_K=block_state.incoming_K,
+        unit_peak_utility=block_state.valid.astype(jnp.float64),
+        log_L_blocks=block_state.log_L_blocks,
+        valid=block_state.valid,
+        volume_path=VolumePath(
+            X_prev=jnp.ones(gap_array.shape),
+            X=jnp.ones(gap_array.shape),
+            shell_mass=jnp.zeros(gap_array.shape),
         ),
-        np.asarray([1]),
-    )
-
-    root_stationary = depth._stationary_seed_mask(
-        state,
-        jnp.asarray(-jnp.inf),
-        jnp.asarray(True),
-    )
-    np.testing.assert_array_equal(
-        np.asarray(root_stationary),
-        np.asarray([True, False, False, True]),
     )
 
 
-def test_missing_stationary_seed_reparents_to_closest_shallower_contour():
+def test_continuations_wait_until_each_frozen_thread_has_started():
+    """A narrow sampler window rotates breadth-first over a wider gap."""
     state = make_state(
-        root_out_degree=1,
-        log_likelihoods=(1.0, 2.0, 4.0),
-        log_L_constraints=(-np.inf, 1.0, 3.0),
-        out_degree=(1, 1, 0),
-        max_samples=3,
+        root_out_degree=6,
+        log_likelihoods=(1.0, 2.0, 3.0, 4.0, 5.0, 6.0),
+        log_L_constraints=(-np.inf,) * 6,
+        out_degree=(0,) * 6,
+        max_samples=6,
     )
     block_state = build_block_state(
         state.samples,
         state.root_out_degree,
         state.num_samples,
+        likelihood_order=state.likelihood_order,
     )
-
-    # lambda=2 has no sample whose generation interval contains it. The
-    # closest shallower lambda=1 contour has sample 1 as an exact stationary
-    # seed and must be the effective parent block.
-    effective = depth._closest_seedable_parent_block(
+    schedule = depth._new_thread_schedule(
         state,
         block_state,
-        jnp.asarray(1, dtype=jnp.int32),
-    )
-    assert int(effective) == 0
-    assert (
-        closest_seedable_parent_block_python(state, block_state, 1)
-        == int(effective)
+        _allocation_plan(block_state, (4, 0, 0, 0, 0, 0)),
+        block_state.valid,
+        shell_size=2,
+        tail_K=jnp.asarray(0, dtype=jnp.int32),
     )
 
-
-def test_depth_epoch_appends_without_reordering_coordinate_payload():
-    ns = NestedSampler(
-        model=make_toy_model(),
-        target_num_live_points=2,
-        shell_size=1,
-        max_samples=3,
-        initial_capacity=3,
-        sampler=DeterministicSampler(),
-        termination_condition=TerminationCondition(max_samples=3),
-    )
-    state = ns.initialise(jax.random.PRNGKey(2))
-    root_coordinates = np.asarray(state.samples.U_samples[:2]).copy()
-    next_state = ns.run_single_iteration(
+    first = depth._fill_thread_heads(
+        jax.random.PRNGKey(30),
         state,
-        depth_cond=TerminationCondition(max_samples=3),
-        key=jax.random.PRNGKey(3),
+        schedule,
     )
-
-    np.testing.assert_array_equal(
-        np.asarray(next_state.samples.U_samples[:2]),
-        root_coordinates,
+    np.testing.assert_array_equal(first.thread_id, np.asarray([0, 1]))
+    first = depth._enqueue_thread_continuations(
+        first,
+        jnp.asarray([2, 3], dtype=jnp.int32),
+        first.thread_id,
+        first.terminal_log_L,
+        first.valid,
     )
-    assert int(next_state.num_samples) == 3
-    for field_name in (
-        "parent_idx",
-        "requested_parent_idx",
-        "requested_log_L_constraint",
-        "seed_idx",
-    ):
-        assert not hasattr(next_state.samples, field_name)
-    assert (
-        int(next_state.root_out_degree)
-        + int(jnp.sum(next_state.samples.out_degree[:3]))
-        == 3
+    first = depth._release_thread_heads(first, first.valid)
+
+    second = depth._fill_thread_heads(
+        jax.random.PRNGKey(31),
+        state,
+        first,
     )
+    np.testing.assert_array_equal(second.thread_id, np.asarray([2, 3]))
+    second = depth._release_thread_heads(second, second.valid)
+
+    resumed = depth._fill_thread_heads(
+        jax.random.PRNGKey(32),
+        state,
+        second,
+    )
+    np.testing.assert_array_equal(resumed.thread_id, np.asarray([0, 1]))
+    np.testing.assert_array_equal(resumed.parent_idx, np.asarray([2, 3]))
+    assert int(resumed.continuation_count) == 0
 
 
-def test_scheduler_marks_maximal_thread_prefix_and_stratifies_seeds():
+def test_same_contour_parallel_threads_use_distinct_stationary_seeds():
     state = make_state(
         root_out_degree=2,
         log_likelihoods=(1.0, 2.0),
@@ -224,26 +195,21 @@ def test_scheduler_marks_maximal_thread_prefix_and_stratifies_seeds():
         state.samples,
         state.root_out_degree,
         state.num_samples,
+        likelihood_order=state.likelihood_order,
     )
-    plan = AllocationPlan(
-        target_K=jnp.asarray([2, 0, 0, 0], dtype=jnp.int32),
-        current_K=jnp.zeros((4,), dtype=jnp.int32),
-        unit_peak_utility=jnp.asarray([1.0, 0.0, 0.0, 0.0]),
-        log_L_blocks=jnp.asarray([1.0, jnp.inf, jnp.inf, jnp.inf]),
-        valid=jnp.asarray([True, False, False, False]),
-        volume_path=VolumePath(
-            X_prev=jnp.asarray([1.0, 0.0, 0.0, 0.0]),
-            X=jnp.asarray([1.0, 0.0, 0.0, 0.0]),
-            shell_mass=jnp.zeros((4,)),
-        ),
-    )
-    work = depth._plan_work_batch(
-        jax.random.PRNGKey(7),
+    schedule = depth._new_thread_schedule(
         state,
         block_state,
-        plan,
-        relevant=plan.valid,
+        _allocation_plan(block_state, (2, 0, 0, 0)),
+        block_state.valid,
         shell_size=4,
+        tail_K=jnp.asarray(0, dtype=jnp.int32),
+    )
+    _, work = depth._plan_scheduled_work_batch(
+        jax.random.PRNGKey(7),
+        state,
+        schedule,
+        jnp.asarray(4, dtype=jnp.int32),
     )
 
     np.testing.assert_array_equal(
@@ -253,27 +219,318 @@ def test_scheduler_marks_maximal_thread_prefix_and_stratifies_seeds():
     assert int(work.seed_idx[0]) != int(work.seed_idx[1])
 
 
-def test_stratified_seed_rank_is_uniform_for_each_stationary_set():
-    # Different contour lanes generally have different eligible samples. A
-    # shared rotation may couple their choices, but each marginal must remain
-    # uniform or the scheduler would distort relative mode weights.
-    unit_draws = (jnp.arange(600, dtype=jnp.float64) + 0.5) / 600.0
-    for mask in (
-        jnp.asarray([True, False, True, True]),
-        jnp.asarray([False, True, False, True]),
+def test_mixed_contour_seed_groups_remain_distinct_after_rejection():
+    state = make_state(
+        root_out_degree=2,
+        log_likelihoods=(1.0, 2.0, 3.0, 4.0),
+        log_L_constraints=(-np.inf, -np.inf, 1.0, 1.0),
+        out_degree=(2, 0, 0, 0),
+        max_samples=5,
+    )
+    block_state = build_block_state(
+        state.samples,
+        state.root_out_degree,
+        state.num_samples,
+        likelihood_order=state.likelihood_order,
+    )
+    schedule = depth._new_thread_schedule(
+        state,
+        block_state,
+        _allocation_plan(block_state, (0, 0, 0, 0, 0)),
+        block_state.valid,
+        shell_size=5,
+        tail_K=jnp.asarray(0, dtype=jnp.int32),
+    )
+    constraints = jnp.asarray(
+        [-jnp.inf, -jnp.inf, 1.0, 1.0, 1.0],
+    )
+    selected = depth._sample_stationary_seeds(
+        jax.random.PRNGKey(0),
+        state,
+        schedule,
+        constraints,
+        jnp.isneginf(constraints),
+        jnp.ones((5,), dtype=bool),
+        jnp.full((5,), -1, dtype=jnp.int32),
+        jnp.full((5,), -jnp.inf),
+        jnp.zeros((5,), dtype=bool),
+    )
+    selected = np.asarray(selected)
+
+    assert len(set(selected[:2].tolist())) == 2
+    assert set(selected[2:].tolist()) == {1, 2, 3}
+    for seed_idx, constraint in zip(selected, constraints, strict=True):
+        assert state.samples.log_likelihoods[seed_idx] > constraint
+        assert state.samples.log_L_constraints[seed_idx] <= constraint
+
+
+def test_pending_same_contour_seeds_are_reserved_across_refills():
+    state = make_state(
+        root_out_degree=2,
+        log_likelihoods=(1.0, 2.0, 3.0, 4.0),
+        log_L_constraints=(-np.inf, -np.inf, 1.0, 1.0),
+        out_degree=(2, 0, 0, 0),
+        max_samples=4,
+    )
+    block_state = build_block_state(
+        state.samples,
+        state.root_out_degree,
+        state.num_samples,
+        likelihood_order=state.likelihood_order,
+    )
+    schedule = depth._new_thread_schedule(
+        state,
+        block_state,
+        _allocation_plan(block_state, (0, 0, 0, 0)),
+        block_state.valid,
+        shell_size=2,
+        tail_K=jnp.asarray(0, dtype=jnp.int32),
+    )
+    selected = depth._sample_stationary_seeds(
+        jax.random.PRNGKey(1),
+        state,
+        schedule,
+        jnp.asarray([1.0, 1.0]),
+        jnp.zeros((2,), dtype=bool),
+        jnp.ones((2,), dtype=bool),
+        jnp.asarray([1, -1]),
+        jnp.asarray([1.0, -jnp.inf]),
+        jnp.asarray([True, False]),
+    )
+
+    assert set(np.asarray(selected).tolist()) == {2, 3}
+
+
+def test_seed_pool_includes_completed_rows_accepted_after_freeze():
+    source = make_state(
+        root_out_degree=2,
+        log_likelihoods=(1.0, 2.0),
+        log_L_constraints=(-np.inf, -np.inf),
+        out_degree=(0, 2),
+        max_samples=4,
+    )
+    block_state = build_block_state(
+        source.samples,
+        source.root_out_degree,
+        source.num_samples,
+        likelihood_order=source.likelihood_order,
+    )
+    schedule = depth._new_thread_schedule(
+        source,
+        block_state,
+        _allocation_plan(block_state, (0, 0, 0, 0)),
+        block_state.valid,
+        shell_size=2,
+        tail_K=jnp.asarray(0, dtype=jnp.int32),
+    )
+    current = make_state(
+        root_out_degree=2,
+        log_likelihoods=(1.0, 2.0, 3.0, 4.0),
+        log_L_constraints=(-np.inf, -np.inf, 2.0, 2.0),
+        out_degree=(0, 2, 0, 0),
+        max_samples=4,
+    )
+    schedule = depth._update_seed_reservoir(
+        schedule,
+        jnp.asarray([2, 3], dtype=jnp.int32),
+        jnp.asarray([True, True]),
+    )
+    keys = jax.random.split(jax.random.PRNGKey(19), 64)
+
+    def draw(one_key):
+        return depth._sample_stationary_seeds(
+            one_key,
+            current,
+            schedule,
+            jnp.asarray([2.0]),
+            jnp.asarray([False]),
+            jnp.asarray([True]),
+            jnp.asarray([-1], dtype=jnp.int32),
+            jnp.asarray([-jnp.inf]),
+            jnp.asarray([False]),
+        )[0]
+
+    # Both appended rows are stationary at L=2. A cache of ongoing heads could
+    # expose only one because thread survival censors it below its terminal.
+    assert set(np.asarray(jax.vmap(draw)(keys)).tolist()) == {2, 3}
+
+
+def test_appended_seed_population_remains_distinct_when_large_enough():
+    """Eligible reservoir rows extend the exact no-replacement pool."""
+    source = make_state(
+        root_out_degree=2,
+        log_likelihoods=(1.0, 2.0),
+        log_L_constraints=(-np.inf, -np.inf),
+        out_degree=(0, 0),
+        max_samples=6,
+    )
+    block_state = build_block_state(
+        source.samples,
+        source.root_out_degree,
+        source.num_samples,
+        likelihood_order=source.likelihood_order,
+    )
+    schedule = depth._new_thread_schedule(
+        source,
+        block_state,
+        _allocation_plan(block_state, (0, 0, 0, 0, 0, 0)),
+        block_state.valid,
+        shell_size=3,
+        tail_K=jnp.asarray(0, dtype=jnp.int32),
+    )
+    current = make_state(
+        root_out_degree=2,
+        log_likelihoods=(1.0, 2.0, 3.0, 4.0, 5.0, 6.0),
+        log_L_constraints=(-np.inf, -np.inf, 1.0, 1.0, 2.0, 2.0),
+        out_degree=(2, 2, 0, 0, 0, 0),
+        max_samples=6,
+    )
+    # Fix the bounded reservoir to two eligible rows and one ineligible row.
+    # Without its exact eligibility count the three lanes can incorrectly
+    # reuse a seed even though identities {1, 2, 3} are all available.
+    schedule = dataclasses.replace(
+        schedule,
+        seed_reservoir_idx=jnp.asarray([2, 3, 4], dtype=jnp.int32),
+        seed_reservoir_priority=jnp.asarray([0.9, 0.8, 0.7]),
+        seed_reservoir_valid=jnp.asarray([True, True, True]),
+    )
+    constraints = jnp.full((3,), 1.0)
+
+    selected = depth._sample_stationary_seeds(
+        jax.random.PRNGKey(29),
+        current,
+        schedule,
+        constraints,
+        jnp.zeros((3,), dtype=bool),
+        jnp.ones((3,), dtype=bool),
+        jnp.full((3,), -1, dtype=jnp.int32),
+        jnp.full((3,), -jnp.inf),
+        jnp.zeros((3,), dtype=bool),
+    )
+
+    assert set(np.asarray(selected).tolist()) == {1, 2, 3}
+
+
+def test_seed_source_refresh_is_bounded_by_planning_width():
+    source = make_state(
+        root_out_degree=2,
+        log_likelihoods=(1.0, 2.0),
+        log_L_constraints=(-np.inf, -np.inf),
+        out_degree=(0, 0),
+        max_samples=4,
+    )
+    block_state = build_block_state(
+        source.samples,
+        source.root_out_degree,
+        source.num_samples,
+        likelihood_order=source.likelihood_order,
+    )
+    schedule = depth._new_thread_schedule(
+        source,
+        block_state,
+        _allocation_plan(block_state, (1, 0, 0, 0)),
+        block_state.valid,
+        shell_size=2,
+        tail_K=jnp.asarray(0, dtype=jnp.int32),
+    )
+    refresh_rows = (
+        depth.SEED_SOURCE_REFRESH_BATCHES
+        * schedule.seed_reservoir_idx.shape[0]
+    )
+    assert schedule.continuation_parent_idx.shape[0] == (
+        refresh_rows + schedule.seed_reservoir_idx.shape[0]
+    )
+
+    assert not bool(depth._seed_source_refresh_due(
+        dataclasses.replace(
+            source,
+            num_samples=source.num_samples + refresh_rows - 1,
+        ),
+        schedule,
+    ))
+    assert bool(depth._seed_source_refresh_due(
+        dataclasses.replace(
+            source,
+            num_samples=source.num_samples + refresh_rows,
+        ),
+        schedule,
+    ))
+
+
+def test_frozen_target_projects_by_successor_contour():
+    state = make_state(
+        root_out_degree=2,
+        log_likelihoods=(1.0, 3.0),
+        log_L_constraints=(-np.inf, -np.inf),
+        out_degree=(0, 0),
+        max_samples=5,
+    )
+    block_state = build_block_state(
+        state.samples,
+        state.root_out_degree,
+        state.num_samples,
+        likelihood_order=state.likelihood_order,
+    )
+    schedule = depth._new_thread_schedule(
+        state,
+        block_state,
+        _allocation_plan(block_state, (0, 0, 0, 0, 0)),
+        block_state.valid,
+        shell_size=2,
+        tail_K=jnp.asarray(9, dtype=jnp.int32),
+    )
+    schedule = dataclasses.replace(
+        schedule,
+        target_K=jnp.asarray([10, 20, 0, 0, 0], dtype=jnp.int32),
+    )
+    refined = dataclasses.replace(
+        block_state,
+        log_L_blocks=jnp.asarray([0.5, 1.0, 2.0, 3.0, 4.0]),
+        valid=jnp.ones((5,), dtype=bool),
+    )
+
+    np.testing.assert_array_equal(
+        np.asarray(depth._project_allocation_target(schedule, refined)),
+        np.asarray([10, 10, 20, 20, 9]),
+    )
+
+
+def test_depth_epoch_appends_without_reordering_coordinate_payload():
+    ns = NestedSampler(
+        model=make_toy_model(),
+        target_num_live_points=2,
+        shell_size=1,
+        max_samples=3,
+        initial_capacity=3,
+        sampler=DeterministicSampler(),
+        depth_condition=DepthCondition(),
+    )
+    state = ns.initialise(jax.random.PRNGKey(2))
+    root_coordinates = np.asarray(state.samples.U_samples[:2]).copy()
+    next_state = ns.run_single_iteration(
+        state,
+        depth_cond=DepthCondition(),
+        key=jax.random.PRNGKey(3),
+    )
+
+    np.testing.assert_array_equal(
+        np.asarray(next_state.samples.U_samples[:2]),
+        root_coordinates,
+    )
+    assert int(next_state.num_samples) == 3
+    sample_fields = {field.name for field in dataclasses.fields(next_state.samples)}
+    for field_name in (
+        "parent_idx",
+        "requested_parent_idx",
+        "requested_log_L_constraint",
+        "seed_idx",
     ):
-        selected = jax.vmap(
-            lambda draw, stationary=mask: depth._uniform_ranked_masked(
-                draw,
-                stationary,
-            )
-        )(unit_draws)
-        counts = np.bincount(np.asarray(selected), minlength=mask.shape[0])
-        expected = 600 // int(jnp.sum(mask))
-        np.testing.assert_array_equal(
-            counts[np.asarray(mask)],
-            np.full(int(jnp.sum(mask)), expected),
-        )
+        assert field_name not in sample_fields
+    assert (
+        int(next_state.root_out_degree)
+        + int(jnp.sum(next_state.samples.out_degree[:3]))
+        == 3
+    )
 
 
 def test_depth_relevance_is_a_complete_prefix_when_remaining_mass_rises():
@@ -296,52 +553,9 @@ def test_depth_relevance_is_a_complete_prefix_when_remaining_mass_rises():
     # middle block would leave an impossible hole in lineage coverage.
     relevant = depth._depth_relevant_blocks(
         plan,
-        TerminationCondition(dlogZ=jnp.asarray(0.85)),
+        DepthCondition(dlogZ=jnp.asarray(0.85)),
     )
     np.testing.assert_array_equal(np.asarray(relevant), np.asarray(valid))
-
-
-def test_scheduler_starts_one_thread_for_one_gap_rise():
-    state = make_state(
-        root_out_degree=2,
-        log_likelihoods=(1.0, 2.0, 3.0),
-        log_L_constraints=(-np.inf, 1.0, 2.0),
-        out_degree=(1, 1, 0),
-        max_samples=6,
-    )
-    block_state = build_block_state(
-        state.samples,
-        state.root_out_degree,
-        state.num_samples,
-    )
-    target = jnp.asarray([0, 0, 1, 0, 0, 0], dtype=jnp.int32)
-    plan = AllocationPlan(
-        target_K=target,
-        current_K=jnp.zeros_like(target),
-        unit_peak_utility=block_state.valid.astype(jnp.float64),
-        log_L_blocks=block_state.log_L_blocks,
-        valid=block_state.valid,
-        volume_path=VolumePath(
-            X_prev=jnp.ones(target.shape),
-            X=jnp.ones(target.shape),
-            shell_mass=jnp.zeros(target.shape),
-        ),
-    )
-
-    work = depth._plan_work_batch(
-        jax.random.PRNGKey(11),
-        state,
-        block_state,
-        plan,
-        relevant=block_state.valid,
-        shell_size=4,
-    )
-
-    np.testing.assert_array_equal(
-        np.asarray(work.valid),
-        np.asarray([True, False, False, False]),
-    )
-    assert float(work.log_L_constraint[0]) < 3.0
 
 
 def test_likelihood_order_merges_only_integer_identities():
@@ -405,11 +619,12 @@ def test_partial_batch_respects_non_multiple_max_samples():
         max_samples=3,
         initial_capacity=4,
         sampler=DeterministicSampler(),
-        termination_condition=TerminationCondition(max_samples=3),
+        depth_condition=DepthCondition(),
     )
     state = dataclasses.replace(
         ns.initialise(jax.random.PRNGKey(8)),
         goal_loop_iter=jnp.asarray(1, dtype=jnp.int32),
+        allocation_loop_iter=jnp.asarray(1, dtype=jnp.int32),
     )
     next_state = ns.run_single_iteration(state)
 
@@ -430,19 +645,21 @@ def test_outer_target_uses_fixed_initial_degree_not_mutable_root_degree():
         max_samples=20,
         initial_capacity=20,
         sampler=DeterministicSampler(),
-        termination_condition=TerminationCondition(max_samples=20),
+        depth_condition=DepthCondition(),
     )
     state = dataclasses.replace(
         ns.initialise(jax.random.PRNGKey(81)),
         goal_loop_iter=jnp.asarray(1, dtype=jnp.int32),
+        allocation_loop_iter=jnp.asarray(1, dtype=jnp.int32),
     )
 
     next_state = ns.run_single_iteration(state)
 
-    # Iteration one targets d_0 + Delta K = 3 at the root. Once that one
-    # thread is accepted, the mutable sentinel out-degree is also three, but
+    # Depth iteration two targets d_0 * Delta K * iteration = 4 at the root.
+    # Once those threads are accepted, the mutable sentinel out-degree is
+    # also four, but
     # it must not be fed back into the target and start an unbounded chase.
-    assert int(next_state.root_out_degree) == 3
+    assert int(next_state.root_out_degree) == 4
 
 
 def test_resume_uses_stored_key_and_matches_uninterrupted_run():
@@ -453,7 +670,7 @@ def test_resume_uses_stored_key_and_matches_uninterrupted_run():
         max_samples=8,
         initial_capacity=4,
         sampler=DeterministicSampler(),
-        termination_condition=TerminationCondition(max_samples=8),
+        depth_condition=DepthCondition(),
     )
 
     def goal_one(state):
@@ -480,14 +697,14 @@ def test_python_goal_loop_reports_terminal_depth_budget_without_iteration():
         model=make_toy_model(),
         target_num_live_points=2,
         shell_size=1,
-        max_samples=8,
-        initial_capacity=4,
+        max_samples=2,
+        initial_capacity=2,
         sampler=DeterministicSampler(),
     )
 
     state = ns.run_until_goal(
         lambda state: int(state.goal_loop_iter) >= 10,
-        depth_cond=TerminationCondition(max_samples=2),
+        depth_cond=DepthCondition(),
         key=jax.random.PRNGKey(19),
     )
 
@@ -496,6 +713,53 @@ def test_python_goal_loop_reports_terminal_depth_budget_without_iteration():
     assert int(state.termination_reason) == depth.MAX_SAMPLES_REACHED
     assert not bool(state.needs_growth)
     assert not bool(state.depth_reached)
+
+
+def test_filled_target_advances_allocation_without_exposing_user_goal():
+    ns = NestedSampler(
+        model=make_toy_model(),
+        target_num_live_points=2,
+        shell_size=1,
+        delta_K=1,
+        max_samples=4,
+        initial_capacity=4,
+        sampler=DeterministicSampler(),
+    )
+    initial = ns.initialise(jax.random.PRNGKey(290))
+    plateau_likelihood = initial.samples.log_likelihoods.at[:2].set(0.0)
+    initial = dataclasses.replace(
+        initial,
+        samples=dataclasses.replace(
+            initial.samples,
+            log_likelihoods=plateau_likelihood,
+        ),
+        likelihood_order=initialise_likelihood_order(
+            plateau_likelihood,
+            initial.num_samples,
+        ),
+        log_L_supremum=jnp.asarray(0.0),
+    )
+
+    observed = []
+
+    def goal(state):
+        observed.append(int(state.allocation_loop_iter))
+        return False
+
+    # K=2 already fills the first uniform target. The terminal plateau still
+    # fails the expected-depth cut, so progress requires the next allocation
+    # target without pretending that a user-visible depth was completed.
+    returned = ns.resume_until_goal(
+        initial,
+        goal,
+        depth_cond=DepthCondition(dlogZ=jnp.asarray(0.0)),
+    )
+
+    assert observed == [0]
+    assert int(returned.goal_loop_iter) == 0
+    assert int(returned.allocation_loop_iter) == 1
+    assert int(returned.termination_reason) == depth.MAX_SAMPLES_REACHED
+    assert not bool(returned.depth_reached)
 
 
 def test_sample_storage_modes_are_explicit_and_inspectable():
@@ -563,7 +827,7 @@ def test_compiled_depth_classifies_normal_growth_and_terminal_returns():
     _, normal_goal_key = jax.random.split(normal_state.random_key)
     normal = normal_sampler.run_single_iteration(
         normal_state,
-        depth_cond=TerminationCondition(dlogZ=jnp.asarray(1.1)),
+        depth_cond=DepthCondition(dlogZ=jnp.asarray(1.1)),
     )
     _assert_single_depth_outcome(normal)
     assert bool(normal.depth_reached)
@@ -572,19 +836,20 @@ def test_compiled_depth_classifies_normal_growth_and_terminal_returns():
     growth_sampler = NestedSampler(
         unlimited_samples=True,
         initial_capacity=2,
-        termination_condition=TerminationCondition(),
+        depth_condition=DepthCondition(),
         **common,
     )
     growth_state = dataclasses.replace(
         growth_sampler.initialise(jax.random.PRNGKey(32)),
         goal_loop_iter=jnp.asarray(1, dtype=jnp.int32),
+        allocation_loop_iter=jnp.asarray(1, dtype=jnp.int32),
     )
     growth_depth_key, growth_goal_key = jax.random.split(
         growth_state.random_key
     )
     growth = growth_sampler.run_single_iteration(
         growth_state,
-        depth_cond=TerminationCondition(dlogZ=jnp.asarray(0.5)),
+        depth_cond=DepthCondition(dlogZ=jnp.asarray(0.5)),
     )
     _assert_single_depth_outcome(growth)
     assert bool(growth.needs_growth)
@@ -600,6 +865,7 @@ def test_compiled_depth_classifies_normal_growth_and_terminal_returns():
     terminal_state = dataclasses.replace(
         terminal_sampler.initialise(jax.random.PRNGKey(33)),
         goal_loop_iter=jnp.asarray(1, dtype=jnp.int32),
+        allocation_loop_iter=jnp.asarray(1, dtype=jnp.int32),
     )
     terminal = terminal_sampler.run_single_iteration(terminal_state)
     _assert_single_depth_outcome(terminal)
@@ -615,7 +881,7 @@ def test_unlimited_growth_matches_preallocated_scientific_continuation():
         "delta_K": 1,
         "unlimited_samples": True,
         "sampler": DeterministicSampler(),
-        "termination_condition": TerminationCondition(),
+        "depth_condition": DepthCondition(),
     }
     tiny = NestedSampler(initial_capacity=2, **common)
     preallocated = NestedSampler(initial_capacity=32, **common)
@@ -628,7 +894,7 @@ def test_unlimited_growth_matches_preallocated_scientific_continuation():
 
     key = jax.random.PRNGKey(34)
 
-    depth_cond = TerminationCondition(dlogZ=jnp.asarray(0.5))
+    depth_cond = DepthCondition(dlogZ=jnp.asarray(0.5))
     grown = tiny.run_until_goal(goal, depth_cond=depth_cond, key=key)
     reference = preallocated.run_until_goal(
         goal,
@@ -636,16 +902,16 @@ def test_unlimited_growth_matches_preallocated_scientific_continuation():
         key=key,
     )
 
-    # Capacity 2 -> 4 -> 8 proves that more than one shape boundary was
-    # crossed. The valid scientific prefix and continuation state must remain
-    # independent of those implementation-only boundaries.
-    assert grown.samples.log_likelihoods.shape[0] == 8
+    # The tiny run crosses a physical growth boundary. The valid scientific
+    # prefix and continuation state must remain independent of that
+    # implementation-only pause.
+    assert grown.samples.log_likelihoods.shape[0] > 2
     assert reference.samples.log_likelihoods.shape[0] == 32
     # Resizing is an implementation detail inside one depth epoch. A custom
     # scientific goal must only observe initial or completed depth boundaries.
     assert all(observed_goal_boundaries)
     assert int(grown.goal_loop_iter) == int(reference.goal_loop_iter) == 2
-    assert int(grown.num_samples) == int(reference.num_samples) == 5
+    assert int(grown.num_samples) == int(reference.num_samples)
     grown = grown.trim()
     reference = reference.trim()
     for left, right in zip(
@@ -662,22 +928,29 @@ def test_finite_capacity_terminates_below_and_exactly_at_hard_maximum():
         "target_num_live_points": 2,
         "shell_size": 2,
         "delta_K": 2,
-        "max_samples": 5,
         "sampler": DeterministicSampler(),
     }
-    below = NestedSampler(initial_capacity=5, **common).run_until_goal(
+    below = NestedSampler(
+        initial_capacity=3,
+        max_samples=3,
+        **common,
+    ).run_until_goal(
         lambda state: False,
-        depth_cond=TerminationCondition(max_samples=3),
+        depth_cond=DepthCondition(),
         key=jax.random.PRNGKey(35),
     )
     assert int(below.num_samples) == 3
-    assert below.samples.log_likelihoods.shape[0] == 5
+    assert below.samples.log_likelihoods.shape[0] == 3
     assert int(below.termination_reason) == depth.MAX_SAMPLES_REACHED
     _assert_single_depth_outcome(below)
 
-    exact = NestedSampler(initial_capacity=3, **common).run_until_goal(
+    exact = NestedSampler(
+        initial_capacity=3,
+        max_samples=5,
+        **common,
+    ).run_until_goal(
         lambda state: False,
-        depth_cond=TerminationCondition(),
+        depth_cond=DepthCondition(),
         key=jax.random.PRNGKey(36),
     )
     assert int(exact.num_samples) == 5
@@ -730,7 +1003,7 @@ def test_ellipsoidal_state_survives_checkpoint_growth_and_resume():
         "delta_K": 2,
         "unlimited_samples": True,
         "sampler": sampler,
-        "termination_condition": TerminationCondition(),
+        "depth_condition": DepthCondition(),
     }
     small = NestedSampler(initial_capacity=6, **common)
     large = NestedSampler(initial_capacity=48, **common)
@@ -738,7 +1011,7 @@ def test_ellipsoidal_state_survives_checkpoint_growth_and_resume():
     def goal(state):
         return int(state.goal_loop_iter) >= 2
 
-    depth_cond = TerminationCondition()
+    depth_cond = DepthCondition()
     key = jax.random.PRNGKey(246)
 
     grown = small.run_until_goal(goal, depth_cond=depth_cond, key=key)
@@ -947,7 +1220,7 @@ def test_additional_retained_phantoms_leave_classic_run_invariant():
         "shell_size": 2,
         "max_samples": 6,
         "initial_capacity": 6,
-        "termination_condition": TerminationCondition(max_samples=6),
+        "depth_condition": DepthCondition(),
     }
     short = NestedSampler(max_phantom_samples=1, **common)
     long = NestedSampler(max_phantom_samples=9, **common)

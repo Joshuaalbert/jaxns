@@ -15,9 +15,9 @@ from jaxctx.priors.prior import Prior
 from tensorflow_probability.substrates import jax as tfp
 
 from jaxns.core import NestedSampler
+from jaxns.depth_condition import DepthCondition
 from jaxns.model import Model
 from jaxns.shrinkage.phantom import _sample_mc_shrinkage_summary_jit
-from jaxns.termination_condition import TerminationCondition
 
 tfpd = tfp.distributions
 
@@ -158,9 +158,7 @@ def main() -> int:
         initial_capacity=args.max_samples,
         collect_phantom_samples=True,
         max_phantom_samples=retained_phantoms,
-        termination_condition=TerminationCondition(
-            max_samples=args.max_samples,
-        ),
+        depth_condition=DepthCondition(),
     )
     run_started = time.perf_counter()
     state = sampler.run(jax.random.PRNGKey(284))

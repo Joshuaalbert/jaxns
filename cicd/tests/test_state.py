@@ -246,6 +246,7 @@ def test_state_merge_applies_terminal_growth_depth_precedence():
         base,
         needs_growth=jnp.asarray(True),
         depth_reached=jnp.asarray(False),
+        allocation_loop_iter=jnp.asarray(2, dtype=jnp.int32),
     )
 
     merged_terminal = terminal.merge(growth)
@@ -257,11 +258,13 @@ def test_state_merge_applies_terminal_growth_depth_precedence():
         base,
         needs_growth=jnp.asarray(False),
         depth_reached=jnp.asarray(True),
+        allocation_loop_iter=jnp.asarray(3, dtype=jnp.int32),
     )
     merged_growth = growth.merge(completed)
     assert int(merged_growth.termination_reason) == 0
     assert bool(merged_growth.needs_growth)
     assert not bool(merged_growth.depth_reached)
+    assert int(merged_growth.allocation_loop_iter) == 5
 
 
 def test_state_merge_keeps_recent_geometry_and_cumulative_direction_work():

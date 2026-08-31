@@ -9,7 +9,11 @@ from jax import numpy as jnp
 
 from cicd.tests.core_fixtures import make_state
 from cicd.tests.distributed_support import make_toy_model
-from jaxns.algorithm.depth import CoreWorkBatch
+from jaxns.algorithm.depth import (
+    SEED_SOURCE_REFRESH_BATCHES,
+    CoreWorkBatch,
+    _start_schedule_round,
+)
 from jaxns.constrained_sampler import (
     ConstrainedSampleBatch,
     ConstrainedSampleRequest,
@@ -18,6 +22,7 @@ from jaxns.constrained_sampler import (
     sample_request,
 )
 from jaxns.core import NestedSampler
+from jaxns.depth_condition import DepthCondition
 from jaxns.distributed_core import (
     DistributedNestedSampler,
     DistributedRunError,
@@ -26,11 +31,11 @@ from jaxns.distributed_core import (
     ReservationState,
     _accept_task,
     _change_reservations,
+    _depth_status,
     _planning_state,
 )
 from jaxns.runtime.client import RuntimeUnavailableError
 from jaxns.samples import PhantomSamples, SeedPoint
-from jaxns.termination_condition import TerminationCondition
 
 
 def _local_checkpoint(
@@ -263,7 +268,14 @@ def test_reservations_are_planning_data_until_once_only_acceptance():
     assert int(provisional.root_out_degree) == 3
     assert int(provisional.samples.out_degree[0]) == 1
 
-    accepted = _accept_task(state, reserved, _work(), batch)
+    accepted = _accept_task(
+        state,
+        reserved,
+        jnp.asarray(0, dtype=jnp.int32),
+        jnp.asarray(2.0),
+        _work(),
+        batch,
+    )
     assert bool(accepted.accepted)
     assert int(accepted.state.num_samples) == 4
     assert int(accepted.state.root_out_degree) == 3
@@ -273,6 +285,62 @@ def test_reservations_are_planning_data_until_once_only_acceptance():
         np.asarray(accepted.reservations.parent_delta),
         np.zeros((6,), dtype=np.int32),
     )
+
+
+def test_distributed_continuation_returns_to_fifo_not_dispatch_window():
+    state = NestedSampler(
+        model=make_toy_model(),
+        root_allocation_degree=2,
+        shell_size=1,
+        max_samples=6,
+        initial_capacity=6,
+    ).initialise(jax.random.PRNGKey(33))
+    state, _, _ = _start_schedule_round(
+        state,
+        DepthCondition(),
+        shell_size=2,
+        allocation_target="uniform",
+        root_degree=2,
+        delta_K=1,
+    )
+    work = CoreWorkBatch(
+        valid=jnp.asarray([True]),
+        parent_idx=jnp.asarray([0], dtype=jnp.int32),
+        log_L_constraint=state.samples.log_likelihoods[0:1],
+        seed_idx=jnp.asarray([1], dtype=jnp.int32),
+    )
+    accepted_log_L = state.samples.log_likelihoods[0] + 1.0
+    batch = ConstrainedSampleBatch(
+        U_samples=state.samples.U_samples[0:1],
+        log_likelihoods=jnp.reshape(accepted_log_L, (1,)),
+        num_likelihood_evaluations=jnp.asarray(
+            [3],
+            dtype=state.samples.num_likelihood_evaluations.dtype,
+        ),
+        phantom_samples=PhantomSamples(
+            U_samples=jnp.zeros((1, 0)),
+            valid_mask=jnp.zeros((1, 0), dtype=bool),
+            log_L=jnp.zeros((1, 0)),
+        ),
+        num_directions=jnp.zeros((1,), dtype=jnp.int32),
+        num_isotropic=jnp.zeros((1,), dtype=jnp.int32),
+    )
+    accepted = _accept_task(
+        state,
+        _change_reservations(ReservationState.empty(6), work, 1),
+        jnp.asarray(7, dtype=jnp.int32),
+        accepted_log_L + 1.0,
+        work,
+        batch,
+    )
+
+    assert bool(accepted.accepted)
+    schedule = accepted.state.scheduler_data
+    assert int(schedule.continuation_count) == 1
+    slot = int(schedule.continuation_head)
+    assert int(schedule.continuation_parent_idx[slot]) == 2
+    assert int(schedule.continuation_thread_id[slot]) == 7
+    assert not bool(jnp.any(schedule.valid))
 
 
 def test_distributed_checkpoint_preserves_unreturned_task_and_keys():
@@ -301,7 +369,13 @@ def test_distributed_checkpoint_preserves_unreturned_task_and_keys():
     checkpoint = DistributedState(
         state=state,
         reservations=reservations,
-        pending=(PendingTask(task_id=7, work=work, request=request),),
+        pending=(PendingTask(
+            task_id=7,
+            thread_id=jnp.asarray(3, dtype=jnp.int32),
+            terminal_log_L=jnp.asarray(2.0),
+            work=work,
+            request=request,
+        ),),
         next_task_id=8,
         session_id="session",
         depth_active=True,
@@ -359,7 +433,13 @@ def test_growth_preserves_pending_payload_and_logical_depth():
             work,
             1,
         ),
-        pending=(PendingTask(0, work, request),),
+        pending=(PendingTask(
+            task_id=0,
+            thread_id=jnp.asarray(0, dtype=jnp.int32),
+            terminal_log_L=jnp.asarray(2.0),
+            work=work,
+            request=request,
+        ),),
         next_task_id=1,
         session_id="session",
         depth_active=True,
@@ -387,7 +467,7 @@ def test_submit_failure_exposes_newest_resumable_checkpoint():
         model=model,
         coordinator_port=5555,
         root_allocation_degree=2,
-        delta_K=1,
+        delta_K=2,
         max_samples=8,
         initial_capacity=8,
     )
@@ -396,7 +476,7 @@ def test_submit_failure_exposes_newest_resumable_checkpoint():
         runner._dispatch_threads(
             Client(),
             checkpoint,
-            TerminationCondition(),
+            DepthCondition(),
             lane_capacity=1,
         )
     except DistributedRunError as exc:
@@ -419,7 +499,7 @@ def test_submit_failure_exposes_newest_resumable_checkpoint():
         runner._dispatch_threads(
             UnavailableClient(),
             checkpoint,
-            TerminationCondition(),
+            DepthCondition(),
         )
     except DistributedRunError as exc:
         unavailable = exc.checkpoint
@@ -455,7 +535,7 @@ def test_worker_slots_are_not_refilled_after_sample_budget_terminates():
     returned = runner._dispatch_threads(
         client,
         checkpoint,
-        TerminationCondition(),
+        DepthCondition(),
         lane_capacity=2,
     )
 
@@ -478,7 +558,7 @@ def test_distributed_dispatch_queues_scalar_threads_without_shell_barrier():
         model=model,
         coordinator_port=5555,
         root_allocation_degree=4,
-        delta_K=4,
+        delta_K=1,
         max_samples=16,
         initial_capacity=12,
     )
@@ -488,16 +568,219 @@ def test_distributed_dispatch_queues_scalar_threads_without_shell_barrier():
     queued = runner._dispatch_threads(
         client,
         checkpoint,
-        TerminationCondition(),
+        DepthCondition(),
         lane_capacity=8,
     )
 
     assert len(client.requests) > 1
     assert len(client.requests) == len(queued.pending)
+    assert queued.state.scheduler_data.valid.shape[0] == 8
+    assert len(queued.pending) <= queued.state.scheduler_data.valid.shape[0]
     assert all(
         request.log_L_constraints.shape == (1,)
         for request in client.requests
     )
+
+
+def test_distributed_planning_width_tracks_worker_capacity():
+    """A large compressed allocation gap must not manufacture seed lanes."""
+    class Client:
+        def submit_many(self, session_id, tasks):
+            del session_id, tasks
+
+    runner = DistributedNestedSampler(
+        model=make_toy_model(),
+        coordinator_port=5555,
+        root_allocation_degree=2,
+        delta_K=128,
+        max_samples=32,
+        initial_capacity=2,
+    )
+    checkpoint = _local_checkpoint(runner, jax.random.PRNGKey(32))
+
+    queued = runner._dispatch_threads(
+        Client(),
+        checkpoint,
+        DepthCondition(),
+        lane_capacity=1,
+    )
+
+    assert queued.state.scheduler_data.valid.shape[0] == 1
+
+
+def test_distributed_seed_refresh_waits_for_no_pending_tasks():
+    state = make_state(
+        root_out_degree=2,
+        log_likelihoods=(1.0, 2.0),
+        log_L_constraints=(-np.inf, -np.inf),
+        out_degree=(0, 0),
+        max_samples=100,
+    )
+    state, schedule, _ = _start_schedule_round(
+        state,
+        DepthCondition(),
+        shell_size=2,
+        allocation_target="uniform",
+        root_degree=2,
+        delta_K=1,
+    )
+    refresh_rows = (
+        schedule.seed_reservoir_idx.shape[0]
+        * SEED_SOURCE_REFRESH_BATCHES
+    )
+    state = dataclasses.replace(
+        state,
+        num_samples=state.num_samples + refresh_rows,
+    )
+
+    drained = _depth_status(
+        state,
+        ReservationState.empty(100),
+        max_samples=None,
+    )
+    pending = _depth_status(
+        state,
+        dataclasses.replace(
+            ReservationState.empty(100),
+            num_reserved=jnp.asarray(1, dtype=jnp.int32),
+        ),
+        max_samples=None,
+    )
+
+    assert bool(drained.schedule_drained)
+    assert not bool(drained.has_work)
+    assert not bool(pending.schedule_drained)
+
+
+def test_distributed_dispatch_starts_evidence_utility_schedule():
+    """Distributed dispatch must preserve the local utility target exactly."""
+    class Client:
+        def __init__(self):
+            self.tasks = []
+
+        def submit_many(self, session_id, tasks):
+            del session_id
+            self.tasks.extend(tasks)
+
+    runner = DistributedNestedSampler(
+        model=make_toy_model(),
+        coordinator_port=5555,
+        root_allocation_degree=4,
+        allocation_target="evidence_improving",
+        delta_K=3,
+        max_samples=16,
+        initial_capacity=12,
+    )
+    checkpoint = _local_checkpoint(runner, jax.random.PRNGKey(33))
+    _, expected_schedule, _ = _start_schedule_round(
+        checkpoint.state,
+        DepthCondition(),
+        shell_size=2,
+        allocation_target="evidence_improving",
+        root_degree=4,
+        delta_K=3,
+    )
+    client = Client()
+
+    queued = runner._dispatch_threads(
+        client,
+        checkpoint,
+        DepthCondition(),
+        lane_capacity=2,
+    )
+
+    assert client.tasks
+    assert len(queued.pending) == len(client.tasks)
+    np.testing.assert_array_equal(
+        np.asarray(queued.state.scheduler_data.target_K),
+        np.asarray(expected_schedule.target_K),
+    )
+
+
+def test_distributed_refill_reserves_pending_same_contour_seed():
+    class Client:
+        def submit_many(self, session_id, tasks):
+            del session_id, tasks
+
+    runner = DistributedNestedSampler(
+        model=make_toy_model(),
+        coordinator_port=5555,
+        root_allocation_degree=2,
+        delta_K=1,
+        max_samples=8,
+        initial_capacity=8,
+    )
+    state = make_state(
+        root_out_degree=2,
+        log_likelihoods=(1.0, 2.0),
+        log_L_constraints=(-np.inf, -np.inf),
+        out_degree=(0, 0),
+        max_samples=8,
+    )
+    state = dataclasses.replace(
+        state,
+        allocation_loop_iter=jnp.asarray(1, dtype=jnp.int32),
+        random_key=jax.random.PRNGKey(290),
+        goal_key=jax.random.PRNGKey(291),
+    )
+    state, schedule, _ = _start_schedule_round(
+        state,
+        DepthCondition(),
+        shell_size=2,
+        allocation_target="uniform",
+        root_degree=2,
+        delta_K=1,
+    )
+    # Isolate refill behavior with two already-materialised root threads. The
+    # compressed queue is exhausted so only these equal-contour heads can be
+    # dispatched across the two separate calls below.
+    schedule = dataclasses.replace(
+        schedule,
+        parent_idx=jnp.full_like(schedule.parent_idx, -1),
+        thread_id=jnp.arange(2, dtype=schedule.thread_id.dtype),
+        log_L_constraint=jnp.asarray([-jnp.inf, -jnp.inf]),
+        terminal_log_L=jnp.asarray([1.0, 1.0]),
+        valid=jnp.asarray([True, True]),
+        next_run=schedule.num_runs,
+        remaining_in_run=jnp.asarray(
+            0,
+            dtype=schedule.remaining_in_run.dtype,
+        ),
+        next_thread_id=jnp.asarray(2, dtype=schedule.next_thread_id.dtype),
+        active=jnp.asarray(True),
+    )
+    state = dataclasses.replace(state, scheduler_data=schedule)
+    checkpoint = DistributedState(
+        state=state,
+        reservations=ReservationState.empty(8),
+        pending=(),
+        next_task_id=0,
+        session_id="unit-test",
+        depth_active=True,
+        goal_key=state.goal_key,
+    )
+
+    first = runner._dispatch_threads(
+        Client(),
+        checkpoint,
+        DepthCondition(),
+        lane_capacity=1,
+    )
+    refilled = runner._dispatch_threads(
+        Client(),
+        first,
+        DepthCondition(),
+        lane_capacity=2,
+    )
+
+    assert len(refilled.pending) == 2
+    first_work, second_work = (
+        pending.work for pending in refilled.pending
+    )
+    assert float(first_work.log_L_constraint[0]) == float(
+        second_work.log_L_constraint[0]
+    )
+    assert int(first_work.seed_idx[0]) != int(second_work.seed_idx[0])
 
 
 def test_worker_request_uses_scalar_and_vmap_paths_above_strict_contour():

@@ -14,7 +14,7 @@ import the concrete owner rather than relying on a second re-export surface.
 | `core.py` | Local runner configuration and the Python goal loop. |
 | `distributed_core.py` | Distributed runner configuration and asynchronous orchestration. |
 | `samples.py`, `state.py`, `results.py` | Object-oriented scientific data, state transitions, and result methods. |
-| `termination_condition.py`, `checkpoint.py` | User-supplied stopping policy and durable run continuation. |
+| `depth_condition.py`, `checkpoint.py` | Compiled depth policy and durable run continuation. |
 
 These modules may delegate work, but they remain meaningful API owners rather
 than compatibility-only facades.

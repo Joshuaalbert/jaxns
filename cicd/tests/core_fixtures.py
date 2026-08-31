@@ -1,5 +1,6 @@
 """Small deterministic race-tree fixtures shared by core unit tests."""
 
+import jax
 import numpy as np
 from jax import numpy as jnp
 
@@ -57,4 +58,6 @@ def make_state(
         U_supremum=samples.U_samples[supremum_idx],
         model=make_toy_model(),
         termination_reason=jnp.asarray(0, dtype=jnp.int32),
+        random_key=jax.random.PRNGKey(290),
+        goal_key=jax.random.PRNGKey(291),
     )

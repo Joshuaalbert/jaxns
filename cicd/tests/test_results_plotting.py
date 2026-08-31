@@ -209,9 +209,23 @@ def test_summary_does_not_compare_incommensurate_phantom_statistics():
     results.summary(f_obj=output)
 
     summary = output.getvalue()
+    assert "Run status:" in summary
+    assert "No hard termination reason" in summary
     assert "logZ (classic expected)=" in summary
     assert "posterior ESS (Kish)=" in summary
     assert "with phantom" not in summary
+
+
+def test_summary_decodes_the_only_hard_termination_reason():
+    results = dataclasses.replace(
+        _make_fake_results(),
+        termination_reason=jnp.asarray(1),
+    )
+    output = io.StringIO()
+
+    results.summary(f_obj=output)
+
+    assert "Reached max samples" in output.getvalue()
 
 
 def test_plot_evidence_compares_explicit_conditionings_and_exact_value(

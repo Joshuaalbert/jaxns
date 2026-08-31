@@ -163,7 +163,7 @@ def _depth_program(ns: NestedSampler) -> dict:
     lowered = _run_depth.lower(
         state,
         ns.sampler,
-        ns.termination_condition,
+        ns.depth_condition,
         shell_size=int(ns.shell_size),
         allocation_target=ns.allocation_target,
         root_degree=int(ns.root_allocation_degree),
@@ -177,7 +177,7 @@ def _depth_program(ns: NestedSampler) -> dict:
     execution = []
     for _ in range(3):
         start = time.perf_counter()
-        output = compiled(state, ns.sampler, ns.termination_condition)
+        output = compiled(state, ns.sampler, ns.depth_condition)
         jax.block_until_ready(output)
         execution.append(time.perf_counter() - start)
     memory = compiled.memory_analysis()
@@ -266,7 +266,7 @@ def main() -> None:
         "root_degree": root_degree,
         "replacement_width": shell_size,
         "num_slices": num_slices,
-        "dlogZ": float(nested_sampler.termination_condition.dlogZ),
+        "dlogZ": float(nested_sampler.depth_condition.dlogZ),
         "num_components": None if direction is None else direction.num_components,
         "min_effective_samples": (
             None if direction is None else direction.min_effective_samples

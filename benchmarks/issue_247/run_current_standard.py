@@ -108,10 +108,9 @@ def main():
         )
         lower_start = time.perf_counter()
         lowered = _run_depth.lower(
-            example_key,
             depth_state,
             ns.sampler,
-            ns.termination_condition,
+            ns.depth_condition,
             shell_size=shell_size,
             allocation_target=ns.allocation_target,
             root_degree=root_degree,
@@ -125,10 +124,9 @@ def main():
         for warm_idx in range(2):
             warm_start = time.perf_counter()
             warm_state = compiled(
-                jax.random.fold_in(example_key, warm_idx),
                 depth_state,
                 ns.sampler,
-                ns.termination_condition,
+                ns.depth_condition,
             )
             jax.block_until_ready(warm_state)
             warm_times.append(time.perf_counter() - warm_start)
@@ -171,7 +169,7 @@ def main():
         "allocation_increment": int(ns.delta_K),
         "num_slices": int(ns.sampler.num_slices),
         "num_retained_phantoms": int(ns.sampler.num_phantom()),
-        "dlogZ": float(ns.termination_condition.dlogZ),
+        "dlogZ": float(ns.depth_condition.dlogZ),
         "lower_s": lower_s,
         "compile_s": compile_s,
         "warmed_depth_s": warm_times[-1] if warm_times else None,

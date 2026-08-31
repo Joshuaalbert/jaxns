@@ -6,10 +6,10 @@ import jax.random
 import jax.tree
 import numpy as np
 from jax import numpy as jnp
-from jax.scipy.special import logsumexp
 from jaxctx import CtxParams
 
-from jaxns.algorithm.race_tree import BlockState, LikelihoodOrder, build_block_state
+from jaxns.algorithm.race_tree import LikelihoodOrder, build_block_state
+from jaxns.algorithm.scheduler import ThreadSchedule
 from jaxns.cumulative_ops import scan_or_while_loop
 from jaxns.log_semiring import LogSpace, normalise_log_space
 from jaxns.mixed_precision import mp_policy
@@ -29,7 +29,6 @@ from jaxns.shrinkage.classic import (
 from jaxns.shrinkage.online import EvidenceCalculation
 from jaxns.shrinkage.phantom import EvidenceSamples
 from jaxns.stats_utils import effective_sample_size_kish
-from jaxns.termination_condition import TerminationRegister
 from jaxns.types import BoolArray, FloatArray, IntArray
 
 
@@ -42,12 +41,18 @@ class State(PureDataclassPytree):
     log_L_supremum: FloatArray  # [] maximum likelihood seen so far
     U_supremum: UType  # [...] one point in the unit-hypercube pytree
 
-    termination_reason: IntArray  # [] bit mask
+    termination_reason: IntArray  # [] zero or a hard-stop reason code
 
     model: Model
     args: tuple = ()
     params: CtxParams | None = None
     goal_loop_iter: IntArray = dataclasses.field(  # []
+        default_factory=lambda: jnp.asarray(0, mp_policy.count_dtype)
+    )
+    # Allocation targets may advance several times inside one expected-depth
+    # traversal (for example, to resolve a terminal plateau) without exposing
+    # an intermediate state to the user goal.
+    allocation_loop_iter: IntArray = dataclasses.field(  # []
         default_factory=lambda: jnp.asarray(0, mp_policy.count_dtype)
     )
     depth_loop_iter: IntArray = dataclasses.field(  # []
@@ -61,6 +66,9 @@ class State(PureDataclassPytree):
     needs_growth: BoolArray = dataclasses.field(  # []
         default_factory=lambda: jnp.asarray(False, mp_policy.bool_dtype)
     )
+    # True only at a Python goal boundary after the expected-depth cut is met.
+    # Filling one allocation target without reaching that cut advances
+    # allocation_loop_iter internally and remains invisible to the user goal.
     depth_reached: BoolArray = dataclasses.field(  # []
         default_factory=lambda: jnp.asarray(False, mp_policy.bool_dtype)
     )
@@ -68,6 +76,10 @@ class State(PureDataclassPytree):
     # result. Keeping it on State makes capacity growth and checkpoint/resume
     # reproduce the same future transition kernels without hidden mutation.
     sampler_data: SamplerData | None = None
+    # A frozen schedule is present only while one planning round is incomplete.
+    # It makes storage growth and checkpoint resume transparent without adding
+    # parent identities to scientific samples or results.
+    scheduler_data: ThreadSchedule | None = None
 
     def merge(self, other: 'State') -> 'State':
         """
@@ -168,23 +180,6 @@ class State(PureDataclassPytree):
             diagnostics=diagnostics,
         )
 
-    def compute_termination_register(
-            self,
-            target_num_live_points: int | None = None,
-    ) -> TerminationRegister:
-        """
-        Compute the termination register, which contains all the information needed to evaluate the termination condition, and to compute the evidence if the run is terminated.
-
-        Args:
-            target_num_live_points: Deprecated compatibility argument. The
-                register is derived from the current race blocks.
-
-        Returns:
-            a TerminationRegister containing all the information needed to evaluate the termination condition, and to compute the evidence if the run is terminated.
-        """
-        del target_num_live_points
-        return _compute_termination_register(self)
-
     def to_result(self: "State") -> NestedSamplerResults:
         """Convert this state to user-facing samples and diagnostics.
 
@@ -230,6 +225,11 @@ class State(PureDataclassPytree):
                 if self.likelihood_order is None
                 else self.likelihood_order.resize(max_samples)
             ),
+            scheduler_data=(
+                None
+                if self.scheduler_data is None
+                else self.scheduler_data.resize(max_samples)
+            ),
         )
 
 
@@ -238,6 +238,12 @@ State.register_pytree()
 
 def _trim(self: State) -> State:
     num_samples = int(np.asarray(self.num_samples))
+    scheduler_data = self.scheduler_data
+    if scheduler_data is not None:
+        if bool(np.asarray(scheduler_data.active)):
+            scheduler_data = scheduler_data.resize(num_samples)
+        else:
+            scheduler_data = None
     return dataclasses.replace(
         self,
         samples=self.samples.slice(
@@ -254,6 +260,7 @@ def _trim(self: State) -> State:
                 ]
             )
         ),
+        scheduler_data=scheduler_data,
     )
 
 
@@ -504,6 +511,9 @@ def _merge(self: State, other: State) -> 'State':
         args=self.args,
         params=self.params,
         goal_loop_iter=self.goal_loop_iter + other.goal_loop_iter,
+        allocation_loop_iter=(
+            self.allocation_loop_iter + other.allocation_loop_iter
+        ),
         depth_loop_iter=self.depth_loop_iter + other.depth_loop_iter,
         # Merging changes append identities, so rebuild this optional cache on
         # first use instead of pretending either input ordering is still valid.
@@ -513,6 +523,7 @@ def _merge(self: State, other: State) -> 'State':
         needs_growth=needs_growth,
         depth_reached=depth_reached,
         sampler_data=sampler_data,
+        scheduler_data=None,
     )
 
 
@@ -609,127 +620,3 @@ def _sample_logZ(self: State, key, num_samples: int) -> FloatArray:
         concentrations=concentrations,
         num_samples=num_samples,
     ).log_Z_samples
-
-
-@partial(jax.jit, inline=True)
-def _compute_termination_register(state: State) -> TerminationRegister:
-    """Build a linear-memory expectation register for a depth-loop check."""
-    block_state = build_block_state(
-        state.samples,
-        root_out_degree=state.root_out_degree,
-        num_samples=state.num_samples,
-        likelihood_order=state.likelihood_order,
-    )
-    concentrations = classic_dirichlet_concentrations(block_state)
-    alpha0 = (
-        concentrations.alpha_gt
-        + concentrations.alpha_eq
-        + concentrations.alpha_lt
-    )
-    valid = block_state.valid & (alpha0 > 0.0)
-    p_gt = jnp.where(valid, concentrations.alpha_gt / alpha0, 1.0)
-    p_gt = jnp.clip(p_gt, 1e-300, 1.0)
-    X = jnp.cumprod(jnp.where(valid, p_gt, 1.0))
-    X_prev = jnp.concatenate(
-        [jnp.ones((1,), X.dtype), X[:-1]],
-        axis=0,
-    )
-    shell_mass = jnp.maximum(X_prev - X, 0.0)
-    return termination_register_from_volume_path(
-        state,
-        block_state,
-        X,
-        shell_mass,
-    )
-
-
-def termination_register_from_volume_path(
-        state: State,
-        block_state: BlockState,
-        X: FloatArray,
-        shell_mass: FloatArray,
-) -> TerminationRegister:
-    """Summarise a shared deterministic volume path for loop conditions."""
-    valid = block_state.valid
-    log_X = jnp.where(
-        valid & (X > 0.0),
-        jnp.log(X),
-        -jnp.inf,
-    )
-    log_dX = jnp.where(
-        valid & (shell_mass > 0.0),
-        jnp.log(shell_mass),
-        -jnp.inf,
-    )
-    log_dZ = jnp.where(
-        valid,
-        block_state.log_L_blocks + log_dX,
-        -jnp.inf,
-    )
-    log_Z = logsumexp(log_dZ)
-    posterior_weights = jnp.exp(log_dZ - log_Z)
-    ess = 1.0 / jnp.sum(jnp.square(posterior_weights))
-    information = jnp.sum(
-        jnp.where(
-            valid,
-            posterior_weights * (block_state.log_L_blocks - log_Z),
-            0.0,
-        )
-    )
-    mean_K = jnp.sum(
-        posterior_weights
-        * jnp.maximum(block_state.incoming_K, 1).astype(log_X.dtype)
-    )
-    log_Z_uncert = jnp.sqrt(jnp.maximum(information, 0.0) / mean_K)
-
-    num_blocks = block_state.num_blocks
-    last_idx = jnp.maximum(num_blocks - 1, 0)
-    log_remaining = block_state.log_L_blocks[last_idx] + log_X[last_idx]
-    remaining_fraction = jnp.exp(
-        log_remaining - jnp.logaddexp(log_Z, log_remaining)
-    )
-    log_XL = jnp.where(
-        valid,
-        block_state.log_L_blocks + log_X,
-        -jnp.inf,
-    )
-    posterior_tail_fraction = jnp.exp(
-        log_XL[last_idx] - jnp.max(log_XL)
-    )
-
-    num_likelihood_evaluations = jnp.sum(
-        jnp.where(
-            jnp.arange(state.samples.log_likelihoods.shape[0])
-            < state.num_samples,
-            state.samples.num_likelihood_evaluations,
-            0,
-        )
-    )
-    efficiency = state.num_samples.astype(log_X.dtype) / jnp.maximum(
-        num_likelihood_evaluations.astype(log_X.dtype),
-        1.0,
-    )
-    first_log_L = block_state.log_L_blocks[0]
-    last_log_L = block_state.log_L_blocks[last_idx]
-    absolute_spread = jnp.abs(last_log_L - first_log_L)
-    relative_spread = 2.0 * absolute_spread / jnp.maximum(
-        jnp.abs(last_log_L + first_log_L),
-        jnp.finfo(log_X.dtype).eps,
-    )
-    plateau = num_blocks == 1
-    return TerminationRegister(
-        num_samples_used=state.num_samples,
-        num_likelihood_evaluations=num_likelihood_evaluations,
-        log_Z_mean=log_Z,
-        log_Z_uncert=log_Z_uncert,
-        remaining_evidence_fraction=remaining_fraction,
-        posterior_tail_fraction=posterior_tail_fraction,
-        ess=ess,
-        log_L_max=state.log_L_supremum,
-        log_L_contour_max=last_log_L,
-        efficiency_shrinkage=efficiency,
-        plateau=plateau,
-        no_seed_points=jnp.asarray(False, mp_policy.bool_dtype),
-        relative_spread=relative_spread,
-        absolute_spread=absolute_spread,
-    )

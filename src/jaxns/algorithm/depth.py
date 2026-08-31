@@ -7,16 +7,26 @@ from typing import NamedTuple
 import jax
 import jax.numpy as jnp
 
-from jaxns.algorithm.allocation import AllocationPlan, build_allocation_plan
+from jaxns.algorithm.allocation import (
+    AllocationPlan,
+    VolumePath,
+    build_allocation_plan,
+    expected_volume_path,
+)
 from jaxns.algorithm.race_tree import (
     BlockState,
     build_block_state,
+    initialise_likelihood_order,
 )
+from jaxns.algorithm.scheduler import ThreadSchedule
 from jaxns.constrained_sampler import (
     AbstractSampler,
     ConstrainedSampleBatch,
     ConstrainedSampleRequest,
     sample_request,
+)
+from jaxns.depth_condition import (
+    DepthCondition,
 )
 from jaxns.mixed_precision import mp_policy
 from jaxns.pytree import PureDataclassPytree, pytree_ravel
@@ -25,16 +35,16 @@ from jaxns.sampling.ellipsoid import update_sampler_data
 from jaxns.shrinkage.classic import (
     classic_dirichlet_concentrations,
 )
-from jaxns.state import State, termination_register_from_volume_path
-from jaxns.termination_condition import (
-    TerminationCondition,
-    TerminationRegister,
-)
+from jaxns.state import State
 from jaxns.types import BoolArray, FloatArray, IntArray, PRNGKey
 
 # This reason is shared by local and distributed depth execution so both
 # runners expose the same resumable storage-boundary contract.
 MAX_SAMPLES_REACHED = 1
+# A bounded seed population is refreshed before rejection through a long
+# frozen schedule dominates coordination. Thirty-two batches amortise the
+# population rebuild while bounding work independently of schedule length.
+SEED_SOURCE_REFRESH_BATCHES = 32
 
 
 @dataclasses.dataclass(slots=True, frozen=True)
@@ -57,48 +67,25 @@ class CoreWorkBatch(PureDataclassPytree):
 CoreWorkBatch.register_pytree()
 
 
-def _first_masked_index(mask: BoolArray) -> IntArray:
-    indices = jnp.arange(mask.shape[0], dtype=mp_policy.index_dtype)
-    return jnp.min(
-        jnp.where(mask, indices, jnp.asarray(mask.shape[0], indices.dtype))
-    )
-
-
-def _uniform_ranked_masked(
-        unit_draw: FloatArray,
-        mask: BoolArray,
-) -> IntArray:
-    """Map a uniform draw to a uniform rank among masked entries."""
-    cumulative = jnp.cumsum(mask.astype(mp_policy.index_dtype))
-    count = cumulative[-1]
-    rank = jnp.minimum(
-        jnp.floor(unit_draw * count).astype(mp_policy.index_dtype),
-        jnp.maximum(count - 1, 0),
-    )
-    return _first_masked_index(mask & (cumulative > rank))
-
-
-def _depth_relevant_blocks(
-        plan: AllocationPlan,
-        depth_cond: TerminationCondition,
+def _depth_relevant_path(
+        log_L_blocks: FloatArray,
+        valid: BoolArray,
+        volume_path: VolumePath,
+        depth_cond: DepthCondition,
 ) -> BoolArray:
     """Mask blocks before the expectation-based evidence/posterior cutoff."""
-    # This runs inside every compiled depth iteration. Use the deterministic
-    # expected volume path here; the more expensive MC shrinkage ensemble is a
-    # final-result calculation and may also be used by the Python goal loop.
-    valid = plan.valid
     log_shell_mass = jnp.where(
-        valid & (plan.volume_path.shell_mass > 0),
-        jnp.log(plan.volume_path.shell_mass),
+        valid & (volume_path.shell_mass > 0),
+        jnp.log(volume_path.shell_mass),
         -jnp.inf,
     )
-    log_dZ = plan.log_L_blocks + log_shell_mass
+    log_dZ = log_L_blocks + log_shell_mass
     log_Z_prefix = jax.lax.associative_scan(jnp.logaddexp, log_dZ)
     log_remaining = (
-        plan.log_L_blocks
+        log_L_blocks
         + jnp.where(
-            plan.volume_path.X > 0,
-            jnp.log(plan.volume_path.X),
+            volume_path.X > 0,
+            jnp.log(volume_path.X),
             -jnp.inf,
         )
     )
@@ -134,27 +121,17 @@ def _depth_relevant_blocks(
     return relevant
 
 
-def _stationary_seed_mask(
-        state: State,
-        log_L_constraint: FloatArray,
-        from_root: BoolArray,
+def _depth_relevant_blocks(
+        plan: AllocationPlan,
+        depth_cond: DepthCondition,
 ) -> BoolArray:
-    """Return exact stationary seeds for a requested parent contour.
-
-    A classic sample is stationary at lambda exactly when its own generation
-    interval contains lambda: parent_constraint <= lambda < likelihood. Root
-    fallback is deliberately narrower and may only use sentinel children.
-    """
-    valid = (
-        jnp.arange(state.samples.log_likelihoods.shape[0])
-        < state.num_samples
+    """Apply expected-depth limits to one already-built allocation plan."""
+    return _depth_relevant_path(
+        plan.log_L_blocks,
+        plan.valid,
+        plan.volume_path,
+        depth_cond,
     )
-    interval_contains = (
-        (state.samples.log_L_constraints <= log_L_constraint)
-        & (state.samples.log_likelihoods > log_L_constraint)
-    )
-    root_child = jnp.isneginf(state.samples.log_L_constraints)
-    return valid & jnp.where(from_root, root_child, interval_contains)
 
 
 def _sample_parent_from_block(
@@ -183,171 +160,1106 @@ def _sample_parent_from_block(
     )
 
 
-def _closest_seedable_parent_block(
-        state: State,
-        block_state: BlockState,
-        requested_block_idx: IntArray,
-) -> IntArray:
-    """Resolve a requested contour to itself or its closest seedable ancestor."""
-    requested_constraint = jnp.where(
-        requested_block_idx >= 0,
-        block_state.log_L_blocks[jnp.maximum(requested_block_idx, 0)],
-        jnp.asarray(-jnp.inf, mp_policy.measure_dtype),
-    )
-    requested_has_seed = jnp.any(
-        _stationary_seed_mask(
-            state,
-            requested_constraint,
-            requested_block_idx < 0,
-        )
-    )
+def _decompose_gap(gap: IntArray) -> tuple[
+    IntArray,
+    IntArray,
+    IntArray,
+    IntArray,
+]:
+    """Compress a gap curve into laminar maximal-thread runs in O(G).
 
-    # The fallback is rarely taken. Scan ancestors one at a time so the common
-    # scheduler path never constructs a blocks-by-samples eligibility matrix.
-    def fallback_cond(fallback_carry):
-        candidate_block, found = fallback_carry
-        return (candidate_block >= 0) & jnp.logical_not(found)
+    A maximal thread is one connected component of an integer superlevel of
+    the gap. A LIFO rise/fall sweep is the canonical laminar decomposition and
+    emits at most G `(start, terminal, multiplicity)` runs even when the
+    integer gap itself is very large.
+    """
+    gap = gap.astype(mp_policy.count_dtype)
+    size = gap.shape[0]
+    stack_start = jnp.zeros((size,), mp_policy.index_dtype)  # [G]
+    stack_count = jnp.zeros((size,), mp_policy.count_dtype)  # [G]
+    run_start = jnp.zeros((size,), mp_policy.index_dtype)  # [G]
+    run_terminal = jnp.zeros((size,), mp_policy.index_dtype)  # [G]
+    run_count = jnp.zeros((size,), mp_policy.count_dtype)  # [G]
 
-    def fallback_body(fallback_carry):
-        candidate_block, _ = fallback_carry
-        candidate_constraint = block_state.log_L_blocks[candidate_block]
-        found = jnp.any(
-            _stationary_seed_mask(
-                state,
-                candidate_constraint,
-                jnp.asarray(False, mp_policy.bool_dtype),
-            )
-        )
-        return jnp.where(found, candidate_block, candidate_block - 1), found
-
-    fallback_block_idx, fallback_found = jax.lax.while_loop(
-        fallback_cond,
-        fallback_body,
+    def sweep(block_idx, carry):
         (
-            requested_block_idx - 1,
-            jnp.asarray(False, mp_policy.bool_dtype),
+            starts,
+            counts,
+            stack_size,
+            emitted_start,
+            emitted_terminal,
+            emitted_count,
+            num_runs,
+        ) = carry
+        previous = jnp.where(
+            block_idx > 0,
+            gap[jnp.maximum(block_idx - 1, 0)],
+            jnp.asarray(0, gap.dtype),
+        )
+        following = jnp.where(
+            block_idx + 1 < size,
+            gap[jnp.minimum(block_idx + 1, size - 1)],
+            jnp.asarray(0, gap.dtype),
+        )
+        rise = jnp.maximum(gap[block_idx] - previous, 0)
+        fall = jnp.maximum(gap[block_idx] - following, 0)
+
+        def push(values):
+            one_starts, one_counts, one_size = values
+            one_starts = one_starts.at[one_size].set(block_idx)
+            one_counts = one_counts.at[one_size].set(rise)
+            return one_starts, one_counts, one_size + 1
+
+        starts, counts, stack_size = jax.lax.cond(
+            rise > 0,
+            push,
+            lambda values: values,
+            (starts, counts, stack_size),
+        )
+
+        def consume_cond(values):
+            remaining, *_ = values
+            return remaining > 0
+
+        def consume_body(values):
+            (
+                remaining,
+                one_starts,
+                one_counts,
+                one_size,
+                one_run_start,
+                one_run_terminal,
+                one_run_count,
+                one_num_runs,
+            ) = values
+            top = one_size - 1
+            take = jnp.minimum(remaining, one_counts[top])
+            one_run_start = one_run_start.at[one_num_runs].set(
+                one_starts[top]
+            )
+            one_run_terminal = one_run_terminal.at[one_num_runs].set(
+                block_idx
+            )
+            one_run_count = one_run_count.at[one_num_runs].set(take)
+            left = one_counts[top] - take
+            one_counts = one_counts.at[top].set(left)
+            one_size = one_size - (left == 0).astype(one_size.dtype)
+            return (
+                remaining - take,
+                one_starts,
+                one_counts,
+                one_size,
+                one_run_start,
+                one_run_terminal,
+                one_run_count,
+                one_num_runs + 1,
+            )
+
+        (
+            _,
+            starts,
+            counts,
+            stack_size,
+            emitted_start,
+            emitted_terminal,
+            emitted_count,
+            num_runs,
+        ) = jax.lax.while_loop(
+            consume_cond,
+            consume_body,
+            (
+                fall,
+                starts,
+                counts,
+                stack_size,
+                emitted_start,
+                emitted_terminal,
+                emitted_count,
+                num_runs,
+            ),
+        )
+        return (
+            starts,
+            counts,
+            stack_size,
+            emitted_start,
+            emitted_terminal,
+            emitted_count,
+            num_runs,
+        )
+
+    (
+        _,
+        _,
+        _,
+        run_start,
+        run_terminal,
+        run_count,
+        num_runs,
+    ) = jax.lax.fori_loop(
+        0,
+        size,
+        sweep,
+        (
+            stack_start,
+            stack_count,
+            jnp.asarray(0, mp_policy.index_dtype),
+            run_start,
+            run_terminal,
+            run_count,
+            jnp.asarray(0, mp_policy.index_dtype),
         ),
     )
-    return jnp.where(
-        requested_has_seed,
-        requested_block_idx,
-        jnp.where(fallback_found, fallback_block_idx, -1),
-    )
+    return run_start, run_terminal, run_count, num_runs
 
 
-def _plan_work_batch(
-        key: PRNGKey,
+def _new_thread_schedule(
         state: State,
         block_state: BlockState,
         plan: AllocationPlan,
         relevant: BoolArray,
         shell_size: int,
-        max_valid_lanes: IntArray | None = None,
-) -> CoreWorkBatch:
-    """Schedule the next edges of maximal allocation-gap threads."""
-    slots = jnp.arange(shell_size, dtype=mp_policy.index_dtype)
-    plan_key, seed_draw_key = jax.random.split(key)
-
-    if max_valid_lanes is None:
-        max_valid_lanes = jnp.asarray(shell_size, mp_policy.index_dtype)
-    max_valid_lanes = jnp.maximum(max_valid_lanes, 0)
-
-    # A positive rise in G_g starts that many maximal threads at block g.
-    # If an edge falls short, the remaining gap rises after its new child, so
-    # a later depth iteration continues the logical thread without persisting
-    # either a thread identity or a parent index in scientific state.
+        tail_K: IntArray,
+        seed_reservoir_size: int | None = None,
+) -> ThreadSchedule:
+    """Freeze one gap curve and its compressed maximal-thread starts."""
+    if seed_reservoir_size is None:
+        seed_reservoir_size = shell_size
+    # The source boundary is checked before each batch, so up to one complete
+    # planning window can already be in flight when the accepted-row cadence
+    # is crossed. This fixed queue therefore covers the cadence plus one
+    # reservoir-width window without depending on the number of threads.
+    continuation_size = (
+        (SEED_SOURCE_REFRESH_BATCHES + 1) * seed_reservoir_size
+    )
     gap = jnp.where(
         relevant,
-        jnp.maximum(plan.target_K - plan.current_K, 0),
-        jnp.asarray(0, dtype=plan.current_K.dtype),
+        plan.allocation_gap(),
+        jnp.asarray(0, mp_policy.count_dtype),
     )
-    previous_gap = jnp.concatenate(
-        [jnp.zeros((1,), dtype=gap.dtype), gap[:-1]],
+    start_block, terminal_block, multiplicity, num_runs = _decompose_gap(gap)
+    # The laminar stack emits deep rises first when a tail gap closes. Execute
+    # shallower starts first so a new allocation broadens the constrained
+    # population before reinforcing modes that happened to survive at the
+    # tail. Sorting only compressed runs occurs once per frozen source; the
+    # repeated batch path still advances fixed-width heads without sorting.
+    run_idx = jnp.arange(start_block.shape[0], dtype=mp_policy.index_dtype)
+    valid_run = run_idx < num_runs
+    invalid_key = jnp.asarray(start_block.shape[0], mp_policy.index_dtype)
+    (
+        _,
+        _,
+        start_block,
+        terminal_block,
+        multiplicity,
+    ) = jax.lax.sort(
+        (
+            jnp.where(valid_run, start_block, invalid_key),
+            jnp.where(valid_run, terminal_block, invalid_key),
+            start_block,
+            terminal_block,
+            multiplicity,
+        ),
+        dimension=0,
+        is_stable=True,
+        num_keys=2,
     )
-    start_count = jnp.maximum(gap - previous_gap, 0)
-    cumulative_starts = jnp.cumsum(start_count)
-    num_starts = cumulative_starts[-1]
-    lane_valid = (slots < num_starts) & (slots < max_valid_lanes)
-    start_block_idx = jnp.searchsorted(
-        cumulative_starts,
-        slots,
-        side="right",
+    num_threads = jnp.sum(multiplicity, dtype=mp_policy.count_dtype)
+
+    # A seed at an existing strict contour is an edge that remains active
+    # after every sample in that equality block has arrived and all children
+    # born at the block have started. This identity replaces repeated scans of
+    # every sample interval merely to ask whether a seed exists.
+    seed_count = jnp.where(
+        block_state.valid,
+        (
+            block_state.incoming_K
+            - block_state.block_size
+            + block_state.block_out_degree
+        ),
+        jnp.asarray(0, mp_policy.count_dtype),
+    )
+    block_idx = jnp.arange(
+        block_state.valid.shape[0],
+        dtype=mp_policy.index_dtype,
+    )
+    previous_seedable = jax.lax.associative_scan(
+        jnp.maximum,
+        jnp.where(seed_count > 0, block_idx, -1),
+    )
+    sample_idx = jnp.arange(
+        state.samples.log_likelihoods.shape[0],
+        dtype=mp_policy.index_dtype,
+    )
+    root_seed_idx = jnp.nonzero(
+        (sample_idx < state.num_samples)
+        & jnp.isneginf(state.samples.log_L_constraints),
+        size=sample_idx.shape[0],
+        fill_value=0,
+    )[0]  # [G]
+    return ThreadSchedule(
+        block_state=block_state,
+        start_block=start_block,
+        terminal_block=terminal_block,
+        multiplicity=multiplicity,
+        num_runs=num_runs,
+        target_K=plan.target_K,
+        tail_K=tail_K,
+        seed_count=seed_count,
+        previous_seedable=previous_seedable,
+        root_seed_idx=root_seed_idx,
+        seed_reservoir_idx=jnp.full(
+            (seed_reservoir_size,),
+            -1,
+            dtype=mp_policy.index_dtype,
+        ),
+        seed_reservoir_priority=jnp.full(
+            (seed_reservoir_size,),
+            -jnp.inf,
+            dtype=mp_policy.measure_dtype,
+        ),
+        seed_reservoir_valid=jnp.zeros(
+            (seed_reservoir_size,),
+            dtype=mp_policy.bool_dtype,
+        ),
+        seed_reservoir_key=jax.random.fold_in(
+            state.random_key,
+            state.allocation_loop_iter,
+        ),
+        parent_idx=jnp.full(
+            (shell_size,),
+            -1,
+            dtype=mp_policy.index_dtype,
+        ),
+        thread_id=jnp.full(
+            (shell_size,),
+            -1,
+            dtype=mp_policy.index_dtype,
+        ),
+        log_L_constraint=jnp.full(
+            (shell_size,),
+            -jnp.inf,
+            dtype=mp_policy.measure_dtype,
+        ),
+        terminal_log_L=jnp.full(
+            (shell_size,),
+            -jnp.inf,
+            dtype=mp_policy.measure_dtype,
+        ),
+        valid=jnp.zeros((shell_size,), mp_policy.bool_dtype),
+        continuation_parent_idx=jnp.full(
+            (continuation_size,),
+            -1,
+            dtype=mp_policy.index_dtype,
+        ),
+        continuation_thread_id=jnp.full(
+            (continuation_size,),
+            -1,
+            dtype=mp_policy.index_dtype,
+        ),
+        continuation_terminal_log_L=jnp.full(
+            (continuation_size,),
+            -jnp.inf,
+            dtype=mp_policy.measure_dtype,
+        ),
+        continuation_head=jnp.asarray(0, mp_policy.index_dtype),
+        continuation_count=jnp.asarray(0, mp_policy.count_dtype),
+        next_run=jnp.asarray(0, mp_policy.index_dtype),
+        remaining_in_run=jnp.where(
+            num_runs > 0,
+            multiplicity[0],
+            jnp.asarray(0, mp_policy.count_dtype),
+        ),
+        next_thread_id=jnp.asarray(0, mp_policy.index_dtype),
+        num_threads=num_threads.astype(mp_policy.count_dtype),
+        source_num_samples=state.num_samples,
+        active=num_threads > 0,
+    )
+
+
+def _seed_count_at_constraint(
+        schedule: ThreadSchedule,
+        log_L_constraint: FloatArray,
+) -> tuple[IntArray, IntArray]:
+    """Return frozen seed count and preceding block for one contour."""
+    block_state = schedule.block_state
+    block_idx = (
+        jnp.searchsorted(
+            block_state.log_L_blocks,
+            log_L_constraint,
+            side="right",
+        )
+        - 1
     ).astype(mp_policy.index_dtype)
-    start_block_idx = jnp.minimum(
-        start_block_idx,
-        jnp.asarray(plan.valid.shape[0] - 1, mp_policy.index_dtype),
+    safe_block_idx = jnp.maximum(block_idx, 0)
+    # Below the first observed contour exactly the root children cross the
+    # requested level. Their frozen count is K_1, before the first block races.
+    count = jnp.where(
+        block_idx >= 0,
+        schedule.seed_count[safe_block_idx],
+        block_state.incoming_K[0],
     )
-    requested_block_idx = jnp.where(
-        lane_valid,
-        start_block_idx - 1,
-        jnp.asarray(-1, mp_policy.index_dtype),
+    return count.astype(mp_policy.count_dtype), block_idx
+
+
+def _update_seed_reservoir(
+        schedule: ThreadSchedule,
+        sample_idx: IntArray,
+        valid: BoolArray,
+) -> ThreadSchedule:
+    """Retain a bounded value-independent sample of post-freeze rows.
+
+    Random priorities make membership independent of likelihood, contour, and
+    append order. Keeping only the largest bounded set makes seed coordination
+    independent of schedule length, while the next planning boundary promotes
+    every accepted row into the exact frozen race population.
+    """
+    num_candidates = sample_idx.shape[0]
+
+    def add_one(candidate_idx, current):
+        reservoir_idx, reservoir_priority, reservoir_valid = current
+        candidate_valid = valid[candidate_idx]
+        row_idx = sample_idx[candidate_idx].astype(mp_policy.index_dtype)
+        priority = jax.random.uniform(
+            jax.random.fold_in(schedule.seed_reservoir_key, row_idx),
+            (),
+            dtype=mp_policy.measure_dtype,
+        )
+        has_empty = jnp.any(jnp.logical_not(reservoir_valid))
+        empty_slot = jnp.argmin(reservoir_valid).astype(mp_policy.index_dtype)
+        minimum_slot = jnp.argmin(reservoir_priority).astype(
+            mp_policy.index_dtype
+        )
+        slot = jnp.where(has_empty, empty_slot, minimum_slot)
+        retain = candidate_valid & (
+            has_empty | (priority > reservoir_priority[minimum_slot])
+        )
+        reservoir_idx = reservoir_idx.at[slot].set(jnp.where(
+            retain,
+            row_idx,
+            reservoir_idx[slot],
+        ))
+        reservoir_priority = reservoir_priority.at[slot].set(jnp.where(
+            retain,
+            priority,
+            reservoir_priority[slot],
+        ))
+        reservoir_valid = reservoir_valid.at[slot].set(
+            reservoir_valid[slot] | retain
+        )
+        return reservoir_idx, reservoir_priority, reservoir_valid
+
+    reservoir_idx, reservoir_priority, reservoir_valid = jax.lax.fori_loop(
+        0,
+        num_candidates,
+        add_one,
+        (
+            schedule.seed_reservoir_idx,
+            schedule.seed_reservoir_priority,
+            schedule.seed_reservoir_valid,
+        ),
+    )
+    return dataclasses.replace(
+        schedule,
+        seed_reservoir_idx=reservoir_idx,
+        seed_reservoir_priority=reservoir_priority,
+        seed_reservoir_valid=reservoir_valid,
     )
 
-    # Reparent both the constraint and degree update together when the
-    # immediate contour has no seed. A shallower seed under the original
-    # constraint would not start a stationary Markov chain.
-    effective_block_idx = jax.vmap(
-        lambda block_idx: _closest_seedable_parent_block(
-            state,
-            block_state,
-            block_idx,
-        )
-    )(requested_block_idx)
-    effective_constraint = jnp.where(
-        effective_block_idx >= 0,
-        plan.log_L_blocks[jnp.maximum(effective_block_idx, 0)],
-        jnp.asarray(-jnp.inf, mp_policy.measure_dtype),
-    )
-    parent_keys = jax.random.split(plan_key, shell_size)
-    parent_idx = jax.vmap(
-        lambda parent_key, block_idx: _sample_parent_from_block(
-            parent_key,
-            block_state,
-            block_idx,
-        )
-    )(parent_keys, effective_block_idx)
 
-    # Apply one random rotation to evenly spaced lane quantiles. Every lane's
-    # quantile remains Uniform[0, 1), hence its selected seed is exactly
-    # uniform on that lane's stationary set even when the contours differ.
-    # The stratification spreads a parallel batch over the lineage population
-    # without persistent seed-use state or likelihood-dependent exclusion.
-    rotation = jax.random.uniform(
-        seed_draw_key,
-        (),
-        dtype=mp_policy.measure_dtype,
+def _seed_source_refresh_due(
+        state: State,
+        schedule: ThreadSchedule,
+) -> BoolArray:
+    """Return whether this schedule should publish a new frozen seed source."""
+    refresh_rows = (
+        SEED_SOURCE_REFRESH_BATCHES
+        * schedule.seed_reservoir_idx.shape[0]
     )
-    seed_fraction = jnp.mod(
-        rotation
-        + slots.astype(mp_policy.measure_dtype)
-        / jnp.asarray(shell_size, mp_policy.measure_dtype),
-        1.0,
+    return (
+        state.num_samples - schedule.source_num_samples
+        >= jnp.asarray(refresh_rows, mp_policy.count_dtype)
     )
 
-    def choose_seed(lane_idx, seed_indices):
-        lane_block = effective_block_idx[lane_idx]
-        seed_mask = _stationary_seed_mask(
-            state,
-            effective_constraint[lane_idx],
-            lane_block < 0,
-        )
-        seed_idx = _uniform_ranked_masked(
-            seed_fraction[lane_idx],
-            seed_mask,
-        )
-        return seed_indices.at[lane_idx].set(seed_idx)
 
-    seed_idx = jax.lax.fori_loop(
+def _sample_stationary_seeds(
+        key: PRNGKey,
+        state: State,
+        schedule: ThreadSchedule,
+        log_L_constraint: FloatArray,
+        from_root: BoolArray,
+        valid: BoolArray,
+        reserved_seed_idx: IntArray,
+        reserved_log_L_constraint: FloatArray,
+        reserved_valid: BoolArray,
+) -> IntArray:
+    """Draw same-contour seeds without replacement whenever possible.
+
+    Frozen race-tree rows are sampled by rejection from a likelihood suffix,
+    so this never materialises an ``[S, N]`` eligibility matrix. A bounded
+    value-independent reservoir brings post-freeze rows into the candidate
+    pool without making work grow with schedule length. The small
+    ``[S, S]``
+    comparisons are deliberate: simultaneous lanes, pending distributed
+    tasks, and reservoir rows all have the fixed planning width.
+    """
+    source_num_samples = schedule.source_num_samples
+    shell_size = valid.shape[0]
+    rows = jnp.arange(shell_size, dtype=mp_policy.index_dtype)  # [S]
+    strata_key, jitter_key, rejection_key = jax.random.split(key, 3)
+    strata = jax.random.permutation(strata_key, rows)  # [S]
+    stratified_fraction = (
+        strata.astype(mp_policy.measure_dtype)
+        + jax.random.uniform(
+            jitter_key,
+            (shell_size,),
+            dtype=mp_policy.measure_dtype,
+        )
+    ) / jnp.asarray(shell_size, mp_policy.measure_dtype)  # [S]
+    same_group = (
+        valid[:, None]
+        & valid[None, :]
+        & (log_L_constraint[:, None] == log_L_constraint[None, :])
+    )  # [S, S]
+    group_position = jnp.sum(
+        same_group & (rows[None, :] < rows[:, None]),
+        axis=1,
+        dtype=mp_policy.index_dtype,
+    )  # [S]
+    reserved_same_group = (
+        valid[:, None]
+        & reserved_valid[None, :]
+        & (
+            log_L_constraint[:, None]
+            == reserved_log_L_constraint[None, :]
+        )
+    )  # [S, S]
+    reserved_count = jnp.sum(
+        reserved_same_group,
+        axis=1,
+        dtype=mp_policy.index_dtype,
+    )  # [S]
+
+    frozen_count = jax.vmap(
+        lambda constraint: _seed_count_at_constraint(schedule, constraint)[0]
+    )(log_L_constraint)  # [S]
+
+    # Sentinel children are sparse in append order but compacted at schedule
+    # construction. Non-root frozen seeds are drawn from the strict-likelihood
+    # suffix and reject rows whose birth contour is too deep.
+    root_count = schedule.block_state.incoming_K[0]
+    use_root = valid & from_root  # [S]
+    containing_block = (
+        jnp.searchsorted(
+            schedule.block_state.log_L_blocks,
+            log_L_constraint,
+            side="right",
+        )
+        - 1
+    ).astype(mp_policy.index_dtype)  # [S]
+    safe_block = jnp.maximum(containing_block, 0)  # [S]
+    suffix_start = jnp.where(
+        containing_block >= 0,
+        schedule.block_state.block_stop[safe_block],
+        jnp.asarray(0, mp_policy.index_dtype),
+    )  # [S]
+    suffix_size = (
+        source_num_samples.astype(mp_policy.index_dtype) - suffix_start
+    )  # [S]
+    reservoir_sample_idx = schedule.seed_reservoir_idx  # [R]
+    reservoir_safe_idx = jnp.maximum(reservoir_sample_idx, 0)  # [R]
+    reservoir_birth = state.samples.log_L_constraints[
+        reservoir_safe_idx
+    ]  # [R]
+    reservoir_log_L = state.samples.log_likelihoods[
+        reservoir_safe_idx
+    ]  # [R]
+    reservoir_eligible = (
+        valid[:, None]
+        & schedule.seed_reservoir_valid[None, :]
+        & jnp.where(
+            use_root[:, None],
+            jnp.isneginf(reservoir_birth)[None, :],
+            (
+                reservoir_birth[None, :] <= log_L_constraint[:, None]
+            )
+            & (
+                reservoir_log_L[None, :] > log_L_constraint[:, None]
+            ),
+        )
+    )  # [S, R]
+    reservoir_count = jnp.sum(
+        reservoir_eligible,
+        axis=1,
+        dtype=mp_policy.index_dtype,
+    )  # [S]
+    reservoir_size = jnp.sum(
+        schedule.seed_reservoir_valid,
+        dtype=mp_policy.index_dtype,
+    )
+    proposal_width = 64
+    selected_seed_idx = jnp.full(
+        (shell_size,),
+        -1,
+        dtype=mp_policy.index_dtype,
+    )  # [S]
+    def select_lane(lane_idx, selected):
+        constraint = log_L_constraint[lane_idx]
+        lane_valid = valid[lane_idx]
+        lane_uses_root = use_root[lane_idx]
+
+        # Earlier local lanes and in-flight distributed tasks are the complete
+        # set of simultaneous reservations. Only equal-contour identities are
+        # excluded; different constrained priors do not compete for seeds.
+        prior_valid = valid & (rows < lane_idx)  # [S]
+        forbidden_idx = jnp.concatenate(
+            (reserved_seed_idx, selected),
+            axis=0,
+        )  # [2S]
+        forbidden_constraint = jnp.concatenate(
+            (reserved_log_L_constraint, log_L_constraint),
+            axis=0,
+        )  # [2S]
+        forbidden_valid = jnp.concatenate(
+            (reserved_valid, prior_valid),
+            axis=0,
+        )  # [2S]
+        forbidden_same_contour = (
+            forbidden_valid
+            & (forbidden_idx >= 0)
+            & (forbidden_constraint == constraint)
+        )  # [2S]
+        distinct_count = jnp.where(
+            lane_uses_root,
+            root_count,
+            frozen_count[lane_idx],
+        ).astype(mp_policy.index_dtype) + reservoir_count[lane_idx]
+        remaining_distinct = jnp.maximum(
+            distinct_count - reserved_count[lane_idx],
+            0,
+        )
+        require_unused = group_position[lane_idx] < remaining_distinct
+
+        def rejection_cond(carry):
+            _, _, accepted = carry
+            return lane_valid & jnp.logical_not(accepted)
+
+        def rejection_body(carry):
+            attempt, current_seed, _ = carry
+            # The first proposal is a randomly permuted, independently
+            # jittered stratum. This spreads a batch across the stationary
+            # population without the shared rotation that correlates cluster
+            # seeds. Rejections then use ordinary independent proposals.
+            rotations = jax.random.uniform(
+                jax.random.fold_in(
+                    jax.random.fold_in(rejection_key, lane_idx),
+                    attempt,
+                ),
+                (proposal_width,),
+                dtype=mp_policy.measure_dtype,
+            )
+            proposal_fraction = rotations  # [C]
+            proposal_fraction = proposal_fraction.at[0].set(jnp.where(
+                attempt == 0,
+                stratified_fraction[lane_idx],
+                proposal_fraction[0],
+            ))
+            frozen_pool_size = jnp.where(
+                lane_uses_root,
+                root_count,
+                suffix_size[lane_idx],
+            ).astype(mp_policy.index_dtype)
+            pool_size = frozen_pool_size + reservoir_size
+            proposal_rank = (
+                proposal_fraction * jnp.maximum(pool_size, 1)
+            ).astype(mp_policy.index_dtype)  # [C]
+            root_rank = jnp.minimum(
+                proposal_rank,
+                jnp.maximum(root_count - 1, 0),
+            )
+            root_candidate = schedule.root_seed_idx[root_rank]  # [C]
+            frozen_offset = jnp.minimum(
+                proposal_rank,
+                jnp.maximum(suffix_size[lane_idx] - 1, 0),
+            )
+            likelihood_rank = jnp.minimum(
+                suffix_start[lane_idx] + frozen_offset,
+                jnp.maximum(source_num_samples - 1, 0),
+            )
+            frozen_candidate = schedule.block_state.block_sample_indices[
+                likelihood_rank
+            ]  # [C]
+            frozen_candidate = jnp.where(
+                lane_uses_root,
+                root_candidate,
+                frozen_candidate,
+            )  # [C]
+            reservoir_offset = jnp.minimum(
+                jnp.maximum(proposal_rank - frozen_pool_size, 0),
+                jnp.maximum(reservoir_size - 1, 0),
+            )
+            reservoir_candidate = reservoir_sample_idx[
+                reservoir_offset
+            ]  # [C]
+            candidate = jnp.where(
+                proposal_rank < frozen_pool_size,
+                frozen_candidate,
+                reservoir_candidate,
+            )  # [C]
+            safe_candidate = jnp.maximum(candidate, 0)
+            stationary = (
+                (candidate >= 0)
+                & (candidate < state.num_samples)
+                & (
+                    state.samples.log_likelihoods[safe_candidate]
+                    > constraint
+                )
+                & (
+                    state.samples.log_L_constraints[safe_candidate]
+                    <= constraint
+                )
+            )  # [C]
+            candidate_forbidden = jnp.any(
+                (candidate[:, None] == forbidden_idx[None, :])
+                & forbidden_same_contour[None, :],
+                axis=1,
+            )  # [C]
+            eligible = stationary & jnp.logical_not(
+                require_unused & candidate_forbidden
+            )  # [C]
+            found = jnp.any(eligible)
+            first = jnp.argmax(eligible).astype(mp_policy.index_dtype)
+            return (
+                attempt + jnp.asarray(1, attempt.dtype),
+                jnp.where(found, candidate[first], current_seed),
+                found,
+            )
+
+        _, rejected_seed, _ = jax.lax.while_loop(
+            rejection_cond,
+            rejection_body,
+            (
+                jnp.asarray(0, mp_policy.index_dtype),
+                jnp.asarray(0, mp_policy.index_dtype),
+                jnp.logical_not(lane_valid),
+            ),
+        )
+        return selected.at[lane_idx].set(
+            jnp.where(lane_valid, rejected_seed, -1)
+        )
+
+    return jax.lax.fori_loop(
         0,
         shell_size,
-        choose_seed,
-        jnp.zeros((shell_size,), dtype=mp_policy.index_dtype),
+        select_lane,
+        selected_seed_idx,
     )
-    return CoreWorkBatch(
-        valid=lane_valid,
+
+
+def _enqueue_thread_continuations(
+        schedule: ThreadSchedule,
+        parent_idx: IntArray,
+        thread_id: IntArray,
+        terminal_log_L: FloatArray,
+        valid: BoolArray,
+) -> ThreadSchedule:
+    """Append continuing logical heads to the bounded FIFO in lane order."""
+    queue_size = schedule.continuation_parent_idx.shape[0]
+
+    def enqueue(lane_idx, current: ThreadSchedule) -> ThreadSchedule:
+        append = valid[lane_idx]
+        tail = (
+            current.continuation_head + current.continuation_count
+        ) % queue_size
+        # The queue covers the complete accepted-row refresh cadence plus one
+        # in-flight window, so every scientifically valid continuation has a
+        # slot. Do not turn overflow into silent loss of a logical thread.
+        return dataclasses.replace(
+            current,
+            continuation_parent_idx=(
+                current.continuation_parent_idx.at[tail].set(jnp.where(
+                    append,
+                    parent_idx[lane_idx],
+                    current.continuation_parent_idx[tail],
+                ))
+            ),
+            continuation_thread_id=(
+                current.continuation_thread_id.at[tail].set(jnp.where(
+                    append,
+                    thread_id[lane_idx],
+                    current.continuation_thread_id[tail],
+                ))
+            ),
+            continuation_terminal_log_L=(
+                current.continuation_terminal_log_L.at[tail].set(jnp.where(
+                    append,
+                    terminal_log_L[lane_idx],
+                    current.continuation_terminal_log_L[tail],
+                ))
+            ),
+            continuation_count=(
+                current.continuation_count
+                + append.astype(current.continuation_count.dtype)
+            ),
+        )
+
+    return jax.lax.fori_loop(
+        0,
+        valid.shape[0],
+        enqueue,
+        schedule,
+    )
+
+
+def _fill_thread_heads(
+        key: PRNGKey,
+        state: State,
+        schedule: ThreadSchedule,
+) -> ThreadSchedule:
+    """Fill lanes breadth-first, then resume old heads in FIFO order."""
+    shell_size = schedule.valid.shape[0]
+    parent_keys = jax.random.split(key, shell_size)  # [S, 2]
+
+    def fill_lane(lane_idx, current: ThreadSchedule) -> ThreadSchedule:
+        empty = jnp.logical_not(current.valid[lane_idx])
+        # Starting every logical maximal thread once before resuming any of
+        # them spreads allocation across the stationary population without
+        # widening the vmapped constrained sampler.
+        start_new = empty & (current.next_run < current.num_runs)
+        resume = (
+            empty
+            & jnp.logical_not(start_new)
+            & (current.continuation_count > 0)
+        )
+        run_idx = jnp.minimum(
+            current.next_run,
+            jnp.maximum(current.num_runs - 1, 0),
+        ).astype(mp_policy.index_dtype)
+        start_block = current.start_block[run_idx]
+        terminal_block = current.terminal_block[run_idx]
+        parent_block = start_block - 1
+        parent_idx = _sample_parent_from_block(
+            parent_keys[lane_idx],
+            current.block_state,
+            parent_block,
+        )
+        log_L_constraint = jnp.where(
+            parent_block >= 0,
+            current.block_state.log_L_blocks[jnp.maximum(parent_block, 0)],
+            jnp.asarray(-jnp.inf, mp_policy.measure_dtype),
+        )
+        terminal_log_L = current.block_state.log_L_blocks[terminal_block]
+
+        queue_slot = current.continuation_head
+        queued_parent_idx = current.continuation_parent_idx[queue_slot]
+        safe_queued_parent_idx = jnp.maximum(queued_parent_idx, 0)
+        queued_log_L_constraint = state.samples.log_likelihoods[
+            safe_queued_parent_idx
+        ]
+        queued_thread_id = current.continuation_thread_id[queue_slot]
+        queued_terminal_log_L = (
+            current.continuation_terminal_log_L[queue_slot]
+        )
+        selected_parent_idx = jnp.where(
+            resume,
+            queued_parent_idx,
+            parent_idx,
+        )
+        selected_thread_id = jnp.where(
+            resume,
+            queued_thread_id,
+            current.next_thread_id,
+        )
+        selected_log_L_constraint = jnp.where(
+            resume,
+            queued_log_L_constraint,
+            log_L_constraint,
+        )
+        selected_terminal_log_L = jnp.where(
+            resume,
+            queued_terminal_log_L,
+            terminal_log_L,
+        )
+        fill = start_new | resume
+
+        remaining = current.remaining_in_run - start_new.astype(
+            current.remaining_in_run.dtype
+        )
+        run_finished = start_new & (remaining == 0)
+        next_run = current.next_run + run_finished.astype(
+            current.next_run.dtype
+        )
+        safe_next_run = jnp.minimum(
+            next_run,
+            jnp.maximum(current.num_runs - 1, 0),
+        ).astype(mp_policy.index_dtype)
+        remaining = jnp.where(
+            run_finished & (next_run < current.num_runs),
+            current.multiplicity[safe_next_run],
+            remaining,
+        )
+        return dataclasses.replace(
+            current,
+            parent_idx=current.parent_idx.at[lane_idx].set(jnp.where(
+                fill,
+                selected_parent_idx,
+                current.parent_idx[lane_idx],
+            )),
+            thread_id=current.thread_id.at[lane_idx].set(jnp.where(
+                fill,
+                selected_thread_id,
+                current.thread_id[lane_idx],
+            )),
+            log_L_constraint=current.log_L_constraint.at[lane_idx].set(
+                jnp.where(
+                    fill,
+                    selected_log_L_constraint,
+                    current.log_L_constraint[lane_idx],
+                )
+            ),
+            terminal_log_L=current.terminal_log_L.at[lane_idx].set(
+                jnp.where(
+                    fill,
+                    selected_terminal_log_L,
+                    current.terminal_log_L[lane_idx],
+                )
+            ),
+            valid=current.valid.at[lane_idx].set(
+                current.valid[lane_idx] | fill
+            ),
+            next_run=next_run,
+            remaining_in_run=remaining,
+            next_thread_id=(
+                current.next_thread_id
+                + start_new.astype(current.next_thread_id.dtype)
+            ),
+            continuation_head=(
+                current.continuation_head
+                + resume.astype(current.continuation_head.dtype)
+            ) % current.continuation_parent_idx.shape[0],
+            continuation_count=(
+                current.continuation_count
+                - resume.astype(current.continuation_count.dtype)
+            ),
+        )
+
+    return jax.lax.fori_loop(
+        0,
+        shell_size,
+        fill_lane,
+        schedule,
+    )
+
+
+def _plan_scheduled_work_batch(
+        key: PRNGKey,
+        state: State,
+        schedule: ThreadSchedule,
+        max_valid_lanes: IntArray,
+        reserved_seed_idx: IntArray | None = None,
+        reserved_log_L_constraint: FloatArray | None = None,
+        reserved_valid: BoolArray | None = None,
+) -> tuple[ThreadSchedule, CoreWorkBatch]:
+    """Resolve one fixed-width batch from already materialised threads."""
+    parent_key, seed_key = jax.random.split(key)
+    schedule = _fill_thread_heads(parent_key, state, schedule)
+    shell_size = schedule.valid.shape[0]
+    if reserved_seed_idx is None:
+        reserved_seed_idx = jnp.full(
+            (shell_size,),
+            -1,
+            dtype=mp_policy.index_dtype,
+        )
+    if reserved_log_L_constraint is None:
+        reserved_log_L_constraint = jnp.full(
+            (shell_size,),
+            -jnp.inf,
+            dtype=mp_policy.measure_dtype,
+        )
+    if reserved_valid is None:
+        reserved_valid = jnp.zeros(
+            (shell_size,),
+            dtype=mp_policy.bool_dtype,
+        )
+    slots = jnp.arange(shell_size, dtype=mp_policy.index_dtype)
+    num_valid = jnp.minimum(
+        jnp.sum(schedule.valid, dtype=mp_policy.index_dtype),
+        jnp.maximum(max_valid_lanes, 0),
+    )
+    valid = slots < num_valid
+
+    seed_count, containing_block = jax.vmap(
+        lambda constraint: _seed_count_at_constraint(schedule, constraint)
+    )(schedule.log_L_constraint)
+    requested_has_seed = seed_count > 0
+    safe_containing = jnp.maximum(containing_block, 0)
+    fallback_block = jnp.where(
+        containing_block >= 0,
+        schedule.previous_seedable[safe_containing],
+        jnp.asarray(-1, mp_policy.index_dtype),
+    )
+    effective_block = jnp.where(requested_has_seed, -2, fallback_block)
+    effective_constraint = jnp.where(
+        requested_has_seed,
+        schedule.log_L_constraint,
+        jnp.where(
+            effective_block >= 0,
+            schedule.block_state.log_L_blocks[
+                jnp.maximum(effective_block, 0)
+            ],
+            jnp.asarray(-jnp.inf, mp_policy.measure_dtype),
+        ),
+    )
+    fallback_keys = jax.random.split(parent_key, shell_size)
+    fallback_parent = jax.vmap(
+        lambda one_key, block_idx: _sample_parent_from_block(
+            one_key,
+            schedule.block_state,
+            block_idx,
+        )
+    )(fallback_keys, effective_block)
+    parent_idx = jnp.where(
+        requested_has_seed,
+        schedule.parent_idx,
+        fallback_parent,
+    )
+    seed_idx = _sample_stationary_seeds(
+        seed_key,
+        state,
+        schedule,
+        effective_constraint,
+        jnp.isneginf(effective_constraint),
+        valid,
+        reserved_seed_idx,
+        reserved_log_L_constraint,
+        reserved_valid,
+    )
+    # Fixed-width padding can be traced through both sides of vmapped sampler
+    # control flow even though invalid lanes never enter scientific state.
+    # Give every padded lane the first valid request so those speculative
+    # calculations still start inside a real contour. This is also required
+    # by the complete-chain reference path, which has no validity mask.
+    first_valid = jnp.argmax(valid).astype(mp_policy.index_dtype)
+    parent_idx = jnp.where(valid, parent_idx, parent_idx[first_valid])
+    effective_constraint = jnp.where(
+        valid,
+        effective_constraint,
+        effective_constraint[first_valid],
+    )
+    seed_idx = jnp.where(valid, seed_idx, seed_idx[first_valid])
+    return schedule, CoreWorkBatch(
+        valid=valid,
         parent_idx=parent_idx,
         log_L_constraint=effective_constraint,
-        seed_idx=seed_idx,
+        seed_idx=jnp.maximum(seed_idx, 0),
+    )
+
+
+def _advance_thread_schedule(
+        schedule: ThreadSchedule,
+        work: CoreWorkBatch,
+        batch: ConstrainedSampleBatch,
+        insert_idx: IntArray,
+) -> ThreadSchedule:
+    """Queue sampled continuations and compact only unsampled heads."""
+    shell_size = schedule.valid.shape[0]
+    slots = jnp.arange(shell_size, dtype=mp_policy.index_dtype)
+    continuing = work.valid & (
+        batch.log_likelihoods < schedule.terminal_log_L
+    )
+    schedule = _enqueue_thread_continuations(
+        schedule,
+        insert_idx.astype(mp_policy.index_dtype) + slots,
+        schedule.thread_id,
+        schedule.terminal_log_L,
+        continuing,
+    )
+    # Both masks are valid prefixes. An offset gather preserves the unsampled
+    # suffix without sorting the dispatch window on every replacement batch.
+    num_sampled = jnp.sum(work.valid, dtype=mp_policy.index_dtype)
+    num_active = jnp.sum(schedule.valid, dtype=mp_policy.index_dtype)
+    num_remaining = num_active - num_sampled
+    source = jnp.minimum(
+        slots + num_sampled,
+        jnp.asarray(shell_size - 1, mp_policy.index_dtype),
+    )
+    valid = slots < num_remaining
+    active = (
+        jnp.any(valid)
+        | (schedule.next_run < schedule.num_runs)
+        | (schedule.continuation_count > 0)
+    )
+    return dataclasses.replace(
+        schedule,
+        parent_idx=schedule.parent_idx[source],
+        thread_id=schedule.thread_id[source],
+        log_L_constraint=schedule.log_L_constraint[source],
+        terminal_log_L=schedule.terminal_log_L[source],
+        valid=valid,
+        active=active,
+    )
+
+
+def _release_thread_heads(
+        schedule: ThreadSchedule,
+        dispatched: BoolArray,
+) -> ThreadSchedule:
+    """Transfer dispatched heads out of a distributed schedule.
+
+    A local call keeps heads in the fixed-width schedule until sampling
+    returns. Distributed calls instead move each dispatched head into a
+    retry-stable ``PendingTask``. Compacting only undispatched heads leaves
+    exactly the vacated slots needed when those tasks later continue.
+    """
+    shell_size = schedule.valid.shape[0]
+    slots = jnp.arange(shell_size, dtype=mp_policy.index_dtype)
+    num_dispatched = jnp.sum(dispatched, dtype=mp_policy.index_dtype)
+    num_active = jnp.sum(schedule.valid, dtype=mp_policy.index_dtype)
+    num_remaining = num_active - num_dispatched
+    source = jnp.minimum(
+        slots + num_dispatched,
+        jnp.asarray(shell_size - 1, mp_policy.index_dtype),
+    )
+    valid = slots < num_remaining
+    return dataclasses.replace(
+        schedule,
+        parent_idx=schedule.parent_idx[source],
+        thread_id=schedule.thread_id[source],
+        log_L_constraint=schedule.log_L_constraint[source],
+        terminal_log_L=schedule.terminal_log_L[source],
+        valid=valid,
+        active=(
+            jnp.any(valid)
+            | (schedule.next_run < schedule.num_runs)
+            | (schedule.continuation_count > 0)
+        ),
+    )
+
+
+def _insert_thread_head(
+        schedule: ThreadSchedule,
+        thread_id: IntArray,
+        parent_idx: IntArray,
+        log_L_constraint: FloatArray,
+        terminal_log_L: FloatArray,
+        continuing: BoolArray,
+) -> ThreadSchedule:
+    """Return one completed distributed edge to the FIFO continuation ring."""
+    del log_L_constraint
+    updated = _enqueue_thread_continuations(
+        schedule,
+        jnp.reshape(parent_idx, (1,)),
+        jnp.reshape(thread_id, (1,)),
+        jnp.reshape(terminal_log_L, (1,)),
+        jnp.reshape(continuing, (1,)),
+    )
+    return dataclasses.replace(
+        updated,
+        active=(
+            jnp.any(updated.valid)
+            | (updated.next_run < updated.num_runs)
+            | (updated.continuation_count > 0)
+        ),
     )
 
 
@@ -389,9 +1301,11 @@ def _prepare_sampler_data(
         state: State,
         sampler: AbstractSampler,
         work: CoreWorkBatch,
-        block_state: BlockState,
+        schedule: ThreadSchedule,
 ) -> State:
-    """Update opt-in direction geometry once before the replacement vmap."""
+    """Update geometry from one internally consistent frozen population."""
+    block_state = schedule.block_state
+    population_num_samples = schedule.source_num_samples
     direction = sampler.direction_config()
     if direction is None:
         raise ValueError(
@@ -420,9 +1334,9 @@ def _prepare_sampler_data(
     )(work.log_L_constraint)
     stale = jnp.any(work.valid & jnp.logical_not(lane_has_geometry))
     first_attempt = state.sampler_data.num_attempted == 0
-    enough_rows = state.num_samples >= min_effective_samples
+    enough_rows = population_num_samples >= min_effective_samples
     enough_new_rows = (
-        state.num_samples
+        population_num_samples
         >= state.sampler_data.num_attempted + retry_increment
     )
     initialise = jnp.where(first_attempt, enough_rows, enough_new_rows)
@@ -430,10 +1344,17 @@ def _prepare_sampler_data(
         state.sampler_data.num_attempted
         == state.sampler_data.num_samples
     )
+    population_advanced = (
+        population_num_samples > state.sampler_data.num_attempted
+    )
     # A newly stale successful model is refreshed immediately. If that refresh
     # fails, wait for a materially larger population before retrying so a
     # singular late contour cannot make every replacement batch refit it.
-    refresh = stale & (last_attempt_succeeded | enough_new_rows)
+    refresh = (
+        stale
+        & population_advanced
+        & (last_attempt_succeeded | enough_new_rows)
+    )
     should_update = jnp.where(ready, refresh, initialise)
 
     def update(_):
@@ -502,21 +1423,21 @@ def _prepare_sampler_data(
         # rows while they fit, then an evenly spaced deterministic subset.
         population_size = direction.population_size
         slots = jnp.arange(population_size, dtype=mp_policy.index_dtype)
-        use_all = state.num_samples <= population_size
+        use_all = population_num_samples <= population_size
         spread = jnp.floor(
             slots.astype(mp_policy.measure_dtype)
-            * state.num_samples.astype(mp_policy.measure_dtype)
+            * population_num_samples.astype(mp_policy.measure_dtype)
             / jnp.asarray(population_size, mp_policy.measure_dtype)
         ).astype(mp_policy.index_dtype)
         positions = jnp.where(use_all, slots, spread)
         mask = jnp.where(
             use_all,
-            slots < state.num_samples,
+            slots < population_num_samples,
             jnp.ones((population_size,), mp_policy.bool_dtype),
         )
         positions = jnp.minimum(
             positions,
-            jnp.maximum(state.num_samples - 1, 0),
+            jnp.maximum(population_num_samples - 1, 0),
         )
         sample_indices = block_state.block_sample_indices[positions]
         sample_indices = jnp.where(mask, sample_indices, 0)
@@ -550,7 +1471,7 @@ def _prepare_sampler_data(
             selected_log_L,
             log_weights,
             mask,
-            state.num_samples,
+            population_num_samples,
             n_iters=direction.num_iterations,
             min_effective_samples=min_effective_samples,
             regularisation=direction.regularisation,
@@ -569,6 +1490,8 @@ def _accept_work_batch(
         state: State,
         work: CoreWorkBatch,
         batch: ConstrainedSampleBatch,
+        *,
+        update_likelihood_order: bool = True,
 ) -> State:
     shell_size = batch.log_likelihoods.shape[0]
     # Phantom shrinkage needs likelihoods and cluster identity, not phantom
@@ -666,6 +1589,8 @@ def _accept_work_batch(
                 state.num_samples,
                 work.valid,
             )
+            if update_likelihood_order
+            else state.likelihood_order
         ),
         sampler_data=sampler_data,
     )
@@ -674,29 +1599,35 @@ def _accept_work_batch(
 class _DepthCarry(NamedTuple):
     key: PRNGKey  # [2]
     state: State
-    block_state: BlockState
-    plan: AllocationPlan
-    relevant: BoolArray  # [G]
-    register: TerminationRegister
+    schedule: ThreadSchedule
+    depth_done: BoolArray  # []
+
+
+def _refresh_likelihood_order(state: State) -> State:
+    """Publish all accepted append-order rows at a schedule boundary."""
+    return dataclasses.replace(
+        state,
+        likelihood_order=initialise_likelihood_order(
+            state.samples.log_likelihoods,
+            state.num_samples,
+        ),
+    )
 
 
 def _build_depth_view(
         state: State,
-        depth_cond: TerminationCondition,
+        depth_cond: DepthCondition,
         *,
         allocation_target: str,
         root_degree: int,
         delta_K: int,
-) -> tuple[BlockState, AllocationPlan, BoolArray, TerminationRegister]:
+) -> tuple[BlockState, AllocationPlan, BoolArray, IntArray]:
     """Build the compact allocation and stopping view of append-order state.
 
-    Local and distributed depth execution differ only at the sampling
-    boundary. Sharing this calculation ensures they assign lineage gaps and
-    expectation-based depth relevance with exactly the same scientific model.
+    This is a planning-round calculation, not replacement-batch work. The
+    returned arrays remain frozen until every maximal thread in the round has
+    reached its terminal contour.
     """
-    # Out-degree changes alter K_g, the expected volume path, and the depth
-    # stopping estimate. Rebuild this compact block view after each accepted
-    # batch while leaving the scientific sample pytrees in append order.
     block_state = build_block_state(
         state.samples,
         root_out_degree=state.root_out_degree,
@@ -706,7 +1637,10 @@ def _build_depth_view(
     plan = build_allocation_plan(
         state=state,
         allocation_target=allocation_target,
-        iteration=state.goal_loop_iter,
+        depth_iteration=(
+            state.allocation_loop_iter
+            + jnp.asarray(1, state.allocation_loop_iter.dtype)
+        ),
         delta_K=jnp.asarray(delta_K, mp_policy.count_dtype),
         # d_0 is the fixed initial allocation. The sentinel's current
         # out-degree grows when later epochs start root threads; using it here
@@ -715,17 +1649,173 @@ def _build_depth_view(
         block_state=block_state,
     )
     relevant = _depth_relevant_blocks(plan, depth_cond)
-    register = termination_register_from_volume_path(
-        state,
-        block_state,
-        plan.volume_path.X,
-        plan.volume_path.shell_mass,
+    if allocation_target == "uniform":
+        tail_K = (
+            jnp.asarray(root_degree, mp_policy.count_dtype)
+            * jnp.asarray(delta_K, mp_policy.count_dtype)
+            * (
+                state.allocation_loop_iter
+                + jnp.asarray(1, state.allocation_loop_iter.dtype)
+            )
+        )
+    else:
+        # Utility is defined from downstream evidence/posterior value at the
+        # frozen race. There is no utility beyond its final observed contour;
+        # an overshooting edge already overfills that zero target.
+        tail_K = jnp.asarray(0, mp_policy.count_dtype)
+    return block_state, plan, relevant, tail_K
+
+
+def _project_allocation_target(
+        schedule: ThreadSchedule,
+        block_state: BlockState,
+) -> IntArray:
+    """Project one frozen absolute target onto a refined contour grid.
+
+    A new block inherits the first old target at or above its likelihood,
+    matching the half-open edge coverage ``L_parent < L <= L_child``.
+    """
+    successor = jnp.searchsorted(
+        schedule.block_state.log_L_blocks,
+        block_state.log_L_blocks,
+        side="left",
+    ).astype(mp_policy.index_dtype)  # [G]
+    old_num_blocks = schedule.block_state.num_blocks
+    within_old_grid = successor < old_num_blocks  # [G]
+    safe_successor = jnp.minimum(
+        successor,
+        jnp.maximum(old_num_blocks - 1, 0),
     )
-    return block_state, plan, relevant, register
+    projected = jnp.where(
+        within_old_grid,
+        schedule.target_K[safe_successor],
+        schedule.tail_K,
+    )  # [G]
+    return jnp.where(block_state.valid, projected, 0)
+
+
+@partial(jax.jit, inline=True)
+def _depth_condition_reached(
+        state: State,
+        depth_cond: DepthCondition,
+) -> BoolArray:
+    """Evaluate the expected-depth policy at a Python goal boundary."""
+    if depth_cond.dlogZ is None and depth_cond.cummax_XL_frac is None:
+        return jnp.asarray(True, mp_policy.bool_dtype)
+    block_state = build_block_state(
+        state.samples,
+        root_out_degree=state.root_out_degree,
+        num_samples=state.num_samples,
+        likelihood_order=state.likelihood_order,
+    )
+    concentrations = classic_dirichlet_concentrations(block_state)
+    relevant = _depth_relevant_path(
+        block_state.log_L_blocks,
+        block_state.valid,
+        expected_volume_path(concentrations, valid=block_state.valid),
+        depth_cond,
+    )
+    last_block = jnp.maximum(
+        block_state.num_blocks - 1,
+        jnp.asarray(0, mp_policy.index_dtype),
+    )
+    return (block_state.num_blocks == 0) | jnp.logical_not(
+        relevant[last_block]
+    )
 
 
 @partial(
     jax.jit,
+    inline=True,
+    static_argnames=(
+        "shell_size",
+        "allocation_target",
+        "root_degree",
+        "delta_K",
+    ),
+)
+def _start_schedule_round(
+        state: State,
+        depth_cond: DepthCondition,
+        *,
+        shell_size: int,
+        allocation_target: str,
+        root_degree: int,
+        delta_K: int,
+) -> tuple[State, ThreadSchedule, BoolArray]:
+    """Build one frozen schedule from an already-published likelihood order."""
+    block_state, plan, relevant, tail_K = _build_depth_view(
+        state,
+        depth_cond,
+        allocation_target=allocation_target,
+        root_degree=root_degree,
+        delta_K=delta_K,
+    )
+    schedule = _new_thread_schedule(
+        state,
+        block_state,
+        plan,
+        relevant,
+        shell_size,
+        tail_K,
+        seed_reservoir_size=max(shell_size, root_degree),
+    )
+    state = dataclasses.replace(state, scheduler_data=schedule)
+    return state, schedule, jnp.logical_not(schedule.active)
+
+
+@partial(
+    jax.jit,
+    inline=True,
+    static_argnames=("shell_size",),
+)
+def _continue_schedule_round(
+        state: State,
+        previous: ThreadSchedule,
+        depth_cond: DepthCondition,
+        *,
+        shell_size: int,
+) -> tuple[State, ThreadSchedule, BoolArray]:
+    """Fill newly exposed gaps without changing the allocation target."""
+    block_state = build_block_state(
+        state.samples,
+        root_out_degree=state.root_out_degree,
+        num_samples=state.num_samples,
+        likelihood_order=state.likelihood_order,
+    )
+    concentrations = classic_dirichlet_concentrations(block_state)
+    target_K = _project_allocation_target(previous, block_state)
+    plan = AllocationPlan(
+        target_K=target_K,
+        current_K=block_state.incoming_K,
+        unit_peak_utility=jnp.zeros_like(
+            block_state.log_L_blocks,
+            dtype=mp_policy.measure_dtype,
+        ),
+        log_L_blocks=block_state.log_L_blocks,
+        valid=block_state.valid,
+        volume_path=expected_volume_path(
+            concentrations,
+            valid=block_state.valid,
+        ),
+    )
+    relevant = _depth_relevant_blocks(plan, depth_cond)
+    schedule = _new_thread_schedule(
+        state,
+        block_state,
+        plan,
+        relevant,
+        shell_size,
+        previous.tail_K,
+        seed_reservoir_size=previous.seed_reservoir_idx.shape[0],
+    )
+    state = dataclasses.replace(state, scheduler_data=schedule)
+    return state, schedule, jnp.logical_not(schedule.active)
+
+
+@partial(
+    jax.jit,
+    inline=True,
     static_argnames=(
         "shell_size",
         "allocation_target",
@@ -737,7 +1827,7 @@ def _build_depth_view(
 def _run_depth(
         state: State,
         sampler: AbstractSampler,
-        depth_cond: TerminationCondition,
+        depth_cond: DepthCondition,
         *,
         shell_size: int,
         allocation_target: str,
@@ -753,10 +1843,10 @@ def _run_depth(
     """
 
     def cond(carry: _DepthCarry):
-        # The compiled depth epoch stops at the first of: filled allocation,
-        # exhausted storage/sample budget, or a scalar state/budget condition.
-        # The user goal condition remains outside this JAX loop.
-        has_gap = jnp.any(carry.plan.under_allocated(carry.relevant))
+        # One planning round owns exactly one frozen maximal-thread schedule.
+        # Draining it returns to Python so the newly exposed tail can be
+        # inspected cheaply. If expected depth is not yet reached, Python
+        # constructs another round at the same outer allocation target.
         has_buffer = (
             carry.state.num_samples
             < carry.state.samples.log_likelihoods.shape[0]
@@ -767,28 +1857,17 @@ def _run_depth(
         )
         if max_samples is not None:
             sample_limit = jnp.asarray(max_samples, mp_policy.count_dtype)
-        if depth_cond.max_samples is not None:
-            sample_limit = jnp.minimum(
-                sample_limit,
-                depth_cond.max_samples.astype(mp_policy.count_dtype),
-            )
         below_global_limit = carry.state.num_samples < sample_limit
-        # dlogZ and posterior-tail thresholds are contour-local depth cuts:
-        # `_depth_relevant_blocks` already excludes work beyond them. Treating
-        # them again as scalar termination would permanently prevent a later
-        # outer epoch from filling a larger target on the still-relevant
-        # contours. Hard budgets and state failures remain scalar stops.
-        scalar_cond = dataclasses.replace(
-            depth_cond,
-            dlogZ=None,
-            cummax_XL_frac=None,
-        )
-        depth_done, _ = carry.register.is_done(scalar_cond)
         return (
-            has_gap
+            carry.schedule.active
             & has_buffer
             & below_global_limit
-            & jnp.logical_not(depth_done)
+            & jnp.logical_not(_seed_source_refresh_due(
+                carry.state,
+                carry.schedule,
+            ))
+            & jnp.logical_not(carry.depth_done)
+            & (carry.state.termination_reason == 0)
         )
 
     def body(carry: _DepthCarry):
@@ -809,28 +1888,21 @@ def _run_depth(
         )
         if max_samples is not None:
             sample_limit = jnp.asarray(max_samples, mp_policy.count_dtype)
-        if depth_cond.max_samples is not None:
-            sample_limit = jnp.minimum(
+        max_valid_lanes = (
+            jnp.minimum(
                 sample_limit,
-                depth_cond.max_samples.astype(mp_policy.count_dtype),
-            )
-        work = _plan_work_batch(
+                jnp.asarray(
+                    carry.state.samples.log_likelihoods.shape[0],
+                    mp_policy.count_dtype,
+                ),
+            ).astype(mp_policy.index_dtype)
+            - carry.state.num_samples.astype(mp_policy.index_dtype)
+        )
+        schedule, work = _plan_scheduled_work_batch(
             plan_key,
             carry.state,
-            carry.block_state,
-            carry.plan,
-            carry.relevant,
-            shell_size,
-            max_valid_lanes=(
-                jnp.minimum(
-                    sample_limit,
-                    jnp.asarray(
-                        carry.state.samples.log_likelihoods.shape[0],
-                        mp_policy.count_dtype,
-                    ),
-                ).astype(mp_policy.index_dtype)
-                - carry.state.num_samples.astype(mp_policy.index_dtype)
-            ),
+            carry.schedule,
+            max_valid_lanes,
         )
         sampling_state = carry.state
         if sampler.uses_adaptive_directions():
@@ -843,7 +1915,7 @@ def _run_depth(
                 carry.state,
                 sampler,
                 work,
-                carry.block_state,
+                schedule,
             )
         sampled_batch = _sample_work_batch(
             sample_key,
@@ -851,27 +1923,41 @@ def _run_depth(
             sampler,
             work,
         )
+        insert_idx = sampling_state.num_samples
         next_state = _accept_work_batch(
             sampling_state,
             work,
             sampled_batch,
+            # The frozen schedule never consumes likelihood order. Publishing
+            # one merge per accepted batch was the measured quadratic path;
+            # rebuild once when the complete schedule drains instead.
+            update_likelihood_order=False,
         )
-        next_block_state, next_plan, next_relevant, next_register = (
-            _build_depth_view(
-                next_state,
-                depth_cond,
-                allocation_target=allocation_target,
-                root_degree=root_degree,
-                delta_K=delta_K,
-            )
+        slots = jnp.arange(
+            work.valid.shape[0],
+            dtype=mp_policy.index_dtype,
+        )  # [S]
+        schedule = _update_seed_reservoir(
+            schedule,
+            insert_idx.astype(mp_policy.index_dtype) + slots,
+            work.valid,
         )
+        schedule = _advance_thread_schedule(
+            schedule,
+            work,
+            sampled_batch,
+            insert_idx,
+        )
+        next_state = dataclasses.replace(
+            next_state,
+            scheduler_data=schedule,
+        )
+
         return _DepthCarry(
             key=next_key,
             state=next_state,
-            block_state=next_block_state,
-            plan=next_plan,
-            relevant=next_relevant,
-            register=next_register,
+            schedule=schedule,
+            depth_done=jnp.logical_not(schedule.active),
         )
 
     # A normal depth boundary starts the same per-depth split used before
@@ -889,13 +1975,6 @@ def _run_depth(
         next_goal_key,
         state.goal_key,
     )
-    block_state, plan, relevant, register = _build_depth_view(
-        state,
-        depth_cond,
-        allocation_target=allocation_target,
-        root_degree=root_degree,
-        delta_K=delta_K,
-    )
     initial_state = dataclasses.replace(
         state,
         random_key=depth_key,
@@ -903,25 +1982,30 @@ def _run_depth(
         needs_growth=jnp.asarray(False, mp_policy.bool_dtype),
         depth_reached=jnp.asarray(False, mp_policy.bool_dtype),
     )
+    if state.scheduler_data is None:
+        initial_state, schedule, depth_done = _start_schedule_round(
+            initial_state,
+            depth_cond,
+            shell_size=shell_size,
+            allocation_target=allocation_target,
+            root_degree=root_degree,
+            delta_K=delta_K,
+        )
+    else:
+        schedule = state.scheduler_data
+        initial_state = dataclasses.replace(
+            initial_state,
+            scheduler_data=schedule,
+        )
+        depth_done = jnp.asarray(False, mp_policy.bool_dtype)
     initial_carry = _DepthCarry(
         key=depth_key,
         state=initial_state,
-        block_state=block_state,
-        plan=plan,
-        relevant=relevant,
-        register=register,
+        schedule=schedule,
+        depth_done=depth_done,
     )
     final_carry = jax.lax.while_loop(cond, body, initial_carry)
 
-    # Classify the single reason the compiled loop returned. Terminal reasons
-    # take precedence over a full physical buffer, while a growable buffer
-    # takes precedence over ordinary completion of the allocation/depth work.
-    scalar_cond = dataclasses.replace(
-        depth_cond,
-        dlogZ=None,
-        cummax_XL_frac=None,
-    )
-    scalar_done, scalar_reason = final_carry.register.is_done(scalar_cond)
     hard_limit_reached = jnp.asarray(False, mp_policy.bool_dtype)
     if max_samples is not None:
         hard_limit_reached = final_carry.state.num_samples >= max_samples
@@ -929,38 +2013,55 @@ def _run_depth(
         final_carry.state.termination_reason != 0,
         final_carry.state.termination_reason,
         jnp.where(
-            scalar_done,
-            scalar_reason,
-            jnp.where(
-                hard_limit_reached,
-                jnp.asarray(MAX_SAMPLES_REACHED, mp_policy.count_dtype),
-                jnp.asarray(0, mp_policy.count_dtype),
-            ),
+            hard_limit_reached,
+            jnp.asarray(MAX_SAMPLES_REACHED, mp_policy.count_dtype),
+            jnp.asarray(0, mp_policy.count_dtype),
         ),
     )
     terminal = termination_reason != 0
-    has_gap = jnp.any(
-        final_carry.plan.under_allocated(final_carry.relevant)
-    )
     storage_full = (
         final_carry.state.num_samples
         >= final_carry.state.samples.log_likelihoods.shape[0]
     )
     needs_growth = jnp.logical_and(
         jnp.logical_not(terminal),
-        has_gap & storage_full,
+        final_carry.schedule.active & storage_full,
     )
-    depth_reached = jnp.logical_not(terminal | needs_growth)
+    seed_source_refresh_due = _seed_source_refresh_due(
+        final_carry.state,
+        final_carry.schedule,
+    )
+    schedule_drained = (
+        (final_carry.depth_done | seed_source_refresh_due)
+        & jnp.logical_not(terminal | needs_growth)
+    )
+    # Publish accepted likelihood identities before every Python return. An
+    # active schedule never consumes this mutable order: its stationary-seed
+    # index is frozen in `schedule.block_state`, so growth remains transparent.
+    final_state = _refresh_likelihood_order(final_carry.state)
+    # This compiled flag reports a drained schedule. Python immediately
+    # replaces it with the actual expected-depth result using the separately
+    # compiled boundary check; keeping that block reconstruction out of this
+    # large program materially reduces lowering and compilation time.
+    depth_reached = schedule_drained
     continuation_key = jnp.where(
-        needs_growth,
-        final_carry.key,
+        terminal,
         goal_key,
+        final_carry.key,
     )
     return dataclasses.replace(
-        final_carry.state,
+        final_state,
         termination_reason=termination_reason,
         needs_growth=needs_growth,
         depth_reached=depth_reached,
         random_key=continuation_key,
         goal_key=goal_key,
+        scheduler_data=dataclasses.replace(
+            final_carry.schedule,
+            active=jnp.where(
+                depth_reached | terminal,
+                jnp.asarray(False, mp_policy.bool_dtype),
+                final_carry.schedule.active,
+            ),
+        ),
     )
