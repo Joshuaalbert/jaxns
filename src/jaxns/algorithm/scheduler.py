@@ -76,9 +76,9 @@ class ThreadSchedule(PureDataclassPytree):
     seed_reservoir_priority: FloatArray  # [R] value-independent priorities
     seed_reservoir_valid: BoolArray  # [R]
     seed_reservoir_key: PRNGKey  # [2]
-    start_seed_idx: IntArray  # [R] seeds used by one unfinished start group
-    start_seed_log_L_constraint: FloatArray  # [R] effective start contours
-    start_seed_valid: BoolArray  # [R]
+    start_seed_used: BoolArray  # [G] frozen sample identities already used
+    start_seed_log_L_constraint: FloatArray  # [] retained effective contour
+    num_start_seeds: IntArray  # [] unique frozen seeds used at that contour
     parent_idx: IntArray  # [S]
     thread_id: IntArray  # [S]
     log_L_constraint: FloatArray  # [S]
@@ -118,6 +118,11 @@ class ThreadSchedule(PureDataclassPytree):
                 -1,
             ),
             root_seed_idx=_resize_vector(self.root_seed_idx, size, 0),
+            start_seed_used=_resize_vector(
+                self.start_seed_used,
+                size,
+                False,
+            ),
         )
 
     def resize_threads(
@@ -166,21 +171,6 @@ class ThreadSchedule(PureDataclassPytree):
             ),
             seed_reservoir_valid=_resize_vector(
                 self.seed_reservoir_valid,
-                reservoir_size,
-                False,
-            ),
-            start_seed_idx=_resize_vector(
-                self.start_seed_idx,
-                reservoir_size,
-                -1,
-            ),
-            start_seed_log_L_constraint=_resize_vector(
-                self.start_seed_log_L_constraint,
-                reservoir_size,
-                -jnp.inf,
-            ),
-            start_seed_valid=_resize_vector(
-                self.start_seed_valid,
                 reservoir_size,
                 False,
             ),

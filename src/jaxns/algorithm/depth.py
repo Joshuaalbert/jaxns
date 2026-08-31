@@ -429,20 +429,15 @@ def _new_thread_schedule(
             state.random_key,
             state.allocation_loop_iter,
         ),
-        start_seed_idx=jnp.full(
-            (seed_reservoir_size,),
-            -1,
-            dtype=mp_policy.index_dtype,
+        start_seed_used=jnp.zeros(
+            state.samples.log_likelihoods.shape,
+            dtype=mp_policy.bool_dtype,
         ),
-        start_seed_log_L_constraint=jnp.full(
-            (seed_reservoir_size,),
+        start_seed_log_L_constraint=jnp.asarray(
             -jnp.inf,
             dtype=mp_policy.measure_dtype,
         ),
-        start_seed_valid=jnp.zeros(
-            (seed_reservoir_size,),
-            dtype=mp_policy.bool_dtype,
-        ),
+        num_start_seeds=jnp.asarray(0, mp_policy.count_dtype),
         parent_idx=jnp.full(
             (shell_size,),
             -1,
@@ -652,9 +647,10 @@ def _sample_stationary_seeds(
     so this never materialises an ``[S, N]`` eligibility matrix. A bounded
     value-independent reservoir brings post-freeze rows into the candidate
     pool without making work grow with schedule length. The small
-    ``[S, P]`` reservation comparisons and ``[S, R]`` reservoir eligibility
-    are deliberate: prior starts, simultaneous lanes, pending distributed
-    tasks, and the candidate reservoir all have bounded planning widths.
+    ``[S, S]`` reservation comparisons and ``[S, R]`` reservoir eligibility
+    are deliberate: simultaneous lanes, pending distributed tasks, and the
+    candidate reservoir all have bounded planning widths. Cross-batch starts
+    use the sample-indexed mask in the frozen schedule instead.
     """
     source_num_samples = schedule.source_num_samples
     shell_size = valid.shape[0]
@@ -686,12 +682,25 @@ def _sample_stationary_seeds(
             log_L_constraint[:, None]
             == reserved_log_L_constraint[None, :]
         )
-    )  # [S, P]
+    )  # [S, S]
     reserved_count = jnp.sum(
         reserved_same_group,
         axis=1,
         dtype=mp_policy.index_dtype,
     )  # [S]
+    retained_start_group = (
+        valid
+        & schedule.new_start
+        & (
+            log_L_constraint
+            == schedule.start_seed_log_L_constraint
+        )
+    )  # [S]
+    reserved_count = reserved_count + jnp.where(
+        retained_start_group,
+        schedule.num_start_seeds,
+        jnp.asarray(0, mp_policy.count_dtype),
+    ).astype(mp_policy.index_dtype)
 
     frozen_count = jax.vmap(
         lambda constraint: _seed_count_at_constraint(schedule, constraint)[0]
@@ -765,6 +774,7 @@ def _sample_stationary_seeds(
         constraint = log_L_constraint[lane_idx]
         lane_valid = valid[lane_idx]
         lane_uses_root = use_root[lane_idx]
+        lane_retains_start_group = retained_start_group[lane_idx]
 
         # Earlier local lanes and in-flight distributed tasks are the complete
         # set of simultaneous reservations. Only equal-contour identities are
@@ -773,20 +783,20 @@ def _sample_stationary_seeds(
         forbidden_idx = jnp.concatenate(
             (reserved_seed_idx, selected),
             axis=0,
-        )  # [P + S]
+        )  # [2S]
         forbidden_constraint = jnp.concatenate(
             (reserved_log_L_constraint, log_L_constraint),
             axis=0,
-        )  # [P + S]
+        )  # [2S]
         forbidden_valid = jnp.concatenate(
             (reserved_valid, prior_valid),
             axis=0,
-        )  # [P + S]
+        )  # [2S]
         forbidden_same_contour = (
             forbidden_valid
             & (forbidden_idx >= 0)
             & (forbidden_constraint == constraint)
-        )  # [P + S]
+        )  # [2S]
         distinct_count = jnp.where(
             lane_uses_root,
             root_count,
@@ -887,8 +897,15 @@ def _sample_stationary_seeds(
                 & forbidden_same_contour[None, :],
                 axis=1,
             )  # [C]
+            candidate_was_start_seed = (
+                lane_retains_start_group
+                & (candidate >= 0)
+                & (candidate < source_num_samples)
+                & schedule.start_seed_used[safe_candidate]
+            )  # [C]
             eligible = stationary & jnp.logical_not(
-                require_unused & candidate_forbidden
+                require_unused
+                & (candidate_forbidden | candidate_was_start_seed)
             )  # [C]
             found = jnp.any(eligible)
             first = jnp.argmax(eligible).astype(mp_policy.index_dtype)
@@ -1173,57 +1190,61 @@ def _retain_start_seed_reservations(
 
     keep_existing = (
         has_future_start
-        & schedule.start_seed_valid
         & (
             schedule.start_seed_log_L_constraint
             == future_constraint
         )
-    )  # [R]
+    )
     keep_selected = (
         has_future_start
         & dispatched
         & schedule.new_start
         & (effective_constraint == future_constraint)
     )  # [S]
-    candidate_idx = jnp.concatenate(
-        (schedule.start_seed_idx, seed_idx),
-        axis=0,
-    )  # [R + S]
-    candidate_constraint = jnp.concatenate(
-        (schedule.start_seed_log_L_constraint, effective_constraint),
-        axis=0,
-    )  # [R + S]
-    candidate_valid = jnp.concatenate(
-        (keep_existing, keep_selected),
-        axis=0,
-    )  # [R + S]
-    reservation_size = schedule.start_seed_idx.shape[0]
-    positions = jnp.nonzero(
-        candidate_valid,
-        size=reservation_size,
-        fill_value=0,
-    )[0]  # [R]
-    num_reserved = jnp.sum(
-        candidate_valid,
-        dtype=mp_policy.index_dtype,
+    used = jnp.where(
+        keep_existing,
+        schedule.start_seed_used,
+        jnp.asarray(False, mp_policy.bool_dtype),
+    )  # [G]
+    num_used = jnp.where(
+        keep_existing,
+        schedule.num_start_seeds,
+        jnp.asarray(0, mp_policy.count_dtype),
     )
-    reservation_valid = (
-        jnp.arange(reservation_size, dtype=mp_policy.index_dtype)
-        < num_reserved
-    )  # [R]
+
+    def retain_lane(lane_idx, carry):
+        current_used, current_num_used = carry
+        selected_idx = seed_idx[lane_idx].astype(mp_policy.index_dtype)
+        safe_idx = jnp.maximum(selected_idx, 0)
+        retain = (
+            keep_selected[lane_idx]
+            & (selected_idx >= 0)
+            & (selected_idx < schedule.source_num_samples)
+        )
+        newly_used = retain & jnp.logical_not(current_used[safe_idx])
+        current_used = current_used.at[safe_idx].set(
+            current_used[safe_idx] | retain
+        )
+        return (
+            current_used,
+            current_num_used + newly_used.astype(current_num_used.dtype),
+        )
+
+    used, num_used = jax.lax.fori_loop(
+        0,
+        seed_idx.shape[0],
+        retain_lane,
+        (used, num_used),
+    )
     return dataclasses.replace(
         schedule,
-        start_seed_idx=jnp.where(
-            reservation_valid,
-            candidate_idx[positions],
-            -1,
-        ),
+        start_seed_used=used,
         start_seed_log_L_constraint=jnp.where(
-            reservation_valid,
-            candidate_constraint[positions],
+            has_future_start,
+            future_constraint,
             -jnp.inf,
         ),
-        start_seed_valid=reservation_valid,
+        num_start_seeds=num_used,
     )
 
 
@@ -1281,40 +1302,23 @@ def _plan_scheduled_work_batch(
         fallback_parent,
     )
 
-    # Pending distributed work may contain starts already recorded by the
-    # frozen schedule. Remove only those exact duplicates before counting the
-    # union; pending continuations remain simultaneous reservations.
-    pending_matches_start = jnp.any(
-        reserved_valid[:, None]
-        & schedule.start_seed_valid[None, :]
+    # A distributed start remains pending after its identity is recorded in
+    # the schedule mask. Exclude that exact duplicate from the simultaneous
+    # task count; pending continuations remain independent reservations.
+    safe_reserved_idx = jnp.maximum(reserved_seed_idx, 0)  # [S]
+    pending_matches_start = (
+        reserved_valid
+        & (reserved_seed_idx >= 0)
+        & (reserved_seed_idx < schedule.source_num_samples)
         & (
-            reserved_seed_idx[:, None]
-            == schedule.start_seed_idx[None, :]
+            reserved_log_L_constraint
+            == schedule.start_seed_log_L_constraint
         )
-        & (
-            reserved_log_L_constraint[:, None]
-            == schedule.start_seed_log_L_constraint[None, :]
-        ),
-        axis=1,
+        & schedule.start_seed_used[safe_reserved_idx]
     )  # [S]
-    combined_seed_idx = jnp.concatenate(
-        (schedule.start_seed_idx, reserved_seed_idx),
-        axis=0,
-    )  # [R + S]
-    combined_log_L_constraint = jnp.concatenate(
-        (
-            schedule.start_seed_log_L_constraint,
-            reserved_log_L_constraint,
-        ),
-        axis=0,
-    )  # [R + S]
-    combined_valid = jnp.concatenate(
-        (
-            schedule.start_seed_valid,
-            reserved_valid & jnp.logical_not(pending_matches_start),
-        ),
-        axis=0,
-    )  # [R + S]
+    unique_pending_valid = (
+        reserved_valid & jnp.logical_not(pending_matches_start)
+    )  # [S]
     seed_idx = _sample_stationary_seeds(
         seed_key,
         state,
@@ -1322,9 +1326,9 @@ def _plan_scheduled_work_batch(
         effective_constraint,
         jnp.isneginf(effective_constraint),
         valid,
-        combined_seed_idx,
-        combined_log_L_constraint,
-        combined_valid,
+        reserved_seed_idx,
+        reserved_log_L_constraint,
+        unique_pending_valid,
     )
     schedule = _retain_start_seed_reservations(
         schedule,

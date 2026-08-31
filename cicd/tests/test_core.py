@@ -404,15 +404,65 @@ def test_same_contour_thread_starts_remain_distinct_across_batches():
             jnp.asarray(2, dtype=jnp.int32),
         )
         selected.extend(np.asarray(work.seed_idx).tolist())
-        reservation_counts.append(int(jnp.sum(
-            schedule.start_seed_valid,
-        )))
+        reservation_counts.append(int(schedule.num_start_seeds))
         schedule = depth._release_thread_heads(schedule, work.valid)
 
     assert set(selected) == set(range(6))
     # Once every root start is dispatched there is no future same-contour
     # choice to constrain, so the bounded reservation can be released.
     assert reservation_counts == [2, 4, 0]
+
+
+def test_nonroot_start_reservation_is_not_bounded_by_batch_width():
+    """Twelve starts must partition thirteen seeds through width two."""
+    state = make_state(
+        root_out_degree=14,
+        log_likelihoods=tuple(float(value) for value in range(14)),
+        log_L_constraints=(-np.inf,) * 14,
+        out_degree=(0,) * 14,
+        max_samples=14,
+    )
+    block_state = build_block_state(
+        state.samples,
+        state.root_out_degree,
+        state.num_samples,
+        likelihood_order=state.likelihood_order,
+    )
+    schedule = depth._new_thread_schedule(
+        state,
+        block_state,
+        _allocation_plan(
+            block_state,
+            (0, 12, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
+        ),
+        block_state.valid,
+        shell_size=2,
+        tail_K=jnp.asarray(0, dtype=jnp.int32),
+        seed_reservoir_size=2,
+    )
+
+    selected = []
+    reservation_counts = []
+    for batch_idx in range(6):
+        schedule, work = depth._plan_scheduled_work_batch(
+            jax.random.fold_in(jax.random.PRNGKey(295), batch_idx),
+            state,
+            schedule,
+            jnp.asarray(2, dtype=jnp.int32),
+        )
+        selected.extend(np.asarray(work.seed_idx).tolist())
+        reservation_counts.append(int(schedule.num_start_seeds))
+        np.testing.assert_array_equal(
+            np.asarray(work.log_L_constraint),
+            np.zeros((2,)),
+        )
+        schedule = depth._release_thread_heads(schedule, work.valid)
+
+    assert len(set(selected)) == 12
+    assert 0 not in selected
+    # The fifth batch proves reservation cardinality is independent of both
+    # execution width S=2 and post-freeze reservoir width R=2.
+    assert reservation_counts == [2, 4, 6, 8, 10, 0]
 
 
 def test_thread_starts_partition_frozen_seeds_before_descendants():
