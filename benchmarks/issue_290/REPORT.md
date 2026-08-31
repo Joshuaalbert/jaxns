@@ -17,8 +17,11 @@ constrained sampler merely to hold every logical head.
 A bounded, value-independent random reservoir admits rows accepted after the
 freeze. Seeds are sampled from the union of that reservoir and the complete
 frozen race, with exact stationary eligibility checked for every proposal.
-After 32 reservoir-width batches, all accepted rows become a new frozen source
-and the unchanged absolute target is projected onto the refined contours.
+Same-contour thread starts mark each used frozen sample directly, so distinct
+eligible seeds are exhausted before reuse even when one start group is wider
+than the physical sampler batch. After 32 reservoir-width windows, all
+accepted rows become a new frozen source and the unchanged absolute target is
+projected onto the refined contours.
 The continuation ring has `33R` slots, where `R` is the greater of execution
 width and root degree: before refresh there can be fewer than `32R` committed
 continuations and no more than `R` in-flight continuations. Its memory is thus
@@ -63,6 +66,23 @@ state to the user goal. Doubling work from 50 to 100 batches costs 2.04x for
 the candidate and 2.19x for develop; the candidate does not reintroduce the
 previous growing post-freeze scan.
 
+The final reservation design was also remeasured against `develop` under JAX
+0.11.1, the local environment used for the release-gate and paper runs. This
+version materially penalises the repeated population-scale coordination in
+`develop`, so the comparison is reported separately rather than mixing JAX
+versions:
+
+| samples at entry | implementation | lower (s) | compile (s) | warm 10-batch median [range] (s) | HLO bytes | temporary bytes | total executable bytes |
+|---:|:---|---:|---:|---:|---:|---:|---:|
+| 53,034 | `develop` | 0.771 | 1.379 | 42.623 [41.699, 42.814] | 232,401 | 9,483,584 | 13,790,476 |
+| 53,034 | frozen FIFO | 1.090 | 2.772 | 4.253 [4.146, 4.296] | 341,793 | 3,487,536 | 14,860,896 |
+
+Both implementations again accept exactly 800 rows. The final candidate is
+10.02x faster on the repeated path and uses 63.2% less compiler temporary
+memory. Its explicit schedule and one-bit-per-frozen-sample reservation mask
+raise total executable bytes by 7.8%, HLO text by 47.1%, and compile time by
+2.0x. The six post-warmup timings have non-overlapping observed ranges.
+
 ## Scientific checks
 
 The unchanged standard basic problem was run for ten paired seeds with the
@@ -84,6 +104,15 @@ problem with phantom conditioning disabled and enabled. Its problem
 definitions and tolerances are byte-for-byte unchanged from `develop`. The
 difficult 8-D spike-slab, which exposed mode-weight loss in earlier scheduler
 variants, passes in both modes.
+
+The 10-D spike--slab exposed a second failure mode in the first frozen
+scheduler: starts split across physical batches could reuse a small seed
+subset. The final frozen-sample reservation mask removes that batch-width
+bound. On the unchanged phantom-enabled release case, whose reference is
+`log Z = -23.07212`, the deterministic estimate is
+`-23.09034 +/- 0.21708` and the 1,000-draw phantom-conditioned estimate is
+`-23.07795 +/- 0.13577` (`z = -0.043`). The run records 7,571 classic samples,
+72,710 phantoms, and 1,315,320 likelihood evaluations.
 
 ## Rejected alternatives
 
