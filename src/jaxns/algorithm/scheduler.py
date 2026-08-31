@@ -76,10 +76,14 @@ class ThreadSchedule(PureDataclassPytree):
     seed_reservoir_priority: FloatArray  # [R] value-independent priorities
     seed_reservoir_valid: BoolArray  # [R]
     seed_reservoir_key: PRNGKey  # [2]
+    start_seed_idx: IntArray  # [R] seeds used by one unfinished start group
+    start_seed_log_L_constraint: FloatArray  # [R] effective start contours
+    start_seed_valid: BoolArray  # [R]
     parent_idx: IntArray  # [S]
     thread_id: IntArray  # [S]
     log_L_constraint: FloatArray  # [S]
     terminal_log_L: FloatArray  # [S]
+    new_start: BoolArray  # [S] heads beginning a logical maximal thread
     valid: BoolArray  # [S]
     continuation_parent_idx: IntArray  # [Q] FIFO continuation parents
     continuation_thread_id: IntArray  # [Q] FIFO logical identities
@@ -165,6 +169,21 @@ class ThreadSchedule(PureDataclassPytree):
                 reservoir_size,
                 False,
             ),
+            start_seed_idx=_resize_vector(
+                self.start_seed_idx,
+                reservoir_size,
+                -1,
+            ),
+            start_seed_log_L_constraint=_resize_vector(
+                self.start_seed_log_L_constraint,
+                reservoir_size,
+                -jnp.inf,
+            ),
+            start_seed_valid=_resize_vector(
+                self.start_seed_valid,
+                reservoir_size,
+                False,
+            ),
             parent_idx=_resize_vector(self.parent_idx, size, -1),
             thread_id=_resize_vector(self.thread_id, size, -1),
             log_L_constraint=_resize_vector(
@@ -177,6 +196,7 @@ class ThreadSchedule(PureDataclassPytree):
                 size,
                 -jnp.inf,
             ),
+            new_start=_resize_vector(self.new_start, size, False),
             valid=_resize_vector(self.valid, size, False),
             continuation_parent_idx=_resize_vector(
                 continuation_parent_idx,

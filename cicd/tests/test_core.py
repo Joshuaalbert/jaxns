@@ -369,6 +369,103 @@ def test_same_contour_parallel_threads_use_distinct_stationary_seeds():
     assert int(work.seed_idx[0]) != int(work.seed_idx[1])
 
 
+def test_same_contour_thread_starts_remain_distinct_across_batches():
+    """A narrow vmap must rotate once through a wider root population."""
+    state = make_state(
+        root_out_degree=6,
+        log_likelihoods=(1.0, 2.0, 3.0, 4.0, 5.0, 6.0),
+        log_L_constraints=(-np.inf,) * 6,
+        out_degree=(0,) * 6,
+        max_samples=6,
+    )
+    block_state = build_block_state(
+        state.samples,
+        state.root_out_degree,
+        state.num_samples,
+        likelihood_order=state.likelihood_order,
+    )
+    schedule = depth._new_thread_schedule(
+        state,
+        block_state,
+        _allocation_plan(block_state, (6, 0, 0, 0, 0, 0)),
+        block_state.valid,
+        shell_size=2,
+        tail_K=jnp.asarray(0, dtype=jnp.int32),
+        seed_reservoir_size=6,
+    )
+
+    selected = []
+    reservation_counts = []
+    for batch_idx in range(3):
+        schedule, work = depth._plan_scheduled_work_batch(
+            jax.random.fold_in(jax.random.PRNGKey(290), batch_idx),
+            state,
+            schedule,
+            jnp.asarray(2, dtype=jnp.int32),
+        )
+        selected.extend(np.asarray(work.seed_idx).tolist())
+        reservation_counts.append(int(jnp.sum(
+            schedule.start_seed_valid,
+        )))
+        schedule = depth._release_thread_heads(schedule, work.valid)
+
+    assert set(selected) == set(range(6))
+    # Once every root start is dispatched there is no future same-contour
+    # choice to constrain, so the bounded reservation can be released.
+    assert reservation_counts == [2, 4, 0]
+
+
+def test_thread_starts_partition_frozen_seeds_before_descendants():
+    """Post-freeze rows must not dilute breadth across a frozen start group."""
+    source = make_state(
+        root_out_degree=4,
+        log_likelihoods=(1.0, 2.0, 3.0, 4.0),
+        log_L_constraints=(-np.inf,) * 4,
+        out_degree=(0,) * 4,
+        max_samples=8,
+    )
+    block_state = build_block_state(
+        source.samples,
+        source.root_out_degree,
+        source.num_samples,
+        likelihood_order=source.likelihood_order,
+    )
+    schedule = depth._new_thread_schedule(
+        source,
+        block_state,
+        _allocation_plan(block_state, (4, 0, 0, 0, 0, 0, 0, 0)),
+        block_state.valid,
+        shell_size=2,
+        tail_K=jnp.asarray(0, dtype=jnp.int32),
+        seed_reservoir_size=4,
+    )
+    current = make_state(
+        root_out_degree=4,
+        log_likelihoods=(1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0),
+        log_L_constraints=(-np.inf,) * 8,
+        out_degree=(0,) * 8,
+        max_samples=8,
+    )
+    schedule = depth._update_seed_reservoir(
+        schedule,
+        jnp.asarray([4, 5, 6, 7], dtype=jnp.int32),
+        jnp.ones((4,), dtype=bool),
+    )
+
+    selected = []
+    for batch_idx in range(2):
+        schedule, work = depth._plan_scheduled_work_batch(
+            jax.random.fold_in(jax.random.PRNGKey(294), batch_idx),
+            current,
+            schedule,
+            jnp.asarray(2, dtype=jnp.int32),
+        )
+        selected.extend(np.asarray(work.seed_idx).tolist())
+        schedule = depth._release_thread_heads(schedule, work.valid)
+
+    assert set(selected) == {0, 1, 2, 3}
+
+
 def test_mixed_contour_seed_groups_remain_distinct_after_rejection():
     state = make_state(
         root_out_degree=2,

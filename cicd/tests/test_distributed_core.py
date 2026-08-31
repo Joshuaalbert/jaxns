@@ -783,6 +783,74 @@ def test_distributed_refill_reserves_pending_same_contour_seed():
     assert int(first_work.seed_idx[0]) != int(second_work.seed_idx[0])
 
 
+def test_distributed_refills_reserve_starts_beyond_worker_capacity():
+    """Worker width two must spread six root starts without replacement."""
+    class Client:
+        def submit_many(self, session_id, tasks):
+            del session_id, tasks
+
+    runner = DistributedNestedSampler(
+        model=make_toy_model(),
+        coordinator_port=5555,
+        root_allocation_degree=6,
+        delta_K=1,
+        max_samples=12,
+        initial_capacity=12,
+    )
+    state = make_state(
+        root_out_degree=6,
+        log_likelihoods=(1.0, 2.0, 3.0, 4.0, 5.0, 6.0),
+        log_L_constraints=(-np.inf,) * 6,
+        out_degree=(0,) * 6,
+        max_samples=12,
+    )
+    state = dataclasses.replace(
+        state,
+        allocation_loop_iter=jnp.asarray(1, dtype=jnp.int32),
+        random_key=jax.random.PRNGKey(292),
+        goal_key=jax.random.PRNGKey(293),
+    )
+    state, _, _ = _start_schedule_round(
+        state,
+        DepthCondition(),
+        shell_size=2,
+        allocation_target="uniform",
+        root_degree=6,
+        delta_K=1,
+    )
+    checkpoint = DistributedState(
+        state=state,
+        reservations=ReservationState.empty(12),
+        pending=(),
+        next_task_id=0,
+        session_id="unit-test",
+        depth_active=True,
+        goal_key=state.goal_key,
+    )
+
+    selected = []
+    for _ in range(3):
+        checkpoint = runner._dispatch_threads(
+            Client(),
+            checkpoint,
+            DepthCondition(),
+            lane_capacity=2,
+        )
+        selected.extend(
+            int(task.work.seed_idx[0]) for task in checkpoint.pending
+        )
+        # This test isolates successive dispatch refills. Completed tasks are
+        # intentionally omitted because only their persistent start-seed
+        # reservation is under test here.
+        checkpoint = dataclasses.replace(
+            checkpoint,
+            reservations=ReservationState.empty(12),
+            pending=(),
+        )
+
+    assert set(selected) == set(range(6))
+
+
 def test_worker_request_uses_scalar_and_vmap_paths_above_strict_contour():
     model = make_toy_model()
     sampler = UniDimSliceSampler(model=model, num_slices=2)
