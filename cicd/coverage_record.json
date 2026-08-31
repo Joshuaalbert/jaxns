@@ -26,7 +26,7 @@
     "test_component_selection_is_strict_and_volume_weighted"
   ],
   "A seed used for a constrained chain is stationary for the requested parent contour before the chain starts.": [
-    "test_stationary_seed_mask_uses_generation_interval_not_suffix"
+    "test_mixed_contour_seed_groups_remain_distinct_after_rejection"
   ],
   "The sentinel out-degree plus all classic-sample out-degrees equals the number of classic samples in a complete stored race tree.": [
     "test_block_state_rejects_inconsistent_out_degree_total"
@@ -125,22 +125,25 @@
     "test_results_sample_mc_shrinkage_uses_gamma_conditioning_when_gate_active"
   ],
   "A generated edge from parent likelihood L_i to child likelihood L_j adds one active lineage to every existing block whose likelihood satisfies L_i less than L_g less than or equal to L_j.": [
-    "test_scheduler_marks_maximal_thread_prefix_and_stratifies_seeds"
+    "test_jax_decomposition_matches_python_reference_and_exact_coverage"
   ],
   "The allocation gap at a block is the positive part of its target lineage count minus its current lineage count.": [
-    "test_scheduler_starts_one_thread_for_one_gap_rise"
+    "test_depth_first_uniform_gaps_follow_d0_delta_k_iteration_formula"
   ],
   "Advancing a logical thread fills allocation gaps only along contours crossed by the generated lineage.": [
-    "test_scheduler_starts_one_thread_for_one_gap_rise"
+    "test_jax_decomposition_matches_python_reference_and_exact_coverage"
   ],
   "A parent selected for new work is chosen from a contour with an outstanding allocation gap or from a scientifically equivalent seedable reparenting contour.": [
     "test_missing_stationary_seed_reparents_to_closest_shallower_contour"
   ],
   "A seed is eligible for parent contour lambda only when its likelihood is greater than lambda and the contour from which it was generated is no greater than lambda.": [
-    "test_stationary_seed_mask_uses_generation_interval_not_suffix"
+    "test_mixed_contour_seed_groups_remain_distinct_after_rejection"
   ],
   "Concurrent children requested from the same parent contour use distinct eligible seeds whenever enough distinct eligible seeds exist.": [
-    "test_scheduler_marks_maximal_thread_prefix_and_stratifies_seeds"
+    "test_appended_seed_population_remains_distinct_when_large_enough",
+    "test_distributed_refill_reserves_pending_same_contour_seed",
+    "test_pending_same_contour_seeds_are_reserved_across_refills",
+    "test_same_contour_parallel_threads_use_distinct_stationary_seeds"
   ],
   "Reparenting caused by a lack of stationary seeds preserves the constrained-prior law required by the newly recorded parent contour.": [
     "test_missing_stationary_seed_reparents_to_closest_shallower_contour"

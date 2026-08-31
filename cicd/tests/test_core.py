@@ -414,6 +414,55 @@ def test_mixed_contour_seed_groups_remain_distinct_after_rejection():
         assert state.samples.log_L_constraints[seed_idx] <= constraint
 
 
+def test_missing_stationary_seed_reparents_to_closest_shallower_contour():
+    """A seedless requested contour records the nearest valid parent law."""
+    state = make_state(
+        root_out_degree=1,
+        log_likelihoods=(1.0, 2.0, 4.0),
+        log_L_constraints=(-np.inf, 1.0, 3.0),
+        out_degree=(1, 1, 0),
+        max_samples=4,
+    )
+    block_state = build_block_state(
+        state.samples,
+        state.root_out_degree,
+        state.num_samples,
+        likelihood_order=state.likelihood_order,
+    )
+    # Starting at block 2 requests the preceding L=2 contour. No stored
+    # generation interval crosses L=2, whereas sample 1 crosses L=1 exactly.
+    # The work request must therefore use L=1 for both its recorded parent
+    # contour and its stationary seed law.
+    schedule = depth._new_thread_schedule(
+        state,
+        block_state,
+        _allocation_plan(block_state, (0, 0, 1, 0)),
+        block_state.valid,
+        shell_size=1,
+        tail_K=jnp.asarray(0, dtype=jnp.int32),
+    )
+    # Isolate the fallback decision by representing a frozen contour whose
+    # crossing population has been exhausted. The closest shallower block
+    # remains seedable and its exact stationary interval is still read from
+    # the scientific samples below.
+    schedule = dataclasses.replace(
+        schedule,
+        seed_count=schedule.seed_count.at[1].set(0),
+        previous_seedable=schedule.previous_seedable.at[1].set(0),
+    )
+    _, work = depth._plan_scheduled_work_batch(
+        jax.random.PRNGKey(23),
+        state,
+        schedule,
+        jnp.asarray(1, dtype=jnp.int32),
+    )
+
+    assert bool(work.valid[0])
+    assert int(work.parent_idx[0]) == 0
+    assert int(work.seed_idx[0]) == 1
+    assert float(work.log_L_constraint[0]) == 1.0
+
+
 def test_pending_same_contour_seeds_are_reserved_across_refills():
     state = make_state(
         root_out_degree=2,

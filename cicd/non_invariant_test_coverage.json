@@ -261,11 +261,6 @@
       "path": "cicd/tests/test_cumulative_ops.py",
       "reason": "utility_behavior"
     },
-    "test_bit_mask": {
-      "note": "Checks generic reporting, resampling, percentile, or diagnostic utilities.",
-      "path": "cicd/tests/test_utils.py",
-      "reason": "utility_behavior"
-    },
     "test_blob_decomp": {
       "note": "Checks Gaussian-mixture utilities reserved for future direction proposals.",
       "path": "cicd/tests/test_em_gmm.py",
@@ -286,7 +281,7 @@
       "path": "cicd/tests/test_allocation.py",
       "reason": "implementation_formula"
     },
-    "test_build_uniform_allocation_plan_uses_exact_outer_iteration_targets": {
+    "test_build_uniform_allocation_plan_uses_exact_depth_iteration_targets": {
       "note": "Checks the current allocation utility, normalization, and target construction rather than an implementation-agnostic scientific contract.",
       "path": "cicd/tests/test_allocation.py",
       "reason": "implementation_formula"
@@ -320,11 +315,6 @@
       "note": "Checks the current compiled scheduler, append-order index, batching, or pytree architecture.",
       "path": "cicd/tests/test_core.py",
       "reason": "architecture_boundary"
-    },
-    "test_depth_first_uniform_targets_follow_k_delta_k_formula": {
-      "note": "Checks the current allocation utility, normalization, and target construction rather than an implementation-agnostic scientific contract.",
-      "path": "cicd/tests/test_allocation.py",
-      "reason": "implementation_formula"
     },
     "test_depth_relevance_is_a_complete_prefix_when_remaining_mass_rises": {
       "note": "Checks the current compiled scheduler, append-order index, batching, or pytree architecture.",
@@ -371,7 +361,7 @@
       "path": "cicd/tests/test_allocation.py",
       "reason": "implementation_formula"
     },
-    "test_fractional_utility_targets_ceil_and_clip_after_scaling": {
+    "test_fractional_utility_gaps_ceil_after_scaling": {
       "note": "Checks the current allocation utility, normalization, and target construction rather than an implementation-agnostic scientific contract.",
       "path": "cicd/tests/test_allocation.py",
       "reason": "implementation_formula"
@@ -666,11 +656,6 @@
       "path": "cicd/tests/test_state.py",
       "reason": "result_schema_regression"
     },
-    "test_stratified_seed_rank_is_uniform_for_each_stationary_set": {
-      "note": "Checks the current compiled scheduler, append-order index, batching, or pytree architecture.",
-      "path": "cicd/tests/test_core.py",
-      "reason": "architecture_boundary"
-    },
     "test_to_result_marks_no_phantoms_invalid": {
       "note": "Checks current state/result wiring or validation timing beyond mapped scientific invariants.",
       "path": "cicd/tests/test_state.py",
@@ -696,7 +681,7 @@
       "path": "cicd/tests/test_allocation.py",
       "reason": "implementation_formula"
     },
-    "test_utility_normalisation_and_integer_targets_are_deterministic": {
+    "test_utility_normalisation_and_integer_gaps_are_deterministic": {
       "note": "Checks the current allocation utility, normalization, and target construction rather than an implementation-agnostic scientific contract.",
       "path": "cicd/tests/test_allocation.py",
       "reason": "implementation_formula"
@@ -760,6 +745,81 @@
       "note": "Checks the selected supervisor round-robin queue policy between active clients.",
       "path": "cicd/tests/test_distributed_runtime.py",
       "reason": "runtime_architecture"
+    },
+    "test_continuation_fifo_fills_bound_without_overwrite": {
+      "note": "Checks the bounded ring representation selected for frozen-thread continuation state.",
+      "path": "cicd/tests/test_core.py",
+      "reason": "scheduler_architecture"
+    },
+    "test_continuation_fifo_preserves_order_across_physical_wrap": {
+      "note": "Checks physical wraparound in the selected FIFO continuation representation.",
+      "path": "cicd/tests/test_core.py",
+      "reason": "scheduler_architecture"
+    },
+    "test_continuations_wait_until_each_frozen_thread_has_started": {
+      "note": "Checks the selected breadth-first dispatch order before FIFO continuation.",
+      "path": "cicd/tests/test_core.py",
+      "reason": "scheduler_architecture"
+    },
+    "test_decomposition_keeps_large_multiplicity_compressed": {
+      "note": "Checks the compressed run representation rather than a separate scientific contract.",
+      "path": "cicd/tests/test_scheduler.py",
+      "reason": "scheduler_architecture"
+    },
+    "test_distributed_continuation_returns_to_fifo_not_dispatch_window": {
+      "note": "Checks that distributed completion uses the selected shared FIFO continuation representation.",
+      "path": "cicd/tests/test_distributed_core.py",
+      "reason": "scheduler_architecture"
+    },
+    "test_distributed_dispatch_starts_evidence_utility_schedule": {
+      "note": "Checks distributed wiring of the selected utility-schedule implementation.",
+      "path": "cicd/tests/test_distributed_core.py",
+      "reason": "scheduler_architecture"
+    },
+    "test_distributed_planning_width_tracks_worker_capacity": {
+      "note": "Checks the selected relationship between worker capacity and the transient planning window.",
+      "path": "cicd/tests/test_distributed_core.py",
+      "reason": "runtime_architecture"
+    },
+    "test_distributed_seed_refresh_waits_for_no_pending_tasks": {
+      "note": "Checks the selected atomic boundary between a frozen seed source and distributed pending work.",
+      "path": "cicd/tests/test_distributed_core.py",
+      "reason": "scheduler_architecture"
+    },
+    "test_filled_target_advances_allocation_without_exposing_user_goal": {
+      "note": "Checks the selected Python goal-boundary and internal allocation-round separation.",
+      "path": "cicd/tests/test_core.py",
+      "reason": "architecture_boundary"
+    },
+    "test_frozen_target_projects_by_successor_contour": {
+      "note": "Checks the selected projection used when new contours refine a frozen absolute target.",
+      "path": "cicd/tests/test_core.py",
+      "reason": "scheduler_architecture"
+    },
+    "test_resize_threads_linearises_a_wrapped_nonempty_fifo": {
+      "note": "Checks the selected growth implementation for a wrapped transient continuation ring.",
+      "path": "cicd/tests/test_core.py",
+      "reason": "scheduler_architecture"
+    },
+    "test_seed_pool_includes_completed_rows_accepted_after_freeze": {
+      "note": "Checks the bounded post-freeze seed-reservoir implementation.",
+      "path": "cicd/tests/test_core.py",
+      "reason": "scheduler_architecture"
+    },
+    "test_seed_source_refresh_is_bounded_by_planning_width": {
+      "note": "Checks the selected fixed refresh cadence and bounded continuation capacity.",
+      "path": "cicd/tests/test_core.py",
+      "reason": "scheduler_architecture"
+    },
+    "test_summary_decodes_the_only_hard_termination_reason": {
+      "note": "Checks user-facing wording for the current termination reason-code representation.",
+      "path": "cicd/tests/test_results_plotting.py",
+      "reason": "result_schema_regression"
+    },
+    "test_utility_schedule_continuation_projects_frozen_absolute_target": {
+      "note": "Checks continuation wiring for the selected frozen utility-target implementation.",
+      "path": "cicd/tests/test_allocation.py",
+      "reason": "scheduler_architecture"
     }
   }
 }
