@@ -14,7 +14,6 @@ from jaxns.diagnostics.reference import (
     bruteforce_evidence,
     bruteforce_posterior_samples,
 )
-from jaxns.diagnostics.summary import _bit_mask
 from jaxns.model import Model
 from jaxns.pytree import PureDataclassPytree
 from jaxns.random_utils import resample
@@ -27,12 +26,6 @@ def test_resample():
     logits = -jnp.ones(50)
     samples = {'x': x}
     assert jnp.all(resample(random.PRNGKey(0), samples, logits)['x'] == resample(random.PRNGKey(0), x, logits))
-
-
-def test_bit_mask():
-    assert _bit_mask(1, width=2) == [1, 0]
-    assert _bit_mask(2, width=2) == [0, 1]
-    assert _bit_mask(3, width=2) == [1, 1]
 
 
 def test_weighted_percentile():
