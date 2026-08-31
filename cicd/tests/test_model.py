@@ -1,4 +1,5 @@
 import jax
+import pytest
 from jax import numpy as jnp
 from jaxctx import scope
 from jaxctx.priors.prior import Prior
@@ -7,6 +8,59 @@ from tensorflow_probability.substrates import jax as tfp
 from jaxns.model import Model
 
 tfpd = tfp.distributions
+
+
+def test_sanity_check_rejects_invalid_model_outputs() -> None:
+    """Invalid model outputs fail before they can look scientifically valid."""
+
+    def model_with_likelihood(log_likelihood):
+        def prior_model():
+            Prior(
+                tfpd.Uniform(low=0.0, high=1.0),
+                name="value",
+            ).realise()
+            return jnp.asarray(log_likelihood)
+
+        return Model(prior_model=prior_model)
+
+    for invalid_likelihood in (jnp.nan, jnp.inf):
+        with pytest.raises(ValueError, match="invalid prior sample"):
+            model_with_likelihood(invalid_likelihood).sanity_check(
+                jax.random.PRNGKey(0),
+                num_samples=4,
+            )
+
+    def invalid_prior_model():
+        Prior(
+            tfpd.Normal(loc=jnp.nan, scale=1.0),
+            name="value",
+        ).realise()
+        return jnp.asarray(0.0)
+
+    with pytest.raises(ValueError, match="invalid prior sample"):
+        Model(prior_model=invalid_prior_model).sanity_check(
+            jax.random.PRNGKey(1),
+            num_samples=4,
+        )
+
+    # A negative-infinite log likelihood is valid zero likelihood and is not
+    # conflated with NaN or a divergent positive likelihood.
+    model_with_likelihood(-jnp.inf).sanity_check(
+        jax.random.PRNGKey(2),
+        num_samples=4,
+    )
+
+    with pytest.raises(ValueError, match="num_samples must be positive"):
+        model_with_likelihood(0.0).sanity_check(
+            jax.random.PRNGKey(3),
+            num_samples=0,
+        )
+
+    with pytest.raises(ValueError, match="scalar log likelihood"):
+        model_with_likelihood(jnp.zeros((1,))).sanity_check(
+            jax.random.PRNGKey(4),
+            num_samples=4,
+        )
 
 
 def test_init_params_forwards_model_and_explicit_args() -> None:
@@ -30,8 +84,14 @@ def test_init_params_forwards_model_and_explicit_args() -> None:
         key=jax.random.PRNGKey(0),
         args=args,
     )
-    sample = model.sample_U(
+    model.sanity_check(
         key=jax.random.PRNGKey(1),
+        args=args,
+        params=params,
+        num_samples=4,
+    )
+    sample = model.sample_U(
+        key=jax.random.PRNGKey(2),
         args=args,
         params=params,
     )

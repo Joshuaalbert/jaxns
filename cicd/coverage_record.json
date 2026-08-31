@@ -1,4 +1,7 @@
 {
+  "Invalid model outputs fail visibly rather than entering nested-sampling state as apparently valid scientific samples.": [
+    "test_sanity_check_rejects_invalid_model_outputs"
+  ],
   "A declared continuous periodic coordinate identifies its two unit-hypercube endpoints while preserving the normalized prior measure and canonical storage in the half-open unit interval.": [
     "test_periodic_coordinates_expand_in_sampler_order",
     "test_periodic_coordinates_report_all_false_topology",
