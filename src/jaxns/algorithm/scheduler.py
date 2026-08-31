@@ -142,7 +142,7 @@ class ThreadSchedule(PureDataclassPytree):
         positions = (
             self.continuation_head
             + jnp.arange(queue_size, dtype=mp_policy.index_dtype)
-        ) % queue_size
+        ) % queue_size  # [Q]
         continuation_parent_idx = self.continuation_parent_idx[positions]
         continuation_thread_id = self.continuation_thread_id[positions]
         continuation_terminal_log_L = (

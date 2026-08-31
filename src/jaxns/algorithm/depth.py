@@ -343,8 +343,11 @@ def _new_thread_schedule(
     # population before reinforcing modes that happened to survive at the
     # tail. Sorting only compressed runs occurs once per frozen source; the
     # repeated batch path still advances fixed-width heads without sorting.
-    run_idx = jnp.arange(start_block.shape[0], dtype=mp_policy.index_dtype)
-    valid_run = run_idx < num_runs
+    run_idx = jnp.arange(
+        start_block.shape[0],
+        dtype=mp_policy.index_dtype,
+    )  # [G]
+    valid_run = run_idx < num_runs  # [G]
     invalid_key = jnp.asarray(start_block.shape[0], mp_policy.index_dtype)
     (
         _,
@@ -599,9 +602,9 @@ def _sample_stationary_seeds(
     so this never materialises an ``[S, N]`` eligibility matrix. A bounded
     value-independent reservoir brings post-freeze rows into the candidate
     pool without making work grow with schedule length. The small
-    ``[S, S]``
-    comparisons are deliberate: simultaneous lanes, pending distributed
-    tasks, and reservoir rows all have the fixed planning width.
+    ``[S, S]`` reservation comparisons and ``[S, R]`` reservoir eligibility
+    are deliberate: simultaneous lanes, pending distributed tasks, and the
+    candidate reservoir all have bounded planning widths.
     """
     source_num_samples = schedule.source_num_samples
     shell_size = valid.shape[0]
@@ -867,13 +870,16 @@ def _enqueue_thread_continuations(
     queue_size = schedule.continuation_parent_idx.shape[0]
 
     def enqueue(lane_idx, current: ThreadSchedule) -> ThreadSchedule:
-        append = valid[lane_idx]
+        append = valid[lane_idx] & (
+            current.continuation_count < queue_size
+        )
         tail = (
             current.continuation_head + current.continuation_count
         ) % queue_size
         # The queue covers the complete accepted-row refresh cadence plus one
-        # in-flight window, so every scientifically valid continuation has a
-        # slot. Do not turn overflow into silent loss of a logical thread.
+        # in-flight window, so every scientifically reachable continuation has
+        # a slot. The capacity guard keeps an already-full ring immutable if a
+        # caller violates that lifecycle invariant.
         return dataclasses.replace(
             current,
             continuation_parent_idx=(

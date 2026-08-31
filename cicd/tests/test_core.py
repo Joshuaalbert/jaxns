@@ -126,6 +126,32 @@ def _allocation_plan(
     )
 
 
+def _fifo_test_schedule():
+    """Build a two-slot schedule whose continuation ring is initially empty."""
+    state = make_state(
+        root_out_degree=2,
+        log_likelihoods=(1.0, 2.0),
+        log_L_constraints=(-np.inf, -np.inf),
+        out_degree=(0, 0),
+        max_samples=6,
+    )
+    block_state = build_block_state(
+        state.samples,
+        state.root_out_degree,
+        state.num_samples,
+        likelihood_order=state.likelihood_order,
+    )
+    schedule = depth._new_thread_schedule(
+        state,
+        block_state,
+        _allocation_plan(block_state, (4, 0, 0, 0, 0, 0)),
+        block_state.valid,
+        shell_size=2,
+        tail_K=jnp.asarray(0, dtype=jnp.int32),
+    )
+    return state, schedule
+
+
 def test_continuations_wait_until_each_frozen_thread_has_started():
     """A narrow sampler window rotates breadth-first over a wider gap."""
     state = make_state(
@@ -181,6 +207,130 @@ def test_continuations_wait_until_each_frozen_thread_has_started():
     np.testing.assert_array_equal(resumed.thread_id, np.asarray([0, 1]))
     np.testing.assert_array_equal(resumed.parent_idx, np.asarray([2, 3]))
     assert int(resumed.continuation_count) == 0
+
+
+def test_continuation_fifo_preserves_order_across_physical_wrap():
+    state, schedule = _fifo_test_schedule()
+    # Occupied logical order is parent 0 then parent 1 even though the ring
+    # starts at its final physical slot. Appending parent 0 must wrap into the
+    # one remaining middle slot without changing that FIFO order.
+    schedule = dataclasses.replace(
+        schedule,
+        continuation_parent_idx=jnp.asarray([1, -1, 0]),
+        continuation_thread_id=jnp.asarray([11, -1, 10]),
+        continuation_terminal_log_L=jnp.asarray([10.0, -jnp.inf, 10.0]),
+        continuation_head=jnp.asarray(2, dtype=jnp.int32),
+        continuation_count=jnp.asarray(2, dtype=jnp.int32),
+        next_run=schedule.num_runs,
+        remaining_in_run=jnp.asarray(
+            0,
+            dtype=schedule.remaining_in_run.dtype,
+        ),
+    )
+    schedule = depth._enqueue_thread_continuations(
+        schedule,
+        jnp.asarray([0], dtype=jnp.int32),
+        jnp.asarray([12], dtype=jnp.int32),
+        jnp.asarray([10.0]),
+        jnp.asarray([True]),
+    )
+
+    first = depth._fill_thread_heads(
+        jax.random.PRNGKey(33),
+        state,
+        schedule,
+    )
+    np.testing.assert_array_equal(first.thread_id, np.asarray([10, 11]))
+    first = depth._release_thread_heads(first, first.valid)
+    last = depth._fill_thread_heads(
+        jax.random.PRNGKey(34),
+        state,
+        first,
+    )
+    np.testing.assert_array_equal(last.valid, np.asarray([True, False]))
+    assert int(last.thread_id[0]) == 12
+
+
+def test_resize_threads_linearises_a_wrapped_nonempty_fifo():
+    _, schedule = _fifo_test_schedule()
+    schedule = dataclasses.replace(
+        schedule,
+        continuation_parent_idx=jnp.asarray([1, 2, 0]),
+        continuation_thread_id=jnp.asarray([11, 12, 10]),
+        continuation_terminal_log_L=jnp.asarray([4.0, 5.0, 3.0]),
+        continuation_head=jnp.asarray(2, dtype=jnp.int32),
+        continuation_count=jnp.asarray(3, dtype=jnp.int32),
+    )
+
+    resized = schedule.resize_threads(3, continuation_size=7)
+
+    assert int(resized.continuation_head) == 0
+    assert int(resized.continuation_count) == 3
+    np.testing.assert_array_equal(
+        resized.continuation_parent_idx[:3],
+        np.asarray([0, 1, 2]),
+    )
+    np.testing.assert_array_equal(
+        resized.continuation_thread_id[:3],
+        np.asarray([10, 11, 12]),
+    )
+    np.testing.assert_array_equal(
+        resized.continuation_terminal_log_L[:3],
+        np.asarray([3.0, 4.0, 5.0]),
+    )
+
+
+def test_continuation_fifo_fills_bound_without_overwrite():
+    _, schedule = _fifo_test_schedule()
+    queue_size = schedule.continuation_parent_idx.shape[0]
+    head = 5
+    occupied = queue_size - 2
+    positions = (
+        head + np.arange(occupied, dtype=np.int32)
+    ) % queue_size  # [Q - S]
+    parent_idx = np.full((queue_size,), -1, dtype=np.int32)  # [Q]
+    thread_id = np.full((queue_size,), -1, dtype=np.int32)  # [Q]
+    terminal_log_L = np.full((queue_size,), -np.inf)  # [Q]
+    parent_idx[positions] = np.arange(occupied, dtype=np.int32)
+    thread_id[positions] = np.arange(occupied, dtype=np.int32)
+    terminal_log_L[positions] = np.arange(occupied, dtype=np.float64)
+    schedule = dataclasses.replace(
+        schedule,
+        continuation_parent_idx=jnp.asarray(parent_idx),
+        continuation_thread_id=jnp.asarray(thread_id),
+        continuation_terminal_log_L=jnp.asarray(terminal_log_L),
+        continuation_head=jnp.asarray(head, dtype=jnp.int32),
+        continuation_count=jnp.asarray(occupied, dtype=jnp.int32),
+    )
+    final_values = jnp.asarray([occupied, occupied + 1], dtype=jnp.int32)
+    full = depth._enqueue_thread_continuations(
+        schedule,
+        final_values,
+        final_values,
+        final_values.astype(jnp.float64),
+        jnp.asarray([True, True]),
+    )
+
+    assert int(full.continuation_count) == queue_size
+    logical_positions = (
+        head + np.arange(queue_size, dtype=np.int32)
+    ) % queue_size  # [Q]
+    np.testing.assert_array_equal(
+        np.asarray(full.continuation_thread_id)[logical_positions],
+        np.arange(queue_size),
+    )
+    unchanged = depth._enqueue_thread_continuations(
+        full,
+        jnp.asarray([999, 1000], dtype=jnp.int32),
+        jnp.asarray([999, 1000], dtype=jnp.int32),
+        jnp.asarray([999.0, 1000.0]),
+        jnp.asarray([True, True]),
+    )
+    assert int(unchanged.continuation_count) == queue_size
+    np.testing.assert_array_equal(
+        unchanged.continuation_thread_id,
+        full.continuation_thread_id,
+    )
 
 
 def test_same_contour_parallel_threads_use_distinct_stationary_seeds():
