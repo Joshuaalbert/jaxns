@@ -142,8 +142,11 @@
   "Concurrent children requested from the same parent contour use distinct eligible seeds whenever enough distinct eligible seeds exist.": [
     "test_appended_seed_population_remains_distinct_when_large_enough",
     "test_distributed_refill_reserves_pending_same_contour_seed",
+    "test_distributed_refills_reserve_starts_beyond_worker_capacity",
     "test_pending_same_contour_seeds_are_reserved_across_refills",
-    "test_same_contour_parallel_threads_use_distinct_stationary_seeds"
+    "test_same_contour_parallel_threads_use_distinct_stationary_seeds",
+    "test_same_contour_thread_starts_remain_distinct_across_batches",
+    "test_thread_starts_partition_frozen_seeds_before_descendants"
   ],
   "Reparenting caused by a lack of stationary seeds preserves the constrained-prior law required by the newly recorded parent contour.": [
     "test_missing_stationary_seed_reparents_to_closest_shallower_contour"
