@@ -957,6 +957,63 @@ def test_likelihood_order_rank_merge_matches_stable_reference():
         )
 
 
+def test_likelihood_order_publication_merges_new_rows_across_growth():
+    state = make_state(
+        root_out_degree=2,
+        log_likelihoods=(0.0, 2.0),
+        out_degree=(1, 0),
+        max_samples=8,
+    )
+    state = dataclasses.replace(
+        state,
+        likelihood_order=initialise_likelihood_order(
+            state.samples.log_likelihoods,
+            state.num_samples,
+        ),
+    )
+    state, schedule, _ = depth._start_schedule_round(
+        state,
+        DepthCondition(),
+        shell_size=1,
+        allocation_target="uniform",
+        root_degree=2,
+        delta_K=1,
+    )
+    likelihood = state.samples.log_likelihoods.at[2].set(1.0)
+    likelihood = likelihood.at[3].set(3.0)
+    state = dataclasses.replace(
+        state,
+        samples=dataclasses.replace(
+            state.samples,
+            log_likelihoods=likelihood,
+        ),
+        num_samples=jnp.asarray(4, dtype=jnp.int32),
+        scheduler_data=schedule,
+    )
+
+    first = depth._refresh_likelihood_order(state)
+    np.testing.assert_array_equal(
+        np.asarray(first.likelihood_order.sample_indices),
+        np.array([0, 2, 1, 3, -1, -1, -1, -1]),
+    )
+
+    likelihood = first.samples.log_likelihoods.at[4].set(0.5)
+    likelihood = likelihood.at[5].set(4.0)
+    resumed = dataclasses.replace(
+        first,
+        samples=dataclasses.replace(
+            first.samples,
+            log_likelihoods=likelihood,
+        ),
+        num_samples=jnp.asarray(6, dtype=jnp.int32),
+    )
+    second = depth._refresh_likelihood_order(resumed)
+    np.testing.assert_array_equal(
+        np.asarray(second.likelihood_order.sample_indices),
+        np.array([0, 4, 2, 1, 3, 5, -1, -1]),
+    )
+
+
 def test_partial_batch_respects_non_multiple_max_samples():
     ns = NestedSampler(
         model=make_toy_model(),

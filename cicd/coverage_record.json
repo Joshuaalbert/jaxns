@@ -32,19 +32,23 @@
     "test_block_state_rejects_inconsistent_out_degree_total"
   ],
   "The first race has active lineage count equal to the sentinel out-degree.": [
-    "test_canonical_block_state_groups_plateaus_and_incoming_K_g"
+    "test_canonical_block_state_groups_plateaus_and_incoming_K_g",
+    "test_jax_block_state_groups_plateaus_and_incoming_K_g"
   ],
   "After one sample arrives with out-degree d, the active lineage count changes from K to K minus one plus d.": [
-    "test_canonical_block_state_groups_plateaus_and_incoming_K_g"
+    "test_canonical_block_state_groups_plateaus_and_incoming_K_g",
+    "test_jax_block_state_groups_plateaus_and_incoming_K_g"
   ],
   "Every valid race arrival has a strictly positive incoming active-lineage count.": [
     "test_canonical_block_state_rejects_plateau_with_too_few_lineages"
   ],
   "All classic samples at the same likelihood form one block, and distinct valid blocks are ordered by strictly increasing likelihood.": [
-    "test_canonical_block_state_groups_plateaus_and_incoming_K_g"
+    "test_canonical_block_state_groups_plateaus_and_incoming_K_g",
+    "test_jax_block_state_groups_plateaus_and_incoming_K_g"
   ],
   "A block's multiplicity is the number of classic samples at its likelihood and its out-degree is the sum of their out-degrees.": [
-    "test_canonical_block_state_groups_plateaus_and_incoming_K_g"
+    "test_canonical_block_state_groups_plateaus_and_incoming_K_g",
+    "test_jax_block_state_groups_plateaus_and_incoming_K_g"
   ],
   "A block cannot contain more race arrivals than its incoming active lineage count.": [
     "test_canonical_block_state_rejects_plateau_with_too_few_lineages",

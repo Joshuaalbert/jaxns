@@ -150,6 +150,47 @@ def test_canonical_block_state_groups_plateaus_and_incoming_K_g() -> None:
     )
 
 
+def test_jax_block_state_groups_plateaus_and_incoming_K_g() -> None:
+    """Check the compiled integer-prefix lineage recurrence on plateaus."""
+    fixture = _plateau_race_tree_fixture()
+    samples = Samples(
+        log_L_constraints=jnp.asarray(fixture.log_L_constraints),
+        log_likelihoods=jnp.asarray(fixture.log_likelihoods),
+        U_samples=jnp.zeros((6, 1)),
+        out_degree=jnp.asarray(fixture.out_degree),
+        num_likelihood_evaluations=jnp.ones((6,), dtype=jnp.int32),
+        phantom_samples=PhantomSamples(
+            U_samples=jnp.zeros((6, 0, 1)),
+            valid_mask=jnp.zeros((6, 0), dtype=jnp.bool_),
+            log_L=jnp.zeros((6, 0)),
+        ),
+    )
+
+    blocks = build_block_state(
+        samples=samples,
+        root_out_degree=jnp.asarray(3, dtype=jnp.int32),
+        num_samples=jnp.asarray(6, dtype=jnp.int32),
+    )
+    valid = np.asarray(blocks.valid, dtype=bool)
+    expected = _expected_plateau_blocks()
+    np.testing.assert_allclose(
+        np.asarray(blocks.log_L_blocks)[valid],
+        expected.log_L_g,
+    )
+    np.testing.assert_array_equal(
+        np.asarray(blocks.block_size)[valid],
+        expected.m_g,
+    )
+    np.testing.assert_array_equal(
+        np.asarray(blocks.incoming_K)[valid],
+        expected.K_g,
+    )
+    np.testing.assert_array_equal(
+        np.asarray(blocks.block_out_degree)[valid],
+        expected.out_degree_sum,
+    )
+
+
 def test_canonical_block_state_is_invariant_to_generation_order() -> None:
     fixture = _plateau_race_tree_fixture()
     permuted = fixture.permute(np.array([5, 3, 0, 2, 1, 4], dtype=np.int32))

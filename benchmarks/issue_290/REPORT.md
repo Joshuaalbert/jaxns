@@ -22,6 +22,9 @@ eligible seeds are exhausted before reuse even when one start group is wider
 than the physical sampler batch. After 32 reservoir-width windows, all
 accepted rows become a new frozen source and the unchanged absolute target is
 projected onto the refined contours.
+Publication bulk-merges only the bounded accepted suffix into the persistent
+likelihood order. Block lineage counts use the exact additive exclusive prefix
+of `-m_g + d_g`, avoiding one sequential device-loop iteration per block.
 The continuation ring has `33R` slots, where `R` is the greater of execution
 width and root degree: before refresh there can be fewer than `32R` committed
 continuations and no more than `R` in-flight continuations. Its memory is thus
@@ -34,7 +37,8 @@ likelihood cost with a deterministic constrained sampler. Develop and the
 candidate use width 80, receive the same allocation increment, and accept the
 same rows. Each executable is warmed twice; six synchronised CPU runs then
 determine the median and full observed range. Lowering and compilation are
-measured separately. The environment used JAX 0.10.0 on CPU.
+measured separately. The following historical experiment used JAX 0.10.0 on
+CPU and predates the final seed-reservation and bounded-publication fixes.
 
 | samples at entry | implementation | lower (s) | compile (s) | warm 10-batch median [range] (s) | HLO bytes | temporary bytes | executable bytes |
 |---:|:---|---:|---:|---:|---:|---:|---:|
@@ -66,22 +70,45 @@ state to the user goal. Doubling work from 50 to 100 batches costs 2.04x for
 the candidate and 2.19x for develop; the candidate does not reintroduce the
 previous growing post-freeze scan.
 
-The final reservation design was also remeasured against `develop` under JAX
-0.11.1, the local environment used for the release-gate and paper runs. This
-version materially penalises the repeated population-scale coordination in
-`develop`, so the comparison is reported separately rather than mixing JAX
-versions:
+The final design was remeasured against `develop` under JAX 0.11.1, the local
+environment used for the release-gate and paper runs. This version materially
+penalises the sequential per-block recurrence in `develop`, so the comparison
+is reported separately rather than mixing JAX versions. The three `develop`
+executions were stable at 42.269, 42.286, and 42.014 seconds; six final-candidate
+measurements follow two warmups.
 
 | samples at entry | implementation | lower (s) | compile (s) | warm 10-batch median [range] (s) | HLO bytes | temporary bytes | total executable bytes |
 |---:|:---|---:|---:|---:|---:|---:|---:|
-| 53,034 | `develop` | 0.771 | 1.379 | 42.623 [41.699, 42.814] | 232,401 | 9,483,584 | 13,790,476 |
-| 53,034 | frozen FIFO | 1.090 | 2.772 | 4.253 [4.146, 4.296] | 341,793 | 3,487,536 | 14,860,896 |
+| 53,034 | `develop` | 0.832 | 1.381 | 42.269 [42.014, 42.286] | 253,212 | 10,346,504 | 15,514,891 |
+| 53,034 | frozen FIFO | 1.177 | 2.838 | 0.336 [0.332, 0.362] | 363,584 | 3,107,184 | 14,911,216 |
 
 Both implementations again accept exactly 800 rows. The final candidate is
-10.02x faster on the repeated path and uses 63.2% less compiler temporary
-memory. Its explicit schedule and one-bit-per-frozen-sample reservation mask
-raise total executable bytes by 7.8%, HLO text by 47.1%, and compile time by
-2.0x. The six post-warmup timings have non-overlapping observed ranges.
+125.8x faster on the repeated path and uses 70.0% less compiler temporary
+memory. Despite its explicit schedule and one-bit-per-frozen-sample
+reservation mask, total executable bytes fall by 3.9%; HLO text grows by
+43.6%, and compile time by 2.1x. The observed execution ranges do not overlap.
+
+Final-candidate scaling was then measured with the same six-after-two protocol:
+
+| samples at entry | accepted batches | warm median [range] (s) |
+|---:|---:|---:|
+| 53,034 | 10 | 0.336 [0.332, 0.362] |
+| 424,272 | 10 | 2.859 [2.808, 2.916] |
+
+An 8.00x population increase costs 8.51x more time. The retained scheduler is
+therefore near-linear in frozen population size rather than retaining the
+measured superlinear device-loop behavior.
+
+Bounded refresh also remains linear in accepted work at 53,034 entry samples:
+
+| accepted batches | schedule calls | warm median [range] (s) |
+|---:|---:|---:|
+| 50 | 2 | 1.415 [1.394, 1.457] |
+| 100 | 4 | 2.902 [2.784, 3.329] |
+
+Doubling accepted work costs 2.05x. This includes publishing each bounded
+accepted suffix into the persistent likelihood order; no full-population sort
+is performed at a schedule or growth boundary.
 
 ## Scientific checks
 

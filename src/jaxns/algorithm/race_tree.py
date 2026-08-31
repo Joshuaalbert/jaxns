@@ -1,6 +1,5 @@
 import dataclasses
 
-import jax
 import numpy as np
 from jax import numpy as jnp
 
@@ -92,9 +91,14 @@ def insert_likelihood_order(
         batch_size,
         dtype=mp_policy.index_dtype,
     )
-    new_log_l = jnp.where(valid_new, log_likelihoods[new_indices], jnp.inf)
+    safe_new_indices = jnp.clip(new_indices, 0, size - 1)
+    new_log_l = jnp.where(
+        valid_new,
+        log_likelihoods[safe_new_indices],
+        jnp.inf,
+    )
     new_order = jnp.argsort(new_log_l, stable=True)
-    sorted_new_indices = new_indices[new_order]
+    sorted_new_indices = safe_new_indices[new_order]
     sorted_new_valid = valid_new[new_order]
     sorted_new_log_l = jnp.where(
         sorted_new_valid,
@@ -229,6 +233,8 @@ def build_block_state(
         jnp.cumsum(block_boundary.astype(mp_policy.index_dtype)) - 1,
         0,
     )
+    num_blocks = jnp.sum(block_boundary, dtype=mp_policy.index_dtype)
+    block_valid = sample_idx < num_blocks
     log_L_blocks = jnp.full(
         (max_samples,),
         jnp.inf,
@@ -239,8 +245,6 @@ def build_block_state(
         -1,
         dtype=mp_policy.index_dtype,
     ).at[block_ids].max(jnp.where(block_boundary, sorted_labels, -1))
-    num_blocks = jnp.sum(block_boundary, dtype=mp_policy.index_dtype)
-    block_valid = sample_idx < num_blocks
     block_size = jnp.bincount(
         block_ids,
         weights=sorted_valid.astype(mp_policy.count_dtype),
@@ -248,19 +252,29 @@ def build_block_state(
     ).astype(mp_policy.count_dtype)
     block_out_degree = jnp.bincount(
         block_ids,
-        weights=jnp.where(sorted_valid, sorted_out_degree, 0).astype(mp_policy.count_dtype),
+        weights=jnp.where(
+            sorted_valid,
+            sorted_out_degree,
+            0,
+        ).astype(mp_policy.count_dtype),
         length=max_samples,
     ).astype(mp_policy.count_dtype)
 
-    def scan_fn(k_in, block_values):
-        m_g, d_g, is_valid = block_values
-        k_out = jnp.where(is_valid, k_in - m_g + d_g, k_in)
-        return k_out, jnp.where(is_valid, k_in, jnp.asarray(0, dtype=k_in.dtype))
-
-    _, incoming_K = jax.lax.scan(
-        scan_fn,
-        jnp.asarray(root_out_degree, dtype=mp_policy.count_dtype),
-        (block_size, block_out_degree, block_valid),
+    # K_{g+1} = K_g - m_g + d_g is an additive recurrence. Its exact integer
+    # exclusive prefix is equivalent to a sequential scan, while allowing XLA
+    # to evaluate large continuous races without one device loop per sample.
+    lineage_delta = jnp.where(
+        block_valid,
+        block_out_degree - block_size,
+        jnp.asarray(0, mp_policy.count_dtype),
+    )
+    inclusive_delta = jnp.cumsum(lineage_delta)
+    incoming_K = jnp.where(
+        block_valid,
+        jnp.asarray(root_out_degree, dtype=mp_policy.count_dtype)
+        + inclusive_delta
+        - lineage_delta,
+        jnp.asarray(0, mp_policy.count_dtype),
     )
 
     block_start = jnp.cumsum(block_size) - block_size

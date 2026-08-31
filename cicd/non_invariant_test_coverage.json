@@ -426,6 +426,11 @@
       "path": "cicd/tests/test_core.py",
       "reason": "architecture_boundary"
     },
+    "test_likelihood_order_publication_merges_new_rows_across_growth": {
+      "note": "Checks bounded schedule-boundary order publication and repeated growth publication without duplicate identities.",
+      "path": "cicd/tests/test_core.py",
+      "reason": "implementation_regression"
+    },
     "test_likelihood_order_rank_merge_matches_stable_reference": {
       "note": "Checks the current compiled scheduler, append-order index, batching, or pytree architecture.",
       "path": "cicd/tests/test_core.py",

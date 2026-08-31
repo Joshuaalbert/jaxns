@@ -12,6 +12,7 @@ import jax.numpy as jnp
 from cicd.tests.distributed_support import make_toy_model
 from cicd.tests.test_core import DeterministicSampler
 from jaxns.algorithm.depth import _run_depth
+from jaxns.algorithm.race_tree import LikelihoodOrder
 from jaxns.mixed_precision import mp_policy
 from jaxns.samples import PhantomSamples, Samples
 from jaxns.state import State
@@ -51,6 +52,10 @@ def make_state(size: int, width: int, batches: int) -> State:
         ),
     )
     key = jax.random.PRNGKey(290)  # [2]
+    sample_idx = jnp.arange(capacity, dtype=mp_policy.index_dtype)  # [A]
+    order = LikelihoodOrder(
+        sample_indices=jnp.where(sample_idx < size, sample_idx, -1),
+    )
     state_fields = {}
     if sys.argv[1] != "develop":
         state_fields["allocation_loop_iter"] = jnp.asarray(
@@ -69,6 +74,7 @@ def make_state(size: int, width: int, batches: int) -> State:
         random_key=key,
         goal_key=key,
         depth_reached=jnp.asarray(True),
+        likelihood_order=order,
         **state_fields,
     )
 
@@ -78,6 +84,9 @@ def main() -> None:
     implementation = sys.argv[1]
     size = int(sys.argv[2])
     batches = int(sys.argv[3]) if len(sys.argv) > 3 else 1
+    repetitions = int(sys.argv[4]) if len(sys.argv) > 4 else 8
+    if repetitions < 3:
+        raise ValueError("At least two warmups and one measurement are required.")
     width = 80
     state = make_state(size, width, batches)
     sampler = DeterministicSampler()
@@ -103,9 +112,11 @@ def main() -> None:
         max_samples=size + batches * width,
     )
     lower_seconds = time.perf_counter() - started
+    print(f"lowered in {lower_seconds:.3f} s", file=sys.stderr, flush=True)
     started = time.perf_counter()
     compiled = lowered.compile()
     compile_seconds = time.perf_counter() - started
+    print(f"compiled in {compile_seconds:.3f} s", file=sys.stderr, flush=True)
 
     def run_candidate(initial):
         current = initial
@@ -141,7 +152,7 @@ def main() -> None:
     times = []
     output = None
     schedule_calls = 1
-    for _ in range(8):
+    for repetition in range(repetitions):
         started = time.perf_counter()
         if implementation == "develop":
             output = compiled(state, sampler, condition)
@@ -149,6 +160,12 @@ def main() -> None:
             output, schedule_calls = run_candidate(state)
         jax.block_until_ready(output)
         times.append(time.perf_counter() - started)
+        print(
+            f"execution {repetition + 1}/{repetitions}: "
+            f"{times[-1]:.3f} s",
+            file=sys.stderr,
+            flush=True,
+        )
     memory = compiled.memory_analysis()
     record = {
         "implementation": implementation,
@@ -167,6 +184,7 @@ def main() -> None:
         "alias_bytes": memory.alias_size_in_bytes,
         "num_samples": int(output.num_samples),
         "schedule_calls": schedule_calls,
+        "repetitions": repetitions,
         "jax_version": jax.__version__,
         "platform": jax.default_backend(),
     }
@@ -194,4 +212,5 @@ def main() -> None:
     print(json.dumps(record))
 
 
-main()
+if __name__ == "__main__":
+    main()

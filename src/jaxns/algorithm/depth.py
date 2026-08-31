@@ -1810,13 +1810,43 @@ class _DepthCarry(NamedTuple):
 
 
 def _refresh_likelihood_order(state: State) -> State:
-    """Publish all accepted append-order rows at a schedule boundary."""
+    """Publish bounded post-freeze rows into the persistent sorted index."""
+    if state.likelihood_order is None or state.scheduler_data is None:
+        # Compatibility states without the persistent index have no merge
+        # source. This one-time sort is not used by normally initialised runs.
+        return dataclasses.replace(
+            state,
+            likelihood_order=initialise_likelihood_order(
+                state.samples.log_likelihoods,
+                state.num_samples,
+            ),
+        )
+
+    order = state.likelihood_order
+    published = jnp.sum(
+        order.sample_indices >= 0,
+        dtype=mp_policy.index_dtype,
+    )
+    # Source refresh stops dispatch before accepted work can exceed the
+    # continuation queue. This gives publication a small static merge width
+    # independent of sample capacity, including after a transparent growth
+    # return has already published an earlier prefix of the same schedule.
+    merge_size = state.scheduler_data.continuation_parent_idx.shape[0]
+    offsets = jnp.arange(merge_size, dtype=mp_policy.index_dtype)  # [Q]
+    valid_new = published + offsets < state.num_samples  # [Q]
+    order = jax.lax.cond(
+        jnp.any(valid_new),
+        lambda current: current.insert(
+            state.samples.log_likelihoods,
+            published,
+            valid_new,
+        ),
+        lambda current: current,
+        order,
+    )
     return dataclasses.replace(
         state,
-        likelihood_order=initialise_likelihood_order(
-            state.samples.log_likelihoods,
-            state.num_samples,
-        ),
+        likelihood_order=order,
     )
 
 
