@@ -8,8 +8,14 @@ from jaxctx.priors.prior import Prior
 from tensorflow_probability.substrates import jax as tfp
 
 from cicd.tests.distributed_support import make_toy_model
-from jaxns.algorithm.race_tree import build_block_state, initialise_likelihood_order
+from jaxns.algorithm.depth import _start_schedule_round
+from jaxns.algorithm.race_tree import (
+    LikelihoodOrder,
+    build_block_state,
+    initialise_likelihood_order,
+)
 from jaxns.core import NestedSampler
+from jaxns.depth_condition import DepthCondition
 from jaxns.model import Model
 from jaxns.samples import PhantomSamples, Samples
 from jaxns.sampling.ellipsoid import empty_sampler_data
@@ -151,6 +157,83 @@ def test_to_result_marks_no_phantoms_invalid():
             conditioning="phantom",
             key=key,
         )
+
+
+def test_expected_evidence_rebuilds_order_for_active_growth_state():
+    phantom_samples = PhantomSamples(
+        U_samples=jnp.zeros((3, 0, 1)),
+        valid_mask=jnp.zeros((3, 0), dtype=jnp.bool_),
+        log_L=jnp.zeros((3, 0)),
+    )
+    initial_samples = Samples(
+        log_L_constraints=jnp.array([-jnp.inf, jnp.inf, jnp.inf]),
+        log_likelihoods=jnp.array([0.0, jnp.inf, jnp.inf]),
+        U_samples=jnp.array([[0.1], [0.0], [0.0]]),
+        out_degree=jnp.array([0, 0, 0], dtype=jnp.int32),
+        num_likelihood_evaluations=jnp.array([1, 0, 0], dtype=jnp.int32),
+        phantom_samples=phantom_samples,
+    )
+    key = random.PRNGKey(17)
+    initial = State(
+        root_out_degree=jnp.asarray(1, dtype=jnp.int32),
+        samples=initial_samples,
+        num_samples=jnp.asarray(1, dtype=jnp.int32),
+        log_L_supremum=jnp.asarray(0.0),
+        U_supremum=jnp.array([0.1]),
+        termination_reason=jnp.asarray(0, dtype=jnp.int32),
+        model=_make_basic_model(),
+        likelihood_order=LikelihoodOrder(
+            sample_indices=jnp.array([0, -1, -1], dtype=jnp.int32),
+        ),
+        random_key=key,
+        goal_key=key,
+    )
+    active = _start_schedule_round(
+        initial,
+        DepthCondition(),
+        shell_size=1,
+        allocation_target="uniform",
+        root_degree=1,
+        delta_K=2,
+    )
+    assert bool(active.scheduler_data.active)
+
+    # The repeated depth loop deliberately defers likelihood-order publication.
+    # These rows model committed thread work at the physical growth return that
+    # run_single_iteration exposes while its frozen schedule remains active.
+    committed_samples = dataclasses.replace(
+        initial_samples,
+        log_L_constraints=jnp.array([-jnp.inf, 0.0, 1.0]),
+        log_likelihoods=jnp.array([0.0, 1.0, 2.0]),
+        U_samples=jnp.array([[0.1], [0.2], [0.3]]),
+        out_degree=jnp.array([1, 1, 0], dtype=jnp.int32),
+        num_likelihood_evaluations=jnp.array([1, 2, 3], dtype=jnp.int32),
+    )
+    active = dataclasses.replace(
+        active,
+        samples=committed_samples,
+        num_samples=jnp.asarray(3, dtype=jnp.int32),
+        log_L_supremum=jnp.asarray(2.0),
+        U_supremum=jnp.array([0.3]),
+        needs_growth=jnp.asarray(True),
+    )
+    published = dataclasses.replace(
+        active,
+        likelihood_order=initialise_likelihood_order(
+            committed_samples.log_likelihoods,
+            active.num_samples,
+        ),
+        scheduler_data=None,
+    )
+
+    np.testing.assert_allclose(
+        np.asarray(active.expected_log_Z_mean),
+        np.asarray(published.expected_log_Z_mean),
+    )
+    np.testing.assert_allclose(
+        np.asarray(active.expected_log_Z_uncert),
+        np.asarray(published.expected_log_Z_uncert),
+    )
 
 
 def test_samples_resize_preserves_constraints_and_provenance_fields():

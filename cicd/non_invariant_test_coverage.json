@@ -246,6 +246,11 @@
       "path": "cicd/tests/test_state.py",
       "reason": "architecture_boundary"
     },
+    "test_expected_evidence_rebuilds_order_for_active_growth_state": {
+      "note": "Checks the exact diagnostic fallback for a physical growth return whose active frozen schedule has committed rows awaiting likelihood-order publication.",
+      "path": "cicd/tests/test_state.py",
+      "reason": "architecture_boundary"
+    },
     "test_allocation_utilities_handle_tiny_positive_volume_without_inf": {
       "note": "Checks the current allocation utility, normalization, and target construction rather than an implementation-agnostic scientific contract.",
       "path": "cicd/tests/test_allocation.py",
