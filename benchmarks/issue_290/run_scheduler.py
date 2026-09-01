@@ -123,7 +123,7 @@ def main() -> None:
         started = time.perf_counter()
         planning_compiled = planning_lowered.compile()
         planning_compile_seconds = time.perf_counter() - started
-        state, _, _ = planning_compiled(state, condition)
+        state = planning_compiled(state, condition)
         jax.block_until_ready(state)
 
     started = time.perf_counter()
@@ -164,7 +164,7 @@ def main() -> None:
             end_to_end_times.append(times[-1])
             continue
         started = time.perf_counter()
-        planned_state, _, _ = planning_compiled(
+        planned_state = planning_compiled(
             initial_state,
             condition,
         )

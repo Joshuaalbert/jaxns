@@ -93,8 +93,14 @@ def _depth_relevant_path(
             -jnp.inf,
         )
     )
-    remaining_fraction = jnp.exp(
-        log_remaining - jnp.logaddexp(log_Z_prefix, log_remaining)
+    log_total = jnp.logaddexp(log_Z_prefix, log_remaining)
+    remaining_fraction = jnp.where(
+        jnp.isneginf(log_total),
+        # With no finite likelihood yet, the data give no evidence that the
+        # remaining region is negligible. Keep traversing so compact-support
+        # models can discover their first finite contour.
+        jnp.asarray(1.0, dtype=log_L_blocks.dtype),
+        jnp.exp(log_remaining - log_total),
     )
     relevant = valid
     if depth_cond.dlogZ is not None:
@@ -632,7 +638,6 @@ class _SeedSourceIndex(NamedTuple):
     birth_contours: FloatArray  # [A]
     rank_prefix: IntArray  # [H, A + 1]
     zero_count: IntArray  # [H]
-    root_idx: IntArray  # [A]
 
 
 def _build_seed_source_index(
@@ -657,16 +662,6 @@ def _build_seed_source_index(
         jnp.maximum,
         jnp.where(count > 0, block_idx, -1),
     )
-    sample_idx = jnp.arange(
-        state.samples.log_likelihoods.shape[0],
-        dtype=mp_policy.index_dtype,
-    )
-    root_idx = jnp.nonzero(
-        (sample_idx < state.num_samples)
-        & jnp.isneginf(state.samples.log_L_constraints),
-        size=sample_idx.shape[0],
-        fill_value=0,
-    )[0]  # [A]
     birth_contours, rank_prefix, zero_count = _build_seed_rank_index(
         state,
         block_state,
@@ -678,7 +673,6 @@ def _build_seed_source_index(
         birth_contours=birth_contours,
         rank_prefix=rank_prefix,
         zero_count=zero_count,
-        root_idx=root_idx,
     )
 
 
@@ -755,7 +749,6 @@ def _new_thread_schedule(
         seed_birth_contours=seed_source.birth_contours,
         seed_rank_prefix=seed_source.rank_prefix,
         seed_zero_count=seed_source.zero_count,
-        root_seed_idx=seed_source.root_idx,
         seed_reservoir_idx=jnp.full(
             (seed_reservoir_size,),
             -1,
@@ -1846,11 +1839,11 @@ def _retain_start_seed_reservations(
     """Carry no-replacement seeds only while one start contour is unfinished.
 
     Frozen runs are ordered by start contour, so only the final start contour
-    in a planning window can remain for a later batch. Retaining that one group
-    bounds coordination state by sample capacity rather than by the number of
-    logical threads. Reservations are discarded once the group is fully
-    dispatched; continuations are independent Markov chains and do not
-    participate in this same-contour start assignment.
+    in a planning window can remain for a later batch. Retaining only that
+    group lets the exact reservation table scale with its distinct stationary
+    seeds rather than with all scientific samples. Reservations are discarded
+    once the group is fully dispatched; continuations are independent Markov
+    chains and do not participate in this same-contour start assignment.
     """
     # A physical-capacity boundary may leave already-materialised starts in
     # the window. They precede compressed runs that have not yet been opened.
@@ -2570,13 +2563,21 @@ def _refresh_likelihood_order(state: State) -> State:
         dtype=mp_policy.index_dtype,
     )
     # Publication is independent of the much smaller continuation heap. A
-    # generation stops after at most 25% capacity growth plus one dispatch
-    # window, so this static merge width covers every accepted identity without
-    # coupling per-batch heap scatters back to total sample capacity.
+    # generation stops after either 25% population growth or four reservoir
+    # windows, plus at most one dispatch-window overshoot. Cover both bounds:
+    # root populations can make the reservoir criterion dominate the capacity
+    # fraction, and omitting it would advance the source watermark past rows
+    # that were never inserted into likelihood order.
     capacity = state.samples.log_likelihoods.shape[0]
     merge_size = min(
         capacity,
-        (capacity + 3) // 4 + state.scheduler_data.valid.shape[0],
+        max(
+            (capacity + 3) // 4,
+            (
+                SEED_SOURCE_REFRESH_WINDOWS
+                * state.scheduler_data.seed_reservoir_idx.shape[0]
+            ),
+        ) + state.scheduler_data.valid.shape[0],
     )
     offsets = jnp.arange(merge_size, dtype=mp_policy.index_dtype)  # [P]
     valid_new = published + offsets < state.num_samples  # [P]
@@ -2624,7 +2625,6 @@ def _publish_seed_source(state: State) -> State:
         seed_birth_contours=source.birth_contours,
         seed_rank_prefix=source.rank_prefix,
         seed_zero_count=source.zero_count,
-        root_seed_idx=source.root_idx,
         seed_reservoir_idx=jnp.full_like(
             schedule.seed_reservoir_idx,
             -1,
@@ -2769,7 +2769,7 @@ def _start_schedule_round(
         allocation_target: str,
         root_degree: int,
         delta_K: int,
-) -> tuple[State, ThreadSchedule, BoolArray]:
+) -> State:
     """Build one frozen schedule from an already-published likelihood order."""
     block_state, plan, relevant, tail_K = _build_depth_view(
         state,
@@ -2788,7 +2788,10 @@ def _start_schedule_round(
         seed_reservoir_size=max(shell_size, root_degree),
     )
     state = dataclasses.replace(state, scheduler_data=schedule)
-    return state, schedule, jnp.logical_not(schedule.active)
+    # State is the sole owner of transient scheduling data. Returning the same
+    # large Pytree separately would duplicate planning outputs at the device
+    # boundary without representing another piece of state.
+    return state
 
 
 @partial(
@@ -2802,7 +2805,7 @@ def _continue_schedule_round(
         depth_cond: DepthCondition,
         *,
         shell_size: int,
-) -> tuple[State, ThreadSchedule, BoolArray]:
+) -> State:
     """Fill newly exposed gaps without changing the allocation target."""
     block_state = build_block_state(
         state.samples,
@@ -2837,7 +2840,7 @@ def _continue_schedule_round(
         seed_reservoir_size=previous.seed_reservoir_idx.shape[0],
     )
     state = dataclasses.replace(state, scheduler_data=schedule)
-    return state, schedule, jnp.logical_not(schedule.active)
+    return state
 
 
 @partial(

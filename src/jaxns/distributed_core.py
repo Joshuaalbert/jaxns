@@ -1379,12 +1379,17 @@ class DistributedNestedSampler:
                 if not reached_expected_depth:
                     previous = state.scheduler_data
                     planning_width = previous.valid.shape[0]
-                    state, schedule, _ = _continue_schedule_round(
+                    state = _continue_schedule_round(
                         state,
                         previous,
                         depth_cond,
                         shell_size=planning_width,
                     )
+                    schedule = state.scheduler_data
+                    if schedule is None:
+                        raise RuntimeError(
+                            "Continuation planning did not create a schedule."
+                        )
                     if bool(schedule.active):
                         distributed = dataclasses.replace(
                             distributed,
@@ -1501,7 +1506,7 @@ class DistributedNestedSampler:
         planning_width = max(1, capacity)
         schedule = distributed.state.scheduler_data
         if schedule is None:
-            state, _, _ = _start_schedule_round(
+            state = _start_schedule_round(
                 distributed.state,
                 depth_cond,
                 shell_size=planning_width,

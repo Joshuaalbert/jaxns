@@ -334,8 +334,19 @@ def test_resize_threads_preserves_a_nonempty_continuation_heap():
         resized.continuation_log_L_constraint[:3],
         np.asarray([1.0, 3.0, 2.0]),
     )
+
+    # Growing worker heads with a smaller nominal heap request must preserve
+    # the independently enlarged heap and every live continuation within it.
+    head_grown = resized.resize_threads(4, continuation_size=3)
+    assert head_grown.valid.shape == (4,)
+    assert head_grown.continuation_parent_idx.shape == (7,)
+    assert int(head_grown.continuation_count) == 3
     np.testing.assert_array_equal(
-        resized.continuation_frontier[:3],
+        head_grown.continuation_thread_id[:3],
+        np.asarray([11, 12, 10]),
+    )
+    np.testing.assert_array_equal(
+        head_grown.continuation_frontier[:3],
         np.asarray([1.0, 3.0, 2.0]),
     )
 
@@ -1340,6 +1351,13 @@ def test_seed_publication_merges_generation_larger_than_thread_heap():
         out_degree=(0,) * 100,
         max_samples=200,
     )
+    source = dataclasses.replace(
+        source,
+        likelihood_order=initialise_likelihood_order(
+            source.samples.log_likelihoods,
+            source.num_samples,
+        ),
+    )
     blocks = build_block_state(
         source.samples,
         source.root_out_degree,
@@ -1395,6 +1413,69 @@ def test_seed_publication_merges_generation_larger_than_thread_heap():
         schedule.continuation_count
     )
     assert not bool(jnp.any(updated.seed_reservoir_valid))
+
+
+def test_seed_publication_merges_root_dominated_refresh_generation():
+    """The source watermark must never skip rows absent from sorted order."""
+    capacity = 600
+    source_size = 100
+    published_size = 500
+    source = make_state(
+        root_out_degree=source_size,
+        log_likelihoods=tuple(float(i) for i in range(source_size)),
+        log_L_constraints=(-np.inf,) * source_size,
+        out_degree=(0,) * source_size,
+        max_samples=capacity,
+    )
+    source = dataclasses.replace(
+        source,
+        likelihood_order=initialise_likelihood_order(
+            source.samples.log_likelihoods,
+            source.num_samples,
+        ),
+    )
+    blocks = build_block_state(
+        source.samples,
+        source.root_out_degree,
+        source.num_samples,
+        likelihood_order=source.likelihood_order,
+    )
+    schedule = depth._new_thread_schedule(
+        source,
+        blocks,
+        _allocation_plan(blocks, (1,) + (0,) * (capacity - 1)),
+        blocks.valid,
+        shell_size=1,
+        tail_K=jnp.asarray(0, dtype=jnp.int32),
+        seed_reservoir_size=source_size,
+    )
+    current = make_state(
+        root_out_degree=published_size,
+        log_likelihoods=tuple(float(i) for i in range(published_size)),
+        log_L_constraints=(-np.inf,) * published_size,
+        out_degree=(0,) * published_size,
+        max_samples=capacity,
+    )
+    current = dataclasses.replace(
+        current,
+        # Preserve the genuinely published 100-row order; a missing order
+        # would take the compatibility full-sort path and hide this boundary.
+        likelihood_order=source.likelihood_order,
+        scheduler_data=schedule,
+    )
+
+    assert bool(depth._seed_source_refresh_due(current, schedule))
+    published = depth._publish_seed_source(current)
+    published_idx = np.asarray(published.likelihood_order.sample_indices)
+    np.testing.assert_array_equal(
+        np.sort(published_idx[published_idx >= 0]),
+        np.arange(published_size),
+    )
+    assert int(published.scheduler_data.source_num_samples) == published_size
+    assert (
+        int(published.scheduler_data.seed_block_state.num_blocks)
+        == published_size
+    )
 
 
 def test_thread_storage_grows_independently_of_sample_storage():
@@ -1668,7 +1749,7 @@ def test_likelihood_order_publication_merges_new_rows_across_growth():
             state.num_samples,
         ),
     )
-    state, schedule, _ = depth._start_schedule_round(
+    state = depth._start_schedule_round(
         state,
         DepthCondition(),
         shell_size=1,
@@ -1676,6 +1757,8 @@ def test_likelihood_order_publication_merges_new_rows_across_growth():
         root_degree=2,
         delta_K=1,
     )
+    schedule = state.scheduler_data
+    assert schedule is not None
     likelihood = state.samples.log_likelihoods.at[2].set(1.0)
     likelihood = likelihood.at[3].set(3.0)
     state = dataclasses.replace(

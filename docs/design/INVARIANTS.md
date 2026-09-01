@@ -169,8 +169,9 @@ The exact text following each `- Invariant:` prefix is the stable key used by
   and determines successful user-goal termination.
 - Invariant: A depth condition bounds one allocation epoch without being reported as successful
   satisfaction of the user's outer goal.
-- Invariant: Depth-loop evidence and posterior-tail conditions use online expectation estimates
-  from classic samples and do not use phantom-conditioned Monte Carlo draws.
+- Invariant: Depth-loop evidence and posterior-tail conditions use the expected classic
+  shrinkage path reconstructed at planning or drain boundaries and do not use
+  phantom-conditioned Monte Carlo draws.
 - Invariant: A finite scientific sample limit is never exceeded, including by a partially filled
   replacement batch.
 - Invariant: A run that cannot satisfy its goal returns its resumable state rather than silently

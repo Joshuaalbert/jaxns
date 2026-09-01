@@ -310,8 +310,8 @@ properties that must hold independently of implementation live in
   exactly zero and implement their complement as `A - B`.
 - Requirement: Plateau blocks use the paper's three-class concentrations with the configured
   equality prior, whose current neutral value is epsilon equal to one half.
-- Requirement: The classic expectation calculation is the online source used for depth
-  conditions and inexpensive state summaries.
+- Requirement: The classic expectation calculation supplies depth conditions at planning or
+  drain boundaries and inexpensive state summaries; it is not maintained per replacement batch.
 - Requirement: Final user-facing evidence uncertainty and evidence draws use Monte Carlo
   shrinkage and expose classic and phantom-conditioned modes explicitly.
 - Requirement: The default phantom gate uses the Kish participating-cluster count with

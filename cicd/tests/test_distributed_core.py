@@ -297,7 +297,7 @@ def test_distributed_continuation_returns_to_heap_not_dispatch_window():
         max_samples=6,
         initial_capacity=6,
     ).initialise(jax.random.PRNGKey(33))
-    state, _, _ = _start_schedule_round(
+    state = _start_schedule_round(
         state,
         DepthCondition(),
         shell_size=2,
@@ -617,7 +617,7 @@ def test_distributed_seed_refresh_waits_for_no_pending_tasks():
         out_degree=(0, 0),
         max_samples=100,
     )
-    state, schedule, _ = _start_schedule_round(
+    state = _start_schedule_round(
         state,
         DepthCondition(),
         shell_size=2,
@@ -625,6 +625,8 @@ def test_distributed_seed_refresh_waits_for_no_pending_tasks():
         root_degree=2,
         delta_K=1,
     )
+    schedule = state.scheduler_data
+    assert schedule is not None
     refresh_rows = (
         schedule.seed_reservoir_idx.shape[0]
         * SEED_SOURCE_REFRESH_WINDOWS
@@ -664,7 +666,7 @@ def test_distributed_start_seed_storage_grows_without_losing_reservations():
         out_degree=(0, 0),
         max_samples=100,
     )
-    state, schedule, _ = _start_schedule_round(
+    state = _start_schedule_round(
         state,
         DepthCondition(),
         shell_size=2,
@@ -672,6 +674,8 @@ def test_distributed_start_seed_storage_grows_without_losing_reservations():
         root_degree=2,
         delta_K=1,
     )
+    schedule = state.scheduler_data
+    assert schedule is not None
     seed_indices = tuple(range(7))
     for reservation_count, seed_idx in enumerate(seed_indices, start=1):
         reservation_idx, reservation_group = _insert_seed_reservation(
@@ -747,7 +751,7 @@ def test_distributed_dispatch_starts_evidence_utility_schedule():
         initial_capacity=12,
     )
     checkpoint = _local_checkpoint(runner, jax.random.PRNGKey(33))
-    _, expected_schedule, _ = _start_schedule_round(
+    expected_state = _start_schedule_round(
         checkpoint.state,
         DepthCondition(),
         shell_size=2,
@@ -755,6 +759,8 @@ def test_distributed_dispatch_starts_evidence_utility_schedule():
         root_degree=4,
         delta_K=3,
     )
+    expected_schedule = expected_state.scheduler_data
+    assert expected_schedule is not None
     client = Client()
 
     queued = runner._dispatch_threads(
@@ -798,7 +804,7 @@ def test_distributed_refill_reserves_pending_same_contour_seed():
         random_key=jax.random.PRNGKey(290),
         goal_key=jax.random.PRNGKey(291),
     )
-    state, schedule, _ = _start_schedule_round(
+    state = _start_schedule_round(
         state,
         DepthCondition(),
         shell_size=2,
@@ -806,6 +812,8 @@ def test_distributed_refill_reserves_pending_same_contour_seed():
         root_degree=2,
         delta_K=1,
     )
+    schedule = state.scheduler_data
+    assert schedule is not None
     # Isolate refill behavior with two already-materialised root threads. The
     # compressed queue is exhausted so only these equal-contour heads can be
     # dispatched across the two separate calls below.
@@ -885,7 +893,7 @@ def test_distributed_refills_reserve_starts_beyond_worker_capacity():
         random_key=jax.random.PRNGKey(292),
         goal_key=jax.random.PRNGKey(293),
     )
-    state, _, _ = _start_schedule_round(
+    state = _start_schedule_round(
         state,
         DepthCondition(),
         shell_size=2,

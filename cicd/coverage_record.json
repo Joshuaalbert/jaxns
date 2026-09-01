@@ -44,7 +44,9 @@
   ],
   "All classic samples at the same likelihood form one block, and distinct valid blocks are ordered by strictly increasing likelihood.": [
     "test_canonical_block_state_groups_plateaus_and_incoming_K_g",
-    "test_jax_block_state_groups_plateaus_and_incoming_K_g"
+    "test_jax_block_state_groups_plateaus_and_incoming_K_g",
+    "test_seed_publication_merges_generation_larger_than_thread_heap",
+    "test_seed_publication_merges_root_dominated_refresh_generation"
   ],
   "A block's multiplicity is the number of classic samples at its likelihood and its out-degree is the sum of their out-degrees.": [
     "test_canonical_block_state_groups_plateaus_and_incoming_K_g",
@@ -78,6 +80,9 @@
   ],
   "The initial prior volume is one and the valid strict prior-volume sequence is non-increasing and remains between zero and one.": [
     "test_expected_volume_path_uses_dirichlet_p_gt_means"
+  ],
+  "Depth-loop evidence and posterior-tail conditions use the expected classic shrinkage path reconstructed at planning or drain boundaries and do not use phantom-conditioned Monte Carlo draws.": [
+    "test_depth_keeps_exploring_before_any_finite_likelihood_is_found"
   ],
   "Evidence and posterior calculations use the strict volume beyond each block rather than a race rank censored inside a plateau.": [
     "test_sample_evidence_uses_strict_endpoint_recurrence"
@@ -141,6 +146,7 @@
     "test_missing_stationary_seed_reparents_to_closest_shallower_contour"
   ],
   "A seed is eligible for parent contour lambda only when its likelihood is greater than lambda and the contour from which it was generated is no greater than lambda.": [
+    "test_frozen_seed_rank_index_matches_every_brute_force_interval",
     "test_mixed_contour_seed_groups_remain_distinct_after_rejection"
   ],
   "Concurrent children requested from the same parent contour use distinct eligible seeds whenever enough distinct eligible seeds exist.": [
@@ -149,11 +155,15 @@
     "test_distributed_refills_reserve_starts_beyond_worker_capacity",
     "test_nonroot_start_reservation_is_not_bounded_by_batch_width",
     "test_pending_same_contour_seeds_are_reserved_across_refills",
+    "test_post_freeze_pending_start_is_counted_once",
     "test_same_contour_parallel_threads_use_distinct_stationary_seeds",
     "test_same_contour_thread_starts_remain_distinct_across_batches",
-    "test_thread_starts_partition_frozen_seeds_before_descendants"
+    "test_thread_starts_partition_published_and_retained_stationary_seeds",
+    "test_evicted_recent_reservations_do_not_hide_unseen_stationary_seeds"
   ],
   "Reparenting caused by a lack of stationary seeds preserves the constrained-prior law required by the newly recorded parent contour.": [
+    "test_effective_fallback_contour_orders_start_before_continuation",
+    "test_seedless_continuation_heap_uses_its_effective_contour",
     "test_missing_stationary_seed_reparents_to_closest_shallower_contour"
   ],
   "Resuming a state with its stored random-stream position is scientifically equivalent to uninterrupted continuation under the same conditions.": [

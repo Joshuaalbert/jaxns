@@ -214,7 +214,6 @@ class ThreadSchedule(PureDataclassPytree):
     seed_birth_contours: FloatArray  # [A] birth-sorted frozen contours
     seed_rank_prefix: IntArray  # [H, A + 1] wavelet rank prefixes
     seed_zero_count: IntArray  # [H] zero partition sizes
-    root_seed_idx: IntArray  # [A] compact sentinel-child identities
     seed_reservoir_idx: IntArray  # [R] bounded coordination sample indices
     seed_reservoir_priority: FloatArray  # [R] value-independent priorities
     seed_reservoir_valid: BoolArray  # [R]
@@ -279,7 +278,6 @@ class ThreadSchedule(PureDataclassPytree):
             ),
             seed_rank_prefix=seed_rank_prefix,
             seed_zero_count=seed_zero_count,
-            root_seed_idx=_resize_vector(self.root_seed_idx, size, 0),
         )
 
     def resize_start_seed_reservations(self, size: int) -> ThreadSchedule:
@@ -351,13 +349,22 @@ class ThreadSchedule(PureDataclassPytree):
         as a continuing thread. Padding a binary heap preserves its ordering.
         """
         current = self.valid.shape[0]
+        size = max(size, current)
         reservoir_size = max(size, self.seed_reservoir_idx.shape[0])
+        current_continuation_size = self.continuation_parent_idx.shape[0]
         if continuation_size is None:
-            continuation_size = self.continuation_parent_idx.shape[0]
+            continuation_size = current_continuation_size
+        else:
+            # Head and heap dimensions grow independently. A worker-capacity
+            # change must not undo an earlier heap doubling and truncate live
+            # continuations merely because the nominal width is now smaller.
+            continuation_size = max(
+                continuation_size,
+                current_continuation_size,
+            )
         if (
-            size <= current
-            and continuation_size
-            <= self.continuation_parent_idx.shape[0]
+            size == current
+            and continuation_size == current_continuation_size
         ):
             return self
 

@@ -751,13 +751,13 @@
       "path": "cicd/tests/test_distributed_runtime.py",
       "reason": "runtime_architecture"
     },
-    "test_continuation_fifo_fills_bound_without_overwrite": {
-      "note": "Checks the bounded ring representation selected for frozen-thread continuation state.",
+    "test_continuation_heap_fills_bound_without_overwrite": {
+      "note": "Checks the bounded minimum-frontier heap selected for frozen-thread continuation state.",
       "path": "cicd/tests/test_core.py",
       "reason": "scheduler_architecture"
     },
-    "test_continuation_fifo_preserves_order_across_physical_wrap": {
-      "note": "Checks physical wraparound in the selected FIFO continuation representation.",
+    "test_continuation_heap_matches_reference_under_interleaved_updates": {
+      "note": "Checks interleaved push and pop behavior against the Python heap reference.",
       "path": "cicd/tests/test_core.py",
       "reason": "scheduler_architecture"
     },
@@ -771,8 +771,8 @@
       "path": "cicd/tests/test_scheduler.py",
       "reason": "scheduler_architecture"
     },
-    "test_distributed_continuation_returns_to_fifo_not_dispatch_window": {
-      "note": "Checks that distributed completion uses the selected shared FIFO continuation representation.",
+    "test_distributed_continuation_returns_to_heap_not_dispatch_window": {
+      "note": "Checks that distributed completion uses the selected shared continuation heap.",
       "path": "cicd/tests/test_distributed_core.py",
       "reason": "scheduler_architecture"
     },
@@ -801,22 +801,22 @@
       "path": "cicd/tests/test_core.py",
       "reason": "scheduler_architecture"
     },
-    "test_growth_resizes_one_nearly_full_continuation_generation": {
-      "note": "Checks that physical growth preserves every queued continuation and adopts the sufficient geometric-generation bound in one shape change.",
+    "test_thread_storage_grows_independently_of_sample_storage": {
+      "note": "Checks that physical growth preserves every queued continuation while independently resizing sample-indexed planning data.",
       "path": "cicd/tests/test_core.py",
       "reason": "scheduler_architecture"
     },
-    "test_resize_threads_linearises_a_wrapped_nonempty_fifo": {
-      "note": "Checks the selected growth implementation for a wrapped transient continuation ring.",
+    "test_resize_threads_preserves_a_nonempty_continuation_heap": {
+      "note": "Checks grow-only head and heap resizing without truncating live continuations.",
       "path": "cicd/tests/test_core.py",
       "reason": "scheduler_architecture"
     },
-    "test_seed_pool_includes_completed_rows_accepted_after_freeze": {
-      "note": "Checks the bounded post-freeze seed-reservoir implementation.",
+    "test_seed_pool_uses_value_independent_post_freeze_reservoir": {
+      "note": "Checks the bounded value-independent post-freeze seed-reservoir implementation.",
       "path": "cicd/tests/test_core.py",
       "reason": "scheduler_architecture"
     },
-    "test_seed_publication_does_not_complete_allocation_target": {
+    "test_seed_publication_preserves_frozen_thread_target": {
       "note": "Checks that an internal generation publication projects the same target instead of advancing the scientific allocation iteration.",
       "path": "cicd/tests/test_core.py",
       "reason": "architecture_boundary"
@@ -834,6 +834,31 @@
     "test_utility_schedule_continuation_projects_frozen_absolute_target": {
       "note": "Checks continuation wiring for the selected frozen utility-target implementation.",
       "path": "cicd/tests/test_allocation.py",
+      "reason": "scheduler_architecture"
+    },
+    "test_bruteforce_reference_vectorisation_matches_memory_bounded_batches": {
+      "note": "Checks numerical parity between the vectorized diagnostic default and its explicit memory-bounded batching alternative.",
+      "path": "cicd/tests/test_utils.py",
+      "reason": "reference_parity"
+    },
+    "test_continuation_heap_returns_shallowest_frontier_first": {
+      "note": "Checks the minimum-frontier ordering selected for efficient continuation scheduling.",
+      "path": "cicd/tests/test_core.py",
+      "reason": "scheduler_architecture"
+    },
+    "test_distributed_start_seed_storage_grows_without_losing_reservations": {
+      "note": "Checks transparent exact-reservation growth at the distributed coordination boundary.",
+      "path": "cicd/tests/test_distributed_core.py",
+      "reason": "scheduler_architecture"
+    },
+    "test_start_seed_reservation_storage_is_independent_of_sample_capacity": {
+      "note": "Checks that exact start-seed reservation memory follows the unfinished contour group rather than total sample capacity.",
+      "path": "cicd/tests/test_core.py",
+      "reason": "scheduler_architecture"
+    },
+    "test_start_seed_reservations_rehash_exactly_when_storage_grows": {
+      "note": "Checks the selected growable open-addressed representation retains exact membership across rehashing.",
+      "path": "cicd/tests/test_core.py",
       "reason": "scheduler_architecture"
     }
   }

@@ -20,6 +20,7 @@ from jaxns.algorithm.allocation import (
 )
 from jaxns.algorithm.depth import (
     _continue_schedule_round,
+    _depth_relevant_path,
     _start_schedule_round,
 )
 from jaxns.algorithm.race_tree import build_block_state
@@ -118,6 +119,22 @@ def test_expected_volume_path_uses_dirichlet_p_gt_means():
         np.asarray(path.shell_mass),
         expected_X_prev - expected_X,
     )
+
+
+def test_depth_keeps_exploring_before_any_finite_likelihood_is_found():
+    """An all-negative-infinity prefix is ignorance, not exhausted evidence."""
+    relevant = _depth_relevant_path(
+        log_L_blocks=jnp.asarray([-jnp.inf, -jnp.inf]),
+        valid=jnp.asarray([True, True]),
+        volume_path=VolumePath(
+            X_prev=jnp.asarray([1.0, 0.5]),
+            X=jnp.asarray([0.5, 0.25]),
+            shell_mass=jnp.asarray([0.5, 0.25]),
+        ),
+        depth_cond=DepthCondition(dlogZ=jnp.asarray(1e-3)),
+    )
+
+    np.testing.assert_array_equal(np.asarray(relevant), [True, True])
 
 
 def test_evidence_improvement_utility_matches_reference_loop():
@@ -551,7 +568,7 @@ def test_utility_schedule_continuation_projects_frozen_absolute_target(
         log_L_constraints=(-np.inf, -np.inf, -np.inf, 0.0),
         max_samples=8,
     )
-    source, schedule, _ = _start_schedule_round(
+    source = _start_schedule_round(
         source,
         depth_cond=DepthCondition(),
         shell_size=3,
@@ -559,6 +576,8 @@ def test_utility_schedule_continuation_projects_frozen_absolute_target(
         root_degree=3,
         delta_K=3,
     )
+    schedule = source.scheduler_data
+    assert schedule is not None
     np.testing.assert_array_equal(
         np.asarray(schedule.target_K),
         np.asarray(initial_target),
@@ -591,12 +610,14 @@ def test_utility_schedule_continuation_projects_frozen_absolute_target(
         refined,
         allocation_loop_iter=source.allocation_loop_iter,
     )
-    refined, continuation, _ = _continue_schedule_round(
+    refined = _continue_schedule_round(
         refined,
         drained,
         depth_cond=DepthCondition(),
         shell_size=3,
     )
+    continuation = refined.scheduler_data
+    assert continuation is not None
 
     np.testing.assert_array_equal(
         np.asarray(continuation.target_K),
@@ -606,7 +627,7 @@ def test_utility_schedule_continuation_projects_frozen_absolute_target(
 
     # A fresh start at the refined tree recomputes utility and therefore has
     # a different target. This guards the intended frozen-target distinction.
-    _, recomputed, _ = _start_schedule_round(
+    recomputed_state = _start_schedule_round(
         dataclasses.replace(refined, scheduler_data=None),
         depth_cond=DepthCondition(),
         shell_size=3,
@@ -614,6 +635,8 @@ def test_utility_schedule_continuation_projects_frozen_absolute_target(
         root_degree=3,
         delta_K=3,
     )
+    recomputed = recomputed_state.scheduler_data
+    assert recomputed is not None
     assert not np.array_equal(
         np.asarray(continuation.target_K),
         np.asarray(recomputed.target_K),

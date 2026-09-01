@@ -65,7 +65,7 @@ def _ensure_thread_schedule(
     """
     if state.scheduler_data is not None:
         return state
-    state, _, _ = _start_schedule_round(
+    state = _start_schedule_round(
         state,
         depth_cond,
         shell_size=shell_size,
@@ -627,12 +627,17 @@ class NestedSampler(PureDataclassPytree):
                 ))
                 if not reached_expected_depth:
                     previous = state.scheduler_data
-                    state, schedule, _ = _continue_schedule_round(
+                    state = _continue_schedule_round(
                         state,
                         previous,
                         depth_cond,
                         shell_size=int(self.shell_size),
                     )
+                    schedule = state.scheduler_data
+                    if schedule is None:
+                        raise RuntimeError(
+                            "Continuation planning did not create a schedule."
+                        )
                     if bool(schedule.active):
                         state = dataclasses.replace(
                             state,
@@ -866,12 +871,17 @@ class NestedSampler(PureDataclassPytree):
                     scheduler_data=None,
                 )
             previous = state.scheduler_data
-            state, schedule, _ = _continue_schedule_round(
+            state = _continue_schedule_round(
                 state,
                 previous,
                 depth_cond,
                 shell_size=int(self.shell_size),
             )
+            schedule = state.scheduler_data
+            if schedule is None:
+                raise RuntimeError(
+                    "Continuation planning did not create a schedule."
+                )
             if bool(schedule.active):
                 state = dataclasses.replace(
                     state,

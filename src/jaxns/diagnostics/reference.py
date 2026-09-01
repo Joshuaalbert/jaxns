@@ -27,6 +27,7 @@ def bruteforce_posterior_samples(
         args: model args
         params: model params
         grid_res: resolution of grid
+        batch_size: optional number of grid points per memory-bounded batch.
 
     Returns:
         samples, dp
@@ -43,18 +44,55 @@ def bruteforce_posterior_samples(
         jnp.arange(grid_res, dtype=u_example_flat.dtype) + 0.5
     ) * du
     U_ndims = model.U_ndims(args=args, params=params)
-    u_flat = jnp.stack([x.flatten() for x in jnp.meshgrid(*[u_vec] * U_ndims, indexing='ij')], axis=-1)
-    x, log_L = jax.lax.map(
-        lambda u: (model.transform_to_X(unravel_fn(u), args=args, params=params),
-                   model.log_likelihood(unravel_fn(u), args=args, params=params, allow_nan=False)),
-        xs=u_flat, batch_size=batch_size)
+    u_flat = jnp.stack(
+        [
+            x.flatten()
+            for x in jnp.meshgrid(
+                *[u_vec] * U_ndims,
+                indexing='ij',
+            )
+        ],
+        axis=-1,
+    )
+    def evaluate(u):
+        x = model.transform_to_X(
+            unravel_fn(u),
+            args=args,
+            params=params,
+        )
+        log_L = model.log_likelihood(
+            unravel_fn(u),
+            args=args,
+            params=params,
+            allow_nan=False,
+        )
+        return x, log_L
+    if batch_size is None:
+        # A reference grid is independent across points. Vectorise the default
+        # path so validation cost scales with the model work rather than with
+        # the number of scalar dispatches in the grid.
+        x, log_L = jax.vmap(evaluate)(u_flat)
+    else:
+        # Explicit batching is the memory-bounded alternative for grids whose
+        # full vectorised intermediates would not fit on the selected device.
+        x, log_L = jax.lax.map(
+            evaluate,
+            xs=u_flat,
+            batch_size=batch_size,
+        )
     dZ = LogSpace(log_L) * LogSpace(jnp.log(du)) ** U_ndims
     dZ = normalise_log_space(dZ)
     return x, dZ
 
 
 @partial(jax.jit, inline=True, static_argnames=['grid_res', 'batch_size'])
-def bruteforce_evidence(model: Model, args=(), params: CtxParams | None = None, grid_res: int = 60, batch_size: int | None = None) -> FloatArray:
+def bruteforce_evidence(
+    model: Model,
+    args=(),
+    params: CtxParams | None = None,
+    grid_res: int = 60,
+    batch_size: int | None = None,
+) -> FloatArray:
     """
     Compute the evidence with brute-force over a regular grid.
 
@@ -80,9 +118,34 @@ def bruteforce_evidence(model: Model, args=(), params: CtxParams | None = None, 
         jnp.arange(grid_res, dtype=u_example_flat.dtype) + 0.5
     ) * du
     U_ndims = model.U_ndims(args=args, params=params)
-    u_flat = jnp.stack([x.flatten() for x in jnp.meshgrid(*[u_vec] * U_ndims, indexing='ij')], axis=-1)
-    log_L = jax.lax.map(
-        lambda u: model.log_likelihood(unravel_fn(u), args=args, params=params, allow_nan=False),
-        xs=u_flat, batch_size=batch_size)
+    u_flat = jnp.stack(
+        [
+            x.flatten()
+            for x in jnp.meshgrid(
+                *[u_vec] * U_ndims,
+                indexing='ij',
+            )
+        ],
+        axis=-1,
+    )
+    def evaluate(u):
+        return model.log_likelihood(
+            unravel_fn(u),
+            args=args,
+            params=params,
+            allow_nan=False,
+        )
+    if batch_size is None:
+        # Independent grid cells should occupy vector lanes by default. A
+        # scalar lax.map made high-resolution scientific references scale in
+        # wall time with every cell even though no recurrence exists.
+        log_L = jax.vmap(evaluate)(u_flat)
+    else:
+        # Keep an explicit memory knob for unusually large model intermediates.
+        log_L = jax.lax.map(
+            evaluate,
+            xs=u_flat,
+            batch_size=batch_size,
+        )
     dZ = LogSpace(log_L) * LogSpace(jnp.log(du)) ** U_ndims
     return dZ.nansum().log_abs_val
