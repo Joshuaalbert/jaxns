@@ -56,15 +56,30 @@
       "path": "cicd/tests/test_results_plotting.py",
       "reason": "utility_behavior"
     },
-    "test_periodic_coordinates_reject_euclidean_ellipsoids": {
-      "note": "Checks the current isotropic-only feature boundary until a toroidal GMM direction model has supporting evidence.",
-      "path": "cicd/tests/test_constrained_sampler.py",
-      "reason": "architecture_boundary"
-    },
     "test_batch_group_ignores_direction_diagnostics_but_not_geometry": {
       "note": "Checks the concrete worker specialization key and protects the premise that observational GMM counters cannot affect a constrained-sampling call.",
       "path": "cicd/tests/test_distributed_runtime.py",
       "reason": "implementation_regression"
+    },
+    "test_component_eligibility_uses_fitted_mean_likelihood": {
+      "note": "Checks the selected fitted-component eligibility proxy at the component mean rather than an independent scientific contract.",
+      "path": "cicd/tests/test_constrained_sampler.py",
+      "reason": "implementation_formula"
+    },
+    "test_component_selection_uses_contour_trimmed_volume_in_dimension": {
+      "note": "Checks the selected contour-trimmed ellipsoid-volume weighting formula used by the direction heuristic.",
+      "path": "cicd/tests/test_constrained_sampler.py",
+      "reason": "implementation_formula"
+    },
+    "test_disabled_ellipsoidal_directions_are_exact_isotropic_fallback": {
+      "note": "Checks the concrete state switch from retained GMM geometry to the isotropic direction implementation.",
+      "path": "cicd/tests/test_constrained_sampler.py",
+      "reason": "architecture_boundary"
+    },
+    "test_distributed_directions_change_only_at_drained_boundaries": {
+      "note": "Checks the selected distributed-state boundary for changing retained direction geometry without provisional work.",
+      "path": "cicd/tests/test_distributed_core.py",
+      "reason": "architecture_boundary"
     },
     "test_supervisor_validates_atomic_task_group_before_queue_mutation": {
       "note": "Checks transactional validation of the current multipart task protocol before its retry table is mutated.",
@@ -81,8 +96,8 @@
       "path": "cicd/tests/test_distributed_runtime.py",
       "reason": "architecture_boundary"
     },
-    "test_ellipsoidal_direction_jit_vmap_and_degenerate_fallback": {
-      "note": "Checks the current compiled direction-kernel batching, normalization, and degenerate-geometry fallback wiring.",
+    "test_ellipsoidal_direction_jit_vmap_uses_eligible_geometry": {
+      "note": "Checks the current compiled direction-kernel batching and eligible-geometry selection wiring.",
       "path": "cicd/tests/test_constrained_sampler.py",
       "reason": "architecture_boundary"
     },
@@ -135,6 +150,11 @@
       "note": "Checks the current warm-fit state representation and its recovery from a singular candidate geometry.",
       "path": "cicd/tests/test_multi_ellipsoid.py",
       "reason": "implementation_regression"
+    },
+    "test_sampler_data_uses_gaussian_mean_height_without_sample_hull": {
+      "note": "Checks the selected responsibility-weighted reconstruction of fitted likelihood height at a component mean.",
+      "path": "cicd/tests/test_multi_ellipsoid.py",
+      "reason": "implementation_formula"
     },
     "test_state_merge_keeps_recent_geometry_and_cumulative_direction_work": {
       "note": "Checks the concrete state-merge policy for sampler geometry and internal direction-work counters.",

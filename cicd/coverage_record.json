@@ -22,8 +22,7 @@
     "test_block_state_rejects_strict_contour_violation",
     "test_state_consistency_rejects_strict_contour_violation",
     "test_results_sample_mc_shrinkage_rejects_strict_contour_equality",
-    "test_public_sample_mc_shrinkage_rejects_strict_contour_equality",
-    "test_component_selection_is_strict_and_volume_weighted"
+    "test_public_sample_mc_shrinkage_rejects_strict_contour_equality"
   ],
   "A seed used for a constrained chain is stationary for the requested parent contour before the chain starts.": [
     "test_mixed_contour_seed_groups_remain_distinct_after_rejection"
@@ -187,7 +186,8 @@
     "test_missing_state_file_and_unsupported_schema_fail_clearly"
   ],
   "A state contains all scientific data and random-stream position needed to continue its run without hidden mutable sampler state.": [
-    "test_ellipsoidal_state_survives_checkpoint_growth_and_resume"
+    "test_ellipsoidal_state_survives_checkpoint_growth_and_resume",
+    "test_user_stages_gmm_directions_between_uncertainty_goals"
   ],
   "A finite scientific sample limit is never exceeded, including by a partially filled replacement batch.": [
     "test_finite_capacity_terminates_below_and_exactly_at_hard_maximum",
@@ -217,7 +217,6 @@
     "test_results_sample_mc_shrinkage_rejects_malformed_arrays_before_jit",
     "test_public_sample_mc_shrinkage_rejects_stale_block_likelihoods_before_jit",
     "test_sample_evidence_mc_rejects_invalid_batch_sizes",
-    "test_ellipsoidal_configuration_validation",
     "test_sample_evidence_mc_rejects_invalid_phantom_prefix"
   ],
   "The default installation supplies plotting dependencies, scientific imports do not eagerly import them, and requesting plotting when they are unavailable fails with an actionable installation remedy.": [
