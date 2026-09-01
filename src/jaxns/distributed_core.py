@@ -32,6 +32,7 @@ from jaxns.algorithm.depth import (
     _resize_depth_state,
     _seed_source_refresh_due,
     _start_schedule_round,
+    _start_seed_storage_full,
     _update_seed_reservoir,
 )
 from jaxns.algorithm.initialisation import _build_init_state
@@ -47,7 +48,7 @@ from jaxns.constrained_sampler import (
     LikelihoodEvaluation,
     LikelihoodRequest,
 )
-from jaxns.core import NestedSampler
+from jaxns.core import NestedSampler, _grow_start_seed_storage
 from jaxns.depth_condition import DepthCondition
 from jaxns.logging import jaxns_logger
 from jaxns.mixed_precision import mp_policy
@@ -169,6 +170,7 @@ class DepthStatus(NamedTuple):
     has_work: BoolArray  # []
     needs_growth: BoolArray  # []
     needs_thread_growth: BoolArray  # []
+    needs_seed_growth: BoolArray  # []
     source_refresh_due: BoolArray  # []
     schedule_drained: BoolArray  # []
     termination_reason: IntArray  # []
@@ -462,6 +464,7 @@ def _depth_status(
     has_schedule_work = jnp.asarray(False, mp_policy.bool_dtype)
     seed_source_refresh_due = jnp.asarray(False, mp_policy.bool_dtype)
     thread_storage_full = jnp.asarray(False, mp_policy.bool_dtype)
+    seed_storage_full = jnp.asarray(False, mp_policy.bool_dtype)
     if state.scheduler_data is not None:
         has_schedule_work = has_thread_work(state.scheduler_data)
         seed_source_refresh_due = _seed_source_refresh_due(
@@ -475,6 +478,11 @@ def _depth_status(
                 + reservations.num_reserved
                 >= state.scheduler_data.continuation_parent_idx.shape[0]
             )
+        )
+        seed_storage_full = (
+            has_schedule_work
+            & jnp.logical_not(seed_source_refresh_due)
+            & _start_seed_storage_full(state.scheduler_data)
         )
     limit = _sample_limit(state, max_samples)
     hard_limit = state.num_samples >= limit
@@ -500,6 +508,7 @@ def _depth_status(
         & below_limit
         & jnp.logical_not(seed_source_refresh_due)
         & jnp.logical_not(thread_storage_full)
+        & jnp.logical_not(seed_storage_full)
         & jnp.logical_not(terminal)
     )
     needs_growth = (
@@ -524,6 +533,10 @@ def _depth_status(
         needs_growth=needs_growth,
         needs_thread_growth=(
             thread_storage_full
+            & jnp.logical_not(terminal | seed_source_refresh_due)
+        ),
+        needs_seed_growth=(
+            seed_storage_full
             & jnp.logical_not(terminal | seed_source_refresh_due)
         ),
         source_refresh_due=source_refresh_ready,
@@ -1320,6 +1333,9 @@ class DistributedNestedSampler:
             if bool(status.needs_thread_growth):
                 distributed = self._grow_thread_storage(distributed)
                 continue
+            if bool(status.needs_seed_growth):
+                distributed = self._grow_seed_storage(distributed)
+                continue
             if bool(status.needs_growth):
                 distributed = self._grow(distributed)
                 continue
@@ -1664,6 +1680,8 @@ class DistributedNestedSampler:
         status = self._status(distributed, depth_cond)
         if bool(status.needs_thread_growth):
             return self._grow_thread_storage(distributed)
+        if bool(status.needs_seed_growth):
+            return self._grow_seed_storage(distributed)
         if bool(status.needs_growth):
             return self._grow(distributed)
         return distributed
@@ -1732,3 +1750,17 @@ class DistributedNestedSampler:
                 depth_reached=jnp.asarray(False, mp_policy.bool_dtype),
             ),
         )
+
+    def _grow_seed_storage(
+            self,
+            distributed: DistributedState,
+    ) -> DistributedState:
+        """Grow the exact start-seed set between asynchronous dispatches."""
+        schedule = distributed.state.scheduler_data
+        if schedule is None:
+            return distributed
+        state = _grow_start_seed_storage(
+            distributed.state,
+            schedule.valid.shape[0],
+        )
+        return dataclasses.replace(distributed, state=state)

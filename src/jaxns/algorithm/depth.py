@@ -18,7 +18,11 @@ from jaxns.algorithm.race_tree import (
     build_block_state,
     initialise_likelihood_order,
 )
-from jaxns.algorithm.scheduler import ThreadSchedule
+from jaxns.algorithm.scheduler import (
+    ThreadSchedule,
+    _insert_seed_reservation,
+    _seed_reservation_contains,
+)
 from jaxns.constrained_sampler import (
     AbstractSampler,
     ConstrainedSampleBatch,
@@ -338,6 +342,29 @@ def _continuation_storage_full(schedule: ThreadSchedule) -> BoolArray:
     return (
         schedule.continuation_count + schedule.valid.shape[0]
         > schedule.continuation_parent_idx.shape[0]
+    )
+
+
+def _seed_reservation_capacity(shell_size: int) -> int:
+    """Give ordinary groups several batches before logarithmic growth."""
+    minimum = max(8 * shell_size, 2)
+    return 1 << (minimum - 1).bit_length()
+
+
+def _start_seed_storage_full(schedule: ThreadSchedule) -> BoolArray:
+    """Return whether another full window would exceed half load.
+
+    Keeping the exact hash set below half load bounds expected probes. The
+    table doubles at the Python coordination boundary, so this threshold is a
+    performance boundary rather than a scientific cap.
+    """
+    required = (
+        schedule.num_start_seeds
+        + jnp.asarray(schedule.valid.shape[0], mp_policy.count_dtype)
+    )
+    return (
+        2 * required
+        > schedule.start_seed_reservation_idx.shape[0]
     )
 
 
@@ -713,6 +740,7 @@ def _new_thread_schedule(
     num_threads = jnp.sum(multiplicity, dtype=mp_policy.count_dtype)
 
     seed_source = _build_seed_source_index(state, block_state)
+    reservation_size = _seed_reservation_capacity(shell_size)
     return ThreadSchedule(
         block_state=block_state,
         seed_block_state=seed_source.block_state,
@@ -746,11 +774,16 @@ def _new_thread_schedule(
             state.random_key,
             state.allocation_loop_iter,
         ),
-        start_seed_group=jnp.zeros(
-            state.samples.log_likelihoods.shape,
+        start_seed_reservation_idx=jnp.full(
+            (reservation_size,),
+            -1,
             dtype=mp_policy.index_dtype,
         ),
-        # Zero tags mean "never reserved"; the first active group is one.
+        start_seed_reservation_group=jnp.zeros(
+            (reservation_size,),
+            dtype=mp_policy.index_dtype,
+        ),
+        # Zero slot generations mean empty; the first active group is one.
         current_start_group=jnp.asarray(1, mp_policy.index_dtype),
         start_seed_log_L_constraint=jnp.asarray(
             -jnp.inf,
@@ -1061,11 +1094,6 @@ def _sample_stationary_seeds(
             == schedule.start_seed_log_L_constraint
         )
     )  # [S]
-    reserved_count = reserved_count + jnp.where(
-        retained_start_group,
-        schedule.num_start_seeds,
-        jnp.asarray(0, mp_policy.count_dtype),
-    ).astype(mp_policy.index_dtype)
 
     frozen_count = jax.vmap(
         lambda constraint: _frozen_seed_count_at_constraint(
@@ -1109,6 +1137,52 @@ def _sample_stationary_seeds(
         axis=1,
         dtype=mp_policy.index_dtype,
     )  # [S]
+    # The recent reservoir evolves while a wide start group spans batches.
+    # Count only retained identities that remain in the current eligible
+    # frozen+reservoir population; evicted rows must not make an unseen recent
+    # row look exhausted. Publication makes every older identity frozen, so
+    # the same compact calculation remains exact across source generations.
+    active_reservation = (
+        schedule.start_seed_reservation_group
+        == schedule.current_start_group
+    )  # [V]
+    published_reserved = jnp.sum(
+        active_reservation
+        & (
+            schedule.start_seed_reservation_idx
+            < schedule.source_num_samples
+        ),
+        dtype=mp_policy.index_dtype,
+    )
+    reservoir_was_reserved = jax.lax.cond(
+        jnp.any(retained_start_group),
+        lambda unused: jax.vmap(
+            lambda one_seed: _seed_reservation_contains(
+                schedule.start_seed_reservation_idx,
+                schedule.start_seed_reservation_group,
+                schedule.current_start_group,
+                one_seed,
+            )
+        )(reservoir_safe_idx),
+        lambda unused: jnp.zeros(
+            reservoir_safe_idx.shape,
+            dtype=mp_policy.bool_dtype,
+        ),
+        operand=None,
+    )  # [R]
+    retained_reserved = (
+        published_reserved
+        + jnp.sum(
+            reservoir_eligible & reservoir_was_reserved[None, :],
+            axis=1,
+            dtype=mp_policy.index_dtype,
+        )
+    )  # [S]
+    reserved_count = reserved_count + jnp.where(
+        retained_start_group,
+        retained_reserved,
+        jnp.asarray(0, mp_policy.index_dtype),
+    )
     proposal_width = 64
     selected_seed_idx = jnp.full(
         (shell_size,),
@@ -1225,12 +1299,21 @@ def _sample_stationary_seeds(
                 & forbidden_same_contour[None, :],
                 axis=1,
             )  # [C]
-            candidate_was_start_seed = (
-                lane_retains_start_group
-                & (
-                    schedule.start_seed_group[safe_candidate]
-                    == schedule.current_start_group
-                )
+            candidate_was_start_seed = jax.lax.cond(
+                lane_retains_start_group,
+                lambda unused: jax.vmap(
+                    lambda one_seed: _seed_reservation_contains(
+                        schedule.start_seed_reservation_idx,
+                        schedule.start_seed_reservation_group,
+                        schedule.current_start_group,
+                        one_seed,
+                    )
+                )(safe_candidate),
+                lambda unused: jnp.zeros(
+                    candidate.shape,
+                    dtype=mp_policy.bool_dtype,
+                ),
+                operand=None,
             )  # [C]
             eligible = jnp.logical_not(
                 require_unused
@@ -1817,16 +1900,16 @@ def _retain_start_seed_reservations(
         & (effective_constraint == future_constraint)
     )  # [S]
     # Changing the scalar group identity logically clears every reservation.
-    # This avoids rewriting the sample-capacity-sized tag vector after each
-    # batch, which would make total scheduling work quadratic as the race tree
-    # grows. Only the O(S) selected indices below receive scatter updates.
+    # The exact hash set grows only with this unfinished contour's used seeds,
+    # rather than carrying and updating one tag for every scientific sample.
     group = jnp.where(
         keep_existing,
         schedule.current_start_group,
         schedule.current_start_group
         + jnp.asarray(1, mp_policy.index_dtype),
     )
-    seed_group = schedule.start_seed_group  # [A]
+    reservation_idx = schedule.start_seed_reservation_idx  # [V]
+    reservation_group = schedule.start_seed_reservation_group  # [V]
     num_used = jnp.where(
         keep_existing,
         schedule.num_start_seeds,
@@ -1838,39 +1921,49 @@ def _retain_start_seed_reservations(
     retain = (
         keep_selected
         & (selected_idx >= 0)
-        & (selected_idx < schedule.start_seed_group.shape[0])
+        & (selected_idx < schedule.seed_birth_contours.shape[0])
     )  # [S]
-    rows = jnp.arange(seed_idx.shape[0], dtype=mp_policy.index_dtype)  # [S]
-    appeared_earlier = jnp.any(
-        retain[None, :]
-        & (rows[None, :] < rows[:, None])
-        & (selected_idx[None, :] == selected_idx[:, None]),
-        axis=1,
-    )  # [S]
-    newly_used = (
-        retain
-        & jnp.logical_not(appeared_earlier)
-        & (seed_group[safe_idx] != group)
-    )  # [S]
-    # All duplicate scatter destinations receive the same group tag, so one
-    # fixed-width scatter is equivalent to the serial updates but does not
-    # copy a capacity-sized vector once per lane on CPU.
-    scatter_idx = jnp.where(
-        retain,
-        selected_idx,
-        jnp.asarray(seed_group.shape[0], mp_policy.index_dtype),
-    )  # [S]
-    seed_group = seed_group.at[scatter_idx].set(
-        jnp.full(seed_idx.shape, group, dtype=seed_group.dtype),
-        mode="drop",
-    )
-    num_used = num_used + jnp.sum(
-        newly_used,
-        dtype=num_used.dtype,
+
+    def retain_lane(lane_idx, carry):
+        current_idx, current_group, current_count = carry
+        already_used = _seed_reservation_contains(
+            current_idx,
+            current_group,
+            group,
+            safe_idx[lane_idx],
+        )
+
+        def insert(unused):
+            del unused
+            next_idx, next_group = _insert_seed_reservation(
+                selected_idx[lane_idx],
+                group,
+                current_idx,
+                current_group,
+            )
+            return (
+                next_idx,
+                next_group,
+                current_count + jnp.asarray(1, current_count.dtype),
+            )
+
+        return jax.lax.cond(
+            retain[lane_idx] & jnp.logical_not(already_used),
+            insert,
+            lambda unused: carry,
+            operand=None,
+        )
+
+    reservation_idx, reservation_group, num_used = jax.lax.fori_loop(
+        0,
+        seed_idx.shape[0],
+        retain_lane,
+        (reservation_idx, reservation_group, num_used),
     )
     return dataclasses.replace(
         schedule,
-        start_seed_group=seed_group,
+        start_seed_reservation_idx=reservation_idx,
+        start_seed_reservation_group=reservation_group,
         current_start_group=group,
         start_seed_log_L_constraint=jnp.where(
             has_future_start,
@@ -1939,18 +2032,31 @@ def _plan_scheduled_work_batch(
     # the schedule mask. Exclude that exact duplicate from the simultaneous
     # task count; pending continuations remain independent reservations.
     safe_reserved_idx = jnp.maximum(reserved_seed_idx, 0)  # [S]
+    matches_retained_identity = jax.lax.cond(
+        jnp.any(reserved_valid),
+        lambda unused: jax.vmap(
+            lambda one_seed: _seed_reservation_contains(
+                schedule.start_seed_reservation_idx,
+                schedule.start_seed_reservation_group,
+                schedule.current_start_group,
+                one_seed,
+            )
+        )(safe_reserved_idx),
+        lambda unused: jnp.zeros(
+            reserved_valid.shape,
+            dtype=mp_policy.bool_dtype,
+        ),
+        operand=None,
+    )  # [S]
     pending_matches_start = (
         reserved_valid
         & (reserved_seed_idx >= 0)
-        & (reserved_seed_idx < schedule.start_seed_group.shape[0])
+        & (reserved_seed_idx < schedule.seed_birth_contours.shape[0])
         & (
             reserved_log_L_constraint
             == schedule.start_seed_log_L_constraint
         )
-        & (
-            schedule.start_seed_group[safe_reserved_idx]
-            == schedule.current_start_group
-        )
+        & matches_retained_identity
     )  # [S]
     unique_pending_valid = (
         reserved_valid & jnp.logical_not(pending_matches_start)
@@ -2784,6 +2890,7 @@ def _run_depth(
             & has_buffer
             & below_global_limit
             & jnp.logical_not(_continuation_storage_full(carry.schedule))
+            & jnp.logical_not(_start_seed_storage_full(carry.schedule))
             & jnp.logical_not(_seed_source_refresh_due(
                 carry.state,
                 carry.schedule,

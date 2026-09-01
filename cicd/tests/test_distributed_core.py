@@ -12,6 +12,8 @@ from cicd.tests.distributed_support import make_toy_model
 from jaxns.algorithm.depth import (
     SEED_SOURCE_REFRESH_WINDOWS,
     CoreWorkBatch,
+    _insert_seed_reservation,
+    _seed_reservation_contains,
     _start_schedule_round,
 )
 from jaxns.constrained_sampler import (
@@ -651,6 +653,78 @@ def test_distributed_seed_refresh_waits_for_no_pending_tasks():
     assert not bool(drained.has_work)
     assert not bool(pending.source_refresh_due)
     assert not bool(pending.schedule_drained)
+
+
+def test_distributed_start_seed_storage_grows_without_losing_reservations():
+    """The asynchronous boundary doubles exact same-contour coordination."""
+    state = make_state(
+        root_out_degree=2,
+        log_likelihoods=(1.0, 2.0),
+        log_L_constraints=(-np.inf, -np.inf),
+        out_degree=(0, 0),
+        max_samples=100,
+    )
+    state, schedule, _ = _start_schedule_round(
+        state,
+        DepthCondition(),
+        shell_size=2,
+        allocation_target="uniform",
+        root_degree=2,
+        delta_K=1,
+    )
+    seed_indices = tuple(range(7))
+    for reservation_count, seed_idx in enumerate(seed_indices, start=1):
+        reservation_idx, reservation_group = _insert_seed_reservation(
+            jnp.asarray(seed_idx, dtype=jnp.int32),
+            schedule.current_start_group,
+            schedule.start_seed_reservation_idx,
+            schedule.start_seed_reservation_group,
+        )
+        schedule = dataclasses.replace(
+            schedule,
+            start_seed_reservation_idx=reservation_idx,
+            start_seed_reservation_group=reservation_group,
+            num_start_seeds=jnp.asarray(
+                reservation_count,
+                dtype=jnp.int32,
+            ),
+        )
+    state = dataclasses.replace(state, scheduler_data=schedule)
+    distributed = DistributedState(
+        state=state,
+        reservations=ReservationState.empty(100),
+        pending=(),
+        next_task_id=0,
+        session_id="unit-test",
+        depth_active=True,
+        goal_key=state.goal_key,
+    )
+    status = _depth_status(
+        state,
+        distributed.reservations,
+        max_samples=None,
+    )
+    assert bool(status.needs_seed_growth)
+
+    runner = DistributedNestedSampler(
+        model=make_toy_model(),
+        coordinator_port=5555,
+        root_allocation_degree=2,
+        max_samples=100,
+    )
+    grown = runner._grow_seed_storage(distributed)
+    grown_schedule = grown.state.scheduler_data
+    assert (
+        grown_schedule.start_seed_reservation_idx.shape[0]
+        == 2 * schedule.start_seed_reservation_idx.shape[0]
+    )
+    for seed_idx in seed_indices:
+        assert bool(_seed_reservation_contains(
+            grown_schedule.start_seed_reservation_idx,
+            grown_schedule.start_seed_reservation_group,
+            grown_schedule.current_start_group,
+            jnp.asarray(seed_idx, dtype=jnp.int32),
+        ))
 
 
 def test_distributed_dispatch_starts_evidence_utility_schedule():

@@ -94,6 +94,104 @@ def _resize_block_state(block_state: BlockState, size: int) -> BlockState:
     )
 
 
+def _seed_reservation_slot(seed_idx: IntArray, size: int) -> IntArray:
+    """Hash one non-negative sample identity into a power-of-two table."""
+    bits = size.bit_length() - 1
+    hashed = seed_idx.astype(jnp.uint32) * jnp.asarray(
+        2654435761,
+        dtype=jnp.uint32,
+    )
+    return (hashed >> (32 - bits)).astype(jnp.int32)
+
+
+def _insert_seed_reservation(
+        seed_idx: IntArray,
+        group: IntArray,
+        reservation_idx: IntArray,
+        reservation_group: IntArray,
+) -> tuple[IntArray, IntArray]:
+    """Insert one exact identity using linear probing within its group.
+
+    The caller reserves an empty slot by growing before this function runs.
+    """
+    size = reservation_idx.shape[0]
+    first_slot = _seed_reservation_slot(seed_idx, size)
+
+    def cond(carry):
+        attempt, _, found = carry
+        return (attempt < size) & jnp.logical_not(found)
+
+    def body(carry):
+        attempt, selected_slot, _ = carry
+        slot = (first_slot + attempt) & jnp.asarray(size - 1, jnp.int32)
+        occupied = reservation_group[slot] == group
+        same_seed = occupied & (reservation_idx[slot] == seed_idx)
+        available = jnp.logical_not(occupied) | same_seed
+        return (
+            attempt + jnp.asarray(1, jnp.int32),
+            jnp.where(available, slot, selected_slot),
+            available,
+        )
+
+    _, slot, found = jax.lax.while_loop(
+        cond,
+        body,
+        (
+            jnp.asarray(0, jnp.int32),
+            jnp.asarray(0, jnp.int32),
+            jnp.asarray(False),
+        ),
+    )
+    reservation_idx = reservation_idx.at[slot].set(
+        jnp.where(found, seed_idx, reservation_idx[slot])
+    )
+    reservation_group = reservation_group.at[slot].set(
+        jnp.where(found, group, reservation_group[slot])
+    )
+    return reservation_idx, reservation_group
+
+
+def _seed_reservation_contains(
+        reservation_idx: IntArray,
+        reservation_group: IntArray,
+        group: IntArray,
+        seed_idx: IntArray,
+) -> BoolArray:
+    """Return exact membership without scanning unused reservation storage."""
+    size = reservation_idx.shape[0]
+    first_slot = _seed_reservation_slot(seed_idx, size)
+
+    def cond(carry):
+        attempt, found, stopped = carry
+        return (
+            (attempt < size)
+            & jnp.logical_not(found)
+            & jnp.logical_not(stopped)
+        )
+
+    def body(carry):
+        attempt, _, _ = carry
+        slot = (first_slot + attempt) & jnp.asarray(size - 1, jnp.int32)
+        occupied = reservation_group[slot] == group
+        found = occupied & (reservation_idx[slot] == seed_idx)
+        return (
+            attempt + jnp.asarray(1, jnp.int32),
+            found,
+            jnp.logical_not(occupied),
+        )
+
+    _, found, _ = jax.lax.while_loop(
+        cond,
+        body,
+        (
+            jnp.asarray(0, jnp.int32),
+            jnp.asarray(False),
+            jnp.asarray(False),
+        ),
+    )
+    return found
+
+
 @dataclasses.dataclass(slots=True, frozen=True)
 class ThreadSchedule(PureDataclassPytree):
     """Frozen gap plus the fixed-width thread heads advancing through it.
@@ -121,7 +219,8 @@ class ThreadSchedule(PureDataclassPytree):
     seed_reservoir_priority: FloatArray  # [R] value-independent priorities
     seed_reservoir_valid: BoolArray  # [R]
     seed_reservoir_key: PRNGKey  # [2]
-    start_seed_group: IntArray  # [A] most recent same-contour group per seed
+    start_seed_reservation_idx: IntArray  # [V] exact reserved identities
+    start_seed_reservation_group: IntArray  # [V] logical-clear generations
     current_start_group: IntArray  # [] retained same-contour group identity
     start_seed_log_L_constraint: FloatArray  # [] retained effective contour
     num_start_seeds: IntArray  # [] unique seeds used at retained contour
@@ -181,11 +280,62 @@ class ThreadSchedule(PureDataclassPytree):
             seed_rank_prefix=seed_rank_prefix,
             seed_zero_count=seed_zero_count,
             root_seed_idx=_resize_vector(self.root_seed_idx, size, 0),
-            start_seed_group=_resize_vector(
-                self.start_seed_group,
-                size,
-                0,
-            ),
+        )
+
+    def resize_start_seed_reservations(self, size: int) -> ThreadSchedule:
+        """Grow and rehash the active exact reservation set.
+
+        ``size`` must be a power of two. Old generations are logically empty,
+        so only the current group's compact identities are copied.
+        """
+        current = self.start_seed_reservation_idx.shape[0]
+        if size <= current:
+            return self
+        if size & (size - 1):
+            raise ValueError("Seed reservation size must be a power of two.")
+        reservation_idx = jnp.full(
+            (size,),
+            -1,
+            dtype=self.start_seed_reservation_idx.dtype,
+        )  # [V]
+        reservation_group = jnp.zeros(
+            (size,),
+            dtype=self.start_seed_reservation_group.dtype,
+        )  # [V]
+
+        def rehash(slot, carry):
+            current_idx, current_group = carry
+            valid = (
+                self.start_seed_reservation_group[slot]
+                == self.current_start_group
+            )
+
+            def insert(unused):
+                del unused
+                return _insert_seed_reservation(
+                    self.start_seed_reservation_idx[slot],
+                    self.current_start_group,
+                    current_idx,
+                    current_group,
+                )
+
+            return jax.lax.cond(
+                valid,
+                insert,
+                lambda unused: carry,
+                operand=None,
+            )
+
+        reservation_idx, reservation_group = jax.lax.fori_loop(
+            0,
+            current,
+            rehash,
+            (reservation_idx, reservation_group),
+        )
+        return dataclasses.replace(
+            self,
+            start_seed_reservation_idx=reservation_idx,
+            start_seed_reservation_group=reservation_group,
         )
 
     def resize_threads(

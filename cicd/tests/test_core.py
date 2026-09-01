@@ -508,6 +508,114 @@ def test_nonroot_start_reservation_is_not_bounded_by_batch_width():
     assert reservation_counts == [2, 4, 6, 8, 10, 0]
 
 
+def test_start_seed_reservations_rehash_exactly_when_storage_grows():
+    """Compact coordination storage grows without dropping identities."""
+    sample_capacity = 64
+    state = make_state(
+        root_out_degree=sample_capacity,
+        log_likelihoods=tuple(
+            float(value) for value in range(sample_capacity)
+        ),
+        log_L_constraints=(-np.inf,) * sample_capacity,
+        out_degree=(0,) * sample_capacity,
+        max_samples=sample_capacity,
+    )
+    block_state = build_block_state(
+        state.samples,
+        state.root_out_degree,
+        state.num_samples,
+        likelihood_order=state.likelihood_order,
+    )
+    schedule = depth._new_thread_schedule(
+        state,
+        block_state,
+        _allocation_plan(
+            block_state,
+            (1,) + (0,) * (sample_capacity - 1),
+        ),
+        block_state.valid,
+        shell_size=1,
+        tail_K=jnp.asarray(0, dtype=jnp.int32),
+    )
+    original_size = schedule.start_seed_reservation_idx.shape[0]
+    # These identities deliberately collide in both the 8- and 16-slot
+    # multiplicative hash tables, exercising the exact linear-probe chain.
+    seed_indices = (0, 13, 34, 47)
+    for reservation_count, seed_idx in enumerate(seed_indices, start=1):
+        reservation_idx, reservation_group = (
+            depth._insert_seed_reservation(
+                jnp.asarray(seed_idx, dtype=jnp.int32),
+                schedule.current_start_group,
+                schedule.start_seed_reservation_idx,
+                schedule.start_seed_reservation_group,
+            )
+        )
+        schedule = dataclasses.replace(
+            schedule,
+            start_seed_reservation_idx=reservation_idx,
+            start_seed_reservation_group=reservation_group,
+            num_start_seeds=jnp.asarray(
+                reservation_count,
+                dtype=jnp.int32,
+            ),
+        )
+
+    grown = schedule.resize_start_seed_reservations(2 * original_size)
+    assert grown.start_seed_reservation_idx.shape == (2 * original_size,)
+    for seed_idx in seed_indices:
+        assert bool(depth._seed_reservation_contains(
+            grown.start_seed_reservation_idx,
+            grown.start_seed_reservation_group,
+            grown.current_start_group,
+            jnp.asarray(seed_idx, dtype=jnp.int32),
+        ))
+
+    # Changing only the generation is a constant-time logical clear. Stale
+    # slots from the previous contour cannot reserve identities in the next.
+    for seed_idx in seed_indices:
+        assert not bool(depth._seed_reservation_contains(
+            grown.start_seed_reservation_idx,
+            grown.start_seed_reservation_group,
+            grown.current_start_group + jnp.asarray(1, dtype=jnp.int32),
+            jnp.asarray(seed_idx, dtype=jnp.int32),
+        ))
+
+
+def test_start_seed_reservation_storage_is_independent_of_sample_capacity():
+    """A large race must not enlarge repeated start-seed coordination."""
+    sizes = []
+    for sample_capacity in (8, 64):
+        state = make_state(
+            root_out_degree=sample_capacity,
+            log_likelihoods=tuple(
+                float(value) for value in range(sample_capacity)
+            ),
+            log_L_constraints=(-np.inf,) * sample_capacity,
+            out_degree=(0,) * sample_capacity,
+            max_samples=sample_capacity,
+        )
+        block_state = build_block_state(
+            state.samples,
+            state.root_out_degree,
+            state.num_samples,
+            likelihood_order=state.likelihood_order,
+        )
+        schedule = depth._new_thread_schedule(
+            state,
+            block_state,
+            _allocation_plan(
+                block_state,
+                (1,) + (0,) * (sample_capacity - 1),
+            ),
+            block_state.valid,
+            shell_size=2,
+            tail_K=jnp.asarray(0, dtype=jnp.int32),
+        )
+        sizes.append(schedule.start_seed_reservation_idx.shape[0])
+
+    assert sizes == [16, 16]
+
+
 def test_thread_starts_partition_published_and_retained_stationary_seeds():
     """A start group spreads across published and retained recent seeds."""
     source = make_state(
@@ -898,11 +1006,16 @@ def test_post_freeze_pending_start_is_counted_once():
         jnp.asarray([2, 3, -1], dtype=jnp.int32),
         jnp.asarray([True, True, False]),
     )
+    reservation_idx, reservation_group = depth._insert_seed_reservation(
+        jnp.asarray(3, dtype=jnp.int32),
+        schedule.current_start_group,
+        schedule.start_seed_reservation_idx,
+        schedule.start_seed_reservation_group,
+    )
     schedule = dataclasses.replace(
         schedule,
-        start_seed_group=schedule.start_seed_group.at[3].set(
-            schedule.current_start_group
-        ),
+        start_seed_reservation_idx=reservation_idx,
+        start_seed_reservation_group=reservation_group,
         start_seed_log_L_constraint=jnp.asarray(-jnp.inf),
         num_start_seeds=jnp.asarray(1, dtype=jnp.int32),
     )
@@ -920,6 +1033,71 @@ def test_post_freeze_pending_start_is_counted_once():
     # The pending identity 3 already belongs to the retained group. Exactly
     # the three remaining stationary seeds therefore fill this next window.
     assert set(np.asarray(work.seed_idx).tolist()) == {0, 1, 2}
+
+
+def test_evicted_recent_reservations_do_not_hide_unseen_stationary_seeds():
+    """Exhaustion counts the current frozen+reservoir union exactly."""
+    source = make_state(
+        root_out_degree=2,
+        log_likelihoods=(1.0, 2.0),
+        log_L_constraints=(-np.inf, -np.inf),
+        out_degree=(0, 0),
+        max_samples=5,
+    )
+    block_state = build_block_state(
+        source.samples,
+        source.root_out_degree,
+        source.num_samples,
+        likelihood_order=source.likelihood_order,
+    )
+    schedule = depth._new_thread_schedule(
+        source,
+        block_state,
+        _allocation_plan(block_state, (2, 0, 0, 0, 0)),
+        block_state.valid,
+        shell_size=2,
+        tail_K=jnp.asarray(0, dtype=jnp.int32),
+    )
+    current = make_state(
+        root_out_degree=5,
+        log_likelihoods=(1.0, 2.0, 3.0, 4.0, 5.0),
+        log_L_constraints=(-np.inf,) * 5,
+        out_degree=(0,) * 5,
+        max_samples=5,
+    )
+    # Identities 2 and 4 were used while recent, then left the bounded
+    # reservoir. Identity 0 remains frozen and used, while 1 and the current
+    # recent identity 3 are the two unseen eligible choices.
+    for seed_idx in (0, 2, 4):
+        reservation_idx, reservation_group = (
+            depth._insert_seed_reservation(
+                jnp.asarray(seed_idx, dtype=jnp.int32),
+                schedule.current_start_group,
+                schedule.start_seed_reservation_idx,
+                schedule.start_seed_reservation_group,
+            )
+        )
+        schedule = dataclasses.replace(
+            schedule,
+            start_seed_reservation_idx=reservation_idx,
+            start_seed_reservation_group=reservation_group,
+        )
+    schedule = dataclasses.replace(
+        schedule,
+        seed_reservoir_idx=jnp.asarray([3, -1], dtype=jnp.int32),
+        seed_reservoir_valid=jnp.asarray([True, False]),
+        start_seed_log_L_constraint=jnp.asarray(-jnp.inf),
+        num_start_seeds=jnp.asarray(3, dtype=jnp.int32),
+    )
+
+    _, work = depth._plan_scheduled_work_batch(
+        jax.random.PRNGKey(233),
+        current,
+        schedule,
+        jnp.asarray(2, dtype=jnp.int32),
+    )
+
+    assert set(np.asarray(work.seed_idx).tolist()) == {1, 3}
 
 
 def test_seed_pool_uses_value_independent_post_freeze_reservoir():

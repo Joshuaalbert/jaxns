@@ -22,6 +22,7 @@ from jaxns.algorithm.depth import (
     _run_depth,
     _seed_source_refresh_due,
     _start_schedule_round,
+    _start_seed_storage_full,
 )
 from jaxns.algorithm.initialisation import _sample_init_state
 from jaxns.checkpoint import (
@@ -91,6 +92,22 @@ def _grow_continuation_storage(state: State, shell_size: int) -> State:
         ),
         # This is a physical recompilation boundary, not completion of the
         # frozen target or expected-depth traversal.
+        depth_reached=jnp.asarray(False, mp_policy.bool_dtype),
+    )
+
+
+def _grow_start_seed_storage(state: State, shell_size: int) -> State:
+    """Double exact no-replacement storage without advancing the schedule."""
+    schedule = state.scheduler_data
+    if schedule is None:
+        raise ValueError("Seed reservation growth requires an active schedule.")
+    current_size = schedule.start_seed_reservation_idx.shape[0]
+    required_size = 2 * (int(schedule.num_start_seeds) + shell_size)
+    new_size = max(2 * current_size, required_size)
+    new_size = 1 << (new_size - 1).bit_length()
+    return dataclasses.replace(
+        state,
+        scheduler_data=schedule.resize_start_seed_reservations(new_size),
         depth_reached=jnp.asarray(False, mp_policy.bool_dtype),
     )
 
@@ -565,6 +582,17 @@ class NestedSampler(PureDataclassPytree):
                     int(self.shell_size),
                 )
                 continue
+            if (
+                state.scheduler_data is not None
+                and bool(_start_seed_storage_full(
+                    state.scheduler_data,
+                ))
+            ):
+                state = _grow_start_seed_storage(
+                    state,
+                    int(self.shell_size),
+                )
+                continue
             source_published = False
             if (
                 state.scheduler_data is not None
@@ -779,6 +807,17 @@ class NestedSampler(PureDataclassPytree):
                 ))
             ):
                 state = _grow_continuation_storage(
+                    state,
+                    int(self.shell_size),
+                )
+                continue
+            if (
+                state.scheduler_data is not None
+                and bool(_start_seed_storage_full(
+                    state.scheduler_data,
+                ))
+            ):
+                state = _grow_start_seed_storage(
                     state,
                     int(self.shell_size),
                 )
