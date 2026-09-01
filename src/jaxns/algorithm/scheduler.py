@@ -9,7 +9,6 @@ import jax.numpy as jnp
 import numpy as np
 
 from jaxns.algorithm.race_tree import BlockState
-from jaxns.mixed_precision import mp_policy
 from jaxns.pytree import PureDataclassPytree
 from jaxns.types import BoolArray, FloatArray, IntArray, PRNGKey
 
@@ -27,6 +26,48 @@ def _resize_vector(
         values,
         ((0, size - current),),
         constant_values=fill_value,
+    )
+
+
+def _resize_seed_rank_index(
+        prefixes: IntArray,
+        zero_count: IntArray,
+        size: int,
+) -> tuple[IntArray, IntArray]:
+    """Match future publication shape without changing old rank queries.
+
+    A grown sample buffer may need another most-significant rank bit. Leading
+    zero levels leave every frozen rank unchanged. Their zero partition uses
+    the old logical matrix width, because padded columns are storage only and
+    are not members of the frozen seed source.
+    """
+    current_columns = prefixes.shape[1]
+    current_capacity = current_columns - 1
+    target_levels = max(1, (size - 2).bit_length())
+    extra_levels = max(target_levels - prefixes.shape[0], 0)
+    if extra_levels:
+        prefixes = jnp.pad(
+            prefixes,
+            ((extra_levels, 0), (0, 0)),
+        )
+        zero_count = jnp.concatenate((
+            jnp.full(
+                (extra_levels,),
+                current_capacity,
+                dtype=zero_count.dtype,
+            ),
+            zero_count,
+        ))
+    elif target_levels < prefixes.shape[0]:
+        # Active-state trimming can remove only leading zero rank bits. Keep
+        # the minimal height so a later publication has this same Pytree shape.
+        prefixes = prefixes[-target_levels:, :]
+        zero_count = zero_count[-target_levels:]
+    if size <= current_columns:
+        return prefixes[:, :size], zero_count
+    return (
+        jnp.pad(prefixes, ((0, 0), (0, size - current_columns))),
+        zero_count,
     )
 
 
@@ -63,6 +104,7 @@ class ThreadSchedule(PureDataclassPytree):
     """
 
     block_state: BlockState
+    seed_block_state: BlockState
     start_block: IntArray  # [G] compressed thread-run starts
     terminal_block: IntArray  # [G] compressed thread-run terminals
     multiplicity: IntArray  # [G] number of identical T(a, b) threads
@@ -71,25 +113,30 @@ class ThreadSchedule(PureDataclassPytree):
     tail_K: IntArray  # [] target beyond the last frozen contour
     seed_count: IntArray  # [G]
     previous_seedable: IntArray  # [G]
-    root_seed_idx: IntArray  # [G] compact sentinel-child identities
-    seed_reservoir_idx: IntArray  # [R] bounded post-freeze candidate indices
+    seed_birth_contours: FloatArray  # [A] birth-sorted frozen contours
+    seed_rank_prefix: IntArray  # [H, A + 1] wavelet rank prefixes
+    seed_zero_count: IntArray  # [H] zero partition sizes
+    root_seed_idx: IntArray  # [A] compact sentinel-child identities
+    seed_reservoir_idx: IntArray  # [R] bounded coordination sample indices
     seed_reservoir_priority: FloatArray  # [R] value-independent priorities
     seed_reservoir_valid: BoolArray  # [R]
     seed_reservoir_key: PRNGKey  # [2]
-    start_seed_used: BoolArray  # [G] frozen sample identities already used
+    start_seed_group: IntArray  # [A] most recent same-contour group per seed
+    current_start_group: IntArray  # [] retained same-contour group identity
     start_seed_log_L_constraint: FloatArray  # [] retained effective contour
-    num_start_seeds: IntArray  # [] unique frozen seeds used at that contour
+    num_start_seeds: IntArray  # [] unique seeds used at retained contour
     parent_idx: IntArray  # [S]
     thread_id: IntArray  # [S]
     log_L_constraint: FloatArray  # [S]
     terminal_log_L: FloatArray  # [S]
     new_start: BoolArray  # [S] heads beginning a logical maximal thread
     valid: BoolArray  # [S]
-    continuation_parent_idx: IntArray  # [Q] FIFO continuation parents
-    continuation_thread_id: IntArray  # [Q] FIFO logical identities
-    continuation_terminal_log_L: FloatArray  # [Q] FIFO terminals
-    continuation_head: IntArray  # [] oldest FIFO position
-    continuation_count: IntArray  # [] occupied FIFO positions
+    continuation_parent_idx: IntArray  # [Q] minimum-contour heap parents
+    continuation_thread_id: IntArray  # [Q] minimum-contour heap identities
+    continuation_log_L_constraint: FloatArray  # [Q] requested contours
+    continuation_frontier: FloatArray  # [Q] effective heap-order contours
+    continuation_terminal_log_L: FloatArray  # [Q] heap terminals
+    continuation_count: IntArray  # [] occupied heap prefix
     next_run: IntArray  # []
     remaining_in_run: IntArray  # []
     next_thread_id: IntArray  # []
@@ -104,9 +151,18 @@ class ThreadSchedule(PureDataclassPytree):
         because storage growth recompiles and then resumes this same planning
         round with a larger sample-indexed shape.
         """
+        seed_rank_prefix, seed_zero_count = _resize_seed_rank_index(
+            self.seed_rank_prefix,
+            self.seed_zero_count,
+            size + 1,
+        )
         return dataclasses.replace(
             self,
             block_state=_resize_block_state(self.block_state, size),
+            seed_block_state=_resize_block_state(
+                self.seed_block_state,
+                size,
+            ),
             start_block=_resize_vector(self.start_block, size, 0),
             terminal_block=_resize_vector(self.terminal_block, size, 0),
             multiplicity=_resize_vector(self.multiplicity, size, 0),
@@ -117,11 +173,18 @@ class ThreadSchedule(PureDataclassPytree):
                 size,
                 -1,
             ),
-            root_seed_idx=_resize_vector(self.root_seed_idx, size, 0),
-            start_seed_used=_resize_vector(
-                self.start_seed_used,
+            seed_birth_contours=_resize_vector(
+                self.seed_birth_contours,
                 size,
-                False,
+                jnp.inf,
+            ),
+            seed_rank_prefix=seed_rank_prefix,
+            seed_zero_count=seed_zero_count,
+            root_seed_idx=_resize_vector(self.root_seed_idx, size, 0),
+            start_seed_group=_resize_vector(
+                self.start_seed_group,
+                size,
+                0,
             ),
         )
 
@@ -134,8 +197,8 @@ class ThreadSchedule(PureDataclassPytree):
 
         Distributed worker capacity may increase after a planning round has
         started. Extra invalid slots admit more independent thread heads and,
-        crucially, reserve space for every in-flight edge that may return as
-        a continuing thread.
+        crucially, reserve heap space for every in-flight edge that may return
+        as a continuing thread. Padding a binary heap preserves its ordering.
         """
         current = self.valid.shape[0]
         reservoir_size = max(size, self.seed_reservoir_idx.shape[0])
@@ -148,19 +211,6 @@ class ThreadSchedule(PureDataclassPytree):
         ):
             return self
 
-        # A ring cannot be padded in physical order when its head has wrapped.
-        # Growth is a Python/recompile boundary, so linearise the logical FIFO
-        # once here and keep repeated device batches at O(S).
-        queue_size = self.continuation_parent_idx.shape[0]
-        positions = (
-            self.continuation_head
-            + jnp.arange(queue_size, dtype=mp_policy.index_dtype)
-        ) % queue_size  # [Q]
-        continuation_parent_idx = self.continuation_parent_idx[positions]
-        continuation_thread_id = self.continuation_thread_id[positions]
-        continuation_terminal_log_L = (
-            self.continuation_terminal_log_L[positions]
-        )
         return dataclasses.replace(
             self,
             seed_reservoir_idx=_resize_vector(
@@ -193,21 +243,30 @@ class ThreadSchedule(PureDataclassPytree):
             new_start=_resize_vector(self.new_start, size, False),
             valid=_resize_vector(self.valid, size, False),
             continuation_parent_idx=_resize_vector(
-                continuation_parent_idx,
+                self.continuation_parent_idx,
                 continuation_size,
                 -1,
             ),
             continuation_thread_id=_resize_vector(
-                continuation_thread_id,
+                self.continuation_thread_id,
                 continuation_size,
                 -1,
             ),
-            continuation_terminal_log_L=_resize_vector(
-                continuation_terminal_log_L,
+            continuation_log_L_constraint=_resize_vector(
+                self.continuation_log_L_constraint,
                 continuation_size,
                 -jnp.inf,
             ),
-            continuation_head=jnp.asarray(0, mp_policy.index_dtype),
+            continuation_frontier=_resize_vector(
+                self.continuation_frontier,
+                continuation_size,
+                jnp.inf,
+            ),
+            continuation_terminal_log_L=_resize_vector(
+                self.continuation_terminal_log_L,
+                continuation_size,
+                -jnp.inf,
+            ),
         )
 
 

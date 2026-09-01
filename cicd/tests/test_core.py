@@ -1,6 +1,7 @@
 """Focused contracts for the compiled scheduling core."""
 
 import dataclasses
+import heapq
 import inspect
 import pickle
 
@@ -126,8 +127,8 @@ def _allocation_plan(
     )
 
 
-def _fifo_test_schedule():
-    """Build a two-slot schedule whose continuation ring is initially empty."""
+def _heap_test_schedule():
+    """Build a two-slot schedule whose continuation heap is initially empty."""
     state = make_state(
         root_out_degree=2,
         log_likelihoods=(1.0, 2.0),
@@ -186,6 +187,7 @@ def test_continuations_wait_until_each_frozen_thread_has_started():
         first,
         jnp.asarray([2, 3], dtype=jnp.int32),
         first.thread_id,
+        jnp.asarray([3.0, 4.0]),
         first.terminal_log_L,
         first.valid,
     )
@@ -209,18 +211,15 @@ def test_continuations_wait_until_each_frozen_thread_has_started():
     assert int(resumed.continuation_count) == 0
 
 
-def test_continuation_fifo_preserves_order_across_physical_wrap():
-    state, schedule = _fifo_test_schedule()
-    # Occupied logical order is parent 0 then parent 1 even though the ring
-    # starts at its final physical slot. Appending parent 0 must wrap into the
-    # one remaining middle slot without changing that FIFO order.
+def test_continuation_heap_returns_shallowest_frontier_first():
+    state, schedule = _heap_test_schedule()
     schedule = dataclasses.replace(
         schedule,
-        continuation_parent_idx=jnp.asarray([1, -1, 0]),
-        continuation_thread_id=jnp.asarray([11, -1, 10]),
-        continuation_terminal_log_L=jnp.asarray([10.0, -jnp.inf, 10.0]),
-        continuation_head=jnp.asarray(2, dtype=jnp.int32),
-        continuation_count=jnp.asarray(2, dtype=jnp.int32),
+        seed_count=jnp.where(
+            schedule.block_state.valid,
+            jnp.asarray(1, dtype=schedule.seed_count.dtype),
+            schedule.seed_count,
+        ),
         next_run=schedule.num_runs,
         remaining_in_run=jnp.asarray(
             0,
@@ -229,10 +228,11 @@ def test_continuation_fifo_preserves_order_across_physical_wrap():
     )
     schedule = depth._enqueue_thread_continuations(
         schedule,
-        jnp.asarray([0], dtype=jnp.int32),
-        jnp.asarray([12], dtype=jnp.int32),
-        jnp.asarray([10.0]),
-        jnp.asarray([True]),
+        jnp.asarray([0, 1, 2], dtype=jnp.int32),
+        jnp.asarray([10, 11, 12], dtype=jnp.int32),
+        jnp.asarray([3.0, 1.0, 2.0]),
+        jnp.asarray([10.0, 10.0, 10.0]),
+        jnp.asarray([True, True, True]),
     )
 
     first = depth._fill_thread_heads(
@@ -240,7 +240,7 @@ def test_continuation_fifo_preserves_order_across_physical_wrap():
         state,
         schedule,
     )
-    np.testing.assert_array_equal(first.thread_id, np.asarray([10, 11]))
+    np.testing.assert_array_equal(first.thread_id, np.asarray([11, 12]))
     first = depth._release_thread_heads(first, first.valid)
     last = depth._fill_thread_heads(
         jax.random.PRNGKey(34),
@@ -248,81 +248,124 @@ def test_continuation_fifo_preserves_order_across_physical_wrap():
         first,
     )
     np.testing.assert_array_equal(last.valid, np.asarray([True, False]))
-    assert int(last.thread_id[0]) == 12
+    assert int(last.thread_id[0]) == 10
 
 
-def test_resize_threads_linearises_a_wrapped_nonempty_fifo():
-    _, schedule = _fifo_test_schedule()
+def test_continuation_heap_matches_reference_under_interleaved_updates():
+    """Heap payloads stay aligned across arbitrary insertion and removal."""
+    _, schedule = _heap_test_schedule()
+    schedule = dataclasses.replace(
+        schedule,
+        seed_count=jnp.where(
+            schedule.block_state.valid,
+            jnp.asarray(1, dtype=schedule.seed_count.dtype),
+            schedule.seed_count,
+        ),
+        next_run=schedule.num_runs,
+        remaining_in_run=jnp.asarray(
+            0,
+            dtype=schedule.remaining_in_run.dtype,
+        ),
+    )
+    enqueue = jax.jit(depth._enqueue_thread_continuations)
+    pop = jax.jit(depth._pop_thread_continuation)
+    reference = []
+    constraints = [1.7, 0.2, 1.1, 1.4, 0.4, 1.9, 0.8, 1.6]
+
+    for thread_id, constraint in enumerate(constraints):
+        schedule = enqueue(
+            schedule,
+            jnp.asarray([thread_id], dtype=jnp.int32),
+            jnp.asarray([thread_id], dtype=jnp.int32),
+            jnp.asarray([constraint]),
+            jnp.asarray([3.0]),
+            jnp.asarray([True]),
+        )
+        heapq.heappush(reference, (constraint, thread_id))
+        if thread_id in {2, 5}:
+            expected_constraint, expected_thread = heapq.heappop(reference)
+            assert np.isclose(
+                float(schedule.continuation_frontier[0]),
+                expected_constraint,
+            )
+            assert int(schedule.continuation_thread_id[0]) == expected_thread
+            schedule = pop(schedule)
+
+    while reference:
+        expected_constraint, expected_thread = heapq.heappop(reference)
+        assert np.isclose(
+            float(schedule.continuation_frontier[0]),
+            expected_constraint,
+        )
+        assert int(schedule.continuation_thread_id[0]) == expected_thread
+        schedule = pop(schedule)
+
+    assert int(schedule.continuation_count) == 0
+
+
+def test_resize_threads_preserves_a_nonempty_continuation_heap():
+    _, schedule = _heap_test_schedule()
     schedule = dataclasses.replace(
         schedule,
         continuation_parent_idx=jnp.asarray([1, 2, 0]),
         continuation_thread_id=jnp.asarray([11, 12, 10]),
+        continuation_log_L_constraint=jnp.asarray([1.0, 3.0, 2.0]),
+        continuation_frontier=jnp.asarray([1.0, 3.0, 2.0]),
         continuation_terminal_log_L=jnp.asarray([4.0, 5.0, 3.0]),
-        continuation_head=jnp.asarray(2, dtype=jnp.int32),
         continuation_count=jnp.asarray(3, dtype=jnp.int32),
     )
 
     resized = schedule.resize_threads(3, continuation_size=7)
 
-    assert int(resized.continuation_head) == 0
     assert int(resized.continuation_count) == 3
     np.testing.assert_array_equal(
         resized.continuation_parent_idx[:3],
-        np.asarray([0, 1, 2]),
+        np.asarray([1, 2, 0]),
     )
     np.testing.assert_array_equal(
         resized.continuation_thread_id[:3],
-        np.asarray([10, 11, 12]),
+        np.asarray([11, 12, 10]),
     )
     np.testing.assert_array_equal(
         resized.continuation_terminal_log_L[:3],
-        np.asarray([3.0, 4.0, 5.0]),
+        np.asarray([4.0, 5.0, 3.0]),
+    )
+    np.testing.assert_array_equal(
+        resized.continuation_log_L_constraint[:3],
+        np.asarray([1.0, 3.0, 2.0]),
+    )
+    np.testing.assert_array_equal(
+        resized.continuation_frontier[:3],
+        np.asarray([1.0, 3.0, 2.0]),
     )
 
 
-def test_continuation_fifo_fills_bound_without_overwrite():
-    _, schedule = _fifo_test_schedule()
+def test_continuation_heap_fills_bound_without_overwrite():
+    _, schedule = _heap_test_schedule()
     queue_size = schedule.continuation_parent_idx.shape[0]
-    head = 5
-    occupied = queue_size - 2
-    positions = (
-        head + np.arange(occupied, dtype=np.int32)
-    ) % queue_size  # [Q - S]
-    parent_idx = np.full((queue_size,), -1, dtype=np.int32)  # [Q]
-    thread_id = np.full((queue_size,), -1, dtype=np.int32)  # [Q]
-    terminal_log_L = np.full((queue_size,), -np.inf)  # [Q]
-    parent_idx[positions] = np.arange(occupied, dtype=np.int32)
-    thread_id[positions] = np.arange(occupied, dtype=np.int32)
-    terminal_log_L[positions] = np.arange(occupied, dtype=np.float64)
-    schedule = dataclasses.replace(
-        schedule,
-        continuation_parent_idx=jnp.asarray(parent_idx),
-        continuation_thread_id=jnp.asarray(thread_id),
-        continuation_terminal_log_L=jnp.asarray(terminal_log_L),
-        continuation_head=jnp.asarray(head, dtype=jnp.int32),
-        continuation_count=jnp.asarray(occupied, dtype=jnp.int32),
-    )
-    final_values = jnp.asarray([occupied, occupied + 1], dtype=jnp.int32)
+    final_values = jnp.arange(queue_size, dtype=jnp.int32)
     full = depth._enqueue_thread_continuations(
         schedule,
         final_values,
         final_values,
-        final_values.astype(jnp.float64),
-        jnp.asarray([True, True]),
+        final_values[::-1].astype(jnp.float64),
+        jnp.full((queue_size,), 100.0),
+        jnp.ones((queue_size,), dtype=bool),
     )
 
     assert int(full.continuation_count) == queue_size
-    logical_positions = (
-        head + np.arange(queue_size, dtype=np.int32)
-    ) % queue_size  # [Q]
+    constraints = np.asarray(full.continuation_frontier)
+    for child in range(1, queue_size):
+        assert constraints[(child - 1) // 2] <= constraints[child]
     np.testing.assert_array_equal(
-        np.asarray(full.continuation_thread_id)[logical_positions],
+        np.sort(np.asarray(full.continuation_thread_id)),
         np.arange(queue_size),
     )
     unchanged = depth._enqueue_thread_continuations(
         full,
         jnp.asarray([999, 1000], dtype=jnp.int32),
         jnp.asarray([999, 1000], dtype=jnp.int32),
+        jnp.asarray([999.0, 1000.0]),
         jnp.asarray([999.0, 1000.0]),
         jnp.asarray([True, True]),
     )
@@ -465,8 +508,8 @@ def test_nonroot_start_reservation_is_not_bounded_by_batch_width():
     assert reservation_counts == [2, 4, 6, 8, 10, 0]
 
 
-def test_thread_starts_partition_frozen_seeds_before_descendants():
-    """Post-freeze rows must not dilute breadth across a frozen start group."""
+def test_thread_starts_partition_published_and_retained_stationary_seeds():
+    """A start group spreads across published and retained recent seeds."""
     source = make_state(
         root_out_degree=4,
         log_likelihoods=(1.0, 2.0, 3.0, 4.0),
@@ -501,6 +544,7 @@ def test_thread_starts_partition_frozen_seeds_before_descendants():
         jnp.asarray([4, 5, 6, 7], dtype=jnp.int32),
         jnp.ones((4,), dtype=bool),
     )
+    draw_schedule = schedule
 
     selected = []
     for batch_idx in range(2):
@@ -513,7 +557,81 @@ def test_thread_starts_partition_frozen_seeds_before_descendants():
         selected.extend(np.asarray(work.seed_idx).tolist())
         schedule = depth._release_thread_heads(schedule, work.valid)
 
-    assert set(selected) == {0, 1, 2, 3}
+    assert len(set(selected)) == 4
+    assert set(selected) <= set(range(8))
+
+    keys = jax.random.split(jax.random.PRNGKey(296), 256)
+
+    def draw(one_key):
+        return depth._sample_stationary_seeds(
+            one_key,
+            current,
+            draw_schedule,
+            jnp.asarray([-jnp.inf]),
+            jnp.asarray([True]),
+            jnp.asarray([True]),
+            jnp.asarray([-1], dtype=jnp.int32),
+            jnp.asarray([-jnp.inf]),
+            jnp.asarray([False]),
+        )[0]
+
+    counts = np.bincount(
+        np.asarray(jax.vmap(draw)(keys)),
+        minlength=8,
+    )
+    # This fixture retains all four appended rows, so both source components
+    # occur at frequencies consistent with their complete stationary union.
+    assert np.all((counts >= 16) & (counts <= 48))
+
+
+def test_frozen_seed_rank_index_matches_every_brute_force_interval():
+    """Wavelet queries return each concrete crossing edge exactly once."""
+    state = make_state(
+        root_out_degree=2,
+        log_likelihoods=(1.0, 2.0, 2.0, 4.0, 5.0, 6.0),
+        log_L_constraints=(-np.inf, -np.inf, 1.0, 1.0, 2.0, 4.0),
+        out_degree=(2, 1, 0, 1, 1, 0),
+        max_samples=6,
+    )
+    blocks = build_block_state(
+        state.samples,
+        state.root_out_degree,
+        state.num_samples,
+        likelihood_order=state.likelihood_order,
+    )
+    schedule = depth._new_thread_schedule(
+        state,
+        blocks,
+        _allocation_plan(blocks, (0,) * 6),
+        blocks.valid,
+        shell_size=2,
+        tail_K=jnp.asarray(0, dtype=jnp.int32),
+    )
+    likelihood = np.asarray(state.samples.log_likelihoods)
+    birth = np.asarray(state.samples.log_L_constraints)
+
+    for constraint in (-np.inf, 1.0, 1.5, 2.0, 4.0, 5.5):
+        expected = set(np.flatnonzero(
+            (birth <= constraint) & (likelihood > constraint)
+        ).tolist())
+        count = int(depth._frozen_seed_count_at_constraint(
+            schedule,
+            jnp.asarray(constraint),
+        ))
+        assert count == len(expected)
+        fractions = (
+            jnp.arange(count, dtype=jnp.float64) + 0.5
+        ) / max(count, 1)
+        one_constraint = jnp.asarray(constraint)
+        selected = jnp.stack(tuple(
+            depth._sample_frozen_seed_rank(
+                schedule,
+                one_constraint,
+                fraction,
+            )
+            for fraction in fractions
+        ))
+        assert set(np.asarray(selected).tolist()) == expected
 
 
 def test_mixed_contour_seed_groups_remain_distinct_after_rejection():
@@ -610,6 +728,104 @@ def test_missing_stationary_seed_reparents_to_closest_shallower_contour():
     assert float(work.log_L_constraint[0]) == 1.0
 
 
+def test_effective_fallback_contour_orders_start_before_continuation():
+    """Frontier order follows the contour actually sampled after fallback."""
+    state = make_state(
+        root_out_degree=1,
+        log_likelihoods=(1.0, 2.0, 4.0),
+        log_L_constraints=(-np.inf, 1.0, 3.0),
+        out_degree=(1, 1, 0),
+        max_samples=4,
+    )
+    block_state = build_block_state(
+        state.samples,
+        state.root_out_degree,
+        state.num_samples,
+        likelihood_order=state.likelihood_order,
+    )
+    schedule = depth._new_thread_schedule(
+        state,
+        block_state,
+        _allocation_plan(block_state, (0, 0, 1, 0)),
+        block_state.valid,
+        shell_size=1,
+        tail_K=jnp.asarray(0, dtype=jnp.int32),
+    )
+    schedule = dataclasses.replace(
+        schedule,
+        seed_count=schedule.seed_count.at[1].set(0),
+        previous_seedable=schedule.previous_seedable.at[1].set(0),
+    )
+    schedule = depth._enqueue_thread_continuations(
+        schedule,
+        jnp.asarray([2], dtype=jnp.int32),
+        jnp.asarray([19], dtype=jnp.int32),
+        jnp.asarray([1.5]),
+        jnp.asarray([4.0]),
+        jnp.asarray([True]),
+    )
+
+    filled = depth._fill_thread_heads(
+        jax.random.PRNGKey(230),
+        state,
+        schedule,
+    )
+
+    # The requested L=2 start falls back to L=1, so it is shallower than the
+    # queued L=1.5 continuation even though its requested contour is deeper.
+    assert bool(filled.new_start[0])
+    assert int(filled.thread_id[0]) == 0
+
+
+def test_seedless_continuation_heap_uses_its_effective_contour():
+    """A reparented continuation keeps its request but sorts by fallback."""
+    state = make_state(
+        root_out_degree=1,
+        log_likelihoods=(1.0, 2.0, 4.0),
+        log_L_constraints=(-np.inf, 1.0, 3.0),
+        out_degree=(1, 1, 0),
+        max_samples=4,
+    )
+    block_state = build_block_state(
+        state.samples,
+        state.root_out_degree,
+        state.num_samples,
+        likelihood_order=state.likelihood_order,
+    )
+    schedule = depth._new_thread_schedule(
+        state,
+        block_state,
+        _allocation_plan(block_state, (0, 0, 0, 0)),
+        block_state.valid,
+        shell_size=1,
+        tail_K=jnp.asarray(0, dtype=jnp.int32),
+    )
+    schedule = dataclasses.replace(
+        schedule,
+        seed_count=schedule.seed_count.at[1].set(0),
+        previous_seedable=schedule.previous_seedable.at[1].set(0),
+    )
+    schedule = depth._enqueue_thread_continuations(
+        schedule,
+        jnp.asarray([2, 1], dtype=jnp.int32),
+        jnp.asarray([20, 15], dtype=jnp.int32),
+        jnp.asarray([2.0, 1.5]),
+        jnp.asarray([4.0, 4.0]),
+        jnp.asarray([True, True]),
+    )
+
+    filled = depth._fill_thread_heads(
+        jax.random.PRNGKey(231),
+        state,
+        schedule,
+    )
+
+    # Requested L=2 falls back to L=1 and therefore precedes L=1.5. The
+    # original request is retained so parent re-resolution remains exact.
+    assert int(filled.thread_id[0]) == 20
+    assert float(filled.log_L_constraint[0]) == 2.0
+
+
 def test_pending_same_contour_seeds_are_reserved_across_refills():
     state = make_state(
         root_out_degree=2,
@@ -647,7 +863,66 @@ def test_pending_same_contour_seeds_are_reserved_across_refills():
     assert set(np.asarray(selected).tolist()) == {2, 3}
 
 
-def test_seed_pool_includes_completed_rows_accepted_after_freeze():
+def test_post_freeze_pending_start_is_counted_once():
+    """A pending appended seed must not shrink the distinct pool twice."""
+    source = make_state(
+        root_out_degree=2,
+        log_likelihoods=(1.0, 2.0),
+        log_L_constraints=(-np.inf, -np.inf),
+        out_degree=(0, 0),
+        max_samples=5,
+    )
+    block_state = build_block_state(
+        source.samples,
+        source.root_out_degree,
+        source.num_samples,
+        likelihood_order=source.likelihood_order,
+    )
+    schedule = depth._new_thread_schedule(
+        source,
+        block_state,
+        _allocation_plan(block_state, (3, 0, 0, 0, 0)),
+        block_state.valid,
+        shell_size=3,
+        tail_K=jnp.asarray(0, dtype=jnp.int32),
+    )
+    current = make_state(
+        root_out_degree=4,
+        log_likelihoods=(1.0, 2.0, 3.0, 4.0),
+        log_L_constraints=(-np.inf,) * 4,
+        out_degree=(0,) * 4,
+        max_samples=5,
+    )
+    schedule = depth._update_seed_reservoir(
+        schedule,
+        jnp.asarray([2, 3, -1], dtype=jnp.int32),
+        jnp.asarray([True, True, False]),
+    )
+    schedule = dataclasses.replace(
+        schedule,
+        start_seed_group=schedule.start_seed_group.at[3].set(
+            schedule.current_start_group
+        ),
+        start_seed_log_L_constraint=jnp.asarray(-jnp.inf),
+        num_start_seeds=jnp.asarray(1, dtype=jnp.int32),
+    )
+
+    _, work = depth._plan_scheduled_work_batch(
+        jax.random.PRNGKey(232),
+        current,
+        schedule,
+        jnp.asarray(3, dtype=jnp.int32),
+        reserved_seed_idx=jnp.asarray([3, -1, -1], dtype=jnp.int32),
+        reserved_log_L_constraint=jnp.asarray([-jnp.inf] * 3),
+        reserved_valid=jnp.asarray([True, False, False]),
+    )
+
+    # The pending identity 3 already belongs to the retained group. Exactly
+    # the three remaining stationary seeds therefore fill this next window.
+    assert set(np.asarray(work.seed_idx).tolist()) == {0, 1, 2}
+
+
+def test_seed_pool_uses_value_independent_post_freeze_reservoir():
     source = make_state(
         root_out_degree=2,
         log_likelihoods=(1.0, 2.0),
@@ -681,9 +956,9 @@ def test_seed_pool_includes_completed_rows_accepted_after_freeze():
         jnp.asarray([2, 3], dtype=jnp.int32),
         jnp.asarray([True, True]),
     )
-    # Deliberately omit row 3 from the bounded coordination reservoir. A
-    # continuation must query the complete append-only accepted suffix, not
-    # silently narrow its stationary seed law to retained coordination rows.
+    # Deliberately omit row 3 from the bounded recent-row reservoir. Every
+    # retained candidate is stationary, while fixed reservoir width keeps seed
+    # selection independent of the number of rows accepted in this generation.
     schedule = dataclasses.replace(
         schedule,
         seed_reservoir_idx=jnp.asarray([2, 0], dtype=jnp.int32),
@@ -705,9 +980,7 @@ def test_seed_pool_includes_completed_rows_accepted_after_freeze():
             jnp.asarray([False]),
         )[0]
 
-    # Both appended rows are stationary at L=2. Neither an ongoing-head cache
-    # nor the deliberately incomplete reservoir may hide row 3.
-    assert set(np.asarray(jax.vmap(draw)(keys)).tolist()) == {2, 3}
+    assert set(np.asarray(jax.vmap(draw)(keys)).tolist()) == {2}
 
 
 def test_appended_seed_population_remains_distinct_when_large_enough():
@@ -792,11 +1065,8 @@ def test_seed_source_refresh_uses_geometric_generations():
         depth.SEED_SOURCE_REFRESH_WINDOWS
         * schedule.seed_reservoir_idx.shape[0]
     )
-    capacity_growth = (
-        source.samples.log_likelihoods.shape[0] + 3
-    ) // 4
     assert schedule.continuation_parent_idx.shape[0] == (
-        max(minimum_rows, capacity_growth)
+        minimum_rows
         + schedule.seed_reservoir_idx.shape[0]
     )
 
@@ -831,8 +1101,8 @@ def test_seed_source_refresh_uses_geometric_generations():
         large_schedule,
     ))
 
-    # Once storage is larger than the minimum generation, the ring covers a
-    # quarter-capacity generation plus the one physical in-flight window.
+    # Sample capacity does not pre-allocate a correspondingly huge heap. A
+    # genuinely wide live frontier grows that independent structure on demand.
     grown_source = source.resize(40)
     grown_blocks = build_block_state(
         grown_source.samples,
@@ -848,10 +1118,10 @@ def test_seed_source_refresh_uses_geometric_generations():
         shell_size=2,
         tail_K=jnp.asarray(0, dtype=jnp.int32),
     )
-    assert grown_schedule.continuation_parent_idx.shape[0] == 12
+    assert grown_schedule.continuation_parent_idx.shape[0] == 10
 
 
-def test_seed_publication_does_not_complete_allocation_target():
+def test_seed_publication_preserves_frozen_thread_target():
     sampler = NestedSampler(
         model=make_toy_model(),
         target_num_live_points=2,
@@ -876,15 +1146,80 @@ def test_seed_publication_does_not_complete_allocation_target():
         depth_cond=DepthCondition(),
     )
 
-    # This target needs more than one seed generation. Returning at the first
-    # publication used to discard the still-open absolute target and made each
-    # user goal add 25% of the accumulated sample population.
+    # This target needs more than one seed generation. Publication promotes
+    # recent rows into the exact seed index, but the same maximal thread runs
+    # continue until their frozen terminal contours are reached.
     assert int(completed.num_samples) > int(state.num_samples) + refresh_rows
     assert int(completed.allocation_loop_iter) == 6
     assert bool(completed.depth_reached)
 
 
-def test_growth_resizes_one_nearly_full_continuation_generation():
+def test_seed_publication_merges_generation_larger_than_thread_heap():
+    source = make_state(
+        root_out_degree=100,
+        log_likelihoods=tuple(float(i) for i in range(100)),
+        log_L_constraints=(-np.inf,) * 100,
+        out_degree=(0,) * 100,
+        max_samples=200,
+    )
+    blocks = build_block_state(
+        source.samples,
+        source.root_out_degree,
+        source.num_samples,
+        likelihood_order=source.likelihood_order,
+    )
+    schedule = depth._new_thread_schedule(
+        source,
+        blocks,
+        _allocation_plan(blocks, (1,) + (0,) * 199),
+        blocks.valid,
+        shell_size=2,
+        tail_K=jnp.asarray(0, dtype=jnp.int32),
+    )
+    assert schedule.continuation_parent_idx.shape[0] == 10
+
+    current = make_state(
+        root_out_degree=127,
+        log_likelihoods=tuple(float(i) for i in range(127)),
+        log_L_constraints=(-np.inf,) * 127,
+        out_degree=(0,) * 127,
+        max_samples=200,
+    )
+    current = dataclasses.replace(
+        current,
+        # The scientific payload has 27 accepted rows while the published
+        # likelihood order still contains only the 100-row frozen source.
+        likelihood_order=source.likelihood_order,
+        scheduler_data=schedule,
+    )
+    published = depth._publish_seed_source(current)
+    updated = published.scheduler_data
+
+    # Publication width follows the geometric generation bound, not the
+    # smaller ten-slot continuation heap.
+    published_idx = np.asarray(published.likelihood_order.sample_indices)
+    np.testing.assert_array_equal(
+        np.sort(published_idx[published_idx >= 0]),
+        np.arange(127),
+    )
+    assert int(updated.source_num_samples) == 127
+    assert int(updated.seed_block_state.num_blocks) == 127
+    np.testing.assert_array_equal(updated.start_block, schedule.start_block)
+    np.testing.assert_array_equal(
+        updated.terminal_block,
+        schedule.terminal_block,
+    )
+    np.testing.assert_array_equal(
+        updated.multiplicity,
+        schedule.multiplicity,
+    )
+    assert int(updated.continuation_count) == int(
+        schedule.continuation_count
+    )
+    assert not bool(jnp.any(updated.seed_reservoir_valid))
+
+
+def test_thread_storage_grows_independently_of_sample_storage():
     state = make_state(
         root_out_degree=2,
         log_likelihoods=(1.0, 2.0),
@@ -906,8 +1241,8 @@ def test_growth_resizes_one_nearly_full_continuation_generation():
         shell_size=2,
         tail_K=jnp.asarray(0, dtype=jnp.int32),
     )
-    # Nine queued heads plus one in-flight width can cross the ten-row source
-    # threshold without filling the twelve-slot pre-growth ring.
+    # Nine queued heads cannot safely admit another two-wide replacement
+    # window into the small ten-slot initial heap.
     schedule = dataclasses.replace(
         schedule,
         continuation_parent_idx=schedule.continuation_parent_idx.at[:9].set(
@@ -915,6 +1250,16 @@ def test_growth_resizes_one_nearly_full_continuation_generation():
         ),
         continuation_thread_id=schedule.continuation_thread_id.at[:9].set(
             jnp.arange(9, dtype=jnp.int32)
+        ),
+        continuation_log_L_constraint=(
+            schedule.continuation_log_L_constraint.at[:9].set(
+                jnp.arange(9, dtype=jnp.float64)
+            )
+        ),
+        continuation_frontier=(
+            schedule.continuation_frontier.at[:9].set(
+                jnp.arange(9, dtype=jnp.float64)
+            )
         ),
         continuation_terminal_log_L=(
             schedule.continuation_terminal_log_L.at[:9].set(
@@ -924,23 +1269,57 @@ def test_growth_resizes_one_nearly_full_continuation_generation():
         continuation_count=jnp.asarray(9, dtype=jnp.int32),
     )
     state = dataclasses.replace(state, scheduler_data=schedule)
+    assert bool(depth._continuation_storage_full(schedule))
+    old_rank_samples = np.asarray([
+        depth._sample_frozen_seed_rank(
+            schedule,
+            jnp.asarray(-jnp.inf),
+            jnp.asarray(fraction),
+        )
+        for fraction in (0.0, 0.49, 0.99)
+    ])
+    runner_grown = core._grow_continuation_storage(state, shell_size=2)
+    assert runner_grown.scheduler_data.continuation_parent_idx.shape[0] == 20
+    assert int(runner_grown.scheduler_data.continuation_count) == 9
+    assert int(runner_grown.num_samples) == int(state.num_samples)
+    assert not bool(runner_grown.depth_reached)
+
     grown = depth._resize_depth_state(state, 80)
     resized = grown.scheduler_data
-    assert resized.continuation_parent_idx.shape[0] == 22
+    assert resized.continuation_parent_idx.shape[0] == 10
     assert int(resized.continuation_count) == 9
+    # Capacity growth anticipates the wavelet height of the next publication.
+    # Query values remain exact, while the stable shape avoids recompiling the
+    # depth program once merely because the source generation is published.
+    assert resized.seed_rank_prefix.shape == (7, 81)
+    grown_rank_samples = np.asarray([
+        depth._sample_frozen_seed_rank(
+            resized,
+            jnp.asarray(-jnp.inf),
+            jnp.asarray(fraction),
+        )
+        for fraction in (0.0, 0.49, 0.99)
+    ])
+    np.testing.assert_array_equal(grown_rank_samples, old_rank_samples)
+    resized = resized.resize_threads(2, continuation_size=20)
+    assert resized.continuation_parent_idx.shape[0] == 20
 
     completed_window = depth._enqueue_thread_continuations(
         resized,
         jnp.asarray([9, 10], dtype=jnp.int32),
         jnp.asarray([9, 10], dtype=jnp.int32),
         jnp.asarray([9.0, 10.0]),
+        jnp.asarray([19.0, 20.0]),
         jnp.asarray([True, True]),
     )
     assert int(completed_window.continuation_count) == 11
     np.testing.assert_array_equal(
-        completed_window.continuation_thread_id[:11],
+        np.sort(np.asarray(completed_window.continuation_thread_id[:11])),
         np.arange(11),
     )
+    frontier = np.asarray(completed_window.continuation_frontier[:11])
+    for child in range(1, 11):
+        assert frontier[(child - 1) // 2] <= frontier[child]
 
 
 def test_frozen_target_projects_by_successor_contour():
@@ -1652,19 +2031,22 @@ def test_public_scientific_data_objects_are_frozen_and_slotted():
     # NestedSampler is mutable configuration whose dependent defaults are
     # normalised with ordinary typed assignments during construction. The
     # scientific state it produces remains immutable.
-    assert hasattr(type(ns), "__slots__")
+    assert type(ns).__slots__
     ns.store_phantom_samples = True
     assert ns.store_phantom_samples
 
-    for value, field_name in (
-        (state, "num_samples"),
-        (state.samples, "out_degree"),
-        (direction, "num_components"),
-        (sampler_data, "centres"),
-    ):
-        assert hasattr(type(value), "__slots__")
-        with pytest.raises(dataclasses.FrozenInstanceError):
-            setattr(value, field_name, None)
+    assert type(state).__slots__
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        state.num_samples = None
+    assert type(state.samples).__slots__
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        state.samples.out_degree = None
+    assert type(direction).__slots__
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        direction.num_components = None
+    assert type(sampler_data).__slots__
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        sampler_data.centres = None
 
 
 def test_parallel_replacement_delegates_batching_without_sequential_map():

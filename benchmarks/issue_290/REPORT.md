@@ -14,23 +14,31 @@ resuming old heads from a FIFO continuation ring. This breadth-first rotation
 spreads work across the stationary population without widening the vmapped
 constrained sampler merely to hold every logical head.
 
-A bounded, value-independent random reservoir admits post-freeze rows to
-continuations. New logical starts use the complete frozen race: allowing a
-newly accepted child to open another thread in the same generation created
-genealogical mode reinforcement on spike--slab. Same-contour starts mark used
-frozen samples directly, so distinct eligible seeds are exhausted before
-reuse even when one start group is wider than the physical sampler batch.
+A new logical start samples without replacement from the complete stationary
+population frozen at planning time. Allowing a newly accepted child to open
+another thread in the same generation creates genealogical mode reinforcement
+on non-mixing problems. Same-contour starts therefore mark used frozen sample
+identities directly, so distinct eligible seeds are exhausted before reuse
+even when one start group is wider than the physical sampler batch.
+
+A continuation does not open another logical lineage and must not acquire a
+stale seed law merely because its schedule is long. It samples from the exact
+union of the frozen likelihood suffix and every append-only row accepted since
+planning, rejecting candidates unless their birth contour and likelihood prove
+stationarity at the requested contour. This is random access into two compact
+ranges, not a scan of the accepted suffix. A small value-independent reservoir
+provides only a conservative lower bound for simultaneous distinct-seed
+reservations; reservoir membership never defines scientific eligibility.
 
 A source publication becomes eligible after the larger of `4R` accepted rows,
 where `R` is the greater of execution width and root degree, and 25% growth in
-its frozen population. A schedule that fills its target earlier simply drains;
-the four-window value is a measured upper-bound trigger, not a claim that every
-generation must contain that much work. Successive long generations are
-geometric, so the sum of all O(N) race publications is itself O(N), rather than
-becoming quadratic under a fixed row cadence. Each internal publication
-projects the unchanged absolute target onto refined contours and bulk-merges
-only its accepted suffix into the persistent likelihood order. It does not
-evaluate the depth condition or advance the user goal.
+its frozen population. A schedule that fills its target earlier simply drains.
+Successive long generations are geometric, so the sum of all O(N) race
+publications within one allocation target is itself O(N), rather than becoming
+quadratic under a fixed row cadence. Each internal publication projects the
+unchanged absolute target onto refined contours and bulk-merges only its
+accepted suffix into the persistent likelihood order. It does not evaluate the
+depth condition or advance the user goal.
 
 The continuation ring covers the same generation boundary plus one in-flight
 window. Its static capacity is
@@ -86,7 +94,8 @@ exposing an intermediate state to the user goal. The final geometric rule is
 assessed separately below.
 
 The final design was remeasured against `develop` under JAX 0.11.1, the local
-environment used for the release-gate and paper runs. This version materially
+environment used for the release-gate and demanding long-form runs. This
+version materially
 penalises the sequential per-block recurrence in `develop`, so the comparison
 is reported separately rather than mixing JAX versions. The three `develop`
 executions were stable at 42.269, 42.286, and 42.014 seconds; six final-candidate
@@ -126,7 +135,7 @@ suffix into persistent likelihood order; it never re-sorts the full population.
 
 ### End-to-end allocation scaling audit
 
-An instrumented paper-protocol prefix used G8, `d_0=240`, replacement width
+An instrumented high-accuracy G8 prefix used `d_0=240`, replacement width
 80, 80 slice transitions, 72 retained phantoms, and the unchanged expected
 depth threshold `dlogZ=log(1 + 10^-3)`. This exposed and then verified a
 scientifically material boundary bug. Treating source publication as a drained
@@ -149,7 +158,8 @@ The same run crossed capacities 5,360, 10,720, 21,440, 42,880, and 85,760.
 After the growth-shape fix, its continuation widths changed directly as
 `1,580 -> 2,920 -> 5,600 -> 10,960 -> 21,680`; there is no intervening
 old-width compilation at a new sample capacity. A complete run to the 0.05
-paper goal is reported below once the final source revision is fixed.
+0.05 uncertainty goal is reported below once the final source revision is
+fixed.
 
 ## Scientific checks
 

@@ -1,6 +1,5 @@
 """Measure repeated scheduler coordination without likelihood cost."""
 
-import dataclasses
 import json
 import statistics
 import sys
@@ -9,6 +8,7 @@ import time
 import jax
 import jax.numpy as jnp
 
+import jaxns
 from cicd.tests.distributed_support import make_toy_model
 from cicd.tests.test_core import DeterministicSampler
 from jaxns.algorithm.depth import _run_depth
@@ -21,8 +21,7 @@ if sys.argv[1] == "develop":
     from jaxns.termination_condition import TerminationCondition
 else:
     from jaxns.algorithm.depth import (
-        _continue_schedule_round,
-        _seed_source_refresh_due,
+        _start_schedule_round,
     )
     from jaxns.depth_condition import DepthCondition
 
@@ -91,8 +90,13 @@ def main() -> None:
     if repetitions < 3:
         raise ValueError("At least two warmups and one measurement are required.")
     width = 80
-    state = make_state(size, width, batches)
+    initial_state = make_state(size, width, batches)
+    state = initial_state
     sampler = DeterministicSampler()
+    planning_lowered = None
+    planning_compiled = None
+    planning_lower_seconds = 0.0
+    planning_compile_seconds = 0.0
     if implementation == "develop":
         condition = TerminationCondition()
         # Develop defines its first uniform target as root_degree + delta_K.
@@ -102,6 +106,25 @@ def main() -> None:
     else:
         condition = DepthCondition()
         delta_K = 1
+        # Production materialises the compact schedule at the Python planning
+        # boundary so every large replacement call has one stable Pytree
+        # signature. Lower and compile that boundary separately so the exact
+        # seed index cannot disappear from the end-to-end comparison.
+        started = time.perf_counter()
+        planning_lowered = _start_schedule_round.lower(
+            state,
+            condition,
+            shell_size=width,
+            allocation_target="uniform",
+            root_degree=width,
+            delta_K=delta_K,
+        )
+        planning_lower_seconds = time.perf_counter() - started
+        started = time.perf_counter()
+        planning_compiled = planning_lowered.compile()
+        planning_compile_seconds = time.perf_counter() - started
+        state, _, _ = planning_compiled(state, condition)
+        jax.block_until_ready(state)
 
     started = time.perf_counter()
     lowered = _run_depth.lower(
@@ -121,50 +144,14 @@ def main() -> None:
     compile_seconds = time.perf_counter() - started
     print(f"compiled in {compile_seconds:.3f} s", file=sys.stderr, flush=True)
 
-    def run_candidate(initial):
-        current = initial
-        schedule_calls = 0
-        while int(current.num_samples) < size + batches * width:
-            current = _run_depth(
-                current,
-                sampler,
-                condition,
-                shell_size=width,
-                allocation_target="uniform",
-                root_degree=width,
-                delta_K=delta_K,
-                max_samples=size + batches * width,
-            )
-            schedule_calls += 1
-            if int(current.termination_reason) != 0:
-                break
-            source_refresh_due = bool(_seed_source_refresh_due(
-                current,
-                current.scheduler_data,
-            ))
-            if bool(current.depth_reached) or source_refresh_due:
-                current, schedule, _ = _continue_schedule_round(
-                    current,
-                    current.scheduler_data,
-                    condition,
-                    shell_size=width,
-                )
-                current = dataclasses.replace(
-                    current,
-                    depth_reached=jnp.asarray(False),
-                    scheduler_data=schedule,
-                )
-        return current, schedule_calls
-
     times = []
+    planning_times = []
+    end_to_end_times = []
     output = None
     schedule_calls = 1
     for repetition in range(repetitions):
         started = time.perf_counter()
-        if implementation == "develop":
-            output = compiled(state, sampler, condition)
-        else:
-            output, schedule_calls = run_candidate(state)
+        output = compiled(state, sampler, condition)
         jax.block_until_ready(output)
         times.append(time.perf_counter() - started)
         print(
@@ -172,6 +159,22 @@ def main() -> None:
             f"{times[-1]:.3f} s",
             file=sys.stderr,
             flush=True,
+        )
+        if planning_compiled is None:
+            end_to_end_times.append(times[-1])
+            continue
+        started = time.perf_counter()
+        planned_state, _, _ = planning_compiled(
+            initial_state,
+            condition,
+        )
+        jax.block_until_ready(planned_state)
+        planning_times.append(time.perf_counter() - started)
+        started = time.perf_counter()
+        output = compiled(planned_state, sampler, condition)
+        jax.block_until_ready(output)
+        end_to_end_times.append(
+            planning_times[-1] + time.perf_counter() - started
         )
     memory = compiled.memory_analysis()
     record = {
@@ -181,9 +184,16 @@ def main() -> None:
         "batches": batches,
         "lower_seconds": lower_seconds,
         "compile_seconds": compile_seconds,
+        "planning_lower_seconds": planning_lower_seconds,
+        "planning_compile_seconds": planning_compile_seconds,
         "warm_median_seconds": statistics.median(times[2:]),
         "warm_min_seconds": min(times[2:]),
         "warm_max_seconds": max(times[2:]),
+        "warm_end_to_end_median_seconds": statistics.median(
+            end_to_end_times[2:]
+        ),
+        "warm_end_to_end_min_seconds": min(end_to_end_times[2:]),
+        "warm_end_to_end_max_seconds": max(end_to_end_times[2:]),
         "hlo_bytes": len(lowered.as_text().encode()),
         "argument_bytes": memory.argument_size_in_bytes,
         "output_bytes": memory.output_size_in_bytes,
@@ -194,7 +204,28 @@ def main() -> None:
         "repetitions": repetitions,
         "jax_version": jax.__version__,
         "platform": jax.default_backend(),
+        "x64_enabled": bool(jax.config.x64_enabled),
+        "measure_dtype": str(mp_policy.measure_dtype),
+        "jaxns_module": jaxns.__file__,
     }
+    if planning_compiled is not None:
+        planning_memory = planning_compiled.memory_analysis()
+        record.update({
+            "warm_planning_median_seconds": statistics.median(
+                planning_times[2:]
+            ),
+            "warm_planning_min_seconds": min(planning_times[2:]),
+            "warm_planning_max_seconds": max(planning_times[2:]),
+            "planning_hlo_bytes": len(
+                planning_lowered.as_text().encode()
+            ),
+            "planning_argument_bytes": (
+                planning_memory.argument_size_in_bytes
+            ),
+            "planning_output_bytes": planning_memory.output_size_in_bytes,
+            "planning_temp_bytes": planning_memory.temp_size_in_bytes,
+            "planning_alias_bytes": planning_memory.alias_size_in_bytes,
+        })
     if implementation != "develop":
         schedule = output.scheduler_data
         safe_idx = jnp.maximum(schedule.seed_reservoir_idx, 0)

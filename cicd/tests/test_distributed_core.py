@@ -287,7 +287,7 @@ def test_reservations_are_planning_data_until_once_only_acceptance():
     )
 
 
-def test_distributed_continuation_returns_to_fifo_not_dispatch_window():
+def test_distributed_continuation_returns_to_heap_not_dispatch_window():
     state = NestedSampler(
         model=make_toy_model(),
         root_allocation_degree=2,
@@ -337,9 +337,8 @@ def test_distributed_continuation_returns_to_fifo_not_dispatch_window():
     assert bool(accepted.accepted)
     schedule = accepted.state.scheduler_data
     assert int(schedule.continuation_count) == 1
-    slot = int(schedule.continuation_head)
-    assert int(schedule.continuation_parent_idx[slot]) == 2
-    assert int(schedule.continuation_thread_id[slot]) == 7
+    assert int(schedule.continuation_parent_idx[0]) == 2
+    assert int(schedule.continuation_thread_id[0]) == 7
     assert not bool(jnp.any(schedule.valid))
 
 

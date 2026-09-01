@@ -26,6 +26,7 @@ from jaxns.algorithm.depth import (
     _insert_thread_head,
     _plan_scheduled_work_batch,
     _prepare_sampler_data,
+    _publish_seed_source,
     _refresh_likelihood_order,
     _release_thread_heads,
     _resize_depth_state,
@@ -167,6 +168,7 @@ class AcceptedTask(NamedTuple):
 class DepthStatus(NamedTuple):
     has_work: BoolArray  # []
     needs_growth: BoolArray  # []
+    needs_thread_growth: BoolArray  # []
     source_refresh_due: BoolArray  # []
     schedule_drained: BoolArray  # []
     termination_reason: IntArray  # []
@@ -459,11 +461,20 @@ def _depth_status(
     """Classify whether to dispatch, grow, finish depth, or terminate."""
     has_schedule_work = jnp.asarray(False, mp_policy.bool_dtype)
     seed_source_refresh_due = jnp.asarray(False, mp_policy.bool_dtype)
+    thread_storage_full = jnp.asarray(False, mp_policy.bool_dtype)
     if state.scheduler_data is not None:
         has_schedule_work = has_thread_work(state.scheduler_data)
         seed_source_refresh_due = _seed_source_refresh_due(
             state,
             state.scheduler_data,
+        )
+        thread_storage_full = (
+            has_schedule_work
+            & (
+                state.scheduler_data.continuation_count
+                + reservations.num_reserved
+                >= state.scheduler_data.continuation_parent_idx.shape[0]
+            )
         )
     limit = _sample_limit(state, max_samples)
     hard_limit = state.num_samples >= limit
@@ -488,6 +499,7 @@ def _depth_status(
         has_schedule_work
         & below_limit
         & jnp.logical_not(seed_source_refresh_due)
+        & jnp.logical_not(thread_storage_full)
         & jnp.logical_not(terminal)
     )
     needs_growth = (
@@ -498,6 +510,7 @@ def _depth_status(
     can_dispatch = has_work & jnp.logical_not(physical_full)
     source_refresh_ready = (
         seed_source_refresh_due
+        & has_schedule_work
         & jnp.logical_not(terminal | needs_growth)
         & (reservations.num_reserved == 0)
     )
@@ -509,6 +522,10 @@ def _depth_status(
     return DepthStatus(
         has_work=can_dispatch,
         needs_growth=needs_growth,
+        needs_thread_growth=(
+            thread_storage_full
+            & jnp.logical_not(terminal | seed_source_refresh_due)
+        ),
         source_refresh_due=source_refresh_ready,
         schedule_drained=schedule_drained,
         termination_reason=termination_reason,
@@ -1300,6 +1317,9 @@ class DistributedNestedSampler:
                 continue
 
             status = self._status(distributed, depth_cond)
+            if bool(status.needs_thread_growth):
+                distributed = self._grow_thread_storage(distributed)
+                continue
             if bool(status.needs_growth):
                 distributed = self._grow(distributed)
                 continue
@@ -1325,27 +1345,13 @@ class DistributedNestedSampler:
                     depth_active=False,
                 )
             if bool(status.source_refresh_due):
-                # Publish only after every dispatched edge is committed, then
-                # project the unchanged target before dispatch resumes. Worker
-                # timing therefore cannot turn a generation into a goal edge.
-                state = _refresh_likelihood_order(distributed.state)
-                previous = state.scheduler_data
-                planning_width = previous.valid.shape[0]
-                state, _, _ = _continue_schedule_round(
-                    state,
-                    previous,
-                    depth_cond,
-                    shell_size=planning_width,
-                )
+                # All dispatched edges are committed before publication. Only
+                # the exact seed source advances; logical thread heads and the
+                # continuation heap remain available to any worker that joins.
+                state = _publish_seed_source(distributed.state)
                 distributed = dataclasses.replace(
                     distributed,
-                    state=dataclasses.replace(
-                        state,
-                        depth_reached=jnp.asarray(
-                            False,
-                            mp_policy.bool_dtype,
-                        ),
-                    ),
+                    state=state,
                 )
                 continue
             if bool(status.schedule_drained):
@@ -1656,6 +1662,8 @@ class DistributedNestedSampler:
             depth_cond: DepthCondition,
     ) -> DistributedState:
         status = self._status(distributed, depth_cond)
+        if bool(status.needs_thread_growth):
+            return self._grow_thread_storage(distributed)
         if bool(status.needs_growth):
             return self._grow(distributed)
         return distributed
@@ -1696,4 +1704,31 @@ class DistributedNestedSampler:
                 depth_reached=jnp.asarray(False, mp_policy.bool_dtype),
             ),
             reservations=distributed.reservations.resize(new_capacity),
+        )
+
+    def _grow_thread_storage(
+            self,
+            distributed: DistributedState,
+    ) -> DistributedState:
+        """Double only the transient continuation heap between dispatches."""
+        schedule = distributed.state.scheduler_data
+        if schedule is None:
+            return distributed
+        current_size = schedule.continuation_parent_idx.shape[0]
+        required_size = (
+            int(schedule.continuation_count)
+            + int(distributed.reservations.num_reserved)
+            + schedule.valid.shape[0]
+        )
+        new_size = max(2 * current_size, required_size)
+        return dataclasses.replace(
+            distributed,
+            state=dataclasses.replace(
+                distributed.state,
+                scheduler_data=schedule.resize_threads(
+                    schedule.valid.shape[0],
+                    continuation_size=new_size,
+                ),
+                depth_reached=jnp.asarray(False, mp_policy.bool_dtype),
+            ),
         )

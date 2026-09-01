@@ -13,11 +13,15 @@ from jaxctx import CtxParams
 
 from jaxns.algorithm.depth import (
     MAX_SAMPLES_REACHED,
+    _continuation_storage_full,
     _continue_schedule_round,
     _depth_condition_reached,
+    _publish_seed_source,
+    _refresh_likelihood_order,
     _resize_depth_state,
     _run_depth,
     _seed_source_refresh_due,
+    _start_schedule_round,
 )
 from jaxns.algorithm.initialisation import _sample_init_state
 from jaxns.checkpoint import (
@@ -42,25 +46,52 @@ SAMPLES_PER_ROOT = 1000
 INITIAL_BATCHES = 64
 
 
-def _project_published_generation(
+def _ensure_thread_schedule(
         state: State,
         depth_cond: DepthCondition,
+        *,
         shell_size: int,
+        allocation_target: str,
+        root_degree: int,
+        delta_K: int,
 ) -> State:
-    """Project one published contour refinement onto its frozen target."""
-    previous = state.scheduler_data
-    state, schedule, _ = _continue_schedule_round(
+    """Create the small planning object before entering the large JAX loop.
+
+    Keeping scheduler_data present on every `_run_depth` call gives each sample
+    capacity one stable Pytree signature. Otherwise JAX compiles separate large
+    executables for new and resumed rounds even though both execute the same
+    replacement body after planning.
+    """
+    if state.scheduler_data is not None:
+        return state
+    state, _, _ = _start_schedule_round(
         state,
-        previous,
         depth_cond,
         shell_size=shell_size,
+        allocation_target=allocation_target,
+        root_degree=root_degree,
+        delta_K=delta_K,
     )
+    return state
+
+
+def _grow_continuation_storage(state: State, shell_size: int) -> State:
+    """Double the transient thread heap without advancing logical work."""
+    schedule = state.scheduler_data
+    if schedule is None:
+        raise ValueError("Continuation growth requires an active schedule.")
+    current_size = schedule.continuation_parent_idx.shape[0]
+    required_size = int(schedule.continuation_count) + shell_size
+    new_size = max(2 * current_size, required_size)
     return dataclasses.replace(
         state,
-        depth_reached=jnp.asarray(
-            not bool(schedule.active),
-            mp_policy.bool_dtype,
+        scheduler_data=schedule.resize_threads(
+            schedule.valid.shape[0],
+            continuation_size=new_size,
         ),
+        # This is a physical recompilation boundary, not completion of the
+        # frozen target or expected-depth traversal.
+        depth_reached=jnp.asarray(False, mp_policy.bool_dtype),
     )
 
 
@@ -466,6 +497,14 @@ class NestedSampler(PureDataclassPytree):
                 or not bool(goal_cond(state))
             )
         ):
+            state = _ensure_thread_schedule(
+                state,
+                depth_cond,
+                shell_size=int(self.shell_size),
+                allocation_target=self.allocation_target,
+                root_degree=int(self.root_allocation_degree),
+                delta_K=int(self.delta_K),
+            )
             state = _run_depth(
                 state,
                 self.sampler,
@@ -513,25 +552,47 @@ class NestedSampler(PureDataclassPytree):
                 )
                 continue
             if int(state.termination_reason) != 0:
+                state = _refresh_likelihood_order(state)
                 break
             if (
                 state.scheduler_data is not None
+                and bool(_continuation_storage_full(
+                    state.scheduler_data,
+                ))
+            ):
+                state = _grow_continuation_storage(
+                    state,
+                    int(self.shell_size),
+                )
+                continue
+            source_published = False
+            if (
+                state.scheduler_data is not None
+                and bool(state.scheduler_data.active)
                 and bool(_seed_source_refresh_due(
                     state,
                     state.scheduler_data,
                 ))
             ):
-                # Publication changes only the contour grid. Project the same
-                # absolute target before the scientific depth or user goal can
-                # observe this internal coordination boundary.
-                state = _project_published_generation(
-                    state,
-                    depth_cond,
-                    int(self.shell_size),
-                )
-                if not bool(state.depth_reached):
+                # Promote stationary seeds without changing the frozen target,
+                # maximal thread runs, active heads, or continuation heap.
+                # Every accepted edge already covers intervening new contours;
+                # re-decomposing the refined race would duplicate that work.
+                state = _publish_seed_source(state)
+                source_published = True
+                if bool(state.scheduler_data.active):
                     continue
+                else:
+                    state = dataclasses.replace(
+                        state,
+                        depth_reached=jnp.asarray(
+                            True,
+                            mp_policy.bool_dtype,
+                        ),
+                    )
             if bool(state.depth_reached):
+                if not source_published:
+                    state = _refresh_likelihood_order(state)
                 reached_expected_depth = bool(_depth_condition_reached(
                     state,
                     depth_cond,
@@ -689,6 +750,14 @@ class NestedSampler(PureDataclassPytree):
         if depth_cond is None:
             depth_cond = self.depth_condition
         while True:
+            state = _ensure_thread_schedule(
+                state,
+                depth_cond,
+                shell_size=int(self.shell_size),
+                allocation_target=self.allocation_target,
+                root_degree=int(self.root_allocation_degree),
+                delta_K=int(self.delta_K),
+            )
             state = _run_depth(
                 state,
                 self.sampler,
@@ -699,29 +768,49 @@ class NestedSampler(PureDataclassPytree):
                 delta_K=int(self.delta_K),
                 max_samples=self.max_samples,
             )
-            if bool(state.needs_growth) or int(state.termination_reason) != 0:
+            if bool(state.needs_growth):
                 return state
+            if int(state.termination_reason) != 0:
+                return _refresh_likelihood_order(state)
             if (
                 state.scheduler_data is not None
+                and bool(_continuation_storage_full(
+                    state.scheduler_data,
+                ))
+            ):
+                state = _grow_continuation_storage(
+                    state,
+                    int(self.shell_size),
+                )
+                continue
+            source_published = False
+            if (
+                state.scheduler_data is not None
+                and bool(state.scheduler_data.active)
                 and bool(_seed_source_refresh_due(
                     state,
                     state.scheduler_data,
                 ))
             ):
-                # A generation publication refines the planning grid; it does
-                # not complete this caller's requested allocation iteration.
-                state = _project_published_generation(
-                    state,
-                    depth_cond,
-                    int(self.shell_size),
-                )
-                if not bool(state.depth_reached):
+                state = _publish_seed_source(state)
+                source_published = True
+                if bool(state.scheduler_data.active):
                     continue
+                else:
+                    state = dataclasses.replace(
+                        state,
+                        depth_reached=jnp.asarray(
+                            True,
+                            mp_policy.bool_dtype,
+                        ),
+                    )
             if not bool(state.depth_reached):
                 raise RuntimeError(
                     "Compiled planning round returned without termination, "
                     "growth, or a drained schedule."
                 )
+            if not source_published:
+                state = _refresh_likelihood_order(state)
             reached_expected_depth = bool(_depth_condition_reached(
                 state,
                 depth_cond,
