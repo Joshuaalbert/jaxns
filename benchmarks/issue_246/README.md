@@ -1,11 +1,15 @@
 # Ellipsoidal-direction benchmark
 
-This benchmark compares the opt-in warm GMM direction kernel with the
-isotropic reference on every maintained standard problem. Each matrix cell
-uses the same 30 seeds, model, root allocation (`30 * dimension`), replacement
-width (`10 * dimension`), slice count (`5 * dimension`), and termination
-condition. Phantom-off evidence uses classic shrinkage; phantom-on evidence
-uses phantom-conditioned Monte Carlo shrinkage.
+This benchmark compares an explicitly fitted, frozen GMM direction kernel with
+the isotropic reference on every maintained standard problem. GMM cells first
+run isotropically until the user-selected expected-log-evidence uncertainty,
+call `state.fit_gmm_directions(iso_prob=...)` once using every stored classic,
+and explicitly resume. No sampler configuration or automatic staging selects
+the fit point. Each matrix cell uses the same 30 seeds, model, root allocation
+(`30 * dimension`), replacement width (`10 * dimension`), slice count
+(`5 * dimension`), and final termination condition. Phantom-off evidence uses
+classic shrinkage; phantom-on evidence uses phantom-conditioned Monte Carlo
+shrinkage.
 
 Run the full matrix from the repository root:
 
@@ -34,8 +38,8 @@ spike--slab rows additionally report posterior mode-mass RMSE because correct
 relative mode weights are part of those problems' design. Likelihood
 evaluations remain the hardware-independent primary efficiency measure.
 
-The device-conditional placement can be compared with a Python-boundary
-prototype using the exact GMM update payload:
+The low-level cost of the former device-conditional placement can be compared
+with a Python-boundary prototype using the exact GMM update payload:
 
 ```bash
 PYTHONPATH=src:. conda run -n jaxns_py python \

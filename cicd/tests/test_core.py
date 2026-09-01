@@ -24,7 +24,6 @@ from jaxns.algorithm.race_tree import (
 )
 from jaxns.constrained_sampler import (
     AbstractSampler,
-    EllipsoidalDirection,
     UniDimSliceSampler,
     _take_phantom_prefix,
 )
@@ -105,6 +104,52 @@ class TwoDimensionalModel(PureDataclassPytree):
 
 
 TwoDimensionalModel.register_pytree()
+
+
+@dataclasses.dataclass(slots=True, frozen=True)
+class NarrowTwoDimensionalModel(PureDataclassPytree):
+    """Higher-information target for staged direction integration tests."""
+
+    def _periodic_coordinates(self, args=(), params=None) -> tuple[bool, ...]:
+        del args, params
+        return False, False
+
+    def U_ndims(self, args=(), params=None) -> int:
+        del args, params
+        return 2
+
+    def sample_U(self, key, args=(), params=None):
+        del args, params
+        return jax.random.uniform(key, shape=(2,))
+
+    def transform_to_X(self, U, args=(), params=None):
+        del args, params
+        return U
+
+    def log_likelihood(self, U, args=(), params=None, *, allow_nan=True):
+        del args, params, allow_nan
+        return -25.0 * jnp.sum(
+            jnp.square(U - jnp.asarray([0.3, 0.7]))
+        )
+
+
+NarrowTwoDimensionalModel.register_pytree()
+
+
+@dataclasses.dataclass(slots=True, frozen=True)
+class FitOnlyModel(PureDataclassPytree):
+    """Model metadata whose likelihood must never run during a State fit."""
+
+    def _periodic_coordinates(self, args=(), params=None) -> tuple[bool, ...]:
+        del args, params
+        return False, False
+
+    def log_likelihood(self, U, args=(), params=None, *, allow_nan=True):
+        del U, args, params, allow_nan
+        raise AssertionError("fit_gmm_directions evaluated the user likelihood")
+
+
+FitOnlyModel.register_pytree()
 
 
 def _allocation_plan(
@@ -2172,12 +2217,6 @@ def test_ellipsoidal_state_survives_checkpoint_growth_and_resume():
     sampler = UniDimSliceSampler(
         model=model,
         num_slices=4,
-        direction=EllipsoidalDirection(
-            num_components=1,
-            min_effective_samples=3,
-            num_iterations=3,
-            population_size=12,
-        ),
     )
     common = {
         "model": model,
@@ -2200,14 +2239,19 @@ def test_ellipsoidal_state_survives_checkpoint_growth_and_resume():
     grown = small.run_until_goal(goal, depth_cond=depth_cond, key=key)
     reference = large.run_until_goal(goal, depth_cond=depth_cond, key=key)
     assert grown.samples.log_likelihoods.shape[0] > 6
+    assert grown.sampler_data is None
+    grown = grown.fit_gmm_directions(
+        num_components=1,
+        num_iterations=3,
+    )
+    reference = reference.fit_gmm_directions(
+        num_components=1,
+        num_iterations=3,
+    )
     assert int(grown.sampler_data.num_updates) > 0
     assert bool(jnp.any(grown.sampler_data.valid))
-    assert int(grown.sampler_data.num_directions) == (
-        int(grown.num_samples) - 6
-    ) * sampler.num_slices
-    assert 0 <= int(grown.sampler_data.num_isotropic) <= int(
-        grown.sampler_data.num_directions
-    )
+    assert bool(grown.sampler_data.enabled)
+    assert int(grown.sampler_data.num_directions) == 0
 
     grown = grown.trim()
     reference = reference.trim()
@@ -2276,6 +2320,72 @@ def test_ellipsoidal_state_survives_checkpoint_growth_and_resume():
         np.testing.assert_array_equal(np.asarray(left), np.asarray(right))
 
 
+def test_user_stages_gmm_directions_between_uncertainty_goals():
+    """Exercise the public isotropic -> fit -> GMM continuation workflow."""
+    model = NarrowTwoDimensionalModel()
+    sampler = UniDimSliceSampler(model=model, num_slices=4)
+    ns = NestedSampler(
+        model=model,
+        root_allocation_degree=8,
+        shell_size=8,
+        max_samples=12_000,
+        sampler=sampler,
+    )
+
+    def first_goal(state):
+        return bool(state.expected_log_Z_uncert < 0.2)
+
+    state = ns.run_until_goal(
+        first_goal,
+        depth_cond=DepthCondition(),
+        key=jax.random.PRNGKey(290),
+    )
+    assert float(state.expected_log_Z_uncert) < 0.2
+    assert state.sampler_data is None
+
+    fit_input = dataclasses.replace(state, model=FitOnlyModel())
+    fitted = fit_input.fit_gmm_directions(
+        num_iterations=5,
+        iso_prob=0.01,
+    )
+    fitted = dataclasses.replace(fitted, model=model)
+    assert bool(fitted.sampler_data.enabled)
+    assert fitted.sampler_data.centres.shape[0] == 1
+    assert int(fitted.sampler_data.num_samples) == int(fitted.num_samples)
+    assert bool(jnp.all(jnp.isfinite(fitted.sampler_data.log_L_at_mean)))
+
+    isotropic = fitted.iso_directions()
+    assert not bool(isotropic.sampler_data.enabled)
+    restored = isotropic.gmm_directions()
+    assert bool(restored.sampler_data.enabled)
+    np.testing.assert_array_equal(
+        restored.sampler_data.mixture.centres,
+        fitted.sampler_data.mixture.centres,
+    )
+
+    def final_goal(current):
+        return bool(current.expected_log_Z_uncert < 0.1)
+
+    completed = ns.resume_until_goal(
+        restored,
+        final_goal,
+        depth_cond=DepthCondition(),
+    )
+    assert float(completed.expected_log_Z_uncert) < 0.1
+    assert int(completed.num_samples) > int(fitted.num_samples)
+    assert int(completed.sampler_data.num_directions) > 0
+
+    centre = jnp.asarray([0.3, 0.7])
+    scale = 25.0
+    root_scale = jnp.sqrt(scale)
+    integral = 0.5 * jnp.sqrt(jnp.pi / scale) * (
+        jax.scipy.special.erf(root_scale * (1.0 - centre))
+        + jax.scipy.special.erf(root_scale * centre)
+    )
+    log_Z = float(jnp.sum(jnp.log(integral)))
+    assert abs(float(completed.expected_log_Z_mean) - log_Z) < 0.5
+
+
 def test_public_scientific_data_objects_are_frozen_and_slotted():
     ns = NestedSampler(
         model=make_toy_model(),
@@ -2286,7 +2396,6 @@ def test_public_scientific_data_objects_are_frozen_and_slotted():
         sampler=DeterministicSampler(),
     )
     state = ns.initialise(jax.random.PRNGKey(4))
-    direction = EllipsoidalDirection()
     sampler_data = empty_sampler_data(num_components=1, dimension=1)
 
     # NestedSampler is mutable configuration whose dependent defaults are
@@ -2302,9 +2411,6 @@ def test_public_scientific_data_objects_are_frozen_and_slotted():
     assert type(state.samples).__slots__
     with pytest.raises(dataclasses.FrozenInstanceError):
         state.samples.out_degree = None
-    assert type(direction).__slots__
-    with pytest.raises(dataclasses.FrozenInstanceError):
-        direction.num_components = None
     assert type(sampler_data).__slots__
     with pytest.raises(dataclasses.FrozenInstanceError):
         sampler_data.centres = None

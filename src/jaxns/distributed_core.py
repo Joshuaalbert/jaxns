@@ -25,7 +25,6 @@ from jaxns.algorithm.depth import (
     _depth_condition_reached,
     _insert_thread_head,
     _plan_scheduled_work_batch,
-    _prepare_sampler_data,
     _publish_seed_source,
     _refresh_likelihood_order,
     _release_thread_heads,
@@ -145,6 +144,49 @@ class DistributedState(PureDataclassPytree):
                 "distributed depth is active."
             )
         return self.state.to_result()
+
+    def fit_gmm_directions(
+            self,
+            *,
+            num_components: int | None = None,
+            num_iterations: int = 10,
+            iso_prob: float = 1e-2,
+            regularisation: float = 1e-6,
+    ) -> DistributedState:
+        """Fit directions from committed classics on a drained checkpoint."""
+        self._ensure_direction_boundary()
+        return dataclasses.replace(
+            self,
+            state=self.state.fit_gmm_directions(
+                num_components=num_components,
+                num_iterations=num_iterations,
+                iso_prob=iso_prob,
+                regularisation=regularisation,
+            ),
+        )
+
+    def iso_directions(self) -> DistributedState:
+        """Force exact isotropic directions on a drained checkpoint."""
+        self._ensure_direction_boundary()
+        return dataclasses.replace(self, state=self.state.iso_directions())
+
+    def gmm_directions(self) -> DistributedState:
+        """Re-enable retained GMM directions on a drained checkpoint."""
+        self._ensure_direction_boundary()
+        return dataclasses.replace(self, state=self.state.gmm_directions())
+
+    def _ensure_direction_boundary(self) -> None:
+        """Reject direction-law changes while dispatched work is in flight."""
+        if (
+            self.pending
+            or int(self.reservations.num_reserved) != 0
+            or self.depth_active
+            or self.state.scheduler_data is not None
+        ):
+            raise RuntimeError(
+                "Direction fitting and toggling require a drained distributed "
+                "state."
+            )
 
 
 DistributedState.register_pytree()
@@ -276,17 +318,7 @@ def _prepare_task(
     """Move frozen logical heads into retry-stable worker requests."""
     if state.scheduler_data is None:
         raise ValueError("Distributed dispatch requires an active schedule.")
-    if sampler.uses_adaptive_directions():
-        plan_key, fit_key, sample_key, next_key = jax.random.split(
-            state.random_key,
-            4,
-        )
-    else:
-        plan_key, sample_key, next_key = jax.random.split(
-            state.random_key,
-            3,
-        )
-        fit_key = sample_key
+    plan_key, sample_key, next_key = jax.random.split(state.random_key, 3)
 
     physical_free = (
         state.samples.log_likelihoods.shape[0]
@@ -316,23 +348,13 @@ def _prepare_task(
         reserved_valid,
     )
 
-    sampling_state = state
-    if sampler.uses_adaptive_directions():
-        sampling_state = _prepare_sampler_data(
-            fit_key,
-            state,
-            sampler,
-            work,
-            schedule,
-        )
-
     seed_points = SeedPoint(
         U0=jax.tree.map(
             lambda values: values[work.seed_idx],
-            sampling_state.samples.U_samples,
+            state.samples.U_samples,
         ),
         log_L0=(
-            sampling_state.samples.log_likelihoods[work.seed_idx]
+            state.samples.log_likelihoods[work.seed_idx]
         ),
     )
     request = ConstrainedSampleRequest(
@@ -340,14 +362,14 @@ def _prepare_task(
         valid=work.valid,
         log_L_constraints=work.log_L_constraint,
         seed_points=seed_points,
-        sampler_data=sampling_state.sampler_data,
+        sampler_data=state.sampler_data,
     )
     has_work = work.num_valid > 0
     thread_id = schedule.thread_id
     terminal_log_L = schedule.terminal_log_L
     schedule = _release_thread_heads(schedule, work.valid)
     updated = dataclasses.replace(
-        sampling_state,
+        state,
         random_key=jnp.where(has_work, next_key, state.random_key),
         scheduler_data=schedule,
     )
@@ -795,12 +817,8 @@ class DistributedNestedSampler:
             sample_capacity=int(self.initial_capacity),
             num_phantom=int(self.sampler.num_phantom()),
         )
-        sampler_data = self.sampler.initial_sampler_data(
-            int(self.model.U_ndims(self.args, self.params))
-        )
         state = dataclasses.replace(
             state,
-            sampler_data=sampler_data,
             random_key=run_key,
             goal_key=run_key,
             depth_reached=jnp.asarray(True, mp_policy.bool_dtype),

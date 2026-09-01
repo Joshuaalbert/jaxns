@@ -1,4 +1,5 @@
 import dataclasses
+import operator
 from functools import partial
 from typing import Literal
 
@@ -14,10 +15,14 @@ from jaxns.cumulative_ops import scan_or_while_loop
 from jaxns.log_semiring import LogSpace, normalise_log_space
 from jaxns.mixed_precision import mp_policy
 from jaxns.model import Model
-from jaxns.pytree import PureDataclassPytree
+from jaxns.pytree import PureDataclassPytree, pytree_ravel
 from jaxns.results import BlockData, NestedSamplerResults
 from jaxns.samples import Samples, UType
-from jaxns.sampling.ellipsoid import SamplerData
+from jaxns.sampling.ellipsoid import (
+    SamplerData,
+    empty_sampler_data,
+    update_sampler_data,
+)
 from jaxns.shrinkage.classic import (
     classic_dirichlet_concentrations,
     dirichlet_probability_means,
@@ -165,6 +170,84 @@ class State(PureDataclassPytree):
         _validate_evidence_block_capacity(self)
         return _sample_logZ(self, key, num_samples)
 
+    def fit_gmm_directions(
+            self,
+            *,
+            num_components: int | None = None,
+            num_iterations: int = 10,
+            iso_prob: float = 1e-2,
+            regularisation: float = 1e-6,
+    ) -> "State":
+        """Fit and enable a GMM direction law from every stored classic.
+
+        Posterior-weighted classics fit the component locations and covariance
+        geometry in homogeneous U-space. Their already stored likelihoods fit
+        each component's value at its mean, without calling the user's
+        likelihood. Fitting is explicit and never occurs inside a
+        nested-sampling depth loop.
+
+        Args:
+            num_components: Number of Gaussian components. ``None`` preserves
+                an existing fit width, or uses one for the first fit. One is
+                the conservative default: extra components should represent
+                modes the user has scientific reason to resolve.
+            num_iterations: Number of warm-started EM iterations.
+            iso_prob: Probability of an exactly isotropic direction while the
+                fitted GMM direction law is enabled.
+            regularisation: Covariance ridge relative to component variance.
+
+        Returns:
+            A new frozen state with the fitted direction law enabled.
+
+        Raises:
+            ValueError: If configuration is invalid, the U-space is periodic,
+                or the fit cannot produce full-dimensional geometry.
+        """
+        return _fit_gmm_directions_public(
+            self,
+            num_components=num_components,
+            num_iterations=num_iterations,
+            iso_prob=iso_prob,
+            regularisation=regularisation,
+        )
+
+    def iso_directions(self) -> "State":
+        """Return a state using exactly isotropic directions.
+
+        Any fitted GMM is retained so :meth:`gmm_directions` can restore it
+        without refitting.
+        """
+        if self.sampler_data is None:
+            return self
+        return dataclasses.replace(
+            self,
+            sampler_data=dataclasses.replace(
+                self.sampler_data,
+                enabled=jnp.asarray(False, mp_policy.bool_dtype),
+            ),
+        )
+
+    def gmm_directions(self) -> "State":
+        """Return a state using its previously fitted GMM direction law.
+
+        Raises:
+            ValueError: If no successful GMM fit is available.
+        """
+        if self.sampler_data is None or not bool(np.any(
+                np.asarray(self.sampler_data.valid)
+        )):
+            raise ValueError(
+                "No fitted GMM directions are available; call "
+                "state.fit_gmm_directions() first."
+            )
+        return dataclasses.replace(
+            self,
+            sampler_data=dataclasses.replace(
+                self.sampler_data,
+                enabled=jnp.asarray(True, mp_policy.bool_dtype),
+            ),
+        )
+
     def sample_evidence_mc(
             self,
             num_samples: int,
@@ -261,6 +344,126 @@ class State(PureDataclassPytree):
 
 
 State.register_pytree()
+
+
+def _fit_gmm_directions_public(
+        state: State,
+        *,
+        num_components: int | None,
+        num_iterations: int,
+        iso_prob: float,
+        regularisation: float,
+) -> State:
+    """Validate one explicit fit and publish only successful geometry."""
+    if num_components is None:
+        num_components = (
+            1
+            if state.sampler_data is None
+            else state.sampler_data.centres.shape[0]
+        )
+    try:
+        num_components = operator.index(num_components)
+        num_iterations = operator.index(num_iterations)
+    except TypeError as error:
+        raise TypeError(
+            "num_components and num_iterations must be Python integers."
+        ) from error
+    if num_components < 1:
+        raise ValueError("num_components must be positive.")
+    if num_iterations < 1:
+        raise ValueError("num_iterations must be positive.")
+    if not 0.0 <= iso_prob <= 1.0:
+        raise ValueError("iso_prob must be between zero and one.")
+    if regularisation <= 0.0:
+        raise ValueError("regularisation must be positive.")
+    periodic = state.model._periodic_coordinates(state.args, state.params)
+    if any(periodic):
+        raise ValueError(
+            "GMM directions do not yet support periodic U-space; keep exact "
+            "isotropic directions for this state."
+        )
+
+    # Fit against a compact view so explicit fitting pays only for collected
+    # scientific rows, not unused geometric-growth capacity. The returned
+    # state retains its original buffers and continuation capacity.
+    fit_state = state.trim()
+    flat_supremum, _ = pytree_ravel(fit_state.U_supremum)
+    dimension = flat_supremum.shape[0]
+    if int(np.asarray(fit_state.num_samples)) < num_components * (dimension + 1):
+        raise ValueError(
+            "A full-covariance GMM needs at least D + 1 classics per "
+            f"component; got {int(np.asarray(fit_state.num_samples))} "
+            f"classics for D={dimension} and K={num_components}."
+        )
+
+    data = state.sampler_data
+    if data is None or data.centres.shape[0] != num_components:
+        data = empty_sampler_data(num_components, dimension)
+    previous_updates = int(np.asarray(data.num_updates))
+    fitted = _fit_gmm_directions(
+        fit_state,
+        data,
+        num_iterations=num_iterations,
+        iso_prob=iso_prob,
+        regularisation=regularisation,
+    )
+    if int(np.asarray(fitted.num_updates)) == previous_updates:
+        raise ValueError(
+            "The GMM fit did not produce full-dimensional direction geometry."
+        )
+    return dataclasses.replace(state, sampler_data=fitted)
+
+
+@partial(
+    jax.jit,
+    inline=True,
+    static_argnames=(
+        "num_iterations",
+        "iso_prob",
+        "regularisation",
+    ),
+)
+def _fit_gmm_directions(
+        state: State,
+        data: SamplerData,
+        *,
+        num_iterations: int,
+        iso_prob: float,
+        regularisation: float,
+) -> SamplerData:
+    """Fit all compact classic rows to one evidence-scaled GMM surrogate."""
+    likelihood_order = (
+        state.likelihood_order
+        if state.scheduler_data is None
+        else None
+    )
+    block_state = build_block_state(
+        state.samples,
+        root_out_degree=state.root_out_degree,
+        num_samples=state.num_samples,
+        likelihood_order=likelihood_order,
+    )
+    concentrations = classic_dirichlet_concentrations(block_state)
+    log_weights = expected_log_posterior_weights(
+        block_state,
+        concentrations,
+    )  # [N]
+    points = jax.vmap(lambda sample: pytree_ravel(sample)[0])(
+        state.samples.U_samples
+    )  # [N, D]
+    mask = jnp.ones((points.shape[0],), mp_policy.bool_dtype)  # [N]
+    return update_sampler_data(
+        jax.random.PRNGKey(0),
+        data,
+        points,
+        state.samples.log_likelihoods,
+        log_weights,
+        mask,
+        state.num_samples,
+        n_iters=num_iterations,
+        iso_prob=iso_prob,
+        regularisation=regularisation,
+    )
 
 
 def _trim(self: State) -> State:

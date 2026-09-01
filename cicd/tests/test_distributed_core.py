@@ -5,6 +5,7 @@ import pickle
 
 import jax
 import numpy as np
+import pytest
 from jax import numpy as jnp
 
 from cicd.tests.core_fixtures import make_state
@@ -57,6 +58,36 @@ def _local_checkpoint(
         depth_active=False,
         goal_key=state.goal_key,
     )
+
+
+def test_distributed_directions_change_only_at_drained_boundaries():
+    """Direction geometry is scientific state, never in-flight task state."""
+    runner = DistributedNestedSampler(
+        model=make_toy_model(),
+        coordinator_port=5555,
+        root_allocation_degree=4,
+        initial_capacity=8,
+    )
+    checkpoint = _local_checkpoint(runner, jax.random.PRNGKey(246))
+
+    fitted = checkpoint.fit_gmm_directions(
+        num_iterations=3,
+        iso_prob=0.01,
+    )
+    assert fitted.state.sampler_data.centres.shape == (1, 1)
+    assert bool(fitted.state.sampler_data.enabled)
+    isotropic = fitted.iso_directions()
+    assert not bool(isotropic.state.sampler_data.enabled)
+    restored = isotropic.gmm_directions()
+    assert bool(restored.state.sampler_data.enabled)
+
+    active = dataclasses.replace(restored, depth_active=True)
+    with pytest.raises(RuntimeError, match="drained distributed state"):
+        active.fit_gmm_directions()
+    with pytest.raises(RuntimeError, match="drained distributed state"):
+        active.iso_directions()
+    with pytest.raises(RuntimeError, match="drained distributed state"):
+        active.gmm_directions()
 
 
 def test_distributed_initialisation_dispatches_every_likelihood():

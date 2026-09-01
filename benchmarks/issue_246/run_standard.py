@@ -1,4 +1,4 @@
-"""Matched accuracy and efficiency runner for ellipsoidal directions."""
+"""Matched accuracy and efficiency runner for explicit GMM directions."""
 
 import argparse
 import dataclasses
@@ -19,11 +19,9 @@ import jaxns
 from cicd.tests.test_ns_standard_problems import (
     STANDARD_PROBLEM_CASES_BY_NAME,
 )
-from jaxns.constrained_sampler import (
-    EllipsoidalDirection,
-    UniDimSliceSampler,
-)
+from jaxns.constrained_sampler import UniDimSliceSampler
 from jaxns.core import NestedSampler, _run_depth
+from jaxns.depth_condition import DepthCondition
 
 MODE_PROBLEMS = {
     "spike_slab": {
@@ -154,9 +152,42 @@ def _mode_mass(case_name: str, results) -> tuple[float | None, float | None]:
     return estimated, truth
 
 
-def _depth_program(ns: NestedSampler) -> dict:
+def _fit_gmm_state(
+        ns: NestedSampler,
+        key,
+        fit_log_z_uncert: float,
+        iso_prob: float,
+):
+    """Stop at the caller's fit goal, then explicitly freeze GMM geometry."""
+
+    def fit_goal(state):
+        return bool(state.expected_log_Z_uncert < fit_log_z_uncert)
+
+    state = ns.run_until_goal(
+        fit_goal,
+        depth_cond=DepthCondition(),
+        key=key,
+    )
+    return state.fit_gmm_directions(iso_prob=iso_prob)
+
+
+def _finish_after_fit(ns: NestedSampler, state):
+    """Resume one full configured depth epoch from the explicit fit boundary."""
+    fit_iteration = int(state.goal_loop_iter)
+
+    def final_goal(current):
+        return int(current.goal_loop_iter) > fit_iteration
+
+    return ns.resume_until_goal(
+        state,
+        final_goal,
+        depth_cond=ns.depth_condition,
+    )
+
+
+def _depth_program(ns: NestedSampler, state) -> dict:
     state = dataclasses.replace(
-        ns.initialise(jax.random.PRNGKey(0)),
+        state,
         goal_loop_iter=jnp.asarray(1, jnp.int32),
     )
     start = time.perf_counter()
@@ -205,11 +236,8 @@ def main() -> None:
         "--seeds",
         default=",".join(str(seed) for seed in range(30)),
     )
-    parser.add_argument("--components", type=int, default=4)
-    parser.add_argument("--min-effective-samples", type=int)
-    parser.add_argument("--iterations", type=int, default=10)
-    parser.add_argument("--population-size", type=int, default=1024)
-    parser.add_argument("--prob-isotropic", type=float, default=1e-2)
+    parser.add_argument("--fit-log-z-uncert", type=float, default=0.2)
+    parser.add_argument("--iso-prob", type=float, default=1e-2)
     parser.add_argument("--mc-draws", type=int, default=1000)
     parser.add_argument("--measure-depth-program", action="store_true")
     parser.add_argument("--source-id", default="working-tree")
@@ -225,15 +253,6 @@ def main() -> None:
     root_degree = 30 * dimension
     shell_size = min(root_degree, 10 * dimension)
     retained_phantoms = dimension if args.phantoms else 0
-    direction = None
-    if args.direction == "ellipsoidal":
-        direction = EllipsoidalDirection(
-            num_components=args.components,
-            min_effective_samples=args.min_effective_samples,
-            num_iterations=args.iterations,
-            population_size=args.population_size,
-            prob_isotropic=args.prob_isotropic,
-        )
     sampler = UniDimSliceSampler(
         model=model,
         num_slices=num_slices,
@@ -241,7 +260,6 @@ def main() -> None:
         max_phantom_samples=(
             retained_phantoms if args.phantoms else None
         ),
-        direction=direction,
     )
     nested_sampler = NestedSampler(
         model=model,
@@ -251,11 +269,17 @@ def main() -> None:
         collect_phantom_samples=args.phantoms,
         sampler=sampler,
     )
-    program = (
-        _depth_program(nested_sampler)
-        if args.measure_depth_program
-        else {}
-    )
+    program = {}
+    if args.measure_depth_program:
+        program_state = nested_sampler.initialise(jax.random.PRNGKey(0))
+        if args.direction == "ellipsoidal":
+            program_state = _fit_gmm_state(
+                nested_sampler,
+                jax.random.PRNGKey(0),
+                args.fit_log_z_uncert,
+                args.iso_prob,
+            )
+        program = _depth_program(nested_sampler, program_state)
     base = {
         "case": args.case,
         "direction": args.direction,
@@ -267,13 +291,14 @@ def main() -> None:
         "replacement_width": shell_size,
         "num_slices": num_slices,
         "dlogZ": float(nested_sampler.depth_condition.dlogZ),
-        "num_components": None if direction is None else direction.num_components,
-        "min_effective_samples": (
-            None if direction is None else direction.min_effective_samples
+        "fit_log_Z_uncert": (
+            args.fit_log_z_uncert
+            if args.direction == "ellipsoidal"
+            else None
         ),
-        "num_iterations": None if direction is None else direction.num_iterations,
-        "population_size": None if direction is None else direction.population_size,
-        "prob_isotropic": None if direction is None else direction.prob_isotropic,
+        "iso_prob": (
+            args.iso_prob if args.direction == "ellipsoidal" else None
+        ),
         "environment": _environment(),
         **program,
     }
@@ -281,7 +306,16 @@ def main() -> None:
     for seed in [int(value) for value in args.seeds.split(",")]:
         key = jax.random.PRNGKey(seed)
         start = time.perf_counter()
-        state = nested_sampler.run(key)
+        if args.direction == "ellipsoidal":
+            state = _fit_gmm_state(
+                nested_sampler,
+                key,
+                args.fit_log_z_uncert,
+                args.iso_prob,
+            )
+            state = _finish_after_fit(nested_sampler, state)
+        else:
+            state = nested_sampler.run(key)
         jax.block_until_ready(state)
         run_s = time.perf_counter() - start
 

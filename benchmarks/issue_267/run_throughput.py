@@ -22,7 +22,6 @@ from tensorflow_probability.substrates import jax as tfp
 
 from jaxns.constrained_sampler import (
     ConstrainedSampleRequest,
-    EllipsoidalDirection,
     UniDimSliceSampler,
     sample_request,
 )
@@ -298,7 +297,6 @@ def run_batch_group_round(
             diagnostics = dataclasses.replace(
                 sampler_data,
                 num_samples=jnp.asarray(lane + 1),
-                num_attempted=jnp.asarray(lane + 1),
                 num_updates=jnp.asarray(lane % 5),
                 num_directions=jnp.asarray(10 * lane),
                 num_isotropic=jnp.asarray(lane),
@@ -338,7 +336,6 @@ def measure_batch_grouping(tasks: int, repeats: int) -> dict[str, object]:
     sampler = UniDimSliceSampler(
         model=model,
         num_slices=10,
-        direction=EllipsoidalDirection(num_components=2),
     )
     session = WorkerSession(
         model=model,

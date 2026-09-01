@@ -69,8 +69,10 @@ def _sampler_batch_group(sampler_data: SamplerData | None) -> str:
             sampler_data.radii,
             sampler_data.rotations,
             sampler_data.log_volumes,
-            sampler_data.log_L_max,
+            sampler_data.log_L_at_mean,
             sampler_data.valid,
+            sampler_data.enabled,
+            sampler_data.iso_prob,
         )
     )
     return hashlib.sha256(pickle.dumps(

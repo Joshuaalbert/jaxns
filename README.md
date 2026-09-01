@@ -127,10 +127,12 @@ chain to move across an artificial seam without changing the prior measure.
 The declaration applies to the complete realised prior; cyclic categorical
 variables are not supported.
 
-Periodic coordinates currently require isotropic slice directions. Combining
-them with `EllipsoidalDirection` fails during sampler construction because the
-Euclidean GMM can split a seam-crossing mode; toroidal GMM geometry is tracked
-in [issue #276](https://github.com/Joshuaalbert/jaxns/issues/276). The
+Periodic coordinates currently require isotropic slice directions. Runs begin
+with exact isotropic directions, and `state.iso_directions()` explicitly keeps
+or returns a state to that mode. Calling `state.fit_gmm_directions(...)` for a
+periodic model fails because the Euclidean GMM can split a seam-crossing mode;
+toroidal GMM geometry is tracked in
+[issue #276](https://github.com/Joshuaalbert/jaxns/issues/276). The
 [Jones-scalar example](docs/examples/Jones_scalar_modelling.ipynb) demonstrates
 a periodic calibration phase together with DTEC, clock, and unknown noise.
 
@@ -252,8 +254,8 @@ requests.
 - Added plateau-correct shrinkage and bounded final Monte Carlo evidence draws,
   with explicit classic or phantom conditioning using retained early-chain
   phantom states.
-- Added opt-in warm-refined ellipsoidal slice directions and transparent
-  finite or explicitly unlimited sample-buffer growth.
+- Added explicit state-owned GMM slice-direction fitting and transparent finite
+  or explicitly unlimited sample-buffer growth.
 - Added reversible random-chart slice sampling for continuous periodic prior
   coordinates declared with JAXCTX `realise(periodic=True)`; isotropic
   directions are required until toroidal GMM geometry is available.

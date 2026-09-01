@@ -85,7 +85,6 @@ def _initialise_slice_chains(
                 TreeField(seed_u),
                 log_L_constraint,
                 sampler_data,
-                sampler.direction.prob_isotropic,
             )
 
         # Preserve the scalar sampler's random-key schedule exactly. Pool
@@ -515,7 +514,7 @@ def _continue_slice_chains(
             (num_chains, num_phantom),
         ),
     )
-    if sampler.direction is None:
+    if request.sampler_data is None:
         num_directions = jnp.zeros(
             (num_chains,),
             mp_policy.count_dtype,

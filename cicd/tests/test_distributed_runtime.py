@@ -25,7 +25,6 @@ from cicd.tests.distributed_support import make_periodic_model, make_toy_model
 from jaxns.cli import _stop_started_process
 from jaxns.constrained_sampler import (
     ConstrainedSampleRequest,
-    EllipsoidalDirection,
     UniDimSliceSampler,
     sample_request,
 )
@@ -67,17 +66,25 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 def test_batch_group_ignores_direction_diagnostics_but_not_geometry():
     data = empty_sampler_data(num_components=2, dimension=1)
+    data = dataclasses.replace(
+        data,
+        radii=jnp.ones_like(data.radii),
+        log_volumes=jnp.zeros_like(data.log_volumes),
+        log_L_at_mean=jnp.zeros_like(data.log_L_at_mean),
+        valid=jnp.ones_like(data.valid),
+        enabled=jnp.asarray(True),
+        iso_prob=jnp.asarray(0.0),
+    )
     diagnostics = dataclasses.replace(
         data,
         num_samples=jnp.asarray(100),
-        num_attempted=jnp.asarray(90),
         num_updates=jnp.asarray(4),
         num_directions=jnp.asarray(500),
         num_isotropic=jnp.asarray(5),
     )
     geometry = dataclasses.replace(
         data,
-        radii=jnp.ones_like(data.radii),
+        radii=2.0 * data.radii,
     )
 
     assert _sampler_batch_group(data) == _sampler_batch_group(diagnostics)
@@ -89,7 +96,6 @@ def test_batch_group_ignores_direction_diagnostics_but_not_geometry():
     sampler = UniDimSliceSampler(
         model=model,
         num_slices=2,
-        direction=EllipsoidalDirection(num_components=2),
     )
     request = ConstrainedSampleRequest(
         keys=jax.random.split(jax.random.PRNGKey(4), 1),

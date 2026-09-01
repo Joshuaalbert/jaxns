@@ -30,11 +30,8 @@ def main() -> None:
         "--seeds",
         default=",".join(str(seed) for seed in range(30)),
     )
-    parser.add_argument("--components", type=int, default=4)
-    parser.add_argument("--min-effective-samples", type=int)
-    parser.add_argument("--iterations", type=int, default=10)
-    parser.add_argument("--population-size", type=int, default=1024)
-    parser.add_argument("--prob-isotropic", type=float, default=1e-2)
+    parser.add_argument("--fit-log-z-uncert", type=float, default=0.2)
+    parser.add_argument("--iso-prob", type=float, default=1e-2)
     parser.add_argument("--mc-draws", type=int, default=1000)
     parser.add_argument("--source-id", default="working-tree")
     parser.add_argument("--quiet", action="store_true")
@@ -68,14 +65,10 @@ def main() -> None:
                     direction,
                     "--seeds",
                     args.seeds,
-                    "--components",
-                    str(args.components),
-                    "--iterations",
-                    str(args.iterations),
-                    "--population-size",
-                    str(args.population_size),
-                    "--prob-isotropic",
-                    str(args.prob_isotropic),
+                    "--fit-log-z-uncert",
+                    str(args.fit_log_z_uncert),
+                    "--iso-prob",
+                    str(args.iso_prob),
                     "--mc-draws",
                     str(args.mc_draws),
                     "--source-id",
@@ -83,11 +76,6 @@ def main() -> None:
                     "--output",
                     str(output),
                 ]
-                if args.min_effective_samples is not None:
-                    command.extend([
-                        "--min-effective-samples",
-                        str(args.min_effective_samples),
-                    ])
                 if phantom_setting == "on":
                     command.append("--phantoms")
 

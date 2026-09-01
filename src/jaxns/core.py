@@ -308,12 +308,8 @@ class NestedSampler(PureDataclassPytree):
             sample_capacity=int(self.initial_capacity),
             num_phantom=int(self.sampler.num_phantom()),
         )
-        sampler_data = self.sampler.initial_sampler_data(
-            int(self.model.U_ndims(self.args, self.params))
-        )
         return dataclasses.replace(
             state,
-            sampler_data=sampler_data,
             random_key=run_key,
             goal_key=run_key,
             # Initialisation is a Python goal boundary. Marking it this way

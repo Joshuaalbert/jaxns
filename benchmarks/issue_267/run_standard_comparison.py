@@ -18,11 +18,9 @@ from benchmarks.issue_246.run_standard import _mode_mass
 from cicd.tests.test_ns_standard_problems import (
     STANDARD_PROBLEM_CASES_BY_NAME,
 )
-from jaxns.constrained_sampler import (
-    EllipsoidalDirection,
-    UniDimSliceSampler,
-)
+from jaxns.constrained_sampler import UniDimSliceSampler
 from jaxns.core import NestedSampler
+from jaxns.depth_condition import DepthCondition
 from jaxns.distributed_core import DistributedNestedSampler
 
 
@@ -85,12 +83,40 @@ def cli(config: Path, command: str) -> None:
         raise RuntimeError(completed.stderr.strip())
 
 
-def measure(runner, case_name: str, truth, seed: int) -> dict[str, object]:
-    """Measure a complete run, including planner-side GMM refinement."""
+def measure(
+        runner,
+        case_name: str,
+        truth,
+        seed: int,
+        fit_log_z_uncert: float,
+        iso_prob: float,
+        distributed: bool,
+) -> dict[str, object]:
+    """Measure a complete run with one user-staged, frozen GMM fit."""
     key = jax.random.PRNGKey(seed)
+
+    def fit_goal(state):
+        return bool(state.expected_log_Z_uncert < fit_log_z_uncert)
+
     started = time.perf_counter()
-    completed = runner.run(key)
-    state = completed.state if hasattr(completed, "state") else completed
+    completed = runner.run_until_goal(
+        fit_goal,
+        depth_cond=DepthCondition(),
+        key=key,
+    )
+    completed = completed.fit_gmm_directions(iso_prob=iso_prob)
+    state = completed.state if distributed else completed
+    fit_iteration = int(state.goal_loop_iter)
+
+    def final_goal(current):
+        return int(current.goal_loop_iter) > fit_iteration
+
+    completed = runner.resume_until_goal(
+        completed,
+        final_goal,
+        depth_cond=runner.depth_condition,
+    )
+    state = completed.state if distributed else completed
     jax.block_until_ready(state)
     elapsed_s = time.perf_counter() - started
 
@@ -154,6 +180,8 @@ def main() -> int:
     parser.add_argument("--workers", type=int, default=2)
     parser.add_argument("--batch-size", type=int, default=3)
     parser.add_argument("--phantoms", action="store_true")
+    parser.add_argument("--fit-log-z-uncert", type=float, default=0.2)
+    parser.add_argument("--iso-prob", type=float, default=1e-2)
     parser.add_argument(
         "--runner",
         choices=("local", "distributed", "both"),
@@ -173,12 +201,6 @@ def main() -> int:
     replacement_width = min(root_degree, 10 * dimension)
     num_slices = 5 * dimension
     retained_phantoms = dimension if args.phantoms else 0
-    direction = EllipsoidalDirection(prob_isotropic=1e-2)
-    min_effective_samples = direction.min_effective_samples
-    if min_effective_samples is None:
-        min_effective_samples = (
-            4 * direction.num_components * (dimension + 1)
-        )
     sampler = UniDimSliceSampler(
         model=model,
         num_slices=num_slices,
@@ -186,12 +208,10 @@ def main() -> int:
         max_phantom_samples=(
             retained_phantoms if args.phantoms else None
         ),
-        direction=direction,
     )
     common = {
         "model": model,
         "root_allocation_degree": root_degree,
-        "delta_K": replacement_width,
         "max_samples": 100 * root_degree,
         "collect_phantom_samples": args.phantoms,
         "sampler": sampler,
@@ -211,13 +231,9 @@ def main() -> int:
         "replacement_width": replacement_width,
         "num_slices": num_slices,
         "collect_phantoms": args.phantoms,
-        "ellipsoidal_direction": {
-            "num_components": direction.num_components,
-            "min_effective_samples": direction.min_effective_samples,
-            "resolved_min_effective_samples": min_effective_samples,
-            "num_iterations": direction.num_iterations,
-            "population_size": direction.population_size,
-            "prob_isotropic": direction.prob_isotropic,
+        "gmm_directions": {
+            "fit_log_Z_uncert": args.fit_log_z_uncert,
+            "iso_prob": args.iso_prob,
         },
         "workers": args.workers,
         "worker_batch_size": args.batch_size,
@@ -238,7 +254,7 @@ def main() -> int:
                 "replacement_width",
                 "num_slices",
                 "collect_phantoms",
-                "ellipsoidal_direction",
+                "gmm_directions",
                 "workers",
                 "worker_batch_size",
         ):
@@ -263,7 +279,15 @@ def main() -> int:
             shell_size=replacement_width,
             **common,
         )
-        warm = measure(local, args.case, truth, -1)
+        warm = measure(
+            local,
+            args.case,
+            truth,
+            -1,
+            args.fit_log_z_uncert,
+            args.iso_prob,
+            False,
+        )
         completed_seeds = {
             record["seed"]
             for record in records
@@ -272,7 +296,15 @@ def main() -> int:
         for seed in range(args.seeds):
             if seed in completed_seeds:
                 continue
-            record = measure(local, args.case, truth, seed)
+            record = measure(
+                local,
+                args.case,
+                truth,
+                seed,
+                args.fit_log_z_uncert,
+                args.iso_prob,
+                False,
+            )
             record.update({
                 "runner": "local",
                 "warm_s": warm["elapsed_s"],
@@ -304,7 +336,15 @@ def main() -> int:
                     initial_capacity=root_degree + 10 * replacement_width,
                     **common,
                 )
-                warm = measure(distributed, args.case, truth, -1)
+                warm = measure(
+                    distributed,
+                    args.case,
+                    truth,
+                    -1,
+                    args.fit_log_z_uncert,
+                    args.iso_prob,
+                    True,
+                )
                 completed_seeds = {
                     record["seed"]
                     for record in records
@@ -318,6 +358,9 @@ def main() -> int:
                         args.case,
                         truth,
                         seed,
+                        args.fit_log_z_uncert,
+                        args.iso_prob,
+                        True,
                     )
                     record.update({
                         "runner": "distributed",

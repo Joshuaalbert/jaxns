@@ -157,15 +157,76 @@ reduction precision.
 ## Scientific and end-to-end evidence
 
 The standard-problem file and its tolerances are byte-for-byte identical to
-`develop`. All 22 cases pass on commit `5af0892`, covering eleven problems with
-phantom collection both disabled and enabled; the synchronized local run took
-461.74 s. The long-form workload records are inserted here only after the
-committed candidate completes them.
+`develop`. All 22 cases pass after the final direction-state refactor, covering
+eleven problems with phantom collection both disabled and enabled; the
+synchronized local run took 335.94 s. The focused core, sampler, state, and
+distributed-runtime set passes 111 tests in 394.51 s. A separate staged GMM CI
+test runs isotropically to expected log-evidence uncertainty 0.2, proves that
+the explicit fit does not call the user likelihood, and resumes the same state
+with fitted directions to 0.1. Its isolated cold run passes in 83.17 s with a
+1.52 GB maximum resident set.
+The complete distributed-core module adds 18 passing asynchronous scheduling
+and drained-state direction-boundary tests in 22.17 s.
 
-The final workload records, per goal boundary, allocation iteration, classic
-sample count, likelihood-evaluation count, expected evidence uncertainty, and
-elapsed wall time. This is the acceptance check for practical completion and
-for non-pathological scaling beyond the synthetic benchmark.
+The final refactor was also rerun through the scheduler microbenchmark with
+four repetitions. At 53,034 entry samples, repeated depth takes 0.154 s and
+planning plus depth takes 0.198 s. At 424,272 entry samples, repeated depth
+takes 0.192 s and planning plus depth takes 0.596 s. Repeated-depth temporary
+memory remains 91,672 bytes at both sizes. These shorter smoke runs are not
+substituted for the six-measurement tables above; they demonstrate that the
+later state-owned GMM API did not regress the scheduler hot path.
+
+### Explicit direction staging
+
+Fitted directions are state-owned and entirely user driven:
+
+1. `state.fit_gmm_directions()` fits or warm-refines from all stored classic
+   `(U, log L)` observations and enables the retained law.
+2. `state.iso_directions()` uses exact isotropic directions without discarding
+   a fit.
+3. `state.gmm_directions()` re-enables a retained fit and fails visibly when no
+   successful fit exists.
+
+No fit, likelihood probe, or automatic staging occurs inside local or
+distributed depth execution. A distributed state permits fitting or toggling
+only after all in-flight work and scheduling state have drained. The default
+first fit uses one component; additional components are an explicit scientific
+choice rather than an automatic partition of a single mode.
+
+At `D=8`, 4,096 stored rows, one component, and ten EM iterations, an explicit
+Python-boundary fit takes 7.97 ms versus 8.17 ms inside a device conditional.
+The no-fit Python path takes 0.088 ms versus 0.215 ms for the device
+conditional, with slightly smaller HLO and temporary memory. This small timing
+difference supports the simpler explicit boundary, while user control and the
+absence of hidden likelihood work are the primary reasons for it.
+
+Component selection uses the covariance ellipsoid as a proxy. Stored
+likelihood values fit the value at each component mean; a component is eligible
+only above the requested contour. Its selection weight is its fitted ellipsoid
+volume trimmed to that contour. It does not use an empirical assigned-sample
+maximum, a sample-enclosing hull, or new likelihood evaluations.
+
+### Correlated-Gaussian canary
+
+One deliberately difficult seed of an eight-dimensional Gaussian with 0.99
+off-diagonal correlation was followed through the staged interface. Before any
+fit, at uncertainty 0.190, its isotropic prefix already had log-evidence error
+-2.35. A one-component fit at 0.2 and continuation to 0.1 reduced the error to
+-1.02. Continuing to 0.05 produced error -0.415 with 214.57 million likelihood
+evaluations. Explicitly refitting at 0.1 reduced total work to 205.06 million
+evaluations, but the final error remained -0.430.
+
+This seed is not evidence that fitted directions remove constrained-chain
+stationarity error. The retained pre-change isotropic and GMM states for the
+same seed both ended near error -0.305 at reported uncertainty 0.05. The useful
+conclusions are narrower:
+
+- the new scheduler advances regularly to 424k samples rather than developing
+  a repeated full-history timing wall;
+- later explicit fitting improves the proxy and reduces likelihood work by
+  about 4.4% in this seed;
+- neither scheduling nor a symmetric direction law can retroactively repair a
+  badly mixed prefix, so multi-seed calibration remains the scientific test.
 
 ## Rejected alternatives
 

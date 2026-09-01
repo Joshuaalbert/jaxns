@@ -33,12 +33,9 @@ from jaxns.depth_condition import (
     DepthCondition,
 )
 from jaxns.mixed_precision import mp_policy
-from jaxns.pytree import PureDataclassPytree, pytree_ravel
+from jaxns.pytree import PureDataclassPytree
 from jaxns.samples import Samples, SeedPoint
-from jaxns.sampling.ellipsoid import update_sampler_data
-from jaxns.shrinkage.classic import (
-    classic_dirichlet_concentrations,
-)
+from jaxns.shrinkage.classic import classic_dirichlet_concentrations
 from jaxns.state import State
 from jaxns.types import BoolArray, FloatArray, IntArray, PRNGKey
 
@@ -2236,196 +2233,6 @@ def _sample_work_batch(
     )
 
 
-def _prepare_sampler_data(
-        key: PRNGKey,
-        state: State,
-        sampler: AbstractSampler,
-        work: CoreWorkBatch,
-        schedule: ThreadSchedule,
-) -> State:
-    """Update geometry from one internally consistent frozen population."""
-    block_state = schedule.seed_block_state
-    population_num_samples = schedule.source_num_samples
-    direction = sampler.direction_config()
-    if direction is None:
-        raise ValueError(
-            "Adaptive direction sampling requires a direction configuration."
-        )
-    if state.sampler_data is None:
-        raise ValueError("Ellipsoidal sampling requires sampler_data on State.")
-
-    dimension = state.sampler_data.centres.shape[1]
-    min_effective_samples = direction.min_effective_samples
-    if min_effective_samples is None:
-        # A full covariance needs at least D+1 independent points per
-        # component. Four times that algebraic minimum is a conservative
-        # initial gate and remains configurable for benchmark sweeps.
-        min_effective_samples = (
-            4 * direction.num_components * (dimension + 1)
-        )
-    retry_increment = max(1, min_effective_samples // 2)
-
-    ready = jnp.any(state.sampler_data.valid)
-    lane_has_geometry = jax.vmap(
-        lambda constraint: jnp.any(
-            state.sampler_data.valid
-            & (state.sampler_data.log_L_max > constraint)
-        )
-    )(work.log_L_constraint)
-    stale = jnp.any(work.valid & jnp.logical_not(lane_has_geometry))
-    first_attempt = state.sampler_data.num_attempted == 0
-    enough_rows = population_num_samples >= min_effective_samples
-    enough_new_rows = (
-        population_num_samples
-        >= state.sampler_data.num_attempted + retry_increment
-    )
-    initialise = jnp.where(first_attempt, enough_rows, enough_new_rows)
-    last_attempt_succeeded = (
-        state.sampler_data.num_attempted
-        == state.sampler_data.num_samples
-    )
-    population_advanced = (
-        population_num_samples > state.sampler_data.num_attempted
-    )
-    # A newly stale successful model is refreshed immediately. If that refresh
-    # fails, wait for a materially larger population before retrying so a
-    # singular late contour cannot make every replacement batch refit it.
-    refresh = (
-        stale
-        & population_advanced
-        & (last_attempt_succeeded | enough_new_rows)
-    )
-    should_update = jnp.where(ready, refresh, initialise)
-
-    def update(_):
-        concentrations = classic_dirichlet_concentrations(block_state)
-        alpha0 = (
-            concentrations.alpha_gt
-            + concentrations.alpha_eq
-            + concentrations.alpha_lt
-        )
-        p_gt = jnp.where(
-            alpha0 > 0.0,
-            concentrations.alpha_gt / alpha0,
-            1.0,
-        )
-        p_eq = jnp.where(
-            alpha0 > 0.0,
-            concentrations.alpha_eq / alpha0,
-            0.0,
-        )
-
-        # Compute the expected volume prefix with a dynamic sequential loop.
-        # The relevant operations then have identical order before and after a
-        # physical buffer resize, instead of allowing a capacity-dependent
-        # parallel reduction to perturb the direction kernel's last bits.
-        def volume_step(block_idx, carry):
-            log_X, log_X_prev = carry
-            log_X_prev = log_X_prev.at[block_idx].set(log_X)
-            log_X = log_X + jnp.log(jnp.clip(
-                p_gt[block_idx],
-                1e-300,
-                1.0,
-            ))
-            return log_X, log_X_prev
-
-        _, log_X_prev = jax.lax.fori_loop(
-            0,
-            block_state.num_blocks,
-            volume_step,
-            (
-                jnp.asarray(0.0, mp_policy.measure_dtype),
-                jnp.zeros_like(block_state.log_L_blocks),
-            ),
-        )
-        plateau_weight = (
-            block_state.log_L_blocks
-            + log_X_prev
-            + jnp.log(jnp.clip(p_eq, 1e-300, 1.0))
-            - jnp.log(jnp.maximum(
-                block_state.block_size,
-                1,
-            ).astype(mp_policy.measure_dtype))
-        )
-        ordinary_weight = (
-            block_state.log_L_blocks
-            + log_X_prev
-            + jnp.log(jnp.clip(1.0 - p_gt, 1e-300, 1.0))
-        )
-        block_log_weights = jnp.where(
-            block_state.block_size > 1,
-            plateau_weight,
-            ordinary_weight,
-        )
-
-        # A fixed likelihood-ordered population makes the fit's HLO and
-        # arithmetic independent of State's physical storage capacity. Use all
-        # rows while they fit, then an evenly spaced deterministic subset.
-        population_size = direction.population_size
-        slots = jnp.arange(population_size, dtype=mp_policy.index_dtype)
-        use_all = population_num_samples <= population_size
-        spread = jnp.floor(
-            slots.astype(mp_policy.measure_dtype)
-            * population_num_samples.astype(mp_policy.measure_dtype)
-            / jnp.asarray(population_size, mp_policy.measure_dtype)
-        ).astype(mp_policy.index_dtype)
-        positions = jnp.where(use_all, slots, spread)
-        mask = jnp.where(
-            use_all,
-            slots < population_num_samples,
-            jnp.ones((population_size,), mp_policy.bool_dtype),
-        )
-        positions = jnp.minimum(
-            positions,
-            jnp.maximum(population_num_samples - 1, 0),
-        )
-        sample_indices = block_state.block_sample_indices[positions]
-        sample_indices = jnp.where(mask, sample_indices, 0)
-        selected_U = jax.tree.map(
-            lambda values: values[sample_indices],
-            state.samples.U_samples,
-        )
-        points = jax.vmap(lambda sample: pytree_ravel(sample)[0])(
-            selected_U
-        )
-        selected_log_L = state.samples.log_likelihoods[sample_indices]
-        selected_blocks = jnp.searchsorted(
-            block_state.log_L_blocks,
-            selected_log_L,
-            side="left",
-        )
-        selected_blocks = jnp.clip(
-            selected_blocks,
-            0,
-            block_state.log_L_blocks.shape[0] - 1,
-        )
-        log_weights = jnp.where(
-            mask,
-            block_log_weights[selected_blocks],
-            -jnp.inf,
-        )
-        data = update_sampler_data(
-            key,
-            state.sampler_data,
-            points,
-            selected_log_L,
-            log_weights,
-            mask,
-            population_num_samples,
-            n_iters=direction.num_iterations,
-            min_effective_samples=min_effective_samples,
-            regularisation=direction.regularisation,
-        )
-        return dataclasses.replace(state, sampler_data=data)
-
-    return jax.lax.cond(
-        should_update,
-        update,
-        lambda unused: state,
-        operand=None,
-    )
-
-
 def _accept_work_batch(
         state: State,
         work: CoreWorkBatch,
@@ -2903,17 +2710,7 @@ def _run_depth(
         )
 
     def body(carry: _DepthCarry):
-        if sampler.uses_adaptive_directions():
-            plan_key, fit_key, sample_key, next_key = jax.random.split(
-                carry.key,
-                4,
-            )
-        else:
-            # Preserve the established isotropic random stream exactly. The
-            # opt-in geometry key must not perturb reference runs that never
-            # request an ellipsoidal update.
-            plan_key, sample_key, next_key = jax.random.split(carry.key, 3)
-            fit_key = sample_key
+        plan_key, sample_key, next_key = jax.random.split(carry.key, 3)
         sample_limit = jnp.asarray(
             carry.state.samples.log_likelihoods.shape[0],
             mp_policy.count_dtype,
@@ -2936,28 +2733,15 @@ def _run_depth(
             carry.schedule,
             max_valid_lanes,
         )
-        sampling_state = carry.state
-        if sampler.uses_adaptive_directions():
-            # This scalar conditional is outside the replacement vmap. The
-            # current geometry and each lane's parent contour then remain
-            # fixed for the complete Markov chain, as required for a common
-            # symmetric direction law across all transitions in that chain.
-            sampling_state = _prepare_sampler_data(
-                fit_key,
-                carry.state,
-                sampler,
-                work,
-                schedule,
-            )
         sampled_batch = _sample_work_batch(
             sample_key,
-            sampling_state,
+            carry.state,
             sampler,
             work,
         )
-        insert_idx = sampling_state.num_samples
+        insert_idx = carry.state.num_samples
         next_state = _accept_work_batch(
-            sampling_state,
+            carry.state,
             work,
             sampled_batch,
             # The frozen schedule never consumes likelihood order. Publishing
