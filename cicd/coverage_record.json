@@ -233,6 +233,7 @@
   ],
   "Changing how valid constrained-sampling work is batched or scheduled does not change the marginal law of any classic child.": [
     "test_distributed_dispatch_queues_scalar_threads_without_shell_barrier",
+    "test_distributed_completion_order_preserves_scientific_state",
     "test_worker_request_uses_scalar_and_vmap_paths_above_strict_contour",
     "test_periodic_scalar_and_vmapped_chains_share_one_transition_law",
     "test_real_pool_runs_scalar_vmap_retries_and_cli_lifecycle"

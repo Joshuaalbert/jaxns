@@ -885,6 +885,26 @@
       "note": "Checks the selected growable open-addressed representation retains exact membership across rehashing.",
       "path": "cicd/tests/test_core.py",
       "reason": "scheduler_architecture"
+    },
+    "test_compiled_depth_signature_contains_only_runtime_dependencies": {
+      "note": "Checks that the compiled depth entry point does not specialize on allocation-policy values already materialized in scheduler state.",
+      "path": "cicd/tests/test_core.py",
+      "reason": "runtime_architecture"
+    },
+    "test_disabled_retained_fit_matches_plain_isotropic_key_stream": {
+      "note": "Checks the concrete compiled branch used when retained GMM geometry is disabled, including exact isotropic random-key routing.",
+      "path": "cicd/tests/test_constrained_sampler.py",
+      "reason": "implementation_regression"
+    },
+    "test_reservoir_rank_lookup_matches_dense_reference": {
+      "note": "Checks numerical parity between the compact reservoir rank lookup and the superseded dense proposal-by-reservoir mask.",
+      "path": "cicd/tests/test_core.py",
+      "reason": "reference_parity"
+    },
+    "test_sampler_data_ignores_zero_weight_nonfinite_height_observation": {
+      "note": "Checks the current masked component-height regression avoids an indeterminate zero-weight product without changing supported observations.",
+      "path": "cicd/tests/test_multi_ellipsoid.py",
+      "reason": "implementation_regression"
     }
   }
 }
