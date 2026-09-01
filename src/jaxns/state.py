@@ -307,11 +307,20 @@ def _expected_evidence_scalars(
         self: State,
 ) -> tuple[FloatArray, FloatArray]:
     """Reduce a trusted immutable core state to its two goal-loop scalars."""
+    # A completed Python goal boundary has published every accepted row into
+    # likelihood_order. A single-iteration capacity return can expose an
+    # active frozen schedule before that merge, so its diagnostic path must
+    # reconstruct an exact order rather than silently omit committed rows.
+    likelihood_order = (
+        self.likelihood_order
+        if self.scheduler_data is None
+        else None
+    )
     block_state = build_block_state(
         self.samples,
         root_out_degree=self.root_out_degree,
         num_samples=self.num_samples,
-        likelihood_order=self.likelihood_order,
+        likelihood_order=likelihood_order,
     )
     concentrations = classic_dirichlet_concentrations(block_state)
     summary = expected_evidence_summary(block_state, concentrations)
