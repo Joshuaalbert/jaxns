@@ -626,6 +626,26 @@ def _frozen_seed_count_at_constraint(
     )
 
 
+def _select_reservoir_slots(
+        cumulative_count: IntArray,
+        ranks: IntArray,
+) -> IntArray:
+    """Map compact eligible ranks to reservoir slots without an outer mask."""
+    slots = jnp.searchsorted(
+        cumulative_count,
+        ranks,
+        side="right",
+    ).astype(mp_policy.index_dtype)  # [C]
+    # An out-of-range rank made the former all-false argmax return slot zero.
+    # Preserve that total-function behavior for padded speculative proposals;
+    # scientifically valid reservoir ranks always land before the array end.
+    return jnp.where(
+        slots < cumulative_count.shape[0],
+        slots,
+        jnp.asarray(0, mp_policy.index_dtype),
+    )  # [C]
+
+
 class _SeedSourceIndex(NamedTuple):
     """Exact stationary-seed view published independently of thread work."""
 
@@ -682,7 +702,12 @@ def _new_thread_schedule(
         tail_K: IntArray,
         seed_reservoir_size: int | None = None,
 ) -> ThreadSchedule:
-    """Freeze one gap curve and its compressed maximal-thread starts."""
+    """Freeze one gap curve and its compressed maximal-thread starts.
+
+    A drained projected schedule publishes all newly stationary classic
+    samples before filling its exposed gaps. Geometric source reuse applies
+    only while one schedule remains active.
+    """
     if seed_reservoir_size is None:
         seed_reservoir_size = shell_size
     # Begin with four ordinary frontier windows plus one window that may be in
@@ -731,55 +756,76 @@ def _new_thread_schedule(
     num_threads = jnp.sum(multiplicity, dtype=mp_policy.count_dtype)
 
     seed_source = _build_seed_source_index(state, block_state)
+    seed_block_state = seed_source.block_state
+    seed_count = seed_source.count
+    previous_seedable = seed_source.previous_seedable
+    seed_birth_contours = seed_source.birth_contours
+    seed_rank_prefix = seed_source.rank_prefix
+    seed_zero_count = seed_source.zero_count
+    seed_reservoir_idx = jnp.full(
+        (seed_reservoir_size,),
+        -1,
+        dtype=mp_policy.index_dtype,
+    )  # [R]
+    seed_reservoir_priority = jnp.full(
+        (seed_reservoir_size,),
+        -jnp.inf,
+        dtype=mp_policy.measure_dtype,
+    )  # [R]
+    seed_reservoir_valid = jnp.zeros(
+        (seed_reservoir_size,),
+        dtype=mp_policy.bool_dtype,
+    )  # [R]
+    seed_reservoir_key = jax.random.fold_in(
+        state.random_key,
+        state.allocation_loop_iter,
+    )  # [2]
     reservation_size = _seed_reservation_capacity(shell_size)
+    start_seed_reservation_idx = jnp.full(
+        (reservation_size,),
+        -1,
+        dtype=mp_policy.index_dtype,
+    )  # [V]
+    start_seed_reservation_group = jnp.zeros(
+        (reservation_size,),
+        dtype=mp_policy.index_dtype,
+    )  # [V]
+    # Zero slot generations mean empty; the first active group is one.
+    current_start_group = jnp.asarray(1, mp_policy.index_dtype)  # []
+    start_seed_log_L_constraint = jnp.asarray(
+        -jnp.inf,
+        dtype=mp_policy.measure_dtype,
+    )  # []
+    num_start_seeds = jnp.asarray(0, mp_policy.count_dtype)  # []
+    num_published_start_seeds = jnp.asarray(
+        0,
+        mp_policy.count_dtype,
+    )  # []
+    source_num_samples = state.num_samples  # []
     return ThreadSchedule(
         block_state=block_state,
-        seed_block_state=seed_source.block_state,
+        seed_block_state=seed_block_state,
         start_block=start_block,
         terminal_block=terminal_block,
         multiplicity=multiplicity,
         num_runs=num_runs,
         target_K=plan.target_K,
         tail_K=tail_K,
-        seed_count=seed_source.count,
-        previous_seedable=seed_source.previous_seedable,
-        seed_birth_contours=seed_source.birth_contours,
-        seed_rank_prefix=seed_source.rank_prefix,
-        seed_zero_count=seed_source.zero_count,
-        seed_reservoir_idx=jnp.full(
-            (seed_reservoir_size,),
-            -1,
-            dtype=mp_policy.index_dtype,
-        ),
-        seed_reservoir_priority=jnp.full(
-            (seed_reservoir_size,),
-            -jnp.inf,
-            dtype=mp_policy.measure_dtype,
-        ),
-        seed_reservoir_valid=jnp.zeros(
-            (seed_reservoir_size,),
-            dtype=mp_policy.bool_dtype,
-        ),
-        seed_reservoir_key=jax.random.fold_in(
-            state.random_key,
-            state.allocation_loop_iter,
-        ),
-        start_seed_reservation_idx=jnp.full(
-            (reservation_size,),
-            -1,
-            dtype=mp_policy.index_dtype,
-        ),
-        start_seed_reservation_group=jnp.zeros(
-            (reservation_size,),
-            dtype=mp_policy.index_dtype,
-        ),
-        # Zero slot generations mean empty; the first active group is one.
-        current_start_group=jnp.asarray(1, mp_policy.index_dtype),
-        start_seed_log_L_constraint=jnp.asarray(
-            -jnp.inf,
-            dtype=mp_policy.measure_dtype,
-        ),
-        num_start_seeds=jnp.asarray(0, mp_policy.count_dtype),
+        seed_count=seed_count,
+        previous_seedable=previous_seedable,
+        seed_birth_contours=seed_birth_contours,
+        seed_rank_prefix=seed_rank_prefix,
+        seed_zero_count=seed_zero_count,
+        seed_reservoir_idx=seed_reservoir_idx,
+        seed_reservoir_priority=seed_reservoir_priority,
+        seed_reservoir_valid=seed_reservoir_valid,
+        seed_reservoir_key=seed_reservoir_key,
+        start_seed_reservation_idx=start_seed_reservation_idx,
+        start_seed_reservation_group=start_seed_reservation_group,
+        current_start_group=current_start_group,
+        start_seed_log_L_constraint=start_seed_log_L_constraint,
+        num_start_seeds=num_start_seeds,
+        num_published_start_seeds=num_published_start_seeds,
         parent_idx=jnp.full(
             (shell_size,),
             -1,
@@ -836,7 +882,7 @@ def _new_thread_schedule(
         ),
         next_thread_id=jnp.asarray(0, mp_policy.index_dtype),
         num_threads=num_threads.astype(mp_policy.count_dtype),
-        source_num_samples=state.num_samples,
+        source_num_samples=source_num_samples,
         active=num_threads > 0,
     )
 
@@ -933,8 +979,9 @@ def _update_seed_reservoir(
 
     Random priorities make membership independent of likelihood, contour, and
     append order. Keeping only the largest bounded set makes seed coordination
-    independent of schedule length, while the next planning boundary promotes
-    every accepted row into the exact frozen race population.
+    independent of schedule length. Geometric publication may refresh the
+    source while this schedule remains active; after it drains, the projected
+    schedule publishes every newly stationary classic sample.
     """
     num_candidates = sample_idx.shape[0]
 
@@ -1105,9 +1152,9 @@ def _sample_stationary_seeds(
         reservoir_safe_idx
     ]  # [R]
     # The frozen index is exact. A value-independent bounded reservoir adds
-    # recent stationary rows until geometric publication promotes the complete
-    # generation; frontier ordering still prevents descendants from running
-    # ahead of shallower allocation work.
+    # recent stationary rows while this schedule is active. A geometric refresh
+    # may promote them sooner; a drained projected schedule always publishes
+    # every newly stationary classic before continuing the allocation target.
     reservoir_eligible = (
         valid[:, None]
         & schedule.seed_reservoir_valid[None, :]
@@ -1132,18 +1179,7 @@ def _sample_stationary_seeds(
     # frozen+reservoir population; evicted rows must not make an unseen recent
     # row look exhausted. Publication makes every older identity frozen, so
     # the same compact calculation remains exact across source generations.
-    active_reservation = (
-        schedule.start_seed_reservation_group
-        == schedule.current_start_group
-    )  # [V]
-    published_reserved = jnp.sum(
-        active_reservation
-        & (
-            schedule.start_seed_reservation_idx
-            < schedule.source_num_samples
-        ),
-        dtype=mp_policy.index_dtype,
-    )
+    published_reserved = schedule.num_published_start_seeds  # []
     reservoir_was_reserved = jax.lax.cond(
         jnp.any(retained_start_group),
         lambda unused: jax.vmap(
@@ -1271,10 +1307,10 @@ def _sample_stationary_seeds(
                 proposal_rank - frozen_seed_count,
                 0,
             )
-            reservoir_slot = jnp.argmax(
-                reservoir_cumulative[None, :] > reservoir_rank[:, None],
-                axis=1,
-            ).astype(mp_policy.index_dtype)  # [C]
+            reservoir_slot = _select_reservoir_slots(
+                reservoir_cumulative,
+                reservoir_rank,
+            )  # [C]
             reservoir_candidate = reservoir_sample_idx[
                 reservoir_slot
             ]  # [C]
@@ -1904,7 +1940,12 @@ def _retain_start_seed_reservations(
         keep_existing,
         schedule.num_start_seeds,
         jnp.asarray(0, mp_policy.count_dtype),
-    )
+    )  # []
+    num_published = jnp.where(
+        keep_existing,
+        schedule.num_published_start_seeds,
+        jnp.asarray(0, mp_policy.count_dtype),
+    )  # []
 
     selected_idx = seed_idx.astype(mp_policy.index_dtype)  # [S]
     safe_idx = jnp.maximum(selected_idx, 0)  # [S]
@@ -1915,7 +1956,7 @@ def _retain_start_seed_reservations(
     )  # [S]
 
     def retain_lane(lane_idx, carry):
-        current_idx, current_group, current_count = carry
+        current_idx, current_group, current_count, current_published = carry
         already_used = _seed_reservation_contains(
             current_idx,
             current_group,
@@ -1935,6 +1976,9 @@ def _retain_start_seed_reservations(
                 next_idx,
                 next_group,
                 current_count + jnp.asarray(1, current_count.dtype),
+                current_published + (
+                    selected_idx[lane_idx] < schedule.source_num_samples
+                ).astype(current_published.dtype),
             )
 
         return jax.lax.cond(
@@ -1944,11 +1988,21 @@ def _retain_start_seed_reservations(
             operand=None,
         )
 
-    reservation_idx, reservation_group, num_used = jax.lax.fori_loop(
+    (
+        reservation_idx,
+        reservation_group,
+        num_used,
+        num_published,
+    ) = jax.lax.fori_loop(
         0,
         seed_idx.shape[0],
         retain_lane,
-        (reservation_idx, reservation_group, num_used),
+        (
+            reservation_idx,
+            reservation_group,
+            num_used,
+            num_published,
+        ),
     )
     return dataclasses.replace(
         schedule,
@@ -1961,6 +2015,7 @@ def _retain_start_seed_reservations(
             -jnp.inf,
         ),
         num_start_seeds=num_used,
+        num_published_start_seeds=num_published,
     )
 
 
@@ -2443,6 +2498,11 @@ def _publish_seed_source(state: State) -> State:
         seed_reservoir_valid=jnp.zeros_like(
             schedule.seed_reservoir_valid,
         ),
+        # Publication indexes every accepted identity. There is no distributed
+        # task in flight at this boundary, so every retained reservation now
+        # belongs to the frozen source and the exact scalar count advances with
+        # the watermark.
+        num_published_start_seeds=schedule.num_start_seeds,  # []
         source_num_samples=state.num_samples,
     )
     return dataclasses.replace(state, scheduler_data=schedule)
@@ -2653,23 +2713,13 @@ def _continue_schedule_round(
 @partial(
     jax.jit,
     inline=True,
-    static_argnames=(
-        "shell_size",
-        "allocation_target",
-        "root_degree",
-        "delta_K",
-        "max_samples",
-    ),
+    static_argnames=("max_samples",),
 )
 def _run_depth(
         state: State,
         sampler: AbstractSampler,
         depth_cond: DepthCondition,
         *,
-        shell_size: int,
-        allocation_target: str,
-        root_degree: int,
-        delta_K: int,
         max_samples: int | None,
 ) -> State:
     """Run one allocation depth epoch entirely in compiled JAX.

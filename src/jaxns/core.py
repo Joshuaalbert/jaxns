@@ -522,10 +522,6 @@ class NestedSampler(PureDataclassPytree):
                 state,
                 self.sampler,
                 depth_cond,
-                shell_size=int(self.shell_size),
-                allocation_target=self.allocation_target,
-                root_degree=int(self.root_allocation_degree),
-                delta_K=int(self.delta_K),
                 max_samples=self.max_samples,
             )
             if bool(state.needs_growth):
@@ -791,10 +787,6 @@ class NestedSampler(PureDataclassPytree):
                 state,
                 self.sampler,
                 depth_cond,
-                shell_size=int(self.shell_size),
-                allocation_target=self.allocation_target,
-                root_degree=int(self.root_allocation_degree),
-                delta_K=int(self.delta_K),
                 max_samples=self.max_samples,
             )
             if bool(state.needs_growth):

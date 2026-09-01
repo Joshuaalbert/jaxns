@@ -465,11 +465,50 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
             # Continuations model the release sampler's perfect bracket. Keep
             # the scalar implementation as the explicit reference and as the
             # compatibility owner for other trajectory constructions.
-            return _sample_complete_chains(
-                self,
-                request,
-                args=args,
-                params=params,
+            sampler_data = request.sampler_data
+            if sampler_data is None:
+                return _sample_complete_chains(
+                    self,
+                    request,
+                    args=args,
+                    params=params,
+                )
+
+            def sample_disabled_fit(unused):
+                # Keep the fitted state on the caller's request, but execute
+                # the exact plain-isotropic key stream inside this branch.
+                isotropic_request = dataclasses.replace(
+                    request,
+                    sampler_data=None,
+                )
+                sampled = _sample_complete_chains(
+                    self,
+                    isotropic_request,
+                    args=args,
+                    params=params,
+                )
+                direction_counts = jnp.full_like(  # [S]
+                    sampled.num_directions,
+                    self.num_slices,
+                )
+                return dataclasses.replace(
+                    sampled,
+                    num_directions=direction_counts,
+                    num_isotropic=direction_counts,
+                )
+
+            # The scalar flag is shared across lanes and transitions, so the
+            # disabled runtime does not enter any fitted-direction operation.
+            return jax.lax.cond(
+                sampler_data.enabled,
+                lambda unused: _sample_complete_chains(
+                    self,
+                    request,
+                    args=args,
+                    params=params,
+                ),
+                sample_disabled_fit,
+                operand=None,
             )
         return _continue_slice_chains(
             self,

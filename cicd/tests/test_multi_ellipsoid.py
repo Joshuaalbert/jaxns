@@ -276,3 +276,53 @@ def test_sampler_data_uses_gaussian_mean_height_without_sample_hull():
         displacement,
     )
     assert np.max(squared_distance) > 1.0
+
+
+def test_sampler_data_ignores_zero_weight_nonfinite_height_observation():
+    finite_points = jnp.asarray([
+        [-2.0, -0.5],
+        [-1.0, 0.5],
+        [-0.5, -1.0],
+        [0.0, 0.0],
+        [0.5, 1.0],
+        [1.0, -0.5],
+        [2.0, 0.5],
+    ])
+    points = jnp.concatenate(
+        [jnp.asarray([[4.0, 4.0]]), finite_points],
+        axis=0,
+    )
+    finite_log_L = 3.0 - 0.5 * jnp.sum(
+        jnp.square(finite_points),
+        axis=1,
+    )
+    log_L = jnp.concatenate([jnp.asarray([-jnp.inf]), finite_log_L])
+    log_weights = jnp.concatenate([
+        jnp.asarray([-jnp.inf]),
+        jnp.full(
+            (finite_points.shape[0],),
+            -jnp.log(finite_points.shape[0]),
+        ),
+    ])
+    mask = jnp.ones((points.shape[0],), dtype=jnp.bool_)
+
+    fitted = update_sampler_data(
+        random.PRNGKey(25),
+        empty_sampler_data(num_components=1, dimension=2),
+        points,
+        log_L,
+        log_weights,
+        mask,
+        jnp.asarray(points.shape[0]),
+        n_iters=3,
+        iso_prob=0.01,
+        regularisation=1e-6,
+    )
+
+    # A zero-posterior classic with log L=-inf is valid model data. It must
+    # not create 0 * -inf in the component intercept or reject the otherwise
+    # supported fit.
+    assert bool(fitted.valid[0])
+    assert bool(fitted.enabled)
+    assert int(fitted.num_updates) == 1
+    assert np.isfinite(float(fitted.log_L_at_mean[0]))

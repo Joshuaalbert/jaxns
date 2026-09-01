@@ -239,18 +239,37 @@ def _component_ellipsoid(
     # regression uses the likelihood values themselves, so a narrow density
     # component cannot invent an unsupported high likelihood through its
     # normalizing determinant.
-    safe_total = jnp.maximum(total, jnp.finfo(weights.dtype).eps)
+    height_observations = log_L + 0.5 * distance  # [N]
+    height_mask = (  # [N]
+        (weights > 0.0) & jnp.isfinite(height_observations)
+    )
+    height_weights = jnp.where(height_mask, weights, 0.0)  # [N]
+    height_observations = jnp.where(
+        height_mask,
+        height_observations,
+        0.0,
+    )  # [N]
+    height_total = jnp.sum(height_weights)  # []
+    safe_height_total = jnp.maximum(
+        height_total,
+        jnp.finfo(weights.dtype).eps,
+    )  # []
     log_L_at_mean = jnp.sum(
-        weights * (log_L + 0.5 * distance)
-    ) / safe_total
-    finite = (
+        height_weights * height_observations
+    ) / safe_height_total  # []
+    finite = (  # []
         jnp.all(jnp.isfinite(radii))
         & jnp.all(radii > 0.0)
         & jnp.all(jnp.isfinite(rotation))
         & jnp.isfinite(log_volume)
         & jnp.isfinite(log_L_at_mean)
     )
-    valid = finite & well_conditioned & (effective >= dimension + 1)
+    valid = (  # []
+        finite
+        & well_conditioned
+        & (effective >= dimension + 1)
+        & (height_total > 0.0)
+    )
     return radii, rotation, log_volume, log_L_at_mean, valid
 
 

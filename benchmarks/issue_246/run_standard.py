@@ -195,10 +195,6 @@ def _depth_program(ns: NestedSampler, state) -> dict:
         state,
         ns.sampler,
         ns.depth_condition,
-        shell_size=int(ns.shell_size),
-        allocation_target=ns.allocation_target,
-        root_degree=int(ns.root_allocation_degree),
-        delta_K=int(ns.delta_K),
         max_samples=ns.max_samples,
     )
     lower_s = time.perf_counter() - start

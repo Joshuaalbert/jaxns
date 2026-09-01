@@ -73,6 +73,17 @@ class DeterministicSampler(PureDataclassPytree, AbstractSampler):
 DeterministicSampler.register_pytree()
 
 
+def test_compiled_depth_signature_contains_only_runtime_dependencies():
+    """Materialised schedules own allocation policy and replacement width."""
+    parameters = inspect.signature(depth._run_depth).parameters
+    assert tuple(parameters) == (
+        "state",
+        "sampler",
+        "depth_cond",
+        "max_samples",
+    )
+
+
 @dataclasses.dataclass(slots=True, frozen=True)
 class TwoDimensionalModel(PureDataclassPytree):
     """Small vector model for exercising direction geometry in the core."""
@@ -614,10 +625,15 @@ def test_start_seed_reservations_rehash_exactly_when_storage_grows():
                 reservation_count,
                 dtype=jnp.int32,
             ),
+            num_published_start_seeds=jnp.asarray(
+                reservation_count,
+                dtype=jnp.int32,
+            ),
         )
 
     grown = schedule.resize_start_seed_reservations(2 * original_size)
     assert grown.start_seed_reservation_idx.shape == (2 * original_size,)
+    assert int(grown.num_published_start_seeds) == len(seed_indices)
     for seed_idx in seed_indices:
         assert bool(depth._seed_reservation_contains(
             grown.start_seed_reservation_idx,
@@ -672,6 +688,26 @@ def test_start_seed_reservation_storage_is_independent_of_sample_capacity():
     assert sizes == [16, 16]
 
 
+@pytest.mark.parametrize(
+    "eligible",
+    [
+        (False, False, False, False),
+        (False, True, False, True),
+        (True, False, True, True),
+    ],
+)
+def test_reservoir_rank_lookup_matches_dense_reference(eligible):
+    """Binary rank selection exactly replaces the former [C, R] mask."""
+    cumulative = np.cumsum(np.asarray(eligible, dtype=np.int32))  # [R]
+    ranks = np.arange(cumulative[-1] + 2, dtype=np.int32)  # [C]
+    expected = np.argmax(cumulative[None, :] > ranks[:, None], axis=1)  # [C]
+    actual = depth._select_reservoir_slots(
+        jnp.asarray(cumulative),
+        jnp.asarray(ranks),
+    )
+    np.testing.assert_array_equal(np.asarray(actual), expected)
+
+
 def test_thread_starts_partition_published_and_retained_stationary_seeds():
     """A start group spreads across published and retained recent seeds."""
     source = make_state(
@@ -711,6 +747,7 @@ def test_thread_starts_partition_published_and_retained_stationary_seeds():
     draw_schedule = schedule
 
     selected = []
+    published_counts = []
     for batch_idx in range(2):
         schedule, work = depth._plan_scheduled_work_batch(
             jax.random.fold_in(jax.random.PRNGKey(294), batch_idx),
@@ -719,10 +756,12 @@ def test_thread_starts_partition_published_and_retained_stationary_seeds():
             jnp.asarray(2, dtype=jnp.int32),
         )
         selected.extend(np.asarray(work.seed_idx).tolist())
+        published_counts.append(int(schedule.num_published_start_seeds))
         schedule = depth._release_thread_heads(schedule, work.valid)
 
     assert len(set(selected)) == 4
     assert set(selected) <= set(range(8))
+    assert published_counts == [sum(seed < 4 for seed in selected[:2]), 0]
 
     keys = jax.random.split(jax.random.PRNGKey(296), 256)
 
@@ -1144,6 +1183,7 @@ def test_evicted_recent_reservations_do_not_hide_unseen_stationary_seeds():
         seed_reservoir_valid=jnp.asarray([True, False]),
         start_seed_log_L_constraint=jnp.asarray(-jnp.inf),
         num_start_seeds=jnp.asarray(3, dtype=jnp.int32),
+        num_published_start_seeds=jnp.asarray(1, dtype=jnp.int32),
     )
 
     _, work = depth._plan_scheduled_work_batch(
@@ -1418,6 +1458,23 @@ def test_seed_publication_merges_generation_larger_than_thread_heap():
         tail_K=jnp.asarray(0, dtype=jnp.int32),
     )
     assert schedule.continuation_parent_idx.shape[0] == 10
+    reservation_idx = schedule.start_seed_reservation_idx
+    reservation_group = schedule.start_seed_reservation_group
+    for seed_idx in (1, 110):
+        reservation_idx, reservation_group = depth._insert_seed_reservation(
+            jnp.asarray(seed_idx, dtype=jnp.int32),
+            schedule.current_start_group,
+            reservation_idx,
+            reservation_group,
+        )
+    schedule = dataclasses.replace(
+        schedule,
+        start_seed_reservation_idx=reservation_idx,
+        start_seed_reservation_group=reservation_group,
+        start_seed_log_L_constraint=jnp.asarray(-jnp.inf),
+        num_start_seeds=jnp.asarray(2, dtype=jnp.int32),
+        num_published_start_seeds=jnp.asarray(1, dtype=jnp.int32),
+    )
 
     current = make_state(
         root_out_degree=127,
@@ -1444,6 +1501,7 @@ def test_seed_publication_merges_generation_larger_than_thread_heap():
         np.arange(127),
     )
     assert int(updated.source_num_samples) == 127
+    assert int(updated.num_published_start_seeds) == 2
     assert int(updated.seed_block_state.num_blocks) == 127
     np.testing.assert_array_equal(updated.start_block, schedule.start_block)
     np.testing.assert_array_equal(
@@ -2383,7 +2441,10 @@ def test_user_stages_gmm_directions_between_uncertainty_goals():
         + jax.scipy.special.erf(root_scale * centre)
     )
     log_Z = float(jnp.sum(jnp.log(integral)))
-    assert abs(float(completed.expected_log_Z_mean) - log_Z) < 0.5
+    # The staged direction change must preserve the evidence calculation at
+    # the precision claimed by the resumed state, not merely finish the run.
+    evidence_error = abs(float(completed.expected_log_Z_mean) - log_Z)
+    assert evidence_error < 3.0 * float(completed.expected_log_Z_uncert)
 
 
 def test_public_scientific_data_objects_are_frozen_and_slotted():

@@ -111,10 +111,6 @@ def main():
             depth_state,
             ns.sampler,
             ns.depth_condition,
-            shell_size=shell_size,
-            allocation_target=ns.allocation_target,
-            root_degree=root_degree,
-            delta_K=ns.delta_K,
             max_samples=ns.max_samples,
         )
         lower_s = time.perf_counter() - lower_start

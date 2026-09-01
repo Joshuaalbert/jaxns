@@ -223,6 +223,7 @@ class ThreadSchedule(PureDataclassPytree):
     current_start_group: IntArray  # [] retained same-contour group identity
     start_seed_log_L_constraint: FloatArray  # [] retained effective contour
     num_start_seeds: IntArray  # [] unique seeds used at retained contour
+    num_published_start_seeds: IntArray  # [] reserved seeds in frozen source
     parent_idx: IntArray  # [S]
     thread_id: IntArray  # [S]
     log_L_constraint: FloatArray  # [S]

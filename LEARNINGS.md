@@ -40,3 +40,8 @@ repeat mistakes specific to this project. Keep learnings compact.
   component mean likelihoods from those stored values, select by ellipsoid
   volume trimmed above the parent contour, and never fit or probe likelihoods
   inside a depth loop.
+- A bounded recent-sample reservoir is appropriate only while one frozen
+  thread schedule is active. Once that schedule drains, publish every newly
+  stationary classic into the exact seed source before projecting the same
+  allocation target. Reusing the older source reduced boundary time but made
+  three fixed-seed standard gates fail and raised Jones likelihood work by 73%.

@@ -319,6 +319,8 @@ def test_periodic_scalar_and_vmapped_chains_share_one_transition_law():
         expected = np.asarray(expected)
         actual = np.asarray(actual)
         if np.issubdtype(expected.dtype, np.inexact):
+            # The outer conditional may change likelihood reduction fusion;
+            # permit only ordinary roundoff, never a different random stream.
             tolerance = 32 * np.finfo(expected.dtype).eps
             np.testing.assert_allclose(
                 actual,
@@ -512,6 +514,82 @@ def test_slice_continuations_preserve_gmm_direction_law():
             )
         else:
             np.testing.assert_array_equal(actual, expected)
+
+
+@pytest.mark.parametrize(
+    ("num_slices", "width"),
+    [(32, 8), (8, 2)],
+)
+def test_disabled_retained_fit_matches_plain_isotropic_key_stream(
+        num_slices,
+        width,
+):
+    model = QuadraticModel(centre=jnp.asarray([0.45, 0.55]))
+    sampler = UniDimSliceSampler(
+        model=model,
+        num_slices=num_slices,
+        collect_phantom_samples=True,
+        max_phantom_samples=2,
+    )
+    data = empty_sampler_data(num_components=1, dimension=2)
+    data = dataclasses.replace(
+        data,
+        radii=jnp.asarray([[8.0, 1.0]]),
+        rotations=jnp.eye(2)[None],
+        log_volumes=jnp.zeros((1,)),
+        log_L_at_mean=jnp.ones((1,)),
+        valid=jnp.ones((1,), dtype=jnp.bool_),
+        enabled=jnp.asarray(False),
+        iso_prob=jnp.asarray(0.0),
+    )
+    plain_request = _request(width=width)
+    retained_request = dataclasses.replace(
+        plain_request,
+        sampler_data=data,
+    )
+
+    plain = sample_request(sampler, plain_request)
+    retained = sample_request(sampler, retained_request)
+
+    # Disabling a retained fit takes the exact plain-isotropic key stream. The
+    # diagnostics remain nonzero because the explicit state-owned direction
+    # mode is still active and can be re-enabled without fitting again.
+    np.testing.assert_array_equal(retained.U_samples, plain.U_samples)
+    np.testing.assert_array_equal(
+        retained.log_likelihoods,
+        plain.log_likelihoods,
+    )
+    np.testing.assert_array_equal(
+        retained.num_likelihood_evaluations,
+        plain.num_likelihood_evaluations,
+    )
+    for expected, actual in zip(
+        jax.tree.leaves(plain.phantom_samples),
+        jax.tree.leaves(retained.phantom_samples),
+        strict=True,
+    ):
+        expected = np.asarray(expected)
+        actual = np.asarray(actual)
+        if np.issubdtype(expected.dtype, np.inexact):
+            # The outer conditional may change likelihood reduction fusion;
+            # permit only ordinary roundoff, never a different random stream.
+            tolerance = 32 * np.finfo(expected.dtype).eps
+            np.testing.assert_allclose(
+                actual,
+                expected,
+                rtol=tolerance,
+                atol=tolerance,
+            )
+        else:
+            np.testing.assert_array_equal(actual, expected)
+    np.testing.assert_array_equal(
+        retained.num_directions,
+        jnp.full((width,), num_slices),
+    )
+    np.testing.assert_array_equal(
+        retained.num_isotropic,
+        retained.num_directions,
+    )
 
 
 def test_slice_continuations_do_not_execute_scheduler_padding():

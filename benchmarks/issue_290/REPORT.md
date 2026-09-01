@@ -70,10 +70,11 @@ the unfinished distinct-seed group rather than total sample capacity.
 
 ### Publication and growth
 
-A seed source becomes publishable after the larger of four reservoir windows
-and 25% growth of the published population. Successive population-sized index
-builds are therefore geometric, so their cumulative input size is linear in
-the final population apart from sorting factors.
+While one schedule is active, its seed source becomes publishable after the
+larger of four reservoir windows and 25% growth of the published population.
+Successive population-sized index builds within that schedule are therefore
+geometric. Once a projected schedule drains, all newly stationary classic
+samples are published before its exposed gaps are filled.
 
 Publication bulk-merges every accepted identity into the persistent likelihood
 order. The fixed merge bound is
@@ -102,36 +103,63 @@ is reported. Lowering and compilation are separate from warm device execution.
 All final measurements below use JAX 0.11.1, x64, float64 measure arrays, and
 the CPU backend.
 
-At 53,034 entry samples:
+At 53,034 entry samples, rerun from the final candidate source:
 
 | path | lower (s) | compile (s) | warm median [range] (s) | HLO bytes | argument bytes | output bytes | temporary bytes |
 |:---|---:|---:|---:|---:|---:|---:|---:|
-| `develop` repeated depth | 0.660 | 1.290 | 35.738 | 253,212 | 2,584,113 | 2,584,274 | 10,346,504 |
-| candidate planning | 0.274 | 0.790 | 0.064 [0.060, 0.083] | 84,860 | 2,584,122 | 16,079,927 | 2,585,032 |
-| candidate repeated depth | 0.732 | 2.087 | 0.228 [0.203, 0.237] | 384,245 | 16,079,310 | 16,079,927 | 91,672 |
-| candidate planning + depth | -- | -- | 0.291 [0.264, 0.320] | -- | -- | -- | -- |
+| `develop` repeated depth | 0.530 | 0.928 | 20.980 | 253,212 | 2,584,113 | 2,584,274 | 10,346,504 |
+| candidate planning | 0.224 | 0.522 | 0.048 [0.043, 0.050] | 85,031 | 2,584,122 | 16,079,943 | 2,585,032 |
+| candidate repeated depth | 0.624 | 1.515 | 0.161 [0.157, 0.165] | 387,341 | 16,079,318 | 16,079,943 | 91,680 |
+| candidate planning + depth | -- | -- | 0.202 [0.197, 0.214] | -- | -- | -- | -- |
 
-The candidate repeated depth is 156.7 times faster than `develop`; including
-its once-per-round planning cost it is 122.7 times faster. Repeated-depth
-temporary memory falls 99.1%. The explicit frozen schedule raises total
-argument, output, and temporary executable bytes from 15.5 MB to 32.3 MB at
-this population, and candidate planning plus depth compilation totals 2.88 s
-versus 1.29 s for `develop`. These costs are stated explicitly: compilation is
-paid at a physical shape boundary, while the eliminated coordination recurred
-for every replacement batch.
+The candidate repeated depth is 130.5 times faster than `develop`; including
+its once-per-round planning cost it is 103.9 times faster. Repeated-depth
+temporary memory falls 99.1%. The explicit frozen schedule does increase
+compiled argument and output buffers, and planning plus depth compilation
+totals 2.04 s versus 0.93 s for `develop`. Compilation is paid at a physical
+shape boundary, while the eliminated coordination recurred for every
+replacement batch.
 
 Candidate scaling is:
 
 | entry samples | repeated depth median [range] (s) | planning median [range] (s) | end-to-end median [range] (s) | repeated temporary bytes | planning output bytes |
 |---:|---:|---:|---:|---:|---:|
-| 53,034 | 0.228 [0.203, 0.237] | 0.064 [0.060, 0.083] | 0.291 [0.264, 0.320] | 91,672 | 16,079,927 |
-| 424,272 | 0.257 [0.252, 0.269] | 0.511 [0.497, 0.542] | 0.768 [0.753, 0.797] | 91,672 | 131,809,739 |
+| 53,034 | 0.161 [0.157, 0.165] | 0.048 [0.043, 0.050] | 0.202 [0.197, 0.214] | 91,680 | 16,079,943 |
+| 424,272 | 0.212 [0.205, 0.230] | 0.438 [0.405, 0.468] | 0.647 [0.601, 0.699] | 91,680 | 131,809,755 |
 
-An 8.00-times larger population costs 1.13 times more in the repeated depth
-path, 7.94 times more in once-per-round planning, and 2.64 times more end to
-end. Population work is now isolated at the geometric planning/publication
-boundaries and has the intended approximately linear relationship; it is not
-multiplied by every replacement batch.
+An 8.00-times larger population costs 1.32 times more in the repeated depth
+path, 9.21 times more in once-per-round planning, and 3.21 times more end to
+end. Population work is now isolated at planning and active-schedule geometric
+publication boundaries; it is not multiplied by every replacement batch.
+
+Reservoir selection also no longer materialises one proposal-by-reservoir
+boolean matrix for every sequential sampler lane. `run_seed_selection.py`
+compares the exact dense reference with a cumulative-count rank lookup. It
+alternates execution order, warms twice, synchronizes every call, and uses the
+same JAX 0.11.1 CPU/x64/float64 environment:
+
+| proposal width | reservoir size | dense median [range] (s) | compact median [range] (s) | speedup | dense HLO bytes | compact HLO bytes | dense temporary bytes | compact temporary bytes |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 64 | 300 | 0.000473 [0.000367, 0.000534] | 0.000229 [0.000203, 0.000287] | 2.06x | 2,184 | 5,129 | 5,136 | 81,992 |
+| 64 | 3,000 | 0.003184 [0.002757, 0.003691] | 0.000371 [0.000296, 0.000438] | 8.59x | 2,198 | 5,144 | 5,136 | 81,992 |
+
+The compact lookup intentionally trades 76.9 KB of extra compiled temporary
+memory and about 3 KB of HLO text for time that no longer grows with the dense
+proposal-by-reservoir product. Parameterized tests compare every selected slot
+with the former dense reference for empty, sparse, dense, and out-of-range
+ranks.
+
+Finally, the compiled depth loop accepts only values it consumes at device
+runtime. `run_depth_specialisation.py` compares it with an exact legacy wrapper
+that also marks shell size, allocation target, root degree, and allocation
+increment static even though they do not occur in the lowered computation.
+For same-shape schedule values, the current cache stays at one executable and
+its second call takes 0.0010 s. Changing only those unused legacy policy values
+grows the legacy cache from one to two and takes 1.722 s for the second
+compilation. Current and legacy HLO text are effectively identical (383,025
+and 383,036 bytes), confirming that the removed specialization was compile
+cache churn rather than runtime work. This measurement also uses JAX 0.11.1,
+CPU, x64, and float64 measure arrays.
 
 The compact reservation set was selected against the earlier exact
 sample-capacity mask. At 53,034 and 424,272 samples it reduced repeated depth
@@ -158,23 +186,39 @@ reduction precision.
 
 The standard-problem file and its tolerances are byte-for-byte identical to
 `develop`. All 22 cases pass after the final direction-state refactor, covering
-eleven problems with phantom collection both disabled and enabled; the
-synchronized local run took 335.94 s. The focused core, sampler, state, and
-distributed-runtime set passes 111 tests in 394.51 s. A separate staged GMM CI
-test runs isotropically to expected log-evidence uncertainty 0.2, proves that
-the explicit fit does not call the user likelihood, and resumes the same state
-with fitted directions to 0.1. Its isolated cold run passes in 83.17 s with a
-1.52 GB maximum resident set.
-The complete distributed-core module adds 18 passing asynchronous scheduling
-and drained-state direction-boundary tests in 22.17 s.
+eleven problems with phantom collection both disabled and enabled; the final
+synchronized local run took 352.23 s. The focused core, sampler, state, and
+distributed-runtime set passes 132 tests in 397.15 s.
 
-The final refactor was also rerun through the scheduler microbenchmark with
-four repetitions. At 53,034 entry samples, repeated depth takes 0.154 s and
-planning plus depth takes 0.198 s. At 424,272 entry samples, repeated depth
-takes 0.192 s and planning plus depth takes 0.596 s. Repeated-depth temporary
-memory remains 91,672 bytes at both sizes. These shorter smoke runs are not
-substituted for the six-measurement tables above; they demonstrate that the
-later state-owned GMM API did not regress the scheduler hot path.
+A separate staged GMM CI test runs isotropically to expected log-evidence
+uncertainty 0.2, proves that the explicit fit does not call the user likelihood,
+and resumes the same state with fitted directions to 0.1. It requires the final
+evidence error to be less than three times the uncertainty claimed by that
+resumed state. It is deliberately outside the unchanged standard suite.
+
+The unchanged basic standard problem was also run with the same 30 integer
+seeds on exact `develop` and candidate sources. Each result used 1,000 classic
+Monte Carlo evidence draws. Standard errors quantify the finite-seed bias and
+RMSE measurements:
+
+| implementation | bias +/- SE | RMSE +/- SE | SD of error / MC uncertainty | mean classic samples | mean likelihood evaluations | cold core (s) | warm core median (s) |
+|:---|---:|---:|---:|---:|---:|---:|---:|
+| `develop` | -0.00273 +/- 0.00722 | 0.03900 +/- 0.00537 | 0.924 | 248.4 | 5,081.0 | 3.043 | 0.0181 |
+| candidate | -0.00209 +/- 0.00723 | 0.03900 +/- 0.00525 | 0.933 | 197.6 | 3,295.1 | 5.252 | 0.0171 |
+
+Accuracy and calibration are statistically indistinguishable. The candidate
+uses 35.1% fewer likelihood evaluations and 20.5% fewer classic samples. Its
+first compile is 73% slower, while its median warm core execution is 5.9%
+faster. A few candidate seeds cross a new physical capacity and compile that
+shape; those events appear in its warm range but do not alter the scientific
+record or median steady execution.
+
+Distributed completion order was tested separately. FIFO and reversed
+completion orders submit identical requests and produce exactly equal leaves
+in the trimmed scientific state. This establishes arrival-order invariance;
+it does not claim bitwise equivalence between local batched and distributed
+scalar execution, whose random-key topologies differ while targeting the same
+transition law.
 
 ### Explicit direction staging
 
@@ -205,6 +249,21 @@ likelihood values fit the value at each component mean; a component is eligible
 only above the requested contour. Its selection weight is its fitted ellipsoid
 volume trimmed to that contour. It does not use an empirical assigned-sample
 maximum, a sample-enclosing hull, or new likelihood evaluations.
+
+When a state retains a fit but `iso_directions()` disables it, one shared JAX
+conditional selects the true isotropic runtime branch outside the chain vmap.
+The disabled branch is key-stream identical to a state with no fit. The cost
+of retaining the alternate compiled branch is visible in the controlled
+benchmark below (two warmups and 12 alternated measurements):
+
+| path | plain runtime (ms) | retained-disabled runtime (ms) | runtime ratio | plain HLO bytes | retained HLO bytes |
+|:---|---:|---:|---:|---:|---:|
+| continuation initializer, 8 chains x 32 slices | 0.446 | 0.497 | 1.11x | 706,154 | 1,513,111 |
+| complete reference, 2 chains x 8 slices | 0.097 | 0.129 | 1.33x | 1,201,842 | 2,994,361 |
+
+New states with no fit retain the smaller pure-isotropic executable. Keeping a
+fit while toggled off therefore avoids GMM device work, but intentionally pays
+compile size for both user-selectable branches.
 
 ### Correlated-Gaussian canary
 
@@ -250,6 +309,12 @@ conclusions are narrower:
   with lane contour order. The randomized systematic lattice improved the
   30-seed Jones RMSE from 0.243 to 0.200 while using 1% fewer likelihood
   evaluations in the paired control.
+- Preserving the old seed index after a frozen schedule drained made its next
+  projected boundary about 1.5 times faster, but failed three of 22 unchanged
+  fixed-seed standard cases. On Jones it shifted the evidence outside the
+  allowed error and increased likelihood work from 154,494 to 266,910. The
+  retained design instead publishes all newly stationary classic clusters at
+  that scientific boundary.
 - Replacing vectorized independent work with scalar `lax.map` avoids peak
   materialisation but makes cheap scientific references scale with every
   scalar dispatch. Explicit bounded batching remains available when memory,

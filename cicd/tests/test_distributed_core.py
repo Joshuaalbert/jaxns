@@ -159,6 +159,108 @@ def test_distributed_initialisation_dispatches_every_likelihood():
     ))
 
 
+def test_distributed_completion_order_preserves_scientific_state():
+    """Worker latency cannot choose a different committed race."""
+    model = make_toy_model()
+    sampler = UniDimSliceSampler(model=model, num_slices=2)
+    runner = DistributedNestedSampler(
+        model=model,
+        coordinator_port=5555,
+        root_allocation_degree=2,
+        delta_K=2,
+        max_samples=8,
+        initial_capacity=8,
+        sampler=sampler,
+    )
+
+    class ArrivalOrderClient:
+        def __init__(self, reverse):
+            self.reverse = reverse
+            self.results = []
+            self.submitted = []
+            self.completion_order = []
+
+        def capacity(self, session_id, timeout_s):
+            del session_id, timeout_s
+            return 2
+
+        def submit_many(self, session_id, tasks):
+            del session_id
+            self.submitted.extend(tasks)
+            self.results.extend(
+                (task_id, sample_request(sampler, request))
+                for task_id, request in tasks
+            )
+
+        def receive_group(self, session_id, timeout_s):
+            del session_id, timeout_s
+            # Each result models one scalar worker completion group. Selecting
+            # opposite task-ID extremes creates the same work with different
+            # observable arrival latency.
+            select = max if self.reverse else min
+            result_idx = select(
+                range(len(self.results)),
+                key=lambda idx: self.results[idx][0],
+            )
+            result = self.results.pop(result_idx)
+            self.completion_order.append(result[0])
+            return (result,)
+
+        def acknowledge(self, session_id, task_id):
+            del session_id, task_id
+
+    def goal(state):
+        return int(state.goal_loop_iter) >= 1
+
+    def run(reverse):
+        client = ArrivalOrderClient(reverse)
+        completed = runner._run_connected(
+            client,
+            _local_checkpoint(runner, jax.random.PRNGKey(294)),
+            goal,
+            DepthCondition(),
+            checkpoint_manager=None,
+        )
+        return completed.state.trim(), client
+
+    fifo_state, fifo_client = run(reverse=False)
+    reversed_state, reversed_client = run(reverse=True)
+
+    assert fifo_client.completion_order[:2] == [0, 1]
+    assert reversed_client.completion_order[:2] == [1, 0]
+    assert fifo_client.completion_order != reversed_client.completion_order
+
+    # Both executions must have planned the same requests before their
+    # completion latency can be treated as the only independent variable.
+    assert [task_id for task_id, _ in fifo_client.submitted] == [
+        task_id for task_id, _ in reversed_client.submitted
+    ]
+    for (_, fifo_request), (_, reversed_request) in zip(
+        fifo_client.submitted,
+        reversed_client.submitted,
+        strict=True,
+    ):
+        assert jax.tree.structure(fifo_request) == jax.tree.structure(
+            reversed_request
+        )
+        for fifo_leaf, reversed_leaf in zip(
+            jax.tree.leaves(fifo_request),
+            jax.tree.leaves(reversed_request),
+            strict=True,
+        ):
+            np.testing.assert_array_equal(reversed_leaf, fifo_leaf)
+
+    assert jax.tree.structure(fifo_state) == jax.tree.structure(
+        reversed_state
+    )
+    for fifo_leaf, reversed_leaf in zip(
+        jax.tree.leaves(fifo_state),
+        jax.tree.leaves(reversed_state),
+        strict=True,
+    ):
+        np.testing.assert_array_equal(reversed_leaf, fifo_leaf)
+
+
 def test_worker_starvation_waits_until_results_or_capacity_recover():
     class ResultClient:
         def __init__(self):
@@ -721,6 +823,10 @@ def test_distributed_start_seed_storage_grows_without_losing_reservations():
             start_seed_reservation_group=reservation_group,
             num_start_seeds=jnp.asarray(
                 reservation_count,
+                dtype=jnp.int32,
+            ),
+            num_published_start_seeds=jnp.asarray(
+                min(reservation_count, 2),
                 dtype=jnp.int32,
             ),
         )

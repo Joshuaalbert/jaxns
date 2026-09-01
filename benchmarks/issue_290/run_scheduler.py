@@ -4,11 +4,19 @@ import json
 import statistics
 import sys
 import time
+from pathlib import Path
 
 import jax
 import jax.numpy as jnp
 
 import jaxns
+
+# Select benchmark fixtures from the same checkout as the implementation.
+# A comparison may execute this candidate script with develop on PYTHONPATH;
+# mixing candidate-only fixtures into that process would invalidate the run.
+IMPLEMENTATION_ROOT = Path(jaxns.__file__).resolve().parents[2]
+sys.path.insert(0, str(IMPLEMENTATION_ROOT))
+
 from cicd.tests.distributed_support import make_toy_model
 from cicd.tests.test_core import DeterministicSampler
 from jaxns.algorithm.depth import _run_depth
@@ -17,16 +25,14 @@ from jaxns.mixed_precision import mp_policy
 from jaxns.samples import PhantomSamples, Samples
 from jaxns.state import State
 
-if sys.argv[1] == "develop":
-    from jaxns.termination_condition import TerminationCondition
-else:
-    from jaxns.algorithm.depth import (
-        _start_schedule_round,
-    )
-    from jaxns.depth_condition import DepthCondition
 
-
-def make_state(size: int, width: int, batches: int) -> State:
+def make_state(
+        size: int,
+        width: int,
+        batches: int,
+        *,
+        include_allocation_iteration: bool,
+) -> State:
     """Construct a deterministic valid race with a long lineage population."""
     capacity = size + batches * width
     likelihood = jnp.arange(capacity, dtype=mp_policy.measure_dtype)  # [A]
@@ -59,7 +65,7 @@ def make_state(size: int, width: int, batches: int) -> State:
         sample_indices=jnp.where(sample_idx < size, sample_idx, -1),
     )
     state_fields = {}
-    if sys.argv[1] != "develop":
+    if include_allocation_iteration:
         state_fields["allocation_loop_iter"] = jnp.asarray(
             1,
             mp_policy.count_dtype,
@@ -90,7 +96,12 @@ def main() -> None:
     if repetitions < 3:
         raise ValueError("At least two warmups and one measurement are required.")
     width = 80
-    initial_state = make_state(size, width, batches)
+    initial_state = make_state(
+        size,
+        width,
+        batches,
+        include_allocation_iteration=implementation != "develop",
+    )
     state = initial_state
     sampler = DeterministicSampler()
     planning_lowered = None
@@ -98,12 +109,17 @@ def main() -> None:
     planning_lower_seconds = 0.0
     planning_compile_seconds = 0.0
     if implementation == "develop":
+        from jaxns.termination_condition import TerminationCondition
+
         condition = TerminationCondition()
         # Develop defines its first uniform target as root_degree + delta_K.
         # Match the candidate's first direct gap of one root-sized increment
         # so both executables accept the same ten full-width batches.
         delta_K = width
     else:
+        from jaxns.algorithm.depth import _start_schedule_round
+        from jaxns.depth_condition import DepthCondition
+
         condition = DepthCondition()
         delta_K = 1
         # Production materialises the compact schedule at the Python planning
@@ -127,16 +143,24 @@ def main() -> None:
         jax.block_until_ready(state)
 
     started = time.perf_counter()
-    lowered = _run_depth.lower(
-        state,
-        sampler,
-        condition,
-        shell_size=width,
-        allocation_target="uniform",
-        root_degree=width,
-        delta_K=delta_K,
-        max_samples=size + batches * width,
-    )
+    if implementation == "develop":
+        lowered = _run_depth.lower(
+            state,
+            sampler,
+            condition,
+            shell_size=width,
+            allocation_target="uniform",
+            root_degree=width,
+            delta_K=delta_K,
+            max_samples=size + batches * width,
+        )
+    else:
+        lowered = _run_depth.lower(
+            state,
+            sampler,
+            condition,
+            max_samples=size + batches * width,
+        )
     lower_seconds = time.perf_counter() - started
     print(f"lowered in {lower_seconds:.3f} s", file=sys.stderr, flush=True)
     started = time.perf_counter()

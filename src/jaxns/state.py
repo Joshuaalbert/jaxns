@@ -533,11 +533,11 @@ def _expected_evidence_scalars(
 @partial(jax.jit, inline=True)
 def _total_likelihood_evaluations(self: State) -> IntArray:
     """Sum logical work without materialising a complete Results object."""
-    sample_slots = jnp.arange(
+    sample_slots = jnp.arange(  # [N]
         self.samples.num_likelihood_evaluations.shape[0],
         dtype=mp_policy.index_dtype,
     )
-    valid = sample_slots < self.num_samples
+    valid = sample_slots < self.num_samples  # [N]
     return jnp.sum(
         jnp.where(
             valid,
