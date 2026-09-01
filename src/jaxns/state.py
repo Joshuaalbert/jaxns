@@ -124,6 +124,33 @@ class State(PureDataclassPytree):
         """
         return _evaluate_evidence(self)
 
+    @property
+    def expected_log_Z_mean(self) -> FloatArray:
+        """Return the deterministic block-moment estimate of ``E[log Z]``.
+
+        This goal-loop view uses only the immutable race-tree fields already
+        maintained by the core. It intentionally avoids constructing the
+        transformed samples and posterior arrays owned by :meth:`to_result`.
+        """
+        mean, _ = _expected_evidence_scalars(self)
+        return mean
+
+    @property
+    def expected_log_Z_uncert(self) -> FloatArray:
+        """Return the deterministic block-moment uncertainty approximation.
+
+        The final user-facing uncertainty may instead be sampled with
+        :meth:`sample_evidence_mc`; this scalar exists for inexpensive Python
+        goal conditions between compiled depth epochs.
+        """
+        _, uncertainty = _expected_evidence_scalars(self)
+        return uncertainty
+
+    @property
+    def total_num_likelihood_evaluations(self) -> IntArray:
+        """Return the logical likelihood work from valid classic rows only."""
+        return _total_likelihood_evaluations(self)
+
     def sample_logZ(self, key, num_samples: int) -> FloatArray:
         """
         Samples log-evidence from the current state.
@@ -273,6 +300,40 @@ def _validate_evidence_block_capacity(self: State) -> None:
         validate=True,
     )
     validate_lineage_capacity(block_state)
+
+
+@partial(jax.jit, inline=True)
+def _expected_evidence_scalars(
+        self: State,
+) -> tuple[FloatArray, FloatArray]:
+    """Reduce a trusted immutable core state to its two goal-loop scalars."""
+    block_state = build_block_state(
+        self.samples,
+        root_out_degree=self.root_out_degree,
+        num_samples=self.num_samples,
+        likelihood_order=self.likelihood_order,
+    )
+    concentrations = classic_dirichlet_concentrations(block_state)
+    summary = expected_evidence_summary(block_state, concentrations)
+    return summary.log_Z_mean, summary.log_Z_uncert
+
+
+@partial(jax.jit, inline=True)
+def _total_likelihood_evaluations(self: State) -> IntArray:
+    """Sum logical work without materialising a complete Results object."""
+    sample_slots = jnp.arange(
+        self.samples.num_likelihood_evaluations.shape[0],
+        dtype=mp_policy.index_dtype,
+    )
+    valid = sample_slots < self.num_samples
+    return jnp.sum(
+        jnp.where(
+            valid,
+            self.samples.num_likelihood_evaluations,
+            jnp.asarray(0, mp_policy.count_dtype),
+        ),
+        dtype=mp_policy.count_dtype,
+    )
 
 
 @partial(jax.jit, inline=True)

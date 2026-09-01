@@ -84,6 +84,21 @@ def test_to_result_marks_no_phantoms_invalid():
     state = NestedSampler(model=model).run()
     results = state.to_result().trim()
 
+    # Python goal conditions need the same classic block moments and work
+    # count without constructing every transformed, posterior-weighted result
+    # array at each outer boundary.
+    np.testing.assert_allclose(
+        np.asarray(state.expected_log_Z_mean),
+        np.asarray(results.expected_log_Z_mean),
+    )
+    np.testing.assert_allclose(
+        np.asarray(state.expected_log_Z_uncert),
+        np.asarray(results.expected_log_Z_uncert),
+    )
+    assert int(state.total_num_likelihood_evaluations) == int(
+        results.total_num_likelihood_evaluations
+    )
+
     assert results.log_L_phantom.shape[1] == 0
     assert int(results.total_phantom_samples) == 0
     assert not np.any(np.asarray(results.valid_phantom))
