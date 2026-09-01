@@ -18,9 +18,9 @@ from jaxctx import CtxParams
 
 from jaxns.algorithm.depth import (
     MAX_SAMPLES_REACHED,
-    SEED_SOURCE_REFRESH_WINDOWS,
     CoreWorkBatch,
     _accept_work_batch,
+    _continuation_capacity,
     _continue_schedule_round,
     _depth_condition_reached,
     _insert_thread_head,
@@ -28,6 +28,7 @@ from jaxns.algorithm.depth import (
     _prepare_sampler_data,
     _refresh_likelihood_order,
     _release_thread_heads,
+    _resize_depth_state,
     _seed_source_refresh_due,
     _start_schedule_round,
     _update_seed_reservoir,
@@ -166,6 +167,7 @@ class AcceptedTask(NamedTuple):
 class DepthStatus(NamedTuple):
     has_work: BoolArray  # []
     needs_growth: BoolArray  # []
+    source_refresh_due: BoolArray  # []
     schedule_drained: BoolArray  # []
     termination_reason: IntArray  # []
 
@@ -494,15 +496,20 @@ def _depth_status(
         & jnp.logical_not(terminal)
     )
     can_dispatch = has_work & jnp.logical_not(physical_full)
+    source_refresh_ready = (
+        seed_source_refresh_due
+        & jnp.logical_not(terminal | needs_growth)
+        & (reservations.num_reserved == 0)
+    )
     schedule_drained = (
-        jnp.logical_not(
-            terminal | needs_growth | can_dispatch
-        )
+        jnp.logical_not(has_schedule_work)
+        & jnp.logical_not(terminal | needs_growth)
         & (reservations.num_reserved == 0)
     )
     return DepthStatus(
         has_work=can_dispatch,
         needs_growth=needs_growth,
+        source_refresh_due=source_refresh_ready,
         schedule_drained=schedule_drained,
         termination_reason=termination_reason,
     )
@@ -1317,6 +1324,30 @@ class DistributedNestedSampler:
                     ),
                     depth_active=False,
                 )
+            if bool(status.source_refresh_due):
+                # Publish only after every dispatched edge is committed, then
+                # project the unchanged target before dispatch resumes. Worker
+                # timing therefore cannot turn a generation into a goal edge.
+                state = _refresh_likelihood_order(distributed.state)
+                previous = state.scheduler_data
+                planning_width = previous.valid.shape[0]
+                state, _, _ = _continue_schedule_round(
+                    state,
+                    previous,
+                    depth_cond,
+                    shell_size=planning_width,
+                )
+                distributed = dataclasses.replace(
+                    distributed,
+                    state=dataclasses.replace(
+                        state,
+                        depth_reached=jnp.asarray(
+                            False,
+                            mp_policy.bool_dtype,
+                        ),
+                    ),
+                )
+                continue
             if bool(status.schedule_drained):
                 state = _refresh_likelihood_order(distributed.state)
                 reached_expected_depth = bool(_depth_condition_reached(
@@ -1466,8 +1497,9 @@ class DistributedNestedSampler:
                 planning_width,
                 schedule.seed_reservoir_idx.shape[0],
             )
-            continuation_size = (
-                (SEED_SOURCE_REFRESH_WINDOWS + 1) * reservoir_size
+            continuation_size = _continuation_capacity(
+                distributed.state.samples.log_likelihoods.shape[0],
+                reservoir_size,
             )
             distributed = dataclasses.replace(
                 distributed,
@@ -1659,7 +1691,7 @@ class DistributedNestedSampler:
         return dataclasses.replace(
             distributed,
             state=dataclasses.replace(
-                distributed.state.resize(new_capacity),
+                _resize_depth_state(distributed.state, new_capacity),
                 needs_growth=jnp.asarray(False, mp_policy.bool_dtype),
                 depth_reached=jnp.asarray(False, mp_policy.bool_dtype),
             ),

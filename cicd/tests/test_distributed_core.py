@@ -647,8 +647,10 @@ def test_distributed_seed_refresh_waits_for_no_pending_tasks():
         max_samples=None,
     )
 
-    assert bool(drained.schedule_drained)
+    assert bool(drained.source_refresh_due)
+    assert not bool(drained.schedule_drained)
     assert not bool(drained.has_work)
+    assert not bool(pending.source_refresh_due)
     assert not bool(pending.schedule_drained)
 
 

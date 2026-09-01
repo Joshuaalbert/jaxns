@@ -20,7 +20,10 @@ from jaxns.state import State
 if sys.argv[1] == "develop":
     from jaxns.termination_condition import TerminationCondition
 else:
-    from jaxns.algorithm.depth import _continue_schedule_round
+    from jaxns.algorithm.depth import (
+        _continue_schedule_round,
+        _seed_source_refresh_due,
+    )
     from jaxns.depth_condition import DepthCondition
 
 
@@ -135,7 +138,11 @@ def main() -> None:
             schedule_calls += 1
             if int(current.termination_reason) != 0:
                 break
-            if bool(current.depth_reached):
+            source_refresh_due = bool(_seed_source_refresh_due(
+                current,
+                current.scheduler_data,
+            ))
+            if bool(current.depth_reached) or source_refresh_due:
                 current, schedule, _ = _continue_schedule_round(
                     current,
                     current.scheduler_data,

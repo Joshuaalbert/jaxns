@@ -15,7 +15,9 @@ from jaxns.algorithm.depth import (
     MAX_SAMPLES_REACHED,
     _continue_schedule_round,
     _depth_condition_reached,
+    _resize_depth_state,
     _run_depth,
+    _seed_source_refresh_due,
 )
 from jaxns.algorithm.initialisation import _sample_init_state
 from jaxns.checkpoint import (
@@ -38,6 +40,28 @@ from jaxns.types import PRNGKey
 # keeping both policies singular lets benchmark evidence revise either one.
 SAMPLES_PER_ROOT = 1000
 INITIAL_BATCHES = 64
+
+
+def _project_published_generation(
+        state: State,
+        depth_cond: DepthCondition,
+        shell_size: int,
+) -> State:
+    """Project one published contour refinement onto its frozen target."""
+    previous = state.scheduler_data
+    state, schedule, _ = _continue_schedule_round(
+        state,
+        previous,
+        depth_cond,
+        shell_size=shell_size,
+    )
+    return dataclasses.replace(
+        state,
+        depth_reached=jnp.asarray(
+            not bool(schedule.active),
+            mp_policy.bool_dtype,
+        ),
+    )
 
 
 @dataclasses.dataclass(slots=True)
@@ -483,13 +507,30 @@ class NestedSampler(PureDataclassPytree):
                 # only the transient request prevents this implementation
                 # boundary from becoming a logical goal iteration.
                 state = dataclasses.replace(
-                    state.resize(new_capacity),
+                    _resize_depth_state(state, new_capacity),
                     needs_growth=jnp.asarray(False, mp_policy.bool_dtype),
                     depth_reached=jnp.asarray(False, mp_policy.bool_dtype),
                 )
                 continue
             if int(state.termination_reason) != 0:
                 break
+            if (
+                state.scheduler_data is not None
+                and bool(_seed_source_refresh_due(
+                    state,
+                    state.scheduler_data,
+                ))
+            ):
+                # Publication changes only the contour grid. Project the same
+                # absolute target before the scientific depth or user goal can
+                # observe this internal coordination boundary.
+                state = _project_published_generation(
+                    state,
+                    depth_cond,
+                    int(self.shell_size),
+                )
+                if not bool(state.depth_reached):
+                    continue
             if bool(state.depth_reached):
                 reached_expected_depth = bool(_depth_condition_reached(
                     state,
@@ -660,6 +701,22 @@ class NestedSampler(PureDataclassPytree):
             )
             if bool(state.needs_growth) or int(state.termination_reason) != 0:
                 return state
+            if (
+                state.scheduler_data is not None
+                and bool(_seed_source_refresh_due(
+                    state,
+                    state.scheduler_data,
+                ))
+            ):
+                # A generation publication refines the planning grid; it does
+                # not complete this caller's requested allocation iteration.
+                state = _project_published_generation(
+                    state,
+                    depth_cond,
+                    int(self.shell_size),
+                )
+                if not bool(state.depth_reached):
+                    continue
             if not bool(state.depth_reached):
                 raise RuntimeError(
                     "Compiled planning round returned without termination, "

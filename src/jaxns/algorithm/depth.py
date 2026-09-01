@@ -41,12 +41,12 @@ from jaxns.types import BoolArray, FloatArray, IntArray, PRNGKey
 # This reason is shared by local and distributed depth execution so both
 # runners expose the same resumable storage-boundary contract.
 MAX_SAMPLES_REACHED = 1
-# A bounded seed population is refreshed before rejection through a long
-# frozen schedule dominates coordination. Thirty-two reservoir-width windows
-# amortise the population rebuild while bounding work independently of
-# schedule length. A window can be wider than a replacement batch when the
-# root population determines the reservoir size.
-SEED_SOURCE_REFRESH_WINDOWS = 32
+# A window can be wider than a replacement batch when the root population
+# determines the reservoir size. Four windows is the smallest empirically
+# tested maturity that passes the Jones and spike--slab stationarity gates.
+# Later generations also grow by at least 25% in `_seed_source_refresh_due`,
+# so publishing the global race view does not accumulate quadratic work.
+SEED_SOURCE_REFRESH_WINDOWS = 4
 
 
 @dataclasses.dataclass(slots=True, frozen=True)
@@ -315,6 +315,21 @@ def _decompose_gap(gap: IntArray) -> tuple[
     return run_start, run_terminal, run_count, num_runs
 
 
+def _continuation_capacity(
+        sample_capacity: int,
+        reservoir_size: int,
+) -> int:
+    """Bound one geometric generation plus its in-flight window."""
+    capacity_growth = (sample_capacity + 3) // 4
+    return (
+        max(
+            capacity_growth,
+            SEED_SOURCE_REFRESH_WINDOWS * reservoir_size,
+        )
+        + reservoir_size
+    )
+
+
 def _new_thread_schedule(
         state: State,
         block_state: BlockState,
@@ -327,12 +342,13 @@ def _new_thread_schedule(
     """Freeze one gap curve and its compressed maximal-thread starts."""
     if seed_reservoir_size is None:
         seed_reservoir_size = shell_size
-    # The source boundary is checked before each batch, so up to one complete
-    # planning window can already be in flight when the accepted-row cadence
-    # is crossed. This fixed queue therefore covers the cadence plus one
-    # reservoir-width window without depending on the number of threads.
-    continuation_size = (
-        (SEED_SOURCE_REFRESH_WINDOWS + 1) * seed_reservoir_size
+    # One additional planning window may be in flight when the generation
+    # boundary is observed. The frozen source never exceeds storage capacity,
+    # so this static bound remains sufficient across transparent growth while
+    # carrying only the quarter-capacity needed by the publication rule.
+    continuation_size = _continuation_capacity(
+        state.samples.log_likelihoods.shape[0],
+        seed_reservoir_size,
     )
     gap = jnp.where(
         relevant,
@@ -492,6 +508,25 @@ def _new_thread_schedule(
     )
 
 
+def _resize_depth_state(state: State, sample_capacity: int) -> State:
+    """Grow all depth carry shapes once at a physical capacity boundary."""
+    resized = state.resize(sample_capacity)
+    schedule = resized.scheduler_data
+    if schedule is None:
+        return resized
+    continuation_size = _continuation_capacity(
+        sample_capacity,
+        schedule.seed_reservoir_idx.shape[0],
+    )
+    return dataclasses.replace(
+        resized,
+        scheduler_data=schedule.resize_threads(
+            schedule.valid.shape[0],
+            continuation_size=continuation_size,
+        ),
+    )
+
+
 def _seed_count_at_constraint(
         schedule: ThreadSchedule,
         log_L_constraint: FloatArray,
@@ -621,14 +656,27 @@ def _seed_source_refresh_due(
         state: State,
         schedule: ThreadSchedule,
 ) -> BoolArray:
-    """Return whether this schedule should publish a new frozen seed source."""
-    refresh_rows = (
+    """Return whether the next geometric seed generation should be frozen."""
+    minimum_rows = jnp.asarray(
         SEED_SOURCE_REFRESH_WINDOWS
-        * schedule.seed_reservoir_idx.shape[0]
+        * schedule.seed_reservoir_idx.shape[0],
+        mp_policy.count_dtype,
+    )
+    # A fixed publication interval would rebuild an O(N) global race view
+    # after every O(1) rows and recover quadratic total coordination. Requiring
+    # at least 25% population growth makes generations geometric, hence their
+    # cumulative publication work is linear in the final population.
+    growth_rows = (
+        schedule.source_num_samples
+        + jnp.asarray(3, mp_policy.count_dtype)
+    ) // jnp.asarray(4, mp_policy.count_dtype)
+    refresh_rows = jnp.maximum(
+        minimum_rows,
+        growth_rows,
     )
     return (
         state.num_samples - schedule.source_num_samples
-        >= jnp.asarray(refresh_rows, mp_policy.count_dtype)
+        >= refresh_rows
     )
 
 
@@ -762,11 +810,10 @@ def _sample_stationary_seeds(
         axis=1,
         dtype=mp_policy.index_dtype,
     )  # [S]
-    reservoir_size = jnp.sum(
-        schedule.seed_reservoir_valid,
-        dtype=mp_policy.index_dtype,
-    )
     proposal_width = 64
+    accepted_since_freeze = (
+        state.num_samples - schedule.source_num_samples
+    ).astype(mp_policy.index_dtype)
     selected_seed_idx = jnp.full(
         (shell_size,),
         -1,
@@ -777,6 +824,7 @@ def _sample_stationary_seeds(
         lane_valid = valid[lane_idx]
         lane_uses_root = use_root[lane_idx]
         lane_retains_start_group = retained_start_group[lane_idx]
+        lane_starts_thread = schedule.new_start[lane_idx]
 
         # Earlier local lanes and in-flight distributed tasks are the complete
         # set of simultaneous reservations. Only equal-contour identities are
@@ -839,12 +887,19 @@ def _sample_stationary_seeds(
                 root_count,
                 suffix_size[lane_idx],
             ).astype(mp_policy.index_dtype)
-            available_reservoir_size = jnp.where(
-                schedule.new_start[lane_idx],
-                jnp.asarray(0, mp_policy.index_dtype),
-                reservoir_size,
+            # New starts partition the frozen stationary population before
+            # any descendant can reproduce. A continuation has already been
+            # assigned that breadth-first identity; query every accepted row
+            # so its Markov seed law does not become stale during a long
+            # allocation generation.
+            continuation_pool_size = (
+                frozen_pool_size + accepted_since_freeze
             )
-            pool_size = frozen_pool_size + available_reservoir_size
+            pool_size = jnp.where(
+                lane_starts_thread,
+                frozen_pool_size,
+                continuation_pool_size,
+            )
             proposal_rank = (
                 proposal_fraction * jnp.maximum(pool_size, 1)
             ).astype(mp_policy.index_dtype)  # [C]
@@ -869,17 +924,23 @@ def _sample_stationary_seeds(
                 root_candidate,
                 frozen_candidate,
             )  # [C]
-            reservoir_offset = jnp.minimum(
+            accepted_offset = jnp.minimum(
                 jnp.maximum(proposal_rank - frozen_pool_size, 0),
-                jnp.maximum(reservoir_size - 1, 0),
+                jnp.maximum(accepted_since_freeze - 1, 0),
             )
-            reservoir_candidate = reservoir_sample_idx[
-                reservoir_offset
-            ]  # [C]
-            candidate = jnp.where(
+            accepted_candidate = (
+                schedule.source_num_samples.astype(mp_policy.index_dtype)
+                + accepted_offset
+            )
+            continuation_candidate = jnp.where(
                 proposal_rank < frozen_pool_size,
                 frozen_candidate,
-                reservoir_candidate,
+                accepted_candidate,
+            )
+            candidate = jnp.where(
+                lane_starts_thread,
+                frozen_candidate,
+                continuation_candidate,
             )  # [C]
             safe_candidate = jnp.maximum(candidate, 0)
             stationary = (
@@ -955,10 +1016,10 @@ def _enqueue_thread_continuations(
         tail = (
             current.continuation_head + current.continuation_count
         ) % queue_size
-        # The queue covers the complete accepted-row refresh cadence plus one
-        # in-flight window, so every scientifically reachable continuation has
-        # a slot. The capacity guard keeps an already-full ring immutable if a
-        # caller violates that lifecycle invariant.
+        # The ring covers the complete geometric generation plus one in-flight
+        # window, so every scientifically reachable continuation has a slot.
+        # The guard keeps an already-full ring immutable if a caller violates
+        # that lifecycle invariant.
         return dataclasses.replace(
             current,
             continuation_parent_idx=(
@@ -1810,7 +1871,7 @@ class _DepthCarry(NamedTuple):
 
 
 def _refresh_likelihood_order(state: State) -> State:
-    """Publish bounded post-freeze rows into the persistent sorted index."""
+    """Publish one generation's post-freeze rows into the sorted index."""
     if state.likelihood_order is None or state.scheduler_data is None:
         # Compatibility states without the persistent index have no merge
         # source. This one-time sort is not used by normally initialised runs.
@@ -1828,9 +1889,8 @@ def _refresh_likelihood_order(state: State) -> State:
         dtype=mp_policy.index_dtype,
     )
     # Source refresh stops dispatch before accepted work can exceed the
-    # continuation queue. This gives publication a small static merge width
-    # independent of sample capacity, including after a transparent growth
-    # return has already published an earlier prefix of the same schedule.
+    # continuation queue. The width scales only with one geometric generation,
+    # including after growth already published an earlier prefix of this round.
     merge_size = state.scheduler_data.continuation_parent_idx.shape[0]
     offsets = jnp.arange(merge_size, dtype=mp_policy.index_dtype)  # [Q]
     valid_new = published + offsets < state.num_samples  # [Q]
@@ -2166,7 +2226,7 @@ def _run_depth(
             sampled_batch,
             # The frozen schedule never consumes likelihood order. Publishing
             # one merge per accepted batch was the measured quadratic path;
-            # rebuild once when the complete schedule drains instead.
+            # merge once at a geometric source boundary or final drain.
             update_likelihood_order=False,
         )
         slots = jnp.arange(
@@ -2268,16 +2328,20 @@ def _run_depth(
         final_carry.schedule,
     )
     schedule_drained = (
-        (final_carry.depth_done | seed_source_refresh_due)
+        final_carry.depth_done
         & jnp.logical_not(terminal | needs_growth)
     )
     # Publish accepted likelihood identities before every Python return. An
     # active schedule never consumes this mutable order: its stationary-seed
     # index is frozen in `schedule.block_state`, so growth remains transparent.
     final_state = _refresh_likelihood_order(final_carry.state)
-    # This compiled flag reports a drained schedule. Python immediately
+    # A source publication is only an internal coordination boundary. It must
+    # not masquerade as a completed depth: Python projects this same absolute
+    # target onto the published contours before consulting the depth condition.
+    coordination_boundary = schedule_drained | seed_source_refresh_due
+    # This compiled flag reports only a genuinely drained schedule. Python
     # replaces it with the actual expected-depth result using the separately
-    # compiled boundary check; keeping that block reconstruction out of this
+    # compiled boundary check, keeping that block reconstruction out of this
     # large program materially reduces lowering and compilation time.
     depth_reached = schedule_drained
     continuation_key = jnp.where(
@@ -2295,7 +2359,7 @@ def _run_depth(
         scheduler_data=dataclasses.replace(
             final_carry.schedule,
             active=jnp.where(
-                depth_reached | terminal,
+                coordination_boundary | terminal,
                 jnp.asarray(False, mp_policy.bool_dtype),
                 final_carry.schedule.active,
             ),

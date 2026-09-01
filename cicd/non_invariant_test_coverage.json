@@ -801,6 +801,11 @@
       "path": "cicd/tests/test_core.py",
       "reason": "scheduler_architecture"
     },
+    "test_growth_resizes_one_nearly_full_continuation_generation": {
+      "note": "Checks that physical growth preserves every queued continuation and adopts the sufficient geometric-generation bound in one shape change.",
+      "path": "cicd/tests/test_core.py",
+      "reason": "scheduler_architecture"
+    },
     "test_resize_threads_linearises_a_wrapped_nonempty_fifo": {
       "note": "Checks the selected growth implementation for a wrapped transient continuation ring.",
       "path": "cicd/tests/test_core.py",
@@ -811,8 +816,13 @@
       "path": "cicd/tests/test_core.py",
       "reason": "scheduler_architecture"
     },
-    "test_seed_source_refresh_is_bounded_by_planning_width": {
-      "note": "Checks the selected fixed refresh cadence and bounded continuation capacity.",
+    "test_seed_publication_does_not_complete_allocation_target": {
+      "note": "Checks that an internal generation publication projects the same target instead of advancing the scientific allocation iteration.",
+      "path": "cicd/tests/test_core.py",
+      "reason": "architecture_boundary"
+    },
+    "test_seed_source_refresh_uses_geometric_generations": {
+      "note": "Checks the selected minimum-maturity and geometric source-generation cadence.",
       "path": "cicd/tests/test_core.py",
       "reason": "scheduler_architecture"
     },

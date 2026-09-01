@@ -681,6 +681,15 @@ def test_seed_pool_includes_completed_rows_accepted_after_freeze():
         jnp.asarray([2, 3], dtype=jnp.int32),
         jnp.asarray([True, True]),
     )
+    # Deliberately omit row 3 from the bounded coordination reservoir. A
+    # continuation must query the complete append-only accepted suffix, not
+    # silently narrow its stationary seed law to retained coordination rows.
+    schedule = dataclasses.replace(
+        schedule,
+        seed_reservoir_idx=jnp.asarray([2, 0], dtype=jnp.int32),
+        seed_reservoir_priority=jnp.asarray([0.9, -jnp.inf]),
+        seed_reservoir_valid=jnp.asarray([True, False]),
+    )
     keys = jax.random.split(jax.random.PRNGKey(19), 64)
 
     def draw(one_key):
@@ -696,8 +705,8 @@ def test_seed_pool_includes_completed_rows_accepted_after_freeze():
             jnp.asarray([False]),
         )[0]
 
-    # Both appended rows are stationary at L=2. A cache of ongoing heads could
-    # expose only one because thread survival censors it below its terminal.
+    # Both appended rows are stationary at L=2. Neither an ongoing-head cache
+    # nor the deliberately incomplete reservoir may hide row 3.
     assert set(np.asarray(jax.vmap(draw)(keys)).tolist()) == {2, 3}
 
 
@@ -757,7 +766,7 @@ def test_appended_seed_population_remains_distinct_when_large_enough():
     assert set(np.asarray(selected).tolist()) == {1, 2, 3}
 
 
-def test_seed_source_refresh_is_bounded_by_planning_width():
+def test_seed_source_refresh_uses_geometric_generations():
     source = make_state(
         root_out_degree=2,
         log_likelihoods=(1.0, 2.0),
@@ -779,28 +788,159 @@ def test_seed_source_refresh_is_bounded_by_planning_width():
         shell_size=2,
         tail_K=jnp.asarray(0, dtype=jnp.int32),
     )
-    refresh_rows = (
+    minimum_rows = (
         depth.SEED_SOURCE_REFRESH_WINDOWS
         * schedule.seed_reservoir_idx.shape[0]
     )
+    capacity_growth = (
+        source.samples.log_likelihoods.shape[0] + 3
+    ) // 4
     assert schedule.continuation_parent_idx.shape[0] == (
-        refresh_rows + schedule.seed_reservoir_idx.shape[0]
+        max(minimum_rows, capacity_growth)
+        + schedule.seed_reservoir_idx.shape[0]
     )
 
     assert not bool(depth._seed_source_refresh_due(
         dataclasses.replace(
             source,
-            num_samples=source.num_samples + refresh_rows - 1,
+            num_samples=source.num_samples + minimum_rows - 1,
         ),
         schedule,
     ))
     assert bool(depth._seed_source_refresh_due(
         dataclasses.replace(
             source,
-            num_samples=source.num_samples + refresh_rows,
+            num_samples=source.num_samples + minimum_rows,
         ),
         schedule,
     ))
+
+    # Once the source is large, requiring 25% growth makes publications
+    # geometric rather than rebuilding the O(N) race after every fixed number
+    # of accepted rows.
+    large_schedule = dataclasses.replace(
+        schedule,
+        source_num_samples=jnp.asarray(40, dtype=jnp.int32),
+    )
+    assert not bool(depth._seed_source_refresh_due(
+        dataclasses.replace(source, num_samples=jnp.asarray(49)),
+        large_schedule,
+    ))
+    assert bool(depth._seed_source_refresh_due(
+        dataclasses.replace(source, num_samples=jnp.asarray(50)),
+        large_schedule,
+    ))
+
+    # Once storage is larger than the minimum generation, the ring covers a
+    # quarter-capacity generation plus the one physical in-flight window.
+    grown_source = source.resize(40)
+    grown_blocks = build_block_state(
+        grown_source.samples,
+        grown_source.root_out_degree,
+        grown_source.num_samples,
+        likelihood_order=grown_source.likelihood_order,
+    )
+    grown_schedule = depth._new_thread_schedule(
+        grown_source,
+        grown_blocks,
+        _allocation_plan(grown_blocks, (1,) + (0,) * 39),
+        grown_blocks.valid,
+        shell_size=2,
+        tail_K=jnp.asarray(0, dtype=jnp.int32),
+    )
+    assert grown_schedule.continuation_parent_idx.shape[0] == 12
+
+
+def test_seed_publication_does_not_complete_allocation_target():
+    sampler = NestedSampler(
+        model=make_toy_model(),
+        target_num_live_points=2,
+        shell_size=1,
+        delta_K=1,
+        initial_capacity=64,
+        unlimited_samples=True,
+        sampler=DeterministicSampler(),
+    )
+    state = sampler.initialise(jax.random.PRNGKey(303))
+    state = dataclasses.replace(
+        state,
+        allocation_loop_iter=jnp.asarray(5, dtype=jnp.int32),
+    )
+    refresh_rows = (
+        depth.SEED_SOURCE_REFRESH_WINDOWS
+        * int(state.root_out_degree)
+    )
+
+    completed = sampler.run_single_iteration(
+        state,
+        depth_cond=DepthCondition(),
+    )
+
+    # This target needs more than one seed generation. Returning at the first
+    # publication used to discard the still-open absolute target and made each
+    # user goal add 25% of the accumulated sample population.
+    assert int(completed.num_samples) > int(state.num_samples) + refresh_rows
+    assert int(completed.allocation_loop_iter) == 6
+    assert bool(completed.depth_reached)
+
+
+def test_growth_resizes_one_nearly_full_continuation_generation():
+    state = make_state(
+        root_out_degree=2,
+        log_likelihoods=(1.0, 2.0),
+        log_L_constraints=(-np.inf, -np.inf),
+        out_degree=(0, 0),
+        max_samples=40,
+    )
+    blocks = build_block_state(
+        state.samples,
+        state.root_out_degree,
+        state.num_samples,
+        likelihood_order=state.likelihood_order,
+    )
+    schedule = depth._new_thread_schedule(
+        state,
+        blocks,
+        _allocation_plan(blocks, (1,) + (0,) * 39),
+        blocks.valid,
+        shell_size=2,
+        tail_K=jnp.asarray(0, dtype=jnp.int32),
+    )
+    # Nine queued heads plus one in-flight width can cross the ten-row source
+    # threshold without filling the twelve-slot pre-growth ring.
+    schedule = dataclasses.replace(
+        schedule,
+        continuation_parent_idx=schedule.continuation_parent_idx.at[:9].set(
+            jnp.arange(9, dtype=jnp.int32)
+        ),
+        continuation_thread_id=schedule.continuation_thread_id.at[:9].set(
+            jnp.arange(9, dtype=jnp.int32)
+        ),
+        continuation_terminal_log_L=(
+            schedule.continuation_terminal_log_L.at[:9].set(
+                jnp.arange(9, dtype=jnp.float64)
+            )
+        ),
+        continuation_count=jnp.asarray(9, dtype=jnp.int32),
+    )
+    state = dataclasses.replace(state, scheduler_data=schedule)
+    grown = depth._resize_depth_state(state, 80)
+    resized = grown.scheduler_data
+    assert resized.continuation_parent_idx.shape[0] == 22
+    assert int(resized.continuation_count) == 9
+
+    completed_window = depth._enqueue_thread_continuations(
+        resized,
+        jnp.asarray([9, 10], dtype=jnp.int32),
+        jnp.asarray([9, 10], dtype=jnp.int32),
+        jnp.asarray([9.0, 10.0]),
+        jnp.asarray([True, True]),
+    )
+    assert int(completed_window.continuation_count) == 11
+    np.testing.assert_array_equal(
+        completed_window.continuation_thread_id[:11],
+        np.arange(11),
+    )
 
 
 def test_frozen_target_projects_by_successor_contour():

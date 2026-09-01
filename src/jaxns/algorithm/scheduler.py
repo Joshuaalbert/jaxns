@@ -138,11 +138,15 @@ class ThreadSchedule(PureDataclassPytree):
         a continuing thread.
         """
         current = self.valid.shape[0]
-        if size <= current:
-            return self
         reservoir_size = max(size, self.seed_reservoir_idx.shape[0])
         if continuation_size is None:
             continuation_size = self.continuation_parent_idx.shape[0]
+        if (
+            size <= current
+            and continuation_size
+            <= self.continuation_parent_idx.shape[0]
+        ):
+            return self
 
         # A ring cannot be padded in physical order when its head has wrapped.
         # Growth is a Python/recompile boundary, so linearise the logical FIFO
