@@ -56,15 +56,30 @@
       "path": "cicd/tests/test_results_plotting.py",
       "reason": "utility_behavior"
     },
-    "test_periodic_coordinates_reject_euclidean_ellipsoids": {
-      "note": "Checks the current isotropic-only feature boundary until a toroidal GMM direction model has supporting evidence.",
-      "path": "cicd/tests/test_constrained_sampler.py",
-      "reason": "architecture_boundary"
-    },
     "test_batch_group_ignores_direction_diagnostics_but_not_geometry": {
       "note": "Checks the concrete worker specialization key and protects the premise that observational GMM counters cannot affect a constrained-sampling call.",
       "path": "cicd/tests/test_distributed_runtime.py",
       "reason": "implementation_regression"
+    },
+    "test_component_eligibility_uses_fitted_mean_likelihood": {
+      "note": "Checks the selected fitted-component eligibility proxy at the component mean rather than an independent scientific contract.",
+      "path": "cicd/tests/test_constrained_sampler.py",
+      "reason": "implementation_formula"
+    },
+    "test_component_selection_uses_contour_trimmed_volume_in_dimension": {
+      "note": "Checks the selected contour-trimmed ellipsoid-volume weighting formula used by the direction heuristic.",
+      "path": "cicd/tests/test_constrained_sampler.py",
+      "reason": "implementation_formula"
+    },
+    "test_disabled_ellipsoidal_directions_are_exact_isotropic_fallback": {
+      "note": "Checks the concrete state switch from retained GMM geometry to the isotropic direction implementation.",
+      "path": "cicd/tests/test_constrained_sampler.py",
+      "reason": "architecture_boundary"
+    },
+    "test_distributed_directions_change_only_at_drained_boundaries": {
+      "note": "Checks the selected distributed-state boundary for changing retained direction geometry without provisional work.",
+      "path": "cicd/tests/test_distributed_core.py",
+      "reason": "architecture_boundary"
     },
     "test_supervisor_validates_atomic_task_group_before_queue_mutation": {
       "note": "Checks transactional validation of the current multipart task protocol before its retry table is mutated.",
@@ -81,8 +96,8 @@
       "path": "cicd/tests/test_distributed_runtime.py",
       "reason": "architecture_boundary"
     },
-    "test_ellipsoidal_direction_jit_vmap_and_degenerate_fallback": {
-      "note": "Checks the current compiled direction-kernel batching, normalization, and degenerate-geometry fallback wiring.",
+    "test_ellipsoidal_direction_jit_vmap_uses_eligible_geometry": {
+      "note": "Checks the current compiled direction-kernel batching and eligible-geometry selection wiring.",
       "path": "cicd/tests/test_constrained_sampler.py",
       "reason": "architecture_boundary"
     },
@@ -135,6 +150,11 @@
       "note": "Checks the current warm-fit state representation and its recovery from a singular candidate geometry.",
       "path": "cicd/tests/test_multi_ellipsoid.py",
       "reason": "implementation_regression"
+    },
+    "test_sampler_data_uses_gaussian_mean_height_without_sample_hull": {
+      "note": "Checks the selected responsibility-weighted reconstruction of fitted likelihood height at a component mean.",
+      "path": "cicd/tests/test_multi_ellipsoid.py",
+      "reason": "implementation_formula"
     },
     "test_state_merge_keeps_recent_geometry_and_cumulative_direction_work": {
       "note": "Checks the concrete state-merge policy for sampler geometry and internal direction-work counters.",
@@ -246,6 +266,11 @@
       "path": "cicd/tests/test_state.py",
       "reason": "architecture_boundary"
     },
+    "test_expected_evidence_rebuilds_order_for_active_growth_state": {
+      "note": "Checks the exact diagnostic fallback for a physical growth return whose active frozen schedule has committed rows awaiting likelihood-order publication.",
+      "path": "cicd/tests/test_state.py",
+      "reason": "architecture_boundary"
+    },
     "test_allocation_utilities_handle_tiny_positive_volume_without_inf": {
       "note": "Checks the current allocation utility, normalization, and target construction rather than an implementation-agnostic scientific contract.",
       "path": "cicd/tests/test_allocation.py",
@@ -259,11 +284,6 @@
     "test_batch_reduce_vec_kernel": {
       "note": "Checks generic cumulative and batched reduction utilities.",
       "path": "cicd/tests/test_cumulative_ops.py",
-      "reason": "utility_behavior"
-    },
-    "test_bit_mask": {
-      "note": "Checks generic reporting, resampling, percentile, or diagnostic utilities.",
-      "path": "cicd/tests/test_utils.py",
       "reason": "utility_behavior"
     },
     "test_blob_decomp": {
@@ -286,7 +306,7 @@
       "path": "cicd/tests/test_allocation.py",
       "reason": "implementation_formula"
     },
-    "test_build_uniform_allocation_plan_uses_exact_outer_iteration_targets": {
+    "test_build_uniform_allocation_plan_uses_exact_depth_iteration_targets": {
       "note": "Checks the current allocation utility, normalization, and target construction rather than an implementation-agnostic scientific contract.",
       "path": "cicd/tests/test_allocation.py",
       "reason": "implementation_formula"
@@ -320,11 +340,6 @@
       "note": "Checks the current compiled scheduler, append-order index, batching, or pytree architecture.",
       "path": "cicd/tests/test_core.py",
       "reason": "architecture_boundary"
-    },
-    "test_depth_first_uniform_targets_follow_k_delta_k_formula": {
-      "note": "Checks the current allocation utility, normalization, and target construction rather than an implementation-agnostic scientific contract.",
-      "path": "cicd/tests/test_allocation.py",
-      "reason": "implementation_formula"
     },
     "test_depth_relevance_is_a_complete_prefix_when_remaining_mass_rises": {
       "note": "Checks the current compiled scheduler, append-order index, batching, or pytree architecture.",
@@ -371,7 +386,7 @@
       "path": "cicd/tests/test_allocation.py",
       "reason": "implementation_formula"
     },
-    "test_fractional_utility_targets_ceil_and_clip_after_scaling": {
+    "test_fractional_utility_gaps_ceil_after_scaling": {
       "note": "Checks the current allocation utility, normalization, and target construction rather than an implementation-agnostic scientific contract.",
       "path": "cicd/tests/test_allocation.py",
       "reason": "implementation_formula"
@@ -435,6 +450,11 @@
       "note": "Checks the current compiled scheduler, append-order index, batching, or pytree architecture.",
       "path": "cicd/tests/test_core.py",
       "reason": "architecture_boundary"
+    },
+    "test_likelihood_order_publication_merges_new_rows_across_growth": {
+      "note": "Checks bounded schedule-boundary order publication and repeated growth publication without duplicate identities.",
+      "path": "cicd/tests/test_core.py",
+      "reason": "implementation_regression"
     },
     "test_likelihood_order_rank_merge_matches_stable_reference": {
       "note": "Checks the current compiled scheduler, append-order index, batching, or pytree architecture.",
@@ -666,11 +686,6 @@
       "path": "cicd/tests/test_state.py",
       "reason": "result_schema_regression"
     },
-    "test_stratified_seed_rank_is_uniform_for_each_stationary_set": {
-      "note": "Checks the current compiled scheduler, append-order index, batching, or pytree architecture.",
-      "path": "cicd/tests/test_core.py",
-      "reason": "architecture_boundary"
-    },
     "test_to_result_marks_no_phantoms_invalid": {
       "note": "Checks current state/result wiring or validation timing beyond mapped scientific invariants.",
       "path": "cicd/tests/test_state.py",
@@ -696,7 +711,7 @@
       "path": "cicd/tests/test_allocation.py",
       "reason": "implementation_formula"
     },
-    "test_utility_normalisation_and_integer_targets_are_deterministic": {
+    "test_utility_normalisation_and_integer_gaps_are_deterministic": {
       "note": "Checks the current allocation utility, normalization, and target construction rather than an implementation-agnostic scientific contract.",
       "path": "cicd/tests/test_allocation.py",
       "reason": "implementation_formula"
@@ -760,6 +775,136 @@
       "note": "Checks the selected supervisor round-robin queue policy between active clients.",
       "path": "cicd/tests/test_distributed_runtime.py",
       "reason": "runtime_architecture"
+    },
+    "test_continuation_heap_fills_bound_without_overwrite": {
+      "note": "Checks the bounded minimum-frontier heap selected for frozen-thread continuation state.",
+      "path": "cicd/tests/test_core.py",
+      "reason": "scheduler_architecture"
+    },
+    "test_continuation_heap_matches_reference_under_interleaved_updates": {
+      "note": "Checks interleaved push and pop behavior against the Python heap reference.",
+      "path": "cicd/tests/test_core.py",
+      "reason": "scheduler_architecture"
+    },
+    "test_continuations_wait_until_each_frozen_thread_has_started": {
+      "note": "Checks the selected breadth-first dispatch order before FIFO continuation.",
+      "path": "cicd/tests/test_core.py",
+      "reason": "scheduler_architecture"
+    },
+    "test_decomposition_keeps_large_multiplicity_compressed": {
+      "note": "Checks the compressed run representation rather than a separate scientific contract.",
+      "path": "cicd/tests/test_scheduler.py",
+      "reason": "scheduler_architecture"
+    },
+    "test_distributed_continuation_returns_to_heap_not_dispatch_window": {
+      "note": "Checks that distributed completion uses the selected shared continuation heap.",
+      "path": "cicd/tests/test_distributed_core.py",
+      "reason": "scheduler_architecture"
+    },
+    "test_distributed_dispatch_starts_evidence_utility_schedule": {
+      "note": "Checks distributed wiring of the selected utility-schedule implementation.",
+      "path": "cicd/tests/test_distributed_core.py",
+      "reason": "scheduler_architecture"
+    },
+    "test_distributed_planning_width_tracks_worker_capacity": {
+      "note": "Checks the selected relationship between worker capacity and the transient planning window.",
+      "path": "cicd/tests/test_distributed_core.py",
+      "reason": "runtime_architecture"
+    },
+    "test_distributed_seed_refresh_waits_for_no_pending_tasks": {
+      "note": "Checks the selected atomic boundary between a frozen seed source and distributed pending work.",
+      "path": "cicd/tests/test_distributed_core.py",
+      "reason": "scheduler_architecture"
+    },
+    "test_filled_target_advances_allocation_without_exposing_user_goal": {
+      "note": "Checks the selected Python goal-boundary and internal allocation-round separation.",
+      "path": "cicd/tests/test_core.py",
+      "reason": "architecture_boundary"
+    },
+    "test_frozen_target_projects_by_successor_contour": {
+      "note": "Checks the selected projection used when new contours refine a frozen absolute target.",
+      "path": "cicd/tests/test_core.py",
+      "reason": "scheduler_architecture"
+    },
+    "test_thread_storage_grows_independently_of_sample_storage": {
+      "note": "Checks that physical growth preserves every queued continuation while independently resizing sample-indexed planning data.",
+      "path": "cicd/tests/test_core.py",
+      "reason": "scheduler_architecture"
+    },
+    "test_resize_threads_preserves_a_nonempty_continuation_heap": {
+      "note": "Checks grow-only head and heap resizing without truncating live continuations.",
+      "path": "cicd/tests/test_core.py",
+      "reason": "scheduler_architecture"
+    },
+    "test_seed_pool_uses_value_independent_post_freeze_reservoir": {
+      "note": "Checks the bounded value-independent post-freeze seed-reservoir implementation.",
+      "path": "cicd/tests/test_core.py",
+      "reason": "scheduler_architecture"
+    },
+    "test_seed_publication_preserves_frozen_thread_target": {
+      "note": "Checks that an internal generation publication projects the same target instead of advancing the scientific allocation iteration.",
+      "path": "cicd/tests/test_core.py",
+      "reason": "architecture_boundary"
+    },
+    "test_seed_source_refresh_uses_geometric_generations": {
+      "note": "Checks the selected minimum-maturity and geometric source-generation cadence.",
+      "path": "cicd/tests/test_core.py",
+      "reason": "scheduler_architecture"
+    },
+    "test_summary_decodes_the_only_hard_termination_reason": {
+      "note": "Checks user-facing wording for the current termination reason-code representation.",
+      "path": "cicd/tests/test_results_plotting.py",
+      "reason": "result_schema_regression"
+    },
+    "test_utility_schedule_continuation_projects_frozen_absolute_target": {
+      "note": "Checks continuation wiring for the selected frozen utility-target implementation.",
+      "path": "cicd/tests/test_allocation.py",
+      "reason": "scheduler_architecture"
+    },
+    "test_bruteforce_reference_vectorisation_matches_memory_bounded_batches": {
+      "note": "Checks numerical parity between the vectorized diagnostic default and its explicit memory-bounded batching alternative.",
+      "path": "cicd/tests/test_utils.py",
+      "reason": "reference_parity"
+    },
+    "test_continuation_heap_returns_shallowest_frontier_first": {
+      "note": "Checks the minimum-frontier ordering selected for efficient continuation scheduling.",
+      "path": "cicd/tests/test_core.py",
+      "reason": "scheduler_architecture"
+    },
+    "test_distributed_start_seed_storage_grows_without_losing_reservations": {
+      "note": "Checks transparent exact-reservation growth at the distributed coordination boundary.",
+      "path": "cicd/tests/test_distributed_core.py",
+      "reason": "scheduler_architecture"
+    },
+    "test_start_seed_reservation_storage_is_independent_of_sample_capacity": {
+      "note": "Checks that exact start-seed reservation memory follows the unfinished contour group rather than total sample capacity.",
+      "path": "cicd/tests/test_core.py",
+      "reason": "scheduler_architecture"
+    },
+    "test_start_seed_reservations_rehash_exactly_when_storage_grows": {
+      "note": "Checks the selected growable open-addressed representation retains exact membership across rehashing.",
+      "path": "cicd/tests/test_core.py",
+      "reason": "scheduler_architecture"
+    },
+    "test_compiled_depth_signature_contains_only_runtime_dependencies": {
+      "note": "Checks that the compiled depth entry point does not specialize on allocation-policy values already materialized in scheduler state.",
+      "path": "cicd/tests/test_core.py",
+      "reason": "runtime_architecture"
+    },
+    "test_disabled_retained_fit_matches_plain_isotropic_key_stream": {
+      "note": "Checks the concrete compiled branch used when retained GMM geometry is disabled, including exact isotropic random-key routing.",
+      "path": "cicd/tests/test_constrained_sampler.py",
+      "reason": "implementation_regression"
+    },
+    "test_reservoir_rank_lookup_matches_dense_reference": {
+      "note": "Checks numerical parity between the compact reservoir rank lookup and the superseded dense proposal-by-reservoir mask.",
+      "path": "cicd/tests/test_core.py",
+      "reason": "reference_parity"
+    },
+    "test_sampler_data_ignores_zero_weight_nonfinite_height_observation": {
+      "note": "Checks the current masked component-height regression avoids an indeterminate zero-weight product without changing supported observations.",
+      "path": "cicd/tests/test_multi_ellipsoid.py",
+      "reason": "implementation_regression"
     }
   }
 }

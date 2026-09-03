@@ -26,6 +26,7 @@ from jaxns.constrained_sampler import (
     UniDimSliceSampler,
 )
 from jaxns.core import NestedSampler
+from jaxns.depth_condition import DepthCondition
 from jaxns.distributed_core import (
     DistributedState,
     PendingTask,
@@ -33,7 +34,6 @@ from jaxns.distributed_core import (
 )
 from jaxns.pytree import PureDataclassPytree, Pytree
 from jaxns.samples import SeedPoint
-from jaxns.termination_condition import TerminationCondition
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -294,7 +294,7 @@ def test_local_automatic_resume_matches_uninterrupted_random_stream(tmp_path):
         max_samples=10,
         initial_capacity=4,
         sampler=sampler,
-        termination_condition=TerminationCondition(max_samples=10),
+        depth_condition=DepthCondition(),
     )
 
     def first_goal(state):
@@ -378,7 +378,13 @@ def test_complete_distributed_pending_state_round_trips_without_task_loss(
     distributed = DistributedState(
         state=state,
         reservations=reservations,
-        pending=(PendingTask(7, task_work, request),),
+        pending=(PendingTask(
+            task_id=7,
+            thread_id=jnp.asarray(3, dtype=jnp.int32),
+            terminal_log_L=jnp.asarray(2.0),
+            work=task_work,
+            request=request,
+        ),),
         next_task_id=8,
         session_id="checkpoint-session",
         depth_active=True,

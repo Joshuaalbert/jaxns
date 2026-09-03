@@ -167,7 +167,7 @@ def test_sampler_data_warm_update_retains_geometry_after_failed_fit():
         update_sampler_data,
         static_argnames=(
             "n_iters",
-            "min_effective_samples",
+            "iso_prob",
             "regularisation",
         ),
     )(
@@ -179,31 +179,150 @@ def test_sampler_data_warm_update_retains_geometry_after_failed_fit():
         mask,
         jnp.asarray(32),
         n_iters=5,
-        min_effective_samples=8,
+        iso_prob=0.01,
         regularisation=1e-6,
     )
     assert jnp.all(fitted.valid)
     assert int(fitted.num_updates) == 1
     assert jnp.all(jnp.isfinite(fitted.log_volumes))
 
-    # An exactly collapsed population contains no full-dimensional component.
-    # The attempted warm update must retain every previously valid parameter
-    # rather than installing ridge-created but scientifically false geometry.
-    collapsed = jnp.full_like(points, 0.5)
+    # An empty candidate fit has no component support. The attempted warm
+    # update must retain every previously valid parameter.
+    empty_mask = jnp.zeros_like(mask)
     retained = update_sampler_data(
         random.PRNGKey(23),
         fitted,
-        collapsed,
-        jnp.zeros_like(log_L),
+        points,
+        log_L,
         log_weights,
-        mask,
+        empty_mask,
         jnp.asarray(64),
         n_iters=3,
-        min_effective_samples=8,
+        iso_prob=0.01,
         regularisation=1e-6,
     )
     np.testing.assert_array_equal(retained.centres, fitted.centres)
     np.testing.assert_array_equal(retained.radii, fitted.radii)
     np.testing.assert_array_equal(retained.rotations, fitted.rotations)
     assert int(retained.num_updates) == 1
-    assert int(retained.num_attempted) == 64
+    assert int(retained.num_samples) == 32
+
+
+def test_sampler_data_uses_gaussian_mean_height_without_sample_hull():
+    points = jnp.asarray([
+        [-2.0, -0.5],
+        [-1.0, 0.5],
+        [-0.5, -1.0],
+        [0.0, 0.0],
+        [0.5, 1.0],
+        [1.0, -0.5],
+        [2.0, 0.5],
+    ])
+    # The fitted covariance supplies shape only. These observations calibrate
+    # the likelihood height at the fitted component mean without evaluating a
+    # model or interpreting the normalized GMM density as a likelihood.
+    log_L = 3.0 - 0.5 * jnp.sum(jnp.square(points), axis=1)
+    log_weights = jnp.full((points.shape[0],), -jnp.log(points.shape[0]))
+    mask = jnp.ones((points.shape[0],), dtype=jnp.bool_)
+
+    fitted = update_sampler_data(
+        random.PRNGKey(24),
+        empty_sampler_data(num_components=1, dimension=2),
+        points,
+        log_L,
+        log_weights,
+        mask,
+        jnp.asarray(points.shape[0]),
+        n_iters=3,
+        iso_prob=0.01,
+        regularisation=1e-6,
+    )
+
+    covariance = np.asarray(fitted.mixture.covariances[0])
+    delta = np.asarray(points) - np.asarray(fitted.centres[0])
+    distance = np.einsum(
+        "nd,de,ne->n",
+        delta,
+        np.linalg.inv(covariance),
+        delta,
+    )
+    expected_log_L_at_mean = np.mean(np.asarray(log_L) + 0.5 * distance)
+    covariance_radii = np.sqrt(
+        np.linalg.svd(covariance, compute_uv=False)
+    )
+
+    # The value at the mean is the intercept fitted from stored likelihoods,
+    # not a density-normalization term that can inflate narrow components.
+    np.testing.assert_allclose(
+        fitted.log_L_at_mean[0],
+        expected_log_L_at_mean,
+        rtol=1e-6,
+    )
+    np.testing.assert_allclose(
+        fitted.radii[0],
+        covariance_radii,
+        rtol=1e-6,
+    )
+
+    # At least one member lies outside the covariance unit ellipsoid. A sample
+    # hull would multiply every radius by sqrt(max_distance), whereas the
+    # fitted direction geometry intentionally retains the Gaussian covariance.
+    centre = np.asarray(fitted.mixture.centres[0])
+    displacement = np.asarray(points) - centre
+    squared_distance = np.einsum(
+        "ni,ij,nj->n",
+        displacement,
+        np.linalg.inv(covariance),
+        displacement,
+    )
+    assert np.max(squared_distance) > 1.0
+
+
+def test_sampler_data_ignores_zero_weight_nonfinite_height_observation():
+    finite_points = jnp.asarray([
+        [-2.0, -0.5],
+        [-1.0, 0.5],
+        [-0.5, -1.0],
+        [0.0, 0.0],
+        [0.5, 1.0],
+        [1.0, -0.5],
+        [2.0, 0.5],
+    ])
+    points = jnp.concatenate(
+        [jnp.asarray([[4.0, 4.0]]), finite_points],
+        axis=0,
+    )
+    finite_log_L = 3.0 - 0.5 * jnp.sum(
+        jnp.square(finite_points),
+        axis=1,
+    )
+    log_L = jnp.concatenate([jnp.asarray([-jnp.inf]), finite_log_L])
+    log_weights = jnp.concatenate([
+        jnp.asarray([-jnp.inf]),
+        jnp.full(
+            (finite_points.shape[0],),
+            -jnp.log(finite_points.shape[0]),
+        ),
+    ])
+    mask = jnp.ones((points.shape[0],), dtype=jnp.bool_)
+
+    fitted = update_sampler_data(
+        random.PRNGKey(25),
+        empty_sampler_data(num_components=1, dimension=2),
+        points,
+        log_L,
+        log_weights,
+        mask,
+        jnp.asarray(points.shape[0]),
+        n_iters=3,
+        iso_prob=0.01,
+        regularisation=1e-6,
+    )
+
+    # A zero-posterior classic with log L=-inf is valid model data. It must
+    # not create 0 * -inf in the component intercept or reject the otherwise
+    # supported fit.
+    assert bool(fitted.valid[0])
+    assert bool(fitted.enabled)
+    assert int(fitted.num_updates) == 1
+    assert np.isfinite(float(fitted.log_L_at_mean[0]))

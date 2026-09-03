@@ -31,6 +31,7 @@ def main() -> None:
     parser.add_argument("--components", type=int, default=4)
     parser.add_argument("--population-size", type=int, default=1024)
     parser.add_argument("--iterations", type=int, default=10)
+    parser.add_argument("--iso-prob", type=float, default=1e-2)
     parser.add_argument("--repetitions", type=int, default=30)
     args = parser.parse_args()
 
@@ -47,7 +48,6 @@ def main() -> None:
     )
     mask = jnp.ones((args.population_size,), jnp.bool_)
     data = empty_sampler_data(args.components, args.dimension)
-    min_effective_samples = 4 * args.components * (args.dimension + 1)
 
     def update(current):
         return update_sampler_data(
@@ -59,7 +59,7 @@ def main() -> None:
             mask,
             jnp.asarray(args.population_size),
             n_iters=args.iterations,
-            min_effective_samples=min_effective_samples,
+            iso_prob=args.iso_prob,
             regularisation=1e-6,
         )
 
@@ -99,6 +99,7 @@ def main() -> None:
         "components": args.components,
         "population_size": args.population_size,
         "iterations": args.iterations,
+        "iso_prob": args.iso_prob,
         "repetitions": args.repetitions,
         "device_compile_s": device_compile_s,
         "python_compile_s": update_compile_s + trigger_compile_s,

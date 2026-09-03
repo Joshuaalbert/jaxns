@@ -38,13 +38,15 @@ array, key, seed, and contour fixed, then compares the old full-state hash with
 the execution-state hash used by the worker pool.
 
 The representative scientific comparison uses the maintained 8D spike--slab
-problem rather than the analytic transport control. It includes initial GMM
-training, warm contour-triggered refits, ellipsoid selection by volume, and the
-1% isotropic safety kernel. The local and distributed runners use the same 240
-root lineages, allocation increment 80, 40 slice transitions, finite sample
-limit, and termination condition. This host's measured topology is one CPU
-worker with `batch_size = 3`; a second identical worker contended for the same
-cores and did not improve the smoke run.
+problem rather than the analytic transport control. Both runners start with
+exact isotropic directions, stop at the user-selected expected-log-evidence
+uncertainty, call `fit_gmm_directions(iso_prob=1e-2)` on the drained state, and
+explicitly resume with that frozen fit. The local and distributed runners use
+the same 240 root lineages, unit uniform-allocation multiplier, replacement
+width 80, 40 slice transitions, finite sample limit, and termination
+condition. This host's measured topology is one CPU worker with
+`batch_size = 3`; a second identical worker contended for the same cores and
+did not improve the smoke run.
 
 ```bash
 PYTHONPATH=src:. MPLCONFIGDIR=/tmp/jaxns-matplotlib-267 \
@@ -55,6 +57,8 @@ PYTHONPATH=src:. MPLCONFIGDIR=/tmp/jaxns-matplotlib-267 \
   --runner both \
   --workers 1 \
   --batch-size 3 \
+  --fit-log-z-uncert 0.2 \
+  --iso-prob 1e-2 \
   --output benchmarks/issue_267/standard_spike_slab.json
 
 # Repeat with retained phantoms and phantom-conditioned final MC evidence.
@@ -66,6 +70,8 @@ PYTHONPATH=src:. MPLCONFIGDIR=/tmp/jaxns-matplotlib-267 \
   --runner both \
   --workers 1 \
   --batch-size 3 \
+  --fit-log-z-uncert 0.2 \
+  --iso-prob 1e-2 \
   --phantoms \
   --output benchmarks/issue_267/standard_spike_slab_phantoms.json
 

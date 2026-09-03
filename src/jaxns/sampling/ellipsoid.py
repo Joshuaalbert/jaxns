@@ -12,7 +12,13 @@ from jaxns.log_semiring import LogSpace
 from jaxns.mixed_precision import mp_policy
 from jaxns.optional import import_matplotlib
 from jaxns.pytree import PureDataclassPytree
-from jaxns.sampling.gmm import GaussianMixture, em_gmm, fit_gmm, initialise_gmm
+from jaxns.sampling.gmm import (
+    GaussianMixture,
+    e_step,
+    em_gmm,
+    fit_gmm,
+    initialise_gmm,
+)
 from jaxns.types import BoolArray, FloatArray, IntArray, PRNGKey, UType
 
 __all__ = [
@@ -35,17 +41,18 @@ class MultEllipsoidState(NamedTuple):
 
 @dataclasses.dataclass(slots=True, frozen=True)
 class SamplerData(PureDataclassPytree):
-    """Persistent GMM and bounding geometry used only by the sampler."""
+    """Persistent fitted-likelihood geometry used only by the sampler."""
 
     mixture: GaussianMixture
     centres: FloatArray  # [K, D]
     radii: FloatArray  # [K, D]
     rotations: FloatArray  # [K, D, D]
-    log_volumes: FloatArray  # [K]
-    log_L_max: FloatArray  # [K]
+    log_volumes: FloatArray  # [K] covariance ellipsoid volumes at radius one
+    log_L_at_mean: FloatArray  # [K] fitted component likelihood at its mean
     valid: BoolArray  # [K]
+    enabled: BoolArray  # [] whether fitted directions may be selected
+    iso_prob: FloatArray  # [] independent isotropic safety probability
     num_samples: IntArray  # [] samples used by the last successful update
-    num_attempted: IntArray  # [] sample count at the last attempted update
     num_updates: IntArray  # [] successful updates
     num_directions: IntArray  # [] directions used by completed chains
     num_isotropic: IntArray  # [] used isotropic directions
@@ -93,14 +100,15 @@ def empty_sampler_data(
             -jnp.inf,
             mp_policy.measure_dtype,
         ),
-        log_L_max=jnp.full(
+        log_L_at_mean=jnp.full(
             (num_components,),
             -jnp.inf,
             mp_policy.measure_dtype,
         ),
         valid=valid,
+        enabled=jnp.asarray(False, mp_policy.bool_dtype),
+        iso_prob=jnp.asarray(1.0, mp_policy.measure_dtype),
         num_samples=jnp.asarray(0, mp_policy.count_dtype),
-        num_attempted=jnp.asarray(0, mp_policy.count_dtype),
         num_updates=jnp.asarray(0, mp_policy.count_dtype),
         num_directions=jnp.asarray(0, mp_policy.count_dtype),
         num_isotropic=jnp.asarray(0, mp_policy.count_dtype),
@@ -193,28 +201,18 @@ def ellipsoid_params(points: UType, mask: FloatArray) -> EllipsoidParams:
 def _component_ellipsoid(
         points: FloatArray,
         log_L: FloatArray,
+        centre: FloatArray,
+        covariance: FloatArray,
         weights: FloatArray,
-        member: BoolArray,
-        regularisation: float,
-) -> tuple[FloatArray, FloatArray, FloatArray, FloatArray, FloatArray, BoolArray]:
-    """Bound one hard-assigned component without data-dependent shapes."""
-    dimension = points.shape[1]
-    component_weights = jnp.where(member, weights, 0.0)
-    total = jnp.sum(component_weights)
-    square_total = jnp.sum(jnp.square(component_weights))
+) -> tuple[FloatArray, FloatArray, FloatArray, FloatArray, BoolArray]:
+    """Fit one Gaussian likelihood ellipsoid without a sample hull."""
+    dimension = covariance.shape[0]
+    total = jnp.sum(weights)
+    square_total = jnp.sum(jnp.square(weights))
     effective = jnp.square(total) / jnp.maximum(
         square_total,
         jnp.finfo(weights.dtype).eps,
     )
-    safe_total = jnp.maximum(total, jnp.finfo(weights.dtype).eps)
-    centre = jnp.sum(component_weights[:, None] * points, axis=0) / safe_total
-    centered = jnp.where(member[:, None], points - centre, 0.0)
-    covariance = jnp.einsum(
-        "n,nd,ne->de",
-        component_weights,
-        centered,
-        centered,
-    ) / safe_total
     eigenvalues = jnp.linalg.eigvalsh(covariance)
     largest_eigenvalue = jnp.max(eigenvalues)
     well_conditioned = (
@@ -226,20 +224,9 @@ def _component_ellipsoid(
             * largest_eigenvalue
         )
     )
-    variance_scale = jnp.trace(covariance) / jnp.asarray(
-        dimension,
-        covariance.dtype,
-    )
-    ridge = jnp.asarray(regularisation, covariance.dtype) * jnp.maximum(
-        variance_scale,
-        jnp.finfo(covariance.dtype).eps,
-    )
-    covariance = covariance + ridge * jnp.eye(
-        dimension,
-        dtype=covariance.dtype,
-    )
     radii, rotation = covariance_to_rotational(covariance)
-    distances = vmap(
+    log_volume = log_ellipsoid_volume(radii)
+    distance = vmap(
         lambda point: maha_ellipsoid(
             point,
             centre,
@@ -247,20 +234,43 @@ def _component_ellipsoid(
             rotation,
         )
     )(points)
-    largest = jnp.max(jnp.where(member, distances, 0.0))
-    radii = radii * jnp.sqrt(jnp.maximum(largest, 1.0))
-    log_volume = log_ellipsoid_volume(radii)
-    log_L_max = jnp.max(jnp.where(member, log_L, -jnp.inf))
-    finite = (
-        jnp.all(jnp.isfinite(centre))
-        & jnp.all(jnp.isfinite(radii))
+    # For log L(U) = h - rho(U)^2 / 2, every stored observation estimates
+    # the component height h at its fitted mean. Responsibility-weighted
+    # regression uses the likelihood values themselves, so a narrow density
+    # component cannot invent an unsupported high likelihood through its
+    # normalizing determinant.
+    height_observations = log_L + 0.5 * distance  # [N]
+    height_mask = (  # [N]
+        (weights > 0.0) & jnp.isfinite(height_observations)
+    )
+    height_weights = jnp.where(height_mask, weights, 0.0)  # [N]
+    height_observations = jnp.where(
+        height_mask,
+        height_observations,
+        0.0,
+    )  # [N]
+    height_total = jnp.sum(height_weights)  # []
+    safe_height_total = jnp.maximum(
+        height_total,
+        jnp.finfo(weights.dtype).eps,
+    )  # []
+    log_L_at_mean = jnp.sum(
+        height_weights * height_observations
+    ) / safe_height_total  # []
+    finite = (  # []
+        jnp.all(jnp.isfinite(radii))
         & jnp.all(radii > 0.0)
         & jnp.all(jnp.isfinite(rotation))
         & jnp.isfinite(log_volume)
-        & jnp.isfinite(log_L_max)
+        & jnp.isfinite(log_L_at_mean)
     )
-    valid = finite & well_conditioned & (effective >= dimension + 1)
-    return centre, radii, rotation, log_volume, log_L_max, valid
+    valid = (  # []
+        finite
+        & well_conditioned
+        & (effective >= dimension + 1)
+        & (height_total > 0.0)
+    )
+    return radii, rotation, log_volume, log_L_at_mean, valid
 
 
 def update_sampler_data(
@@ -273,146 +283,144 @@ def update_sampler_data(
         num_samples: IntArray,
         *,
         n_iters: int,
-        min_effective_samples: int,
+        iso_prob: float,
         regularisation: float,
 ) -> SamplerData:
-    """Warm-refine direction geometry from the current classic population.
+    """Fit a likelihood GMM from the complete current classic population.
 
     A failed candidate cannot poison a running sampler. Valid old component
-    geometry survives an empty or singular candidate, and a wholly failed fit
-    retains the previous model while recording when the next retry is useful.
+    geometry survives an empty or singular candidate. The fitted mixture is a
+    normalized posterior-density proxy in homogeneous U-space. Stored
+    likelihood values then calibrate every component on the likelihood scale.
     """
-    finite_weight = mask & jnp.isfinite(log_sample_weights)
-    largest = jnp.max(jnp.where(finite_weight, log_sample_weights, -jnp.inf))
-    weights = jnp.where(
-        finite_weight,
-        jnp.exp(log_sample_weights - largest),
-        0.0,
-    )
-    weights = weights / jnp.maximum(jnp.sum(weights), 1.0)
-    effective = 1.0 / jnp.maximum(
-        jnp.sum(jnp.square(weights)),
-        jnp.finfo(weights.dtype).eps,
-    )
-    enough_information = effective >= min_effective_samples
-    has_geometry = jnp.any(data.valid)
-
-    def fit(_):
-        # Warm refinement must not pay for a fresh initializer that would be
-        # discarded. The scalar branch keeps the first fit deterministic and
-        # later fits both computationally and conceptually incremental.
-        initial = jax.lax.cond(
-            has_geometry,
-            lambda unused: data.mixture,
-            lambda unused: initialise_gmm(
-                key,
-                points,
-                data.centres.shape[0],
-                mask=mask,
-                log_sample_weights=log_sample_weights,
-                regularisation=regularisation,
-            ),
-            operand=None,
-        )
-        mixture, cluster_id, normalized_weights = fit_gmm(
+    # Warm refinement reuses the fitted likelihood surrogate. The first fit
+    # uses deterministic posterior-mass quantiles, so this explicit state
+    # operation consumes no nested-sampling randomness.
+    initial = jax.lax.cond(
+        jnp.any(data.mixture.valid),
+        lambda unused: data.mixture,
+        lambda unused: initialise_gmm(
             key,
             points,
             data.centres.shape[0],
             mask=mask,
             log_sample_weights=log_sample_weights,
-            initial=initial,
-            n_iters=n_iters,
             regularisation=regularisation,
-        )
+        ),
+        operand=None,
+    )
+    mixture, _, normalized_weights = fit_gmm(
+        key,
+        points,
+        data.centres.shape[0],
+        mask=mask,
+        log_sample_weights=log_sample_weights,
+        initial=initial,
+        n_iters=n_iters,
+        regularisation=regularisation,
+    )
 
-        components = jnp.arange(
-            data.centres.shape[0],
-            dtype=cluster_id.dtype,
+    log_responsibilities = e_step(
+        points,
+        mixture.centres,
+        mixture.covariances,
+        mixture.log_masses,
+        mask,
+    )  # [K, N]
+    component_weights = (
+        jnp.exp(log_responsibilities) * normalized_weights[None, :]
+    )  # [K, N]
+    components = jnp.arange(data.centres.shape[0], dtype=mp_policy.index_dtype)
+    candidate = vmap(
+        lambda component: _component_ellipsoid(
+            points,
+            log_L,
+            mixture.centres[component],
+            mixture.covariances[component],
+            component_weights[component],
         )
-        candidate = vmap(
-            lambda component: _component_ellipsoid(
-                points,
-                log_L,
-                normalized_weights,
-                mask & (cluster_id == component),
-                regularisation,
-            )
-        )(components)
-        centres, radii, rotations, log_volumes, log_L_max, valid = candidate
-        centres = jnp.where(valid[:, None], centres, data.centres)
-        radii = jnp.where(valid[:, None], radii, data.radii)
-        rotations = jnp.where(
-            valid[:, None, None],
-            rotations,
-            data.rotations,
-        )
-        log_volumes = jnp.where(valid, log_volumes, data.log_volumes)
-        log_L_max = jnp.where(valid, log_L_max, data.log_L_max)
-        combined_valid = valid | data.valid
-        any_candidate = jnp.any(valid)
-        candidate_data = SamplerData(
-            mixture=mixture,
-            centres=centres,
-            radii=radii,
-            rotations=rotations,
-            log_volumes=log_volumes,
-            log_L_max=log_L_max,
-            valid=combined_valid,
-            num_samples=num_samples.astype(mp_policy.count_dtype),
-            num_attempted=num_samples.astype(mp_policy.count_dtype),
-            num_updates=data.num_updates + jnp.asarray(
-                1,
-                mp_policy.count_dtype,
-            ),
-            num_directions=data.num_directions,
-            num_isotropic=data.num_isotropic,
-        )
-        rejected = dataclasses.replace(
-            data,
-            num_attempted=num_samples.astype(mp_policy.count_dtype),
-        )
-        return jax.lax.cond(
-            any_candidate,
-            lambda unused: candidate_data,
-            lambda unused: rejected,
-            operand=None,
-        )
-
-    def skip(_):
-        return dataclasses.replace(
-            data,
-            num_attempted=num_samples.astype(mp_policy.count_dtype),
-        )
-
-    return jax.lax.cond(enough_information, fit, skip, operand=None)
+    )(components)
+    radii, rotations, log_volumes, log_L_at_mean, valid = candidate
+    centres = jnp.where(valid[:, None], mixture.centres, data.centres)
+    radii = jnp.where(valid[:, None], radii, data.radii)
+    rotations = jnp.where(valid[:, None, None], rotations, data.rotations)
+    log_volumes = jnp.where(valid, log_volumes, data.log_volumes)
+    log_L_at_mean = jnp.where(
+        valid,
+        log_L_at_mean,
+        data.log_L_at_mean,
+    )
+    combined_valid = valid | data.valid
+    any_candidate = jnp.any(valid)
+    candidate_data = SamplerData(
+        mixture=mixture,
+        centres=centres,
+        radii=radii,
+        rotations=rotations,
+        log_volumes=log_volumes,
+        log_L_at_mean=log_L_at_mean,
+        valid=combined_valid,
+        enabled=jnp.any(combined_valid),
+        iso_prob=jnp.asarray(iso_prob, mp_policy.measure_dtype),
+        num_samples=num_samples.astype(mp_policy.count_dtype),
+        num_updates=data.num_updates + jnp.asarray(1, mp_policy.count_dtype),
+        num_directions=data.num_directions,
+        num_isotropic=data.num_isotropic,
+    )
+    return jax.lax.cond(
+        any_candidate,
+        lambda unused: candidate_data,
+        lambda unused: data,
+        operand=None,
+    )
 
 
 def component_probabilities(
         data: SamplerData,
         log_L_constraint: FloatArray,
 ) -> FloatArray:
-    """Return contour-eligible ellipsoid probabilities with shape ``[K]``."""
-    eligible = data.valid & (data.log_L_max > log_L_constraint)
-    logits = jnp.where(eligible, data.log_volumes, -jnp.inf)
+    """Return fitted super-level ellipsoid probabilities with shape ``[K]``."""
+    log_volumes, eligible = _trimmed_log_volumes(data, log_L_constraint)
+    logits = jnp.where(eligible, log_volumes, -jnp.inf)
     normalizer = logsumexp(logits)
     return jnp.where(eligible, jnp.exp(logits - normalizer), 0.0)
 
 
+def _trimmed_log_volumes(
+        data: SamplerData,
+        log_L_constraint: FloatArray,
+) -> tuple[FloatArray, BoolArray]:
+    """Trim fitted Gaussian ellipsoids at one likelihood high-water mark."""
+    height = data.log_L_at_mean - log_L_constraint
+    eligible = data.enabled & data.valid & (height > 0.0)
+    dimension = jnp.asarray(data.radii.shape[1], data.log_volumes.dtype)
+    radius_squared = 2.0 * jnp.maximum(height, 0.0)
+    log_volumes = (
+        data.log_volumes
+        + 0.5 * dimension * jnp.log(jnp.maximum(radius_squared, 1e-300))
+    )
+    return log_volumes, eligible
+
+
 def component_probabilities_reference(
         log_volumes: np.ndarray,
-        log_L_max: np.ndarray,
+        log_L_at_mean: np.ndarray,
         valid: np.ndarray,
+        enabled: bool,
         log_L_constraint: float,
+        dimension: int,
 ) -> np.ndarray:
-    """NumPy reference for strict contour eligibility and volume selection."""
-    eligible = np.asarray(valid) & (
-        np.asarray(log_L_max) > log_L_constraint
-    )
+    """NumPy reference for fitted super-level ellipsoid selection."""
+    height = np.asarray(log_L_at_mean) - log_L_constraint
+    eligible = enabled & np.asarray(valid) & (height > 0.0)
     if not np.any(eligible):
         return np.zeros_like(log_volumes, dtype=float)
+    trimmed = np.asarray(log_volumes) + 0.5 * dimension * np.log(
+        2.0 * np.maximum(height, np.finfo(float).tiny)
+    )
     shifted = np.where(
         eligible,
-        np.asarray(log_volumes) - np.max(np.asarray(log_volumes)[eligible]),
+        trimmed - np.max(trimmed[eligible]),
         -np.inf,
     )
     weights = np.exp(shifted)

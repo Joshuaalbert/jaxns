@@ -20,11 +20,22 @@ from jaxns.algorithm.depth import (
     MAX_SAMPLES_REACHED,
     CoreWorkBatch,
     _accept_work_batch,
-    _build_depth_view,
-    _plan_work_batch,
-    _prepare_sampler_data,
+    _continuation_capacity,
+    _continue_schedule_round,
+    _depth_condition_reached,
+    _insert_thread_head,
+    _plan_scheduled_work_batch,
+    _publish_seed_source,
+    _refresh_likelihood_order,
+    _release_thread_heads,
+    _resize_depth_state,
+    _seed_source_refresh_due,
+    _start_schedule_round,
+    _start_seed_storage_full,
+    _update_seed_reservoir,
 )
 from jaxns.algorithm.initialisation import _build_init_state
+from jaxns.algorithm.scheduler import has_thread_work
 from jaxns.checkpoint import (
     CHECKPOINT_CADENCE_SECONDS,
     CheckpointManager,
@@ -36,7 +47,8 @@ from jaxns.constrained_sampler import (
     LikelihoodEvaluation,
     LikelihoodRequest,
 )
-from jaxns.core import NestedSampler
+from jaxns.core import NestedSampler, _grow_start_seed_storage
+from jaxns.depth_condition import DepthCondition
 from jaxns.logging import jaxns_logger
 from jaxns.mixed_precision import mp_policy
 from jaxns.model import Model
@@ -44,8 +56,7 @@ from jaxns.pytree import PureDataclassPytree
 from jaxns.runtime.session import WorkerSession
 from jaxns.samples import SeedPoint
 from jaxns.state import State
-from jaxns.termination_condition import TerminationCondition
-from jaxns.types import BoolArray, IntArray, PRNGKey
+from jaxns.types import BoolArray, FloatArray, IntArray, PRNGKey
 
 if TYPE_CHECKING:
     from jaxns.results import NestedSamplerResults
@@ -99,6 +110,8 @@ class PendingTask(PureDataclassPytree):
     """One retry-stable task and the reservation it will discharge."""
 
     task_id: int
+    thread_id: IntArray  # [] stable identity across successive edges
+    terminal_log_L: FloatArray  # [] terminal contour of the logical thread
     work: CoreWorkBatch  # [1] one logical lineage edge
     request: ConstrainedSampleRequest  # [1] one constrained chain
 
@@ -120,11 +133,60 @@ class DistributedState(PureDataclassPytree):
 
     def to_result(self) -> NestedSamplerResults:
         """Return the ordinary user-facing result from committed samples."""
-        if self.pending or int(self.reservations.num_reserved) != 0:
+        if (
+            self.pending
+            or int(self.reservations.num_reserved) != 0
+            or self.depth_active
+            or self.state.scheduler_data is not None
+        ):
             raise RuntimeError(
-                "Results are unavailable while distributed work is pending."
+                "Results are unavailable while work is pending or a "
+                "distributed depth is active."
             )
         return self.state.to_result()
+
+    def fit_gmm_directions(
+            self,
+            *,
+            num_components: int | None = None,
+            num_iterations: int = 10,
+            iso_prob: float = 1e-2,
+            regularisation: float = 1e-6,
+    ) -> DistributedState:
+        """Fit directions from committed classics on a drained checkpoint."""
+        self._ensure_direction_boundary()
+        return dataclasses.replace(
+            self,
+            state=self.state.fit_gmm_directions(
+                num_components=num_components,
+                num_iterations=num_iterations,
+                iso_prob=iso_prob,
+                regularisation=regularisation,
+            ),
+        )
+
+    def iso_directions(self) -> DistributedState:
+        """Force exact isotropic directions on a drained checkpoint."""
+        self._ensure_direction_boundary()
+        return dataclasses.replace(self, state=self.state.iso_directions())
+
+    def gmm_directions(self) -> DistributedState:
+        """Re-enable retained GMM directions on a drained checkpoint."""
+        self._ensure_direction_boundary()
+        return dataclasses.replace(self, state=self.state.gmm_directions())
+
+    def _ensure_direction_boundary(self) -> None:
+        """Reject direction-law changes while dispatched work is in flight."""
+        if (
+            self.pending
+            or int(self.reservations.num_reserved) != 0
+            or self.depth_active
+            or self.state.scheduler_data is not None
+        ):
+            raise RuntimeError(
+                "Direction fitting and toggling require a drained distributed "
+                "state."
+            )
 
 
 DistributedState.register_pytree()
@@ -135,6 +197,8 @@ class PreparedTask(NamedTuple):
     reservations: ReservationState
     work: CoreWorkBatch  # [S] static seed-stratification window
     request: ConstrainedSampleRequest  # [S] static planning window
+    thread_id: IntArray  # [S] logical thread identity
+    terminal_log_L: FloatArray  # [S] logical thread terminal contour
     has_work: BoolArray  # []
 
 
@@ -147,7 +211,10 @@ class AcceptedTask(NamedTuple):
 class DepthStatus(NamedTuple):
     has_work: BoolArray  # []
     needs_growth: BoolArray  # []
-    depth_reached: BoolArray  # []
+    needs_thread_growth: BoolArray  # []
+    needs_seed_growth: BoolArray  # []
+    source_refresh_due: BoolArray  # []
+    schedule_drained: BoolArray  # []
     termination_reason: IntArray  # []
 
 
@@ -217,7 +284,6 @@ def _change_reservations(
 
 def _sample_limit(
         state: State,
-        depth_cond: TerminationCondition,
         max_samples: int | None,
 ) -> IntArray:
     limit = jnp.asarray(
@@ -226,21 +292,14 @@ def _sample_limit(
     )
     if max_samples is not None:
         limit = jnp.asarray(max_samples, mp_policy.count_dtype)
-    if depth_cond.max_samples is not None:
-        limit = jnp.minimum(
-            limit,
-            depth_cond.max_samples.astype(mp_policy.count_dtype),
-        )
     return limit
 
 
 @partial(
     jax.jit,
+    inline=True,
     static_argnames=(
         "dispatch_width",
-        "allocation_target",
-        "root_degree",
-        "delta_K",
         "max_samples",
     ),
 )
@@ -248,43 +307,26 @@ def _prepare_task(
         state: State,
         reservations: ReservationState,
         sampler,
-        depth_cond: TerminationCondition,
+        reserved_seed_idx: IntArray,
+        reserved_log_L_constraint: FloatArray,
+        reserved_valid: BoolArray,
         *,
         dispatch_width: int,
         max_threads: IntArray,
-        allocation_target: str,
-        root_degree: int,
-        delta_K: int,
         max_samples: int | None,
 ) -> PreparedTask:
-    """Plan, seed, and reserve one worker batch without sampling it."""
-    if sampler.uses_adaptive_directions():
-        plan_key, fit_key, sample_key, next_key = jax.random.split(
-            state.random_key,
-            4,
-        )
-    else:
-        plan_key, sample_key, next_key = jax.random.split(
-            state.random_key,
-            3,
-        )
-        fit_key = sample_key
+    """Move frozen logical heads into retry-stable worker requests."""
+    if state.scheduler_data is None:
+        raise ValueError("Distributed dispatch requires an active schedule.")
+    plan_key, sample_key, next_key = jax.random.split(state.random_key, 3)
 
-    provisional = _planning_state(state, reservations)
-    block_state, plan, relevant, _ = _build_depth_view(
-        provisional,
-        depth_cond,
-        allocation_target=allocation_target,
-        root_degree=root_degree,
-        delta_K=delta_K,
-    )
     physical_free = (
         state.samples.log_likelihoods.shape[0]
         - state.num_samples
         - reservations.num_reserved
     )
     global_free = (
-        _sample_limit(state, depth_cond, max_samples)
+        _sample_limit(state, max_samples)
         - state.num_samples
         - reservations.num_reserved
     )
@@ -296,42 +338,23 @@ def _prepare_task(
         available,
         max_threads.astype(mp_policy.index_dtype),
     )
-    work = _plan_work_batch(
+    schedule, work = _plan_scheduled_work_batch(
         plan_key,
         state,
-        block_state,
-        plan,
-        relevant,
-        dispatch_width,
-        max_valid_lanes=available,
+        state.scheduler_data,
+        available,
+        reserved_seed_idx,
+        reserved_log_L_constraint,
+        reserved_valid,
     )
-
-    sampling_state = state
-    if sampler.uses_adaptive_directions():
-        # Reservations are scheduling evidence, not completed race-tree
-        # observations. Direction fitting must use the committed block model.
-        committed_blocks, _, _, _ = _build_depth_view(
-            state,
-            depth_cond,
-            allocation_target=allocation_target,
-            root_degree=root_degree,
-            delta_K=delta_K,
-        )
-        sampling_state = _prepare_sampler_data(
-            fit_key,
-            state,
-            sampler,
-            work,
-            committed_blocks,
-        )
 
     seed_points = SeedPoint(
         U0=jax.tree.map(
             lambda values: values[work.seed_idx],
-            sampling_state.samples.U_samples,
+            state.samples.U_samples,
         ),
         log_L0=(
-            sampling_state.samples.log_likelihoods[work.seed_idx]
+            state.samples.log_likelihoods[work.seed_idx]
         ),
     )
     request = ConstrainedSampleRequest(
@@ -339,12 +362,16 @@ def _prepare_task(
         valid=work.valid,
         log_L_constraints=work.log_L_constraint,
         seed_points=seed_points,
-        sampler_data=sampling_state.sampler_data,
+        sampler_data=state.sampler_data,
     )
     has_work = work.num_valid > 0
+    thread_id = schedule.thread_id
+    terminal_log_L = schedule.terminal_log_L
+    schedule = _release_thread_heads(schedule, work.valid)
     updated = dataclasses.replace(
-        sampling_state,
+        state,
         random_key=jnp.where(has_work, next_key, state.random_key),
+        scheduler_data=schedule,
     )
     reserved = jax.lax.cond(
         has_work,
@@ -357,6 +384,8 @@ def _prepare_task(
         reservations=reserved,
         work=work,
         request=request,
+        thread_id=thread_id,
+        terminal_log_L=terminal_log_L,
         has_work=has_work,
     )
 
@@ -365,21 +394,67 @@ def _prepare_task(
 def _accept_task(
         state: State,
         reservations: ReservationState,
+        thread_id: IntArray,
+        terminal_log_L: FloatArray,
         work: CoreWorkBatch,
         batch: ConstrainedSampleBatch,
 ) -> AcceptedTask:
     """Validate and atomically convert one reservation into real samples."""
-    accepted = jnp.all(
+    strict = jnp.all(
         jnp.logical_not(work.valid)
         | (
             jnp.logical_not(jnp.isnan(batch.log_likelihoods))
             & (batch.log_likelihoods > work.log_L_constraint)
         )
     )
+    continuing = jnp.asarray(False, mp_policy.bool_dtype)
+    has_continuation_slot = jnp.asarray(True, mp_policy.bool_dtype)
+    if state.scheduler_data is not None:
+        continuing = work.valid[0] & (
+            batch.log_likelihoods[0] < terminal_log_L
+        )
+        has_continuation_slot = (
+            state.scheduler_data.continuation_count
+            < state.scheduler_data.continuation_parent_idx.shape[0]
+        )
+    accepted = strict & (
+        jnp.logical_not(continuing) | has_continuation_slot
+    )
 
     def commit(_):
+        insert_idx = state.num_samples.astype(mp_policy.index_dtype)
+        if state.scheduler_data is None:
+            return AcceptedTask(
+                state=_accept_work_batch(state, work, batch),
+                reservations=_change_reservations(reservations, work, -1),
+                accepted=jnp.asarray(True, mp_policy.bool_dtype),
+            )
+        committed = _accept_work_batch(
+            state,
+            work,
+            batch,
+            # Likelihood order is intentionally stale until every thread in
+            # the frozen round has reached its terminal contour.
+            update_likelihood_order=False,
+        )
+        schedule = _update_seed_reservoir(
+            state.scheduler_data,
+            jnp.reshape(insert_idx, (1,)),
+            work.valid,
+        )
+        schedule = _insert_thread_head(
+            schedule,
+            thread_id,
+            insert_idx,
+            batch.log_likelihoods[0],
+            terminal_log_L,
+            continuing,
+        )
         return AcceptedTask(
-            state=_accept_work_batch(state, work, batch),
+            state=dataclasses.replace(
+                committed,
+                scheduler_data=schedule,
+            ),
             reservations=_change_reservations(reservations, work, -1),
             accepted=jnp.asarray(True, mp_policy.bool_dtype),
         )
@@ -398,52 +473,48 @@ def _accept_task(
 
 @partial(
     jax.jit,
-    static_argnames=(
-        "allocation_target",
-        "root_degree",
-        "delta_K",
-        "max_samples",
-    ),
+    inline=True,
+    static_argnames=("max_samples",),
 )
 def _depth_status(
         state: State,
         reservations: ReservationState,
-        depth_cond: TerminationCondition,
         *,
-        allocation_target: str,
-        root_degree: int,
-        delta_K: int,
         max_samples: int | None,
 ) -> DepthStatus:
     """Classify whether to dispatch, grow, finish depth, or terminate."""
-    provisional = _planning_state(state, reservations)
-    _, plan, relevant, register = _build_depth_view(
-        provisional,
-        depth_cond,
-        allocation_target=allocation_target,
-        root_degree=root_degree,
-        delta_K=delta_K,
-    )
-    has_gap = jnp.any(plan.under_allocated(relevant))
-    scalar_cond = dataclasses.replace(
-        depth_cond,
-        dlogZ=None,
-        cummax_XL_frac=None,
-    )
-    scalar_done, scalar_reason = register.is_done(scalar_cond)
-    limit = _sample_limit(state, depth_cond, max_samples)
+    has_schedule_work = jnp.asarray(False, mp_policy.bool_dtype)
+    seed_source_refresh_due = jnp.asarray(False, mp_policy.bool_dtype)
+    thread_storage_full = jnp.asarray(False, mp_policy.bool_dtype)
+    seed_storage_full = jnp.asarray(False, mp_policy.bool_dtype)
+    if state.scheduler_data is not None:
+        has_schedule_work = has_thread_work(state.scheduler_data)
+        seed_source_refresh_due = _seed_source_refresh_due(
+            state,
+            state.scheduler_data,
+        )
+        thread_storage_full = (
+            has_schedule_work
+            & (
+                state.scheduler_data.continuation_count
+                + reservations.num_reserved
+                >= state.scheduler_data.continuation_parent_idx.shape[0]
+            )
+        )
+        seed_storage_full = (
+            has_schedule_work
+            & jnp.logical_not(seed_source_refresh_due)
+            & _start_seed_storage_full(state.scheduler_data)
+        )
+    limit = _sample_limit(state, max_samples)
     hard_limit = state.num_samples >= limit
     termination_reason = jnp.where(
         state.termination_reason != 0,
         state.termination_reason,
         jnp.where(
-            scalar_done,
-            scalar_reason,
-            jnp.where(
-                hard_limit,
-                jnp.asarray(MAX_SAMPLES_REACHED, mp_policy.count_dtype),
-                jnp.asarray(0, mp_policy.count_dtype),
-            ),
+            hard_limit,
+            jnp.asarray(MAX_SAMPLES_REACHED, mp_policy.count_dtype),
+            jnp.asarray(0, mp_policy.count_dtype),
         ),
     )
     terminal = termination_reason != 0
@@ -454,20 +525,44 @@ def _depth_status(
     below_limit = (
         state.num_samples + reservations.num_reserved < limit
     )
-    has_work = has_gap & below_limit & jnp.logical_not(terminal)
+    has_work = (
+        has_schedule_work
+        & below_limit
+        & jnp.logical_not(seed_source_refresh_due)
+        & jnp.logical_not(thread_storage_full)
+        & jnp.logical_not(seed_storage_full)
+        & jnp.logical_not(terminal)
+    )
     needs_growth = (
         has_work
         & physical_full
         & jnp.logical_not(terminal)
     )
     can_dispatch = has_work & jnp.logical_not(physical_full)
-    depth_reached = jnp.logical_not(
-        terminal | needs_growth | can_dispatch
+    source_refresh_ready = (
+        seed_source_refresh_due
+        & has_schedule_work
+        & jnp.logical_not(terminal | needs_growth)
+        & (reservations.num_reserved == 0)
+    )
+    schedule_drained = (
+        jnp.logical_not(has_schedule_work)
+        & jnp.logical_not(terminal | needs_growth)
+        & (reservations.num_reserved == 0)
     )
     return DepthStatus(
         has_work=can_dispatch,
         needs_growth=needs_growth,
-        depth_reached=depth_reached,
+        needs_thread_growth=(
+            thread_storage_full
+            & jnp.logical_not(terminal | seed_source_refresh_due)
+        ),
+        needs_seed_growth=(
+            seed_storage_full
+            & jnp.logical_not(terminal | seed_source_refresh_due)
+        ),
+        source_refresh_due=source_refresh_ready,
+        schedule_drained=schedule_drained,
         termination_reason=termination_reason,
     )
 
@@ -499,6 +594,7 @@ class DistributedNestedSampler:
         "collect_phantom_samples",
         "coordinator_port",
         "delta_K",
+        "depth_condition",
         "initial_capacity",
         "max_phantom_samples",
         "max_samples",
@@ -509,7 +605,6 @@ class DistributedNestedSampler:
         "sampler",
         "store_phantom_samples",
         "target_num_live_points",
-        "termination_condition",
         "unlimited_samples",
     )
 
@@ -523,7 +618,7 @@ class DistributedNestedSampler:
             args: tuple = (),
             params: CtxParams | None = None,
             sampler: AbstractSampler | None = None,
-            termination_condition: TerminationCondition | None = None,
+            depth_condition: DepthCondition | None = None,
             store_phantom_samples: bool = False,
             collect_phantom_samples: bool = False,
             max_phantom_samples: int | None = None,
@@ -548,7 +643,7 @@ class DistributedNestedSampler:
         self.args = args
         self.params = params
         self.sampler = sampler
-        self.termination_condition = termination_condition
+        self.depth_condition = depth_condition
         self.store_phantom_samples = store_phantom_samples
         self.collect_phantom_samples = collect_phantom_samples
         self.max_phantom_samples = max_phantom_samples
@@ -572,10 +667,14 @@ class DistributedNestedSampler:
             root_degree = self.target_num_live_points
         if root_degree is None:
             root_degree = max(1, 30 * int(self.model.U_ndims(self.args, self.params)))
-        # Allocation depth is scientific policy, not worker topology. A root-
-        # sized default exposes enough independent lineage work for a pool
-        # without changing when workers join or leave.
-        delta_K = root_degree if self.delta_K is None else self.delta_K
+        # With no local replacement width, one root population is the natural
+        # work increment. Uniform allocation therefore follows d_0, 2 d_0,
+        # 3 d_0, and so on. Utility allocation uses the same
+        # worker-topology-independent increment.
+        if self.delta_K is None:
+            delta_K = root_degree
+        else:
+            delta_K = self.delta_K
         initial_capacity = self.initial_capacity
         if initial_capacity is None:
             initial_capacity = root_degree + 10 * delta_K
@@ -590,7 +689,7 @@ class DistributedNestedSampler:
             args=self.args,
             params=self.params,
             sampler=self.sampler,
-            termination_condition=self.termination_condition,
+            depth_condition=self.depth_condition,
             store_phantom_samples=self.store_phantom_samples,
             collect_phantom_samples=self.collect_phantom_samples,
             max_phantom_samples=self.max_phantom_samples,
@@ -605,7 +704,7 @@ class DistributedNestedSampler:
         self.max_samples = core.max_samples
         self.sampler = core.sampler
         self.max_phantom_samples = core.max_phantom_samples
-        self.termination_condition = core.termination_condition
+        self.depth_condition = core.depth_condition
         self.delta_K = core.delta_K
         self.initial_capacity = core.initial_capacity
 
@@ -715,12 +814,8 @@ class DistributedNestedSampler:
             sample_capacity=int(self.initial_capacity),
             num_phantom=int(self.sampler.num_phantom()),
         )
-        sampler_data = self.sampler.initial_sampler_data(
-            int(self.model.U_ndims(self.args, self.params))
-        )
         state = dataclasses.replace(
             state,
-            sampler_data=sampler_data,
             random_key=run_key,
             goal_key=run_key,
             depth_reached=jnp.asarray(True, mp_policy.bool_dtype),
@@ -872,10 +967,10 @@ class DistributedNestedSampler:
         def default_goal(state: State) -> bool:
             if int(state.goal_loop_iter) == 0:
                 return False
-            done, _ = state.compute_termination_register().is_done(
-                self.termination_condition
-            )
-            return bool(done)
+            return bool(_depth_condition_reached(
+                state,
+                self.depth_condition,
+            ))
 
         return self.run_until_goal(
             default_goal,
@@ -887,7 +982,7 @@ class DistributedNestedSampler:
     def run_until_goal(
             self,
             goal_cond: Callable[[State], bool],
-            depth_cond: TerminationCondition | None = None,
+            depth_cond: DepthCondition | None = None,
             key: PRNGKey | None = None,
             checkpoint_dir: str | Path | None = None,
             checkpoint_cadence: float = CHECKPOINT_CADENCE_SECONDS,
@@ -925,7 +1020,7 @@ class DistributedNestedSampler:
             self,
             goal_cond: Callable[[State], bool],
             *,
-            depth_cond: TerminationCondition | None,
+            depth_cond: DepthCondition | None,
             key: PRNGKey | None,
             checkpoint_manager: CheckpointManager[DistributedState] | None,
     ) -> DistributedState:
@@ -933,7 +1028,7 @@ class DistributedNestedSampler:
         from jaxns.runtime.client import SupervisorClient
 
         if depth_cond is None:
-            depth_cond = self.termination_condition
+            depth_cond = self.depth_condition
         session_id = uuid4().hex
         session = WorkerSession(
             model=self.model,
@@ -984,7 +1079,7 @@ class DistributedNestedSampler:
             self,
             distributed: DistributedState,
             goal_cond: Callable[[State], bool],
-            depth_cond: TerminationCondition | None = None,
+            depth_cond: DepthCondition | None = None,
             checkpoint_dir: str | Path | None = None,
             checkpoint_cadence: float = CHECKPOINT_CADENCE_SECONDS,
     ) -> DistributedState:
@@ -1024,7 +1119,7 @@ class DistributedNestedSampler:
             distributed: DistributedState | None,
             goal_cond: Callable[[State], bool],
             *,
-            depth_cond: TerminationCondition | None,
+            depth_cond: DepthCondition | None,
             key: PRNGKey | None,
             checkpoint_dir: str | Path | None,
             checkpoint_cadence: float,
@@ -1066,14 +1161,14 @@ class DistributedNestedSampler:
             distributed: DistributedState,
             goal_cond: Callable[[State], bool],
             *,
-            depth_cond: TerminationCondition | None,
+            depth_cond: DepthCondition | None,
             checkpoint_manager: CheckpointManager[DistributedState] | None,
     ) -> DistributedState:
         """Reconnect one resolved immutable distributed state."""
         from jaxns.runtime.client import SupervisorClient
 
         if depth_cond is None:
-            depth_cond = self.termination_condition
+            depth_cond = self.depth_condition
         session = WorkerSession(
             model=self.model,
             sampler=self.sampler,
@@ -1121,7 +1216,7 @@ class DistributedNestedSampler:
             client: SupervisorClient,
             distributed: DistributedState,
             goal_cond: Callable[[State], bool],
-            depth_cond: TerminationCondition,
+            depth_cond: DepthCondition,
             checkpoint_manager: CheckpointManager[DistributedState] | None,
     ) -> DistributedState:
         completed_tasks: dict[
@@ -1223,6 +1318,8 @@ class DistributedNestedSampler:
                     accepted = _accept_task(
                         distributed.state,
                         distributed.reservations,
+                        pending.thread_id,
+                        pending.terminal_log_L,
                         pending.work,
                         batch,
                     )
@@ -1248,14 +1345,23 @@ class DistributedNestedSampler:
                 continue
 
             status = self._status(distributed, depth_cond)
+            if bool(status.needs_thread_growth):
+                distributed = self._grow_thread_storage(distributed)
+                continue
+            if bool(status.needs_seed_growth):
+                distributed = self._grow_seed_storage(distributed)
+                continue
             if bool(status.needs_growth):
                 distributed = self._grow(distributed)
                 continue
             if int(status.termination_reason) != 0:
+                terminal_state = _refresh_likelihood_order(
+                    distributed.state,
+                )
                 return dataclasses.replace(
                     distributed,
                     state=dataclasses.replace(
-                        distributed.state,
+                        terminal_state,
                         termination_reason=status.termination_reason,
                         needs_growth=jnp.asarray(
                             False,
@@ -1265,11 +1371,74 @@ class DistributedNestedSampler:
                             False,
                             mp_policy.bool_dtype,
                         ),
+                        scheduler_data=None,
                     ),
+                    depth_active=False,
                 )
-            if bool(status.depth_reached):
+            if bool(status.source_refresh_due):
+                # All dispatched edges are committed before publication. Only
+                # the exact seed source advances; logical thread heads and the
+                # continuation heap remain available to any worker that joins.
+                state = _publish_seed_source(distributed.state)
+                distributed = dataclasses.replace(
+                    distributed,
+                    state=state,
+                )
+                continue
+            if bool(status.schedule_drained):
+                state = _refresh_likelihood_order(distributed.state)
+                reached_expected_depth = bool(_depth_condition_reached(
+                    state,
+                    depth_cond,
+                ))
+                if not reached_expected_depth:
+                    previous = state.scheduler_data
+                    planning_width = previous.valid.shape[0]
+                    state = _continue_schedule_round(
+                        state,
+                        previous,
+                        depth_cond,
+                        shell_size=planning_width,
+                    )
+                    schedule = state.scheduler_data
+                    if schedule is None:
+                        raise RuntimeError(
+                            "Continuation planning did not create a schedule."
+                        )
+                    if bool(schedule.active):
+                        distributed = dataclasses.replace(
+                            distributed,
+                            state=dataclasses.replace(
+                                state,
+                                depth_reached=jnp.asarray(
+                                    False,
+                                    mp_policy.bool_dtype,
+                                ),
+                            ),
+                        )
+                        continue
+                    state = dataclasses.replace(
+                        state,
+                        allocation_loop_iter=(
+                            state.allocation_loop_iter
+                            + jnp.asarray(
+                                1,
+                                state.allocation_loop_iter.dtype,
+                            )
+                        ),
+                        depth_reached=jnp.asarray(
+                            False,
+                            mp_policy.bool_dtype,
+                        ),
+                        scheduler_data=None,
+                    )
+                    distributed = dataclasses.replace(
+                        distributed,
+                        state=state,
+                    )
+                    continue
                 state = dataclasses.replace(
-                    distributed.state,
+                    state,
                     random_key=distributed.goal_key,
                     goal_key=distributed.goal_key,
                     depth_reached=jnp.asarray(True, mp_policy.bool_dtype),
@@ -1280,6 +1449,14 @@ class DistributedNestedSampler:
                             distributed.state.goal_loop_iter.dtype,
                         )
                     ),
+                    allocation_loop_iter=(
+                        distributed.state.allocation_loop_iter
+                        + jnp.asarray(
+                            1,
+                            distributed.state.allocation_loop_iter.dtype,
+                        )
+                    ),
+                    scheduler_data=None,
                 )
                 distributed = dataclasses.replace(
                     distributed,
@@ -1317,13 +1494,12 @@ class DistributedNestedSampler:
             self,
             client: SupervisorClient,
             distributed: DistributedState,
-            depth_cond: TerminationCondition,
+            depth_cond: DepthCondition,
             lane_capacity: int | None = None,
     ) -> DistributedState:
         # Fill every currently measured worker lane without imposing a
-        # completion barrier. The capacity bound also prevents scheduling
-        # policy from changing the number of scientific observations merely
-        # because a large allocation gap is visible to the coordinator.
+        # completion barrier. Worker capacity chooses only the number of
+        # in-flight head slots; it cannot change the frozen gap or terminals.
         if lane_capacity is None:
             try:
                 capacity = client.capacity(
@@ -1337,22 +1513,95 @@ class DistributedNestedSampler:
                 ) from exc
         else:
             capacity = lane_capacity
-        pending_limit = capacity
+        # The frozen gap is stored as compressed thread runs, so its magnitude
+        # does not determine how many heads must exist simultaneously. Size
+        # this transient window only for executable worker lanes. Coupling it
+        # to delta_K would make a one-lane utility run trace delta_K seed lanes
+        # and turn seed exclusion into quadratic work with no extra overlap.
+        planning_width = max(1, capacity)
+        schedule = distributed.state.scheduler_data
+        if schedule is None:
+            state = _start_schedule_round(
+                distributed.state,
+                depth_cond,
+                shell_size=planning_width,
+                allocation_target=self.allocation_target,
+                root_degree=int(self.root_allocation_degree),
+                delta_K=int(self.delta_K),
+            )
+            distributed = dataclasses.replace(
+                distributed,
+                state=state,
+                depth_active=True,
+            )
+        elif planning_width > schedule.valid.shape[0]:
+            reservoir_size = max(
+                planning_width,
+                schedule.seed_reservoir_idx.shape[0],
+            )
+            continuation_size = _continuation_capacity(
+                distributed.state.samples.log_likelihoods.shape[0],
+                reservoir_size,
+            )
+            distributed = dataclasses.replace(
+                distributed,
+                state=dataclasses.replace(
+                    distributed.state,
+                    scheduler_data=schedule.resize_threads(
+                        planning_width,
+                        continuation_size=continuation_size,
+                    ),
+                ),
+            )
+        planning_width = distributed.state.scheduler_data.valid.shape[0]
+        pending_limit = min(capacity, planning_width)
         free = max(0, pending_limit - len(distributed.pending))
-        planning_width = int(self.delta_K)
         while free > 0 and bool(self._status(distributed, depth_cond).has_work):
+            # Pending worker requests and newly filled heads are one logical
+            # concurrent batch. Carry their exact seed reservations into the
+            # next refill so equal-contour work remains without replacement.
+            host_seed_idx = np.full(
+                (planning_width,),
+                -1,
+                dtype=np.int32,
+            )
+            host_log_L_constraint = np.full(
+                (planning_width,),
+                -jnp.inf,
+                dtype=np.float64,
+            )
+            host_valid = np.zeros((planning_width,), dtype=np.bool_)
+            for pending_idx, task in enumerate(distributed.pending):
+                host_seed_idx[pending_idx] = np.asarray(
+                    task.work.seed_idx
+                )[0]
+                host_log_L_constraint[pending_idx] = np.asarray(
+                    task.work.log_L_constraint
+                )[0]
+                host_valid[pending_idx] = True
+            reserved_seed_idx = jnp.asarray(
+                host_seed_idx,
+                dtype=mp_policy.index_dtype,
+            )  # [S]
+            reserved_log_L_constraint = jnp.asarray(
+                host_log_L_constraint,
+                dtype=mp_policy.measure_dtype,
+            )  # [S]
+            reserved_valid = jnp.asarray(
+                host_valid,
+                dtype=mp_policy.bool_dtype,
+            )  # [S]
             prepared = _prepare_task(
                 distributed.state,
                 distributed.reservations,
                 self.sampler,
-                depth_cond,
+                reserved_seed_idx,
+                reserved_log_L_constraint,
+                reserved_valid,
                 # This is a seed-stratification window, not an execution
                 # batch. Every valid lane becomes its own transport task.
                 dispatch_width=planning_width,
                 max_threads=jnp.asarray(free, mp_policy.index_dtype),
-                allocation_target=self.allocation_target,
-                root_degree=int(self.root_allocation_degree),
-                delta_K=int(self.delta_K),
                 max_samples=self.max_samples,
             )
             if not bool(prepared.has_work):
@@ -1360,12 +1609,24 @@ class DistributedNestedSampler:
             num_tasks = int(prepared.work.num_valid)
             # One transfer per planning window avoids a device synchronization
             # for every scalar task when pickle asks each JAX leaf for bytes.
-            host_work, host_request = jax.device_get(
-                (prepared.work, prepared.request)
+            (
+                host_work,
+                host_request,
+                host_thread_id,
+                host_terminal_log_L,
+            ) = jax.device_get(
+                (
+                    prepared.work,
+                    prepared.request,
+                    prepared.thread_id,
+                    prepared.terminal_log_L,
+                )
             )
             tasks = tuple(
                 PendingTask(
                     task_id=distributed.next_task_id + lane,
+                    thread_id=host_thread_id[lane],
+                    terminal_log_L=host_terminal_log_L[lane],
                     work=CoreWorkBatch(
                         valid=host_work.valid[lane:lane + 1],
                         parent_idx=host_work.parent_idx[lane:lane + 1],
@@ -1423,24 +1684,24 @@ class DistributedNestedSampler:
     def _status(
             self,
             distributed: DistributedState,
-            depth_cond: TerminationCondition,
+            depth_cond: DepthCondition,
     ) -> DepthStatus:
         return _depth_status(
             distributed.state,
             distributed.reservations,
-            depth_cond,
-            allocation_target=self.allocation_target,
-            root_degree=int(self.root_allocation_degree),
-            delta_K=int(self.delta_K),
             max_samples=self.max_samples,
         )
 
     def _grow_if_needed(
             self,
             distributed: DistributedState,
-            depth_cond: TerminationCondition,
+            depth_cond: DepthCondition,
     ) -> DistributedState:
         status = self._status(distributed, depth_cond)
+        if bool(status.needs_thread_growth):
+            return self._grow_thread_storage(distributed)
+        if bool(status.needs_seed_growth):
+            return self._grow_seed_storage(distributed)
         if bool(status.needs_growth):
             return self._grow(distributed)
         return distributed
@@ -1476,9 +1737,50 @@ class DistributedNestedSampler:
         return dataclasses.replace(
             distributed,
             state=dataclasses.replace(
-                distributed.state.resize(new_capacity),
+                _resize_depth_state(distributed.state, new_capacity),
                 needs_growth=jnp.asarray(False, mp_policy.bool_dtype),
                 depth_reached=jnp.asarray(False, mp_policy.bool_dtype),
             ),
             reservations=distributed.reservations.resize(new_capacity),
         )
+
+    def _grow_thread_storage(
+            self,
+            distributed: DistributedState,
+    ) -> DistributedState:
+        """Double only the transient continuation heap between dispatches."""
+        schedule = distributed.state.scheduler_data
+        if schedule is None:
+            return distributed
+        current_size = schedule.continuation_parent_idx.shape[0]
+        required_size = (
+            int(schedule.continuation_count)
+            + int(distributed.reservations.num_reserved)
+            + schedule.valid.shape[0]
+        )
+        new_size = max(2 * current_size, required_size)
+        return dataclasses.replace(
+            distributed,
+            state=dataclasses.replace(
+                distributed.state,
+                scheduler_data=schedule.resize_threads(
+                    schedule.valid.shape[0],
+                    continuation_size=new_size,
+                ),
+                depth_reached=jnp.asarray(False, mp_policy.bool_dtype),
+            ),
+        )
+
+    def _grow_seed_storage(
+            self,
+            distributed: DistributedState,
+    ) -> DistributedState:
+        """Grow the exact start-seed set between asynchronous dispatches."""
+        schedule = distributed.state.scheduler_data
+        if schedule is None:
+            return distributed
+        state = _grow_start_seed_storage(
+            distributed.state,
+            schedule.valid.shape[0],
+        )
+        return dataclasses.replace(distributed, state=state)

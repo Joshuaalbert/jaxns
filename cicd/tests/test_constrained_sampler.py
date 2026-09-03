@@ -7,7 +7,6 @@ from jax import numpy as jnp
 from jax import random
 
 from jaxns.constrained_sampler import (
-    EllipsoidalDirection,
     UniDimSliceSampler,
     sample_request,
 )
@@ -24,6 +23,7 @@ from jaxns.sampling.ellipsoid import (
 from jaxns.sampling.protocol import ConstrainedSampleRequest
 from jaxns.sampling.slice import (
     _new_proposal,
+    _sample_direction,
     _sample_ellipsoidal_direction,
 )
 
@@ -319,6 +319,8 @@ def test_periodic_scalar_and_vmapped_chains_share_one_transition_law():
         expected = np.asarray(expected)
         actual = np.asarray(actual)
         if np.issubdtype(expected.dtype, np.inexact):
+            # The outer conditional may change likelihood reduction fusion;
+            # permit only ordinary roundoff, never a different random stream.
             tolerance = 32 * np.finfo(expected.dtype).eps
             np.testing.assert_allclose(
                 actual,
@@ -366,18 +368,6 @@ def test_random_charts_preserve_uniform_circular_measure():
     )
     assert np.all(np.asarray(samples) >= 0.0)
     assert np.all(np.asarray(samples) < 1.0)
-
-
-def test_periodic_coordinates_reject_euclidean_ellipsoids():
-    """A seam-splitting Euclidean GMM cannot silently choose directions."""
-    sampler = UniDimSliceSampler(
-        model=CircularModel(centre=jnp.asarray([0.5])),
-        num_slices=5,
-        direction=EllipsoidalDirection(num_components=2),
-    )._with_periodic((True,))
-
-    with pytest.raises(ValueError, match="EllipsoidalDirection"):
-        sampler.validate_core(1)
 
 
 def test_mixed_cylinder_crosses_only_the_periodic_seam():
@@ -482,18 +472,11 @@ def test_continuation_outer_jit_captures_registered_function_args():
 
 def test_slice_continuations_preserve_gmm_direction_law():
     model = QuadraticModel(centre=jnp.asarray([0.45, 0.55]))
-    direction = EllipsoidalDirection(
-        num_components=1,
-        min_effective_samples=3,
-        population_size=3,
-        prob_isotropic=0.01,
-    )
     sampler = UniDimSliceSampler(
         model=model,
         num_slices=32,
         collect_phantom_samples=True,
         max_phantom_samples=2,
-        direction=direction,
     )
     data = empty_sampler_data(num_components=1, dimension=2)
     data = dataclasses.replace(
@@ -501,8 +484,10 @@ def test_slice_continuations_preserve_gmm_direction_law():
         radii=jnp.asarray([[2.0, 0.5]]),
         rotations=jnp.eye(2)[None],
         log_volumes=jnp.zeros((1,)),
-        log_L_max=jnp.ones((1,)),
+        log_L_at_mean=jnp.ones((1,)),
         valid=jnp.ones((1,), dtype=jnp.bool_),
+        enabled=jnp.asarray(True),
+        iso_prob=jnp.asarray(0.01),
     )
     request = dataclasses.replace(_request(width=8), sampler_data=data)
     reference = _sample_complete_chains(sampler, request)
@@ -529,6 +514,82 @@ def test_slice_continuations_preserve_gmm_direction_law():
             )
         else:
             np.testing.assert_array_equal(actual, expected)
+
+
+@pytest.mark.parametrize(
+    ("num_slices", "width"),
+    [(32, 8), (8, 2)],
+)
+def test_disabled_retained_fit_matches_plain_isotropic_key_stream(
+        num_slices,
+        width,
+):
+    model = QuadraticModel(centre=jnp.asarray([0.45, 0.55]))
+    sampler = UniDimSliceSampler(
+        model=model,
+        num_slices=num_slices,
+        collect_phantom_samples=True,
+        max_phantom_samples=2,
+    )
+    data = empty_sampler_data(num_components=1, dimension=2)
+    data = dataclasses.replace(
+        data,
+        radii=jnp.asarray([[8.0, 1.0]]),
+        rotations=jnp.eye(2)[None],
+        log_volumes=jnp.zeros((1,)),
+        log_L_at_mean=jnp.ones((1,)),
+        valid=jnp.ones((1,), dtype=jnp.bool_),
+        enabled=jnp.asarray(False),
+        iso_prob=jnp.asarray(0.0),
+    )
+    plain_request = _request(width=width)
+    retained_request = dataclasses.replace(
+        plain_request,
+        sampler_data=data,
+    )
+
+    plain = sample_request(sampler, plain_request)
+    retained = sample_request(sampler, retained_request)
+
+    # Disabling a retained fit takes the exact plain-isotropic key stream. The
+    # diagnostics remain nonzero because the explicit state-owned direction
+    # mode is still active and can be re-enabled without fitting again.
+    np.testing.assert_array_equal(retained.U_samples, plain.U_samples)
+    np.testing.assert_array_equal(
+        retained.log_likelihoods,
+        plain.log_likelihoods,
+    )
+    np.testing.assert_array_equal(
+        retained.num_likelihood_evaluations,
+        plain.num_likelihood_evaluations,
+    )
+    for expected, actual in zip(
+        jax.tree.leaves(plain.phantom_samples),
+        jax.tree.leaves(retained.phantom_samples),
+        strict=True,
+    ):
+        expected = np.asarray(expected)
+        actual = np.asarray(actual)
+        if np.issubdtype(expected.dtype, np.inexact):
+            # The outer conditional may change likelihood reduction fusion;
+            # permit only ordinary roundoff, never a different random stream.
+            tolerance = 32 * np.finfo(expected.dtype).eps
+            np.testing.assert_allclose(
+                actual,
+                expected,
+                rtol=tolerance,
+                atol=tolerance,
+            )
+        else:
+            np.testing.assert_array_equal(actual, expected)
+    np.testing.assert_array_equal(
+        retained.num_directions,
+        jnp.full((width,), num_slices),
+    )
+    np.testing.assert_array_equal(
+        retained.num_isotropic,
+        retained.num_directions,
+    )
 
 
 def test_slice_continuations_do_not_execute_scheduler_padding():
@@ -665,37 +726,74 @@ def test_new_proposal_nonperfect_reuses_previous_width():
     assert float(slice_width_2) > 0.0
 
 
-def test_component_selection_is_strict_and_volume_weighted():
+def test_component_eligibility_uses_fitted_mean_likelihood():
     data = empty_sampler_data(num_components=3, dimension=2)
     data = dataclasses.replace(
         data,
         log_volumes=jnp.log(jnp.asarray([1.0, 3.0, 8.0])),
-        log_L_max=jnp.asarray([0.0, 2.0, 5.0]),
+        log_L_at_mean=jnp.asarray([0.0, 2.0, 5.0]),
         valid=jnp.asarray([True, True, False]),
+        enabled=jnp.asarray(True),
     )
     probabilities = component_probabilities(data, jnp.asarray(0.0))
     reference = component_probabilities_reference(
         np.log(np.asarray([1.0, 3.0, 8.0])),
         np.asarray([0.0, 2.0, 5.0]),
         np.asarray([True, True, False]),
+        True,
         0.0,
+        2,
     )
 
-    # The first peak equals the strict contour and is therefore ineligible;
-    # invalid high-volume geometry must not leak into selection either.
+    # The fitted mean is the component's analytical high-water mark. An
+    # empirical member maximum could exceed the contour for the first
+    # component, but that statistic is intentionally not part of this law.
+    # Equality is strict, and invalid fitted geometry remains ineligible.
     np.testing.assert_allclose(probabilities, reference)
     np.testing.assert_allclose(probabilities, np.asarray([0.0, 1.0, 0.0]))
 
 
-def test_ellipsoidal_direction_jit_vmap_and_degenerate_fallback():
+def test_component_selection_uses_contour_trimmed_volume_in_dimension():
+    data = empty_sampler_data(num_components=2, dimension=3)
+    data = dataclasses.replace(
+        data,
+        log_volumes=jnp.zeros((2,)),
+        log_L_at_mean=jnp.asarray([0.5, 2.0]),
+        valid=jnp.ones((2,), dtype=jnp.bool_),
+        enabled=jnp.asarray(True),
+    )
+
+    probabilities = component_probabilities(data, jnp.asarray(0.0))
+    reference = component_probabilities_reference(
+        np.zeros((2,)),
+        np.asarray([0.5, 2.0]),
+        np.ones((2,), dtype=bool),
+        True,
+        0.0,
+        3,
+    )
+
+    # Equal covariance volumes are trimmed to radii squared 1 and 4. In three
+    # dimensions their super-level volumes therefore have ratio 1:8.
+    np.testing.assert_allclose(probabilities, reference, rtol=1e-6)
+    np.testing.assert_allclose(
+        probabilities,
+        np.asarray([1.0 / 9.0, 8.0 / 9.0]),
+        rtol=1e-6,
+    )
+
+
+def test_ellipsoidal_direction_jit_vmap_uses_eligible_geometry():
     data = empty_sampler_data(num_components=2, dimension=2)
     data = dataclasses.replace(
         data,
         radii=jnp.asarray([[8.0, 1.0], [1.0, 8.0]]),
         rotations=jnp.repeat(jnp.eye(2)[None, :, :], 2, axis=0),
         log_volumes=jnp.zeros((2,)),
-        log_L_max=jnp.asarray([0.0, 2.0]),
+        log_L_at_mean=jnp.asarray([0.0, 2.0]),
         valid=jnp.asarray([True, True]),
+        enabled=jnp.asarray(True),
+        iso_prob=jnp.asarray(0.0),
     )
     keys = random.split(random.PRNGKey(13), 2048)
     draw = jax.jit(jax.vmap(
@@ -704,7 +802,6 @@ def test_ellipsoidal_direction_jit_vmap_and_degenerate_fallback():
             TreeField(jnp.asarray([0.5, 0.5])),
             jnp.asarray(0.0),
             data,
-            0.0,
         ).tree
     ))
     directions = draw(keys)
@@ -715,30 +812,31 @@ def test_ellipsoidal_direction_jit_vmap_and_degenerate_fallback():
     )
     assert jnp.mean(jnp.square(directions[:, 1])) > 0.75
 
-    invalid = dataclasses.replace(
+
+def test_disabled_ellipsoidal_directions_are_exact_isotropic_fallback():
+    data = empty_sampler_data(num_components=1, dimension=2)
+    data = dataclasses.replace(
         data,
-        radii=jnp.full_like(data.radii, jnp.nan),
-        valid=jnp.zeros_like(data.valid),
+        radii=jnp.asarray([[8.0, 1.0]]),
+        rotations=jnp.eye(2)[None],
+        log_volumes=jnp.zeros((1,)),
+        log_L_at_mean=jnp.ones((1,)),
+        valid=jnp.ones((1,), dtype=jnp.bool_),
+        enabled=jnp.asarray(False),
+        # Disabling the fit, rather than this safety mixture, owns the
+        # deterministic fallback exercised here.
+        iso_prob=jnp.asarray(0.0),
     )
+    key = random.PRNGKey(14)
+    point = TreeField(jnp.asarray([0.5, 0.5]))
+    isotropic_key = random.split(key, 4)[0]
+
     fallback = _sample_ellipsoidal_direction(
-        random.PRNGKey(14),
-        TreeField(jnp.asarray([0.5, 0.5])),
-        jnp.asarray(10.0),
-        invalid,
-        0.0,
+        key,
+        point,
+        jnp.asarray(0.0),
+        data,
     ).tree
-    assert jnp.all(jnp.isfinite(fallback))
-    np.testing.assert_allclose(jnp.linalg.norm(fallback), 1.0, rtol=1e-6)
+    isotropic = _sample_direction(isotropic_key, point).tree
 
-
-def test_ellipsoidal_configuration_validation():
-    with np.testing.assert_raises_regex(ValueError, "num_components"):
-        EllipsoidalDirection(num_components=0)
-
-    # A concrete model is unnecessary for checking the static configuration.
-    with np.testing.assert_raises_regex(ValueError, "prob_isotropic"):
-        UniDimSliceSampler(
-            model=None,
-            num_slices=2,
-            direction=EllipsoidalDirection(prob_isotropic=1.1),
-        )
+    np.testing.assert_array_equal(fallback, isotropic)

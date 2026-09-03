@@ -24,7 +24,7 @@ from jaxns.sampling.batching import (
 from jaxns.sampling.continuation import (
     _continue_slice_chains,
 )
-from jaxns.sampling.ellipsoid import SamplerData, empty_sampler_data
+from jaxns.sampling.ellipsoid import SamplerData
 from jaxns.sampling.protocol import (
     ConstrainedSampleBatch,
     ConstrainedSampleRequest,
@@ -43,7 +43,6 @@ __all__ = [
     "AbstractSampler",
     "ConstrainedSampleBatch",
     "ConstrainedSampleRequest",
-    "EllipsoidalDirection",
     "LikelihoodEvaluation",
     "LikelihoodRequest",
     "UniDimSliceSampler",
@@ -169,19 +168,6 @@ class AbstractSampler(ABC):
             params=params,
         )
 
-    def uses_adaptive_directions(self) -> bool:
-        """Return whether the core must maintain contour direction geometry."""
-        return False
-
-    def direction_config(self) -> EllipsoidalDirection | None:
-        """Return adaptive direction configuration through an explicit API."""
-        return None
-
-    def initial_sampler_data(self, dimension: int) -> SamplerData | None:
-        """Construct optional sampler state for a new nested-sampling run."""
-        del dimension
-        return None
-
     def _with_periodic(self, periodic: tuple[bool, ...]) -> AbstractSampler:
         """Return a sampler configured for static U-space topology."""
         if periodic:
@@ -219,47 +205,6 @@ def _take_phantom_prefix(cumulative_samples, num_phantom: int):
 
 
 @dataclasses.dataclass(slots=True, frozen=True)
-class EllipsoidalDirection:
-    """Configuration for opt-in warm-refined ellipsoidal directions.
-
-    Args:
-        num_components: Fixed maximum number of Gaussian components.
-        min_effective_samples: Kish effective sample gate. ``None`` uses four
-            times the full-covariance minimum per component.
-        num_iterations: Bounded EM iterations performed at each update.
-        population_size: Fixed number of likelihood-ordered classic rows used
-            by a fit. This keeps compiled fit shapes independent of sample
-            storage capacity.
-        prob_isotropic: Independent isotropic fallback probability per slice
-            transition.
-        regularisation: Dimensionless covariance ridge relative to variance.
-    """
-
-    num_components: int = 4
-    min_effective_samples: int | None = None
-    num_iterations: int = 10
-    population_size: int = 1024
-    prob_isotropic: float = 1e-2
-    regularisation: float = 1e-6
-
-    def __post_init__(self):
-        if self.num_components < 1:
-            raise ValueError("num_components must be positive.")
-        if self.min_effective_samples is not None and self.min_effective_samples < 1:
-            raise ValueError("min_effective_samples must be positive.")
-        if self.num_iterations < 1:
-            raise ValueError("num_iterations must be positive.")
-        if self.population_size < self.num_components:
-            raise ValueError(
-                "population_size must be at least num_components."
-            )
-        if not 0.0 <= self.prob_isotropic <= 1.0:
-            raise ValueError("prob_isotropic must be between zero and one.")
-        if self.regularisation <= 0.0:
-            raise ValueError("regularisation must be positive.")
-
-
-@dataclasses.dataclass(slots=True, frozen=True)
 class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
     """
     Slice sampler for a single dimension.
@@ -285,7 +230,6 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
     gradient_guided: bool = False
     collect_phantom_samples: bool = False
     phantom_burn_in: int | None = None
-    direction: EllipsoidalDirection | None = None
     max_phantom_samples: int | None = None
     # Internal scalar topology derived from JAXCTX metadata by NestedSampler.
     # Keeping this private avoids a second user-supplied flat-index API.
@@ -300,7 +244,6 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
             'collect_phantom_samples',
             'max_phantom_samples',
             'phantom_burn_in',
-            'direction',
             '_periodic',
         ])
 
@@ -386,20 +329,6 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
         # eligible prefix. NestedSampler supplies its dimension-sized default.
         return self.num_slices - 1
 
-    def uses_adaptive_directions(self) -> bool:
-        return self.direction is not None
-
-    def direction_config(self) -> EllipsoidalDirection | None:
-        return self.direction
-
-    def initial_sampler_data(self, dimension: int) -> SamplerData | None:
-        if self.direction is None:
-            return None
-        return empty_sampler_data(
-            self.direction.num_components,
-            dimension,
-        )
-
     def _with_periodic(
             self,
             periodic: tuple[bool, ...],
@@ -467,24 +396,6 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
             raise ValueError(
                 "Periodic U-space topology does not match model dimension."
             )
-        if self._periodic and self.direction is not None:
-            raise ValueError(
-                "EllipsoidalDirection does not yet support periodic U-space "
-                "coordinates; use isotropic directions."
-            )
-        if self.direction is None:
-            return
-        min_effective_samples = self.direction.min_effective_samples
-        if min_effective_samples is None:
-            min_effective_samples = (
-                4 * self.direction.num_components * (dimension + 1)
-            )
-        if min_effective_samples > self.direction.population_size:
-            raise ValueError(
-                "EllipsoidalDirection.population_size must be at least its "
-                "resolved min_effective_samples."
-            )
-
     def get_sample(
             self,
             key,
@@ -529,11 +440,11 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
             params=params,
             sampler_data=sampler_data,
         )
-        if self.direction is not None:
+        if sampler_data is not None:
             return output
-        # The existing isotropic core reports no direction diagnostics. Keep
-        # those internal counters unobserved so XLA can eliminate their work
-        # and the explicit sampler API does not change user-facing results.
+        # Direction counters describe use of a state-owned fitted law. Exact
+        # isotropic startup has no such state, so both scalar and continuation
+        # paths expose zeros and preserve the reference result contract.
         zero = jnp.asarray(0, mp_policy.count_dtype)
         return *output[:4], zero, zero
 
@@ -554,11 +465,50 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
             # Continuations model the release sampler's perfect bracket. Keep
             # the scalar implementation as the explicit reference and as the
             # compatibility owner for other trajectory constructions.
-            return _sample_complete_chains(
-                self,
-                request,
-                args=args,
-                params=params,
+            sampler_data = request.sampler_data
+            if sampler_data is None:
+                return _sample_complete_chains(
+                    self,
+                    request,
+                    args=args,
+                    params=params,
+                )
+
+            def sample_disabled_fit(unused):
+                # Keep the fitted state on the caller's request, but execute
+                # the exact plain-isotropic key stream inside this branch.
+                isotropic_request = dataclasses.replace(
+                    request,
+                    sampler_data=None,
+                )
+                sampled = _sample_complete_chains(
+                    self,
+                    isotropic_request,
+                    args=args,
+                    params=params,
+                )
+                direction_counts = jnp.full_like(  # [S]
+                    sampled.num_directions,
+                    self.num_slices,
+                )
+                return dataclasses.replace(
+                    sampled,
+                    num_directions=direction_counts,
+                    num_isotropic=direction_counts,
+                )
+
+            # The scalar flag is shared across lanes and transitions, so the
+            # disabled runtime does not enter any fitted-direction operation.
+            return jax.lax.cond(
+                sampler_data.enabled,
+                lambda unused: _sample_complete_chains(
+                    self,
+                    request,
+                    args=args,
+                    params=params,
+                ),
+                sample_disabled_fit,
+                operand=None,
             )
         return _continue_slice_chains(
             self,
@@ -627,11 +577,6 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
                 log_likelihood_fn=log_likelihood_fn,
                 periodic=self._periodic,
                 sampler_data=sampler_data,
-                prob_isotropic=(
-                    1.0
-                    if self.direction is None
-                    else self.direction.prob_isotropic
-                ),
             )
 
             carry = Carry(
@@ -671,7 +616,6 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
                     TreeField(seed_point.U0),
                     log_L_constraint,
                     sampler_data,
-                    self.direction.prob_isotropic,
                 )
             )
         slice_width_dtype = jax.tree.leaves(seed_point.U0)[0].dtype
@@ -697,11 +641,6 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
             log_likelihood_fn=log_likelihood_fn,
             periodic=self._periodic,
             sampler_data=sampler_data,
-            prob_isotropic=(
-                1.0
-                if self.direction is None
-                else self.direction.prob_isotropic
-            ),
         )
 
         init_carry = Carry(

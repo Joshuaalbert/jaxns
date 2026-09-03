@@ -12,11 +12,11 @@ from jaxctx import CtxParams
 from jaxctx.priors.prior import Prior
 
 from jaxns.core import NestedSampler
+from jaxns.depth_condition import DepthCondition
 from jaxns.distributed_core import DistributedNestedSampler, DistributedState
 from jaxns.model import Model
 from jaxns.shrinkage.phantom import EvidenceSamples
 from jaxns.state import State
-from jaxns.termination_condition import TerminationCondition
 
 tfpd = tfp.distributions
 
@@ -53,7 +53,7 @@ local = NestedSampler(
 )
 local_state = local.run_until_goal(
     goal_cond=goal_cond,
-    depth_cond=TerminationCondition(),
+    depth_cond=DepthCondition(),
     key=jax.random.PRNGKey(1),
     checkpoint_dir="checkpoints/local",
     checkpoint_cadence=3600.0,
@@ -84,7 +84,7 @@ distributed = DistributedNestedSampler(
 )
 checkpoint: DistributedState = distributed.run_until_goal(
     goal_cond=goal_cond,
-    depth_cond=TerminationCondition(),
+    depth_cond=DepthCondition(),
     key=jax.random.PRNGKey(2),
     checkpoint_dir="checkpoints/distributed",
     checkpoint_cadence=3600.0,
@@ -96,7 +96,7 @@ checkpoint: DistributedState = distributed.run_until_goal(
 checkpoint = distributed.resume_until_goal(
     checkpoint,
     goal_cond=goal_cond,
-    depth_cond=TerminationCondition(),
+    depth_cond=DepthCondition(),
     checkpoint_dir="checkpoints/distributed",
     checkpoint_cadence=3600.0,
 )

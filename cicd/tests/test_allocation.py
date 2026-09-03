@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import inspect
 
 import numpy as np
@@ -12,12 +13,18 @@ from jaxns.algorithm.allocation import (
     VolumePath,
     evidence_improvement_utility,
     expected_volume_path,
-    integer_allocation_targets,
+    integer_allocation_gap,
     normalise_allocation_utility,
     posterior_improvement_utility,
     validate_allocation_target,
 )
+from jaxns.algorithm.depth import (
+    _continue_schedule_round,
+    _depth_relevant_path,
+    _start_schedule_round,
+)
 from jaxns.algorithm.race_tree import build_block_state
+from jaxns.depth_condition import DepthCondition
 from jaxns.shrinkage.classic import (
     DirichletConcentrations,
     classic_dirichlet_concentrations,
@@ -112,6 +119,22 @@ def test_expected_volume_path_uses_dirichlet_p_gt_means():
         np.asarray(path.shell_mass),
         expected_X_prev - expected_X,
     )
+
+
+def test_depth_keeps_exploring_before_any_finite_likelihood_is_found():
+    """An all-negative-infinity prefix is ignorance, not exhausted evidence."""
+    relevant = _depth_relevant_path(
+        log_L_blocks=jnp.asarray([-jnp.inf, -jnp.inf]),
+        valid=jnp.asarray([True, True]),
+        volume_path=VolumePath(
+            X_prev=jnp.asarray([1.0, 0.5]),
+            X=jnp.asarray([0.5, 0.25]),
+            shell_mass=jnp.asarray([0.5, 0.25]),
+        ),
+        depth_cond=DepthCondition(dlogZ=jnp.asarray(1e-3)),
+    )
+
+    np.testing.assert_array_equal(np.asarray(relevant), [True, True])
 
 
 def test_evidence_improvement_utility_matches_reference_loop():
@@ -296,51 +319,54 @@ def test_evidence_improvement_nonpositive_evidence_falls_back_to_zero():
     np.testing.assert_array_equal(np.asarray(utility), np.asarray([0.0, 0.0]))
 
 
-def test_utility_normalisation_and_integer_targets_are_deterministic():
+def test_utility_normalisation_and_integer_gaps_are_deterministic():
     utility = jnp.asarray([np.nan, -1.0, 2.0, 1.0])
     valid = jnp.asarray([True, True, True, False])
 
     unit_peak = normalise_allocation_utility(utility, valid=valid)
-    targets = integer_allocation_targets(
+    gap = integer_allocation_gap(
+        allocation_target="evidence_improving",
+        current_K=jnp.asarray([5, 5, 5, 5]),
         root_out_degree=5,
-        iteration=2,
+        depth_iteration=2,
         delta_K=3,
         unit_peak_utility=unit_peak,
         valid=valid,
-        max_target=9,
     )
 
     np.testing.assert_allclose(
         np.asarray(unit_peak),
         np.asarray([0.0, 0.0, 1.0, 0.0]),
     )
-    np.testing.assert_array_equal(np.asarray(targets), np.asarray([5, 5, 9, 0]))
+    np.testing.assert_array_equal(np.asarray(gap), np.asarray([0, 0, 3, 0]))
 
 
-def test_depth_first_uniform_targets_follow_k_delta_k_formula():
-    targets = integer_allocation_targets(
+def test_depth_first_uniform_gaps_follow_additive_iteration_formula():
+    gap = integer_allocation_gap(
+        allocation_target="uniform",
+        current_K=jnp.asarray([3, 4, 5, 6]),
         root_out_degree=4,
-        iteration=3,
+        depth_iteration=3,
         delta_K=2,
         unit_peak_utility=jnp.ones((4,)),
         valid=jnp.asarray([True, True, False, True]),
     )
 
     np.testing.assert_array_equal(
-        np.asarray(targets),
-        np.asarray([10, 10, 0, 10]),
+        np.asarray(gap),
+        np.asarray([7, 6, 0, 4]),
     )
 
 
 @pytest.mark.parametrize(
-    ("iteration", "expected_targets"),
+    ("depth_iteration", "expected_targets"),
     [
-        (0, [3, 3, 3]),
+        (1, [6, 6, 6]),
         (2, [9, 9, 9]),
     ],
 )
-def test_build_uniform_allocation_plan_uses_exact_outer_iteration_targets(
-        iteration,
+def test_build_uniform_allocation_plan_uses_exact_depth_iteration_targets(
+        depth_iteration,
         expected_targets,
 ):
     state = _make_state(
@@ -353,7 +379,7 @@ def test_build_uniform_allocation_plan_uses_exact_outer_iteration_targets(
     plan = allocation.build_allocation_plan(
         state=state,
         allocation_target="uniform",
-        iteration=iteration,
+        depth_iteration=depth_iteration,
         delta_K=3,
     )
 
@@ -389,7 +415,7 @@ def test_build_allocation_plan_can_use_fixed_initial_root_out_degree():
     kwargs = {
         "state": state,
         "allocation_target": "uniform",
-        "iteration": 1,
+        "depth_iteration": 1,
         "delta_K": 3,
     }
     signature = inspect.signature(allocation.build_allocation_plan)
@@ -407,20 +433,21 @@ def test_build_allocation_plan_can_use_fixed_initial_root_out_degree():
 
     np.testing.assert_array_equal(
         np.asarray(plan.target_K),
-        np.asarray([5, 5, 5]),
+        np.asarray([7, 6, 5]),
     )
 
 
-def test_fractional_utility_targets_ceil_and_clip_after_scaling():
-    targets = integer_allocation_targets(
+def test_fractional_utility_gaps_ceil_after_scaling():
+    gap = integer_allocation_gap(
+        allocation_target="posterior_improving",
+        current_K=jnp.asarray([8, 7, 6, 5]),
         root_out_degree=4,
-        iteration=3,
+        depth_iteration=3,
         delta_K=2,
         unit_peak_utility=jnp.asarray([0.0, 0.01, 0.5, 1.0]),
-        max_target=8,
     )
 
-    np.testing.assert_array_equal(np.asarray(targets), np.asarray([4, 5, 7, 8]))
+    np.testing.assert_array_equal(np.asarray(gap), np.asarray([0, 1, 1, 2]))
 
 
 @pytest.mark.parametrize(
@@ -471,9 +498,11 @@ def test_build_utility_allocation_plan_uses_summaries_and_shared_targets(
         expected_utility,
         valid=block_state.valid,
     )
-    expected_targets = integer_allocation_targets(
+    expected_gap = integer_allocation_gap(
+        allocation_target=allocation_target,
+        current_K=block_state.incoming_K,
         root_out_degree=state.root_out_degree,
-        iteration=2,
+        depth_iteration=2,
         delta_K=3,
         unit_peak_utility=expected_unit_peak,
         valid=block_state.valid,
@@ -482,7 +511,7 @@ def test_build_utility_allocation_plan_uses_summaries_and_shared_targets(
     plan = allocation.build_allocation_plan(
         state=state,
         allocation_target=allocation_target,
-        iteration=2,
+        depth_iteration=2,
         delta_K=3,
     )
 
@@ -505,7 +534,112 @@ def test_build_utility_allocation_plan_uses_summaries_and_shared_targets(
     )
     np.testing.assert_array_equal(
         np.asarray(plan.target_K),
-        np.asarray(expected_targets),
+        np.asarray(block_state.incoming_K + expected_gap),
+    )
+
+
+@pytest.mark.parametrize(
+    ("allocation_target", "initial_target", "continued_target"),
+    [
+        (
+            "evidence_improving",
+            [6, 6, 5, 1, 0, 0, 0, 0],
+            [6, 6, 6, 5, 1, 1, 0, 0],
+        ),
+        (
+            "posterior_improving",
+            [5, 6, 5, 1, 0, 0, 0, 0],
+            [5, 6, 6, 5, 1, 1, 0, 0],
+        ),
+    ],
+)
+def test_utility_schedule_continuation_projects_frozen_absolute_target(
+        allocation_target,
+        initial_target,
+        continued_target,
+):
+    """A drained local schedule fills exposed gaps without refitting utility."""
+    source = _make_state(
+        root_out_degree=3,
+        log_likelihoods=tuple(
+            float(np.log(value)) for value in (1.0, 2.0, 10.0, 1000.0)
+        ),
+        out_degree=(1, 0, 0, 0),
+        log_L_constraints=(-np.inf, -np.inf, -np.inf, 0.0),
+        max_samples=8,
+    )
+    source = _start_schedule_round(
+        source,
+        depth_cond=DepthCondition(),
+        shell_size=3,
+        allocation_target=allocation_target,
+        root_degree=3,
+        delta_K=3,
+    )
+    schedule = source.scheduler_data
+    assert schedule is not None
+    np.testing.assert_array_equal(
+        np.asarray(schedule.target_K),
+        np.asarray(initial_target),
+    )
+
+    # Continuation is entered only after all original maximal threads drain.
+    # The replacement state adds contours between the frozen blocks and must
+    # inherit the first frozen target at or above each new likelihood.
+    drained = dataclasses.replace(
+        schedule,
+        valid=jnp.zeros_like(schedule.valid),
+        next_run=schedule.num_runs,
+        remaining_in_run=jnp.asarray(
+            0,
+            dtype=schedule.remaining_in_run.dtype,
+        ),
+        active=jnp.asarray(False),
+    )
+    refined = _make_state(
+        root_out_degree=3,
+        log_likelihoods=tuple(
+            float(np.log(value))
+            for value in (1.0, 2.0, 10.0, 1000.0, 1.5, 100.0)
+        ),
+        out_degree=(3, 0, 0, 0, 0, 0),
+        log_L_constraints=(-np.inf, -np.inf, -np.inf, 0.0, 0.0, 0.0),
+        max_samples=8,
+    )
+    refined = dataclasses.replace(
+        refined,
+        allocation_loop_iter=source.allocation_loop_iter,
+    )
+    refined = _continue_schedule_round(
+        refined,
+        drained,
+        depth_cond=DepthCondition(),
+        shell_size=3,
+    )
+    continuation = refined.scheduler_data
+    assert continuation is not None
+
+    np.testing.assert_array_equal(
+        np.asarray(continuation.target_K),
+        np.asarray(continued_target),
+    )
+    assert bool(continuation.active)
+
+    # A fresh start at the refined tree recomputes utility and therefore has
+    # a different target. This guards the intended frozen-target distinction.
+    recomputed_state = _start_schedule_round(
+        dataclasses.replace(refined, scheduler_data=None),
+        depth_cond=DepthCondition(),
+        shell_size=3,
+        allocation_target=allocation_target,
+        root_degree=3,
+        delta_K=3,
+    )
+    recomputed = recomputed_state.scheduler_data
+    assert recomputed is not None
+    assert not np.array_equal(
+        np.asarray(continuation.target_K),
+        np.asarray(recomputed.target_K),
     )
 
 
@@ -540,9 +674,11 @@ def test_build_posterior_allocation_plan_selects_conservative_utility():
         ),
         valid=block_state.valid,
     )
-    expected_targets = integer_allocation_targets(
+    expected_gap = integer_allocation_gap(
+        allocation_target="posterior_improving",
+        current_K=block_state.incoming_K,
         root_out_degree=state.root_out_degree,
-        iteration=2,
+        depth_iteration=2,
         delta_K=3,
         unit_peak_utility=expected_unit_peak,
         valid=block_state.valid,
@@ -551,7 +687,7 @@ def test_build_posterior_allocation_plan_selects_conservative_utility():
     plan = allocation.build_allocation_plan(
         state=state,
         allocation_target="posterior_improving",
-        iteration=2,
+        depth_iteration=2,
         delta_K=3,
         posterior_utility="conservative",
     )
@@ -563,7 +699,7 @@ def test_build_posterior_allocation_plan_selects_conservative_utility():
     )
     np.testing.assert_array_equal(
         np.asarray(plan.target_K),
-        np.asarray(expected_targets),
+        np.asarray(block_state.incoming_K + expected_gap),
     )
 
 
@@ -635,13 +771,13 @@ def test_posterior_plan_shape_is_invariant_to_large_log_likelihood_shift():
     base = allocation.build_allocation_plan(
         state=base_state,
         allocation_target="posterior_improving",
-        iteration=2,
+        depth_iteration=2,
         delta_K=3,
     )
     shifted = allocation.build_allocation_plan(
         state=shifted_state,
         allocation_target="posterior_improving",
-        iteration=2,
+        depth_iteration=2,
         delta_K=3,
     )
 
@@ -679,27 +815,28 @@ def test_evidence_and_posterior_utilities_can_drive_different_targets():
         )
     )
 
-    evidence_targets = integer_allocation_targets(
+    evidence_gap = integer_allocation_gap(
+        allocation_target="evidence_improving",
+        current_K=jnp.asarray([4, 4, 4, 4]),
         root_out_degree=4,
-        iteration=2,
+        depth_iteration=2,
         delta_K=3,
         unit_peak_utility=evidence_unit_peak,
     )
-    posterior_targets = integer_allocation_targets(
+    posterior_gap = integer_allocation_gap(
+        allocation_target="posterior_improving",
+        current_K=jnp.asarray([4, 4, 4, 4]),
         root_out_degree=4,
-        iteration=2,
+        depth_iteration=2,
         delta_K=3,
         unit_peak_utility=posterior_unit_peak,
     )
 
     np.testing.assert_array_equal(
-        np.asarray(evidence_targets),
-        np.asarray([10, 5, 5, 4]),
+        np.asarray(evidence_gap),
+        np.asarray([3, 1, 1, 0]),
     )
-    np.testing.assert_array_equal(
-        np.asarray(posterior_targets),
-        np.asarray([8, 10, 5, 4]),
-    )
+    assert not np.array_equal(np.asarray(evidence_gap), np.asarray(posterior_gap))
 
 
 def test_utility_fallbacks_are_deterministic_for_zero_tied_and_nonfinite_inputs():
@@ -741,9 +878,11 @@ def test_invalid_allocation_target_and_delta_k_fail_explicitly():
         validate_allocation_target("not-a-mode")
 
     with pytest.raises(ValueError, match="delta_K"):
-        integer_allocation_targets(
+        integer_allocation_gap(
+            allocation_target="uniform",
+            current_K=jnp.asarray([1]),
             root_out_degree=1,
-            iteration=1,
+            depth_iteration=1,
             delta_K=0,
             unit_peak_utility=jnp.asarray([1.0]),
         )

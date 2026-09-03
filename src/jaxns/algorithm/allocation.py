@@ -243,49 +243,57 @@ def normalise_allocation_utility(
     return jnp.where(peak > 0.0, clean / peak, fallback)
 
 
-def integer_allocation_targets(
+def integer_allocation_gap(
+        allocation_target: AllocationTarget,
+        current_K: IntArray,
         root_out_degree: IntArray,
-        iteration: IntArray,
+        depth_iteration: IntArray,
         delta_K: IntArray,
         unit_peak_utility: FloatArray,
         valid: BoolArray | None = None,
-        max_target: IntArray | None = None,
 ) -> IntArray:
-    """Map a unit-peak allocation curve to integer active-lineage targets.
+    """Convert one depth iteration's allocation policy to lineage gaps.
 
-    The rounding policy is ceil-after-scaling so any positive utility gets a
-    concrete lineage target. Optional `max_target` clips targets to the
-    current allocation capacity used by the caller.
+    Utility policies request a fresh integer increment wherever the current
+    expected utility is positive. Uniform allocation instead raises every
+    relevant block to one absolute population shared by the complete depth
+    iteration. Keeping these equations separate prevents a utility curve from
+    accidentally becoming an ever-growing absolute target.
     """
+    allocation_target = validate_allocation_target(allocation_target)
     _validate_delta_K(delta_K)
     if valid is None:
         valid = jnp.ones_like(unit_peak_utility, dtype=mp_policy.bool_dtype)
-    scaled = (
-            jnp.asarray(root_out_degree, dtype=mp_policy.measure_dtype)
-            + jnp.asarray(iteration, dtype=mp_policy.measure_dtype)
-            * jnp.asarray(delta_K, dtype=mp_policy.measure_dtype)
-            * jnp.asarray(unit_peak_utility, dtype=mp_policy.measure_dtype)
-    )
-    targets = jnp.ceil(scaled).astype(mp_policy.count_dtype)
-    if max_target is not None:
-        targets = jnp.minimum(
-            targets,
-            jnp.asarray(max_target, dtype=targets.dtype),
+    if allocation_target == "uniform":
+        target_K = (
+            jnp.asarray(root_out_degree, dtype=mp_policy.count_dtype)
+            + jnp.asarray(delta_K, dtype=mp_policy.count_dtype)
+            * jnp.asarray(depth_iteration, dtype=mp_policy.count_dtype)
         )
-    return jnp.where(valid, targets, jnp.asarray(0, dtype=targets.dtype))
+        gap = jnp.maximum(target_K - current_K, 0)
+    else:
+        scaled = (
+            jnp.asarray(delta_K, dtype=mp_policy.measure_dtype)
+            * jnp.asarray(
+                unit_peak_utility,
+                dtype=mp_policy.measure_dtype,
+            )
+        )
+        gap = jnp.ceil(scaled).astype(mp_policy.count_dtype)
+    return jnp.where(valid, gap, jnp.asarray(0, dtype=gap.dtype))
 
 
 def build_allocation_plan(
         state: State,
         allocation_target: AllocationTarget,
-        iteration: IntArray,
+        depth_iteration: IntArray,
         delta_K: IntArray,
         root_out_degree: IntArray | None = None,
         posterior_conservative: bool = False,
         posterior_utility: Literal["exact", "conservative"] = "exact",
         block_state: BlockState | None = None,
 ) -> AllocationPlan:
-    """Build the block-level allocation target for one outer iteration."""
+    """Build the block-level allocation gap for one depth iteration."""
     allocation_target = validate_allocation_target(allocation_target)
     _validate_delta_K(delta_K)
     if posterior_utility not in ("exact", "conservative"):
@@ -354,15 +362,17 @@ def build_allocation_plan(
             valid=block_state.valid,
         )
 
-    target_K = integer_allocation_targets(
+    gap = integer_allocation_gap(
+        allocation_target=allocation_target,
+        current_K=block_state.incoming_K,
         root_out_degree=root_out_degree,
-        iteration=iteration,
+        depth_iteration=depth_iteration,
         delta_K=delta_K,
         unit_peak_utility=unit_peak_utility,
         valid=block_state.valid,
     )
     return AllocationPlan(
-        target_K=target_K,
+        target_K=block_state.incoming_K + gap,
         current_K=block_state.incoming_K,
         unit_peak_utility=unit_peak_utility,
         log_L_blocks=block_state.log_L_blocks,

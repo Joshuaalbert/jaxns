@@ -65,17 +65,15 @@ def _initialise_slice_chains(
     """Prepare one unevaluated proposal per logical slice chain."""
     num_slices = sampler.num_slices
     num_phantom = sampler.num_phantom()
-    sampler_data = request.sampler_data
 
-    def initialise_one(
+    def draw_direction_stream(
             key,
-            valid,
             log_L_constraint,
             seed_u,
-            seed_log_likelihood,
+            direction_data,
     ):
         def draw_direction(direction_key):
-            if sampler_data is None:
+            if direction_data is None:
                 return (
                     _sample_direction(direction_key, TreeField(seed_u)),
                     jnp.asarray(True, mp_policy.bool_dtype),
@@ -84,8 +82,7 @@ def _initialise_slice_chains(
                 direction_key,
                 TreeField(seed_u),
                 log_L_constraint,
-                sampler_data,
-                sampler.direction.prob_isotropic,
+                direction_data,
             )
 
         # Preserve the scalar sampler's random-key schedule exactly. Pool
@@ -151,11 +148,58 @@ def _initialise_slice_chains(
                 axis=0,
             )
 
+        # Per-chain shapes are [T, ...], [T], and [T, 2], respectively.
+        return directions, directions_are_isotropic, transition_keys
+
+    def draw_direction_streams(direction_data):
+        return jax.vmap(
+            lambda key, constraint, seed_u: draw_direction_stream(
+                key,
+                constraint,
+                seed_u,
+                direction_data,
+            )
+        )(
+            request.keys,
+            request.log_L_constraints,
+            request.seed_points.U0,
+        )
+
+    sampler_data = request.sampler_data
+    if sampler_data is None:
+        # [S, T, ...], [S, T], [S, T, 2]
+        directions, directions_are_isotropic, transition_keys = (
+            draw_direction_streams(None)
+        )
+    else:
+        # Enabled is shared by the whole request. Keep this condition outside
+        # both lane batching and transition scans so a retained disabled fit
+        # runs the exact plain-isotropic key stream without evaluating any GMM
+        # selection or matrix operations. XLA still compiles both branches,
+        # because users may toggle the same state without discarding its fit.
+        # Outputs are [S, T, ...], [S, T], and [S, T, 2], respectively.
+        directions, directions_are_isotropic, transition_keys = jax.lax.cond(
+            sampler_data.enabled,
+            lambda unused: draw_direction_streams(sampler_data),
+            lambda unused: draw_direction_streams(None),
+            operand=None,
+        )
+
+    def initialise_one(
+            valid,
+            log_L_constraint,
+            seed_u,
+            seed_log_likelihood,
+            chain_directions,
+            chain_directions_are_isotropic,
+            chain_transition_keys,
+    ):
+
         # Perfect bracketing always has exactly one proposal ready. A rejected
         # likelihood shrinks this interval; an accepted likelihood advances
         # this logical chain to its next slice transition without a barrier.
         chart_key, run_key, t_key, _, _ = _slice_keys(
-            transition_keys[0],
+            chain_transition_keys[0],
             sampler._periodic,
         )
         chart_offset = None
@@ -166,6 +210,9 @@ def _initialise_slice_chains(
                 chart_seed,
                 sampler._periodic,
             )
+        initial_direction = TreeField(  # [...]
+            jax.tree.map(lambda values: values[0], chain_directions)
+        )
         left, right = _slice_bounds(
             chart_seed,
             initial_direction,
@@ -199,14 +246,14 @@ def _initialise_slice_chains(
                 seed_log_likelihood,
                 log_L_constraint.dtype,
             ),
-            directions=directions,
-            direction_is_isotropic=directions_are_isotropic,
+            directions=chain_directions,
+            direction_is_isotropic=chain_directions_are_isotropic,
             left=left,
             right=right,
             t=t,
             proposal=proposal.tree,
             run_key=run_key,
-            transition_keys=transition_keys,
+            transition_keys=chain_transition_keys,
             transition_index=jnp.asarray(0, mp_policy.index_dtype),
             # Static scheduler padding is not a logical chain. Mark it done
             # immediately so an unused lane cannot extend the physical loop;
@@ -226,11 +273,13 @@ def _initialise_slice_chains(
         )
 
     return jax.vmap(initialise_one)(
-        request.keys,
         request.valid,
         request.log_L_constraints,
         request.seed_points.U0,
         request.seed_points.log_L0,
+        directions,
+        directions_are_isotropic,
+        transition_keys,
     )
 
 
@@ -515,7 +564,7 @@ def _continue_slice_chains(
             (num_chains, num_phantom),
         ),
     )
-    if sampler.direction is None:
+    if request.sampler_data is None:
         num_directions = jnp.zeros(
             (num_chains,),
             mp_policy.count_dtype,

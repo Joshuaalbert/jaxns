@@ -25,10 +25,10 @@ from cicd.tests.distributed_support import make_periodic_model, make_toy_model
 from jaxns.cli import _stop_started_process
 from jaxns.constrained_sampler import (
     ConstrainedSampleRequest,
-    EllipsoidalDirection,
     UniDimSliceSampler,
     sample_request,
 )
+from jaxns.depth_condition import DepthCondition
 from jaxns.distributed_core import (
     DistributedNestedSampler,
 )
@@ -60,24 +60,31 @@ from jaxns.runtime.session import WorkerSession
 from jaxns.runtime.worker import _fence_process
 from jaxns.samples import SeedPoint
 from jaxns.sampling.ellipsoid import empty_sampler_data
-from jaxns.termination_condition import TerminationCondition
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_batch_group_ignores_direction_diagnostics_but_not_geometry():
     data = empty_sampler_data(num_components=2, dimension=1)
+    data = dataclasses.replace(
+        data,
+        radii=jnp.ones_like(data.radii),
+        log_volumes=jnp.zeros_like(data.log_volumes),
+        log_L_at_mean=jnp.zeros_like(data.log_L_at_mean),
+        valid=jnp.ones_like(data.valid),
+        enabled=jnp.asarray(True),
+        iso_prob=jnp.asarray(0.0),
+    )
     diagnostics = dataclasses.replace(
         data,
         num_samples=jnp.asarray(100),
-        num_attempted=jnp.asarray(90),
         num_updates=jnp.asarray(4),
         num_directions=jnp.asarray(500),
         num_isotropic=jnp.asarray(5),
     )
     geometry = dataclasses.replace(
         data,
-        radii=jnp.ones_like(data.radii),
+        radii=2.0 * data.radii,
     )
 
     assert _sampler_batch_group(data) == _sampler_batch_group(diagnostics)
@@ -89,7 +96,6 @@ def test_batch_group_ignores_direction_diagnostics_but_not_geometry():
     sampler = UniDimSliceSampler(
         model=model,
         num_slices=2,
-        direction=EllipsoidalDirection(num_components=2),
     )
     request = ConstrainedSampleRequest(
         keys=jax.random.split(jax.random.PRNGKey(4), 1),
@@ -859,7 +865,7 @@ def test_phantom_payload_does_not_change_vector_worker_trajectory(tmp_path):
             )
             return runner.run_until_goal(
                 lambda state: int(state.goal_loop_iter) >= 2,
-                depth_cond=TerminationCondition(dlogZ=jnp.asarray(0.5)),
+                depth_cond=DepthCondition(dlogZ=jnp.asarray(0.5)),
                 key=jax.random.PRNGKey(52),
             ).state
 
@@ -934,7 +940,7 @@ def test_periodic_sampler_executes_in_real_worker_processes(tmp_path):
 
         checkpoint = runner.run_until_goal(
             lambda state: int(state.goal_loop_iter) >= 1,
-            depth_cond=TerminationCondition(dlogZ=jnp.asarray(0.5)),
+            depth_cond=DepthCondition(dlogZ=jnp.asarray(0.5)),
             key=jax.random.PRNGKey(275),
         )
 
@@ -975,21 +981,21 @@ def test_real_pool_runs_scalar_vmap_retries_and_cli_lifecycle(tmp_path):
             model=model,
             coordinator_port=config.network.port,
             root_allocation_degree=4,
-            delta_K=4,
-            max_samples=16,
+            delta_K=2,
+            max_samples=32,
             initial_capacity=8,
             sampler=sampler,
         )
         checkpoint_dir = tmp_path / "distributed-checkpoint"
         first_checkpoint = distributed.run_until_goal(
             lambda state: int(state.goal_loop_iter) >= 1,
-            depth_cond=TerminationCondition(dlogZ=jnp.asarray(0.5)),
+            depth_cond=DepthCondition(dlogZ=jnp.asarray(0.5)),
             key=jax.random.PRNGKey(21),
             checkpoint_dir=checkpoint_dir,
         )
         checkpoint = distributed.run_until_goal(
             lambda state: int(state.goal_loop_iter) >= 2,
-            depth_cond=TerminationCondition(dlogZ=jnp.asarray(0.5)),
+            depth_cond=DepthCondition(dlogZ=jnp.asarray(0.5)),
             # The persisted state owns the exact continuation stream.
             key=jax.random.PRNGKey(999),
             checkpoint_dir=checkpoint_dir,
@@ -1194,7 +1200,7 @@ def test_node_joins_runs_restarts_and_drains_over_tcp(tmp_path):
             )
             checkpoint = distributed.run_until_goal(
                 lambda state: int(state.goal_loop_iter) >= 1,
-                depth_cond=TerminationCondition(dlogZ=jnp.asarray(0.5)),
+                depth_cond=DepthCondition(dlogZ=jnp.asarray(0.5)),
                 key=jax.random.PRNGKey(77),
             )
             assert not checkpoint.pending
@@ -1223,7 +1229,7 @@ def test_node_joins_runs_restarts_and_drains_over_tcp(tmp_path):
                 try:
                     outcome["checkpoint"] = starved.run_until_goal(
                         lambda state: int(state.goal_loop_iter) >= 3,
-                        depth_cond=TerminationCondition(
+                        depth_cond=DepthCondition(
                             dlogZ=jnp.asarray(0.5)
                         ),
                         key=jax.random.PRNGKey(78),

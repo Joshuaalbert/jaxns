@@ -8,8 +8,14 @@ from jaxctx.priors.prior import Prior
 from tensorflow_probability.substrates import jax as tfp
 
 from cicd.tests.distributed_support import make_toy_model
-from jaxns.algorithm.race_tree import build_block_state, initialise_likelihood_order
+from jaxns.algorithm.depth import _start_schedule_round
+from jaxns.algorithm.race_tree import (
+    LikelihoodOrder,
+    build_block_state,
+    initialise_likelihood_order,
+)
 from jaxns.core import NestedSampler
+from jaxns.depth_condition import DepthCondition
 from jaxns.model import Model
 from jaxns.samples import PhantomSamples, Samples
 from jaxns.sampling.ellipsoid import empty_sampler_data
@@ -84,6 +90,21 @@ def test_to_result_marks_no_phantoms_invalid():
     state = NestedSampler(model=model).run()
     results = state.to_result().trim()
 
+    # Python goal conditions need the same classic block moments and work
+    # count without constructing every transformed, posterior-weighted result
+    # array at each outer boundary.
+    np.testing.assert_allclose(
+        np.asarray(state.expected_log_Z_mean),
+        np.asarray(results.expected_log_Z_mean),
+    )
+    np.testing.assert_allclose(
+        np.asarray(state.expected_log_Z_uncert),
+        np.asarray(results.expected_log_Z_uncert),
+    )
+    assert int(state.total_num_likelihood_evaluations) == int(
+        results.total_num_likelihood_evaluations
+    )
+
     assert results.log_L_phantom.shape[1] == 0
     assert int(results.total_phantom_samples) == 0
     assert not np.any(np.asarray(results.valid_phantom))
@@ -136,6 +157,86 @@ def test_to_result_marks_no_phantoms_invalid():
             conditioning="phantom",
             key=key,
         )
+
+
+def test_expected_evidence_rebuilds_order_for_active_growth_state():
+    phantom_samples = PhantomSamples(
+        U_samples=jnp.zeros((3, 0, 1)),
+        valid_mask=jnp.zeros((3, 0), dtype=jnp.bool_),
+        log_L=jnp.zeros((3, 0)),
+    )
+    initial_samples = Samples(
+        log_L_constraints=jnp.array([-jnp.inf, jnp.inf, jnp.inf]),
+        log_likelihoods=jnp.array([0.0, jnp.inf, jnp.inf]),
+        U_samples=jnp.array([[0.1], [0.0], [0.0]]),
+        out_degree=jnp.array([0, 0, 0], dtype=jnp.int32),
+        num_likelihood_evaluations=jnp.array([1, 0, 0], dtype=jnp.int32),
+        phantom_samples=phantom_samples,
+    )
+    key = random.PRNGKey(17)
+    initial = State(
+        root_out_degree=jnp.asarray(1, dtype=jnp.int32),
+        samples=initial_samples,
+        num_samples=jnp.asarray(1, dtype=jnp.int32),
+        log_L_supremum=jnp.asarray(0.0),
+        U_supremum=jnp.array([0.1]),
+        termination_reason=jnp.asarray(0, dtype=jnp.int32),
+        model=_make_basic_model(),
+        likelihood_order=LikelihoodOrder(
+            sample_indices=jnp.array([0, -1, -1], dtype=jnp.int32),
+        ),
+        random_key=key,
+        goal_key=key,
+        # k=0 intentionally requests no additive uniform work. This fixture
+        # needs a live schedule so that it can model unpublished accepted rows.
+        allocation_loop_iter=jnp.asarray(1, dtype=jnp.int32),
+    )
+    active = _start_schedule_round(
+        initial,
+        DepthCondition(),
+        shell_size=1,
+        allocation_target="uniform",
+        root_degree=1,
+        delta_K=2,
+    )
+    assert bool(active.scheduler_data.active)
+
+    # The repeated depth loop deliberately defers likelihood-order publication.
+    # These rows model committed thread work at the physical growth return that
+    # run_single_iteration exposes while its frozen schedule remains active.
+    committed_samples = dataclasses.replace(
+        initial_samples,
+        log_L_constraints=jnp.array([-jnp.inf, 0.0, 1.0]),
+        log_likelihoods=jnp.array([0.0, 1.0, 2.0]),
+        U_samples=jnp.array([[0.1], [0.2], [0.3]]),
+        out_degree=jnp.array([1, 1, 0], dtype=jnp.int32),
+        num_likelihood_evaluations=jnp.array([1, 2, 3], dtype=jnp.int32),
+    )
+    active = dataclasses.replace(
+        active,
+        samples=committed_samples,
+        num_samples=jnp.asarray(3, dtype=jnp.int32),
+        log_L_supremum=jnp.asarray(2.0),
+        U_supremum=jnp.array([0.3]),
+        needs_growth=jnp.asarray(True),
+    )
+    published = dataclasses.replace(
+        active,
+        likelihood_order=initialise_likelihood_order(
+            committed_samples.log_likelihoods,
+            active.num_samples,
+        ),
+        scheduler_data=None,
+    )
+
+    np.testing.assert_allclose(
+        np.asarray(active.expected_log_Z_mean),
+        np.asarray(published.expected_log_Z_mean),
+    )
+    np.testing.assert_allclose(
+        np.asarray(active.expected_log_Z_uncert),
+        np.asarray(published.expected_log_Z_uncert),
+    )
 
 
 def test_samples_resize_preserves_constraints_and_provenance_fields():
@@ -246,6 +347,7 @@ def test_state_merge_applies_terminal_growth_depth_precedence():
         base,
         needs_growth=jnp.asarray(True),
         depth_reached=jnp.asarray(False),
+        allocation_loop_iter=jnp.asarray(2, dtype=jnp.int32),
     )
 
     merged_terminal = terminal.merge(growth)
@@ -257,11 +359,13 @@ def test_state_merge_applies_terminal_growth_depth_precedence():
         base,
         needs_growth=jnp.asarray(False),
         depth_reached=jnp.asarray(True),
+        allocation_loop_iter=jnp.asarray(3, dtype=jnp.int32),
     )
     merged_growth = growth.merge(completed)
     assert int(merged_growth.termination_reason) == 0
     assert bool(merged_growth.needs_growth)
     assert not bool(merged_growth.depth_reached)
+    assert int(merged_growth.allocation_loop_iter) == 5
 
 
 def test_state_merge_keeps_recent_geometry_and_cumulative_direction_work():
@@ -270,7 +374,6 @@ def test_state_merge_keeps_recent_geometry_and_cumulative_direction_work():
         empty_sampler_data(num_components=1, dimension=1),
         centres=jnp.asarray([[1.0]]),
         num_samples=jnp.asarray(10),
-        num_attempted=jnp.asarray(10),
         num_updates=jnp.asarray(2),
         num_directions=jnp.asarray(100),
         num_isotropic=jnp.asarray(10),
@@ -279,7 +382,6 @@ def test_state_merge_keeps_recent_geometry_and_cumulative_direction_work():
         empty_sampler_data(num_components=1, dimension=1),
         centres=jnp.asarray([[2.0]]),
         num_samples=jnp.asarray(20),
-        num_attempted=jnp.asarray(20),
         num_updates=jnp.asarray(3),
         num_directions=jnp.asarray(200),
         num_isotropic=jnp.asarray(20),

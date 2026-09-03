@@ -187,8 +187,9 @@ properties that must hold independently of implementation live in
   the replacement batch.
 - Requirement: Replacement width is static for a compiled depth epoch, while a validity mask
   prevents unused lanes from changing scientific state or likelihood counts.
-- Requirement: The default allocation increment fills one replacement batch so ordinary outer
-  iterations do not leave most compiled sampler lanes idle.
+- Requirement: Uniform allocation defaults to one root-population increment per allocation
+  iteration; utility-based allocation defaults to one replacement-width direct gap so ordinary
+  utility rounds do not leave most compiled sampler lanes idle.
 - Requirement: The depth hot path does not repeatedly sort all stored samples; append-order
   samples are paired with a lightweight likelihood-order index and block reductions.
 - Requirement: Sample storage remains append ordered, and derived likelihood order is updated
@@ -283,11 +284,25 @@ properties that must hold independently of implementation live in
 - Requirement: The release sampler defaults to isotropic directions and perfect unit-hypercube
   bracketing with greedy interval shrinkage, preserving isotropic directions as an explicit
   correctness reference and fallback.
-- Requirement: Opt-in ellipsoidal directions use persistent warm-started GMM geometry, select
-  contour-eligible components by ellipsoidal volume, and independently retain an isotropic
-  transition probability of one percent by default.
-- Requirement: A direction-geometry update occurs at most once before a replacement batch, and
-  the fit and parent contour remain fixed for each complete constrained chain in that batch.
+- Requirement: New runs use exact isotropic directions. GMM direction fitting is a pure,
+  user-invoked transformation of immutable `State`; no fit or refinement occurs automatically in
+  a replacement batch, depth loop, or Python goal loop.
+- Requirement: An explicit GMM fit uses every stored classic and its expected posterior weight to
+  fit component locations and covariance geometry in homogeneous U-space. Stored likelihood
+  values fit each component's value at its mean; the fit does not call the user's likelihood.
+- Requirement: The conservative first-fit default is one full-covariance component. Additional
+  components are an explicit scientific choice; a warm refit preserves the existing component
+  count unless the user requests another one.
+- Requirement: A fitted component is eligible only when its fitted likelihood at the component
+  mean is strictly above the parent contour. Component selection is proportional to the volume of
+  its Gaussian ellipsoid lying above that contour, rather than its untrimmed covariance volume,
+  sample-hull volume, or empirical member maximum.
+- Requirement: `State.iso_directions()` forces exact isotropic directions without deleting a fit;
+  `State.gmm_directions()` re-enables a retained successful fit; and
+  `State.fit_gmm_directions()` fits or warm-refines and enables the GMM law. The enabled fit has an
+  independently configurable isotropic transition probability of one percent by default.
+- Requirement: Fitted geometry and the enabled direction mode are frozen for every complete
+  constrained chain and survive checkpoint/resume and sample-buffer growth.
 - Requirement: Gradient-guided directions, Galilean trajectories, and step-out bracketing are
   not accepted by the release core until separately implemented and validated.
 - Requirement: Constrained chains are sampled at fixed replacement width and keep stable logical
@@ -310,8 +325,8 @@ properties that must hold independently of implementation live in
   exactly zero and implement their complement as `A - B`.
 - Requirement: Plateau blocks use the paper's three-class concentrations with the configured
   equality prior, whose current neutral value is epsilon equal to one half.
-- Requirement: The classic expectation calculation is the online source used for depth
-  conditions and inexpensive state summaries.
+- Requirement: The classic expectation calculation supplies depth conditions at planning or
+  drain boundaries and inexpensive state summaries; it is not maintained per replacement batch.
 - Requirement: Final user-facing evidence uncertainty and evidence draws use Monte Carlo
   shrinkage and expose classic and phantom-conditioned modes explicitly.
 - Requirement: The default phantom gate uses the Kish participating-cluster count with

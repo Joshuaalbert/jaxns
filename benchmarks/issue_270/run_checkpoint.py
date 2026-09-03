@@ -35,7 +35,7 @@ from jaxns.constrained_sampler import AbstractSampler
 from jaxns.core import NestedSampler
 from jaxns.pytree import PureDataclassPytree
 from jaxns.samples import PhantomSamples, SeedPoint
-from jaxns.termination_condition import TerminationCondition
+from jaxns.depth_condition import DepthCondition
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -110,7 +110,7 @@ runner = NestedSampler(
     max_samples=256,
     initial_capacity=256,
     sampler=BenchmarkSampler(),
-    termination_condition=TerminationCondition(max_samples=256),
+    depth_condition=DepthCondition(),
 )
 
 

@@ -15,26 +15,6 @@ if TYPE_CHECKING:
     from jaxns.results import NestedSamplerResults
 
 
-def _bit_mask(int_mask, width=8):
-    """
-    Convert an integer mask into a bit-mask. I.e. convert an integer into list of left-starting bits.
-
-    Examples:
-
-    1 -> [1,0,0,0,0,0,0,0]
-    2 -> [0,1,0,0,0,0,0,0]
-    3 -> [1,1,0,0,0,0,0,0]
-
-    Args:
-        int_mask: int
-        width: number of output bits
-
-    Returns:
-        List of bits from left
-    """
-    return list(map(int, '{:0{size}b}'.format(int_mask, size=width)))[::-1]
-
-
 def _summary(results: NestedSamplerResults, f_obj: str | TextIO | None = None):
     """
     Gives a summary of the results of a nested sampling run.
@@ -62,28 +42,15 @@ def _summary(results: NestedSamplerResults, f_obj: str | TextIO | None = None):
             return float(v)
 
     def _print_termination_reason(_termination_reason: int):
-        termination_bit_mask = _bit_mask(int(_termination_reason), width=13)
-
-        for bit, condition in zip(termination_bit_mask, [
-            'Reached max samples',
-            'Evidence uncertainty low enough',
-            'Small remaining evidence',
-            'Reached ESS',
-            "Used max num likelihood evaluations",
-            'Likelihood supremum reached',
-            'Likelihood contour reached',
-            'Sampler efficiency too low',
-            'All live-points are on a single plateau (sign of possible precision error)',
-            'relative spread of live points < rtol',
-            'absolute spread of live points < atol',
-            'no seed points left (consider decreasing shell_fraction)',
-            'XL < max(XL) * peak_XL_frac'
-        ]):
-            if bit == 1:
-                _print(condition)
+        if _termination_reason == 0:
+            _print("No hard termination reason")
+        elif _termination_reason == 1:
+            _print("Reached max samples")
+        else:
+            _print(f"Hard termination reason code: {_termination_reason}")
 
     _print("--------")
-    _print("Termination Conditions:")
+    _print("Run status:")
     if np.size(results.termination_reason) > 1:  # Reasons for each parallel sampler
         print(results.termination_reason)
         for sampler_idx in range(np.size(results.termination_reason)):

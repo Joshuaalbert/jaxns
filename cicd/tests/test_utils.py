@@ -14,7 +14,6 @@ from jaxns.diagnostics.reference import (
     bruteforce_evidence,
     bruteforce_posterior_samples,
 )
-from jaxns.diagnostics.summary import _bit_mask
 from jaxns.model import Model
 from jaxns.pytree import PureDataclassPytree
 from jaxns.random_utils import resample
@@ -27,12 +26,6 @@ def test_resample():
     logits = -jnp.ones(50)
     samples = {'x': x}
     assert jnp.all(resample(random.PRNGKey(0), samples, logits)['x'] == resample(random.PRNGKey(0), x, logits))
-
-
-def test_bit_mask():
-    assert _bit_mask(1, width=2) == [1, 0]
-    assert _bit_mask(2, width=2) == [0, 1]
-    assert _bit_mask(3, width=2) == [1, 1]
 
 
 def test_weighted_percentile():
@@ -92,6 +85,44 @@ def test_bruteforce_evidence_assigns_unit_volume_to_constant_likelihood():
     )
 
     np.testing.assert_allclose(log_evidence, 0.0, atol=1e-8)
+
+
+def test_bruteforce_reference_vectorisation_matches_memory_bounded_batches():
+    """The fast default and explicitly bounded reference paths must agree."""
+
+    def prior_model():
+        x = Prior(tfpd.Uniform(low=-1.0, high=2.0), name='x').realise()
+        y = Prior(tfpd.Uniform(low=0.0, high=1.0), name='y').realise()
+        return -jnp.square(x - y)
+
+    model = Model(prior_model=prior_model)
+    vectorised_log_Z = bruteforce_evidence(model=model, grid_res=7)
+    bounded_log_Z = bruteforce_evidence(
+        model=model,
+        grid_res=7,
+        batch_size=5,
+    )
+    vectorised_x, vectorised_weights = bruteforce_posterior_samples(
+        model=model,
+        grid_res=7,
+    )
+    bounded_x, bounded_weights = bruteforce_posterior_samples(
+        model=model,
+        grid_res=7,
+        batch_size=5,
+    )
+
+    # Reduction order differs between vectorised and fixed-width batches, so
+    # float32 model leaves agree to their arithmetic precision rather than
+    # bitwise identity.
+    np.testing.assert_allclose(vectorised_log_Z, bounded_log_Z, rtol=5e-8)
+    np.testing.assert_allclose(vectorised_x['x'], bounded_x['x'], rtol=0.0)
+    np.testing.assert_allclose(vectorised_x['y'], bounded_x['y'], rtol=0.0)
+    np.testing.assert_allclose(
+        vectorised_weights.log_abs_val,
+        bounded_weights.log_abs_val,
+        rtol=5e-8,
+    )
 
 
 @dataclasses.dataclass(frozen=True, slots=True)

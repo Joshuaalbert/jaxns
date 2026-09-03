@@ -143,7 +143,7 @@ class NestedSamplerResults(PureDataclassPytree):
     total_phantom_samples: IntArray  # [] number of phantom samples collected
     total_num_likelihood_evaluations: IntArray  # []
     log_efficiency: FloatArray  # [] log(N / likelihood evaluations)
-    termination_reason: IntArray  # [] bit mask
+    termination_reason: IntArray  # [] zero or a hard-stop reason code
 
     U_samples: UType  # [N, ...] unit-hypercube pytree leaves
     X_samples: XType  # [N, ...] transformed parameter pytree leaves

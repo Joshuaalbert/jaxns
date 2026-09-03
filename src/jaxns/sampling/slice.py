@@ -13,7 +13,7 @@ from jax import random
 
 from jaxns.mixed_precision import mp_policy
 from jaxns.pytree import TreeField, pytree_ravel
-from jaxns.sampling.ellipsoid import SamplerData
+from jaxns.sampling.ellipsoid import SamplerData, _trimmed_log_volumes
 from jaxns.types import BoolArray, FloatArray, IntArray, PRNGKey, UType
 
 
@@ -134,7 +134,6 @@ def _sample_ellipsoidal_direction(
         u0: TreeField[UType],
         log_L_constraint: FloatArray,
         data: SamplerData,
-        prob_isotropic: float,
 ) -> TreeField[UType]:
     """Draw from fixed contour-eligible geometry or its isotropic fallback."""
     direction, _ = _draw_ellipsoidal_direction(
@@ -142,7 +141,6 @@ def _sample_ellipsoidal_direction(
         u0,
         log_L_constraint,
         data,
-        prob_isotropic,
     )
     return direction
 
@@ -152,25 +150,24 @@ def _draw_ellipsoidal_direction(
         u0: TreeField[UType],
         log_L_constraint: FloatArray,
         data: SamplerData,
-        prob_isotropic: float,
 ) -> tuple[TreeField[UType], BoolArray]:
     """Draw a direction and report whether the isotropic kernel was used."""
     isotropic_key, choice_key, component_key, normal_key = random.split(key, 4)
-    eligible = data.valid & (data.log_L_max > log_L_constraint)
+    log_volumes, eligible = _trimmed_log_volumes(data, log_L_constraint)
     use_isotropic = (
         jnp.logical_not(jnp.any(eligible))
         | (
             random.uniform(choice_key, dtype=mp_policy.measure_dtype)
-            < jnp.asarray(prob_isotropic, mp_policy.measure_dtype)
+            < data.iso_prob
         )
     )
 
     def draw_ellipsoidal(_):
-        # Selection mass is geometric volume, not the EM mixture mass. The
-        # latter describes the weighted sample population and would bias this
-        # direction law towards densely sampled rather than spatially broad
-        # components.
-        logits = jnp.where(eligible, data.log_volumes, -jnp.inf)
+        # The constraint trims each fitted Gaussian ellipsoid before its
+        # volume enters selection. This selects the mode proxy most likely to
+        # contain a stationary point at the requested contour without using
+        # the chain's current location.
+        logits = jnp.where(eligible, log_volumes, -jnp.inf)
         component = random.categorical(component_key, logits).astype(
             mp_policy.index_dtype
         )
@@ -276,7 +273,6 @@ def _new_proposal(
         log_likelihood_fn: Callable[[UType], FloatArray],
         periodic: tuple[bool, ...] = (),
         sampler_data: SamplerData | None = None,
-        prob_isotropic: float = 1.0,
 ) -> tuple[
     TreeField[UType],
     FloatArray,
@@ -500,7 +496,6 @@ def _new_proposal(
                 direction,
                 log_L_constraint,
                 sampler_data,
-                prob_isotropic,
             )
     next_slice_width = 2 * (carry.right - carry.left)
     point_U = carry.point_U
@@ -514,4 +509,3 @@ def _new_proposal(
         next_slice_width,
         direction_isotropic,
     )
-
