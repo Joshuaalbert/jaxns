@@ -1941,11 +1941,38 @@ def test_outer_target_uses_fixed_initial_degree_not_mutable_root_degree():
 
     next_state = ns.run_single_iteration(state)
 
-    # Depth iteration two targets d_0 * Delta K * iteration = 4 at the root.
+    # Iteration one targets d_0 + Delta K = 3 at the root.
     # Once those threads are accepted, the mutable sentinel out-degree is
-    # also four, but
+    # also three, but
     # it must not be fed back into the target and start an unbounded chase.
-    assert int(next_state.root_out_degree) == 4
+    assert int(next_state.root_out_degree) == 3
+
+
+def test_first_uniform_depth_view_uses_zero_based_allocation_target():
+    ns = NestedSampler(
+        model=make_toy_model(),
+        target_num_live_points=2,
+        shell_size=1,
+        delta_K=2,
+        sampler=DeterministicSampler(),
+    )
+    state = ns.initialise(jax.random.PRNGKey(291))
+
+    _, plan, _, tail_K = depth._build_depth_view(
+        state,
+        DepthCondition(),
+        allocation_target="uniform",
+        root_degree=2,
+        delta_K=2,
+    )
+
+    # At k=0, D_g^k=d_0+Delta K k is d_0. The first scheduling round
+    # extends that initial population in depth; it must not skip to 2 d_0.
+    np.testing.assert_array_equal(
+        np.asarray(plan.target_K[:2]),
+        np.asarray([2, 2]),
+    )
+    assert int(tail_K) == 2
 
 
 def test_resume_uses_stored_key_and_matches_uninterrupted_run():
@@ -2013,7 +2040,7 @@ def test_filled_target_advances_allocation_without_exposing_user_goal():
     )
     initial = ns.initialise(jax.random.PRNGKey(290))
     # Represent a state after one extra root thread has already been accepted.
-    # Its K=3 population exactly fills the first additive target d_0 + Delta K.
+    # Its K=3 population overfills the k=0 target and fills the k=1 target.
     plateau_likelihood = initial.samples.log_likelihoods.at[:3].set(0.0)
     root_constraints = initial.samples.log_L_constraints.at[2].set(-jnp.inf)
     root_coordinates = initial.samples.U_samples.at[2].set(
@@ -2049,9 +2076,9 @@ def test_filled_target_advances_allocation_without_exposing_user_goal():
         observed.append(int(state.allocation_loop_iter))
         return False
 
-    # K=3 already fills the first uniform target. The terminal plateau still
-    # fails the expected-depth cut, so progress requires the next allocation
-    # target without pretending that a user-visible depth was completed.
+    # K=3 already overfills the k=0 target and fills the k=1 target. The
+    # terminal plateau still fails the expected-depth cut, so progress requires
+    # advancing internally without pretending a user-visible depth completed.
     returned = ns.resume_until_goal(
         initial,
         goal,
@@ -2060,7 +2087,9 @@ def test_filled_target_advances_allocation_without_exposing_user_goal():
 
     assert observed == [0]
     assert int(returned.goal_loop_iter) == 0
-    assert int(returned.allocation_loop_iter) == 1
+    # Both already-filled targets are advanced internally before k=2 admits
+    # the next root edge and reaches the fixed physical capacity.
+    assert int(returned.allocation_loop_iter) == 2
     assert int(returned.termination_reason) == depth.MAX_SAMPLES_REACHED
     assert not bool(returned.depth_reached)
 

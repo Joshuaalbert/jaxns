@@ -2531,10 +2531,11 @@ def _build_depth_view(
     plan = build_allocation_plan(
         state=state,
         allocation_target=allocation_target,
-        depth_iteration=(
-            state.allocation_loop_iter
-            + jnp.asarray(1, state.allocation_loop_iter.dtype)
-        ),
+        # The initial roots are allocation iteration k=0. Passing that exact
+        # index is required by D_g^k = d_0 + Delta K k; retaining the former
+        # multiplicative formula's +1 would begin the additive schedule at
+        # d_0 + Delta K and silently skip its first target.
+        depth_iteration=state.allocation_loop_iter,
         delta_K=jnp.asarray(delta_K, mp_policy.count_dtype),
         # d_0 is the fixed initial allocation. The sentinel's current
         # out-degree grows when later epochs start root threads; using it here
@@ -2547,10 +2548,7 @@ def _build_depth_view(
         tail_K = (
             jnp.asarray(root_degree, mp_policy.count_dtype)
             + jnp.asarray(delta_K, mp_policy.count_dtype)
-            * (
-                state.allocation_loop_iter
-                + jnp.asarray(1, state.allocation_loop_iter.dtype)
-            )
+            * state.allocation_loop_iter
         )
     else:
         # Utility is defined from downstream evidence/posterior value at the

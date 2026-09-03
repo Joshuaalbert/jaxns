@@ -136,7 +136,8 @@
     "test_jax_decomposition_matches_python_reference_and_exact_coverage"
   ],
   "The allocation gap at a block is the positive part of its target lineage count minus its current lineage count.": [
-    "test_depth_first_uniform_gaps_follow_d0_delta_k_iteration_formula"
+    "test_depth_first_uniform_gaps_follow_additive_iteration_formula",
+    "test_first_uniform_depth_view_uses_zero_based_allocation_target"
   ],
   "Advancing a logical thread fills allocation gaps only along contours crossed by the generated lineage.": [
     "test_jax_decomposition_matches_python_reference_and_exact_coverage"

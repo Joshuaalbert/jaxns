@@ -668,8 +668,8 @@ class DistributedNestedSampler:
         if root_degree is None:
             root_degree = max(1, 30 * int(self.model.U_ndims(self.args, self.params)))
         # With no local replacement width, one root population is the natural
-        # work increment. Under uniform allocation this doubles the initial
-        # lineage target in the first round. Utility allocation uses the same
+        # work increment. Uniform allocation therefore follows d_0, 2 d_0,
+        # 3 d_0, and so on. Utility allocation uses the same
         # worker-topology-independent increment.
         if self.delta_K is None:
             delta_K = root_degree

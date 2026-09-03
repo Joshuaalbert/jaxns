@@ -202,9 +202,8 @@ class NestedSampler(PureDataclassPytree):
         if delta_K is None:
             if self.allocation_target == "uniform":
                 # Uniform iteration k targets d_0 + delta_K * k. Matching the
-                # increment to d_0 doubles the initial lineage population in
-                # the first allocation round, then adds one root population
-                # per later round.
+                # increment to d_0 adds one root population at each completed
+                # goal-loop iteration: d_0, 2 d_0, 3 d_0, and so on.
                 delta_K = root_degree
             else:
                 # Utility allocation defines a direct gap, so one replacement

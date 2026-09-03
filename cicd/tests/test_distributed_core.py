@@ -215,9 +215,19 @@ def test_distributed_completion_order_preserves_scientific_state():
 
     def run(reverse):
         client = ArrivalOrderClient(reverse)
+        checkpoint = _local_checkpoint(runner, jax.random.PRNGKey(294))
+        # Exercise k=1 so D_g^k=d_0+Delta K k exposes two simultaneous
+        # root starts whose completion order can actually differ.
+        checkpoint = dataclasses.replace(
+            checkpoint,
+            state=dataclasses.replace(
+                checkpoint.state,
+                allocation_loop_iter=jnp.asarray(1, dtype=jnp.int32),
+            ),
+        )
         completed = runner._run_connected(
             client,
-            _local_checkpoint(runner, jax.random.PRNGKey(294)),
+            checkpoint,
             goal,
             DepthCondition(),
             checkpoint_manager=None,
@@ -1027,7 +1037,9 @@ def test_distributed_refills_reserve_starts_beyond_worker_capacity():
     )
     state = dataclasses.replace(
         state,
-        allocation_loop_iter=jnp.asarray(1, dtype=jnp.int32),
+        # At k=2, d_0 + Delta K k = 12 and the six missing root starts
+        # require three successive width-two dispatches.
+        allocation_loop_iter=jnp.asarray(2, dtype=jnp.int32),
         random_key=jax.random.PRNGKey(292),
         goal_key=jax.random.PRNGKey(293),
     )
