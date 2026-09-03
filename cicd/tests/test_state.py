@@ -187,6 +187,9 @@ def test_expected_evidence_rebuilds_order_for_active_growth_state():
         ),
         random_key=key,
         goal_key=key,
+        # k=0 intentionally requests no additive uniform work. This fixture
+        # needs a live schedule so that it can model unpublished accepted rows.
+        allocation_loop_iter=jnp.asarray(1, dtype=jnp.int32),
     )
     active = _start_schedule_round(
         initial,
