@@ -341,7 +341,7 @@ def test_utility_normalisation_and_integer_gaps_are_deterministic():
     np.testing.assert_array_equal(np.asarray(gap), np.asarray([0, 0, 3, 0]))
 
 
-def test_depth_first_uniform_gaps_follow_d0_delta_k_iteration_formula():
+def test_depth_first_uniform_gaps_follow_additive_iteration_formula():
     gap = integer_allocation_gap(
         allocation_target="uniform",
         current_K=jnp.asarray([3, 4, 5, 6]),
@@ -354,15 +354,15 @@ def test_depth_first_uniform_gaps_follow_d0_delta_k_iteration_formula():
 
     np.testing.assert_array_equal(
         np.asarray(gap),
-        np.asarray([21, 20, 0, 18]),
+        np.asarray([7, 6, 0, 4]),
     )
 
 
 @pytest.mark.parametrize(
     ("depth_iteration", "expected_targets"),
     [
-        (1, [9, 9, 9]),
-        (2, [18, 18, 18]),
+        (1, [6, 6, 6]),
+        (2, [9, 9, 9]),
     ],
 )
 def test_build_uniform_allocation_plan_uses_exact_depth_iteration_targets(
@@ -433,7 +433,7 @@ def test_build_allocation_plan_can_use_fixed_initial_root_out_degree():
 
     np.testing.assert_array_equal(
         np.asarray(plan.target_K),
-        np.asarray([7, 6, 6]),
+        np.asarray([7, 6, 5]),
     )
 
 

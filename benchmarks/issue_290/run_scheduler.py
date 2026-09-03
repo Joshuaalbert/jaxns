@@ -67,7 +67,7 @@ def make_state(
     state_fields = {}
     if include_allocation_iteration:
         state_fields["allocation_loop_iter"] = jnp.asarray(
-            1,
+            0,
             mp_policy.count_dtype,
         )
     return State(
@@ -121,7 +121,9 @@ def main() -> None:
         from jaxns.depth_condition import DepthCondition
 
         condition = DepthCondition()
-        delta_K = 1
+        # The additive target uses one root-sized increment so the candidate
+        # and develop both request the same ten full-width batches.
+        delta_K = width
         # Production materialises the compact schedule at the Python planning
         # boundary so every large replacement call has one stable Pytree
         # signature. Lower and compile that boundary separately so the exact

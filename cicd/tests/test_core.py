@@ -1400,7 +1400,7 @@ def test_seed_publication_preserves_frozen_thread_target():
         model=make_toy_model(),
         target_num_live_points=2,
         shell_size=1,
-        delta_K=1,
+        delta_K=2,
         initial_capacity=64,
         unlimited_samples=True,
         sampler=DeterministicSampler(),
@@ -2012,16 +2012,33 @@ def test_filled_target_advances_allocation_without_exposing_user_goal():
         sampler=DeterministicSampler(),
     )
     initial = ns.initialise(jax.random.PRNGKey(290))
-    plateau_likelihood = initial.samples.log_likelihoods.at[:2].set(0.0)
+    # Represent a state after one extra root thread has already been accepted.
+    # Its K=3 population exactly fills the first additive target d_0 + Delta K.
+    plateau_likelihood = initial.samples.log_likelihoods.at[:3].set(0.0)
+    root_constraints = initial.samples.log_L_constraints.at[2].set(-jnp.inf)
+    root_coordinates = initial.samples.U_samples.at[2].set(
+        initial.samples.U_samples[0]
+    )
+    likelihood_evaluations = (
+        initial.samples.num_likelihood_evaluations.at[2].set(1)
+    )
     initial = dataclasses.replace(
         initial,
+        root_out_degree=jnp.asarray(
+            3,
+            dtype=initial.root_out_degree.dtype,
+        ),
         samples=dataclasses.replace(
             initial.samples,
+            log_L_constraints=root_constraints,
             log_likelihoods=plateau_likelihood,
+            U_samples=root_coordinates,
+            num_likelihood_evaluations=likelihood_evaluations,
         ),
+        num_samples=jnp.asarray(3, dtype=initial.num_samples.dtype),
         likelihood_order=initialise_likelihood_order(
             plateau_likelihood,
-            initial.num_samples,
+            jnp.asarray(3, dtype=initial.num_samples.dtype),
         ),
         log_L_supremum=jnp.asarray(0.0),
     )
@@ -2032,7 +2049,7 @@ def test_filled_target_advances_allocation_without_exposing_user_goal():
         observed.append(int(state.allocation_loop_iter))
         return False
 
-    # K=2 already fills the first uniform target. The terminal plateau still
+    # K=3 already fills the first uniform target. The terminal plateau still
     # fails the expected-depth cut, so progress requires the next allocation
     # target without pretending that a user-visible depth was completed.
     returned = ns.resume_until_goal(
@@ -2057,6 +2074,7 @@ def test_sample_storage_modes_are_explicit_and_inspectable():
     )
     assert finite_default.max_samples == 2 * core.SAMPLES_PER_ROOT
     assert finite_default.initial_capacity == 2 + core.INITIAL_BATCHES
+    assert finite_default.delta_K == 2
     assert not finite_default.unlimited_samples
 
     finite_large = NestedSampler(

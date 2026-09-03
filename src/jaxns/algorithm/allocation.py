@@ -267,7 +267,7 @@ def integer_allocation_gap(
     if allocation_target == "uniform":
         target_K = (
             jnp.asarray(root_out_degree, dtype=mp_policy.count_dtype)
-            * jnp.asarray(delta_K, dtype=mp_policy.count_dtype)
+            + jnp.asarray(delta_K, dtype=mp_policy.count_dtype)
             * jnp.asarray(depth_iteration, dtype=mp_policy.count_dtype)
         )
         gap = jnp.maximum(target_K - current_K, 0)

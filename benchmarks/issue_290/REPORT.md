@@ -13,7 +13,7 @@ replacement batch, without changing constrained-prior or race-tree semantics?
 A planning boundary builds the likelihood blocks, expected classic volume
 path, depth-relevant prefix, allocation target, and allocation gap. Uniform
 allocation freezes the absolute target
-`d0 * delta_K * allocation_iteration`. Utility allocation freezes the direct
+`d0 + delta_K * allocation_iteration`. Utility allocation freezes the direct
 work request `ceil(delta_K * unit_peak_utility)` on the current race.
 
 The gap is decomposed into compressed maximal `T(a, b)` runs. The compiled

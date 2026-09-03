@@ -2546,7 +2546,7 @@ def _build_depth_view(
     if allocation_target == "uniform":
         tail_K = (
             jnp.asarray(root_degree, mp_policy.count_dtype)
-            * jnp.asarray(delta_K, mp_policy.count_dtype)
+            + jnp.asarray(delta_K, mp_policy.count_dtype)
             * (
                 state.allocation_loop_iter
                 + jnp.asarray(1, state.allocation_loop_iter.dtype)

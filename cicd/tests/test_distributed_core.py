@@ -68,6 +68,7 @@ def test_distributed_directions_change_only_at_drained_boundaries():
         root_allocation_degree=4,
         initial_capacity=8,
     )
+    assert runner.delta_K == 4
     checkpoint = _local_checkpoint(runner, jax.random.PRNGKey(246))
 
     fitted = checkpoint.fit_gmm_directions(
@@ -1013,7 +1014,7 @@ def test_distributed_refills_reserve_starts_beyond_worker_capacity():
         model=make_toy_model(),
         coordinator_port=5555,
         root_allocation_degree=6,
-        delta_K=1,
+        delta_K=3,
         max_samples=12,
         initial_capacity=12,
     )
@@ -1036,7 +1037,7 @@ def test_distributed_refills_reserve_starts_beyond_worker_capacity():
         shell_size=2,
         allocation_target="uniform",
         root_degree=6,
-        delta_K=1,
+        delta_K=3,
     )
     checkpoint = DistributedState(
         state=state,
