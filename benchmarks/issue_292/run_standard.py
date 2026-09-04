@@ -71,12 +71,20 @@ def _pool_metrics(state, phantom_seeding: bool) -> dict[str, int | float]:
     }
 
 
-def _make_nested_sampler(case_name: str, phantom_seeding: bool):
+def _make_nested_sampler(
+        case_name: str,
+        phantom_seeding: bool,
+        *,
+        root_degree: int | None = None,
+        shell_size: int | None = None,
+):
     """Build the issue-246 standard configuration with matched retention."""
     model, truth = STANDARD_PROBLEM_CASES_BY_NAME[case_name].build_case()
     dimension = int(model.U_ndims())
-    root_degree = 30 * dimension
-    shell_size = min(root_degree, 10 * dimension)
+    if root_degree is None:
+        root_degree = 30 * dimension
+    if shell_size is None:
+        shell_size = min(root_degree, 10 * dimension)
     num_slices = 5 * dimension
     retained_phantoms = dimension
     sampler = UniDimSliceSampler(
@@ -103,7 +111,8 @@ def _make_nested_sampler(case_name: str, phantom_seeding: bool):
         "root_degree": root_degree,
         "replacement_width": shell_size,
         "num_slices": num_slices,
-        "configured_phantom_capacity": retained_phantoms,
+        "retained_phantoms_per_cluster": retained_phantoms,
+        "phantom_seed_capacity": root_degree if phantom_seeding else 0,
         "dlogZ": float(nested_sampler.depth_condition.dlogZ),
         "phantom_seed_probability": float(
             depth.PHANTOM_SEED_PROBABILITY

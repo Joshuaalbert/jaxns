@@ -68,6 +68,8 @@ def main() -> None:
         type=float,
         default=0.1,
     )
+    parser.add_argument("--root-degree", type=int)
+    parser.add_argument("--replacement-width", type=int)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     if not 0.0 <= args.phantom_seed_probability <= 1.0:
@@ -78,6 +80,8 @@ def main() -> None:
     nested_sampler, _, settings = _make_nested_sampler(
         args.case,
         phantom_seeding,
+        root_degree=args.root_degree,
+        shell_size=args.replacement_width,
     )
     state = nested_sampler.initialise(jax.random.PRNGKey(292))
     planning, state = _planning_program(nested_sampler, state)

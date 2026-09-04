@@ -235,7 +235,7 @@ def _validate(grouped: dict[tuple[str, bool], list[dict]]) -> None:
         "root_degree",
         "replacement_width",
         "num_slices",
-        "configured_phantom_capacity",
+        "retained_phantoms_per_cluster",
         "retained_phantom_capacity",
         "dlogZ",
         "phantom_seed_probability",

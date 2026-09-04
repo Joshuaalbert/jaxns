@@ -191,6 +191,30 @@ def test_phantom_seed_eligibility_matches_strict_interval_reference(
     assert bool(actual) is expected
 
 
+def test_log_expected_volume_remains_finite_beyond_linear_underflow():
+    """Deep slot planning retains log(E[X]) after E[X] rounds to zero."""
+    num_samples = 1100
+    state = make_state(
+        root_out_degree=1,
+        log_likelihoods=tuple(float(idx) for idx in range(num_samples)),
+        log_L_constraints=(-np.inf,) + tuple(
+            float(idx) for idx in range(num_samples - 1)
+        ),
+        out_degree=(1,) * (num_samples - 1) + (0,),
+        max_samples=num_samples,
+    )
+    block_state = depth.build_block_state(
+        state.samples,
+        root_out_degree=state.root_out_degree,
+        num_samples=state.num_samples,
+        likelihood_order=state.likelihood_order,
+    )
+    log_mean_X = jax.jit(depth._log_expected_volume_path)(block_state)
+
+    assert bool(jnp.all(jnp.isfinite(log_mean_X)))
+    assert float(log_mean_X[-1]) < -708.0
+
+
 def test_phantom_seed_eligibility_vector_matches_numpy_reference():
     """The accelerated predicate is exactly the direct interval oracle."""
     birth = np.asarray([-np.inf, 0.0, 1.0, 2.0])

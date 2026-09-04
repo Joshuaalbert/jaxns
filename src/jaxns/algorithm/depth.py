@@ -681,6 +681,38 @@ def _expected_log_volume_path(block_state: BlockState) -> FloatArray:
     return jnp.cumsum(expected_log_shrinkage)  # [G]
 
 
+def _log_expected_volume_path(block_state: BlockState) -> FloatArray:
+    """Return log of the posterior mean volume without linear underflow.
+
+    This is intentionally distinct from `_expected_log_volume_path`: phantom
+    slot occupancy uses `log(E[X])`, while allocation depth uses `E[log(X)]`.
+    Forming `E[X]` first loses the tail after roughly 708 race-time units in
+    float64, exactly where high-dimensional runs still need seed coverage.
+    """
+    concentrations = classic_dirichlet_concentrations(block_state)
+    alpha_total = (
+        concentrations.alpha_gt
+        + concentrations.alpha_eq
+        + concentrations.alpha_lt
+    )  # [G]
+    alpha_gt = jnp.where(
+        block_state.valid,
+        concentrations.alpha_gt,
+        jnp.asarray(1.0, mp_policy.measure_dtype),
+    )  # [G]
+    alpha_total = jnp.where(
+        block_state.valid,
+        alpha_total,
+        jnp.asarray(1.0, mp_policy.measure_dtype),
+    )  # [G]
+    log_mean_shrinkage = jnp.where(
+        block_state.valid,
+        jnp.log(alpha_gt) - jnp.log(alpha_total),
+        jnp.asarray(0.0, mp_policy.measure_dtype),
+    )  # [G]
+    return jnp.cumsum(log_mean_shrinkage)  # [G]
+
+
 def _planned_phantom_slot_contours(
         block_state: BlockState,
         gap: IntArray,
@@ -939,11 +971,7 @@ def _new_thread_schedule(
         ),
         tail_K=tail_K,
         log_mean_X=(
-            jnp.where(
-                plan.volume_path.X > 0,
-                jnp.log(plan.volume_path.X),
-                -jnp.inf,
-            )
+            _log_expected_volume_path(block_state)
             if state.phantom_seed_pool is not None
             else jnp.zeros((0,), dtype=mp_policy.measure_dtype)
         ),
@@ -1582,7 +1610,10 @@ def _sample_phantom_staging_slots(
         )
     )(thread_id)  # [S]
     _, assignment_order = jax.lax.sort(
-        (assignment_priority, rows),
+        (
+            jnp.where(valid, assignment_priority, jnp.inf),
+            rows,
+        ),
         dimension=0,
         is_stable=True,
         num_keys=1,
@@ -1658,9 +1689,11 @@ def _sample_phantom_staging_slots(
             next_used,
         )
 
+    # Valid work is sorted first so a scalar distributed refill pays for its
+    # available task count, not the static local replacement width.
     selected, miss_probability, _ = jax.lax.fori_loop(
         0,
-        shell_size,
+        jnp.sum(valid, dtype=mp_policy.index_dtype),
         select_lane,
         (selected, miss_probability, used_slot),
     )
@@ -1728,7 +1761,10 @@ def _sample_phantom_stationary_seeds(
     )(schedule.thread_id)  # [S]
     lanes = jnp.arange(shell_size, dtype=mp_policy.index_dtype)  # [S]
     _, selection_order = jax.lax.sort(
-        (ordering_priority, lanes),
+        (
+            jnp.where(valid, ordering_priority, jnp.inf),
+            lanes,
+        ),
         dimension=0,
         is_stable=True,
         num_keys=1,
@@ -1756,28 +1792,36 @@ def _sample_phantom_stationary_seeds(
         (shell_size,),
         dtype=mp_policy.bool_dtype,
     )  # [S]
+    # Pending distributed work excludes a dependence cluster globally. Compute
+    # that pool-sized mask once; rebuilding it for every local lane would turn
+    # one batch selection from O(SR) into O(S^2 R).
+    unavailable_cluster = jnp.any(
+        reserved_valid[:, None]
+        & (
+            reserved_seed_idx[:, None]
+            == active.cluster_idx[None, :]
+        ),
+        axis=0,
+    )  # [R]
+    # A wide logical start group can span several batches. Its exact reservation
+    # set is shared by every lane in that group, so resolve membership once and
+    # apply it only to lanes that continue the retained group below.
+    start_cluster = jax.vmap(
+        lambda cluster_idx: _seed_reservation_contains(
+            schedule.start_seed_reservation_idx,
+            schedule.start_seed_reservation_group,
+            schedule.current_start_group,
+            jnp.maximum(cluster_idx, 0),
+        )
+    )(active.cluster_idx)  # [R]
 
     def select_lane(step, carry):
-        clusters, selected_slots, used = carry
+        clusters, selected_slots, selected, unavailable = carry
         lane_idx = selection_order[step]
         # A cluster is one dependence unit regardless of the contours at
-        # which simultaneous local lanes or distributed tasks use it.
-        reserved_cluster = jnp.any(
-            reserved_valid[:, None]
-            & (
-                reserved_seed_idx[:, None]
-                == active.cluster_idx[None, :]
-            ),
-            axis=0,
-        )  # [R]
-        earlier_cluster = jnp.any(
-            used[:, None]
-            & (
-                clusters[:, None]
-                == active.cluster_idx[None, :]
-            ),
-            axis=0,
-        )  # [R]
+        # which simultaneous local lanes or distributed tasks use it. Carry a
+        # pool-sized exclusion mask so every accepted lane costs O(R), not a
+        # comparison with all S earlier lanes.
         retains_start_group = (
             schedule.new_start[lane_idx]
             & (
@@ -1785,27 +1829,10 @@ def _sample_phantom_stationary_seeds(
                 == schedule.start_seed_log_L_constraint
             )
         )  # []
-        start_cluster = jax.lax.cond(
-            retains_start_group,
-            lambda unused: jax.vmap(
-                lambda cluster_idx: _seed_reservation_contains(
-                    schedule.start_seed_reservation_idx,
-                    schedule.start_seed_reservation_group,
-                    schedule.current_start_group,
-                    jnp.maximum(cluster_idx, 0),
-                )
-            )(active.cluster_idx),
-            lambda unused: jnp.zeros(
-                (pool_size,),
-                dtype=mp_policy.bool_dtype,
-            ),
-            operand=None,
-        )  # [R]
         available = (
             eligible[lane_idx]
-            & jnp.logical_not(reserved_cluster)
-            & jnp.logical_not(earlier_cluster)
-            & jnp.logical_not(start_cluster)
+            & jnp.logical_not(unavailable)
+            & jnp.logical_not(retains_start_group & start_cluster)
         )  # [R]
         choose = request_phantom[lane_idx] & jnp.any(available)  # []
         cumulative = jnp.cumsum(
@@ -1824,19 +1851,33 @@ def _sample_phantom_stationary_seeds(
             jnp.reshape(rank, (1,)),
         )[0]  # []
         cluster = active.cluster_idx[slot]  # []
+        unavailable = unavailable | (
+            choose & (active.cluster_idx == cluster)
+        )  # [R]
         return (
             clusters.at[lane_idx].set(jnp.where(choose, cluster, -1)),
             selected_slots.at[lane_idx].set(
                 jnp.where(choose, slots[slot], -1)
             ),
-            used.at[lane_idx].set(choose),
+            selected.at[lane_idx].set(choose),
+            unavailable,
         )
 
-    selected_cluster, selected_slot, selected_valid = jax.lax.fori_loop(
+    (
+        selected_cluster,
+        selected_slot,
+        selected_valid,
+        _,
+    ) = jax.lax.fori_loop(
         0,
-        shell_size,
+        jnp.sum(valid, dtype=mp_policy.index_dtype),
         select_lane,
-        (selected_cluster, selected_slot, selected_valid),
+        (
+            selected_cluster,
+            selected_slot,
+            selected_valid,
+            unavailable_cluster,
+        ),
     )
     return selected_cluster, selected_slot, selected_valid
 
