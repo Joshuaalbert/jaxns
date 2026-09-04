@@ -54,9 +54,11 @@ SEED_SOURCE_REFRESH_WINDOWS = 4
 # reservoir-priority draws. This stream must never replace the established
 # parent/seed split because disabled and pre-publication runs are paired.
 PHANTOM_RESERVOIR_RANDOM_STREAM = 0x504852
-# When both source kinds are available, this fixed policy gives retained
-# phantoms a scientific selection probability independent of pool capacity.
-PHANTOM_SEED_PROBABILITY = 0.5
+# When both source kinds are available, this conservative fixed mixture
+# injects phantom diversity without letting the correlated auxiliary source
+# dominate classic endpoints. Paired calibration selects one in ten while
+# keeping the probability independent of physical pool capacity.
+PHANTOM_SEED_PROBABILITY = 0.1
 
 
 @dataclasses.dataclass(slots=True, frozen=True)

@@ -906,13 +906,18 @@
       "path": "cicd/tests/test_multi_ellipsoid.py",
       "reason": "implementation_regression"
     },
-    "test_phantom_candidates_publish_only_after_schedule_drain": {
-      "note": "Checks the selected active/staging bank publication boundary for the bounded phantom seed reservoir.",
-      "path": "cicd/tests/test_phantom_seeding.py",
-      "reason": "scheduler_architecture"
-    },
     "test_phantom_seed_pool_survives_resize_trim_and_checkpoint": {
       "note": "Checks that the selected bounded reservoir Pytree is independent of sample storage and survives current persistence boundaries.",
+      "path": "cicd/tests/test_phantom_seeding.py",
+      "reason": "architecture_boundary"
+    },
+    "test_local_and_distributed_configuration_uses_root_width_pool": {
+      "note": "Checks the selected root-population-sized reservoir capacity in both execution drivers.",
+      "path": "cicd/tests/test_phantom_seeding.py",
+      "reason": "policy_configuration"
+    },
+    "test_phantom_pool_locator_uses_append_row_not_likelihood_rank": {
+      "note": "Checks that internal cluster locators follow append-order sample storage rather than a changing sorted-likelihood rank.",
       "path": "cicd/tests/test_phantom_seeding.py",
       "reason": "architecture_boundary"
     },

@@ -8,11 +8,14 @@ selects a policy.
 import argparse
 import dataclasses
 import json
-import pickle
+import tempfile
 import time
 from pathlib import Path
 
 import jax
+from jax import numpy as jnp
+from jaxctx.priors.prior import Prior
+from tensorflow_probability.substrates import jax as tfp
 
 from benchmarks.issue_246.run_standard import _mode_mass
 from benchmarks.issue_292.run_standard import (
@@ -21,7 +24,41 @@ from benchmarks.issue_292.run_standard import (
     _tree_nbytes,
 )
 from jaxns.algorithm import depth
+from jaxns.checkpoint import LOCK_NAME, CheckpointManager
+from jaxns.model import Model
 from jaxns.sampling.seeding import PhantomSeedPool
+
+tfpd = tfp.distributions
+
+
+def _checkpoint_prior_model():
+    """Provide picklable static metadata for checkpoint-size measurement."""
+    x = Prior(
+        tfpd.Uniform(low=jnp.zeros(8), high=jnp.ones(8)),
+        name="x",
+    ).realise()
+    return -jnp.sum(jnp.square(x))
+
+
+CHECKPOINT_MODEL = Model(prior_model=_checkpoint_prior_model)
+
+
+def _checkpoint_bytes(state):
+    """Measure a committed artifact with unchanged scientific array leaves."""
+    # Standard-case models are local test closures. Replace only that static
+    # field with a picklable 8D model; every scientific state and pool array is
+    # unchanged, so capacity deltas are exact even though absolute static-model
+    # bytes are specific to this serialization surrogate.
+    serialisable = dataclasses.replace(state, model=CHECKPOINT_MODEL)
+    with tempfile.TemporaryDirectory(prefix="issue292-checkpoint-") as path:
+        checkpoint_dir = Path(path)
+        with CheckpointManager(checkpoint_dir) as manager:
+            manager.save(serialisable)
+        return sum(
+            artifact.stat().st_size
+            for artifact in checkpoint_dir.iterdir()
+            if artifact.name != LOCK_NAME
+        )
 
 
 def _run_state(nested_sampler, key, capacity):
@@ -85,13 +122,7 @@ def _record(nested_sampler, truth, settings, seed, capacity):
         "classic_samples": int(results.total_num_samples),
         "warm_wall_s": warm_wall_s,
         "state_bytes": _tree_nbytes(state),
-        # Standard-problem models are local test closures and intentionally
-        # cannot be pickled. Array leaves contain the capacity-dependent
-        # checkpoint payload; static model metadata is constant across cells.
-        "checkpoint_array_bytes": len(pickle.dumps(
-            jax.tree.leaves(state),
-            protocol=pickle.HIGHEST_PROTOCOL,
-        )),
+        "checkpoint_bytes": _checkpoint_bytes(state),
         **_pool_metrics(state, settings["phantom_seeding"]),
     }
 

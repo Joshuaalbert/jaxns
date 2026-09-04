@@ -796,7 +796,10 @@ def test_fixed_source_choice_is_independent_of_pool_capacity():
         uses.append(np.asarray(selected))
 
     np.testing.assert_array_equal(uses[0], uses[1])
-    assert 0.35 < float(np.mean(uses[0])) < 0.65
+    assert float(np.mean(uses[0])) == pytest.approx(
+        depth.PHANTOM_SEED_PROBABILITY,
+        abs=0.05,
+    )
 
 
 def test_distributed_request_materialises_the_same_phantom_seed():

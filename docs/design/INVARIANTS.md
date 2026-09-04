@@ -138,6 +138,8 @@ The exact text following each `- Invariant:` prefix is the stable key used by
   when it is disabled, the seed population contains only classic samples.
 - Invariant: Active phantoms form a separate stationary seed source. When both classic and phantom
   sources are available, their selection probability is fixed independently of pool capacity.
+  Within the phantom source, selection is uniform over eligible source clusters and independent
+  of array position and task-completion order.
 - Invariant: A phantom seed representative, contour slot, and admission priority are selected
   independently of returned likelihood values. Admission requires birth contour no greater than
   slot contour and likelihood strictly greater than slot contour. After admission, eligibility at

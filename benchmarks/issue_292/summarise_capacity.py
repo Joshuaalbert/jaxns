@@ -36,13 +36,19 @@ def main():
             first["pool_capacity_multiplier"],
             first["phantom_seed_probability"],
         )
-        grouped[key] = records
+        grouped.setdefault(key, []).extend(records)
 
     print(
         "case cap p n logZ_bias logZ_rmse z_var mode_rmse evals "
         "wall_s eligible90 eligible99 eligible_final state_mib ckpt_mib"
     )
     for (case, capacity, probability), records in sorted(grouped.items()):
+        checkpoint_bytes = statistics.fmean(
+            record["checkpoint_bytes"]
+            if "checkpoint_bytes" in record
+            else record["checkpoint_array_bytes"]
+            for record in records
+        )
         z_values = [
             record["log_Z_error"] / record["log_Z_uncert"]
             for record in records
@@ -67,7 +73,7 @@ def main():
             f"{_mean(records, 'pool_eligible_p99'):.1f}",
             f"{_mean(records, 'pool_eligible_final'):.1f}",
             f"{_mean(records, 'state_bytes') / 2 ** 20:.4f}",
-            f"{_mean(records, 'checkpoint_array_bytes') / 2 ** 20:.4f}",
+            f"{checkpoint_bytes / 2 ** 20:.4f}",
         )
 
 

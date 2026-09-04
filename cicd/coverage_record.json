@@ -22,28 +22,39 @@
     "test_phantom_seeding_is_explicit_and_requires_retained_states",
     "test_variable_valid_phantom_sampler_must_explicitly_support_seeding"
   ],
-  "An active phantom seed replaces its source cluster's classic seed candidate, so one constrained-chain cluster contributes at most one candidate to a seed population.": [
-    "test_active_phantom_replaces_its_cluster_classic_seed",
+  "Active phantoms form a separate stationary seed source. When both classic and phantom sources are available, their selection probability is fixed independently of pool capacity. Within the phantom source, selection is uniform over eligible source clusters and independent of array position and task-completion order.": [
+    "test_phantom_is_a_separate_cluster_distinct_seed_source",
+    "test_fixed_source_choice_is_independent_of_pool_capacity",
+    "test_active_phantom_selection_is_invariant_to_lane_position",
+    "test_pool_membership_is_invariant_to_publication_batches",
     "test_distributed_request_materialises_the_same_phantom_seed",
-    "test_phantom_pool_locator_uses_append_row_not_likelihood_rank",
     "test_phantom_seed_preserves_requested_parent_out_degree"
   ],
-  "A phantom seed representative and its admission priority are selected independently of returned likelihood values, and the representative is eligible at contour lambda exactly when its birth contour is no greater than lambda and its likelihood is strictly greater than lambda.": [
+  "A phantom seed representative, contour slot, and admission priority are selected independently of returned likelihood values. Admission requires birth contour no greater than slot contour and likelihood strictly greater than slot contour. After admission, eligibility at contour lambda requires slot contour no greater than lambda and likelihood strictly greater than lambda.": [
     "test_phantom_pool_stage_is_value_independent_and_promotes_atomically",
     "test_phantom_representative_offset_is_independent_of_returned_values",
     "test_phantom_seed_eligibility_matches_strict_interval_reference",
-    "test_phantom_seed_eligibility_vector_matches_numpy_reference"
+    "test_phantom_seed_eligibility_vector_matches_numpy_reference",
+    "test_unfilled_slot_preserves_preceding_seed_and_effective_contour"
   ],
-  "Concurrent children at the same parent contour reserve source clusters rather than seed points, and a thread avoids immediately seeding from the cluster that produced its current head whenever another eligible source cluster exists.": [
+  "Phantom contour slots are assigned from planned lineage work before candidate values are observed. Observed likelihood can reject a candidate that does not cross its assigned slot, but cannot move it to a more favourable slot.": [
+    "test_contour_slots_are_fixed_from_the_masked_planned_gap",
+    "test_expected_log_volume_uses_beta_race_time_moment",
+    "test_slot_assignment_is_invariant_to_lane_position"
+  ],
+  "Concurrent children reserve every selected phantom source cluster across parent contours and across its classic and phantom representations. A thread does not continue directly from the phantom cluster that produced its current head. Classic-to-classic seed reuse at different contours retains the established scheduling law. If no eligible phantom is available, selection uses the exact classic population.": [
     "test_current_thread_cluster_avoids_own_cluster_when_alternative_exists",
-    "test_current_thread_cluster_can_seed_continuation_to_make_progress",
-    "test_different_contours_do_not_globally_reserve_source_cluster",
+    "test_lone_own_phantom_falls_back_to_exact_classic_seed",
+    "test_empty_phantom_pool_preserves_classic_work_plan_exactly",
     "test_parent_exclusion_overlapping_reservation_is_counted_once",
-    "test_same_contour_reservation_uses_cluster_across_seed_representations"
+    "test_same_contour_reservation_uses_cluster_across_seed_representations",
+    "test_one_cluster_is_reserved_across_different_contours",
+    "test_classic_and_phantom_sources_share_cross_contour_reservations",
+    "test_reparented_phantom_birth_uses_effective_sampling_contour"
   ],
   "Completed phantom seed representatives become active only after every constrained call in their seed-source publication cohort has completed.": [
     "test_phantom_candidates_publish_after_generation_completes",
-    "test_recent_generation_precedes_older_pool_without_value_selection"
+    "test_pool_membership_is_invariant_to_publication_batches"
   ],
   "Every nested-sampling contour is strict: a point satisfies contour lambda exactly when its likelihood is greater than lambda.": [
     "test_block_state_rejects_strict_contour_violation",

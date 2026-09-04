@@ -66,7 +66,7 @@ def main() -> None:
     parser.add_argument(
         "--phantom-seed-probability",
         type=float,
-        default=0.5,
+        default=0.1,
     )
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()

@@ -44,6 +44,26 @@ An exploratory fixed-source mixture can be selected without changing the
 public API by passing `--phantom-seed-probability`. The retained comparison
 should use the evidence-selected production value.
 
+## Selected policy
+
+The retained design uses one representative per completed chain, planned
+contour slots, capacity `d0`, and a fixed phantom-source probability of 0.1.
+A point reservoir was rejected because chains that emit more correlated rows
+would receive more seed probability. A value-independent global cluster
+reservoir was also rejected: only 3--5 entries remained eligible near the
+final contours in exploratory runs. Planned slots raised terminal eligibility
+to roughly 87--95 clusters for replacement width 80.
+
+Capacity and mixture sweeps used paired random seeds. Capacity `d0` was the
+coverage knee: smaller pools degraded the basic-MVN efficiency, while `2d0`
+added work without scientific benefit. Over 30 paired seeds, the selected 0.1
+mixture changed basic-MVN log-evidence RMSE from 0.2522 to 0.2195 and CSS8 RMSE
+from 0.1692 to 0.1612. CSS8 standardized-error variance changed from 1.179 to
+1.046, mode-mass RMSE was effectively unchanged (0.0923 to 0.0934), and mean
+likelihood evaluations changed by +1.38%. A 0.5 mixture improved the unimodal
+case but worsened CSS8 RMSE to 0.1865, so it was rejected. The selected pool
+added 35,520 resident bytes and 36,521 bytes to a committed checkpoint.
+
 Profile the isolated compiled depth program for both feature paths with:
 
 ```bash

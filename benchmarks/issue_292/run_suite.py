@@ -32,7 +32,7 @@ def main() -> None:
     parser.add_argument(
         "--phantom-seed-probability",
         type=float,
-        default=0.5,
+        default=0.1,
     )
     parser.add_argument("--source-id", default="working-tree")
     parser.add_argument("--quiet", action="store_true")
