@@ -50,6 +50,7 @@
     "test_same_contour_reservation_uses_cluster_across_seed_representations",
     "test_one_cluster_is_reserved_across_different_contours",
     "test_classic_and_phantom_sources_share_cross_contour_reservations",
+    "test_distributed_refill_reserves_pending_phantom_cluster",
     "test_reparented_phantom_birth_uses_effective_sampling_contour"
   ],
   "Completed phantom seed representatives become active only after every constrained call in their seed-source publication cohort has completed.": [

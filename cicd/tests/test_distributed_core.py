@@ -39,6 +39,7 @@ from jaxns.distributed_core import (
 )
 from jaxns.runtime.client import RuntimeUnavailableError
 from jaxns.samples import PhantomSamples, SeedPoint
+from jaxns.sampling.seeding import PhantomSeedPool
 
 
 def _local_checkpoint(
@@ -58,6 +59,30 @@ def _local_checkpoint(
         depth_active=False,
         goal_key=state.goal_key,
     )
+
+
+def _active_phantom_pool(state) -> PhantomSeedPool:
+    """Build two eligible source clusters through the immutable pool API."""
+    pool = PhantomSeedPool.empty(
+        capacity=2,
+        U_template=state.U_supremum,
+    ).assign_staging_slots(
+        log_L_slot=jnp.asarray([-jnp.inf, -jnp.inf]),
+        valid=jnp.asarray([True, True]),
+    )
+    return pool.stage(
+        # Distinct coordinates make the selected source observable at the
+        # worker boundary; high likelihoods keep both eligible for this
+        # scheduling-only fixture.
+        U_samples=jnp.asarray([0.123, 0.876]),
+        log_L=jnp.asarray([10.0, 10.0]),
+        log_L_birth=jnp.asarray([-jnp.inf, -jnp.inf]),
+        cluster_idx=jnp.asarray([0, 1], dtype=jnp.int32),
+        priority=jnp.asarray([0.8, 0.7]),
+        valid=jnp.asarray([True, True]),
+        slot_idx=jnp.asarray([0, 1], dtype=jnp.int32),
+        log_L_slot=jnp.asarray([-jnp.inf, -jnp.inf]),
+    ).promote()
 
 
 def test_distributed_directions_change_only_at_drained_boundaries():
@@ -161,9 +186,14 @@ def test_distributed_initialisation_dispatches_every_likelihood():
 
 
 def test_distributed_completion_order_preserves_scientific_state():
-    """Worker latency cannot choose a different committed race."""
+    """Worker latency cannot change phantom seeds or the committed race."""
     model = make_toy_model()
-    sampler = UniDimSliceSampler(model=model, num_slices=2)
+    sampler = UniDimSliceSampler(
+        model=model,
+        num_slices=2,
+        collect_phantom_samples=True,
+        max_phantom_samples=1,
+    )
     runner = DistributedNestedSampler(
         model=model,
         coordinator_port=5555,
@@ -172,6 +202,7 @@ def test_distributed_completion_order_preserves_scientific_state():
         max_samples=8,
         initial_capacity=8,
         sampler=sampler,
+        phantom_seeding=True,
     )
 
     class ArrivalOrderClient:
@@ -216,6 +247,7 @@ def test_distributed_completion_order_preserves_scientific_state():
     def run(reverse):
         client = ArrivalOrderClient(reverse)
         checkpoint = _local_checkpoint(runner, jax.random.PRNGKey(294))
+        pool = _active_phantom_pool(checkpoint.state)
         # Exercise k=1 so D_g^k=d_0+Delta K k exposes two simultaneous
         # root starts whose completion order can actually differ.
         checkpoint = dataclasses.replace(
@@ -223,6 +255,13 @@ def test_distributed_completion_order_preserves_scientific_state():
             state=dataclasses.replace(
                 checkpoint.state,
                 allocation_loop_iter=jnp.asarray(1, dtype=jnp.int32),
+                # This key makes the initial wave use an active phantom, so
+                # reversed arrivals exercise the new scientific seed source.
+                random_key=jnp.asarray(
+                    [172216686, 3883864598],
+                    dtype=jnp.uint32,
+                ),
+                phantom_seed_pool=pool,
             ),
         )
         completed = runner._run_connected(
@@ -240,6 +279,16 @@ def test_distributed_completion_order_preserves_scientific_state():
     assert fifo_client.completion_order[:2] == [0, 1]
     assert reversed_client.completion_order[:2] == [1, 0]
     assert fifo_client.completion_order != reversed_client.completion_order
+
+    # This makes the completion-order assertion exercise the phantom path,
+    # rather than proving only the pre-existing classic scheduler behavior.
+    assert any(
+        any(
+            float(request.seed_points.U0[0]) == pytest.approx(phantom_U)
+            for phantom_U in (0.123, 0.876)
+        )
+        for _, request in fifo_client.submitted[:2]
+    )
 
     # Both executions must have planned the same requests before their
     # completion latency can be treated as the only independent variable.
@@ -1032,6 +1081,67 @@ def test_distributed_refill_reserves_pending_same_contour_seed():
         second_work.log_L_constraint[0]
     )
     assert int(first_work.seed_idx[0]) != int(second_work.seed_idx[0])
+
+
+def test_distributed_refill_reserves_pending_phantom_cluster():
+    """A refill cannot reuse either representation of an in-flight cluster."""
+    class Client:
+        def submit_many(self, session_id, tasks):
+            del session_id, tasks
+
+    model = make_toy_model()
+    sampler = UniDimSliceSampler(
+        model=model,
+        num_slices=2,
+        collect_phantom_samples=True,
+        max_phantom_samples=1,
+    )
+    runner = DistributedNestedSampler(
+        model=model,
+        coordinator_port=5555,
+        root_allocation_degree=2,
+        delta_K=2,
+        max_samples=8,
+        initial_capacity=8,
+        sampler=sampler,
+        phantom_seeding=True,
+    )
+    checkpoint = _local_checkpoint(runner, jax.random.PRNGKey(294))
+    checkpoint = dataclasses.replace(
+        checkpoint,
+        state=dataclasses.replace(
+            checkpoint.state,
+            allocation_loop_iter=jnp.asarray(1, dtype=jnp.int32),
+            random_key=jnp.asarray(
+                [1894348366, 3556391082],
+                dtype=jnp.uint32,
+            ),
+            phantom_seed_pool=_active_phantom_pool(checkpoint.state),
+        ),
+        depth_active=True,
+    )
+
+    first = runner._dispatch_threads(
+        Client(),
+        checkpoint,
+        DepthCondition(),
+        lane_capacity=1,
+    )
+    refilled = runner._dispatch_threads(
+        Client(),
+        first,
+        DepthCondition(),
+        lane_capacity=2,
+    )
+
+    assert len(first.pending) == 1
+    assert int(first.pending[0].work.seed_pool_idx[0]) >= 0
+    assert len(refilled.pending) == 2
+    assert int(refilled.pending[1].work.seed_pool_idx[0]) == -1
+    assert len({
+        int(task.work.seed_idx[0])
+        for task in refilled.pending
+    }) == 2
 
 
 def test_distributed_refills_reserve_starts_beyond_worker_capacity():
