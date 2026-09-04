@@ -905,6 +905,21 @@
       "note": "Checks the current masked component-height regression avoids an indeterminate zero-weight product without changing supported observations.",
       "path": "cicd/tests/test_multi_ellipsoid.py",
       "reason": "implementation_regression"
+    },
+    "test_phantom_candidates_publish_only_after_schedule_drain": {
+      "note": "Checks the selected active/staging bank publication boundary for the bounded phantom seed reservoir.",
+      "path": "cicd/tests/test_phantom_seeding.py",
+      "reason": "scheduler_architecture"
+    },
+    "test_phantom_seed_pool_survives_resize_trim_and_checkpoint": {
+      "note": "Checks that the selected bounded reservoir Pytree is independent of sample storage and survives current persistence boundaries.",
+      "path": "cicd/tests/test_phantom_seeding.py",
+      "reason": "architecture_boundary"
+    },
+    "test_state_merge_clears_phantom_seed_pool": {
+      "note": "Checks the selected conservative merge behavior instead of inventing source-cluster identity remapping.",
+      "path": "cicd/tests/test_phantom_seeding.py",
+      "reason": "architecture_boundary"
     }
   }
 }

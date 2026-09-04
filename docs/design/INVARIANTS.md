@@ -134,6 +134,17 @@ The exact text following each `- Invariant:` prefix is the stable key used by
   classic-conditioned result for the same random run.
 - Invariant: Phantom-conditioned evidence is an optional final inference over a completed state
   and does not alter the state used to generate the race.
+- Invariant: Using phantom states as constrained-chain seeds is explicitly enabled by the user;
+  when it is disabled, the seed population contains only classic samples.
+- Invariant: An active phantom seed replaces its source cluster's classic seed candidate, so one
+  constrained-chain cluster contributes at most one candidate to a seed population.
+- Invariant: A phantom seed representative and its admission priority are selected independently
+  of returned likelihood values, and the representative is eligible at contour lambda exactly
+  when its birth contour is no greater than lambda and its likelihood is strictly greater than
+  lambda.
+- Invariant: Concurrent children at the same parent contour reserve source clusters rather than
+  seed points, and a thread never immediately seeds from the cluster that produced its current
+  head.
 
 ## Lineage Allocation And Work Scheduling
 

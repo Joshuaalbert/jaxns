@@ -18,6 +18,24 @@
     "test_phantom_payload_does_not_change_vector_worker_trajectory",
     "test_additional_retained_phantoms_leave_classic_run_invariant"
   ],
+  "Using phantom states as constrained-chain seeds is explicitly enabled by the user; when it is disabled, the seed population contains only classic samples.": [
+    "test_phantom_seeding_is_explicit_and_requires_retained_states"
+  ],
+  "An active phantom seed replaces its source cluster's classic seed candidate, so one constrained-chain cluster contributes at most one candidate to a seed population.": [
+    "test_active_phantom_replaces_its_cluster_classic_seed",
+    "test_phantom_seed_preserves_requested_parent_out_degree"
+  ],
+  "A phantom seed representative and its admission priority are selected independently of returned likelihood values, and the representative is eligible at contour lambda exactly when its birth contour is no greater than lambda and its likelihood is strictly greater than lambda.": [
+    "test_phantom_pool_stage_is_value_independent_and_promotes_atomically",
+    "test_phantom_representative_offset_is_independent_of_returned_values",
+    "test_phantom_seed_eligibility_matches_strict_interval_reference",
+    "test_phantom_seed_eligibility_vector_matches_numpy_reference"
+  ],
+  "Concurrent children at the same parent contour reserve source clusters rather than seed points, and a thread never immediately seeds from the cluster that produced its current head.": [
+    "test_current_thread_cluster_cannot_seed_its_continuation",
+    "test_different_contours_do_not_globally_reserve_source_cluster",
+    "test_same_contour_reservation_uses_cluster_across_seed_representations"
+  ],
   "Every nested-sampling contour is strict: a point satisfies contour lambda exactly when its likelihood is greater than lambda.": [
     "test_block_state_rejects_strict_contour_violation",
     "test_state_consistency_rejects_strict_contour_violation",

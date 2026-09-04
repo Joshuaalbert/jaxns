@@ -278,6 +278,27 @@ properties that must hold independently of implementation live in
   valid contour that has an eligible stationary seed and the child records that actual contour.
 - Requirement: Seed-reuse and reparenting event counters are not part of the user-facing result
   schema.
+- Requirement: Phantom seed participation is an explicit opt-in. The disabled path constructs no
+  phantom seed reservoir and retains the established classic-only scheduling law.
+- Requirement: The bounded phantom seed reservoir stores one value-independently preselected
+  representative per retained source cluster. While that representative is active it replaces,
+  rather than supplements, the source cluster's classic sample in the seed population.
+- Requirement: A phantom representative's offset within its retained cluster and its reservoir
+  replacement priority are fixed before observing returned phantom coordinates or likelihoods. A
+  returned likelihood can determine only whether that already selected representative is eligible
+  at a requested contour; it cannot improve the representative's priority or cause another phantom
+  from that cluster to be selected.
+- Requirement: The active phantom seed pool is immutable for the complete lifetime of one frozen
+  `ThreadSchedule`. Completed-chain representatives enter a bounded staging pool and become active
+  only after that schedule drains and the next schedule is constructed.
+- Requirement: Same-contour local lanes and distributed in-flight tasks reserve source-cluster
+  identities across classic and phantom seed representations. A continuing thread excludes the
+  cluster that generated its current head, while different requested contours do not acquire a
+  global exclusion.
+- Requirement: Phantom seed state is a frozen, slotted internal Pytree which remains bounded
+  independently of classic-sample capacity. Sample-buffer growth, trimming, and checkpoint resume
+  preserve it exactly. Merging independent states clears it rather than attempting to preserve
+  append-order cluster identities across the merge.
 
 ## Constrained Sampler
 
