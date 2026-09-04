@@ -64,6 +64,13 @@ likelihood evaluations changed by +1.38%. A 0.5 mixture improved the unimodal
 case but worsened CSS8 RMSE to 0.1865, so it was rejected. The selected pool
 added 35,520 resident bytes and 36,521 bytes to a committed checkpoint.
 
+An isolated AB/BA hot-path profile at `D=8`, `d0=240`, and replacement width
+80 measured a 5.4% median depth-runtime increase for the enabled path. HLO
+text grew by 23.6%, mean compilation time by 24.7%, and scheduled state by
+2.69%; XLA temporary bytes decreased by 14.0%. The disabled path constructs no
+pool, and an exact paired run reproduced its parent-revision samples, evidence,
+likelihood evaluations, and ESS bit for bit.
+
 Profile the isolated compiled depth program for both feature paths with:
 
 ```bash
