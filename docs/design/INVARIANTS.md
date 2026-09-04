@@ -136,15 +136,17 @@ The exact text following each `- Invariant:` prefix is the stable key used by
   and does not alter the state used to generate the race.
 - Invariant: Using phantom states as constrained-chain seeds is explicitly enabled by the user;
   when it is disabled, the seed population contains only classic samples.
-- Invariant: An active phantom seed replaces its source cluster's classic seed candidate, so one
-  constrained-chain cluster contributes at most one candidate to a seed population.
+- Invariant: Active phantoms form a separate stationary seed source. When both classic and phantom
+  sources are available, their selection probability is fixed independently of pool capacity.
 - Invariant: A phantom seed representative and its admission priority are selected independently
   of returned likelihood values, and the representative is eligible at contour lambda exactly
   when its birth contour is no greater than lambda and its likelihood is strictly greater than
   lambda.
 - Invariant: Concurrent children at the same parent contour reserve source clusters rather than
-  seed points, and a thread never immediately seeds from the cluster that produced its current
-  head.
+  seed points. A thread does not continue directly from the phantom cluster that produced its
+  current head. If no eligible phantom is available, selection uses the exact classic population.
+- Invariant: Completed phantom seed representatives become active only after every constrained
+  call in their seed-source publication cohort has completed.
 
 ## Lineage Allocation And Work Scheduling
 

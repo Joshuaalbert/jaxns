@@ -127,6 +127,14 @@ class NestedSampler(PureDataclassPytree):
     resolves to ``min(model dimension, num_slices - 1)`` for the default slice
     sampler. The retained width is independent of the shorter prefix that can
     later be selected by ``sample_evidence_mc``.
+
+    ``phantom_seeding=True`` additionally makes one value-independently chosen
+    retained state per chain available as a separate stationary seed source.
+    When both source kinds are available, an internal fixed mixture chooses
+    between phantom and classic sources independently of pool capacity. The
+    representatives live in a bounded pool and become visible only after a
+    complete seed-source publication cohort. This is opt-in because it changes
+    exploration and therefore the completed race.
     """
 
     model: Model
@@ -144,6 +152,9 @@ class NestedSampler(PureDataclassPytree):
     store_phantom_samples: bool = False
     collect_phantom_samples: bool = False
     max_phantom_samples: int | None = None
+    # Opt-in because using retained states as chain seeds changes the sampled
+    # race tree, whereas collection alone must preserve classic comparisons.
+    phantom_seeding: bool = False
     allocation_target: Literal[
         "uniform",
         "evidence_improving",
@@ -236,6 +247,13 @@ class NestedSampler(PureDataclassPytree):
         )
         sampler = sampler._with_periodic(periodic)
         sampler.validate_core(U_ndims)
+        if self.phantom_seeding and not sampler.supports_phantom_seeding():
+            raise ValueError(
+                "phantom_seeding=True requires a sampler that retains a "
+                "fixed, fully valid phantom prefix; set "
+                "collect_phantom_samples=True on UniDimSliceSampler or "
+                "provide that explicit custom-sampler capability."
+            )
 
         depth_condition = self.depth_condition
         if depth_condition is None:
@@ -284,6 +302,7 @@ class NestedSampler(PureDataclassPytree):
                 "store_phantom_samples",
                 "collect_phantom_samples",
                 "max_phantom_samples",
+                "phantom_seeding",
                 "allocation_target",
                 "delta_K",
                 "initial_capacity",
@@ -308,6 +327,13 @@ class NestedSampler(PureDataclassPytree):
             root_degree=int(self.root_allocation_degree),
             sample_capacity=int(self.initial_capacity),
             num_phantom=int(self.sampler.num_phantom()),
+            # One root population is independent of local replacement width
+            # and matches the distributed scientific reservoir capacity.
+            phantom_seed_capacity=(
+                int(self.root_allocation_degree)
+                if self.phantom_seeding
+                else 0
+            ),
         )
         return dataclasses.replace(
             state,

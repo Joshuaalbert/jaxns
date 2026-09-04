@@ -19,10 +19,13 @@
     "test_additional_retained_phantoms_leave_classic_run_invariant"
   ],
   "Using phantom states as constrained-chain seeds is explicitly enabled by the user; when it is disabled, the seed population contains only classic samples.": [
-    "test_phantom_seeding_is_explicit_and_requires_retained_states"
+    "test_phantom_seeding_is_explicit_and_requires_retained_states",
+    "test_variable_valid_phantom_sampler_must_explicitly_support_seeding"
   ],
   "An active phantom seed replaces its source cluster's classic seed candidate, so one constrained-chain cluster contributes at most one candidate to a seed population.": [
     "test_active_phantom_replaces_its_cluster_classic_seed",
+    "test_distributed_request_materialises_the_same_phantom_seed",
+    "test_phantom_pool_locator_uses_append_row_not_likelihood_rank",
     "test_phantom_seed_preserves_requested_parent_out_degree"
   ],
   "A phantom seed representative and its admission priority are selected independently of returned likelihood values, and the representative is eligible at contour lambda exactly when its birth contour is no greater than lambda and its likelihood is strictly greater than lambda.": [
@@ -31,10 +34,16 @@
     "test_phantom_seed_eligibility_matches_strict_interval_reference",
     "test_phantom_seed_eligibility_vector_matches_numpy_reference"
   ],
-  "Concurrent children at the same parent contour reserve source clusters rather than seed points, and a thread never immediately seeds from the cluster that produced its current head.": [
-    "test_current_thread_cluster_cannot_seed_its_continuation",
+  "Concurrent children at the same parent contour reserve source clusters rather than seed points, and a thread avoids immediately seeding from the cluster that produced its current head whenever another eligible source cluster exists.": [
+    "test_current_thread_cluster_avoids_own_cluster_when_alternative_exists",
+    "test_current_thread_cluster_can_seed_continuation_to_make_progress",
     "test_different_contours_do_not_globally_reserve_source_cluster",
+    "test_parent_exclusion_overlapping_reservation_is_counted_once",
     "test_same_contour_reservation_uses_cluster_across_seed_representations"
+  ],
+  "Completed phantom seed representatives become active only after every constrained call in their seed-source publication cohort has completed.": [
+    "test_phantom_candidates_publish_after_generation_completes",
+    "test_recent_generation_precedes_older_pool_without_value_selection"
   ],
   "Every nested-sampling contour is strict: a point satisfies contour lambda exactly when its likelihood is greater than lambda.": [
     "test_block_state_rejects_strict_contour_violation",

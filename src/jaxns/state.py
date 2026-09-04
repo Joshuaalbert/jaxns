@@ -23,6 +23,7 @@ from jaxns.sampling.ellipsoid import (
     empty_sampler_data,
     update_sampler_data,
 )
+from jaxns.sampling.seeding import PhantomSeedPool
 from jaxns.shrinkage.classic import (
     classic_dirichlet_concentrations,
     dirichlet_probability_means,
@@ -85,6 +86,10 @@ class State(PureDataclassPytree):
     # It makes storage growth and checkpoint resume transparent without adding
     # parent identities to scientific samples or results.
     scheduler_data: ThreadSchedule | None = None
+    # Exploration-only phantom coordinates remain bounded and separate from
+    # the append-order scientific sample arrays. ``None`` preserves the exact
+    # classic seed-selection path when phantom seeding is not requested.
+    phantom_seed_pool: PhantomSeedPool | None = None
 
     def merge(self, other: 'State') -> 'State':
         """
@@ -797,6 +802,10 @@ def _merge(self: State, other: State) -> 'State':
         depth_reached=depth_reached,
         sampler_data=sampler_data,
         scheduler_data=None,
+        # Append-row identities name source clusters inside this private pool.
+        # A merge changes that namespace, so disabling the pool is safer than
+        # inventing a remapping for exploration-only state.
+        phantom_seed_pool=None,
     )
 
 

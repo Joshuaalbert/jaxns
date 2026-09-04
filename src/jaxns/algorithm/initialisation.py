@@ -9,6 +9,7 @@ from jaxns.algorithm.race_tree import initialise_likelihood_order
 from jaxns.mixed_precision import mp_policy
 from jaxns.model import Model
 from jaxns.samples import PhantomSamples, Samples
+from jaxns.sampling.seeding import PhantomSeedPool
 from jaxns.state import State
 from jaxns.types import PRNGKey
 
@@ -19,6 +20,7 @@ from jaxns.types import PRNGKey
         "root_degree",
         "sample_capacity",
         "num_phantom",
+        "phantom_seed_capacity",
     ),
 )
 def _sample_init_state(
@@ -30,6 +32,7 @@ def _sample_init_state(
         root_degree: int,
         sample_capacity: int,
         num_phantom: int,
+        phantom_seed_capacity: int = 0,
 ) -> State:
     """Draw the root sentinel children with a single vectorised prior call."""
 
@@ -75,13 +78,18 @@ def _sample_init_state(
         num_evals,
         sample_capacity=sample_capacity,
         num_phantom=num_phantom,
+        phantom_seed_capacity=phantom_seed_capacity,
     )
 
 
 @partial(
     jax.jit,
     inline=True,
-    static_argnames=("sample_capacity", "num_phantom"),
+    static_argnames=(
+        "sample_capacity",
+        "num_phantom",
+        "phantom_seed_capacity",
+    ),
 )
 def _build_init_state(
         model: Model,
@@ -93,6 +101,7 @@ def _build_init_state(
         *,
         sample_capacity: int,
         num_phantom: int,
+        phantom_seed_capacity: int = 0,
 ) -> State:
     """Build root race state from already evaluated prior-space points."""
     root_degree = log_likelihoods.shape[0]
@@ -123,6 +132,16 @@ def _build_init_state(
         ),
     ).resize(sample_capacity)
     supremum_idx = jnp.argmax(log_likelihoods)
+    phantom_seed_pool = None
+    if phantom_seed_capacity > 0:
+        # The pool stores one representative point per source cluster. Root
+        # points provide only the point Pytree schema; roots themselves have no
+        # phantom chain and therefore do not enter either bank.
+        U_template = jax.tree.map(lambda value: value[0], U_samples)
+        phantom_seed_pool = PhantomSeedPool.empty(
+            phantom_seed_capacity,
+            U_template,
+        )
     return State(
         root_out_degree=jnp.asarray(root_degree, mp_policy.count_dtype),
         samples=root_samples,
@@ -137,5 +156,5 @@ def _build_init_state(
             root_samples.log_likelihoods,
             jnp.asarray(root_degree, mp_policy.count_dtype),
         ),
+        phantom_seed_pool=phantom_seed_pool,
     )
-

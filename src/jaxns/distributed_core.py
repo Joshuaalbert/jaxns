@@ -29,6 +29,7 @@ from jaxns.algorithm.depth import (
     _refresh_likelihood_order,
     _release_thread_heads,
     _resize_depth_state,
+    _seed_points_for_work,
     _seed_source_refresh_due,
     _start_schedule_round,
     _start_seed_storage_full,
@@ -348,15 +349,7 @@ def _prepare_task(
         reserved_valid,
     )
 
-    seed_points = SeedPoint(
-        U0=jax.tree.map(
-            lambda values: values[work.seed_idx],
-            state.samples.U_samples,
-        ),
-        log_L0=(
-            state.samples.log_likelihoods[work.seed_idx]
-        ),
-    )
+    seed_points = _seed_points_for_work(state, work)
     request = ConstrainedSampleRequest(
         keys=jax.random.split(sample_key, dispatch_width),
         valid=work.valid,
@@ -582,6 +575,8 @@ class DistributedNestedSampler:
         coordinator_port: TCP port identifying the already started local
             coordinator. The scientific connection itself stays on same-user
             IPC derived from this port.
+        phantom_seeding: Whether retained intermediate chain states may enter
+            the bounded stationary phantom seed source.
         receive_timeout_s: Maximum time to wait for a coordinator health
             response. Worker completion itself has no deadline because an
             empty pool is a recoverable operational state.
@@ -600,6 +595,7 @@ class DistributedNestedSampler:
         "max_samples",
         "model",
         "params",
+        "phantom_seeding",
         "receive_timeout_s",
         "root_allocation_degree",
         "sampler",
@@ -622,6 +618,7 @@ class DistributedNestedSampler:
             store_phantom_samples: bool = False,
             collect_phantom_samples: bool = False,
             max_phantom_samples: int | None = None,
+            phantom_seeding: bool = False,
             allocation_target: Literal[
                 "uniform",
                 "evidence_improving",
@@ -647,6 +644,7 @@ class DistributedNestedSampler:
         self.store_phantom_samples = store_phantom_samples
         self.collect_phantom_samples = collect_phantom_samples
         self.max_phantom_samples = max_phantom_samples
+        self.phantom_seeding = phantom_seeding
         self.allocation_target = allocation_target
         self.delta_K = delta_K
         self.initial_capacity = initial_capacity
@@ -693,6 +691,7 @@ class DistributedNestedSampler:
             store_phantom_samples=self.store_phantom_samples,
             collect_phantom_samples=self.collect_phantom_samples,
             max_phantom_samples=self.max_phantom_samples,
+            phantom_seeding=self.phantom_seeding,
             allocation_target=self.allocation_target,
             delta_K=delta_K,
             initial_capacity=initial_capacity,
@@ -704,6 +703,7 @@ class DistributedNestedSampler:
         self.max_samples = core.max_samples
         self.sampler = core.sampler
         self.max_phantom_samples = core.max_phantom_samples
+        self.phantom_seeding = core.phantom_seeding
         self.depth_condition = core.depth_condition
         self.delta_K = core.delta_K
         self.initial_capacity = core.initial_capacity
@@ -813,6 +813,11 @@ class DistributedNestedSampler:
             num_evals,
             sample_capacity=int(self.initial_capacity),
             num_phantom=int(self.sampler.num_phantom()),
+            phantom_seed_capacity=(
+                max(int(self.root_allocation_degree), 1)
+                if self.phantom_seeding
+                else 0
+            ),
         )
         state = dataclasses.replace(
             state,
@@ -1634,6 +1639,13 @@ class DistributedNestedSampler:
                             host_work.log_L_constraint[lane:lane + 1]
                         ),
                         seed_idx=host_work.seed_idx[lane:lane + 1],
+                        seed_pool_idx=(
+                            host_work.seed_pool_idx[lane:lane + 1]
+                        ),
+                        phantom_idx=host_work.phantom_idx[lane:lane + 1],
+                        phantom_priority=(
+                            host_work.phantom_priority[lane:lane + 1]
+                        ),
                     ),
                     request=ConstrainedSampleRequest(
                         keys=host_request.keys[lane:lane + 1],

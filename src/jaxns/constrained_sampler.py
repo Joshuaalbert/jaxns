@@ -100,6 +100,17 @@ class AbstractSampler(ABC):
         """
         ...
 
+    def supports_phantom_seeding(self) -> bool:
+        """Whether every valid request returns all declared phantom points.
+
+        Phantom seed admission preselects one static offset before sampling.
+        A sampler may opt in only when every slot through ``num_phantom()``
+        has coordinates and is valid for every valid request. This stronger
+        contract prevents a trajectory-dependent valid count from changing a
+        source cluster's probability of entering the seed pool.
+        """
+        return False
+
     @abstractmethod
     def get_sample(self, key, log_L_constraint: FloatArray, seed_point: SeedPoint, args=(), params=None) -> tuple[UType, FloatArray, IntArray, PhantomSamples]:
         """
@@ -328,6 +339,10 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
         # A low-level sampler with no explicit memory bound retains the whole
         # eligible prefix. NestedSampler supplies its dimension-sized default.
         return self.num_slices - 1
+
+    def supports_phantom_seeding(self) -> bool:
+        """The slice paths fill every declared retained transition."""
+        return self.num_phantom() > 0
 
     def _with_periodic(
             self,

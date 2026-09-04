@@ -214,6 +214,9 @@ class ThreadSchedule(PureDataclassPytree):
     seed_birth_contours: FloatArray  # [A] birth-sorted frozen contours
     seed_rank_prefix: IntArray  # [H, A + 1] wavelet rank prefixes
     seed_zero_count: IntArray  # [H] zero partition sizes
+    # These replacement maps exist only when phantom seeding changes the
+    # representative intervals. ``None`` leaves the classic schedule at its
+    # established memory footprint and likelihood-order lookup.
     seed_reservoir_idx: IntArray  # [R] bounded coordination sample indices
     seed_reservoir_priority: FloatArray  # [R] value-independent priorities
     seed_reservoir_valid: BoolArray  # [R]

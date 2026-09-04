@@ -322,6 +322,9 @@ def _work() -> CoreWorkBatch:
         parent_idx=jnp.asarray([0, -1, 0], dtype=jnp.int32),
         log_L_constraint=jnp.asarray([0.0, -jnp.inf, 0.0]),
         seed_idx=jnp.asarray([1, 0, 1], dtype=jnp.int32),
+        seed_pool_idx=jnp.full((3,), -1, dtype=jnp.int32),
+        phantom_idx=jnp.zeros((3,), dtype=jnp.int32),
+        phantom_priority=jnp.full((3,), -jnp.inf),
     )
 
 
@@ -361,6 +364,9 @@ def test_reservations_match_linear_python_reference():
         parent_idx=jnp.asarray([2, 3, -1, 2, 0]),
         log_L_constraint=jnp.zeros((5,)),
         seed_idx=jnp.zeros((5,), dtype=jnp.int32),
+        seed_pool_idx=jnp.full((5,), -1, dtype=jnp.int32),
+        phantom_idx=jnp.zeros((5,), dtype=jnp.int32),
+        phantom_priority=jnp.full((5,), -jnp.inf),
     )
     reservations = ReservationState.empty(6)
     added = _change_reservations(reservations, work, 1)
@@ -454,6 +460,9 @@ def test_distributed_continuation_returns_to_heap_not_dispatch_window():
         parent_idx=jnp.asarray([0], dtype=jnp.int32),
         log_L_constraint=state.samples.log_likelihoods[0:1],
         seed_idx=jnp.asarray([1], dtype=jnp.int32),
+        seed_pool_idx=jnp.asarray([-1], dtype=jnp.int32),
+        phantom_idx=jnp.asarray([0], dtype=jnp.int32),
+        phantom_priority=jnp.asarray([-jnp.inf]),
     )
     accepted_log_L = state.samples.log_likelihoods[0] + 1.0
     batch = ConstrainedSampleBatch(
@@ -560,6 +569,9 @@ def test_growth_preserves_pending_payload_and_logical_depth():
         parent_idx=jnp.asarray([0], dtype=jnp.int32),
         log_L_constraint=state.samples.log_likelihoods[:1],
         seed_idx=jnp.asarray([1], dtype=jnp.int32),
+        seed_pool_idx=jnp.asarray([-1], dtype=jnp.int32),
+        phantom_idx=jnp.asarray([0], dtype=jnp.int32),
+        phantom_priority=jnp.asarray([-jnp.inf]),
     )
     request = ConstrainedSampleRequest(
         keys=jax.random.split(jax.random.PRNGKey(9), 1),
