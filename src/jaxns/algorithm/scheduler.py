@@ -208,7 +208,9 @@ class ThreadSchedule(PureDataclassPytree):
     multiplicity: IntArray  # [G] number of identical T(a, b) threads
     num_runs: IntArray  # []
     target_K: IntArray  # [G] absolute frozen lineage target
+    relevant: BoolArray  # [G] blocks included in this frozen schedule
     tail_K: IntArray  # [] target beyond the last frozen contour
+    log_mean_X: FloatArray  # [G] log of planning-time mean volume path
     seed_count: IntArray  # [G]
     previous_seedable: IntArray  # [G]
     seed_birth_contours: FloatArray  # [A] birth-sorted frozen contours
@@ -221,6 +223,7 @@ class ThreadSchedule(PureDataclassPytree):
     seed_reservoir_priority: FloatArray  # [R] value-independent priorities
     seed_reservoir_valid: BoolArray  # [R]
     seed_reservoir_key: PRNGKey  # [2]
+    phantom_slot_miss_probability: FloatArray  # [R] predicted unfilled mass
     start_seed_reservation_idx: IntArray  # [V] exact reserved identities
     start_seed_reservation_group: IntArray  # [V] logical-clear generations
     current_start_group: IntArray  # [] retained same-contour group identity
@@ -269,6 +272,16 @@ class ThreadSchedule(PureDataclassPytree):
             terminal_block=_resize_vector(self.terminal_block, size, 0),
             multiplicity=_resize_vector(self.multiplicity, size, 0),
             target_K=_resize_vector(self.target_K, size, 0),
+            relevant=(
+                self.relevant
+                if self.relevant.shape[0] == 0
+                else _resize_vector(self.relevant, size, False)
+            ),
+            log_mean_X=(
+                self.log_mean_X
+                if self.log_mean_X.shape[0] == 0
+                else _resize_vector(self.log_mean_X, size, -jnp.inf)
+            ),
             seed_count=_resize_vector(self.seed_count, size, 0),
             previous_seedable=_resize_vector(
                 self.previous_seedable,

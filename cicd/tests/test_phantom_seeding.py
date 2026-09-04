@@ -41,13 +41,48 @@ def _assert_same_tree(left, right) -> None:
         )
 
 
+def _stage_at_birth(
+        pool: PhantomSeedPool,
+        *,
+        U_samples,
+        log_L,
+        log_L_birth,
+        cluster_idx,
+        priority,
+        valid,
+) -> PhantomSeedPool:
+    """Assign one planned slot per test cluster at its generating contour."""
+    count = log_L.shape[0]
+    capacity = pool.staging.valid.shape[0]
+    if count > capacity:
+        raise ValueError("Test helper requires at most one cluster per slot.")
+    log_L_slot = jnp.full(
+        (capacity,),
+        jnp.inf,
+        dtype=mp_policy.measure_dtype,
+    ).at[:count].set(log_L_birth)
+    slot_valid = jnp.arange(capacity) < count
+    pool = pool.assign_staging_slots(log_L_slot, slot_valid)
+    return pool.stage(
+        U_samples=U_samples,
+        log_L=log_L,
+        log_L_birth=log_L_birth,
+        cluster_idx=cluster_idx,
+        priority=priority,
+        valid=valid,
+        slot_idx=jnp.arange(count, dtype=mp_policy.index_dtype),
+        log_L_slot=log_L_birth,
+    )
+
+
 def _pool_with_active_and_staging() -> PhantomSeedPool:
     """Build both pool generations through the immutable public data API."""
     pool = PhantomSeedPool.empty(
         capacity=3,
         U_template=jnp.zeros((2,), dtype=jnp.float64),
     )
-    pool = pool.stage(
+    pool = _stage_at_birth(
+        pool,
         U_samples=jnp.asarray([[0.1, 0.2], [0.3, 0.4]]),
         log_L=jnp.asarray([2.0, 3.0]),
         log_L_birth=jnp.asarray([-jnp.inf, 0.0]),
@@ -55,7 +90,8 @@ def _pool_with_active_and_staging() -> PhantomSeedPool:
         priority=jnp.asarray([0.2, 0.8]),
         valid=jnp.asarray([True, True]),
     ).promote()
-    return pool.stage(
+    return _stage_at_birth(
+        pool,
         U_samples=jnp.asarray([[0.5, 0.6]]),
         log_L=jnp.asarray([4.0]),
         log_L_birth=jnp.asarray([1.0]),
@@ -86,7 +122,8 @@ def _state_with_active_phantom(
         capacity=3,
         U_template=state.U_supremum,
     )
-    pool = pool.stage(
+    pool = _stage_at_birth(
+        pool,
         U_samples=jnp.asarray([U_sample]),
         log_L=jnp.asarray([log_L]),
         log_L_birth=jnp.asarray([log_L_birth]),
@@ -202,7 +239,6 @@ def test_empty_phantom_pool_preserves_classic_work_plan_exactly():
         max_samples=12,
         num_phantom=1,
     )
-    classic = _schedule_root_increment(classic, shell_size=3)
     enabled = dataclasses.replace(
         classic,
         phantom_seed_pool=PhantomSeedPool.empty(
@@ -210,6 +246,8 @@ def test_empty_phantom_pool_preserves_classic_work_plan_exactly():
             U_template=classic.U_supremum,
         ),
     )
+    classic = _schedule_root_increment(classic, shell_size=3)
+    enabled = _schedule_root_increment(enabled, shell_size=3)
     key = jax.random.PRNGKey(292)
     classic_schedule, classic_work = depth._plan_scheduled_work_batch(
         key,
@@ -240,6 +278,101 @@ def test_empty_phantom_pool_preserves_classic_work_plan_exactly():
     np.testing.assert_array_equal(
         np.asarray(classic_schedule.thread_id),
         np.asarray(enabled_schedule.thread_id),
+    )
+
+
+def test_contour_slots_are_fixed_from_the_masked_planned_gap():
+    """Slot placement is complete before candidate values can influence it."""
+    state = make_state(
+        root_out_degree=3,
+        log_likelihoods=(1.0, 2.0, 3.0),
+        log_L_constraints=(-np.inf, -np.inf, -np.inf),
+        out_degree=(0, 0, 0),
+        max_samples=12,
+        num_phantom=1,
+    )
+    state = dataclasses.replace(
+        state,
+        allocation_loop_iter=jnp.asarray(1, mp_policy.count_dtype),
+        phantom_seed_pool=PhantomSeedPool.empty(
+            capacity=3,
+            U_template=state.U_supremum,
+        ),
+    )
+    block_state, plan, relevant, _ = depth._build_depth_view(
+        state,
+        DepthCondition(),
+        allocation_target="uniform",
+        root_degree=3,
+        delta_K=3,
+    )
+    gap = jnp.where(relevant, plan.allocation_gap(), 0)
+    expected_log_X = depth._expected_log_volume_path(block_state)
+    expected_slot, expected_valid = depth._planned_phantom_slot_contours(
+        block_state,
+        gap,
+        expected_log_X,
+        3,
+    )
+    scheduled = depth._start_schedule_round(
+        state,
+        DepthCondition(),
+        shell_size=3,
+        allocation_target="uniform",
+        root_degree=3,
+        delta_K=3,
+    )
+    np.testing.assert_array_equal(
+        scheduled.phantom_seed_pool.staging.log_L_slot,
+        expected_slot,
+    )
+    np.testing.assert_array_equal(
+        scheduled.phantom_seed_pool.staging.slot_valid,
+        expected_valid,
+    )
+
+    shallow_gap = jnp.zeros_like(gap).at[0].set(3)
+    deep_gap = jnp.zeros_like(gap).at[2].set(3)
+    shallow_slot, _ = depth._planned_phantom_slot_contours(
+        block_state,
+        shallow_gap,
+        expected_log_X,
+        3,
+    )
+    deep_slot, _ = depth._planned_phantom_slot_contours(
+        block_state,
+        deep_gap,
+        expected_log_X,
+        3,
+    )
+    assert bool(jnp.all(jnp.isneginf(shallow_slot)))
+    np.testing.assert_array_equal(
+        deep_slot,
+        jnp.full((3,), block_state.log_L_blocks[1]),
+    )
+
+
+def test_expected_log_volume_uses_beta_race_time_moment():
+    """Singleton Beta(K, 1) blocks contribute exact mean race time 1/K."""
+    state = make_state(
+        root_out_degree=3,
+        log_likelihoods=(1.0, 2.0, 3.0),
+        log_L_constraints=(-np.inf, -np.inf, -np.inf),
+        out_degree=(0, 0, 0),
+        max_samples=8,
+    )
+    block_state, _, _, _ = depth._build_depth_view(
+        state,
+        DepthCondition(),
+        allocation_target="uniform",
+        root_degree=3,
+        delta_K=3,
+    )
+    np.testing.assert_allclose(
+        np.asarray(depth._expected_log_volume_path(block_state))[:3],
+        -np.cumsum(np.asarray([1.0 / 3.0, 1.0 / 2.0, 1.0])),
+        rtol=1e-12,
+        atol=1e-12,
     )
 
 
@@ -303,20 +436,26 @@ def test_local_and_distributed_configuration_uses_root_width_pool():
 
 
 def test_phantom_pool_stage_is_value_independent_and_promotes_atomically():
-    """Returned values cannot alter retained cluster identities or priority."""
+    """Values only decide whether a cluster crosses its preassigned slot."""
     empty = PhantomSeedPool.empty(
         capacity=2,
         U_template=jnp.zeros((1,), dtype=jnp.float64),
     )
+    empty = empty.assign_staging_slots(
+        log_L_slot=jnp.asarray([0.0, 1.0]),
+        valid=jnp.asarray([True, True]),
+    )
     common = {
         "U_samples": jnp.asarray([[0.1], [0.2], [0.3]]),
-        "log_L_birth": jnp.asarray([-jnp.inf, 0.0, 1.0]),
+        "log_L_birth": jnp.asarray([-jnp.inf, 0.0, 0.0]),
         "cluster_idx": jnp.asarray(
             [10, 11, 12],
             dtype=mp_policy.index_dtype,
         ),
         "priority": jnp.asarray([0.1, 0.9, 0.5]),
         "valid": jnp.asarray([True, True, True]),
+        "slot_idx": jnp.asarray([0, 1, 1], dtype=mp_policy.index_dtype),
+        "log_L_slot": jnp.asarray([0.0, 1.0, 1.0]),
     }
     first = empty.stage(
         log_L=jnp.asarray([2.0, 20.0, 200.0]),
@@ -327,12 +466,11 @@ def test_phantom_pool_stage_is_value_independent_and_promotes_atomically():
         **common,
     )
 
-    # Capacity keeps the same two priority-selected clusters even though the
-    # returned likelihood ordering is reversed. Likelihood is payload, never
-    # a reservoir replacement score.
+    # Both alternatives cross their assigned contours, so the independent
+    # priority chooses the same source cluster even when values are permuted.
     np.testing.assert_array_equal(
         np.sort(np.asarray(first.staging.cluster_idx[first.staging.valid])),
-        np.asarray([11, 12]),
+        np.asarray([10, 11]),
     )
     np.testing.assert_array_equal(
         first.staging.cluster_idx,
@@ -353,18 +491,24 @@ def test_phantom_pool_stage_is_value_independent_and_promotes_atomically():
 
 
 def test_pool_membership_is_invariant_to_publication_batches():
-    """The same completed clusters survive regardless of staging batches."""
-    batched = PhantomSeedPool.empty(
+    """Priority competition within slots ignores completion batching."""
+    empty = PhantomSeedPool.empty(
         capacity=2,
         U_template=jnp.zeros((1,), dtype=jnp.float64),
-    ).stage(
+    ).assign_staging_slots(
+        log_L_slot=jnp.asarray([-jnp.inf, 1.0]),
+        valid=jnp.asarray([True, True]),
+    )
+    batched = empty.stage(
         U_samples=jnp.asarray([[0.1], [0.2]]),
         log_L=jnp.asarray([100.0, 200.0]),
         log_L_birth=jnp.asarray([-jnp.inf, -jnp.inf]),
         cluster_idx=jnp.asarray([1, 2], dtype=mp_policy.index_dtype),
         priority=jnp.asarray([0.99, 0.98]),
         valid=jnp.asarray([True, True]),
-    ).promote()
+        slot_idx=jnp.asarray([0, 1], dtype=mp_policy.index_dtype),
+        log_L_slot=jnp.asarray([-jnp.inf, 1.0]),
+    )
     batched = batched.stage(
         U_samples=jnp.asarray([[0.3]]),
         log_L=jnp.asarray([3.0]),
@@ -372,23 +516,169 @@ def test_pool_membership_is_invariant_to_publication_batches():
         cluster_idx=jnp.asarray([3], dtype=mp_policy.index_dtype),
         priority=jnp.asarray([0.01]),
         valid=jnp.asarray([True]),
+        slot_idx=jnp.asarray([1], dtype=mp_policy.index_dtype),
+        log_L_slot=jnp.asarray([1.0]),
     ).promote()
-    together = PhantomSeedPool.empty(
-        capacity=2,
-        U_template=jnp.zeros((1,), dtype=jnp.float64),
-    ).stage(
+    together = empty.stage(
         U_samples=jnp.asarray([[0.1], [0.2], [0.3]]),
         log_L=jnp.asarray([100.0, 200.0, 3.0]),
         log_L_birth=jnp.asarray([-jnp.inf, -jnp.inf, 1.0]),
         cluster_idx=jnp.asarray([1, 2, 3], dtype=mp_policy.index_dtype),
         priority=jnp.asarray([0.99, 0.98, 0.01]),
         valid=jnp.asarray([True, True, True]),
+        slot_idx=jnp.asarray([0, 1, 1], dtype=mp_policy.index_dtype),
+        log_L_slot=jnp.asarray([-jnp.inf, 1.0, 1.0]),
     ).promote()
 
     np.testing.assert_array_equal(
         np.sort(np.asarray(batched.active.cluster_idx)),
         np.sort(np.asarray(together.active.cluster_idx)),
     )
+
+
+def test_unfilled_slot_preserves_preceding_seed_and_effective_contour():
+    """A failed cohort cannot relabel an older stationary representative."""
+    active = _stage_at_birth(
+        PhantomSeedPool.empty(
+            capacity=1,
+            U_template=jnp.zeros((1,), dtype=jnp.float64),
+        ),
+        U_samples=jnp.asarray([[0.25]]),
+        log_L=jnp.asarray([4.0]),
+        log_L_birth=jnp.asarray([1.0]),
+        cluster_idx=jnp.asarray([7], dtype=mp_policy.index_dtype),
+        priority=jnp.asarray([0.5]),
+        valid=jnp.asarray([True]),
+    ).promote()
+    refreshed = active.assign_staging_slots(
+        log_L_slot=jnp.asarray([3.0]),
+        valid=jnp.asarray([True]),
+    ).promote()
+
+    assert bool(refreshed.active.valid[0])
+    assert float(refreshed.active.U_samples[0, 0]) == pytest.approx(0.25)
+    assert float(refreshed.active.log_L_slot[0]) == pytest.approx(1.0)
+    assert int(refreshed.active.cluster_idx[0]) == 7
+
+
+def test_slot_assignment_is_invariant_to_lane_position():
+    """Logical thread identities, rather than array position, break ties."""
+    state = make_state(
+        root_out_degree=2,
+        log_likelihoods=(1.0, 2.0),
+        log_L_constraints=(-np.inf, -np.inf),
+        out_degree=(0, 0),
+        max_samples=8,
+        num_phantom=1,
+    )
+    state = dataclasses.replace(
+        state,
+        phantom_seed_pool=PhantomSeedPool.empty(
+            capacity=2,
+            U_template=state.U_supremum,
+        ),
+    )
+    state = _schedule_root_increment(state, shell_size=2)
+    threads = jnp.asarray([10, 20], dtype=mp_policy.index_dtype)
+    birth = jnp.asarray([-jnp.inf, -jnp.inf])
+    valid = jnp.asarray([True, True])
+    _, slots, _ = depth._sample_phantom_staging_slots(
+        jax.random.PRNGKey(292),
+        state,
+        state.scheduler_data,
+        threads,
+        birth,
+        valid,
+    )
+    permutation = jnp.asarray([1, 0], dtype=mp_policy.index_dtype)
+    _, permuted_slots, _ = depth._sample_phantom_staging_slots(
+        jax.random.PRNGKey(292),
+        state,
+        state.scheduler_data,
+        threads[permutation],
+        birth[permutation],
+        valid[permutation],
+    )
+    np.testing.assert_array_equal(
+        np.asarray(slots),
+        np.asarray(permuted_slots)[np.asarray(permutation)],
+    )
+
+
+def test_active_phantom_selection_is_invariant_to_lane_position():
+    """Logical thread identity fixes source draws and scarcity ordering."""
+    state = make_state(
+        root_out_degree=3,
+        log_likelihoods=(3.0, 4.0, 5.0),
+        log_L_constraints=(-np.inf, -np.inf, -np.inf),
+        out_degree=(0, 0, 0),
+        max_samples=12,
+    )
+    pool = _stage_at_birth(
+        PhantomSeedPool.empty(
+            capacity=2,
+            U_template=state.U_supremum,
+        ),
+        U_samples=jnp.asarray([0.1, 0.2]),
+        log_L=jnp.asarray([5.5, 5.5]),
+        log_L_birth=jnp.asarray([-jnp.inf, -jnp.inf]),
+        cluster_idx=jnp.asarray([0, 1], dtype=mp_policy.index_dtype),
+        priority=jnp.asarray([0.1, 0.2]),
+        valid=jnp.asarray([True, True]),
+    ).promote()
+    state = dataclasses.replace(state, phantom_seed_pool=pool)
+    state = _schedule_root_increment(state, shell_size=3)
+    schedule = dataclasses.replace(
+        state.scheduler_data,
+        thread_id=jnp.asarray([10, 20, 30], dtype=mp_policy.index_dtype),
+        new_start=jnp.asarray([False, False, False]),
+    )
+    constraints = jnp.asarray([-jnp.inf, 1.0, 2.0])
+    valid = jnp.asarray([True, True, True])
+    excluded = jnp.asarray([-1, -1, -1], dtype=mp_policy.index_dtype)
+    selected = None
+    selected_key = None
+    for key in jax.random.split(jax.random.PRNGKey(293), 32):
+        candidate = depth._sample_phantom_stationary_seeds(
+            key,
+            state,
+            schedule,
+            constraints,
+            valid,
+            excluded,
+            jnp.asarray([-jnp.inf, -jnp.inf, -jnp.inf]),
+            jnp.asarray([False, False, False]),
+            excluded,
+        )
+        if int(np.sum(np.asarray(candidate[2]))) == 2:
+            selected = candidate
+            selected_key = key
+            break
+    assert selected is not None
+
+    permutation = np.asarray([2, 0, 1])
+    permuted_schedule = dataclasses.replace(
+        schedule,
+        thread_id=schedule.thread_id[permutation],
+        new_start=schedule.new_start[permutation],
+    )
+    permuted = depth._sample_phantom_stationary_seeds(
+        selected_key,
+        state,
+        permuted_schedule,
+        constraints[permutation],
+        valid[permutation],
+        excluded[permutation],
+        jnp.asarray([-jnp.inf, -jnp.inf, -jnp.inf]),
+        jnp.asarray([False, False, False]),
+        excluded[permutation],
+    )
+    inverse = np.argsort(permutation)
+    for actual, permuted_actual in zip(selected, permuted, strict=True):
+        np.testing.assert_array_equal(
+            np.asarray(actual),
+            np.asarray(permuted_actual)[inverse],
+        )
 
 
 def test_phantom_is_a_separate_cluster_distinct_seed_source():
@@ -427,10 +717,11 @@ def test_phantom_pool_locator_uses_append_row_not_likelihood_rank():
         out_degree=(0, 0, 0),
         max_samples=12,
     )
-    pool = PhantomSeedPool.empty(
-        capacity=3,
-        U_template=state.U_supremum,
-    ).stage(
+    pool = _stage_at_birth(
+        PhantomSeedPool.empty(
+            capacity=3,
+            U_template=state.U_supremum,
+        ),
         U_samples=jnp.asarray([0.77]),
         log_L=jnp.asarray([10.0]),
         log_L_birth=jnp.asarray([-jnp.inf]),
@@ -467,10 +758,11 @@ def test_fixed_source_choice_is_independent_of_pool_capacity():
             out_degree=(0, 0, 0),
             max_samples=12,
         )
-        pool = PhantomSeedPool.empty(
-            capacity=capacity,
-            U_template=state.U_supremum,
-        ).stage(
+        pool = _stage_at_birth(
+            PhantomSeedPool.empty(
+                capacity=capacity,
+                U_template=state.U_supremum,
+            ),
             U_samples=jnp.asarray([0.77]),
             log_L=jnp.asarray([10.0]),
             log_L_birth=jnp.asarray([-jnp.inf]),
@@ -613,8 +905,8 @@ def test_parent_exclusion_overlapping_reservation_is_counted_once():
     )
 
 
-def test_different_contours_do_not_globally_reserve_source_cluster():
-    """One stationary cluster may seed distinct constrained-prior groups."""
+def test_one_cluster_is_reserved_across_different_contours():
+    """One dependence cluster cannot seed simultaneous contour groups."""
     state = make_state(
         root_out_degree=1,
         log_likelihoods=(3.0,),
@@ -622,10 +914,11 @@ def test_different_contours_do_not_globally_reserve_source_cluster():
         out_degree=(0,),
         max_samples=8,
     )
-    pool = PhantomSeedPool.empty(
-        capacity=2,
-        U_template=state.U_supremum,
-    ).stage(
+    pool = _stage_at_birth(
+        PhantomSeedPool.empty(
+            capacity=2,
+            U_template=state.U_supremum,
+        ),
         U_samples=jnp.asarray([0.77]),
         log_L=jnp.asarray([4.0]),
         log_L_birth=jnp.asarray([-jnp.inf]),
@@ -664,23 +957,80 @@ def test_different_contours_do_not_globally_reserve_source_cluster():
     )
     state = dataclasses.replace(state, scheduler_data=schedule)
 
-    seed_idx, pool_idx, use_phantom = (
-        depth._sample_phantom_stationary_seeds(
-            jax.random.PRNGKey(3),
+    any_selected = False
+    for key in jax.random.split(jax.random.PRNGKey(3), 16):
+        seed_idx, pool_idx, use_phantom = (
+            depth._sample_phantom_stationary_seeds(
+                key,
+                state,
+                schedule,
+                jnp.asarray([-jnp.inf, 1.0]),
+                jnp.asarray([True, True]),
+                jnp.asarray([-1, -1], dtype=mp_policy.index_dtype),
+                jnp.asarray([-jnp.inf, -jnp.inf]),
+                jnp.asarray([False, False]),
+                jnp.asarray([-1, -1], dtype=mp_policy.index_dtype),
+            )
+        )
+        assert int(np.sum(np.asarray(use_phantom))) <= 1
+        assert int(np.sum(np.asarray(pool_idx) >= 0)) <= 1
+        if np.any(np.asarray(use_phantom)):
+            any_selected = True
+            assert np.asarray(seed_idx)[np.asarray(use_phantom)].tolist() == [0]
+    assert any_selected
+
+
+def test_classic_and_phantom_sources_share_cross_contour_reservations():
+    """A phantom and its classic endpoint cannot seed concurrent lanes."""
+    state = make_state(
+        root_out_degree=2,
+        log_likelihoods=(3.0, 4.0),
+        log_L_constraints=(-np.inf, -np.inf),
+        out_degree=(0, 0),
+        max_samples=10,
+    )
+    pool = _stage_at_birth(
+        PhantomSeedPool.empty(
+            capacity=2,
+            U_template=state.U_supremum,
+        ),
+        U_samples=jnp.asarray([0.77]),
+        log_L=jnp.asarray([5.0]),
+        log_L_birth=jnp.asarray([-jnp.inf]),
+        cluster_idx=jnp.asarray([0], dtype=mp_policy.index_dtype),
+        priority=jnp.asarray([0.75]),
+        valid=jnp.asarray([True]),
+    ).promote()
+    state = dataclasses.replace(state, phantom_seed_pool=pool)
+    state = _schedule_root_increment(state, shell_size=2)
+    schedule = dataclasses.replace(
+        state.scheduler_data,
+        parent_idx=jnp.asarray([-1, -1], dtype=mp_policy.index_dtype),
+        thread_id=jnp.asarray([70, 71], dtype=mp_policy.index_dtype),
+        log_L_constraint=jnp.asarray([-jnp.inf, 1.0]),
+        terminal_log_L=jnp.asarray([3.0, 3.0]),
+        new_start=jnp.asarray([False, False]),
+        valid=jnp.asarray([True, True]),
+        next_run=state.scheduler_data.num_runs,
+        remaining_in_run=jnp.asarray(0, dtype=mp_policy.count_dtype),
+        continuation_count=jnp.asarray(0, dtype=mp_policy.count_dtype),
+        active=jnp.asarray(True),
+    )
+    state = dataclasses.replace(state, scheduler_data=schedule)
+
+    used_phantom = False
+    for key in jax.random.split(jax.random.PRNGKey(294), 16):
+        _, work = depth._plan_scheduled_work_batch(
+            key,
             state,
             schedule,
-            jnp.asarray([-jnp.inf, 1.0]),
-            jnp.asarray([True, True]),
-            jnp.asarray([-1, -1], dtype=mp_policy.index_dtype),
-            jnp.asarray([-jnp.inf, -jnp.inf]),
-            jnp.asarray([False, False]),
-            jnp.asarray([-1, -1], dtype=mp_policy.index_dtype),
+            jnp.asarray(2, dtype=mp_policy.index_dtype),
         )
-    )
-
-    np.testing.assert_array_equal(np.asarray(seed_idx), [0, 0])
-    assert np.all(np.asarray(pool_idx) >= 0)
-    assert np.all(np.asarray(use_phantom))
+        assert len(set(np.asarray(work.seed_idx).tolist())) == 2
+        used_phantom = used_phantom or bool(
+            np.any(np.asarray(work.seed_pool_idx) >= 0)
+        )
+    assert used_phantom
 
 
 def test_current_thread_cluster_avoids_own_cluster_when_alternative_exists():
@@ -732,10 +1082,11 @@ def test_lone_own_phantom_falls_back_to_exact_classic_seed():
         out_degree=(0,),
         max_samples=8,
     )
-    pool = PhantomSeedPool.empty(
-        capacity=1,
-        U_template=state.U_supremum,
-    ).stage(
+    pool = _stage_at_birth(
+        PhantomSeedPool.empty(
+            capacity=1,
+            U_template=state.U_supremum,
+        ),
         U_samples=jnp.asarray([0.77]),
         log_L=jnp.asarray([4.0]),
         log_L_birth=jnp.asarray([-np.inf]),
@@ -793,10 +1144,11 @@ def test_phantom_seed_preserves_requested_parent_out_degree():
         max_samples=12,
         num_phantom=1,
     )
-    pool = PhantomSeedPool.empty(
-        capacity=3,
-        U_template=state.U_supremum,
-    ).stage(
+    pool = _stage_at_birth(
+        PhantomSeedPool.empty(
+            capacity=3,
+            U_template=state.U_supremum,
+        ),
         U_samples=jnp.asarray([0.77]),
         log_L=jnp.asarray([10.0]),
         log_L_birth=jnp.asarray([-jnp.inf]),
@@ -992,6 +1344,10 @@ def test_phantom_candidates_publish_after_generation_completes():
         cluster_idx=jnp.asarray([7], dtype=mp_policy.index_dtype),
         priority=jnp.asarray([0.95]),
         valid=jnp.asarray([True]),
+        slot_idx=jnp.asarray([1], dtype=mp_policy.index_dtype),
+        log_L_slot=jnp.asarray([
+            state.phantom_seed_pool.staging.log_L_slot[1]
+        ]),
     )
     state = dataclasses.replace(state, phantom_seed_pool=pool)
     _assert_same_tree(state.phantom_seed_pool.active, original_active)
@@ -1006,6 +1362,7 @@ def test_phantom_candidates_publish_after_generation_completes():
         np.asarray([0, 7]),
     )
     assert not bool(jnp.any(published.phantom_seed_pool.staging.valid))
+    assert bool(jnp.any(published.phantom_seed_pool.staging.slot_valid))
 
     drained_schedule = dataclasses.replace(
         published.scheduler_data,

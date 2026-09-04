@@ -132,9 +132,10 @@ class NestedSampler(PureDataclassPytree):
     retained state per chain available as a separate stationary seed source.
     When both source kinds are available, an internal fixed mixture chooses
     between phantom and classic sources independently of pool capacity. The
-    representatives live in a bounded pool and become visible only after a
-    complete seed-source publication cohort. This is opt-in because it changes
-    exploration and therefore the completed race.
+    representatives compete within bounded contour slots derived from planned
+    lineage work and become visible only after a complete seed-source
+    publication cohort. This is opt-in because it changes exploration and
+    therefore the completed race.
     """
 
     model: Model

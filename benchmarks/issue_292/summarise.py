@@ -83,6 +83,12 @@ def _summary(records: list[dict]) -> dict:
             records,
             "pool_active_fraction",
         ),
+        "mean_pool_eligible_p90": _mean(records, "pool_eligible_p90"),
+        "mean_pool_eligible_p99": _mean(records, "pool_eligible_p99"),
+        "mean_pool_eligible_final": _mean(
+            records,
+            "pool_eligible_final",
+        ),
     }
 
 
@@ -232,6 +238,7 @@ def _validate(grouped: dict[tuple[str, bool], list[dict]]) -> None:
         "configured_phantom_capacity",
         "retained_phantom_capacity",
         "dlogZ",
+        "phantom_seed_probability",
         "mc_draws",
         "source_id",
     )
@@ -256,6 +263,15 @@ def _validate(grouped: dict[tuple[str, bool], list[dict]]) -> None:
                         f"Non-finite {field} for {case}, seed "
                         f"{record['seed']}."
                     )
+            if (
+                record["termination_reason"] != 0
+                or record["needs_growth"]
+                or not record["depth_reached"]
+            ):
+                raise ValueError(
+                    f"Incomplete scientific run for {case}, seed "
+                    f"{record['seed']}."
+                )
         if any(record["pool_capacity"] != 0 for record in off):
             raise ValueError(f"Disabled arm unexpectedly owns a pool for {case}.")
         if any(record["pool_capacity"] <= 0 for record in on):
@@ -349,6 +365,9 @@ def main() -> None:
         "pool_capacity",
         "mean_pool_active",
         "mean_pool_staging",
+        "mean_pool_eligible_p90",
+        "mean_pool_eligible_p99",
+        "mean_pool_eligible_final",
     )
     with args.markdown.open("w", encoding="utf-8") as stream:
         stream.write("| " + " | ".join(columns) + " |\n")

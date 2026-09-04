@@ -372,6 +372,8 @@ def test_complete_distributed_pending_state_round_trips_without_task_loss(
         seed_pool_idx=jnp.asarray([-1], dtype=jnp.int32),
         phantom_idx=jnp.asarray([0], dtype=jnp.int32),
         phantom_priority=jnp.asarray([-jnp.inf]),
+        phantom_slot_idx=jnp.asarray([-1], dtype=jnp.int32),
+        phantom_log_L_slot=jnp.asarray([jnp.inf]),
     )
     reservations = ReservationState(
         parent_delta=jnp.asarray([1, 0, 0, 0, 0], dtype=jnp.int32),

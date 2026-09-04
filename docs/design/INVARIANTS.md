@@ -138,13 +138,19 @@ The exact text following each `- Invariant:` prefix is the stable key used by
   when it is disabled, the seed population contains only classic samples.
 - Invariant: Active phantoms form a separate stationary seed source. When both classic and phantom
   sources are available, their selection probability is fixed independently of pool capacity.
-- Invariant: A phantom seed representative and its admission priority are selected independently
-  of returned likelihood values, and the representative is eligible at contour lambda exactly
-  when its birth contour is no greater than lambda and its likelihood is strictly greater than
-  lambda.
-- Invariant: Concurrent children at the same parent contour reserve source clusters rather than
-  seed points. A thread does not continue directly from the phantom cluster that produced its
-  current head. If no eligible phantom is available, selection uses the exact classic population.
+- Invariant: A phantom seed representative, contour slot, and admission priority are selected
+  independently of returned likelihood values. Admission requires birth contour no greater than
+  slot contour and likelihood strictly greater than slot contour. After admission, eligibility at
+  contour lambda requires slot contour no greater than lambda and likelihood strictly greater
+  than lambda.
+- Invariant: Phantom contour slots are assigned from planned lineage work before candidate values
+  are observed. Observed likelihood can reject a candidate that does not cross its assigned slot,
+  but cannot move it to a more favourable slot.
+- Invariant: Concurrent children reserve every selected phantom source cluster across parent
+  contours and across its classic and phantom representations. A thread does not continue directly
+  from the phantom cluster that produced its current head. Classic-to-classic seed reuse at
+  different contours retains the established scheduling law. If no eligible phantom is available,
+  selection uses the exact classic population.
 - Invariant: Completed phantom seed representatives become active only after every constrained
   call in their seed-source publication cohort has completed.
 

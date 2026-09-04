@@ -280,26 +280,30 @@ properties that must hold independently of implementation live in
   schema.
 - Requirement: Phantom seed participation is an explicit opt-in. The disabled path constructs no
   phantom seed reservoir and retains the established classic-only scheduling law.
-- Requirement: The bounded phantom seed reservoir stores one value-independently preselected
-  representative per retained source cluster as a separate source from classic samples. When both
-  source kinds are available, a fixed mixture selects the source before selecting uniformly among
-  its eligible clusters, so physical pool capacity does not set phantom selection probability.
-- Requirement: A phantom representative's offset within its retained cluster and its reservoir
-  replacement priority are fixed before observing returned phantom coordinates or likelihoods. A
-  returned likelihood can determine only whether that already selected representative is eligible
-  at a requested contour; it cannot improve the representative's priority or cause another phantom
-  from that cluster to be selected.
+- Requirement: The bounded phantom seed reservoir assigns contour slots from the frozen planned
+  lineage demand and stores at most one value-independently preselected representative per retained
+  source cluster. It remains a separate source from classic samples. When both source kinds are
+  available, a fixed mixture selects the source before selecting uniformly among its eligible
+  clusters, so physical pool capacity does not set phantom selection probability.
+- Requirement: A phantom representative's offset within its retained cluster, target slot, and
+  within-slot priority are fixed before observing returned phantom coordinates or likelihoods. A
+  returned likelihood can only reject a representative that fails to cross its assigned slot. It
+  cannot improve priority, move the representative to another slot, or select another phantom from
+  that cluster. An admitted representative uses its slot, not its generating contour, as the lower
+  bound for subsequent eligibility.
 - Requirement: The active phantom seed pool is immutable between geometric seed-source publication
   boundaries. Completed-chain representatives enter a bounded staging pool and become active only
   after every local batch or distributed in-flight task in that publication cohort has completed.
-  Active and staged representatives compete only through priorities fixed before sampling, making
-  membership invariant to staging batches and completion order for the same completed clusters.
-- Requirement: Same-contour local lanes and distributed in-flight tasks reserve source-cluster
-  identities across classic and phantom seed representations. A continuing thread excludes the
-  phantom cluster that generated its current head, while different requested contours do not
-  acquire a global exclusion. If no distinct eligible phantom is available, source selection falls
-  back to the exact classic population rather than directly extending the correlated phantom
-  cluster.
+  Representatives assigned to the same slot compete only through priorities fixed before sampling,
+  making the staged winner invariant to completion order. An unfilled refreshed slot retains any
+  preceding active representative under its original contour rather than relabelling it.
+- Requirement: Local lanes and distributed in-flight tasks reserve every selected phantom
+  source-cluster identity across requested contours and across classic and phantom representations.
+  A continuing thread excludes the phantom cluster that generated its current head. The opt-in
+  source does not otherwise change classic-to-classic reuse at different contours, so an empty or
+  unselected phantom source preserves the established classic work plan. If no distinct eligible
+  phantom is available, source selection falls back to the exact classic population rather than
+  directly extending the correlated phantom cluster.
 - Requirement: Phantom seed state is a frozen, slotted internal Pytree which remains bounded
   independently of classic-sample capacity. Sample-buffer growth, trimming, and checkpoint resume
   preserve it exactly. Merging independent states clears it rather than attempting to preserve

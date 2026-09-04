@@ -15,13 +15,15 @@ from jaxns.types import BoolArray, FloatArray, IntArray, PRNGKey, UType
 
 @dataclasses.dataclass(slots=True, frozen=True)
 class PhantomSeedBank(PureDataclassPytree):
-    """One bounded set of phantom representatives and their source clusters."""
+    """One bounded set of phantom representatives and their contour slots."""
 
     U_samples: UType  # [R, ...] one homogeneous point per retained cluster
     log_L: FloatArray  # [R]
     log_L_birth: FloatArray  # [R]
+    log_L_slot: FloatArray  # [R] contour fixed before observing the phantom
     cluster_idx: IntArray  # [R] classic row identifying the source chain
     priority: FloatArray  # [R] value-independent reservoir priorities
+    slot_valid: BoolArray  # [R] slot was assigned from planned work
     valid: BoolArray  # [R]
 
     @classmethod
@@ -45,6 +47,11 @@ class PhantomSeedBank(PureDataclassPytree):
                 jnp.inf,
                 dtype=mp_policy.measure_dtype,
             ),
+            log_L_slot=jnp.full(
+                (capacity,),
+                jnp.inf,
+                dtype=mp_policy.measure_dtype,
+            ),
             cluster_idx=jnp.full(
                 (capacity,),
                 -1,
@@ -54,6 +61,10 @@ class PhantomSeedBank(PureDataclassPytree):
                 (capacity,),
                 -jnp.inf,
                 dtype=mp_policy.measure_dtype,
+            ),
+            slot_valid=jnp.zeros(
+                (capacity,),
+                dtype=mp_policy.bool_dtype,
             ),
             valid=jnp.zeros((capacity,), dtype=mp_policy.bool_dtype),
         )
@@ -93,6 +104,8 @@ class PhantomSeedPool(PureDataclassPytree):
             cluster_idx: IntArray,
             priority: FloatArray,
             valid: BoolArray,
+            slot_idx: IntArray,
+            log_L_slot: FloatArray,
     ) -> "PhantomSeedPool":
         """Return a pool with completed-cluster candidates staged."""
         return _stage_phantom_seeds(
@@ -103,7 +116,29 @@ class PhantomSeedPool(PureDataclassPytree):
             cluster_idx,
             priority,
             valid,
+            slot_idx,
+            log_L_slot,
         )
+
+    def assign_staging_slots(
+            self,
+            log_L_slot: FloatArray,
+            valid: BoolArray,
+    ) -> "PhantomSeedPool":
+        """Reset staging with contours derived from the current planned work."""
+        capacity = self.staging.valid.shape[0]
+        U_template = jax.tree.map(
+            lambda value: value[0],
+            self.staging.U_samples,
+        )
+        staging = PhantomSeedBank.empty(capacity, U_template)
+        staging = dataclasses.replace(
+            staging,
+            log_L_slot=log_L_slot,
+            slot_valid=valid,
+            valid=jnp.zeros_like(valid),
+        )
+        return dataclasses.replace(self, staging=staging)
 
     def promote(self) -> "PhantomSeedPool":
         """Return a pool with staged candidates published atomically."""
@@ -135,89 +170,101 @@ def _stage_phantom_seeds(
         cluster_idx: IntArray,
         priority: FloatArray,
         valid: BoolArray,
+        slot_idx: IntArray,
+        log_L_slot: FloatArray,
 ) -> PhantomSeedPool:
-    """Offer one preselected representative from each completed chain.
+    """Offer one preselected representative to each planned contour slot.
 
-    Priorities and representative positions are chosen by work planning before
-    constrained sampling. The update therefore cannot prefer a candidate for
-    having a larger realised likelihood or longer observed contour coverage.
+    Slot, priority, and representative position are chosen before constrained
+    sampling. A candidate is admitted only if it crosses its assigned contour.
+    Conditional on that crossing it is a draw from the constrained prior at
+    the slot, while its independent priority makes completion order irrelevant.
     """
     capacity = pool.staging.valid.shape[0]
-    selection_priority = jnp.concatenate(
-        (
-            jnp.where(
-                pool.staging.valid,
-                pool.staging.priority,
-                -jnp.inf,
-            ),
-            jnp.where(valid, priority, -jnp.inf),
+    lanes = jnp.arange(valid.shape[0], dtype=mp_policy.index_dtype)  # [S]
+
+    def offer(lane_idx, staging):
+        safe_slot = jnp.clip(slot_idx[lane_idx], 0, capacity - 1)
+        assigned_log_L = staging.log_L_slot[safe_slot]
+        crosses_slot = phantom_seed_is_eligible(
+            log_L_birth[lane_idx],
+            log_L[lane_idx],
+            assigned_log_L,
         )
-    )  # [R + S]
-    _, selected = jax.lax.top_k(selection_priority, capacity)  # [R]
-    combined = PhantomSeedBank(
-        U_samples=jax.tree.map(
-            lambda retained, candidates: jnp.concatenate(
-                (retained, candidates)
-            ),
-            pool.staging.U_samples,
-            U_samples,
-        ),
-        log_L=jnp.concatenate((pool.staging.log_L, log_L)),
-        log_L_birth=jnp.concatenate(
-            (pool.staging.log_L_birth, log_L_birth)
-        ),
-        cluster_idx=jnp.concatenate(
-            (pool.staging.cluster_idx, cluster_idx)
-        ),
-        priority=jnp.concatenate((pool.staging.priority, priority)),
-        valid=jnp.concatenate((pool.staging.valid, valid)),
-    )
-    staging = jax.tree.map(lambda value: value[selected], combined)
-    staging = dataclasses.replace(
-        staging,
-        valid=staging.valid & jnp.isfinite(selection_priority[selected]),
+        replace = (
+            valid[lane_idx]
+            & (slot_idx[lane_idx] >= 0)
+            & (slot_idx[lane_idx] < capacity)
+            & staging.slot_valid[safe_slot]
+            & (log_L_slot[lane_idx] == assigned_log_L)
+            & crosses_slot
+            & (
+                jnp.logical_not(staging.valid[safe_slot])
+                | (priority[lane_idx] > staging.priority[safe_slot])
+            )
+        )
+
+        def replace_slot(current):
+            return PhantomSeedBank(
+                U_samples=jax.tree.map(
+                    lambda retained, candidates: retained.at[safe_slot].set(
+                        candidates[lane_idx]
+                    ),
+                    current.U_samples,
+                    U_samples,
+                ),
+                log_L=current.log_L.at[safe_slot].set(log_L[lane_idx]),
+                log_L_birth=current.log_L_birth.at[safe_slot].set(
+                    log_L_birth[lane_idx]
+                ),
+                log_L_slot=current.log_L_slot.at[safe_slot].set(
+                    assigned_log_L
+                ),
+                cluster_idx=current.cluster_idx.at[safe_slot].set(
+                    cluster_idx[lane_idx]
+                ),
+                priority=current.priority.at[safe_slot].set(
+                    priority[lane_idx]
+                ),
+                slot_valid=current.slot_valid,
+                valid=current.valid.at[safe_slot].set(True),
+            )
+
+        return jax.lax.cond(
+            replace,
+            replace_slot,
+            lambda current: current,
+            staging,
+        )
+
+    staging = jax.lax.fori_loop(
+        0,
+        lanes.shape[0],
+        offer,
+        pool.staging,
     )
     return dataclasses.replace(pool, staging=staging)
 
 
 @partial(jax.jit, inline=True)
 def _promote_phantom_seeds(pool: PhantomSeedPool) -> PhantomSeedPool:
-    """Publish the bounded, value-independent cluster reservoir."""
+    """Publish the completed planned-slot cohort atomically."""
     capacity = pool.active.valid.shape[0]
-    # Selection depends only on priorities fixed before constrained sampling.
-    # Consequently the retained set is invariant to staging batches and task
-    # completion order for the same completed clusters.
-    selection_priority = jnp.concatenate(
-        (
-            jnp.where(pool.staging.valid, pool.staging.priority, -jnp.inf),
-            jnp.where(pool.active.valid, pool.active.priority, -jnp.inf),
-        )
-    )  # [2R]
-    _, selected = jax.lax.top_k(selection_priority, capacity)  # [R]
-    combined = PhantomSeedBank(
-        U_samples=jax.tree.map(
-            lambda active, staging: jnp.concatenate((staging, active)),
-            pool.active.U_samples,
-            pool.staging.U_samples,
+    # A slot with no crossing candidate keeps its preceding representative
+    # under that representative's original effective contour. No value is
+    # relabelled, and a temporarily sparse cohort cannot erase useful seeds.
+    active = jax.tree.map(
+        lambda staging, preceding: jnp.where(
+            jnp.reshape(
+                pool.staging.valid,
+                pool.staging.valid.shape
+                + (1,) * (staging.ndim - pool.staging.valid.ndim),
+            ),
+            staging,
+            preceding,
         ),
-        log_L=jnp.concatenate((pool.staging.log_L, pool.active.log_L)),
-        log_L_birth=jnp.concatenate(
-            (pool.staging.log_L_birth, pool.active.log_L_birth)
-        ),
-        cluster_idx=jnp.concatenate(
-            (pool.staging.cluster_idx, pool.active.cluster_idx)
-        ),
-        priority=jnp.concatenate(
-            (pool.staging.priority, pool.active.priority)
-        ),
-        valid=jnp.concatenate((pool.staging.valid, pool.active.valid)),
-    )
-    active = jax.tree.map(lambda value: value[selected], combined)
-    # ``top_k`` fills unused slots with invalid -inf entries. Carry the
-    # explicit mask so those placeholders can never replace a classic row.
-    active = dataclasses.replace(
-        active,
-        valid=active.valid & jnp.isfinite(active.priority),
+        pool.staging,
+        pool.active,
     )
     U_template = jax.tree.map(lambda value: value[0], active.U_samples)
     return PhantomSeedPool(

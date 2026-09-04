@@ -6,6 +6,7 @@ from typing import NamedTuple
 
 import jax
 import jax.numpy as jnp
+from jax.scipy.special import digamma
 
 from jaxns.algorithm.allocation import (
     AllocationPlan,
@@ -74,6 +75,8 @@ class CoreWorkBatch(PureDataclassPytree):
     seed_pool_idx: IntArray  # [S] -1 for the cluster's classic representative
     phantom_idx: IntArray  # [S] preselected retained transition to stage
     phantom_priority: FloatArray  # [S] value-independent reservoir priority
+    phantom_slot_idx: IntArray  # [S] planned reservoir slot, -1 if unavailable
+    phantom_log_L_slot: FloatArray  # [S] contour fixed before sampling
 
     @property
     def num_valid(self) -> IntArray:
@@ -660,6 +663,104 @@ def _select_reservoir_slots(
     )  # [C]
 
 
+def _expected_log_volume_path(block_state: BlockState) -> FloatArray:
+    """Return exact posterior mean log-volume at every classic block."""
+    concentrations = classic_dirichlet_concentrations(block_state)
+    alpha_total = (
+        concentrations.alpha_gt
+        + concentrations.alpha_eq
+        + concentrations.alpha_lt
+    )  # [G]
+    expected_log_shrinkage = jnp.where(
+        block_state.valid,
+        digamma(concentrations.alpha_gt) - digamma(alpha_total),
+        jnp.asarray(0.0, mp_policy.measure_dtype),
+    )  # [G]
+    return jnp.cumsum(expected_log_shrinkage)  # [G]
+
+
+def _planned_phantom_slot_contours(
+        block_state: BlockState,
+        gap: IntArray,
+        expected_log_X: FloatArray,
+        capacity: int,
+) -> tuple[FloatArray, BoolArray]:
+    """Allocate slots from expected sampler-call demand in race time.
+
+    Every maximal thread makes one certain request at its starting contour.
+    Later iid constrained draws advance unit-rate race time, so an active
+    thread contributes one expected continuation request per unit ``-log X``.
+    Mid-quantiles of that measure cover the frozen work without depending on
+    the realised values of any candidate phantom.
+    """
+    gap = jnp.where(
+        block_state.valid,
+        gap,
+        jnp.asarray(0, mp_policy.count_dtype),
+    )  # [G]
+    previous_gap = jnp.concatenate((
+        jnp.zeros((1,), dtype=gap.dtype),
+        gap[:-1],
+    ))  # [G]
+    starts = jnp.maximum(gap - previous_gap, 0)  # [G]
+    previous_expected_log_X = jnp.concatenate((
+        jnp.zeros((1,), dtype=expected_log_X.dtype),
+        expected_log_X[:-1],
+    ))  # [G]
+    delta_s = jnp.maximum(
+        previous_expected_log_X - expected_log_X,
+        0.0,
+    )  # [G]
+    demand = jnp.where(
+        block_state.valid,
+        starts.astype(mp_policy.measure_dtype)
+        + gap.astype(mp_policy.measure_dtype) * delta_s,
+        jnp.asarray(0.0, mp_policy.measure_dtype),
+    )  # [G]
+    cumulative = jnp.cumsum(demand)  # [G]
+    total = cumulative[-1]  # []
+    slots = jnp.arange(capacity, dtype=mp_policy.measure_dtype)  # [R]
+    ranks = (slots + 0.5) * jnp.maximum(total, 1.0) / capacity  # [R]
+    block_idx = jnp.searchsorted(
+        cumulative,
+        ranks,
+        side="right",
+    ).astype(mp_policy.index_dtype)  # [R]
+    block_idx = jnp.minimum(
+        block_idx,
+        block_state.log_L_blocks.shape[0] - 1,
+    )
+    parent_idx = jnp.maximum(block_idx - 1, 0)  # [R]
+    log_L_slot = jnp.where(
+        block_idx > 0,
+        block_state.log_L_blocks[parent_idx],
+        jnp.asarray(-jnp.inf, mp_policy.measure_dtype),
+    )  # [R]
+    valid = (total > 0) & (ranks < total)  # [R]
+    return log_L_slot, valid
+
+
+def _assign_phantom_staging_slots(
+        state: State,
+        block_state: BlockState,
+        gap: IntArray,
+) -> State:
+    """Fix the next cohort's contour slots before observing its phantoms."""
+    pool = state.phantom_seed_pool
+    if pool is None:
+        return state
+    log_L_slot, valid = _planned_phantom_slot_contours(
+        block_state,
+        gap,
+        _expected_log_volume_path(block_state),
+        pool.staging.valid.shape[0],
+    )
+    return dataclasses.replace(
+        state,
+        phantom_seed_pool=pool.assign_staging_slots(log_L_slot, valid),
+    )
+
+
 class _SeedSourceIndex(NamedTuple):
     """Exact stationary-seed view published independently of thread work."""
 
@@ -794,6 +895,11 @@ def _new_thread_schedule(
         state.random_key,
         state.allocation_loop_iter,
     )  # [2]
+    phantom_seed_capacity = (
+        0
+        if state.phantom_seed_pool is None
+        else state.phantom_seed_pool.active.valid.shape[0]
+    )
     reservation_size = _seed_reservation_capacity(shell_size)
     start_seed_reservation_idx = jnp.full(
         (reservation_size,),
@@ -824,7 +930,21 @@ def _new_thread_schedule(
         multiplicity=multiplicity,
         num_runs=num_runs,
         target_K=plan.target_K,
+        relevant=(
+            relevant
+            if state.phantom_seed_pool is not None
+            else jnp.zeros((0,), dtype=mp_policy.bool_dtype)
+        ),
         tail_K=tail_K,
+        log_mean_X=(
+            jnp.where(
+                plan.volume_path.X > 0,
+                jnp.log(plan.volume_path.X),
+                -jnp.inf,
+            )
+            if state.phantom_seed_pool is not None
+            else jnp.zeros((0,), dtype=mp_policy.measure_dtype)
+        ),
         seed_count=seed_count,
         previous_seedable=previous_seedable,
         seed_birth_contours=seed_birth_contours,
@@ -834,6 +954,10 @@ def _new_thread_schedule(
         seed_reservoir_priority=seed_reservoir_priority,
         seed_reservoir_valid=seed_reservoir_valid,
         seed_reservoir_key=seed_reservoir_key,
+        phantom_slot_miss_probability=jnp.ones(
+            (phantom_seed_capacity,),
+            dtype=mp_policy.measure_dtype,
+        ),
         start_seed_reservation_idx=start_seed_reservation_idx,
         start_seed_reservation_group=start_seed_reservation_group,
         current_start_group=current_start_group,
@@ -1089,8 +1213,10 @@ def _sample_stationary_seeds(
         reserved_seed_idx: IntArray,
         reserved_log_L_constraint: FloatArray,
         reserved_valid: BoolArray,
+        globally_reserved_seed_idx: IntArray | None = None,
+        globally_reserved_valid: BoolArray | None = None,
 ) -> IntArray:
-    """Draw same-contour seeds without replacement whenever possible.
+    """Draw stationary seeds without replacement whenever possible.
 
     The frozen race population is queried exactly through its birth/likelihood
     rank index. A bounded value-independent reservoir adds recent accepted
@@ -1103,6 +1229,16 @@ def _sample_stationary_seeds(
     rows = jnp.arange(shell_size, dtype=mp_policy.index_dtype)  # [S]
     assignment_key, strata_key, rejection_key = jax.random.split(key, 3)
     strata = jax.random.permutation(assignment_key, rows)  # [S]
+    if globally_reserved_seed_idx is None:
+        globally_reserved_seed_idx = jnp.zeros(
+            (0,),
+            dtype=mp_policy.index_dtype,
+        )
+    if globally_reserved_valid is None:
+        globally_reserved_valid = jnp.zeros(
+            (0,),
+            dtype=mp_policy.bool_dtype,
+        )
     rotation = jax.random.uniform(
         strata_key,
         (),
@@ -1235,8 +1371,9 @@ def _sample_stationary_seeds(
         lane_retains_start_group = retained_start_group[lane_idx]
 
         # Earlier local lanes and in-flight distributed tasks are the complete
-        # set of simultaneous reservations. Only equal-contour identities are
-        # excluded; different constrained priors do not compete for seeds.
+        # set of simultaneous classic reservations at this exact contour.
+        # Phantom clusters are supplied separately below because their
+        # dependence identity applies across all contours.
         prior_valid = valid & (rows < lane_idx)  # [S]
         forbidden_idx = jnp.concatenate(
             (reserved_seed_idx, selected),
@@ -1258,8 +1395,23 @@ def _sample_stationary_seeds(
         distinct_count = frozen_count[lane_idx].astype(
             mp_policy.index_dtype
         ) + reservoir_count[lane_idx]
+        safe_global_idx = jnp.maximum(globally_reserved_seed_idx, 0)  # [P]
+        global_eligible = (
+            globally_reserved_valid
+            & (globally_reserved_seed_idx >= 0)
+            & (
+                state.samples.log_L_constraints[safe_global_idx]
+                <= constraint
+            )
+            & (
+                state.samples.log_likelihoods[safe_global_idx]
+                > constraint
+            )
+        )  # [P]
         remaining_distinct = jnp.maximum(
-            distinct_count - reserved_count[lane_idx],
+            distinct_count
+            - reserved_count[lane_idx]
+            - jnp.sum(global_eligible, dtype=mp_policy.index_dtype),
             0,
         )
         require_unused = group_position[lane_idx] < remaining_distinct
@@ -1338,6 +1490,14 @@ def _sample_stationary_seeds(
                 & forbidden_same_contour[None, :],
                 axis=1,
             )  # [C]
+            candidate_globally_forbidden = jnp.any(
+                (
+                    candidate[:, None]
+                    == globally_reserved_seed_idx[None, :]
+                )
+                & globally_reserved_valid[None, :],
+                axis=1,
+            )  # [C]
             candidate_was_start_seed = jax.lax.cond(
                 lane_retains_start_group,
                 lambda unused: jax.vmap(
@@ -1355,8 +1515,11 @@ def _sample_stationary_seeds(
                 operand=None,
             )  # [C]
             eligible = jnp.logical_not(
-                require_unused
-                & (candidate_forbidden | candidate_was_start_seed)
+                require_unused & (
+                    candidate_forbidden
+                    | candidate_globally_forbidden
+                    | candidate_was_start_seed
+                )
             )
             found = jnp.any(eligible)
             first = jnp.argmax(eligible).astype(mp_policy.index_dtype)
@@ -1385,6 +1548,133 @@ def _sample_stationary_seeds(
     )
 
 
+def _sample_phantom_staging_slots(
+        key: PRNGKey,
+        state: State,
+        schedule: ThreadSchedule,
+        thread_id: IntArray,
+        log_L_birth: FloatArray,
+        valid: BoolArray,
+) -> tuple[ThreadSchedule, IntArray, FloatArray]:
+    """Assign each cluster where it maximises expected slot occupancy."""
+    pool = state.phantom_seed_pool
+    if pool is None:
+        raise ValueError("Phantom slot assignment requires a seed pool.")
+    staging = pool.staging
+    shell_size = valid.shape[0]
+    pool_size = staging.valid.shape[0]
+    rows = jnp.arange(shell_size, dtype=mp_policy.index_dtype)  # [S]
+    order_key, choice_key = jax.random.split(key)
+    assignment_priority = jax.vmap(
+        lambda identity: jax.random.uniform(
+            jax.random.fold_in(order_key, identity),
+            (),
+            dtype=mp_policy.measure_dtype,
+        )
+    )(thread_id)  # [S]
+    choice_fraction = jax.vmap(
+        lambda identity: jax.random.uniform(
+            jax.random.fold_in(choice_key, identity),
+            (),
+            dtype=mp_policy.measure_dtype,
+        )
+    )(thread_id)  # [S]
+    _, assignment_order = jax.lax.sort(
+        (assignment_priority, rows),
+        dimension=0,
+        is_stable=True,
+        num_keys=1,
+    )  # [S]
+    selected = jnp.full(
+        (shell_size,),
+        -1,
+        dtype=mp_policy.index_dtype,
+    )  # [S]
+    used_slot = jnp.zeros((pool_size,), dtype=mp_policy.bool_dtype)  # [R]
+    miss_probability = schedule.phantom_slot_miss_probability  # [R]
+    block_log_L = schedule.block_state.log_L_blocks  # [G]
+    log_mean_X = schedule.log_mean_X  # [G]
+
+    def log_mean_volume(contour):
+        predecessor = jnp.searchsorted(
+            block_log_L,
+            contour,
+            side="right",
+        ).astype(mp_policy.index_dtype) - 1
+        safe_predecessor = jnp.maximum(predecessor, 0)
+        return jnp.where(
+            predecessor >= 0,
+            log_mean_X[safe_predecessor],
+            jnp.asarray(0.0, mp_policy.measure_dtype),
+        )
+
+    birth_log_X = log_mean_volume(log_L_birth)  # [S]
+    slot_log_X = log_mean_volume(staging.log_L_slot)  # [R]
+
+    def select_lane(step, carry):
+        selected_slot, current_miss, current_used = carry
+        lane_idx = assignment_order[step]
+        available = (
+            staging.slot_valid
+            & (staging.log_L_slot >= log_L_birth[lane_idx])
+            & jnp.logical_not(current_used)
+        )  # [R]
+        survival = jnp.minimum(
+            jnp.exp(slot_log_X - birth_log_X[lane_idx]),
+            1.0,
+        )  # [R]
+        gain = jnp.where(available, current_miss * survival, -jnp.inf)  # [R]
+        max_gain = jnp.max(gain)  # []
+        best = available & (gain == max_gain)  # [R]
+        cumulative = jnp.cumsum(best.astype(mp_policy.index_dtype))  # [R]
+        count = cumulative[-1]  # []
+        fraction = choice_fraction[lane_idx]  # []
+        rank = jnp.minimum(
+            (fraction * jnp.maximum(count, 1)).astype(
+                mp_policy.index_dtype
+            ),
+            jnp.maximum(count - 1, 0),
+        )
+        slot = _select_reservoir_slots(
+            cumulative,
+            jnp.reshape(rank, (1,)),
+        )[0]
+        choose = valid[lane_idx] & (count > 0)
+        chosen_slot = jnp.where(choose, slot, -1)
+        safe_slot = jnp.maximum(chosen_slot, 0)
+        next_miss = current_miss.at[safe_slot].set(jnp.where(
+            choose,
+            current_miss[safe_slot] * (1.0 - survival[safe_slot]),
+            current_miss[safe_slot],
+        ))
+        next_used = current_used.at[safe_slot].set(
+            current_used[safe_slot] | choose
+        )
+        return (
+            selected_slot.at[lane_idx].set(chosen_slot),
+            next_miss,
+            next_used,
+        )
+
+    selected, miss_probability, _ = jax.lax.fori_loop(
+        0,
+        shell_size,
+        select_lane,
+        (selected, miss_probability, used_slot),
+    )
+    safe_selected = jnp.maximum(selected, 0)  # [S]
+    log_L_slot = jnp.where(
+        selected >= 0,
+        staging.log_L_slot[safe_selected],
+        jnp.asarray(jnp.inf, mp_policy.measure_dtype),
+    )  # [S]
+    schedule = dataclasses.replace(
+        schedule,
+        phantom_slot_miss_probability=miss_probability,
+    )
+    return schedule, selected, log_L_slot
+
+
 def _sample_phantom_stationary_seeds(
         key: PRNGKey,
         state: State,
@@ -1409,19 +1699,43 @@ def _sample_phantom_stationary_seeds(
     active = state.phantom_seed_pool.active
     shell_size = valid.shape[0]
     pool_size = active.valid.shape[0]
-    rows = jnp.arange(shell_size, dtype=mp_policy.index_dtype)  # [S]
     slots = jnp.arange(pool_size, dtype=mp_policy.index_dtype)  # [R]
-    source_key, choice_key = jax.random.split(key)
-    request_phantom = jax.random.bernoulli(
-        source_key,
-        p=PHANTOM_SEED_PROBABILITY,
-        shape=(shell_size,),
+    source_key, choice_key, order_key = jax.random.split(key, 3)
+    # Scientific randomness follows the stable logical thread identity, not
+    # its temporary lane. This makes local batching and asynchronous worker
+    # completion order alternate materialisations of the same selection law.
+    request_phantom = jax.vmap(
+        lambda identity: jax.random.bernoulli(
+            jax.random.fold_in(source_key, identity),
+            p=PHANTOM_SEED_PROBABILITY,
+        )
+    )(schedule.thread_id)  # [S]
+    choice_fraction = jax.vmap(
+        lambda identity: jax.random.uniform(
+            jax.random.fold_in(choice_key, identity),
+            (),
+            dtype=mp_policy.measure_dtype,
+        )
+    )(schedule.thread_id)  # [S]
+    ordering_priority = jax.vmap(
+        lambda identity: jax.random.uniform(
+            jax.random.fold_in(order_key, identity),
+            (),
+            dtype=mp_policy.measure_dtype,
+        )
+    )(schedule.thread_id)  # [S]
+    lanes = jnp.arange(shell_size, dtype=mp_policy.index_dtype)  # [S]
+    _, selection_order = jax.lax.sort(
+        (ordering_priority, lanes),
+        dimension=0,
+        is_stable=True,
+        num_keys=1,
     )  # [S]
     eligible = (
         valid[:, None]
         & active.valid[None, :]
         & phantom_seed_is_eligible(
-            active.log_L_birth[None, :],
+            active.log_L_slot[None, :],
             active.log_L[None, :],
             log_L_constraint[:, None],
         )
@@ -1441,33 +1755,21 @@ def _sample_phantom_stationary_seeds(
         dtype=mp_policy.bool_dtype,
     )  # [S]
 
-    def select_lane(lane_idx, carry):
+    def select_lane(step, carry):
         clusters, selected_slots, used = carry
-        same_reserved_contour = (
-            reserved_valid
-            & (
-                reserved_log_L_constraint
-                == log_L_constraint[lane_idx]
-            )
-        )  # [P]
+        lane_idx = selection_order[step]
+        # A cluster is one dependence unit regardless of the contours at
+        # which simultaneous local lanes or distributed tasks use it.
         reserved_cluster = jnp.any(
-            same_reserved_contour[:, None]
+            reserved_valid[:, None]
             & (
                 reserved_seed_idx[:, None]
                 == active.cluster_idx[None, :]
             ),
             axis=0,
         )  # [R]
-        same_selected_contour = (
-            used
-            & (rows < lane_idx)
-            & (
-                log_L_constraint
-                == log_L_constraint[lane_idx]
-            )
-        )  # [S]
         earlier_cluster = jnp.any(
-            same_selected_contour[:, None]
+            used[:, None]
             & (
                 clusters[:, None]
                 == active.cluster_idx[None, :]
@@ -1508,11 +1810,7 @@ def _sample_phantom_stationary_seeds(
             available.astype(mp_policy.index_dtype)
         )  # [R]
         count = cumulative[-1]  # []
-        fraction = jax.random.uniform(
-            jax.random.fold_in(choice_key, lane_idx),
-            (),
-            dtype=mp_policy.measure_dtype,
-        )  # []
+        fraction = choice_fraction[lane_idx]  # []
         rank = jnp.minimum(
             (fraction * jnp.maximum(count, 1)).astype(
                 mp_policy.index_dtype
@@ -2196,6 +2494,7 @@ def _plan_scheduled_work_batch(
         reserved_seed_idx: IntArray | None = None,
         reserved_log_L_constraint: FloatArray | None = None,
         reserved_valid: BoolArray | None = None,
+        reserved_phantom_valid: BoolArray | None = None,
 ) -> tuple[ThreadSchedule, CoreWorkBatch]:
     """Resolve one fixed-width batch from already materialised threads."""
     # Parent and classic-seed streams stay identical to established
@@ -2212,14 +2511,20 @@ def _plan_scheduled_work_batch(
             -jnp.inf,
             dtype=mp_policy.measure_dtype,
         )  # [S]
+        phantom_slot_key = key
     else:
         phantom_key = jax.random.fold_in(
             key,
             PHANTOM_RESERVOIR_RANDOM_STREAM,
         )
-        phantom_idx_key, priority_key, source_key = jax.random.split(
+        (
+            phantom_idx_key,
+            priority_key,
+            phantom_slot_key,
+            source_key,
+        ) = jax.random.split(
             phantom_key,
-            3,
+            4,
         )
         phantom_idx = jax.random.randint(
             phantom_idx_key,
@@ -2252,6 +2557,11 @@ def _plan_scheduled_work_batch(
             (shell_size,),
             dtype=mp_policy.bool_dtype,
         )
+    if reserved_phantom_valid is None:
+        reserved_phantom_valid = jnp.zeros(
+            (shell_size,),
+            dtype=mp_policy.bool_dtype,
+        )
     slots = jnp.arange(shell_size, dtype=mp_policy.index_dtype)
     num_valid = jnp.minimum(
         jnp.sum(schedule.valid, dtype=mp_policy.index_dtype),
@@ -2275,6 +2585,26 @@ def _plan_scheduled_work_batch(
         schedule.parent_idx,
         fallback_parent,
     )
+    if state.phantom_seed_pool is None:
+        phantom_slot_idx = jnp.full_like(parent_idx, -1)  # [S]
+        phantom_log_L_slot = jnp.full(
+            parent_idx.shape,
+            jnp.inf,
+            dtype=mp_policy.measure_dtype,
+        )  # [S]
+    else:
+        (
+            schedule,
+            phantom_slot_idx,
+            phantom_log_L_slot,
+        ) = _sample_phantom_staging_slots(
+            phantom_slot_key,
+            state,
+            schedule,
+            schedule.thread_id,
+            effective_constraint,
+            valid,
+        )
 
     # A distributed start remains pending after its identity is recorded in
     # the schedule mask. Exclude that exact duplicate from the simultaneous
@@ -2323,7 +2653,17 @@ def _plan_scheduled_work_batch(
         )  # [S]
         classic_reserved_idx = reserved_seed_idx
         classic_reserved_constraint = reserved_log_L_constraint
-        classic_reserved_valid = unique_pending_valid
+        classic_reserved_valid = (
+            unique_pending_valid & jnp.logical_not(reserved_phantom_valid)
+        )
+        globally_reserved_idx = jnp.zeros(
+            (0,),
+            dtype=mp_policy.index_dtype,
+        )
+        globally_reserved_valid = jnp.zeros(
+            (0,),
+            dtype=mp_policy.bool_dtype,
+        )
     else:
         (
             phantom_seed_idx,
@@ -2340,18 +2680,21 @@ def _plan_scheduled_work_batch(
             unique_pending_valid,
             phantom_excluded_idx,
         )
-        # A selected phantom reserves its source cluster before the remaining
-        # lanes draw from the exact classic population. Reservations are by
-        # cluster identity, so local and distributed paths share this law.
-        classic_reserved_idx = jnp.concatenate(
+        # Phantom dependence identities apply across contours. Keep them
+        # separate from classic same-contour reservations so an empty or
+        # unselected phantom source preserves the established classic path.
+        classic_reserved_idx = reserved_seed_idx
+        classic_reserved_constraint = reserved_log_L_constraint
+        classic_reserved_valid = (
+            unique_pending_valid & jnp.logical_not(reserved_phantom_valid)
+        )
+        globally_reserved_idx = jnp.concatenate(
             (reserved_seed_idx, phantom_seed_idx)
         )  # [2S]
-        classic_reserved_constraint = jnp.concatenate(
-            (reserved_log_L_constraint, effective_constraint)
-        )  # [2S]
-        classic_reserved_valid = jnp.concatenate(
-            (unique_pending_valid, use_phantom)
-        )  # [2S]
+        globally_reserved_valid = jnp.concatenate((
+            unique_pending_valid & reserved_phantom_valid,
+            use_phantom,
+        ))  # [2S]
     classic_seed_idx = _sample_stationary_seeds(
         seed_key,
         state,
@@ -2362,6 +2705,8 @@ def _plan_scheduled_work_batch(
         classic_reserved_idx,
         classic_reserved_constraint,
         classic_reserved_valid,
+        globally_reserved_idx,
+        globally_reserved_valid,
     )
     seed_idx = jnp.where(
         use_phantom,
@@ -2400,6 +2745,8 @@ def _plan_scheduled_work_batch(
         seed_pool_idx=seed_pool_idx,
         phantom_idx=phantom_idx,
         phantom_priority=phantom_priority,
+        phantom_slot_idx=phantom_slot_idx,
+        phantom_log_L_slot=phantom_log_L_slot,
     )
 
 
@@ -2657,6 +3004,8 @@ def _accept_work_batch(
             ),
             priority=work.phantom_priority,
             valid=selected_valid,
+            slot_idx=work.phantom_slot_idx,
+            log_L_slot=work.phantom_log_L_slot,
         )
 
     classic_idx = jnp.argmax(
@@ -2799,8 +3148,8 @@ def _publish_seed_source(state: State) -> State:
     reservoir can then restart empty because all of its rows are now indexed.
     """
     # Every local batch or distributed in-flight cohort has completed before
-    # this boundary. Rotate in its preselected phantom representatives before
-    # rebuilding the exact classic stationary-seed index.
+    # this boundary. Rotate in its phantom representatives before refreshing
+    # both stationary sources for the still-frozen logical schedule.
     state = _promote_phantom_seed_pool(state)
     state = _refresh_likelihood_order(state)
     schedule = state.scheduler_data
@@ -2832,6 +3181,9 @@ def _publish_seed_source(state: State) -> State:
         seed_reservoir_valid=jnp.zeros_like(
             schedule.seed_reservoir_valid,
         ),
+        phantom_slot_miss_probability=jnp.ones_like(
+            schedule.phantom_slot_miss_probability,
+        ),
         # Publication indexes every accepted identity. There is no distributed
         # task in flight at this boundary, so every retained reservation now
         # belongs to the frozen source and the exact scalar count advances with
@@ -2839,7 +3191,24 @@ def _publish_seed_source(state: State) -> State:
         num_published_start_seeds=schedule.num_start_seeds,  # []
         source_num_samples=state.num_samples,
     )
-    return dataclasses.replace(state, scheduler_data=schedule)
+    state = dataclasses.replace(state, scheduler_data=schedule)
+    if state.phantom_seed_pool is None:
+        return state
+    target_K = _project_allocation_target(schedule, block_state)
+    relevant = _project_schedule_relevant(schedule, block_state)
+    gap = jnp.where(
+        relevant,
+        jnp.maximum(target_K - block_state.incoming_K, 0),
+        jnp.asarray(0, mp_policy.count_dtype),
+    )  # [G]
+    # Overshooting edges may make this differ from a mechanical count of the
+    # frozen heads still in flight. It is intentionally a cheap demand proxy:
+    # only reservoir coverage depends on it, never the scientific schedule.
+    return _assign_phantom_staging_slots(
+        state,
+        block_state,
+        gap,
+    )
 
 
 def _build_depth_view(
@@ -2920,6 +3289,25 @@ def _project_allocation_target(
     return jnp.where(block_state.valid, projected, 0)
 
 
+def _project_schedule_relevant(
+        schedule: ThreadSchedule,
+        block_state: BlockState,
+) -> BoolArray:
+    """Project the frozen schedule domain onto newly published contours."""
+    successor = jnp.searchsorted(
+        schedule.block_state.log_L_blocks,
+        block_state.log_L_blocks,
+        side="left",
+    ).astype(mp_policy.index_dtype)  # [G]
+    within_old_grid = successor < schedule.block_state.num_blocks  # [G]
+    safe_successor = jnp.minimum(
+        successor,
+        jnp.maximum(schedule.block_state.num_blocks - 1, 0),
+    )
+    projected = within_old_grid & schedule.relevant[safe_successor]  # [G]
+    return block_state.valid & projected
+
+
 @partial(jax.jit, inline=True)
 def _promote_phantom_seed_pool(state: State) -> State:
     """Publish a completed cohort of staged phantom representatives."""
@@ -2989,6 +3377,15 @@ def _start_schedule_round(
         root_degree=root_degree,
         delta_K=delta_K,
     )
+    state = _assign_phantom_staging_slots(
+        state,
+        block_state,
+        jnp.where(
+            relevant,
+            plan.allocation_gap(),
+            jnp.asarray(0, mp_policy.count_dtype),
+        ),
+    )
     schedule = _new_thread_schedule(
         state,
         block_state,
@@ -3045,6 +3442,15 @@ def _continue_schedule_round(
         ),
     )
     relevant = _depth_relevant_blocks(plan, depth_cond)
+    state = _assign_phantom_staging_slots(
+        state,
+        block_state,
+        jnp.where(
+            relevant,
+            plan.allocation_gap(),
+            jnp.asarray(0, mp_policy.count_dtype),
+        ),
+    )
     schedule = _new_thread_schedule(
         state,
         block_state,

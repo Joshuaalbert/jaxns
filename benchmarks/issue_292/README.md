@@ -24,17 +24,36 @@ PYTHONPATH=src:. MPLCONFIGDIR=/tmp/jaxns-mplconfig \
   --source-id issue-292-candidate
 ```
 
-Each static arm runs in its own process and executes one unreported warm-up
-seed before measurement. `warm_wall_s` therefore excludes first compilation.
-The suite alternates which arm runs first across problems to reduce systematic
-machine-drift bias.
+Each static arm runs in its own process and executes one unreported cold seed
+before measurement. Five-seed AB/BA blocks alternate arm order within each
+problem to control machine drift. `warm_wall_s` excludes compilation. Isolated
+lowering, compilation, HLO size, and XLA temporary-memory measurements come
+from `profile_hotpath.py` so cold cost is not pseudoreplicated across the five
+scientific seeds in a timing block.
 The benchmark records each run's classic-MC log-evidence error, uncertainty,
 and z-score; component-zero and minor-mode mass; practical mode loss;
 likelihood evaluations; classic samples; goal loops; wall time; resident state
-bytes; and bounded-pool occupancy. Resident state bytes are the exact sum of
-Pytree array-buffer sizes, not process RSS. A practical mode loss means the
-recovered posterior mass of the analytically smaller component is below 10% of
-its true mass.
+bytes; bounded-pool occupancy; and eligible pool counts at the 90th, 99th, and
+final observed birth-contour percentiles. Resident state bytes are the exact
+sum of Pytree array-buffer sizes, not process RSS. Runs use opt-in unlimited
+storage and fail rather than report evidence after a terminal stop. A
+practical mode loss means the recovered posterior mass of the analytically
+smaller component is below 10% of its true mass.
+
+An exploratory fixed-source mixture can be selected without changing the
+public API by passing `--phantom-seed-probability`. The retained comparison
+should use the evidence-selected production value.
+
+Profile the isolated compiled depth program for both feature paths with:
+
+```bash
+for arm in off on; do
+  PYTHONPATH=src:. conda run -n jaxns_py python \
+    benchmarks/issue_292/profile_hotpath.py \
+    --phantom-seeding "$arm" \
+    --output "/tmp/issue-292-hotpath-$arm.json"
+done
+```
 
 Validate the pairing and create per-arm summaries plus 10,000-resample paired
 bootstrap intervals with:

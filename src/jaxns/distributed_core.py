@@ -311,6 +311,7 @@ def _prepare_task(
         reserved_seed_idx: IntArray,
         reserved_log_L_constraint: FloatArray,
         reserved_valid: BoolArray,
+        reserved_phantom_valid: BoolArray | None = None,
         *,
         dispatch_width: int,
         max_threads: IntArray,
@@ -347,6 +348,7 @@ def _prepare_task(
         reserved_seed_idx,
         reserved_log_L_constraint,
         reserved_valid,
+        reserved_phantom_valid,
     )
 
     seed_points = _seed_points_for_work(state, work)
@@ -1576,6 +1578,10 @@ class DistributedNestedSampler:
                 dtype=np.float64,
             )
             host_valid = np.zeros((planning_width,), dtype=np.bool_)
+            host_phantom_valid = np.zeros(
+                (planning_width,),
+                dtype=np.bool_,
+            )
             for pending_idx, task in enumerate(distributed.pending):
                 host_seed_idx[pending_idx] = np.asarray(
                     task.work.seed_idx
@@ -1584,6 +1590,9 @@ class DistributedNestedSampler:
                     task.work.log_L_constraint
                 )[0]
                 host_valid[pending_idx] = True
+                host_phantom_valid[pending_idx] = (
+                    int(np.asarray(task.work.seed_pool_idx)[0]) >= 0
+                )
             reserved_seed_idx = jnp.asarray(
                 host_seed_idx,
                 dtype=mp_policy.index_dtype,
@@ -1596,6 +1605,10 @@ class DistributedNestedSampler:
                 host_valid,
                 dtype=mp_policy.bool_dtype,
             )  # [S]
+            reserved_phantom_valid = jnp.asarray(
+                host_phantom_valid,
+                dtype=mp_policy.bool_dtype,
+            )  # [S]
             prepared = _prepare_task(
                 distributed.state,
                 distributed.reservations,
@@ -1603,6 +1616,7 @@ class DistributedNestedSampler:
                 reserved_seed_idx,
                 reserved_log_L_constraint,
                 reserved_valid,
+                reserved_phantom_valid,
                 # This is a seed-stratification window, not an execution
                 # batch. Every valid lane becomes its own transport task.
                 dispatch_width=planning_width,
@@ -1645,6 +1659,12 @@ class DistributedNestedSampler:
                         phantom_idx=host_work.phantom_idx[lane:lane + 1],
                         phantom_priority=(
                             host_work.phantom_priority[lane:lane + 1]
+                        ),
+                        phantom_slot_idx=(
+                            host_work.phantom_slot_idx[lane:lane + 1]
+                        ),
+                        phantom_log_L_slot=(
+                            host_work.phantom_log_L_slot[lane:lane + 1]
                         ),
                     ),
                     request=ConstrainedSampleRequest(
