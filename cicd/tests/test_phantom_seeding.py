@@ -151,6 +151,20 @@ def _schedule_root_increment(state, *, shell_size: int):
     )
 
 
+def _plan_batch_using_phantom(state, *, shell_size: int, key_seed: int):
+    """Find a deterministic production-policy draw using the phantom source."""
+    for key in jax.random.split(jax.random.PRNGKey(key_seed), 128):
+        _, work = depth._plan_scheduled_work_batch(
+            key,
+            state,
+            state.scheduler_data,
+            jnp.asarray(shell_size, dtype=mp_policy.index_dtype),
+        )
+        if bool(jnp.any(work.seed_pool_idx >= 0)):
+            return work
+    raise AssertionError("Expected one production-policy phantom draw.")
+
+
 @pytest.mark.parametrize(
     "birth, likelihood, constraint, expected",
     [
@@ -691,12 +705,10 @@ def test_phantom_is_a_separate_cluster_distinct_seed_source():
     )
     state = _schedule_root_increment(state, shell_size=3)
 
-    key = jax.random.split(jax.random.PRNGKey(7), 32)[0]
-    _, work = depth._plan_scheduled_work_batch(
-        key,
+    work = _plan_batch_using_phantom(
         state,
-        state.scheduler_data,
-        jnp.asarray(3, dtype=mp_policy.index_dtype),
+        shell_size=3,
+        key_seed=7,
     )
     assert len(set(np.asarray(work.seed_idx).tolist())) == 3
     pool_lane = np.flatnonzero(np.asarray(work.seed_pool_idx) >= 0)
@@ -732,12 +744,10 @@ def test_phantom_pool_locator_uses_append_row_not_likelihood_rank():
     state = dataclasses.replace(state, phantom_seed_pool=pool)
     state = _schedule_root_increment(state, shell_size=3)
 
-    key = jax.random.split(jax.random.PRNGKey(71), 32)[0]
-    _, work = depth._plan_scheduled_work_batch(
-        key,
+    work = _plan_batch_using_phantom(
         state,
-        state.scheduler_data,
-        jnp.asarray(3, dtype=mp_policy.index_dtype),
+        shell_size=3,
+        key_seed=71,
     )
     lane = np.flatnonzero(np.asarray(work.seed_pool_idx) >= 0)
     assert lane.size == 1
@@ -1022,7 +1032,7 @@ def test_classic_and_phantom_sources_share_cross_contour_reservations():
     state = dataclasses.replace(state, scheduler_data=schedule)
 
     used_phantom = False
-    for key in jax.random.split(jax.random.PRNGKey(294), 16):
+    for key in jax.random.split(jax.random.PRNGKey(294), 128):
         _, work = depth._plan_scheduled_work_batch(
             key,
             state,
