@@ -1769,19 +1769,6 @@ def _sample_phantom_stationary_seeds(
         is_stable=True,
         num_keys=1,
     )  # [S]
-    eligible = (
-        valid[:, None]
-        & active.valid[None, :]
-        & phantom_seed_is_eligible(
-            active.log_L_slot[None, :],
-            active.log_L[None, :],
-            log_L_constraint[:, None],
-        )
-        & (
-            active.cluster_idx[None, :]
-            != excluded_seed_idx[:, None]
-        )
-    )  # [S, R]
     selected_cluster = jnp.full(
         (shell_size,),
         -1,
@@ -1829,8 +1816,18 @@ def _sample_phantom_stationary_seeds(
                 == schedule.start_seed_log_L_constraint
             )
         )  # []
+        eligible = (
+            valid[lane_idx]
+            & active.valid
+            & phantom_seed_is_eligible(
+                active.log_L_slot,
+                active.log_L,
+                log_L_constraint[lane_idx],
+            )
+            & (active.cluster_idx != excluded_seed_idx[lane_idx])
+        )  # [R]
         available = (
-            eligible[lane_idx]
+            eligible
             & jnp.logical_not(unavailable)
             & jnp.logical_not(retains_start_group & start_cluster)
         )  # [R]

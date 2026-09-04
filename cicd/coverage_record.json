@@ -40,6 +40,7 @@
   "Phantom contour slots are assigned from planned lineage work before candidate values are observed. Observed likelihood can reject a candidate that does not cross its assigned slot, but cannot move it to a more favourable slot.": [
     "test_contour_slots_are_fixed_from_the_masked_planned_gap",
     "test_expected_log_volume_uses_beta_race_time_moment",
+    "test_log_expected_volume_remains_finite_beyond_linear_underflow",
     "test_slot_assignment_is_invariant_to_lane_position"
   ],
   "Concurrent children reserve every selected phantom source cluster across parent contours and across its classic and phantom representations. A thread does not continue directly from the phantom cluster that produced its current head. Classic-to-classic seed reuse at different contours retains the established scheduling law. If no eligible phantom is available, selection uses the exact classic population.": [

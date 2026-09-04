@@ -208,6 +208,8 @@ class ThreadSchedule(PureDataclassPytree):
     multiplicity: IntArray  # [G] number of identical T(a, b) threads
     num_runs: IntArray  # []
     target_K: IntArray  # [G] absolute frozen lineage target
+    # `relevant` and `log_mean_X` target phantom reservoir slots. They are
+    # empty arrays when disabled, preserving the established classic schedule.
     relevant: BoolArray  # [G] blocks included in this frozen schedule
     tail_K: IntArray  # [] target beyond the last frozen contour
     log_mean_X: FloatArray  # [G] log of planning-time mean volume path
@@ -216,9 +218,6 @@ class ThreadSchedule(PureDataclassPytree):
     seed_birth_contours: FloatArray  # [A] birth-sorted frozen contours
     seed_rank_prefix: IntArray  # [H, A + 1] wavelet rank prefixes
     seed_zero_count: IntArray  # [H] zero partition sizes
-    # These replacement maps exist only when phantom seeding changes the
-    # representative intervals. ``None`` leaves the classic schedule at its
-    # established memory footprint and likelihood-order lookup.
     seed_reservoir_idx: IntArray  # [R] bounded coordination sample indices
     seed_reservoir_priority: FloatArray  # [R] value-independent priorities
     seed_reservoir_valid: BoolArray  # [R]

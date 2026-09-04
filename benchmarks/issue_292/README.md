@@ -64,10 +64,35 @@ likelihood evaluations changed by +1.38%. A 0.5 mixture improved the unimodal
 case but worsened CSS8 RMSE to 0.1865, so it was rejected. The selected pool
 added 35,520 resident bytes and 36,521 bytes to a committed checkpoint.
 
-An isolated AB/BA hot-path profile at `D=8`, `d0=240`, and replacement width
-80 measured a 5.4% median depth-runtime increase for the enabled path. HLO
-text grew by 23.6%, mean compilation time by 24.7%, and scheduled state by
-2.69%; XLA temporary bytes decreased by 14.0%. The disabled path constructs no
+The resident/checkpoint scaling profile isolates the two seed-pool banks from
+ordinary sample and phantom-likelihood storage. For the standard float32
+homogeneous coordinates and float64 scientific arithmetic, an `R`-entry pool
+occupies exactly `R * (8D + 84)` bytes. Production uses `R = d0 = 30D`, hence
+the pool costs `240D^2 + 2520D` bytes and remains independent of the completed
+sample count. Paired measurements at sample capacities 10,000 and 100,000
+were identical:
+
+| Dimension | Pool capacity | Resident increment | Checkpoint increment |
+|---:|---:|---:|---:|
+| 2 | 60 | 6,000 B | 6,959 B |
+| 8 | 240 | 35,520 B | 36,479 B |
+| 32 | 960 | 326,400 B | 327,405 B |
+| 128 | 3,840 | 4,254,720 B | 4,255,761 B |
+
+The checkpoint figures are for one generation. The checkpoint manager retains
+two generations at steady state, so durable disk overhead can be approximately
+twice those increments. Reproduce this profile with:
+
+```bash
+PYTHONPATH=src:. conda run -n jaxns_py python \
+  benchmarks/issue_292/profile_memory.py --checkpoint \
+  --output /tmp/issue-292-memory.jsonl
+```
+
+Four isolated AB/BA hot-path profiles at `D=8`, `d0=240`, and replacement
+width 80 measured an 8.9% median depth-runtime increase for the enabled path.
+HLO text grew by 23.5%, median compilation time by 28.8%, and scheduled state
+by 2.69%; XLA temporary bytes decreased by 13.3%. The disabled path constructs no
 pool, and an exact paired run reproduced its parent-revision samples, evidence,
 likelihood evaluations, and ESS bit for bit.
 
