@@ -55,6 +55,7 @@ from jaxns.model import Model
 from jaxns.pytree import PureDataclassPytree
 from jaxns.runtime.session import WorkerSession
 from jaxns.samples import SeedPoint
+from jaxns.sampling.phantom_seeds import gather_seed_points
 from jaxns.state import State
 from jaxns.types import BoolArray, FloatArray, IntArray, PRNGKey
 
@@ -348,15 +349,7 @@ def _prepare_task(
         reserved_valid,
     )
 
-    seed_points = SeedPoint(
-        U0=jax.tree.map(
-            lambda values: values[work.seed_idx],
-            state.samples.U_samples,
-        ),
-        log_L0=(
-            state.samples.log_likelihoods[work.seed_idx]
-        ),
-    )
+    seed_points = gather_seed_points(state.samples, work.seed_idx)
     request = ConstrainedSampleRequest(
         keys=jax.random.split(sample_key, dispatch_width),
         valid=work.valid,

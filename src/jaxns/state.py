@@ -23,6 +23,11 @@ from jaxns.sampling.ellipsoid import (
     empty_sampler_data,
     update_sampler_data,
 )
+from jaxns.sampling.phantom_index import (
+    PhantomSeedIndex,
+    build_phantom_seed_index,
+    resize_phantom_seed_index,
+)
 from jaxns.shrinkage.classic import (
     classic_dirichlet_concentrations,
     dirichlet_probability_means,
@@ -85,6 +90,10 @@ class State(PureDataclassPytree):
     # It makes storage growth and checkpoint resume transparent without adding
     # parent identities to scientific samples or results.
     scheduler_data: ThreadSchedule | None = None
+    # Blocks index append-order chains, so this cache stays outside the
+    # sample pytree used by sorted posterior views. None supports reference
+    # checkpoints with a row cache and states without phantom coordinates.
+    phantom_seed_index: PhantomSeedIndex | None = None
 
     def merge(self, other: 'State') -> 'State':
         """
@@ -340,6 +349,10 @@ class State(PureDataclassPytree):
                 if self.scheduler_data is None
                 else self.scheduler_data.resize(max_samples)
             ),
+            phantom_seed_index=(
+                None if self.phantom_seed_index is None
+                else resize_phantom_seed_index(self.phantom_seed_index, max_samples)
+            ),
         )
 
 
@@ -491,6 +504,10 @@ def _trim(self: State) -> State:
             )
         ),
         scheduler_data=scheduler_data,
+        phantom_seed_index=(
+            None if self.phantom_seed_index is None
+            else resize_phantom_seed_index(self.phantom_seed_index, num_samples)
+        ),
     )
 
 
@@ -773,9 +790,28 @@ def _merge(self: State, other: State) -> 'State':
             ),
         )
 
+    seed_index = self.phantom_seed_index
+    if seed_index is None:
+        seed_index = other.phantom_seed_index
+    left_samples, right_samples = self.samples, other.samples
+    if seed_index is not None:
+        # A reference checkpoint can be merged with a block-indexed state.
+        # Discard its row cache before joining the scientific sample pytrees;
+        # the merged block cache is rebuilt in the new append order below.
+        left_samples = dataclasses.replace(
+            left_samples, phantom_samples=dataclasses.replace(
+                left_samples.phantom_samples, seed_log_L_sorted=None,
+            ),
+        )
+        right_samples = dataclasses.replace(
+            right_samples, phantom_samples=dataclasses.replace(
+                right_samples.phantom_samples, seed_log_L_sorted=None,
+            ),
+        )
+    merged_samples = left_samples.concat(right_samples)
     return State(
         root_out_degree=self.root_out_degree + other.root_out_degree,
-        samples=self.samples.concat(other.samples),
+        samples=merged_samples,
         num_samples=self.num_samples + other.num_samples,
         log_L_supremum=jnp.maximum(self.log_L_supremum, other.log_L_supremum),
         U_supremum=jax.tree.map(lambda x, y: jnp.where(self.log_L_supremum >= other.log_L_supremum, x, y), self.U_supremum, other.U_supremum),
@@ -797,6 +833,12 @@ def _merge(self: State, other: State) -> 'State':
         depth_reached=depth_reached,
         sampler_data=sampler_data,
         scheduler_data=None,
+        phantom_seed_index=(
+            None if seed_index is None else build_phantom_seed_index(
+                merged_samples, self.num_samples + other.num_samples,
+                block_size=seed_index.birth_sorted.shape[1],
+            )
+        ),
     )
 
 

@@ -34,7 +34,18 @@ from jaxns.depth_condition import (
 )
 from jaxns.mixed_precision import mp_policy
 from jaxns.pytree import PureDataclassPytree
-from jaxns.samples import Samples, SeedPoint
+from jaxns.samples import Samples
+from jaxns.sampling.phantom_index import (
+    phantom_block_cumulative,
+    phantom_block_rank_to_identity,
+    update_phantom_seed_index,
+)
+from jaxns.sampling.phantom_seeds import (
+    gather_seed_points,
+    phantom_rank_to_identity,
+    phantom_seed_cumulative_batch,
+    seed_stride,
+)
 from jaxns.shrinkage.classic import classic_dirichlet_concentrations
 from jaxns.state import State
 from jaxns.types import BoolArray, FloatArray, IntArray, PRNGKey
@@ -938,6 +949,7 @@ def _seed_count_at_constraint(
 def _effective_parent_contour(
         schedule: ThreadSchedule,
         log_L_constraint: FloatArray,
+        state: State | None = None,
 ) -> tuple[BoolArray, IntArray, FloatArray]:
     """Resolve a requested contour to its closest seedable predecessor."""
     seed_count, containing_block = _seed_count_at_constraint(
@@ -945,6 +957,24 @@ def _effective_parent_contour(
         log_L_constraint,
     )
     requested_has_seed = seed_count > 0
+    if state is not None and seed_stride(state.samples) > 1:
+        # Every phantom is available immediately, including points above a
+        # contour that the published classic population does not reach.
+        if state.phantom_seed_index is not None:
+            requested_has_seed = requested_has_seed | (
+                phantom_block_cumulative(
+                    state.samples, state.num_samples, jnp.reshape(log_L_constraint, (1,)),
+                    state.phantom_seed_index,
+                )[0, -1] > 0
+            )
+        else:
+            # Reference A checkpoints retain the row-sorted eligibility cache.
+            phantoms = state.samples.phantom_samples
+            requested_has_seed = requested_has_seed | jnp.any(
+                (jnp.arange(phantoms.log_L.shape[0]) < state.num_samples)
+                & (state.samples.log_L_constraints <= log_L_constraint)
+                & (phantoms.seed_log_L_sorted[:, -1] > log_L_constraint)
+            )
     safe_containing = jnp.maximum(containing_block, 0)
     fallback_block = jnp.where(
         containing_block >= 0,
@@ -1078,14 +1108,23 @@ def _sample_stationary_seeds(
 ) -> IntArray:
     """Draw same-contour seeds without replacement whenever possible.
 
-    The frozen race population is queried exactly through its birth/likelihood
-    rank index. A bounded value-independent reservoir adds recent accepted
-    rows without making query cost depend on total population. Every proposed
-    identity therefore already crosses the requested contour; rejection is
-    needed only for simultaneous no-replacement coordination, never to search
-    for a scientifically valid seed.
+    Classic publication and its recent-row reservoir are unchanged. Every stored
+    phantom is an additional immediately available identity. The original
+    permuted rotated strata and same-contour collision retries operate on
+    this augmented population. Likelihood is used only to test eligibility.
     """
     shell_size = valid.shape[0]
+    stride = seed_stride(state.samples)
+    if stride > 1:
+        if state.phantom_seed_index is not None:
+            phantom_cumulative_batch = phantom_block_cumulative(
+                state.samples, state.num_samples, log_L_constraint,
+                state.phantom_seed_index,
+            )  # [S,blocks]
+        else:
+            phantom_cumulative_batch = phantom_seed_cumulative_batch(
+                state.samples, state.num_samples, log_L_constraint,
+            )  # [S,N], reference checkpoints with the row index
     rows = jnp.arange(shell_size, dtype=mp_policy.index_dtype)  # [S]
     assignment_key, strata_key, rejection_key = jax.random.split(key, 3)
     strata = jax.random.permutation(assignment_key, rows)  # [S]
@@ -1189,7 +1228,7 @@ def _sample_stationary_seeds(
                 schedule.current_start_group,
                 one_seed,
             )
-        )(reservoir_safe_idx),
+        )(reservoir_safe_idx * stride),
         lambda unused: jnp.zeros(
             reservoir_safe_idx.shape,
             dtype=mp_policy.bool_dtype,
@@ -1220,6 +1259,11 @@ def _sample_stationary_seeds(
         constraint = log_L_constraint[lane_idx]
         lane_valid = valid[lane_idx]
         lane_retains_start_group = retained_start_group[lane_idx]
+        if stride > 1:
+            phantom_cumulative = phantom_cumulative_batch[lane_idx]  # [blocks] or [N]
+            phantom_count = phantom_cumulative[-1]
+        else:
+            phantom_count = jnp.asarray(0, mp_policy.index_dtype)
 
         # Earlier local lanes and in-flight distributed tasks are the complete
         # set of simultaneous reservations. Only equal-contour identities are
@@ -1244,7 +1288,7 @@ def _sample_stationary_seeds(
         )  # [2S]
         distinct_count = frozen_count[lane_idx].astype(
             mp_policy.index_dtype
-        ) + reservoir_count[lane_idx]
+        ) + reservoir_count[lane_idx] + phantom_count
         remaining_distinct = jnp.maximum(
             distinct_count - reserved_count[lane_idx],
             0,
@@ -1254,7 +1298,8 @@ def _sample_stationary_seeds(
         frozen_seed_count = frozen_count[lane_idx].astype(
             mp_policy.index_dtype
         )
-        total_count = frozen_seed_count + reservoir_count[lane_idx]
+        classic_count = frozen_seed_count + reservoir_count[lane_idx]
+        total_count = classic_count + phantom_count
         reservoir_cumulative = jnp.cumsum(
             reservoir_eligible[lane_idx].astype(mp_policy.index_dtype)
         )  # [R]
@@ -1286,72 +1331,90 @@ def _sample_stationary_seeds(
             proposal_rank = (
                 proposal_fraction * jnp.maximum(total_count, 1)
             ).astype(mp_policy.index_dtype)  # [C]
-            frozen_offset = jnp.minimum(
-                proposal_rank,
-                jnp.maximum(frozen_seed_count - 1, 0),
-            )
-            frozen_fraction = (
-                frozen_offset.astype(mp_policy.measure_dtype) + 0.5
-            ) / jnp.maximum(
-                frozen_seed_count,
-                1,
-            ).astype(mp_policy.measure_dtype)
-            frozen_candidate = jax.vmap(
-                lambda fraction: _sample_frozen_seed_rank(
-                    schedule,
-                    constraint,
-                    fraction,
+
+            def resolve_candidate(rank):
+                def frozen(unused):
+                    offset = jnp.minimum(rank, jnp.maximum(frozen_seed_count - 1, 0))
+                    fraction = (
+                        offset.astype(mp_policy.measure_dtype) + 0.5
+                    ) / jnp.maximum(frozen_seed_count, 1).astype(mp_policy.measure_dtype)
+                    return _sample_frozen_seed_rank(
+                        schedule, constraint, fraction,
+                    ).astype(mp_policy.index_dtype)
+
+                def recent(unused):
+                    reservoir_rank = jnp.maximum(rank - frozen_seed_count, 0)
+                    slot = _select_reservoir_slots(
+                        reservoir_cumulative, reservoir_rank[None],
+                    )[0]
+                    # Reference where() promoted mixed-width stored IDs.
+                    # Scalar cond branches must declare that shared dtype.
+                    return reservoir_sample_idx[slot].astype(mp_policy.index_dtype)
+
+                def classic(unused):
+                    return jax.lax.cond(
+                        rank < frozen_seed_count, frozen, recent, operand=None,
+                    ) * stride
+
+                if stride == 1:
+                    return classic(None)
+
+                def phantom(unused):
+                    phantom_rank = jnp.clip(
+                        rank - classic_count, 0, jnp.maximum(phantom_count - 1, 0),
+                    )[None]  # [1]
+                    if state.phantom_seed_index is not None:
+                        return phantom_block_rank_to_identity(
+                            state.samples, state.num_samples, phantom_cumulative,
+                            constraint, phantom_rank, state.phantom_seed_index,
+                        )[0]
+                    return phantom_rank_to_identity(
+                        state.samples, phantom_cumulative, constraint, phantom_rank,
+                    )[0]
+
+                # The scalar lane/proposal loop keeps these branches lazy.
+                # Vmapping would resolve both populations before selecting.
+                return jax.lax.cond(
+                    rank < classic_count, classic, phantom, operand=None,
                 )
-            )(frozen_fraction)  # [C]
-            reservoir_rank = jnp.maximum(
-                proposal_rank - frozen_seed_count,
-                0,
-            )
-            reservoir_slot = _select_reservoir_slots(
-                reservoir_cumulative,
-                reservoir_rank,
-            )  # [C]
-            reservoir_candidate = reservoir_sample_idx[
-                reservoir_slot
-            ]  # [C]
-            candidate = jnp.where(
-                proposal_rank < frozen_seed_count,
-                frozen_candidate,
-                reservoir_candidate,
-            )  # [C]
-            safe_candidate = jnp.maximum(candidate, 0)
-            candidate_forbidden = jnp.any(
-                (candidate[:, None] == forbidden_idx[None, :])
-                & forbidden_same_contour[None, :],
-                axis=1,
-            )  # [C]
-            candidate_was_start_seed = jax.lax.cond(
-                lane_retains_start_group,
-                lambda unused: jax.vmap(
-                    lambda one_seed: _seed_reservation_contains(
+
+            def needs_proposal(proposals):
+                position, _, found = proposals
+                return (position < proposal_width) & jnp.logical_not(found)
+
+            def try_proposal(proposals):
+                position, previous_seed, _ = proposals
+                candidate = resolve_candidate(proposal_rank[position])
+                forbidden = jnp.any(
+                    (candidate == forbidden_idx) & forbidden_same_contour,
+                )
+                was_start_seed = jax.lax.cond(
+                    lane_retains_start_group,
+                    lambda unused: _seed_reservation_contains(
                         schedule.start_seed_reservation_idx,
                         schedule.start_seed_reservation_group,
                         schedule.current_start_group,
-                        one_seed,
-                    )
-                )(safe_candidate),
-                lambda unused: jnp.zeros(
-                    candidate.shape,
-                    dtype=mp_policy.bool_dtype,
-                ),
-                operand=None,
-            )  # [C]
-            eligible = jnp.logical_not(
-                require_unused
-                & (candidate_forbidden | candidate_was_start_seed)
+                        jnp.maximum(candidate, 0),
+                    ),
+                    lambda unused: jnp.asarray(False),
+                    operand=None,
+                )
+                eligible = jnp.logical_not(
+                    require_unused & (forbidden | was_start_seed),
+                )
+                return (
+                    position + 1,
+                    jnp.where(eligible, candidate, previous_seed),
+                    eligible,
+                )
+
+            # Keep the complete 64-value draw and exact retry-key schedule.
+            # Only identity lookup stops early at the first admissible rank.
+            _, next_seed, found = jax.lax.while_loop(
+                needs_proposal, try_proposal,
+                (jnp.asarray(0, mp_policy.index_dtype), current_seed, jnp.asarray(False)),
             )
-            found = jnp.any(eligible)
-            first = jnp.argmax(eligible).astype(mp_policy.index_dtype)
-            return (
-                attempt + jnp.asarray(1, attempt.dtype),
-                jnp.where(found, candidate[first], current_seed),
-                found,
-            )
+            return attempt + jnp.asarray(1, attempt.dtype), next_seed, found
 
         _, seed, _ = jax.lax.while_loop(
             rejection_cond,
@@ -1868,6 +1931,7 @@ def _retain_start_seed_reservations(
         seed_idx: IntArray,
         effective_constraint: FloatArray,
         dispatched: BoolArray,
+        state: State | None = None,
 ) -> ThreadSchedule:
     """Carry no-replacement seeds only while one start contour is unfinished.
 
@@ -1910,6 +1974,7 @@ def _retain_start_seed_reservations(
     _, _, future_constraint = _effective_parent_contour(
         schedule,
         requested_constraint,
+        state,
     )
 
     keep_existing = (
@@ -1947,12 +2012,13 @@ def _retain_start_seed_reservations(
         jnp.asarray(0, mp_policy.count_dtype),
     )  # []
 
+    stride = 1 if state is None else seed_stride(state.samples)
     selected_idx = seed_idx.astype(mp_policy.index_dtype)  # [S]
     safe_idx = jnp.maximum(selected_idx, 0)  # [S]
     retain = (
         keep_selected
         & (selected_idx >= 0)
-        & (selected_idx < schedule.seed_birth_contours.shape[0])
+        & (selected_idx // stride < schedule.seed_birth_contours.shape[0])
     )  # [S]
 
     def retain_lane(lane_idx, carry):
@@ -1977,7 +2043,9 @@ def _retain_start_seed_reservations(
                 next_group,
                 current_count + jnp.asarray(1, current_count.dtype),
                 current_published + (
-                    selected_idx[lane_idx] < schedule.source_num_samples
+                    (selected_idx[lane_idx] // stride
+                     < schedule.source_num_samples)
+                    | (selected_idx[lane_idx] % stride > 0)
                 ).astype(current_published.dtype),
             )
 
@@ -2057,7 +2125,9 @@ def _plan_scheduled_work_batch(
     valid = slots < num_valid
 
     requested_has_seed, effective_block, effective_constraint = jax.vmap(
-        lambda constraint: _effective_parent_contour(schedule, constraint)
+        lambda constraint: _effective_parent_contour(
+            schedule, constraint, state,
+        )
     )(schedule.log_L_constraint)
     fallback_keys = jax.random.split(parent_key, shell_size)
     fallback_parent = jax.vmap(
@@ -2096,7 +2166,8 @@ def _plan_scheduled_work_batch(
     pending_matches_start = (
         reserved_valid
         & (reserved_seed_idx >= 0)
-        & (reserved_seed_idx < schedule.seed_birth_contours.shape[0])
+        & (reserved_seed_idx // seed_stride(state.samples)
+           < schedule.seed_birth_contours.shape[0])
         & (
             reserved_log_L_constraint
             == schedule.start_seed_log_L_constraint
@@ -2122,6 +2193,7 @@ def _plan_scheduled_work_batch(
         seed_idx,
         effective_constraint,
         valid,
+        state,
     )
     # Fixed-width padding can be traced through both sides of vmapped sampler
     # control flow even though invalid lanes never enter scientific state.
@@ -2263,13 +2335,7 @@ def _sample_work_batch(
 ) -> ConstrainedSampleBatch:
     """Execute the planned batch through the sampler-owned batch strategy."""
     keys = jax.random.split(key, work.seed_idx.shape[0])
-    seed_points = SeedPoint(
-        U0=jax.tree.map(
-            lambda values: values[work.seed_idx],
-            state.samples.U_samples,
-        ),
-        log_L0=state.samples.log_likelihoods[work.seed_idx],
-    )
+    seed_points = gather_seed_points(state.samples, work.seed_idx)
     # Parent planning and race accounting remain outside constrained sampling.
     # A self-contained request is shared by the local depth loop and workers,
     # so both execution modes use exactly the same continuation law.
@@ -2296,13 +2362,22 @@ def _accept_work_batch(
         update_likelihood_order: bool = True,
 ) -> State:
     shell_size = batch.log_likelihoods.shape[0]
-    # Phantom shrinkage needs likelihoods and cluster identity, not phantom
-    # coordinates. Discarding coordinates keeps the persistent state compact.
-    # `NestedSampler.store_phantom_samples` remains a constructor-compatibility
-    # field, but is intentionally absent from this compiled hot path.
+    # All coordinates stay available immediately. Block-indexed states sort
+    # only newly sealed blocks below; reference checkpoints keep their row
+    # cache without retaining a second sorted likelihood array.
+    retain_phantoms = state.samples.phantom_samples.U_samples is not None
     stored_phantoms = dataclasses.replace(
         batch.phantom_samples,
-        U_samples=None,
+        U_samples=(
+            batch.phantom_samples.U_samples if retain_phantoms else None
+        ),
+        seed_log_L_sorted=(
+            jnp.sort(jnp.where(
+                batch.phantom_samples.valid_mask,
+                batch.phantom_samples.log_L, -jnp.inf,
+            ), axis=-1)
+            if retain_phantoms and state.phantom_seed_index is None else None
+        ),
     )
     new_samples = Samples(
         log_L_constraints=work.log_L_constraint,
@@ -2365,6 +2440,13 @@ def _accept_work_batch(
             )
         ),
         samples=appended,
+        phantom_seed_index=(
+            None if state.phantom_seed_index is None
+            else update_phantom_seed_index(
+                state.phantom_seed_index, appended,
+                state.num_samples + work.num_valid.astype(state.num_samples.dtype),
+            )
+        ),
         num_samples=(
             state.num_samples
             + work.num_valid.astype(state.num_samples.dtype)

@@ -1174,11 +1174,15 @@ def test_results_cluster_block_fields_in_block_data():
         block_data.size = jnp.asarray([1], dtype=mp_policy.count_dtype)
 
 
-def test_nested_sampler_keeps_phantom_likelihood_only_with_legacy_flag():
+def test_nested_sampler_keeps_phantom_seed_coordinates_with_legacy_flag():
     state = _run_high_phantom_probe()
     num_samples = int(state.num_samples)
 
-    assert state.samples.phantom_samples.U_samples is None
+    # A retains coordinates for seeding; public posterior rows remain classic.
+    phantoms = state.samples.phantom_samples
+    np.testing.assert_array_equal(
+        np.asarray(phantoms.U_samples)[np.asarray(phantoms.valid_mask)], [0.75],
+    )
     assert state.samples.phantom_samples.log_L[:num_samples].shape[-1] == 1
     assert bool(
         jnp.any(state.samples.phantom_samples.valid_mask[:num_samples]),

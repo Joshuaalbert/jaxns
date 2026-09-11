@@ -126,7 +126,12 @@ class NestedSampler(PureDataclassPytree):
     leading stationary chain prefix stored per classic replacement. ``None``
     resolves to ``min(model dimension, num_slices - 1)`` for the default slice
     sampler. The retained width is independent of the shorter prefix that can
-    later be selected by ``sample_evidence_mc``.
+    later be selected by ``sample_evidence_mc``. Retained phantom coordinates
+    are immediately available as stationary seed candidates, alongside classic
+    seeds, and remain stored for the full run. Their storage scales with the
+    number of classic rows times the retained width and coordinate dimension.
+    They do not receive posterior weights. ``store_phantom_samples`` is a
+    compatibility field and does not disable this retention.
     """
 
     model: Model

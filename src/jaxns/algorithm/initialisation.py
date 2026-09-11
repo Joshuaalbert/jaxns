@@ -9,6 +9,7 @@ from jaxns.algorithm.race_tree import initialise_likelihood_order
 from jaxns.mixed_precision import mp_policy
 from jaxns.model import Model
 from jaxns.samples import PhantomSamples, Samples
+from jaxns.sampling.phantom_index import build_phantom_seed_index
 from jaxns.state import State
 from jaxns.types import PRNGKey
 
@@ -96,7 +97,12 @@ def _build_init_state(
 ) -> State:
     """Build root race state from already evaluated prior-space points."""
     root_degree = log_likelihoods.shape[0]
-    phantom_U = None
+    phantom_U = None if num_phantom == 0 else jax.tree.map(
+        lambda u: jnp.zeros(
+            (root_degree, num_phantom) + u.shape[1:], u.dtype,
+        ),
+        U_samples,
+    )  # leaves [root_degree, P, ...]
     root_samples = Samples(
         # -inf is the sentinel contour. It is also sufficient to recognise
         # root children later; no persistent parent identity is required.
@@ -126,6 +132,11 @@ def _build_init_state(
     return State(
         root_out_degree=jnp.asarray(root_degree, mp_policy.count_dtype),
         samples=root_samples,
+        phantom_seed_index=(
+            None if phantom_U is None else build_phantom_seed_index(
+                root_samples, jnp.asarray(root_degree, mp_policy.count_dtype),
+            )
+        ),
         num_samples=jnp.asarray(root_degree, mp_policy.count_dtype),
         log_L_supremum=log_likelihoods[supremum_idx],
         U_supremum=jax.tree.map(lambda u: u[supremum_idx], U_samples),
@@ -138,4 +149,3 @@ def _build_init_state(
             jnp.asarray(root_degree, mp_policy.count_dtype),
         ),
     )
-

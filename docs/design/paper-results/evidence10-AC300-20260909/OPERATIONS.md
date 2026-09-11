@@ -19,7 +19,7 @@ completed stops, with revised interpretation and paired-bias contrasts.
 
 Do not restart any dispatcher or helper without a new user instruction.
 The implementation/design discussion continues in
-[the revised phantom-seeding proposal](../../jaxns-v3-efficient-phantom-seeding.md).
+[the revised phantom-seeding proposal](../../efficient-phantom-seeding.md).
 The notes below describe historical operation, not currently active jobs.
 
 ## Historical operational handoff
