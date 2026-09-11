@@ -1,0 +1,1126 @@
+{
+  "g10": {
+    "exact": true,
+    "checked_fields": [
+      "fingerprints",
+      "keys",
+      "classics",
+      "calls",
+      "goals",
+      "allocation_goals",
+      "depth_iterations",
+      "root_out_degree",
+      "log_Z",
+      "uncertainty",
+      "kish_ess"
+    ],
+    "result": {
+      "case": "g10",
+      "variant": "combined",
+      "seed": 0,
+      "goals": 3,
+      "allocation_goals": 3,
+      "depth_iterations": 247,
+      "root_out_degree": 891,
+      "classics": 21614,
+      "calls": 7344713,
+      "capacity": 26800,
+      "keys": {
+        "random_key": [
+          3764384500,
+          1946563400
+        ],
+        "goal_key": [
+          3764384500,
+          1946563400
+        ]
+      },
+      "fingerprints": {
+        "[<flat index 0>]['U_samples'][<flat index 0>]": {
+          "shape": [
+            21614,
+            10
+          ],
+          "dtype": "float32",
+          "sha256": "809e07e53a155f3fd08708bf72e452e5e9d18abe04744cd411ee5a9c13fd337a"
+        },
+        "[<flat index 0>]['log_L_constraints']": {
+          "shape": [
+            21614
+          ],
+          "dtype": "float64",
+          "sha256": "13c42e2858933821fc054e1ffe4125e33a0b2f15efa97f624c60c46839f54ea3"
+        },
+        "[<flat index 0>]['log_likelihoods']": {
+          "shape": [
+            21614
+          ],
+          "dtype": "float64",
+          "sha256": "f6901f7df33690f8db814911dcf6024443b40ffac5562b33f7caddd7d453e915"
+        },
+        "[<flat index 0>]['num_likelihood_evaluations']": {
+          "shape": [
+            21614
+          ],
+          "dtype": "int64",
+          "sha256": "d7bcb4abd6f06087566af69fda657173df91cc02b15c3070d9b500ffe4350cc9"
+        },
+        "[<flat index 0>]['out_degree']": {
+          "shape": [
+            21614
+          ],
+          "dtype": "int64",
+          "sha256": "a1faedb1aedc8c2fa140b3cb49a9d3d2f5c9892c4298ade8995120f4f2b7f6ec"
+        },
+        "[<flat index 0>]['phantom_samples'][<flat index 0>]['U_samples'][<flat index 0>]": {
+          "shape": [
+            21614,
+            99,
+            10
+          ],
+          "dtype": "float32",
+          "sha256": "0eba9e3b688add7cbec4bd2b411993f41bd5cf9e3b24f34522bfc00343656fd8"
+        },
+        "[<flat index 0>]['phantom_samples'][<flat index 0>]['log_L']": {
+          "shape": [
+            21614,
+            99
+          ],
+          "dtype": "float64",
+          "sha256": "790c66d44e70e9a4e20312f865d8fd01184e08fc1130ae4c4b8dc868af54c23a"
+        },
+        "[<flat index 0>]['phantom_samples'][<flat index 0>]['valid_mask']": {
+          "shape": [
+            21614,
+            99
+          ],
+          "dtype": "bool",
+          "sha256": "4d036404d535a701d6dc755aa3784968d29fa77494fd9f46d32b59e655e797b5"
+        }
+      },
+      "log_Z": -14.768297441899367,
+      "uncertainty": 0.15387008058734986,
+      "kish_ess": 3539.7165079504684,
+      "reference": {
+        "log_Z": -14.480149273693915,
+        "method": "Gaussian conjugacy",
+        "mean": [
+          3.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "covariance": [
+          [
+            1.0,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99
+          ],
+          [
+            0.99,
+            1.0,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99
+          ],
+          [
+            0.99,
+            0.99,
+            1.0,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99
+          ],
+          [
+            0.99,
+            0.99,
+            0.99,
+            1.0,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99
+          ],
+          [
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            1.0,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99
+          ],
+          [
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            1.0,
+            0.99,
+            0.99,
+            0.99,
+            0.99
+          ],
+          [
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            1.0,
+            0.99,
+            0.99,
+            0.99
+          ],
+          [
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            1.0,
+            0.99,
+            0.99
+          ],
+          [
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            1.0,
+            0.99
+          ],
+          [
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            1.0
+          ]
+        ],
+        "shear_beta": 0.0
+      },
+      "run_including_compilation_seconds": 87.7926791999489,
+      "run_peak_rss_bytes": 2727149568,
+      "checkpoint_roundtrip": true,
+      "progress": [
+        {
+          "goal": 1,
+          "classics": 9051,
+          "capacity": 13400,
+          "calls": 3497407,
+          "log_Z": -14.909840352364162,
+          "uncertainty": 0.2616677753420396,
+          "seconds": 50.478344761068
+        },
+        {
+          "goal": 2,
+          "classics": 15272,
+          "capacity": 26800,
+          "calls": 5366117,
+          "log_Z": -14.942450365662037,
+          "uncertainty": 0.18834006051473123,
+          "seconds": 77.70135380607098
+        },
+        {
+          "goal": 3,
+          "classics": 21614,
+          "capacity": 26800,
+          "calls": 7344713,
+          "log_Z": -14.768297441899367,
+          "uncertainty": 0.15387008058734986,
+          "seconds": 87.79178898409009
+        }
+      ],
+      "source_root": "/largedata/albert/git/jaxns-efficient-phantom-pr-20260911",
+      "source_commit": "772cc2b5cf931744a29c772113a67a9082da28c3",
+      "source_sha256": {
+        "src/jaxns/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "src/jaxns/algorithm/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "src/jaxns/algorithm/allocation.py": "c7400ed2b112275b7eedec4a938bddea1c366573c8d1ddfc39db3d1842ce1d59",
+        "src/jaxns/algorithm/depth.py": "fadc0d32b88273ec1c1feb83777d9e2710f9f366878dc5f698cccec2750e5b96",
+        "src/jaxns/algorithm/initialisation.py": "5c561e1425dd795ecbb37b50ab3f3089abba6768638b4c6cceb9b7e825955789",
+        "src/jaxns/algorithm/race_tree.py": "523e7c9091138f37a488732eb778d952c1bddf69470569c307c6e1c939d4c0f7",
+        "src/jaxns/algorithm/scheduler.py": "e85b5c3f963b6500d8dbbc0b323e631bcf64246e8a5cf7e53af7860a6b2367d7",
+        "src/jaxns/checkpoint.py": "05146a3edea96625152651fa7f98468c334c6c5653ad47ee99a92cdcaf846a45",
+        "src/jaxns/cli.py": "f31bee6b223b6bbae2147097c7725be89de8ca1128829f85823e5d3a0f90fbbb",
+        "src/jaxns/constrained_sampler.py": "6e765b3abdf9195c56dba59da6901500f0f70e0e6fc45614dba821dd83484774",
+        "src/jaxns/core.py": "c00dc31f6c07774fc8f5a2c41d43c6e875c24282bbb36f1ccdd054b07252ca91",
+        "src/jaxns/cumulative_ops.py": "092fae7fe6ff7f3fac2be09ad25889c542fe86e87e94eaa4a6c9e94e83860768",
+        "src/jaxns/depth_condition.py": "1690d452085822148518de2cfed8784de08e1b61db25942130b9fb95e5029a23",
+        "src/jaxns/diagnostics/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "src/jaxns/diagnostics/insertion.py": "6fba71ca533ab2587169f6ea13af95cad169d10236b6a9ef14dc4ffa07ecf1f9",
+        "src/jaxns/diagnostics/plotting.py": "fd00d18752588502d43b84c6bb0b78e52fe9091d3e3fba081033853745375fd7",
+        "src/jaxns/diagnostics/reference.py": "4a4d61d55aa41de55b1380096b2deefb226b99fd46508d30b5a8912229d823b3",
+        "src/jaxns/diagnostics/summary.py": "078dd3e80bd598afd7286672c1db828d5ec7bc35c5c230e920335d266a9edc6a",
+        "src/jaxns/distributed_core.py": "2ae4b422774a1a628b793274e99d1663f01a917f28c6caedd144b971053593e0",
+        "src/jaxns/jaxify.py": "dd148a8ad5ac92debdf5128e27e42e4515e56213ebbcf5a7b77160f1b9effb83",
+        "src/jaxns/log_semiring.py": "ecc6f77fb453b99b61011f1d5472d7146a380837e17595defc5278ff90d277e7",
+        "src/jaxns/logging.py": "4ac8a719709c73507d742674e4186414af386a500201f2878ccf97319c8e3fee",
+        "src/jaxns/mixed_precision.py": "a8ddefc4c70231d01c09fbc3cc185f18abb022c5504ea0940b69ca645eb39b34",
+        "src/jaxns/model.py": "88cb915ccdbc8dd3695e17a3bde34269f322d0d96bbff9a7d6b10e5c27a5434f",
+        "src/jaxns/optional.py": "201fd7d2e903c76a8a7ce16669960a95b632e7a8df3090fe7615dbdd02303da4",
+        "src/jaxns/pytree.py": "077681f8a3c4e192b64838c10043a6f747b8a01e207db9b14e82b06e412299d7",
+        "src/jaxns/random_utils.py": "c29228237b86bcae8f35a8961574b7030ca74fdf49822775b60c3b6ccef811d6",
+        "src/jaxns/results.py": "3dcefd3bc40990c4b296364047ce959460cbd7baeae58f8fb28bbb824175b8ed",
+        "src/jaxns/runtime/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "src/jaxns/runtime/client.py": "70057734cc64c0e3367cd421d517a1fc909ac4cd3c6b94564a5f4736b1ac77e3",
+        "src/jaxns/runtime/config.py": "e69df3815640ce46e4f56b21d83c3b0aeb0af14f681c55109db95420ed96773f",
+        "src/jaxns/runtime/coordinator.py": "e52d4fe0e7c8a4d3daa5624c708d43e51f8be18d03c2a24ce57036931905b8d4",
+        "src/jaxns/runtime/node.py": "8fbc0f50e82e512d050a1a68ed11ebed729c23ba4a16fef195191c3ff75aaf11",
+        "src/jaxns/runtime/protocol.py": "4825cec732698abe53b5976722519d891b3d5ec6064fa7f0f49c100de2bf0a03",
+        "src/jaxns/runtime/session.py": "45c23c39c4d32e3c63298db20def7f935a8f4f41d09457c0f9a6538bb1779bf5",
+        "src/jaxns/runtime/worker.py": "83480175d900ebfccfc00a9ba1e112da7ea2bfa92472162f2a2e3445cdeee9f1",
+        "src/jaxns/samples.py": "769e9b3e8026224d9da56cbd3631e93fefc639efb1cdd32fbc8b76169b9aa3f0",
+        "src/jaxns/sampling/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "src/jaxns/sampling/batching.py": "9aae23dbc4f3943fcf6b86f97825653f51d2f780a69278179bae9bef0b19b779",
+        "src/jaxns/sampling/continuation.py": "58a563f50678f16d191ef17eb1c074bfea00af1a30ab17f65c3352f4336737b4",
+        "src/jaxns/sampling/ellipsoid.py": "570fa23c43cc721b6a62ea941b18df2d8c40afd38acc2638cd688bacbbd4e00e",
+        "src/jaxns/sampling/gmm.py": "d96bb81badb42829a8395ae46701428f4a81d93574c20cce4e3a1b35573564b6",
+        "src/jaxns/sampling/phantom_index.py": "12903b6817244a0d4da136f3b00b0f5945494aeb25539578ed36703a650583c7",
+        "src/jaxns/sampling/phantom_seeds.py": "5755994a2244d6a1b5c6cec7539baaadd38266d3b4b58718e8a113012aa84d01",
+        "src/jaxns/sampling/protocol.py": "cc51b5a287ffade7cc188c17b56aef9f6697ca867e1db49858a27bd68989107d",
+        "src/jaxns/sampling/seeding.py": "abd9cbf70e3039c0cbd9c9a4495f35fe9c03465b44385369577a71ad28425959",
+        "src/jaxns/sampling/slice.py": "fd532483df0181292a0debc7bcdb25cf8459068f2297ca28cf393d6dc9ce6c81",
+        "src/jaxns/shrinkage/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "src/jaxns/shrinkage/classic.py": "4b391057a17af964f340eafe38f5a924b68e7fe19249d0a18ef16c90165ffac0",
+        "src/jaxns/shrinkage/online.py": "d159affa43067791a7754e53b546115a46f54a977214f4b4fcf64a4508bb4afb",
+        "src/jaxns/shrinkage/phantom.py": "098c07e40729e093959045de1e597ff2ef0d9cac41346164e6bbb1fdaff2ef7b",
+        "src/jaxns/shrinkage/reference.py": "d1c2895aa7a7131fc0338c2e8f223896b66f47e339d758cf45776d96195ea745",
+        "src/jaxns/state.py": "d5410709d8b99f95a993f30f5ec7813bdd786cba0daaf6f730e5a5698468b4d0",
+        "src/jaxns/stats_utils.py": "49163cc21155db242bd217bf38124395094cb7165c5225b5f0d82375ef413311",
+        "src/jaxns/types.py": "5295dd0a08d3eab3eea7e80ceb2cc661ef95820fcb00b17f2dc1596934243764"
+      },
+      "harness_sha256": "78dd59dee1598a56da849f076b2b5c581ac06caabd6eb16fded416179dcd5a01",
+      "affinity": [
+        64
+      ],
+      "hostname": "dorrie",
+      "jax": "0.10.0",
+      "backend": "cpu",
+      "x64": true
+    }
+  },
+  "cg10": {
+    "exact": true,
+    "checked_fields": [
+      "fingerprints",
+      "keys",
+      "classics",
+      "calls",
+      "goals",
+      "allocation_goals",
+      "depth_iterations",
+      "root_out_degree",
+      "log_Z",
+      "uncertainty",
+      "kish_ess"
+    ],
+    "result": {
+      "case": "cg10",
+      "variant": "combined",
+      "seed": 0,
+      "goals": 3,
+      "allocation_goals": 3,
+      "depth_iterations": 234,
+      "root_out_degree": 890,
+      "classics": 21031,
+      "calls": 7255048,
+      "capacity": 26800,
+      "keys": {
+        "random_key": [
+          3764384500,
+          1946563400
+        ],
+        "goal_key": [
+          3764384500,
+          1946563400
+        ]
+      },
+      "fingerprints": {
+        "[<flat index 0>]['U_samples'][<flat index 0>]": {
+          "shape": [
+            21031,
+            10
+          ],
+          "dtype": "float32",
+          "sha256": "2ed6dd165822a624237cd386c42bfe7f4ea882a56b64404bb9aac85c3ca965c1"
+        },
+        "[<flat index 0>]['log_L_constraints']": {
+          "shape": [
+            21031
+          ],
+          "dtype": "float64",
+          "sha256": "f9ef05bf5e3953dcd60ad2b63b40b539fa77df9c7247d48bc5c2f5c648d15a31"
+        },
+        "[<flat index 0>]['log_likelihoods']": {
+          "shape": [
+            21031
+          ],
+          "dtype": "float64",
+          "sha256": "e2c941b767285f105a5e186bd4a92d7bfccc268d57a7dacff4b5595a4943bb3c"
+        },
+        "[<flat index 0>]['num_likelihood_evaluations']": {
+          "shape": [
+            21031
+          ],
+          "dtype": "int64",
+          "sha256": "2cbd145a8631e666cd58b50f0525482ac3bbdef09babad50e6698891ce04555a"
+        },
+        "[<flat index 0>]['out_degree']": {
+          "shape": [
+            21031
+          ],
+          "dtype": "int64",
+          "sha256": "4cf2a01432ec927d7579e23586bad5f264790f18d2f179aa1854b3ff0f5b1c3d"
+        },
+        "[<flat index 0>]['phantom_samples'][<flat index 0>]['U_samples'][<flat index 0>]": {
+          "shape": [
+            21031,
+            99,
+            10
+          ],
+          "dtype": "float32",
+          "sha256": "780b0f2a8fb6bfc03ab5c51a9a623bb3892049feccb70e0c4701c3cecc52e7d2"
+        },
+        "[<flat index 0>]['phantom_samples'][<flat index 0>]['log_L']": {
+          "shape": [
+            21031,
+            99
+          ],
+          "dtype": "float64",
+          "sha256": "16096b9d6797959165ac2e4e7c3ed57eee8c5012b196855a89265010fdeed5c7"
+        },
+        "[<flat index 0>]['phantom_samples'][<flat index 0>]['valid_mask']": {
+          "shape": [
+            21031,
+            99
+          ],
+          "dtype": "bool",
+          "sha256": "5e6aa9978bfbc7ba53b4c4ccac4399b7c6080ddcf0540900f13c917518032445"
+        }
+      },
+      "log_Z": -14.666893453331966,
+      "uncertainty": 0.1535705971113928,
+      "kish_ess": 3662.9621738877872,
+      "reference": {
+        "log_Z": -14.599683294937872,
+        "method": "conditional 1D quadrature",
+        "mean": [
+          3.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "covariance": [
+          [
+            1.0,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99
+          ],
+          [
+            0.99,
+            1.0,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99
+          ],
+          [
+            0.99,
+            0.99,
+            1.0,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99
+          ],
+          [
+            0.99,
+            0.99,
+            0.99,
+            1.0,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99
+          ],
+          [
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            1.0,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99
+          ],
+          [
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            1.0,
+            0.99,
+            0.99,
+            0.99,
+            0.99
+          ],
+          [
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            1.0,
+            0.99,
+            0.99,
+            0.99
+          ],
+          [
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            1.0,
+            0.99,
+            0.99
+          ],
+          [
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            1.0,
+            0.99
+          ],
+          [
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            1.0
+          ]
+        ],
+        "shear_beta": 0.4
+      },
+      "run_including_compilation_seconds": 84.53712847293355,
+      "run_peak_rss_bytes": 2658664448,
+      "checkpoint_roundtrip": true,
+      "progress": [
+        {
+          "goal": 1,
+          "classics": 8479,
+          "capacity": 13400,
+          "calls": 3290958,
+          "log_Z": -14.520017351457605,
+          "uncertainty": 0.25871815697821127,
+          "seconds": 46.76685551810078
+        },
+        {
+          "goal": 2,
+          "classics": 14686,
+          "capacity": 26800,
+          "calls": 5196681,
+          "log_Z": -14.742153169005457,
+          "uncertainty": 0.18736224047435732,
+          "seconds": 72.63868001312949
+        },
+        {
+          "goal": 3,
+          "classics": 21031,
+          "capacity": 26800,
+          "calls": 7255048,
+          "log_Z": -14.666893453331966,
+          "uncertainty": 0.1535705971113928,
+          "seconds": 84.53601883095689
+        }
+      ],
+      "source_root": "/largedata/albert/git/jaxns-efficient-phantom-pr-20260911",
+      "source_commit": "772cc2b5cf931744a29c772113a67a9082da28c3",
+      "source_sha256": {
+        "src/jaxns/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "src/jaxns/algorithm/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "src/jaxns/algorithm/allocation.py": "c7400ed2b112275b7eedec4a938bddea1c366573c8d1ddfc39db3d1842ce1d59",
+        "src/jaxns/algorithm/depth.py": "fadc0d32b88273ec1c1feb83777d9e2710f9f366878dc5f698cccec2750e5b96",
+        "src/jaxns/algorithm/initialisation.py": "5c561e1425dd795ecbb37b50ab3f3089abba6768638b4c6cceb9b7e825955789",
+        "src/jaxns/algorithm/race_tree.py": "523e7c9091138f37a488732eb778d952c1bddf69470569c307c6e1c939d4c0f7",
+        "src/jaxns/algorithm/scheduler.py": "e85b5c3f963b6500d8dbbc0b323e631bcf64246e8a5cf7e53af7860a6b2367d7",
+        "src/jaxns/checkpoint.py": "05146a3edea96625152651fa7f98468c334c6c5653ad47ee99a92cdcaf846a45",
+        "src/jaxns/cli.py": "f31bee6b223b6bbae2147097c7725be89de8ca1128829f85823e5d3a0f90fbbb",
+        "src/jaxns/constrained_sampler.py": "6e765b3abdf9195c56dba59da6901500f0f70e0e6fc45614dba821dd83484774",
+        "src/jaxns/core.py": "c00dc31f6c07774fc8f5a2c41d43c6e875c24282bbb36f1ccdd054b07252ca91",
+        "src/jaxns/cumulative_ops.py": "092fae7fe6ff7f3fac2be09ad25889c542fe86e87e94eaa4a6c9e94e83860768",
+        "src/jaxns/depth_condition.py": "1690d452085822148518de2cfed8784de08e1b61db25942130b9fb95e5029a23",
+        "src/jaxns/diagnostics/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "src/jaxns/diagnostics/insertion.py": "6fba71ca533ab2587169f6ea13af95cad169d10236b6a9ef14dc4ffa07ecf1f9",
+        "src/jaxns/diagnostics/plotting.py": "fd00d18752588502d43b84c6bb0b78e52fe9091d3e3fba081033853745375fd7",
+        "src/jaxns/diagnostics/reference.py": "4a4d61d55aa41de55b1380096b2deefb226b99fd46508d30b5a8912229d823b3",
+        "src/jaxns/diagnostics/summary.py": "078dd3e80bd598afd7286672c1db828d5ec7bc35c5c230e920335d266a9edc6a",
+        "src/jaxns/distributed_core.py": "2ae4b422774a1a628b793274e99d1663f01a917f28c6caedd144b971053593e0",
+        "src/jaxns/jaxify.py": "dd148a8ad5ac92debdf5128e27e42e4515e56213ebbcf5a7b77160f1b9effb83",
+        "src/jaxns/log_semiring.py": "ecc6f77fb453b99b61011f1d5472d7146a380837e17595defc5278ff90d277e7",
+        "src/jaxns/logging.py": "4ac8a719709c73507d742674e4186414af386a500201f2878ccf97319c8e3fee",
+        "src/jaxns/mixed_precision.py": "a8ddefc4c70231d01c09fbc3cc185f18abb022c5504ea0940b69ca645eb39b34",
+        "src/jaxns/model.py": "88cb915ccdbc8dd3695e17a3bde34269f322d0d96bbff9a7d6b10e5c27a5434f",
+        "src/jaxns/optional.py": "201fd7d2e903c76a8a7ce16669960a95b632e7a8df3090fe7615dbdd02303da4",
+        "src/jaxns/pytree.py": "077681f8a3c4e192b64838c10043a6f747b8a01e207db9b14e82b06e412299d7",
+        "src/jaxns/random_utils.py": "c29228237b86bcae8f35a8961574b7030ca74fdf49822775b60c3b6ccef811d6",
+        "src/jaxns/results.py": "3dcefd3bc40990c4b296364047ce959460cbd7baeae58f8fb28bbb824175b8ed",
+        "src/jaxns/runtime/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "src/jaxns/runtime/client.py": "70057734cc64c0e3367cd421d517a1fc909ac4cd3c6b94564a5f4736b1ac77e3",
+        "src/jaxns/runtime/config.py": "e69df3815640ce46e4f56b21d83c3b0aeb0af14f681c55109db95420ed96773f",
+        "src/jaxns/runtime/coordinator.py": "e52d4fe0e7c8a4d3daa5624c708d43e51f8be18d03c2a24ce57036931905b8d4",
+        "src/jaxns/runtime/node.py": "8fbc0f50e82e512d050a1a68ed11ebed729c23ba4a16fef195191c3ff75aaf11",
+        "src/jaxns/runtime/protocol.py": "4825cec732698abe53b5976722519d891b3d5ec6064fa7f0f49c100de2bf0a03",
+        "src/jaxns/runtime/session.py": "45c23c39c4d32e3c63298db20def7f935a8f4f41d09457c0f9a6538bb1779bf5",
+        "src/jaxns/runtime/worker.py": "83480175d900ebfccfc00a9ba1e112da7ea2bfa92472162f2a2e3445cdeee9f1",
+        "src/jaxns/samples.py": "769e9b3e8026224d9da56cbd3631e93fefc639efb1cdd32fbc8b76169b9aa3f0",
+        "src/jaxns/sampling/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "src/jaxns/sampling/batching.py": "9aae23dbc4f3943fcf6b86f97825653f51d2f780a69278179bae9bef0b19b779",
+        "src/jaxns/sampling/continuation.py": "58a563f50678f16d191ef17eb1c074bfea00af1a30ab17f65c3352f4336737b4",
+        "src/jaxns/sampling/ellipsoid.py": "570fa23c43cc721b6a62ea941b18df2d8c40afd38acc2638cd688bacbbd4e00e",
+        "src/jaxns/sampling/gmm.py": "d96bb81badb42829a8395ae46701428f4a81d93574c20cce4e3a1b35573564b6",
+        "src/jaxns/sampling/phantom_index.py": "12903b6817244a0d4da136f3b00b0f5945494aeb25539578ed36703a650583c7",
+        "src/jaxns/sampling/phantom_seeds.py": "5755994a2244d6a1b5c6cec7539baaadd38266d3b4b58718e8a113012aa84d01",
+        "src/jaxns/sampling/protocol.py": "cc51b5a287ffade7cc188c17b56aef9f6697ca867e1db49858a27bd68989107d",
+        "src/jaxns/sampling/seeding.py": "abd9cbf70e3039c0cbd9c9a4495f35fe9c03465b44385369577a71ad28425959",
+        "src/jaxns/sampling/slice.py": "fd532483df0181292a0debc7bcdb25cf8459068f2297ca28cf393d6dc9ce6c81",
+        "src/jaxns/shrinkage/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "src/jaxns/shrinkage/classic.py": "4b391057a17af964f340eafe38f5a924b68e7fe19249d0a18ef16c90165ffac0",
+        "src/jaxns/shrinkage/online.py": "d159affa43067791a7754e53b546115a46f54a977214f4b4fcf64a4508bb4afb",
+        "src/jaxns/shrinkage/phantom.py": "098c07e40729e093959045de1e597ff2ef0d9cac41346164e6bbb1fdaff2ef7b",
+        "src/jaxns/shrinkage/reference.py": "d1c2895aa7a7131fc0338c2e8f223896b66f47e339d758cf45776d96195ea745",
+        "src/jaxns/state.py": "d5410709d8b99f95a993f30f5ec7813bdd786cba0daaf6f730e5a5698468b4d0",
+        "src/jaxns/stats_utils.py": "49163cc21155db242bd217bf38124395094cb7165c5225b5f0d82375ef413311",
+        "src/jaxns/types.py": "5295dd0a08d3eab3eea7e80ceb2cc661ef95820fcb00b17f2dc1596934243764"
+      },
+      "harness_sha256": "78dd59dee1598a56da849f076b2b5c581ac06caabd6eb16fded416179dcd5a01",
+      "affinity": [
+        65
+      ],
+      "hostname": "dorrie",
+      "jax": "0.10.0",
+      "backend": "cpu",
+      "x64": true
+    }
+  },
+  "ss10": {
+    "exact": true,
+    "checked_fields": [
+      "fingerprints",
+      "keys",
+      "classics",
+      "calls",
+      "goals",
+      "allocation_goals",
+      "depth_iterations",
+      "root_out_degree",
+      "log_Z",
+      "uncertainty",
+      "kish_ess"
+    ],
+    "result": {
+      "case": "ss10",
+      "variant": "combined",
+      "seed": 0,
+      "goals": 3,
+      "allocation_goals": 3,
+      "depth_iterations": 162,
+      "root_out_degree": 890,
+      "classics": 14307,
+      "calls": 3579389,
+      "capacity": 26800,
+      "keys": {
+        "random_key": [
+          3764384500,
+          1946563400
+        ],
+        "goal_key": [
+          3764384500,
+          1946563400
+        ]
+      },
+      "fingerprints": {
+        "[<flat index 0>]['U_samples'][<flat index 0>]": {
+          "shape": [
+            14307,
+            10
+          ],
+          "dtype": "float32",
+          "sha256": "6721a58cbebf4a96ffea8f9ba2f7375e2bca744f9224c908387c2251789c5a9f"
+        },
+        "[<flat index 0>]['log_L_constraints']": {
+          "shape": [
+            14307
+          ],
+          "dtype": "float64",
+          "sha256": "8b7cd8818df57989edc412493ee6433e54b7a5cde4a5f92dbb4e18cac01a8633"
+        },
+        "[<flat index 0>]['log_likelihoods']": {
+          "shape": [
+            14307
+          ],
+          "dtype": "float64",
+          "sha256": "6dae00c80a93c9b88734e7b509f67444743748b010a0d80337138ba9d1814da0"
+        },
+        "[<flat index 0>]['num_likelihood_evaluations']": {
+          "shape": [
+            14307
+          ],
+          "dtype": "int64",
+          "sha256": "67088e9119da7d2c927966eae804cfb36cb281c7a42dab382858f646f8e204a1"
+        },
+        "[<flat index 0>]['out_degree']": {
+          "shape": [
+            14307
+          ],
+          "dtype": "int64",
+          "sha256": "9006c2f8edf61fff566c1abe95bbb7ba0d0f8d8691f3c386f7d054ac4be625a9"
+        },
+        "[<flat index 0>]['phantom_samples'][<flat index 0>]['U_samples'][<flat index 0>]": {
+          "shape": [
+            14307,
+            99,
+            10
+          ],
+          "dtype": "float32",
+          "sha256": "e46e91c60e0518b1bc8eb6f4a92997b26809f8a7743d305aaac48ad362b6ba83"
+        },
+        "[<flat index 0>]['phantom_samples'][<flat index 0>]['log_L']": {
+          "shape": [
+            14307,
+            99
+          ],
+          "dtype": "float64",
+          "sha256": "1372c463d05518e374087a660de2abf750e518464980aa340214888c99464f34"
+        },
+        "[<flat index 0>]['phantom_samples'][<flat index 0>]['valid_mask']": {
+          "shape": [
+            14307,
+            99
+          ],
+          "dtype": "bool",
+          "sha256": "748c22bc95a5d8238eb05c5ada6b935cd9183151f8d841bca951c45e243df4da"
+        }
+      },
+      "log_Z": -24.8559971070984,
+      "uncertainty": 0.1182244320052989,
+      "kish_ess": 3721.283865682881,
+      "reference": {
+        "method": "product of Gaussian CDF differences over the finite prior box",
+        "log_Z": -24.15593480605331,
+        "component_log_Z": [
+          -24.84906649788154,
+          -24.849097475584877
+        ],
+        "spike_mass": 0.5000077444258325,
+        "means": [
+          [
+            6.0,
+            6.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            2.5,
+            2.5,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        ],
+        "standard_deviations": [
+          0.282842712474619,
+          0.8944271909999159
+        ]
+      },
+      "run_including_compilation_seconds": 66.05822910601273,
+      "run_peak_rss_bytes": 2513436672,
+      "checkpoint_roundtrip": true,
+      "progress": [
+        {
+          "goal": 1,
+          "classics": 6912,
+          "capacity": 13400,
+          "calls": 2055098,
+          "log_Z": -25.022359667565638,
+          "uncertainty": 0.19898121744349445,
+          "seconds": 40.34597583208233
+        },
+        {
+          "goal": 2,
+          "classics": 10482,
+          "capacity": 13400,
+          "calls": 2769791,
+          "log_Z": -24.97376262436713,
+          "uncertainty": 0.14461597330269643,
+          "seconds": 47.98280589701608
+        },
+        {
+          "goal": 3,
+          "classics": 14307,
+          "capacity": 26800,
+          "calls": 3579389,
+          "log_Z": -24.8559971070984,
+          "uncertainty": 0.1182244320052989,
+          "seconds": 66.05735553009436
+        }
+      ],
+      "source_root": "/largedata/albert/git/jaxns-efficient-phantom-pr-20260911",
+      "source_commit": "772cc2b5cf931744a29c772113a67a9082da28c3",
+      "source_sha256": {
+        "src/jaxns/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "src/jaxns/algorithm/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "src/jaxns/algorithm/allocation.py": "c7400ed2b112275b7eedec4a938bddea1c366573c8d1ddfc39db3d1842ce1d59",
+        "src/jaxns/algorithm/depth.py": "fadc0d32b88273ec1c1feb83777d9e2710f9f366878dc5f698cccec2750e5b96",
+        "src/jaxns/algorithm/initialisation.py": "5c561e1425dd795ecbb37b50ab3f3089abba6768638b4c6cceb9b7e825955789",
+        "src/jaxns/algorithm/race_tree.py": "523e7c9091138f37a488732eb778d952c1bddf69470569c307c6e1c939d4c0f7",
+        "src/jaxns/algorithm/scheduler.py": "e85b5c3f963b6500d8dbbc0b323e631bcf64246e8a5cf7e53af7860a6b2367d7",
+        "src/jaxns/checkpoint.py": "05146a3edea96625152651fa7f98468c334c6c5653ad47ee99a92cdcaf846a45",
+        "src/jaxns/cli.py": "f31bee6b223b6bbae2147097c7725be89de8ca1128829f85823e5d3a0f90fbbb",
+        "src/jaxns/constrained_sampler.py": "6e765b3abdf9195c56dba59da6901500f0f70e0e6fc45614dba821dd83484774",
+        "src/jaxns/core.py": "c00dc31f6c07774fc8f5a2c41d43c6e875c24282bbb36f1ccdd054b07252ca91",
+        "src/jaxns/cumulative_ops.py": "092fae7fe6ff7f3fac2be09ad25889c542fe86e87e94eaa4a6c9e94e83860768",
+        "src/jaxns/depth_condition.py": "1690d452085822148518de2cfed8784de08e1b61db25942130b9fb95e5029a23",
+        "src/jaxns/diagnostics/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "src/jaxns/diagnostics/insertion.py": "6fba71ca533ab2587169f6ea13af95cad169d10236b6a9ef14dc4ffa07ecf1f9",
+        "src/jaxns/diagnostics/plotting.py": "fd00d18752588502d43b84c6bb0b78e52fe9091d3e3fba081033853745375fd7",
+        "src/jaxns/diagnostics/reference.py": "4a4d61d55aa41de55b1380096b2deefb226b99fd46508d30b5a8912229d823b3",
+        "src/jaxns/diagnostics/summary.py": "078dd3e80bd598afd7286672c1db828d5ec7bc35c5c230e920335d266a9edc6a",
+        "src/jaxns/distributed_core.py": "2ae4b422774a1a628b793274e99d1663f01a917f28c6caedd144b971053593e0",
+        "src/jaxns/jaxify.py": "dd148a8ad5ac92debdf5128e27e42e4515e56213ebbcf5a7b77160f1b9effb83",
+        "src/jaxns/log_semiring.py": "ecc6f77fb453b99b61011f1d5472d7146a380837e17595defc5278ff90d277e7",
+        "src/jaxns/logging.py": "4ac8a719709c73507d742674e4186414af386a500201f2878ccf97319c8e3fee",
+        "src/jaxns/mixed_precision.py": "a8ddefc4c70231d01c09fbc3cc185f18abb022c5504ea0940b69ca645eb39b34",
+        "src/jaxns/model.py": "88cb915ccdbc8dd3695e17a3bde34269f322d0d96bbff9a7d6b10e5c27a5434f",
+        "src/jaxns/optional.py": "201fd7d2e903c76a8a7ce16669960a95b632e7a8df3090fe7615dbdd02303da4",
+        "src/jaxns/pytree.py": "077681f8a3c4e192b64838c10043a6f747b8a01e207db9b14e82b06e412299d7",
+        "src/jaxns/random_utils.py": "c29228237b86bcae8f35a8961574b7030ca74fdf49822775b60c3b6ccef811d6",
+        "src/jaxns/results.py": "3dcefd3bc40990c4b296364047ce959460cbd7baeae58f8fb28bbb824175b8ed",
+        "src/jaxns/runtime/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "src/jaxns/runtime/client.py": "70057734cc64c0e3367cd421d517a1fc909ac4cd3c6b94564a5f4736b1ac77e3",
+        "src/jaxns/runtime/config.py": "e69df3815640ce46e4f56b21d83c3b0aeb0af14f681c55109db95420ed96773f",
+        "src/jaxns/runtime/coordinator.py": "e52d4fe0e7c8a4d3daa5624c708d43e51f8be18d03c2a24ce57036931905b8d4",
+        "src/jaxns/runtime/node.py": "8fbc0f50e82e512d050a1a68ed11ebed729c23ba4a16fef195191c3ff75aaf11",
+        "src/jaxns/runtime/protocol.py": "4825cec732698abe53b5976722519d891b3d5ec6064fa7f0f49c100de2bf0a03",
+        "src/jaxns/runtime/session.py": "45c23c39c4d32e3c63298db20def7f935a8f4f41d09457c0f9a6538bb1779bf5",
+        "src/jaxns/runtime/worker.py": "83480175d900ebfccfc00a9ba1e112da7ea2bfa92472162f2a2e3445cdeee9f1",
+        "src/jaxns/samples.py": "769e9b3e8026224d9da56cbd3631e93fefc639efb1cdd32fbc8b76169b9aa3f0",
+        "src/jaxns/sampling/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "src/jaxns/sampling/batching.py": "9aae23dbc4f3943fcf6b86f97825653f51d2f780a69278179bae9bef0b19b779",
+        "src/jaxns/sampling/continuation.py": "58a563f50678f16d191ef17eb1c074bfea00af1a30ab17f65c3352f4336737b4",
+        "src/jaxns/sampling/ellipsoid.py": "570fa23c43cc721b6a62ea941b18df2d8c40afd38acc2638cd688bacbbd4e00e",
+        "src/jaxns/sampling/gmm.py": "d96bb81badb42829a8395ae46701428f4a81d93574c20cce4e3a1b35573564b6",
+        "src/jaxns/sampling/phantom_index.py": "12903b6817244a0d4da136f3b00b0f5945494aeb25539578ed36703a650583c7",
+        "src/jaxns/sampling/phantom_seeds.py": "5755994a2244d6a1b5c6cec7539baaadd38266d3b4b58718e8a113012aa84d01",
+        "src/jaxns/sampling/protocol.py": "cc51b5a287ffade7cc188c17b56aef9f6697ca867e1db49858a27bd68989107d",
+        "src/jaxns/sampling/seeding.py": "abd9cbf70e3039c0cbd9c9a4495f35fe9c03465b44385369577a71ad28425959",
+        "src/jaxns/sampling/slice.py": "fd532483df0181292a0debc7bcdb25cf8459068f2297ca28cf393d6dc9ce6c81",
+        "src/jaxns/shrinkage/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "src/jaxns/shrinkage/classic.py": "4b391057a17af964f340eafe38f5a924b68e7fe19249d0a18ef16c90165ffac0",
+        "src/jaxns/shrinkage/online.py": "d159affa43067791a7754e53b546115a46f54a977214f4b4fcf64a4508bb4afb",
+        "src/jaxns/shrinkage/phantom.py": "098c07e40729e093959045de1e597ff2ef0d9cac41346164e6bbb1fdaff2ef7b",
+        "src/jaxns/shrinkage/reference.py": "d1c2895aa7a7131fc0338c2e8f223896b66f47e339d758cf45776d96195ea745",
+        "src/jaxns/state.py": "d5410709d8b99f95a993f30f5ec7813bdd786cba0daaf6f730e5a5698468b4d0",
+        "src/jaxns/stats_utils.py": "49163cc21155db242bd217bf38124395094cb7165c5225b5f0d82375ef413311",
+        "src/jaxns/types.py": "5295dd0a08d3eab3eea7e80ceb2cc661ef95820fcb00b17f2dc1596934243764"
+      },
+      "harness_sha256": "78dd59dee1598a56da849f076b2b5c581ac06caabd6eb16fded416179dcd5a01",
+      "affinity": [
+        66
+      ],
+      "hostname": "dorrie",
+      "jax": "0.10.0",
+      "backend": "cpu",
+      "x64": true
+    }
+  },
+  "ss10_0.02_one_goal": {
+    "exact": true,
+    "reference": "/largedata/albert/git/jaxns-efficient-phantom-A-20260910/benchmarks/phantom_seeding/results/cohort-ss10-002-20260910/seed-00/reference.json",
+    "result": {
+      "variant": "combined",
+      "state_path": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.02/ss10/seed-00/state.pkl",
+      "source_root": "/largedata/albert/git/jaxns-efficient-phantom-pr-20260911",
+      "source_commit": "772cc2b5cf931744a29c772113a67a9082da28c3",
+      "source_sha256": {
+        "src/jaxns/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "src/jaxns/algorithm/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "src/jaxns/algorithm/allocation.py": "c7400ed2b112275b7eedec4a938bddea1c366573c8d1ddfc39db3d1842ce1d59",
+        "src/jaxns/algorithm/depth.py": "fadc0d32b88273ec1c1feb83777d9e2710f9f366878dc5f698cccec2750e5b96",
+        "src/jaxns/algorithm/initialisation.py": "5c561e1425dd795ecbb37b50ab3f3089abba6768638b4c6cceb9b7e825955789",
+        "src/jaxns/algorithm/race_tree.py": "523e7c9091138f37a488732eb778d952c1bddf69470569c307c6e1c939d4c0f7",
+        "src/jaxns/algorithm/scheduler.py": "e85b5c3f963b6500d8dbbc0b323e631bcf64246e8a5cf7e53af7860a6b2367d7",
+        "src/jaxns/checkpoint.py": "05146a3edea96625152651fa7f98468c334c6c5653ad47ee99a92cdcaf846a45",
+        "src/jaxns/cli.py": "f31bee6b223b6bbae2147097c7725be89de8ca1128829f85823e5d3a0f90fbbb",
+        "src/jaxns/constrained_sampler.py": "6e765b3abdf9195c56dba59da6901500f0f70e0e6fc45614dba821dd83484774",
+        "src/jaxns/core.py": "c00dc31f6c07774fc8f5a2c41d43c6e875c24282bbb36f1ccdd054b07252ca91",
+        "src/jaxns/cumulative_ops.py": "092fae7fe6ff7f3fac2be09ad25889c542fe86e87e94eaa4a6c9e94e83860768",
+        "src/jaxns/depth_condition.py": "1690d452085822148518de2cfed8784de08e1b61db25942130b9fb95e5029a23",
+        "src/jaxns/diagnostics/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "src/jaxns/diagnostics/insertion.py": "6fba71ca533ab2587169f6ea13af95cad169d10236b6a9ef14dc4ffa07ecf1f9",
+        "src/jaxns/diagnostics/plotting.py": "fd00d18752588502d43b84c6bb0b78e52fe9091d3e3fba081033853745375fd7",
+        "src/jaxns/diagnostics/reference.py": "4a4d61d55aa41de55b1380096b2deefb226b99fd46508d30b5a8912229d823b3",
+        "src/jaxns/diagnostics/summary.py": "078dd3e80bd598afd7286672c1db828d5ec7bc35c5c230e920335d266a9edc6a",
+        "src/jaxns/distributed_core.py": "2ae4b422774a1a628b793274e99d1663f01a917f28c6caedd144b971053593e0",
+        "src/jaxns/jaxify.py": "dd148a8ad5ac92debdf5128e27e42e4515e56213ebbcf5a7b77160f1b9effb83",
+        "src/jaxns/log_semiring.py": "ecc6f77fb453b99b61011f1d5472d7146a380837e17595defc5278ff90d277e7",
+        "src/jaxns/logging.py": "4ac8a719709c73507d742674e4186414af386a500201f2878ccf97319c8e3fee",
+        "src/jaxns/mixed_precision.py": "a8ddefc4c70231d01c09fbc3cc185f18abb022c5504ea0940b69ca645eb39b34",
+        "src/jaxns/model.py": "88cb915ccdbc8dd3695e17a3bde34269f322d0d96bbff9a7d6b10e5c27a5434f",
+        "src/jaxns/optional.py": "201fd7d2e903c76a8a7ce16669960a95b632e7a8df3090fe7615dbdd02303da4",
+        "src/jaxns/pytree.py": "077681f8a3c4e192b64838c10043a6f747b8a01e207db9b14e82b06e412299d7",
+        "src/jaxns/random_utils.py": "c29228237b86bcae8f35a8961574b7030ca74fdf49822775b60c3b6ccef811d6",
+        "src/jaxns/results.py": "3dcefd3bc40990c4b296364047ce959460cbd7baeae58f8fb28bbb824175b8ed",
+        "src/jaxns/runtime/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "src/jaxns/runtime/client.py": "70057734cc64c0e3367cd421d517a1fc909ac4cd3c6b94564a5f4736b1ac77e3",
+        "src/jaxns/runtime/config.py": "e69df3815640ce46e4f56b21d83c3b0aeb0af14f681c55109db95420ed96773f",
+        "src/jaxns/runtime/coordinator.py": "e52d4fe0e7c8a4d3daa5624c708d43e51f8be18d03c2a24ce57036931905b8d4",
+        "src/jaxns/runtime/node.py": "8fbc0f50e82e512d050a1a68ed11ebed729c23ba4a16fef195191c3ff75aaf11",
+        "src/jaxns/runtime/protocol.py": "4825cec732698abe53b5976722519d891b3d5ec6064fa7f0f49c100de2bf0a03",
+        "src/jaxns/runtime/session.py": "45c23c39c4d32e3c63298db20def7f935a8f4f41d09457c0f9a6538bb1779bf5",
+        "src/jaxns/runtime/worker.py": "83480175d900ebfccfc00a9ba1e112da7ea2bfa92472162f2a2e3445cdeee9f1",
+        "src/jaxns/samples.py": "769e9b3e8026224d9da56cbd3631e93fefc639efb1cdd32fbc8b76169b9aa3f0",
+        "src/jaxns/sampling/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "src/jaxns/sampling/batching.py": "9aae23dbc4f3943fcf6b86f97825653f51d2f780a69278179bae9bef0b19b779",
+        "src/jaxns/sampling/continuation.py": "58a563f50678f16d191ef17eb1c074bfea00af1a30ab17f65c3352f4336737b4",
+        "src/jaxns/sampling/ellipsoid.py": "570fa23c43cc721b6a62ea941b18df2d8c40afd38acc2638cd688bacbbd4e00e",
+        "src/jaxns/sampling/gmm.py": "d96bb81badb42829a8395ae46701428f4a81d93574c20cce4e3a1b35573564b6",
+        "src/jaxns/sampling/phantom_index.py": "12903b6817244a0d4da136f3b00b0f5945494aeb25539578ed36703a650583c7",
+        "src/jaxns/sampling/phantom_seeds.py": "5755994a2244d6a1b5c6cec7539baaadd38266d3b4b58718e8a113012aa84d01",
+        "src/jaxns/sampling/protocol.py": "cc51b5a287ffade7cc188c17b56aef9f6697ca867e1db49858a27bd68989107d",
+        "src/jaxns/sampling/seeding.py": "abd9cbf70e3039c0cbd9c9a4495f35fe9c03465b44385369577a71ad28425959",
+        "src/jaxns/sampling/slice.py": "fd532483df0181292a0debc7bcdb25cf8459068f2297ca28cf393d6dc9ce6c81",
+        "src/jaxns/shrinkage/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "src/jaxns/shrinkage/classic.py": "4b391057a17af964f340eafe38f5a924b68e7fe19249d0a18ef16c90165ffac0",
+        "src/jaxns/shrinkage/online.py": "d159affa43067791a7754e53b546115a46f54a977214f4b4fcf64a4508bb4afb",
+        "src/jaxns/shrinkage/phantom.py": "098c07e40729e093959045de1e597ff2ef0d9cac41346164e6bbb1fdaff2ef7b",
+        "src/jaxns/shrinkage/reference.py": "d1c2895aa7a7131fc0338c2e8f223896b66f47e339d758cf45776d96195ea745",
+        "src/jaxns/state.py": "d5410709d8b99f95a993f30f5ec7813bdd786cba0daaf6f730e5a5698468b4d0",
+        "src/jaxns/stats_utils.py": "49163cc21155db242bd217bf38124395094cb7165c5225b5f0d82375ef413311",
+        "src/jaxns/types.py": "5295dd0a08d3eab3eea7e80ceb2cc661ef95820fcb00b17f2dc1596934243764"
+      },
+      "harness_sha256": "542ab6323b71da69cf176434004036eb96e1aa59d9aba6c832fbd6efbf8e5b6d",
+      "conversion_including_compile_seconds": 6.8664801579434425,
+      "cold_seconds": 47.61739523219876,
+      "warm_seconds": [
+        30.77270707883872,
+        30.634647539118305,
+        30.582730208989233
+      ],
+      "median_seconds": 30.634647539118305,
+      "quartiles_seconds": [
+        30.60868887405377,
+        30.703677308978513
+      ],
+      "run_peak_rss_bytes": [
+        17153851392,
+        17780965376,
+        17785159680,
+        17785159680
+      ],
+      "warm_peak_rss_bytes": 17785159680,
+      "memory_measurement_version": 2,
+      "total_peak_rss_bytes": 17785159680,
+      "input_classics": 468908,
+      "input_capacity": 857600,
+      "classics": 473747,
+      "capacity": 857600,
+      "calls": 111352131,
+      "new_calls": 1225459,
+      "goals": 177,
+      "fingerprints": {
+        "[<flat index 0>]['U_samples'][<flat index 0>]": {
+          "shape": [
+            473747,
+            10
+          ],
+          "dtype": "float32",
+          "sha256": "c0e5236f7755d8b86733d27232fb0c3bab5906c76432f18018a1ffa46a0a1b29"
+        },
+        "[<flat index 0>]['log_L_constraints']": {
+          "shape": [
+            473747
+          ],
+          "dtype": "float64",
+          "sha256": "2de518fd50bdb5c194d403f5bdf9f8e2917dfb0446a882abf9fc7e2c12445507"
+        },
+        "[<flat index 0>]['log_likelihoods']": {
+          "shape": [
+            473747
+          ],
+          "dtype": "float64",
+          "sha256": "2c3b1707dfa6ce6e113245a1ee38a9ffbcf174aff7edc0480f797fb8a704089b"
+        },
+        "[<flat index 0>]['num_likelihood_evaluations']": {
+          "shape": [
+            473747
+          ],
+          "dtype": "int64",
+          "sha256": "9c715af838395d3fdca3ad14f4683c8b15f054f5fe1cfb65dbfc85a21e8fc5ce"
+        },
+        "[<flat index 0>]['out_degree']": {
+          "shape": [
+            473747
+          ],
+          "dtype": "int64",
+          "sha256": "7c070dbefd5f9caad1c8baafff1bd0c300951b89b9dcf9e4cb359fe9b08301b7"
+        },
+        "[<flat index 0>]['phantom_samples'][<flat index 0>]['U_samples'][<flat index 0>]": {
+          "shape": [
+            473747,
+            99,
+            10
+          ],
+          "dtype": "float32",
+          "sha256": "2251361558a50382f5f6a31b9bf715494623dc4a5d2a909b0e7301423d1d28b4"
+        },
+        "[<flat index 0>]['phantom_samples'][<flat index 0>]['log_L']": {
+          "shape": [
+            473747,
+            99
+          ],
+          "dtype": "float64",
+          "sha256": "460cd9e10482cc8645d8ad8754b09b6da5b28c54a213d056162d63bd503c5354"
+        },
+        "[<flat index 0>]['phantom_samples'][<flat index 0>]['valid_mask']": {
+          "shape": [
+            473747,
+            99
+          ],
+          "dtype": "bool",
+          "sha256": "2eab99af53cf65c9f34b13f30b48fd21e954d92f349f0e830f69542e9aeb4d47"
+        }
+      },
+      "random_key": [
+        3581859460,
+        3957024429
+      ],
+      "goal_key": [
+        3581859460,
+        3957024429
+      ],
+      "affinity": [
+        68
+      ],
+      "hostname": "dorrie",
+      "jax": "0.10.0",
+      "backend": "cpu",
+      "x64": true,
+      "accuracy": {
+        "log_Z": -24.791183903242246,
+        "log_Z_uncert": 0.019896470887510995,
+        "log_Z_error": -0.635249097188936,
+        "spike_mass": 0.02941039446037677,
+        "spike_mass_error": -0.47059734996545577,
+        "true_log_Z": -24.15593480605331,
+        "true_spike_mass": 0.5000077444258325,
+        "kish_ess": 112624.1983838104,
+        "posterior_mean": [
+          2.6055150395660607,
+          2.6047672422492814,
+          0.0016661693772248379,
+          -0.000940676471848813,
+          0.00491922404799626,
+          -0.0036427838193880124,
+          -0.0005785780204044318,
+          0.0008572970806665774,
+          -0.0017873364531321172,
+          -0.0002255258474289311
+        ],
+        "analysis_seconds": 8.327401243150234
+      },
+      "post_analysis_peak_rss_bytes": 17785159680
+    }
+  }
+}

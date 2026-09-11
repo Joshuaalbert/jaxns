@@ -45,3 +45,19 @@ repeat mistakes specific to this project. Keep learnings compact.
   stationary classic into the exact seed source before projecting the same
   allocation target. Reusing the older source reduced boundary time but made
   three fixed-seed standard gates fail and raised Jones likelihood work by 73%.
+
+## Exact all-phantom seed indexing
+
+- Phantom identities are `(classic row, transition slot)` in append/transition
+  order. Eligibility is `valid & birth <= contour < likelihood`; endpoint
+  sorting counts membership only and must not reorder proposal ranks.
+- Block caches belong to State, outside the sample pytree sorted for posterior
+  views. Seal full blocks incrementally and include the unfinished tail
+  immediately. New runs use blocks; legacy row-cache checkpoints remain usable.
+- Preserve the 64-value random draw and keys while resolving only the first
+  admissible rank through scalar control flow. Vmapping those conditionals
+  removes laziness and can recreate large candidate/block intermediates.
+- The 30 paired SS10 0.02 one-goal comparison measured 5.53x geometric-mean
+  speedup with identical scientific outputs and likelihood counts, and 2.8%
+  lower median paired warm RSS. This is a whole-goal comparison against full A,
+  not fresh initialization-to-0.02 timing or a large storage reduction.

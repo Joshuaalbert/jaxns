@@ -27,6 +27,9 @@ class PhantomSamples(PureDataclassPytree):
     U_samples: UType | None  # [P, ...] unit-hypercube pytree leaves
     valid_mask: BoolArray  # [P]
     log_L: FloatArray  # [P]
+    # Row index retained by reference checkpoints. New states keep their
+    # block cache on State instead; neither index orders scientific points.
+    seed_log_L_sorted: FloatArray | None = None  # [P]
 
 
 PhantomSamples.register_pytree()
@@ -218,7 +221,13 @@ def _resize(self: Samples, max_samples: int) -> Samples:
         phantom_samples=PhantomSamples(
             U_samples=jax.tree.map(lambda x: jnp.zeros_like(x[0]), self.phantom_samples.U_samples),
             log_L=jnp.full_like(self.phantom_samples.log_L[0], -jnp.inf),
-            valid_mask=jnp.zeros_like(self.phantom_samples.valid_mask[0])
+            valid_mask=jnp.zeros_like(self.phantom_samples.valid_mask[0]),
+            seed_log_L_sorted=(
+                None if self.phantom_samples.seed_log_L_sorted is None
+                else jnp.full_like(
+                    self.phantom_samples.seed_log_L_sorted[0], -jnp.inf,
+                )
+            ),
         ),
     )
 

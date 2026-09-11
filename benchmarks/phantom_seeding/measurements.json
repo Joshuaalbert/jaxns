@@ -1,0 +1,5547 @@
+{
+  "reference_commit": "aa79a0dc395c0d64b85cbb88d0e3e732decd7361",
+  "records": {
+    "final/0.02/ss10/mixed-blocks.json": {
+      "variant": "blocks",
+      "block_size": 256,
+      "queries": "mixed",
+      "shell_size": 100,
+      "accepted": 468908,
+      "capacity": 857600,
+      "phantom_slots": 99,
+      "dimension": 10,
+      "state_path": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.02/ss10/seed-00/state.pkl",
+      "source_root": "/largedata/albert/git/jaxns-efficient-phantom-A-20260910",
+      "affinity": [
+        68
+      ],
+      "hostname": "dorrie",
+      "machine": "aarch64",
+      "jax": "0.10.0",
+      "backend": "cpu",
+      "x64": true,
+      "seconds": [
+        1.3539346880279481,
+        1.3467144910246134,
+        1.2991841910406947,
+        1.2985987470019609,
+        1.2980477979872376,
+        1.3109973089303821,
+        1.309311183867976,
+        1.307276766980067,
+        1.2902502960059792,
+        1.309443695936352,
+        1.2971795350313187
+      ],
+      "median_seconds": 1.307276766980067,
+      "quartiles_seconds": [
+        1.2983232724945992,
+        1.310220502433367
+      ],
+      "setup_seconds": 24.90829845611006,
+      "index_build_including_compile_seconds": 6.881562883965671,
+      "lower_seconds": 0.3782977839000523,
+      "compile_seconds": 2.496241935994476,
+      "compiler_argument_bytes": 4997253592,
+      "compiler_output_bytes": 5624,
+      "compiler_temporary_bytes": 13435560,
+      "compiler_alias_bytes": 0,
+      "state_array_bytes": 4921766522,
+      "load_peak_rss_bytes": 9890168832,
+      "setup_peak_rss_bytes": 9890168832,
+      "warm_peak_rss_bytes": 5933826048,
+      "warm_final_rss_bytes": 5933826048,
+      "total_peak_rss_bytes": 9890168832,
+      "source_sha256_manifest": "1fab08fa202414cbedcd365bfa9d20a173a762dec78d3170ba1d8d300dee10d5",
+      "benchmark_sha256_manifest": "351c75aa1c81831bd138a98d98e0713f393d10a400e7663575d2441422051d6d"
+    },
+    "final/0.02/ss10/mixed-combined.json": {
+      "variant": "combined",
+      "block_size": 256,
+      "queries": "mixed",
+      "shell_size": 100,
+      "accepted": 468908,
+      "capacity": 857600,
+      "phantom_slots": 99,
+      "dimension": 10,
+      "state_path": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.02/ss10/seed-00/state.pkl",
+      "source_root": "/largedata/albert/git/jaxns-efficient-phantom-A-20260910",
+      "affinity": [
+        68
+      ],
+      "hostname": "dorrie",
+      "machine": "aarch64",
+      "jax": "0.10.0",
+      "backend": "cpu",
+      "x64": true,
+      "seconds": [
+        0.057970254914835095,
+        0.056868710089474916,
+        0.05466101202182472,
+        0.05230304109863937,
+        0.05230307299643755,
+        0.052367747062817216,
+        0.05237968196161091,
+        0.05319808819331229,
+        0.05310221598483622,
+        0.05431278492324054,
+        0.05258723581209779
+      ],
+      "median_seconds": 0.05310221598483622,
+      "quartiles_seconds": [
+        0.052373714512214065,
+        0.05448689847253263
+      ],
+      "setup_seconds": 24.517265980830416,
+      "index_build_including_compile_seconds": 6.872706971131265,
+      "lower_seconds": 0.36299576004967093,
+      "compile_seconds": 2.2588502180296928,
+      "compiler_argument_bytes": 4997253592,
+      "compiler_output_bytes": 5624,
+      "compiler_temporary_bytes": 13436176,
+      "compiler_alias_bytes": 0,
+      "state_array_bytes": 4921766522,
+      "load_peak_rss_bytes": 9776922624,
+      "setup_peak_rss_bytes": 9776922624,
+      "warm_peak_rss_bytes": 5931663360,
+      "warm_final_rss_bytes": 5931663360,
+      "total_peak_rss_bytes": 9776922624,
+      "source_sha256_manifest": "1fab08fa202414cbedcd365bfa9d20a173a762dec78d3170ba1d8d300dee10d5",
+      "benchmark_sha256_manifest": "351c75aa1c81831bd138a98d98e0713f393d10a400e7663575d2441422051d6d"
+    },
+    "final/0.02/ss10/mixed-lazy.json": {
+      "variant": "lazy",
+      "block_size": 256,
+      "queries": "mixed",
+      "shell_size": 100,
+      "accepted": 468908,
+      "capacity": 857600,
+      "phantom_slots": 99,
+      "dimension": 10,
+      "state_path": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.02/ss10/seed-00/state.pkl",
+      "source_root": "/largedata/albert/git/jaxns-efficient-phantom-A-20260910",
+      "affinity": [
+        68
+      ],
+      "hostname": "dorrie",
+      "machine": "aarch64",
+      "jax": "0.10.0",
+      "backend": "cpu",
+      "x64": true,
+      "seconds": [
+        1.9939269770402461,
+        1.9495439701713622,
+        1.963296270929277,
+        1.935158991953358,
+        1.9447708441875875,
+        1.9420783419627696,
+        1.9767843780573457,
+        1.9917594729922712,
+        1.9495352660305798,
+        1.9518463560380042,
+        1.9542401030194014
+      ],
+      "median_seconds": 1.9518463560380042,
+      "quartiles_seconds": [
+        1.9471530551090837,
+        1.9700403244933113
+      ],
+      "setup_seconds": 17.86944824596867,
+      "index_build_including_compile_seconds": 0.0,
+      "lower_seconds": 0.4189914180897176,
+      "compile_seconds": 2.0087184221483767,
+      "compiler_argument_bytes": 4983531984,
+      "compiler_output_bytes": 5624,
+      "compiler_temporary_bytes": 692964992,
+      "compiler_alias_bytes": 0,
+      "state_array_bytes": 4908044914,
+      "load_peak_rss_bytes": 9918480384,
+      "setup_peak_rss_bytes": 9918480384,
+      "warm_peak_rss_bytes": 6580994048,
+      "warm_final_rss_bytes": 5892079616,
+      "total_peak_rss_bytes": 9918480384,
+      "source_sha256_manifest": "1fab08fa202414cbedcd365bfa9d20a173a762dec78d3170ba1d8d300dee10d5",
+      "benchmark_sha256_manifest": "351c75aa1c81831bd138a98d98e0713f393d10a400e7663575d2441422051d6d"
+    },
+    "final/0.02/ss10/mixed-reference.json": {
+      "variant": "reference",
+      "block_size": 256,
+      "queries": "mixed",
+      "shell_size": 100,
+      "accepted": 468908,
+      "capacity": 857600,
+      "phantom_slots": 99,
+      "dimension": 10,
+      "state_path": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.02/ss10/seed-00/state.pkl",
+      "source_root": "/largedata/albert/git/jaxns-efficient-phantom-A-20260910",
+      "affinity": [
+        68
+      ],
+      "hostname": "dorrie",
+      "machine": "aarch64",
+      "jax": "0.10.0",
+      "backend": "cpu",
+      "x64": true,
+      "seconds": [
+        1.977281630039215,
+        1.9590331970248371,
+        1.954616105882451,
+        1.9499636851251125,
+        1.956815964076668,
+        1.9546088099014014,
+        1.9535480649210513,
+        1.9592953431420028,
+        1.964779098983854,
+        1.9444814338348806,
+        1.9721298448275775
+      ],
+      "median_seconds": 1.956815964076668,
+      "quartiles_seconds": [
+        1.9540784374112263,
+        1.9620372210629284
+      ],
+      "setup_seconds": 18.041682621929795,
+      "index_build_including_compile_seconds": 0.0,
+      "lower_seconds": 0.4487736381124705,
+      "compile_seconds": 2.276881764875725,
+      "compiler_argument_bytes": 4983531984,
+      "compiler_output_bytes": 5624,
+      "compiler_temporary_bytes": 693080216,
+      "compiler_alias_bytes": 0,
+      "state_array_bytes": 4908044914,
+      "load_peak_rss_bytes": 9965666304,
+      "setup_peak_rss_bytes": 9965666304,
+      "warm_peak_rss_bytes": 6578438144,
+      "warm_final_rss_bytes": 5889523712,
+      "total_peak_rss_bytes": 9965666304,
+      "source_sha256_manifest": "1fab08fa202414cbedcd365bfa9d20a173a762dec78d3170ba1d8d300dee10d5",
+      "benchmark_sha256_manifest": "351c75aa1c81831bd138a98d98e0713f393d10a400e7663575d2441422051d6d"
+    },
+    "final/0.05/cg10/mixed-blocks.json": {
+      "variant": "blocks",
+      "block_size": 256,
+      "queries": "mixed",
+      "shell_size": 100,
+      "accepted": 195547,
+      "capacity": 214400,
+      "phantom_slots": 99,
+      "dimension": 10,
+      "state_path": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/cg10/seed-00/state.pkl",
+      "source_root": "/largedata/albert/git/jaxns-efficient-phantom-A-20260910",
+      "affinity": [
+        68
+      ],
+      "hostname": "dorrie",
+      "machine": "aarch64",
+      "jax": "0.10.0",
+      "backend": "cpu",
+      "x64": true,
+      "seconds": [
+        1.2536107699852437,
+        1.2953801890835166,
+        1.288916777819395,
+        1.2513561269734055,
+        1.3473741048946977,
+        1.270349303027615,
+        1.2504489850252867,
+        1.3122960028704256,
+        1.2815004310104996,
+        1.290231412043795,
+        1.252805451862514
+      ],
+      "median_seconds": 1.2815004310104996,
+      "quartiles_seconds": [
+        1.2532081109238788,
+        1.2928058005636558
+      ],
+      "setup_seconds": 7.501590060070157,
+      "index_build_including_compile_seconds": 3.1316042500548065,
+      "lower_seconds": 0.3874125429429114,
+      "compile_seconds": 2.5372672178782523,
+      "compiler_argument_bytes": 1247715400,
+      "compiler_output_bytes": 5624,
+      "compiler_temporary_bytes": 3387560,
+      "compiler_alias_bytes": 0,
+      "state_array_bytes": 1230545146,
+      "load_peak_rss_bytes": 2755657728,
+      "setup_peak_rss_bytes": 2755657728,
+      "warm_peak_rss_bytes": 2044461056,
+      "warm_final_rss_bytes": 2044461056,
+      "total_peak_rss_bytes": 2755657728,
+      "source_sha256_manifest": "1fab08fa202414cbedcd365bfa9d20a173a762dec78d3170ba1d8d300dee10d5",
+      "benchmark_sha256_manifest": "351c75aa1c81831bd138a98d98e0713f393d10a400e7663575d2441422051d6d"
+    },
+    "final/0.05/cg10/mixed-combined.json": {
+      "variant": "combined",
+      "block_size": 256,
+      "queries": "mixed",
+      "shell_size": 100,
+      "accepted": 195547,
+      "capacity": 214400,
+      "phantom_slots": 99,
+      "dimension": 10,
+      "state_path": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/cg10/seed-00/state.pkl",
+      "source_root": "/largedata/albert/git/jaxns-efficient-phantom-A-20260910",
+      "affinity": [
+        68
+      ],
+      "hostname": "dorrie",
+      "machine": "aarch64",
+      "jax": "0.10.0",
+      "backend": "cpu",
+      "x64": true,
+      "seconds": [
+        0.028829028131440282,
+        0.02879405301064253,
+        0.02845331304706633,
+        0.028533314121887088,
+        0.02967758011072874,
+        0.028434433043003082,
+        0.028640898875892162,
+        0.02910339878872037,
+        0.029230760177597404,
+        0.029165894957259297,
+        0.029239624040201306
+      ],
+      "median_seconds": 0.028829028131440282,
+      "quartiles_seconds": [
+        0.028587106498889625,
+        0.02919832756742835
+      ],
+      "setup_seconds": 7.46427437197417,
+      "index_build_including_compile_seconds": 3.139491479145363,
+      "lower_seconds": 0.3656920827925205,
+      "compile_seconds": 2.2247109150048345,
+      "compiler_argument_bytes": 1247715400,
+      "compiler_output_bytes": 5624,
+      "compiler_temporary_bytes": 3388176,
+      "compiler_alias_bytes": 0,
+      "state_array_bytes": 1230545146,
+      "load_peak_rss_bytes": 2755657728,
+      "setup_peak_rss_bytes": 2755657728,
+      "warm_peak_rss_bytes": 2035417088,
+      "warm_final_rss_bytes": 2035417088,
+      "total_peak_rss_bytes": 2755657728,
+      "source_sha256_manifest": "1fab08fa202414cbedcd365bfa9d20a173a762dec78d3170ba1d8d300dee10d5",
+      "benchmark_sha256_manifest": "351c75aa1c81831bd138a98d98e0713f393d10a400e7663575d2441422051d6d"
+    },
+    "final/0.05/cg10/mixed-lazy.json": {
+      "variant": "lazy",
+      "block_size": 256,
+      "queries": "mixed",
+      "shell_size": 100,
+      "accepted": 195547,
+      "capacity": 214400,
+      "phantom_slots": 99,
+      "dimension": 10,
+      "state_path": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/cg10/seed-00/state.pkl",
+      "source_root": "/largedata/albert/git/jaxns-efficient-phantom-A-20260910",
+      "affinity": [
+        68
+      ],
+      "hostname": "dorrie",
+      "machine": "aarch64",
+      "jax": "0.10.0",
+      "backend": "cpu",
+      "x64": true,
+      "seconds": [
+        0.5116711279843003,
+        0.5141844279132783,
+        0.5101311481557786,
+        0.5103102850262076,
+        0.5080048590898514,
+        0.5077823619358242,
+        0.5103707660455257,
+        0.5109794430900365,
+        0.5200395791325718,
+        0.508094971999526,
+        0.5050761960446835
+      ],
+      "median_seconds": 0.5103102850262076,
+      "quartiles_seconds": [
+        0.5080499155446887,
+        0.5113252855371684
+      ],
+      "setup_seconds": 4.30035994714126,
+      "index_build_including_compile_seconds": 0.0,
+      "lower_seconds": 0.43140697106719017,
+      "compile_seconds": 2.0621549719944596,
+      "compiler_argument_bytes": 1244181568,
+      "compiler_output_bytes": 5624,
+      "compiler_temporary_bytes": 343242816,
+      "compiler_alias_bytes": 0,
+      "state_array_bytes": 1227011314,
+      "load_peak_rss_bytes": 2755657728,
+      "setup_peak_rss_bytes": 2755657728,
+      "warm_peak_rss_bytes": 2372075520,
+      "warm_final_rss_bytes": 2032336896,
+      "total_peak_rss_bytes": 2755657728,
+      "source_sha256_manifest": "1fab08fa202414cbedcd365bfa9d20a173a762dec78d3170ba1d8d300dee10d5",
+      "benchmark_sha256_manifest": "351c75aa1c81831bd138a98d98e0713f393d10a400e7663575d2441422051d6d"
+    },
+    "final/0.05/cg10/mixed-reference.json": {
+      "variant": "reference",
+      "block_size": 256,
+      "queries": "mixed",
+      "shell_size": 100,
+      "accepted": 195547,
+      "capacity": 214400,
+      "phantom_slots": 99,
+      "dimension": 10,
+      "state_path": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/cg10/seed-00/state.pkl",
+      "source_root": "/largedata/albert/git/jaxns-efficient-phantom-A-20260910",
+      "affinity": [
+        68
+      ],
+      "hostname": "dorrie",
+      "machine": "aarch64",
+      "jax": "0.10.0",
+      "backend": "cpu",
+      "x64": true,
+      "seconds": [
+        0.5163487968966365,
+        0.5156026789918542,
+        0.5315094292163849,
+        0.5295846140943468,
+        0.5143425730057061,
+        0.5133106929715723,
+        0.5138794020749629,
+        0.5122673891019076,
+        0.5121887009590864,
+        0.5138248088769615,
+        0.5164405421819538
+      ],
+      "median_seconds": 0.5143425730057061,
+      "quartiles_seconds": [
+        0.5135677509242669,
+        0.5163946695392951
+      ],
+      "setup_seconds": 4.3360959100537,
+      "index_build_including_compile_seconds": 0.0,
+      "lower_seconds": 0.45615123212337494,
+      "compile_seconds": 2.326174440095201,
+      "compiler_argument_bytes": 1244181568,
+      "compiler_output_bytes": 5624,
+      "compiler_temporary_bytes": 343242136,
+      "compiler_alias_bytes": 0,
+      "state_array_bytes": 1227011314,
+      "load_peak_rss_bytes": 2755657728,
+      "setup_peak_rss_bytes": 2755657728,
+      "warm_peak_rss_bytes": 2376531968,
+      "warm_final_rss_bytes": 2036793344,
+      "total_peak_rss_bytes": 2755657728,
+      "source_sha256_manifest": "1fab08fa202414cbedcd365bfa9d20a173a762dec78d3170ba1d8d300dee10d5",
+      "benchmark_sha256_manifest": "351c75aa1c81831bd138a98d98e0713f393d10a400e7663575d2441422051d6d"
+    },
+    "final/0.05/g10/block-1024.json": {
+      "variant": "combined",
+      "block_size": 1024,
+      "queries": "mixed",
+      "shell_size": 100,
+      "accepted": 187833,
+      "capacity": 214400,
+      "phantom_slots": 99,
+      "dimension": 10,
+      "state_path": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-00/state.pkl",
+      "source_root": "/largedata/albert/git/jaxns-efficient-phantom-A-20260910",
+      "affinity": [
+        68
+      ],
+      "hostname": "dorrie",
+      "machine": "aarch64",
+      "jax": "0.10.0",
+      "backend": "cpu",
+      "x64": true,
+      "seconds": [
+        0.08587898989208043,
+        0.0856664429884404,
+        0.08560442784801126,
+        0.08552484214305878,
+        0.08532135281711817,
+        0.08972122822888196,
+        0.08967901999130845,
+        0.08971255598589778,
+        0.08520496799610555,
+        0.0853076889179647,
+        0.08508275914937258
+      ],
+      "median_seconds": 0.08560442784801126,
+      "quartiles_seconds": [
+        0.08531452086754143,
+        0.08777900494169444
+      ],
+      "setup_seconds": 7.581570548005402,
+      "index_build_including_compile_seconds": 3.3110805340111256,
+      "lower_seconds": 0.38463081303052604,
+      "compile_seconds": 2.2605329509824514,
+      "compiler_argument_bytes": 1248129096,
+      "compiler_output_bytes": 5624,
+      "compiler_temporary_bytes": 2260560,
+      "compiler_alias_bytes": 0,
+      "state_array_bytes": 1230958842,
+      "load_peak_rss_bytes": 2755657728,
+      "setup_peak_rss_bytes": 2755657728,
+      "warm_peak_rss_bytes": 2033582080,
+      "warm_final_rss_bytes": 2033582080,
+      "total_peak_rss_bytes": 2755657728,
+      "source_sha256_manifest": "1fab08fa202414cbedcd365bfa9d20a173a762dec78d3170ba1d8d300dee10d5",
+      "benchmark_sha256_manifest": "351c75aa1c81831bd138a98d98e0713f393d10a400e7663575d2441422051d6d"
+    },
+    "final/0.05/g10/block-64.json": {
+      "variant": "combined",
+      "block_size": 64,
+      "queries": "mixed",
+      "shell_size": 100,
+      "accepted": 187833,
+      "capacity": 214400,
+      "phantom_slots": 99,
+      "dimension": 10,
+      "state_path": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-00/state.pkl",
+      "source_root": "/largedata/albert/git/jaxns-efficient-phantom-A-20260910",
+      "affinity": [
+        68
+      ],
+      "hostname": "dorrie",
+      "machine": "aarch64",
+      "jax": "0.10.0",
+      "backend": "cpu",
+      "x64": true,
+      "seconds": [
+        0.032994118984788656,
+        0.03147887601517141,
+        0.03137071384117007,
+        0.032440419076010585,
+        0.03099771891720593,
+        0.03282343014143407,
+        0.03133932198397815,
+        0.03157484391704202,
+        0.032589219976216555,
+        0.03223811322823167,
+        0.03211132809519768
+      ],
+      "median_seconds": 0.03211132809519768,
+      "quartiles_seconds": [
+        0.03142479492817074,
+        0.03251481952611357
+      ],
+      "setup_seconds": 6.9906118479557335,
+      "index_build_including_compile_seconds": 2.704806096153334,
+      "lower_seconds": 0.3931316810194403,
+      "compile_seconds": 2.2472098690923303,
+      "compiler_argument_bytes": 1247611976,
+      "compiler_output_bytes": 5624,
+      "compiler_temporary_bytes": 13436176,
+      "compiler_alias_bytes": 0,
+      "state_array_bytes": 1230441722,
+      "load_peak_rss_bytes": 2755657728,
+      "setup_peak_rss_bytes": 2755657728,
+      "warm_peak_rss_bytes": 2052063232,
+      "warm_final_rss_bytes": 2052063232,
+      "total_peak_rss_bytes": 2755657728,
+      "source_sha256_manifest": "1fab08fa202414cbedcd365bfa9d20a173a762dec78d3170ba1d8d300dee10d5",
+      "benchmark_sha256_manifest": "351c75aa1c81831bd138a98d98e0713f393d10a400e7663575d2441422051d6d"
+    },
+    "final/0.05/g10/mixed-blocks.json": {
+      "variant": "blocks",
+      "block_size": 256,
+      "queries": "mixed",
+      "shell_size": 100,
+      "accepted": 187833,
+      "capacity": 214400,
+      "phantom_slots": 99,
+      "dimension": 10,
+      "state_path": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-00/state.pkl",
+      "source_root": "/largedata/albert/git/jaxns-efficient-phantom-A-20260910",
+      "affinity": [
+        68
+      ],
+      "hostname": "dorrie",
+      "machine": "aarch64",
+      "jax": "0.10.0",
+      "backend": "cpu",
+      "x64": true,
+      "seconds": [
+        1.2711873890366405,
+        1.2559673958458006,
+        1.3019134250935167,
+        1.3259530069772154,
+        1.3041376029141247,
+        1.260609672870487,
+        1.2587263621389866,
+        1.2794881910085678,
+        1.3090299300383776,
+        1.255555328913033,
+        1.2511242860928178
+      ],
+      "median_seconds": 1.2711873890366405,
+      "quartiles_seconds": [
+        1.2573468789923936,
+        1.3030255140038207
+      ],
+      "setup_seconds": 7.378049720078707,
+      "index_build_including_compile_seconds": 3.033552751876414,
+      "lower_seconds": 0.4094987658318132,
+      "compile_seconds": 2.5167672149837017,
+      "compiler_argument_bytes": 1247715400,
+      "compiler_output_bytes": 5624,
+      "compiler_temporary_bytes": 3387560,
+      "compiler_alias_bytes": 0,
+      "state_array_bytes": 1230545146,
+      "load_peak_rss_bytes": 2755657728,
+      "setup_peak_rss_bytes": 2755657728,
+      "warm_peak_rss_bytes": 2042953728,
+      "warm_final_rss_bytes": 2042953728,
+      "total_peak_rss_bytes": 2755657728,
+      "source_sha256_manifest": "1fab08fa202414cbedcd365bfa9d20a173a762dec78d3170ba1d8d300dee10d5",
+      "benchmark_sha256_manifest": "351c75aa1c81831bd138a98d98e0713f393d10a400e7663575d2441422051d6d"
+    },
+    "final/0.05/g10/mixed-combined.json": {
+      "variant": "combined",
+      "block_size": 256,
+      "queries": "mixed",
+      "shell_size": 100,
+      "accepted": 187833,
+      "capacity": 214400,
+      "phantom_slots": 99,
+      "dimension": 10,
+      "state_path": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-00/state.pkl",
+      "source_root": "/largedata/albert/git/jaxns-efficient-phantom-A-20260910",
+      "affinity": [
+        68
+      ],
+      "hostname": "dorrie",
+      "machine": "aarch64",
+      "jax": "0.10.0",
+      "backend": "cpu",
+      "x64": true,
+      "seconds": [
+        0.031026293989270926,
+        0.030288720037788153,
+        0.029618954984471202,
+        0.029157958924770355,
+        0.029822028009220958,
+        0.028748515993356705,
+        0.02858233917504549,
+        0.029628811171278358,
+        0.028797731967642903,
+        0.02847945806570351,
+        0.030682674841955304
+      ],
+      "median_seconds": 0.029618954984471202,
+      "quartiles_seconds": [
+        0.028773123980499804,
+        0.030055374023504555
+      ],
+      "setup_seconds": 7.376297001959756,
+      "index_build_including_compile_seconds": 3.041522319195792,
+      "lower_seconds": 0.39098335593007505,
+      "compile_seconds": 2.2460255809128284,
+      "compiler_argument_bytes": 1247715400,
+      "compiler_output_bytes": 5624,
+      "compiler_temporary_bytes": 3388176,
+      "compiler_alias_bytes": 0,
+      "state_array_bytes": 1230545146,
+      "load_peak_rss_bytes": 2755657728,
+      "setup_peak_rss_bytes": 2755657728,
+      "warm_peak_rss_bytes": 2034827264,
+      "warm_final_rss_bytes": 2034827264,
+      "total_peak_rss_bytes": 2755657728,
+      "source_sha256_manifest": "1fab08fa202414cbedcd365bfa9d20a173a762dec78d3170ba1d8d300dee10d5",
+      "benchmark_sha256_manifest": "351c75aa1c81831bd138a98d98e0713f393d10a400e7663575d2441422051d6d"
+    },
+    "final/0.05/g10/mixed-lazy.json": {
+      "variant": "lazy",
+      "block_size": 256,
+      "queries": "mixed",
+      "shell_size": 100,
+      "accepted": 187833,
+      "capacity": 214400,
+      "phantom_slots": 99,
+      "dimension": 10,
+      "state_path": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-00/state.pkl",
+      "source_root": "/largedata/albert/git/jaxns-efficient-phantom-A-20260910",
+      "affinity": [
+        68
+      ],
+      "hostname": "dorrie",
+      "machine": "aarch64",
+      "jax": "0.10.0",
+      "backend": "cpu",
+      "x64": true,
+      "seconds": [
+        0.5054169669747353,
+        0.5045669749379158,
+        0.5083758060354739,
+        0.5031518931500614,
+        0.5041658531408757,
+        0.505083235912025,
+        0.5041111959144473,
+        0.502087595872581,
+        0.5031964690424502,
+        0.5152126918546855,
+        0.5098885539919138
+      ],
+      "median_seconds": 0.5045669749379158,
+      "quartiles_seconds": [
+        0.5036538324784487,
+        0.5068963865051046
+      ],
+      "setup_seconds": 4.287832134170458,
+      "index_build_including_compile_seconds": 0.0,
+      "lower_seconds": 0.4305500059854239,
+      "compile_seconds": 2.0479805229697376,
+      "compiler_argument_bytes": 1244181568,
+      "compiler_output_bytes": 5624,
+      "compiler_temporary_bytes": 343242816,
+      "compiler_alias_bytes": 0,
+      "state_array_bytes": 1227011314,
+      "load_peak_rss_bytes": 2755657728,
+      "setup_peak_rss_bytes": 2755657728,
+      "warm_peak_rss_bytes": 2372075520,
+      "warm_final_rss_bytes": 2032336896,
+      "total_peak_rss_bytes": 2755657728,
+      "source_sha256_manifest": "1fab08fa202414cbedcd365bfa9d20a173a762dec78d3170ba1d8d300dee10d5",
+      "benchmark_sha256_manifest": "351c75aa1c81831bd138a98d98e0713f393d10a400e7663575d2441422051d6d"
+    },
+    "final/0.05/g10/mixed-reference.json": {
+      "variant": "reference",
+      "block_size": 256,
+      "queries": "mixed",
+      "shell_size": 100,
+      "accepted": 187833,
+      "capacity": 214400,
+      "phantom_slots": 99,
+      "dimension": 10,
+      "state_path": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-00/state.pkl",
+      "source_root": "/largedata/albert/git/jaxns-efficient-phantom-A-20260910",
+      "affinity": [
+        68
+      ],
+      "hostname": "dorrie",
+      "machine": "aarch64",
+      "jax": "0.10.0",
+      "backend": "cpu",
+      "x64": true,
+      "seconds": [
+        0.5141644279938191,
+        0.5177661199122667,
+        0.5215962307993323,
+        0.5171686748508364,
+        0.5209712979849428,
+        0.5167237769346684,
+        0.514348141849041,
+        0.5156793841160834,
+        0.5267345430329442,
+        0.5139898350462317,
+        0.5143931340426207
+      ],
+      "median_seconds": 0.5167237769346684,
+      "quartiles_seconds": [
+        0.5143706379458308,
+        0.5193687089486048
+      ],
+      "setup_seconds": 4.286070489091799,
+      "index_build_including_compile_seconds": 0.0,
+      "lower_seconds": 0.415953153045848,
+      "compile_seconds": 2.309705574065447,
+      "compiler_argument_bytes": 1244181568,
+      "compiler_output_bytes": 5624,
+      "compiler_temporary_bytes": 343242136,
+      "compiler_alias_bytes": 0,
+      "state_array_bytes": 1227011314,
+      "load_peak_rss_bytes": 2755657728,
+      "setup_peak_rss_bytes": 2755657728,
+      "warm_peak_rss_bytes": 2374565888,
+      "warm_final_rss_bytes": 2034827264,
+      "total_peak_rss_bytes": 2755657728,
+      "source_sha256_manifest": "1fab08fa202414cbedcd365bfa9d20a173a762dec78d3170ba1d8d300dee10d5",
+      "benchmark_sha256_manifest": "351c75aa1c81831bd138a98d98e0713f393d10a400e7663575d2441422051d6d"
+    },
+    "final/0.05/ss10/mixed-blocks.json": {
+      "variant": "blocks",
+      "block_size": 256,
+      "queries": "mixed",
+      "shell_size": 100,
+      "accepted": 72357,
+      "capacity": 107200,
+      "phantom_slots": 99,
+      "dimension": 10,
+      "state_path": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/ss10/seed-00/state.pkl",
+      "source_root": "/largedata/albert/git/jaxns-efficient-phantom-A-20260910",
+      "affinity": [
+        68
+      ],
+      "hostname": "dorrie",
+      "machine": "aarch64",
+      "jax": "0.10.0",
+      "backend": "cpu",
+      "x64": true,
+      "seconds": [
+        1.287016703048721,
+        1.2766218050383031,
+        1.2520844268146902,
+        1.2523164600133896,
+        1.2524119168519974,
+        1.289251120062545,
+        1.3386328860651702,
+        1.3345022939611226,
+        1.2513205809518695,
+        1.251951880985871,
+        1.2529991210903972
+      ],
+      "median_seconds": 1.2529991210903972,
+      "quartiles_seconds": [
+        1.25220044341404,
+        1.288133911555633
+      ],
+      "setup_seconds": 4.974885537056252,
+      "index_build_including_compile_seconds": 1.398780049989,
+      "lower_seconds": 0.41019866708666086,
+      "compile_seconds": 2.5276054858695716,
+      "compiler_argument_bytes": 623438080,
+      "compiler_output_bytes": 5624,
+      "compiler_temporary_bytes": 1770152,
+      "compiler_alias_bytes": 0,
+      "state_array_bytes": 615272634,
+      "load_peak_rss_bytes": 1528823808,
+      "setup_peak_rss_bytes": 1528823808,
+      "warm_peak_rss_bytes": 1369571328,
+      "warm_final_rss_bytes": 1369571328,
+      "total_peak_rss_bytes": 1528823808,
+      "source_sha256_manifest": "1fab08fa202414cbedcd365bfa9d20a173a762dec78d3170ba1d8d300dee10d5",
+      "benchmark_sha256_manifest": "351c75aa1c81831bd138a98d98e0713f393d10a400e7663575d2441422051d6d"
+    },
+    "final/0.05/ss10/mixed-combined.json": {
+      "variant": "combined",
+      "block_size": 256,
+      "queries": "mixed",
+      "shell_size": 100,
+      "accepted": 72357,
+      "capacity": 107200,
+      "phantom_slots": 99,
+      "dimension": 10,
+      "state_path": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/ss10/seed-00/state.pkl",
+      "source_root": "/largedata/albert/git/jaxns-efficient-phantom-A-20260910",
+      "affinity": [
+        68
+      ],
+      "hostname": "dorrie",
+      "machine": "aarch64",
+      "jax": "0.10.0",
+      "backend": "cpu",
+      "x64": true,
+      "seconds": [
+        0.024477344937622547,
+        0.02433033613488078,
+        0.025495722191408277,
+        0.02553248987533152,
+        0.025594731094315648,
+        0.024523650063201785,
+        0.024499298073351383,
+        0.024533921852707863,
+        0.024586498038843274,
+        0.024622787022963166,
+        0.024590177927166224
+      ],
+      "median_seconds": 0.024586498038843274,
+      "quartiles_seconds": [
+        0.024511474068276584,
+        0.02505925460718572
+      ],
+      "setup_seconds": 4.962018235819414,
+      "index_build_including_compile_seconds": 1.4031386759597808,
+      "lower_seconds": 0.37818577396683395,
+      "compile_seconds": 2.200449811993167,
+      "compiler_argument_bytes": 623438080,
+      "compiler_output_bytes": 5624,
+      "compiler_temporary_bytes": 1770768,
+      "compiler_alias_bytes": 0,
+      "state_array_bytes": 615272634,
+      "load_peak_rss_bytes": 1528823808,
+      "setup_peak_rss_bytes": 1528823808,
+      "warm_peak_rss_bytes": 1371406336,
+      "warm_final_rss_bytes": 1371406336,
+      "total_peak_rss_bytes": 1528823808,
+      "source_sha256_manifest": "1fab08fa202414cbedcd365bfa9d20a173a762dec78d3170ba1d8d300dee10d5",
+      "benchmark_sha256_manifest": "351c75aa1c81831bd138a98d98e0713f393d10a400e7663575d2441422051d6d"
+    },
+    "final/0.05/ss10/mixed-lazy.json": {
+      "variant": "lazy",
+      "block_size": 256,
+      "queries": "mixed",
+      "shell_size": 100,
+      "accepted": 72357,
+      "capacity": 107200,
+      "phantom_slots": 99,
+      "dimension": 10,
+      "state_path": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/ss10/seed-00/state.pkl",
+      "source_root": "/largedata/albert/git/jaxns-efficient-phantom-A-20260910",
+      "affinity": [
+        68
+      ],
+      "hostname": "dorrie",
+      "machine": "aarch64",
+      "jax": "0.10.0",
+      "backend": "cpu",
+      "x64": true,
+      "seconds": [
+        0.25393513310700655,
+        0.2522723039146513,
+        0.2517814841121435,
+        0.2537790350615978,
+        0.2560935500077903,
+        0.25388389686122537,
+        0.2558759110979736,
+        0.2537317341193557,
+        0.2549056310672313,
+        0.255520996870473,
+        0.25315672205761075
+      ],
+      "median_seconds": 0.25388389686122537,
+      "quartiles_seconds": [
+        0.2534442280884832,
+        0.25521331396885216
+      ],
+      "setup_seconds": 3.5366246120538563,
+      "index_build_including_compile_seconds": 0.0,
+      "lower_seconds": 0.41370183997787535,
+      "compile_seconds": 2.0611871229484677,
+      "compiler_argument_bytes": 621671160,
+      "compiler_output_bytes": 5624,
+      "compiler_temporary_bytes": 171671616,
+      "compiler_alias_bytes": 0,
+      "state_array_bytes": 613505714,
+      "load_peak_rss_bytes": 1528823808,
+      "setup_peak_rss_bytes": 1535901696,
+      "warm_peak_rss_bytes": 1535901696,
+      "warm_final_rss_bytes": 1366032384,
+      "total_peak_rss_bytes": 1535901696,
+      "source_sha256_manifest": "1fab08fa202414cbedcd365bfa9d20a173a762dec78d3170ba1d8d300dee10d5",
+      "benchmark_sha256_manifest": "351c75aa1c81831bd138a98d98e0713f393d10a400e7663575d2441422051d6d"
+    },
+    "final/0.05/ss10/mixed-reference.json": {
+      "variant": "reference",
+      "block_size": 256,
+      "queries": "mixed",
+      "shell_size": 100,
+      "accepted": 72357,
+      "capacity": 107200,
+      "phantom_slots": 99,
+      "dimension": 10,
+      "state_path": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/ss10/seed-00/state.pkl",
+      "source_root": "/largedata/albert/git/jaxns-efficient-phantom-A-20260910",
+      "affinity": [
+        68
+      ],
+      "hostname": "dorrie",
+      "machine": "aarch64",
+      "jax": "0.10.0",
+      "backend": "cpu",
+      "x64": true,
+      "seconds": [
+        0.26536031113937497,
+        0.2630845180246979,
+        0.2634518169797957,
+        0.2680320448707789,
+        0.26276272302493453,
+        0.2634240079205483,
+        0.26141439308412373,
+        0.26741008716635406,
+        0.2649239881429821,
+        0.2643940318375826,
+        0.2708798749372363
+      ],
+      "median_seconds": 0.2643940318375826,
+      "quartiles_seconds": [
+        0.2632542629726231,
+        0.2663851991528645
+      ],
+      "setup_seconds": 3.5575989538338035,
+      "index_build_including_compile_seconds": 0.0,
+      "lower_seconds": 0.4407545658759773,
+      "compile_seconds": 2.3157304860651493,
+      "compiler_argument_bytes": 621671160,
+      "compiler_output_bytes": 5624,
+      "compiler_temporary_bytes": 171670936,
+      "compiler_alias_bytes": 0,
+      "state_array_bytes": 613505714,
+      "load_peak_rss_bytes": 1528823808,
+      "setup_peak_rss_bytes": 1536819200,
+      "warm_peak_rss_bytes": 1536819200,
+      "warm_final_rss_bytes": 1366949888,
+      "total_peak_rss_bytes": 1536819200,
+      "source_sha256_manifest": "1fab08fa202414cbedcd365bfa9d20a173a762dec78d3170ba1d8d300dee10d5",
+      "benchmark_sha256_manifest": "351c75aa1c81831bd138a98d98e0713f393d10a400e7663575d2441422051d6d"
+    },
+    "queries/mixed-10-combined.json": {
+      "variant": "combined",
+      "block_size": 256,
+      "queries": "mixed",
+      "shell_size": 10,
+      "accepted": 187833,
+      "capacity": 214400,
+      "phantom_slots": 99,
+      "dimension": 10,
+      "state_path": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-00/state.pkl",
+      "source_root": "/largedata/albert/git/jaxns-efficient-phantom-A-20260910",
+      "affinity": [
+        67
+      ],
+      "hostname": "dorrie",
+      "machine": "aarch64",
+      "jax": "0.10.0",
+      "backend": "cpu",
+      "x64": true,
+      "seconds": [
+        0.0033338831271976233,
+        0.003232443006709218,
+        0.003209466114640236,
+        0.00319826602935791,
+        0.00313906604424119,
+        0.0030841210391372442,
+        0.0032684740144759417
+      ],
+      "median_seconds": 0.003209466114640236,
+      "quartiles_seconds": [
+        0.00316866603679955,
+        0.00325045851059258
+      ],
+      "setup_seconds": 7.621224086964503,
+      "index_build_including_compile_seconds": 3.030728677054867,
+      "lower_seconds": 0.4095554028172046,
+      "compile_seconds": 2.212945145787671,
+      "compiler_argument_bytes": 1247699444,
+      "compiler_output_bytes": 584,
+      "compiler_temporary_bytes": 640976,
+      "compiler_alias_bytes": 0,
+      "state_array_bytes": 1230545146,
+      "load_peak_rss_bytes": 2755657728,
+      "setup_peak_rss_bytes": 2755657728,
+      "warm_peak_rss_bytes": 2035154944,
+      "warm_final_rss_bytes": 2035154944,
+      "total_peak_rss_bytes": 2755657728,
+      "source_sha256_manifest": "81f484851751ea77e8ce11e30540f6de142e4330016b99fe38203cbf304470bd",
+      "benchmark_sha256_manifest": "17e5087979433ecfc882df9a9fa6d2162708911c8e3d53cdd6c98ed9d8f19e28"
+    },
+    "queries/mixed-10-reference.json": {
+      "variant": "reference",
+      "block_size": 256,
+      "queries": "mixed",
+      "shell_size": 10,
+      "accepted": 187833,
+      "capacity": 214400,
+      "phantom_slots": 99,
+      "dimension": 10,
+      "state_path": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-00/state.pkl",
+      "source_root": "/largedata/albert/git/jaxns-efficient-phantom-A-20260910",
+      "affinity": [
+        67
+      ],
+      "hostname": "dorrie",
+      "machine": "aarch64",
+      "jax": "0.10.0",
+      "backend": "cpu",
+      "x64": true,
+      "seconds": [
+        0.06857803091406822,
+        0.0685700629837811,
+        0.0685323670040816,
+        0.06854574289172888,
+        0.0686167839448899,
+        0.06841838103719056,
+        0.06842894200235605
+      ],
+      "median_seconds": 0.06854574289172888,
+      "quartiles_seconds": [
+        0.06848065450321883,
+        0.06857404694892466
+      ],
+      "setup_seconds": 4.302066082134843,
+      "index_build_including_compile_seconds": 0.0,
+      "lower_seconds": 0.4550303330179304,
+      "compile_seconds": 2.192899958929047,
+      "compiler_argument_bytes": 1244165612,
+      "compiler_output_bytes": 584,
+      "compiler_temporary_bytes": 34318808,
+      "compiler_alias_bytes": 0,
+      "state_array_bytes": 1227011314,
+      "load_peak_rss_bytes": 2755657728,
+      "setup_peak_rss_bytes": 2755657728,
+      "warm_peak_rss_bytes": 2063532032,
+      "warm_final_rss_bytes": 2035220480,
+      "total_peak_rss_bytes": 2755657728,
+      "source_sha256_manifest": "81f484851751ea77e8ce11e30540f6de142e4330016b99fe38203cbf304470bd",
+      "benchmark_sha256_manifest": "17e5087979433ecfc882df9a9fa6d2162708911c8e3d53cdd6c98ed9d8f19e28"
+    },
+    "queries/mixed-300-combined.json": {
+      "variant": "combined",
+      "block_size": 256,
+      "queries": "mixed",
+      "shell_size": 300,
+      "accepted": 187833,
+      "capacity": 214400,
+      "phantom_slots": 99,
+      "dimension": 10,
+      "state_path": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-00/state.pkl",
+      "source_root": "/largedata/albert/git/jaxns-efficient-phantom-A-20260910",
+      "affinity": [
+        67
+      ],
+      "hostname": "dorrie",
+      "machine": "aarch64",
+      "jax": "0.10.0",
+      "backend": "cpu",
+      "x64": true,
+      "seconds": [
+        0.08758314698934555,
+        0.09210606291890144,
+        0.09077878808602691,
+        0.08768778690136969,
+        0.0872192068491131,
+        0.08678819611668587,
+        0.09219051105901599
+      ],
+      "median_seconds": 0.08768778690136969,
+      "quartiles_seconds": [
+        0.08740117691922933,
+        0.09144242550246418
+      ],
+      "setup_seconds": 7.688908287091181,
+      "index_build_including_compile_seconds": 3.0589913080912083,
+      "lower_seconds": 0.3875862960703671,
+      "compile_seconds": 2.3852170140016824,
+      "compiler_argument_bytes": 1247768152,
+      "compiler_output_bytes": 16824,
+      "compiler_temporary_bytes": 10214672,
+      "compiler_alias_bytes": 0,
+      "state_array_bytes": 1230545146,
+      "load_peak_rss_bytes": 2755657728,
+      "setup_peak_rss_bytes": 2755657728,
+      "warm_peak_rss_bytes": 2043936768,
+      "warm_final_rss_bytes": 2043936768,
+      "total_peak_rss_bytes": 2755657728,
+      "source_sha256_manifest": "dffda4b71e824cfca0e328df98d046f6e581563ee71b25cb26a69a0546271db8",
+      "benchmark_sha256_manifest": "17e5087979433ecfc882df9a9fa6d2162708911c8e3d53cdd6c98ed9d8f19e28"
+    },
+    "queries/mixed-300-reference.json": {
+      "variant": "reference",
+      "block_size": 256,
+      "queries": "mixed",
+      "shell_size": 300,
+      "accepted": 187833,
+      "capacity": 214400,
+      "phantom_slots": 99,
+      "dimension": 10,
+      "state_path": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-00/state.pkl",
+      "source_root": "/largedata/albert/git/jaxns-efficient-phantom-A-20260910",
+      "affinity": [
+        67
+      ],
+      "hostname": "dorrie",
+      "machine": "aarch64",
+      "jax": "0.10.0",
+      "backend": "cpu",
+      "x64": true,
+      "seconds": [
+        1.530145371099934,
+        1.5237746629863977,
+        1.5257153189741075,
+        1.5315348859876394,
+        1.539196772966534,
+        1.5177533340174705,
+        1.5278777689673007
+      ],
+      "median_seconds": 1.5278777689673007,
+      "quartiles_seconds": [
+        1.5247449909802526,
+        1.5308401285437867
+      ],
+      "setup_seconds": 4.446282266173512,
+      "index_build_including_compile_seconds": 0.0,
+      "lower_seconds": 0.4599239102099091,
+      "compile_seconds": 2.4573865300044417,
+      "compiler_argument_bytes": 1244234320,
+      "compiler_output_bytes": 16824,
+      "compiler_temporary_bytes": 1030253400,
+      "compiler_alias_bytes": 0,
+      "state_array_bytes": 1227011314,
+      "load_peak_rss_bytes": 2755657728,
+      "setup_peak_rss_bytes": 3063939072,
+      "warm_peak_rss_bytes": 3063939072,
+      "warm_final_rss_bytes": 2035286016,
+      "total_peak_rss_bytes": 3063939072,
+      "source_sha256_manifest": "dffda4b71e824cfca0e328df98d046f6e581563ee71b25cb26a69a0546271db8",
+      "benchmark_sha256_manifest": "17e5087979433ecfc882df9a9fa6d2162708911c8e3d53cdd6c98ed9d8f19e28"
+    },
+    "queries/recent-100-combined.json": {
+      "variant": "combined",
+      "block_size": 256,
+      "queries": "recent",
+      "shell_size": 100,
+      "accepted": 187833,
+      "capacity": 214400,
+      "phantom_slots": 99,
+      "dimension": 10,
+      "state_path": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-00/state.pkl",
+      "source_root": "/largedata/albert/git/jaxns-efficient-phantom-A-20260910",
+      "affinity": [
+        67
+      ],
+      "hostname": "dorrie",
+      "machine": "aarch64",
+      "jax": "0.10.0",
+      "backend": "cpu",
+      "x64": true,
+      "seconds": [
+        0.02773664193227887,
+        0.028220422100275755,
+        0.027997284894809127,
+        0.027786178048700094,
+        0.027603680966421962,
+        0.02742111892439425,
+        0.02857380104251206
+      ],
+      "median_seconds": 0.027786178048700094,
+      "quartiles_seconds": [
+        0.027670161449350417,
+        0.02810885349754244
+      ],
+      "setup_seconds": 7.414614306995645,
+      "index_build_including_compile_seconds": 3.048825112869963,
+      "lower_seconds": 0.3875466149765998,
+      "compile_seconds": 2.2240505809895694,
+      "compiler_argument_bytes": 1247715400,
+      "compiler_output_bytes": 5624,
+      "compiler_temporary_bytes": 3388176,
+      "compiler_alias_bytes": 0,
+      "state_array_bytes": 1230545146,
+      "load_peak_rss_bytes": 2755657728,
+      "setup_peak_rss_bytes": 2755657728,
+      "warm_peak_rss_bytes": 2035417088,
+      "warm_final_rss_bytes": 2035417088,
+      "total_peak_rss_bytes": 2755657728,
+      "source_sha256_manifest": "81f484851751ea77e8ce11e30540f6de142e4330016b99fe38203cbf304470bd",
+      "benchmark_sha256_manifest": "17e5087979433ecfc882df9a9fa6d2162708911c8e3d53cdd6c98ed9d8f19e28"
+    },
+    "queries/recent-100-reference.json": {
+      "variant": "reference",
+      "block_size": 256,
+      "queries": "recent",
+      "shell_size": 100,
+      "accepted": 187833,
+      "capacity": 214400,
+      "phantom_slots": 99,
+      "dimension": 10,
+      "state_path": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-00/state.pkl",
+      "source_root": "/largedata/albert/git/jaxns-efficient-phantom-A-20260910",
+      "affinity": [
+        67
+      ],
+      "hostname": "dorrie",
+      "machine": "aarch64",
+      "jax": "0.10.0",
+      "backend": "cpu",
+      "x64": true,
+      "seconds": [
+        0.5227466619107872,
+        0.5207789661362767,
+        0.5216126679442823,
+        0.5184529309626669,
+        0.5141009599901736,
+        0.5159865100868046,
+        0.5165757960639894
+      ],
+      "median_seconds": 0.5184529309626669,
+      "quartiles_seconds": [
+        0.516281153075397,
+        0.5211958170402795
+      ],
+      "setup_seconds": 4.3417181491386145,
+      "index_build_including_compile_seconds": 0.0,
+      "lower_seconds": 0.4790590419434011,
+      "compile_seconds": 2.3623415960464627,
+      "compiler_argument_bytes": 1244181568,
+      "compiler_output_bytes": 5624,
+      "compiler_temporary_bytes": 343242136,
+      "compiler_alias_bytes": 0,
+      "state_array_bytes": 1227011314,
+      "load_peak_rss_bytes": 2755657728,
+      "setup_peak_rss_bytes": 2755657728,
+      "warm_peak_rss_bytes": 2374369280,
+      "warm_final_rss_bytes": 2034630656,
+      "total_peak_rss_bytes": 2755657728,
+      "source_sha256_manifest": "81f484851751ea77e8ce11e30540f6de142e4330016b99fe38203cbf304470bd",
+      "benchmark_sha256_manifest": "17e5087979433ecfc882df9a9fa6d2162708911c8e3d53cdd6c98ed9d8f19e28"
+    },
+    "queries/root-100-combined.json": {
+      "variant": "combined",
+      "block_size": 256,
+      "queries": "root",
+      "shell_size": 100,
+      "accepted": 187833,
+      "capacity": 214400,
+      "phantom_slots": 99,
+      "dimension": 10,
+      "state_path": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-00/state.pkl",
+      "source_root": "/largedata/albert/git/jaxns-efficient-phantom-A-20260910",
+      "affinity": [
+        67
+      ],
+      "hostname": "dorrie",
+      "machine": "aarch64",
+      "jax": "0.10.0",
+      "backend": "cpu",
+      "x64": true,
+      "seconds": [
+        0.027966595953330398,
+        0.027572000166401267,
+        0.027994500007480383,
+        0.02831229497678578,
+        0.027834243141114712,
+        0.02716972609050572,
+        0.026921628043055534
+      ],
+      "median_seconds": 0.027834243141114712,
+      "quartiles_seconds": [
+        0.027370863128453493,
+        0.02798054798040539
+      ],
+      "setup_seconds": 7.467051693005487,
+      "index_build_including_compile_seconds": 3.0545545988716185,
+      "lower_seconds": 0.3616102449595928,
+      "compile_seconds": 2.2846560978796333,
+      "compiler_argument_bytes": 1247715400,
+      "compiler_output_bytes": 5624,
+      "compiler_temporary_bytes": 3388176,
+      "compiler_alias_bytes": 0,
+      "state_array_bytes": 1230545146,
+      "load_peak_rss_bytes": 2755657728,
+      "setup_peak_rss_bytes": 2755657728,
+      "warm_peak_rss_bytes": 2031812608,
+      "warm_final_rss_bytes": 2031812608,
+      "total_peak_rss_bytes": 2755657728,
+      "source_sha256_manifest": "81f484851751ea77e8ce11e30540f6de142e4330016b99fe38203cbf304470bd",
+      "benchmark_sha256_manifest": "17e5087979433ecfc882df9a9fa6d2162708911c8e3d53cdd6c98ed9d8f19e28"
+    },
+    "queries/root-100-reference.json": {
+      "variant": "reference",
+      "block_size": 256,
+      "queries": "root",
+      "shell_size": 100,
+      "accepted": 187833,
+      "capacity": 214400,
+      "phantom_slots": 99,
+      "dimension": 10,
+      "state_path": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-00/state.pkl",
+      "source_root": "/largedata/albert/git/jaxns-efficient-phantom-A-20260910",
+      "affinity": [
+        67
+      ],
+      "hostname": "dorrie",
+      "machine": "aarch64",
+      "jax": "0.10.0",
+      "backend": "cpu",
+      "x64": true,
+      "seconds": [
+        0.5194028909318149,
+        0.5224127070978284,
+        0.5188349501695484,
+        0.5138098848983645,
+        0.5247937191743404,
+        0.5322650431189686,
+        0.5289163121487945
+      ],
+      "median_seconds": 0.5224127070978284,
+      "quartiles_seconds": [
+        0.5191189205506817,
+        0.5268550156615674
+      ],
+      "setup_seconds": 4.43709683790803,
+      "index_build_including_compile_seconds": 0.0,
+      "lower_seconds": 0.46756048407405615,
+      "compile_seconds": 2.3672264039050788,
+      "compiler_argument_bytes": 1244181568,
+      "compiler_output_bytes": 5624,
+      "compiler_temporary_bytes": 343242136,
+      "compiler_alias_bytes": 0,
+      "state_array_bytes": 1227011314,
+      "load_peak_rss_bytes": 2755657728,
+      "setup_peak_rss_bytes": 2755657728,
+      "warm_peak_rss_bytes": 2380267520,
+      "warm_final_rss_bytes": 2040528896,
+      "total_peak_rss_bytes": 2755657728,
+      "source_sha256_manifest": "81f484851751ea77e8ce11e30540f6de142e4330016b99fe38203cbf304470bd",
+      "benchmark_sha256_manifest": "17e5087979433ecfc882df9a9fa6d2162708911c8e3d53cdd6c98ed9d8f19e28"
+    },
+    "scaling/capacity2-combined.json": {
+      "variant": "combined",
+      "block_size": 256,
+      "queries": "mixed",
+      "synthetic_view": {
+        "phantom_slots": null,
+        "coordinate_repeats": 1,
+        "capacity_factor": 2
+      },
+      "shell_size": 100,
+      "accepted": 187833,
+      "capacity": 428800,
+      "phantom_slots": 99,
+      "dimension": 10,
+      "state_path": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-00/state.pkl",
+      "source_root": "/largedata/albert/git/jaxns-efficient-phantom-A-20260910",
+      "affinity": [
+        67
+      ],
+      "hostname": "dorrie",
+      "machine": "aarch64",
+      "jax": "0.10.0",
+      "backend": "cpu",
+      "x64": true,
+      "seconds": [
+        0.03531989990733564,
+        0.03511304990388453,
+        0.034901017090305686,
+        0.03498808899894357,
+        0.03553782217204571,
+        0.03478271188214421,
+        0.0362652197945863
+      ],
+      "median_seconds": 0.03511304990388453,
+      "quartiles_seconds": [
+        0.03494455304462463,
+        0.03542886103969067
+      ],
+      "setup_seconds": 8.465921811992303,
+      "index_build_including_compile_seconds": 3.0160672001075,
+      "lower_seconds": 0.3945333801675588,
+      "compile_seconds": 2.2259979019872844,
+      "compiler_argument_bytes": 2496920784,
+      "compiler_output_bytes": 5624,
+      "compiler_temporary_bytes": 6728208,
+      "compiler_alias_bytes": 0,
+      "state_array_bytes": 2460883322,
+      "load_peak_rss_bytes": 4025745408,
+      "setup_peak_rss_bytes": 4025745408,
+      "warm_peak_rss_bytes": 3335651328,
+      "warm_final_rss_bytes": 3335651328,
+      "total_peak_rss_bytes": 4025745408,
+      "source_sha256_manifest": "dffda4b71e824cfca0e328df98d046f6e581563ee71b25cb26a69a0546271db8",
+      "benchmark_sha256_manifest": "2ef17f1573f86289e4657020390b38109fc78a4c7f979800529e6ed1e6bb0818"
+    },
+    "scaling/capacity2-reference.json": {
+      "variant": "reference",
+      "block_size": 256,
+      "queries": "mixed",
+      "synthetic_view": {
+        "phantom_slots": null,
+        "coordinate_repeats": 1,
+        "capacity_factor": 2
+      },
+      "shell_size": 100,
+      "accepted": 187833,
+      "capacity": 428800,
+      "phantom_slots": 99,
+      "dimension": 10,
+      "state_path": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-00/state.pkl",
+      "source_root": "/largedata/albert/git/jaxns-efficient-phantom-A-20260910",
+      "affinity": [
+        67
+      ],
+      "hostname": "dorrie",
+      "machine": "aarch64",
+      "jax": "0.10.0",
+      "backend": "cpu",
+      "x64": true,
+      "seconds": [
+        0.9831241411156952,
+        0.9780993009917438,
+        1.0048974670935422,
+        0.9796609131153673,
+        0.9764006207697093,
+        0.9823614361230284,
+        0.9776915751863271
+      ],
+      "median_seconds": 0.9796609131153673,
+      "quartiles_seconds": [
+        0.9778954380890355,
+        0.9827427886193618
+      ],
+      "setup_seconds": 5.398060716921464,
+      "index_build_including_compile_seconds": 0.0,
+      "lower_seconds": 0.41902504302561283,
+      "compile_seconds": 2.2869774349965155,
+      "compiler_argument_bytes": 2490059976,
+      "compiler_output_bytes": 5624,
+      "compiler_temporary_bytes": 346609816,
+      "compiler_alias_bytes": 0,
+      "state_array_bytes": 2454022514,
+      "load_peak_rss_bytes": 4016504832,
+      "setup_peak_rss_bytes": 4016504832,
+      "warm_peak_rss_bytes": 3649437696,
+      "warm_final_rss_bytes": 3309699072,
+      "total_peak_rss_bytes": 4016504832,
+      "source_sha256_manifest": "dffda4b71e824cfca0e328df98d046f6e581563ee71b25cb26a69a0546271db8",
+      "benchmark_sha256_manifest": "2ef17f1573f86289e4657020390b38109fc78a4c7f979800529e6ed1e6bb0818"
+    },
+    "scaling/d20-combined.json": {
+      "variant": "combined",
+      "block_size": 256,
+      "queries": "mixed",
+      "synthetic_view": {
+        "phantom_slots": null,
+        "coordinate_repeats": 2,
+        "capacity_factor": 1
+      },
+      "shell_size": 100,
+      "accepted": 187833,
+      "capacity": 214400,
+      "phantom_slots": 99,
+      "dimension": 20,
+      "state_path": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-00/state.pkl",
+      "source_root": "/largedata/albert/git/jaxns-efficient-phantom-A-20260910",
+      "affinity": [
+        67
+      ],
+      "hostname": "dorrie",
+      "machine": "aarch64",
+      "jax": "0.10.0",
+      "backend": "cpu",
+      "x64": true,
+      "seconds": [
+        0.02872954192571342,
+        0.02860960504040122,
+        0.02836124994792044,
+        0.028571235947310925,
+        0.028369026957079768,
+        0.02842256287112832,
+        0.028401027200743556
+      ],
+      "median_seconds": 0.02842256287112832,
+      "quartiles_seconds": [
+        0.028385027078911662,
+        0.028590420493856072
+      ],
+      "setup_seconds": 7.285938261076808,
+      "index_build_including_compile_seconds": 3.025198051938787,
+      "lower_seconds": 0.35474504088051617,
+      "compile_seconds": 2.234448184026405,
+      "compiler_argument_bytes": 2105315400,
+      "compiler_output_bytes": 9624,
+      "compiler_temporary_bytes": 3388176,
+      "compiler_alias_bytes": 0,
+      "state_array_bytes": 2088145146,
+      "load_peak_rss_bytes": 3261399040,
+      "setup_peak_rss_bytes": 3261399040,
+      "warm_peak_rss_bytes": 2895642624,
+      "warm_final_rss_bytes": 2895642624,
+      "total_peak_rss_bytes": 3261399040,
+      "source_sha256_manifest": "dffda4b71e824cfca0e328df98d046f6e581563ee71b25cb26a69a0546271db8",
+      "benchmark_sha256_manifest": "2ef17f1573f86289e4657020390b38109fc78a4c7f979800529e6ed1e6bb0818"
+    },
+    "scaling/d20-reference.json": {
+      "variant": "reference",
+      "block_size": 256,
+      "queries": "mixed",
+      "synthetic_view": {
+        "phantom_slots": null,
+        "coordinate_repeats": 2,
+        "capacity_factor": 1
+      },
+      "shell_size": 100,
+      "accepted": 187833,
+      "capacity": 214400,
+      "phantom_slots": 99,
+      "dimension": 20,
+      "state_path": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-00/state.pkl",
+      "source_root": "/largedata/albert/git/jaxns-efficient-phantom-A-20260910",
+      "affinity": [
+        67
+      ],
+      "hostname": "dorrie",
+      "machine": "aarch64",
+      "jax": "0.10.0",
+      "backend": "cpu",
+      "x64": true,
+      "seconds": [
+        0.5135729019530118,
+        0.5121120258700103,
+        0.5102515630424023,
+        0.5138850640505552,
+        0.5139502489473671,
+        0.5117923761717975,
+        0.5076148700900376
+      ],
+      "median_seconds": 0.5121120258700103,
+      "quartiles_seconds": [
+        0.5110219696070999,
+        0.5137289830017835
+      ],
+      "setup_seconds": 4.280656463932246,
+      "index_build_including_compile_seconds": 0.0,
+      "lower_seconds": 0.43040913296863437,
+      "compile_seconds": 2.302999996114522,
+      "compiler_argument_bytes": 2101781568,
+      "compiler_output_bytes": 9624,
+      "compiler_temporary_bytes": 343242136,
+      "compiler_alias_bytes": 0,
+      "state_array_bytes": 2084611314,
+      "load_peak_rss_bytes": 3261464576,
+      "setup_peak_rss_bytes": 3261464576,
+      "warm_peak_rss_bytes": 3238068224,
+      "warm_final_rss_bytes": 2898329600,
+      "total_peak_rss_bytes": 3261464576,
+      "source_sha256_manifest": "dffda4b71e824cfca0e328df98d046f6e581563ee71b25cb26a69a0546271db8",
+      "benchmark_sha256_manifest": "2ef17f1573f86289e4657020390b38109fc78a4c7f979800529e6ed1e6bb0818"
+    },
+    "scaling/p9-combined.json": {
+      "variant": "combined",
+      "block_size": 256,
+      "queries": "mixed",
+      "synthetic_view": {
+        "phantom_slots": 9,
+        "coordinate_repeats": 1,
+        "capacity_factor": 1
+      },
+      "shell_size": 100,
+      "accepted": 187833,
+      "capacity": 214400,
+      "phantom_slots": 9,
+      "dimension": 10,
+      "state_path": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-00/state.pkl",
+      "source_root": "/largedata/albert/git/jaxns-efficient-phantom-A-20260910",
+      "affinity": [
+        67
+      ],
+      "hostname": "dorrie",
+      "machine": "aarch64",
+      "jax": "0.10.0",
+      "backend": "cpu",
+      "x64": true,
+      "seconds": [
+        0.009073063964024186,
+        0.00912052090279758,
+        0.009001096012070775,
+        0.009058983996510506,
+        0.008971718838438392,
+        0.00946983601897955,
+        0.009052616078406572
+      ],
+      "median_seconds": 0.009058983996510506,
+      "quartiles_seconds": [
+        0.009026856045238674,
+        0.009096792433410883
+      ],
+      "setup_seconds": 4.737190830055624,
+      "index_build_including_compile_seconds": 0.47120747598819435,
+      "lower_seconds": 0.38334834203124046,
+      "compile_seconds": 2.1318817969877273,
+      "compiler_argument_bytes": 147751240,
+      "compiler_output_bytes": 5624,
+      "compiler_temporary_bytes": 3388176,
+      "compiler_alias_bytes": 0,
+      "state_array_bytes": 130580986,
+      "load_peak_rss_bytes": 2755657728,
+      "setup_peak_rss_bytes": 2755657728,
+      "warm_peak_rss_bytes": 2157182976,
+      "warm_final_rss_bytes": 2157182976,
+      "total_peak_rss_bytes": 2755657728,
+      "source_sha256_manifest": "dffda4b71e824cfca0e328df98d046f6e581563ee71b25cb26a69a0546271db8",
+      "benchmark_sha256_manifest": "2ef17f1573f86289e4657020390b38109fc78a4c7f979800529e6ed1e6bb0818"
+    },
+    "scaling/p9-reference.json": {
+      "variant": "reference",
+      "block_size": 256,
+      "queries": "mixed",
+      "synthetic_view": {
+        "phantom_slots": 9,
+        "coordinate_repeats": 1,
+        "capacity_factor": 1
+      },
+      "shell_size": 100,
+      "accepted": 187833,
+      "capacity": 214400,
+      "phantom_slots": 9,
+      "dimension": 10,
+      "state_path": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-00/state.pkl",
+      "source_root": "/largedata/albert/git/jaxns-efficient-phantom-A-20260910",
+      "affinity": [
+        67
+      ],
+      "hostname": "dorrie",
+      "machine": "aarch64",
+      "jax": "0.10.0",
+      "backend": "cpu",
+      "x64": true,
+      "seconds": [
+        0.3473876710049808,
+        0.34456502506509423,
+        0.343959131045267,
+        0.34159498498775065,
+        0.341058051912114,
+        0.34052748791873455,
+        0.34083705907687545
+      ],
+      "median_seconds": 0.34159498498775065,
+      "quartiles_seconds": [
+        0.34094755549449474,
+        0.3442620780551806
+      ],
+      "setup_seconds": 4.374977728817612,
+      "index_build_including_compile_seconds": 0.0,
+      "lower_seconds": 0.452957761939615,
+      "compile_seconds": 2.4292831800412387,
+      "compiler_argument_bytes": 144309568,
+      "compiler_output_bytes": 5624,
+      "compiler_temporary_bytes": 343242136,
+      "compiler_alias_bytes": 0,
+      "state_array_bytes": 127139314,
+      "load_peak_rss_bytes": 2755657728,
+      "setup_peak_rss_bytes": 2755657728,
+      "warm_peak_rss_bytes": 2488795136,
+      "warm_final_rss_bytes": 2149056512,
+      "total_peak_rss_bytes": 2755657728,
+      "source_sha256_manifest": "dffda4b71e824cfca0e328df98d046f6e581563ee71b25cb26a69a0546271db8",
+      "benchmark_sha256_manifest": "2ef17f1573f86289e4657020390b38109fc78a4c7f979800529e6ed1e6bb0818"
+    },
+    "run-cg10-combined-3/RESULT.json": {
+      "case": "cg10",
+      "variant": "combined",
+      "seed": 0,
+      "goals": 3,
+      "allocation_goals": 3,
+      "depth_iterations": 234,
+      "root_out_degree": 890,
+      "classics": 21031,
+      "calls": 7255048,
+      "capacity": 26800,
+      "keys": {
+        "random_key": [
+          3764384500,
+          1946563400
+        ],
+        "goal_key": [
+          3764384500,
+          1946563400
+        ]
+      },
+      "fingerprints": {
+        "[<flat index 0>]['U_samples'][<flat index 0>]": {
+          "shape": [
+            21031,
+            10
+          ],
+          "dtype": "float32",
+          "sha256": "2ed6dd165822a624237cd386c42bfe7f4ea882a56b64404bb9aac85c3ca965c1"
+        },
+        "[<flat index 0>]['log_L_constraints']": {
+          "shape": [
+            21031
+          ],
+          "dtype": "float64",
+          "sha256": "f9ef05bf5e3953dcd60ad2b63b40b539fa77df9c7247d48bc5c2f5c648d15a31"
+        },
+        "[<flat index 0>]['log_likelihoods']": {
+          "shape": [
+            21031
+          ],
+          "dtype": "float64",
+          "sha256": "e2c941b767285f105a5e186bd4a92d7bfccc268d57a7dacff4b5595a4943bb3c"
+        },
+        "[<flat index 0>]['num_likelihood_evaluations']": {
+          "shape": [
+            21031
+          ],
+          "dtype": "int64",
+          "sha256": "2cbd145a8631e666cd58b50f0525482ac3bbdef09babad50e6698891ce04555a"
+        },
+        "[<flat index 0>]['out_degree']": {
+          "shape": [
+            21031
+          ],
+          "dtype": "int64",
+          "sha256": "4cf2a01432ec927d7579e23586bad5f264790f18d2f179aa1854b3ff0f5b1c3d"
+        },
+        "[<flat index 0>]['phantom_samples'][<flat index 0>]['U_samples'][<flat index 0>]": {
+          "shape": [
+            21031,
+            99,
+            10
+          ],
+          "dtype": "float32",
+          "sha256": "780b0f2a8fb6bfc03ab5c51a9a623bb3892049feccb70e0c4701c3cecc52e7d2"
+        },
+        "[<flat index 0>]['phantom_samples'][<flat index 0>]['log_L']": {
+          "shape": [
+            21031,
+            99
+          ],
+          "dtype": "float64",
+          "sha256": "16096b9d6797959165ac2e4e7c3ed57eee8c5012b196855a89265010fdeed5c7"
+        },
+        "[<flat index 0>]['phantom_samples'][<flat index 0>]['valid_mask']": {
+          "shape": [
+            21031,
+            99
+          ],
+          "dtype": "bool",
+          "sha256": "5e6aa9978bfbc7ba53b4c4ccac4399b7c6080ddcf0540900f13c917518032445"
+        }
+      },
+      "log_Z": -14.666893453331966,
+      "uncertainty": 0.1535705971113928,
+      "kish_ess": 3662.9621738877872,
+      "reference": {
+        "log_Z": -14.599683294937872,
+        "method": "conditional 1D quadrature",
+        "mean": [
+          3.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "covariance": [
+          [
+            1.0,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99
+          ],
+          [
+            0.99,
+            1.0,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99
+          ],
+          [
+            0.99,
+            0.99,
+            1.0,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99
+          ],
+          [
+            0.99,
+            0.99,
+            0.99,
+            1.0,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99
+          ],
+          [
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            1.0,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99
+          ],
+          [
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            1.0,
+            0.99,
+            0.99,
+            0.99,
+            0.99
+          ],
+          [
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            1.0,
+            0.99,
+            0.99,
+            0.99
+          ],
+          [
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            1.0,
+            0.99,
+            0.99
+          ],
+          [
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            1.0,
+            0.99
+          ],
+          [
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            1.0
+          ]
+        ],
+        "shear_beta": 0.4
+      },
+      "run_including_compilation_seconds": 79.79481806280091,
+      "run_peak_rss_bytes": 2667970560,
+      "checkpoint_roundtrip": true,
+      "progress": [
+        {
+          "goal": 1,
+          "classics": 8479,
+          "capacity": 13400,
+          "calls": 3290958,
+          "log_Z": -14.520017351457605,
+          "uncertainty": 0.25871815697821127,
+          "seconds": 44.77994563989341
+        },
+        {
+          "goal": 2,
+          "classics": 14686,
+          "capacity": 26800,
+          "calls": 5196681,
+          "log_Z": -14.742153169005457,
+          "uncertainty": 0.18736224047435732,
+          "seconds": 68.22665038984269
+        },
+        {
+          "goal": 3,
+          "classics": 21031,
+          "capacity": 26800,
+          "calls": 7255048,
+          "log_Z": -14.666893453331966,
+          "uncertainty": 0.1535705971113928,
+          "seconds": 79.79389117588289
+        }
+      ],
+      "source_root": "/largedata/albert/git/jaxns-efficient-phantom-A-20260910",
+      "source_commit": "aa79a0dc395c0d64b85cbb88d0e3e732decd7361",
+      "harness_sha256": "188859aba3fb074d352a53f4423c4be8566a2d0328b49abcf3ec04ca4846cb63",
+      "affinity": [
+        64
+      ],
+      "hostname": "dorrie",
+      "jax": "0.10.0",
+      "backend": "cpu",
+      "x64": true,
+      "source_sha256_manifest": "1fab08fa202414cbedcd365bfa9d20a173a762dec78d3170ba1d8d300dee10d5"
+    },
+    "run-cg10-reference-3/RESULT.json": {
+      "case": "cg10",
+      "variant": "reference",
+      "seed": 0,
+      "goals": 3,
+      "allocation_goals": 3,
+      "depth_iterations": 234,
+      "root_out_degree": 890,
+      "classics": 21031,
+      "calls": 7255048,
+      "capacity": 26800,
+      "keys": {
+        "random_key": [
+          3764384500,
+          1946563400
+        ],
+        "goal_key": [
+          3764384500,
+          1946563400
+        ]
+      },
+      "fingerprints": {
+        "[<flat index 0>]['U_samples'][<flat index 0>]": {
+          "shape": [
+            21031,
+            10
+          ],
+          "dtype": "float32",
+          "sha256": "2ed6dd165822a624237cd386c42bfe7f4ea882a56b64404bb9aac85c3ca965c1"
+        },
+        "[<flat index 0>]['log_L_constraints']": {
+          "shape": [
+            21031
+          ],
+          "dtype": "float64",
+          "sha256": "f9ef05bf5e3953dcd60ad2b63b40b539fa77df9c7247d48bc5c2f5c648d15a31"
+        },
+        "[<flat index 0>]['log_likelihoods']": {
+          "shape": [
+            21031
+          ],
+          "dtype": "float64",
+          "sha256": "e2c941b767285f105a5e186bd4a92d7bfccc268d57a7dacff4b5595a4943bb3c"
+        },
+        "[<flat index 0>]['num_likelihood_evaluations']": {
+          "shape": [
+            21031
+          ],
+          "dtype": "int64",
+          "sha256": "2cbd145a8631e666cd58b50f0525482ac3bbdef09babad50e6698891ce04555a"
+        },
+        "[<flat index 0>]['out_degree']": {
+          "shape": [
+            21031
+          ],
+          "dtype": "int64",
+          "sha256": "4cf2a01432ec927d7579e23586bad5f264790f18d2f179aa1854b3ff0f5b1c3d"
+        },
+        "[<flat index 0>]['phantom_samples'][<flat index 0>]['U_samples'][<flat index 0>]": {
+          "shape": [
+            21031,
+            99,
+            10
+          ],
+          "dtype": "float32",
+          "sha256": "780b0f2a8fb6bfc03ab5c51a9a623bb3892049feccb70e0c4701c3cecc52e7d2"
+        },
+        "[<flat index 0>]['phantom_samples'][<flat index 0>]['log_L']": {
+          "shape": [
+            21031,
+            99
+          ],
+          "dtype": "float64",
+          "sha256": "16096b9d6797959165ac2e4e7c3ed57eee8c5012b196855a89265010fdeed5c7"
+        },
+        "[<flat index 0>]['phantom_samples'][<flat index 0>]['valid_mask']": {
+          "shape": [
+            21031,
+            99
+          ],
+          "dtype": "bool",
+          "sha256": "5e6aa9978bfbc7ba53b4c4ccac4399b7c6080ddcf0540900f13c917518032445"
+        }
+      },
+      "log_Z": -14.666893453331966,
+      "uncertainty": 0.1535705971113928,
+      "kish_ess": 3662.9621738877872,
+      "reference": {
+        "log_Z": -14.599683294937872,
+        "method": "conditional 1D quadrature",
+        "mean": [
+          3.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "covariance": [
+          [
+            1.0,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99
+          ],
+          [
+            0.99,
+            1.0,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99
+          ],
+          [
+            0.99,
+            0.99,
+            1.0,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99
+          ],
+          [
+            0.99,
+            0.99,
+            0.99,
+            1.0,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99
+          ],
+          [
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            1.0,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99
+          ],
+          [
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            1.0,
+            0.99,
+            0.99,
+            0.99,
+            0.99
+          ],
+          [
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            1.0,
+            0.99,
+            0.99,
+            0.99
+          ],
+          [
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            1.0,
+            0.99,
+            0.99
+          ],
+          [
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            1.0,
+            0.99
+          ],
+          [
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            1.0
+          ]
+        ],
+        "shear_beta": 0.4
+      },
+      "run_including_compilation_seconds": 83.293971815845,
+      "run_peak_rss_bytes": 2727411712,
+      "checkpoint_roundtrip": false,
+      "progress": [
+        {
+          "goal": 1,
+          "classics": 8479,
+          "capacity": 13400,
+          "calls": 3290958,
+          "log_Z": -14.520017351457605,
+          "uncertainty": 0.25871815697821127,
+          "seconds": 43.32430629199371
+        },
+        {
+          "goal": 2,
+          "classics": 14686,
+          "capacity": 26800,
+          "calls": 5196681,
+          "log_Z": -14.742153169005457,
+          "uncertainty": 0.18736224047435732,
+          "seconds": 68.55270356591791
+        },
+        {
+          "goal": 3,
+          "classics": 21031,
+          "capacity": 26800,
+          "calls": 7255048,
+          "log_Z": -14.666893453331966,
+          "uncertainty": 0.1535705971113928,
+          "seconds": 83.29300444899127
+        }
+      ],
+      "source_root": "/largedata/albert/git/jaxns-paper-evidence10-AC300",
+      "source_commit": "aa79a0dc395c0d64b85cbb88d0e3e732decd7361",
+      "harness_sha256": "188859aba3fb074d352a53f4423c4be8566a2d0328b49abcf3ec04ca4846cb63",
+      "affinity": [
+        64
+      ],
+      "hostname": "dorrie",
+      "jax": "0.10.0",
+      "backend": "cpu",
+      "x64": true,
+      "source_sha256_manifest": "4ee0312c36454b49731543f5f93f8dd149a6944d035bc638f238a962a66e7bb9"
+    },
+    "run-g10-combined-3/RESULT.json": {
+      "case": "g10",
+      "variant": "combined",
+      "seed": 0,
+      "goals": 3,
+      "allocation_goals": 3,
+      "depth_iterations": 247,
+      "root_out_degree": 891,
+      "classics": 21614,
+      "calls": 7344713,
+      "capacity": 26800,
+      "keys": {
+        "random_key": [
+          3764384500,
+          1946563400
+        ],
+        "goal_key": [
+          3764384500,
+          1946563400
+        ]
+      },
+      "fingerprints": {
+        "[<flat index 0>]['U_samples'][<flat index 0>]": {
+          "shape": [
+            21614,
+            10
+          ],
+          "dtype": "float32",
+          "sha256": "809e07e53a155f3fd08708bf72e452e5e9d18abe04744cd411ee5a9c13fd337a"
+        },
+        "[<flat index 0>]['log_L_constraints']": {
+          "shape": [
+            21614
+          ],
+          "dtype": "float64",
+          "sha256": "13c42e2858933821fc054e1ffe4125e33a0b2f15efa97f624c60c46839f54ea3"
+        },
+        "[<flat index 0>]['log_likelihoods']": {
+          "shape": [
+            21614
+          ],
+          "dtype": "float64",
+          "sha256": "f6901f7df33690f8db814911dcf6024443b40ffac5562b33f7caddd7d453e915"
+        },
+        "[<flat index 0>]['num_likelihood_evaluations']": {
+          "shape": [
+            21614
+          ],
+          "dtype": "int64",
+          "sha256": "d7bcb4abd6f06087566af69fda657173df91cc02b15c3070d9b500ffe4350cc9"
+        },
+        "[<flat index 0>]['out_degree']": {
+          "shape": [
+            21614
+          ],
+          "dtype": "int64",
+          "sha256": "a1faedb1aedc8c2fa140b3cb49a9d3d2f5c9892c4298ade8995120f4f2b7f6ec"
+        },
+        "[<flat index 0>]['phantom_samples'][<flat index 0>]['U_samples'][<flat index 0>]": {
+          "shape": [
+            21614,
+            99,
+            10
+          ],
+          "dtype": "float32",
+          "sha256": "0eba9e3b688add7cbec4bd2b411993f41bd5cf9e3b24f34522bfc00343656fd8"
+        },
+        "[<flat index 0>]['phantom_samples'][<flat index 0>]['log_L']": {
+          "shape": [
+            21614,
+            99
+          ],
+          "dtype": "float64",
+          "sha256": "790c66d44e70e9a4e20312f865d8fd01184e08fc1130ae4c4b8dc868af54c23a"
+        },
+        "[<flat index 0>]['phantom_samples'][<flat index 0>]['valid_mask']": {
+          "shape": [
+            21614,
+            99
+          ],
+          "dtype": "bool",
+          "sha256": "4d036404d535a701d6dc755aa3784968d29fa77494fd9f46d32b59e655e797b5"
+        }
+      },
+      "log_Z": -14.768297441899367,
+      "uncertainty": 0.15387008058734986,
+      "kish_ess": 3539.7165079504684,
+      "reference": {
+        "log_Z": -14.480149273693915,
+        "method": "Gaussian conjugacy",
+        "mean": [
+          3.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "covariance": [
+          [
+            1.0,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99
+          ],
+          [
+            0.99,
+            1.0,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99
+          ],
+          [
+            0.99,
+            0.99,
+            1.0,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99
+          ],
+          [
+            0.99,
+            0.99,
+            0.99,
+            1.0,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99
+          ],
+          [
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            1.0,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99
+          ],
+          [
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            1.0,
+            0.99,
+            0.99,
+            0.99,
+            0.99
+          ],
+          [
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            1.0,
+            0.99,
+            0.99,
+            0.99
+          ],
+          [
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            1.0,
+            0.99,
+            0.99
+          ],
+          [
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            1.0,
+            0.99
+          ],
+          [
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            1.0
+          ]
+        ],
+        "shear_beta": 0.0
+      },
+      "run_including_compilation_seconds": 82.22478074207902,
+      "run_peak_rss_bytes": 2719744000,
+      "checkpoint_roundtrip": true,
+      "progress": [
+        {
+          "goal": 1,
+          "classics": 9051,
+          "capacity": 13400,
+          "calls": 3497407,
+          "log_Z": -14.909840352364162,
+          "uncertainty": 0.2616677753420396,
+          "seconds": 47.618549200939015
+        },
+        {
+          "goal": 2,
+          "classics": 15272,
+          "capacity": 26800,
+          "calls": 5366117,
+          "log_Z": -14.942450365662037,
+          "uncertainty": 0.18834006051473123,
+          "seconds": 72.74171802098863
+        },
+        {
+          "goal": 3,
+          "classics": 21614,
+          "capacity": 26800,
+          "calls": 7344713,
+          "log_Z": -14.768297441899367,
+          "uncertainty": 0.15387008058734986,
+          "seconds": 82.22400425607339
+        }
+      ],
+      "source_root": "/largedata/albert/git/jaxns-efficient-phantom-A-20260910",
+      "source_commit": "aa79a0dc395c0d64b85cbb88d0e3e732decd7361",
+      "harness_sha256": "188859aba3fb074d352a53f4423c4be8566a2d0328b49abcf3ec04ca4846cb63",
+      "affinity": [
+        64
+      ],
+      "hostname": "dorrie",
+      "jax": "0.10.0",
+      "backend": "cpu",
+      "x64": true,
+      "source_sha256_manifest": "880f4d1839c34a4c4dde63db8274dc8f5e54a92ef9eb436ac13e62e003d3d3d7"
+    },
+    "run-g10-reference-3/RESULT.json": {
+      "case": "g10",
+      "variant": "reference",
+      "seed": 0,
+      "goals": 3,
+      "allocation_goals": 3,
+      "depth_iterations": 247,
+      "root_out_degree": 891,
+      "classics": 21614,
+      "calls": 7344713,
+      "capacity": 26800,
+      "keys": {
+        "random_key": [
+          3764384500,
+          1946563400
+        ],
+        "goal_key": [
+          3764384500,
+          1946563400
+        ]
+      },
+      "fingerprints": {
+        "[<flat index 0>]['U_samples'][<flat index 0>]": {
+          "shape": [
+            21614,
+            10
+          ],
+          "dtype": "float32",
+          "sha256": "809e07e53a155f3fd08708bf72e452e5e9d18abe04744cd411ee5a9c13fd337a"
+        },
+        "[<flat index 0>]['log_L_constraints']": {
+          "shape": [
+            21614
+          ],
+          "dtype": "float64",
+          "sha256": "13c42e2858933821fc054e1ffe4125e33a0b2f15efa97f624c60c46839f54ea3"
+        },
+        "[<flat index 0>]['log_likelihoods']": {
+          "shape": [
+            21614
+          ],
+          "dtype": "float64",
+          "sha256": "f6901f7df33690f8db814911dcf6024443b40ffac5562b33f7caddd7d453e915"
+        },
+        "[<flat index 0>]['num_likelihood_evaluations']": {
+          "shape": [
+            21614
+          ],
+          "dtype": "int64",
+          "sha256": "d7bcb4abd6f06087566af69fda657173df91cc02b15c3070d9b500ffe4350cc9"
+        },
+        "[<flat index 0>]['out_degree']": {
+          "shape": [
+            21614
+          ],
+          "dtype": "int64",
+          "sha256": "a1faedb1aedc8c2fa140b3cb49a9d3d2f5c9892c4298ade8995120f4f2b7f6ec"
+        },
+        "[<flat index 0>]['phantom_samples'][<flat index 0>]['U_samples'][<flat index 0>]": {
+          "shape": [
+            21614,
+            99,
+            10
+          ],
+          "dtype": "float32",
+          "sha256": "0eba9e3b688add7cbec4bd2b411993f41bd5cf9e3b24f34522bfc00343656fd8"
+        },
+        "[<flat index 0>]['phantom_samples'][<flat index 0>]['log_L']": {
+          "shape": [
+            21614,
+            99
+          ],
+          "dtype": "float64",
+          "sha256": "790c66d44e70e9a4e20312f865d8fd01184e08fc1130ae4c4b8dc868af54c23a"
+        },
+        "[<flat index 0>]['phantom_samples'][<flat index 0>]['valid_mask']": {
+          "shape": [
+            21614,
+            99
+          ],
+          "dtype": "bool",
+          "sha256": "4d036404d535a701d6dc755aa3784968d29fa77494fd9f46d32b59e655e797b5"
+        }
+      },
+      "log_Z": -14.768297441899367,
+      "uncertainty": 0.15387008058734986,
+      "kish_ess": 3539.7165079504684,
+      "reference": {
+        "log_Z": -14.480149273693915,
+        "method": "Gaussian conjugacy",
+        "mean": [
+          3.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "covariance": [
+          [
+            1.0,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99
+          ],
+          [
+            0.99,
+            1.0,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99
+          ],
+          [
+            0.99,
+            0.99,
+            1.0,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99
+          ],
+          [
+            0.99,
+            0.99,
+            0.99,
+            1.0,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99
+          ],
+          [
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            1.0,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99
+          ],
+          [
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            1.0,
+            0.99,
+            0.99,
+            0.99,
+            0.99
+          ],
+          [
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            1.0,
+            0.99,
+            0.99,
+            0.99
+          ],
+          [
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            1.0,
+            0.99,
+            0.99
+          ],
+          [
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            1.0,
+            0.99
+          ],
+          [
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            1.0
+          ]
+        ],
+        "shear_beta": 0.0
+      },
+      "run_including_compilation_seconds": 86.92511318507604,
+      "run_peak_rss_bytes": 2810970112,
+      "checkpoint_roundtrip": false,
+      "progress": [
+        {
+          "goal": 1,
+          "classics": 9051,
+          "capacity": 13400,
+          "calls": 3497407,
+          "log_Z": -14.909840352364162,
+          "uncertainty": 0.2616677753420396,
+          "seconds": 46.6692850291729
+        },
+        {
+          "goal": 2,
+          "classics": 15272,
+          "capacity": 26800,
+          "calls": 5366117,
+          "log_Z": -14.942450365662037,
+          "uncertainty": 0.18834006051473123,
+          "seconds": 73.4106757179834
+        },
+        {
+          "goal": 3,
+          "classics": 21614,
+          "capacity": 26800,
+          "calls": 7344713,
+          "log_Z": -14.768297441899367,
+          "uncertainty": 0.15387008058734986,
+          "seconds": 86.92432124307379
+        }
+      ],
+      "source_root": "/largedata/albert/git/jaxns-paper-evidence10-AC300",
+      "source_commit": "aa79a0dc395c0d64b85cbb88d0e3e732decd7361",
+      "harness_sha256": "188859aba3fb074d352a53f4423c4be8566a2d0328b49abcf3ec04ca4846cb63",
+      "affinity": [
+        64
+      ],
+      "hostname": "dorrie",
+      "jax": "0.10.0",
+      "backend": "cpu",
+      "x64": true,
+      "source_sha256_manifest": "4ee0312c36454b49731543f5f93f8dd149a6944d035bc638f238a962a66e7bb9"
+    },
+    "run-ss10-combined-3/RESULT.json": {
+      "case": "ss10",
+      "variant": "combined",
+      "seed": 0,
+      "goals": 3,
+      "allocation_goals": 3,
+      "depth_iterations": 162,
+      "root_out_degree": 890,
+      "classics": 14307,
+      "calls": 3579389,
+      "capacity": 26800,
+      "keys": {
+        "random_key": [
+          3764384500,
+          1946563400
+        ],
+        "goal_key": [
+          3764384500,
+          1946563400
+        ]
+      },
+      "fingerprints": {
+        "[<flat index 0>]['U_samples'][<flat index 0>]": {
+          "shape": [
+            14307,
+            10
+          ],
+          "dtype": "float32",
+          "sha256": "6721a58cbebf4a96ffea8f9ba2f7375e2bca744f9224c908387c2251789c5a9f"
+        },
+        "[<flat index 0>]['log_L_constraints']": {
+          "shape": [
+            14307
+          ],
+          "dtype": "float64",
+          "sha256": "8b7cd8818df57989edc412493ee6433e54b7a5cde4a5f92dbb4e18cac01a8633"
+        },
+        "[<flat index 0>]['log_likelihoods']": {
+          "shape": [
+            14307
+          ],
+          "dtype": "float64",
+          "sha256": "6dae00c80a93c9b88734e7b509f67444743748b010a0d80337138ba9d1814da0"
+        },
+        "[<flat index 0>]['num_likelihood_evaluations']": {
+          "shape": [
+            14307
+          ],
+          "dtype": "int64",
+          "sha256": "67088e9119da7d2c927966eae804cfb36cb281c7a42dab382858f646f8e204a1"
+        },
+        "[<flat index 0>]['out_degree']": {
+          "shape": [
+            14307
+          ],
+          "dtype": "int64",
+          "sha256": "9006c2f8edf61fff566c1abe95bbb7ba0d0f8d8691f3c386f7d054ac4be625a9"
+        },
+        "[<flat index 0>]['phantom_samples'][<flat index 0>]['U_samples'][<flat index 0>]": {
+          "shape": [
+            14307,
+            99,
+            10
+          ],
+          "dtype": "float32",
+          "sha256": "e46e91c60e0518b1bc8eb6f4a92997b26809f8a7743d305aaac48ad362b6ba83"
+        },
+        "[<flat index 0>]['phantom_samples'][<flat index 0>]['log_L']": {
+          "shape": [
+            14307,
+            99
+          ],
+          "dtype": "float64",
+          "sha256": "1372c463d05518e374087a660de2abf750e518464980aa340214888c99464f34"
+        },
+        "[<flat index 0>]['phantom_samples'][<flat index 0>]['valid_mask']": {
+          "shape": [
+            14307,
+            99
+          ],
+          "dtype": "bool",
+          "sha256": "748c22bc95a5d8238eb05c5ada6b935cd9183151f8d841bca951c45e243df4da"
+        }
+      },
+      "log_Z": -24.8559971070984,
+      "uncertainty": 0.1182244320052989,
+      "kish_ess": 3721.283865682881,
+      "reference": {
+        "method": "product of Gaussian CDF differences over the finite prior box",
+        "log_Z": -24.15593480605331,
+        "component_log_Z": [
+          -24.84906649788154,
+          -24.849097475584877
+        ],
+        "spike_mass": 0.5000077444258325,
+        "means": [
+          [
+            6.0,
+            6.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            2.5,
+            2.5,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        ],
+        "standard_deviations": [
+          0.282842712474619,
+          0.8944271909999159
+        ]
+      },
+      "run_including_compilation_seconds": 62.554903423879296,
+      "run_peak_rss_bytes": 2579496960,
+      "checkpoint_roundtrip": true,
+      "progress": [
+        {
+          "goal": 1,
+          "classics": 6912,
+          "capacity": 13400,
+          "calls": 2055098,
+          "log_Z": -25.022359667565638,
+          "uncertainty": 0.19898121744349445,
+          "seconds": 38.867213727906346
+        },
+        {
+          "goal": 2,
+          "classics": 10482,
+          "capacity": 13400,
+          "calls": 2769791,
+          "log_Z": -24.97376262436713,
+          "uncertainty": 0.14461597330269643,
+          "seconds": 45.982144695008174
+        },
+        {
+          "goal": 3,
+          "classics": 14307,
+          "capacity": 26800,
+          "calls": 3579389,
+          "log_Z": -24.8559971070984,
+          "uncertainty": 0.1182244320052989,
+          "seconds": 62.5542355789803
+        }
+      ],
+      "source_root": "/largedata/albert/git/jaxns-efficient-phantom-A-20260910",
+      "source_commit": "aa79a0dc395c0d64b85cbb88d0e3e732decd7361",
+      "harness_sha256": "188859aba3fb074d352a53f4423c4be8566a2d0328b49abcf3ec04ca4846cb63",
+      "affinity": [
+        64
+      ],
+      "hostname": "dorrie",
+      "jax": "0.10.0",
+      "backend": "cpu",
+      "x64": true,
+      "source_sha256_manifest": "1fab08fa202414cbedcd365bfa9d20a173a762dec78d3170ba1d8d300dee10d5"
+    },
+    "run-ss10-reference-3/RESULT.json": {
+      "case": "ss10",
+      "variant": "reference",
+      "seed": 0,
+      "goals": 3,
+      "allocation_goals": 3,
+      "depth_iterations": 162,
+      "root_out_degree": 890,
+      "classics": 14307,
+      "calls": 3579389,
+      "capacity": 26800,
+      "keys": {
+        "random_key": [
+          3764384500,
+          1946563400
+        ],
+        "goal_key": [
+          3764384500,
+          1946563400
+        ]
+      },
+      "fingerprints": {
+        "[<flat index 0>]['U_samples'][<flat index 0>]": {
+          "shape": [
+            14307,
+            10
+          ],
+          "dtype": "float32",
+          "sha256": "6721a58cbebf4a96ffea8f9ba2f7375e2bca744f9224c908387c2251789c5a9f"
+        },
+        "[<flat index 0>]['log_L_constraints']": {
+          "shape": [
+            14307
+          ],
+          "dtype": "float64",
+          "sha256": "8b7cd8818df57989edc412493ee6433e54b7a5cde4a5f92dbb4e18cac01a8633"
+        },
+        "[<flat index 0>]['log_likelihoods']": {
+          "shape": [
+            14307
+          ],
+          "dtype": "float64",
+          "sha256": "6dae00c80a93c9b88734e7b509f67444743748b010a0d80337138ba9d1814da0"
+        },
+        "[<flat index 0>]['num_likelihood_evaluations']": {
+          "shape": [
+            14307
+          ],
+          "dtype": "int64",
+          "sha256": "67088e9119da7d2c927966eae804cfb36cb281c7a42dab382858f646f8e204a1"
+        },
+        "[<flat index 0>]['out_degree']": {
+          "shape": [
+            14307
+          ],
+          "dtype": "int64",
+          "sha256": "9006c2f8edf61fff566c1abe95bbb7ba0d0f8d8691f3c386f7d054ac4be625a9"
+        },
+        "[<flat index 0>]['phantom_samples'][<flat index 0>]['U_samples'][<flat index 0>]": {
+          "shape": [
+            14307,
+            99,
+            10
+          ],
+          "dtype": "float32",
+          "sha256": "e46e91c60e0518b1bc8eb6f4a92997b26809f8a7743d305aaac48ad362b6ba83"
+        },
+        "[<flat index 0>]['phantom_samples'][<flat index 0>]['log_L']": {
+          "shape": [
+            14307,
+            99
+          ],
+          "dtype": "float64",
+          "sha256": "1372c463d05518e374087a660de2abf750e518464980aa340214888c99464f34"
+        },
+        "[<flat index 0>]['phantom_samples'][<flat index 0>]['valid_mask']": {
+          "shape": [
+            14307,
+            99
+          ],
+          "dtype": "bool",
+          "sha256": "748c22bc95a5d8238eb05c5ada6b935cd9183151f8d841bca951c45e243df4da"
+        }
+      },
+      "log_Z": -24.8559971070984,
+      "uncertainty": 0.1182244320052989,
+      "kish_ess": 3721.283865682881,
+      "reference": {
+        "method": "product of Gaussian CDF differences over the finite prior box",
+        "log_Z": -24.15593480605331,
+        "component_log_Z": [
+          -24.84906649788154,
+          -24.849097475584877
+        ],
+        "spike_mass": 0.5000077444258325,
+        "means": [
+          [
+            6.0,
+            6.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            2.5,
+            2.5,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        ],
+        "standard_deviations": [
+          0.282842712474619,
+          0.8944271909999159
+        ]
+      },
+      "run_including_compilation_seconds": 62.16914390702732,
+      "run_peak_rss_bytes": 2459893760,
+      "checkpoint_roundtrip": false,
+      "progress": [
+        {
+          "goal": 1,
+          "classics": 6912,
+          "capacity": 13400,
+          "calls": 2055098,
+          "log_Z": -25.022359667565638,
+          "uncertainty": 0.19898121744349445,
+          "seconds": 37.18066779989749
+        },
+        {
+          "goal": 2,
+          "classics": 10482,
+          "capacity": 13400,
+          "calls": 2769791,
+          "log_Z": -24.97376262436713,
+          "uncertainty": 0.14461597330269643,
+          "seconds": 45.02242865180597
+        },
+        {
+          "goal": 3,
+          "classics": 14307,
+          "capacity": 26800,
+          "calls": 3579389,
+          "log_Z": -24.8559971070984,
+          "uncertainty": 0.1182244320052989,
+          "seconds": 62.16835391684435
+        }
+      ],
+      "source_root": "/largedata/albert/git/jaxns-paper-evidence10-AC300",
+      "source_commit": "aa79a0dc395c0d64b85cbb88d0e3e732decd7361",
+      "harness_sha256": "188859aba3fb074d352a53f4423c4be8566a2d0328b49abcf3ec04ca4846cb63",
+      "affinity": [
+        64
+      ],
+      "hostname": "dorrie",
+      "jax": "0.10.0",
+      "backend": "cpu",
+      "x64": true,
+      "source_sha256_manifest": "4ee0312c36454b49731543f5f93f8dd149a6944d035bc638f238a962a66e7bb9"
+    },
+    "full-cg10-combined/RESULT.json": {
+      "case": "cg10",
+      "variant": "combined",
+      "seed": 0,
+      "goals": 29,
+      "allocation_goals": 29,
+      "depth_iterations": 2200,
+      "root_out_degree": 8690,
+      "classics": 195547,
+      "calls": 64690886,
+      "capacity": 214400,
+      "keys": {
+        "random_key": [
+          797690382,
+          4241502666
+        ],
+        "goal_key": [
+          797690382,
+          4241502666
+        ]
+      },
+      "fingerprints": {
+        "[<flat index 0>]['U_samples'][<flat index 0>]": {
+          "shape": [
+            195547,
+            10
+          ],
+          "dtype": "float32",
+          "sha256": "2b5fc2cfbe81a23dc2cc4c300fbebea75a4c8f9882047bd4bafb49d46efa467e"
+        },
+        "[<flat index 0>]['log_L_constraints']": {
+          "shape": [
+            195547
+          ],
+          "dtype": "float64",
+          "sha256": "d09c0f12927dabb3773c8f9c5be9d32889d7d7297eed770dd6c9bd46a35c8327"
+        },
+        "[<flat index 0>]['log_likelihoods']": {
+          "shape": [
+            195547
+          ],
+          "dtype": "float64",
+          "sha256": "5ed5809643b5b1bf887dd7db6c0c941e0b7a894bc1606c44be6e3f02019413a9"
+        },
+        "[<flat index 0>]['num_likelihood_evaluations']": {
+          "shape": [
+            195547
+          ],
+          "dtype": "int64",
+          "sha256": "0f335e14411175882a7a3c1b2145b56c101e0693c2e6ba468394cf42011462dd"
+        },
+        "[<flat index 0>]['out_degree']": {
+          "shape": [
+            195547
+          ],
+          "dtype": "int64",
+          "sha256": "8b0c00fd2beadcd98d0c56b49d0dc1fc463d4a4714c894f58aacc5d92b366ed8"
+        },
+        "[<flat index 0>]['phantom_samples'][<flat index 0>]['U_samples'][<flat index 0>]": {
+          "shape": [
+            195547,
+            99,
+            10
+          ],
+          "dtype": "float32",
+          "sha256": "308b7c6a6e930d8f12d83878443f95644d6aa97c9f7057972506c6b79ac4c8c1"
+        },
+        "[<flat index 0>]['phantom_samples'][<flat index 0>]['log_L']": {
+          "shape": [
+            195547,
+            99
+          ],
+          "dtype": "float64",
+          "sha256": "9fdd05b4323fc725fab74b75f617924c3dd676a98c792f6991d1903639a72b28"
+        },
+        "[<flat index 0>]['phantom_samples'][<flat index 0>]['valid_mask']": {
+          "shape": [
+            195547,
+            99
+          ],
+          "dtype": "bool",
+          "sha256": "83adbff1137519dd084d48a7a48824d01b77380fddf2c666b3f7f73389eaf667"
+        }
+      },
+      "log_Z": -14.58863537715857,
+      "uncertainty": 0.04930224158416203,
+      "kish_ess": 24999.97131428005,
+      "reference": {
+        "log_Z": -14.599683294937872,
+        "method": "conditional 1D quadrature",
+        "mean": [
+          3.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "covariance": [
+          [
+            1.0,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99
+          ],
+          [
+            0.99,
+            1.0,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99
+          ],
+          [
+            0.99,
+            0.99,
+            1.0,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99
+          ],
+          [
+            0.99,
+            0.99,
+            0.99,
+            1.0,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99
+          ],
+          [
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            1.0,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99
+          ],
+          [
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            1.0,
+            0.99,
+            0.99,
+            0.99,
+            0.99
+          ],
+          [
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            1.0,
+            0.99,
+            0.99,
+            0.99
+          ],
+          [
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            1.0,
+            0.99,
+            0.99
+          ],
+          [
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            1.0,
+            0.99
+          ],
+          [
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            1.0
+          ]
+        ],
+        "shear_beta": 0.4
+      },
+      "run_including_compilation_seconds": 434.6958822978195,
+      "run_peak_rss_bytes": 5983305728,
+      "checkpoint_roundtrip": false,
+      "progress": [
+        {
+          "goal": 1,
+          "classics": 8479,
+          "capacity": 13400,
+          "calls": 3290958,
+          "log_Z": -14.520017351457605,
+          "uncertainty": 0.25871815697821127,
+          "seconds": 45.44606071896851
+        },
+        {
+          "goal": 2,
+          "classics": 14686,
+          "capacity": 26800,
+          "calls": 5196681,
+          "log_Z": -14.742153169005457,
+          "uncertainty": 0.18736224047435732,
+          "seconds": 69.70546524995007
+        },
+        {
+          "goal": 3,
+          "classics": 21031,
+          "capacity": 26800,
+          "calls": 7255048,
+          "log_Z": -14.666893453331966,
+          "uncertainty": 0.1535705971113928,
+          "seconds": 81.10198801988736
+        },
+        {
+          "goal": 4,
+          "classics": 27551,
+          "capacity": 53600,
+          "calls": 9369937,
+          "log_Z": -14.574878411414803,
+          "uncertainty": 0.13271851037343915,
+          "seconds": 103.54553497279994
+        },
+        {
+          "goal": 5,
+          "classics": 34144,
+          "capacity": 53600,
+          "calls": 11521434,
+          "log_Z": -14.542824588121839,
+          "uncertainty": 0.11863822391666749,
+          "seconds": 114.81171033880673
+        },
+        {
+          "goal": 6,
+          "classics": 40807,
+          "capacity": 53600,
+          "calls": 13710367,
+          "log_Z": -14.555344373011655,
+          "uncertainty": 0.10828542286402643,
+          "seconds": 122.386795258848
+        },
+        {
+          "goal": 7,
+          "classics": 47414,
+          "capacity": 53600,
+          "calls": 15879246,
+          "log_Z": -14.53696723744221,
+          "uncertainty": 0.10031672583814207,
+          "seconds": 129.72228790586814
+        },
+        {
+          "goal": 8,
+          "classics": 54198,
+          "capacity": 107200,
+          "calls": 18107032,
+          "log_Z": -14.578540522348726,
+          "uncertainty": 0.09393833154601236,
+          "seconds": 154.17056161887012
+        },
+        {
+          "goal": 9,
+          "classics": 60871,
+          "capacity": 107200,
+          "calls": 20299499,
+          "log_Z": -14.569610044215171,
+          "uncertainty": 0.08852715471214413,
+          "seconds": 167.77348334691487
+        },
+        {
+          "goal": 10,
+          "classics": 67696,
+          "capacity": 107200,
+          "calls": 22548197,
+          "log_Z": -14.604076565844904,
+          "uncertainty": 0.08398798018062137,
+          "seconds": 177.5852436888963
+        },
+        {
+          "goal": 11,
+          "classics": 74453,
+          "capacity": 107200,
+          "calls": 24786836,
+          "log_Z": -14.615288176269571,
+          "uncertainty": 0.08016328483861189,
+          "seconds": 187.04659618693404
+        },
+        {
+          "goal": 12,
+          "classics": 81238,
+          "capacity": 107200,
+          "calls": 27020726,
+          "log_Z": -14.634483605463684,
+          "uncertainty": 0.07679943540624436,
+          "seconds": 197.28169227880426
+        },
+        {
+          "goal": 13,
+          "classics": 87908,
+          "capacity": 107200,
+          "calls": 29205392,
+          "log_Z": -14.624655542738065,
+          "uncertainty": 0.07374927152018669,
+          "seconds": 206.58026370685548
+        },
+        {
+          "goal": 14,
+          "classics": 94733,
+          "capacity": 107200,
+          "calls": 31457497,
+          "log_Z": -14.647509029828626,
+          "uncertainty": 0.07110477308846254,
+          "seconds": 216.185416421853
+        },
+        {
+          "goal": 15,
+          "classics": 101412,
+          "capacity": 107200,
+          "calls": 33660291,
+          "log_Z": -14.632389491931013,
+          "uncertainty": 0.06867050168678912,
+          "seconds": 225.5402785378974
+        },
+        {
+          "goal": 16,
+          "classics": 108217,
+          "capacity": 214400,
+          "calls": 35884544,
+          "log_Z": -14.643666831043529,
+          "uncertainty": 0.06653063249130753,
+          "seconds": 252.43013576301746
+        },
+        {
+          "goal": 17,
+          "classics": 114937,
+          "capacity": 214400,
+          "calls": 38117599,
+          "log_Z": -14.638437170248336,
+          "uncertainty": 0.06451320886454545,
+          "seconds": 269.4076516118366
+        },
+        {
+          "goal": 18,
+          "classics": 121623,
+          "capacity": 214400,
+          "calls": 40291324,
+          "log_Z": -14.629011835765995,
+          "uncertainty": 0.06269727270601175,
+          "seconds": 282.77955542481504
+        },
+        {
+          "goal": 19,
+          "classics": 128435,
+          "capacity": 214400,
+          "calls": 42531285,
+          "log_Z": -14.641948099547683,
+          "uncertainty": 0.06106434993111282,
+          "seconds": 296.3804420719389
+        },
+        {
+          "goal": 20,
+          "classics": 135248,
+          "capacity": 214400,
+          "calls": 44800708,
+          "log_Z": -14.64709640270487,
+          "uncertainty": 0.059521229977789566,
+          "seconds": 311.3775371578522
+        },
+        {
+          "goal": 21,
+          "classics": 142150,
+          "capacity": 214400,
+          "calls": 47091919,
+          "log_Z": -14.663726560768902,
+          "uncertainty": 0.058091553114048886,
+          "seconds": 325.2406745669432
+        },
+        {
+          "goal": 22,
+          "classics": 148869,
+          "capacity": 214400,
+          "calls": 49320206,
+          "log_Z": -14.65919083850008,
+          "uncertainty": 0.05672514106982832,
+          "seconds": 338.7863764548674
+        },
+        {
+          "goal": 23,
+          "classics": 155592,
+          "capacity": 214400,
+          "calls": 51523165,
+          "log_Z": -14.655912001785099,
+          "uncertainty": 0.05547210980787291,
+          "seconds": 352.616981604835
+        },
+        {
+          "goal": 24,
+          "classics": 162204,
+          "capacity": 214400,
+          "calls": 53690701,
+          "log_Z": -14.635345761150734,
+          "uncertainty": 0.05427916998099898,
+          "seconds": 365.9671648479998
+        },
+        {
+          "goal": 25,
+          "classics": 168884,
+          "capacity": 214400,
+          "calls": 55875005,
+          "log_Z": -14.627845599905235,
+          "uncertainty": 0.05317647815102667,
+          "seconds": 380.1859481949359
+        },
+        {
+          "goal": 26,
+          "classics": 175529,
+          "capacity": 214400,
+          "calls": 58086832,
+          "log_Z": -14.616025711297025,
+          "uncertainty": 0.052135507406542186,
+          "seconds": 393.66861102101393
+        },
+        {
+          "goal": 27,
+          "classics": 182309,
+          "capacity": 214400,
+          "calls": 60338229,
+          "log_Z": -14.618775985344397,
+          "uncertainty": 0.05113454614900322,
+          "seconds": 407.82071179896593
+        },
+        {
+          "goal": 28,
+          "classics": 188918,
+          "capacity": 214400,
+          "calls": 62514200,
+          "log_Z": -14.599948199307626,
+          "uncertainty": 0.050192652941978874,
+          "seconds": 421.14153300086036
+        },
+        {
+          "goal": 29,
+          "classics": 195547,
+          "capacity": 214400,
+          "calls": 64690886,
+          "log_Z": -14.58863537715857,
+          "uncertainty": 0.04930224158416203,
+          "seconds": 434.69501147489063
+        }
+      ],
+      "source_root": "/largedata/albert/git/jaxns-efficient-phantom-A-20260910",
+      "source_commit": "aa79a0dc395c0d64b85cbb88d0e3e732decd7361",
+      "harness_sha256": "188859aba3fb074d352a53f4423c4be8566a2d0328b49abcf3ec04ca4846cb63",
+      "affinity": [
+        65
+      ],
+      "hostname": "dorrie",
+      "jax": "0.10.0",
+      "backend": "cpu",
+      "x64": true,
+      "source_sha256_manifest": "1fab08fa202414cbedcd365bfa9d20a173a762dec78d3170ba1d8d300dee10d5"
+    },
+    "full-g10-combined/RESULT.json": {
+      "case": "g10",
+      "variant": "combined",
+      "seed": 0,
+      "goals": 28,
+      "allocation_goals": 28,
+      "depth_iterations": 2109,
+      "root_out_degree": 8391,
+      "classics": 187833,
+      "calls": 60532854,
+      "capacity": 214400,
+      "keys": {
+        "random_key": [
+          2488960920,
+          2742249460
+        ],
+        "goal_key": [
+          2488960920,
+          2742249460
+        ]
+      },
+      "fingerprints": {
+        "[<flat index 0>]['U_samples'][<flat index 0>]": {
+          "shape": [
+            187833,
+            10
+          ],
+          "dtype": "float32",
+          "sha256": "cd742831dcd819252a4a38cdd6c53d649c06f2211726a9704af63451a60c74a6"
+        },
+        "[<flat index 0>]['log_L_constraints']": {
+          "shape": [
+            187833
+          ],
+          "dtype": "float64",
+          "sha256": "0b3450489baaeecc64fdec262599be1587276ef6f7708e9b4b4cf7fda20c522b"
+        },
+        "[<flat index 0>]['log_likelihoods']": {
+          "shape": [
+            187833
+          ],
+          "dtype": "float64",
+          "sha256": "dd087cc527b3cc4cc765aceac141c98fb1b16afdcfb7fabfec7fa06f1a7758d2"
+        },
+        "[<flat index 0>]['num_likelihood_evaluations']": {
+          "shape": [
+            187833
+          ],
+          "dtype": "int64",
+          "sha256": "de37fae31bb7982595ae069fb032389c3a343b5a7419bf758add3d2b481501fa"
+        },
+        "[<flat index 0>]['out_degree']": {
+          "shape": [
+            187833
+          ],
+          "dtype": "int64",
+          "sha256": "d77c0833b1d7a676a1f43b15d0c3f18d6e35fc3573c162cac7108c196ade28af"
+        },
+        "[<flat index 0>]['phantom_samples'][<flat index 0>]['U_samples'][<flat index 0>]": {
+          "shape": [
+            187833,
+            99,
+            10
+          ],
+          "dtype": "float32",
+          "sha256": "89eb74468ccb5fc5ef4aa2e13e3b317def29259ea505f6ad5155db983ca5cdf9"
+        },
+        "[<flat index 0>]['phantom_samples'][<flat index 0>]['log_L']": {
+          "shape": [
+            187833,
+            99
+          ],
+          "dtype": "float64",
+          "sha256": "5258c6e0ba98f7066a0e2e77405f9201f69fa8fb4ff2ac3808a647d73bf08737"
+        },
+        "[<flat index 0>]['phantom_samples'][<flat index 0>]['valid_mask']": {
+          "shape": [
+            187833,
+            99
+          ],
+          "dtype": "bool",
+          "sha256": "6d20c833fd577d25a9ab053b27723652b49ef49007ac32656b5d8df7e2728eaf"
+        }
+      },
+      "log_Z": -14.475368641829233,
+      "uncertainty": 0.04999351018297042,
+      "kish_ess": 24151.838137597435,
+      "reference": {
+        "log_Z": -14.480149273693915,
+        "method": "Gaussian conjugacy",
+        "mean": [
+          3.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "covariance": [
+          [
+            1.0,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99
+          ],
+          [
+            0.99,
+            1.0,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99
+          ],
+          [
+            0.99,
+            0.99,
+            1.0,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99
+          ],
+          [
+            0.99,
+            0.99,
+            0.99,
+            1.0,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99
+          ],
+          [
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            1.0,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99
+          ],
+          [
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            1.0,
+            0.99,
+            0.99,
+            0.99,
+            0.99
+          ],
+          [
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            1.0,
+            0.99,
+            0.99,
+            0.99
+          ],
+          [
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            1.0,
+            0.99,
+            0.99
+          ],
+          [
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            1.0,
+            0.99
+          ],
+          [
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            0.99,
+            1.0
+          ]
+        ],
+        "shear_beta": 0.0
+      },
+      "run_including_compilation_seconds": 416.823818793986,
+      "run_peak_rss_bytes": 6041632768,
+      "checkpoint_roundtrip": false,
+      "progress": [
+        {
+          "goal": 1,
+          "classics": 9051,
+          "capacity": 13400,
+          "calls": 3497407,
+          "log_Z": -14.909840352364162,
+          "uncertainty": 0.2616677753420396,
+          "seconds": 48.67930581001565
+        },
+        {
+          "goal": 2,
+          "classics": 15272,
+          "capacity": 26800,
+          "calls": 5366117,
+          "log_Z": -14.942450365662037,
+          "uncertainty": 0.18834006051473123,
+          "seconds": 74.51416149595752
+        },
+        {
+          "goal": 3,
+          "classics": 21614,
+          "capacity": 26800,
+          "calls": 7344713,
+          "log_Z": -14.768297441899367,
+          "uncertainty": 0.15387008058734986,
+          "seconds": 84.27052939706482
+        },
+        {
+          "goal": 4,
+          "classics": 28225,
+          "capacity": 53600,
+          "calls": 9419097,
+          "log_Z": -14.752773747834858,
+          "uncertainty": 0.1331513964868522,
+          "seconds": 108.8446241109632
+        },
+        {
+          "goal": 5,
+          "classics": 34759,
+          "capacity": 53600,
+          "calls": 11473561,
+          "log_Z": -14.66364637780474,
+          "uncertainty": 0.11882325156925064,
+          "seconds": 119.90592075907625
+        },
+        {
+          "goal": 6,
+          "classics": 41255,
+          "capacity": 53600,
+          "calls": 13537400,
+          "log_Z": -14.569405871960646,
+          "uncertainty": 0.10833846540834505,
+          "seconds": 127.0843481249176
+        },
+        {
+          "goal": 7,
+          "classics": 47858,
+          "capacity": 53600,
+          "calls": 15640790,
+          "log_Z": -14.5487173102185,
+          "uncertainty": 0.10021099604257681,
+          "seconds": 134.10991872288287
+        },
+        {
+          "goal": 8,
+          "classics": 54537,
+          "capacity": 107200,
+          "calls": 17752224,
+          "log_Z": -14.557099829242997,
+          "uncertainty": 0.09382074098045953,
+          "seconds": 158.27143271593377
+        },
+        {
+          "goal": 9,
+          "classics": 61181,
+          "capacity": 107200,
+          "calls": 19885863,
+          "log_Z": -14.532288138213811,
+          "uncertainty": 0.0884280680623128,
+          "seconds": 171.97794550587423
+        },
+        {
+          "goal": 10,
+          "classics": 67755,
+          "capacity": 107200,
+          "calls": 21979664,
+          "log_Z": -14.49384822828593,
+          "uncertainty": 0.08378627001022028,
+          "seconds": 181.22782320296392
+        },
+        {
+          "goal": 11,
+          "classics": 74438,
+          "capacity": 107200,
+          "calls": 24118989,
+          "log_Z": -14.495209878647366,
+          "uncertainty": 0.0798684931201436,
+          "seconds": 190.2289383460302
+        },
+        {
+          "goal": 12,
+          "classics": 81148,
+          "capacity": 107200,
+          "calls": 26276155,
+          "log_Z": -14.501751511396902,
+          "uncertainty": 0.07643340011881986,
+          "seconds": 199.39179919008166
+        },
+        {
+          "goal": 13,
+          "classics": 87877,
+          "capacity": 107200,
+          "calls": 28427879,
+          "log_Z": -14.520528095179927,
+          "uncertainty": 0.07344352283567414,
+          "seconds": 208.71470562694594
+        },
+        {
+          "goal": 14,
+          "classics": 94532,
+          "capacity": 107200,
+          "calls": 30566082,
+          "log_Z": -14.519635321861921,
+          "uncertainty": 0.07077046925051772,
+          "seconds": 217.6500229339581
+        },
+        {
+          "goal": 15,
+          "classics": 101169,
+          "capacity": 107200,
+          "calls": 32686314,
+          "log_Z": -14.508402893407583,
+          "uncertainty": 0.06835727001106899,
+          "seconds": 226.85559583106078
+        },
+        {
+          "goal": 16,
+          "classics": 107793,
+          "capacity": 214400,
+          "calls": 34814870,
+          "log_Z": -14.50292509951151,
+          "uncertainty": 0.06618583784769476,
+          "seconds": 252.93013473390602
+        },
+        {
+          "goal": 17,
+          "classics": 114461,
+          "capacity": 214400,
+          "calls": 36970542,
+          "log_Z": -14.498715040915156,
+          "uncertainty": 0.06418708705131002,
+          "seconds": 270.62104458594695
+        },
+        {
+          "goal": 18,
+          "classics": 121143,
+          "capacity": 214400,
+          "calls": 39112284,
+          "log_Z": -14.498378452308355,
+          "uncertainty": 0.06238160883905495,
+          "seconds": 283.6490122799296
+        },
+        {
+          "goal": 19,
+          "classics": 128005,
+          "capacity": 214400,
+          "calls": 41335314,
+          "log_Z": -14.528477872623466,
+          "uncertainty": 0.060741431872712484,
+          "seconds": 298.043350049993
+        },
+        {
+          "goal": 20,
+          "classics": 134615,
+          "capacity": 214400,
+          "calls": 43449719,
+          "log_Z": -14.515501891240389,
+          "uncertainty": 0.05919468144763524,
+          "seconds": 311.40066147688776
+        },
+        {
+          "goal": 21,
+          "classics": 141437,
+          "capacity": 214400,
+          "calls": 45626412,
+          "log_Z": -14.536812026974033,
+          "uncertainty": 0.05780150113028347,
+          "seconds": 325.1176539459266
+        },
+        {
+          "goal": 22,
+          "classics": 148151,
+          "capacity": 214400,
+          "calls": 47773636,
+          "log_Z": -14.544345915926923,
+          "uncertainty": 0.056471067736296,
+          "seconds": 338.01691193087026
+        },
+        {
+          "goal": 23,
+          "classics": 154728,
+          "capacity": 214400,
+          "calls": 49875965,
+          "log_Z": -14.52398758020851,
+          "uncertainty": 0.05520386399759233,
+          "seconds": 351.2349582479801
+        },
+        {
+          "goal": 24,
+          "classics": 161359,
+          "capacity": 214400,
+          "calls": 51999996,
+          "log_Z": -14.517484296158807,
+          "uncertainty": 0.054060104374951054,
+          "seconds": 364.18489698902704
+        },
+        {
+          "goal": 25,
+          "classics": 167991,
+          "capacity": 214400,
+          "calls": 54119612,
+          "log_Z": -14.50768634786063,
+          "uncertainty": 0.05295994593124096,
+          "seconds": 377.5310879109893
+        },
+        {
+          "goal": 26,
+          "classics": 174461,
+          "capacity": 214400,
+          "calls": 56205380,
+          "log_Z": -14.474753959373826,
+          "uncertainty": 0.05189095548001596,
+          "seconds": 390.34129123506136
+        },
+        {
+          "goal": 27,
+          "classics": 181148,
+          "capacity": 214400,
+          "calls": 58369865,
+          "log_Z": -14.472712219678245,
+          "uncertainty": 0.05091038380047569,
+          "seconds": 403.8098670260515
+        },
+        {
+          "goal": 28,
+          "classics": 187833,
+          "capacity": 214400,
+          "calls": 60532854,
+          "log_Z": -14.475368641829233,
+          "uncertainty": 0.04999351018297042,
+          "seconds": 416.82305328408256
+        }
+      ],
+      "source_root": "/largedata/albert/git/jaxns-efficient-phantom-A-20260910",
+      "source_commit": "aa79a0dc395c0d64b85cbb88d0e3e732decd7361",
+      "harness_sha256": "188859aba3fb074d352a53f4423c4be8566a2d0328b49abcf3ec04ca4846cb63",
+      "affinity": [
+        64
+      ],
+      "hostname": "dorrie",
+      "jax": "0.10.0",
+      "backend": "cpu",
+      "x64": true,
+      "source_sha256_manifest": "1fab08fa202414cbedcd365bfa9d20a173a762dec78d3170ba1d8d300dee10d5"
+    },
+    "full-ss10-combined/RESULT.json": {
+      "case": "ss10",
+      "variant": "combined",
+      "seed": 0,
+      "goals": 18,
+      "allocation_goals": 19,
+      "depth_iterations": 887,
+      "root_out_degree": 5058,
+      "classics": 72357,
+      "calls": 16573991,
+      "capacity": 107200,
+      "keys": {
+        "random_key": [
+          3334153156,
+          1410855127
+        ],
+        "goal_key": [
+          3334153156,
+          1410855127
+        ]
+      },
+      "fingerprints": {
+        "[<flat index 0>]['U_samples'][<flat index 0>]": {
+          "shape": [
+            72357,
+            10
+          ],
+          "dtype": "float32",
+          "sha256": "f7dfcedee4524e83fbd11d0ca38860f5368b41caf164e5ee02e376a96dfc7f1e"
+        },
+        "[<flat index 0>]['log_L_constraints']": {
+          "shape": [
+            72357
+          ],
+          "dtype": "float64",
+          "sha256": "c876b60c01dee08003f1a2a795917b20eb36e4fc241d5ed626d70dfa7d8a9eb4"
+        },
+        "[<flat index 0>]['log_likelihoods']": {
+          "shape": [
+            72357
+          ],
+          "dtype": "float64",
+          "sha256": "bf3b154be25ebd3a93c7e76adf8e423095a3f4b7da2986b9f76ca2e10d7352da"
+        },
+        "[<flat index 0>]['num_likelihood_evaluations']": {
+          "shape": [
+            72357
+          ],
+          "dtype": "int64",
+          "sha256": "7998e5100d3ebfd1da671c85b9eef18e0818fe8f84e6357023858c13a017e1fb"
+        },
+        "[<flat index 0>]['out_degree']": {
+          "shape": [
+            72357
+          ],
+          "dtype": "int64",
+          "sha256": "80902a2adf129ea30d58b9ab62294882448cad33636d5bb265e5c6a0fa8a9717"
+        },
+        "[<flat index 0>]['phantom_samples'][<flat index 0>]['U_samples'][<flat index 0>]": {
+          "shape": [
+            72357,
+            99,
+            10
+          ],
+          "dtype": "float32",
+          "sha256": "1087c4b8ca3f08e5228f1a246c1696cb0f8bf2eef1da8baaab74ac180ad9738b"
+        },
+        "[<flat index 0>]['phantom_samples'][<flat index 0>]['log_L']": {
+          "shape": [
+            72357,
+            99
+          ],
+          "dtype": "float64",
+          "sha256": "e5449d905444253f0a0e6f101afd1d99bdbccf58f575f8ed1fd7cc1bf1cc033e"
+        },
+        "[<flat index 0>]['phantom_samples'][<flat index 0>]['valid_mask']": {
+          "shape": [
+            72357,
+            99
+          ],
+          "dtype": "bool",
+          "sha256": "874537ad97f15448dd82962440486c01383c0560dc573072b8e692cd4af9fdad"
+        }
+      },
+      "log_Z": -24.74418864564433,
+      "uncertainty": 0.04963884388154501,
+      "kish_ess": 15632.744903042258,
+      "reference": {
+        "method": "product of Gaussian CDF differences over the finite prior box",
+        "log_Z": -24.15593480605331,
+        "component_log_Z": [
+          -24.84906649788154,
+          -24.849097475584877
+        ],
+        "spike_mass": 0.5000077444258325,
+        "means": [
+          [
+            6.0,
+            6.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            2.5,
+            2.5,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        ],
+        "standard_deviations": [
+          0.282842712474619,
+          0.8944271909999159
+        ]
+      },
+      "run_including_compilation_seconds": 167.12592559983023,
+      "run_peak_rss_bytes": 4215930880,
+      "checkpoint_roundtrip": false,
+      "progress": [
+        {
+          "goal": 1,
+          "classics": 6912,
+          "capacity": 13400,
+          "calls": 2055098,
+          "log_Z": -25.022359667565638,
+          "uncertainty": 0.19898121744349445,
+          "seconds": 39.24200610583648
+        },
+        {
+          "goal": 2,
+          "classics": 10482,
+          "capacity": 13400,
+          "calls": 2769791,
+          "log_Z": -24.97376262436713,
+          "uncertainty": 0.14461597330269643,
+          "seconds": 46.42185098701157
+        },
+        {
+          "goal": 3,
+          "classics": 14307,
+          "capacity": 26800,
+          "calls": 3579389,
+          "log_Z": -24.8559971070984,
+          "uncertainty": 0.1182244320052989,
+          "seconds": 63.43985747592524
+        },
+        {
+          "goal": 4,
+          "classics": 18310,
+          "capacity": 26800,
+          "calls": 4431313,
+          "log_Z": -24.813519914754377,
+          "uncertainty": 0.10236193404701494,
+          "seconds": 71.467355402885
+        },
+        {
+          "goal": 5,
+          "classics": 22368,
+          "capacity": 26800,
+          "calls": 5302810,
+          "log_Z": -24.791678368955427,
+          "uncertainty": 0.09135513716104766,
+          "seconds": 74.10009291791357
+        },
+        {
+          "goal": 6,
+          "classics": 26387,
+          "capacity": 26800,
+          "calls": 6173292,
+          "log_Z": -24.755659268383496,
+          "uncertainty": 0.08315749043544333,
+          "seconds": 76.8354547698982
+        },
+        {
+          "goal": 7,
+          "classics": 30481,
+          "capacity": 53600,
+          "calls": 7060457,
+          "log_Z": -24.772732651580508,
+          "uncertainty": 0.07702151078922705,
+          "seconds": 95.5387868869584
+        },
+        {
+          "goal": 8,
+          "classics": 34487,
+          "capacity": 53600,
+          "calls": 7928818,
+          "log_Z": -24.743202434071755,
+          "uncertainty": 0.07198448102332614,
+          "seconds": 102.3459502439946
+        },
+        {
+          "goal": 9,
+          "classics": 38588,
+          "capacity": 53600,
+          "calls": 8822915,
+          "log_Z": -24.73775441872113,
+          "uncertainty": 0.06791718637777902,
+          "seconds": 106.01657332596369
+        },
+        {
+          "goal": 10,
+          "classics": 42679,
+          "capacity": 53600,
+          "calls": 9721089,
+          "log_Z": -24.73060369286046,
+          "uncertainty": 0.06437460989960998,
+          "seconds": 109.66285413480364
+        },
+        {
+          "goal": 11,
+          "classics": 46805,
+          "capacity": 53600,
+          "calls": 10617408,
+          "log_Z": -24.73827016401062,
+          "uncertainty": 0.061441649460097315,
+          "seconds": 113.07043112488464
+        },
+        {
+          "goal": 12,
+          "classics": 52682,
+          "capacity": 53600,
+          "calls": 12262114,
+          "log_Z": -24.760366930905413,
+          "uncertainty": 0.05858802682373178,
+          "seconds": 122.3240741638001
+        },
+        {
+          "goal": 13,
+          "classics": 56815,
+          "capacity": 107200,
+          "calls": 13165543,
+          "log_Z": -24.754318123097494,
+          "uncertainty": 0.05629626701114103,
+          "seconds": 143.1789591058623
+        },
+        {
+          "goal": 14,
+          "classics": 60866,
+          "capacity": 107200,
+          "calls": 14052499,
+          "log_Z": -24.738366777898413,
+          "uncertainty": 0.054255258216180186,
+          "seconds": 151.91406624391675
+        },
+        {
+          "goal": 15,
+          "classics": 64737,
+          "capacity": 107200,
+          "calls": 14894644,
+          "log_Z": -24.737834859354862,
+          "uncertainty": 0.05258348597558554,
+          "seconds": 156.29802101594396
+        },
+        {
+          "goal": 16,
+          "classics": 67716,
+          "capacity": 107200,
+          "calls": 15550614,
+          "log_Z": -24.762567238293396,
+          "uncertainty": 0.05143503454196856,
+          "seconds": 160.62217281595804
+        },
+        {
+          "goal": 17,
+          "classics": 70058,
+          "capacity": 107200,
+          "calls": 16073567,
+          "log_Z": -24.739146640173274,
+          "uncertainty": 0.050449548937659246,
+          "seconds": 163.80692326580174
+        },
+        {
+          "goal": 18,
+          "classics": 72357,
+          "capacity": 107200,
+          "calls": 16573991,
+          "log_Z": -24.74418864564433,
+          "uncertainty": 0.04963884388154501,
+          "seconds": 167.1247909348458
+        }
+      ],
+      "source_root": "/largedata/albert/git/jaxns-efficient-phantom-A-20260910",
+      "source_commit": "aa79a0dc395c0d64b85cbb88d0e3e732decd7361",
+      "harness_sha256": "188859aba3fb074d352a53f4423c4be8566a2d0328b49abcf3ec04ca4846cb63",
+      "affinity": [
+        66
+      ],
+      "hostname": "dorrie",
+      "jax": "0.10.0",
+      "backend": "cpu",
+      "x64": true,
+      "source_sha256_manifest": "1fab08fa202414cbedcd365bfa9d20a173a762dec78d3170ba1d8d300dee10d5"
+    },
+    "resume-g10-combined.json": {
+      "variant": "combined",
+      "state_path": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-00/state.pkl",
+      "source_root": "/largedata/albert/git/jaxns-efficient-phantom-A-20260910",
+      "source_commit": "aa79a0dc395c0d64b85cbb88d0e3e732decd7361",
+      "harness_sha256": "5afccb4c27966d4ba82673ed89a482e5e200c8613bbed44d4488de9baabe8d76",
+      "conversion_including_compile_seconds": 3.0365007570944726,
+      "cold_seconds": 28.480480644851923,
+      "warm_seconds": [
+        12.591801122995093,
+        12.563824928132817,
+        12.561971792019904
+      ],
+      "median_seconds": 12.563824928132817,
+      "quartiles_seconds": [
+        12.56289836007636,
+        12.577813025563955
+      ],
+      "total_peak_rss_bytes": 5381423104,
+      "input_classics": 187833,
+      "input_capacity": 214400,
+      "classics": 194585,
+      "capacity": 214400,
+      "calls": 62709396,
+      "new_calls": 2176542,
+      "goals": 29,
+      "fingerprints": {
+        "[<flat index 0>]['U_samples'][<flat index 0>]": {
+          "shape": [
+            194585,
+            10
+          ],
+          "dtype": "float32",
+          "sha256": "1fe03df76cbbf3b31ff913bb8c8ab2026977084408a44dd43dcda03180870713"
+        },
+        "[<flat index 0>]['log_L_constraints']": {
+          "shape": [
+            194585
+          ],
+          "dtype": "float64",
+          "sha256": "787d46faac09312621ed33f332e3fcf6632e72e4cd8ad07db473b36d3ea7b530"
+        },
+        "[<flat index 0>]['log_likelihoods']": {
+          "shape": [
+            194585
+          ],
+          "dtype": "float64",
+          "sha256": "f0b14e205f54236d9d586d6cb5cf3a021367c966123e099dee7a954adb785de2"
+        },
+        "[<flat index 0>]['num_likelihood_evaluations']": {
+          "shape": [
+            194585
+          ],
+          "dtype": "int64",
+          "sha256": "e744dc0c8a3f85016c36d33e4c8f84e025e6a7775e6e21c2c67da7570f9ea3aa"
+        },
+        "[<flat index 0>]['out_degree']": {
+          "shape": [
+            194585
+          ],
+          "dtype": "int64",
+          "sha256": "806b8aa3ab1483b5f4d9c52f777be68837d9bd5701cfb762ec27791419f157b3"
+        },
+        "[<flat index 0>]['phantom_samples'][<flat index 0>]['U_samples'][<flat index 0>]": {
+          "shape": [
+            194585,
+            99,
+            10
+          ],
+          "dtype": "float32",
+          "sha256": "ee75d4449c552cc5fce602bd8576fc3aab1217096fa29608831ef13c95cd3a18"
+        },
+        "[<flat index 0>]['phantom_samples'][<flat index 0>]['log_L']": {
+          "shape": [
+            194585,
+            99
+          ],
+          "dtype": "float64",
+          "sha256": "75f3008ea14e1f605f4a9cb14d70251e2da63f661bfceec8691e67d0e835bebe"
+        },
+        "[<flat index 0>]['phantom_samples'][<flat index 0>]['valid_mask']": {
+          "shape": [
+            194585,
+            99
+          ],
+          "dtype": "bool",
+          "sha256": "19cb8a19721981dd00b0dccc0ea31fd89dc2bc7da84259bf1fa856ad28b242b6"
+        }
+      },
+      "random_key": [
+        797690382,
+        4241502666
+      ],
+      "goal_key": [
+        797690382,
+        4241502666
+      ],
+      "affinity": [
+        68
+      ],
+      "hostname": "dorrie",
+      "jax": "0.10.0",
+      "backend": "cpu",
+      "x64": true,
+      "source_sha256_manifest": "81f484851751ea77e8ce11e30540f6de142e4330016b99fe38203cbf304470bd"
+    },
+    "resume-g10-reference.json": {
+      "variant": "reference",
+      "state_path": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-00/state.pkl",
+      "source_root": "/largedata/albert/git/jaxns-paper-evidence10-AC300",
+      "source_commit": "aa79a0dc395c0d64b85cbb88d0e3e732decd7361",
+      "harness_sha256": "5afccb4c27966d4ba82673ed89a482e5e200c8613bbed44d4488de9baabe8d76",
+      "conversion_including_compile_seconds": 0.0,
+      "cold_seconds": 65.99349425989203,
+      "warm_seconds": [
+        50.850506390910596,
+        51.31201354600489,
+        52.288748749066144
+      ],
+      "median_seconds": 51.31201354600489,
+      "quartiles_seconds": [
+        51.08125996845774,
+        51.80038114753552
+      ],
+      "total_peak_rss_bytes": 5630001152,
+      "input_classics": 187833,
+      "input_capacity": 214400,
+      "classics": 194585,
+      "capacity": 214400,
+      "calls": 62709396,
+      "new_calls": 2176542,
+      "goals": 29,
+      "fingerprints": {
+        "[<flat index 0>]['U_samples'][<flat index 0>]": {
+          "shape": [
+            194585,
+            10
+          ],
+          "dtype": "float32",
+          "sha256": "1fe03df76cbbf3b31ff913bb8c8ab2026977084408a44dd43dcda03180870713"
+        },
+        "[<flat index 0>]['log_L_constraints']": {
+          "shape": [
+            194585
+          ],
+          "dtype": "float64",
+          "sha256": "787d46faac09312621ed33f332e3fcf6632e72e4cd8ad07db473b36d3ea7b530"
+        },
+        "[<flat index 0>]['log_likelihoods']": {
+          "shape": [
+            194585
+          ],
+          "dtype": "float64",
+          "sha256": "f0b14e205f54236d9d586d6cb5cf3a021367c966123e099dee7a954adb785de2"
+        },
+        "[<flat index 0>]['num_likelihood_evaluations']": {
+          "shape": [
+            194585
+          ],
+          "dtype": "int64",
+          "sha256": "e744dc0c8a3f85016c36d33e4c8f84e025e6a7775e6e21c2c67da7570f9ea3aa"
+        },
+        "[<flat index 0>]['out_degree']": {
+          "shape": [
+            194585
+          ],
+          "dtype": "int64",
+          "sha256": "806b8aa3ab1483b5f4d9c52f777be68837d9bd5701cfb762ec27791419f157b3"
+        },
+        "[<flat index 0>]['phantom_samples'][<flat index 0>]['U_samples'][<flat index 0>]": {
+          "shape": [
+            194585,
+            99,
+            10
+          ],
+          "dtype": "float32",
+          "sha256": "ee75d4449c552cc5fce602bd8576fc3aab1217096fa29608831ef13c95cd3a18"
+        },
+        "[<flat index 0>]['phantom_samples'][<flat index 0>]['log_L']": {
+          "shape": [
+            194585,
+            99
+          ],
+          "dtype": "float64",
+          "sha256": "75f3008ea14e1f605f4a9cb14d70251e2da63f661bfceec8691e67d0e835bebe"
+        },
+        "[<flat index 0>]['phantom_samples'][<flat index 0>]['valid_mask']": {
+          "shape": [
+            194585,
+            99
+          ],
+          "dtype": "bool",
+          "sha256": "19cb8a19721981dd00b0dccc0ea31fd89dc2bc7da84259bf1fa856ad28b242b6"
+        }
+      },
+      "random_key": [
+        797690382,
+        4241502666
+      ],
+      "goal_key": [
+        797690382,
+        4241502666
+      ],
+      "affinity": [
+        68
+      ],
+      "hostname": "dorrie",
+      "jax": "0.10.0",
+      "backend": "cpu",
+      "x64": true,
+      "source_sha256_manifest": "4ee0312c36454b49731543f5f93f8dd149a6944d035bc638f238a962a66e7bb9"
+    },
+    "resume-ss10-combined.json": {
+      "variant": "combined",
+      "state_path": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/ss10/seed-00/state.pkl",
+      "source_root": "/largedata/albert/git/jaxns-efficient-phantom-A-20260910",
+      "source_commit": "aa79a0dc395c0d64b85cbb88d0e3e732decd7361",
+      "harness_sha256": "5afccb4c27966d4ba82673ed89a482e5e200c8613bbed44d4488de9baabe8d76",
+      "conversion_including_compile_seconds": 1.393627371173352,
+      "cold_seconds": 18.148876276100054,
+      "warm_seconds": [
+        2.7451301200781018,
+        2.7467546430416405,
+        2.7437582691200078
+      ],
+      "median_seconds": 2.7451301200781018,
+      "quartiles_seconds": [
+        2.7444441945990548,
+        2.745942381559871
+      ],
+      "total_peak_rss_bytes": 3329753088,
+      "input_classics": 72357,
+      "input_capacity": 107200,
+      "classics": 74462,
+      "capacity": 107200,
+      "calls": 17041729,
+      "new_calls": 467738,
+      "goals": 19,
+      "fingerprints": {
+        "[<flat index 0>]['U_samples'][<flat index 0>]": {
+          "shape": [
+            74462,
+            10
+          ],
+          "dtype": "float32",
+          "sha256": "781ff6b87926f8d0ef7ee6a4d3bf8aaaa6c89f16d19fd35211734122359eb71f"
+        },
+        "[<flat index 0>]['log_L_constraints']": {
+          "shape": [
+            74462
+          ],
+          "dtype": "float64",
+          "sha256": "7c652dccce43762adffce054f2428ebb1de4b71dc04a938521cb60bf0f4e15dd"
+        },
+        "[<flat index 0>]['log_likelihoods']": {
+          "shape": [
+            74462
+          ],
+          "dtype": "float64",
+          "sha256": "54d59ee7e9ccf9965c521cf2fb88087ef770554bb8279bfec0397350dd7e2800"
+        },
+        "[<flat index 0>]['num_likelihood_evaluations']": {
+          "shape": [
+            74462
+          ],
+          "dtype": "int64",
+          "sha256": "e25dbd415fc5596f62f6f1e40193be1036078ad3542b2ce025aae3d64102d00f"
+        },
+        "[<flat index 0>]['out_degree']": {
+          "shape": [
+            74462
+          ],
+          "dtype": "int64",
+          "sha256": "da548d4c3005862f5650e8f1fde237d85c1c6c18b13c2ad399049332235c8475"
+        },
+        "[<flat index 0>]['phantom_samples'][<flat index 0>]['U_samples'][<flat index 0>]": {
+          "shape": [
+            74462,
+            99,
+            10
+          ],
+          "dtype": "float32",
+          "sha256": "881f35e82473e043cb5f89ea74780875194235449d7319e62ad965435d9e7704"
+        },
+        "[<flat index 0>]['phantom_samples'][<flat index 0>]['log_L']": {
+          "shape": [
+            74462,
+            99
+          ],
+          "dtype": "float64",
+          "sha256": "0e98d50e0becf6beeff19080da9bc51f62c365165ac258e524f967d2c06cb584"
+        },
+        "[<flat index 0>]['phantom_samples'][<flat index 0>]['valid_mask']": {
+          "shape": [
+            74462,
+            99
+          ],
+          "dtype": "bool",
+          "sha256": "c6971fce84ead91dbb36dbf08be6b0e4376e8773ad968043a3adeb2b8bf57cf9"
+        }
+      },
+      "random_key": [
+        3092130416,
+        2508237915
+      ],
+      "goal_key": [
+        3092130416,
+        2508237915
+      ],
+      "affinity": [
+        68
+      ],
+      "hostname": "dorrie",
+      "jax": "0.10.0",
+      "backend": "cpu",
+      "x64": true,
+      "source_sha256_manifest": "dffda4b71e824cfca0e328df98d046f6e581563ee71b25cb26a69a0546271db8"
+    },
+    "resume-ss10-reference.json": {
+      "variant": "reference",
+      "state_path": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/ss10/seed-00/state.pkl",
+      "source_root": "/largedata/albert/git/jaxns-paper-evidence10-AC300",
+      "source_commit": "aa79a0dc395c0d64b85cbb88d0e3e732decd7361",
+      "harness_sha256": "5afccb4c27966d4ba82673ed89a482e5e200c8613bbed44d4488de9baabe8d76",
+      "conversion_including_compile_seconds": 0.0,
+      "cold_seconds": 24.582980243023485,
+      "warm_seconds": [
+        10.003068713936955,
+        9.962721159914508,
+        10.017112069064751
+      ],
+      "median_seconds": 10.003068713936955,
+      "quartiles_seconds": [
+        9.982894936925732,
+        10.010090391500853
+      ],
+      "total_peak_rss_bytes": 3396927488,
+      "input_classics": 72357,
+      "input_capacity": 107200,
+      "classics": 74462,
+      "capacity": 107200,
+      "calls": 17041729,
+      "new_calls": 467738,
+      "goals": 19,
+      "fingerprints": {
+        "[<flat index 0>]['U_samples'][<flat index 0>]": {
+          "shape": [
+            74462,
+            10
+          ],
+          "dtype": "float32",
+          "sha256": "781ff6b87926f8d0ef7ee6a4d3bf8aaaa6c89f16d19fd35211734122359eb71f"
+        },
+        "[<flat index 0>]['log_L_constraints']": {
+          "shape": [
+            74462
+          ],
+          "dtype": "float64",
+          "sha256": "7c652dccce43762adffce054f2428ebb1de4b71dc04a938521cb60bf0f4e15dd"
+        },
+        "[<flat index 0>]['log_likelihoods']": {
+          "shape": [
+            74462
+          ],
+          "dtype": "float64",
+          "sha256": "54d59ee7e9ccf9965c521cf2fb88087ef770554bb8279bfec0397350dd7e2800"
+        },
+        "[<flat index 0>]['num_likelihood_evaluations']": {
+          "shape": [
+            74462
+          ],
+          "dtype": "int64",
+          "sha256": "e25dbd415fc5596f62f6f1e40193be1036078ad3542b2ce025aae3d64102d00f"
+        },
+        "[<flat index 0>]['out_degree']": {
+          "shape": [
+            74462
+          ],
+          "dtype": "int64",
+          "sha256": "da548d4c3005862f5650e8f1fde237d85c1c6c18b13c2ad399049332235c8475"
+        },
+        "[<flat index 0>]['phantom_samples'][<flat index 0>]['U_samples'][<flat index 0>]": {
+          "shape": [
+            74462,
+            99,
+            10
+          ],
+          "dtype": "float32",
+          "sha256": "881f35e82473e043cb5f89ea74780875194235449d7319e62ad965435d9e7704"
+        },
+        "[<flat index 0>]['phantom_samples'][<flat index 0>]['log_L']": {
+          "shape": [
+            74462,
+            99
+          ],
+          "dtype": "float64",
+          "sha256": "0e98d50e0becf6beeff19080da9bc51f62c365165ac258e524f967d2c06cb584"
+        },
+        "[<flat index 0>]['phantom_samples'][<flat index 0>]['valid_mask']": {
+          "shape": [
+            74462,
+            99
+          ],
+          "dtype": "bool",
+          "sha256": "c6971fce84ead91dbb36dbf08be6b0e4376e8773ad968043a3adeb2b8bf57cf9"
+        }
+      },
+      "random_key": [
+        3092130416,
+        2508237915
+      ],
+      "goal_key": [
+        3092130416,
+        2508237915
+      ],
+      "affinity": [
+        68
+      ],
+      "hostname": "dorrie",
+      "jax": "0.10.0",
+      "backend": "cpu",
+      "x64": true,
+      "source_sha256_manifest": "4ee0312c36454b49731543f5f93f8dd149a6944d035bc638f238a962a66e7bb9"
+    }
+  },
+  "manifests": {
+    "1fab08fa202414cbedcd365bfa9d20a173a762dec78d3170ba1d8d300dee10d5": {
+      "src/jaxns/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "src/jaxns/algorithm/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "src/jaxns/algorithm/allocation.py": "b5effda823d654904585fdeb43c01f47de8bc3f917149d9aaf706d66c05a1021",
+      "src/jaxns/algorithm/depth.py": "19a30f766ddfc8a7142b4f40ce9579b583c26db413e4c44b141e3253ce871d33",
+      "src/jaxns/algorithm/initialisation.py": "5c561e1425dd795ecbb37b50ab3f3089abba6768638b4c6cceb9b7e825955789",
+      "src/jaxns/algorithm/race_tree.py": "523e7c9091138f37a488732eb778d952c1bddf69470569c307c6e1c939d4c0f7",
+      "src/jaxns/algorithm/scheduler.py": "e85b5c3f963b6500d8dbbc0b323e631bcf64246e8a5cf7e53af7860a6b2367d7",
+      "src/jaxns/checkpoint.py": "05146a3edea96625152651fa7f98468c334c6c5653ad47ee99a92cdcaf846a45",
+      "src/jaxns/cli.py": "f31bee6b223b6bbae2147097c7725be89de8ca1128829f85823e5d3a0f90fbbb",
+      "src/jaxns/constrained_sampler.py": "6e765b3abdf9195c56dba59da6901500f0f70e0e6fc45614dba821dd83484774",
+      "src/jaxns/core.py": "0decb4a791dcd10c06c0a5cb8bf29557bb2113d254302819d5a672bb6d0b7040",
+      "src/jaxns/cumulative_ops.py": "092fae7fe6ff7f3fac2be09ad25889c542fe86e87e94eaa4a6c9e94e83860768",
+      "src/jaxns/depth_condition.py": "1690d452085822148518de2cfed8784de08e1b61db25942130b9fb95e5029a23",
+      "src/jaxns/diagnostics/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "src/jaxns/diagnostics/insertion.py": "6fba71ca533ab2587169f6ea13af95cad169d10236b6a9ef14dc4ffa07ecf1f9",
+      "src/jaxns/diagnostics/plotting.py": "fd00d18752588502d43b84c6bb0b78e52fe9091d3e3fba081033853745375fd7",
+      "src/jaxns/diagnostics/reference.py": "4a4d61d55aa41de55b1380096b2deefb226b99fd46508d30b5a8912229d823b3",
+      "src/jaxns/diagnostics/summary.py": "078dd3e80bd598afd7286672c1db828d5ec7bc35c5c230e920335d266a9edc6a",
+      "src/jaxns/distributed_core.py": "21457e58fc81a621ec3bc3420b06fa2bd4ccf9050e0e26d3e1c018deea134553",
+      "src/jaxns/jaxify.py": "dd148a8ad5ac92debdf5128e27e42e4515e56213ebbcf5a7b77160f1b9effb83",
+      "src/jaxns/log_semiring.py": "ecc6f77fb453b99b61011f1d5472d7146a380837e17595defc5278ff90d277e7",
+      "src/jaxns/logging.py": "4ac8a719709c73507d742674e4186414af386a500201f2878ccf97319c8e3fee",
+      "src/jaxns/mixed_precision.py": "a8ddefc4c70231d01c09fbc3cc185f18abb022c5504ea0940b69ca645eb39b34",
+      "src/jaxns/model.py": "88cb915ccdbc8dd3695e17a3bde34269f322d0d96bbff9a7d6b10e5c27a5434f",
+      "src/jaxns/optional.py": "201fd7d2e903c76a8a7ce16669960a95b632e7a8df3090fe7615dbdd02303da4",
+      "src/jaxns/pytree.py": "077681f8a3c4e192b64838c10043a6f747b8a01e207db9b14e82b06e412299d7",
+      "src/jaxns/random_utils.py": "c29228237b86bcae8f35a8961574b7030ca74fdf49822775b60c3b6ccef811d6",
+      "src/jaxns/results.py": "3dcefd3bc40990c4b296364047ce959460cbd7baeae58f8fb28bbb824175b8ed",
+      "src/jaxns/runtime/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "src/jaxns/runtime/client.py": "70057734cc64c0e3367cd421d517a1fc909ac4cd3c6b94564a5f4736b1ac77e3",
+      "src/jaxns/runtime/config.py": "e69df3815640ce46e4f56b21d83c3b0aeb0af14f681c55109db95420ed96773f",
+      "src/jaxns/runtime/coordinator.py": "e52d4fe0e7c8a4d3daa5624c708d43e51f8be18d03c2a24ce57036931905b8d4",
+      "src/jaxns/runtime/node.py": "8fbc0f50e82e512d050a1a68ed11ebed729c23ba4a16fef195191c3ff75aaf11",
+      "src/jaxns/runtime/protocol.py": "4825cec732698abe53b5976722519d891b3d5ec6064fa7f0f49c100de2bf0a03",
+      "src/jaxns/runtime/session.py": "45c23c39c4d32e3c63298db20def7f935a8f4f41d09457c0f9a6538bb1779bf5",
+      "src/jaxns/runtime/worker.py": "83480175d900ebfccfc00a9ba1e112da7ea2bfa92472162f2a2e3445cdeee9f1",
+      "src/jaxns/samples.py": "769e9b3e8026224d9da56cbd3631e93fefc639efb1cdd32fbc8b76169b9aa3f0",
+      "src/jaxns/sampling/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "src/jaxns/sampling/batching.py": "9aae23dbc4f3943fcf6b86f97825653f51d2f780a69278179bae9bef0b19b779",
+      "src/jaxns/sampling/continuation.py": "58a563f50678f16d191ef17eb1c074bfea00af1a30ab17f65c3352f4336737b4",
+      "src/jaxns/sampling/ellipsoid.py": "570fa23c43cc721b6a62ea941b18df2d8c40afd38acc2638cd688bacbbd4e00e",
+      "src/jaxns/sampling/gmm.py": "d96bb81badb42829a8395ae46701428f4a81d93574c20cce4e3a1b35573564b6",
+      "src/jaxns/sampling/phantom_index.py": "12903b6817244a0d4da136f3b00b0f5945494aeb25539578ed36703a650583c7",
+      "src/jaxns/sampling/phantom_seeds.py": "5755994a2244d6a1b5c6cec7539baaadd38266d3b4b58718e8a113012aa84d01",
+      "src/jaxns/sampling/protocol.py": "cc51b5a287ffade7cc188c17b56aef9f6697ca867e1db49858a27bd68989107d",
+      "src/jaxns/sampling/seeding.py": "abd9cbf70e3039c0cbd9c9a4495f35fe9c03465b44385369577a71ad28425959",
+      "src/jaxns/sampling/slice.py": "fd532483df0181292a0debc7bcdb25cf8459068f2297ca28cf393d6dc9ce6c81",
+      "src/jaxns/shrinkage/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "src/jaxns/shrinkage/classic.py": "4b391057a17af964f340eafe38f5a924b68e7fe19249d0a18ef16c90165ffac0",
+      "src/jaxns/shrinkage/online.py": "d159affa43067791a7754e53b546115a46f54a977214f4b4fcf64a4508bb4afb",
+      "src/jaxns/shrinkage/phantom.py": "098c07e40729e093959045de1e597ff2ef0d9cac41346164e6bbb1fdaff2ef7b",
+      "src/jaxns/shrinkage/reference.py": "d1c2895aa7a7131fc0338c2e8f223896b66f47e339d758cf45776d96195ea745",
+      "src/jaxns/state.py": "d5410709d8b99f95a993f30f5ec7813bdd786cba0daaf6f730e5a5698468b4d0",
+      "src/jaxns/stats_utils.py": "49163cc21155db242bd217bf38124395094cb7165c5225b5f0d82375ef413311",
+      "src/jaxns/types.py": "5295dd0a08d3eab3eea7e80ceb2cc661ef95820fcb00b17f2dc1596934243764"
+    },
+    "351c75aa1c81831bd138a98d98e0713f393d10a400e7663575d2441422051d6d": {
+      "block_eager.py": "34eaf053d6f77c085dadcaa6b83149bdc11136b2d12b238f38525fad025b7028",
+      "reference.py": "9c1620db1753e113ee1a41698b0139ae3866a2462e574fe55dda74edf6c80ba3",
+      "run_case.py": "188859aba3fb074d352a53f4423c4be8566a2d0328b49abcf3ec04ca4846cb63",
+      "selector.py": "e44324f0e471a71611ea6c856c4bdf5fcc7cab6f45fea1ab5e829e690ebd06c0"
+    },
+    "81f484851751ea77e8ce11e30540f6de142e4330016b99fe38203cbf304470bd": {
+      "src/jaxns/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "src/jaxns/algorithm/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "src/jaxns/algorithm/allocation.py": "b5effda823d654904585fdeb43c01f47de8bc3f917149d9aaf706d66c05a1021",
+      "src/jaxns/algorithm/depth.py": "b3a172e30e49c66ac09a4d04d09cf6ad6b0059f776e8036430fbf3b02a538088",
+      "src/jaxns/algorithm/initialisation.py": "5c561e1425dd795ecbb37b50ab3f3089abba6768638b4c6cceb9b7e825955789",
+      "src/jaxns/algorithm/race_tree.py": "523e7c9091138f37a488732eb778d952c1bddf69470569c307c6e1c939d4c0f7",
+      "src/jaxns/algorithm/scheduler.py": "e85b5c3f963b6500d8dbbc0b323e631bcf64246e8a5cf7e53af7860a6b2367d7",
+      "src/jaxns/checkpoint.py": "05146a3edea96625152651fa7f98468c334c6c5653ad47ee99a92cdcaf846a45",
+      "src/jaxns/cli.py": "f31bee6b223b6bbae2147097c7725be89de8ca1128829f85823e5d3a0f90fbbb",
+      "src/jaxns/constrained_sampler.py": "6e765b3abdf9195c56dba59da6901500f0f70e0e6fc45614dba821dd83484774",
+      "src/jaxns/core.py": "0decb4a791dcd10c06c0a5cb8bf29557bb2113d254302819d5a672bb6d0b7040",
+      "src/jaxns/cumulative_ops.py": "092fae7fe6ff7f3fac2be09ad25889c542fe86e87e94eaa4a6c9e94e83860768",
+      "src/jaxns/depth_condition.py": "1690d452085822148518de2cfed8784de08e1b61db25942130b9fb95e5029a23",
+      "src/jaxns/diagnostics/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "src/jaxns/diagnostics/insertion.py": "6fba71ca533ab2587169f6ea13af95cad169d10236b6a9ef14dc4ffa07ecf1f9",
+      "src/jaxns/diagnostics/plotting.py": "fd00d18752588502d43b84c6bb0b78e52fe9091d3e3fba081033853745375fd7",
+      "src/jaxns/diagnostics/reference.py": "4a4d61d55aa41de55b1380096b2deefb226b99fd46508d30b5a8912229d823b3",
+      "src/jaxns/diagnostics/summary.py": "078dd3e80bd598afd7286672c1db828d5ec7bc35c5c230e920335d266a9edc6a",
+      "src/jaxns/distributed_core.py": "21457e58fc81a621ec3bc3420b06fa2bd4ccf9050e0e26d3e1c018deea134553",
+      "src/jaxns/jaxify.py": "dd148a8ad5ac92debdf5128e27e42e4515e56213ebbcf5a7b77160f1b9effb83",
+      "src/jaxns/log_semiring.py": "ecc6f77fb453b99b61011f1d5472d7146a380837e17595defc5278ff90d277e7",
+      "src/jaxns/logging.py": "4ac8a719709c73507d742674e4186414af386a500201f2878ccf97319c8e3fee",
+      "src/jaxns/mixed_precision.py": "a8ddefc4c70231d01c09fbc3cc185f18abb022c5504ea0940b69ca645eb39b34",
+      "src/jaxns/model.py": "88cb915ccdbc8dd3695e17a3bde34269f322d0d96bbff9a7d6b10e5c27a5434f",
+      "src/jaxns/optional.py": "201fd7d2e903c76a8a7ce16669960a95b632e7a8df3090fe7615dbdd02303da4",
+      "src/jaxns/pytree.py": "077681f8a3c4e192b64838c10043a6f747b8a01e207db9b14e82b06e412299d7",
+      "src/jaxns/random_utils.py": "c29228237b86bcae8f35a8961574b7030ca74fdf49822775b60c3b6ccef811d6",
+      "src/jaxns/results.py": "3dcefd3bc40990c4b296364047ce959460cbd7baeae58f8fb28bbb824175b8ed",
+      "src/jaxns/runtime/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "src/jaxns/runtime/client.py": "70057734cc64c0e3367cd421d517a1fc909ac4cd3c6b94564a5f4736b1ac77e3",
+      "src/jaxns/runtime/config.py": "e69df3815640ce46e4f56b21d83c3b0aeb0af14f681c55109db95420ed96773f",
+      "src/jaxns/runtime/coordinator.py": "e52d4fe0e7c8a4d3daa5624c708d43e51f8be18d03c2a24ce57036931905b8d4",
+      "src/jaxns/runtime/node.py": "8fbc0f50e82e512d050a1a68ed11ebed729c23ba4a16fef195191c3ff75aaf11",
+      "src/jaxns/runtime/protocol.py": "4825cec732698abe53b5976722519d891b3d5ec6064fa7f0f49c100de2bf0a03",
+      "src/jaxns/runtime/session.py": "45c23c39c4d32e3c63298db20def7f935a8f4f41d09457c0f9a6538bb1779bf5",
+      "src/jaxns/runtime/worker.py": "83480175d900ebfccfc00a9ba1e112da7ea2bfa92472162f2a2e3445cdeee9f1",
+      "src/jaxns/samples.py": "769e9b3e8026224d9da56cbd3631e93fefc639efb1cdd32fbc8b76169b9aa3f0",
+      "src/jaxns/sampling/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "src/jaxns/sampling/batching.py": "9aae23dbc4f3943fcf6b86f97825653f51d2f780a69278179bae9bef0b19b779",
+      "src/jaxns/sampling/continuation.py": "58a563f50678f16d191ef17eb1c074bfea00af1a30ab17f65c3352f4336737b4",
+      "src/jaxns/sampling/ellipsoid.py": "570fa23c43cc721b6a62ea941b18df2d8c40afd38acc2638cd688bacbbd4e00e",
+      "src/jaxns/sampling/gmm.py": "d96bb81badb42829a8395ae46701428f4a81d93574c20cce4e3a1b35573564b6",
+      "src/jaxns/sampling/phantom_index.py": "12903b6817244a0d4da136f3b00b0f5945494aeb25539578ed36703a650583c7",
+      "src/jaxns/sampling/phantom_seeds.py": "5755994a2244d6a1b5c6cec7539baaadd38266d3b4b58718e8a113012aa84d01",
+      "src/jaxns/sampling/protocol.py": "cc51b5a287ffade7cc188c17b56aef9f6697ca867e1db49858a27bd68989107d",
+      "src/jaxns/sampling/seeding.py": "abd9cbf70e3039c0cbd9c9a4495f35fe9c03465b44385369577a71ad28425959",
+      "src/jaxns/sampling/slice.py": "fd532483df0181292a0debc7bcdb25cf8459068f2297ca28cf393d6dc9ce6c81",
+      "src/jaxns/shrinkage/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "src/jaxns/shrinkage/classic.py": "4b391057a17af964f340eafe38f5a924b68e7fe19249d0a18ef16c90165ffac0",
+      "src/jaxns/shrinkage/online.py": "d159affa43067791a7754e53b546115a46f54a977214f4b4fcf64a4508bb4afb",
+      "src/jaxns/shrinkage/phantom.py": "098c07e40729e093959045de1e597ff2ef0d9cac41346164e6bbb1fdaff2ef7b",
+      "src/jaxns/shrinkage/reference.py": "d1c2895aa7a7131fc0338c2e8f223896b66f47e339d758cf45776d96195ea745",
+      "src/jaxns/state.py": "d5410709d8b99f95a993f30f5ec7813bdd786cba0daaf6f730e5a5698468b4d0",
+      "src/jaxns/stats_utils.py": "49163cc21155db242bd217bf38124395094cb7165c5225b5f0d82375ef413311",
+      "src/jaxns/types.py": "5295dd0a08d3eab3eea7e80ceb2cc661ef95820fcb00b17f2dc1596934243764"
+    },
+    "17e5087979433ecfc882df9a9fa6d2162708911c8e3d53cdd6c98ed9d8f19e28": {
+      "block_eager.py": "34eaf053d6f77c085dadcaa6b83149bdc11136b2d12b238f38525fad025b7028",
+      "reference.py": "9c1620db1753e113ee1a41698b0139ae3866a2462e574fe55dda74edf6c80ba3",
+      "resume_goal.py": "5afccb4c27966d4ba82673ed89a482e5e200c8613bbed44d4488de9baabe8d76",
+      "run_case.py": "188859aba3fb074d352a53f4423c4be8566a2d0328b49abcf3ec04ca4846cb63",
+      "selector.py": "e44324f0e471a71611ea6c856c4bdf5fcc7cab6f45fea1ab5e829e690ebd06c0",
+      "state_fingerprints.py": "df93cabc190c7967832d8a4e71ea522b60b801a5f73c0fd52f72c6a19ff44756",
+      "verify_archive.py": "46a1e55a8cdd817af91439feb0a5e91984754b61a43b7e067e4919afd559f4f3"
+    },
+    "dffda4b71e824cfca0e328df98d046f6e581563ee71b25cb26a69a0546271db8": {
+      "src/jaxns/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "src/jaxns/algorithm/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "src/jaxns/algorithm/allocation.py": "b5effda823d654904585fdeb43c01f47de8bc3f917149d9aaf706d66c05a1021",
+      "src/jaxns/algorithm/depth.py": "5604bb54d0d63c632ab3b76d41247468559725a742e03ed25c1f99308196aa84",
+      "src/jaxns/algorithm/initialisation.py": "5c561e1425dd795ecbb37b50ab3f3089abba6768638b4c6cceb9b7e825955789",
+      "src/jaxns/algorithm/race_tree.py": "523e7c9091138f37a488732eb778d952c1bddf69470569c307c6e1c939d4c0f7",
+      "src/jaxns/algorithm/scheduler.py": "e85b5c3f963b6500d8dbbc0b323e631bcf64246e8a5cf7e53af7860a6b2367d7",
+      "src/jaxns/checkpoint.py": "05146a3edea96625152651fa7f98468c334c6c5653ad47ee99a92cdcaf846a45",
+      "src/jaxns/cli.py": "f31bee6b223b6bbae2147097c7725be89de8ca1128829f85823e5d3a0f90fbbb",
+      "src/jaxns/constrained_sampler.py": "6e765b3abdf9195c56dba59da6901500f0f70e0e6fc45614dba821dd83484774",
+      "src/jaxns/core.py": "0decb4a791dcd10c06c0a5cb8bf29557bb2113d254302819d5a672bb6d0b7040",
+      "src/jaxns/cumulative_ops.py": "092fae7fe6ff7f3fac2be09ad25889c542fe86e87e94eaa4a6c9e94e83860768",
+      "src/jaxns/depth_condition.py": "1690d452085822148518de2cfed8784de08e1b61db25942130b9fb95e5029a23",
+      "src/jaxns/diagnostics/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "src/jaxns/diagnostics/insertion.py": "6fba71ca533ab2587169f6ea13af95cad169d10236b6a9ef14dc4ffa07ecf1f9",
+      "src/jaxns/diagnostics/plotting.py": "fd00d18752588502d43b84c6bb0b78e52fe9091d3e3fba081033853745375fd7",
+      "src/jaxns/diagnostics/reference.py": "4a4d61d55aa41de55b1380096b2deefb226b99fd46508d30b5a8912229d823b3",
+      "src/jaxns/diagnostics/summary.py": "078dd3e80bd598afd7286672c1db828d5ec7bc35c5c230e920335d266a9edc6a",
+      "src/jaxns/distributed_core.py": "21457e58fc81a621ec3bc3420b06fa2bd4ccf9050e0e26d3e1c018deea134553",
+      "src/jaxns/jaxify.py": "dd148a8ad5ac92debdf5128e27e42e4515e56213ebbcf5a7b77160f1b9effb83",
+      "src/jaxns/log_semiring.py": "ecc6f77fb453b99b61011f1d5472d7146a380837e17595defc5278ff90d277e7",
+      "src/jaxns/logging.py": "4ac8a719709c73507d742674e4186414af386a500201f2878ccf97319c8e3fee",
+      "src/jaxns/mixed_precision.py": "a8ddefc4c70231d01c09fbc3cc185f18abb022c5504ea0940b69ca645eb39b34",
+      "src/jaxns/model.py": "88cb915ccdbc8dd3695e17a3bde34269f322d0d96bbff9a7d6b10e5c27a5434f",
+      "src/jaxns/optional.py": "201fd7d2e903c76a8a7ce16669960a95b632e7a8df3090fe7615dbdd02303da4",
+      "src/jaxns/pytree.py": "077681f8a3c4e192b64838c10043a6f747b8a01e207db9b14e82b06e412299d7",
+      "src/jaxns/random_utils.py": "c29228237b86bcae8f35a8961574b7030ca74fdf49822775b60c3b6ccef811d6",
+      "src/jaxns/results.py": "3dcefd3bc40990c4b296364047ce959460cbd7baeae58f8fb28bbb824175b8ed",
+      "src/jaxns/runtime/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "src/jaxns/runtime/client.py": "70057734cc64c0e3367cd421d517a1fc909ac4cd3c6b94564a5f4736b1ac77e3",
+      "src/jaxns/runtime/config.py": "e69df3815640ce46e4f56b21d83c3b0aeb0af14f681c55109db95420ed96773f",
+      "src/jaxns/runtime/coordinator.py": "e52d4fe0e7c8a4d3daa5624c708d43e51f8be18d03c2a24ce57036931905b8d4",
+      "src/jaxns/runtime/node.py": "8fbc0f50e82e512d050a1a68ed11ebed729c23ba4a16fef195191c3ff75aaf11",
+      "src/jaxns/runtime/protocol.py": "4825cec732698abe53b5976722519d891b3d5ec6064fa7f0f49c100de2bf0a03",
+      "src/jaxns/runtime/session.py": "45c23c39c4d32e3c63298db20def7f935a8f4f41d09457c0f9a6538bb1779bf5",
+      "src/jaxns/runtime/worker.py": "83480175d900ebfccfc00a9ba1e112da7ea2bfa92472162f2a2e3445cdeee9f1",
+      "src/jaxns/samples.py": "769e9b3e8026224d9da56cbd3631e93fefc639efb1cdd32fbc8b76169b9aa3f0",
+      "src/jaxns/sampling/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "src/jaxns/sampling/batching.py": "9aae23dbc4f3943fcf6b86f97825653f51d2f780a69278179bae9bef0b19b779",
+      "src/jaxns/sampling/continuation.py": "58a563f50678f16d191ef17eb1c074bfea00af1a30ab17f65c3352f4336737b4",
+      "src/jaxns/sampling/ellipsoid.py": "570fa23c43cc721b6a62ea941b18df2d8c40afd38acc2638cd688bacbbd4e00e",
+      "src/jaxns/sampling/gmm.py": "d96bb81badb42829a8395ae46701428f4a81d93574c20cce4e3a1b35573564b6",
+      "src/jaxns/sampling/phantom_index.py": "12903b6817244a0d4da136f3b00b0f5945494aeb25539578ed36703a650583c7",
+      "src/jaxns/sampling/phantom_seeds.py": "5755994a2244d6a1b5c6cec7539baaadd38266d3b4b58718e8a113012aa84d01",
+      "src/jaxns/sampling/protocol.py": "cc51b5a287ffade7cc188c17b56aef9f6697ca867e1db49858a27bd68989107d",
+      "src/jaxns/sampling/seeding.py": "abd9cbf70e3039c0cbd9c9a4495f35fe9c03465b44385369577a71ad28425959",
+      "src/jaxns/sampling/slice.py": "fd532483df0181292a0debc7bcdb25cf8459068f2297ca28cf393d6dc9ce6c81",
+      "src/jaxns/shrinkage/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "src/jaxns/shrinkage/classic.py": "4b391057a17af964f340eafe38f5a924b68e7fe19249d0a18ef16c90165ffac0",
+      "src/jaxns/shrinkage/online.py": "d159affa43067791a7754e53b546115a46f54a977214f4b4fcf64a4508bb4afb",
+      "src/jaxns/shrinkage/phantom.py": "098c07e40729e093959045de1e597ff2ef0d9cac41346164e6bbb1fdaff2ef7b",
+      "src/jaxns/shrinkage/reference.py": "d1c2895aa7a7131fc0338c2e8f223896b66f47e339d758cf45776d96195ea745",
+      "src/jaxns/state.py": "d5410709d8b99f95a993f30f5ec7813bdd786cba0daaf6f730e5a5698468b4d0",
+      "src/jaxns/stats_utils.py": "49163cc21155db242bd217bf38124395094cb7165c5225b5f0d82375ef413311",
+      "src/jaxns/types.py": "5295dd0a08d3eab3eea7e80ceb2cc661ef95820fcb00b17f2dc1596934243764"
+    },
+    "2ef17f1573f86289e4657020390b38109fc78a4c7f979800529e6ed1e6bb0818": {
+      "block_eager.py": "34eaf053d6f77c085dadcaa6b83149bdc11136b2d12b238f38525fad025b7028",
+      "reference.py": "9c1620db1753e113ee1a41698b0139ae3866a2462e574fe55dda74edf6c80ba3",
+      "resume_goal.py": "5afccb4c27966d4ba82673ed89a482e5e200c8613bbed44d4488de9baabe8d76",
+      "run_case.py": "188859aba3fb074d352a53f4423c4be8566a2d0328b49abcf3ec04ca4846cb63",
+      "selector.py": "6664082470127b844e26d90f120c7c5312eaa5caecb84510becfecd99f050563",
+      "state_fingerprints.py": "df93cabc190c7967832d8a4e71ea522b60b801a5f73c0fd52f72c6a19ff44756",
+      "verify_archive.py": "46a1e55a8cdd817af91439feb0a5e91984754b61a43b7e067e4919afd559f4f3"
+    },
+    "4ee0312c36454b49731543f5f93f8dd149a6944d035bc638f238a962a66e7bb9": {
+      "src/jaxns/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "src/jaxns/algorithm/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "src/jaxns/algorithm/allocation.py": "b5effda823d654904585fdeb43c01f47de8bc3f917149d9aaf706d66c05a1021",
+      "src/jaxns/algorithm/depth.py": "a64d200d039c3373f6aac9ed685891af5628296c0adfbfc70542d1510c64e0a8",
+      "src/jaxns/algorithm/initialisation.py": "50591fa21fbf520c759e034793e76314936e73cd3f2a7b553ea297738bc75dd0",
+      "src/jaxns/algorithm/race_tree.py": "523e7c9091138f37a488732eb778d952c1bddf69470569c307c6e1c939d4c0f7",
+      "src/jaxns/algorithm/scheduler.py": "e85b5c3f963b6500d8dbbc0b323e631bcf64246e8a5cf7e53af7860a6b2367d7",
+      "src/jaxns/checkpoint.py": "05146a3edea96625152651fa7f98468c334c6c5653ad47ee99a92cdcaf846a45",
+      "src/jaxns/cli.py": "f31bee6b223b6bbae2147097c7725be89de8ca1128829f85823e5d3a0f90fbbb",
+      "src/jaxns/constrained_sampler.py": "6e765b3abdf9195c56dba59da6901500f0f70e0e6fc45614dba821dd83484774",
+      "src/jaxns/core.py": "0decb4a791dcd10c06c0a5cb8bf29557bb2113d254302819d5a672bb6d0b7040",
+      "src/jaxns/cumulative_ops.py": "092fae7fe6ff7f3fac2be09ad25889c542fe86e87e94eaa4a6c9e94e83860768",
+      "src/jaxns/depth_condition.py": "1690d452085822148518de2cfed8784de08e1b61db25942130b9fb95e5029a23",
+      "src/jaxns/diagnostics/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "src/jaxns/diagnostics/insertion.py": "6fba71ca533ab2587169f6ea13af95cad169d10236b6a9ef14dc4ffa07ecf1f9",
+      "src/jaxns/diagnostics/plotting.py": "fd00d18752588502d43b84c6bb0b78e52fe9091d3e3fba081033853745375fd7",
+      "src/jaxns/diagnostics/reference.py": "4a4d61d55aa41de55b1380096b2deefb226b99fd46508d30b5a8912229d823b3",
+      "src/jaxns/diagnostics/summary.py": "078dd3e80bd598afd7286672c1db828d5ec7bc35c5c230e920335d266a9edc6a",
+      "src/jaxns/distributed_core.py": "21457e58fc81a621ec3bc3420b06fa2bd4ccf9050e0e26d3e1c018deea134553",
+      "src/jaxns/jaxify.py": "dd148a8ad5ac92debdf5128e27e42e4515e56213ebbcf5a7b77160f1b9effb83",
+      "src/jaxns/log_semiring.py": "ecc6f77fb453b99b61011f1d5472d7146a380837e17595defc5278ff90d277e7",
+      "src/jaxns/logging.py": "4ac8a719709c73507d742674e4186414af386a500201f2878ccf97319c8e3fee",
+      "src/jaxns/mixed_precision.py": "a8ddefc4c70231d01c09fbc3cc185f18abb022c5504ea0940b69ca645eb39b34",
+      "src/jaxns/model.py": "88cb915ccdbc8dd3695e17a3bde34269f322d0d96bbff9a7d6b10e5c27a5434f",
+      "src/jaxns/optional.py": "201fd7d2e903c76a8a7ce16669960a95b632e7a8df3090fe7615dbdd02303da4",
+      "src/jaxns/pytree.py": "077681f8a3c4e192b64838c10043a6f747b8a01e207db9b14e82b06e412299d7",
+      "src/jaxns/random_utils.py": "c29228237b86bcae8f35a8961574b7030ca74fdf49822775b60c3b6ccef811d6",
+      "src/jaxns/results.py": "3dcefd3bc40990c4b296364047ce959460cbd7baeae58f8fb28bbb824175b8ed",
+      "src/jaxns/runtime/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "src/jaxns/runtime/client.py": "70057734cc64c0e3367cd421d517a1fc909ac4cd3c6b94564a5f4736b1ac77e3",
+      "src/jaxns/runtime/config.py": "e69df3815640ce46e4f56b21d83c3b0aeb0af14f681c55109db95420ed96773f",
+      "src/jaxns/runtime/coordinator.py": "e52d4fe0e7c8a4d3daa5624c708d43e51f8be18d03c2a24ce57036931905b8d4",
+      "src/jaxns/runtime/node.py": "8fbc0f50e82e512d050a1a68ed11ebed729c23ba4a16fef195191c3ff75aaf11",
+      "src/jaxns/runtime/protocol.py": "4825cec732698abe53b5976722519d891b3d5ec6064fa7f0f49c100de2bf0a03",
+      "src/jaxns/runtime/session.py": "45c23c39c4d32e3c63298db20def7f935a8f4f41d09457c0f9a6538bb1779bf5",
+      "src/jaxns/runtime/worker.py": "83480175d900ebfccfc00a9ba1e112da7ea2bfa92472162f2a2e3445cdeee9f1",
+      "src/jaxns/samples.py": "b16c84a1c4ca30eb16b227450ea66de7cb4a9ccd64a37d29a47826cc915c020f",
+      "src/jaxns/sampling/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "src/jaxns/sampling/batching.py": "9aae23dbc4f3943fcf6b86f97825653f51d2f780a69278179bae9bef0b19b779",
+      "src/jaxns/sampling/continuation.py": "58a563f50678f16d191ef17eb1c074bfea00af1a30ab17f65c3352f4336737b4",
+      "src/jaxns/sampling/ellipsoid.py": "570fa23c43cc721b6a62ea941b18df2d8c40afd38acc2638cd688bacbbd4e00e",
+      "src/jaxns/sampling/gmm.py": "d96bb81badb42829a8395ae46701428f4a81d93574c20cce4e3a1b35573564b6",
+      "src/jaxns/sampling/phantom_seeds.py": "5755994a2244d6a1b5c6cec7539baaadd38266d3b4b58718e8a113012aa84d01",
+      "src/jaxns/sampling/protocol.py": "cc51b5a287ffade7cc188c17b56aef9f6697ca867e1db49858a27bd68989107d",
+      "src/jaxns/sampling/seeding.py": "abd9cbf70e3039c0cbd9c9a4495f35fe9c03465b44385369577a71ad28425959",
+      "src/jaxns/sampling/slice.py": "fd532483df0181292a0debc7bcdb25cf8459068f2297ca28cf393d6dc9ce6c81",
+      "src/jaxns/shrinkage/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "src/jaxns/shrinkage/classic.py": "4b391057a17af964f340eafe38f5a924b68e7fe19249d0a18ef16c90165ffac0",
+      "src/jaxns/shrinkage/online.py": "d159affa43067791a7754e53b546115a46f54a977214f4b4fcf64a4508bb4afb",
+      "src/jaxns/shrinkage/phantom.py": "098c07e40729e093959045de1e597ff2ef0d9cac41346164e6bbb1fdaff2ef7b",
+      "src/jaxns/shrinkage/reference.py": "d1c2895aa7a7131fc0338c2e8f223896b66f47e339d758cf45776d96195ea745",
+      "src/jaxns/state.py": "b2c020d1184d19ab882ecc560a4c8984da0197b98a2cbb06a8e831ce46adf638",
+      "src/jaxns/stats_utils.py": "49163cc21155db242bd217bf38124395094cb7165c5225b5f0d82375ef413311",
+      "src/jaxns/types.py": "5295dd0a08d3eab3eea7e80ceb2cc661ef95820fcb00b17f2dc1596934243764"
+    },
+    "880f4d1839c34a4c4dde63db8274dc8f5e54a92ef9eb436ac13e62e003d3d3d7": {
+      "src/jaxns/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "src/jaxns/algorithm/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "src/jaxns/algorithm/allocation.py": "b5effda823d654904585fdeb43c01f47de8bc3f917149d9aaf706d66c05a1021",
+      "src/jaxns/algorithm/depth.py": "19a30f766ddfc8a7142b4f40ce9579b583c26db413e4c44b141e3253ce871d33",
+      "src/jaxns/algorithm/initialisation.py": "5c561e1425dd795ecbb37b50ab3f3089abba6768638b4c6cceb9b7e825955789",
+      "src/jaxns/algorithm/race_tree.py": "523e7c9091138f37a488732eb778d952c1bddf69470569c307c6e1c939d4c0f7",
+      "src/jaxns/algorithm/scheduler.py": "e85b5c3f963b6500d8dbbc0b323e631bcf64246e8a5cf7e53af7860a6b2367d7",
+      "src/jaxns/checkpoint.py": "05146a3edea96625152651fa7f98468c334c6c5653ad47ee99a92cdcaf846a45",
+      "src/jaxns/cli.py": "f31bee6b223b6bbae2147097c7725be89de8ca1128829f85823e5d3a0f90fbbb",
+      "src/jaxns/constrained_sampler.py": "6e765b3abdf9195c56dba59da6901500f0f70e0e6fc45614dba821dd83484774",
+      "src/jaxns/core.py": "0decb4a791dcd10c06c0a5cb8bf29557bb2113d254302819d5a672bb6d0b7040",
+      "src/jaxns/cumulative_ops.py": "092fae7fe6ff7f3fac2be09ad25889c542fe86e87e94eaa4a6c9e94e83860768",
+      "src/jaxns/depth_condition.py": "1690d452085822148518de2cfed8784de08e1b61db25942130b9fb95e5029a23",
+      "src/jaxns/diagnostics/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "src/jaxns/diagnostics/insertion.py": "6fba71ca533ab2587169f6ea13af95cad169d10236b6a9ef14dc4ffa07ecf1f9",
+      "src/jaxns/diagnostics/plotting.py": "fd00d18752588502d43b84c6bb0b78e52fe9091d3e3fba081033853745375fd7",
+      "src/jaxns/diagnostics/reference.py": "4a4d61d55aa41de55b1380096b2deefb226b99fd46508d30b5a8912229d823b3",
+      "src/jaxns/diagnostics/summary.py": "078dd3e80bd598afd7286672c1db828d5ec7bc35c5c230e920335d266a9edc6a",
+      "src/jaxns/distributed_core.py": "21457e58fc81a621ec3bc3420b06fa2bd4ccf9050e0e26d3e1c018deea134553",
+      "src/jaxns/jaxify.py": "dd148a8ad5ac92debdf5128e27e42e4515e56213ebbcf5a7b77160f1b9effb83",
+      "src/jaxns/log_semiring.py": "ecc6f77fb453b99b61011f1d5472d7146a380837e17595defc5278ff90d277e7",
+      "src/jaxns/logging.py": "4ac8a719709c73507d742674e4186414af386a500201f2878ccf97319c8e3fee",
+      "src/jaxns/mixed_precision.py": "a8ddefc4c70231d01c09fbc3cc185f18abb022c5504ea0940b69ca645eb39b34",
+      "src/jaxns/model.py": "88cb915ccdbc8dd3695e17a3bde34269f322d0d96bbff9a7d6b10e5c27a5434f",
+      "src/jaxns/optional.py": "201fd7d2e903c76a8a7ce16669960a95b632e7a8df3090fe7615dbdd02303da4",
+      "src/jaxns/pytree.py": "077681f8a3c4e192b64838c10043a6f747b8a01e207db9b14e82b06e412299d7",
+      "src/jaxns/random_utils.py": "c29228237b86bcae8f35a8961574b7030ca74fdf49822775b60c3b6ccef811d6",
+      "src/jaxns/results.py": "3dcefd3bc40990c4b296364047ce959460cbd7baeae58f8fb28bbb824175b8ed",
+      "src/jaxns/runtime/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "src/jaxns/runtime/client.py": "70057734cc64c0e3367cd421d517a1fc909ac4cd3c6b94564a5f4736b1ac77e3",
+      "src/jaxns/runtime/config.py": "e69df3815640ce46e4f56b21d83c3b0aeb0af14f681c55109db95420ed96773f",
+      "src/jaxns/runtime/coordinator.py": "e52d4fe0e7c8a4d3daa5624c708d43e51f8be18d03c2a24ce57036931905b8d4",
+      "src/jaxns/runtime/node.py": "8fbc0f50e82e512d050a1a68ed11ebed729c23ba4a16fef195191c3ff75aaf11",
+      "src/jaxns/runtime/protocol.py": "4825cec732698abe53b5976722519d891b3d5ec6064fa7f0f49c100de2bf0a03",
+      "src/jaxns/runtime/session.py": "45c23c39c4d32e3c63298db20def7f935a8f4f41d09457c0f9a6538bb1779bf5",
+      "src/jaxns/runtime/worker.py": "83480175d900ebfccfc00a9ba1e112da7ea2bfa92472162f2a2e3445cdeee9f1",
+      "src/jaxns/samples.py": "769e9b3e8026224d9da56cbd3631e93fefc639efb1cdd32fbc8b76169b9aa3f0",
+      "src/jaxns/sampling/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "src/jaxns/sampling/batching.py": "9aae23dbc4f3943fcf6b86f97825653f51d2f780a69278179bae9bef0b19b779",
+      "src/jaxns/sampling/continuation.py": "58a563f50678f16d191ef17eb1c074bfea00af1a30ab17f65c3352f4336737b4",
+      "src/jaxns/sampling/ellipsoid.py": "570fa23c43cc721b6a62ea941b18df2d8c40afd38acc2638cd688bacbbd4e00e",
+      "src/jaxns/sampling/gmm.py": "d96bb81badb42829a8395ae46701428f4a81d93574c20cce4e3a1b35573564b6",
+      "src/jaxns/sampling/phantom_index.py": "12903b6817244a0d4da136f3b00b0f5945494aeb25539578ed36703a650583c7",
+      "src/jaxns/sampling/phantom_seeds.py": "5755994a2244d6a1b5c6cec7539baaadd38266d3b4b58718e8a113012aa84d01",
+      "src/jaxns/sampling/protocol.py": "cc51b5a287ffade7cc188c17b56aef9f6697ca867e1db49858a27bd68989107d",
+      "src/jaxns/sampling/seeding.py": "abd9cbf70e3039c0cbd9c9a4495f35fe9c03465b44385369577a71ad28425959",
+      "src/jaxns/sampling/slice.py": "fd532483df0181292a0debc7bcdb25cf8459068f2297ca28cf393d6dc9ce6c81",
+      "src/jaxns/shrinkage/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "src/jaxns/shrinkage/classic.py": "4b391057a17af964f340eafe38f5a924b68e7fe19249d0a18ef16c90165ffac0",
+      "src/jaxns/shrinkage/online.py": "d159affa43067791a7754e53b546115a46f54a977214f4b4fcf64a4508bb4afb",
+      "src/jaxns/shrinkage/phantom.py": "098c07e40729e093959045de1e597ff2ef0d9cac41346164e6bbb1fdaff2ef7b",
+      "src/jaxns/shrinkage/reference.py": "d1c2895aa7a7131fc0338c2e8f223896b66f47e339d758cf45776d96195ea745",
+      "src/jaxns/state.py": "2d0e3debb4d5b478b7c7f1024b1eae1ebe89eeba2c12f582e30671ceaf5fadf0",
+      "src/jaxns/stats_utils.py": "49163cc21155db242bd217bf38124395094cb7165c5225b5f0d82375ef413311",
+      "src/jaxns/types.py": "5295dd0a08d3eab3eea7e80ceb2cc661ef95820fcb00b17f2dc1596934243764"
+    }
+  },
+  "selector_parity": [
+    {
+      "record": "final/0.02/ss10/mixed-blocks.json",
+      "reference": "final/0.02/ss10/mixed-reference.npz",
+      "identities": 1100,
+      "all_fields_bitwise_equal": true,
+      "output_sha256": "e71dfd40d7ae011433acf8bf8d46ccaa7ba10c98ec6585c7e03355fb7dd1ec17",
+      "reference_sha256": "e71dfd40d7ae011433acf8bf8d46ccaa7ba10c98ec6585c7e03355fb7dd1ec17"
+    },
+    {
+      "record": "final/0.02/ss10/mixed-combined.json",
+      "reference": "final/0.02/ss10/mixed-reference.npz",
+      "identities": 1100,
+      "all_fields_bitwise_equal": true,
+      "output_sha256": "e71dfd40d7ae011433acf8bf8d46ccaa7ba10c98ec6585c7e03355fb7dd1ec17",
+      "reference_sha256": "e71dfd40d7ae011433acf8bf8d46ccaa7ba10c98ec6585c7e03355fb7dd1ec17"
+    },
+    {
+      "record": "final/0.02/ss10/mixed-lazy.json",
+      "reference": "final/0.02/ss10/mixed-reference.npz",
+      "identities": 1100,
+      "all_fields_bitwise_equal": true,
+      "output_sha256": "e71dfd40d7ae011433acf8bf8d46ccaa7ba10c98ec6585c7e03355fb7dd1ec17",
+      "reference_sha256": "e71dfd40d7ae011433acf8bf8d46ccaa7ba10c98ec6585c7e03355fb7dd1ec17"
+    },
+    {
+      "record": "final/0.05/cg10/mixed-blocks.json",
+      "reference": "final/0.05/cg10/mixed-reference.npz",
+      "identities": 1100,
+      "all_fields_bitwise_equal": true,
+      "output_sha256": "ededf706ecc3b47e93d6907f85ccf912751ec3b5c1dbfd9fc3159b941f6bb7f4",
+      "reference_sha256": "ededf706ecc3b47e93d6907f85ccf912751ec3b5c1dbfd9fc3159b941f6bb7f4"
+    },
+    {
+      "record": "final/0.05/cg10/mixed-combined.json",
+      "reference": "final/0.05/cg10/mixed-reference.npz",
+      "identities": 1100,
+      "all_fields_bitwise_equal": true,
+      "output_sha256": "ededf706ecc3b47e93d6907f85ccf912751ec3b5c1dbfd9fc3159b941f6bb7f4",
+      "reference_sha256": "ededf706ecc3b47e93d6907f85ccf912751ec3b5c1dbfd9fc3159b941f6bb7f4"
+    },
+    {
+      "record": "final/0.05/cg10/mixed-lazy.json",
+      "reference": "final/0.05/cg10/mixed-reference.npz",
+      "identities": 1100,
+      "all_fields_bitwise_equal": true,
+      "output_sha256": "ededf706ecc3b47e93d6907f85ccf912751ec3b5c1dbfd9fc3159b941f6bb7f4",
+      "reference_sha256": "ededf706ecc3b47e93d6907f85ccf912751ec3b5c1dbfd9fc3159b941f6bb7f4"
+    },
+    {
+      "record": "final/0.05/g10/block-1024.json",
+      "reference": "final/0.05/g10/mixed-reference.npz",
+      "identities": 1100,
+      "all_fields_bitwise_equal": true,
+      "output_sha256": "cd1aaa8535a1cf8158f6e6ca599ade0bc250784dd788d76eb2080b13d4b5fe99",
+      "reference_sha256": "cd1aaa8535a1cf8158f6e6ca599ade0bc250784dd788d76eb2080b13d4b5fe99"
+    },
+    {
+      "record": "final/0.05/g10/block-64.json",
+      "reference": "final/0.05/g10/mixed-reference.npz",
+      "identities": 1100,
+      "all_fields_bitwise_equal": true,
+      "output_sha256": "cd1aaa8535a1cf8158f6e6ca599ade0bc250784dd788d76eb2080b13d4b5fe99",
+      "reference_sha256": "cd1aaa8535a1cf8158f6e6ca599ade0bc250784dd788d76eb2080b13d4b5fe99"
+    },
+    {
+      "record": "final/0.05/g10/mixed-blocks.json",
+      "reference": "final/0.05/g10/mixed-reference.npz",
+      "identities": 1100,
+      "all_fields_bitwise_equal": true,
+      "output_sha256": "cd1aaa8535a1cf8158f6e6ca599ade0bc250784dd788d76eb2080b13d4b5fe99",
+      "reference_sha256": "cd1aaa8535a1cf8158f6e6ca599ade0bc250784dd788d76eb2080b13d4b5fe99"
+    },
+    {
+      "record": "final/0.05/g10/mixed-combined.json",
+      "reference": "final/0.05/g10/mixed-reference.npz",
+      "identities": 1100,
+      "all_fields_bitwise_equal": true,
+      "output_sha256": "cd1aaa8535a1cf8158f6e6ca599ade0bc250784dd788d76eb2080b13d4b5fe99",
+      "reference_sha256": "cd1aaa8535a1cf8158f6e6ca599ade0bc250784dd788d76eb2080b13d4b5fe99"
+    },
+    {
+      "record": "final/0.05/g10/mixed-lazy.json",
+      "reference": "final/0.05/g10/mixed-reference.npz",
+      "identities": 1100,
+      "all_fields_bitwise_equal": true,
+      "output_sha256": "cd1aaa8535a1cf8158f6e6ca599ade0bc250784dd788d76eb2080b13d4b5fe99",
+      "reference_sha256": "cd1aaa8535a1cf8158f6e6ca599ade0bc250784dd788d76eb2080b13d4b5fe99"
+    },
+    {
+      "record": "final/0.05/ss10/mixed-blocks.json",
+      "reference": "final/0.05/ss10/mixed-reference.npz",
+      "identities": 1100,
+      "all_fields_bitwise_equal": true,
+      "output_sha256": "9de061f1e5748296adec4e04dbcac25a0341fe162a0692b17eb1decad6ab9f54",
+      "reference_sha256": "9de061f1e5748296adec4e04dbcac25a0341fe162a0692b17eb1decad6ab9f54"
+    },
+    {
+      "record": "final/0.05/ss10/mixed-combined.json",
+      "reference": "final/0.05/ss10/mixed-reference.npz",
+      "identities": 1100,
+      "all_fields_bitwise_equal": true,
+      "output_sha256": "9de061f1e5748296adec4e04dbcac25a0341fe162a0692b17eb1decad6ab9f54",
+      "reference_sha256": "9de061f1e5748296adec4e04dbcac25a0341fe162a0692b17eb1decad6ab9f54"
+    },
+    {
+      "record": "final/0.05/ss10/mixed-lazy.json",
+      "reference": "final/0.05/ss10/mixed-reference.npz",
+      "identities": 1100,
+      "all_fields_bitwise_equal": true,
+      "output_sha256": "9de061f1e5748296adec4e04dbcac25a0341fe162a0692b17eb1decad6ab9f54",
+      "reference_sha256": "9de061f1e5748296adec4e04dbcac25a0341fe162a0692b17eb1decad6ab9f54"
+    },
+    {
+      "record": "queries/mixed-10-combined.json",
+      "reference": "queries/mixed-10-reference.npz",
+      "identities": 70,
+      "all_fields_bitwise_equal": true,
+      "output_sha256": "f21b9c812ecdb58044c6acc9a1c672256696e02f14c1bdf7b945165cda8db366",
+      "reference_sha256": "f21b9c812ecdb58044c6acc9a1c672256696e02f14c1bdf7b945165cda8db366"
+    },
+    {
+      "record": "queries/mixed-300-combined.json",
+      "reference": "queries/mixed-300-reference.npz",
+      "identities": 2100,
+      "all_fields_bitwise_equal": true,
+      "output_sha256": "fc68987754bf3d377ac1018ff4699ca9ac38bdd7eb40d8135d7e2794927166af",
+      "reference_sha256": "fc68987754bf3d377ac1018ff4699ca9ac38bdd7eb40d8135d7e2794927166af"
+    },
+    {
+      "record": "queries/recent-100-combined.json",
+      "reference": "queries/recent-100-reference.npz",
+      "identities": 700,
+      "all_fields_bitwise_equal": true,
+      "output_sha256": "18c94bb25a09a37664ca69bc1fcba1063739cf1253e4c1bced86b768e28e54af",
+      "reference_sha256": "18c94bb25a09a37664ca69bc1fcba1063739cf1253e4c1bced86b768e28e54af"
+    },
+    {
+      "record": "queries/root-100-combined.json",
+      "reference": "queries/root-100-reference.npz",
+      "identities": 700,
+      "all_fields_bitwise_equal": true,
+      "output_sha256": "e93adbb36e4ff7aec21baf66478916fce1a0875dfa0d782c392152201d1ef615",
+      "reference_sha256": "e93adbb36e4ff7aec21baf66478916fce1a0875dfa0d782c392152201d1ef615"
+    },
+    {
+      "record": "scaling/capacity2-combined.json",
+      "reference": "scaling/capacity2-reference.npz",
+      "identities": 700,
+      "all_fields_bitwise_equal": true,
+      "output_sha256": "1a9f83fb04ec67b88ec150ab638e1cbf191b061baf50540ac17bcf579dfda926",
+      "reference_sha256": "1a9f83fb04ec67b88ec150ab638e1cbf191b061baf50540ac17bcf579dfda926"
+    },
+    {
+      "record": "scaling/d20-combined.json",
+      "reference": "scaling/d20-reference.npz",
+      "identities": 700,
+      "all_fields_bitwise_equal": true,
+      "output_sha256": "25715586cd8988fc6785c447c0246ab8d523b2f8d89149e44b2b4eb51c743733",
+      "reference_sha256": "25715586cd8988fc6785c447c0246ab8d523b2f8d89149e44b2b4eb51c743733"
+    },
+    {
+      "record": "scaling/p9-combined.json",
+      "reference": "scaling/p9-reference.npz",
+      "identities": 700,
+      "all_fields_bitwise_equal": true,
+      "output_sha256": "5c46c41ad1db740273be1fed0c434ab8316ee5dee792bb5c78a2c9964bfb9985",
+      "reference_sha256": "5c46c41ad1db740273be1fed0c434ab8316ee5dee792bb5c78a2c9964bfb9985"
+    }
+  ],
+  "archive_parity": [
+    {
+      "case": "g10",
+      "archive": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-00/state.pkl",
+      "fields": {
+        "[<flat index 0>]['U_samples'][<flat index 0>]": {
+          "shape": [
+            187833,
+            10
+          ],
+          "dtype": "float32",
+          "sha256": "cd742831dcd819252a4a38cdd6c53d649c06f2211726a9704af63451a60c74a6"
+        },
+        "[<flat index 0>]['log_L_constraints']": {
+          "shape": [
+            187833
+          ],
+          "dtype": "float64",
+          "sha256": "0b3450489baaeecc64fdec262599be1587276ef6f7708e9b4b4cf7fda20c522b"
+        },
+        "[<flat index 0>]['log_likelihoods']": {
+          "shape": [
+            187833
+          ],
+          "dtype": "float64",
+          "sha256": "dd087cc527b3cc4cc765aceac141c98fb1b16afdcfb7fabfec7fa06f1a7758d2"
+        },
+        "[<flat index 0>]['num_likelihood_evaluations']": {
+          "shape": [
+            187833
+          ],
+          "dtype": "int64",
+          "sha256": "de37fae31bb7982595ae069fb032389c3a343b5a7419bf758add3d2b481501fa"
+        },
+        "[<flat index 0>]['out_degree']": {
+          "shape": [
+            187833
+          ],
+          "dtype": "int64",
+          "sha256": "d77c0833b1d7a676a1f43b15d0c3f18d6e35fc3573c162cac7108c196ade28af"
+        },
+        "[<flat index 0>]['phantom_samples'][<flat index 0>]['U_samples'][<flat index 0>]": {
+          "shape": [
+            187833,
+            99,
+            10
+          ],
+          "dtype": "float32",
+          "sha256": "89eb74468ccb5fc5ef4aa2e13e3b317def29259ea505f6ad5155db983ca5cdf9"
+        },
+        "[<flat index 0>]['phantom_samples'][<flat index 0>]['log_L']": {
+          "shape": [
+            187833,
+            99
+          ],
+          "dtype": "float64",
+          "sha256": "5258c6e0ba98f7066a0e2e77405f9201f69fa8fb4ff2ac3808a647d73bf08737"
+        },
+        "[<flat index 0>]['phantom_samples'][<flat index 0>]['valid_mask']": {
+          "shape": [
+            187833,
+            99
+          ],
+          "dtype": "bool",
+          "sha256": "6d20c833fd577d25a9ab053b27723652b49ef49007ac32656b5d8df7e2728eaf"
+        }
+      },
+      "classics": 187833,
+      "calls": 60532854,
+      "exact": true
+    },
+    {
+      "case": "cg10",
+      "archive": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/cg10/seed-00/state.pkl",
+      "fields": {
+        "[<flat index 0>]['U_samples'][<flat index 0>]": {
+          "shape": [
+            195547,
+            10
+          ],
+          "dtype": "float32",
+          "sha256": "2b5fc2cfbe81a23dc2cc4c300fbebea75a4c8f9882047bd4bafb49d46efa467e"
+        },
+        "[<flat index 0>]['log_L_constraints']": {
+          "shape": [
+            195547
+          ],
+          "dtype": "float64",
+          "sha256": "d09c0f12927dabb3773c8f9c5be9d32889d7d7297eed770dd6c9bd46a35c8327"
+        },
+        "[<flat index 0>]['log_likelihoods']": {
+          "shape": [
+            195547
+          ],
+          "dtype": "float64",
+          "sha256": "5ed5809643b5b1bf887dd7db6c0c941e0b7a894bc1606c44be6e3f02019413a9"
+        },
+        "[<flat index 0>]['num_likelihood_evaluations']": {
+          "shape": [
+            195547
+          ],
+          "dtype": "int64",
+          "sha256": "0f335e14411175882a7a3c1b2145b56c101e0693c2e6ba468394cf42011462dd"
+        },
+        "[<flat index 0>]['out_degree']": {
+          "shape": [
+            195547
+          ],
+          "dtype": "int64",
+          "sha256": "8b0c00fd2beadcd98d0c56b49d0dc1fc463d4a4714c894f58aacc5d92b366ed8"
+        },
+        "[<flat index 0>]['phantom_samples'][<flat index 0>]['U_samples'][<flat index 0>]": {
+          "shape": [
+            195547,
+            99,
+            10
+          ],
+          "dtype": "float32",
+          "sha256": "308b7c6a6e930d8f12d83878443f95644d6aa97c9f7057972506c6b79ac4c8c1"
+        },
+        "[<flat index 0>]['phantom_samples'][<flat index 0>]['log_L']": {
+          "shape": [
+            195547,
+            99
+          ],
+          "dtype": "float64",
+          "sha256": "9fdd05b4323fc725fab74b75f617924c3dd676a98c792f6991d1903639a72b28"
+        },
+        "[<flat index 0>]['phantom_samples'][<flat index 0>]['valid_mask']": {
+          "shape": [
+            195547,
+            99
+          ],
+          "dtype": "bool",
+          "sha256": "83adbff1137519dd084d48a7a48824d01b77380fddf2c666b3f7f73389eaf667"
+        }
+      },
+      "classics": 195547,
+      "calls": 64690886,
+      "exact": true
+    },
+    {
+      "case": "ss10",
+      "archive": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/ss10/seed-00/state.pkl",
+      "fields": {
+        "[<flat index 0>]['U_samples'][<flat index 0>]": {
+          "shape": [
+            72357,
+            10
+          ],
+          "dtype": "float32",
+          "sha256": "f7dfcedee4524e83fbd11d0ca38860f5368b41caf164e5ee02e376a96dfc7f1e"
+        },
+        "[<flat index 0>]['log_L_constraints']": {
+          "shape": [
+            72357
+          ],
+          "dtype": "float64",
+          "sha256": "c876b60c01dee08003f1a2a795917b20eb36e4fc241d5ed626d70dfa7d8a9eb4"
+        },
+        "[<flat index 0>]['log_likelihoods']": {
+          "shape": [
+            72357
+          ],
+          "dtype": "float64",
+          "sha256": "bf3b154be25ebd3a93c7e76adf8e423095a3f4b7da2986b9f76ca2e10d7352da"
+        },
+        "[<flat index 0>]['num_likelihood_evaluations']": {
+          "shape": [
+            72357
+          ],
+          "dtype": "int64",
+          "sha256": "7998e5100d3ebfd1da671c85b9eef18e0818fe8f84e6357023858c13a017e1fb"
+        },
+        "[<flat index 0>]['out_degree']": {
+          "shape": [
+            72357
+          ],
+          "dtype": "int64",
+          "sha256": "80902a2adf129ea30d58b9ab62294882448cad33636d5bb265e5c6a0fa8a9717"
+        },
+        "[<flat index 0>]['phantom_samples'][<flat index 0>]['U_samples'][<flat index 0>]": {
+          "shape": [
+            72357,
+            99,
+            10
+          ],
+          "dtype": "float32",
+          "sha256": "1087c4b8ca3f08e5228f1a246c1696cb0f8bf2eef1da8baaab74ac180ad9738b"
+        },
+        "[<flat index 0>]['phantom_samples'][<flat index 0>]['log_L']": {
+          "shape": [
+            72357,
+            99
+          ],
+          "dtype": "float64",
+          "sha256": "e5449d905444253f0a0e6f101afd1d99bdbccf58f575f8ed1fd7cc1bf1cc033e"
+        },
+        "[<flat index 0>]['phantom_samples'][<flat index 0>]['valid_mask']": {
+          "shape": [
+            72357,
+            99
+          ],
+          "dtype": "bool",
+          "sha256": "874537ad97f15448dd82962440486c01383c0560dc573072b8e692cd4af9fdad"
+        }
+      },
+      "classics": 72357,
+      "calls": 16573991,
+      "exact": true
+    }
+  ]
+}
