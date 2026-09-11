@@ -1,0 +1,95 @@
+{
+  "R240": {
+    "root": "/largedata/albert/git/jaxns-paper-ss8-css8-R240",
+    "commit": "4071041425ed31c8b581f38664a140bf818145ea",
+    "src_tree": "e6cd6d2730400e0724b188c0f213ba7bfb6c2675",
+    "files": {
+      "allocation_contrasts.py": "f8c7951a3f764d531f5f3af8f4b8913016760583d37c7b724ee8c650e20ee012",
+      "allocation_costs.py": "a2d9acc71c978f817d26960d2c8d61e5b361730d14b145aa77609827c9e94605",
+      "cases.py": "4df7488dc3c76574b212bf51828f189aaabfd07bfee7ba8b84766c64662460db",
+      "compare.py": "4e6e54cc4acc5d50bf01d525b13d2e8a6b62b974d016e845c2173baefa88ae44",
+      "continue_variants.py": "8b00f03feeb9b9b52844267b037381781ad368826aba691ef86d26828ba67094",
+      "implementation_equivalence.py": "062f7afe3d8aeae4205a7393501bb2e7cd1941da3abe667ab116cf8c830c1372",
+      "launch.py": "6a80a0cfce50787ddcace7d4d0f7ea81bcd1a06a8137a1fb201527a24808fdf5",
+      "launch_variants.py": "cc079927bfe8f2f40cd19be6e7b97a77fec556049745cffcabaaa3d8a6b9981d",
+      "mode_counts.py": "36bc85d0d2ef7676933ab9b29b05c40eb5a864c3c9f88a727ff515687c3c30a9",
+      "mode_memory.py": "5f1e2f60b8cc0ee68a632d3577d565788b728b93a2c5ab829332f9808fe73a47",
+      "prefix_sweep.py": "943fc01c09909fc994f8aeb2bd9ed5d78b38480f34670941ee932d023ca845f8",
+      "run.py": "ea01b4228d3b6a1f2db666e672d4bee1d0c7b874ed583369391b5e8c83eeb749",
+      "seed_variance.py": "c50e1c65dae3ded0e4200b110b2eededc910d76e706bdef20fd055057e3f9029",
+      "test_protocol.py": "4f8b11a180be600dfc2c10b384dba07fa004b6b6ffb90bd4bba74a8bf8f11973",
+      "references.py": "466fc353119bd7a3b9fceb5bb74c47f064523d4baf0c25813d192a6d305ab89e"
+    }
+  },
+  "A240": {
+    "root": "/largedata/albert/git/jaxns-paper-ss8-css8-A240",
+    "commit": "057da98444150d4aa20e86a126d908cf462ae994",
+    "src_tree": "8a95c2b11054f381e7279d1015729b5bcf846cce",
+    "files": {
+      "allocation_contrasts.py": "f8c7951a3f764d531f5f3af8f4b8913016760583d37c7b724ee8c650e20ee012",
+      "allocation_costs.py": "a2d9acc71c978f817d26960d2c8d61e5b361730d14b145aa77609827c9e94605",
+      "cases.py": "4df7488dc3c76574b212bf51828f189aaabfd07bfee7ba8b84766c64662460db",
+      "compare.py": "4e6e54cc4acc5d50bf01d525b13d2e8a6b62b974d016e845c2173baefa88ae44",
+      "continue_variants.py": "8b00f03feeb9b9b52844267b037381781ad368826aba691ef86d26828ba67094",
+      "implementation_equivalence.py": "062f7afe3d8aeae4205a7393501bb2e7cd1941da3abe667ab116cf8c830c1372",
+      "launch.py": "6a80a0cfce50787ddcace7d4d0f7ea81bcd1a06a8137a1fb201527a24808fdf5",
+      "launch_variants.py": "cc079927bfe8f2f40cd19be6e7b97a77fec556049745cffcabaaa3d8a6b9981d",
+      "mode_counts.py": "36bc85d0d2ef7676933ab9b29b05c40eb5a864c3c9f88a727ff515687c3c30a9",
+      "mode_memory.py": "5f1e2f60b8cc0ee68a632d3577d565788b728b93a2c5ab829332f9808fe73a47",
+      "prefix_sweep.py": "943fc01c09909fc994f8aeb2bd9ed5d78b38480f34670941ee932d023ca845f8",
+      "run.py": "bfb8584b2973aa62ed8f7998675428dbed09bbf793d7905834d18ac7360f53e1",
+      "seed_variance.py": "c50e1c65dae3ded0e4200b110b2eededc910d76e706bdef20fd055057e3f9029",
+      "test_protocol.py": "4f8b11a180be600dfc2c10b384dba07fa004b6b6ffb90bd4bba74a8bf8f11973",
+      "references.py": "466fc353119bd7a3b9fceb5bb74c47f064523d4baf0c25813d192a6d305ab89e"
+    }
+  },
+  "C240": {
+    "root": "/largedata/albert/git/jaxns-paper-ss8-css8-C240",
+    "commit": "e41b35ee786f1efc7ca55ed1a67e2a2d5beb1272",
+    "src_tree": "e6cd6d2730400e0724b188c0f213ba7bfb6c2675",
+    "files": {
+      "allocation_contrasts.py": "f8c7951a3f764d531f5f3af8f4b8913016760583d37c7b724ee8c650e20ee012",
+      "allocation_costs.py": "a2d9acc71c978f817d26960d2c8d61e5b361730d14b145aa77609827c9e94605",
+      "cases.py": "4df7488dc3c76574b212bf51828f189aaabfd07bfee7ba8b84766c64662460db",
+      "compare.py": "4e6e54cc4acc5d50bf01d525b13d2e8a6b62b974d016e845c2173baefa88ae44",
+      "continue_variants.py": "8b00f03feeb9b9b52844267b037381781ad368826aba691ef86d26828ba67094",
+      "first_goal_allocation.py": "f870b16914f4be4935c3c85f44b411e9a6f760a018827895712c420ca7f3cc4f",
+      "implementation_equivalence.py": "062f7afe3d8aeae4205a7393501bb2e7cd1941da3abe667ab116cf8c830c1372",
+      "launch.py": "b65b581bd6d89864433983957c2252bf44a08e27bc0d1a77d0db24291b674a4b",
+      "launch_variants.py": "cc079927bfe8f2f40cd19be6e7b97a77fec556049745cffcabaaa3d8a6b9981d",
+      "mode_counts.py": "36bc85d0d2ef7676933ab9b29b05c40eb5a864c3c9f88a727ff515687c3c30a9",
+      "mode_memory.py": "5f1e2f60b8cc0ee68a632d3577d565788b728b93a2c5ab829332f9808fe73a47",
+      "plot_first_goal_allocation.py": "2d214ba10c62eca63fc5e1b194bb34c899696e3913661040c6040a91bbd9841f",
+      "prefix_sweep.py": "943fc01c09909fc994f8aeb2bd9ed5d78b38480f34670941ee932d023ca845f8",
+      "run.py": "d4ad0a3c6eddddb82287ea6ba2e32497bfde5dc3ddf155ecece2f767d26f46cd",
+      "seed_variance.py": "c50e1c65dae3ded0e4200b110b2eededc910d76e706bdef20fd055057e3f9029",
+      "test_protocol.py": "4f8b11a180be600dfc2c10b384dba07fa004b6b6ffb90bd4bba74a8bf8f11973",
+      "references.py": "466fc353119bd7a3b9fceb5bb74c47f064523d4baf0c25813d192a6d305ab89e"
+    }
+  },
+  "Cprime240": {
+    "root": "/largedata/albert/git/jaxns-paper-ss8-css8-Cprime240",
+    "commit": "c8e4522e09123a6da80a6f62b5df3eb54f62d452",
+    "src_tree": "c215b1852a09b7fe774a09cba71d76a54077fda8",
+    "files": {
+      "allocation_contrasts.py": "f8c7951a3f764d531f5f3af8f4b8913016760583d37c7b724ee8c650e20ee012",
+      "allocation_costs.py": "a2d9acc71c978f817d26960d2c8d61e5b361730d14b145aa77609827c9e94605",
+      "cases.py": "4df7488dc3c76574b212bf51828f189aaabfd07bfee7ba8b84766c64662460db",
+      "compare.py": "4e6e54cc4acc5d50bf01d525b13d2e8a6b62b974d016e845c2173baefa88ae44",
+      "continue_variants.py": "8b00f03feeb9b9b52844267b037381781ad368826aba691ef86d26828ba67094",
+      "first_goal_allocation.py": "f870b16914f4be4935c3c85f44b411e9a6f760a018827895712c420ca7f3cc4f",
+      "implementation_equivalence.py": "062f7afe3d8aeae4205a7393501bb2e7cd1941da3abe667ab116cf8c830c1372",
+      "launch.py": "b65b581bd6d89864433983957c2252bf44a08e27bc0d1a77d0db24291b674a4b",
+      "launch_variants.py": "cc079927bfe8f2f40cd19be6e7b97a77fec556049745cffcabaaa3d8a6b9981d",
+      "mixed_first_goal_validation.py": "2363e32e62201b2d761cb866b515d66f0a0fb4aaa530b1b1fc117e79236dd495",
+      "mode_counts.py": "36bc85d0d2ef7676933ab9b29b05c40eb5a864c3c9f88a727ff515687c3c30a9",
+      "mode_memory.py": "5f1e2f60b8cc0ee68a632d3577d565788b728b93a2c5ab829332f9808fe73a47",
+      "plot_first_goal_allocation.py": "e5ab8c6a5d92adce0bd5c4c5b8e80cb33451a874e40fc8868caf6762ee904244",
+      "prefix_sweep.py": "943fc01c09909fc994f8aeb2bd9ed5d78b38480f34670941ee932d023ca845f8",
+      "run.py": "bacb23fb237c198b91f0d11440552f4ece3bc66f5e54f4fc775a41c832478c6c",
+      "seed_variance.py": "c50e1c65dae3ded0e4200b110b2eededc910d76e706bdef20fd055057e3f9029",
+      "test_protocol.py": "4f8b11a180be600dfc2c10b384dba07fa004b6b6ffb90bd4bba74a8bf8f11973",
+      "references.py": "466fc353119bd7a3b9fceb5bb74c47f064523d4baf0c25813d192a6d305ab89e"
+    }
+  }
+}

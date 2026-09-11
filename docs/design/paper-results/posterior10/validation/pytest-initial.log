@@ -1,0 +1,292 @@
+..............FFFFFFFF                                                   [100%]
+=================================== FAILURES ===================================
+_______ test_adapter_matches_pinned_legacy_function_and_prior[eggbox10] ________
+
+case = 'eggbox10'
+
+    @pytest.mark.parametrize("case", list(PRIOR_BOUNDS))
+    def test_adapter_matches_pinned_legacy_function_and_prior(case):
+        name = {"eggbox10": "eggbox", "rosenbrock10": "rosenbrock",
+                "rastrigin10": "rastrigin", "ss10": "spikeslab"}[case]
+        source = ast.parse((REFERENCE / f"{name}.py").read_text())
+        function = next(node for node in ast.walk(source)
+                        if isinstance(node, ast.FunctionDef)
+                        and node.name == "log_likelihood")
+        module = ast.fix_missing_locations(ast.Module(body=[function], type_ignores=[]))
+        namespace = {"jnp": jnp, "tfp": tfp, "ndim": 10}
+        exec(compile(module, f"pinned_legacy_{name}", "exec"), namespace)
+>       model = build_model(case, "repository" if case == "ss10" else None)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+cicd/tests/test_posterior_candidates.py:41: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+benchmarks/paper_reproduction/posterior_cases.py:97: in build_model
+    return Model(prior_model=partial(
+<string>:4: in __init__
+    ???
+src/jaxns/model.py:30: in __post_init__
+    object.__setattr__(self, 'prior_model', _HashableCallable(self.prior_model))
+                                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<string>:4: in __init__
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = _HashableCallable(fn=functools.partial(<function prior_model at 0xffff2e05b560>, case='eggbox10', ss10_definition=None))
+
+    def __post_init__(self):
+>       closure = self.fn.__closure__ or ()
+                  ^^^^^^^^^^^^^^^^^^^
+E       AttributeError: 'functools.partial' object has no attribute '__closure__'. Did you mean: '__module__'?
+
+src/jaxns/model.py:285: AttributeError
+_____ test_adapter_matches_pinned_legacy_function_and_prior[rosenbrock10] ______
+
+case = 'rosenbrock10'
+
+    @pytest.mark.parametrize("case", list(PRIOR_BOUNDS))
+    def test_adapter_matches_pinned_legacy_function_and_prior(case):
+        name = {"eggbox10": "eggbox", "rosenbrock10": "rosenbrock",
+                "rastrigin10": "rastrigin", "ss10": "spikeslab"}[case]
+        source = ast.parse((REFERENCE / f"{name}.py").read_text())
+        function = next(node for node in ast.walk(source)
+                        if isinstance(node, ast.FunctionDef)
+                        and node.name == "log_likelihood")
+        module = ast.fix_missing_locations(ast.Module(body=[function], type_ignores=[]))
+        namespace = {"jnp": jnp, "tfp": tfp, "ndim": 10}
+        exec(compile(module, f"pinned_legacy_{name}", "exec"), namespace)
+>       model = build_model(case, "repository" if case == "ss10" else None)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+cicd/tests/test_posterior_candidates.py:41: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+benchmarks/paper_reproduction/posterior_cases.py:97: in build_model
+    return Model(prior_model=partial(
+<string>:4: in __init__
+    ???
+src/jaxns/model.py:30: in __post_init__
+    object.__setattr__(self, 'prior_model', _HashableCallable(self.prior_model))
+                                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<string>:4: in __init__
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = _HashableCallable(fn=functools.partial(<function prior_model at 0xffff2e05b560>, case='rosenbrock10', ss10_definition=None))
+
+    def __post_init__(self):
+>       closure = self.fn.__closure__ or ()
+                  ^^^^^^^^^^^^^^^^^^^
+E       AttributeError: 'functools.partial' object has no attribute '__closure__'. Did you mean: '__module__'?
+
+src/jaxns/model.py:285: AttributeError
+______ test_adapter_matches_pinned_legacy_function_and_prior[rastrigin10] ______
+
+case = 'rastrigin10'
+
+    @pytest.mark.parametrize("case", list(PRIOR_BOUNDS))
+    def test_adapter_matches_pinned_legacy_function_and_prior(case):
+        name = {"eggbox10": "eggbox", "rosenbrock10": "rosenbrock",
+                "rastrigin10": "rastrigin", "ss10": "spikeslab"}[case]
+        source = ast.parse((REFERENCE / f"{name}.py").read_text())
+        function = next(node for node in ast.walk(source)
+                        if isinstance(node, ast.FunctionDef)
+                        and node.name == "log_likelihood")
+        module = ast.fix_missing_locations(ast.Module(body=[function], type_ignores=[]))
+        namespace = {"jnp": jnp, "tfp": tfp, "ndim": 10}
+        exec(compile(module, f"pinned_legacy_{name}", "exec"), namespace)
+>       model = build_model(case, "repository" if case == "ss10" else None)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+cicd/tests/test_posterior_candidates.py:41: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+benchmarks/paper_reproduction/posterior_cases.py:97: in build_model
+    return Model(prior_model=partial(
+<string>:4: in __init__
+    ???
+src/jaxns/model.py:30: in __post_init__
+    object.__setattr__(self, 'prior_model', _HashableCallable(self.prior_model))
+                                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<string>:4: in __init__
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = _HashableCallable(fn=functools.partial(<function prior_model at 0xffff2e05b560>, case='rastrigin10', ss10_definition=None))
+
+    def __post_init__(self):
+>       closure = self.fn.__closure__ or ()
+                  ^^^^^^^^^^^^^^^^^^^
+E       AttributeError: 'functools.partial' object has no attribute '__closure__'. Did you mean: '__module__'?
+
+src/jaxns/model.py:285: AttributeError
+_________ test_adapter_matches_pinned_legacy_function_and_prior[ss10] __________
+
+case = 'ss10'
+
+    @pytest.mark.parametrize("case", list(PRIOR_BOUNDS))
+    def test_adapter_matches_pinned_legacy_function_and_prior(case):
+        name = {"eggbox10": "eggbox", "rosenbrock10": "rosenbrock",
+                "rastrigin10": "rastrigin", "ss10": "spikeslab"}[case]
+        source = ast.parse((REFERENCE / f"{name}.py").read_text())
+        function = next(node for node in ast.walk(source)
+                        if isinstance(node, ast.FunctionDef)
+                        and node.name == "log_likelihood")
+        module = ast.fix_missing_locations(ast.Module(body=[function], type_ignores=[]))
+        namespace = {"jnp": jnp, "tfp": tfp, "ndim": 10}
+        exec(compile(module, f"pinned_legacy_{name}", "exec"), namespace)
+>       model = build_model(case, "repository" if case == "ss10" else None)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+cicd/tests/test_posterior_candidates.py:41: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+benchmarks/paper_reproduction/posterior_cases.py:97: in build_model
+    return Model(prior_model=partial(
+<string>:4: in __init__
+    ???
+src/jaxns/model.py:30: in __post_init__
+    object.__setattr__(self, 'prior_model', _HashableCallable(self.prior_model))
+                                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<string>:4: in __init__
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = _HashableCallable(fn=functools.partial(<function prior_model at 0xffff2e05b560>, case='ss10', ss10_definition='repository'))
+
+    def __post_init__(self):
+>       closure = self.fn.__closure__ or ()
+                  ^^^^^^^^^^^^^^^^^^^
+E       AttributeError: 'functools.partial' object has no attribute '__closure__'. Did you mean: '__module__'?
+
+src/jaxns/model.py:285: AttributeError
+____________ test_ss10_finite_box_evidence_and_density[repository] _____________
+
+definition = 'repository'
+
+    @pytest.mark.parametrize("definition", SS10_DEFINITIONS)
+    def test_ss10_finite_box_evidence_and_density(definition):
+>       model = build_model("ss10", definition)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+cicd/tests/test_posterior_candidates.py:57: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+benchmarks/paper_reproduction/posterior_cases.py:97: in build_model
+    return Model(prior_model=partial(
+<string>:4: in __init__
+    ???
+src/jaxns/model.py:30: in __post_init__
+    object.__setattr__(self, 'prior_model', _HashableCallable(self.prior_model))
+                                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<string>:4: in __init__
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = _HashableCallable(fn=functools.partial(<function prior_model at 0xffff2e05b560>, case='ss10', ss10_definition='repository'))
+
+    def __post_init__(self):
+>       closure = self.fn.__closure__ or ()
+                  ^^^^^^^^^^^^^^^^^^^
+E       AttributeError: 'functools.partial' object has no attribute '__closure__'. Did you mean: '__module__'?
+
+src/jaxns/model.py:285: AttributeError
+___________ test_ss10_finite_box_evidence_and_density[sd_first_two] ____________
+
+definition = 'sd_first_two'
+
+    @pytest.mark.parametrize("definition", SS10_DEFINITIONS)
+    def test_ss10_finite_box_evidence_and_density(definition):
+>       model = build_model("ss10", definition)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+cicd/tests/test_posterior_candidates.py:57: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+benchmarks/paper_reproduction/posterior_cases.py:97: in build_model
+    return Model(prior_model=partial(
+<string>:4: in __init__
+    ???
+src/jaxns/model.py:30: in __post_init__
+    object.__setattr__(self, 'prior_model', _HashableCallable(self.prior_model))
+                                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<string>:4: in __init__
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = _HashableCallable(fn=functools.partial(<function prior_model at 0xffff2e05b560>, case='ss10', ss10_definition='sd_first_two'))
+
+    def __post_init__(self):
+>       closure = self.fn.__closure__ or ()
+                  ^^^^^^^^^^^^^^^^^^^
+E       AttributeError: 'functools.partial' object has no attribute '__closure__'. Did you mean: '__module__'?
+
+src/jaxns/model.py:285: AttributeError
+____________ test_ss10_finite_box_evidence_and_density[sd_all_ten] _____________
+
+definition = 'sd_all_ten'
+
+    @pytest.mark.parametrize("definition", SS10_DEFINITIONS)
+    def test_ss10_finite_box_evidence_and_density(definition):
+>       model = build_model("ss10", definition)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+cicd/tests/test_posterior_candidates.py:57: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+benchmarks/paper_reproduction/posterior_cases.py:97: in build_model
+    return Model(prior_model=partial(
+<string>:4: in __init__
+    ???
+src/jaxns/model.py:30: in __post_init__
+    object.__setattr__(self, 'prior_model', _HashableCallable(self.prior_model))
+                                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<string>:4: in __init__
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = _HashableCallable(fn=functools.partial(<function prior_model at 0xffff2e05b560>, case='ss10', ss10_definition='sd_all_ten'))
+
+    def __post_init__(self):
+>       closure = self.fn.__closure__ or ()
+                  ^^^^^^^^^^^^^^^^^^^
+E       AttributeError: 'functools.partial' object has no attribute '__closure__'. Did you mean: '__module__'?
+
+src/jaxns/model.py:285: AttributeError
+_____ test_mixed_phantom_run_classic_ess_matches_result_and_direct_weights _____
+
+    def test_mixed_phantom_run_classic_ess_matches_result_and_direct_weights():
+>       model = build_model("rastrigin10")
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+cicd/tests/test_posterior_candidates.py:81: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+benchmarks/paper_reproduction/posterior_cases.py:97: in build_model
+    return Model(prior_model=partial(
+<string>:4: in __init__
+    ???
+src/jaxns/model.py:30: in __post_init__
+    object.__setattr__(self, 'prior_model', _HashableCallable(self.prior_model))
+                                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<string>:4: in __init__
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = _HashableCallable(fn=functools.partial(<function prior_model at 0xffff2e05b560>, case='rastrigin10', ss10_definition=None))
+
+    def __post_init__(self):
+>       closure = self.fn.__closure__ or ()
+                  ^^^^^^^^^^^^^^^^^^^
+E       AttributeError: 'functools.partial' object has no attribute '__closure__'. Did you mean: '__module__'?
+
+src/jaxns/model.py:285: AttributeError
+=============================== warnings summary ===============================
+../../../../data/albert/miniconda3/envs/jaxns_py/lib/python3.12/site-packages/tensorflow_probability/python/internal/backend/jax/ops.py:684
+  /data/albert/miniconda3/envs/jaxns_py/lib/python3.12/site-packages/tensorflow_probability/python/internal/backend/jax/ops.py:684: DeprecationWarning: jax.core.pytype_aval_mappings is deprecated.
+    jax.core.pytype_aval_mappings[onp.ndarray])
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED cicd/tests/test_posterior_candidates.py::test_adapter_matches_pinned_legacy_function_and_prior[eggbox10]
+FAILED cicd/tests/test_posterior_candidates.py::test_adapter_matches_pinned_legacy_function_and_prior[rosenbrock10]
+FAILED cicd/tests/test_posterior_candidates.py::test_adapter_matches_pinned_legacy_function_and_prior[rastrigin10]
+FAILED cicd/tests/test_posterior_candidates.py::test_adapter_matches_pinned_legacy_function_and_prior[ss10]
+FAILED cicd/tests/test_posterior_candidates.py::test_ss10_finite_box_evidence_and_density[repository]
+FAILED cicd/tests/test_posterior_candidates.py::test_ss10_finite_box_evidence_and_density[sd_first_two]
+FAILED cicd/tests/test_posterior_candidates.py::test_ss10_finite_box_evidence_and_density[sd_all_ten]
+FAILED cicd/tests/test_posterior_candidates.py::test_mixed_phantom_run_classic_ess_matches_result_and_direct_weights
+8 failed, 14 passed, 1 warning in 8.49s
+ERROR conda.cli.main_run:execute(125): `conda run taskset -c 4 pytest -q cicd/tests/test_weighted_allocation.py cicd/tests/test_posterior_candidates.py` failed. (See above for error)

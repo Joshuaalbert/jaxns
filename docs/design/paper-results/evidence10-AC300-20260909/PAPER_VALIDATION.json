@@ -1,0 +1,12 @@
+{
+  "labels": 70,
+  "references": 53,
+  "figures": 8,
+  "missing_preexisting_figures": [
+    "images/censor.drawio.pdf"
+  ],
+  "braces_balanced": true,
+  "environments_balanced": true,
+  "obsolete_active_cases": false,
+  "tex_compiler": null
+}

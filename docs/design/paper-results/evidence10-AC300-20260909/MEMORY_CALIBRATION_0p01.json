@@ -1,0 +1,1137 @@
+{
+  "through_stage": "0.02",
+  "fits": {
+    "core": {
+      "intercept_gib": 2.4580694271979886,
+      "gib_per_million_capacity": 14.302108521195072,
+      "gib_per_million_samples": 0.0,
+      "residual_allowance_gib": 0.40518011146697575,
+      "observations": 60,
+      "headroom": 1.2
+    },
+    "analysis": {
+      "intercept_gib": 0.591123489738296,
+      "gib_per_million_capacity": 5.29526011247772,
+      "gib_per_million_samples": 18.931018967514785,
+      "residual_allowance_gib": 0.01744190119388911,
+      "observations": 60,
+      "headroom": 1.2
+    }
+  },
+  "sample_exponent_by_seed": {
+    "0": 2.054559331637624,
+    "1": 2.0637323312355162,
+    "2": 2.107193392938613,
+    "3": 2.0,
+    "4": 2.090949398000675,
+    "5": 2.075831025047336,
+    "6": 2.2579198195229955,
+    "7": 2.446371288587972,
+    "8": 2.0,
+    "9": 2.3743109527153146,
+    "10": 2.0,
+    "11": 2.117588402670628,
+    "12": 2.202973271511551,
+    "13": 2.1764538571338097,
+    "14": 2.010965585217746,
+    "15": 2.0393754569248377,
+    "16": 2.0754490943092705,
+    "17": 2.208600719670457,
+    "18": 2.2545853509945424,
+    "19": 2.1641451852317184,
+    "20": 2.107379121092345,
+    "21": 2.0,
+    "22": 2.2460596808880218,
+    "23": 2.022100500248229,
+    "24": 2.020441833539469,
+    "25": 2.169072946360644,
+    "26": 2.0,
+    "27": 2.099008647740434,
+    "28": 2.1044089292336436,
+    "29": 2.0
+  },
+  "count_headroom": 1.1,
+  "observations": [
+    {
+      "stage": "0.05",
+      "seed": 0,
+      "phase": "core",
+      "capacity": 107200,
+      "samples": 72357,
+      "sigma": 0.04963884388154501,
+      "peak_gib": 4.00335693359375
+    },
+    {
+      "stage": "0.05",
+      "seed": 0,
+      "phase": "analysis",
+      "capacity": 107200,
+      "samples": 72357,
+      "sigma": 0.04963884388154501,
+      "peak_gib": 2.5198974609375
+    },
+    {
+      "stage": "0.05",
+      "seed": 1,
+      "phase": "core",
+      "capacity": 107200,
+      "samples": 74573,
+      "sigma": 0.04945401341824174,
+      "peak_gib": 4.03741455078125
+    },
+    {
+      "stage": "0.05",
+      "seed": 1,
+      "phase": "analysis",
+      "capacity": 107200,
+      "samples": 74573,
+      "sigma": 0.04945401341824174,
+      "peak_gib": 2.56158447265625
+    },
+    {
+      "stage": "0.05",
+      "seed": 2,
+      "phase": "core",
+      "capacity": 107200,
+      "samples": 79043,
+      "sigma": 0.049534721129070126,
+      "peak_gib": 4.01776123046875
+    },
+    {
+      "stage": "0.05",
+      "seed": 2,
+      "phase": "analysis",
+      "capacity": 107200,
+      "samples": 79043,
+      "sigma": 0.049534721129070126,
+      "peak_gib": 2.6505126953125
+    },
+    {
+      "stage": "0.05",
+      "seed": 3,
+      "phase": "core",
+      "capacity": 214400,
+      "samples": 191523,
+      "sigma": 0.049350165912741856,
+      "peak_gib": 5.73883056640625
+    },
+    {
+      "stage": "0.05",
+      "seed": 3,
+      "phase": "analysis",
+      "capacity": 214400,
+      "samples": 191523,
+      "sigma": 0.049350165912741856,
+      "peak_gib": 5.34405517578125
+    },
+    {
+      "stage": "0.05",
+      "seed": 4,
+      "phase": "core",
+      "capacity": 107200,
+      "samples": 73231,
+      "sigma": 0.04964854129414056,
+      "peak_gib": 3.9058837890625
+    },
+    {
+      "stage": "0.05",
+      "seed": 4,
+      "phase": "analysis",
+      "capacity": 107200,
+      "samples": 73231,
+      "sigma": 0.04964854129414056,
+      "peak_gib": 2.542236328125
+    },
+    {
+      "stage": "0.05",
+      "seed": 5,
+      "phase": "core",
+      "capacity": 107200,
+      "samples": 101246,
+      "sigma": 0.0494467411962811,
+      "peak_gib": 3.949462890625
+    },
+    {
+      "stage": "0.05",
+      "seed": 5,
+      "phase": "analysis",
+      "capacity": 107200,
+      "samples": 101246,
+      "sigma": 0.0494467411962811,
+      "peak_gib": 3.06744384765625
+    },
+    {
+      "stage": "0.05",
+      "seed": 6,
+      "phase": "core",
+      "capacity": 107200,
+      "samples": 82383,
+      "sigma": 0.04968788995658109,
+      "peak_gib": 4.01995849609375
+    },
+    {
+      "stage": "0.05",
+      "seed": 6,
+      "phase": "analysis",
+      "capacity": 107200,
+      "samples": 82383,
+      "sigma": 0.04968788995658109,
+      "peak_gib": 2.71722412109375
+    },
+    {
+      "stage": "0.05",
+      "seed": 7,
+      "phase": "core",
+      "capacity": 107200,
+      "samples": 72369,
+      "sigma": 0.04966094342747017,
+      "peak_gib": 3.9239501953125
+    },
+    {
+      "stage": "0.05",
+      "seed": 7,
+      "phase": "analysis",
+      "capacity": 107200,
+      "samples": 72369,
+      "sigma": 0.04966094342747017,
+      "peak_gib": 2.5184326171875
+    },
+    {
+      "stage": "0.05",
+      "seed": 8,
+      "phase": "core",
+      "capacity": 214400,
+      "samples": 153743,
+      "sigma": 0.0493902819054749,
+      "peak_gib": 5.7694091796875
+    },
+    {
+      "stage": "0.05",
+      "seed": 8,
+      "phase": "analysis",
+      "capacity": 214400,
+      "samples": 153743,
+      "sigma": 0.0493902819054749,
+      "peak_gib": 4.63031005859375
+    },
+    {
+      "stage": "0.05",
+      "seed": 9,
+      "phase": "core",
+      "capacity": 107200,
+      "samples": 82211,
+      "sigma": 0.04884984698428713,
+      "peak_gib": 3.9779052734375
+    },
+    {
+      "stage": "0.05",
+      "seed": 9,
+      "phase": "analysis",
+      "capacity": 107200,
+      "samples": 82211,
+      "sigma": 0.04884984698428713,
+      "peak_gib": 2.70806884765625
+    },
+    {
+      "stage": "0.05",
+      "seed": 10,
+      "phase": "core",
+      "capacity": 214400,
+      "samples": 172365,
+      "sigma": 0.04918459229048013,
+      "peak_gib": 5.739013671875
+    },
+    {
+      "stage": "0.05",
+      "seed": 10,
+      "phase": "analysis",
+      "capacity": 214400,
+      "samples": 172365,
+      "sigma": 0.04918459229048013,
+      "peak_gib": 4.9840087890625
+    },
+    {
+      "stage": "0.05",
+      "seed": 11,
+      "phase": "core",
+      "capacity": 107200,
+      "samples": 75998,
+      "sigma": 0.049934390524716626,
+      "peak_gib": 4.04681396484375
+    },
+    {
+      "stage": "0.05",
+      "seed": 11,
+      "phase": "analysis",
+      "capacity": 107200,
+      "samples": 75998,
+      "sigma": 0.049934390524716626,
+      "peak_gib": 2.59588623046875
+    },
+    {
+      "stage": "0.05",
+      "seed": 12,
+      "phase": "core",
+      "capacity": 107200,
+      "samples": 74366,
+      "sigma": 0.049641516609115685,
+      "peak_gib": 3.94464111328125
+    },
+    {
+      "stage": "0.05",
+      "seed": 12,
+      "phase": "analysis",
+      "capacity": 107200,
+      "samples": 74366,
+      "sigma": 0.049641516609115685,
+      "peak_gib": 2.556640625
+    },
+    {
+      "stage": "0.05",
+      "seed": 13,
+      "phase": "core",
+      "capacity": 107200,
+      "samples": 76795,
+      "sigma": 0.04978875299372092,
+      "peak_gib": 4.11236572265625
+    },
+    {
+      "stage": "0.05",
+      "seed": 13,
+      "phase": "analysis",
+      "capacity": 107200,
+      "samples": 76795,
+      "sigma": 0.04978875299372092,
+      "peak_gib": 2.607666015625
+    },
+    {
+      "stage": "0.05",
+      "seed": 14,
+      "phase": "core",
+      "capacity": 214400,
+      "samples": 151118,
+      "sigma": 0.04945536657918062,
+      "peak_gib": 5.724609375
+    },
+    {
+      "stage": "0.05",
+      "seed": 14,
+      "phase": "analysis",
+      "capacity": 214400,
+      "samples": 151118,
+      "sigma": 0.04945536657918062,
+      "peak_gib": 4.5924072265625
+    },
+    {
+      "stage": "0.05",
+      "seed": 15,
+      "phase": "core",
+      "capacity": 107200,
+      "samples": 74974,
+      "sigma": 0.04912753032137862,
+      "peak_gib": 4.037109375
+    },
+    {
+      "stage": "0.05",
+      "seed": 15,
+      "phase": "analysis",
+      "capacity": 107200,
+      "samples": 74974,
+      "sigma": 0.04912753032137862,
+      "peak_gib": 2.56787109375
+    },
+    {
+      "stage": "0.05",
+      "seed": 16,
+      "phase": "core",
+      "capacity": 214400,
+      "samples": 134405,
+      "sigma": 0.049795960977339904,
+      "peak_gib": 5.7193603515625
+    },
+    {
+      "stage": "0.05",
+      "seed": 16,
+      "phase": "analysis",
+      "capacity": 214400,
+      "samples": 134405,
+      "sigma": 0.049795960977339904,
+      "peak_gib": 4.27813720703125
+    },
+    {
+      "stage": "0.05",
+      "seed": 17,
+      "phase": "core",
+      "capacity": 107200,
+      "samples": 83593,
+      "sigma": 0.0488160494006039,
+      "peak_gib": 3.97076416015625
+    },
+    {
+      "stage": "0.05",
+      "seed": 17,
+      "phase": "analysis",
+      "capacity": 107200,
+      "samples": 83593,
+      "sigma": 0.0488160494006039,
+      "peak_gib": 2.74969482421875
+    },
+    {
+      "stage": "0.05",
+      "seed": 18,
+      "phase": "core",
+      "capacity": 107200,
+      "samples": 75064,
+      "sigma": 0.04915686442809948,
+      "peak_gib": 4.0142822265625
+    },
+    {
+      "stage": "0.05",
+      "seed": 18,
+      "phase": "analysis",
+      "capacity": 107200,
+      "samples": 75064,
+      "sigma": 0.04915686442809948,
+      "peak_gib": 2.58544921875
+    },
+    {
+      "stage": "0.05",
+      "seed": 19,
+      "phase": "core",
+      "capacity": 107200,
+      "samples": 72314,
+      "sigma": 0.04977560124809069,
+      "peak_gib": 3.93359375
+    },
+    {
+      "stage": "0.05",
+      "seed": 19,
+      "phase": "analysis",
+      "capacity": 107200,
+      "samples": 72314,
+      "sigma": 0.04977560124809069,
+      "peak_gib": 2.53228759765625
+    },
+    {
+      "stage": "0.05",
+      "seed": 20,
+      "phase": "core",
+      "capacity": 107200,
+      "samples": 84655,
+      "sigma": 0.048869511707485665,
+      "peak_gib": 3.927978515625
+    },
+    {
+      "stage": "0.05",
+      "seed": 20,
+      "phase": "analysis",
+      "capacity": 107200,
+      "samples": 84655,
+      "sigma": 0.048869511707485665,
+      "peak_gib": 2.7640380859375
+    },
+    {
+      "stage": "0.05",
+      "seed": 21,
+      "phase": "core",
+      "capacity": 214400,
+      "samples": 165126,
+      "sigma": 0.04950771116997811,
+      "peak_gib": 5.7362060546875
+    },
+    {
+      "stage": "0.05",
+      "seed": 21,
+      "phase": "analysis",
+      "capacity": 214400,
+      "samples": 165126,
+      "sigma": 0.04950771116997811,
+      "peak_gib": 4.84893798828125
+    },
+    {
+      "stage": "0.05",
+      "seed": 22,
+      "phase": "core",
+      "capacity": 107200,
+      "samples": 71149,
+      "sigma": 0.04948997950402375,
+      "peak_gib": 4.01458740234375
+    },
+    {
+      "stage": "0.05",
+      "seed": 22,
+      "phase": "analysis",
+      "capacity": 107200,
+      "samples": 71149,
+      "sigma": 0.04948997950402375,
+      "peak_gib": 2.51641845703125
+    },
+    {
+      "stage": "0.05",
+      "seed": 23,
+      "phase": "core",
+      "capacity": 214400,
+      "samples": 140154,
+      "sigma": 0.048982375158177154,
+      "peak_gib": 5.69293212890625
+    },
+    {
+      "stage": "0.05",
+      "seed": 23,
+      "phase": "analysis",
+      "capacity": 214400,
+      "samples": 140154,
+      "sigma": 0.048982375158177154,
+      "peak_gib": 4.38592529296875
+    },
+    {
+      "stage": "0.05",
+      "seed": 24,
+      "phase": "core",
+      "capacity": 214400,
+      "samples": 108714,
+      "sigma": 0.0487929203799172,
+      "peak_gib": 5.4962158203125
+    },
+    {
+      "stage": "0.05",
+      "seed": 24,
+      "phase": "analysis",
+      "capacity": 214400,
+      "samples": 108714,
+      "sigma": 0.0487929203799172,
+      "peak_gib": 3.78668212890625
+    },
+    {
+      "stage": "0.05",
+      "seed": 25,
+      "phase": "core",
+      "capacity": 107200,
+      "samples": 71530,
+      "sigma": 0.04938137050166673,
+      "peak_gib": 3.89898681640625
+    },
+    {
+      "stage": "0.05",
+      "seed": 25,
+      "phase": "analysis",
+      "capacity": 107200,
+      "samples": 71530,
+      "sigma": 0.04938137050166673,
+      "peak_gib": 2.513427734375
+    },
+    {
+      "stage": "0.05",
+      "seed": 26,
+      "phase": "core",
+      "capacity": 214400,
+      "samples": 190990,
+      "sigma": 0.0492095843651285,
+      "peak_gib": 5.7437744140625
+    },
+    {
+      "stage": "0.05",
+      "seed": 26,
+      "phase": "analysis",
+      "capacity": 214400,
+      "samples": 190990,
+      "sigma": 0.0492095843651285,
+      "peak_gib": 5.35205078125
+    },
+    {
+      "stage": "0.05",
+      "seed": 27,
+      "phase": "core",
+      "capacity": 107200,
+      "samples": 89234,
+      "sigma": 0.04912675108261423,
+      "peak_gib": 3.94677734375
+    },
+    {
+      "stage": "0.05",
+      "seed": 27,
+      "phase": "analysis",
+      "capacity": 107200,
+      "samples": 89234,
+      "sigma": 0.04912675108261423,
+      "peak_gib": 2.853759765625
+    },
+    {
+      "stage": "0.05",
+      "seed": 28,
+      "phase": "core",
+      "capacity": 107200,
+      "samples": 107141,
+      "sigma": 0.04902260278408458,
+      "peak_gib": 3.98712158203125
+    },
+    {
+      "stage": "0.05",
+      "seed": 28,
+      "phase": "analysis",
+      "capacity": 107200,
+      "samples": 107141,
+      "sigma": 0.04902260278408458,
+      "peak_gib": 3.1881103515625
+    },
+    {
+      "stage": "0.05",
+      "seed": 29,
+      "phase": "core",
+      "capacity": 214400,
+      "samples": 173925,
+      "sigma": 0.04940154560492051,
+      "peak_gib": 5.742919921875
+    },
+    {
+      "stage": "0.05",
+      "seed": 29,
+      "phase": "analysis",
+      "capacity": 214400,
+      "samples": 173925,
+      "sigma": 0.04940154560492051,
+      "peak_gib": 5.02001953125
+    },
+    {
+      "stage": "0.02",
+      "seed": 0,
+      "phase": "core",
+      "capacity": 857600,
+      "samples": 468908,
+      "sigma": 0.01998914998006664,
+      "peak_gib": 14.635498046875
+    },
+    {
+      "stage": "0.02",
+      "seed": 0,
+      "phase": "analysis",
+      "capacity": 857600,
+      "samples": 468908,
+      "sigma": 0.01998914998006664,
+      "peak_gib": 14.02032470703125
+    },
+    {
+      "stage": "0.02",
+      "seed": 1,
+      "phase": "core",
+      "capacity": 857600,
+      "samples": 484509,
+      "sigma": 0.019970579527815245,
+      "peak_gib": 14.61541748046875
+    },
+    {
+      "stage": "0.02",
+      "seed": 1,
+      "phase": "analysis",
+      "capacity": 857600,
+      "samples": 484509,
+      "sigma": 0.019970579527815245,
+      "peak_gib": 14.30291748046875
+    },
+    {
+      "stage": "0.02",
+      "seed": 2,
+      "phase": "core",
+      "capacity": 857600,
+      "samples": 536922,
+      "sigma": 0.01995487710590445,
+      "peak_gib": 14.59271240234375
+    },
+    {
+      "stage": "0.02",
+      "seed": 2,
+      "phase": "analysis",
+      "capacity": 857600,
+      "samples": 536922,
+      "sigma": 0.01995487710590445,
+      "peak_gib": 15.30084228515625
+    },
+    {
+      "stage": "0.02",
+      "seed": 3,
+      "phase": "core",
+      "capacity": 1715200,
+      "samples": 1148486,
+      "sigma": 0.01996202525540292,
+      "peak_gib": 27.0162353515625
+    },
+    {
+      "stage": "0.02",
+      "seed": 3,
+      "phase": "analysis",
+      "capacity": 1715200,
+      "samples": 1148486,
+      "sigma": 0.01996202525540292,
+      "peak_gib": 31.42431640625
+    },
+    {
+      "stage": "0.02",
+      "seed": 4,
+      "phase": "core",
+      "capacity": 857600,
+      "samples": 491372,
+      "sigma": 0.01997691719530144,
+      "peak_gib": 14.17828369140625
+    },
+    {
+      "stage": "0.02",
+      "seed": 4,
+      "phase": "analysis",
+      "capacity": 857600,
+      "samples": 491372,
+      "sigma": 0.01997691719530144,
+      "peak_gib": 14.44677734375
+    },
+    {
+      "stage": "0.02",
+      "seed": 5,
+      "phase": "core",
+      "capacity": 857600,
+      "samples": 663027,
+      "sigma": 0.0199971555908845,
+      "peak_gib": 13.870849609375
+    },
+    {
+      "stage": "0.02",
+      "seed": 5,
+      "phase": "analysis",
+      "capacity": 857600,
+      "samples": 663027,
+      "sigma": 0.0199971555908845,
+      "peak_gib": 17.69232177734375
+    },
+    {
+      "stage": "0.02",
+      "seed": 6,
+      "phase": "core",
+      "capacity": 857600,
+      "samples": 647408,
+      "sigma": 0.01993963605304817,
+      "peak_gib": 14.6470947265625
+    },
+    {
+      "stage": "0.02",
+      "seed": 6,
+      "phase": "analysis",
+      "capacity": 857600,
+      "samples": 647408,
+      "sigma": 0.01993963605304817,
+      "peak_gib": 17.38446044921875
+    },
+    {
+      "stage": "0.02",
+      "seed": 7,
+      "phase": "core",
+      "capacity": 857600,
+      "samples": 672520,
+      "sigma": 0.019964777621687916,
+      "peak_gib": 14.72320556640625
+    },
+    {
+      "stage": "0.02",
+      "seed": 7,
+      "phase": "analysis",
+      "capacity": 857600,
+      "samples": 672520,
+      "sigma": 0.019964777621687916,
+      "peak_gib": 17.87042236328125
+    },
+    {
+      "stage": "0.02",
+      "seed": 8,
+      "phase": "core",
+      "capacity": 1715200,
+      "samples": 916116,
+      "sigma": 0.01998238375331671,
+      "peak_gib": 27.33123779296875
+    },
+    {
+      "stage": "0.02",
+      "seed": 8,
+      "phase": "analysis",
+      "capacity": 1715200,
+      "samples": 916116,
+      "sigma": 0.01998238375331671,
+      "peak_gib": 27.02117919921875
+    },
+    {
+      "stage": "0.02",
+      "seed": 9,
+      "phase": "core",
+      "capacity": 857600,
+      "samples": 685893,
+      "sigma": 0.019990502251160044,
+      "peak_gib": 14.653564453125
+    },
+    {
+      "stage": "0.02",
+      "seed": 9,
+      "phase": "analysis",
+      "capacity": 857600,
+      "samples": 685893,
+      "sigma": 0.019990502251160044,
+      "peak_gib": 18.11199951171875
+    },
+    {
+      "stage": "0.02",
+      "seed": 10,
+      "phase": "core",
+      "capacity": 1715200,
+      "samples": 1006485,
+      "sigma": 0.019978024055523493,
+      "peak_gib": 26.9498291015625
+    },
+    {
+      "stage": "0.02",
+      "seed": 10,
+      "phase": "analysis",
+      "capacity": 1715200,
+      "samples": 1006485,
+      "sigma": 0.019978024055523493,
+      "peak_gib": 28.7315673828125
+    },
+    {
+      "stage": "0.02",
+      "seed": 11,
+      "phase": "core",
+      "capacity": 857600,
+      "samples": 530513,
+      "sigma": 0.019947261344679255,
+      "peak_gib": 14.53125
+    },
+    {
+      "stage": "0.02",
+      "seed": 11,
+      "phase": "analysis",
+      "capacity": 857600,
+      "samples": 530513,
+      "sigma": 0.019947261344679255,
+      "peak_gib": 15.19293212890625
+    },
+    {
+      "stage": "0.02",
+      "seed": 12,
+      "phase": "core",
+      "capacity": 857600,
+      "samples": 552303,
+      "sigma": 0.019978355089967807,
+      "peak_gib": 14.56707763671875
+    },
+    {
+      "stage": "0.02",
+      "seed": 12,
+      "phase": "analysis",
+      "capacity": 857600,
+      "samples": 552303,
+      "sigma": 0.019978355089967807,
+      "peak_gib": 15.576171875
+    },
+    {
+      "stage": "0.02",
+      "seed": 13,
+      "phase": "core",
+      "capacity": 857600,
+      "samples": 563702,
+      "sigma": 0.01992353954125653,
+      "peak_gib": 14.5965576171875
+    },
+    {
+      "stage": "0.02",
+      "seed": 13,
+      "phase": "analysis",
+      "capacity": 857600,
+      "samples": 563702,
+      "sigma": 0.01992353954125653,
+      "peak_gib": 15.7989501953125
+    },
+    {
+      "stage": "0.02",
+      "seed": 14,
+      "phase": "core",
+      "capacity": 1715200,
+      "samples": 937816,
+      "sigma": 0.019951439550893606,
+      "peak_gib": 27.32318115234375
+    },
+    {
+      "stage": "0.02",
+      "seed": 14,
+      "phase": "analysis",
+      "capacity": 1715200,
+      "samples": 937816,
+      "sigma": 0.019951439550893606,
+      "peak_gib": 27.41619873046875
+    },
+    {
+      "stage": "0.02",
+      "seed": 15,
+      "phase": "core",
+      "capacity": 857600,
+      "samples": 470322,
+      "sigma": 0.019965554922631162,
+      "peak_gib": 14.60870361328125
+    },
+    {
+      "stage": "0.02",
+      "seed": 15,
+      "phase": "analysis",
+      "capacity": 857600,
+      "samples": 470322,
+      "sigma": 0.019965554922631162,
+      "peak_gib": 14.0478515625
+    },
+    {
+      "stage": "0.02",
+      "seed": 16,
+      "phase": "core",
+      "capacity": 1715200,
+      "samples": 892711,
+      "sigma": 0.019998291708742278,
+      "peak_gib": 27.24188232421875
+    },
+    {
+      "stage": "0.02",
+      "seed": 16,
+      "phase": "analysis",
+      "capacity": 1715200,
+      "samples": 892711,
+      "sigma": 0.019998291708742278,
+      "peak_gib": 26.55780029296875
+    },
+    {
+      "stage": "0.02",
+      "seed": 17,
+      "phase": "core",
+      "capacity": 857600,
+      "samples": 600078,
+      "sigma": 0.01999722827469002,
+      "peak_gib": 14.61767578125
+    },
+    {
+      "stage": "0.02",
+      "seed": 17,
+      "phase": "analysis",
+      "capacity": 857600,
+      "samples": 600078,
+      "sigma": 0.01999722827469002,
+      "peak_gib": 16.49090576171875
+    },
+    {
+      "stage": "0.02",
+      "seed": 18,
+      "phase": "core",
+      "capacity": 857600,
+      "samples": 570768,
+      "sigma": 0.01998999005017093,
+      "peak_gib": 14.5819091796875
+    },
+    {
+      "stage": "0.02",
+      "seed": 18,
+      "phase": "analysis",
+      "capacity": 857600,
+      "samples": 570768,
+      "sigma": 0.01998999005017093,
+      "peak_gib": 15.95220947265625
+    },
+    {
+      "stage": "0.02",
+      "seed": 19,
+      "phase": "core",
+      "capacity": 857600,
+      "samples": 521105,
+      "sigma": 0.019984460657000314,
+      "peak_gib": 14.868408203125
+    },
+    {
+      "stage": "0.02",
+      "seed": 19,
+      "phase": "analysis",
+      "capacity": 857600,
+      "samples": 521105,
+      "sigma": 0.019984460657000314,
+      "peak_gib": 15.01153564453125
+    },
+    {
+      "stage": "0.02",
+      "seed": 20,
+      "phase": "core",
+      "capacity": 857600,
+      "samples": 559675,
+      "sigma": 0.019943191375004648,
+      "peak_gib": 14.62109375
+    },
+    {
+      "stage": "0.02",
+      "seed": 20,
+      "phase": "analysis",
+      "capacity": 857600,
+      "samples": 559675,
+      "sigma": 0.019943191375004648,
+      "peak_gib": 15.72943115234375
+    },
+    {
+      "stage": "0.02",
+      "seed": 21,
+      "phase": "core",
+      "capacity": 1715200,
+      "samples": 986315,
+      "sigma": 0.019948757593164453,
+      "peak_gib": 27.39422607421875
+    },
+    {
+      "stage": "0.02",
+      "seed": 21,
+      "phase": "analysis",
+      "capacity": 1715200,
+      "samples": 986315,
+      "sigma": 0.019948757593164453,
+      "peak_gib": 28.31854248046875
+    },
+    {
+      "stage": "0.02",
+      "seed": 22,
+      "phase": "core",
+      "capacity": 857600,
+      "samples": 549218,
+      "sigma": 0.019922646341883354,
+      "peak_gib": 14.69317626953125
+    },
+    {
+      "stage": "0.02",
+      "seed": 22,
+      "phase": "analysis",
+      "capacity": 857600,
+      "samples": 549218,
+      "sigma": 0.019922646341883354,
+      "peak_gib": 15.54119873046875
+    },
+    {
+      "stage": "0.02",
+      "seed": 23,
+      "phase": "core",
+      "capacity": 1715200,
+      "samples": 862511,
+      "sigma": 0.019942188441503406,
+      "peak_gib": 26.23797607421875
+    },
+    {
+      "stage": "0.02",
+      "seed": 23,
+      "phase": "analysis",
+      "capacity": 1715200,
+      "samples": 862511,
+      "sigma": 0.019942188441503406,
+      "peak_gib": 26.00250244140625
+    },
+    {
+      "stage": "0.02",
+      "seed": 24,
+      "phase": "core",
+      "capacity": 857600,
+      "samples": 659491,
+      "sigma": 0.01999197637670464,
+      "peak_gib": 14.92633056640625
+    },
+    {
+      "stage": "0.02",
+      "seed": 24,
+      "phase": "analysis",
+      "capacity": 857600,
+      "samples": 659491,
+      "sigma": 0.01999197637670464,
+      "peak_gib": 17.61370849609375
+    },
+    {
+      "stage": "0.02",
+      "seed": 25,
+      "phase": "core",
+      "capacity": 857600,
+      "samples": 510615,
+      "sigma": 0.01995393245415584,
+      "peak_gib": 14.521728515625
+    },
+    {
+      "stage": "0.02",
+      "seed": 25,
+      "phase": "analysis",
+      "capacity": 857600,
+      "samples": 510615,
+      "sigma": 0.01995393245415584,
+      "peak_gib": 14.8070068359375
+    },
+    {
+      "stage": "0.02",
+      "seed": 26,
+      "phase": "core",
+      "capacity": 1715200,
+      "samples": 1138453,
+      "sigma": 0.019964655222245647,
+      "peak_gib": 27.3321533203125
+    },
+    {
+      "stage": "0.02",
+      "seed": 26,
+      "phase": "analysis",
+      "capacity": 1715200,
+      "samples": 1138453,
+      "sigma": 0.019964655222245647,
+      "peak_gib": 31.23553466796875
+    },
+    {
+      "stage": "0.02",
+      "seed": 27,
+      "phase": "core",
+      "capacity": 857600,
+      "samples": 594123,
+      "sigma": 0.019909637154047276,
+      "peak_gib": 14.61151123046875
+    },
+    {
+      "stage": "0.02",
+      "seed": 27,
+      "phase": "analysis",
+      "capacity": 857600,
+      "samples": 594123,
+      "sigma": 0.019909637154047276,
+      "peak_gib": 16.37274169921875
+    },
+    {
+      "stage": "0.02",
+      "seed": 28,
+      "phase": "core",
+      "capacity": 857600,
+      "samples": 708834,
+      "sigma": 0.019973696366996602,
+      "peak_gib": 14.56915283203125
+    },
+    {
+      "stage": "0.02",
+      "seed": 28,
+      "phase": "analysis",
+      "capacity": 857600,
+      "samples": 708834,
+      "sigma": 0.019973696366996602,
+      "peak_gib": 18.5277099609375
+    },
+    {
+      "stage": "0.02",
+      "seed": 29,
+      "phase": "core",
+      "capacity": 1715200,
+      "samples": 998445,
+      "sigma": 0.019955180761448123,
+      "peak_gib": 27.333740234375
+    },
+    {
+      "stage": "0.02",
+      "seed": 29,
+      "phase": "analysis",
+      "capacity": 1715200,
+      "samples": 998445,
+      "sigma": 0.019955180761448123,
+      "peak_gib": 28.57257080078125
+    }
+  ],
+  "next_stage": "0.01"
+}

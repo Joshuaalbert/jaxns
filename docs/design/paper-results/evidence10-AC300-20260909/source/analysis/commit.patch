@@ -1,0 +1,323 @@
+commit 5667381608eced7e3fcb754f32cc6c59db185735
+Author:     joshuaalbert <albert@strw.leidenuniv.nl>
+AuthorDate: Wed Sep 9 12:17:12 2026 +0000
+Commit:     joshuaalbert <albert@strw.leidenuniv.nl>
+CommitDate: Wed Sep 9 12:17:12 2026 +0000
+
+    Handle tied likelihood blocks in the sparse evidence-only prefix analysis
+
+diff --git a/benchmarks/paper_reproduction/prefix_sweep.py b/benchmarks/paper_reproduction/prefix_sweep.py
+index 805c994..38a5182 100644
+--- a/benchmarks/paper_reproduction/prefix_sweep.py
++++ b/benchmarks/paper_reproduction/prefix_sweep.py
+@@ -29,6 +29,7 @@ class _SparsePrefixPlan:
+     gates: np.ndarray  # [Q, G]
+     log_L_blocks: np.ndarray  # [G]
+     alpha_gt: np.ndarray  # [G_capacity]
++    alpha_not_gt: np.ndarray  # [G_capacity], equality plus open interval
+     valid_blocks: np.ndarray  # [G_capacity]
+     num_blocks: int
+     num_clusters: int
+@@ -353,16 +354,13 @@ def _prepare_sparse_prefix_plan(
+         num_groups: int,
+         C_min: float,
+ ) -> _SparsePrefixPlan:
+-    """Build the exact continuous-case event plan on the host."""
++    """Build exact interval events for singleton and plateau blocks."""
+     valid_blocks = np.asarray(jax.device_get(block_state.valid), dtype=bool)
+     num_blocks = int(np.sum(valid_blocks))
+     if not np.all(valid_blocks[:num_blocks]) or np.any(
+             valid_blocks[num_blocks:]
+     ):
+         raise ValueError("Valid likelihood blocks must form one prefix.")
+-    block_sizes = np.asarray(jax.device_get(block_state.block_size))
+-    if not np.all(block_sizes[:num_blocks] == 1):
+-        raise ValueError("The sparse paper sweep requires singleton blocks.")
+ 
+     all_levels = np.asarray(jax.device_get(block_state.log_L_blocks))
+     levels = all_levels[:num_blocks]
+@@ -452,6 +450,9 @@ def _prepare_sparse_prefix_plan(
+         gates=gates,
+         log_L_blocks=levels,
+         alpha_gt=np.asarray(jax.device_get(concentrations.alpha_gt)),
++        alpha_not_gt=np.asarray(jax.device_get(
++            concentrations.alpha_eq + concentrations.alpha_lt,
++        )),
+         valid_blocks=valid_blocks,
+         num_blocks=num_blocks,
+         num_clusters=num_clusters,
+@@ -509,7 +510,9 @@ def sample_phantom_prefix_sweep_reference(
+     This is a benchmark-only reference path for large CPU experiments. It
+     preserves the JAX kernel's random-key schedule and all marginal laws, but
+     SciPy CSR multiplication is materially faster than CPU XLA scatter for the
+-    millions of phantom interval boundaries in these 8D paper cases. Worker
++    millions of phantom interval boundaries in the paper cases. Singleton
++    and plateau blocks use the same marginal strict-shrinkage law as the
++    core; the equality/open-interval split cancels from evidence. Worker
+     threads share the immutable sparse plan. ``Executor.map`` preserves batch
+     order, so changing the worker count does not change any random field or
+     output row.
+@@ -537,6 +540,8 @@ def sample_phantom_prefix_sweep_reference(
+     # block prefix avoids paying for up to one extra capacity quantum per MC
+     # field and keeps memory proportional to scientific samples.
+     safe_gt = plan.alpha_gt[:plan.num_blocks]
++    not_gt_shape = plan.alpha_not_gt[:plan.num_blocks]  # [G]
++    plateau = not_gt_shape != 1.0  # [G], singleton complement is Exp(1)
+     # The gate is immutable across draws and large at paper scale. Materialise
+     # its arithmetic dtype once so all workers share it instead of copying one
+     # Q-by-G array for every scalar MC task.
+@@ -549,7 +554,7 @@ def sample_phantom_prefix_sweep_reference(
+             if num_batches == 1
+             else jax.random.fold_in(key, batch_index)
+         )
+-        key_gt, _, key_lt, key_cluster = jax.random.split(batch_key, 4)
++        key_gt, key_eq, key_lt, key_cluster = jax.random.split(batch_key, 4)
+         shape = (batch_size, plan.num_blocks)
+         race_gt = _numpy_generator(key_gt).gamma(
+             shape=safe_gt,
+@@ -560,6 +565,17 @@ def sample_phantom_prefix_sweep_reference(
+             scale=1.0,
+             size=shape,
+         )
++        if np.any(plateau):
++            # Evidence uses only p_>. The independent equality and open-
++            # interval race gammas therefore collapse to Gamma(alpha_= +
++            # alpha_<, 1), and their phantom additions sum to A-B. This is
++            # the core's three-class plateau law marginalized over the split.
++            # Use the otherwise-unused equality key for these complements;
++            # every singleton random field remains bitwise unchanged.
++            race_lt[:, plateau] = _numpy_generator(key_eq).gamma(
++                shape=not_gt_shape[plateau], scale=1.0,
++                size=(batch_size, int(np.sum(plateau))),
++            )
+         cluster_weights = _numpy_generator(key_cluster).exponential(
+             scale=1.0,
+             size=(batch_size, plan.num_clusters),
+diff --git a/benchmarks/paper_reproduction/reports/evidence10-plateau-20260909/README.md b/benchmarks/paper_reproduction/reports/evidence10-plateau-20260909/README.md
+new file mode 100644
+index 0000000..1f642bb
+--- /dev/null
++++ b/benchmarks/paper_reproduction/reports/evidence10-plateau-20260909/README.md
+@@ -0,0 +1,32 @@
++# Analysis-only plateau correction
++
++The A+C300 sampling source remains aa79a0d, with no changes to its complete
++src tree or problem definitions. The original sparse evidence reducer stopped
++on SS10 seed16 because seven classic samples share a likelihood block at
++logL=-139.98022055646703. They have identical coordinates, including x5=8
++at the prior boundary, and individual classic posterior weights about8.34e-55.
++No samples, likelihoods, posterior weights, or sampling trajectories are changed.
++
++The core already supports plateau blocks. Its strict probability is
++(G_gt + weighted_B)/(G_gt + G_eq + G_lt + weighted_A).
++Thus G_eq + G_lt can be drawn as Gamma(alpha_eq+alpha_lt,1), equal to
++Gamma(m+1,1) for a plateau. The phantom equality and open-interval counts
++sum to A-B and cancel from this marginal. Singleton complements remain
++Exponential(1); the otherwise-unused equality key supplies plateau complements.
++This is the exact evidence marginal of the existing three-category model.
++The reducer does not compute phantom-conditioned posterior sample weights.
++
++Four tests pass: dense three-category core comparisons on mixed singleton and
++plateau blocks with exact phantom equalities at two Kish thresholds; an
++analytic Beta(4,8) sevenfold-plateau moment check; and the existing continuous
++sparse-prefix regression. A separate 64-draw, ten-prefix comparison against
++the frozen pre-correction module confirms bitwise identical singleton draws
++and gates. Ruff and Flake8 (100 columns) pass for the touched source/tests.
++
++Analysis records retain the sampling commit and additionally identify the
++analysis commit, reducer/runner checksums, tied-block count and largest block.
++The analysis runner verifies the complete sampler source tree and exact
++model/reference checksums against each saved manifest before loading it.
++Completed original analyses were necessarily singleton-only (the old reducer
++rejected all others), so they are retained alongside corrected analyses.
++The initial failure and retry attempts remain in the dispatch audit.
+diff --git a/benchmarks/paper_reproduction/reports/evidence10-plateau-20260909/SINGLETON_PARITY.json b/benchmarks/paper_reproduction/reports/evidence10-plateau-20260909/SINGLETON_PARITY.json
+new file mode 100644
+index 0000000..922d844
+--- /dev/null
++++ b/benchmarks/paper_reproduction/reports/evidence10-plateau-20260909/SINGLETON_PARITY.json
+@@ -0,0 +1,6 @@
++{
++  "singleton_draws_and_gates_bitwise_equal": true,
++  "draws": 64,
++  "prefixes": 10,
++  "old_source": "/largedata/albert/git/jaxns-paper-evidence10-AC300/benchmarks/paper_reproduction/prefix_sweep.py"
++}
+\ No newline at end of file
+diff --git a/benchmarks/paper_reproduction/reports/evidence10-plateau-20260909/pytest.log b/benchmarks/paper_reproduction/reports/evidence10-plateau-20260909/pytest.log
+new file mode 100644
+index 0000000..3ba080f
+--- /dev/null
++++ b/benchmarks/paper_reproduction/reports/evidence10-plateau-20260909/pytest.log
+@@ -0,0 +1,8 @@
++....                                                                     [100%]
++=============================== warnings summary ===============================
++../../../../data/albert/miniconda3/envs/jaxns_py/lib/python3.12/site-packages/tensorflow_probability/python/internal/backend/jax/ops.py:684
++  /data/albert/miniconda3/envs/jaxns_py/lib/python3.12/site-packages/tensorflow_probability/python/internal/backend/jax/ops.py:684: DeprecationWarning: jax.core.pytype_aval_mappings is deprecated.
++    jax.core.pytype_aval_mappings[onp.ndarray])
++
++-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
++4 passed, 1 warning in 3.49s
+diff --git a/benchmarks/paper_reproduction/run_evidence10.py b/benchmarks/paper_reproduction/run_evidence10.py
+index 8cbac43..16ce010 100644
+--- a/benchmarks/paper_reproduction/run_evidence10.py
++++ b/benchmarks/paper_reproduction/run_evidence10.py
+@@ -221,11 +221,26 @@ def analyse(args: argparse.Namespace, reference: dict) -> None:
+     source_commit = subprocess.check_output(
+         ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True,
+     ).strip()
+-    if source_commit != manifest["source_commit"]:
+-        raise ValueError("Analysis source differs from frozen sampling source")
++    sampling_commit = manifest["source_commit"]
++    # An analysis-only correction may have a different commit, but the saved
++    # tree's complete sampler source and model definitions must still match.
++    for revision in (sampling_commit, source_commit):
++        tree = subprocess.check_output(
++            ["git", "rev-parse", f"{revision}:src"], cwd=ROOT, text=True,
++        ).strip()
++        if revision == sampling_commit:
++            sampling_tree = tree
++        elif tree != sampling_tree:
++            raise ValueError("Analysis sampler source differs from the saved tree")
++    for name in ("evidence10_cases.py", "posterior_cases.py", "references.py"):
++        digest = hashlib.sha256(Path(__file__).with_name(name).read_bytes()).hexdigest()
++        if digest != manifest["source_sha256"][name]:
++            raise ValueError(f"Analysis model/reference source differs: {name}")
+     with (args.output / "state.pkl").open("rb") as stream:
+         state = pickle.load(stream)
+     results = state.trim().to_result().trim()
++    blocks = results.block_data.to_block_state()
++    block_sizes = np.asarray(blocks.block_size)
+     posterior = np.load(args.output / "classic_posterior.npz")
+     weights = np.exp(posterior["log_dp"] - logsumexp(posterior["log_dp"]))
+     np.testing.assert_allclose(1. / np.sum(weights**2), float(results.ess), rtol=1e-10)
+@@ -246,14 +261,21 @@ def analyse(args: argparse.Namespace, reference: dict) -> None:
+         valid_phantom=results.valid_phantom,
+         log_L_phantom=results.log_L_phantom[:, :90],
+         num_samples=results.total_num_samples,
+-        block_state=results.block_data.to_block_state(),
++        block_state=blocks,
+         dimension=10, num_draws=args.mc_draws, batch_size=1,
+         num_workers=1, num_groups=9, C_min=20.,
+     )
+     np.savez_compressed(args.output / "evidence_draws.npz", log_Z=draws)
+     record = {
+         "case": args.case, "seed": args.seed, "case_revision": CASE_REVISION,
+-        "source_commit": source_commit, "reference": reference,
++        "source_commit": sampling_commit, "reference": reference,
++        "analysis_source_commit": source_commit,
++        "analysis_source_sha256": {
++            path.name: hashlib.sha256(path.read_bytes()).hexdigest()
++            for path in (Path(__file__), Path(__file__).with_name("prefix_sweep.py"))
++        },
++        "num_tied_blocks": int(np.sum(block_sizes > 1)),
++        "largest_block": int(np.max(block_sizes)),
+         "goal_log_Z_uncert": manifest["goal_classic_log_Z_uncert"],
+         "classic_spike_mass": spike_mass,
+         "classic_kish_ess": float(results.ess), "mc_draws": args.mc_draws,
+diff --git a/cicd/tests/test_evidence10_plateau.py b/cicd/tests/test_evidence10_plateau.py
+new file mode 100644
+index 0000000..4b5beff
+--- /dev/null
++++ b/cicd/tests/test_evidence10_plateau.py
+@@ -0,0 +1,100 @@
++"""Independent plateau-law checks for the sparse evidence-only reducer."""
++
++import jax
++from jax import numpy as jnp
++import numpy as np
++import pytest
++
++from benchmarks.paper_reproduction.prefix_sweep import sample_phantom_prefix_sweep_reference
++from jaxns.algorithm.race_tree import BlockState
++from jaxns.shrinkage.classic import gamma_weighted_phantom_probabilities_from_draws
++
++
++@pytest.mark.parametrize('minimum_clusters', [1., 5.])
++def test_mixed_blocks_match_dense_three_category_core(minimum_clusters):
++    levels = np.array([-3., -1., 0., 1.])  # [G]
++    sizes = np.array([1, 2, 1, 3])  # [G], seven classic samples
++    incoming = np.array([8, 7, 6, 4])
++    constraints = np.array([-np.inf, -np.inf, -3., -3., -1., -1., 0.])  # [C]
++    phantom = np.random.default_rng(17).uniform(-4., 3., (7, 4))  # [C,P]
++    phantom[:, 1] = -1.  # Exact equality observations at a plateau.
++    phantom[:, 3] = 1.
++    blocks = BlockState(
++        log_L_blocks=jnp.asarray(levels), block_first_idx=jnp.asarray([0, 1, 3, 4]),
++        block_size=jnp.asarray(sizes), incoming_K=jnp.asarray(incoming),
++        block_out_degree=jnp.zeros(4, dtype=int), valid=jnp.ones(4, dtype=bool),
++    )
++    key = jax.random.PRNGKey(19)
++    actual, gates = sample_phantom_prefix_sweep_reference(
++        key=key, log_L_constraints=jnp.asarray(constraints),
++        K_classic=jnp.ones(7, dtype=int), valid_phantom=jnp.ones(7, dtype=bool),
++        log_L_phantom=jnp.asarray(phantom), num_samples=jnp.int64(7),
++        block_state=blocks, dimension=2, num_groups=2,
++        num_draws=8, batch_size=1, C_min=minimum_clusters,
++    )
++    previous = np.r_[-np.inf, levels[:-1]]
++    counts = []
++    expected_gates = []
++    for prefix in (0, 2, 4):
++        values = phantom[:, :prefix, None]  # [C,prefix,G]
++        eligible = constraints[:, None] <= previous[None, :]
++        a = np.sum(values > previous, axis=1) * eligible
++        b = np.sum(values > levels, axis=1) * eligible
++        e = np.sum(values == levels, axis=1) * eligible
++        counts.append((a, b, e))
++        if prefix:
++            denominator = np.sum(a**2, axis=0)
++            kish = np.divide(a.sum(axis=0)**2, denominator,
++                             out=np.zeros(4), where=denominator > 0)
++            expected_gates.append((denominator > 0) & (kish >= minimum_clusters))
++    np.testing.assert_array_equal(gates, expected_gates)
++    for draw in range(8):
++        subkeys = jax.random.split(jax.random.fold_in(key, draw), 4)
++        rng = [np.random.default_rng(np.random.SeedSequence(np.asarray(k))) for k in subkeys]
++        gt = rng[0].gamma(incoming - sizes + 1.)
++        complement = rng[2].exponential(size=4)
++        atom = sizes > 1
++        complement[atom] = rng[1].gamma(sizes[atom] + 1.)
++        weights = rng[3].exponential(size=7)
++        # The deterministic core accepts explicit draws. Any positive split
++        # of the complement must give the same p_>; E and R cancel in its
++        # denominator even though their separate posterior masses differ.
++        eq = np.where(atom, .37 * complement, 0.)
++        lt = complement - eq
++        expected = []
++        for a, b, e in counts:
++            probability = gamma_weighted_phantom_probabilities_from_draws(
++                block_state=blocks, A_cg=jnp.asarray(a, dtype=float),
++                B_cg=jnp.asarray(b, dtype=float), E_cg=jnp.asarray(e, dtype=float),
++                race_gamma_gt=jnp.asarray(gt), race_gamma_eq=jnp.asarray(eq),
++                race_gamma_lt=jnp.asarray(lt), cluster_weights=jnp.asarray(weights),
++                C_min=minimum_clusters,
++            )
++            p_gt = np.asarray(probability.p_gt)
++            prior_volume = np.r_[1., np.cumprod(p_gt)[:-1]]
++            expected.append(np.log(np.sum(prior_volume * (1-p_gt) * np.exp(levels))))
++        np.testing.assert_allclose(actual[draw], expected, atol=1e-12, rtol=0)
++
++
++def test_sevenfold_plateau_matches_analytic_beta_moments():
++    # K=10 and m=7 imply p_> ~ Beta(4,8), so Z=2*(1-p_>) on this one block.
++    blocks = BlockState(
++        log_L_blocks=jnp.log(jnp.asarray([2.])), block_first_idx=jnp.asarray([0]),
++        block_size=jnp.asarray([7]), incoming_K=jnp.asarray([10]),
++        block_out_degree=jnp.asarray([0]), valid=jnp.asarray([True]),
++    )
++    draws, gates = sample_phantom_prefix_sweep_reference(
++        key=jax.random.PRNGKey(41), log_L_constraints=jnp.full(7, -jnp.inf),
++        K_classic=jnp.full(7, 10), valid_phantom=jnp.zeros(7, dtype=bool),
++        log_L_phantom=jnp.zeros((7, 4)), num_samples=jnp.int64(7),
++        block_state=blocks, dimension=2, num_groups=2,
++        num_draws=32768, batch_size=512,
++    )
++    np.testing.assert_array_equal(draws[:, 0], draws[:, 1])
++    np.testing.assert_array_equal(draws[:, 0], draws[:, 2])
++    assert not gates.any()
++    evidence = np.exp(draws[:, 0])
++    mean = 2.*8./12.
++    variance = 4.*4.*8./(12.**2*13.)
++    assert abs(evidence.mean()-mean) < 6.*np.sqrt(variance/len(evidence))
++    np.testing.assert_allclose(evidence.var(ddof=1), variance, rtol=.04)

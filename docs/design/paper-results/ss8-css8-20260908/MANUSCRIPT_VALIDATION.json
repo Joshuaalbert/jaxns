@@ -1,0 +1,13 @@
+{
+  "pdflatex": null,
+  "tectonic": null,
+  "source_validation": "passed: five R240 tables, no stale model values, unique labels, resolved references, balanced environments",
+  "figure_validation": "PDF and PNG generated; PNG visually inspected",
+  "pdf_compiled": false,
+  "missing_inputs": [
+    "sn-jnl.cls",
+    "cite.bib",
+    "images/censor.drawio.pdf"
+  ],
+  "limitation": "No TeX compiler installed; inherited external manuscript class/bibliography/diagram are absent. Source and regenerated evidence figure are provided."
+}

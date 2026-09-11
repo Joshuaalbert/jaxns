@@ -1,0 +1,6 @@
+src/jaxns/algorithm/depth.py:470:5: E301 expected 1 blank line, found 0
+src/jaxns/algorithm/depth.py:517:5: E301 expected 1 blank line, found 0
+src/jaxns/algorithm/depth.py:980:17: E131 continuation line unaligned for hanging indent
+src/jaxns/algorithm/depth.py:981:17: E122 continuation line missing indentation or outdented
+src/jaxns/algorithm/depth.py:982:13: E122 continuation line missing indentation or outdented
+ERROR conda.cli.main_run:execute(125): `conda run flake8 --max-line-length=100 src/jaxns/algorithm/allocation.py src/jaxns/algorithm/depth.py src/jaxns/core.py src/jaxns/distributed_core.py` failed. (See above for error)

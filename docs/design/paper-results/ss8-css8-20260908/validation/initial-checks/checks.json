@@ -1,0 +1,158 @@
+{
+  "R240": [
+    {
+      "command": [
+        "ruff",
+        "check",
+        "benchmarks/paper_reproduction/cases.py",
+        "benchmarks/paper_reproduction/references.py",
+        "benchmarks/paper_reproduction/run.py",
+        "benchmarks/paper_reproduction/test_protocol.py"
+      ],
+      "exit_code": 0,
+      "log": "/largedata/albert/jaxns-ss8-css8-20260908/validation/R240-0.log"
+    },
+    {
+      "command": [
+        "flake8",
+        "benchmarks/paper_reproduction/cases.py",
+        "benchmarks/paper_reproduction/references.py",
+        "benchmarks/paper_reproduction/run.py",
+        "benchmarks/paper_reproduction/test_protocol.py"
+      ],
+      "exit_code": 1,
+      "log": "/largedata/albert/jaxns-ss8-css8-20260908/validation/R240-1.log"
+    },
+    {
+      "command": [
+        "taskset",
+        "-c",
+        "60",
+        "/data/albert/miniconda3/envs/jaxns_py/bin/python",
+        "-m",
+        "pytest",
+        "-q",
+        "benchmarks/paper_reproduction/test_protocol.py"
+      ],
+      "exit_code": 1,
+      "log": "/largedata/albert/jaxns-ss8-css8-20260908/validation/R240-2.log"
+    }
+  ],
+  "A240": [
+    {
+      "command": [
+        "ruff",
+        "check",
+        "benchmarks/paper_reproduction/cases.py",
+        "benchmarks/paper_reproduction/references.py",
+        "benchmarks/paper_reproduction/run.py",
+        "benchmarks/paper_reproduction/test_protocol.py"
+      ],
+      "exit_code": 0,
+      "log": "/largedata/albert/jaxns-ss8-css8-20260908/validation/A240-0.log"
+    },
+    {
+      "command": [
+        "flake8",
+        "benchmarks/paper_reproduction/cases.py",
+        "benchmarks/paper_reproduction/references.py",
+        "benchmarks/paper_reproduction/run.py",
+        "benchmarks/paper_reproduction/test_protocol.py"
+      ],
+      "exit_code": 1,
+      "log": "/largedata/albert/jaxns-ss8-css8-20260908/validation/A240-1.log"
+    },
+    {
+      "command": [
+        "taskset",
+        "-c",
+        "61",
+        "/data/albert/miniconda3/envs/jaxns_py/bin/python",
+        "-m",
+        "pytest",
+        "-q",
+        "benchmarks/paper_reproduction/test_protocol.py"
+      ],
+      "exit_code": 1,
+      "log": "/largedata/albert/jaxns-ss8-css8-20260908/validation/A240-2.log"
+    }
+  ],
+  "C240": [
+    {
+      "command": [
+        "ruff",
+        "check",
+        "benchmarks/paper_reproduction/cases.py",
+        "benchmarks/paper_reproduction/references.py",
+        "benchmarks/paper_reproduction/run.py",
+        "benchmarks/paper_reproduction/test_protocol.py"
+      ],
+      "exit_code": 0,
+      "log": "/largedata/albert/jaxns-ss8-css8-20260908/validation/C240-0.log"
+    },
+    {
+      "command": [
+        "flake8",
+        "benchmarks/paper_reproduction/cases.py",
+        "benchmarks/paper_reproduction/references.py",
+        "benchmarks/paper_reproduction/run.py",
+        "benchmarks/paper_reproduction/test_protocol.py"
+      ],
+      "exit_code": 1,
+      "log": "/largedata/albert/jaxns-ss8-css8-20260908/validation/C240-1.log"
+    },
+    {
+      "command": [
+        "taskset",
+        "-c",
+        "62",
+        "/data/albert/miniconda3/envs/jaxns_py/bin/python",
+        "-m",
+        "pytest",
+        "-q",
+        "benchmarks/paper_reproduction/test_protocol.py"
+      ],
+      "exit_code": 1,
+      "log": "/largedata/albert/jaxns-ss8-css8-20260908/validation/C240-2.log"
+    }
+  ],
+  "Cprime240": [
+    {
+      "command": [
+        "ruff",
+        "check",
+        "benchmarks/paper_reproduction/cases.py",
+        "benchmarks/paper_reproduction/references.py",
+        "benchmarks/paper_reproduction/run.py",
+        "benchmarks/paper_reproduction/test_protocol.py"
+      ],
+      "exit_code": 0,
+      "log": "/largedata/albert/jaxns-ss8-css8-20260908/validation/Cprime240-0.log"
+    },
+    {
+      "command": [
+        "flake8",
+        "benchmarks/paper_reproduction/cases.py",
+        "benchmarks/paper_reproduction/references.py",
+        "benchmarks/paper_reproduction/run.py",
+        "benchmarks/paper_reproduction/test_protocol.py"
+      ],
+      "exit_code": 1,
+      "log": "/largedata/albert/jaxns-ss8-css8-20260908/validation/Cprime240-1.log"
+    },
+    {
+      "command": [
+        "taskset",
+        "-c",
+        "63",
+        "/data/albert/miniconda3/envs/jaxns_py/bin/python",
+        "-m",
+        "pytest",
+        "-q",
+        "benchmarks/paper_reproduction/test_protocol.py"
+      ],
+      "exit_code": 1,
+      "log": "/largedata/albert/jaxns-ss8-css8-20260908/validation/Cprime240-2.log"
+    }
+  ]
+}

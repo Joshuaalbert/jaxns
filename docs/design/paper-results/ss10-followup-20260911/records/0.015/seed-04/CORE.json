@@ -1,0 +1,213 @@
+{
+  "case": "ss10",
+  "seed": 4,
+  "complete": true,
+  "target": 0.015,
+  "iteration": 257,
+  "classic_samples": 1079761,
+  "state_capacity": 1715200,
+  "added_goals": 103,
+  "likelihood_evaluations": 284923045,
+  "added_likelihood_evaluations": 167707427,
+  "classic_log_Z": -24.640297114267224,
+  "classic_log_Z_uncert": 0.014979170581342113,
+  "accuracy": {
+    "log_Z": -24.640297114267224,
+    "log_Z_uncert": 0.014979170581342113,
+    "log_Z_error": -0.4843623082139139,
+    "spike_mass": 0.17915208978940228,
+    "spike_mass_error": -0.32085565463643023,
+    "true_log_Z": -24.15593480605331,
+    "true_spike_mass": 0.5000077444258325,
+    "kish_ess": 326388.6781682709,
+    "posterior_mean": [
+      3.1293830853174294,
+      3.1269073732542743,
+      0.000608413644952168,
+      0.00027087231055491844,
+      -0.0018791262887223493,
+      -0.002317974487308812,
+      0.0018314674972082542,
+      -0.0002438707825219939,
+      -0.0020365510526178794,
+      0.00044860539692438006
+    ],
+    "analysis_seconds": 11.550342797068879
+  },
+  "continuation_seconds": 5916.351712856209,
+  "load_seconds": 1.7427245331928134,
+  "conversion_seconds": 7.283379656961188,
+  "checkpoint_seconds_this_attempt": 46.29939613700844,
+  "run_peak_rss_bytes": 30706040832,
+  "verified_archived_goals": [
+    155,
+    156,
+    157,
+    158,
+    159,
+    160,
+    161,
+    162,
+    163,
+    164,
+    165,
+    166,
+    167,
+    168,
+    169,
+    170,
+    171,
+    172,
+    173,
+    174,
+    175,
+    176,
+    177,
+    178,
+    179,
+    180,
+    181,
+    182,
+    183,
+    184,
+    185,
+    186,
+    187,
+    188,
+    189,
+    190,
+    191,
+    192,
+    193,
+    194,
+    195,
+    196,
+    197,
+    198,
+    199,
+    200,
+    201,
+    202,
+    203,
+    204,
+    205,
+    206,
+    207,
+    208,
+    209,
+    210,
+    211,
+    212,
+    213,
+    214,
+    215,
+    216,
+    217,
+    218,
+    219,
+    220,
+    221,
+    222,
+    223,
+    224,
+    225,
+    226,
+    227,
+    228,
+    229,
+    230,
+    231,
+    232,
+    233,
+    234,
+    235,
+    236,
+    237,
+    238,
+    239,
+    240,
+    241,
+    242,
+    243,
+    244,
+    245,
+    246,
+    247,
+    248,
+    249,
+    250,
+    251
+  ],
+  "fingerprints": {
+    "[<flat index 0>]['U_samples'][<flat index 0>]": {
+      "shape": [
+        1079761,
+        10
+      ],
+      "dtype": "float32",
+      "sha256": "8c3e7202f1b884a58e12dd5d4259e5888c8cbfe4b4ae1829ae183ab4e516b711"
+    },
+    "[<flat index 0>]['log_L_constraints']": {
+      "shape": [
+        1079761
+      ],
+      "dtype": "float64",
+      "sha256": "ca6f4dbe772c2dd90da531240a0d5a10fc0201c15ce10b8883b1808ad8ce0607"
+    },
+    "[<flat index 0>]['log_likelihoods']": {
+      "shape": [
+        1079761
+      ],
+      "dtype": "float64",
+      "sha256": "a1d8607fa8a75bfc3e7c9c8288a7ce0e1d663f83901b8c45e8b692cc0386e540"
+    },
+    "[<flat index 0>]['num_likelihood_evaluations']": {
+      "shape": [
+        1079761
+      ],
+      "dtype": "int64",
+      "sha256": "f15f5835be38f4a7bb87c68af5af2f131d8c6cb102a213c187ab0d3bb47478c5"
+    },
+    "[<flat index 0>]['out_degree']": {
+      "shape": [
+        1079761
+      ],
+      "dtype": "int64",
+      "sha256": "3120cad44f9f2d8cbee7938ce4980e045a849c3a100ad673ae7dd67f807230d8"
+    },
+    "[<flat index 0>]['phantom_samples'][<flat index 0>]['U_samples'][<flat index 0>]": {
+      "shape": [
+        1079761,
+        99,
+        10
+      ],
+      "dtype": "float32",
+      "sha256": "82e5fb66bac09edf41bea0d0575672264314ea1e07bc73866ad1bb52596c1d4e"
+    },
+    "[<flat index 0>]['phantom_samples'][<flat index 0>]['log_L']": {
+      "shape": [
+        1079761,
+        99
+      ],
+      "dtype": "float64",
+      "sha256": "ff300693d2f1c29357f581ec38566096822a658b79fdd427afd5e62c27d6ecb1"
+    },
+    "[<flat index 0>]['phantom_samples'][<flat index 0>]['valid_mask']": {
+      "shape": [
+        1079761,
+        99
+      ],
+      "dtype": "bool",
+      "sha256": "594532b31b284401a7fe74f60a0ea3d0508e03466086820f0b5e1e8ef5903afd"
+    }
+  },
+  "random_key": [
+    1962123415,
+    3434849647
+  ],
+  "goal_key": [
+    1962123415,
+    3434849647
+  ],
+  "total_peak_rss_bytes": 30706040832
+}

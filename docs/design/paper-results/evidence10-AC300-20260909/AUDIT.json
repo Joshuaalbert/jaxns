@@ -1,0 +1,2574 @@
+{
+  "source": {
+    "root": "/largedata/albert/git/jaxns-paper-evidence10-AC300",
+    "commit": "aa79a0dc395c0d64b85cbb88d0e3e732decd7361",
+    "src_tree": "528843937ff0497d916e53979573b5ef0be0bcff",
+    "files": {
+      "allocation_contrasts.py": "f8c7951a3f764d531f5f3af8f4b8913016760583d37c7b724ee8c650e20ee012",
+      "allocation_costs.py": "a2d9acc71c978f817d26960d2c8d61e5b361730d14b145aa77609827c9e94605",
+      "analyse_ss10.py": "71c7bcd4fc7c49ac9e46c9886f94a0886748e03cf1f40b248c40af23ed50e384",
+      "cases.py": "4df7488dc3c76574b212bf51828f189aaabfd07bfee7ba8b84766c64662460db",
+      "compare.py": "4e6e54cc4acc5d50bf01d525b13d2e8a6b62b974d016e845c2173baefa88ae44",
+      "continue_variants.py": "8b00f03feeb9b9b52844267b037381781ad368826aba691ef86d26828ba67094",
+      "implementation_equivalence.py": "062f7afe3d8aeae4205a7393501bb2e7cd1941da3abe667ab116cf8c830c1372",
+      "launch.py": "ef0b3d76f0b9b7169f1cb2cbc8ab28beec1a4c03859ab215c5dfade614c99ffa",
+      "launch_variants.py": "cc079927bfe8f2f40cd19be6e7b97a77fec556049745cffcabaaa3d8a6b9981d",
+      "mode_counts.py": "36bc85d0d2ef7676933ab9b29b05c40eb5a864c3c9f88a727ff515687c3c30a9",
+      "mode_memory.py": "5f1e2f60b8cc0ee68a632d3577d565788b728b93a2c5ab829332f9808fe73a47",
+      "posterior_cases.py": "8d1e6dd40bfe460e3ba7258ba481345202b27c6837a1c8e18b18b837b69ff75a",
+      "prefix_sweep.py": "943fc01c09909fc994f8aeb2bd9ed5d78b38480f34670941ee932d023ca845f8",
+      "references.py": "466fc353119bd7a3b9fceb5bb74c47f064523d4baf0c25813d192a6d305ab89e",
+      "run.py": "19e93c467f198e12d37f8676d926f73fe924bd3ad7a725c9ec0624dade64f51f",
+      "run_posterior.py": "2a404c6fc791cfbb3d21b6835b47bd532a36d751e418baa3e002d6b8ab4fc53d",
+      "seed_variance.py": "c50e1c65dae3ded0e4200b110b2eededc910d76e706bdef20fd055057e3f9029",
+      "test_protocol.py": "4f8b11a180be600dfc2c10b384dba07fa004b6b6ffb90bd4bba74a8bf8f11973",
+      "evidence10_cases.py": "a26c21bf61073ae960b4fec772a5e04d8a5adbef7904283fd3ed82fdd5489dab",
+      "run_evidence10.py": "5adbb546df65c56880ff64d446f59c93e9b5ab5610a332db707481014ef75014"
+    }
+  },
+  "cells": 120,
+  "record_sha256": {
+    "0.05/g10/seed-00/CORE.json": "a3ed0678f2d0458a03ac08c498043db640e8f7f478c492b32b79f019630afb5f",
+    "0.05/g10/seed-00/ANALYSIS.json": "60a3ab24e95d59840a6fa6ab687858ced79e7a6091d04b1587ac51a1702ff65e",
+    "0.05/g10/seed-00/MANIFEST.json": "44667df4f6ee6c5d940469fb20bfa83d430d870fc6bff3bbb752d6555e66cb61",
+    "0.05/g10/seed-00/classic_posterior.npz": "27bcb30fe7984275d24e1459c95b32138f3c8322c014dac5a924f3fa81cf55e2",
+    "0.05/g10/seed-00/evidence_draws.npz": "8f28f2dc209ec816c1ec9e2907296417644c209ae55b43254bfc30892ea09a9f",
+    "0.05/g10/seed-00/progress.jsonl": "209b49b9f7976db1a38021c969b9059091f357f671fd18711c5983209989dae8",
+    "0.05/g10/seed-01/CORE.json": "f2e5ee1c824d62e9cb620d49c0e326ca46e75bc8faafebd96ad2e07b0107e188",
+    "0.05/g10/seed-01/ANALYSIS.json": "0076b96500e0a0c3f50bc88c52b5c740868a0ba0e09eca44ddb864b8af96c78e",
+    "0.05/g10/seed-01/MANIFEST.json": "914cfca9d625a1837a31ea54dae89af8c09ac1426e2ba55104c9e50d211a8363",
+    "0.05/g10/seed-01/classic_posterior.npz": "63aa8e4943c52154168e52a630a1a6b964040794ef81452975862ff6d9a6071a",
+    "0.05/g10/seed-01/evidence_draws.npz": "0b62bb5c146da9888a4019344cf77d2effe1f911bc185888d3ec5ba9ea653258",
+    "0.05/g10/seed-01/progress.jsonl": "b0893a6f0c6fd68280ee792cc0da2fd358e127fe5dbe512e525ae701b6309053",
+    "0.05/g10/seed-02/CORE.json": "1d8164570ded54a09f4f5b46403c30d496dc1cd6f9a45989ec58249ef37289d9",
+    "0.05/g10/seed-02/ANALYSIS.json": "13a7af13815df8b3c0358d70452c28c6702c39a3237a86be36864eec2e8be5bb",
+    "0.05/g10/seed-02/MANIFEST.json": "06f302fce149c35f791fc11582fa8e013b5199befb2e03f170dcf0af9e909938",
+    "0.05/g10/seed-02/classic_posterior.npz": "49bf17921e107a4dc9dd8904d1b77be61d32bd62e899a0c6c1af22520dca9a0b",
+    "0.05/g10/seed-02/evidence_draws.npz": "365d026f04ffd6c3d39cfa555852b4e22abef07555fd01f87d5feb0e3d667f59",
+    "0.05/g10/seed-02/progress.jsonl": "5eebb042b03891b8cce0f16c7a24911a513d2ffd82004921349d94a5084e72e4",
+    "0.05/g10/seed-03/CORE.json": "1f83a65dff4376309ec3e4bfba7ecc6de9b8c78dd0a5118ebcadfabe5495681e",
+    "0.05/g10/seed-03/ANALYSIS.json": "2bca939400c4203ac3382c25e2ec3f264f3f32ca543a689524ec5d781931f953",
+    "0.05/g10/seed-03/MANIFEST.json": "ff9e83ac6b49067946616d1986e072c338cdfe0b32efbac2e298ae8f4eb30e50",
+    "0.05/g10/seed-03/classic_posterior.npz": "880456443102e5f4b5bf160fcc4599cae85f1e228381d8c27e63297e6ee5067a",
+    "0.05/g10/seed-03/evidence_draws.npz": "99cad87006ccc42ab47a1d8d11d5b988f8bc9d7a52641d3686b6ce72975cac64",
+    "0.05/g10/seed-03/progress.jsonl": "44c3613c504ecc97f171e8a6fd6bb1459fd728ac95a2900c61c7bd92028f7a00",
+    "0.05/g10/seed-04/CORE.json": "22a99a077419e96759d4544211bb704332a45d6ca9889a85390de8f8d88c2e95",
+    "0.05/g10/seed-04/ANALYSIS.json": "839b59ea93e4df20940363cb98487b9e2be8885859b9548e95b5c8af6ccedbc0",
+    "0.05/g10/seed-04/MANIFEST.json": "092d08598ffdae36381a2b98c93ee38ae545a0847aaee9357c2afdf4dc5446e1",
+    "0.05/g10/seed-04/classic_posterior.npz": "cb040c89567e224c1bce921fc059994fdc5e2a2a0cc50bc0bf5bc23a4f3b8b00",
+    "0.05/g10/seed-04/evidence_draws.npz": "e092b030b424a681a40401ad7e97cb4cfa2ebea2bb93beef5ab538b0b544bd63",
+    "0.05/g10/seed-04/progress.jsonl": "236512133735e69fa6d2f8d2f925652697883ec58a594752a7a3f0782dba1e8b",
+    "0.05/g10/seed-05/CORE.json": "90db63ba903f7e7e36d3a69782bdc9690a54ee18177ca845fac07af6b8f33166",
+    "0.05/g10/seed-05/ANALYSIS.json": "9c4c8eee484ca0bf18933f0e165f39e0ca88b97e9769c729f5d45947454b2b2c",
+    "0.05/g10/seed-05/MANIFEST.json": "0a97a65710c9b9e8452289232e92d99df5279b156cc6c35857640e189b258b7a",
+    "0.05/g10/seed-05/classic_posterior.npz": "9312898df04c53f2587287c54dd3f8ea4f24d5f44876774ce191e94b7b281b49",
+    "0.05/g10/seed-05/evidence_draws.npz": "154ad882b966c901c06d039d2d048d776a75bbaaf203c2c9a6ca80a0c24844dc",
+    "0.05/g10/seed-05/progress.jsonl": "6f85bce333b60803b265e5b2793ec0f517fd264ec114df1506a29b5a000d4683",
+    "0.05/g10/seed-06/CORE.json": "4ab7587b39150d8b52020e4f47bbff66e47cf02b3ebb7038e747edf69c7f13cd",
+    "0.05/g10/seed-06/ANALYSIS.json": "1eb66b72b90a1eca4cc7f3071079aa6a1f78e09fcaafef45e52a09ad569b1c8e",
+    "0.05/g10/seed-06/MANIFEST.json": "3d95ff772adcbd5e964893f686c5db94195882804f41392c8fb352335ec28d60",
+    "0.05/g10/seed-06/classic_posterior.npz": "2f2f4417f8731f7f79bde58ddd8fa23a1fe0f0c22af1aa81d93c2dd91f466930",
+    "0.05/g10/seed-06/evidence_draws.npz": "2976918f871c25382e094f794a55b6f35cbd613fa65623d9a999fcc23d0d7ae5",
+    "0.05/g10/seed-06/progress.jsonl": "f39b91d15217e4438d1934111498fbce8d3f5d2ac141f1b52c4101002d4eb8ff",
+    "0.05/g10/seed-07/CORE.json": "70643b291158ab1ba82aac9d7491809ff171aea95913601c1943b0e9cc1e7b2c",
+    "0.05/g10/seed-07/ANALYSIS.json": "8ac3f362b97fc03835a64b6bcbb8a73824b87cf9aea7ff6c6d35feac78183c14",
+    "0.05/g10/seed-07/MANIFEST.json": "56df1612f1338fe4abe19d2fafac612ea347e091796c9cbe42ca154b6f27f08a",
+    "0.05/g10/seed-07/classic_posterior.npz": "4130974269aa2ac307821960fea4e48f19a25824f5fa8ea4e4a9fca847b7644d",
+    "0.05/g10/seed-07/evidence_draws.npz": "31d502bfe615f01279012b77a22414ad92fec647f71f96363d2955447196e46e",
+    "0.05/g10/seed-07/progress.jsonl": "8ab2a5df996855b87cea8b3bfad1d79728f62133f46ff0de64ca2b7061c74414",
+    "0.05/g10/seed-08/CORE.json": "092efce2909d0a815be3830e7127343ade635387f6d8578718c3423995f718d9",
+    "0.05/g10/seed-08/ANALYSIS.json": "a47473493055ac5ab1bc0c30c06177f6fded4b615a003aaf293d9a5d62f247c8",
+    "0.05/g10/seed-08/MANIFEST.json": "e5a1c3516e7b7897643a00b729ca4ca97213270a3f67cdaed9dd83f1c08508a0",
+    "0.05/g10/seed-08/classic_posterior.npz": "1b7f9d17270a44101ff80ac82705cff945b1125d03041de811462190fbe737e3",
+    "0.05/g10/seed-08/evidence_draws.npz": "84c1895e97ce1822afc3eb5633938238bbf0b3ec8d93404be71c75ed1bab0745",
+    "0.05/g10/seed-08/progress.jsonl": "d498d56be0269b12b99e0180cf7c76dc0adf74e118cece3c89d258b057b1d44b",
+    "0.05/g10/seed-09/CORE.json": "0bddbaf6401975d1b8c740d70689a5cde14662c22e5eb4e4cf6ad1805f816b42",
+    "0.05/g10/seed-09/ANALYSIS.json": "1095fdf4a30dd08db5a0d7ee93ac749dbcd5b50f5822fb9aec285d2912922995",
+    "0.05/g10/seed-09/MANIFEST.json": "315f791d9a84278abccde1ad368723c3a2d578bb2e70033e1bea51907cb783ea",
+    "0.05/g10/seed-09/classic_posterior.npz": "323bebd8cea79bba2f85b7136b465d7b385fa2eac987e5de74a83009446c9a84",
+    "0.05/g10/seed-09/evidence_draws.npz": "52f2178cfb8c36da66109a113317f356f90a0378365cf3b4b91165a2ad2574b5",
+    "0.05/g10/seed-09/progress.jsonl": "39d2799a23d8f11a98279035534a1af8370096e520e25ca0e55a5c8576a062a2",
+    "0.05/g10/seed-10/CORE.json": "e04f2e105523d8dc38da21485e074422a28037c2db35cc551a040356f4d973ce",
+    "0.05/g10/seed-10/ANALYSIS.json": "a83422180f4abdd9bde2a9a59d0242f337be677a2cb83610bf2b42cc19448c74",
+    "0.05/g10/seed-10/MANIFEST.json": "806e6b8be0c54c63256a453b26579629717842537f66b32cef72cd8e237b05ac",
+    "0.05/g10/seed-10/classic_posterior.npz": "cab40649ca934fb1fa3d778530a616c2f5d7d98c269ec775a49c06013cef5d39",
+    "0.05/g10/seed-10/evidence_draws.npz": "48b81c60ba3f8f3e364746117eed4f5125bdd501fe0a6ab1598a673f66610b66",
+    "0.05/g10/seed-10/progress.jsonl": "073e30d218b4686e90053ea1fab6e3722054475df772330958e321c70955c4c0",
+    "0.05/g10/seed-11/CORE.json": "62a27d7a8d36bfdf7910458b790e38418a89133e6d7ba936086c23518919cfb8",
+    "0.05/g10/seed-11/ANALYSIS.json": "dc0a153cfb0df077b4ae8058dceed3674fa254be944c3ea4f1411cb51f82cd9a",
+    "0.05/g10/seed-11/MANIFEST.json": "4fbe13d6424c2df974b3f0076fe2102174666b8c4feca0cd7fcfbe17922bc53e",
+    "0.05/g10/seed-11/classic_posterior.npz": "bec032e7e35a74960c3d0eeb914e971022657c95d86c1c52fb944b9df4293b60",
+    "0.05/g10/seed-11/evidence_draws.npz": "6536a04fde50c9c62fba112732d43dc2a2f6fbc5e9b220a7b2363df42a8aada7",
+    "0.05/g10/seed-11/progress.jsonl": "f602aa3afca72a61922b254689e14c44b3f2c711ec6422175b58315128c5c52e",
+    "0.05/g10/seed-12/CORE.json": "c209163e5a95048aecc4a5b3afba63e344864251d411950db7870e03269ef374",
+    "0.05/g10/seed-12/ANALYSIS.json": "1960db1e1001076ea5eb130ec2dd7f899f474a1059adc6ec8e7455acb697591b",
+    "0.05/g10/seed-12/MANIFEST.json": "a0e5750e41707c6e9f4905497cf7a62b4aa7349805ae48c5dd86c609f6f1d073",
+    "0.05/g10/seed-12/classic_posterior.npz": "bd1a8b6def9cae848f127a751da3ea9f75ffbe72ac198dc8a7ceb7ab4fef89df",
+    "0.05/g10/seed-12/evidence_draws.npz": "c32bf2b518d0cb2c662cc4f3e532ede7939b11fcd28ad1dc63838f704b56bd3f",
+    "0.05/g10/seed-12/progress.jsonl": "48d7dc4555ed30ca1a7cda12ce5becc212937c6aaeced4352f41b0ffa6072f66",
+    "0.05/g10/seed-13/CORE.json": "bceb5676dead05e9c5518a6f5a9acb6b5e86e8f7634bb10e0cf28738b1cf7b7f",
+    "0.05/g10/seed-13/ANALYSIS.json": "c66c7e5279f0b83f08307897eb716da5a6a718a859fbe5cb2eb7b781cb50591b",
+    "0.05/g10/seed-13/MANIFEST.json": "354b43523a42193b4d7c5c5d908648e086bf2542d02cf3b7239eabe0eb05464f",
+    "0.05/g10/seed-13/classic_posterior.npz": "10c40aa636fb39d540c07538f2aa3ee8838985bd65b2fdb1138412330704fb8f",
+    "0.05/g10/seed-13/evidence_draws.npz": "82790273e67c6e3c070841a060187021bca4b1699411b9fe360717b6bc9194d2",
+    "0.05/g10/seed-13/progress.jsonl": "245e8c340b1e8e8a6ef192535aea5728c95ea7d1fa6c5fbaf996d635f028e6fb",
+    "0.05/g10/seed-14/CORE.json": "8dc5555fd1b8da500feba20b3136405ed9f1310ba6498fa8284d0964a2ccc10b",
+    "0.05/g10/seed-14/ANALYSIS.json": "82de24900818f198d522db650fa9d5c488f02650646b2687c796c8e5c5d1c37d",
+    "0.05/g10/seed-14/MANIFEST.json": "fb9ad0e7b31a2455865b2f6bdbd07be9d89192485e21a7818461dc261fcf3173",
+    "0.05/g10/seed-14/classic_posterior.npz": "cfc6138b1aa0fd82a253f10dfbd11ac56f5faf453da7110a313773740ef27728",
+    "0.05/g10/seed-14/evidence_draws.npz": "35c2fb75f3c378a603706f553e3f8ed227589828e2fb80da7b5da250fa1e2444",
+    "0.05/g10/seed-14/progress.jsonl": "2f74b4d561ae898db47cd4236087b08a579f6720c9094e742861e16a1e8006a9",
+    "0.05/g10/seed-15/CORE.json": "1373f94408ea49c23fa00d9268b553bfd35671b8d9bf3c6a21c7e324e98d62c9",
+    "0.05/g10/seed-15/ANALYSIS.json": "325e78d122b46b6857e67276058a8f498db5eaa596b99c5ed36fe79f82a0490d",
+    "0.05/g10/seed-15/MANIFEST.json": "d2b8ed2446932d80be8d0b36c17d10c94659afdb637f9367edf663ea0bf4d6f1",
+    "0.05/g10/seed-15/classic_posterior.npz": "f1b563c8034613ac066cd9dbab07fd32e6ceb317f9fa8b081bde34e503b693e5",
+    "0.05/g10/seed-15/evidence_draws.npz": "35d15a26a59423c73582afb6c29b8d0ebac3f9f9971b594dd3616ab2348310da",
+    "0.05/g10/seed-15/progress.jsonl": "42a0f82cd49da11fe538ecd88577d738de3dcd4049748684fa76a029b3bc0413",
+    "0.05/g10/seed-16/CORE.json": "0cb65c562c8549cb5b5d71729029fad9ecc13406171c9f60ae5929eb1a15febc",
+    "0.05/g10/seed-16/ANALYSIS.json": "22d0ff9ce1ad545a8b0a12caf3909e1cdbcb47bc7d5f6a8d470cef3c93860302",
+    "0.05/g10/seed-16/MANIFEST.json": "3a918a462eaeb3dd7e726c40acdedc02d9b798ca9620e12430bbadcece071b7c",
+    "0.05/g10/seed-16/classic_posterior.npz": "738a82345c6744d78a2843847154230655ae66e9ac51e2b2c718d5aea86f7596",
+    "0.05/g10/seed-16/evidence_draws.npz": "e62010abe1d93f5fb6a13e72cba37563c8454b7346b27f665ad637ffd0388877",
+    "0.05/g10/seed-16/progress.jsonl": "13f2ea48130c4a0a2030d58e15316d61b88fae5efe8c3791bca71974286c5a3f",
+    "0.05/g10/seed-17/CORE.json": "8f6b07d38245fff9582b86be081f79c056d25588f38f27badee654386b112f3d",
+    "0.05/g10/seed-17/ANALYSIS.json": "8d9eb5c638a8745f6f4a54692a6e9d5c61c4658b8465893849c6368f43bd336d",
+    "0.05/g10/seed-17/MANIFEST.json": "42a3effbee8fce97ccebb313074be7e670c02132ac2dfcc575f6a764ae2c0996",
+    "0.05/g10/seed-17/classic_posterior.npz": "484b10fe7c2c8709909496020ba8959a9f00b3932af3384fa42a5016699660d7",
+    "0.05/g10/seed-17/evidence_draws.npz": "ae1eda633de94001d5b1d417d1fe7c68809fdc4b64f8231e2d947428806829e0",
+    "0.05/g10/seed-17/progress.jsonl": "6baa3ce41b7063f65eab8e1be058e7b565492fd36217554865d22438d9b53528",
+    "0.05/g10/seed-18/CORE.json": "83e43463c774eb7cbbc6e3c5cbdbd8c40facbfada40246fc8b9fbe2fb565f071",
+    "0.05/g10/seed-18/ANALYSIS.json": "03157b4e94775a7550be633fd9d482d42f65a9353b4311fdf24b3c8014b1f612",
+    "0.05/g10/seed-18/MANIFEST.json": "bfed156ed23d50940d9251760d0fff7259b150ba361711342e38fd0dee81f862",
+    "0.05/g10/seed-18/classic_posterior.npz": "02c0535e456a9d1938192af1a9ea41ba8e26c1e090567b1cbe80b21745264a3e",
+    "0.05/g10/seed-18/evidence_draws.npz": "14f8b6be54679017ae173bd9a4359cfe4e7c3dec494eef905cc5dbfd69cc86fa",
+    "0.05/g10/seed-18/progress.jsonl": "068a83bcdee57ebb292b85ef424a6df6510a3682eeee096ce22a04539be098d6",
+    "0.05/g10/seed-19/CORE.json": "36fecc94b5a7031ba1ac57cc37251fd11fcb02814702644e2639bc6e629a1812",
+    "0.05/g10/seed-19/ANALYSIS.json": "9eaa0bc0ef33c4cf35338a2bafe7dd7b9d7e89a42fc5e81c00d059392e111d05",
+    "0.05/g10/seed-19/MANIFEST.json": "8b0137a4d94934a1b31caacfa6dd8853ce56f34477d146a58d37a350a540b612",
+    "0.05/g10/seed-19/classic_posterior.npz": "6e4f8dce60e18568d03c1f0122e92153de97b469f9d3321405f773db36266964",
+    "0.05/g10/seed-19/evidence_draws.npz": "e782efd5ce495b32cabb6eb3cdb7455664ba4e399bad67186d6e725cbab7b908",
+    "0.05/g10/seed-19/progress.jsonl": "89c16312bfe33a6b678235e486b3547b32971be278bd43d20e44390f7d5ca9a9",
+    "0.05/g10/seed-20/CORE.json": "04d41d832230f1501cc9c5d96e8f79c5486177a00a37db7157f57f69c4637e56",
+    "0.05/g10/seed-20/ANALYSIS.json": "427030180a904a9ff552060bfc2654680a724ad08c30898c3ef915e03f01593e",
+    "0.05/g10/seed-20/MANIFEST.json": "be29bc9d34c1764b69737ccdf9743712924f382d3fead99d405e566d269b39d8",
+    "0.05/g10/seed-20/classic_posterior.npz": "28dbc05e3d44d835bb6e9e48c65e064803bf899401a553cf8fe841d9cdb76863",
+    "0.05/g10/seed-20/evidence_draws.npz": "64bf87210c5e1fe072e5d25c6dcfb66b77b59b491b0db62497d1c46324d89d95",
+    "0.05/g10/seed-20/progress.jsonl": "875edae416ec43ac5ad6a76cd8925af0f19feae49ed89a972038190fee22ec12",
+    "0.05/g10/seed-21/CORE.json": "88095ddabc6b9c2f76128ae98db627c8d528698858f4ba28f6e77b5a9749a5cb",
+    "0.05/g10/seed-21/ANALYSIS.json": "68a79585f987bcf376a19bbadaefca042f10179cafa648ed16d09573f3cb34a9",
+    "0.05/g10/seed-21/MANIFEST.json": "b6e610b9dda74a90fc27d33581bcaf192c0adb4265aca20fa9b50156debe62a6",
+    "0.05/g10/seed-21/classic_posterior.npz": "a3148d1663bc8af1f4f43bbe0d798c7668ebb538cd25014b01d47313a3474f25",
+    "0.05/g10/seed-21/evidence_draws.npz": "b11005b880f15337ba9b67a95626ec48afbe805e674eabd4a0add4f1f410519c",
+    "0.05/g10/seed-21/progress.jsonl": "06a0d7ab9133a7ffa6c55c2fecae93c9679a3bfa2fe878370dc28072186b490b",
+    "0.05/g10/seed-22/CORE.json": "1747e85caf812c18e79d0a571beacad8cca8d1ecf693288d177e9f39d00e8ee6",
+    "0.05/g10/seed-22/ANALYSIS.json": "c528a79d3267ce1e7a3633ce163cbd76787638c2faa6762f8565e99ee11f79a3",
+    "0.05/g10/seed-22/MANIFEST.json": "5ff165ae94fd0becf11b486e40a3511847bac3155f5021722cfb5ef1b88b844a",
+    "0.05/g10/seed-22/classic_posterior.npz": "2180c4291131082888470da5af2d3536bf2fd2a0489fc8f5a4d6bac6a982200a",
+    "0.05/g10/seed-22/evidence_draws.npz": "882948379cb0492d713e3b48e92487d532e486eeec3c3bfb5245f0ff93615c06",
+    "0.05/g10/seed-22/progress.jsonl": "10280cf320121a2de6afa1701b4a563c13c6ec956045a130b49d185910251096",
+    "0.05/g10/seed-23/CORE.json": "8cc7510f34481fe943e13ce86a91892fe1482000eb4fe30522f5779300fbd131",
+    "0.05/g10/seed-23/ANALYSIS.json": "90d61679d58736dffa9f2f0177fdbf67502ceb58179da6666c6b2b0b6a5a2211",
+    "0.05/g10/seed-23/MANIFEST.json": "73b679bafbbb665022627fab9f692b03b93283e00a587d6a620c017a32a08172",
+    "0.05/g10/seed-23/classic_posterior.npz": "86631173984605fb2776f5c3246ffc0eb332bd0c99862e671c076ca465cba7bf",
+    "0.05/g10/seed-23/evidence_draws.npz": "a972f8812ec88c0742aeb7779a82c64d4eecb2c577a702cacbfc71d8a433016f",
+    "0.05/g10/seed-23/progress.jsonl": "24c4408c9838195fb264d21e51a4375e8bcd3fd0034168e0f7de70b1f989ee2b",
+    "0.05/g10/seed-24/CORE.json": "fc8eb5817ac6a0e34bfca6c25fd78a7f7213b5ce46469d61d670228b670445f6",
+    "0.05/g10/seed-24/ANALYSIS.json": "8404da846a13bc56e7813bece0341e3ab411554ddbbee782f019b5f94ab5a7ad",
+    "0.05/g10/seed-24/MANIFEST.json": "49fc3b943d51ae1fc2797a3031e728ce9ff6653bc44918575a2cf0bfa320aee1",
+    "0.05/g10/seed-24/classic_posterior.npz": "c2d49aebad70a2b18c9dbd74b9b42bcc3f850a4e77471faf7fc1c3346a31f9df",
+    "0.05/g10/seed-24/evidence_draws.npz": "a4661c92da3c564d283a1483979b93455c3645f6f5cfcd200b6f62e3088b6b66",
+    "0.05/g10/seed-24/progress.jsonl": "e7b534f2697fe9f98d97311bfa180c71606d6f1aec0b44171885b90503102b19",
+    "0.05/g10/seed-25/CORE.json": "155cb5dbbdc0f72b325ac63e852c3556986106b0f6fb680c25fa337426962ca8",
+    "0.05/g10/seed-25/ANALYSIS.json": "412bcc636cf251a95a91bca86f9c9d9a6b610cbb33f95168d725a028072bd9e9",
+    "0.05/g10/seed-25/MANIFEST.json": "ffa6efaa46fa4b7d55c84021afe33e87ceecd806705cbc2726316215f6cac83a",
+    "0.05/g10/seed-25/classic_posterior.npz": "d86b835e4507e10b0740731f32e2aa7056acbcc3f4ce2be25c04c542166e996b",
+    "0.05/g10/seed-25/evidence_draws.npz": "89b1b4af0ba27500299b771099794284598c21c2957e811f03bdfe9a7eadcc5a",
+    "0.05/g10/seed-25/progress.jsonl": "935fc8c1d224c310482baf19e2ca73416d96714f5168a209d9020ab7197186c1",
+    "0.05/g10/seed-26/CORE.json": "a8763cf6e2f902ec836e960dd7a4854860dd771a74a6b41ad31544a26ce3c40d",
+    "0.05/g10/seed-26/ANALYSIS.json": "9d2bbeb72c7a7c1fae2f03183a08330684eaf0d61886a1e1736cb98ade9e6437",
+    "0.05/g10/seed-26/MANIFEST.json": "f52b6c32cf9c621265d5763f2f01fe64d9edfafa7d924fdadcebc63418e20a20",
+    "0.05/g10/seed-26/classic_posterior.npz": "ee72941a2df5eaad7706200b80dba05e49bea4bdadbe844c3f5f676e6f043247",
+    "0.05/g10/seed-26/evidence_draws.npz": "e846cc314d6443b707b742d3a61128a48c2793bf61ec57cebeb179256ac55e40",
+    "0.05/g10/seed-26/progress.jsonl": "aad01a5cc2c559f53993c9b437fddf82c8ca2bb125803399b81837329799f0ee",
+    "0.05/g10/seed-27/CORE.json": "cddf87f2bc16ed1ad5adfa82eac4d30edc0fbf0f328846b952cf027d64f08fba",
+    "0.05/g10/seed-27/ANALYSIS.json": "3ce652a34bc1dd294a77c21ac5fa00ddeef9370df4025f651f672e38966f9f54",
+    "0.05/g10/seed-27/MANIFEST.json": "c5bf5f44231575cc22e9957c2ce48724a33821e62ffaf27a67ade7f0e1eeda65",
+    "0.05/g10/seed-27/classic_posterior.npz": "07e3a915185fdf76d2224f4804cbc23047c976e7498f8b7f5f6360481ce07846",
+    "0.05/g10/seed-27/evidence_draws.npz": "332be7d9e5cc071ad696d46d3f3acf1c7f006a92282dfb4924534f245482dd2b",
+    "0.05/g10/seed-27/progress.jsonl": "63601fdd8257c5657579dc887b5d7f38c075e0d24753fcfb92613dcfb448b53d",
+    "0.05/g10/seed-28/CORE.json": "bae4170864ffbf3bb96150435e211b5100f523c1e4a1af98a523edff39c43ad7",
+    "0.05/g10/seed-28/ANALYSIS.json": "39f1536ec7020258429615d96eab181ea5e48b58229fa41fe5496c01d566498e",
+    "0.05/g10/seed-28/MANIFEST.json": "7775fad330c36b6d91ee953ad207dd6aed69a348f0e9413452899f9761810345",
+    "0.05/g10/seed-28/classic_posterior.npz": "8c135f807339c97f70e94a3280f72bd5cb61612b5e52e989a651cfc60f393c7c",
+    "0.05/g10/seed-28/evidence_draws.npz": "b3763d1a1d6fa83fc638d8becee0cdf8e15d5b2dc455c768e302d265699d03ca",
+    "0.05/g10/seed-28/progress.jsonl": "bd4148c1a0f7faf392d2c8257b7407bdf085db77364773a14dc74f2c621104f8",
+    "0.05/g10/seed-29/CORE.json": "83129ef6f57a38e8ba81aad088dcaf8bdaf1c913bb25ceef85028a20e5125096",
+    "0.05/g10/seed-29/ANALYSIS.json": "c1e6053905f0ca1c5e8c398c9d7ecb1929a9f8c3f6e85139aac898076ea76e1a",
+    "0.05/g10/seed-29/MANIFEST.json": "f72331cd39e28da609098cd0208efb92e22da450b80fbedb9090954b00698133",
+    "0.05/g10/seed-29/classic_posterior.npz": "38e479ecb45cc615e4350918a900b40c074cfcf62c4bc3f343f28a633ea08d3a",
+    "0.05/g10/seed-29/evidence_draws.npz": "62f6d9afe77ba8c3985ff2d814fc7e168de041af6b7c2630e09314cd7376f15f",
+    "0.05/g10/seed-29/progress.jsonl": "3f2bb4e00d43e9deedb67c029ee23101aa17bf252f8b609e8f47dc942e2774e3",
+    "0.05/cg10/seed-00/CORE.json": "3685120a3b1078c38e44ae66e8360f634f7fc98883fa68506e49c5cf56cc6337",
+    "0.05/cg10/seed-00/ANALYSIS.json": "66bbab3f291a6f2fb9abf7472de49e3fab5ef70fdea7c3d5f8fa8e21d9544aa9",
+    "0.05/cg10/seed-00/MANIFEST.json": "142644d6ceaea3c8ce25ca919806299500ec9b9d6f20dde310cbd79175216551",
+    "0.05/cg10/seed-00/classic_posterior.npz": "80cd14a3f9d89aea774015d3661e20ae222498d0f3ca511a6fc5edfe57b1b922",
+    "0.05/cg10/seed-00/evidence_draws.npz": "c9538de0790305b477a3360fd1a126cea356593cc357846a345f1142afe79b8d",
+    "0.05/cg10/seed-00/progress.jsonl": "226163f31dd7d097344f4fd5c6110fc650b037bc1021aac82743b8f2f573ccf6",
+    "0.05/cg10/seed-01/CORE.json": "f68a44e9b90d518bdabc5f258aa10331bc5dfe7aba7453d4ae558bffeda15c60",
+    "0.05/cg10/seed-01/ANALYSIS.json": "1a6de4a1400756d5e06d88bf51d67431b06fbeb42507b01c147c88645b29fe0b",
+    "0.05/cg10/seed-01/MANIFEST.json": "a9ef9c5b180192cc936968b987f605e1624ed38f3f1d6d02c4f3306f7b4bf1a4",
+    "0.05/cg10/seed-01/classic_posterior.npz": "83ee66249bd1c308e9a64cf85fa44a912278e367c363774c9ae8f4c39b061e14",
+    "0.05/cg10/seed-01/evidence_draws.npz": "2e40a5782e151309f60a1a2e20a82bc4a972ad540c681f1ce5b30ff7effb152b",
+    "0.05/cg10/seed-01/progress.jsonl": "6afe7329abecfb2097739178db2d76601797455c8bf2abffa8ef649b56b9fc17",
+    "0.05/cg10/seed-02/CORE.json": "47b28321ad0bd727230f41e5c2dc4005e4c33b8589ed3f7cc0f0f847082de634",
+    "0.05/cg10/seed-02/ANALYSIS.json": "db51f9a8643933c277d5631c1a5a3e2a7a7f2dabaee4c65df143d312d9a536bf",
+    "0.05/cg10/seed-02/MANIFEST.json": "38082a0f01515dd1f679c24a0f3fd86e72a87d0f0e633a0ac8466f6da54930b0",
+    "0.05/cg10/seed-02/classic_posterior.npz": "7e82ea1251439fa056d618ac6a033dcd45a8e9b509fc0ce286cf9f48654cf148",
+    "0.05/cg10/seed-02/evidence_draws.npz": "42affdeb4a74c5ab7241cc6334f8e6bb99fb385943a389fd0c66862d3b6afe95",
+    "0.05/cg10/seed-02/progress.jsonl": "d8f76eb7d1290d566d68227d8f2a07582009181240a95fb3ca520ff6551741be",
+    "0.05/cg10/seed-03/CORE.json": "739c36f3d1d4d53b0d0087b516ae52ffb97ba3e949133f4566b435820099d1f6",
+    "0.05/cg10/seed-03/ANALYSIS.json": "38f007a1d98d036bf6f135027deada11d4c947a14e95acf49a13c19c0d6fe028",
+    "0.05/cg10/seed-03/MANIFEST.json": "201f34e1d534a89390bbe1b278b6105069fb6d052f7be084d09e58b7587635e6",
+    "0.05/cg10/seed-03/classic_posterior.npz": "0417912c7c1a8d991e60804a3f7d09c6c2e5f9b3b31fae5bda299dc6cd53b783",
+    "0.05/cg10/seed-03/evidence_draws.npz": "03fca4f7745f73279780becd6197f0447d31345994e281f5f57d6f91bf746f40",
+    "0.05/cg10/seed-03/progress.jsonl": "d8ef7c0750061b041d04b1bb5e70e6c2110ae9efa970a6698dc152ded619989a",
+    "0.05/cg10/seed-04/CORE.json": "c81a8bceb513192bdcff6c12d0b8fed491cc902470174c1f193a639dc6d3aa69",
+    "0.05/cg10/seed-04/ANALYSIS.json": "679861051125a8631e1e2efeb4fc7596819b209b98440d3f907f5dce2a2b46c9",
+    "0.05/cg10/seed-04/MANIFEST.json": "2b5d22dd97bea28b32664e6f947e533252fd0cbd6fc90ca742ff466c13fd5129",
+    "0.05/cg10/seed-04/classic_posterior.npz": "e597bec5b3a7c68eaf3bfc2f655958b0ff87cafa5e9ab2e1f764fcf27d809685",
+    "0.05/cg10/seed-04/evidence_draws.npz": "5969e5cd2372471b8890c01dab5a4aeea680b63e3544522e5656bfb6f04ff8cd",
+    "0.05/cg10/seed-04/progress.jsonl": "da108e836aea5994d2277b83e0579de5602cf9091da0cbfba97a782c7cefdc7d",
+    "0.05/cg10/seed-05/CORE.json": "26b624483b56fdc9aa99cc335dbd5f293ff4aa714c81acaf053d70154a39c180",
+    "0.05/cg10/seed-05/ANALYSIS.json": "fce90c86826492282503b960e784f0aecbc231429bfb11f6d5cd69452c8df176",
+    "0.05/cg10/seed-05/MANIFEST.json": "a79db0a12ecce025071a83d2d21d417b2f1523f11b0f1766b8423de5cc1d2fe7",
+    "0.05/cg10/seed-05/classic_posterior.npz": "3adf10dc3b9014793b267400a276967c25ab63af3f3d1fb07bc5d2cee00c2d81",
+    "0.05/cg10/seed-05/evidence_draws.npz": "f923c46e94e96adb176b10608ad7781ecd9e67c0194ff62fc590e19b79fe92a0",
+    "0.05/cg10/seed-05/progress.jsonl": "9fdaf1968ed866af3655ad5b86388f2980c30030cd2fbbd557b62ef4e989b469",
+    "0.05/cg10/seed-06/CORE.json": "437aaf8da2aa4d97d21cfeb7f1e3fceff57c3c20d595a0e42de33fdd9e706fd5",
+    "0.05/cg10/seed-06/ANALYSIS.json": "687cc9eaea2bc119843076706d6a684c14b25d02f8dda07ce33535c512b40c58",
+    "0.05/cg10/seed-06/MANIFEST.json": "15b87f7c8977f5e8f56b2af782e0493a373c7e03675110f2cafbd8e2ab6fa2c6",
+    "0.05/cg10/seed-06/classic_posterior.npz": "d47b01add43c984117f668cfe820c8828513612a5e6cddc0a3dffad9c5f2134b",
+    "0.05/cg10/seed-06/evidence_draws.npz": "0e9b342152690235ba6b78568fd4700d1757bc876503398b0b6889978720e5b3",
+    "0.05/cg10/seed-06/progress.jsonl": "b3d49b51c8ca4de833436aa1b6a6d459ef4cd51479f4d93edae4a0414cab0379",
+    "0.05/cg10/seed-07/CORE.json": "41c5f4a904968351e7d1dc23a21b2e773280aec447c98b28cc6d37b87b9616a2",
+    "0.05/cg10/seed-07/ANALYSIS.json": "2d03ed1a657c87e031187119502745bf09288514a848faed42ef96a9a54d6306",
+    "0.05/cg10/seed-07/MANIFEST.json": "74e3e9977da800774ca0e38bafefa1cae3a1f67cd6af7f6ec0902b5170693043",
+    "0.05/cg10/seed-07/classic_posterior.npz": "afd905b6469cd94ed99a380c8127106bf2d9214095de34182f9b0f3c5e97f579",
+    "0.05/cg10/seed-07/evidence_draws.npz": "aefb0bc0415d3761d6581c5458a4032a2d9902d3b75d270ca0c81a5104c2e630",
+    "0.05/cg10/seed-07/progress.jsonl": "2ab7866abe48c589745a114029586afbf22f8dfb6ec9098aa8343ccb4bd58016",
+    "0.05/cg10/seed-08/CORE.json": "8f4cabfbbcae85e0f8129c16e11570468c0f995e2fc7879b7855bd412c19d361",
+    "0.05/cg10/seed-08/ANALYSIS.json": "1fb8182d56d9d8678ce857c001bb6989af004a5b3decc3b9a2dd4f5e00526e0f",
+    "0.05/cg10/seed-08/MANIFEST.json": "b3d56585e4c1369a7469f6cd68445f6947b3343d01e417547e09aed0b05a839d",
+    "0.05/cg10/seed-08/classic_posterior.npz": "962f2aab6bf45e6e8a0f728d66efdfa73de6f298d5086d0d4ffc88febdb6ab1f",
+    "0.05/cg10/seed-08/evidence_draws.npz": "d5ebbb183452964feed7aa0034c9230e608ad6d51da362a9f162fe1cc5e7bc50",
+    "0.05/cg10/seed-08/progress.jsonl": "8deb78b8c4ed2acd091db4a7ad0b458faf09581d7969a1055e5b31a195838623",
+    "0.05/cg10/seed-09/CORE.json": "6c3b020e875c04a3c06863659204f2811d4e2bdf0b91750785d321663e688dec",
+    "0.05/cg10/seed-09/ANALYSIS.json": "95a53e4d4023612a0355674b3b926ec103b3b82c277708b80e5a9e8fa8b8fdb0",
+    "0.05/cg10/seed-09/MANIFEST.json": "518db5ba01df187bc4824803305a2029a69c2bd6ce67f27820746421498ef8ee",
+    "0.05/cg10/seed-09/classic_posterior.npz": "1a152d2714d785395ee90a2eb5182874ecde2f0581ad2ec36eb4fdbd3d073ebb",
+    "0.05/cg10/seed-09/evidence_draws.npz": "c229f81c0195c773caf4386cc0d506a54fe9eee00c865ca7016194b12779bd77",
+    "0.05/cg10/seed-09/progress.jsonl": "c0bb819c364ae8cb44d562aff82ad6d9a7271926cc5a392548462a2d15b95e5c",
+    "0.05/cg10/seed-10/CORE.json": "21f7f2e0143e6602f2aa2a22a19dded863a4b15edd98551cd4bb5376983ab11b",
+    "0.05/cg10/seed-10/ANALYSIS.json": "5b36502c4a11611724fa7ddf22a36e195e34df3630c87ff79ccd05ce915e4eca",
+    "0.05/cg10/seed-10/MANIFEST.json": "bb2695fb92017c8347d65c6284f99596505e5625e0c3cc955fd9e741b4713bf1",
+    "0.05/cg10/seed-10/classic_posterior.npz": "95d744f816547f0c32d22547b308facf069c608624bed7ca486328ec16fb194d",
+    "0.05/cg10/seed-10/evidence_draws.npz": "edf7644324d6166646d9347b5d10f239b317eb3843404705843b9d7ab186498a",
+    "0.05/cg10/seed-10/progress.jsonl": "0286e8370b2b265c996922bba6a8d4dc74dd6adadef16d51865acd3a333af870",
+    "0.05/cg10/seed-11/CORE.json": "677ae5304a3dd0d099f0f5bbf54ef1388d0f5f89bd6c57ae494eb89c8a2015a5",
+    "0.05/cg10/seed-11/ANALYSIS.json": "ed75ab2eabcd1cb655850e1daa6ff15bdfbc91d89a09d65f4b4435a576706b18",
+    "0.05/cg10/seed-11/MANIFEST.json": "b36ab71791076a5bde91d575e5913194076edea6b3802a2eccb1c525c0ac27ef",
+    "0.05/cg10/seed-11/classic_posterior.npz": "8a7018b943919bdc0c966db9f47424c3e6bf6de1aabbd414b94e70fffecf2acc",
+    "0.05/cg10/seed-11/evidence_draws.npz": "2597abd222996a83765a84c48eb8cfb2621887984b599efa2c50df637bf714e9",
+    "0.05/cg10/seed-11/progress.jsonl": "eb9e2e622434a2a7147ec8db8ea1b110a9a65b7887458f86b1de9b0f79693ab3",
+    "0.05/cg10/seed-12/CORE.json": "2bd2770187bd385213de9bbb75bb722d3884b835f02bac6bc7c3792fbf681445",
+    "0.05/cg10/seed-12/ANALYSIS.json": "42dd0c9e9d021357fbcece2946d043f0046570cf1add1386fae14297b4e4c975",
+    "0.05/cg10/seed-12/MANIFEST.json": "eab1fb0359c073ba25be0e2c9bc7a39f0a19d09381fe6260a303954c2ab17692",
+    "0.05/cg10/seed-12/classic_posterior.npz": "4ee817da7ea6cf85311dacab01d4cd32bde2e40820ce23c87d93f1956d85f9a6",
+    "0.05/cg10/seed-12/evidence_draws.npz": "b1a2b96d3077ca0d1d3d08e36289a9bb424212452333964b94ca5e125c9f5bde",
+    "0.05/cg10/seed-12/progress.jsonl": "d92a083b4b32b4115d60cf60c66b5ef4b7d4585d60de2d40e112082a01784c35",
+    "0.05/cg10/seed-13/CORE.json": "b5c9a320329081ae7316c4c8474c48344c3b4b35a632a8a95fe70762dcf7cdf6",
+    "0.05/cg10/seed-13/ANALYSIS.json": "a3323d1372837b4733b15cc11f8f7cac3b07ed0d97d37815743e007fc36fc59e",
+    "0.05/cg10/seed-13/MANIFEST.json": "1eaf0a525efbdbc77742bad8337d4e2af4d502fb8b9e93a1fb658564f22e3e01",
+    "0.05/cg10/seed-13/classic_posterior.npz": "c4cb0398c761fbfe00b1a72685c701238660b79773a44894cd20635a11455f09",
+    "0.05/cg10/seed-13/evidence_draws.npz": "6bc599fecc35c4978d8657b70212dc89b574c6433f7d7cc21dcfd4a851cc8ac5",
+    "0.05/cg10/seed-13/progress.jsonl": "5e5c1394ff7fa0c12893e8d719624e00f2d212cef8042f5dd19968c70fde1ef9",
+    "0.05/cg10/seed-14/CORE.json": "353b102526689ff1de99758a228b82932fb45b7234331fa25f36daf4b4307b71",
+    "0.05/cg10/seed-14/ANALYSIS.json": "103441bfd94a29a939653091eab1343c914528907c5c0f251405d69b64051304",
+    "0.05/cg10/seed-14/MANIFEST.json": "d3ac176af612bda00fc3ab6d29dd479c6fa831c730fe905cd81842f92b36467f",
+    "0.05/cg10/seed-14/classic_posterior.npz": "5b173a7c1a0545e5c3232955d3b2e6cf884f4b6fd47c41ffe2f615fda38d83e7",
+    "0.05/cg10/seed-14/evidence_draws.npz": "ebd930ca56f325f8ac9e7ae9ac8d82472d03d6b3197513b1b520e3fa07b653b2",
+    "0.05/cg10/seed-14/progress.jsonl": "19eab15bf6f4b393fde2d46d6e302b5e8eceebcccbee42042a5113ea11a41615",
+    "0.05/cg10/seed-15/CORE.json": "98885c747c81e6cb90997c000c3a6d227ca4113d37952ed803aaf08e5eb327fd",
+    "0.05/cg10/seed-15/ANALYSIS.json": "85fe402e28e9a73ffac5513b4cfbea20d7f8e969eea2c32194efd502097d9c14",
+    "0.05/cg10/seed-15/MANIFEST.json": "b1f506b45e1d12652959ca8ef983b77e8bd7f2cb45ffd8ccbda4bcc8ae484fab",
+    "0.05/cg10/seed-15/classic_posterior.npz": "b32d6a2d7f79d205d1738a948758b06af4b799804098ffd0ff1214d47f54071a",
+    "0.05/cg10/seed-15/evidence_draws.npz": "ddf8a561eb6880f149b0a909c6a695eb8267eca1cbea31c77fdc695ec246875c",
+    "0.05/cg10/seed-15/progress.jsonl": "0ef944ac45b2c721127e7994e8d249deaff58362b393b7b1ae52b548ed13441b",
+    "0.05/cg10/seed-16/CORE.json": "08186c09aef044503ded04bf15177ae682b9b57f7a417881a0408c990da32684",
+    "0.05/cg10/seed-16/ANALYSIS.json": "5e661acb32ccce0a416d1cfb83a15004ce668daf908aeb5f3103878a4af9463c",
+    "0.05/cg10/seed-16/MANIFEST.json": "157fbf3673888a2b4134680ee7474783551d602d2950608fa90f04defc96232a",
+    "0.05/cg10/seed-16/classic_posterior.npz": "5dfcc36fb6cd636cf2a96025a80a713c90abb512713fa747250872291a44b4b1",
+    "0.05/cg10/seed-16/evidence_draws.npz": "b04352f88afc86988c4419321cb551e3a6c4a2d47c62f69feed25046386ce6cc",
+    "0.05/cg10/seed-16/progress.jsonl": "215ceb6425567c7941ef9699e3d4c48b067fbf6c6c125c8e34b4c41193ed71d7",
+    "0.05/cg10/seed-17/CORE.json": "01d4162f13f6004ba61326cebd5e1bbf498c16ce207dc6c5acf7c4a57ec28721",
+    "0.05/cg10/seed-17/ANALYSIS.json": "74fd691dcc3ce1385ce2258fe4d4e2354f9a2caa2b093ccd32532798b0a503db",
+    "0.05/cg10/seed-17/MANIFEST.json": "5fb0b752ac57f7f2b7a31f1ec89e25bee76e9bdbe1fdcbb1b6909599078f4365",
+    "0.05/cg10/seed-17/classic_posterior.npz": "f0ea91de0478f0b9c6bce79d9dcfb43c4482e1d610caea889b0473c6c50f0dc6",
+    "0.05/cg10/seed-17/evidence_draws.npz": "7a67fa53f58c8c7c997839185e686f5bbc716bad9f0cd76f3d3c16e143dd2486",
+    "0.05/cg10/seed-17/progress.jsonl": "a6275fef17a2d7bbf8eca4b72e31f6e2cba38c52cc1be82991726237e0bcd5f1",
+    "0.05/cg10/seed-18/CORE.json": "cc457daa497233468978f5b4b3c7c6b9372541f6b125c4393213293f7aaae190",
+    "0.05/cg10/seed-18/ANALYSIS.json": "c206ae073898c233f8b0ad4f926a1ca9c2be57e4e41df2ea62fa645d96dae3d8",
+    "0.05/cg10/seed-18/MANIFEST.json": "1e2df8eee18f880c6af595fbb38a7d0c22b8ec294bfc4bd9cb26f44ab98ff61a",
+    "0.05/cg10/seed-18/classic_posterior.npz": "91ac9952c028f3d2bfe52c49544bb7ebcedc3cac264f2697ede191618f6c1222",
+    "0.05/cg10/seed-18/evidence_draws.npz": "bab5c816a6f90a8cc862b37bcd141fbc122684b7c2e4dea0948da6d2a86b23c5",
+    "0.05/cg10/seed-18/progress.jsonl": "c674c11279ec4e9468ebb8890616463a663313c230bf90cb1143658efee1e753",
+    "0.05/cg10/seed-19/CORE.json": "4b2fd91c18c209db7701c215aba543cd41f767b7d8a56c2574aaea083adfa99a",
+    "0.05/cg10/seed-19/ANALYSIS.json": "431c40b8fa96ca9a03b23a18e7f63f695b78498be935c8c2bb4348797231bac5",
+    "0.05/cg10/seed-19/MANIFEST.json": "ff431907a37895d988319a203bf66d2fe2f99535c08bf8af3d290f54fa3b5b4b",
+    "0.05/cg10/seed-19/classic_posterior.npz": "2bda439fcbf5fb97738d375d42224bf406bbe245bc9ada0a64e212a8018b1eb3",
+    "0.05/cg10/seed-19/evidence_draws.npz": "2c50ad678cef1be0a5cc03ecf0939b8a42021abfff6d889939f910c817b0e84f",
+    "0.05/cg10/seed-19/progress.jsonl": "e11f1bb093b488a9c28ec8fcd1e89fdc77780a76ced850dfb032d515bd74ef6e",
+    "0.05/cg10/seed-20/CORE.json": "951779bdbf0a6407bbe15e1450be45dbfb5ccc6fb753757f5c6a56aa582d3d83",
+    "0.05/cg10/seed-20/ANALYSIS.json": "5ff2dadd175c267ff46b2bd41d5a7425ccfd7e773cbcec18c300ed30818756af",
+    "0.05/cg10/seed-20/MANIFEST.json": "5a5866cecfe5f63b4d93355bd4477b2d48be79e65f81b0d4c8090c7711b83385",
+    "0.05/cg10/seed-20/classic_posterior.npz": "4cf8a1dd0187a9c0a226888a90d3154d083eb2651a4f0fb351c97b7bfd787e28",
+    "0.05/cg10/seed-20/evidence_draws.npz": "46f26d150cf96fc6c91f084d9a9bd9ae34f1ad51388bde46f57832517870a934",
+    "0.05/cg10/seed-20/progress.jsonl": "6238c9bcc346528f2e05dd23b19eecbc8294e29e263464af2ddcf04d841069c2",
+    "0.05/cg10/seed-21/CORE.json": "9f5f1d4820ff61e74b4d4f2ae1b7a8b56b247fc062396a090659d4e1fa2462ff",
+    "0.05/cg10/seed-21/ANALYSIS.json": "a4e35ab929c1c46e573c957771f6314cb2d9731978b29da5799cc9b50b7a9768",
+    "0.05/cg10/seed-21/MANIFEST.json": "591ba02e559b6de8dde84a1171e385d8e4c3b41339076ca4c228da655676ae57",
+    "0.05/cg10/seed-21/classic_posterior.npz": "25e92c9447828c1e8dbffb19e8073c96fe47d57031f1c32b88f2b7c6aa906ab8",
+    "0.05/cg10/seed-21/evidence_draws.npz": "651a766dcdd84212f95f006b125d4b95f9b524d5497e7d68d512238967144a7b",
+    "0.05/cg10/seed-21/progress.jsonl": "977b85237063fdc6419cd6ad36c795f0009ed9c9339ae983f39c2f4936b51314",
+    "0.05/cg10/seed-22/CORE.json": "2cd030085d06211fb06dbc57210600b54a59005968e5d1491a2a9c0cbe25cdaf",
+    "0.05/cg10/seed-22/ANALYSIS.json": "6b4452cd9bfd1545cddceaf0472fc1b4d89094f6e8cb348333ad044882498f5c",
+    "0.05/cg10/seed-22/MANIFEST.json": "ffc99060405c8a000c429bfe6d3bee7127fcddb251041d4219ef3f4c486cea51",
+    "0.05/cg10/seed-22/classic_posterior.npz": "75b73b5f0ceaa194207b4aad6d24b90816415f873b720435f3122485290e7468",
+    "0.05/cg10/seed-22/evidence_draws.npz": "08d96bbc85680908e278dc12d2e4b670b016dea1e380b526dd04248e9c4c3182",
+    "0.05/cg10/seed-22/progress.jsonl": "f693d41b399cd068df6acd062d103f0d7a302eef22416278571c10836304bcc6",
+    "0.05/cg10/seed-23/CORE.json": "0ceb1bd4f8afb1256473e1e2a478664e7495cf0d884da3bb012555fc77f21a64",
+    "0.05/cg10/seed-23/ANALYSIS.json": "bd442c303c0e72c258bcb87831f8e79f02a6b823cc122c975337d9e55c00c9cd",
+    "0.05/cg10/seed-23/MANIFEST.json": "e220fe762d6bf93e32df6a47c646ca00a22296ef5a05150d933c352465de9396",
+    "0.05/cg10/seed-23/classic_posterior.npz": "78bb9919f18a0e05f444a1685eeb15e238a207b90daa006a2e9f1a40d2ba406f",
+    "0.05/cg10/seed-23/evidence_draws.npz": "f0ba80b46b4587bf43b3e17688c3f77c0593a58af78211bbce692a392a156505",
+    "0.05/cg10/seed-23/progress.jsonl": "449a592b69331662e88c3ade469d610ebd90eb4355f55fa3d602960e1ba67654",
+    "0.05/cg10/seed-24/CORE.json": "1e90765aac7177bc3eecb6e61cb21e77de480dc93ce27ae324a7589da51c6138",
+    "0.05/cg10/seed-24/ANALYSIS.json": "2cb344ededf51e1ee484c0d181ad2eb02dac88d99766eb1c581d81163a6a4cd2",
+    "0.05/cg10/seed-24/MANIFEST.json": "b4bcb084a30dfeb820ccf255a18ac7127509202162f163b5d474b4318220d96d",
+    "0.05/cg10/seed-24/classic_posterior.npz": "fbd175e4ebdcbdfbb0ccc6b84997b1d81b10a8cfea83c50d51e57e79225d8d35",
+    "0.05/cg10/seed-24/evidence_draws.npz": "1c2eec8296e574908b69d1a96063f993616d6dbf1201c39bdb4a9c0a31574bc0",
+    "0.05/cg10/seed-24/progress.jsonl": "8290185a00b5ccc62f1e8c4aef7e37b3a3a42d932d53f588b17f5976cf569dc8",
+    "0.05/cg10/seed-25/CORE.json": "b836614e5759e6e4f3de7f449b447cdadf9e96ce499347fd4fb884c21c57b8fa",
+    "0.05/cg10/seed-25/ANALYSIS.json": "2cc9021a5c798cce5bef5fe89ad3699d550efbc9e6fbc1c1ef2d17329c383a6f",
+    "0.05/cg10/seed-25/MANIFEST.json": "af43d5fbf3a2ea372ccd7b7c717963c2956edeef55cc0f96bf65effc31ee7d70",
+    "0.05/cg10/seed-25/classic_posterior.npz": "4e52e21d0f1af78c5294b0bc859aff24bd4415875f318a341afea063ca824f46",
+    "0.05/cg10/seed-25/evidence_draws.npz": "1833c8f1c677f311323f76ee067d736ea60652463f8b7b363c73de64d4f8a4cf",
+    "0.05/cg10/seed-25/progress.jsonl": "6b41c19f3bfef15c04348ce198dd6bf1f42e953ada1b5a859e8ebe68e485498d",
+    "0.05/cg10/seed-26/CORE.json": "9aa1909818f1edb3feffc7ceaa797957c279e712a47217045e313b1713beb2f7",
+    "0.05/cg10/seed-26/ANALYSIS.json": "324be6c7aeae4c7c9418583d8718c15f90dbbb6cb312592c8f65500af2667b1f",
+    "0.05/cg10/seed-26/MANIFEST.json": "27233641a12006d32742014dc4a2b2bc5d531cfc022588ca83f9f6862ad869f9",
+    "0.05/cg10/seed-26/classic_posterior.npz": "ff51d472227818297ca25cef741541ac9075e7f76c3cf9384d2188048e285f59",
+    "0.05/cg10/seed-26/evidence_draws.npz": "a25191c1788b1189ae1586b2ce0ffc0010d04cf8a501df4b2d1bf33db4c83151",
+    "0.05/cg10/seed-26/progress.jsonl": "4fb8fbdb0c34a20b51d8605eff9bfe6375e71f045e8a348b20f22a1eda2fd0cf",
+    "0.05/cg10/seed-27/CORE.json": "dad23731febb6c7480be663b88075c415386eab95979389ac90fe3746b5097fa",
+    "0.05/cg10/seed-27/ANALYSIS.json": "e99d7dc69956f9140ccafdc8199d2a88e580e21f0465167cb3fb062d6c7cf1a3",
+    "0.05/cg10/seed-27/MANIFEST.json": "c09b8cfc6c5ec2112b0877770f4a8acbce93cb2d66f7397137286a9a36f5836d",
+    "0.05/cg10/seed-27/classic_posterior.npz": "24d59b2b2b1f6213a57d9dc9c32c922fc8092ae97e879dd8bc5287f04129b3a6",
+    "0.05/cg10/seed-27/evidence_draws.npz": "3855b7c44758e1ebfaad8aaa2c3c21a56f2279bd024ea291b125c14e32ee1711",
+    "0.05/cg10/seed-27/progress.jsonl": "94e3460082f1725317368dbdf31137f389cea31608cdfaaf46f2fc4114b9639f",
+    "0.05/cg10/seed-28/CORE.json": "0521186adf2aed2bbad716c6919396afa9525d2c1e9d23e002e470f73a5bbdbe",
+    "0.05/cg10/seed-28/ANALYSIS.json": "efee9dce7cda4d1847aee1399865837813cf03e8228fff13379ef25b0b1ab64b",
+    "0.05/cg10/seed-28/MANIFEST.json": "d63d4e72fa269c9a5ecdf6c185c48ecf0d35a2b3c7c2e4e5d2a275b0ba684dd6",
+    "0.05/cg10/seed-28/classic_posterior.npz": "207ff04f90e06a13dba55636277af2bafdc56f445d383345d340ffcf18cc334b",
+    "0.05/cg10/seed-28/evidence_draws.npz": "4f7cfda1500a963823e7cc250ba55994d5137c48e35bf77e821d17799ab15997",
+    "0.05/cg10/seed-28/progress.jsonl": "d0b345e5c21b3f0f74e88200cf57c55294a4bb8500bfccadb547006741b1d32b",
+    "0.05/cg10/seed-29/CORE.json": "87c4d4687bc2e2ce13105df90e600234cee6809338150f7c7575e95ab6817067",
+    "0.05/cg10/seed-29/ANALYSIS.json": "73bc26bfc5e4f0fa1bc4e02c867b39946ebc9b314e150d8de3adedc3a27651ad",
+    "0.05/cg10/seed-29/MANIFEST.json": "2c4ae041d88a0a92a66ecd5da98144e0f4a930002c395bd59c0a635b3ab6462f",
+    "0.05/cg10/seed-29/classic_posterior.npz": "3cfa45c6855ebaad32971c03a025e681f811f670aff4fd31a82d862340ff1a55",
+    "0.05/cg10/seed-29/evidence_draws.npz": "d5a1af52b86dedb1d68dd0b5bca3e3e83a63bb1c59c12d0db9a59f19e31b5168",
+    "0.05/cg10/seed-29/progress.jsonl": "62fe4664661b95309f8aab87ebbe5abb90606e6abf1cd3fa540927016f0fe1f7",
+    "0.05/ss10/seed-00/CORE.json": "5115b06f5aee27af12dae804a9fd847383bd8744527dad6e76ec9b90b7c70c79",
+    "0.05/ss10/seed-00/ANALYSIS.json": "19f55d99e3bce90fb92422af18198e9bef4e8a612565adaa509891be39963022",
+    "0.05/ss10/seed-00/MANIFEST.json": "bfb10fe011d8b86b191f7870f877353933288090681c466ea383f71d6973212b",
+    "0.05/ss10/seed-00/classic_posterior.npz": "051d0b7033a33509ff7118613dfd8b224b38dcaaaba8b1a699088c5d6e10237c",
+    "0.05/ss10/seed-00/evidence_draws.npz": "548016d71931a5e53e4530382c2f9cf990e6594008582e044100e49cd074f33a",
+    "0.05/ss10/seed-00/progress.jsonl": "fe4c216abc736620d74c0515b27e1b3ea126d87c532b7458c0587bbda6431669",
+    "0.05/ss10/seed-01/CORE.json": "35e9686fa43396bb789530f255f891e9ba15a917b661c98c33161bd2b40e3915",
+    "0.05/ss10/seed-01/ANALYSIS.json": "64fa4a28a35e770eccdafeb4eec7d81c917e7357a28b6f0aa8345eba53664968",
+    "0.05/ss10/seed-01/MANIFEST.json": "b9fb62634cd1fffefb3c2bdbfaed98a6d59981c67ccf630749fd62a025ca2f61",
+    "0.05/ss10/seed-01/classic_posterior.npz": "7f4db94a8ecd1143fe869683f6a11c9703b6de3ebb1f83785fb89844271eec78",
+    "0.05/ss10/seed-01/evidence_draws.npz": "9b4fd89b57b875328f236a719d81fcdea1c22ee4e0c7ba1fa2ef58985c3952ae",
+    "0.05/ss10/seed-01/progress.jsonl": "b953543f35055e9fde9597061de52f00f529a77572fda6e9b6c6c65b7292cf2b",
+    "0.05/ss10/seed-02/CORE.json": "f20efe0fbeaad2aeb2c5619a747c0033c9cd1d3d0ff2145901dc9923945449fe",
+    "0.05/ss10/seed-02/ANALYSIS.json": "5fd2317a436880d0ad0a555787a34ce982abe34f9f2f863ead738ea296927dd3",
+    "0.05/ss10/seed-02/MANIFEST.json": "8b42eacdc819d162c31e38f431b1ab2447d0322f80e3c11e337ec8b8e60227e3",
+    "0.05/ss10/seed-02/classic_posterior.npz": "dff04a624b58c2cb27fb6d1340d74bfce6da54bc86fba8d0235332ee2df1e6ae",
+    "0.05/ss10/seed-02/evidence_draws.npz": "28bedb5a72dfc927ab676e762886056c3c63dbbf0ddf82035da4a9441b616315",
+    "0.05/ss10/seed-02/progress.jsonl": "0b2d840c2e3c85b356db64e2b653233fd1e3351fa67b8a0bd8a87a0530bc0b52",
+    "0.05/ss10/seed-03/CORE.json": "cae10f8a0e20184120b463ca16e0f0ea5b1b5927b4cd117ff4cc35bb1275126f",
+    "0.05/ss10/seed-03/ANALYSIS.json": "da12ae4b8df081ac68be2fe2649dd9c22ea3b22cbbfd96618967037226c5e2cd",
+    "0.05/ss10/seed-03/MANIFEST.json": "698d2572bdb97c3aa952507e2730fc0b88a8338081339b32f6509295f5b37dbf",
+    "0.05/ss10/seed-03/classic_posterior.npz": "4b4cf959d95b8f4e7356d0639ac11ca69d306b69e841395e6ee5bf2fc9bf26b3",
+    "0.05/ss10/seed-03/evidence_draws.npz": "fe42d8537e8f2921fdf644aa87919397ad07f5a2d015e0eed426780e288b9182",
+    "0.05/ss10/seed-03/progress.jsonl": "dcd4305af16200f3a67d794a55639c5d81180e98a7cba6b28613c32c4d0eaff5",
+    "0.05/ss10/seed-04/CORE.json": "2ade1cc389de8bbf767e011a27f17a3eec8ac6631b38bdd7edde37e1242c73d9",
+    "0.05/ss10/seed-04/ANALYSIS.json": "db0f0d4938365be4156cae3a1c3d604aba110086ecaecaa5d7872b5353735307",
+    "0.05/ss10/seed-04/MANIFEST.json": "274770c4b6938afe93f4081a99d8cca7297a488c39d9769301dd0f8c2e356e46",
+    "0.05/ss10/seed-04/classic_posterior.npz": "30ad4d4939d74818a530aa6421d1ca4a790ae546392b3c748ced6c174481cc84",
+    "0.05/ss10/seed-04/evidence_draws.npz": "61d6f1141a2f261587ecdc27f7b0330f5ba81c45a07f06c0e8f476edd965637a",
+    "0.05/ss10/seed-04/progress.jsonl": "c535e16e2d570beb36a472722532024dc7f14e9d79aa996b392fcad1dc5fda52",
+    "0.05/ss10/seed-05/CORE.json": "fed9565f65d8b2d028092d5f3f88b8c406196ebf60b5113a1b4c1778f115b01d",
+    "0.05/ss10/seed-05/ANALYSIS.json": "bb06db973496b694df35744b515ddc9914989be96a78ad47f25182b3cc2a124b",
+    "0.05/ss10/seed-05/MANIFEST.json": "cd0cdfd3e9dbe023958f387494ede1cd2ace1b134574c78f1bee9b2bfdf5660f",
+    "0.05/ss10/seed-05/classic_posterior.npz": "92f089e79f003f533082f2bf72e04b59fc80a6a6da3233bf6ba5859e34aa9312",
+    "0.05/ss10/seed-05/evidence_draws.npz": "8137a7212eed44ad9db29deab51ca42639b4328ced91b72da499564961a51ff4",
+    "0.05/ss10/seed-05/progress.jsonl": "dd48d0d8b8c12b6d3a10ecd516aebf381b0121ba19520065e6c028111f9b7ff6",
+    "0.05/ss10/seed-06/CORE.json": "0be92a9089630680afdd1be8d1e65af791aa0b545b3de4ce0a0e953df35ff3be",
+    "0.05/ss10/seed-06/ANALYSIS.json": "6f4f307edeead93391c017393fa29e0aefccbba28a6ed24f7141df7957e18f23",
+    "0.05/ss10/seed-06/MANIFEST.json": "c96c002e4a0023b4f93355750b336ea602f03ae32ad6adbf684a026a1c9658c9",
+    "0.05/ss10/seed-06/classic_posterior.npz": "4e1e899f140d238343136b975faef1caedb74c70b1a3f5f35640ca0955f8dfff",
+    "0.05/ss10/seed-06/evidence_draws.npz": "e97cdc73268cfc56292aed5b268aa1e1ce300b06fdd7d0f281ba233bf801e4ff",
+    "0.05/ss10/seed-06/progress.jsonl": "86f53336f8c2b9e59ddc622a90c57a635f3d67db9252ae57b30245391629ee75",
+    "0.05/ss10/seed-07/CORE.json": "313c1c792fe185bc2a5e6204a5760825b755c949ab04379aff8b0ec06260c4e3",
+    "0.05/ss10/seed-07/ANALYSIS.json": "e89a14562a24fdf93603a995b13c6ce8e170bf1dc571e1d72d80453b569d2c6d",
+    "0.05/ss10/seed-07/MANIFEST.json": "58595f16ec0664bf5f120cad657c57ecbd5f3a95edfb334fde71e431f6666ae0",
+    "0.05/ss10/seed-07/classic_posterior.npz": "7b58e44d2d8345d8d1285173145471b1ecba9bc4dcf80ca777fed025eefdbd2c",
+    "0.05/ss10/seed-07/evidence_draws.npz": "ba85a57dcf17d49c377de0b9b83e10cdbbd2bc56fa970241b7579a520817693f",
+    "0.05/ss10/seed-07/progress.jsonl": "14e7f63e13201b9caa47f95a439223ad079e8384f1d7bdda06aa138a6e317a95",
+    "0.05/ss10/seed-08/CORE.json": "8bdcfe89dae3cf7fcf6828334edc0bdff6378e75a9216f231c825a58b9764d1f",
+    "0.05/ss10/seed-08/ANALYSIS.json": "07e3605e4a1b1282e33edf75428ce8be13435ec870ac1060e122f15287e6fbd5",
+    "0.05/ss10/seed-08/MANIFEST.json": "bdfb56ce2289cad110bd9dcb6a3cf87bde3018717441a1813e80fa6b5c23af64",
+    "0.05/ss10/seed-08/classic_posterior.npz": "9709e62eb1eced9689192b320435573422731ccb6f2eea8a4a5ec6d3f55a6c75",
+    "0.05/ss10/seed-08/evidence_draws.npz": "da59c09e4535cfe446c10582152c99df47e385bfbd0601e8cecc4766081721a5",
+    "0.05/ss10/seed-08/progress.jsonl": "65f0a007e69d78ffa0a439998c55c73cf6bd8c87468a1aa9df4e9b194f51ee5c",
+    "0.05/ss10/seed-09/CORE.json": "675353d4d064bdd7ec3d4ebd80a0ca36bcae10273f53bd5c58b927aedd44a070",
+    "0.05/ss10/seed-09/ANALYSIS.json": "51837ae8399b3209c0be687cdafb9274d031b736cb6330449bd31703a2032916",
+    "0.05/ss10/seed-09/MANIFEST.json": "75efbe6fb244ccc063b04dcdfc6cb13ad05c574a99930c1df86cdca9f4bcd614",
+    "0.05/ss10/seed-09/classic_posterior.npz": "0ad43f0023288843e7c1e6f3891252c75b55051c33edc55a9d246b59c868c17c",
+    "0.05/ss10/seed-09/evidence_draws.npz": "d3db060f1b1e0106eea8c18e8cbc0aca7dfdb0c14d44acb4b52a02799ac4ca50",
+    "0.05/ss10/seed-09/progress.jsonl": "bfef066863ff8bda98adacfd84868bb4170e00f91e3a9d1a7385ca600bdca566",
+    "0.05/ss10/seed-10/CORE.json": "6a970eecb15acd1aab5b94545649fcf2effec2932972a57fa59b54f168a57b8f",
+    "0.05/ss10/seed-10/ANALYSIS.json": "99b87d34c85dc05bfb39e980ed47e9a578fda40e242c87e941612039b6feedc3",
+    "0.05/ss10/seed-10/MANIFEST.json": "690844e2397ee719db7fc1688cb83105b955024adbbd716a6295f21c322c6b42",
+    "0.05/ss10/seed-10/classic_posterior.npz": "80b3b2fb81434cdf60d07f3615dbf43735e0588a47987ca35056635faf9b238e",
+    "0.05/ss10/seed-10/evidence_draws.npz": "17e158e737f7a2444709b889c2269204167ae402a4d26abe5d7617fb0427cb39",
+    "0.05/ss10/seed-10/progress.jsonl": "41da0c5b73c52500a600eae11c9c517393fa8d8de492eaaece7e29d3851fb99b",
+    "0.05/ss10/seed-11/CORE.json": "d3dedd151c4e02097fff9b261a0a50989bf2021cfb69603232df95c697b5be14",
+    "0.05/ss10/seed-11/ANALYSIS.json": "65e4679fe53e649fab02eb5415f7d9a7893b4991a0e1352357fe0759a927c74b",
+    "0.05/ss10/seed-11/MANIFEST.json": "f9b9ca37118700accda2a1974a5cb47ed243461f081c0dba04e8d96ce4684ffd",
+    "0.05/ss10/seed-11/classic_posterior.npz": "4badcc89cef26268e595d925336e2024e5a2051422bf1012728980cc41dd25b2",
+    "0.05/ss10/seed-11/evidence_draws.npz": "b4e6fe174bc4c1ced16cb4a847e2838faec34b04f9970c0f232851fa37c562a4",
+    "0.05/ss10/seed-11/progress.jsonl": "1c892df09c316beb68f72f463a453550d3e6f05917a8ebe40c176e6b4b976070",
+    "0.05/ss10/seed-12/CORE.json": "1a94aa69b2217812a169d11a9ec35fcce0136a78b5e0e89a43b6d7dc414da32a",
+    "0.05/ss10/seed-12/ANALYSIS.json": "c3ed0bb18cc94a45f98b876ee1c02da2b4032c6dbc8952f9a0d2e2d02dccc1c2",
+    "0.05/ss10/seed-12/MANIFEST.json": "9f5c23eed81934625dc3e7b5160a50217c7562fbcd56ec0123e1a2a6727f8afc",
+    "0.05/ss10/seed-12/classic_posterior.npz": "b3f273d3880f2db730112c03d8bbfe8a84d78e95eb7be14878dd4f5dccbf97b7",
+    "0.05/ss10/seed-12/evidence_draws.npz": "e7bcad9480027ed1ce8d21d3828fe4e4a9fbbca5a2ae86defca4e3503a8be42c",
+    "0.05/ss10/seed-12/progress.jsonl": "8cea9ac0061240e96ba65d4b5c54d386d5ec4b98d933b23664f0e33fc15ba860",
+    "0.05/ss10/seed-13/CORE.json": "01e04fa6b214beef1162d39a6a93d04360d50c70d75beb706365cc39b614db64",
+    "0.05/ss10/seed-13/ANALYSIS.json": "4f6830d3d13345022a70c29abd1311d31858be9311b6dad85181c11e8c9dd2cf",
+    "0.05/ss10/seed-13/MANIFEST.json": "ea4245dc250ffe5b2a40f18bc593700036031682023bf44363f4590ddd43b080",
+    "0.05/ss10/seed-13/classic_posterior.npz": "423c953e4ee22043070a6ac2098a78c21310e49925bd4b07f7ebaa694a7fffe1",
+    "0.05/ss10/seed-13/evidence_draws.npz": "63f4d6a3703660fd09d6d8a3002229a670b6f65bbd909193d26b8d5af0a330e2",
+    "0.05/ss10/seed-13/progress.jsonl": "d052d322330b4ec8c4f118e79d9f5b91bc77c372d53323a58a7c07ddfab3635c",
+    "0.05/ss10/seed-14/CORE.json": "54ac84ee808cbca2e96f6b03debc8495ef2a231eb4e6f1e80c4b11906877e3fc",
+    "0.05/ss10/seed-14/ANALYSIS.json": "24bf970da8df1ad58dcbe258ef9b38007e393091453d892a9486c905159dab8f",
+    "0.05/ss10/seed-14/MANIFEST.json": "25ddc838cdb6ca6358361d3b3407373f98ce641a337228a8755e2c920fcae866",
+    "0.05/ss10/seed-14/classic_posterior.npz": "821cc0808bccb754951822beed5a4e1b847d8a749383ab8054873461e565fe7f",
+    "0.05/ss10/seed-14/evidence_draws.npz": "820d32f45156f7ebcdc00e220dd8f854ac8e192982a67c50f821bad63dd57e1b",
+    "0.05/ss10/seed-14/progress.jsonl": "d4da5d763f4fec2c29ccd9bd53ee0616f53bc18cfaa8f1be8b37a4dd39ca2238",
+    "0.05/ss10/seed-15/CORE.json": "1fd2745cada86e68e6f6fecd5bb95176a7e45a90447f91d397553f4264d41040",
+    "0.05/ss10/seed-15/ANALYSIS.json": "1f92fd7bc5a77af9ef13c1fe4e5c47ab171c8b21942fe13dbf2bb2296bcf2494",
+    "0.05/ss10/seed-15/MANIFEST.json": "dac64dacfc656764c98fbfbbe65141f5d30993a038ac0dd57ff995f368fefe0c",
+    "0.05/ss10/seed-15/classic_posterior.npz": "336c2cc591b5e4a33b7112efa2eba95f4ddc0f76203e4f327547ac0bdc76918d",
+    "0.05/ss10/seed-15/evidence_draws.npz": "d2036c72a23fb88ad60d133c117664d4f35f8b73b757d24e47c7f6f919fe94f8",
+    "0.05/ss10/seed-15/progress.jsonl": "e28ccffe518666951f44113698ef42c687fabb1dac5eedf04cf2340ab0da7685",
+    "0.05/ss10/seed-16/CORE.json": "4c5a36bd89b011e3f02185ada4f68180708b5623cc43388c24b9bdb266f2217c",
+    "0.05/ss10/seed-16/ANALYSIS.json": "a59be89474b1372460748122b27cbb34c709e5e25098648e2a71ace73fb59538",
+    "0.05/ss10/seed-16/MANIFEST.json": "ac5fab16000ae1ed00cb37075ce25cc76fc80d0bc487b84d26638140be0122d4",
+    "0.05/ss10/seed-16/classic_posterior.npz": "b525c118878f69b518d99efb2d57b2e9798a5dc9a67223683f152a17e9ab08ad",
+    "0.05/ss10/seed-16/evidence_draws.npz": "db4fb1696715845585952b965fcc7bc8ca6733da4c17ba07ab5afeffdff59fd8",
+    "0.05/ss10/seed-16/progress.jsonl": "3e88874897ae38164d23afaa19dec557e89dee7f1b59ada2e01c39c10f3387e5",
+    "0.05/ss10/seed-17/CORE.json": "777a99579ac191cce87e4fdc70d6e4ce6d06d2275fc6faf80516ede3ec94d06d",
+    "0.05/ss10/seed-17/ANALYSIS.json": "35e71a370dfe23df479d40fc25c49bfc00031a35672a74a51d8005bd1310d8cf",
+    "0.05/ss10/seed-17/MANIFEST.json": "88dc8cc06ae0e74efff1b2282ac2922c5e28fce4846dc859dedbca6539c2ea72",
+    "0.05/ss10/seed-17/classic_posterior.npz": "1525e6b9fe724a20a975c69cccdd7358eb703c705ec610eb2a07e4892456a832",
+    "0.05/ss10/seed-17/evidence_draws.npz": "88f193925f84424a3c9d69c97a4a6628d67377864141c3c815475d8321313e94",
+    "0.05/ss10/seed-17/progress.jsonl": "3da7d835f0469d7230694b308308a5ebcc00e2227ba29a33fc6eda74dca8748a",
+    "0.05/ss10/seed-18/CORE.json": "d3f4feb484a176b772c708c7cdcd8f74a3335a96763fa79846741f6c2bba33c3",
+    "0.05/ss10/seed-18/ANALYSIS.json": "bf748ce19418cccbbe94ac5f65ae4ebe7334020ca4bdc3d6b506389448353344",
+    "0.05/ss10/seed-18/MANIFEST.json": "9188c295e18d7cbd02ffbed2c831a9cfa2d86272cbbe135cc104f1839264eeb5",
+    "0.05/ss10/seed-18/classic_posterior.npz": "29eecc85bf19e2fd358bd0386332a1be979684305f725804e517f5d606cf6bf0",
+    "0.05/ss10/seed-18/evidence_draws.npz": "680882abf8f86b42d0d12b3ee30a66320aaafe7a8e1d48ef3cfd834e1b85598f",
+    "0.05/ss10/seed-18/progress.jsonl": "f590192fa96dc2b517ce25f51d74c49d4767789010494524c82e0a002259e477",
+    "0.05/ss10/seed-19/CORE.json": "d51aacbbbeea5d41251d78d6d429e791802a0c5fb803a2f1837c0dea1d60f2b0",
+    "0.05/ss10/seed-19/ANALYSIS.json": "4c5f541f1421bc402e5509d0b5e6e546731b1a798317a66fc185efde19907a78",
+    "0.05/ss10/seed-19/MANIFEST.json": "7e278656f0fc3e0324a7569e4c96c8ee0bb343f89178cacb3e7e3600115d668f",
+    "0.05/ss10/seed-19/classic_posterior.npz": "f3bb6e8928513712adbf21ecd97ec7d514d118eaa18fef417510c7a8bf9fa4d4",
+    "0.05/ss10/seed-19/evidence_draws.npz": "7ef871a3cae670618caad9eec3804bf6f391549a7f41e0f53adefbe9e323467d",
+    "0.05/ss10/seed-19/progress.jsonl": "48be6caf1a769aacb711f6f97a7e13fbf9f0c84fff668cbef4f29e7e3ccbab90",
+    "0.05/ss10/seed-20/CORE.json": "a9c1b6517a4f844046afe14ee172f8ff6f72d11be5ab6c905a8bb8ef8e59506a",
+    "0.05/ss10/seed-20/ANALYSIS.json": "f589a4231542f661a63cbf5afc310bf6b756d45d0354a121e21f8399a8278a55",
+    "0.05/ss10/seed-20/MANIFEST.json": "8a42973584a94cc6138999503cd9a161697500ec36d0c7932a4c611f8847d209",
+    "0.05/ss10/seed-20/classic_posterior.npz": "7c0c41bca978d3a9f60e31f851e3559c38525d43a6003e0d51031a247101388a",
+    "0.05/ss10/seed-20/evidence_draws.npz": "fbb78ea245884e5414c49332e36b42cf74f18bacdf952dcb68787c0d2841247e",
+    "0.05/ss10/seed-20/progress.jsonl": "9845903e3d0e3d2513754af680e673ca34ad114a407efa5c2d2fdae6d4b7bb25",
+    "0.05/ss10/seed-21/CORE.json": "dddb3bb4ad0555fdff3fc65e9b616a48e48042b9c328cc3aff80baac0bd1852f",
+    "0.05/ss10/seed-21/ANALYSIS.json": "d94c8da33fddea260a2e7e5d4cbea6ef6cab7b70dd12fd87533d5edda4da84ec",
+    "0.05/ss10/seed-21/MANIFEST.json": "f370ffa25ebe97bd69d8ee0f8bfebed89a91bfa03f1d84a5ad504bfaf829bcc8",
+    "0.05/ss10/seed-21/classic_posterior.npz": "a04911ba90ef779bd34dc8b4c0c7c83eef968818190bfc81307344580e423ee8",
+    "0.05/ss10/seed-21/evidence_draws.npz": "9692ad6c71342a30acf971b8c4962ec955175e294e2bd9ad295c8cd332f31f8b",
+    "0.05/ss10/seed-21/progress.jsonl": "87af571a18b78f822f61c69335d830c7fd368afacd563ee2deddad6611f1b50b",
+    "0.05/ss10/seed-22/CORE.json": "dd4c51dbb4dc85144a15f9e45457f634229d05d7ee59b69762a6faa0fc9c7d3a",
+    "0.05/ss10/seed-22/ANALYSIS.json": "25e8d2346fd35e7efe8e07e8eef5ef37702bed93a54f3ea7837f9a853cb81a2e",
+    "0.05/ss10/seed-22/MANIFEST.json": "6a45977ee440b67366629ebbeb20378fc2fad212724edf07265ab3e7db33f1e7",
+    "0.05/ss10/seed-22/classic_posterior.npz": "ede5fd5bfe59172e82786aab2e509e28f1df60007aad79e15fdae56403c6aee9",
+    "0.05/ss10/seed-22/evidence_draws.npz": "de4d2c46b4cbe58266230802356febb8a9da9f638063504ab66021825cf7bc10",
+    "0.05/ss10/seed-22/progress.jsonl": "727b0631992d1757003aeb520d0fd6a70e136a34ab8b3ef1ceaee35b31a3e079",
+    "0.05/ss10/seed-23/CORE.json": "d311be47531537f10867a7d8b934edaa787e96e9f24cd1d3ff49c84e20ff42de",
+    "0.05/ss10/seed-23/ANALYSIS.json": "d545eb2b551ee61308552e6fbe957c7cc161d83cddd81bd0d3d7674acf53b828",
+    "0.05/ss10/seed-23/MANIFEST.json": "b78deb900674f752e6ab5a33198845f6c8d1e791b2ef317f9238cc9dc995e570",
+    "0.05/ss10/seed-23/classic_posterior.npz": "25db7ffed2a72562552dd5863e60ee83f6e2433f058f97aec91a9ec10cbd57c7",
+    "0.05/ss10/seed-23/evidence_draws.npz": "a6f155af01878d17330399ee2c2badb3c98c87abbea4df41bd14011b9aa75288",
+    "0.05/ss10/seed-23/progress.jsonl": "c1fc426baa7a4a196590882f2f03acc5f3e2fd974979c20157b9b787937905dc",
+    "0.05/ss10/seed-24/CORE.json": "6ccbf876ac8bd253fc5b98dd1ac9ca9b414d74b4b35d43701285924f8fcb41d0",
+    "0.05/ss10/seed-24/ANALYSIS.json": "b8bb057b0ed5faf448f280fd45a9965044cf34c96103f0c71bf2eaf52b744a9f",
+    "0.05/ss10/seed-24/MANIFEST.json": "a5d6da656e48d20dd8574c208391b13a22d099e381a3a2e4e295a4d62788eb85",
+    "0.05/ss10/seed-24/classic_posterior.npz": "546e5dba05d719a0dd06aa96e83a450054d2faeb61dcbbddd181476060eff176",
+    "0.05/ss10/seed-24/evidence_draws.npz": "db3ea777207a125d1db048e37363814a605bd4f76182f7c98f4ee5156941c4c5",
+    "0.05/ss10/seed-24/progress.jsonl": "99b81139135a9ef8cf308e3daca96c0647c2458967401e5adc203ee835731316",
+    "0.05/ss10/seed-25/CORE.json": "c8a9d4a7764a2f4babb6875d7cc4da151199ecce9b7e55045456ffaa3cb6fc76",
+    "0.05/ss10/seed-25/ANALYSIS.json": "ea5d7579850611a6683e89dd490c95ffd413d3f529c3fb25c43b6c863727767e",
+    "0.05/ss10/seed-25/MANIFEST.json": "1c9e907dc03350fe2abccdb5dab940106406ea04e4ee34c730e1c1a0607f0ae3",
+    "0.05/ss10/seed-25/classic_posterior.npz": "5de38aec971c187df4642a4599915af67e15cced15b2d9e5edbc99fa6301be21",
+    "0.05/ss10/seed-25/evidence_draws.npz": "517c3b78183c0624045701b07d24c331e70eff79d7613015290abdf5182eb5d8",
+    "0.05/ss10/seed-25/progress.jsonl": "8a8daf0432a2e942da7bc2d9fd47744f1e5b6ec2473c08fdd326798f54c520dd",
+    "0.05/ss10/seed-26/CORE.json": "4eff7385c882829460edb3983a2ec2771b2c5c07eb224da384a07ffbf4bf4b80",
+    "0.05/ss10/seed-26/ANALYSIS.json": "9554777f20d864889032220c9ae6976536dfb4439e19f6b8b9fe77b44da5ee99",
+    "0.05/ss10/seed-26/MANIFEST.json": "1ce47784b6f4c87055e9281794c7d89614fc5d6c73d65c3df2ae41c41e18596f",
+    "0.05/ss10/seed-26/classic_posterior.npz": "63879ea29c7229615b47de546471e51404c76de993fd087818668f71cf6835ed",
+    "0.05/ss10/seed-26/evidence_draws.npz": "60fb1069e02ae2afdac86570ea37c676a40ebc2c66e0d2c614dc4577c096bff6",
+    "0.05/ss10/seed-26/progress.jsonl": "1133049305bfff5ac3052d119a732052a191909b2b7746e6a1358733274a0511",
+    "0.05/ss10/seed-27/CORE.json": "35c3a20c2fb0a76211464b43690db8b9a1c3cdcfd7b3d08b154583641309ba34",
+    "0.05/ss10/seed-27/ANALYSIS.json": "b175b3c06f5c89def9e5a5b13b0c46f35cbebeb656c7897df802b28453a9b999",
+    "0.05/ss10/seed-27/MANIFEST.json": "995d290184270addb8848cdb28fdc5415d2ea6b3ab0bc536427eec10d48230d2",
+    "0.05/ss10/seed-27/classic_posterior.npz": "289d1d5a8160c981231d0988b250537a6f86ceea435f6cc91add35684e747343",
+    "0.05/ss10/seed-27/evidence_draws.npz": "de386ae0962c08c798ce29e1160f4347a2dcafdc7be157c6fe48ae1a32c6eaf5",
+    "0.05/ss10/seed-27/progress.jsonl": "4f16d446df26a4d90c76ea68c276c6bbcf214bd6a64a81b1f378cc03de3de417",
+    "0.05/ss10/seed-28/CORE.json": "0ae337abf163baaa78c4f44069e1768a814682fd4a1fd17bc73d2531c201b6db",
+    "0.05/ss10/seed-28/ANALYSIS.json": "505d340c21fb88398c825e1de68a7f537a3cd2bc6dd6602bc6f35b1d48859049",
+    "0.05/ss10/seed-28/MANIFEST.json": "e3e7508257f81ff06d353a62bb81bedeb75eb8c29014da21390c0e333c97b7cc",
+    "0.05/ss10/seed-28/classic_posterior.npz": "701eda766f1c6bf010850cd4c74b85d67ae75effa8cd63a7035e6f101f7983e9",
+    "0.05/ss10/seed-28/evidence_draws.npz": "dfb0365ae82dd5c92e140dbdb00da15ea570d9296346403698939d132c3ef43f",
+    "0.05/ss10/seed-28/progress.jsonl": "96962ecb97ae8098ae758d675c38980feb217c73a6a6eb2ea8dc0b9a50d89d0f",
+    "0.05/ss10/seed-29/CORE.json": "b24093c0695d0a9ec6ac3c8ab4aca31fe805540cc24aa996c0e5ccddaff8b0cd",
+    "0.05/ss10/seed-29/ANALYSIS.json": "4d5cd6e5dfb035ab5526a87918cc5211eb88abc5512758ce7ab227eea6ba438b",
+    "0.05/ss10/seed-29/MANIFEST.json": "46aecff761e2c34cccec1ea1ce0304b1bf9a4650eb42d763105df92228f1d36b",
+    "0.05/ss10/seed-29/classic_posterior.npz": "5af2e70c557ecade35fb7f3e8fc1316275be9cf689045d8db9114142244a189f",
+    "0.05/ss10/seed-29/evidence_draws.npz": "23ca2a21cf9f8fadbce1a5811d44dc68ea7b9bbec7f168c2a0d884f142cd31c9",
+    "0.05/ss10/seed-29/progress.jsonl": "6734eb635820018f866e80ff0d1b367e15ff37d85b53e76d635b29c356d3fdb5",
+    "0.02/ss10/seed-00/CORE.json": "632f74fa0c1d4e5731c727c85c9854e9680c4d3b527e9818025bf69b96e13882",
+    "0.02/ss10/seed-00/ANALYSIS.json": "f12ca8899ce8e1287090d590ac8cec1d8c8d22a550cbcf39bb46d2d9ce3d4a30",
+    "0.02/ss10/seed-00/MANIFEST.json": "fae142a8ebb78470ae292f01b9d570b0bca37a894c3a756bed86220378e91afb",
+    "0.02/ss10/seed-00/classic_posterior.npz": "e7eb74791855a84c4d443875e5b049e938968ed8c0ccd5622f29c89a00005d9b",
+    "0.02/ss10/seed-00/evidence_draws.npz": "bc99a333f5afaa0ec91544b294023988ea1a1264441d3c56e98b3716fa5e1b46",
+    "0.02/ss10/seed-00/progress.jsonl": "12632c9fcb3f241af89025470415297c4473474284521fadf22a9d74c4f7ab90",
+    "0.02/ss10/seed-01/CORE.json": "8436ae954bec4f483ea2510c7f37bc8172c87c32c77c146c77e172eef311364a",
+    "0.02/ss10/seed-01/ANALYSIS.json": "ca6984afa1278d1c56e8cfc14dbd873c83c704ad62c7c47b64b445f57f365175",
+    "0.02/ss10/seed-01/MANIFEST.json": "9281b9bf49001e7e39ae8b31d1eb58bf924dd0d44fa54f9050e464d590bae219",
+    "0.02/ss10/seed-01/classic_posterior.npz": "c62741b6d5f2396c27e7adc1a86e25d384113d4e224d8b4e73c39375cf42c92c",
+    "0.02/ss10/seed-01/evidence_draws.npz": "4ccc5fb9f8bbb5efd0ae2f513ad090c71d2433bd8ed34595cf44e24b8ac2a784",
+    "0.02/ss10/seed-01/progress.jsonl": "9a43398fd24781189efe7f6f24c54919886321dbe6970f924b93e81e54c4eb5e",
+    "0.02/ss10/seed-02/CORE.json": "0705dcc7d03950d36ce5cd9e7c539f91c381371a43dcb558e889579acec497df",
+    "0.02/ss10/seed-02/ANALYSIS.json": "1c697f34aa6e029a34db5759bc92847b65d1eaa0cf937650c494216e6cc4c481",
+    "0.02/ss10/seed-02/MANIFEST.json": "5734f59e79221d25463c002da5688fcd10a74cf7e2be71071ea958253f6dd080",
+    "0.02/ss10/seed-02/classic_posterior.npz": "8532d09c9515463ac0387d934b5221ca94f98794202422ed9e98651bf86a191e",
+    "0.02/ss10/seed-02/evidence_draws.npz": "6cf261ce1ee77a61aa25694e5df4401af4c7933faa0abe2e220bdbde8a429812",
+    "0.02/ss10/seed-02/progress.jsonl": "0f186f37093c80cf1771b45cc9151c52e485b99c8c5407fb7d9fcbee8135f35a",
+    "0.02/ss10/seed-03/CORE.json": "e97f748fa7e6ee7cf5abb7760318be7300af846bd17a1b2f9b0a06c4b46b4301",
+    "0.02/ss10/seed-03/ANALYSIS.json": "dc2c6b0afc60229cd3866f57117779496e0edbe749924509a6059c6b96ce1e57",
+    "0.02/ss10/seed-03/MANIFEST.json": "ca282264029a6051c9bdcdf5b11c0716e78785e9034cc049a6058d0f02b474aa",
+    "0.02/ss10/seed-03/classic_posterior.npz": "a7df6ac7b2f16ab4bdd92c47f036496aaf33ff4cd2bb901ecb1204dc8c1c6e11",
+    "0.02/ss10/seed-03/evidence_draws.npz": "08d15783f19cd787945d460451e073cd80ae354abc01da1b8978233e9e796115",
+    "0.02/ss10/seed-03/progress.jsonl": "09a9ba20ca2786bf962499c3c23962d141dc6c657166208184ae72c7aa09c3b4",
+    "0.02/ss10/seed-04/CORE.json": "9b30ef8e6620a52ec835aafc5275518b0c39b8d1dd034104d3a59c95eb24b44f",
+    "0.02/ss10/seed-04/ANALYSIS.json": "a65df6e4d4da07fb952f90fc914b3796b1adf57741fcf3b6f5d67a57d245f956",
+    "0.02/ss10/seed-04/MANIFEST.json": "ebff87ff4dc92a5fce5ac9318358e4001491ce711ff6534af505c03a5cef9921",
+    "0.02/ss10/seed-04/classic_posterior.npz": "8b69ec98eb70602ac3cd7f20c176b77a92ea48790772621998693a262ba80e86",
+    "0.02/ss10/seed-04/evidence_draws.npz": "fc574db2b71bcafd7fd5256b7fa583b9737911a3edad139829005f817905ddc5",
+    "0.02/ss10/seed-04/progress.jsonl": "06947265cb8b5d0bc795aaa433fe2030eb30d0223da66fa136ce7f29eeff344a",
+    "0.02/ss10/seed-05/CORE.json": "bd338b66975f8976f108cab082e546a9da3ea248b7b758b2271eb451afe18b47",
+    "0.02/ss10/seed-05/ANALYSIS.json": "8fe055a14f83d1fbb9b5008d7351fd8c72316d7417eeebdf61ddad3de264ba85",
+    "0.02/ss10/seed-05/MANIFEST.json": "4d49d64a2a971505a6a18ab76080c5a5beb4f36747858f0d91f5a79c8aa3fc13",
+    "0.02/ss10/seed-05/classic_posterior.npz": "73ff5ad006043cf16e1af47e28de3ff0ba7b21ead2b07981d416e7c7d207caf3",
+    "0.02/ss10/seed-05/evidence_draws.npz": "3063dba2ce291775ef4875ac00c2aaa96f91a4f57d1a3ed4442f29fd7b185754",
+    "0.02/ss10/seed-05/progress.jsonl": "8a48831d0761bcac2db4c988fc0520e745ccf84c6a8722beaab491502839dcd1",
+    "0.02/ss10/seed-06/CORE.json": "962470ec747da7acff66ba0ea4070cf6d2a5b2188ba1acaa70571e278ec9680a",
+    "0.02/ss10/seed-06/ANALYSIS.json": "3ef9e01425aa32d5234f46b6df7427169d6f59d4045be236d98ce93856083b36",
+    "0.02/ss10/seed-06/MANIFEST.json": "2e8c233400f00f1c900218e3a2d5546baee699ddd36077b79cd97b727b60907a",
+    "0.02/ss10/seed-06/classic_posterior.npz": "a2dc7eb8dbf76ae4177e344f7bd2e1b87a0975eb77701eb6a09298afc6914b59",
+    "0.02/ss10/seed-06/evidence_draws.npz": "e1432f621d4d624c197c6fcad4eb491b664055aaeeb3575ddf8928e15caa44da",
+    "0.02/ss10/seed-06/progress.jsonl": "2315ceeb9627043741f88be26148c4c8ce123910e5e527dcf12301cdbeaef455",
+    "0.02/ss10/seed-07/CORE.json": "05c1fd41b50782a6217f5d4a90b54b6ed9bac74af2f5abb30b3f6a53f81b2260",
+    "0.02/ss10/seed-07/ANALYSIS.json": "9f3a0251b3f403e18fb34713e411957d7515782a34f2ef0b92695112b77d4946",
+    "0.02/ss10/seed-07/MANIFEST.json": "dfd0a91f3f061f89b627766bc42c57f6531fb16e195f935442537b5f33bc69cf",
+    "0.02/ss10/seed-07/classic_posterior.npz": "4f23e2c20e053f3d02e450b0b190ec1227d8a2e2f0b800e2c9c6ea581d226b72",
+    "0.02/ss10/seed-07/evidence_draws.npz": "2affdf760c5c6b830400c1177cb1493cce748d2418bb716b178b3b5507ffbcc4",
+    "0.02/ss10/seed-07/progress.jsonl": "c9ccfd3c49cc2a715545f33340f3136066c93e4b985a2c052ddf6a8c0ee78f67",
+    "0.02/ss10/seed-08/CORE.json": "c6791552ca9d7cd9c8c43481381579060aa33598c8e63a9e1f947575f7889407",
+    "0.02/ss10/seed-08/ANALYSIS.json": "a819751a463d5de683662ec85b4486763e3dad8cea6325d1672aaad49e3322c4",
+    "0.02/ss10/seed-08/MANIFEST.json": "fe8898eb2581d20bded456bb61d1f86b7e4ba76d66031b36b5ae2397a4c7a8a8",
+    "0.02/ss10/seed-08/classic_posterior.npz": "3041618e9e26a67fecb3bba0363deda44cd73b329be125526301670bb7bc2f7f",
+    "0.02/ss10/seed-08/evidence_draws.npz": "7654746fd88e19f2232d151adc92f8c1eb821a2b17d28a28276bb7e6c35e8135",
+    "0.02/ss10/seed-08/progress.jsonl": "1f2982f1071a25de408833e11465220e51ceb083a142e3b5cfc538c569f98f7b",
+    "0.02/ss10/seed-09/CORE.json": "6ff0f4d0c2247749516cb0150137c96f09195707793f803050eef21a34191eae",
+    "0.02/ss10/seed-09/ANALYSIS.json": "928834e7a21842dc1e613f6aca748045bc6d237a137c89865abe3145d5bd7cdf",
+    "0.02/ss10/seed-09/MANIFEST.json": "556c8ba154d53a42de5ec7d7401d97b778063fb34cf04122bf72d021c4cb079d",
+    "0.02/ss10/seed-09/classic_posterior.npz": "8b8940e7449a6ee56c8cd02b73ad7fffdc5d8bf2560b4b54cec20fa42cb0131c",
+    "0.02/ss10/seed-09/evidence_draws.npz": "6b9f49ebf145ebf76ae647ed704d4e20420142207fa3a56f217f28d8c65b9154",
+    "0.02/ss10/seed-09/progress.jsonl": "1a5291f624a546050ed54e19f7f5b52abe017120b4aa4695e2cca708a830b671",
+    "0.02/ss10/seed-10/CORE.json": "2a52da371d42cfeb1a6f8b4a1ce7b9579b61b1ad1227463161073e890d4b2e8a",
+    "0.02/ss10/seed-10/ANALYSIS.json": "88dbe885b5976e8876e1749090f41d8685f3cee441ce94873b663809853dc0fe",
+    "0.02/ss10/seed-10/MANIFEST.json": "ef0387905cc8628d324e639c0d08fe913ca542cad35c9481a834ca4570be10b6",
+    "0.02/ss10/seed-10/classic_posterior.npz": "5517b3fb3efe233a2734fc907fb60ebf39ff0b92f482f86869ffc8cc2f8fb188",
+    "0.02/ss10/seed-10/evidence_draws.npz": "6316a610ca231676d97b17e05641f582306137a1ea56b4623f27f755dd625711",
+    "0.02/ss10/seed-10/progress.jsonl": "11ee88ee6f11317081f8419b844c003d11f3376edda89f6f0ce81328962c2ecc",
+    "0.02/ss10/seed-11/CORE.json": "097c41a2e7bfbd767a67c302c8db819812da6201588a6a461e0b5bea3a517b8e",
+    "0.02/ss10/seed-11/ANALYSIS.json": "12cb492d1ab532c5f6627c4e3b8b6c8df4df04f5e74b64fa7e7537b39babcd8a",
+    "0.02/ss10/seed-11/MANIFEST.json": "9e77efd4530774d6198807d0643798ec07b5397aa6d5e3992579524f42a80331",
+    "0.02/ss10/seed-11/classic_posterior.npz": "f4ab2190d8fd0e4dfda810c929091e9b7c2f8bfad1e846db55e90393d71cfbbc",
+    "0.02/ss10/seed-11/evidence_draws.npz": "ff0abbd6a6fbab0f669ccfd11b4a793842da0f361b5856dbcf86e3c62d6a3c97",
+    "0.02/ss10/seed-11/progress.jsonl": "12f51af0bbb2b38982bb3127d32476d8fd7b30c01c1da37b69f8755f4ead9093",
+    "0.02/ss10/seed-12/CORE.json": "6e135b6315ff2f862f900680192f25a2d709d346d304247a2664fb69ebc90025",
+    "0.02/ss10/seed-12/ANALYSIS.json": "79bd2a4ec95de0efd3286c46cf4bc0891db6f6d08a978009c1ca04a2d6a58000",
+    "0.02/ss10/seed-12/MANIFEST.json": "867a82c76386877303cfef6e9bf2381ca5fd720b521e74c03434df12a8bd2d44",
+    "0.02/ss10/seed-12/classic_posterior.npz": "74ef4ba58587748e22a19155e74979efd544d6fb20fd53d5df27e59bd082ebe6",
+    "0.02/ss10/seed-12/evidence_draws.npz": "4e0cad998ee949f456640c21edca62d792c69d1c199f045df86c9f1adcf854f8",
+    "0.02/ss10/seed-12/progress.jsonl": "c6be3872a12e8693ee31909919310b02b69f95669b8fb615b3529c13145e81ac",
+    "0.02/ss10/seed-13/CORE.json": "3315cd410c70ee317ab29ecec226a818ebb00ccbc907c2aa4795b95273eefd15",
+    "0.02/ss10/seed-13/ANALYSIS.json": "2f46e6a040260b4bf1f8f183b43363e8578e2e7c7999bb65d9e371979c301c54",
+    "0.02/ss10/seed-13/MANIFEST.json": "c39e6b25058fece3da9c4a92bf24b020c22ced9a32173ee8d36b3ab7030ed3b5",
+    "0.02/ss10/seed-13/classic_posterior.npz": "22a72d9f0e50fc21d7356aeea035966da501b488a95811fb3be7dc7347d0a20c",
+    "0.02/ss10/seed-13/evidence_draws.npz": "d9c60710ab9dc2323f98557e31df9d8ea4cdf42bcfc81e64bbc25aec85c67a4d",
+    "0.02/ss10/seed-13/progress.jsonl": "4a174aced8627955001ab971b5da4924cec754b4041c254cf48dd5ba26769280",
+    "0.02/ss10/seed-14/CORE.json": "251510fd47c8e0e817aa01f9a44174b4cf531dfe6b5cc9a641b71a58e7963652",
+    "0.02/ss10/seed-14/ANALYSIS.json": "482fd5b1adc464a073a2cb27761e47ac111aeca6444f8846eb3daa978c38bcf1",
+    "0.02/ss10/seed-14/MANIFEST.json": "4b8f705aa888577ced9c5876c75199c02a519c4a95c4ef49ee659f4afa368408",
+    "0.02/ss10/seed-14/classic_posterior.npz": "d507e8053365cd97afaa60e4cc1587d8233a38e1e949555154f836e774fda8ad",
+    "0.02/ss10/seed-14/evidence_draws.npz": "8b37fe7c4411a3decbfb77a912a69d59ff41d2e2ee2666109b34c037c4552b28",
+    "0.02/ss10/seed-14/progress.jsonl": "f95df0f7fd02785d7db2b3b64c395dc383f9b2f36d5e53101a67f897fbd312f4",
+    "0.02/ss10/seed-15/CORE.json": "dbcd7c474e289a51dab7a5caf250c5a252b0a661e1182bcb8d5ea16ca46e0966",
+    "0.02/ss10/seed-15/ANALYSIS.json": "3e119c576ba838843fa6b3a3f5a864a36dce24598aac291db8a1923a88691ac4",
+    "0.02/ss10/seed-15/MANIFEST.json": "dad189f1aa71390f669660b4ba8a4e045dc588cf8f7fadfe8697042f0bca7ca4",
+    "0.02/ss10/seed-15/classic_posterior.npz": "4161d1fd729decbe879795d6849978d4f205e09d8702187fd728ac173c60d9eb",
+    "0.02/ss10/seed-15/evidence_draws.npz": "167017831c6e3c0953179dc5bb3e114721bbb5f73b4fa3101630a6ed97c9161e",
+    "0.02/ss10/seed-15/progress.jsonl": "2377cdf572c33a9ab86acee8e731a068859f5352bb5540d2d51111d393581d9f",
+    "0.02/ss10/seed-16/CORE.json": "b558274ca5cad974fac930ec12c3d1b0ef135632acc4821130e7117c478b91b2",
+    "0.02/ss10/seed-16/ANALYSIS.json": "7c56f5fc3f28bd8de6819ee1a01760f8b3ef693736f0007516d752851e39b76b",
+    "0.02/ss10/seed-16/MANIFEST.json": "72eead26adbb5908dc60f37ff0260c4d5206a3489545d568d394333053663197",
+    "0.02/ss10/seed-16/classic_posterior.npz": "ff294ae7341061330e257de1a112951ceefcb35ed3a47fef88f24d9438c00cfe",
+    "0.02/ss10/seed-16/evidence_draws.npz": "bf8c7fa171160e669beeb72bca70ed4783392de2a5e6042c0b8288ac4e05c35f",
+    "0.02/ss10/seed-16/progress.jsonl": "7888e3d9aa394db2d13e383960c7899a6a9a4daca8f7760e0293b26f443b5188",
+    "0.02/ss10/seed-17/CORE.json": "7abbdb157ee7d9fe617d7a3769eb3027554ddac03c2e94ff02257f80dcea3be6",
+    "0.02/ss10/seed-17/ANALYSIS.json": "152a155cfd7edd782e220cb5dd9022d3104c349d7a8ab691675980531309210f",
+    "0.02/ss10/seed-17/MANIFEST.json": "53a65084a470d2250dff7ded0ec15d6a5f95f8e89290b334be1ac6a3265e8d68",
+    "0.02/ss10/seed-17/classic_posterior.npz": "1087597b64c5249cb6e03250fce8397d0f9f2e597fe6bdcc1d3fd339e8eb952d",
+    "0.02/ss10/seed-17/evidence_draws.npz": "d6164a1c86d100629e9eda01fad665fd17eed6c1584790984514d787d5266b55",
+    "0.02/ss10/seed-17/progress.jsonl": "cdee4f1df782a8cf03f3a45b0b689f9d2fcc5ee7d630bd8b85f0aae972eec78a",
+    "0.02/ss10/seed-18/CORE.json": "08d684227399085ea9ce320be1edca20a99bcbf5cea667066d6dd627402664fe",
+    "0.02/ss10/seed-18/ANALYSIS.json": "1b88be7091ce0a6b0eede8092894b3cad8044729721708e6b0844925955c688e",
+    "0.02/ss10/seed-18/MANIFEST.json": "8c0fa00a69e3c2c3b4aabf1a00886597f7a28cf6842c32272ccf9772216bf761",
+    "0.02/ss10/seed-18/classic_posterior.npz": "435c605370848c2e0134df4dd3666ddb6088651ad9767451e406365ba1e43467",
+    "0.02/ss10/seed-18/evidence_draws.npz": "19a5de8eac8526ce03fb79b2ed2455ec4c378035a4511dcd39d2c88b2298fea9",
+    "0.02/ss10/seed-18/progress.jsonl": "124309c64419dca22b135fc2a622b85af2743ec64bcd38342b77d5343c1ab970",
+    "0.02/ss10/seed-19/CORE.json": "439efc5b2954ff63d2805d6cdbbebba656405989fb90faea07b3b46eae7c7550",
+    "0.02/ss10/seed-19/ANALYSIS.json": "dc7331948ea4383b2d5fcb6e2dcdd3dc97db66a020c49231f1b85003b62aa5d3",
+    "0.02/ss10/seed-19/MANIFEST.json": "f1b0e0280bfd043447410c98ffe8e235211e718378d9d2d4ec5de9f6f3e8cd9a",
+    "0.02/ss10/seed-19/classic_posterior.npz": "3b3b05a477b48d8a7a50f3ba7d683a7980bb2051bb47467d0f426ff92b4719de",
+    "0.02/ss10/seed-19/evidence_draws.npz": "db07381c7a0df42d8b53d456eb40604da31694e3d29d92020a4b89c29e2f0a8c",
+    "0.02/ss10/seed-19/progress.jsonl": "14cb387c289b5333327bb28cb74320b45071634fee9fe2712e8f4838e60756ef",
+    "0.02/ss10/seed-20/CORE.json": "b8f3bacdc55850f85bbf667ed25d25b1243d4e8fd2f297ea8bbdec6b9745d629",
+    "0.02/ss10/seed-20/ANALYSIS.json": "43d36793160241d33e25f8ba82a7974316a639bea7c48c7f57d2202599652583",
+    "0.02/ss10/seed-20/MANIFEST.json": "fe4672971420747582a2cb0c01ad4968c2c684c504d2f94fbf960fd82890fb18",
+    "0.02/ss10/seed-20/classic_posterior.npz": "6474a32390f037e17ce409793a6f1868234b544ed46be852de258f8d567dfa61",
+    "0.02/ss10/seed-20/evidence_draws.npz": "5ad6745ace37061d08668558918a77e5e535c60dc9524d5ca20ac0ce5c480a12",
+    "0.02/ss10/seed-20/progress.jsonl": "ec9592b74b58d469e9683bc9d97ab45990e49317dab90041d0c7e58bc213e818",
+    "0.02/ss10/seed-21/CORE.json": "1c42fcfb1d1f7780f6348fa16c5e740700a103d3796e7fc262aec681ae2de49d",
+    "0.02/ss10/seed-21/ANALYSIS.json": "b3687a0772d2dd7317fe5381eb6d6893c665d60fdeed3d7568eb29e4ce24e91e",
+    "0.02/ss10/seed-21/MANIFEST.json": "bfd3b10430e511b0c1a53393b56e53b240bd61f87e8f06154a53a3d62e7e3876",
+    "0.02/ss10/seed-21/classic_posterior.npz": "f0df1f70100d3e775e06bfcc96be50bbad2ea1f4f29132557900579fa40bc04b",
+    "0.02/ss10/seed-21/evidence_draws.npz": "67bca13a40fdd0e877d236ce146ffa2c6b2403fee9a67735985abe1fe564c815",
+    "0.02/ss10/seed-21/progress.jsonl": "4fffd5cbb84b797fa62e0ff6309e3e78795e44839e794a753654ad04c8ee9690",
+    "0.02/ss10/seed-22/CORE.json": "2aad072bd3ba26e96358f47cd8bb7838f4917d510ff0adbf42099b04d64d8795",
+    "0.02/ss10/seed-22/ANALYSIS.json": "4f8cac7f67a5e3f175e6ac1c3d6b045d6cfb25bf36d367e258058fe1edcb601a",
+    "0.02/ss10/seed-22/MANIFEST.json": "25c5538c9ba690c82dde981d99f9dd69a3dc199e52c82a2abf1d8eeed213cd47",
+    "0.02/ss10/seed-22/classic_posterior.npz": "0a79b1bc2cfb31a23d9c1e23dc78cdecbc6ee8fda7da79b8c7eeb8d4cb9767f9",
+    "0.02/ss10/seed-22/evidence_draws.npz": "843a23be16037500b1baf1d300b46bc9025bbe00071b024bf28bec6bbaf4e4a2",
+    "0.02/ss10/seed-22/progress.jsonl": "302b94f6a12738d94ad214276a0c1c979e6bea9011343a618e1bebd06006e100",
+    "0.02/ss10/seed-23/CORE.json": "4cd6abfd04507195f2d37a4a651cc0f3cfcfbec797f702806da2868f8e009e1c",
+    "0.02/ss10/seed-23/ANALYSIS.json": "992073671e5c0e3c6e794894afbe5a41b37058650264611f5b936b58602ca780",
+    "0.02/ss10/seed-23/MANIFEST.json": "2a3ec44a4691e1dff440b93dc40b558b5c5e43f21a1dd6d7d5ee983e4a8320bb",
+    "0.02/ss10/seed-23/classic_posterior.npz": "cc47d8b1e328319a1c704c7f526634c1f1695ac808dfb1d3c57f54896b650ad6",
+    "0.02/ss10/seed-23/evidence_draws.npz": "3c5456daf8999dd0c7a89101e587fcb6c77966ced9bac7478c96445b7135c62a",
+    "0.02/ss10/seed-23/progress.jsonl": "26fe067d4b8c069e24b2661eb75ff5769fa4375b0c9696a3f2d9ca9c4f766494",
+    "0.02/ss10/seed-24/CORE.json": "6c9202fd0d7d5e23af6e471c92af216c1ace1e9770d94699fff5a62db31cb546",
+    "0.02/ss10/seed-24/ANALYSIS.json": "0949fba47d0c22212298ba04c24b0cc72ab4f4b4786c2e57bf4aa0a55de293ee",
+    "0.02/ss10/seed-24/MANIFEST.json": "1b2861d04c3c39aeaf00cc0b1c81f54fd3e2cef96fb965a39af4928ec590a436",
+    "0.02/ss10/seed-24/classic_posterior.npz": "0a139f4cef47c3c8464f6091e59c683c73a7e95f75091071a8b5188f38e6955d",
+    "0.02/ss10/seed-24/evidence_draws.npz": "38a00851e5c1ebba6d838fcf773031695486939c018e9248f83ded899559db3a",
+    "0.02/ss10/seed-24/progress.jsonl": "08baaf0fd5ed7b8227cae46782ebb2ef1d83d39dcf769da211b1b99ea23d81c1",
+    "0.02/ss10/seed-25/CORE.json": "3b73763b585164db35e5824e03bbfe30a587ae628b05894c2afbc6c211372770",
+    "0.02/ss10/seed-25/ANALYSIS.json": "36cf117649a2c9abb998adcc41a358c4ac948fc25cdc02a94c9a13166a441d4c",
+    "0.02/ss10/seed-25/MANIFEST.json": "93ad310f10d081dde9c38be9f3a6f0b55c6078eea2a427b142bc6ecbcfd8f7a0",
+    "0.02/ss10/seed-25/classic_posterior.npz": "715b174b1a90b834669b90706caf3930add37cc10fb6fea31f158e52bf438845",
+    "0.02/ss10/seed-25/evidence_draws.npz": "7560ecd4cab9ca867351288582df19c59a1f666e75fc0072fb2a12c009982e8f",
+    "0.02/ss10/seed-25/progress.jsonl": "9758d229aa3a01350046c2113dad2a6ae5a4aaf94859295974290dce4488941f",
+    "0.02/ss10/seed-26/CORE.json": "b58d775bc6306a9b2d05ca40a5753bd70a94d6a797570ac422a0463f62f3bc85",
+    "0.02/ss10/seed-26/ANALYSIS.json": "2b58699a927573f0f8bf765486e3a26230e5b38ef2363f0b1f5b537831ef126c",
+    "0.02/ss10/seed-26/MANIFEST.json": "0bcd387df611bcfa29e981f02f42b815cf6ef8423fc3240cb4d2c3d357325dbb",
+    "0.02/ss10/seed-26/classic_posterior.npz": "e383b8c9a87264871ddba06db6c48846810123c4c1e962dcd8e69d8e004172b2",
+    "0.02/ss10/seed-26/evidence_draws.npz": "5c9dda61c548126981f383e7f3e4bc2585b4a2b976bf853663fbba71978d0ca9",
+    "0.02/ss10/seed-26/progress.jsonl": "d89172faa243b6eade1cd7f18c07ee6a29fef23f857f8afab68db58aa62d0476",
+    "0.02/ss10/seed-27/CORE.json": "e74b4226db9e7c4d8be02c4e4f297d37d9d5f23754ce5b88f371ccc76d623de8",
+    "0.02/ss10/seed-27/ANALYSIS.json": "c5d22f22997986982302725a01bde543fd18e88390b189086a6906281a543119",
+    "0.02/ss10/seed-27/MANIFEST.json": "97dff8c899ec711a8a71955014cdb019d05d2943727193ee9daba5e9e7f2a650",
+    "0.02/ss10/seed-27/classic_posterior.npz": "7bbc72029e1cb553ed260cf3872c4ab82a177464811426d1b77ee2bf8ecfa614",
+    "0.02/ss10/seed-27/evidence_draws.npz": "68087980e244a888bfb7bb90edfb58700ff7c42a82e284ac97fb03494815a827",
+    "0.02/ss10/seed-27/progress.jsonl": "656afc3ebc802757889763dcf9425208147a4dea546f18f129ce65fb86014ad2",
+    "0.02/ss10/seed-28/CORE.json": "111a8645708650c5c4cb1c0b6ae4a4e197d1c9b48e54a20fb5d9de5559f0a315",
+    "0.02/ss10/seed-28/ANALYSIS.json": "ef2e5d9ed6bc935704b91cea86b88bc333f70ebfe99ddb7a7ebed6072a970e17",
+    "0.02/ss10/seed-28/MANIFEST.json": "0543a4dfa95d18cc45942e3a8ff59b5059da49f0ee80de1a861445939c8ef359",
+    "0.02/ss10/seed-28/classic_posterior.npz": "59cd9f20ad24b582b25b555842cece24922cabb5ad70ac41088dea580f2dad43",
+    "0.02/ss10/seed-28/evidence_draws.npz": "d8189342d8c9a10eede99e7d785fff793dd5fc6f6417e48808d78a3047869a8d",
+    "0.02/ss10/seed-28/progress.jsonl": "7e0ee52040ae4f96db8396e64c8b1ed9a95aec3bd46d1f4105e18ba53b46be59",
+    "0.02/ss10/seed-29/CORE.json": "9fa6a6eef97d4445def86e5118d221b6ca09761656081222bd9f3ac2d5d4d583",
+    "0.02/ss10/seed-29/ANALYSIS.json": "7c71fd8e843ae20001e3172b319aea0358d052bec7c240f808159f0fbdafb2d7",
+    "0.02/ss10/seed-29/MANIFEST.json": "877706f504f9e6207420a003b897a9f7468ef84cb1cb283e7c79297062dbb21b",
+    "0.02/ss10/seed-29/classic_posterior.npz": "bb780157c1cacc748c4784950f160d53808aee1f7b0416fb8af2bf800c80f0ca",
+    "0.02/ss10/seed-29/evidence_draws.npz": "3ad45811b6ac6ad9e0264b59a30de43943dad4de8cccad5cf240552cbe572903",
+    "0.02/ss10/seed-29/progress.jsonl": "d2b5c5ad7312e9e77350392b06a6b1ed264b61d0d59acba52b043b71ffb30b09"
+  },
+  "bootstrap_seed": 20260909,
+  "bootstrap_resamples": 10000,
+  "state_storage": {
+    "0.05/g10/seed-00/state.pkl": {
+      "bytes": 1227014427,
+      "capacity": 214400,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-00/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-00/state.pkl",
+        "bytes": 1227014427,
+        "sha256": "0806dfede92d38ef4b50201524078a144b40763efa13413ca24cf6f676895201",
+        "verified_after_copy": true,
+        "seconds": 5.350545916007832,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/g10/seed-01/state.pkl": {
+      "bytes": 1227014427,
+      "capacity": 214400,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-01/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-01/state.pkl",
+        "bytes": 1227014427,
+        "sha256": "15e563ccc4917843c6125db6d8c90800b10606e41dc473b3e5b4b4a4f9682ad6",
+        "verified_after_copy": true,
+        "seconds": 5.239786376012489,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/g10/seed-02/state.pkl": {
+      "bytes": 1227014427,
+      "capacity": 214400,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-02/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-02/state.pkl",
+        "bytes": 1227014427,
+        "sha256": "2f9edc44499a96e10d6b43d04f500a733da20a14ba8210c50ab6e68aacbbdace",
+        "verified_after_copy": true,
+        "seconds": 3.9700656190980226,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/g10/seed-03/state.pkl": {
+      "bytes": 1227014427,
+      "capacity": 214400,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-03/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-03/state.pkl",
+        "bytes": 1227014427,
+        "sha256": "c2b353ea3bd3ad7b9e227b1cbc752d0db2579fb0d66b94483a6fa5ed73e4de0f",
+        "verified_after_copy": true,
+        "seconds": 4.8252027130220085,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/g10/seed-04/state.pkl": {
+      "bytes": 1227014427,
+      "capacity": 214400,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-04/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-04/state.pkl",
+        "bytes": 1227014427,
+        "sha256": "234b69602f8612d375e77550511a9d67359ff11439a79a23b9622d2b97151862",
+        "verified_after_copy": true,
+        "seconds": 4.9109532500151545,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/g10/seed-05/state.pkl": {
+      "bytes": 1227014427,
+      "capacity": 214400,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-05/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-05/state.pkl",
+        "bytes": 1227014427,
+        "sha256": "9c53642a54dcd55bbfc0ee7af80780d964231ab82396109d8286815c84dc63ec",
+        "verified_after_copy": true,
+        "seconds": 4.911284934030846,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/g10/seed-06/state.pkl": {
+      "bytes": 1227014427,
+      "capacity": 214400,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-06/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-06/state.pkl",
+        "bytes": 1227014427,
+        "sha256": "435a528eeefa69a4c0a659915cb008467318105ac732136615a3332ff71e8fb8",
+        "verified_after_copy": true,
+        "seconds": 4.858767646132037,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/g10/seed-07/state.pkl": {
+      "bytes": 1227014427,
+      "capacity": 214400,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-07/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-07/state.pkl",
+        "bytes": 1227014427,
+        "sha256": "a9131a8f792fe1fdfac0ebf50d74f39783912882f5787c1576c454df48bfa606",
+        "verified_after_copy": true,
+        "seconds": 4.608194250846282,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/g10/seed-08/state.pkl": {
+      "bytes": 1227014427,
+      "capacity": 214400,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-08/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-08/state.pkl",
+        "bytes": 1227014427,
+        "sha256": "4303a018937fdc078bb61ef29a8610ad0676cf2945ff20add73a478902bdd7ea",
+        "verified_after_copy": true,
+        "seconds": 4.263876473065466,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/g10/seed-09/state.pkl": {
+      "bytes": 1227014427,
+      "capacity": 214400,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-09/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-09/state.pkl",
+        "bytes": 1227014427,
+        "sha256": "4df955b8767e2d993920a4cdcb1fe406c6e7da58eaea354a711c5246bd3983f0",
+        "verified_after_copy": true,
+        "seconds": 4.206387327052653,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/g10/seed-10/state.pkl": {
+      "bytes": 1227014427,
+      "capacity": 214400,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-10/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-10/state.pkl",
+        "bytes": 1227014427,
+        "sha256": "13ad510e4b871da66d779d9f9db7d40474712dc1681d7532e298a4907eda7ccd",
+        "verified_after_copy": true,
+        "seconds": 3.907767903059721,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/g10/seed-11/state.pkl": {
+      "bytes": 1227014427,
+      "capacity": 214400,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-11/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-11/state.pkl",
+        "bytes": 1227014427,
+        "sha256": "8664b4c2aa21c18ae2a93260fb64fda70c6b44bd149ad1a03686b56520d55185",
+        "verified_after_copy": true,
+        "seconds": 3.8334412979893386,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/g10/seed-12/state.pkl": {
+      "bytes": 1227014427,
+      "capacity": 214400,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-12/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-12/state.pkl",
+        "bytes": 1227014427,
+        "sha256": "cafa04da30d1c718285126e1ba8e6e2c8090f73be490a30ae9451141768431ec",
+        "verified_after_copy": true,
+        "seconds": 3.8155213419813663,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/g10/seed-13/state.pkl": {
+      "bytes": 1227014427,
+      "capacity": 214400,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-13/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-13/state.pkl",
+        "bytes": 1227014427,
+        "sha256": "ba5d797b7d94254474ff5694bdc53589cae90ae3f2d5a96366434ccfbce9291e",
+        "verified_after_copy": true,
+        "seconds": 3.6769773850683123,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/g10/seed-14/state.pkl": {
+      "bytes": 1227014427,
+      "capacity": 214400,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-14/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-14/state.pkl",
+        "bytes": 1227014427,
+        "sha256": "856e683fd5b7ff94a52eee9f1c0079e16b7a054148db24e9e021897f0420ece9",
+        "verified_after_copy": true,
+        "seconds": 3.688393467804417,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/g10/seed-15/state.pkl": {
+      "bytes": 1227014427,
+      "capacity": 214400,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-15/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-15/state.pkl",
+        "bytes": 1227014427,
+        "sha256": "b990f5c3056d0719a2ee6c3f52546efaf346fec46989d1da2cc007781dd519da",
+        "verified_after_copy": true,
+        "seconds": 3.7868886368814856,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/g10/seed-16/state.pkl": {
+      "bytes": 1227014427,
+      "capacity": 214400,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-16/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-16/state.pkl",
+        "bytes": 1227014427,
+        "sha256": "923527c9843cb8de58de1de8775c9e4edb6c738a9c7b15d640f72dbde668761a",
+        "verified_after_copy": true,
+        "seconds": 4.007291175192222,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/g10/seed-17/state.pkl": {
+      "bytes": 1227014427,
+      "capacity": 214400,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-17/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-17/state.pkl",
+        "bytes": 1227014427,
+        "sha256": "8e3aaa8aa632014f7e488db0a6e2f27023d524434af43d624c8164fd21733de6",
+        "verified_after_copy": true,
+        "seconds": 3.643782113911584,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/g10/seed-18/state.pkl": {
+      "bytes": 1227014427,
+      "capacity": 214400,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-18/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-18/state.pkl",
+        "bytes": 1227014427,
+        "sha256": "2e067edac38280678aa4bd14132d2da8761420e6f8bc51b1a21c5bddc97707bf",
+        "verified_after_copy": true,
+        "seconds": 3.778847176814452,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/g10/seed-19/state.pkl": {
+      "bytes": 1227014427,
+      "capacity": 214400,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-19/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-19/state.pkl",
+        "bytes": 1227014427,
+        "sha256": "0ea298fc914590d9c3e526535cbc0a2576242d132c2139241adc1a5b4f2a4f44",
+        "verified_after_copy": true,
+        "seconds": 3.7554617861751467,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/g10/seed-20/state.pkl": {
+      "bytes": 1227014427,
+      "capacity": 214400,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-20/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-20/state.pkl",
+        "bytes": 1227014427,
+        "sha256": "12e20f3c3040a618dea12876ecca05f20fce2d8edc2fadc31a99aacbd3bd163c",
+        "verified_after_copy": true,
+        "seconds": 3.8251431370154023,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/g10/seed-21/state.pkl": {
+      "bytes": 1227014427,
+      "capacity": 214400,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-21/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-21/state.pkl",
+        "bytes": 1227014427,
+        "sha256": "99ab19dd84a5873571f7c31fc3d5a880946e2429e73ebeda5aab7a4cf1fc1d4b",
+        "verified_after_copy": true,
+        "seconds": 3.94095164607279,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/g10/seed-22/state.pkl": {
+      "bytes": 1227014427,
+      "capacity": 214400,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-22/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-22/state.pkl",
+        "bytes": 1227014427,
+        "sha256": "d6b9ecba014a43bb5412be9af11d2b9b12fc0ef8754401aa3b44f9f9d66c97b8",
+        "verified_after_copy": true,
+        "seconds": 3.904530332889408,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/g10/seed-23/state.pkl": {
+      "bytes": 1227014427,
+      "capacity": 214400,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-23/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-23/state.pkl",
+        "bytes": 1227014427,
+        "sha256": "c6ef77630b270d867be1674d4a952c5eb84f9c0d75346ab1709f05bc028a3cb3",
+        "verified_after_copy": true,
+        "seconds": 3.9379487400874496,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/g10/seed-24/state.pkl": {
+      "bytes": 1227014427,
+      "capacity": 214400,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-24/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-24/state.pkl",
+        "bytes": 1227014427,
+        "sha256": "80faaebb197cda9c17795b60a8792c09697f199bff95484615d12a10e38570a4",
+        "verified_after_copy": true,
+        "seconds": 3.719026264967397,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/g10/seed-25/state.pkl": {
+      "bytes": 1227014427,
+      "capacity": 214400,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-25/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-25/state.pkl",
+        "bytes": 1227014427,
+        "sha256": "f0db8b29909d42b6c4061415ca0753106c879501e8044655f9fa54ea2ffdf4b5",
+        "verified_after_copy": true,
+        "seconds": 4.174230630975217,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/g10/seed-26/state.pkl": {
+      "bytes": 1227014427,
+      "capacity": 214400,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-26/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-26/state.pkl",
+        "bytes": 1227014427,
+        "sha256": "6434f96a862f0119e78cc2b496eabc8cb59b297525009e24c6136d68c24cfa21",
+        "verified_after_copy": true,
+        "seconds": 3.9211487828288227,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/g10/seed-27/state.pkl": {
+      "bytes": 1227014427,
+      "capacity": 214400,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-27/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-27/state.pkl",
+        "bytes": 1227014427,
+        "sha256": "fa7e0e277379ec88a036a466f1a9594915580ff2aa9de8da1b200aaf5068655b",
+        "verified_after_copy": true,
+        "seconds": 3.9427731938194484,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/g10/seed-28/state.pkl": {
+      "bytes": 1227014427,
+      "capacity": 214400,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-28/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-28/state.pkl",
+        "bytes": 1227014427,
+        "sha256": "56ae3b7e3b3636d20f562ece744c93f7d0dfdaca3ed1fce4dba56e29effe9e48",
+        "verified_after_copy": true,
+        "seconds": 3.863725987030193,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/g10/seed-29/state.pkl": {
+      "bytes": 1227014427,
+      "capacity": 214400,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-29/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/g10/seed-29/state.pkl",
+        "bytes": 1227014427,
+        "sha256": "7b171c6fdb4e469eaa89596aa0ebc6c45e87179af9bfb5dc9dc6db631ecd0226",
+        "verified_after_copy": true,
+        "seconds": 4.432035761885345,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/cg10/seed-00/state.pkl": {
+      "bytes": 1227014617,
+      "capacity": 214400,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/cg10/seed-00/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/cg10/seed-00/state.pkl",
+        "bytes": 1227014617,
+        "sha256": "fc409cfd61457e862177e1f09566a4c3d50ae5125c7fe9a8599ab873a383955f",
+        "verified_after_copy": true,
+        "seconds": 4.353887380100787,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/cg10/seed-01/state.pkl": {
+      "bytes": 1227014617,
+      "capacity": 214400,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/cg10/seed-01/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/cg10/seed-01/state.pkl",
+        "bytes": 1227014617,
+        "sha256": "29602fa6c2fb27a6467b4a0049ba72b29e777e0f61f6653ffd1f3022dde9437e",
+        "verified_after_copy": true,
+        "seconds": 4.456052392954007,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/cg10/seed-02/state.pkl": {
+      "bytes": 1227014617,
+      "capacity": 214400,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/cg10/seed-02/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/cg10/seed-02/state.pkl",
+        "bytes": 1227014617,
+        "sha256": "95db6245de81f7bfc6426141d23c7dfacffd5c1e12397fa9e1009e2a6727ecd1",
+        "verified_after_copy": true,
+        "seconds": 3.6881048569921404,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/cg10/seed-03/state.pkl": {
+      "bytes": 1227014617,
+      "capacity": 214400,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/cg10/seed-03/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/cg10/seed-03/state.pkl",
+        "bytes": 1227014617,
+        "sha256": "8696e5f5ce3910b4b5ddb7c0070042daffadf1ee7466b27a2ac4aecd6be0530f",
+        "verified_after_copy": true,
+        "seconds": 4.115105801029131,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/cg10/seed-04/state.pkl": {
+      "bytes": 1227014617,
+      "capacity": 214400,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/cg10/seed-04/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/cg10/seed-04/state.pkl",
+        "bytes": 1227014617,
+        "sha256": "d05b77b3afc58c2913dcfd3f8cc39b5da9cad50943198aa451e25f7b81931273",
+        "verified_after_copy": true,
+        "seconds": 4.717358884867281,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/cg10/seed-05/state.pkl": {
+      "bytes": 1227014617,
+      "capacity": 214400,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/cg10/seed-05/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/cg10/seed-05/state.pkl",
+        "bytes": 1227014617,
+        "sha256": "d02a5dcfb8d296beca5992d718e2624a678593a4178e90acf39b49b51771f63b",
+        "verified_after_copy": true,
+        "seconds": 3.8487208439037204,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/cg10/seed-06/state.pkl": {
+      "bytes": 1227014617,
+      "capacity": 214400,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/cg10/seed-06/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/cg10/seed-06/state.pkl",
+        "bytes": 1227014617,
+        "sha256": "891acb88dda91d9a665b4f2567a6dce0f47f4ebf963649488ef737919ddef973",
+        "verified_after_copy": true,
+        "seconds": 3.8935933290049434,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/cg10/seed-07/state.pkl": {
+      "bytes": 1227014617,
+      "capacity": 214400,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/cg10/seed-07/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/cg10/seed-07/state.pkl",
+        "bytes": 1227014617,
+        "sha256": "d0509a61e4b98434e19b92322f8bbfca958d3dcbe1c94d1ebef97f7a139bf5f3",
+        "verified_after_copy": true,
+        "seconds": 3.7866296258289367,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/cg10/seed-08/state.pkl": {
+      "bytes": 1227014617,
+      "capacity": 214400,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/cg10/seed-08/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/cg10/seed-08/state.pkl",
+        "bytes": 1227014617,
+        "sha256": "a522421f551cf9b9935f240a897d8339ade729a2b2633cfc3afc606ccae66da6",
+        "verified_after_copy": true,
+        "seconds": 4.327167436014861,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/cg10/seed-09/state.pkl": {
+      "bytes": 1227014617,
+      "capacity": 214400,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/cg10/seed-09/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/cg10/seed-09/state.pkl",
+        "bytes": 1227014617,
+        "sha256": "26ec34060d9fa98fa45937da5ae007e05c2167ca1a1771f4d733d6c19cd606d5",
+        "verified_after_copy": true,
+        "seconds": 3.9223284020554274,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/cg10/seed-10/state.pkl": {
+      "bytes": 1227014617,
+      "capacity": 214400,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/cg10/seed-10/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/cg10/seed-10/state.pkl",
+        "bytes": 1227014617,
+        "sha256": "036fc4d8b57db7ecebe9008dc2178394aff460a78a8a5d2be6b71ed5b33f5968",
+        "verified_after_copy": true,
+        "seconds": 4.54812428005971,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/cg10/seed-11/state.pkl": {
+      "bytes": 1227014617,
+      "capacity": 214400,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/cg10/seed-11/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/cg10/seed-11/state.pkl",
+        "bytes": 1227014617,
+        "sha256": "b43c5f5c9fc4b4951e433a058df9f6ff0da7098e2fab853fc43e1a25ad279a54",
+        "verified_after_copy": true,
+        "seconds": 3.8180159588810056,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/cg10/seed-12/state.pkl": {
+      "bytes": 1227014617,
+      "capacity": 214400,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/cg10/seed-12/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/cg10/seed-12/state.pkl",
+        "bytes": 1227014617,
+        "sha256": "d47ae2487fcb3a359d7cee8cc9eafc4ed8091440f7b099f828aa4fb825009163",
+        "verified_after_copy": true,
+        "seconds": 3.755880547920242,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/cg10/seed-13/state.pkl": {
+      "bytes": 1227014617,
+      "capacity": 214400,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/cg10/seed-13/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/cg10/seed-13/state.pkl",
+        "bytes": 1227014617,
+        "sha256": "378d1e159802845727717346d533ee13d81ccd35cc6e8db00d5df661c9e31d27",
+        "verified_after_copy": true,
+        "seconds": 3.75528745399788,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/cg10/seed-14/state.pkl": {
+      "bytes": 1227014617,
+      "capacity": 214400,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/cg10/seed-14/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/cg10/seed-14/state.pkl",
+        "bytes": 1227014617,
+        "sha256": "a35df4655bcf6556865ddea8e625083ac7f91a0699a543f84dbc13fa99bac50c",
+        "verified_after_copy": true,
+        "seconds": 3.5979897091165185,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/cg10/seed-15/state.pkl": {
+      "bytes": 1227014617,
+      "capacity": 214400,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/cg10/seed-15/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/cg10/seed-15/state.pkl",
+        "bytes": 1227014617,
+        "sha256": "8d21b6dfa38c54f53133c3cf1d378d1cefe49416a539a6e975a8b6f032f464f7",
+        "verified_after_copy": true,
+        "seconds": 3.779113327851519,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/cg10/seed-16/state.pkl": {
+      "bytes": 1227014617,
+      "capacity": 214400,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/cg10/seed-16/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/cg10/seed-16/state.pkl",
+        "bytes": 1227014617,
+        "sha256": "dff251b9d861fedaa9d6a4d35ebcbb785b4ba27c9b73dfc89a76cd869713dda1",
+        "verified_after_copy": true,
+        "seconds": 3.384625092148781,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/cg10/seed-17/state.pkl": {
+      "bytes": 1227014617,
+      "capacity": 214400,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/cg10/seed-17/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/cg10/seed-17/state.pkl",
+        "bytes": 1227014617,
+        "sha256": "394fed14ae9859f7ab2c2c1e08806943b525ec2b50511052cafbbcf074ece1b0",
+        "verified_after_copy": true,
+        "seconds": 3.763324474915862,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/cg10/seed-18/state.pkl": {
+      "bytes": 1227014617,
+      "capacity": 214400,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/cg10/seed-18/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/cg10/seed-18/state.pkl",
+        "bytes": 1227014617,
+        "sha256": "7c3611f787d81d9c78c671ba79d837358ce882e5039d8163be40baf5e72837cb",
+        "verified_after_copy": true,
+        "seconds": 3.8398697830270976,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/cg10/seed-19/state.pkl": {
+      "bytes": 1227014617,
+      "capacity": 214400,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/cg10/seed-19/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/cg10/seed-19/state.pkl",
+        "bytes": 1227014617,
+        "sha256": "1305c21aedcc9ea03044d01091aa3baa5926c3c5771418b3564a6513dd1dc5e1",
+        "verified_after_copy": true,
+        "seconds": 3.826051539974287,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/cg10/seed-20/state.pkl": {
+      "bytes": 1227014617,
+      "capacity": 214400,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/cg10/seed-20/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/cg10/seed-20/state.pkl",
+        "bytes": 1227014617,
+        "sha256": "b463379d1bb950997b902abf4a57562b54eb48781ab91c4ebe2dd698ebf8af86",
+        "verified_after_copy": true,
+        "seconds": 3.7112762758042663,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/cg10/seed-21/state.pkl": {
+      "bytes": 1227014617,
+      "capacity": 214400,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/cg10/seed-21/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/cg10/seed-21/state.pkl",
+        "bytes": 1227014617,
+        "sha256": "3374a1f7f732591184ae9f153367af4ae21a66a93599c90615735b56aaae9abe",
+        "verified_after_copy": true,
+        "seconds": 3.6943451508414,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/cg10/seed-22/state.pkl": {
+      "bytes": 1227014617,
+      "capacity": 214400,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/cg10/seed-22/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/cg10/seed-22/state.pkl",
+        "bytes": 1227014617,
+        "sha256": "fe64c6215201a111ea3d27c03b79b92fa4228e60294944e37b70d6a593622ac9",
+        "verified_after_copy": true,
+        "seconds": 4.015240461099893,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/cg10/seed-23/state.pkl": {
+      "bytes": 1227014617,
+      "capacity": 214400,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/cg10/seed-23/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/cg10/seed-23/state.pkl",
+        "bytes": 1227014617,
+        "sha256": "1b8d6ec28f317fed941d9acab9645a2c4300b1f34e1ec65ab5256500427ec3dc",
+        "verified_after_copy": true,
+        "seconds": 3.9737629119772464,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/cg10/seed-24/state.pkl": {
+      "bytes": 1227014617,
+      "capacity": 214400,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/cg10/seed-24/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/cg10/seed-24/state.pkl",
+        "bytes": 1227014617,
+        "sha256": "ccf58a1da4c9a12e41907515555dc7314abc0d605cd9afbf47bb8d0f350f4a9c",
+        "verified_after_copy": true,
+        "seconds": 3.6728651539888233,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/cg10/seed-25/state.pkl": {
+      "bytes": 1227014617,
+      "capacity": 214400,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/cg10/seed-25/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/cg10/seed-25/state.pkl",
+        "bytes": 1227014617,
+        "sha256": "cb31a68dea844be550d8796225a0bc13cb6d79c03f16872c93f537bd085991dc",
+        "verified_after_copy": true,
+        "seconds": 3.83699770597741,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/cg10/seed-26/state.pkl": {
+      "bytes": 1227014617,
+      "capacity": 214400,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/cg10/seed-26/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/cg10/seed-26/state.pkl",
+        "bytes": 1227014617,
+        "sha256": "1ed5eaf13941862c21fc18d125de49e30737fbdd397dacb7c7f60248da9f4f20",
+        "verified_after_copy": true,
+        "seconds": 4.0387374048586935,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/cg10/seed-27/state.pkl": {
+      "bytes": 1227014617,
+      "capacity": 214400,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/cg10/seed-27/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/cg10/seed-27/state.pkl",
+        "bytes": 1227014617,
+        "sha256": "a3d378f1ed6a4d433f69717d8399ae148dd4c4e96c30374b8ccd1628da2fc3de",
+        "verified_after_copy": true,
+        "seconds": 3.632211035117507,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/cg10/seed-28/state.pkl": {
+      "bytes": 1227014617,
+      "capacity": 214400,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/cg10/seed-28/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/cg10/seed-28/state.pkl",
+        "bytes": 1227014617,
+        "sha256": "9fd2b37fb7245255b3760c17d828d4bfb7c2efd8a7e53ba4b793bcb4480c92e1",
+        "verified_after_copy": true,
+        "seconds": 3.7510191868059337,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/cg10/seed-29/state.pkl": {
+      "bytes": 1227014617,
+      "capacity": 214400,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/cg10/seed-29/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/cg10/seed-29/state.pkl",
+        "bytes": 1227014617,
+        "sha256": "ebb96a6552177ac1da2022a551574186acd5798f84be9e489603850134b65560",
+        "verified_after_copy": true,
+        "seconds": 3.7358866699505597,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/ss10/seed-00/state.pkl": {
+      "bytes": 613508105,
+      "capacity": 107200,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/ss10/seed-00/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/ss10/seed-00/state.pkl",
+        "bytes": 613508105,
+        "sha256": "a20da788c53d29673d787a6376819986c22105525c910a2cbc0fe9239fc6053f",
+        "verified_after_copy": true,
+        "seconds": 1.8352585821412504,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/ss10/seed-01/state.pkl": {
+      "bytes": 613508105,
+      "capacity": 107200,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/ss10/seed-01/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/ss10/seed-01/state.pkl",
+        "bytes": 613508105,
+        "sha256": "dfd40799124fa0798ed8152f7f4180bccdc31a819a6611ddf15c824b5202b6a6",
+        "verified_after_copy": true,
+        "seconds": 2.0551289829891175,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/ss10/seed-02/state.pkl": {
+      "bytes": 613508105,
+      "capacity": 107200,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/ss10/seed-02/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/ss10/seed-02/state.pkl",
+        "bytes": 613508105,
+        "sha256": "71e71a6a0c4cef0ab3701604ac509f2f0bddec4a10efceba32d7d2dfe06ac06e",
+        "verified_after_copy": true,
+        "seconds": 1.8007314349524677,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/ss10/seed-03/state.pkl": {
+      "bytes": 1227013705,
+      "capacity": 214400,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/ss10/seed-03/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/ss10/seed-03/state.pkl",
+        "bytes": 1227013705,
+        "sha256": "8ca703fa635aeabf491abdc1af6c251dd2ea795764cda485f22a687a6b4594ba",
+        "verified_after_copy": true,
+        "seconds": 3.693370932014659,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/ss10/seed-04/state.pkl": {
+      "bytes": 613508105,
+      "capacity": 107200,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/ss10/seed-04/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/ss10/seed-04/state.pkl",
+        "bytes": 613508105,
+        "sha256": "2f707d227d6d863a2d6e8f66f713d2b1766bddcfc1d86050b2961258d038efb6",
+        "verified_after_copy": true,
+        "seconds": 1.9179325010627508,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/ss10/seed-05/state.pkl": {
+      "bytes": 613508105,
+      "capacity": 107200,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/ss10/seed-05/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/ss10/seed-05/state.pkl",
+        "bytes": 613508105,
+        "sha256": "bbf16f0c95b9e7022373d3746b6d109c1b49b7200682c5ddebabc0865dca9bf9",
+        "verified_after_copy": true,
+        "seconds": 2.056613232009113,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/ss10/seed-06/state.pkl": {
+      "bytes": 613508105,
+      "capacity": 107200,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/ss10/seed-06/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/ss10/seed-06/state.pkl",
+        "bytes": 613508105,
+        "sha256": "920d877076ac308fed0df0340c8c70603ea39da77b4c80237c9c35c4a16ffb2c",
+        "verified_after_copy": true,
+        "seconds": 1.75643082219176,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/ss10/seed-07/state.pkl": {
+      "bytes": 613508105,
+      "capacity": 107200,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/ss10/seed-07/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/ss10/seed-07/state.pkl",
+        "bytes": 613508105,
+        "sha256": "73171baf7fc689f61d87f32714c4093c46dbd8d2cbbe9662fecf6e1eb4be09f2",
+        "verified_after_copy": true,
+        "seconds": 2.1222964860498905,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/ss10/seed-08/state.pkl": {
+      "bytes": 1227013705,
+      "capacity": 214400,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/ss10/seed-08/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/ss10/seed-08/state.pkl",
+        "bytes": 1227013705,
+        "sha256": "3f0825d690431b3391aa9610e7f9edb0fa3209371ead98c3bdc31f95605d969d",
+        "verified_after_copy": true,
+        "seconds": 3.592816279968247,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/ss10/seed-09/state.pkl": {
+      "bytes": 613508105,
+      "capacity": 107200,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/ss10/seed-09/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/ss10/seed-09/state.pkl",
+        "bytes": 613508105,
+        "sha256": "32b444f46b0fed442c6e72c8859697cd75f3d47e634afffb886863ef3d718e96",
+        "verified_after_copy": true,
+        "seconds": 1.8836051321122795,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/ss10/seed-10/state.pkl": {
+      "bytes": 1227013705,
+      "capacity": 214400,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/ss10/seed-10/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/ss10/seed-10/state.pkl",
+        "bytes": 1227013705,
+        "sha256": "5b583da7d0e3e43bd31f7dab9b55015c0952be07c5dd9563353485a1632ac433",
+        "verified_after_copy": true,
+        "seconds": 3.4490013590548187,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/ss10/seed-11/state.pkl": {
+      "bytes": 613508105,
+      "capacity": 107200,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/ss10/seed-11/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/ss10/seed-11/state.pkl",
+        "bytes": 613508105,
+        "sha256": "a584d5b3d54d30f6867cf24addf895f60cc6e08a65ddcb00017b7a99a82c37f4",
+        "verified_after_copy": true,
+        "seconds": 1.7904083470348269,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/ss10/seed-12/state.pkl": {
+      "bytes": 613508105,
+      "capacity": 107200,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/ss10/seed-12/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/ss10/seed-12/state.pkl",
+        "bytes": 613508105,
+        "sha256": "e084970b30e7846f3486c3c06ab2fbf10e7bb692ffac57553a68bb48434bd0a5",
+        "verified_after_copy": true,
+        "seconds": 1.6654739191289991,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/ss10/seed-13/state.pkl": {
+      "bytes": 613508105,
+      "capacity": 107200,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/ss10/seed-13/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/ss10/seed-13/state.pkl",
+        "bytes": 613508105,
+        "sha256": "25c775e7933e72dda7d760ac75112a523be39261593f5d11311481b605311aff",
+        "verified_after_copy": true,
+        "seconds": 1.8828934060875326,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/ss10/seed-14/state.pkl": {
+      "bytes": 1227013705,
+      "capacity": 214400,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/ss10/seed-14/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/ss10/seed-14/state.pkl",
+        "bytes": 1227013705,
+        "sha256": "229a0f9ef6fe52bf5dad559d2be8b09cd37edbcada010197e783fc0080160cb3",
+        "verified_after_copy": true,
+        "seconds": 3.9800254949368536,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/ss10/seed-15/state.pkl": {
+      "bytes": 613508105,
+      "capacity": 107200,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/ss10/seed-15/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/ss10/seed-15/state.pkl",
+        "bytes": 613508105,
+        "sha256": "dca36ae0256d4de12f45b8cd3ea9d580ab9100a65695a86f1c70ed35ebc615c0",
+        "verified_after_copy": true,
+        "seconds": 1.9342266009189188,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/ss10/seed-16/state.pkl": {
+      "bytes": 1227013705,
+      "capacity": 214400,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/ss10/seed-16/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/ss10/seed-16/state.pkl",
+        "bytes": 1227013705,
+        "sha256": "56df0f5d1b877cb0f90c598e4012974fceb8538c22d9325213f48d0a6fd0f688",
+        "verified_after_copy": true,
+        "seconds": 3.534335918026045,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/ss10/seed-17/state.pkl": {
+      "bytes": 613508105,
+      "capacity": 107200,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/ss10/seed-17/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/ss10/seed-17/state.pkl",
+        "bytes": 613508105,
+        "sha256": "21ac761b3898a27d08c51567f57beb246b549039947a7482b94d15f0d9580dad",
+        "verified_after_copy": true,
+        "seconds": 1.753585886908695,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/ss10/seed-18/state.pkl": {
+      "bytes": 613508105,
+      "capacity": 107200,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/ss10/seed-18/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/ss10/seed-18/state.pkl",
+        "bytes": 613508105,
+        "sha256": "0988d936fed450e49ac3eeeee737999ce14e539b7bb118fdb231194406d4d099",
+        "verified_after_copy": true,
+        "seconds": 2.231057526078075,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/ss10/seed-19/state.pkl": {
+      "bytes": 613508105,
+      "capacity": 107200,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/ss10/seed-19/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/ss10/seed-19/state.pkl",
+        "bytes": 613508105,
+        "sha256": "cf424b870709b023711656ac19f8ecae0ef2eeb303eb881ef550a0032ba2974e",
+        "verified_after_copy": true,
+        "seconds": 1.3446871330961585,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/ss10/seed-20/state.pkl": {
+      "bytes": 613508105,
+      "capacity": 107200,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/ss10/seed-20/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/ss10/seed-20/state.pkl",
+        "bytes": 613508105,
+        "sha256": "40f5b8a644254d016482c0c28ed38636921fe99e6e2a8e8aeb42caf704862f4c",
+        "verified_after_copy": true,
+        "seconds": 1.8162018980365247,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/ss10/seed-21/state.pkl": {
+      "bytes": 1227013705,
+      "capacity": 214400,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/ss10/seed-21/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/ss10/seed-21/state.pkl",
+        "bytes": 1227013705,
+        "sha256": "e5ca8c7ba7616be5c73c67fa73ce907f827254c6e5822608a8e0382af16a5da8",
+        "verified_after_copy": true,
+        "seconds": 3.223620881093666,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/ss10/seed-22/state.pkl": {
+      "bytes": 613508105,
+      "capacity": 107200,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/ss10/seed-22/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/ss10/seed-22/state.pkl",
+        "bytes": 613508105,
+        "sha256": "2f256923ba85e4c9ec84c2e0c1e08b3b1d3591de3ae7d1f8ecb03a93d058a475",
+        "verified_after_copy": true,
+        "seconds": 1.7672418560832739,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/ss10/seed-23/state.pkl": {
+      "bytes": 1227013705,
+      "capacity": 214400,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/ss10/seed-23/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/ss10/seed-23/state.pkl",
+        "bytes": 1227013705,
+        "sha256": "2df3422fb7e14d63e85ac75c2e55a43be47027c2715e02f3bae11e869cb7c586",
+        "verified_after_copy": true,
+        "seconds": 3.458441210910678,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/ss10/seed-24/state.pkl": {
+      "bytes": 1227013705,
+      "capacity": 214400,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/ss10/seed-24/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/ss10/seed-24/state.pkl",
+        "bytes": 1227013705,
+        "sha256": "2082cc4eefc1e0629a849635eb6b86692126f002a3d0746a8c17434b8ba07e20",
+        "verified_after_copy": true,
+        "seconds": 3.4215197460725904,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/ss10/seed-25/state.pkl": {
+      "bytes": 613508105,
+      "capacity": 107200,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/ss10/seed-25/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/ss10/seed-25/state.pkl",
+        "bytes": 613508105,
+        "sha256": "bf8cd3f91b0326dc4717dcf38e8380e090e4974215227fc0a275a5d32ffa5735",
+        "verified_after_copy": true,
+        "seconds": 1.5589823930058628,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/ss10/seed-26/state.pkl": {
+      "bytes": 1227013705,
+      "capacity": 214400,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/ss10/seed-26/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/ss10/seed-26/state.pkl",
+        "bytes": 1227013705,
+        "sha256": "55712887f3bf95624182cf750e5cb5286db204a96b1c2401e4930554932561bf",
+        "verified_after_copy": true,
+        "seconds": 3.8040212499909103,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/ss10/seed-27/state.pkl": {
+      "bytes": 613508105,
+      "capacity": 107200,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/ss10/seed-27/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/ss10/seed-27/state.pkl",
+        "bytes": 613508105,
+        "sha256": "abf0f8acd2276767d5df0d41d48c09dedc04b34fc5a723fb4dd2cd3d77e9a16d",
+        "verified_after_copy": true,
+        "seconds": 1.957036895910278,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/ss10/seed-28/state.pkl": {
+      "bytes": 613508105,
+      "capacity": 107200,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/ss10/seed-28/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/ss10/seed-28/state.pkl",
+        "bytes": 613508105,
+        "sha256": "3a3c5cf556215f8f156544f41c0f43c3f98f7633a354ae73292abada1186cb78",
+        "verified_after_copy": true,
+        "seconds": 1.7299047969281673,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.05/ss10/seed-29/state.pkl": {
+      "bytes": 1227013705,
+      "capacity": 214400,
+      "checkpoint_shares_file": true,
+      "archive": {
+        "source": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.05/ss10/seed-29/state.pkl",
+        "target": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909/0.05/ss10/seed-29/state.pkl",
+        "bytes": 1227013705,
+        "sha256": "1492644cd2a4df97c66b41330f84ae9c8735c2e546c420805ada44cdcff944b1",
+        "verified_after_copy": true,
+        "seconds": 3.687653227010742,
+        "affinity": [
+          65
+        ]
+      }
+    },
+    "0.02/ss10/seed-00/state.pkl": {
+      "bytes": 4908047385,
+      "capacity": 857600,
+      "checkpoint_shares_file": true,
+      "archive": null
+    },
+    "0.02/ss10/seed-01/state.pkl": {
+      "bytes": 4908047385,
+      "capacity": 857600,
+      "checkpoint_shares_file": true,
+      "archive": null
+    },
+    "0.02/ss10/seed-02/state.pkl": {
+      "bytes": 4908047385,
+      "capacity": 857600,
+      "checkpoint_shares_file": true,
+      "archive": null
+    },
+    "0.02/ss10/seed-03/state.pkl": {
+      "bytes": 9816092189,
+      "capacity": 1715200,
+      "checkpoint_shares_file": true,
+      "archive": null
+    },
+    "0.02/ss10/seed-04/state.pkl": {
+      "bytes": 4908047385,
+      "capacity": 857600,
+      "checkpoint_shares_file": true,
+      "archive": null
+    },
+    "0.02/ss10/seed-05/state.pkl": {
+      "bytes": 4908047385,
+      "capacity": 857600,
+      "checkpoint_shares_file": true,
+      "archive": null
+    },
+    "0.02/ss10/seed-06/state.pkl": {
+      "bytes": 4908047385,
+      "capacity": 857600,
+      "checkpoint_shares_file": true,
+      "archive": null
+    },
+    "0.02/ss10/seed-07/state.pkl": {
+      "bytes": 4908047385,
+      "capacity": 857600,
+      "checkpoint_shares_file": true,
+      "archive": null
+    },
+    "0.02/ss10/seed-08/state.pkl": {
+      "bytes": 9816092189,
+      "capacity": 1715200,
+      "checkpoint_shares_file": true,
+      "archive": null
+    },
+    "0.02/ss10/seed-09/state.pkl": {
+      "bytes": 4908047385,
+      "capacity": 857600,
+      "checkpoint_shares_file": true,
+      "archive": null
+    },
+    "0.02/ss10/seed-10/state.pkl": {
+      "bytes": 9816092189,
+      "capacity": 1715200,
+      "checkpoint_shares_file": true,
+      "archive": null
+    },
+    "0.02/ss10/seed-11/state.pkl": {
+      "bytes": 4908047385,
+      "capacity": 857600,
+      "checkpoint_shares_file": true,
+      "archive": null
+    },
+    "0.02/ss10/seed-12/state.pkl": {
+      "bytes": 4908047385,
+      "capacity": 857600,
+      "checkpoint_shares_file": true,
+      "archive": null
+    },
+    "0.02/ss10/seed-13/state.pkl": {
+      "bytes": 4908047385,
+      "capacity": 857600,
+      "checkpoint_shares_file": true,
+      "archive": null
+    },
+    "0.02/ss10/seed-14/state.pkl": {
+      "bytes": 9816092189,
+      "capacity": 1715200,
+      "checkpoint_shares_file": true,
+      "archive": null
+    },
+    "0.02/ss10/seed-15/state.pkl": {
+      "bytes": 4908047385,
+      "capacity": 857600,
+      "checkpoint_shares_file": true,
+      "archive": null
+    },
+    "0.02/ss10/seed-16/state.pkl": {
+      "bytes": 9816092189,
+      "capacity": 1715200,
+      "checkpoint_shares_file": true,
+      "archive": null
+    },
+    "0.02/ss10/seed-17/state.pkl": {
+      "bytes": 4908047385,
+      "capacity": 857600,
+      "checkpoint_shares_file": true,
+      "archive": null
+    },
+    "0.02/ss10/seed-18/state.pkl": {
+      "bytes": 4908047385,
+      "capacity": 857600,
+      "checkpoint_shares_file": true,
+      "archive": null
+    },
+    "0.02/ss10/seed-19/state.pkl": {
+      "bytes": 4908047385,
+      "capacity": 857600,
+      "checkpoint_shares_file": true,
+      "archive": null
+    },
+    "0.02/ss10/seed-20/state.pkl": {
+      "bytes": 4908047385,
+      "capacity": 857600,
+      "checkpoint_shares_file": true,
+      "archive": null
+    },
+    "0.02/ss10/seed-21/state.pkl": {
+      "bytes": 9816092189,
+      "capacity": 1715200,
+      "checkpoint_shares_file": true,
+      "archive": null
+    },
+    "0.02/ss10/seed-22/state.pkl": {
+      "bytes": 4908047385,
+      "capacity": 857600,
+      "checkpoint_shares_file": true,
+      "archive": null
+    },
+    "0.02/ss10/seed-23/state.pkl": {
+      "bytes": 9816092189,
+      "capacity": 1715200,
+      "checkpoint_shares_file": true,
+      "archive": null
+    },
+    "0.02/ss10/seed-24/state.pkl": {
+      "bytes": 4908047385,
+      "capacity": 857600,
+      "checkpoint_shares_file": true,
+      "archive": null
+    },
+    "0.02/ss10/seed-25/state.pkl": {
+      "bytes": 4908047385,
+      "capacity": 857600,
+      "checkpoint_shares_file": true,
+      "archive": null
+    },
+    "0.02/ss10/seed-26/state.pkl": {
+      "bytes": 9816092189,
+      "capacity": 1715200,
+      "checkpoint_shares_file": true,
+      "archive": null
+    },
+    "0.02/ss10/seed-27/state.pkl": {
+      "bytes": 4908047385,
+      "capacity": 857600,
+      "checkpoint_shares_file": true,
+      "archive": null
+    },
+    "0.02/ss10/seed-28/state.pkl": {
+      "bytes": 4908047385,
+      "capacity": 857600,
+      "checkpoint_shares_file": true,
+      "archive": null
+    },
+    "0.02/ss10/seed-29/state.pkl": {
+      "bytes": 9816092189,
+      "capacity": 1715200,
+      "checkpoint_shares_file": true,
+      "archive": null
+    }
+  },
+  "continuation_checks": [
+    {
+      "stage": "0.02",
+      "seed": 0,
+      "retained_goal_prefix": true
+    },
+    {
+      "stage": "0.02",
+      "seed": 1,
+      "retained_goal_prefix": true
+    },
+    {
+      "stage": "0.02",
+      "seed": 2,
+      "retained_goal_prefix": true
+    },
+    {
+      "stage": "0.02",
+      "seed": 3,
+      "retained_goal_prefix": true
+    },
+    {
+      "stage": "0.02",
+      "seed": 4,
+      "retained_goal_prefix": true
+    },
+    {
+      "stage": "0.02",
+      "seed": 5,
+      "retained_goal_prefix": true
+    },
+    {
+      "stage": "0.02",
+      "seed": 6,
+      "retained_goal_prefix": true
+    },
+    {
+      "stage": "0.02",
+      "seed": 7,
+      "retained_goal_prefix": true
+    },
+    {
+      "stage": "0.02",
+      "seed": 8,
+      "retained_goal_prefix": true
+    },
+    {
+      "stage": "0.02",
+      "seed": 9,
+      "retained_goal_prefix": true
+    },
+    {
+      "stage": "0.02",
+      "seed": 10,
+      "retained_goal_prefix": true
+    },
+    {
+      "stage": "0.02",
+      "seed": 11,
+      "retained_goal_prefix": true
+    },
+    {
+      "stage": "0.02",
+      "seed": 12,
+      "retained_goal_prefix": true
+    },
+    {
+      "stage": "0.02",
+      "seed": 13,
+      "retained_goal_prefix": true
+    },
+    {
+      "stage": "0.02",
+      "seed": 14,
+      "retained_goal_prefix": true
+    },
+    {
+      "stage": "0.02",
+      "seed": 15,
+      "retained_goal_prefix": true
+    },
+    {
+      "stage": "0.02",
+      "seed": 16,
+      "retained_goal_prefix": true
+    },
+    {
+      "stage": "0.02",
+      "seed": 17,
+      "retained_goal_prefix": true
+    },
+    {
+      "stage": "0.02",
+      "seed": 18,
+      "retained_goal_prefix": true
+    },
+    {
+      "stage": "0.02",
+      "seed": 19,
+      "retained_goal_prefix": true
+    },
+    {
+      "stage": "0.02",
+      "seed": 20,
+      "retained_goal_prefix": true
+    },
+    {
+      "stage": "0.02",
+      "seed": 21,
+      "retained_goal_prefix": true
+    },
+    {
+      "stage": "0.02",
+      "seed": 22,
+      "retained_goal_prefix": true
+    },
+    {
+      "stage": "0.02",
+      "seed": 23,
+      "retained_goal_prefix": true
+    },
+    {
+      "stage": "0.02",
+      "seed": 24,
+      "retained_goal_prefix": true
+    },
+    {
+      "stage": "0.02",
+      "seed": 25,
+      "retained_goal_prefix": true
+    },
+    {
+      "stage": "0.02",
+      "seed": 26,
+      "retained_goal_prefix": true
+    },
+    {
+      "stage": "0.02",
+      "seed": 27,
+      "retained_goal_prefix": true
+    },
+    {
+      "stage": "0.02",
+      "seed": 28,
+      "retained_goal_prefix": true
+    },
+    {
+      "stage": "0.02",
+      "seed": 29,
+      "retained_goal_prefix": true
+    }
+  ],
+  "failed_analysis_attempts": [
+    {
+      "event": "finish",
+      "time": 1788955134.2164118,
+      "stage": "0.05",
+      "cpu": 1,
+      "pid": 4041584,
+      "job": [
+        "ss10",
+        16,
+        "analysis"
+      ],
+      "exit_code": 1,
+      "success": false
+    }
+  ],
+  "analysis_sources": {
+    "5667381608eced7e3fcb754f32cc6c59db185735": {
+      "root": "/largedata/albert/git/jaxns-paper-evidence10-analysis",
+      "commit": "5667381608eced7e3fcb754f32cc6c59db185735",
+      "src_tree": "528843937ff0497d916e53979573b5ef0be0bcff",
+      "files": {
+        "prefix_sweep.py": "e2431b3ec3050f75cce4ed752c145268282cd59dcc666769e45973e8b9425549",
+        "run_evidence10.py": "e3256ad458b34963d0b1f251463a13ea5ff89e6547b9c29f9c3c65e79e74c7ec"
+      }
+    }
+  },
+  "retries": [
+    {
+      "stage": "0.05",
+      "job": [
+        "ss10",
+        16,
+        "analysis"
+      ],
+      "exit_code": 1,
+      "resolved": true,
+      "analysis_commit": "5667381608eced7e3fcb754f32cc6c59db185735",
+      "reason": "Extend sparse reduction to the existing plateau law",
+      "successful_pid": 4044812
+    }
+  ],
+  "max_active": 60,
+  "completed_phases": 240,
+  "ss10_seed0_matches_previous_baseline": true,
+  "ss10_seed0_all_prefixes_and_mass_match_previous": true
+}

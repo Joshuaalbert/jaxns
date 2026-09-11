@@ -1,0 +1,39 @@
+......F.                                                                 [100%]
+=================================== FAILURES ===================================
+____________ test_trimmed_phantom_checkpoint_preserves_continuation ____________
+
+    def test_trimmed_phantom_checkpoint_preserves_continuation():
+        model, _ = build_case("ss10")
+        sampler = NestedSampler(
+            model=model, root_allocation_degree=8, shell_size=4, delta_K=8,
+            sampler=UniDimSliceSampler(model=model, num_slices=5,
+                                       collect_phantom_samples=True,
+                                       max_phantom_samples=4, no_step_out=True),
+            collect_phantom_samples=True, max_phantom_samples=4,
+            allocation_target="evidence_improving", unlimited_samples=True,
+            depth_condition=DepthCondition(dlogZ=np.log1p(.01)),
+        )
+        bootstrap = dataclasses.replace(sampler, allocation_target="uniform", delta_K=1)
+        state = bootstrap.run_until_goal(lambda s: int(s.goal_loop_iter) >= 1,
+                                         key=jax.random.PRNGKey(0))
+        restored = pickle.loads(pickle.dumps(state.trim()))
+        expected = sampler.resume_until_goal(state, lambda s: int(s.goal_loop_iter) >= 3).trim()
+        actual = sampler.resume_until_goal(restored, lambda s: int(s.goal_loop_iter) >= 3).trim()
+>       assert int(actual.num_samples) == int(expected.num_samples)
+E       assert 351 == 368
+E        +  where 351 = int(Array(351, dtype=int64))
+E        +    where Array(351, dtype=int64) = State(root_out_degree=Array(24, dtype=int64), samples=Samples(log_L_constraints=Array([         -inf,          -inf,  ..., needs_growth=Array(False, dtype=bool), depth_reached=Array(True, dtype=bool), sampler_data=None, scheduler_data=None).num_samples
+E        +  and   368 = int(Array(368, dtype=int64))
+E        +    where Array(368, dtype=int64) = State(root_out_degree=Array(24, dtype=int64), samples=Samples(log_L_constraints=Array([         -inf,          -inf,  ..., needs_growth=Array(False, dtype=bool), depth_reached=Array(True, dtype=bool), sampler_data=None, scheduler_data=None).num_samples
+
+cicd/tests/test_evidence10.py:100: AssertionError
+=============================== warnings summary ===============================
+../../../../data/albert/miniconda3/envs/jaxns_py/lib/python3.12/site-packages/tensorflow_probability/python/internal/backend/jax/ops.py:684
+  /data/albert/miniconda3/envs/jaxns_py/lib/python3.12/site-packages/tensorflow_probability/python/internal/backend/jax/ops.py:684: DeprecationWarning: jax.core.pytype_aval_mappings is deprecated.
+    jax.core.pytype_aval_mappings[onp.ndarray])
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED cicd/tests/test_evidence10.py::test_trimmed_phantom_checkpoint_preserves_continuation
+1 failed, 7 passed, 1 warning in 73.78s (0:01:13)
+ERROR conda.cli.main_run:execute(125): `conda run taskset -c 4 pytest -q cicd/tests/test_evidence10.py cicd/tests/test_core.py::test_resume_uses_stored_key_and_matches_uninterrupted_run` failed. (See above for error)

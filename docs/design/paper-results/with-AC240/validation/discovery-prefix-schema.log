@@ -1,0 +1,9 @@
+Traceback (most recent call last):
+  File "/tmp/jaxns-AC240-prefix-audit.py", line 63, in <module>
+    expected = discovery_arrays(astate, count)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/jaxns-AC240-prefix-audit.py", line 18, in discovery_arrays
+    state.samples.log_L,
+    ^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Samples' object has no attribute 'log_L'
+ERROR conda.cli.main_run:execute(125): `conda run taskset -c 64 python /tmp/jaxns-AC240-prefix-audit.py` failed. (See above for error)

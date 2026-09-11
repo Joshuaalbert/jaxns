@@ -1,0 +1,172 @@
+[
+  {
+    "old": "/largedata/albert/jaxns-a181-A-20260907/spike_slab",
+    "archive": "/largedata/albert/jaxns-superseded-SS8-CSS8-pre-20260908/jaxns-a181-A-20260907/spike_slab",
+    "directory_inode": 137150094
+  },
+  {
+    "old": "/largedata/albert/jaxns-a181-A-20260907/correlated_spike_slab8",
+    "archive": "/largedata/albert/jaxns-superseded-SS8-CSS8-pre-20260908/jaxns-a181-A-20260907/correlated_spike_slab8",
+    "directory_inode": 3426484508
+  },
+  {
+    "old": "/largedata/albert/jaxns-a181-A-20260907-scalar-queries/spike_slab",
+    "archive": "/largedata/albert/jaxns-superseded-SS8-CSS8-pre-20260908/jaxns-a181-A-20260907-scalar-queries/spike_slab",
+    "directory_inode": 3423981284
+  },
+  {
+    "old": "/largedata/albert/jaxns-a181-A-20260907-scalar-queries/correlated_spike_slab8",
+    "archive": "/largedata/albert/jaxns-superseded-SS8-CSS8-pre-20260908/jaxns-a181-A-20260907-scalar-queries/correlated_spike_slab8",
+    "directory_inode": 3775365115
+  },
+  {
+    "old": "/largedata/albert/jaxns-a181-A-perfcheck-20260907/spike_slab",
+    "archive": "/largedata/albert/jaxns-superseded-SS8-CSS8-pre-20260908/jaxns-a181-A-perfcheck-20260907/spike_slab",
+    "directory_inode": 14629184756
+  },
+  {
+    "old": "/largedata/albert/jaxns-a181-B-20260907/spike_slab",
+    "archive": "/largedata/albert/jaxns-superseded-SS8-CSS8-pre-20260908/jaxns-a181-B-20260907/spike_slab",
+    "directory_inode": 11337896144
+  },
+  {
+    "old": "/largedata/albert/jaxns-a181-B-20260907/correlated_spike_slab8",
+    "archive": "/largedata/albert/jaxns-superseded-SS8-CSS8-pre-20260908/jaxns-a181-B-20260907/correlated_spike_slab8",
+    "directory_inode": 12453177454
+  },
+  {
+    "old": "/largedata/albert/jaxns-a181-Bprime-20260907/spike_slab",
+    "archive": "/largedata/albert/jaxns-superseded-SS8-CSS8-pre-20260908/jaxns-a181-Bprime-20260907/spike_slab",
+    "directory_inode": 7531698733
+  },
+  {
+    "old": "/largedata/albert/jaxns-a181-Bprime-20260907/correlated_spike_slab8",
+    "archive": "/largedata/albert/jaxns-superseded-SS8-CSS8-pre-20260908/jaxns-a181-Bprime-20260907/correlated_spike_slab8",
+    "directory_inode": 8651688515
+  },
+  {
+    "old": "/largedata/albert/jaxns-a18124b-retest-20260907/spike_slab",
+    "archive": "/largedata/albert/jaxns-superseded-SS8-CSS8-pre-20260908/jaxns-a18124b-retest-20260907/spike_slab",
+    "directory_inode": 7090831375
+  },
+  {
+    "old": "/largedata/albert/jaxns-a18124b-retest-20260907/correlated_spike_slab8",
+    "archive": "/largedata/albert/jaxns-superseded-SS8-CSS8-pre-20260908/jaxns-a18124b-retest-20260907/correlated_spike_slab8",
+    "directory_inode": 10876949752
+  },
+  {
+    "old": "/largedata/albert/jaxns-ablation-A960-20260907/spike_slab",
+    "archive": "/largedata/albert/jaxns-superseded-SS8-CSS8-pre-20260908/jaxns-ablation-A960-20260907/spike_slab",
+    "directory_inode": 3461199079
+  },
+  {
+    "old": "/largedata/albert/jaxns-ablation-A960-20260907/correlated_spike_slab8",
+    "archive": "/largedata/albert/jaxns-superseded-SS8-CSS8-pre-20260908/jaxns-ablation-A960-20260907/correlated_spike_slab8",
+    "directory_inode": 5072839901
+  },
+  {
+    "old": "/largedata/albert/jaxns-ablation-B240-20260907/spike_slab",
+    "archive": "/largedata/albert/jaxns-superseded-SS8-CSS8-pre-20260908/jaxns-ablation-B240-20260907/spike_slab",
+    "directory_inode": 151165793
+  },
+  {
+    "old": "/largedata/albert/jaxns-ablation-B240-20260907/correlated_spike_slab8",
+    "archive": "/largedata/albert/jaxns-superseded-SS8-CSS8-pre-20260908/jaxns-ablation-B240-20260907/correlated_spike_slab8",
+    "directory_inode": 3453780229
+  },
+  {
+    "old": "/largedata/albert/jaxns-ablation-R960-20260907/spike_slab",
+    "archive": "/largedata/albert/jaxns-superseded-SS8-CSS8-pre-20260908/jaxns-ablation-R960-20260907/spike_slab",
+    "directory_inode": 151165790
+  },
+  {
+    "old": "/largedata/albert/jaxns-ablation-R960-20260907/correlated_spike_slab8",
+    "archive": "/largedata/albert/jaxns-superseded-SS8-CSS8-pre-20260908/jaxns-ablation-R960-20260907/correlated_spike_slab8",
+    "directory_inode": 1367634296
+  },
+  {
+    "old": "/largedata/albert/jaxns-allocation-C240-20260907/spike_slab",
+    "archive": "/largedata/albert/jaxns-superseded-SS8-CSS8-pre-20260908/jaxns-allocation-C240-20260907/spike_slab",
+    "directory_inode": 175794853
+  },
+  {
+    "old": "/largedata/albert/jaxns-allocation-C240-20260907/correlated_spike_slab8",
+    "archive": "/largedata/albert/jaxns-superseded-SS8-CSS8-pre-20260908/jaxns-allocation-C240-20260907/correlated_spike_slab8",
+    "directory_inode": 175794856
+  },
+  {
+    "old": "/largedata/albert/jaxns-evidence-C240-20260907/spike_slab",
+    "archive": "/largedata/albert/jaxns-superseded-SS8-CSS8-pre-20260908/jaxns-evidence-C240-20260907/spike_slab",
+    "directory_inode": 7545512577
+  },
+  {
+    "old": "/largedata/albert/jaxns-evidence-C240-20260907/correlated_spike_slab8",
+    "archive": "/largedata/albert/jaxns-superseded-SS8-CSS8-pre-20260908/jaxns-evidence-C240-20260907/correlated_spike_slab8",
+    "directory_inode": 8730047149
+  },
+  {
+    "old": "/largedata/albert/jaxns-evidence-C960-20260907/spike_slab",
+    "archive": "/largedata/albert/jaxns-superseded-SS8-CSS8-pre-20260908/jaxns-evidence-C960-20260907/spike_slab",
+    "directory_inode": 3791515516
+  },
+  {
+    "old": "/largedata/albert/jaxns-evidence-C960-20260907/correlated_spike_slab8",
+    "archive": "/largedata/albert/jaxns-superseded-SS8-CSS8-pre-20260908/jaxns-evidence-C960-20260907/correlated_spike_slab8",
+    "directory_inode": 5435944109
+  },
+  {
+    "old": "/largedata/albert/jaxns-first-goal-allocation-20260907/spike_slab",
+    "archive": "/largedata/albert/jaxns-superseded-SS8-CSS8-pre-20260908/jaxns-first-goal-allocation-20260907/spike_slab",
+    "directory_inode": 14657086543
+  },
+  {
+    "old": "/largedata/albert/jaxns-first-goal-allocation-20260907/correlated_spike_slab8",
+    "archive": "/largedata/albert/jaxns-superseded-SS8-CSS8-pre-20260908/jaxns-first-goal-allocation-20260907/correlated_spike_slab8",
+    "directory_inode": 158440789
+  },
+  {
+    "old": "/largedata/albert/jaxns-mixed-Cprime240-20260907/spike_slab",
+    "archive": "/largedata/albert/jaxns-superseded-SS8-CSS8-pre-20260908/jaxns-mixed-Cprime240-20260907/spike_slab",
+    "directory_inode": 178172364
+  },
+  {
+    "old": "/largedata/albert/jaxns-mixed-Cprime240-20260907/correlated_spike_slab8",
+    "archive": "/largedata/albert/jaxns-superseded-SS8-CSS8-pre-20260908/jaxns-mixed-Cprime240-20260907/correlated_spike_slab8",
+    "directory_inode": 178172367
+  },
+  {
+    "old": "/largedata/albert/jaxns-mixed-Cprime960-20260907/spike_slab",
+    "archive": "/largedata/albert/jaxns-superseded-SS8-CSS8-pre-20260908/jaxns-mixed-Cprime960-20260907/spike_slab",
+    "directory_inode": 3505082339
+  },
+  {
+    "old": "/largedata/albert/jaxns-mixed-Cprime960-20260907/correlated_spike_slab8",
+    "archive": "/largedata/albert/jaxns-superseded-SS8-CSS8-pre-20260908/jaxns-mixed-Cprime960-20260907/correlated_spike_slab8",
+    "directory_inode": 5436053732
+  },
+  {
+    "old": "/largedata/albert/jaxns-paper-pre289-reproduction-20260906/spike_slab",
+    "archive": "/largedata/albert/jaxns-superseded-SS8-CSS8-pre-20260908/jaxns-paper-pre289-reproduction-20260906/spike_slab",
+    "directory_inode": 7089148994
+  },
+  {
+    "old": "/largedata/albert/jaxns-paper-pre289-reproduction-20260906/correlated_spike_slab8",
+    "archive": "/largedata/albert/jaxns-superseded-SS8-CSS8-pre-20260908/jaxns-paper-pre289-reproduction-20260906/correlated_spike_slab8",
+    "directory_inode": 5390285433
+  },
+  {
+    "old": "/largedata/albert/jaxns-ss8-spike-C240-20260908",
+    "archive": "/largedata/albert/jaxns-superseded-SS8-CSS8-pre-20260908/jaxns-ss8-spike-C240-20260908",
+    "directory_inode": 14682705750
+  },
+  {
+    "old": "/largedata/albert/jaxns-ss8-resolved-C240-20260908",
+    "archive": "/largedata/albert/jaxns-superseded-SS8-CSS8-pre-20260908/jaxns-ss8-resolved-C240-20260908",
+    "directory_inode": 12491352325
+  },
+  {
+    "old": "/largedata/albert/jaxns-ss8-correlation-C240-20260908",
+    "archive": "/largedata/albert/jaxns-superseded-SS8-CSS8-pre-20260908/jaxns-ss8-correlation-C240-20260908",
+    "directory_inode": 3508938270
+  }
+]

@@ -1,0 +1,29 @@
+{
+  "definition": "spike density exceeds slab density",
+  "classic_spike_points": 548,
+  "first_classic_append_row": 4104,
+  "first_classic_goal": 1,
+  "first_retained_phantom_goal": 1,
+  "new_classic_spike_points_per_goal": [
+    1,
+    0,
+    0,
+    1,
+    1,
+    0,
+    1,
+    1,
+    0,
+    1,
+    0,
+    537,
+    1,
+    0,
+    1,
+    2,
+    1,
+    0
+  ],
+  "first_retained_phantom_append_row": 2459,
+  "first_retained_phantom_slot": 96
+}

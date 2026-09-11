@@ -1,0 +1,14 @@
+{
+  "new_cells": 240,
+  "reused_G8_CG8_cells": 240,
+  "bootstrap_seed": 20260908,
+  "bootstrap_resamples": 10000,
+  "new_source_commits": {
+    "R240": "4071041425ed31c8b581f38664a140bf818145ea",
+    "A240": "057da98444150d4aa20e86a126d908cf462ae994",
+    "C240": "e41b35ee786f1efc7ca55ed1a67e2a2d5beb1272",
+    "Cprime240": "c8e4522e09123a6da80a6f62b5df3eb54f62d452"
+  },
+  "max_active_workers": 60,
+  "completed_phases": 480
+}

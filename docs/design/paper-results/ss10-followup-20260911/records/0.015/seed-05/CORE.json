@@ -1,0 +1,199 @@
+{
+  "case": "ss10",
+  "seed": 5,
+  "complete": true,
+  "target": 0.015,
+  "iteration": 221,
+  "classic_samples": 1224785,
+  "state_capacity": 1715200,
+  "added_goals": 99,
+  "likelihood_evaluations": 341739908,
+  "added_likelihood_evaluations": 158855383,
+  "classic_log_Z": -24.526578074120955,
+  "classic_log_Z_uncert": 0.014998299440793002,
+  "accuracy": {
+    "log_Z": -24.526578074120955,
+    "log_Z_uncert": 0.014998299440793002,
+    "log_Z_error": -0.3706432680676457,
+    "spike_mass": 0.261920901705659,
+    "spike_mass_error": -0.2380868427201735,
+    "true_log_Z": -24.15593480605331,
+    "true_spike_mass": 0.5000077444258325,
+    "kish_ess": 401296.7570050524,
+    "posterior_mean": [
+      3.415714354438047,
+      3.41720128335082,
+      -0.001264293247613355,
+      0.0012428522396260326,
+      -0.000905996678770174,
+      -3.420367945647959e-05,
+      0.0002443803190757129,
+      -0.0010737862427361421,
+      0.00200028931954891,
+      0.001003755002718354
+    ],
+    "analysis_seconds": 11.219767316011712
+  },
+  "continuation_seconds": 6195.172464524163,
+  "load_seconds": 2.114123390056193,
+  "conversion_seconds": 9.844249374000356,
+  "checkpoint_seconds_this_attempt": 45.27925188001245,
+  "run_peak_rss_bytes": 31034638336,
+  "verified_archived_goals": [
+    123,
+    124,
+    125,
+    126,
+    127,
+    128,
+    129,
+    130,
+    131,
+    132,
+    133,
+    134,
+    135,
+    136,
+    137,
+    138,
+    139,
+    140,
+    141,
+    142,
+    143,
+    144,
+    145,
+    146,
+    147,
+    148,
+    149,
+    150,
+    151,
+    152,
+    153,
+    154,
+    155,
+    156,
+    157,
+    158,
+    159,
+    160,
+    161,
+    162,
+    163,
+    164,
+    165,
+    166,
+    167,
+    168,
+    169,
+    170,
+    171,
+    172,
+    173,
+    174,
+    175,
+    176,
+    177,
+    178,
+    179,
+    180,
+    181,
+    182,
+    183,
+    184,
+    185,
+    186,
+    187,
+    188,
+    189,
+    190,
+    191,
+    192,
+    193,
+    194,
+    195,
+    196,
+    197,
+    198,
+    199,
+    200,
+    201,
+    202,
+    203,
+    204,
+    205
+  ],
+  "fingerprints": {
+    "[<flat index 0>]['U_samples'][<flat index 0>]": {
+      "shape": [
+        1224785,
+        10
+      ],
+      "dtype": "float32",
+      "sha256": "dcae14c9b3024f58f169683c62f2e236b49a594a94fca5cb749c1edd829b3d58"
+    },
+    "[<flat index 0>]['log_L_constraints']": {
+      "shape": [
+        1224785
+      ],
+      "dtype": "float64",
+      "sha256": "aeba087003bdf56bf4ecafcdee8e946abfc40fcca758513eddffc7b9208d5569"
+    },
+    "[<flat index 0>]['log_likelihoods']": {
+      "shape": [
+        1224785
+      ],
+      "dtype": "float64",
+      "sha256": "e1db6a7b763afe486fcf4b51bf8210044f319c4780126c21accaa3d217debd0d"
+    },
+    "[<flat index 0>]['num_likelihood_evaluations']": {
+      "shape": [
+        1224785
+      ],
+      "dtype": "int64",
+      "sha256": "3937760ded53c2e91e290cf361e52a7b5efdf2e50eb72c6934c0354cfecbc5d1"
+    },
+    "[<flat index 0>]['out_degree']": {
+      "shape": [
+        1224785
+      ],
+      "dtype": "int64",
+      "sha256": "f6e6ff347a20e3014308fbd382864afc49f1bacbce642cbe04df7914def60929"
+    },
+    "[<flat index 0>]['phantom_samples'][<flat index 0>]['U_samples'][<flat index 0>]": {
+      "shape": [
+        1224785,
+        99,
+        10
+      ],
+      "dtype": "float32",
+      "sha256": "cd9f3230a9e3a14a5a50755a1db49553127f2073e86d135b8773978d16fd96f9"
+    },
+    "[<flat index 0>]['phantom_samples'][<flat index 0>]['log_L']": {
+      "shape": [
+        1224785,
+        99
+      ],
+      "dtype": "float64",
+      "sha256": "b66a2bcd9b86ff202287cf5762c297c012f845332ddf2289cdb2a85c80ed8417"
+    },
+    "[<flat index 0>]['phantom_samples'][<flat index 0>]['valid_mask']": {
+      "shape": [
+        1224785,
+        99
+      ],
+      "dtype": "bool",
+      "sha256": "afe8da34be4bc1b0180e0582df0377f94178bdbec01a0374b8ecf65698319757"
+    }
+  },
+  "random_key": [
+    780140024,
+    278753039
+  ],
+  "goal_key": [
+    780140024,
+    278753039
+  ],
+  "total_peak_rss_bytes": 31034638336
+}

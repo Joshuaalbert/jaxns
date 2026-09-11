@@ -1,0 +1,56 @@
+F
+=================================== FAILURES ===================================
+_______ test_adapter_matches_pinned_legacy_function_and_prior[eggbox10] ________
+
+case = 'eggbox10'
+
+    @pytest.mark.parametrize("case", list(PRIOR_BOUNDS))
+    def test_adapter_matches_pinned_legacy_function_and_prior(case):
+        name = {"eggbox10": "eggbox", "rosenbrock10": "rosenbrock",
+                "rastrigin10": "rastrigin", "ss10": "spikeslab"}[case]
+        source = ast.parse((REFERENCE / f"{name}.py").read_text())
+        function = next(node for node in ast.walk(source)
+                        if isinstance(node, ast.FunctionDef)
+                        and node.name == "log_likelihood")
+        module = ast.fix_missing_locations(ast.Module(body=[function], type_ignores=[]))
+        namespace = {"jnp": jnp, "tfp": tfp, "ndim": 10}
+        exec(compile(module, f"pinned_legacy_{name}", "exec"), namespace)
+        model = build_model(case, "repository" if case == "ss10" else None)
+        model = pickle.loads(pickle.dumps(model))
+        assert model.U_ndims() == 10
+        low, high = PRIOR_BOUNDS[case]
+        for seed in range(4):
+            u = model.sample_U(jax.random.PRNGKey(seed))
+            x = jax.tree.leaves(model.transform_to_X(u))[0]
+>           np.testing.assert_allclose(
+                x, low + (high - low) * jax.tree.leaves(u)[0], rtol=1e-13,
+            )
+E           AssertionError: 
+E           Not equal to tolerance rtol=1e-13, atol=0
+E           
+E           Mismatched elements: 10 / 10 (100%)
+E           First 5 mismatches are at indices:
+E            [0]: 3.276378482086282 (ACTUAL), 3.2763783931732178 (DESIRED)
+E            [1]: 10.80668867178878 (ACTUAL), 10.80668830871582 (DESIRED)
+E            [2]: 4.117599914106938 (ACTUAL), 4.117599964141846 (DESIRED)
+E            [3]: 25.451003293473672 (ACTUAL), 25.45100212097168 (DESIRED)
+E            [4]: 6.107606675133377 (ACTUAL), 6.107606410980225 (DESIRED)
+E           Max absolute difference among violations: 1.17250199e-06
+E           Max relative difference among violations: 4.60689912e-08
+E            ACTUAL: array([ 3.276378, 10.806689,  4.1176  , 25.451003,  6.107607, 19.965498,
+E                  25.965415, 14.178432,  3.681434, 16.603571])
+E            DESIRED: array([ 3.276378, 10.806688,  4.1176  , 25.451002,  6.107606, 19.965498,
+E                  25.965414, 14.178432,  3.681434, 16.60357 ], dtype=float32)
+
+cicd/tests/test_posterior_candidates.py:48: AssertionError
+=============================== warnings summary ===============================
+../../../../data/albert/miniconda3/envs/jaxns_py/lib/python3.12/site-packages/tensorflow_probability/python/internal/backend/jax/ops.py:684
+  /data/albert/miniconda3/envs/jaxns_py/lib/python3.12/site-packages/tensorflow_probability/python/internal/backend/jax/ops.py:684: DeprecationWarning: jax.core.pytype_aval_mappings is deprecated.
+    jax.core.pytype_aval_mappings[onp.ndarray])
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED cicd/tests/test_posterior_candidates.py::test_adapter_matches_pinned_legacy_function_and_prior[eggbox10]
+!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!
+1 failed, 4 deselected, 1 warning in 1.69s
+ERROR conda.cli.main_run:execute(125): `conda run taskset -c 6 pytest -xq cicd/tests/test_posterior_candidates.py -k adapter` failed. (See above for error)

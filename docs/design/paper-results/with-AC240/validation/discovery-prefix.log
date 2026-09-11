@@ -1,0 +1,26 @@
+[
+  {
+    "case": "basic_mvn",
+    "seed": 0,
+    "first_goal_samples": 5415,
+    "identical_classic_and_phantom_payloads": true
+  },
+  {
+    "case": "weak_curved_mvn8",
+    "seed": 0,
+    "first_goal_samples": 5657,
+    "identical_classic_and_phantom_payloads": true
+  },
+  {
+    "case": "spike_slab",
+    "seed": 0,
+    "first_goal_samples": 3182,
+    "identical_classic_and_phantom_payloads": true
+  },
+  {
+    "case": "curved_spike_slab8",
+    "seed": 0,
+    "first_goal_samples": 2818,
+    "identical_classic_and_phantom_payloads": true
+  }
+]

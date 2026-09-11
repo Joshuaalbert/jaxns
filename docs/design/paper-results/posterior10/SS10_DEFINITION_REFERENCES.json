@@ -1,0 +1,119 @@
+{
+  "repository": {
+    "method": "product of Gaussian CDF differences over the finite prior box",
+    "log_Z": -24.15593480605331,
+    "component_log_Z": [
+      -24.84906649788154,
+      -24.849097475584877
+    ],
+    "spike_mass": 0.5000077444258325,
+    "means": [
+      [
+        6.0,
+        6.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      [
+        2.5,
+        2.5,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    ],
+    "standard_deviations": [
+      0.282842712474619,
+      0.8944271909999159
+    ]
+  },
+  "sd_first_two": {
+    "method": "product of Gaussian CDF differences over the finite prior box",
+    "log_Z": -24.15592046392895,
+    "component_log_Z": [
+      -24.849066497880003,
+      -24.849068791099107
+    ],
+    "spike_mass": 0.5000005733047752,
+    "means": [
+      [
+        6.0,
+        6.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      [
+        2.5,
+        2.5,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    ],
+    "standard_deviations": [
+      0.08,
+      0.8
+    ]
+  },
+  "sd_all_ten": {
+    "method": "product of Gaussian CDF differences over the finite prior box",
+    "log_Z": -24.155919317335556,
+    "component_log_Z": [
+      -24.849066497880003,
+      -24.849066497911
+    ],
+    "spike_mass": 0.5000000000077494,
+    "means": [
+      [
+        6.0,
+        6.0,
+        6.0,
+        6.0,
+        6.0,
+        6.0,
+        6.0,
+        6.0,
+        6.0,
+        6.0
+      ],
+      [
+        2.5,
+        2.5,
+        2.5,
+        2.5,
+        2.5,
+        2.5,
+        2.5,
+        2.5,
+        2.5,
+        2.5
+      ]
+    ],
+    "standard_deviations": [
+      0.08,
+      0.8
+    ]
+  }
+}

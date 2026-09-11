@@ -1,0 +1,613 @@
+{
+  "new_cells": 120,
+  "source_commit": "b6889bce3079ffa232e4da6b606e1af0ed0c3f00",
+  "source_tree": "8a95c2b11054f381e7279d1015729b5bcf846cce",
+  "baseline_summary_sha256": "85cf481be94512bf13b2c46043a6ca55809e19e8210cd57fa8f402b4a5d4f8cd",
+  "bootstrap_seed": 20260908,
+  "bootstrap_resamples": 10000,
+  "first_goal_A_checks": [
+    {
+      "case": "basic_mvn",
+      "seed": 0,
+      "matched": true
+    },
+    {
+      "case": "basic_mvn",
+      "seed": 1,
+      "matched": true
+    },
+    {
+      "case": "basic_mvn",
+      "seed": 2,
+      "matched": true
+    },
+    {
+      "case": "basic_mvn",
+      "seed": 3,
+      "matched": true
+    },
+    {
+      "case": "basic_mvn",
+      "seed": 4,
+      "matched": true
+    },
+    {
+      "case": "basic_mvn",
+      "seed": 5,
+      "matched": true
+    },
+    {
+      "case": "basic_mvn",
+      "seed": 6,
+      "matched": true
+    },
+    {
+      "case": "basic_mvn",
+      "seed": 7,
+      "matched": true
+    },
+    {
+      "case": "basic_mvn",
+      "seed": 8,
+      "matched": true
+    },
+    {
+      "case": "basic_mvn",
+      "seed": 9,
+      "matched": true
+    },
+    {
+      "case": "basic_mvn",
+      "seed": 10,
+      "matched": true
+    },
+    {
+      "case": "basic_mvn",
+      "seed": 11,
+      "matched": true
+    },
+    {
+      "case": "basic_mvn",
+      "seed": 12,
+      "matched": true
+    },
+    {
+      "case": "basic_mvn",
+      "seed": 13,
+      "matched": true
+    },
+    {
+      "case": "basic_mvn",
+      "seed": 14,
+      "matched": true
+    },
+    {
+      "case": "basic_mvn",
+      "seed": 15,
+      "matched": true
+    },
+    {
+      "case": "basic_mvn",
+      "seed": 16,
+      "matched": true
+    },
+    {
+      "case": "basic_mvn",
+      "seed": 17,
+      "matched": true
+    },
+    {
+      "case": "basic_mvn",
+      "seed": 18,
+      "matched": true
+    },
+    {
+      "case": "basic_mvn",
+      "seed": 19,
+      "matched": true
+    },
+    {
+      "case": "basic_mvn",
+      "seed": 20,
+      "matched": true
+    },
+    {
+      "case": "basic_mvn",
+      "seed": 21,
+      "matched": true
+    },
+    {
+      "case": "basic_mvn",
+      "seed": 22,
+      "matched": true
+    },
+    {
+      "case": "basic_mvn",
+      "seed": 23,
+      "matched": true
+    },
+    {
+      "case": "basic_mvn",
+      "seed": 24,
+      "matched": true
+    },
+    {
+      "case": "basic_mvn",
+      "seed": 25,
+      "matched": true
+    },
+    {
+      "case": "basic_mvn",
+      "seed": 26,
+      "matched": true
+    },
+    {
+      "case": "basic_mvn",
+      "seed": 27,
+      "matched": true
+    },
+    {
+      "case": "basic_mvn",
+      "seed": 28,
+      "matched": true
+    },
+    {
+      "case": "basic_mvn",
+      "seed": 29,
+      "matched": true
+    },
+    {
+      "case": "weak_curved_mvn8",
+      "seed": 0,
+      "matched": true
+    },
+    {
+      "case": "weak_curved_mvn8",
+      "seed": 1,
+      "matched": true
+    },
+    {
+      "case": "weak_curved_mvn8",
+      "seed": 2,
+      "matched": true
+    },
+    {
+      "case": "weak_curved_mvn8",
+      "seed": 3,
+      "matched": true
+    },
+    {
+      "case": "weak_curved_mvn8",
+      "seed": 4,
+      "matched": true
+    },
+    {
+      "case": "weak_curved_mvn8",
+      "seed": 5,
+      "matched": true
+    },
+    {
+      "case": "weak_curved_mvn8",
+      "seed": 6,
+      "matched": true
+    },
+    {
+      "case": "weak_curved_mvn8",
+      "seed": 7,
+      "matched": true
+    },
+    {
+      "case": "weak_curved_mvn8",
+      "seed": 8,
+      "matched": true
+    },
+    {
+      "case": "weak_curved_mvn8",
+      "seed": 9,
+      "matched": true
+    },
+    {
+      "case": "weak_curved_mvn8",
+      "seed": 10,
+      "matched": true
+    },
+    {
+      "case": "weak_curved_mvn8",
+      "seed": 11,
+      "matched": true
+    },
+    {
+      "case": "weak_curved_mvn8",
+      "seed": 12,
+      "matched": true
+    },
+    {
+      "case": "weak_curved_mvn8",
+      "seed": 13,
+      "matched": true
+    },
+    {
+      "case": "weak_curved_mvn8",
+      "seed": 14,
+      "matched": true
+    },
+    {
+      "case": "weak_curved_mvn8",
+      "seed": 15,
+      "matched": true
+    },
+    {
+      "case": "weak_curved_mvn8",
+      "seed": 16,
+      "matched": true
+    },
+    {
+      "case": "weak_curved_mvn8",
+      "seed": 17,
+      "matched": true
+    },
+    {
+      "case": "weak_curved_mvn8",
+      "seed": 18,
+      "matched": true
+    },
+    {
+      "case": "weak_curved_mvn8",
+      "seed": 19,
+      "matched": true
+    },
+    {
+      "case": "weak_curved_mvn8",
+      "seed": 20,
+      "matched": true
+    },
+    {
+      "case": "weak_curved_mvn8",
+      "seed": 21,
+      "matched": true
+    },
+    {
+      "case": "weak_curved_mvn8",
+      "seed": 22,
+      "matched": true
+    },
+    {
+      "case": "weak_curved_mvn8",
+      "seed": 23,
+      "matched": true
+    },
+    {
+      "case": "weak_curved_mvn8",
+      "seed": 24,
+      "matched": true
+    },
+    {
+      "case": "weak_curved_mvn8",
+      "seed": 25,
+      "matched": true
+    },
+    {
+      "case": "weak_curved_mvn8",
+      "seed": 26,
+      "matched": true
+    },
+    {
+      "case": "weak_curved_mvn8",
+      "seed": 27,
+      "matched": true
+    },
+    {
+      "case": "weak_curved_mvn8",
+      "seed": 28,
+      "matched": true
+    },
+    {
+      "case": "weak_curved_mvn8",
+      "seed": 29,
+      "matched": true
+    },
+    {
+      "case": "spike_slab",
+      "seed": 0,
+      "matched": true
+    },
+    {
+      "case": "spike_slab",
+      "seed": 1,
+      "matched": true
+    },
+    {
+      "case": "spike_slab",
+      "seed": 2,
+      "matched": true
+    },
+    {
+      "case": "spike_slab",
+      "seed": 3,
+      "matched": true
+    },
+    {
+      "case": "spike_slab",
+      "seed": 4,
+      "matched": true
+    },
+    {
+      "case": "spike_slab",
+      "seed": 5,
+      "matched": true
+    },
+    {
+      "case": "spike_slab",
+      "seed": 6,
+      "matched": true
+    },
+    {
+      "case": "spike_slab",
+      "seed": 7,
+      "matched": true
+    },
+    {
+      "case": "spike_slab",
+      "seed": 8,
+      "matched": true
+    },
+    {
+      "case": "spike_slab",
+      "seed": 9,
+      "matched": true
+    },
+    {
+      "case": "spike_slab",
+      "seed": 10,
+      "matched": true
+    },
+    {
+      "case": "spike_slab",
+      "seed": 11,
+      "matched": true
+    },
+    {
+      "case": "spike_slab",
+      "seed": 12,
+      "matched": true
+    },
+    {
+      "case": "spike_slab",
+      "seed": 13,
+      "matched": true
+    },
+    {
+      "case": "spike_slab",
+      "seed": 14,
+      "matched": true
+    },
+    {
+      "case": "spike_slab",
+      "seed": 15,
+      "matched": true
+    },
+    {
+      "case": "spike_slab",
+      "seed": 16,
+      "matched": true
+    },
+    {
+      "case": "spike_slab",
+      "seed": 17,
+      "matched": true
+    },
+    {
+      "case": "spike_slab",
+      "seed": 18,
+      "matched": true
+    },
+    {
+      "case": "spike_slab",
+      "seed": 19,
+      "matched": true
+    },
+    {
+      "case": "spike_slab",
+      "seed": 20,
+      "matched": true
+    },
+    {
+      "case": "spike_slab",
+      "seed": 21,
+      "matched": true
+    },
+    {
+      "case": "spike_slab",
+      "seed": 22,
+      "matched": true
+    },
+    {
+      "case": "spike_slab",
+      "seed": 23,
+      "matched": true
+    },
+    {
+      "case": "spike_slab",
+      "seed": 24,
+      "matched": true
+    },
+    {
+      "case": "spike_slab",
+      "seed": 25,
+      "matched": true
+    },
+    {
+      "case": "spike_slab",
+      "seed": 26,
+      "matched": true
+    },
+    {
+      "case": "spike_slab",
+      "seed": 27,
+      "matched": true
+    },
+    {
+      "case": "spike_slab",
+      "seed": 28,
+      "matched": true
+    },
+    {
+      "case": "spike_slab",
+      "seed": 29,
+      "matched": true
+    },
+    {
+      "case": "curved_spike_slab8",
+      "seed": 0,
+      "matched": true
+    },
+    {
+      "case": "curved_spike_slab8",
+      "seed": 1,
+      "matched": true
+    },
+    {
+      "case": "curved_spike_slab8",
+      "seed": 2,
+      "matched": true
+    },
+    {
+      "case": "curved_spike_slab8",
+      "seed": 3,
+      "matched": true
+    },
+    {
+      "case": "curved_spike_slab8",
+      "seed": 4,
+      "matched": true
+    },
+    {
+      "case": "curved_spike_slab8",
+      "seed": 5,
+      "matched": true
+    },
+    {
+      "case": "curved_spike_slab8",
+      "seed": 6,
+      "matched": true
+    },
+    {
+      "case": "curved_spike_slab8",
+      "seed": 7,
+      "matched": true
+    },
+    {
+      "case": "curved_spike_slab8",
+      "seed": 8,
+      "matched": true
+    },
+    {
+      "case": "curved_spike_slab8",
+      "seed": 9,
+      "matched": true
+    },
+    {
+      "case": "curved_spike_slab8",
+      "seed": 10,
+      "matched": true
+    },
+    {
+      "case": "curved_spike_slab8",
+      "seed": 11,
+      "matched": true
+    },
+    {
+      "case": "curved_spike_slab8",
+      "seed": 12,
+      "matched": true
+    },
+    {
+      "case": "curved_spike_slab8",
+      "seed": 13,
+      "matched": true
+    },
+    {
+      "case": "curved_spike_slab8",
+      "seed": 14,
+      "matched": true
+    },
+    {
+      "case": "curved_spike_slab8",
+      "seed": 15,
+      "matched": true
+    },
+    {
+      "case": "curved_spike_slab8",
+      "seed": 16,
+      "matched": true
+    },
+    {
+      "case": "curved_spike_slab8",
+      "seed": 17,
+      "matched": true
+    },
+    {
+      "case": "curved_spike_slab8",
+      "seed": 18,
+      "matched": true
+    },
+    {
+      "case": "curved_spike_slab8",
+      "seed": 19,
+      "matched": true
+    },
+    {
+      "case": "curved_spike_slab8",
+      "seed": 20,
+      "matched": true
+    },
+    {
+      "case": "curved_spike_slab8",
+      "seed": 21,
+      "matched": true
+    },
+    {
+      "case": "curved_spike_slab8",
+      "seed": 22,
+      "matched": true
+    },
+    {
+      "case": "curved_spike_slab8",
+      "seed": 23,
+      "matched": true
+    },
+    {
+      "case": "curved_spike_slab8",
+      "seed": 24,
+      "matched": true
+    },
+    {
+      "case": "curved_spike_slab8",
+      "seed": 25,
+      "matched": true
+    },
+    {
+      "case": "curved_spike_slab8",
+      "seed": 26,
+      "matched": true
+    },
+    {
+      "case": "curved_spike_slab8",
+      "seed": 27,
+      "matched": true
+    },
+    {
+      "case": "curved_spike_slab8",
+      "seed": 28,
+      "matched": true
+    },
+    {
+      "case": "curved_spike_slab8",
+      "seed": 29,
+      "matched": true
+    }
+  ],
+  "completed_phases": 240,
+  "max_active_workers": 60,
+  "baseline_summaries_and_records_unchanged": true
+}

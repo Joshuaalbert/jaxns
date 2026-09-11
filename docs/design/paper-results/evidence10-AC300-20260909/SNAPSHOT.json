@@ -1,0 +1,26 @@
+{
+  "installed_utc": "2026-09-10T13:00:49.215292+00:00",
+  "cells": 120,
+  "cohorts": {
+    "0.05": [
+      "g10",
+      "cg10",
+      "ss10"
+    ],
+    "0.02": [
+      "ss10"
+    ]
+  },
+  "full_ladder_complete": false,
+  "raw_root": "/largedata/albert/jaxns-evidence10-AC300-20260909",
+  "raw_archive": "/ceph_dorrie/albert/jaxns-evidence10-AC300-20260909",
+  "ladder_status": "cancelled",
+  "included_stops": [
+    "0.05",
+    "0.02"
+  ],
+  "excluded_stops": {
+    "0.01": "no completed runs",
+    "0.005": "never started"
+  }
+}

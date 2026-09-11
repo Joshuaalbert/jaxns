@@ -1,0 +1,127 @@
+{
+  "iteration": 7,
+  "allocation_iteration": 7,
+  "root_out_degree": 486,
+  "classic_log_Z": -38.424039359328425,
+  "classic_log_Z_uncert": 0.22320941731359797,
+  "classic_kish_ess": 16486.593085001903,
+  "likelihood_evaluations": 22428321,
+  "classic_samples": 28906,
+  "seconds": 131.4921642539557,
+  "case": "rastrigin10",
+  "seed": 0,
+  "complete": true,
+  "run_seconds": 131.77894677594304,
+  "goal_progress": [
+    {
+      "iteration": 1,
+      "allocation_iteration": 1,
+      "root_out_degree": 300,
+      "classic_log_Z": -38.68809328238488,
+      "classic_log_Z_uncert": 0.2979020661760316,
+      "classic_kish_ess": 3034.049091032684,
+      "likelihood_evaluations": 7888231,
+      "classic_samples": 11250,
+      "seconds": 49.396280301967636
+    },
+    {
+      "iteration": 2,
+      "allocation_iteration": 2,
+      "root_out_degree": 331,
+      "classic_log_Z": -38.545319745289,
+      "classic_log_Z_uncert": 0.27816002909895404,
+      "classic_kish_ess": 5104.176350532774,
+      "likelihood_evaluations": 9908680,
+      "classic_samples": 13755,
+      "seconds": 72.31640676804818
+    },
+    {
+      "iteration": 3,
+      "allocation_iteration": 3,
+      "root_out_degree": 362,
+      "classic_log_Z": -38.52619160607146,
+      "classic_log_Z_uncert": 0.26355211949628204,
+      "classic_kish_ess": 7335.756571214016,
+      "likelihood_evaluations": 12163268,
+      "classic_samples": 16534,
+      "seconds": 82.90942358504981
+    },
+    {
+      "iteration": 4,
+      "allocation_iteration": 4,
+      "root_out_degree": 393,
+      "classic_log_Z": -38.4492225966061,
+      "classic_log_Z_uncert": 0.25099251423516006,
+      "classic_kish_ess": 9635.998602933025,
+      "likelihood_evaluations": 14679557,
+      "classic_samples": 19564,
+      "seconds": 90.89200675906613
+    },
+    {
+      "iteration": 5,
+      "allocation_iteration": 5,
+      "root_out_degree": 424,
+      "classic_log_Z": -38.40220188340968,
+      "classic_log_Z_uncert": 0.24039288380945362,
+      "classic_kish_ess": 11906.83946812459,
+      "likelihood_evaluations": 17193176,
+      "classic_samples": 22605,
+      "seconds": 99.51157497894019
+    },
+    {
+      "iteration": 6,
+      "allocation_iteration": 6,
+      "root_out_degree": 455,
+      "classic_log_Z": -38.47685198144186,
+      "classic_log_Z_uncert": 0.23157928460709268,
+      "classic_kish_ess": 14213.556095265276,
+      "likelihood_evaluations": 19848656,
+      "classic_samples": 25814,
+      "seconds": 107.11860540392809
+    },
+    {
+      "iteration": 7,
+      "allocation_iteration": 7,
+      "root_out_degree": 486,
+      "classic_log_Z": -38.424039359328425,
+      "classic_log_Z_uncert": 0.22320941731359797,
+      "classic_kish_ess": 16486.593085001903,
+      "likelihood_evaluations": 22428321,
+      "classic_samples": 28906,
+      "seconds": 131.4921642539557
+    }
+  ],
+  "reference": {
+    "method": "factorised one-dimensional adaptive quadrature",
+    "log_Z": -38.108664691715035,
+    "one_dimensional_mass": 0.2266009247175319,
+    "quadrature_absolute_error": 1.072229154979898e-13,
+    "mean": 0.0,
+    "standard_deviation": 0.7064216860600869
+  },
+  "posterior_mean": [
+    0.4073841968905439,
+    -0.28850301730561545,
+    0.1932673600712447,
+    -0.011819627403830493,
+    0.004699912224182359,
+    -0.04615350230681449,
+    -0.3883911229777922,
+    -0.10107304948413051,
+    -0.8576939016718627,
+    -0.1252016529103508
+  ],
+  "posterior_standard_deviation": [
+    0.9685732970306078,
+    0.564260349787507,
+    0.570110127461072,
+    0.7866206089054262,
+    0.6826213944050603,
+    0.6544581010343896,
+    0.6825280012873267,
+    0.6241846681529379,
+    0.9268214712222318,
+    0.7180920035954665
+  ],
+  "peak_rss_bytes": 3251961856
+}

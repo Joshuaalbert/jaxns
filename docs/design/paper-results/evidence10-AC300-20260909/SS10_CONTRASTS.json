@@ -1,0 +1,46 @@
+{
+  "summary_sha256": "0fbf781e07d227cee83ebdd60db7979f224250e29aefbfd886ca8dbb5d3dfd00",
+  "bootstrap_seed": 20260909,
+  "bootstrap_resamples": 10000,
+  "definition": "Ph90 minus classic; absolute bias is absolute mean error, not MAE",
+  "stages": {
+    "0.05": {
+      "signed_bias_ph90_minus_classic": 0.004243861582352237,
+      "signed_bias_ci95": [
+        -0.01762332098359509,
+        0.024194934208626184
+      ],
+      "absolute_bias_ph90_minus_classic": -0.004243861582352237,
+      "absolute_bias_ci95": [
+        -0.024194934208626194,
+        0.01762332098359509
+      ],
+      "rmse_ph90_minus_classic": -0.0005723298722060122,
+      "rmse_ci95": [
+        -0.021429465387804145,
+        0.021614525728384928
+      ],
+      "classic_coverage_count": 3,
+      "ph90_coverage_count": 1
+    },
+    "0.02": {
+      "signed_bias_ph90_minus_classic": 0.0007780316576423418,
+      "signed_bias_ci95": [
+        -0.006918498480723743,
+        0.009355631168096065
+      ],
+      "absolute_bias_ph90_minus_classic": -0.0007780316576423418,
+      "absolute_bias_ci95": [
+        -0.009355631168096066,
+        0.006918498480723738
+      ],
+      "rmse_ph90_minus_classic": -0.0042584228227791066,
+      "rmse_ci95": [
+        -0.011680315418037638,
+        0.0023391056386174234
+      ],
+      "classic_coverage_count": 2,
+      "ph90_coverage_count": 0
+    }
+  }
+}

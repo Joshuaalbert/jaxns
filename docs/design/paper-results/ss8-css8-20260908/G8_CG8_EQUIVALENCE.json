@@ -1,0 +1,13 @@
+{
+  "unchanged_functions": [
+    "_curve",
+    "_log_normal",
+    "build_cg8",
+    "build_g8",
+    "cg8_prior_model",
+    "g8_prior_model"
+  ],
+  "old_commit": "e36a3cb",
+  "new_commit": "4071041425ed31c8b581f38664a140bf818145ea",
+  "reducer_sha256": "943fc01c09909fc994f8aeb2bd9ed5d78b38480f34670941ee932d023ca845f8"
+}
