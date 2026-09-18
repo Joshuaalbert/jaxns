@@ -18,33 +18,29 @@ __all__ = [
 
 PRNGKey = jax.Array
 
+# Type annotation for JAX and NumPy arrays, with no scalar types.
 Array = Union[
     jax.Array,  # JAX array type
     np.ndarray,  # NumPy array type
 ]
+# Type annotation for JAX and NumPy arrays, including float scalars.
 FloatArray = Union[
     jax.Array,  # JAX array type
     np.ndarray,  # NumPy array type
     float,  # valid scalars
 ]
+# Type annotation for JAX and NumPy arrays, including integer scalars.
 IntArray = Union[
     jax.Array,  # JAX array type
     np.ndarray,  # NumPy array type
     int,  # valid scalars
 ]
+# Type annotation for JAX and NumPy arrays, including boolean scalars.
 BoolArray = Union[
     jax.Array,  # JAX array type
     np.ndarray,  # NumPy array type
     np.bool_, bool,  # valid scalars
 ]
-
-Array.__doc__ = "Type annotation for JAX array-like objects, with no scalar types."
-
-FloatArray.__doc__ = "Type annotation for JAX array-like objects, with float scalar types."
-
-IntArray.__doc__ = "Type annotation for JAX array-like objects, with int scalar types."
-
-BoolArray.__doc__ = "Type annotation for JAX array-like objects, with bool scalar types."
 
 LikelihoodType = Callable[..., FloatArray]
 RandomVariableType = TypeVar('RandomVariableType')
