@@ -1,6 +1,26 @@
 {
   "schema_version": 1,
   "tests": {
+    "test_classic_runner_constructs_sampler_on_develop": {
+      "note": "Checks that the paper benchmark's default classic-only runner constructs a sampler without requiring the experimental phantom-seeding API.",
+      "path": "cicd/tests/test_paper_experiment.py",
+      "reason": "configuration_contract"
+    },
+    "test_mode_mass_uses_classic_expected_posterior_once": {
+      "note": "Checks that the benchmark mode-mass utility sums the supplied classic posterior weights once rather than deriving prefix-specific posterior diagnostics.",
+      "path": "cicd/tests/test_paper_experiment.py",
+      "reason": "utility_behavior"
+    },
+    "test_mode_mass_rejects_non_sample_aligned_membership": {
+      "note": "Checks the benchmark utility's shape validation for mode membership and classic posterior weights.",
+      "path": "cicd/tests/test_paper_experiment.py",
+      "reason": "configuration_contract"
+    },
+    "test_prefix_records_reject_posterior_diagnostics": {
+      "note": "Checks that the benchmark summary rejects historical prefix-local mode-mass fields in its evidence record schema.",
+      "path": "cicd/tests/test_paper_experiment.py",
+      "reason": "result_schema_regression"
+    },
     "test_nested_sampler_resolves_and_preserves_phantom_capacity": {
       "note": "Checks the public retained-capacity configuration, resolved dimension-sized default, and current pytree/checkpoint representation.",
       "path": "cicd/tests/test_core.py",
