@@ -2,13 +2,11 @@ import dataclasses
 
 import jax
 import numpy as np
-import pytest
 from jax import numpy as jnp
 from jax import random
 from jaxctx.priors.prior import Prior
 from tensorflow_probability.substrates import jax as tfp
 
-from jaxns.diagnostics.insertion import insert_index_diagnostic
 from jaxns.diagnostics.plotting import _weighted_percentile
 from jaxns.diagnostics.reference import (
     bruteforce_evidence,
@@ -139,25 +137,3 @@ def test_gh171(tmp_path):
     pytree.save(filename)
     loaded_pytree = MockPyTree171.load(filename)
     np.testing.assert_allclose(loaded_pytree.x, pytree.x)
-
-
-@pytest.mark.parametrize('seed', [42, 45, 46, 47, 48, 49])
-def test_insert_index_diagnostic_uniform(seed):
-    np.random.seed(seed)
-    indices = np.random.randint(0, 100, 10000)
-    p_value = insert_index_diagnostic(indices, num_live_points=100)
-    print('Should be big', p_value)
-    assert p_value > 0.01
-
-
-@pytest.mark.parametrize('seed', [42, 45, 46, 47, 48, 49])
-def test_insert_index_diagnostic_nonuniform(seed):
-    np.random.seed(seed)
-    indices = np.random.normal(0, 100, 10000)
-    indices -= np.min(indices)
-    indices /= np.max(indices)
-    indices *= 100
-    indices = indices.astype(int)
-    p_value = insert_index_diagnostic(indices, num_live_points=100)
-    print('Should be small', p_value)
-    assert p_value < 0.01

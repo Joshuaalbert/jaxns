@@ -603,7 +603,6 @@ class DistributedNestedSampler:
         "receive_timeout_s",
         "root_allocation_degree",
         "sampler",
-        "store_phantom_samples",
         "target_num_live_points",
         "unlimited_samples",
     )
@@ -619,7 +618,6 @@ class DistributedNestedSampler:
             params: CtxParams | None = None,
             sampler: AbstractSampler | None = None,
             depth_condition: DepthCondition | None = None,
-            store_phantom_samples: bool = False,
             collect_phantom_samples: bool = False,
             max_phantom_samples: int | None = None,
             allocation_target: Literal[
@@ -644,7 +642,6 @@ class DistributedNestedSampler:
         self.params = params
         self.sampler = sampler
         self.depth_condition = depth_condition
-        self.store_phantom_samples = store_phantom_samples
         self.collect_phantom_samples = collect_phantom_samples
         self.max_phantom_samples = max_phantom_samples
         self.allocation_target = allocation_target
@@ -690,7 +687,6 @@ class DistributedNestedSampler:
             params=self.params,
             sampler=self.sampler,
             depth_condition=self.depth_condition,
-            store_phantom_samples=self.store_phantom_samples,
             collect_phantom_samples=self.collect_phantom_samples,
             max_phantom_samples=self.max_phantom_samples,
             allocation_target=self.allocation_target,

@@ -344,7 +344,6 @@ def test_random_charts_preserve_uniform_circular_measure():
             direction=direction,
             slice_width=jnp.asarray(jnp.inf),
             no_step_out=True,
-            gradient_guided=False,
             log_L_constraint=jnp.asarray(-1.0),
             log_likelihood_fn=lambda value: jnp.asarray(0.0),
             periodic=(True,),
@@ -660,7 +659,6 @@ def test_new_proposal_nonperfect_first_uses_full_slice_width():
         direction=direction,
         slice_width=jnp.asarray(jnp.inf),
         no_step_out=False,
-        gradient_guided=False,
         log_L_constraint=jnp.asarray(-1.0),
         log_likelihood_fn=_log_likelihood_1d,
     )
@@ -681,7 +679,6 @@ def test_new_proposal_nonperfect_finite_width_clips_and_steps_out():
         direction=direction,
         slice_width=jnp.asarray(0.05),
         no_step_out=False,
-        gradient_guided=False,
         log_L_constraint=jnp.asarray(-1.0),
         log_likelihood_fn=_log_likelihood_1d,
     )
@@ -701,7 +698,6 @@ def test_new_proposal_nonperfect_reuses_previous_width():
         direction=direction,
         slice_width=jnp.asarray(jnp.inf),
         no_step_out=False,
-        gradient_guided=False,
         log_L_constraint=jnp.asarray(-1.0),
         log_likelihood_fn=_log_likelihood_1d,
     )
@@ -712,7 +708,6 @@ def test_new_proposal_nonperfect_reuses_previous_width():
         direction=direction_1,
         slice_width=slice_width_1,
         no_step_out=False,
-        gradient_guided=False,
         log_L_constraint=jnp.asarray(-1.0),
         log_likelihood_fn=_log_likelihood_1d,
     )

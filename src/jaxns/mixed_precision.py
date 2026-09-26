@@ -1,4 +1,3 @@
-import contextlib
 import dataclasses
 import warnings
 from typing import TypeVar
@@ -37,21 +36,6 @@ def _cast_floating_to(tree: T, dtype: jnp.dtype, quiet: bool) -> T:
     return jax.tree.map(conditional_cast, tree)
 
 
-def _cast_complex_to(tree: T, dtype: jnp.dtype, quiet: bool) -> T:
-    def conditional_cast(x):
-        if isinstance(x, complex):
-            return jnp.asarray(x, dtype=dtype)
-        try:
-            if not quiet and not jnp.issubdtype(x.dtype, jnp.complexfloating):
-                warnings.warn(f"Expected complex type, got {x.dtype}, {get_grandparent_info()}.")
-            return x.astype(dtype)
-        except AttributeError:
-            warnings.warn(f"Failed to cast {x} to {dtype}.")
-            return x
-
-    return jax.tree.map(conditional_cast, tree)
-
-
 def _cast_integer_to(tree: T, dtype: jnp.dtype, quiet: bool) -> T:
     def conditional_cast(x):
         if isinstance(x, int):
@@ -59,21 +43,6 @@ def _cast_integer_to(tree: T, dtype: jnp.dtype, quiet: bool) -> T:
         try:
             if not quiet and not jnp.issubdtype(x.dtype, jnp.integer):
                 warnings.warn(f"Expected integer type, got {x.dtype}, {get_grandparent_info()}.")
-            return x.astype(dtype)
-        except AttributeError:
-            warnings.warn(f"Failed to cast {x} to {dtype}.")
-            return x
-
-    return jax.tree.map(conditional_cast, tree)
-
-
-def _cast_bool_to(tree: T, dtype: jnp.dtype, quiet: bool) -> T:
-    def conditional_cast(x):
-        if isinstance(x, bool):
-            return jnp.asarray(x, dtype=dtype)
-        try:
-            if not quiet and not jnp.issubdtype(x.dtype, jnp.bool_):
-                warnings.warn(f"Expected bool type, got {x.dtype}, {get_grandparent_info()}.")
             return x.astype(dtype)
         except AttributeError:
             warnings.warn(f"Failed to cast {x} to {dtype}.")
@@ -109,24 +78,6 @@ class Policy:
     def cast_to_count(self, x: X, quiet: bool = False) -> X:
         """Converts count values to the count dtype."""
         return _cast_integer_to(x, self.count_dtype, quiet=quiet)
-
-    @contextlib.contextmanager
-    def dtype_setting(self, measure_dtype: jnp.dtype | None = None, index_dtype: jnp.dtype | None = None,
-                      count_dtype: jnp.dtype | None = None):
-        """Context manager to temporarily set dtypes."""
-        tmp_dtypes = (self.measure_dtype, self.index_dtype, self.count_dtype)
-        if measure_dtype is not None:
-            object.__setattr__(self, "measure_dtype", measure_dtype)
-        if index_dtype is not None:
-            object.__setattr__(self, "index_dtype", index_dtype)
-        if count_dtype is not None:
-            object.__setattr__(self, "count_dtype", count_dtype)
-        try:
-            yield self
-        finally:
-            object.__setattr__(self, "measure_dtype", tmp_dtypes[0])
-            object.__setattr__(self, "index_dtype", tmp_dtypes[1])
-            object.__setattr__(self, "count_dtype", tmp_dtypes[2])
 
 
 mp_policy = Policy()

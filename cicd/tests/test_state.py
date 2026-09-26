@@ -24,7 +24,6 @@ from jaxns.shrinkage.classic import (
     expected_evidence_summary,
 )
 from jaxns.state import State
-from jaxns.stats_utils import linear_to_log_stats
 
 tfpd = tfp.distributions
 
@@ -513,16 +512,6 @@ def test_state_to_result_evidence_summary_uses_block_model():
             np.isfinite(np.asarray(results.block_data.log_L))
         ],
         np.array([2, 2], dtype=np.int32),
-    )
-
-    legacy_evidence, _ = state.evaluate_evidence()
-    legacy_log_Z_mean, _ = linear_to_log_stats(
-        legacy_evidence.Z_mean.log_abs_val,
-        log_f2_mean=legacy_evidence.Z2_mean.log_abs_val,
-    )
-    assert not np.isclose(
-        float(results.log_Z_mean),
-        float(legacy_log_Z_mean),
     )
 
 

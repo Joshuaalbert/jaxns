@@ -27,7 +27,7 @@ def test_blob_decomp():
 
     d = 2
     n_data = 500
-    jit_em_gmm = jit(em_gmm, static_argnames=['n_components', 'n_iters', 'tol'])
+    jit_em_gmm = jit(em_gmm, static_argnames=['n_components', 'n_iters'])
 
     for n_components in [2, 3]:
         X, y_true = make_blobs(n_samples=n_data, centers=n_components, n_features=d, cluster_std=1, random_state=42)

@@ -1056,27 +1056,6 @@ def compute_phantom_count_matrices(
     )
 
 
-def compute_phantom_block_counts(
-        *,
-        log_L_blocks: FloatArray,
-        block_valid_mask: BoolArray,
-        log_L_constraints: FloatArray,
-        valid_phantom: BoolArray,
-        log_L_phantom: FloatArray,
-        sample_mask: BoolArray,
-) -> tuple[FloatArray, FloatArray, FloatArray]:
-    """Compute aggregate public phantom `A_g`, `B_g`, and `E_g` counts."""
-    counts = compute_phantom_count_matrices(
-        log_L_blocks=log_L_blocks,
-        block_valid_mask=block_valid_mask,
-        log_L_constraints=log_L_constraints,
-        valid_phantom=valid_phantom,
-        log_L_phantom=log_L_phantom,
-        sample_mask=sample_mask,
-    )
-    return counts.A_g, counts.B_g, counts.E_g
-
-
 def _summarise_gamma_log_dz_samples(
         *,
         log_dZ: FloatArray,

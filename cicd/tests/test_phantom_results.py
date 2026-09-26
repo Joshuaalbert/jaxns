@@ -353,7 +353,6 @@ def _run_high_phantom_probe():
         max_samples=3,
         shell_size=1,
         depth_condition=DepthCondition(),
-        store_phantom_samples=True,
     )
     return ns.run(jax.random.PRNGKey(11))
 
@@ -367,7 +366,6 @@ def _run_mixed_validity_probe():
         max_samples=3,
         shell_size=1,
         depth_condition=DepthCondition(),
-        store_phantom_samples=True,
     )
     return ns.run(jax.random.PRNGKey(23))
 

@@ -31,7 +31,6 @@ from jaxns.sampling.protocol import (
     LikelihoodEvaluation,
     LikelihoodRequest,
 )
-from jaxns.sampling.seeding import get_seed_point
 from jaxns.sampling.slice import (
     _draw_ellipsoidal_direction,
     _new_proposal,
@@ -47,7 +46,6 @@ __all__ = [
     "LikelihoodRequest",
     "UniDimSliceSampler",
     "evaluate_request",
-    "get_seed_point",
     "sample_request",
 ]
 
@@ -215,7 +213,6 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
         no_step_out: if true then perform exponential shrinkage from maximal bounds, requiring no step-out procedure.
             Otherwise, uses a doubling procedure (exponentially finding bracket).
             Note: Perfect is a misnomer, as perfection also depends on the number of slices between acceptance.
-        gradient_guided: if true then do HMC with householder reflections.
         collect_phantom_samples: Whether to retain intermediate chain states.
         max_phantom_samples: Maximum number of intermediate states retained
             from the start of each chain. ``None`` retains every eligible
@@ -227,7 +224,6 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
     model: Model
     num_slices: int
     no_step_out: bool = True
-    gradient_guided: bool = False
     collect_phantom_samples: bool = False
     phantom_burn_in: int | None = None
     max_phantom_samples: int | None = None
@@ -240,7 +236,6 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
         return cls.build_flatten(this, [
             'num_slices',
             'no_step_out',
-            'gradient_guided',
             'collect_phantom_samples',
             'max_phantom_samples',
             'phantom_burn_in',
@@ -256,8 +251,6 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
             raise TypeError("num_slices must be a Python integer.")
         if num_slices < 1:
             raise ValueError(f"num_slices should be >= 1, got {self.num_slices}.")
-        if self.gradient_guided:
-            warnings.warn("Gradient guided slice sampler is experimental and will likely change.")
         if (
             self.max_phantom_samples is not None
             and self.phantom_burn_in is not None
@@ -388,10 +381,6 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
             raise ValueError(
                 "The current core requires perfect/no-step-out bracketing."
             )
-        if self.gradient_guided:
-            raise ValueError(
-                "Gradient-guided sampling is not implemented in this core."
-            )
         if self._periodic and len(self._periodic) != dimension:
             raise ValueError(
                 "Periodic U-space topology does not match model dimension."
@@ -458,7 +447,6 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
         """Continue slice chains between fixed-width likelihood calls."""
         if (
             not self.no_step_out
-            or self.gradient_guided
             or self.num_slices < MIN_CONTINUATION_SLICES
             or request.log_L_constraints.shape[0] < MIN_CONTINUATION_CHAINS
         ):
@@ -572,7 +560,6 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
                 direction=carry.direction,
                 slice_width=carry.slice_width,
                 no_step_out=self.no_step_out,
-                gradient_guided=self.gradient_guided,
                 log_L_constraint=carry.log_L_constraint,
                 log_likelihood_fn=log_likelihood_fn,
                 periodic=self._periodic,
@@ -636,7 +623,6 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
             direction=init_direction,
             slice_width=jnp.asarray(jnp.inf, slice_width_dtype),
             no_step_out=True,
-            gradient_guided=self.gradient_guided,
             log_L_constraint=log_L_constraint,
             log_likelihood_fn=log_likelihood_fn,
             periodic=self._periodic,

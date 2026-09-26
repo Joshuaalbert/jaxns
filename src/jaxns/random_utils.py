@@ -17,20 +17,23 @@ __all__ = [
 
 def random_ortho_matrix(key, n, special_orthogonal: bool = False):
     """
-    Samples a random orthonormal n by n matrix from Stiefels manifold.
-    From https://stackoverflow.com/a/38430739
+    Sample a uniformly distributed orthogonal matrix.
 
     Args:
         key: PRNG seed
-        n: Size of matrix, draws from O(num_options) group.
+        n: Matrix dimension.
+        special_orthogonal: Restrict the draw to determinant +1.
 
-    Returns: random [num_options,num_options] matrix with determinant = +-1
+    Returns:
+        An [n, n] orthogonal matrix, with determinant +1 when requested.
     """
     H = random.normal(key, shape=(n, n), dtype=mp_policy.measure_dtype)
     Q, R = jnp.linalg.qr(H)
-    if special_orthogonal:
-        R *= jnp.sign(R)
     Q = Q @ jnp.diag(jnp.sign(jnp.diag(R)))
+    if special_orthogonal:
+        # Reflect one column only for negative orientation. This maps both
+        # halves of O(n) uniformly onto SO(n), including even dimensions.
+        Q = Q.at[:, -1].multiply(jnp.sign(jnp.linalg.det(Q)))
     return Q
 
 
@@ -44,7 +47,7 @@ def resample_indicies(key: PRNGKey, log_weights: FloatArray | None = None, S: in
         log_weights: Optional log weights
         S: Optional number of samples. Computes effective sample size from log weights if not given.
         replace: whether to use replacement or not.
-        num_total: Optional total sample size to use, must be given if `replace=False` and `log_weights=None`
+        num_total: Total population size, required when log_weights is absent.
 
     Returns:
         index array given the take indicies to resample at.
@@ -64,7 +67,8 @@ def resample_indicies(key: PRNGKey, log_weights: FloatArray | None = None, S: in
         else:
             if num_total is None:
                 raise ValueError("Need num_total if log_weights is None.")
-            log_p_cuml = jnp.log(jnp.arange(num_total))
+            # The inclusive CDF starts with one unit of mass for index zero.
+            log_p_cuml = jnp.log(jnp.arange(1, num_total + 1))
             log_r = log_p_cuml[-1] + jnp.log(1. - random.uniform(key, (S,)))
             idx = jnp.searchsorted(log_p_cuml, log_r)
     else:
@@ -96,12 +100,3 @@ def resample(
         replace=replace,
     )
     return jax.tree.map(lambda sample: sample[indices, ...], samples)
-
-
-def sample_uniformly_masked(key, v, select_mask, num_samples: int, squeeze: bool = False):
-    # If no satisfied samples, then chooses randomly from them. Should never happen, but good to know.
-    log_weights = jnp.where(select_mask, 0., -jnp.inf)
-    sample_idxs = resample_indicies(key, log_weights=log_weights, S=num_samples, replace=True)
-    if squeeze:
-        sample_idxs = jnp.squeeze(sample_idxs)
-    return jax.tree.map(lambda x: x[sample_idxs], v)

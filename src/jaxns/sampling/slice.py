@@ -268,7 +268,6 @@ def _new_proposal(
         direction: TreeField[UType],
         slice_width: FloatArray,
         no_step_out: bool,
-        gradient_guided: bool,
         log_L_constraint: FloatArray,
         log_likelihood_fn: Callable[[UType], FloatArray],
         periodic: tuple[bool, ...] = (),
@@ -288,7 +287,6 @@ def _new_proposal(
         key: PRNG key
         direction: the direction to sample along
         no_step_out: if true then perform exponential shrinkage from maximal bounds, requiring no step-out procedure.
-        gradient_guided: if true then do householder reflections
         log_L_constraint: the constraint to sample within
         log_likelihood_fn: the log-likelihood function
 
@@ -482,21 +480,17 @@ def _new_proposal(
     # Update direction
     direction = carry.direction
     num_likelihood_evaluations = carry.num_likelihood_evaluations
-    if gradient_guided:
-        # Perform HMC with Householder reflections
-        raise NotImplementedError("Gradient guided slice sampler not implemented.")
+    # Randomly choose a new direction
+    if sampler_data is None:
+        direction = _sample_direction(after_key, direction)
+        direction_isotropic = jnp.asarray(True, mp_policy.bool_dtype)
     else:
-        # Randomly choose a new direction
-        if sampler_data is None:
-            direction = _sample_direction(after_key, direction)
-            direction_isotropic = jnp.asarray(True, mp_policy.bool_dtype)
-        else:
-            direction, direction_isotropic = _draw_ellipsoidal_direction(
-                after_key,
-                direction,
-                log_L_constraint,
-                sampler_data,
-            )
+        direction, direction_isotropic = _draw_ellipsoidal_direction(
+            after_key,
+            direction,
+            log_L_constraint,
+            sampler_data,
+        )
     next_slice_width = 2 * (carry.right - carry.left)
     point_U = carry.point_U
     if periodic:

@@ -34,7 +34,6 @@ def _run_case(case_name: str, seed: int):
         model=model,
         num_slices=num_slices,
         no_step_out=True,
-        gradient_guided=False,
         collect_phantom_samples=True,
         max_phantom_samples=ndims,
     )

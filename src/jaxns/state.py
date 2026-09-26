@@ -31,7 +31,6 @@ from jaxns.shrinkage.classic import (
     sample_evidence,
     validate_lineage_capacity,
 )
-from jaxns.shrinkage.online import EvidenceCalculation
 from jaxns.shrinkage.phantom import EvidenceSamples
 from jaxns.stats_utils import effective_sample_size_kish
 from jaxns.types import BoolArray, FloatArray, IntArray
@@ -119,15 +118,6 @@ class State(PureDataclassPytree):
             AssertionError: if the parent graph is not consistent with the out-degrees, or if any non-root sample does not have a replacement child.
         """
         return _ensure_consistency(self)
-
-    def evaluate_evidence(self) -> tuple[EvidenceCalculation, EvidenceCalculation]:
-        """
-        Evaluate evidence over the current state.
-
-        Returns:
-            an evidence calculation, cumulative evdience calculation
-        """
-        return _evaluate_evidence(self)
 
     @property
     def expected_log_Z_mean(self) -> FloatArray:
@@ -869,13 +859,6 @@ def _ensure_consistency(self: State):
         validate=True,
     )
     return
-
-
-@partial(jax.jit, inline=True)
-def _evaluate_evidence(self: State) -> tuple[EvidenceCalculation, EvidenceCalculation]:
-    evidence_calc, cum_evidence = EvidenceCalculation.initialise().update_from_samples(
-        samples=self.samples, root_out_degree=self.root_out_degree, num_samples=self.num_samples)
-    return evidence_calc, cum_evidence
 
 
 @partial(jax.jit, inline=True, static_argnames=['num_samples'])

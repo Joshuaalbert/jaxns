@@ -4,9 +4,7 @@ from functools import partial
 import jax.lax
 import jax.tree
 from jax import numpy as jnp
-from jax import random
 
-from jaxns.cumulative_ops import scan_or_while_loop
 from jaxns.logging import jaxns_logger
 from jaxns.mixed_precision import mp_policy
 from jaxns.pytree import PureDataclassPytree
@@ -67,13 +65,6 @@ class Samples(PureDataclassPytree):
     def sort(self) -> 'Samples':
         return _sort(self)
 
-    def perm_sort(self, key) -> 'Samples':
-        return _perm_sort(self, key)
-
-    def compute_num_live_points_per_sample(self, root_out_degree: IntArray,
-                                           num_samples: IntArray | None = None) -> IntArray:
-        return _compute_num_live_points_per_sample(self, root_out_degree, num_samples)
-
     def append_samples(self, insert_idx: IntArray, parent_idxs: IntArray, samples: 'Samples',
                        delta_parent_out_degree: IntArray) -> 'Samples':
         """Append a fixed batch and apply its transient parent degree updates."""
@@ -117,37 +108,6 @@ def _sort(self: Samples) -> Samples:
         is_stable=False, num_keys=1)
     sorted_samples = jax.tree.map(lambda x: x[idxs], self)
     return dataclasses.replace(sorted_samples, log_likelihoods=log_likelihoods)
-
-
-@partial(jax.jit, inline=True)
-def _perm_sort(self: Samples, key) -> Samples:
-    sort_keys = random.randint(
-        key,
-        shape=jnp.shape(self.log_likelihoods),
-        minval=0,
-        maxval=jnp.iinfo(jnp.uint32).max,
-        dtype=jnp.uint32
-    )
-    iota = jnp.arange(len(self.log_likelihoods))
-    (log_likelihoods, _, idxs) = jax.lax.sort(
-        (self.log_likelihoods, sort_keys, iota),
-        is_stable=False, num_keys=2)
-    sorted_samples = jax.tree.map(lambda x: x[idxs], self)
-    return dataclasses.replace(sorted_samples, log_likelihoods=log_likelihoods)
-
-
-@partial(jax.jit, inline=True)
-def _compute_num_live_points_per_sample(self: Samples, root_out_degree: IntArray,
-                                        num_samples: IntArray | None = None) -> IntArray:
-    # Cumulatively apply K[i+1] = K[i] - 1 + d(i)
-    def scan_fn(carry, out_degree_i):
-        K_i, = carry
-        K_ip1 = K_i - jnp.ones((), K_i.dtype) + out_degree_i
-        return (K_ip1,), K_i
-
-    _, K_values = scan_or_while_loop(scan_fn, (root_out_degree,), self.out_degree.astype(root_out_degree.dtype),
-                                     length=num_samples, unroll=1)
-    return K_values
 
 
 @partial(jax.jit, inline=True)
