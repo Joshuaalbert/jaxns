@@ -2298,8 +2298,6 @@ def _accept_work_batch(
     shell_size = batch.log_likelihoods.shape[0]
     # Phantom shrinkage needs likelihoods and cluster identity, not phantom
     # coordinates. Discarding coordinates keeps the persistent state compact.
-    # `NestedSampler.store_phantom_samples` remains a constructor-compatibility
-    # field, but is intentionally absent from this compiled hot path.
     stored_phantoms = dataclasses.replace(
         batch.phantom_samples,
         U_samples=None,

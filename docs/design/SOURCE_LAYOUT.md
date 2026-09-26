@@ -23,11 +23,11 @@ than compatibility-only facades.
 
 | Package | Ownership |
 | --- | --- |
-| `algorithm/` | Allocation targets, race-tree blocks, initial state construction, and the complete pure-JAX depth loop. |
-| `sampling/` | Request schemas, scalar/vmapped batching, slice transitions, continuation scheduling, stationary seeding, GMM fitting, and ellipsoidal geometry. |
-| `shrinkage/` | Classic Bayesian shrinkage, phantom-conditioned Monte Carlo evidence, the independent reference implementation, and online expectation estimates. |
+| `algorithm/` | Allocation targets, stationary seed selection, race-tree blocks, initial state construction, and the complete pure-JAX depth loop. |
+| `sampling/` | Request schemas, scalar/vmapped batching, slice transitions, continuation scheduling, GMM fitting, and ellipsoidal geometry. |
+| `shrinkage/` | Classic Bayesian shrinkage, phantom-conditioned Monte Carlo evidence, the independent reference implementation, and block expectation estimates. |
 | `runtime/` | Distributed configuration, transport protocol, worker sessions, coordinator/client processes, and node/worker lifecycle. |
-| `diagnostics/` | Presentation, plotting, insertion diagnostics, and brute-force scientific reference calculations. |
+| `diagnostics/` | Presentation, plotting, and brute-force scientific reference calculations. |
 
 The local and distributed runners share `algorithm/` and `sampling/`; a runtime
 transport must not grow its own scientific implementation. Likewise,

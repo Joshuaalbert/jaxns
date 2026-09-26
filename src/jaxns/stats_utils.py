@@ -4,23 +4,6 @@ from jaxns.log_semiring import LogSpace, normalise_log_space
 from jaxns.mixed_precision import mp_policy
 
 
-def normal_to_lognormal(mu, std):
-    """
-    Convert normal parameters to log-normal parameters.
-
-    Args:
-        mu: mean of normal RV
-        std: standard deviation of normal RV
-
-    Returns:
-        mu, sigma of log-normal RV
-    """
-    var = std ** 2
-    ln_mu = 2. * jnp.log(mu) - 0.5 * jnp.log(var)
-    ln_var = jnp.log(var) - 2. * jnp.log(mu)
-    return ln_mu, jnp.sqrt(ln_var)
-
-
 def linear_to_log_stats(log_f_mean, *, log_f2_mean=None, log_f_var=None):
     """
     Converts normal to log-normal stats.

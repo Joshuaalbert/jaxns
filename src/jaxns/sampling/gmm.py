@@ -148,12 +148,6 @@ def initialise_gmm(
     )
 
 
-def initialize_params(key, data, n_components: int):
-    """Compatibility wrapper returning the historical parameter tuple."""
-    mixture = initialise_gmm(key, data, n_components)
-    return mixture.centres, mixture.covariances, mixture.log_masses
-
-
 def e_step(
         data: FloatArray,
         means: FloatArray,
@@ -255,38 +249,6 @@ def _maximisation(
     )
 
 
-def m_step(data, log_responsibilities):
-    """Compatibility wrapper for an unweighted maximisation step."""
-    n_components = log_responsibilities.shape[0]
-    previous = GaussianMixture(
-        centres=jnp.zeros((n_components, data.shape[1]), data.dtype),
-        covariances=jnp.repeat(
-            jnp.eye(data.shape[1], dtype=data.dtype)[None, :, :],
-            n_components,
-            axis=0,
-        ),
-        log_masses=jnp.full(
-            (n_components,),
-            -jnp.log(jnp.asarray(n_components, data.dtype)),
-            data.dtype,
-        ),
-        valid=jnp.zeros((n_components,), mp_policy.bool_dtype),
-    )
-    weights = jnp.full(
-        (data.shape[0],),
-        1.0 / data.shape[0],
-        data.dtype,
-    )
-    mixture = _maximisation(
-        data,
-        log_responsibilities,
-        weights,
-        previous,
-        regularisation=1e-4,
-    )
-    return mixture.centres, mixture.covariances, mixture.log_masses
-
-
 def fit_gmm(
         key: PRNGKey,
         data: FloatArray,
@@ -353,10 +315,8 @@ def em_gmm(
         n_components,
         mask: jax.Array | None = None,
         n_iters=10,
-        tol=1e-6,
 ):
     """Fit a GMM while retaining the historical public return structure."""
-    del tol
     mixture, cluster_id, _ = fit_gmm(
         key,
         data,

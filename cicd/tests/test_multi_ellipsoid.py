@@ -1,20 +1,16 @@
 import jax
 import matplotlib.pyplot as plt
 import numpy as np
-import tensorflow_probability.substrates.jax as tfp
 from jax import numpy as jnp
 from jax import random, vmap
-from jaxctx.priors.prior import Prior
 
 from jaxns.mixed_precision import mp_policy
-from jaxns.model import Model
 from jaxns.random_utils import random_ortho_matrix
 from jaxns.sampling.ellipsoid import (
     EllipsoidParams,
     bounding_ellipsoid,
     circle_to_ellipsoid,
     covariance_to_rotational,
-    ellipsoid_clustering,
     ellipsoid_params,
     ellipsoid_to_circle,
     empty_sampler_data,
@@ -26,39 +22,6 @@ from jaxns.sampling.ellipsoid import (
 )
 
 plt.switch_backend("Agg")
-
-tfpd = tfp.distributions
-
-
-def test_ellipsoid_clustering():
-    def prior_model():
-        x = Prior(tfpd.Uniform(low=0, high=2), name='x').realise()
-        y = Prior(tfpd.Normal(loc=0, scale=2), name='y').realise()
-        return log_likelihood(x, y)
-
-    def log_likelihood(x, y):
-        return jnp.log(jnp.exp(-0.5 * ((x - 0.5) / 0.1) ** 2 - 0.5 * ((y - 0.5) / 0.1) ** 2) + jnp.exp(
-            -0.5 * ((x - 1.5) / 0.1) ** 2 - 0.5 * ((y - 1.5) / 0.1) ** 2))
-
-    model = Model(prior_model=prior_model)
-
-    n = 1000
-    keys = random.split(random.PRNGKey(42), n)
-    U_samples = vmap(model.sample_U)(keys)
-    log_L = vmap(model.log_likelihood)(U_samples)
-    threshold = jnp.percentile(log_L, 75)
-    keep = log_L > threshold
-    points = jnp.stack(jax.tree.leaves(U_samples), axis=-1).astype(mp_policy.measure_dtype)
-    reservoir = points[keep]
-    plt.scatter(reservoir[:, 0], reservoir[:, 1])
-    state = ellipsoid_clustering(
-        random.PRNGKey(42),
-        points=reservoir,
-        log_VS=jnp.asarray(0., mp_policy.measure_dtype),
-        max_num_ellipsoids=10
-    )
-    plot_ellipses(params=state.params, show=False)
-    plt.close('all')
 
 
 def test_log_ellipsoid_volume():

@@ -401,33 +401,3 @@ def stationary_seed_indices_python(
             & (log_L_constraint < likelihoods)
         )
     return np.flatnonzero(eligible).astype(np.int64)
-
-
-def closest_seedable_parent_block_python(
-        state: State,
-        block_state: BlockState,
-        requested_block_idx: int,
-) -> int:
-    """Pure-Python reference for closest-shallower seed reparenting."""
-    num_samples = int(np.asarray(state.num_samples))
-    valid = np.asarray(block_state.valid, dtype=bool)
-    log_l = np.asarray(block_state.log_L_blocks)
-    candidate = requested_block_idx
-    while candidate >= 0:
-        if valid[candidate]:
-            seeds = stationary_seed_indices_python(
-                state.samples,
-                num_samples,
-                float(log_l[candidate]),
-                from_root=False,
-            )
-            if seeds.size:
-                return candidate
-        candidate -= 1
-    root_seeds = stationary_seed_indices_python(
-        state.samples,
-        num_samples,
-        -np.inf,
-        from_root=True,
-    )
-    return -1 if root_seeds.size else -2

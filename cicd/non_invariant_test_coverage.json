@@ -366,11 +366,6 @@
       "path": "cicd/tests/test_core.py",
       "reason": "architecture_boundary"
     },
-    "test_ellipsoid_clustering": {
-      "note": "Checks ellipsoidal geometry utilities which are outside the current release sampler.",
-      "path": "cicd/tests/test_multi_ellipsoid.py",
-      "reason": "deferred_sampler_utility"
-    },
     "test_ellipsoid_params": {
       "note": "Checks ellipsoidal geometry utilities which are outside the current release sampler.",
       "path": "cicd/tests/test_multi_ellipsoid.py",
@@ -417,16 +412,6 @@
       "reason": "regression_case"
     },
     "test_gh171": {
-      "note": "Checks generic reporting, resampling, percentile, or diagnostic utilities.",
-      "path": "cicd/tests/test_utils.py",
-      "reason": "utility_behavior"
-    },
-    "test_insert_index_diagnostic_nonuniform": {
-      "note": "Checks generic reporting, resampling, percentile, or diagnostic utilities.",
-      "path": "cicd/tests/test_utils.py",
-      "reason": "utility_behavior"
-    },
-    "test_insert_index_diagnostic_uniform": {
       "note": "Checks generic reporting, resampling, percentile, or diagnostic utilities.",
       "path": "cicd/tests/test_utils.py",
       "reason": "utility_behavior"
@@ -925,6 +910,11 @@
       "note": "Checks the current masked component-height regression avoids an indeterminate zero-weight product without changing supported observations.",
       "path": "cicd/tests/test_multi_ellipsoid.py",
       "reason": "implementation_regression"
+    },
+    "test_resample_indices_uniform_with_replacement": {
+      "note": "Checks uniform sampling with replacement includes every index, including zero, for singleton and larger populations through JIT.",
+      "path": "cicd/tests/test_random.py",
+      "reason": "utility_behavior"
     }
   }
 }

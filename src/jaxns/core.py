@@ -134,14 +134,10 @@ class NestedSampler(PureDataclassPytree):
     root_allocation_degree: int | None = None
     max_samples: int | None = None
     shell_size: int | None = None
-    batch_size: int | None = None
     args: tuple = ()
     params: CtxParams | None = None
     sampler: AbstractSampler | None = None
     depth_condition: DepthCondition | None = None
-    # Constructor-compatible legacy option. The evidence model stores phantom
-    # likelihoods only; high-dimensional phantom coordinates are not retained.
-    store_phantom_samples: bool = False
     collect_phantom_samples: bool = False
     max_phantom_samples: int | None = None
     allocation_target: Literal[
@@ -219,7 +215,6 @@ class NestedSampler(PureDataclassPytree):
                 model=self.model,
                 num_slices=num_slices,
                 no_step_out=True,
-                gradient_guided=False,
                 collect_phantom_samples=self.collect_phantom_samples,
             )
         max_phantom_samples = self.max_phantom_samples
@@ -280,8 +275,6 @@ class NestedSampler(PureDataclassPytree):
                 "root_allocation_degree",
                 "max_samples",
                 "shell_size",
-                "batch_size",
-                "store_phantom_samples",
                 "collect_phantom_samples",
                 "max_phantom_samples",
                 "allocation_target",

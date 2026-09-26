@@ -2510,8 +2510,8 @@ def test_public_scientific_data_objects_are_frozen_and_slotted():
     # normalised with ordinary typed assignments during construction. The
     # scientific state it produces remains immutable.
     assert type(ns).__slots__
-    ns.store_phantom_samples = True
-    assert ns.store_phantom_samples
+    ns.collect_phantom_samples = True
+    assert ns.collect_phantom_samples
 
     assert type(state).__slots__
     with pytest.raises(dataclasses.FrozenInstanceError):

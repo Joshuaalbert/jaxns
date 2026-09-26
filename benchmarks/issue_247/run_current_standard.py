@@ -77,7 +77,6 @@ def main():
         model=model,
         num_slices=num_slices,
         no_step_out=True,
-        gradient_guided=False,
         collect_phantom_samples=args.phantoms,
         max_phantom_samples=(
             retained_phantoms if args.phantoms else None
