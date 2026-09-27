@@ -190,12 +190,13 @@ def _depth_program(ns: NestedSampler, state) -> dict:
         state,
         goal_loop_iter=jnp.asarray(1, jnp.int32),
     )
+    config = ns._resolve_config(state.model, state.args, state.params)
     start = time.perf_counter()
     lowered = _run_depth.lower(
         state,
-        ns.sampler,
+        config.sampler,
         ns.depth_condition,
-        max_samples=ns.max_samples,
+        max_samples=config.max_samples,
     )
     lower_s = time.perf_counter() - start
     start = time.perf_counter()
@@ -204,7 +205,7 @@ def _depth_program(ns: NestedSampler, state) -> dict:
     execution = []
     for _ in range(3):
         start = time.perf_counter()
-        output = compiled(state, ns.sampler, ns.depth_condition)
+        output = compiled(state, config.sampler, ns.depth_condition)
         jax.block_until_ready(output)
         execution.append(time.perf_counter() - start)
     memory = compiled.memory_analysis()
@@ -320,7 +321,7 @@ def main() -> None:
         result_s = time.perf_counter() - start
 
         start = time.perf_counter()
-        evidence = results.sample_evidence_mc(
+        evidence = results.sample_evidence(
             num_samples=args.mc_draws,
             phantom_conditioning=(conditioning == "phantom"),
             key=jax.random.fold_in(key, 1),

@@ -947,7 +947,10 @@ def test_periodic_sampler_executes_in_real_worker_processes(tmp_path):
             key=jax.random.PRNGKey(275),
         )
 
-        assert runner.sampler._periodic == (True,)
+        config = runner._resolve_config(
+            checkpoint.state.model, checkpoint.state.args, checkpoint.state.params,
+        )
+        assert config.sampler._periodic == (True,)
         assert int(checkpoint.state.num_samples) > 4
         num_samples = int(checkpoint.state.num_samples)
         for value in jax.tree.leaves(checkpoint.state.samples.U_samples):

@@ -2103,9 +2103,10 @@ def test_sample_storage_modes_are_explicit_and_inspectable():
         replacement_width=1,
         sampler=DeterministicSampler(),
     )
-    assert finite_default.max_samples == 2 * run_config.SAMPLES_PER_ROOT
-    assert finite_default.initial_capacity == 2 + run_config.INITIAL_BATCHES
-    assert finite_default.delta_K == 2
+    finite_default_config = finite_default._resolve_config(finite_default.model, (), None)
+    assert finite_default_config.max_samples == 2 * run_config.SAMPLES_PER_ROOT
+    assert finite_default_config.initial_capacity == 2 + run_config.INITIAL_BATCHES
+    assert finite_default_config.delta_K == 2
     assert not finite_default.unlimited_samples
 
     finite_large = NestedSampler(
@@ -2115,8 +2116,9 @@ def test_sample_storage_modes_are_explicit_and_inspectable():
         max_samples=5000,
         sampler=DeterministicSampler(),
     )
-    assert finite_large.max_samples == 5000
-    assert finite_large.initial_capacity == 2 + run_config.INITIAL_BATCHES
+    finite_large_config = finite_large._resolve_config(finite_large.model, (), None)
+    assert finite_large_config.max_samples == 5000
+    assert finite_large_config.initial_capacity == 2 + run_config.INITIAL_BATCHES
 
     unlimited = NestedSampler(
         model=make_toy_model(),
@@ -2125,15 +2127,16 @@ def test_sample_storage_modes_are_explicit_and_inspectable():
         unlimited_samples=True,
         sampler=DeterministicSampler(),
     )
-    assert unlimited.max_samples is None
-    assert unlimited.initial_capacity == 2 + run_config.INITIAL_BATCHES
+    unlimited_config = unlimited._resolve_config(unlimited.model, (), None)
+    assert unlimited_config.max_samples is None
+    assert unlimited_config.initial_capacity == 2 + run_config.INITIAL_BATCHES
 
     with pytest.raises(ValueError, match="conflicts"):
         NestedSampler(
             model=make_toy_model(),
             max_samples=100,
             unlimited_samples=True,
-        )
+        ).initialise()
 
 
 def _assert_single_depth_outcome(state):
@@ -2552,10 +2555,12 @@ def test_nested_sampler_resolves_and_preserves_phantom_capacity():
         max_phantom_samples=5,
     )
 
-    assert default.max_phantom_samples == 2
-    assert default.sampler.num_phantom() == 2
-    assert bounded.max_phantom_samples == 5
-    assert bounded.sampler.num_phantom() == 5
+    default_config = default._resolve_config(model, (), None)
+    assert default_config.max_phantom_samples == 2
+    assert default_config.sampler.num_phantom() == 2
+    bounded_config = bounded._resolve_config(model, (), None)
+    assert bounded_config.max_phantom_samples == 5
+    assert bounded_config.sampler.num_phantom() == 5
 
     # NestedSampler owns the high-level D-sized default even when the caller
     # supplies an otherwise unbounded built-in slice sampler. Direct low-level
@@ -2566,56 +2571,60 @@ def test_nested_sampler_resolves_and_preserves_phantom_capacity():
     )
     assert custom_unbounded.num_phantom() == 9
     custom_default = NestedSampler(model=model, sampler=custom_unbounded)
-    assert custom_default.max_phantom_samples == 2
-    assert custom_default.sampler.num_phantom() == 2
+    custom_default_config = custom_default._resolve_config(model, (), None)
+    assert custom_default_config.max_phantom_samples == 2
+    assert custom_default_config.sampler.num_phantom() == 2
 
     custom_explicit = NestedSampler(
         model=model,
         sampler=custom_unbounded,
         max_phantom_samples=np.int64(4),
     )
-    assert custom_explicit.max_phantom_samples is int(
-        custom_explicit.max_phantom_samples
+    custom_explicit_config = custom_explicit._resolve_config(model, (), None)
+    assert custom_explicit_config.max_phantom_samples is int(
+        custom_explicit_config.max_phantom_samples
     )
-    assert custom_explicit.max_phantom_samples == 4
-    assert custom_explicit.sampler.num_phantom() == 4
+    assert custom_explicit_config.max_phantom_samples == 4
+    assert custom_explicit_config.sampler.num_phantom() == 4
 
     sampler_capacity = dataclasses.replace(
         custom_unbounded,
         max_phantom_samples=5,
     )
     sampler_precedence = NestedSampler(model=model, sampler=sampler_capacity)
-    assert sampler_precedence.max_phantom_samples == 5
+    sampler_precedence_config = sampler_precedence._resolve_config(model, (), None)
+    assert sampler_precedence_config.max_phantom_samples == 5
     with pytest.raises(ValueError, match="disagrees"):
         NestedSampler(
             model=model,
             sampler=sampler_capacity,
             max_phantom_samples=4,
-        )
+        ).initialise()
 
     restored_sampler = pickle.loads(pickle.dumps(bounded))
-    assert restored_sampler.max_phantom_samples == 5
-    assert restored_sampler.sampler.num_phantom() == 5
+    restored_sampler_config = restored_sampler._resolve_config(model, (), None)
+    assert restored_sampler_config.max_phantom_samples == 5
+    assert restored_sampler_config.sampler.num_phantom() == 5
 
     state = bounded.initialise(jax.random.PRNGKey(284))
     restored_state = pickle.loads(pickle.dumps(state))
     assert restored_state.samples.phantom_samples.log_L.shape[1] == 5
 
     with pytest.raises(ValueError, match="collect_phantom_samples"):
-        NestedSampler(model=model, max_phantom_samples=1)
+        NestedSampler(model=model, max_phantom_samples=1).initialise()
     for invalid_capacity in (0, -1):
         with pytest.raises(ValueError, match="must be positive"):
             NestedSampler(
                 model=model,
                 collect_phantom_samples=True,
                 max_phantom_samples=invalid_capacity,
-            )
+            ).initialise()
     with pytest.raises(ValueError, match="num_slices - 1"):
         NestedSampler(
             model=model,
             collect_phantom_samples=True,
             max_phantom_samples=10,
-        )
+        ).initialise()
 
 
 def test_additional_retained_phantoms_leave_classic_run_invariant():
@@ -2659,12 +2668,12 @@ def test_additional_retained_phantoms_leave_classic_run_invariant():
     short_result = short_state.to_result().trim()
     long_result = long_state.to_result().trim()
     evidence_key = jax.random.PRNGKey(2284)
-    short_evidence = short_result.sample_evidence_mc(
+    short_evidence = short_result.sample_evidence(
         num_samples=16,
         phantom_conditioning=False,
         key=evidence_key,
     )
-    long_evidence = long_result.sample_evidence_mc(
+    long_evidence = long_result.sample_evidence(
         num_samples=16,
         phantom_conditioning=False,
         key=evidence_key,

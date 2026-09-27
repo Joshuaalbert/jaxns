@@ -1,4 +1,4 @@
-"""Shared construction defaults, independent of local or worker execution."""
+"""Resolve run defaults from the inputs that own the scientific state."""
 
 import dataclasses
 import operator
@@ -21,16 +21,22 @@ AllocationTarget = Literal[
 
 @dataclasses.dataclass(frozen=True, slots=True)
 class ResolvedRunConfig:
-    """Construction result consumed once by the owning execution runner."""
+    """Transient execution settings, with no retained model inputs."""
 
     root_allocation_degree: int
     replacement_width: int | None
     max_samples: int | None
     sampler: AbstractSampler
     max_phantom_samples: int
-    depth_condition: DepthCondition
     initial_capacity: int
     delta_K: int
+
+
+def default_depth_condition() -> DepthCondition:
+    """Keep the released stopping depth independent of runtime model inputs."""
+    return DepthCondition(
+        dlogZ=jnp.log1p(jnp.asarray(1e-3, mp_policy.measure_dtype)),
+    )
 
 
 def resolve_run_config(
@@ -42,7 +48,6 @@ def resolve_run_config(
         root_allocation_degree: int | None,
         max_samples: int | None,
         sampler: AbstractSampler | None,
-        depth_condition: DepthCondition | None,
         collect_phantom_samples: bool,
         max_phantom_samples: int | None,
         allocation_target: AllocationTarget,
@@ -129,15 +134,6 @@ def resolve_run_config(
     sampler = sampler._with_periodic(periodic)
     sampler.validate_core(U_ndims)
 
-    if depth_condition is None:
-        depth_condition = DepthCondition(
-            # Match the released v2 scientific stopping goal exactly so
-            # accuracy/performance comparisons cannot benefit from an
-            # earlier termination threshold.
-            dlogZ=jnp.log1p(
-                jnp.asarray(1e-3, mp_policy.measure_dtype)
-            ),
-        )
     if initial_capacity is None:
         # Preallocating the full default maximum makes every fixed-shape
         # block scan pay for unused padding. Start with enough room for a
@@ -162,7 +158,6 @@ def resolve_run_config(
         max_samples=max_samples,
         sampler=sampler,
         max_phantom_samples=int(sampler.num_phantom()),
-        depth_condition=depth_condition,
         initial_capacity=initial_capacity,
         delta_K=int(delta_K),
     )

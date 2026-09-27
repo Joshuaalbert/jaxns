@@ -133,7 +133,7 @@ class NestedSamplerResults(PureDataclassPytree):
     Results of the nested sampling run.
 
     ``log_Z_mean`` and ``log_Z_uncert`` are classic expectation-based
-    estimates. ``sample_evidence_mc`` supplies Monte Carlo summaries without
+    estimates. ``sample_evidence`` supplies Monte Carlo summaries without
     changing these fields or the represented posterior measure.
     """
     log_Z_mean: FloatArray  # [] estimate of E[log(Z)]
@@ -292,7 +292,7 @@ class NestedSamplerResults(PureDataclassPytree):
             semi_positive=semi_positive, batch_size=batch_size,
         )
 
-    def sample_evidence_mc(
+    def sample_evidence(
             self,
             num_samples: int,
             *,

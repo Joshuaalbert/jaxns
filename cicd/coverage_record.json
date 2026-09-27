@@ -21,7 +21,7 @@
   "Every nested-sampling contour is strict: a point satisfies contour lambda exactly when its likelihood is greater than lambda.": [
     "test_block_state_rejects_strict_contour_violation",
     "test_state_consistency_rejects_strict_contour_violation",
-    "test_results_sample_evidence_mc_rejects_strict_contour_equality",
+    "test_results_sample_evidence_rejects_strict_contour_equality",
     "test_public_sample_mc_shrinkage_rejects_strict_contour_equality"
   ],
   "A seed used for a constrained chain is stationary for the requested parent contour before the chain starts.": [
@@ -102,12 +102,12 @@
     "test_deterministic_gamma_helper_reuses_cluster_weights_across_blocks_and_components"
   ],
   "Changing how independent final Monte Carlo draws are batched does not change phantom-cluster identity, the joint shrinkage law, or the evidence distribution.": [
-    "test_sample_evidence_mc_batching_is_reproducible_and_matches_moments",
-    "test_sample_evidence_mc_one_batch_preserves_fixed_key_draws",
+    "test_sample_evidence_batching_is_reproducible_and_matches_moments",
+    "test_sample_evidence_one_batch_preserves_fixed_key_draws",
     "test_batched_summary_preserves_block_models_and_kish_gate"
   ],
   "Selecting a shorter phantom-conditioning prefix uses the first requested retained states of every cluster and is equivalent to physically truncating the result's phantom axis to that prefix.": [
-    "test_sample_evidence_mc_prefix_matches_physically_sliced_result"
+    "test_sample_evidence_prefix_matches_physically_sliced_result"
   ],
   "A phantom contributes to a block only when its cluster parent contour is no stricter than the preceding block contour and the phantom lies beyond that preceding contour.": [
     "test_per_cluster_counts_are_parent_contour_gated_with_equality_and_open_interval",
@@ -130,7 +130,7 @@
     "test_gamma_weighted_helper_inactive_gate_ignores_phantom_counts_exactly"
   ],
   "When all eligible phantom clusters are independent singletons, phantom conditioning reduces to ordinary conjugate categorical-count conditioning.": [
-    "test_results_sample_evidence_mc_uses_gamma_conditioning_when_gate_active"
+    "test_results_sample_evidence_uses_gamma_conditioning_when_gate_active"
   ],
   "A generated edge from parent likelihood L_i to child likelihood L_j adds one active lineage to every existing block whose likelihood satisfies L_i less than L_g less than or equal to L_j.": [
     "test_jax_decomposition_matches_python_reference_and_exact_coverage"
@@ -217,10 +217,10 @@
   "Invalid shapes, invalid lineage capacity, inconsistent block membership, or incompatible phantom metadata fail visibly before producing scientific summaries.": [
     "test_count_matrix_validation_rejects_malformed_count_relations",
     "test_count_input_validation_rejects_stale_and_malformed_metadata",
-    "test_results_sample_evidence_mc_rejects_malformed_arrays_before_jit",
+    "test_results_sample_evidence_rejects_malformed_arrays_before_jit",
     "test_public_sample_mc_shrinkage_rejects_stale_block_likelihoods_before_jit",
-    "test_sample_evidence_mc_rejects_invalid_batch_sizes",
-    "test_sample_evidence_mc_rejects_invalid_phantom_prefix"
+    "test_sample_evidence_rejects_invalid_batch_sizes",
+    "test_sample_evidence_rejects_invalid_phantom_prefix"
   ],
   "The default installation supplies plotting dependencies, scientific imports do not eagerly import them, and requesting plotting when they are unavailable fails with an actionable installation remedy.": [
     "test_missing_plotting_dependency_has_actionable_error"

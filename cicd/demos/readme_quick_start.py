@@ -59,10 +59,9 @@ def run_quick_start() -> NestedSamplerResults:
 
     sampler = NestedSampler(
         model=model,
-        args=args,
         collect_phantom_samples=True,
     )
-    state = sampler.run(key=jax.random.PRNGKey(6))
+    state = sampler.run(key=jax.random.PRNGKey(6), args=args)
     jax.block_until_ready(state)
     return state.to_result().trim()
 

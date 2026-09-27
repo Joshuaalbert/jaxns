@@ -34,12 +34,12 @@ def test_local_run_reaches_both_final_evidence_modes() -> None:
     state = sampler.run(key=jax.random.PRNGKey(17))
     results = state.to_result().trim()
 
-    classic = results.sample_evidence_mc(
+    classic = results.sample_evidence(
         num_samples=8,
         phantom_conditioning=False,
         key=jax.random.PRNGKey(19),
     )
-    phantom = results.sample_evidence_mc(
+    phantom = results.sample_evidence(
         num_samples=8,
         phantom_conditioning=True,
         key=jax.random.PRNGKey(23),

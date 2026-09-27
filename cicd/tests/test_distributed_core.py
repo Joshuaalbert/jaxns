@@ -52,18 +52,17 @@ def _local_checkpoint(
     """Build planning state without requiring the process-runtime boundary."""
     # These scheduler tests deliberately initialise a local fixture. The
     # production distributed runner evaluates its roots only on workers.
+    config = runner._resolve_config(runner.model, (), None)
     state = NestedSampler(
         model=runner.model,
-        args=runner.args,
-        params=runner.params,
-        root_allocation_degree=runner.root_allocation_degree,
-        max_samples=runner.max_samples,
-        initial_capacity=runner.initial_capacity,
+        root_allocation_degree=config.root_allocation_degree,
+        max_samples=config.max_samples,
+        initial_capacity=config.initial_capacity,
         unlimited_samples=runner.unlimited_samples,
-        sampler=runner.sampler,
+        sampler=config.sampler,
         depth_condition=runner.depth_condition,
         allocation_target=runner.allocation_target,
-        delta_K=runner.delta_K,
+        delta_K=config.delta_K,
         replacement_width=1,
     ).initialise(key)
     return DistributedState(
@@ -123,7 +122,7 @@ def test_distributed_directions_change_only_at_drained_boundaries():
         root_allocation_degree=4,
         initial_capacity=8,
     )
-    assert runner.delta_K == 4
+    assert runner._resolve_config(runner.model, (), None).delta_K == 4
     checkpoint = _local_checkpoint(runner, jax.random.PRNGKey(246))
 
     fitted = checkpoint.fit_gmm_directions(
@@ -201,6 +200,7 @@ def test_distributed_initialisation_dispatches_every_likelihood():
         Client(),
         "initialisation-test",
         jax.random.PRNGKey(41),
+        config=runner._resolve_config(runner.model, (), None), args=(), params=None,
     )
 
     assert Client.evaluations == 4
@@ -286,6 +286,7 @@ def test_distributed_completion_order_preserves_scientific_state():
             goal,
             DepthCondition(),
             checkpoint_manager=None,
+            config=runner._resolve_config(runner.model, (), None),
         )
         return completed.state.trim(), client
 
@@ -645,7 +646,7 @@ def test_growth_preserves_pending_payload_and_logical_depth():
         depth_active=True,
         goal_key=state.goal_key,
     )
-    grown = runner._grow(checkpoint)
+    grown = runner._grow(checkpoint, config=runner._resolve_config(runner.model, (), None))
 
     assert grown.state.samples.log_likelihoods.shape[0] == 4
     assert grown.reservations.parent_delta.shape == (4,)
@@ -678,6 +679,7 @@ def test_submit_failure_exposes_newest_resumable_checkpoint():
             checkpoint,
             DepthCondition(),
             lane_capacity=1,
+            config=runner._resolve_config(runner.model, (), None),
         )
     except DistributedRunError as exc:
         failed = exc.checkpoint
@@ -700,6 +702,7 @@ def test_submit_failure_exposes_newest_resumable_checkpoint():
             UnavailableClient(),
             checkpoint,
             DepthCondition(),
+            config=runner._resolve_config(runner.model, (), None),
         )
     except DistributedRunError as exc:
         unavailable = exc.checkpoint
@@ -737,6 +740,7 @@ def test_worker_slots_are_not_refilled_after_sample_budget_terminates():
         checkpoint,
         DepthCondition(),
         lane_capacity=2,
+        config=runner._resolve_config(runner.model, (), None),
     )
 
     assert client.submitted == 0
@@ -770,6 +774,7 @@ def test_distributed_dispatch_queues_scalar_threads_without_shell_barrier():
         checkpoint,
         DepthCondition(),
         lane_capacity=8,
+        config=runner._resolve_config(runner.model, (), None),
     )
 
     assert len(client.requests) > 1
@@ -803,6 +808,7 @@ def test_distributed_planning_width_tracks_worker_capacity():
         checkpoint,
         DepthCondition(),
         lane_capacity=1,
+        config=runner._resolve_config(runner.model, (), None),
     )
 
     assert queued.state.scheduler_data.valid.shape[0] == 1
@@ -971,6 +977,7 @@ def test_distributed_dispatch_starts_evidence_utility_schedule():
         checkpoint,
         DepthCondition(),
         lane_capacity=2,
+        config=runner._resolve_config(runner.model, (), None),
     )
 
     assert client.tasks
@@ -1051,12 +1058,14 @@ def test_distributed_refill_reserves_pending_same_contour_seed():
         checkpoint,
         DepthCondition(),
         lane_capacity=1,
+        config=runner._resolve_config(runner.model, (), None),
     )
     refilled = runner._dispatch_threads(
         Client(),
         first,
         DepthCondition(),
         lane_capacity=2,
+        config=runner._resolve_config(runner.model, (), None),
     )
 
     assert len(refilled.pending) == 2
@@ -1123,6 +1132,7 @@ def test_distributed_refills_reserve_starts_beyond_worker_capacity():
             checkpoint,
             DepthCondition(),
             lane_capacity=2,
+            config=runner._resolve_config(runner.model, (), None),
         )
         selected.extend(
             int(task.work.seed_idx[0]) for task in checkpoint.pending

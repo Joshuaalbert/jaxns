@@ -89,6 +89,8 @@ def main():
         sampler=sampler,
     )
 
+    config = ns._resolve_config(model, (), None)
+
     lower_s = None
     compile_s = None
     warm_times = []
@@ -106,9 +108,9 @@ def main():
         lower_start = time.perf_counter()
         lowered = _run_depth.lower(
             depth_state,
-            ns.sampler,
+            config.sampler,
             ns.depth_condition,
-            max_samples=ns.max_samples,
+            max_samples=config.max_samples,
         )
         lower_s = time.perf_counter() - lower_start
         compile_start = time.perf_counter()
@@ -118,7 +120,7 @@ def main():
             warm_start = time.perf_counter()
             warm_state = compiled(
                 depth_state,
-                ns.sampler,
+                config.sampler,
                 ns.depth_condition,
             )
             jax.block_until_ready(warm_state)
@@ -159,9 +161,9 @@ def main():
         "ndims": ndims,
         "root_degree": root_degree,
         "replacement_width": replacement_width,
-        "allocation_increment": int(ns.delta_K),
-        "num_slices": int(ns.sampler.num_slices),
-        "num_retained_phantoms": int(ns.sampler.num_phantom()),
+        "allocation_increment": int(config.delta_K),
+        "num_slices": int(config.sampler.num_slices),
+        "num_retained_phantoms": int(config.sampler.num_phantom()),
         "dlogZ": float(ns.depth_condition.dlogZ),
         "lower_s": lower_s,
         "compile_s": compile_s,
@@ -191,7 +193,7 @@ def main():
             if args.mc_key is not None
             else jax.random.fold_in(key, 1)
         )
-        evidence = results.sample_evidence_mc(
+        evidence = results.sample_evidence(
             num_samples=args.mc_draws,
             phantom_conditioning=(conditioning == "phantom"),
             key=evidence_key,

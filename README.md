@@ -143,11 +143,10 @@ from jaxns.core import NestedSampler
 
 sampler = NestedSampler(
     model=model,
-    args=args,
     collect_phantom_samples=True,
     max_phantom_samples=2,
 )
-state = sampler.run(key=jax.random.PRNGKey(6))
+state = sampler.run(key=jax.random.PRNGKey(6), args=args)
 results = state.to_result().trim()
 
 results.summary()
@@ -161,7 +160,7 @@ results.plot_evidence(
 )
 
 # Reuse the same retained clusters with a shorter conditioning prefix.
-prefix_evidence = results.sample_evidence_mc(
+prefix_evidence = results.sample_evidence(
     num_samples=4096,
     phantom_conditioning=True,
     num_phantoms=1,
@@ -170,7 +169,7 @@ prefix_evidence = results.sample_evidence_mc(
 
 # Classic expectation summaries remain on results.log_Z_mean/log_Z_uncert.
 # This separate ensemble provides the Monte Carlo summaries.
-classic_evidence = results.sample_evidence_mc(4096, key=jax.random.PRNGKey(5))
+classic_evidence = results.sample_evidence(4096, key=jax.random.PRNGKey(5))
 
 # Resampling returns an equally weighted posterior with integration methods.
 posterior = results.resample(1000, key=jax.random.PRNGKey(7))

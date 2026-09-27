@@ -46,12 +46,12 @@ def goal_cond(state: State) -> bool:
 # vmaps replacement chains on the selected local JAX device.
 local = NestedSampler(
     model=model,
-    args=model_args,
-    params=model_params,
     collect_phantom_samples=True,
 )
 local_state = local.run_until_goal(
     goal_cond=goal_cond,
+    args=model_args,
+    params=model_params,
     key=jax.random.PRNGKey(1),
     checkpoint_dir="checkpoints/local",
     checkpoint_cadence=3600.0,
@@ -76,12 +76,12 @@ local_state = local.run_until_goal(
 distributed = DistributedNestedSampler(
     model=model,
     coordinator_port=5555,
-    args=model_args,
-    params=model_params,
     collect_phantom_samples=True,
 )
 checkpoint: DistributedState = distributed.run_until_goal(
     goal_cond=goal_cond,
+    args=model_args,
+    params=model_params,
     key=jax.random.PRNGKey(2),
     checkpoint_dir="checkpoints/distributed",
     checkpoint_cadence=3600.0,
@@ -112,7 +112,7 @@ expected_post_predictive = results.integrate_fn_over_posterior(
 )
 # Deterministic classic expectations remain on results.log_Z_mean and
 # results.log_Z_uncert. The ensemble below owns its separate MC summary.
-shrinkage_samples: EvidenceSamples = results.sample_evidence_mc(
+shrinkage_samples: EvidenceSamples = results.sample_evidence(
     num_samples=1000,
     key=jax.random.PRNGKey(3),
     phantom_conditioning=True,

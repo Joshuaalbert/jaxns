@@ -69,7 +69,7 @@ def main() -> None:
         model=model,
         root_allocation_degree=32,
         sampler=UniDimSliceSampler(num_slices=32),
-    ).sampler
+    )._resolve_config(model, (), None).sampler
     keys = jax.random.split(jax.random.PRNGKey(1), 8)
     # [S, ...] structured unit-cube seeds.
     seeds = jax.vmap(model.sample_U)(keys)

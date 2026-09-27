@@ -145,7 +145,7 @@ def plot_evidence(
             keys,
             strict=True,
     ):
-        evidence_samples = results.sample_evidence_mc(
+        evidence_samples = results.sample_evidence(
             num_samples=num_samples,
             phantom_conditioning=(conditioning == "phantom"),
             key=conditioning_key,

@@ -49,7 +49,11 @@ from jaxns.logging import jaxns_logger
 from jaxns.mixed_precision import mp_policy
 from jaxns.model import Model
 from jaxns.pytree import PureDataclassPytree
-from jaxns.run_config import resolve_run_config
+from jaxns.run_config import (
+    ResolvedRunConfig,
+    default_depth_condition,
+    resolve_run_config,
+)
 from jaxns.runtime.session import WorkerSession
 from jaxns.samples import SeedPoint
 from jaxns.sampling.protocol import (
@@ -592,7 +596,6 @@ class DistributedNestedSampler:
 
     __slots__ = (
         "allocation_target",
-        "args",
         "collect_phantom_samples",
         "coordinator_port",
         "delta_K",
@@ -601,7 +604,6 @@ class DistributedNestedSampler:
         "max_phantom_samples",
         "max_samples",
         "model",
-        "params",
         "receive_timeout_s",
         "root_allocation_degree",
         "sampler",
@@ -614,8 +616,6 @@ class DistributedNestedSampler:
             coordinator_port: int,
             root_allocation_degree: int | None = None,
             max_samples: int | None = None,
-            args: tuple = (),
-            params: CtxParams | None = None,
             sampler: AbstractSampler | None = None,
             depth_condition: DepthCondition | None = None,
             collect_phantom_samples: bool = False,
@@ -637,8 +637,6 @@ class DistributedNestedSampler:
         self.coordinator_port = coordinator_port
         self.root_allocation_degree = root_allocation_degree
         self.max_samples = max_samples
-        self.args = args
-        self.params = params
         self.sampler = sampler
         self.depth_condition = depth_condition
         self.collect_phantom_samples = collect_phantom_samples
@@ -658,15 +656,25 @@ class DistributedNestedSampler:
             )
         if self.receive_timeout_s <= 0.0:
             raise ValueError("receive_timeout_s must be positive.")
-        config = resolve_run_config(
+        if self.depth_condition is None:
+            self.depth_condition = default_depth_condition()
+
+    def _resolve_config(
+            self,
+            model: Model,
+            args: tuple,
+            params: CtxParams | None,
+    ) -> ResolvedRunConfig:
+        # Resolve once per session from the new or checkpoint-owned inputs.
+        # Keep requested defaults intact for later runs on the same runner.
+        return resolve_run_config(
             execution="distributed",
-            model=self.model,
-            args=self.args,
-            params=self.params,
+            model=model,
+            args=args,
+            params=params,
             root_allocation_degree=self.root_allocation_degree,
             max_samples=self.max_samples,
             sampler=self.sampler,
-            depth_condition=self.depth_condition,
             collect_phantom_samples=self.collect_phantom_samples,
             max_phantom_samples=self.max_phantom_samples,
             allocation_target=self.allocation_target,
@@ -674,29 +682,37 @@ class DistributedNestedSampler:
             initial_capacity=self.initial_capacity,
             unlimited_samples=self.unlimited_samples,
         )
-        self.root_allocation_degree = config.root_allocation_degree
-        self.max_samples = config.max_samples
-        self.sampler = config.sampler
-        self.max_phantom_samples = config.max_phantom_samples
-        self.depth_condition = config.depth_condition
-        self.initial_capacity = config.initial_capacity
-        self.delta_K = config.delta_K
 
-    def initialise(self, key: PRNGKey | None = None) -> DistributedState:
+    def initialise(
+            self,
+            key: PRNGKey | None = None,
+            *,
+            args: tuple = (),
+            params: CtxParams | None = None,
+    ) -> DistributedState:
         """Create a root checkpoint without a local likelihood evaluation.
 
         The scientific process may have no likelihood-capable device. It draws
         unit-hypercube coordinates locally, but every root likelihood is an
         explicit worker task just like later constrained-chain evaluations.
+
+        Args:
+            key: Root sampling key, with a deterministic default if omitted.
+            args: Model arguments stored on the new State.
+            params: Model parameters stored on the new State.
+
+        Returns:
+            A distributed state containing the root samples and inputs.
         """
         from jaxns.runtime.client import SupervisorClient
 
+        config = self._resolve_config(self.model, args, params)
         session_id = uuid4().hex
         session = WorkerSession(
             model=self.model,
-            sampler=self.sampler,
-            args=self.args,
-            params=self.params,
+            sampler=config.sampler,
+            args=args,
+            params=params,
         )
         with SupervisorClient.from_port(self.coordinator_port) as client:
             client.register(session_id, session)
@@ -704,6 +720,9 @@ class DistributedNestedSampler:
                 client,
                 session_id,
                 key,
+                config=config,
+                args=args,
+                params=params,
             )
             client.release(session_id)
             return distributed
@@ -713,6 +732,10 @@ class DistributedNestedSampler:
             client: SupervisorClient,
             session_id: str,
             key: PRNGKey | None,
+            *,
+            config: ResolvedRunConfig,
+            args: tuple,
+            params: CtxParams | None,
     ) -> DistributedState:
         """Build roots while retaining one already registered worker session."""
         if key is None:
@@ -720,16 +743,16 @@ class DistributedNestedSampler:
         init_key, run_key = jax.random.split(key)
         root_keys = jax.random.split(
             init_key,
-            int(self.root_allocation_degree),
+            int(config.root_allocation_degree),
         )
         U_samples = _sample_prior_points(
             root_keys,
             self.model,
-            self.args,
-            self.params,
+            args,
+            params,
         )
         num_evals = jnp.ones(
-            (int(self.root_allocation_degree),),
+            (int(config.root_allocation_degree),),
             mp_policy.count_dtype,
         )
         next_task_id = 0
@@ -754,8 +777,8 @@ class DistributedNestedSampler:
             proposals = _sample_prior_points(
                 key_pairs[:, 1],
                 self.model,
-                self.args,
-                self.params,
+                args,
+                params,
             )
             U_samples = jax.tree.map(
                 lambda current, proposal, slots=invalid: current.at[
@@ -780,13 +803,13 @@ class DistributedNestedSampler:
 
         state = _build_init_state(
             self.model,
-            self.args,
-            self.params,
+            args,
+            params,
             U_samples,
             log_likelihoods,
             num_evals,
-            sample_capacity=int(self.initial_capacity),
-            num_phantom=int(self.sampler.num_phantom()),
+            sample_capacity=int(config.initial_capacity),
+            num_phantom=int(config.sampler.num_phantom()),
         )
         state = dataclasses.replace(
             state,
@@ -924,10 +947,15 @@ class DistributedNestedSampler:
             key: PRNGKey | None = None,
             checkpoint_dir: str | Path | None = None,
             checkpoint_cadence: float = CHECKPOINT_CADENCE_SECONDS,
+            *,
+            args: tuple = (),
+            params: CtxParams | None = None,
     ) -> DistributedState:
         """Run until the configured expectation-based goal is met.
 
         Args:
+            args: Model arguments used only when starting a new run.
+            params: Model parameters used only when starting a new run.
             key: Random key used only when starting a new run.
             checkpoint_dir: Optional directory for automatic full-state
                 checkpointing and resume.
@@ -949,6 +977,8 @@ class DistributedNestedSampler:
         return self.run_until_goal(
             default_goal,
             key=key,
+            args=args,
+            params=params,
             checkpoint_dir=checkpoint_dir,
             checkpoint_cadence=checkpoint_cadence,
         )
@@ -960,15 +990,20 @@ class DistributedNestedSampler:
             key: PRNGKey | None = None,
             checkpoint_dir: str | Path | None = None,
             checkpoint_cadence: float = CHECKPOINT_CADENCE_SECONDS,
+            *,
+            args: tuple = (),
+            params: CtxParams | None = None,
     ) -> DistributedState:
         """Initialise and run the asynchronous Python goal/depth loops.
 
         A valid checkpoint in ``checkpoint_dir`` takes precedence over
-        ``key`` and resumes its stored random stream and pending work. JAXNS
-        verifies storage integrity, while compatible model, sampler, and run
-        configuration remain the caller's responsibility.
+        ``key``, ``args``, and ``params`` and resumes its saved model, random
+        stream, and pending work. JAXNS verifies storage integrity. Compatible
+        sampler and run configuration remain the caller's responsibility.
 
         Args:
+            args: Model arguments used only when starting a new run.
+            params: Model parameters used only when starting a new run.
             goal_cond: User goal evaluated only on drained immutable states.
             depth_cond: Expectation-based boundary for each allocation epoch.
             key: Run random key; a deterministic default is used when absent.
@@ -986,6 +1021,8 @@ class DistributedNestedSampler:
             goal_cond,
             depth_cond=depth_cond,
             key=key,
+            args=args,
+            params=params,
             checkpoint_dir=checkpoint_dir,
             checkpoint_cadence=checkpoint_cadence,
         )
@@ -997,18 +1034,21 @@ class DistributedNestedSampler:
             depth_cond: DepthCondition | None,
             key: PRNGKey | None,
             checkpoint_manager: CheckpointManager[DistributedState] | None,
+            args: tuple,
+            params: CtxParams | None,
     ) -> DistributedState:
         """Start a new distributed session after checkpoint resolution."""
         from jaxns.runtime.client import SupervisorClient
 
         if depth_cond is None:
             depth_cond = self.depth_condition
+        config = self._resolve_config(self.model, args, params)
         session_id = uuid4().hex
         session = WorkerSession(
             model=self.model,
-            sampler=self.sampler,
-            args=self.args,
-            params=self.params,
+            sampler=config.sampler,
+            args=args,
+            params=params,
         )
         distributed = None
         with SupervisorClient.from_port(self.coordinator_port) as client:
@@ -1021,6 +1061,9 @@ class DistributedNestedSampler:
                     client,
                     session_id,
                     key,
+                    config=config,
+                    args=args,
+                    params=params,
                 )
                 completed = self._run_connected(
                     client,
@@ -1028,6 +1071,7 @@ class DistributedNestedSampler:
                     goal_cond,
                     depth_cond,
                     checkpoint_manager,
+                    config=config,
                 )
                 distributed = completed
                 client.release(session_id)
@@ -1097,6 +1141,8 @@ class DistributedNestedSampler:
             key: PRNGKey | None,
             checkpoint_dir: str | Path | None,
             checkpoint_cadence: float,
+            args: tuple = (),
+            params: CtxParams | None = None,
     ) -> DistributedState:
         """Resolve checkpoint precedence before starting or resuming."""
         checkpoint_context = (
@@ -1117,6 +1163,8 @@ class DistributedNestedSampler:
                     goal_cond,
                     depth_cond=depth_cond,
                     key=key,
+                    args=args,
+                    params=params,
                     checkpoint_manager=checkpoint_manager,
                 )
             else:
@@ -1145,9 +1193,14 @@ class DistributedNestedSampler:
             depth_cond = self.depth_condition
         # The checkpoint owns the resumed scientific model, just as it owns
         # its arguments and parameters. Local sampling uses this same owner.
+        config = self._resolve_config(
+            distributed.state.model,
+            distributed.state.args,
+            distributed.state.params,
+        )
         session = WorkerSession(
             model=distributed.state.model,
-            sampler=self.sampler,
+            sampler=config.sampler,
             args=distributed.state.args,
             params=distributed.state.params,
         )
@@ -1170,6 +1223,7 @@ class DistributedNestedSampler:
                     goal_cond,
                     depth_cond,
                     checkpoint_manager,
+                    config=config,
                 )
                 distributed = completed
                 client.release(completed.session_id)
@@ -1194,6 +1248,8 @@ class DistributedNestedSampler:
             goal_cond: Callable[[State], bool],
             depth_cond: DepthCondition,
             checkpoint_manager: CheckpointManager[DistributedState] | None,
+            *,
+            config: ResolvedRunConfig,
     ) -> DistributedState:
         completed_tasks: dict[
             int,
@@ -1230,11 +1286,12 @@ class DistributedNestedSampler:
                     goal_key=goal_key,
                 )
 
-            distributed = self._grow_if_needed(distributed, depth_cond)
+            distributed = self._grow_if_needed(distributed, config)
             distributed = self._dispatch_threads(
                 client,
                 distributed,
                 depth_cond,
+                config=config,
             )
             if distributed.pending:
                 # Sampling completion is asynchronous, but scientific commits
@@ -1320,7 +1377,7 @@ class DistributedNestedSampler:
                     )
                 continue
 
-            status = self._status(distributed, depth_cond)
+            status = self._status(distributed, config)
             if bool(status.needs_thread_growth):
                 distributed = self._grow_thread_storage(distributed)
                 continue
@@ -1328,7 +1385,7 @@ class DistributedNestedSampler:
                 distributed = self._grow_seed_storage(distributed)
                 continue
             if bool(status.needs_growth):
-                distributed = self._grow(distributed)
+                distributed = self._grow(distributed, config)
                 continue
             if int(status.termination_reason) != 0:
                 terminal_state = _refresh_likelihood_order(
@@ -1472,6 +1529,8 @@ class DistributedNestedSampler:
             distributed: DistributedState,
             depth_cond: DepthCondition,
             lane_capacity: int | None = None,
+            *,
+            config: ResolvedRunConfig,
     ) -> DistributedState:
         # Fill every currently measured worker lane without imposing a
         # completion barrier. Worker capacity chooses only the number of
@@ -1502,8 +1561,8 @@ class DistributedNestedSampler:
                 depth_cond,
                 replacement_width=planning_width,
                 allocation_target=self.allocation_target,
-                root_degree=int(self.root_allocation_degree),
-                delta_K=int(self.delta_K),
+                root_degree=int(config.root_allocation_degree),
+                delta_K=int(config.delta_K),
             )
             distributed = dataclasses.replace(
                 distributed,
@@ -1532,7 +1591,7 @@ class DistributedNestedSampler:
         planning_width = distributed.state.scheduler_data.valid.shape[0]
         pending_limit = min(capacity, planning_width)
         free = max(0, pending_limit - len(distributed.pending))
-        while free > 0 and bool(self._status(distributed, depth_cond).has_work):
+        while free > 0 and bool(self._status(distributed, config).has_work):
             # Pending worker requests and newly filled heads are one logical
             # concurrent batch. Carry their exact seed reservations into the
             # next refill so equal-contour work remains without replacement.
@@ -1570,7 +1629,7 @@ class DistributedNestedSampler:
             prepared = _prepare_task(
                 distributed.state,
                 distributed.reservations,
-                self.sampler,
+                config.sampler,
                 reserved_seed_idx,
                 reserved_log_L_constraint,
                 reserved_valid,
@@ -1578,7 +1637,7 @@ class DistributedNestedSampler:
                 # batch. Every valid lane becomes its own transport task.
                 dispatch_width=planning_width,
                 max_threads=jnp.asarray(free, mp_policy.index_dtype),
-                max_samples=self.max_samples,
+                max_samples=config.max_samples,
             )
             if not bool(prepared.has_work):
                 break
@@ -1660,29 +1719,33 @@ class DistributedNestedSampler:
     def _status(
             self,
             distributed: DistributedState,
-            depth_cond: DepthCondition,
+            config: ResolvedRunConfig,
     ) -> DepthStatus:
         return _depth_status(
             distributed.state,
             distributed.reservations,
-            max_samples=self.max_samples,
+            max_samples=config.max_samples,
         )
 
     def _grow_if_needed(
             self,
             distributed: DistributedState,
-            depth_cond: DepthCondition,
+            config: ResolvedRunConfig,
     ) -> DistributedState:
-        status = self._status(distributed, depth_cond)
+        status = self._status(distributed, config)
         if bool(status.needs_thread_growth):
             return self._grow_thread_storage(distributed)
         if bool(status.needs_seed_growth):
             return self._grow_seed_storage(distributed)
         if bool(status.needs_growth):
-            return self._grow(distributed)
+            return self._grow(distributed, config)
         return distributed
 
-    def _grow(self, distributed: DistributedState) -> DistributedState:
+    def _grow(
+            self,
+            distributed: DistributedState,
+            config: ResolvedRunConfig,
+    ) -> DistributedState:
         capacity = distributed.state.samples.log_likelihoods.shape[0]
         required = (
             int(distributed.state.num_samples)
@@ -1694,10 +1757,10 @@ class DistributedNestedSampler:
             ))
         )
         new_capacity = max(2 * capacity, required)
-        if self.max_samples is not None:
+        if config.max_samples is not None:
             new_capacity = min(
                 new_capacity,
-                self.max_samples,
+                config.max_samples,
             )
         if new_capacity <= capacity:
             return dataclasses.replace(

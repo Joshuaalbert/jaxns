@@ -50,12 +50,11 @@ def test_periodic_evidence_and_moment_are_rotation_invariant():
     for index, centre in enumerate(centres):
         sampler = NestedSampler(
             model=model,
-            args=(jnp.asarray(centre),),
             root_allocation_degree=120,
         )
-        assert sampler.sampler._periodic == (True,)
         result = sampler.run(
-            jax.random.PRNGKey(400 + index)
+            jax.random.PRNGKey(400 + index),
+            args=(jnp.asarray(centre),),
         ).to_result().trim()
 
         estimate = float(result.log_Z_mean)
@@ -99,14 +98,14 @@ def test_distributed_worker_replays_the_configured_periodic_sampler():
     model = Model(prior_model=_angular_prior_model)
     runner = DistributedNestedSampler(
         model=model,
-        args=(centre,),
         coordinator_port=5555,
         root_allocation_degree=4,
     )
-    assert runner.sampler._periodic == (True,)
+    config = runner._resolve_config(model, (centre,), None)
+    assert config.sampler._periodic == (True,)
     session = WorkerSession(
         model=model,
-        sampler=runner.sampler,
+        sampler=config.sampler,
         args=(centre,),
         params=None,
     )

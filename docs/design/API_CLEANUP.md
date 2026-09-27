@@ -1,7 +1,7 @@
 # Scientific API cleanup (#288)
 
-The runner owns the model, model inputs, sampler configuration, and a default
-`DepthCondition`. State retains the model and inputs needed to resume and
+The runner owns the model, requested sampler configuration, and a default
+`DepthCondition`. State owns the model inputs needed to resume and
 interpret that run. A constrained sampler describes transitions only, and
 receives the owning run's model explicitly when asked to sample.
 New runs use the runner's model. Once a state exists, its saved model and
@@ -13,7 +13,7 @@ inputs are authoritative for continuation, including worker registration.
   inexpensive classic expectation calculation used by goal conditions.
 - `NestedSamplerResults.log_Z_mean` and `log_Z_uncert` carry that expectation
   calculation. They do not silently become Monte Carlo summaries.
-- Both objects expose `sample_evidence_mc(num_samples, *, key,
+- Both objects expose `sample_evidence(num_samples, *, key,
   phantom_conditioning=False, num_phantoms=None, batch_size=None, C_min=20,
   diagnostics=False)`. Classic conditioning is the default. Phantom
   conditioning is an explicit opt-in. The returned `EvidenceSamples` owns
@@ -29,11 +29,21 @@ inputs are authoritative for continuation, including worker registration.
 
 ## Run configuration and constrained sampling
 
+Both runners accept `args` and `params` only when starting a run through
+`initialise`, `run`, or `run_until_goal`. Local `run_single_iteration` accepts
+them when starting without a state too. These inputs are stored on State,
+never on the runner. An existing state or checkpoint takes precedence over
+new-run inputs before any model-dependent defaults are resolved.
+
 Both runners use one shared default-resolution function. It returns an
-immutable resolved configuration which each runner consumes at construction.
+immutable, transient execution configuration at initialization or resumption.
+Dimension, periodic topology, and dependent defaults are derived from the
+active model inputs. Requested settings on the runner stay unchanged, so
+reusing it for different input shapes cannot inherit a previous run's defaults.
 The distributed runner no longer constructs or retains a local runner.
-Each runner remains the single owner of its resolved configuration, and
-execution continues to use its explicitly owned default depth condition.
+Execution continues to use its explicitly owned default depth condition.
+Workers receive an immutable session containing the active inputs once per
+registration. This transport copy is derived from State on resumption.
 
 `replacement_width` replaces `shell_size` on the local runner. Distributed
 sampling has no replacement-width setting: workers own batching. Local and
@@ -51,8 +61,11 @@ implemented transition. The existing random split schedule is preserved.
 
 - `target_num_live_points` becomes `root_allocation_degree`.
 - `shell_size` becomes `replacement_width` for local execution.
-- `sample_logZ`, `sample_evidence`, and result `sample_mc_shrinkage` are
-  replaced by the single `sample_evidence_mc` method.
+- `sample_logZ`, `sample_evidence_mc`, and result `sample_mc_shrinkage` are
+  replaced by the single `sample_evidence` method.
+- Move constructor `args` and `params` to the run-start call. Resumption
+  reads them from State. Runner attributes retain requested settings rather
+  than exposing model-dependent resolved defaults before initialization.
 - `conditioning="phantom"` becomes `phantom_conditioning=True` on that method.
 - Result `expected_log_Z_*` aliases are removed. Use its `log_Z_*` fields.
 - `num_live_points_per_sample` and `evidence_equivalent_live_points` are
@@ -88,3 +101,12 @@ dimensions, 100 lanes, 100 transitions, and all 99 phantom states. Compiler
 cost estimates were identical. Both programs used 10,500 argument bytes,
 892,364 output bytes, and 1,810,520 temporary bytes, with zero aliased bytes.
 This is a compiler and numerical comparison, not a wall-time speedup claim.
+
+The follow-up input-ownership change resolves configuration once at each
+Python initialization or resume boundary, after checkpoint precedence has
+been decided. It does not introduce resolution inside a compiled depth loop
+or per worker task. Resolved settings retain no model-input arrays, and the
+default depth condition remains owned by the runner. A second fixed-key
+comparison against `25806f1` again matches all of the scientific outputs
+listed above exactly. Regression tests cover reuse across input dimensions,
+all run-start methods, and state-owned inputs and topology on resumption.

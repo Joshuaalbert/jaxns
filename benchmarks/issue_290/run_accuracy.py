@@ -48,7 +48,7 @@ def main() -> None:
 
         started = time.perf_counter()
         result = state.to_result().trim()
-        ensemble = result.sample_evidence_mc(
+        ensemble = result.sample_evidence(
             num_samples=1000,
             phantom_conditioning=False,
             key=jax.random.PRNGKey(290 + seed),

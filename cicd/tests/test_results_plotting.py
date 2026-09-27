@@ -245,7 +245,7 @@ def test_plot_evidence_compares_explicit_conditionings_and_exact_value(
 ):
     calls = []
 
-    def _sample_evidence_mc(
+    def _sample_evidence(
             self,
             num_samples,
             *,
@@ -262,8 +262,8 @@ def test_plot_evidence_compares_explicit_conditionings_and_exact_value(
 
     monkeypatch.setattr(
         NestedSamplerResults,
-        "sample_evidence_mc",
-        _sample_evidence_mc,
+        "sample_evidence",
+        _sample_evidence,
     )
     output_file = tmp_path / "evidence.png"
 

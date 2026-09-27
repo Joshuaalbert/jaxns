@@ -39,19 +39,19 @@ prefix:
 
 .. code-block:: python
 
-   all_saved = results.sample_evidence_mc(
+   all_saved = results.sample_evidence(
        num_samples=4096,
        phantom_conditioning=True,
        num_phantoms=None,
        key=jax.random.PRNGKey(1),
    )
-   first_four = results.sample_evidence_mc(
+   first_four = results.sample_evidence(
        num_samples=4096,
        phantom_conditioning=True,
        num_phantoms=4,
        key=jax.random.PRNGKey(1),
    )
-   classic = results.sample_evidence_mc(
+   classic = results.sample_evidence(
        num_samples=4096,
        phantom_conditioning=False,
        key=jax.random.PRNGKey(1),
@@ -66,5 +66,5 @@ independent of phantom storage. Phantom conditioning requires
 ``state.expected_log_Z_mean`` and ``state.expected_log_Z_uncert`` provide the
 classic expectation calculation for goal conditions. Results carry those
 estimates in ``log_Z_mean`` and ``log_Z_uncert``. Calling
-``sample_evidence_mc`` leaves them unchanged and returns a separate ensemble
+``sample_evidence`` leaves them unchanged and returns a separate ensemble
 with its own Monte Carlo mean and uncertainty.

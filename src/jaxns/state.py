@@ -133,7 +133,7 @@ class State(PureDataclassPytree):
         """Return the deterministic block-moment uncertainty approximation.
 
         The final user-facing uncertainty may instead be sampled with
-        :meth:`sample_evidence_mc`; this scalar exists for inexpensive Python
+        :meth:`sample_evidence`; this scalar exists for inexpensive Python
         goal conditions between compiled depth epochs.
         """
         _, uncertainty = _expected_evidence_scalars(self)
@@ -222,7 +222,7 @@ class State(PureDataclassPytree):
             ),
         )
 
-    def sample_evidence_mc(
+    def sample_evidence(
             self,
             num_samples: int,
             *,
@@ -255,7 +255,7 @@ class State(PureDataclassPytree):
         Returns:
             The evidence ensemble and its block-aligned summaries.
         """
-        return self.to_result().trim().sample_evidence_mc(
+        return self.to_result().trim().sample_evidence(
             num_samples=num_samples,
             phantom_conditioning=phantom_conditioning,
             key=key,

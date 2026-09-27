@@ -407,10 +407,10 @@ def test_results_expose_public_phantom_conditioning_diagnostics():
     np.testing.assert_allclose(np.asarray(diagnostics.R_g), [0.0, 0.0, 0.0])
 
 
-def test_results_sample_evidence_mc_exposes_kish_gate_diagnostics_not_target_rho():
+def test_results_sample_evidence_exposes_kish_gate_diagnostics_not_target_rho():
     result_case = _make_result_case()
 
-    evidence_samples = result_case.results.sample_evidence_mc(
+    evidence_samples = result_case.results.sample_evidence(
         num_samples=4,
         key=jax.random.PRNGKey(7),
         C_min=2,
@@ -431,7 +431,7 @@ def test_results_sample_evidence_mc_exposes_kish_gate_diagnostics_not_target_rho
             "phantom_R",
     ):
         assert hasattr(evidence_samples, field_name), (
-            "EvidenceSamples from result.sample_evidence_mc() must expose "
+            "EvidenceSamples from result.sample_evidence() must expose "
             f"{field_name}."
         )
         assert np.asarray(getattr(evidence_samples, field_name)).shape == (
@@ -442,18 +442,18 @@ def test_results_sample_evidence_mc_exposes_kish_gate_diagnostics_not_target_rho
             assert getattr(evidence_samples, old_name) is None
 
 
-def test_results_sample_evidence_mc_uses_gamma_conditioning_when_gate_active():
+def test_results_sample_evidence_uses_gamma_conditioning_when_gate_active():
     results = _make_single_block_gamma_public_result()
     num_draws = 4096
 
-    active = results.sample_evidence_mc(
+    active = results.sample_evidence(
         num_samples=num_draws,
         key=jax.random.PRNGKey(103),
         C_min=20,
         phantom_conditioning=True,
         diagnostics=True,
     )
-    inactive = results.sample_evidence_mc(
+    inactive = results.sample_evidence(
         num_samples=num_draws,
         key=jax.random.PRNGKey(103),
         C_min=21,
@@ -464,7 +464,7 @@ def test_results_sample_evidence_mc_uses_gamma_conditioning_when_gate_active():
     for samples in (active, inactive):
         for field_name in ("p_gt_samples", "p_eq_samples", "p_lt_samples"):
             assert hasattr(samples, field_name), (
-                "NestedSamplerResults.sample_evidence_mc() must return "
+                "NestedSamplerResults.sample_evidence() must return "
                 f"{field_name} so the public path target can be verified."
             )
 
@@ -499,11 +499,11 @@ def test_results_sample_evidence_mc_uses_gamma_conditioning_when_gate_active():
 
 
 @pytest.mark.parametrize("batch_size", [1, 4, 10, 64])
-def test_sample_evidence_mc_batches_have_exact_requested_shape(batch_size):
+def test_sample_evidence_batches_have_exact_requested_shape(batch_size):
     """Cover single, partial-final, exact, and larger-than-request batches."""
     results = _make_single_block_gamma_public_result()
 
-    samples = results.sample_evidence_mc(
+    samples = results.sample_evidence(
         num_samples=10,
         phantom_conditioning=True,
         key=jax.random.PRNGKey(211),
@@ -519,25 +519,25 @@ def test_sample_evidence_mc_batches_have_exact_requested_shape(batch_size):
     assert np.all(np.isfinite(np.asarray(samples.log_Z_samples)))
 
 
-def test_sample_evidence_mc_batching_is_reproducible_and_matches_moments():
+def test_sample_evidence_batching_is_reproducible_and_matches_moments():
     """A fixed key is repeatable and batching preserves the sampled law."""
     results = _make_single_block_gamma_public_result()
     key = jax.random.PRNGKey(223)
     num_draws = 4096
 
-    batched = results.sample_evidence_mc(
+    batched = results.sample_evidence(
         num_samples=num_draws,
         phantom_conditioning=True,
         key=key,
         batch_size=257,
     )
-    repeated = results.sample_evidence_mc(
+    repeated = results.sample_evidence(
         num_samples=num_draws,
         phantom_conditioning=True,
         key=key,
         batch_size=257,
     )
-    unbatched = results.sample_evidence_mc(
+    unbatched = results.sample_evidence(
         num_samples=num_draws,
         phantom_conditioning=True,
         key=key,
@@ -574,17 +574,17 @@ def test_sample_evidence_mc_batching_is_reproducible_and_matches_moments():
     )
 
 
-def test_sample_evidence_mc_one_batch_preserves_fixed_key_draws():
+def test_sample_evidence_one_batch_preserves_fixed_key_draws():
     results = _make_single_block_gamma_public_result()
     key = jax.random.PRNGKey(227)
 
-    unbatched = results.sample_evidence_mc(
+    unbatched = results.sample_evidence(
         num_samples=10,
         phantom_conditioning=True,
         key=key,
         diagnostics=False,
     )
-    larger_batch = results.sample_evidence_mc(
+    larger_batch = results.sample_evidence(
         num_samples=10,
         phantom_conditioning=True,
         key=key,
@@ -601,7 +601,7 @@ def test_sample_evidence_mc_one_batch_preserves_fixed_key_draws():
     )
 
 
-def test_sample_evidence_mc_prefix_matches_physically_sliced_result():
+def test_sample_evidence_prefix_matches_physically_sliced_result():
     one_phantom = _make_single_block_gamma_public_result()
     retained = dataclasses.replace(
         one_phantom,
@@ -621,7 +621,7 @@ def test_sample_evidence_mc_prefix_matches_physically_sliced_result():
     )
     key = jax.random.PRNGKey(284)
 
-    selected = retained.sample_evidence_mc(
+    selected = retained.sample_evidence(
         num_samples=32,
         phantom_conditioning=True,
         num_phantoms=2,
@@ -629,20 +629,20 @@ def test_sample_evidence_mc_prefix_matches_physically_sliced_result():
         batch_size=11,
         diagnostics=True,
     )
-    expected = physically_sliced.sample_evidence_mc(
+    expected = physically_sliced.sample_evidence(
         num_samples=32,
         phantom_conditioning=True,
         key=key,
         batch_size=11,
         diagnostics=True,
     )
-    all_default = retained.sample_evidence_mc(
+    all_default = retained.sample_evidence(
         num_samples=32,
         phantom_conditioning=True,
         key=key,
         batch_size=11,
     )
-    all_explicit = retained.sample_evidence_mc(
+    all_explicit = retained.sample_evidence(
         num_samples=32,
         phantom_conditioning=True,
         num_phantoms=3,
@@ -665,7 +665,7 @@ def test_sample_evidence_mc_prefix_matches_physically_sliced_result():
 
 
 @pytest.mark.parametrize("num_phantoms", [0, -1, 4])
-def test_sample_evidence_mc_rejects_invalid_phantom_prefix(num_phantoms):
+def test_sample_evidence_rejects_invalid_phantom_prefix(num_phantoms):
     one_phantom = _make_single_block_gamma_public_result()
     retained = dataclasses.replace(
         one_phantom,
@@ -673,7 +673,7 @@ def test_sample_evidence_mc_rejects_invalid_phantom_prefix(num_phantoms):
     )
 
     with pytest.raises(ValueError, match="num_phantoms"):
-        retained.sample_evidence_mc(
+        retained.sample_evidence(
             num_samples=4,
             phantom_conditioning=True,
             num_phantoms=num_phantoms,
@@ -681,11 +681,11 @@ def test_sample_evidence_mc_rejects_invalid_phantom_prefix(num_phantoms):
         )
 
 
-def test_sample_evidence_mc_rejects_prefix_for_classic_conditioning():
+def test_sample_evidence_rejects_prefix_for_classic_conditioning():
     results = _make_single_block_gamma_public_result()
 
     with pytest.raises(ValueError, match="only valid with phantom"):
-        results.sample_evidence_mc(
+        results.sample_evidence(
             num_samples=4,
             phantom_conditioning=False,
             num_phantoms=1,
@@ -693,19 +693,19 @@ def test_sample_evidence_mc_rejects_prefix_for_classic_conditioning():
         )
 
 
-def test_state_sample_evidence_mc_forwards_phantom_prefix():
+def test_state_sample_evidence_forwards_phantom_prefix():
     state = _run_mixed_validity_probe()
     results = state.to_result().trim()
     key = jax.random.PRNGKey(3284)
 
-    from_state = state.sample_evidence_mc(
+    from_state = state.sample_evidence(
         num_samples=8,
         phantom_conditioning=True,
         num_phantoms=1,
         key=key,
         C_min=1,
     )
-    from_results = results.sample_evidence_mc(
+    from_results = results.sample_evidence(
         num_samples=8,
         phantom_conditioning=True,
         num_phantoms=1,
@@ -722,11 +722,11 @@ def test_state_sample_evidence_mc_forwards_phantom_prefix():
 
 
 @pytest.mark.parametrize("batch_size", [0, -1])
-def test_sample_evidence_mc_rejects_invalid_batch_sizes(batch_size):
+def test_sample_evidence_rejects_invalid_batch_sizes(batch_size):
     results = _make_single_block_gamma_public_result()
 
     with pytest.raises(ValueError, match="batch_size.*positive integer"):
-        results.sample_evidence_mc(
+        results.sample_evidence(
             num_samples=10,
             phantom_conditioning=True,
             key=jax.random.PRNGKey(229),
@@ -736,28 +736,28 @@ def test_sample_evidence_mc_rejects_invalid_batch_sizes(batch_size):
 
 def test_batched_summary_preserves_block_models_and_kish_gate():
     plateau = _make_single_block_gamma_public_result()
-    active = plateau.sample_evidence_mc(
+    active = plateau.sample_evidence(
         num_samples=128,
         phantom_conditioning=True,
         key=jax.random.PRNGKey(233),
         batch_size=31,
         C_min=20,
     )
-    inactive = plateau.sample_evidence_mc(
+    inactive = plateau.sample_evidence(
         num_samples=128,
         phantom_conditioning=True,
         key=jax.random.PRNGKey(233),
         batch_size=31,
         C_min=21,
     )
-    singleton = _make_result_case().results.sample_evidence_mc(
+    singleton = _make_result_case().results.sample_evidence(
         num_samples=32,
         phantom_conditioning=True,
         key=jax.random.PRNGKey(239),
         batch_size=7,
         C_min=1,
     )
-    classic = _make_padded_plateau_result(0).sample_evidence_mc(
+    classic = _make_padded_plateau_result(0).sample_evidence(
         num_samples=9,
         phantom_conditioning=False,
         key=jax.random.PRNGKey(241),
@@ -780,7 +780,7 @@ def test_batched_summary_preserves_block_models_and_kish_gate():
 def test_full_diagnostics_support_a_partial_final_batch():
     results = _make_single_block_gamma_public_result()
 
-    samples = results.sample_evidence_mc(
+    samples = results.sample_evidence(
         num_samples=10,
         phantom_conditioning=True,
         key=jax.random.PRNGKey(251),
@@ -794,13 +794,13 @@ def test_full_diagnostics_support_a_partial_final_batch():
     assert samples.phantom_add_gt_samples.shape == (10, 1)
 
 
-def test_results_sample_evidence_mc_matches_explicit_block_state_public_call():
+def test_results_sample_evidence_matches_explicit_block_state_public_call():
     results = _make_single_block_gamma_public_result()
     block_state = results.block_data.to_block_state()
     assert block_state is not None
 
     key = jax.random.PRNGKey(107)
-    result_samples = results.sample_evidence_mc(
+    result_samples = results.sample_evidence(
         num_samples=16,
         key=key,
         C_min=20,
@@ -852,7 +852,7 @@ def test_trim_keeps_log_l_blocks_aligned_to_trimmed_sample_size():
     assert trimmed.log_L.shape == (2,)
     assert trimmed.block_data is not None
     assert trimmed.block_data.log_L.shape == (2,)
-    evidence_samples = trimmed.sample_evidence_mc(
+    evidence_samples = trimmed.sample_evidence(
         num_samples=4,
         key=jax.random.PRNGKey(13),
         phantom_conditioning=True,
@@ -870,7 +870,7 @@ def test_plateau_result_with_padded_inf_block_has_finite_h_samples(
 ):
     results = _make_padded_plateau_result(num_phantom)
 
-    evidence_samples = results.sample_evidence_mc(
+    evidence_samples = results.sample_evidence(
         num_samples=8,
         key=jax.random.PRNGKey(53 + num_phantom),
         phantom_conditioning=(num_phantom > 0),
@@ -966,20 +966,20 @@ def test_resampled_posterior_integrates_its_draws_and_round_trips(tmp_path):
 def test_mc_defaults_to_classic_without_changing_expectation_estimates():
     results = _make_single_block_gamma_public_result()
     key = jax.random.PRNGKey(288)
-    default = results.sample_evidence_mc(16, key=key)
-    explicit = results.sample_evidence_mc(16, key=key, phantom_conditioning=False)
+    default = results.sample_evidence(16, key=key)
+    explicit = results.sample_evidence(16, key=key, phantom_conditioning=False)
     np.testing.assert_array_equal(default.log_Z_samples, explicit.log_Z_samples)
-    phantom = results.sample_evidence_mc(16, key=key, phantom_conditioning=True, C_min=1)
+    phantom = results.sample_evidence(16, key=key, phantom_conditioning=True, C_min=1)
     assert not np.array_equal(default.log_Z_samples, phantom.log_Z_samples)
     assert float(results.log_Z_mean) == 0.0
     np.testing.assert_allclose(results.log_Z_uncert, 0.1)
     with pytest.raises(TypeError, match="key"):
-        results.sample_evidence_mc(16)
+        results.sample_evidence(16)
     with pytest.raises(TypeError, match="bool"):
-        results.sample_evidence_mc(16, key=key, phantom_conditioning="phantom")
+        results.sample_evidence(16, key=key, phantom_conditioning="phantom")
 
 
-def test_results_sample_evidence_mc_rejects_malformed_arrays_before_jit():
+def test_results_sample_evidence_rejects_malformed_arrays_before_jit():
     result_case = _make_result_case()
     results = dataclasses.replace(
         result_case.results,
@@ -997,7 +997,7 @@ def test_results_sample_evidence_mc_rejects_malformed_arrays_before_jit():
         ValueError,
         match="valid_phantom.*one-dimensional.*per-cluster",
     ):
-        results.sample_evidence_mc(
+        results.sample_evidence(
             num_samples=4,
             key=jax.random.PRNGKey(31),
             phantom_conditioning=True,
@@ -1005,7 +1005,7 @@ def test_results_sample_evidence_mc_rejects_malformed_arrays_before_jit():
         )
 
 
-def test_results_sample_evidence_mc_rejects_strict_contour_equality():
+def test_results_sample_evidence_rejects_strict_contour_equality():
     result_case = _make_result_case()
     results = dataclasses.replace(
         result_case.results,
@@ -1016,7 +1016,7 @@ def test_results_sample_evidence_mc_rejects_strict_contour_equality():
     )
 
     with pytest.raises(ValueError, match="Strict contour.*must be greater"):
-        results.sample_evidence_mc(
+        results.sample_evidence(
             num_samples=4,
             key=jax.random.PRNGKey(41),
             phantom_conditioning=True,
@@ -1094,7 +1094,7 @@ def test_public_sample_mc_shrinkage_rejects_stale_block_likelihoods_before_jit()
         )
 
 
-def test_results_sample_evidence_mc_rejects_stale_block_likelihoods_before_jit():
+def test_results_sample_evidence_rejects_stale_block_likelihoods_before_jit():
     result_case = _make_result_case()
     results = dataclasses.replace(
         result_case.results,
@@ -1120,7 +1120,7 @@ def test_results_sample_evidence_mc_rejects_stale_block_likelihoods_before_jit()
         ValueError,
         match=r"block_state\.log_L_blocks.*log_L_classic",
     ):
-        results.sample_evidence_mc(
+        results.sample_evidence(
             num_samples=2,
             key=jax.random.PRNGKey(49),
             phantom_conditioning=True,

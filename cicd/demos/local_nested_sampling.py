@@ -34,12 +34,12 @@ def main() -> None:
     state = sampler.run(key=jax.random.PRNGKey(7))
     results = state.to_result().trim()
 
-    classic = results.sample_evidence_mc(
+    classic = results.sample_evidence(
         num_samples=16,
         phantom_conditioning=False,
         key=jax.random.PRNGKey(11),
     )
-    phantom = results.sample_evidence_mc(
+    phantom = results.sample_evidence(
         num_samples=16,
         phantom_conditioning=True,
         key=jax.random.PRNGKey(13),

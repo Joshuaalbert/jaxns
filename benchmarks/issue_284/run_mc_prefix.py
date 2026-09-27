@@ -95,7 +95,7 @@ def _measure_public_prefix(
     key = jax.random.PRNGKey(1284)
 
     def run_once():
-        samples = results.sample_evidence_mc(
+        samples = results.sample_evidence(
             num_samples=draws,
             phantom_conditioning=True,
             num_phantoms=prefix,
@@ -120,7 +120,7 @@ def _measure_public_prefix(
         results,
         log_L_phantom=results.log_L_phantom[:, :prefix],
     )
-    expected = sliced.sample_evidence_mc(
+    expected = sliced.sample_evidence(
         num_samples=draws,
         phantom_conditioning=True,
         key=key,

@@ -555,7 +555,7 @@ def test_nested_sampling_run_results(case, collect_phantom_samples):
     # so validate it against a classic MC ensemble even when this run also
     # retained phantoms. Phantom conditioning is a distinct posterior update
     # and is checked separately against the known evidence below.
-    classic_shrinkage = results.sample_evidence_mc(
+    classic_shrinkage = results.sample_evidence(
         num_samples=1000,
         phantom_conditioning=False,
         key=jax.random.PRNGKey(20260823),
@@ -571,7 +571,7 @@ def test_nested_sampling_run_results(case, collect_phantom_samples):
     )
 
     if collect_phantom_samples:
-        mc_shrinkage = results.sample_evidence_mc(
+        mc_shrinkage = results.sample_evidence(
             num_samples=1000,
             phantom_conditioning=True,
             key=jax.random.PRNGKey(20260823),

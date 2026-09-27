@@ -163,7 +163,7 @@ def _ridge_moment_error(
 
 
 def _evidence_samples(result, conditioning: str, seed: int):
-    shrinkage = result.sample_evidence_mc(
+    shrinkage = result.sample_evidence(
         # 256 draws make MC error in the ensemble mean negligible relative to
         # the between-run NS error while keeping the 30-seed benchmark cheap.
         num_samples=256,
@@ -182,6 +182,7 @@ def _run(
         conditioning: str,
         use_mc: bool = False,
         moment_error: Callable[[NestedSamplerResults], float] | None = None,
+        args: tuple = (),
 ) -> list[dict]:
     # Clearing once per configuration makes the first record a cold
     # compile-plus-execute measurement. Later records use the same programs
@@ -190,7 +191,7 @@ def _run(
     records = []
     for seed in range(seeds):
         started = time.perf_counter()
-        state = sampler.run(jax.random.PRNGKey(10_000 + seed))
+        state = sampler.run(jax.random.PRNGKey(10_000 + seed), args=args)
         result = state.to_result()
         jax.block_until_ready(result.log_Z_mean)
         elapsed = time.perf_counter() - started
@@ -246,7 +247,6 @@ def _von_mises() -> list[dict]:
     for centre in (-float(np.pi) + 0.03, 0.0, 1.2):
         sampler = NestedSampler(
             model=model,
-            args=(jnp.asarray(centre),),
             root_allocation_degree=120,
         )
         records.extend(_run(
@@ -255,6 +255,7 @@ def _von_mises() -> list[dict]:
             truth,
             ARGS.seeds,
             conditioning="classic",
+            args=(jnp.asarray(centre),),
             moment_error=_angle_moment_error(
                 "angle",
                 float(
@@ -306,7 +307,6 @@ def _seam() -> list[dict]:
         ):
             sampler = NestedSampler(
                 model=model,
-                args=(jnp.asarray(centre),),
                 root_allocation_degree=120,
             )
             records.extend(_run(
@@ -315,6 +315,7 @@ def _seam() -> list[dict]:
                 truth,
                 ARGS.seeds,
                 conditioning="classic",
+                args=(jnp.asarray(centre),),
                 moment_error=_angle_moment_error(
                     "angle",
                     float(
@@ -344,7 +345,6 @@ def _ridge_sweep() -> list[dict]:
             for root_degree in (4, 8, 16, 32, 60):
                 sampler = NestedSampler(
                     model=model,
-                    args=(jnp.asarray(centre),),
                     root_allocation_degree=root_degree,
                 )
                 records.extend(_run(
@@ -353,6 +353,7 @@ def _ridge_sweep() -> list[dict]:
                     truth,
                     ARGS.seeds,
                     conditioning="classic",
+                    args=(jnp.asarray(centre),),
                     moment_error=_ridge_moment_error(centre),
                 ))
     return records

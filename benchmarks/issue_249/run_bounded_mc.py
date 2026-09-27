@@ -105,7 +105,7 @@ def main():
     log_Z_means = []
     for _ in range(args.repetitions):
         start = time.perf_counter()
-        samples = results.sample_evidence_mc(
+        samples = results.sample_evidence(
             num_samples=args.draws,
             phantom_conditioning=(args.conditioning == "phantom"),
             key=key,

@@ -129,7 +129,7 @@ def measure(
         "phantom" if int(results.total_phantom_samples) > 0 else "classic"
     )
     started = time.perf_counter()
-    evidence = results.sample_evidence_mc(
+    evidence = results.sample_evidence(
         num_samples=1000,
         phantom_conditioning=(conditioning == "phantom"),
         key=jax.random.fold_in(key, 1),

@@ -53,7 +53,7 @@ def _plot_phantom_conditioning(
         save_path: Path,
 ) -> None:
     """Plot the block probabilities and Kish gate used by conditioning."""
-    evidence = result.sample_evidence_mc(
+    evidence = result.sample_evidence(
         num_samples=1_000,
         phantom_conditioning=True,
         key=key,
@@ -138,7 +138,7 @@ def main() -> None:
             evidence_key,
             Path(f"{prefix}_phantom_conditioning.png"),
         )
-        evidence = result.sample_evidence_mc(
+        evidence = result.sample_evidence(
             num_samples=1_000,
             phantom_conditioning=True,
             key=evidence_key,

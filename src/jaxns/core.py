@@ -35,7 +35,11 @@ from jaxns.depth_condition import DepthCondition
 from jaxns.mixed_precision import mp_policy
 from jaxns.model import Model
 from jaxns.pytree import PureDataclassPytree
-from jaxns.run_config import resolve_run_config
+from jaxns.run_config import (
+    ResolvedRunConfig,
+    default_depth_condition,
+    resolve_run_config,
+)
 from jaxns.state import State
 from jaxns.types import PRNGKey
 
@@ -119,15 +123,13 @@ class NestedSampler(PureDataclassPytree):
     leading stationary chain prefix stored per classic replacement. ``None``
     resolves to ``min(model dimension, num_slices - 1)`` for the default slice
     sampler. The retained width is independent of the shorter prefix that can
-    later be selected by ``sample_evidence_mc``.
+    later be selected by ``sample_evidence``.
     """
 
     model: Model
     root_allocation_degree: int | None = None
     max_samples: int | None = None
     replacement_width: int | None = None
-    args: tuple = ()
-    params: CtxParams | None = None
     sampler: AbstractSampler | None = None
     depth_condition: DepthCondition | None = None
     collect_phantom_samples: bool = False
@@ -142,16 +144,26 @@ class NestedSampler(PureDataclassPytree):
     unlimited_samples: bool = False
 
     def __post_init__(self):
-        config = resolve_run_config(
+        if self.depth_condition is None:
+            self.depth_condition = default_depth_condition()
+
+    def _resolve_config(
+            self,
+            model: Model,
+            args: tuple,
+            params: CtxParams | None,
+    ) -> ResolvedRunConfig:
+        # Resolve from the active inputs without overwriting requested defaults.
+        # The same runner may start runs with different parameter dimensions.
+        return resolve_run_config(
             execution="local",
-            model=self.model,
-            args=self.args,
-            params=self.params,
+            model=model,
+            args=args,
+            params=params,
             root_allocation_degree=self.root_allocation_degree,
             replacement_width=self.replacement_width,
             max_samples=self.max_samples,
             sampler=self.sampler,
-            depth_condition=self.depth_condition,
             collect_phantom_samples=self.collect_phantom_samples,
             max_phantom_samples=self.max_phantom_samples,
             allocation_target=self.allocation_target,
@@ -159,14 +171,6 @@ class NestedSampler(PureDataclassPytree):
             initial_capacity=self.initial_capacity,
             unlimited_samples=self.unlimited_samples,
         )
-        self.root_allocation_degree = config.root_allocation_degree
-        self.replacement_width = config.replacement_width
-        self.max_samples = config.max_samples
-        self.sampler = config.sampler
-        self.max_phantom_samples = config.max_phantom_samples
-        self.depth_condition = config.depth_condition
-        self.initial_capacity = config.initial_capacity
-        self.delta_K = config.delta_K
 
     @classmethod
     def flatten(cls, this) -> tuple[list[Any], tuple[Any, ...]]:
@@ -189,19 +193,46 @@ class NestedSampler(PureDataclassPytree):
     def unflatten(cls, aux_data: tuple[Any, ...], children: list[Any]):
         return cls.build_unflatten(aux_data, children)
 
-    def initialise(self, key: PRNGKey | None = None) -> State:
-        """Create a resumable immutable root state."""
+    def initialise(
+            self,
+            key: PRNGKey | None = None,
+            *,
+            args: tuple = (),
+            params: CtxParams | None = None,
+    ) -> State:
+        """Create a root state that owns this run's model inputs.
+
+        Args:
+            key: Root sampling key, with a deterministic default if omitted.
+            args: Model arguments stored on the new State.
+            params: Model parameters stored on the new State.
+
+        Returns:
+            An immutable state containing the root samples and inputs.
+        """
+        config = self._resolve_config(self.model, args, params)
+        return self._initialise(key, config, args=args, params=params)
+
+    def _initialise(
+            self,
+            key: PRNGKey | None,
+            config: ResolvedRunConfig,
+            *,
+            args: tuple,
+            params: CtxParams | None,
+    ) -> State:
+        """Sample roots after resolving the input-dependent configuration."""
         if key is None:
             key = jax.random.PRNGKey(42)
         init_key, run_key = jax.random.split(key)
         state = _sample_init_state(
             init_key,
             self.model,
-            self.args,
-            self.params,
-            root_degree=int(self.root_allocation_degree),
-            sample_capacity=int(self.initial_capacity),
-            num_phantom=int(self.sampler.num_phantom()),
+            args,
+            params,
+            root_degree=config.root_allocation_degree,
+            sample_capacity=config.initial_capacity,
+            num_phantom=config.max_phantom_samples,
         )
         return dataclasses.replace(
             state,
@@ -218,10 +249,15 @@ class NestedSampler(PureDataclassPytree):
             key: PRNGKey | None = None,
             checkpoint_dir: str | Path | None = None,
             checkpoint_cadence: float = CHECKPOINT_CADENCE_SECONDS,
+            *,
+            args: tuple = (),
+            params: CtxParams | None = None,
     ) -> State:
         """Run until the configured expected-depth condition is reached.
 
         Args:
+            args: Model arguments used only when starting a new run.
+            params: Model parameters used only when starting a new run.
             key: Random key used only when starting a new run.
             checkpoint_dir: Optional directory for automatic full-state
                 checkpointing and resume.
@@ -245,6 +281,8 @@ class NestedSampler(PureDataclassPytree):
         return self.run_until_goal(
             default_goal,
             key=key,
+            args=args,
+            params=params,
             checkpoint_dir=checkpoint_dir,
             checkpoint_cadence=checkpoint_cadence,
         )
@@ -256,15 +294,20 @@ class NestedSampler(PureDataclassPytree):
             key: PRNGKey | None = None,
             checkpoint_dir: str | Path | None = None,
             checkpoint_cadence: float = CHECKPOINT_CADENCE_SECONDS,
+            *,
+            args: tuple = (),
+            params: CtxParams | None = None,
     ) -> State:
         """Run a Python goal loop around compiled JAX depth epochs.
 
         A valid checkpoint in ``checkpoint_dir`` takes precedence over
-        ``key`` and resumes its stored random stream. JAXNS verifies the
-        checkpoint schema and checksum; the caller is responsible for using a
-        compatible model, sampler, arguments, and run configuration.
+        ``key``, ``args``, and ``params`` and resumes its saved model and random
+        stream. JAXNS verifies the checkpoint schema and checksum. The caller
+        is responsible for compatible sampler and run configuration.
 
         Args:
+            args: Model arguments used only when starting a new run.
+            params: Model parameters used only when starting a new run.
             goal_cond: Python goal evaluated at complete depth boundaries.
             depth_cond: Optional condition bounding one allocation epoch.
             key: Random key used only when no checkpoint exists.
@@ -281,6 +324,8 @@ class NestedSampler(PureDataclassPytree):
             goal_cond,
             depth_cond=depth_cond,
             key=key,
+            args=args,
+            params=params,
             checkpoint_dir=checkpoint_dir,
             checkpoint_cadence=checkpoint_cadence,
         )
@@ -331,6 +376,8 @@ class NestedSampler(PureDataclassPytree):
             key: PRNGKey | None,
             checkpoint_dir: str | Path | None,
             checkpoint_cadence: float,
+            args: tuple = (),
+            params: CtxParams | None = None,
     ) -> State:
         """Resolve checkpoint precedence, then continue one goal loop."""
         checkpoint_context = (
@@ -348,14 +395,20 @@ class NestedSampler(PureDataclassPytree):
                     state = restored
                     key = None
             if state is None:
-                state = self.initialise(key)
+                config = self._resolve_config(self.model, args, params)
+                state = self._initialise(key, config, args=args, params=params)
                 key = None
+            else:
+                config = self._resolve_config(
+                    state.model, state.args, state.params,
+                )
             completed = self._run_goal_loop(
                 state,
                 goal_cond,
                 depth_cond=depth_cond,
                 key=key,
                 checkpoint_manager=checkpoint_manager,
+                config=config,
             )
             if checkpoint_manager is not None:
                 checkpoint_manager.save_if_changed(completed)
@@ -369,6 +422,7 @@ class NestedSampler(PureDataclassPytree):
             depth_cond: DepthCondition | None,
             key: PRNGKey | None,
             checkpoint_manager: CheckpointManager[State] | None,
+            config: ResolvedRunConfig,
     ) -> State:
         """Continue compiled depths after checkpoint ownership is resolved."""
         if depth_cond is None:
@@ -408,25 +462,25 @@ class NestedSampler(PureDataclassPytree):
             state = _ensure_thread_schedule(
                 state,
                 depth_cond,
-                replacement_width=int(self.replacement_width),
+                replacement_width=int(config.replacement_width),
                 allocation_target=self.allocation_target,
-                root_degree=int(self.root_allocation_degree),
-                delta_K=int(self.delta_K),
+                root_degree=int(config.root_allocation_degree),
+                delta_K=int(config.delta_K),
             )
             state = _run_depth(
                 state,
-                self.sampler,
+                config.sampler,
                 depth_cond,
-                max_samples=self.max_samples,
+                max_samples=config.max_samples,
             )
             if bool(state.needs_growth):
                 capacity = state.samples.log_likelihoods.shape[0]
                 required_capacity = int(state.num_samples) + int(
-                    self.replacement_width
+                    config.replacement_width
                 )
                 new_capacity = max(2 * capacity, required_capacity)
-                if self.max_samples is not None:
-                    new_capacity = min(new_capacity, self.max_samples)
+                if config.max_samples is not None:
+                    new_capacity = min(new_capacity, config.max_samples)
                 if new_capacity <= capacity:
                     # This branch is defensive: the compiled classifier should
                     # already report a finite hard maximum as terminal.
@@ -466,7 +520,7 @@ class NestedSampler(PureDataclassPytree):
             ):
                 state = _grow_continuation_storage(
                     state,
-                    int(self.replacement_width),
+                    int(config.replacement_width),
                 )
                 continue
             if (
@@ -477,7 +531,7 @@ class NestedSampler(PureDataclassPytree):
             ):
                 state = _grow_start_seed_storage(
                     state,
-                    int(self.replacement_width),
+                    int(config.replacement_width),
                 )
                 continue
             source_published = False
@@ -518,7 +572,7 @@ class NestedSampler(PureDataclassPytree):
                         state,
                         previous,
                         depth_cond,
-                        replacement_width=int(self.replacement_width),
+                        replacement_width=int(config.replacement_width),
                     )
                     schedule = state.scheduler_data
                     if schedule is None:
@@ -589,6 +643,9 @@ class NestedSampler(PureDataclassPytree):
             key: PRNGKey | None = None,
             checkpoint_dir: str | Path | None = None,
             checkpoint_cadence: float = CHECKPOINT_CADENCE_SECONDS,
+            *,
+            args: tuple = (),
+            params: CtxParams | None = None,
     ) -> State:
         """Run exactly one compiled depth epoch.
 
@@ -598,6 +655,8 @@ class NestedSampler(PureDataclassPytree):
         one Python depth boundary.
 
         Args:
+            args: Model arguments used only when starting a new run.
+            params: Model parameters used only when starting a new run.
             state: Optional explicit continuation state.
             depth_cond: Optional condition bounding the allocation epoch.
             key: Random key used only when starting or explicitly overriding
@@ -623,6 +682,8 @@ class NestedSampler(PureDataclassPytree):
                     state=state,
                     depth_cond=depth_cond,
                     key=key,
+                    args=args,
+                    params=params,
                 )
                 checkpoint_manager.save_if_changed(state)
                 return state
@@ -630,6 +691,8 @@ class NestedSampler(PureDataclassPytree):
             state=state,
             depth_cond=depth_cond,
             key=key,
+            args=args,
+            params=params,
         )
 
     def _run_single_iteration(
@@ -637,10 +700,17 @@ class NestedSampler(PureDataclassPytree):
             state: State | None,
             depth_cond: DepthCondition | None,
             key: PRNGKey | None,
+            *,
+            args: tuple = (),
+            params: CtxParams | None = None,
     ) -> State:
         """Execute one depth epoch after checkpoint ownership is resolved."""
         if state is None:
-            state = self.initialise(key)
+            config = self._resolve_config(self.model, args, params)
+        else:
+            config = self._resolve_config(state.model, state.args, state.params)
+        if state is None:
+            state = self._initialise(key, config, args=args, params=params)
         elif key is not None:
             state = dataclasses.replace(
                 state,
@@ -673,16 +743,16 @@ class NestedSampler(PureDataclassPytree):
             state = _ensure_thread_schedule(
                 state,
                 depth_cond,
-                replacement_width=int(self.replacement_width),
+                replacement_width=int(config.replacement_width),
                 allocation_target=self.allocation_target,
-                root_degree=int(self.root_allocation_degree),
-                delta_K=int(self.delta_K),
+                root_degree=int(config.root_allocation_degree),
+                delta_K=int(config.delta_K),
             )
             state = _run_depth(
                 state,
-                self.sampler,
+                config.sampler,
                 depth_cond,
-                max_samples=self.max_samples,
+                max_samples=config.max_samples,
             )
             if bool(state.needs_growth):
                 return state
@@ -696,7 +766,7 @@ class NestedSampler(PureDataclassPytree):
             ):
                 state = _grow_continuation_storage(
                     state,
-                    int(self.replacement_width),
+                    int(config.replacement_width),
                 )
                 continue
             if (
@@ -707,7 +777,7 @@ class NestedSampler(PureDataclassPytree):
             ):
                 state = _grow_start_seed_storage(
                     state,
-                    int(self.replacement_width),
+                    int(config.replacement_width),
                 )
                 continue
             source_published = False
@@ -758,7 +828,7 @@ class NestedSampler(PureDataclassPytree):
                 state,
                 previous,
                 depth_cond,
-                replacement_width=int(self.replacement_width),
+                replacement_width=int(config.replacement_width),
             )
             schedule = state.scheduler_data
             if schedule is None:

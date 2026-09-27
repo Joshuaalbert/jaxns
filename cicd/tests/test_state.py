@@ -121,7 +121,7 @@ def test_to_result_marks_no_phantoms_invalid():
         np.zeros_like(np.asarray(results.block_data.log_L), dtype=bool),
     )
 
-    evidence_samples = results.sample_evidence_mc(num_samples=16, C_min=20, phantom_conditioning=False, diagnostics=True, key=random.PRNGKey(42))
+    evidence_samples = results.sample_evidence(num_samples=16, C_min=20, phantom_conditioning=False, diagnostics=True, key=random.PRNGKey(42))
     np.testing.assert_allclose(
         np.asarray(evidence_samples.kish_participating_cluster_counts),
         np.zeros_like(np.asarray(evidence_samples.log_L_blocks), dtype=float),
@@ -135,12 +135,12 @@ def test_to_result_marks_no_phantoms_invalid():
             assert getattr(evidence_samples, old_name) is None
 
     key = random.PRNGKey(11)
-    explicit = results.sample_evidence_mc(
+    explicit = results.sample_evidence(
         num_samples=16,
         phantom_conditioning=False,
         key=key,
     )
-    from_state = state.sample_evidence_mc(
+    from_state = state.sample_evidence(
         num_samples=16,
         phantom_conditioning=False,
         key=key,
@@ -152,7 +152,7 @@ def test_to_result_marks_no_phantoms_invalid():
     assert np.isfinite(float(explicit.log_Z_mean))
     assert np.isfinite(float(explicit.log_Z_uncert))
     with pytest.raises(ValueError, match="no phantom slots"):
-        results.sample_evidence_mc(
+        results.sample_evidence(
             num_samples=16,
             phantom_conditioning=True,
             key=key,
@@ -405,11 +405,11 @@ def test_state_consistency_rejects_strict_contour_violation():
         state.ensure_consistency()
 
 
-def test_state_sample_evidence_mc_rejects_strict_contour_equality():
+def test_state_sample_evidence_rejects_strict_contour_equality():
     state = _make_strict_contour_violation_state()
 
     with pytest.raises(ValueError, match="Strict contour.*must be greater"):
-        state.sample_evidence_mc(key=random.PRNGKey(7), num_samples=2)
+        state.sample_evidence(key=random.PRNGKey(7), num_samples=2)
 
 
 def test_state_to_result_rejects_strict_contour_equality():
@@ -419,7 +419,7 @@ def test_state_to_result_rejects_strict_contour_equality():
         state.to_result()
 
 
-def test_state_sample_evidence_mc_uses_public_block_path():
+def test_state_sample_evidence_uses_public_block_path():
     model = _make_basic_model()
     U_samples = jax.vmap(model.sample_U)(random.split(random.PRNGKey(288), 2))
     samples = Samples(
@@ -444,7 +444,7 @@ def test_state_sample_evidence_mc_uses_public_block_path():
         model=model,
     )
 
-    log_Z = state.sample_evidence_mc(
+    log_Z = state.sample_evidence(
         key=random.PRNGKey(3), num_samples=5,
     ).log_Z_samples
 
@@ -452,11 +452,11 @@ def test_state_sample_evidence_mc_uses_public_block_path():
     assert np.all(np.isfinite(np.asarray(log_Z)))
 
 
-def test_state_sample_evidence_mc_rejects_invalid_plateau_capacity():
+def test_state_sample_evidence_rejects_invalid_plateau_capacity():
     state = _make_invalid_plateau_capacity_state()
 
     with pytest.raises(ValueError, match="K_g|m_g|incoming|plateau"):
-        state.sample_evidence_mc(key=random.PRNGKey(5), num_samples=2)
+        state.sample_evidence(key=random.PRNGKey(5), num_samples=2)
 
 
 def test_state_to_result_evidence_summary_uses_block_model():
