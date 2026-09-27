@@ -75,11 +75,9 @@ class AbstractSampler(ABC):
             seed_point: A stationary seed for the strict constrained prior.
 
         Returns:
-            U_sample: A sample from the strict constrained-prior marginal.
-            log_L: the log-likelihood of the sample
-            num_likelihood_evaluations: Likelihood work used by this chain.
-            phantom_samples: Retained intermediate constrained-chain states,
-                excluding the final classic child.
+            Classic coordinates from the strict constrained-prior marginal,
+            their log likelihood, the chain's likelihood-evaluation count,
+            and retained intermediate states excluding the final classic child.
         """
         ...
 
