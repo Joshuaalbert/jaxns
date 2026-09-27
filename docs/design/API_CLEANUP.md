@@ -64,3 +64,21 @@ implemented transition. The existing random split schedule is preserved.
 
 This change does not regroup State storage, change the statistical model,
 change seed selection, or alter the distributed wire protocol and retry law.
+
+## Performance and intent review
+
+Review compared the implementation with develop at `317cec5`. The MC entry
+point now validates metadata once through the owning shrinkage API. Lineage
+expansion compiles from four required arrays, so changing a phantom prefix or
+the transformed parameter tree cannot retrace this independent operation.
+The sampler retains the existing random split schedule after removing
+step-out bracketing, including the unused reserved stream.
+
+A fixed-key local run produced identical classic and phantom samples,
+out-degrees, likelihood counts, posterior weights, expectation summaries, and
+classic and phantom Monte Carlo evidence draws before and after the change.
+A compiled constrained-sampling comparison used CPU, JAX 0.11.1, x64, ten
+dimensions, 100 lanes, 100 transitions, and all 99 phantom states. Compiler
+cost estimates were identical. Both programs used 10,500 argument bytes,
+892,364 output bytes, and 1,810,520 temporary bytes, with zero aliased bytes.
+This is a compiler and numerical comparison, not a wall-time speedup claim.

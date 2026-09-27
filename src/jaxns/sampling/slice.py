@@ -125,6 +125,8 @@ def _slice_keys(
     chart_key = key
     if periodic:
         chart_key, key = random.split(key, 2)
+    # Reserve the former step-out stream even though it is unused. Changing
+    # the split count would change every subsequent fixed-key trajectory.
     run_key, t_key, step_key, after_key = random.split(key, 4)
     return chart_key, run_key, t_key, step_key, after_key
 
