@@ -1,0 +1,23 @@
+[runtime]
+stack_id = "laptop-to-cluster"
+# Set a distinct node_id on each worker host.
+node_id = "compute-01"
+log_dir = "logs"
+
+[network]
+coordinator = "tcp://coordinator.example.org:5555"
+
+[[workers]]
+platform = "gpu"
+device = 0
+batch_size = 16
+
+[[workers]]
+platform = "gpu"
+device = 1
+batch_size = 16
+
+[[workers]]
+platform = "cpu"
+device = 0
+batch_size = 1

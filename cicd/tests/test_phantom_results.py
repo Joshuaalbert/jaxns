@@ -16,7 +16,7 @@ from jaxns.mixed_precision import mp_policy
 from jaxns.pytree import PureDataclassPytree
 from jaxns.results import BlockData, NestedSamplerResults
 from jaxns.samples import PhantomSamples
-from jaxns.shrinkage.phantom import sample_mc_shrinkage
+from jaxns.shrinkage.phantom import sample_evidence
 
 
 class ResultCase(NamedTuple):
@@ -807,7 +807,7 @@ def test_results_sample_evidence_matches_explicit_block_state_public_call():
         phantom_conditioning=True,
         diagnostics=True,
     )
-    direct_samples = sample_mc_shrinkage(
+    direct_samples = sample_evidence(
         key=key,
         log_L_constraints=results.log_L_constraints,
         log_L_classic=results.log_L,
@@ -1024,9 +1024,9 @@ def test_results_sample_evidence_rejects_strict_contour_equality():
         )
 
 
-def test_public_sample_mc_shrinkage_rejects_strict_contour_equality():
+def test_public_sample_evidence_rejects_strict_contour_equality():
     with pytest.raises(ValueError, match="Strict contour.*must be greater"):
-        sample_mc_shrinkage(
+        sample_evidence(
             key=jax.random.PRNGKey(43),
             log_L_constraints=jnp.asarray(
                 [0.0, 0.0],
@@ -1047,7 +1047,7 @@ def test_public_sample_mc_shrinkage_rejects_strict_contour_equality():
         )
 
 
-def test_public_sample_mc_shrinkage_rejects_stale_block_likelihoods_before_jit():
+def test_public_sample_evidence_rejects_stale_block_likelihoods_before_jit():
     block_state = BlockState(
         log_L_blocks=jnp.asarray(
             [0.0, 2.0],
@@ -1071,7 +1071,7 @@ def test_public_sample_mc_shrinkage_rejects_stale_block_likelihoods_before_jit()
         ValueError,
         match=r"block_state\.log_L_blocks.*log_L_classic",
     ):
-        sample_mc_shrinkage(
+        sample_evidence(
             key=jax.random.PRNGKey(47),
             log_L_constraints=jnp.full(
                 (2,),

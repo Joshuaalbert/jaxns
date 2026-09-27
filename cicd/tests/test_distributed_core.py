@@ -114,6 +114,56 @@ def test_distributed_resume_registers_the_checkpoint_model(monkeypatch):
     assert float(registered[0].model.log_likelihood(jnp.asarray(0.25))) == 0.0
 
 
+def test_local_distributed_handoff_preserves_state_and_keys(tmp_path):
+    runner = NestedSampler(model=make_toy_model(), root_allocation_degree=3)
+    state = runner.initialise(jax.random.PRNGKey(301))
+    distributed = DistributedState.from_state(state)
+    assert distributed.to_state() is state
+    assert distributed.goal_key is state.goal_key
+    assert distributed.session_id != DistributedState.from_state(state).session_id
+
+    filename = str(tmp_path / "handoff.pkl")
+    distributed.save(filename)
+    restored = DistributedState.load(filename).to_state()
+    for original, loaded in zip(
+            jax.tree.leaves(state), jax.tree.leaves(restored), strict=True,
+    ):
+        np.testing.assert_array_equal(original, loaded)
+    assert not distributed.pending
+    assert int(distributed.reservations.num_reserved) == 0
+
+
+@pytest.mark.parametrize("change", [
+    {"depth_reached": jnp.asarray(False)},
+    {"needs_growth": jnp.asarray(True)},
+    {"termination_reason": jnp.asarray(1)},
+    {"random_key": None},
+    {"goal_key": None},
+])
+def test_local_handoff_rejects_incomplete_continuation(change):
+    state = NestedSampler(
+        model=make_toy_model(), root_allocation_degree=3,
+    ).initialise(jax.random.PRNGKey(301))
+    with pytest.raises(ValueError, match="handoff requires"):
+        DistributedState.from_state(dataclasses.replace(state, **change))
+
+
+def test_distributed_to_state_rejects_unfinished_work():
+    state = NestedSampler(
+        model=make_toy_model(), root_allocation_degree=3,
+    ).initialise(jax.random.PRNGKey(301))
+    distributed = DistributedState.from_state(state)
+    reservations = dataclasses.replace(
+        distributed.reservations, num_reserved=jnp.asarray(1),
+    )
+    for unfinished in (
+        dataclasses.replace(distributed, depth_active=True),
+        dataclasses.replace(distributed, reservations=reservations),
+    ):
+        with pytest.raises(RuntimeError, match="pending|active"):
+            unfinished.to_state()
+
+
 def test_distributed_directions_change_only_at_drained_boundaries():
     """Direction geometry is scientific state, never in-flight task state."""
     runner = DistributedNestedSampler(

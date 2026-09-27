@@ -571,14 +571,14 @@ def test_nested_sampling_run_results(case, collect_phantom_samples):
     )
 
     if collect_phantom_samples:
-        mc_shrinkage = results.sample_evidence(
+        evidence = results.sample_evidence(
             num_samples=1000,
             phantom_conditioning=True,
             key=jax.random.PRNGKey(20260823),
         )
     else:
-        mc_shrinkage = classic_shrinkage
-    log_Z_samples = np.asarray(mc_shrinkage.log_Z_samples)
+        evidence = classic_shrinkage
+    log_Z_samples = np.asarray(evidence.log_Z_samples)
     log_Z_ensemble_mean = np.mean(log_Z_samples)
     log_Z_ensemble_std = np.std(log_Z_samples)
 

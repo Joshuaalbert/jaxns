@@ -283,7 +283,7 @@ def _cluster_count_matrices_from_precompute(
     ), E
 
 
-def sample_mc_shrinkage(
+def sample_evidence(
         key: PRNGKey,
         log_L_constraints: FloatArray,
         log_L_classic: FloatArray,
@@ -337,7 +337,7 @@ def sample_mc_shrinkage(
           - ``log_L_blocks``: derived block levels padded with ``+inf``;
           - ``block_first_idx``: first classic index per block, ``-1`` for padded blocks.
     """
-    validate_sample_mc_shrinkage_inputs(
+    validate_sample_evidence_inputs(
         log_L_constraints=log_L_constraints,
         log_L_classic=log_L_classic,
         K_classic=K_classic,
@@ -350,7 +350,7 @@ def sample_mc_shrinkage(
         num_Z_samples=num_Z_samples,
         batch_size=batch_size,
     )
-    return _sample_mc_shrinkage_batches(
+    return _sample_evidence_batches(
         key=key,
         log_L_constraints=log_L_constraints,
         log_L_classic=log_L_classic,
@@ -392,7 +392,7 @@ def _validate_mc_batching(
     return draws
 
 
-def validate_sample_mc_shrinkage_inputs(
+def validate_sample_evidence_inputs(
         *,
         log_L_constraints: FloatArray,
         log_L_classic: FloatArray,
@@ -411,7 +411,7 @@ def validate_sample_mc_shrinkage_inputs(
         log_L_phantom=log_L_phantom,
         num_samples=num_samples,
     )
-    _validate_mc_shrinkage_capacity(
+    _validate_evidence_capacity(
         log_L_classic=log_L_classic,
         K_classic=K_classic,
         num_samples=num_samples,
@@ -475,7 +475,7 @@ def _validate_phantom_metadata(
         )
 
 
-def _validate_mc_shrinkage_capacity(
+def _validate_evidence_capacity(
         *,
         log_L_classic: FloatArray,
         K_classic: IntArray,
@@ -1443,7 +1443,7 @@ def _sample_gamma_weighted_probabilities_from_events(
     )
 
 
-def _sample_mc_shrinkage(
+def _sample_evidence(
         key: PRNGKey,
         log_L_constraints: FloatArray,
         log_L_classic: FloatArray,
@@ -1706,7 +1706,7 @@ def _sample_mc_shrinkage(
     )
 
 
-def _sample_mc_shrinkage_summary(
+def _sample_evidence_summary(
         key: PRNGKey,
         log_L_constraints: FloatArray,
         log_L_classic: FloatArray,
@@ -1896,18 +1896,18 @@ def _sample_mc_shrinkage_summary(
     )
 
 
-_sample_mc_shrinkage_jit = jax.jit(
-    _sample_mc_shrinkage,
+_sample_evidence_jit = jax.jit(
+    _sample_evidence,
     static_argnames=("num_Z_samples", "diagnostics"),
 )
 
-_sample_mc_shrinkage_summary_jit = jax.jit(
-    _sample_mc_shrinkage_summary,
+_sample_evidence_summary_jit = jax.jit(
+    _sample_evidence_summary,
     static_argnames=("num_Z_samples", "batch_size"),
 )
 
 
-def _sample_mc_shrinkage_batches(
+def _sample_evidence_batches(
         key: PRNGKey,
         log_L_constraints: FloatArray,
         log_L_classic: FloatArray,
@@ -1928,7 +1928,7 @@ def _sample_mc_shrinkage_batches(
         num_Z_samples,
     )
     if not diagnostics and block_state is not None:
-        return _sample_mc_shrinkage_summary_jit(
+        return _sample_evidence_summary_jit(
             key=key,
             log_L_constraints=log_L_constraints,
             log_L_classic=log_L_classic,
@@ -1954,9 +1954,9 @@ def _sample_mc_shrinkage_batches(
         else list(jax.random.split(key, len(batch_draws)))
     )
     kernel = (
-        _sample_mc_shrinkage
+        _sample_evidence
         if block_state is None
-        else _sample_mc_shrinkage_jit
+        else _sample_evidence_jit
     )
     log_Z_batches = []
     H_batches = []

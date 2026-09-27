@@ -101,6 +101,16 @@ results.summary()
 results.plot_diagnostics()
 results.plot_cornerplot()
 
+# A local run can move to the pool at a completed goal boundary. The reverse
+# conversion exposes the same scientific state only after remote work drains.
+handoff = DistributedState.from_state(local_state)
+continued = distributed.resume_until_goal(
+    handoff,
+    goal_cond=lambda state: state.expected_log_Z_uncert < 0.05,
+    checkpoint_dir="checkpoints/handoff",
+)
+returned_local = continued.to_state()
+
 
 def some_fn(parameters: CtxParams):
     return {"x2": parameters["x"] ** 2, "y2": parameters["y"] ** 2}

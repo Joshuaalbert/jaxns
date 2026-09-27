@@ -12,7 +12,7 @@
 project = "jaxns"
 copyright = "2024, Joshua G. Albert"
 author = "Joshua G. Albert"
-release = "2.6.9"
+release = "3.0.0"
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration

@@ -18,7 +18,7 @@ from jaxns.depth_condition import DepthCondition
 from jaxns.model import Model
 from jaxns.priors import Prior
 from jaxns.results import _incoming_lineages_per_sample
-from jaxns.shrinkage.phantom import _sample_mc_shrinkage_summary_jit
+from jaxns.shrinkage.phantom import _sample_evidence_summary_jit
 
 tfpd = tfp.distributions
 
@@ -53,7 +53,7 @@ def _compile_summary_kernel(results, prefix: int, draws: int, batch_size: int):
         "C_min": 20.0,
     }
     lower_started = time.perf_counter()
-    lowered = _sample_mc_shrinkage_summary_jit.lower(**kwargs)
+    lowered = _sample_evidence_summary_jit.lower(**kwargs)
     lower_s = time.perf_counter() - lower_started
     compile_started = time.perf_counter()
     compiled = lowered.compile()

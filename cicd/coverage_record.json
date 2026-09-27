@@ -22,7 +22,7 @@
     "test_block_state_rejects_strict_contour_violation",
     "test_state_consistency_rejects_strict_contour_violation",
     "test_results_sample_evidence_rejects_strict_contour_equality",
-    "test_public_sample_mc_shrinkage_rejects_strict_contour_equality"
+    "test_public_sample_evidence_rejects_strict_contour_equality"
   ],
   "A seed used for a constrained chain is stationary for the requested parent contour before the chain starts.": [
     "test_mixed_contour_seed_groups_remain_distinct_after_rejection"
@@ -88,7 +88,7 @@
   ],
   "Classic Monte Carlo shrinkage draws follow the same block probability model used by the corresponding classic expectation calculation.": [
     "test_mc_linear_evidence_moments_match_deterministic_expectations",
-    "test_no_phantom_mc_shrinkage_uses_canonical_plateau_blocks"
+    "test_no_phantom_evidence_uses_canonical_plateau_blocks"
   ],
   "Increasing the number of independent shrinkage draws makes Monte Carlo evidence summaries converge to the moments implied by the classic shrinkage model.": [
     "test_mc_linear_evidence_moments_match_deterministic_expectations"
@@ -203,8 +203,8 @@
     "test_trim_keeps_log_l_blocks_aligned_to_trimmed_sample_size"
   ],
   "Classic evidence sampling remains available whether or not phantom samples were collected.": [
-    "test_reference_sample_mc_shrinkage_no_phantoms_uses_classic_gamma_path",
-    "test_sample_mc_shrinkage_no_phantom_path_does_not_require_old_rho_diagnostics",
+    "test_reference_sample_evidence_no_phantoms_uses_classic_gamma_path",
+    "test_sample_evidence_no_phantom_path_does_not_require_old_rho_diagnostics",
     "test_nested_sampling_run_results"
   ],
   "Posterior resampling draws from the normalized posterior weights represented by the result.": [
@@ -218,7 +218,7 @@
     "test_count_matrix_validation_rejects_malformed_count_relations",
     "test_count_input_validation_rejects_stale_and_malformed_metadata",
     "test_results_sample_evidence_rejects_malformed_arrays_before_jit",
-    "test_public_sample_mc_shrinkage_rejects_stale_block_likelihoods_before_jit",
+    "test_public_sample_evidence_rejects_stale_block_likelihoods_before_jit",
     "test_sample_evidence_rejects_invalid_batch_sizes",
     "test_sample_evidence_rejects_invalid_phantom_prefix"
   ],

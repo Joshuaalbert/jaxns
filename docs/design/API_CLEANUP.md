@@ -63,7 +63,7 @@ implemented transition. The existing random split schedule is preserved.
   so ordinary model definitions no longer need its dependency's import path.
 - `target_num_live_points` becomes `root_allocation_degree`.
 - `shell_size` becomes `replacement_width` for local execution.
-- `sample_logZ`, `sample_evidence_mc`, and result `sample_mc_shrinkage` are
+- `sample_logZ`, `sample_evidence_mc`, and the former result shrinkage alias are
   replaced by the single `sample_evidence` method.
 - Move constructor `args` and `params` to the run-start call. Resumption
   reads them from State. Runner attributes retain requested settings rather
@@ -112,3 +112,22 @@ default depth condition remains owned by the runner. A second fixed-key
 comparison against `25806f1` again matches all of the scientific outputs
 listed above exactly. Regression tests cover reuse across input dimensions,
 all run-start methods, and state-owned inputs and topology on resumption.
+
+## Execution handoff and documentation
+
+`DistributedState.from_state(state)` starts a fresh runtime session from a
+completed local goal boundary, preserving the exact scientific state and keys.
+`distributed.to_state()` returns that full state only after pending tasks and
+active schedules have drained. Neither conversion transforms posterior samples
+or repeats likelihood evaluations. The laptop-to-cluster user guide covers both
+directions, delayed CPU/GPU worker arrival, checkpoints, and automatic growth.
+
+The composed handoff test exposed a pre-existing unlimited-growth bug: the
+distributed status classifier treated physical buffer capacity as a scientific
+hard limit. It now distinguishes the two, preserving finite limits while
+allowing unlimited runs to resize. The real TCP test exercises growth, saved
+state transfer, late worker arrival, checkpoint precedence, and local return.
+
+All maintained evidence-sampling helpers, reference functions, benchmarks, and
+tests now use the `sample_evidence` name, including their compiled and batched
+variants. This is a symbol-only change to the evidence kernels.

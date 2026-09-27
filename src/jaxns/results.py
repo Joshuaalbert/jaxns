@@ -23,7 +23,7 @@ from jaxns.shrinkage.classic import DirichletConcentrations, PhantomCountMatrice
 from jaxns.shrinkage.phantom import (
     EvidenceSamples,
     compute_phantom_count_matrices,
-    sample_mc_shrinkage,
+    sample_evidence,
 )
 from jaxns.types import BoolArray, FloatArray, IntArray, PRNGKey, UType, XType
 
@@ -377,7 +377,7 @@ class NestedSamplerResults(PureDataclassPytree):
         block_state = results.block_data.to_block_state()
         incoming_lineages = _incoming_lineages_per_sample(results)
         # The shared shrinkage entry point owns metadata validation.
-        return sample_mc_shrinkage(
+        return sample_evidence(
             key=key,
             log_L_constraints=results.log_L_constraints,
             log_L_classic=results.log_L,

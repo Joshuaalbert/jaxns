@@ -73,6 +73,9 @@ properties that must hold independently of implementation live in
 
 - Requirement: Distributed execution is an opt-in `DistributedNestedSampler`; the established
   local `NestedSampler` remains the compiled, dependency-light execution path.
+- Requirement: A completed local goal boundary can become a fresh `DistributedState` without
+  altering its scientific state or keys. A drained distributed state can expose that full
+  `State` for local continuation; pending tasks and active schedules must not be discarded.
 - Requirement: `jaxns-cli` owns one named coordinator or worker node and provides idempotent
   `config validate`, `up`, `status`, and `down` operations from a TOML configuration.
 - Requirement: A coordinator publishes a versioned same-user ownership manifest containing its

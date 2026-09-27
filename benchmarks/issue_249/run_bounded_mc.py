@@ -23,12 +23,12 @@ from cicd.tests.test_ns_standard_problems import STANDARD_PROBLEM_CASES_BY_NAME
 from jaxns.constrained_sampler import UniDimSliceSampler
 from jaxns.core import NestedSampler
 from jaxns.results import _incoming_lineages_per_sample
-from jaxns.shrinkage.phantom import _sample_mc_shrinkage_summary_jit
+from jaxns.shrinkage.phantom import _sample_evidence_summary_jit
 
 
 def _compiled_program_record(results, *, key, draws, batch_size):
     """Inspect the exact final-MC executable used by the selected source."""
-    lowered = _sample_mc_shrinkage_summary_jit.lower(
+    lowered = _sample_evidence_summary_jit.lower(
         key=key,
         log_L_constraints=results.log_L_constraints,
         log_L_classic=results.log_L,

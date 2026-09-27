@@ -64,7 +64,7 @@ def test_reference_count_matrices_expose_parent_gated_R_and_aggregates():
     np.testing.assert_allclose(counts.R_g, np.sum(counts.R_cg, axis=0))
 
 
-def test_reference_sample_mc_shrinkage_runs_with_kish_gate_diagnostics():
+def test_reference_sample_evidence_runs_with_kish_gate_diagnostics():
     (
         log_L_constraints,
         log_L_classic,
@@ -74,7 +74,7 @@ def test_reference_sample_mc_shrinkage_runs_with_kish_gate_diagnostics():
         num_samples,
     ) = _toy_inputs()
 
-    out = ref_phantom.sample_mc_shrinkage(
+    out = ref_phantom.sample_evidence(
         seed=321,
         log_L_constraints=log_L_constraints,
         log_L_classic=log_L_classic,
@@ -102,7 +102,7 @@ def test_reference_sample_mc_shrinkage_runs_with_kish_gate_diagnostics():
     np.testing.assert_allclose(out.phantom_R, out.phantom_A - out.phantom_B - out.phantom_E)
 
 
-def test_reference_sample_mc_shrinkage_no_phantoms_uses_classic_gamma_path():
+def test_reference_sample_evidence_no_phantoms_uses_classic_gamma_path():
     (
         log_L_constraints,
         log_L_classic,
@@ -112,7 +112,7 @@ def test_reference_sample_mc_shrinkage_no_phantoms_uses_classic_gamma_path():
         num_samples,
     ) = _toy_inputs(num_phantom=0)
 
-    out = ref_phantom.sample_mc_shrinkage(
+    out = ref_phantom.sample_evidence(
         seed=0,
         log_L_constraints=log_L_constraints,
         log_L_classic=log_L_classic,
@@ -171,7 +171,7 @@ def test_reference_rejects_malformed_per_phantom_validity_mask():
     ) = _toy_inputs()
 
     with pytest.raises(ValueError, match="valid_phantom|per-cluster|one-dimensional"):
-        ref_phantom.sample_mc_shrinkage(
+        ref_phantom.sample_evidence(
             seed=0,
             log_L_constraints=log_L_constraints,
             log_L_classic=log_L_classic,

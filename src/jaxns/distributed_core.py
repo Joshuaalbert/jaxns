@@ -138,8 +138,53 @@ class DistributedState(PureDataclassPytree):
     depth_active: bool
     goal_key: PRNGKey  # [2]
 
-    def to_result(self) -> NestedSamplerResults:
-        """Return the ordinary user-facing result from committed samples."""
+    @classmethod
+    def from_state(cls, state: State) -> DistributedState:
+        """Prepare a completed local goal boundary for distributed resumption.
+
+        Args:
+            state: Full state returned by a local run whose goal was met.
+
+        Returns:
+            A new runtime session retaining the exact scientific state and keys.
+
+        Raises:
+            ValueError: If the local run has unfinished work, hit a hard limit,
+                or lacks continuation keys.
+        """
+        if (
+            not bool(state.depth_reached)
+            or state.scheduler_data is not None
+            or bool(state.needs_growth)
+            or int(state.termination_reason) != 0
+        ):
+            raise ValueError(
+                "Local-to-distributed handoff requires a completed goal "
+                "boundary with no unfinished work or hard termination."
+            )
+        if state.random_key is None or state.goal_key is None:
+            raise ValueError("Local-to-distributed handoff requires saved keys.")
+        # Local execution has no remote tasks to replay. Retain every scientific
+        # field, while giving the new distributed session its own task namespace.
+        return cls(
+            state=state,
+            reservations=ReservationState.empty(
+                state.samples.log_likelihoods.shape[0]
+            ),
+            pending=(),
+            next_task_id=0,
+            session_id=uuid4().hex,
+            depth_active=False,
+            goal_key=state.goal_key,
+        )
+
+    def to_state(self) -> State:
+        """Return the full scientific state for local resumption or inspection.
+
+        Raises:
+            RuntimeError: If distributed tasks or an active depth still need
+                to be completed before their runtime bookkeeping can be dropped.
+        """
         if (
             self.pending
             or int(self.reservations.num_reserved) != 0
@@ -147,10 +192,14 @@ class DistributedState(PureDataclassPytree):
             or self.state.scheduler_data is not None
         ):
             raise RuntimeError(
-                "Results are unavailable while work is pending or a "
+                "Local state is unavailable while work is pending or a "
                 "distributed depth is active."
             )
-        return self.state.to_result()
+        return self.state
+
+    def to_result(self) -> NestedSamplerResults:
+        """Return the ordinary user-facing result from committed samples."""
+        return self.to_state().to_result()
 
     def fit_gmm_directions(
             self,
@@ -289,19 +338,6 @@ def _change_reservations(
     )
 
 
-def _sample_limit(
-        state: State,
-        max_samples: int | None,
-) -> IntArray:
-    limit = jnp.asarray(
-        state.samples.log_likelihoods.shape[0],
-        mp_policy.count_dtype,
-    )
-    if max_samples is not None:
-        limit = jnp.asarray(max_samples, mp_policy.count_dtype)
-    return limit
-
-
 @partial(
     jax.jit,
     inline=True,
@@ -332,11 +368,13 @@ def _prepare_task(
         - state.num_samples
         - reservations.num_reserved
     )
-    global_free = (
-        _sample_limit(state, max_samples)
-        - state.num_samples
-        - reservations.num_reserved
-    )
+    global_free = physical_free
+    if max_samples is not None:
+        global_free = (
+            jnp.asarray(max_samples, mp_policy.count_dtype)
+            - state.num_samples
+            - reservations.num_reserved
+        )
     available = jnp.maximum(
         jnp.minimum(physical_free, global_free),
         0,
@@ -513,8 +551,13 @@ def _depth_status(
             & jnp.logical_not(seed_source_refresh_due)
             & _start_seed_storage_full(state.scheduler_data)
         )
-    limit = _sample_limit(state, max_samples)
-    hard_limit = state.num_samples >= limit
+    # Physical capacity limits dispatch, but only an explicit scientific limit
+    # can terminate the run. Unlimited runs grow when their current buffer fills.
+    hard_limit = jnp.asarray(False, mp_policy.bool_dtype)
+    below_limit = jnp.asarray(True, mp_policy.bool_dtype)
+    if max_samples is not None:
+        hard_limit = state.num_samples >= max_samples
+        below_limit = state.num_samples + reservations.num_reserved < max_samples
     termination_reason = jnp.where(
         state.termination_reason != 0,
         state.termination_reason,
@@ -528,9 +571,6 @@ def _depth_status(
     physical_full = (
         state.num_samples + reservations.num_reserved
         >= state.samples.log_likelihoods.shape[0]
-    )
-    below_limit = (
-        state.num_samples + reservations.num_reserved < limit
     )
     has_work = (
         has_schedule_work

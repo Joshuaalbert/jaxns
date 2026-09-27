@@ -416,7 +416,7 @@
       "path": "cicd/tests/test_phantom_eval_jax.py",
       "reason": "reference_parity"
     },
-    "test_jax_and_reference_sample_mc_shrinkage_emit_new_diagnostics": {
+    "test_jax_and_reference_sample_evidence_emit_new_diagnostics": {
       "note": "Checks JAX/reference implementation parity or current diagnostic schema.",
       "path": "cicd/tests/test_phantom_eval_jax.py",
       "reason": "reference_parity"
@@ -456,7 +456,7 @@
       "path": "cicd/tests/test_phantom_results.py",
       "reason": "result_schema_regression"
     },
-    "test_no_phantom_mc_shrinkage_uses_supplied_block_incoming_K": {
+    "test_no_phantom_evidence_uses_supplied_block_incoming_K": {
       "note": "Checks a shrinkage helper, validation path, or diagnostic compatibility detail beyond mapped invariants.",
       "path": "cicd/tests/test_shrinkage.py",
       "reason": "implementation_regression"
@@ -511,22 +511,22 @@
       "path": "cicd/tests/test_core.py",
       "reason": "architecture_boundary"
     },
-    "test_public_mc_shrinkage_rejects_invalid_plateau_capacity": {
+    "test_public_evidence_rejects_invalid_plateau_capacity": {
       "note": "Checks a shrinkage helper, validation path, or diagnostic compatibility detail beyond mapped invariants.",
       "path": "cicd/tests/test_shrinkage.py",
       "reason": "implementation_regression"
     },
-    "test_public_mc_shrinkage_rejects_plateau_when_first_K_too_small": {
+    "test_public_evidence_rejects_plateau_when_first_K_too_small": {
       "note": "Checks a shrinkage helper, validation path, or diagnostic compatibility detail beyond mapped invariants.",
       "path": "cicd/tests/test_shrinkage.py",
       "reason": "implementation_regression"
     },
-    "test_public_phantom_eval_sample_mc_shrinkage_uses_gamma_conditioning_when_gate_active": {
+    "test_public_phantom_eval_sample_evidence_uses_gamma_conditioning_when_gate_active": {
       "note": "Checks a shrinkage helper, validation path, or diagnostic compatibility detail beyond mapped invariants.",
       "path": "cicd/tests/test_shrinkage.py",
       "reason": "implementation_regression"
     },
-    "test_public_sample_mc_shrinkage_preserves_means_and_inflates_correlated_cluster_variance": {
+    "test_public_sample_evidence_preserves_means_and_inflates_correlated_cluster_variance": {
       "note": "Checks a shrinkage helper, validation path, or diagnostic compatibility detail beyond mapped invariants.",
       "path": "cicd/tests/test_shrinkage.py",
       "reason": "implementation_regression"
@@ -556,7 +556,7 @@
       "path": "cicd/tests/test_phantom_eval_ref.py",
       "reason": "reference_implementation"
     },
-    "test_reference_sample_mc_shrinkage_runs_with_kish_gate_diagnostics": {
+    "test_reference_sample_evidence_runs_with_kish_gate_diagnostics": {
       "note": "Checks the NumPy reference implementation or its validation surface.",
       "path": "cicd/tests/test_phantom_eval_ref.py",
       "reason": "reference_implementation"
@@ -900,6 +900,26 @@
       "note": "Distributed start methods register runtime inputs, and resumption reconstructs worker topology and registration from State.",
       "path": "cicd/tests/test_run_inputs.py",
       "reason": "configuration_contract"
+    },
+    "test_local_distributed_handoff_preserves_state_and_keys": {
+      "path": "cicd/tests/test_distributed_core.py",
+      "reason": "architecture_boundary",
+      "note": "Checks local/distributed round-trip identity, independent runtime sessions, and serialization without changing scientific state or keys."
+    },
+    "test_local_handoff_rejects_incomplete_continuation": {
+      "path": "cicd/tests/test_distributed_core.py",
+      "reason": "architecture_boundary",
+      "note": "Checks that incomplete, hard-terminated, or unkeyed local states cannot silently enter a fresh distributed session."
+    },
+    "test_distributed_to_state_rejects_unfinished_work": {
+      "path": "cicd/tests/test_distributed_core.py",
+      "reason": "architecture_boundary",
+      "note": "Checks that a local conversion cannot discard active distributed work or reservations."
+    },
+    "test_local_handoff_waits_for_workers_then_resumes_locally": {
+      "path": "cicd/tests/test_distributed_runtime.py",
+      "reason": "architecture_boundary",
+      "note": "Exercises the laptop-to-cluster workflow over real TCP processes, starting without workers, joining a node, checkpointing, and returning to local sampling while retaining earlier samples."
     }
   }
 }

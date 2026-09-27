@@ -18,6 +18,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import jax
+import numpy as np
 import pytest
 from jax import numpy as jnp
 
@@ -26,9 +27,11 @@ from jaxns.cli import _stop_started_process
 from jaxns.constrained_sampler import (
     UniDimSliceSampler,
 )
+from jaxns.core import NestedSampler
 from jaxns.depth_condition import DepthCondition
 from jaxns.distributed_core import (
     DistributedNestedSampler,
+    DistributedState,
 )
 from jaxns.runtime.client import SupervisorClient, _sampler_batch_group
 from jaxns.runtime.config import (
@@ -64,6 +67,7 @@ from jaxns.sampling.ellipsoid import empty_sampler_data
 from jaxns.sampling.protocol import (
     ConstrainedSampleRequest,
 )
+from jaxns.state import State
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -1144,6 +1148,94 @@ def test_real_pool_runs_scalar_vmap_retries_and_cli_lifecycle(tmp_path):
 
     second_down = json.loads(_cli(config_path, "down").stdout)
     assert second_down["idempotent"] is True
+
+
+def test_local_handoff_waits_for_workers_then_resumes_locally(tmp_path):
+    """Continue saved scientific work through both execution topologies."""
+    coordinator, node = _write_network_configs(tmp_path)
+    settings = {
+        "model": make_toy_model(), "root_allocation_degree": 3, "delta_K": 3,
+        "sampler": UniDimSliceSampler(
+            num_slices=2, collect_phantom_samples=True, max_phantom_samples=1,
+        ),
+        "collect_phantom_samples": True, "initial_capacity": 6,
+        "unlimited_samples": True,
+        "depth_condition": DepthCondition(dlogZ=jnp.asarray(0.5)),
+    }
+    local = NestedSampler(**settings)
+    state = local.run_until_goal(
+        lambda state: int(state.goal_loop_iter) >= 1,
+        key=jax.random.PRNGKey(301),
+    )
+    filename = str(tmp_path / "laptop.pkl")
+    state.save(filename)
+    handoff = DistributedState.from_state(State.load(filename))
+    distributed = DistributedNestedSampler(
+        **settings,
+        coordinator_port=load_runtime_config(coordinator).network.port,
+    )
+    outcome = {}
+
+    def continue_on_cluster():
+        try:
+            outcome["completed"] = distributed.resume_until_goal(
+                handoff,
+                lambda state: int(state.goal_loop_iter) >= 2,
+                checkpoint_dir=tmp_path / "cluster-checkpoints",
+                checkpoint_cadence=0.0,
+            )
+        except BaseException as exc:  # noqa: BLE001
+            outcome["error"] = exc
+
+    science = threading.Thread(target=continue_on_cluster, daemon=True)
+    _cli(coordinator, "up")
+    try:
+        science.start()
+        deadline = time.monotonic() + 15.0
+        while time.monotonic() < deadline:
+            status = _status(coordinator)
+            if status["sessions"] == 1:
+                break
+            time.sleep(0.02)
+        assert status["sessions"] == 1
+        assert status["workers"] == []
+        assert science.is_alive()
+        assert not outcome
+        _cli(node, "up")
+        science.join(timeout=60.0)
+        assert not science.is_alive()
+        assert "error" not in outcome, outcome.get("error")
+        completed = outcome["completed"]
+        returned = completed.to_state()
+        assert int(returned.goal_loop_iter) == 2
+        assert int(returned.num_samples) > int(state.num_samples)
+        count = int(state.num_samples)
+        # A topology change appends observations without replacing existing
+        # classic or phantom samples. Parent out-degrees may legitimately grow.
+        np.testing.assert_array_equal(
+            returned.samples.log_likelihoods[:count],
+            state.samples.log_likelihoods[:count],
+        )
+        np.testing.assert_array_equal(
+            returned.samples.phantom_samples.log_L[:count],
+            state.samples.phantom_samples.log_L[:count],
+        )
+        assert (tmp_path / "cluster-checkpoints" / "CHECKPOINT").is_file()
+        resumed = distributed.resume_until_goal(
+            handoff,
+            lambda state: int(state.goal_loop_iter) >= 2,
+            checkpoint_dir=tmp_path / "cluster-checkpoints",
+        )
+        np.testing.assert_array_equal(resumed.state.random_key, returned.random_key)
+        final = local.resume_until_goal(
+            returned, lambda state: int(state.goal_loop_iter) >= 3,
+        )
+        assert int(final.goal_loop_iter) == 3
+        assert int(final.num_samples) > int(returned.num_samples)
+    finally:
+        _cli(node, "down", check=False)
+        _cli(coordinator, "down", check=False)
+        science.join(timeout=5.0)
 
 
 def test_node_joins_runs_restarts_and_drains_over_tcp(tmp_path):

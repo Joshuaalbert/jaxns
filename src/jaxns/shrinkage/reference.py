@@ -539,7 +539,7 @@ def _log_dz_from_probabilities(
     return log_Z, log_dZ, H
 
 
-def sample_mc_shrinkage(
+def sample_evidence(
         seed: int,
         log_L_constraints: FloatArray,
         log_L_classic: FloatArray,
