@@ -15,7 +15,6 @@ from pathlib import Path
 import jax
 import jax.numpy as jnp
 import numpy as np
-from jaxctx.priors.prior import Prior
 from scipy.special import erf
 from tensorflow_probability.substrates import jax as tfp
 
@@ -24,6 +23,7 @@ from jaxns.core import NestedSampler
 from jaxns.depth_condition import DepthCondition
 from jaxns.distributed_core import DistributedNestedSampler
 from jaxns.model import Model
+from jaxns.priors import Prior
 from jaxns.runtime.config import load_runtime_config
 
 tfpd = tfp.distributions

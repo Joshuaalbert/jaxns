@@ -23,7 +23,7 @@ sys.path.insert(0, str(args.source_root / "src"))
 import jax
 import numpy as np
 from jax import numpy as jnp
-from jaxctx.priors.prior import Prior
+from jaxns.priors import Prior
 from tensorflow_probability.substrates import jax as tfp
 
 from jaxns.sampling.protocol import (

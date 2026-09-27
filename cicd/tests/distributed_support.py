@@ -5,10 +5,10 @@ import time
 
 import jax
 import jax.numpy as jnp
-from jaxctx.priors.prior import Prior
 from tensorflow_probability.substrates import jax as tfp
 
 from jaxns.model import Model
+from jaxns.priors import Prior
 from jaxns.pytree import PureDataclassPytree
 
 tfpd = tfp.distributions

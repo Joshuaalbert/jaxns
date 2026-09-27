@@ -44,7 +44,7 @@ sys.path.insert(0, str(SOURCE_ROOT / "src"))
 import jax
 import numpy as np
 from jax import numpy as jnp
-from jaxctx.priors.prior import Prior
+from jaxns.priors import Prior
 from scipy.special import erf
 from tensorflow_probability.substrates import jax as tfp
 

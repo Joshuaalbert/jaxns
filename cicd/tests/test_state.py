@@ -5,7 +5,6 @@ import numpy as np
 import pytest
 from jax import numpy as jnp
 from jax import random
-from jaxctx.priors.prior import Prior
 from tensorflow_probability.substrates import jax as tfp
 
 from cicd.tests.distributed_support import make_toy_model
@@ -18,6 +17,7 @@ from jaxns.algorithm.race_tree import (
 from jaxns.core import NestedSampler
 from jaxns.depth_condition import DepthCondition
 from jaxns.model import Model
+from jaxns.priors import Prior
 from jaxns.samples import PhantomSamples, Samples
 from jaxns.sampling.ellipsoid import empty_sampler_data
 from jaxns.shrinkage.classic import (

@@ -11,12 +11,12 @@ from pathlib import Path
 import jax
 import numpy as np
 from jax import numpy as jnp
-from jaxctx.priors.prior import Prior
 from tensorflow_probability.substrates import jax as tfp
 
 from jaxns.core import NestedSampler
 from jaxns.depth_condition import DepthCondition
 from jaxns.model import Model
+from jaxns.priors import Prior
 from jaxns.results import _incoming_lineages_per_sample
 from jaxns.shrinkage.phantom import _sample_mc_shrinkage_summary_jit
 

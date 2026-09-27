@@ -9,11 +9,11 @@ import jax
 import matplotlib.pyplot as plt
 import tensorflow_probability.substrates.jax as tfp
 from jaxctx import CtxParams
-from jaxctx.priors.prior import Prior
 
 from jaxns.core import NestedSampler
 from jaxns.distributed_core import DistributedNestedSampler, DistributedState
 from jaxns.model import Model
+from jaxns.priors import Prior
 from jaxns.shrinkage.phantom import EvidenceSamples
 from jaxns.state import State
 

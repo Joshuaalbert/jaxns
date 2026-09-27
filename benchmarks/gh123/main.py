@@ -7,11 +7,11 @@ import numpy as np
 import pkg_resources
 import tensorflow_probability.substrates.jax as tfp
 from jax._src.scipy.linalg import solve_triangular
-from jaxctx.priors.prior import Prior
 
 from jaxns.constrained_sampler import UniDimSliceSampler
 from jaxns.core import NestedSampler
 from jaxns.model import Model
+from jaxns.priors import Prior
 
 tfpd = tfp.distributions
 

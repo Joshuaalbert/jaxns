@@ -5,12 +5,12 @@ import pickle
 import jax
 import numpy as np
 from jax import numpy as jnp
-from jaxctx.priors.prior import Prior
 from tensorflow_probability.substrates import jax as tfp
 
 from jaxns.core import NestedSampler
 from jaxns.distributed_core import DistributedNestedSampler
 from jaxns.model import Model
+from jaxns.priors import Prior
 from jaxns.runtime.session import WorkerSession
 from jaxns.samples import SeedPoint
 from jaxns.sampling.batching import (

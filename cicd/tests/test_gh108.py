@@ -5,10 +5,10 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import psutil
-from jaxctx.priors.prior import Prior
 
 from jaxns.core import NestedSampler
 from jaxns.model import Model
+from jaxns.priors import Prior
 
 
 def _process_ram_gb():

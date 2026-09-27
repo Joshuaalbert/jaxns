@@ -8,12 +8,12 @@ import pytest
 from jax import numpy as jnp
 from jax.scipy.linalg import solve_triangular
 from jax.scipy.special import logsumexp
-from jaxctx.priors.prior import Prior
 from tensorflow_probability.substrates import jax as tfp
 
 from jaxns.core import NestedSampler
 from jaxns.diagnostics.reference import bruteforce_evidence
 from jaxns.model import Model
+from jaxns.priors import Prior
 
 matplotlib.use("Agg")
 

@@ -59,6 +59,8 @@ implemented transition. The existing random split schedule is preserved.
 
 ## Removed surface and migration
 
+- Import `Prior` from `jaxns.priors`. It re-exports the JAXCTX class directly,
+  so ordinary model definitions no longer need its dependency's import path.
 - `target_num_live_points` becomes `root_allocation_degree`.
 - `shell_size` becomes `replacement_width` for local execution.
 - `sample_logZ`, `sample_evidence_mc`, and result `sample_mc_shrinkage` are

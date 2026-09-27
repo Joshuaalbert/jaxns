@@ -6,13 +6,13 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from jaxctx.priors.prior import Prior
 from tensorflow_probability.substrates import jax as tfp
 
 from jaxns.core import NestedSampler
 from jaxns.depth_condition import DepthCondition
 from jaxns.distributed_core import DistributedNestedSampler
 from jaxns.model import Model
+from jaxns.priors import Prior
 from jaxns.runtime.client import SupervisorClient
 from jaxns.sampling.batching import evaluate_request, sample_request
 

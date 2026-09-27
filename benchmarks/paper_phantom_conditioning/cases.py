@@ -14,11 +14,11 @@ import numpy as np
 from jax import numpy as jnp
 from jax.scipy.linalg import solve_triangular
 from jax.scipy.special import logsumexp
-from jaxctx.priors.prior import Prior
 from tensorflow_probability.substrates import jax as tfp
 
 from jaxns.mixed_precision import mp_policy
 from jaxns.model import Model
+from jaxns.priors import Prior
 
 tfb = tfp.bijectors
 tfpd = tfp.distributions

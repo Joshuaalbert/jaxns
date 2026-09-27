@@ -63,7 +63,7 @@ likelihood, and pass observations or other runtime data through `args`.
 ```python
 import jax
 from jax import numpy as jnp
-from jaxctx.priors.prior import Prior
+from jaxns.priors import Prior
 from tensorflow_probability.substrates import jax as tfp
 
 from jaxns.model import Model

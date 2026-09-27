@@ -2,10 +2,10 @@ import jax
 import pytest
 from jax import numpy as jnp
 from jaxctx import scope
-from jaxctx.priors.prior import Prior
 from tensorflow_probability.substrates import jax as tfp
 
 from jaxns.model import Model
+from jaxns.priors import Prior
 
 tfpd = tfp.distributions
 
