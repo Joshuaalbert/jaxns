@@ -83,6 +83,7 @@ def test_compiled_depth_signature_contains_only_runtime_dependencies():
         "sampler",
         "depth_cond",
         "max_samples",
+        "max_batches",
     )
 
 

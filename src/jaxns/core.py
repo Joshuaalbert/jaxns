@@ -1,6 +1,7 @@
 """Depth-first nested sampling core described by the paper."""
 
 import dataclasses
+import time
 from collections.abc import Callable
 from contextlib import nullcontext
 from pathlib import Path
@@ -32,6 +33,7 @@ from jaxns.constrained_sampler import (
     AbstractSampler,
 )
 from jaxns.depth_condition import DepthCondition
+from jaxns.logging import jaxns_logger
 from jaxns.mixed_precision import mp_policy
 from jaxns.model import Model
 from jaxns.pytree import PureDataclassPytree
@@ -40,6 +42,7 @@ from jaxns.run_config import (
     default_depth_condition,
     resolve_run_config,
 )
+from jaxns.run_control import INTERRUPT_BATCHES, DeferredSIGINT
 from jaxns.state import State
 from jaxns.types import PRNGKey
 
@@ -124,6 +127,11 @@ class NestedSampler(PureDataclassPytree):
     resolves to ``min(model dimension, num_slices - 1)`` for the default slice
     sampler. The retained width is independent of the shorter prefix that can
     later be selected by ``sample_evidence``.
+
+    ``verbose=True`` reports existing scalar counters and timings after each
+    goal iteration without constructing results. With checkpointing enabled,
+    Ctrl-C saves a continuation after the current bounded batch of compiled
+    work, then propagates KeyboardInterrupt. Active chains must finish first.
     """
 
     model: Model
@@ -142,6 +150,7 @@ class NestedSampler(PureDataclassPytree):
     delta_K: int | None = None
     initial_capacity: int | None = None
     unlimited_samples: bool = False
+    verbose: bool = False
 
     def __post_init__(self):
         if self.depth_condition is None:
@@ -186,6 +195,7 @@ class NestedSampler(PureDataclassPytree):
                 "delta_K",
                 "initial_capacity",
                 "unlimited_samples",
+                "verbose",
             ],
         )
 
@@ -449,190 +459,226 @@ class NestedSampler(PureDataclassPytree):
             )
         if bool(state.depth_reached) and state.scheduler_data is not None:
             state = dataclasses.replace(state, scheduler_data=None)
-        while (
-            int(state.termination_reason) == 0
-            # A resized sample buffer resumes the same compiled depth epoch.
-            # Only let the Python goal observe completed allocation rounds so
-            # physical capacity cannot change the scientific stopping point.
-            and (
-                not bool(state.depth_reached)
-                or not bool(goal_cond(state))
-            )
-        ):
-            state = _ensure_thread_schedule(
-                state,
-                depth_cond,
-                replacement_width=int(config.replacement_width),
-                allocation_target=self.allocation_target,
-                root_degree=int(config.root_allocation_degree),
-                delta_K=int(config.delta_K),
-            )
-            state = _run_depth(
-                state,
-                config.sampler,
-                depth_cond,
-                max_samples=config.max_samples,
-            )
-            if bool(state.needs_growth):
-                capacity = state.samples.log_likelihoods.shape[0]
-                required_capacity = int(state.num_samples) + int(
-                    config.replacement_width
-                )
-                new_capacity = max(2 * capacity, required_capacity)
-                if config.max_samples is not None:
-                    new_capacity = min(new_capacity, config.max_samples)
-                if new_capacity <= capacity:
-                    # This branch is defensive: the compiled classifier should
-                    # already report a finite hard maximum as terminal.
-                    state = dataclasses.replace(
+        started_s = time.monotonic() if self.verbose else 0.0
+        iteration_started_s = started_s
+        previous_count = int(state.num_samples) if self.verbose else 0
+        with DeferredSIGINT(enabled=checkpoint_manager is not None) as interrupt:
+            try:
+                while int(state.termination_reason) == 0:
+                    interrupt.raise_if_requested()
+                    # Capacity and interrupt-control returns resume the same
+                    # logical depth, without evaluating the user's goal early.
+                    if bool(state.depth_reached) and bool(goal_cond(state)):
+                        break
+                    batch_start = state.depth_loop_iter
+                    state = _ensure_thread_schedule(
                         state,
-                        termination_reason=jnp.asarray(
-                            MAX_SAMPLES_REACHED,
-                            mp_policy.count_dtype,
-                        ),
-                        needs_growth=jnp.asarray(
-                            False,
-                            mp_policy.bool_dtype,
-                        ),
-                        depth_reached=jnp.asarray(
-                            False,
-                            mp_policy.bool_dtype,
-                        ),
-                    )
-                    break
-                # Growth resumes the same allocation target and key. Clearing
-                # only the transient request prevents this implementation
-                # boundary from becoming a logical goal iteration.
-                state = dataclasses.replace(
-                    _resize_depth_state(state, new_capacity),
-                    needs_growth=jnp.asarray(False, mp_policy.bool_dtype),
-                    depth_reached=jnp.asarray(False, mp_policy.bool_dtype),
-                )
-                continue
-            if int(state.termination_reason) != 0:
-                state = _refresh_likelihood_order(state)
-                break
-            if (
-                state.scheduler_data is not None
-                and bool(_continuation_storage_full(
-                    state.scheduler_data,
-                ))
-            ):
-                state = _grow_continuation_storage(
-                    state,
-                    int(config.replacement_width),
-                )
-                continue
-            if (
-                state.scheduler_data is not None
-                and bool(_start_seed_storage_full(
-                    state.scheduler_data,
-                ))
-            ):
-                state = _grow_start_seed_storage(
-                    state,
-                    int(config.replacement_width),
-                )
-                continue
-            source_published = False
-            if (
-                state.scheduler_data is not None
-                and bool(state.scheduler_data.active)
-                and bool(_seed_source_refresh_due(
-                    state,
-                    state.scheduler_data,
-                ))
-            ):
-                # Promote stationary seeds without changing the frozen target,
-                # maximal thread runs, active heads, or continuation heap.
-                # Every accepted edge already covers intervening new contours;
-                # re-decomposing the refined race would duplicate that work.
-                state = _publish_seed_source(state)
-                source_published = True
-                if bool(state.scheduler_data.active):
-                    continue
-                else:
-                    state = dataclasses.replace(
-                        state,
-                        depth_reached=jnp.asarray(
-                            True,
-                            mp_policy.bool_dtype,
-                        ),
-                    )
-            if bool(state.depth_reached):
-                if not source_published:
-                    state = _refresh_likelihood_order(state)
-                reached_expected_depth = bool(_depth_condition_reached(
-                    state,
-                    depth_cond,
-                ))
-                if not reached_expected_depth:
-                    previous = state.scheduler_data
-                    state = _continue_schedule_round(
-                        state,
-                        previous,
                         depth_cond,
                         replacement_width=int(config.replacement_width),
+                        allocation_target=self.allocation_target,
+                        root_degree=int(config.root_allocation_degree),
+                        delta_K=int(config.delta_K),
                     )
-                    schedule = state.scheduler_data
-                    if schedule is None:
-                        raise RuntimeError(
-                            "Continuation planning did not create a schedule."
+                    state = _run_depth(
+                        state,
+                        config.sampler,
+                        depth_cond,
+                        max_samples=config.max_samples,
+                        max_batches=(
+                            INTERRUPT_BATCHES if checkpoint_manager is not None else None
+                        ),
+                    )
+                    if not bool(state.depth_reached):
+                        interrupt.raise_if_requested()
+                    # A drained compiled schedule still needs its Python depth
+                    # check and key/counter commit before it is a goal boundary.
+                    if bool(state.needs_growth):
+                        capacity = state.samples.log_likelihoods.shape[0]
+                        required_capacity = int(state.num_samples) + int(
+                            config.replacement_width
                         )
-                    if bool(schedule.active):
+                        new_capacity = max(2 * capacity, required_capacity)
+                        if config.max_samples is not None:
+                            new_capacity = min(new_capacity, config.max_samples)
+                        if new_capacity <= capacity:
+                            # This branch is defensive: the compiled classifier should
+                            # already report a finite hard maximum as terminal.
+                            state = dataclasses.replace(
+                                state,
+                                termination_reason=jnp.asarray(
+                                    MAX_SAMPLES_REACHED,
+                                    mp_policy.count_dtype,
+                                ),
+                                needs_growth=jnp.asarray(
+                                    False,
+                                    mp_policy.bool_dtype,
+                                ),
+                                depth_reached=jnp.asarray(
+                                    False,
+                                    mp_policy.bool_dtype,
+                                ),
+                            )
+                            break
+                        # Growth resumes the same allocation target and key. Clearing
+                        # only the transient request prevents this implementation
+                        # boundary from becoming a logical goal iteration.
                         state = dataclasses.replace(
-                            state,
-                            depth_reached=jnp.asarray(
-                                False,
-                                mp_policy.bool_dtype,
-                            ),
+                            _resize_depth_state(state, new_capacity),
+                            needs_growth=jnp.asarray(False, mp_policy.bool_dtype),
+                            depth_reached=jnp.asarray(False, mp_policy.bool_dtype),
                         )
                         continue
-                    # The frozen target is now full but expected depth is not
-                    # reached. Advance allocation internally without exposing
-                    # this intermediate state to the user-provided goal.
-                    state = dataclasses.replace(
-                        state,
-                        allocation_loop_iter=(
-                            state.allocation_loop_iter
-                            + jnp.asarray(
-                                1,
-                                state.allocation_loop_iter.dtype,
+                    if int(state.termination_reason) != 0:
+                        state = _refresh_likelihood_order(state)
+                        break
+                    if (
+                        state.scheduler_data is not None
+                        and bool(_continuation_storage_full(
+                            state.scheduler_data,
+                        ))
+                    ):
+                        state = _grow_continuation_storage(
+                            state,
+                            int(config.replacement_width),
+                        )
+                        continue
+                    if (
+                        state.scheduler_data is not None
+                        and bool(_start_seed_storage_full(
+                            state.scheduler_data,
+                        ))
+                    ):
+                        state = _grow_start_seed_storage(
+                            state,
+                            int(config.replacement_width),
+                        )
+                        continue
+                    source_published = False
+                    if (
+                        state.scheduler_data is not None
+                        and bool(state.scheduler_data.active)
+                        and bool(_seed_source_refresh_due(
+                            state,
+                            state.scheduler_data,
+                        ))
+                    ):
+                        # Promote stationary seeds without changing the frozen target,
+                        # maximal thread runs, active heads, or continuation heap.
+                        # Every accepted edge already covers intervening new contours;
+                        # re-decomposing the refined race would duplicate that work.
+                        state = _publish_seed_source(state)
+                        source_published = True
+                        if bool(state.scheduler_data.active):
+                            continue
+                        else:
+                            state = dataclasses.replace(
+                                state,
+                                depth_reached=jnp.asarray(
+                                    True,
+                                    mp_policy.bool_dtype,
+                                ),
                             )
-                        ),
-                        depth_reached=jnp.asarray(
-                            False,
-                            mp_policy.bool_dtype,
-                        ),
-                        scheduler_data=None,
+                    if bool(state.depth_reached):
+                        if not source_published:
+                            state = _refresh_likelihood_order(state)
+                        reached_expected_depth = bool(_depth_condition_reached(
+                            state,
+                            depth_cond,
+                        ))
+                        if not reached_expected_depth:
+                            previous = state.scheduler_data
+                            state = _continue_schedule_round(
+                                state,
+                                previous,
+                                depth_cond,
+                                replacement_width=int(config.replacement_width),
+                            )
+                            schedule = state.scheduler_data
+                            if schedule is None:
+                                raise RuntimeError(
+                                    "Continuation planning did not create a schedule."
+                                )
+                            if bool(schedule.active):
+                                state = dataclasses.replace(
+                                    state,
+                                    depth_reached=jnp.asarray(
+                                        False,
+                                        mp_policy.bool_dtype,
+                                    ),
+                                )
+                                continue
+                            # The frozen target is now full but expected depth is not
+                            # reached. Advance allocation internally without exposing
+                            # this intermediate state to the user-provided goal.
+                            state = dataclasses.replace(
+                                state,
+                                allocation_loop_iter=(
+                                    state.allocation_loop_iter
+                                    + jnp.asarray(
+                                        1,
+                                        state.allocation_loop_iter.dtype,
+                                    )
+                                ),
+                                depth_reached=jnp.asarray(
+                                    False,
+                                    mp_policy.bool_dtype,
+                                ),
+                                scheduler_data=None,
+                            )
+                            continue
+                        state = dataclasses.replace(
+                            state,
+                            random_key=state.goal_key,
+                            goal_loop_iter=(
+                                state.goal_loop_iter
+                                + jnp.asarray(1, state.goal_loop_iter.dtype)
+                            ),
+                            allocation_loop_iter=(
+                                state.allocation_loop_iter
+                                + jnp.asarray(1, state.allocation_loop_iter.dtype)
+                            ),
+                            # Completed thread schedules are implementation-only
+                            # continuation state. Clear them before the next outer
+                            # iteration constructs a fresh planning domain.
+                            scheduler_data=None,
+                        )
+                        if self.verbose:
+                            now = time.monotonic()
+                            count = int(state.num_samples)
+                            jaxns_logger.info(
+                                "Local goal %d: samples=%d (+%d), capacity=%d, "
+                                "max(logL)=%.6g, iteration=%.2fs, elapsed=%.2fs",
+                                int(state.goal_loop_iter), count, count - previous_count,
+                                state.samples.log_likelihoods.shape[0],
+                                float(state.log_L_supremum), now - iteration_started_s,
+                                now - started_s,
+                            )
+                            previous_count = count
+                            iteration_started_s = now
+                        # Checkpoint only after the logical depth is complete. A
+                        # capacity return is a physical interruption of the same
+                        # epoch and must not become a persisted goal boundary.
+                        if checkpoint_manager is not None:
+                            checkpoint_manager.maybe_save(state)
+                        continue
+                    if (
+                        checkpoint_manager is not None
+                        and int(state.depth_loop_iter - batch_start) >= INTERRUPT_BATCHES
+                    ):
+                        # A control return preserves the active schedule and keys. It
+                        # must not advance allocation or evaluate the scientific goal.
+                        continue
+                    raise RuntimeError(
+                        "Compiled planning round returned without termination, "
+                        "growth, or a drained schedule."
                     )
-                    continue
-                state = dataclasses.replace(
-                    state,
-                    random_key=state.goal_key,
-                    goal_loop_iter=(
-                        state.goal_loop_iter
-                        + jnp.asarray(1, state.goal_loop_iter.dtype)
-                    ),
-                    allocation_loop_iter=(
-                        state.allocation_loop_iter
-                        + jnp.asarray(1, state.allocation_loop_iter.dtype)
-                    ),
-                    # Completed thread schedules are implementation-only
-                    # continuation state. Clear them before the next outer
-                    # iteration constructs a fresh planning domain.
-                    scheduler_data=None,
-                )
-                # Checkpoint only after the logical depth is complete. A
-                # capacity return is a physical interruption of the same
-                # epoch and must not become a persisted goal boundary.
+                interrupt.raise_if_requested()
+            except KeyboardInterrupt:
                 if checkpoint_manager is not None:
-                    checkpoint_manager.maybe_save(state)
-                continue
-            raise RuntimeError(
-                "Compiled planning round returned without termination, "
-                "growth, or a drained schedule."
-            )
+                    # The immutable state includes an unfinished schedule and
+                    # its exact keys when Ctrl-C interrupts a logical depth.
+                    checkpoint_manager.save_if_changed(state)
+                raise
 
         return state
 

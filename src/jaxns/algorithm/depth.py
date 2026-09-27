@@ -2714,7 +2714,7 @@ def _continue_schedule_round(
 @partial(
     jax.jit,
     inline=True,
-    static_argnames=("max_samples",),
+    static_argnames=("max_samples", "max_batches"),
 )
 def _run_depth(
         state: State,
@@ -2722,12 +2722,15 @@ def _run_depth(
         depth_cond: DepthCondition,
         *,
         max_samples: int | None,
+        max_batches: int | None = None,
 ) -> State:
     """Run one allocation depth epoch entirely in compiled JAX.
 
     The returned state atomically carries the continuation key and exactly one
     exit outcome. A physical-capacity return may therefore be resized and
     resumed without changing the logical allocation epoch or random stream.
+    An optional batch budget exposes the same continuation for interruptible
+    checkpointed runs, without evaluating a goal or changing the schedule.
     """
 
     def cond(carry: _DepthCarry):
@@ -2746,8 +2749,14 @@ def _run_depth(
         if max_samples is not None:
             sample_limit = jnp.asarray(max_samples, mp_policy.count_dtype)
         below_global_limit = carry.state.num_samples < sample_limit
+        within_budget = jnp.asarray(True, mp_policy.bool_dtype)
+        if max_batches is not None:
+            within_budget = (
+                carry.state.depth_loop_iter - state.depth_loop_iter < max_batches
+            )
         return (
             carry.schedule.active
+            & within_budget
             & has_buffer
             & below_global_limit
             & jnp.logical_not(_continuation_storage_full(carry.schedule))

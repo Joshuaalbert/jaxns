@@ -23,6 +23,7 @@ import pytest
 from jax import numpy as jnp
 
 from cicd.tests.distributed_support import make_periodic_model, make_toy_model
+from jaxns.checkpoint import CheckpointManager
 from jaxns.cli import _stop_started_process
 from jaxns.constrained_sampler import (
     UniDimSliceSampler,
@@ -759,6 +760,40 @@ def test_supervisor_rotates_dispatch_fairly_between_sessions():
     assert selected_second[0].session_id == "second"
 
 
+def test_cancel_fences_busy_workers_without_discarding_other_sessions():
+    interrupted = SessionRecord("stop", "one", b"model", b"client-one")
+    other = SessionRecord("keep", "two", b"model", b"client-two")
+    busy = WorkerRecord(
+        WorkerConfig("cpu", "0", 1), None, None, b"busy",
+        node_id="remote", instance_id="old",
+    )
+    idle = WorkerRecord(WorkerConfig("cpu", "1", 1), None, None, b"idle")
+    busy.ready = idle.ready = True
+    busy.registered.update(("stop", "keep"))
+    idle.registered.update(("stop", "keep"))
+    busy.task = (("stop", 7),)
+    task = TaskRecord(7, "direction", SAMPLE, "fingerprint", b"payload")
+    task.state = "running"
+    interrupted.tasks[7] = task
+    supervisor = object.__new__(Supervisor)
+    supervisor.sessions = {"stop": interrupted, "keep": other}
+    supervisor.session_order = deque(("stop", "keep"))
+    supervisor.workers = {busy.identity: busy, idle.identity: idle}
+    supervisor.restart_requests = {}
+    supervisor._send = lambda *args, **kwargs: None
+    with pytest.raises(RuntimeError, match="unacknowledged"):
+        supervisor._release_client(b"client-one", {"session_id": "stop"})
+    supervisor._release_client(
+        b"client-one", {"session_id": "stop", "cancel": True},
+    )
+    assert supervisor.sessions == {"keep": other}
+    assert list(supervisor.session_order) == ["keep"]
+    assert busy.dropped and busy.task is None
+    assert supervisor.restart_requests["remote"]
+    assert idle.ready and not idle.dropped
+    assert idle.registered == {"keep"}
+
+
 def test_incompatible_worker_is_rejected_before_model_registration():
     worker = WorkerRecord(
         WorkerConfig("cpu", "0", 1),
@@ -1236,6 +1271,115 @@ def test_local_handoff_waits_for_workers_then_resumes_locally(tmp_path):
         _cli(node, "down", check=False)
         _cli(coordinator, "down", check=False)
         science.join(timeout=5.0)
+
+
+@pytest.mark.parametrize("checkpointing", [False, True])
+def test_distributed_sigint_cancels_only_its_session(
+        tmp_path, monkeypatch, checkpointing,
+):
+    coordinator, node = _write_network_configs(tmp_path)
+    settings = {
+        "model": make_toy_model(), "root_allocation_degree": 3, "delta_K": 3,
+        "sampler": UniDimSliceSampler(num_slices=2), "max_samples": 128,
+        "initial_capacity": 32,
+        "depth_condition": DepthCondition(dlogZ=jnp.asarray(0.1)),
+    }
+    initial = NestedSampler(**settings).initialise(jax.random.PRNGKey(302))
+    handoff = DistributedState.from_state(initial)
+    runner = DistributedNestedSampler(
+        **settings, coordinator_port=load_runtime_config(coordinator).network.port,
+        verbose=True,
+    )
+    receive = DistributedNestedSampler._receive_group_waiting_for_workers
+    received = 0
+
+    def interrupt_after_a_commit(self, client, session_id):
+        nonlocal received
+        if received:
+            signal.raise_signal(signal.SIGINT)
+        received += 1
+        return receive(self, client, session_id)
+
+    checkpoint_dir = tmp_path / "checkpoints" if checkpointing else None
+    _cli(coordinator, "up")
+    _cli(node, "up")
+    try:
+        # An unrelated registered session must survive cancellation. Its worker
+        # programs may be registered afresh when a busy process is replaced.
+        with SupervisorClient.from_port(runner.coordinator_port) as other:
+            other.register("other-session", WorkerSession(
+                model=settings["model"], sampler=settings["sampler"],
+                args=(), params=None,
+            ))
+            with monkeypatch.context() as patcher:
+                patcher.setattr(
+                    DistributedNestedSampler, "_receive_group_waiting_for_workers",
+                    interrupt_after_a_commit,
+                )
+                with pytest.raises(KeyboardInterrupt):
+                    runner.resume_until_goal(
+                        handoff, lambda state: int(state.goal_loop_iter) >= 3,
+                        checkpoint_dir=checkpoint_dir,
+                    )
+            status = _status(coordinator)
+            assert status["sessions"] == 1
+            assert status["queued"] == status["running"] == 0
+            assert status["completed_unacknowledged"] == 0
+            other.release("other-session")
+        if checkpointing:
+            with CheckpointManager[DistributedState](checkpoint_dir) as manager:
+                saved = manager.load()
+            assert saved.pending
+            assert int(saved.state.num_samples) > int(initial.num_samples)
+            count = int(saved.state.num_samples)
+            resumed = runner.resume_until_goal(
+                handoff, lambda state: int(state.goal_loop_iter) >= 3,
+                checkpoint_dir=checkpoint_dir,
+            )
+            assert int(resumed.state.goal_loop_iter) == 3
+            assert not resumed.pending
+            np.testing.assert_array_equal(
+                resumed.state.samples.log_likelihoods[:count],
+                saved.state.samples.log_likelihoods[:count],
+            )
+        else:
+            assert not (tmp_path / "checkpoints").exists()
+    finally:
+        _cli(node, "down", check=False)
+        _cli(coordinator, "down", check=False)
+
+
+def test_sigint_during_worker_registration_saves_handoff(tmp_path, monkeypatch):
+    coordinator, _ = _write_network_configs(tmp_path)
+    local = NestedSampler(model=make_toy_model(), root_allocation_degree=3)
+    state = local.initialise(jax.random.PRNGKey(302))
+    handoff = DistributedState.from_state(state)
+    runner = DistributedNestedSampler(
+        model=state.model, coordinator_port=load_runtime_config(coordinator).network.port,
+    )
+    receive = SupervisorClient._receive_until
+
+    def stop_waiting(self, deadline):
+        if deadline is None:
+            signal.raise_signal(signal.SIGINT)
+        return receive(self, deadline)
+
+    _cli(coordinator, "up")
+    try:
+        monkeypatch.setattr(SupervisorClient, "_receive_until", stop_waiting)
+        with pytest.raises(KeyboardInterrupt):
+            runner.resume_until_goal(
+                handoff, lambda state: False,
+                checkpoint_dir=tmp_path / "checkpoints",
+            )
+        assert _status(coordinator)["sessions"] == 0
+        with CheckpointManager[DistributedState](tmp_path / "checkpoints") as manager:
+            saved = manager.load()
+        assert saved.session_id == handoff.session_id
+        np.testing.assert_array_equal(saved.state.random_key, state.random_key)
+        assert not saved.pending
+    finally:
+        _cli(coordinator, "down", check=False)
 
 
 def test_node_joins_runs_restarts_and_drains_over_tcp(tmp_path):

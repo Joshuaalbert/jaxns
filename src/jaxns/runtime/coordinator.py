@@ -726,8 +726,22 @@ class Supervisor:
             return
         if session.client != identity:
             raise ValueError(f"Client does not own session {session_id!r}.")
-        if session.tasks:
+        cancel = header.get("cancel", False)
+        if type(cancel) is not bool:
+            raise ValueError("Session release cancel must be a boolean.")
+        if session.tasks and not cancel:
             raise RuntimeError(f"Session {session_id!r} has unacknowledged tasks.")
+        if cancel:
+            # One assignment belongs to one session. Fence just its busy
+            # workers before deleting task records so late results cannot be
+            # committed, then let the existing node lifecycle replace them.
+            for worker in self.workers.values():
+                if worker.task is not None and worker.task[0][0] == session_id:
+                    if worker.process is not None and worker.process.poll() is None:
+                        worker.process.terminate()
+                    self._drop_worker(
+                        worker, "scientific session interrupted", log_starvation=False,
+                    )
         for worker in self.workers.values():
             worker.registered.discard(session_id)
             if worker.ready:

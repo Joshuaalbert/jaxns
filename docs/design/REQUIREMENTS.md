@@ -180,6 +180,9 @@ properties that must hold independently of implementation live in
 ## Core Run Architecture
 
 - Requirement: The outer goal loop is Pythonic and calls a user-provided condition on `State`.
+- Requirement: Optional verbose progress uses existing scalar state, task counters, and Python
+  wall-clock timings at completed goal iterations, without constructing results or recomputing
+  evidence summaries for logging.
 - Requirement: One depth epoch is a pure JAX computation suitable for JIT compilation and
   returns control at a depth boundary, capacity boundary, or explicit no-progress boundary.
 - Requirement: The compiled depth loop computes allocation gaps, selects parents, selects
@@ -262,6 +265,11 @@ properties that must hold independently of implementation live in
 - Requirement: A retryable distributed execution error checkpoints the complete
   `DistributedState`, including pending task identities, immutable requests, and provisional
   reservations, before exposing the error when checkpointing is enabled.
+- Requirement: SIGINT checkpoints the latest coherent local or distributed continuation when
+  enabled, then propagates KeyboardInterrupt. Checkpointed local depths return after a bounded
+  number of replacement batches without host callbacks or extra goal evaluations. Distributed
+  interruption cancels only its own runtime session after saving pending requests, fencing busy
+  workers through the existing node restart lifecycle and preserving other registered sessions.
 - Requirement: Checkpoints use trusted Python pickle serialization and are recovery artifacts for
   a compatible Python environment, not a safe untrusted-data or archival interchange format.
 

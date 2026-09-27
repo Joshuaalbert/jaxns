@@ -31,4 +31,5 @@ run_settings = {
     "collect_phantom_samples": True,
     "initial_capacity": 512,
     "unlimited_samples": True,
+    "verbose": True,
 }

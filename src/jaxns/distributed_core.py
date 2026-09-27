@@ -54,6 +54,7 @@ from jaxns.run_config import (
     default_depth_condition,
     resolve_run_config,
 )
+from jaxns.run_control import DeferredSIGINT
 from jaxns.runtime.session import WorkerSession
 from jaxns.samples import SeedPoint
 from jaxns.sampling.protocol import (
@@ -78,6 +79,40 @@ class DistributedRunError(RuntimeError):
     def __init__(self, message: str, checkpoint: DistributedState):
         super().__init__(message)
         self.checkpoint = checkpoint
+
+
+class _DistributedInterrupt(KeyboardInterrupt):
+    """Carry the latest coherent state out of the asynchronous goal loop."""
+
+    def __init__(self, checkpoint: DistributedState):
+        super().__init__()
+        self.checkpoint = checkpoint
+
+
+def _checkpoint_and_cancel(
+        client: SupervisorClient,
+        session_id: str,
+        checkpoint: DistributedState | None,
+        checkpoint_manager: CheckpointManager[DistributedState] | None,
+) -> None:
+    """Persist replayable work before releasing only this client's session."""
+    from zmq import ZMQError
+
+    with DeferredSIGINT():
+        try:
+            if checkpoint_manager is not None and checkpoint is not None:
+                checkpoint_manager.save_if_changed(checkpoint)
+        finally:
+            try:
+                client.release(session_id, cancel=True, timeout_s=5.0)
+            except (OSError, RuntimeError, ZMQError) as exc:
+                # A failed coordinator cannot confirm cancellation. Keep the
+                # saved replay state and expose the cleanup failure in the log
+                # without replacing the user's KeyboardInterrupt.
+                jaxns_logger.warning(
+                    "Could not cancel interrupted session %s: %s",
+                    session_id, exc,
+                )
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -632,6 +667,12 @@ class DistributedNestedSampler:
         receive_timeout_s: Maximum time to wait for a coordinator health
             response. Worker completion itself has no deadline because an
             empty pool is a recoverable operational state.
+        verbose: Report scalar progress, task counts, and Python wall times
+            after each goal iteration without computing result summaries.
+
+    Ctrl-C saves the current continuation when checkpointing is enabled and
+    cancels only this session's remote work before propagating KeyboardInterrupt.
+    Pending requests retain their exact keys for checkpoint resumption.
     """
 
     __slots__ = (
@@ -648,6 +689,7 @@ class DistributedNestedSampler:
         "root_allocation_degree",
         "sampler",
         "unlimited_samples",
+        "verbose",
     )
 
     def __init__(
@@ -669,6 +711,7 @@ class DistributedNestedSampler:
             initial_capacity: int | None = None,
             unlimited_samples: bool = False,
             receive_timeout_s: float = 300.0,
+            verbose: bool = False,
     ) -> None:
         # This object owns a runtime service configuration and is deliberately
         # mutable. Manual slots make that lifecycle explicit without posing as
@@ -686,6 +729,7 @@ class DistributedNestedSampler:
         self.initial_capacity = initial_capacity
         self.unlimited_samples = unlimited_samples
         self.receive_timeout_s = receive_timeout_s
+        self.verbose = verbose
 
         if (
             type(self.coordinator_port) is not int
@@ -1093,7 +1137,13 @@ class DistributedNestedSampler:
         distributed = None
         with SupervisorClient.from_port(self.coordinator_port) as client:
             try:
+                registration_started_s = time.monotonic() if self.verbose else 0.0
                 client.register(session_id, session)
+                if self.verbose:
+                    jaxns_logger.info(
+                        "Distributed session ready after %.2fs waiting for registration",
+                        time.monotonic() - registration_started_s,
+                    )
                 # A new run retains one registration from root likelihoods
                 # through constrained sampling. This avoids serialising the
                 # same model twice and preserves the worker executable cache.
@@ -1116,6 +1166,16 @@ class DistributedNestedSampler:
                 distributed = completed
                 client.release(session_id)
                 return completed
+            except _DistributedInterrupt as exc:
+                _checkpoint_and_cancel(
+                    client, session_id, exc.checkpoint, checkpoint_manager,
+                )
+                raise KeyboardInterrupt from None
+            except KeyboardInterrupt:
+                _checkpoint_and_cancel(
+                    client, session_id, distributed, checkpoint_manager,
+                )
+                raise
             except DistributedRunError as exc:
                 if checkpoint_manager is not None:
                     checkpoint_manager.save_if_changed(exc.checkpoint)
@@ -1246,7 +1306,13 @@ class DistributedNestedSampler:
         )
         with SupervisorClient.from_port(self.coordinator_port) as client:
             try:
+                registration_started_s = time.monotonic() if self.verbose else 0.0
                 capacities = client.register(distributed.session_id, session)
+                if self.verbose:
+                    jaxns_logger.info(
+                        "Distributed session ready after %.2fs waiting for registration",
+                        time.monotonic() - registration_started_s,
+                    )
                 if not capacities:
                     raise RuntimeError("The supervisor has no ready workers.")
                 if distributed.pending:
@@ -1268,6 +1334,16 @@ class DistributedNestedSampler:
                 distributed = completed
                 client.release(completed.session_id)
                 return completed
+            except _DistributedInterrupt as exc:
+                _checkpoint_and_cancel(
+                    client, distributed.session_id, exc.checkpoint, checkpoint_manager,
+                )
+                raise KeyboardInterrupt from None
+            except KeyboardInterrupt:
+                _checkpoint_and_cancel(
+                    client, distributed.session_id, distributed, checkpoint_manager,
+                )
+                raise
             except DistributedRunError as exc:
                 if checkpoint_manager is not None:
                     checkpoint_manager.save_if_changed(exc.checkpoint)
@@ -1296,272 +1372,298 @@ class DistributedNestedSampler:
             tuple[ConstrainedSampleBatch, int],
         ] = {}
         next_completion_group = 0
-        while True:
-            state = distributed.state
-            if (
-                not distributed.pending
-                and (
-                    int(state.termination_reason) != 0
-                    or (
-                        not distributed.depth_active
-                        and bool(goal_cond(state))
+        started_s = time.monotonic() if self.verbose else 0.0
+        iteration_started_s = started_s
+        previous_count = int(distributed.state.num_samples) if self.verbose else 0
+        previous_task_id = distributed.next_task_id
+        try:
+            while True:
+                state = distributed.state
+                if (
+                    not distributed.pending
+                    and (
+                        int(state.termination_reason) != 0
+                        or (
+                            not distributed.depth_active
+                            and bool(goal_cond(state))
+                        )
                     )
-                )
-            ):
-                return distributed
+                ):
+                    return distributed
 
-            if not distributed.depth_active:
-                depth_key, goal_key = jax.random.split(state.random_key)
-                state = dataclasses.replace(
-                    state,
-                    random_key=depth_key,
-                    goal_key=goal_key,
-                    needs_growth=jnp.asarray(False, mp_policy.bool_dtype),
-                    depth_reached=jnp.asarray(False, mp_policy.bool_dtype),
-                )
-                distributed = dataclasses.replace(
+                if not distributed.depth_active:
+                    depth_key, goal_key = jax.random.split(state.random_key)
+                    state = dataclasses.replace(
+                        state,
+                        random_key=depth_key,
+                        goal_key=goal_key,
+                        needs_growth=jnp.asarray(False, mp_policy.bool_dtype),
+                        depth_reached=jnp.asarray(False, mp_policy.bool_dtype),
+                    )
+                    distributed = dataclasses.replace(
+                        distributed,
+                        state=state,
+                        depth_active=True,
+                        goal_key=goal_key,
+                    )
+
+                distributed = self._grow_if_needed(distributed, config)
+                distributed = self._dispatch_threads(
+                    client,
                     distributed,
-                    state=state,
-                    depth_active=True,
-                    goal_key=goal_key,
+                    depth_cond,
+                    config=config,
                 )
-
-            distributed = self._grow_if_needed(distributed, config)
-            distributed = self._dispatch_threads(
-                client,
-                distributed,
-                depth_cond,
-                config=config,
-            )
-            if distributed.pending:
-                # Sampling completion is asynchronous, but scientific commits
-                # follow task identity. Runtime latency (including the extra
-                # bytes produced by phantom collection) must not choose a
-                # different race tree for the same assigned random stream.
-                pending = min(
-                    distributed.pending,
-                    key=lambda task: task.task_id,
-                )
-                while pending.task_id not in completed_tasks:
-                    try:
-                        completed_group = self._receive_group_waiting_for_workers(
-                            client,
-                            distributed.session_id,
-                        )
-                    except Exception as exc:
-                        raise DistributedRunError(
-                            f"Waiting for distributed task failed: {exc}",
-                            distributed,
-                        ) from exc
-                    completion_group = next_completion_group
-                    next_completion_group += 1
-                    for task_id, batch in completed_group:
-                        if not any(
-                            task.task_id == task_id
-                            for task in distributed.pending
-                        ):
-                            # A replay for an already committed task is safe to
-                            # release because its state mutation already happened.
-                            client.acknowledge(
-                                distributed.session_id,
-                                task_id,
-                            )
-                            continue
-                        completed_tasks[task_id] = (
-                            batch,
-                            completion_group,
-                        )
-
-                # Results from one worker vmap arrive atomically. Commit only
-                # the contiguous IDs in that assignment before refill. A
-                # faster sibling worker may already have returned later IDs,
-                # but network timing must not merge two scientific boundaries.
-                commit_group = completed_tasks[pending.task_id][1]
-                while distributed.pending:
+                if distributed.pending:
+                    # Sampling completion is asynchronous, but scientific commits
+                    # follow task identity. Runtime latency (including the extra
+                    # bytes produced by phantom collection) must not choose a
+                    # different race tree for the same assigned random stream.
                     pending = min(
                         distributed.pending,
                         key=lambda task: task.task_id,
                     )
-                    if pending.task_id not in completed_tasks:
-                        break
-                    batch, completion_group = completed_tasks[pending.task_id]
-                    if completion_group != commit_group:
-                        break
-                    completed_tasks.pop(pending.task_id)
-                    accepted = _accept_task(
-                        distributed.state,
-                        distributed.reservations,
-                        pending.thread_id,
-                        pending.terminal_log_L,
-                        pending.work,
-                        batch,
-                    )
-                    if not bool(accepted.accepted):
-                        raise DistributedRunError(
-                            f"Worker task {pending.task_id} violated its strict contour.",
-                            distributed,
-                        )
-                    client.acknowledge(
-                        distributed.session_id,
-                        pending.task_id,
-                    )
-                    distributed = dataclasses.replace(
-                        distributed,
-                        state=accepted.state,
-                        reservations=accepted.reservations,
-                        pending=tuple(
-                            task
-                            for task in distributed.pending
-                            if task.task_id != pending.task_id
-                        ),
-                    )
-                continue
+                    while pending.task_id not in completed_tasks:
+                        try:
+                            completed_group = self._receive_group_waiting_for_workers(
+                                client,
+                                distributed.session_id,
+                            )
+                        except Exception as exc:
+                            raise DistributedRunError(
+                                f"Waiting for distributed task failed: {exc}",
+                                distributed,
+                            ) from exc
+                        completion_group = next_completion_group
+                        next_completion_group += 1
+                        for task_id, batch in completed_group:
+                            if not any(
+                                task.task_id == task_id
+                                for task in distributed.pending
+                            ):
+                                # A replay for an already committed task is safe to
+                                # release because its state mutation already happened.
+                                client.acknowledge(
+                                    distributed.session_id,
+                                    task_id,
+                                )
+                                continue
+                            completed_tasks[task_id] = (
+                                batch,
+                                completion_group,
+                            )
 
-            status = self._status(distributed, config)
-            if bool(status.needs_thread_growth):
-                distributed = self._grow_thread_storage(distributed)
-                continue
-            if bool(status.needs_seed_growth):
-                distributed = self._grow_seed_storage(distributed)
-                continue
-            if bool(status.needs_growth):
-                distributed = self._grow(distributed, config)
-                continue
-            if int(status.termination_reason) != 0:
-                terminal_state = _refresh_likelihood_order(
-                    distributed.state,
-                )
-                return dataclasses.replace(
-                    distributed,
-                    state=dataclasses.replace(
-                        terminal_state,
-                        termination_reason=status.termination_reason,
-                        needs_growth=jnp.asarray(
-                            False,
-                            mp_policy.bool_dtype,
-                        ),
-                        depth_reached=jnp.asarray(
-                            False,
-                            mp_policy.bool_dtype,
-                        ),
-                        scheduler_data=None,
-                    ),
-                    depth_active=False,
-                )
-            if bool(status.source_refresh_due):
-                # All dispatched edges are committed before publication. Only
-                # the exact seed source advances; logical thread heads and the
-                # continuation heap remain available to any worker that joins.
-                state = _publish_seed_source(distributed.state)
-                distributed = dataclasses.replace(
-                    distributed,
-                    state=state,
-                )
-                continue
-            if bool(status.schedule_drained):
-                state = _refresh_likelihood_order(distributed.state)
-                reached_expected_depth = bool(_depth_condition_reached(
-                    state,
-                    depth_cond,
-                ))
-                if not reached_expected_depth:
-                    previous = state.scheduler_data
-                    planning_width = previous.valid.shape[0]
-                    state = _continue_schedule_round(
-                        state,
-                        previous,
-                        depth_cond,
-                        replacement_width=planning_width,
-                    )
-                    schedule = state.scheduler_data
-                    if schedule is None:
-                        raise RuntimeError(
-                            "Continuation planning did not create a schedule."
+                    # Results from one worker vmap arrive atomically. Commit only
+                    # the contiguous IDs in that assignment before refill. A
+                    # faster sibling worker may already have returned later IDs,
+                    # but network timing must not merge two scientific boundaries.
+                    commit_group = completed_tasks[pending.task_id][1]
+                    while distributed.pending:
+                        pending = min(
+                            distributed.pending,
+                            key=lambda task: task.task_id,
                         )
-                    if bool(schedule.active):
+                        if pending.task_id not in completed_tasks:
+                            break
+                        batch, completion_group = completed_tasks[pending.task_id]
+                        if completion_group != commit_group:
+                            break
+                        completed_tasks.pop(pending.task_id)
+                        accepted = _accept_task(
+                            distributed.state,
+                            distributed.reservations,
+                            pending.thread_id,
+                            pending.terminal_log_L,
+                            pending.work,
+                            batch,
+                        )
+                        if not bool(accepted.accepted):
+                            raise DistributedRunError(
+                                f"Worker task {pending.task_id} violated its strict contour.",
+                                distributed,
+                            )
+                        client.acknowledge(
+                            distributed.session_id,
+                            pending.task_id,
+                        )
                         distributed = dataclasses.replace(
                             distributed,
-                            state=dataclasses.replace(
-                                state,
-                                depth_reached=jnp.asarray(
-                                    False,
-                                    mp_policy.bool_dtype,
-                                ),
+                            state=accepted.state,
+                            reservations=accepted.reservations,
+                            pending=tuple(
+                                task
+                                for task in distributed.pending
+                                if task.task_id != pending.task_id
                             ),
+                        )
+                    continue
+
+                status = self._status(distributed, config)
+                if bool(status.needs_thread_growth):
+                    distributed = self._grow_thread_storage(distributed)
+                    continue
+                if bool(status.needs_seed_growth):
+                    distributed = self._grow_seed_storage(distributed)
+                    continue
+                if bool(status.needs_growth):
+                    distributed = self._grow(distributed, config)
+                    continue
+                if int(status.termination_reason) != 0:
+                    terminal_state = _refresh_likelihood_order(
+                        distributed.state,
+                    )
+                    return dataclasses.replace(
+                        distributed,
+                        state=dataclasses.replace(
+                            terminal_state,
+                            termination_reason=status.termination_reason,
+                            needs_growth=jnp.asarray(
+                                False,
+                                mp_policy.bool_dtype,
+                            ),
+                            depth_reached=jnp.asarray(
+                                False,
+                                mp_policy.bool_dtype,
+                            ),
+                            scheduler_data=None,
+                        ),
+                        depth_active=False,
+                    )
+                if bool(status.source_refresh_due):
+                    # All dispatched edges are committed before publication. Only
+                    # the exact seed source advances; logical thread heads and the
+                    # continuation heap remain available to any worker that joins.
+                    state = _publish_seed_source(distributed.state)
+                    distributed = dataclasses.replace(
+                        distributed,
+                        state=state,
+                    )
+                    continue
+                if bool(status.schedule_drained):
+                    state = _refresh_likelihood_order(distributed.state)
+                    reached_expected_depth = bool(_depth_condition_reached(
+                        state,
+                        depth_cond,
+                    ))
+                    if not reached_expected_depth:
+                        previous = state.scheduler_data
+                        planning_width = previous.valid.shape[0]
+                        state = _continue_schedule_round(
+                            state,
+                            previous,
+                            depth_cond,
+                            replacement_width=planning_width,
+                        )
+                        schedule = state.scheduler_data
+                        if schedule is None:
+                            raise RuntimeError(
+                                "Continuation planning did not create a schedule."
+                            )
+                        if bool(schedule.active):
+                            distributed = dataclasses.replace(
+                                distributed,
+                                state=dataclasses.replace(
+                                    state,
+                                    depth_reached=jnp.asarray(
+                                        False,
+                                        mp_policy.bool_dtype,
+                                    ),
+                                ),
+                            )
+                            continue
+                        state = dataclasses.replace(
+                            state,
+                            allocation_loop_iter=(
+                                state.allocation_loop_iter
+                                + jnp.asarray(
+                                    1,
+                                    state.allocation_loop_iter.dtype,
+                                )
+                            ),
+                            depth_reached=jnp.asarray(
+                                False,
+                                mp_policy.bool_dtype,
+                            ),
+                            scheduler_data=None,
+                        )
+                        distributed = dataclasses.replace(
+                            distributed,
+                            state=state,
                         )
                         continue
                     state = dataclasses.replace(
                         state,
-                        allocation_loop_iter=(
-                            state.allocation_loop_iter
+                        random_key=distributed.goal_key,
+                        goal_key=distributed.goal_key,
+                        depth_reached=jnp.asarray(True, mp_policy.bool_dtype),
+                        goal_loop_iter=(
+                            distributed.state.goal_loop_iter
                             + jnp.asarray(
                                 1,
-                                state.allocation_loop_iter.dtype,
+                                distributed.state.goal_loop_iter.dtype,
                             )
                         ),
-                        depth_reached=jnp.asarray(
-                            False,
-                            mp_policy.bool_dtype,
+                        allocation_loop_iter=(
+                            distributed.state.allocation_loop_iter
+                            + jnp.asarray(
+                                1,
+                                distributed.state.allocation_loop_iter.dtype,
+                            )
                         ),
                         scheduler_data=None,
                     )
                     distributed = dataclasses.replace(
                         distributed,
                         state=state,
+                        depth_active=False,
                     )
+                    if self.verbose:
+                        now = time.monotonic()
+                        count = int(state.num_samples)
+                        jaxns_logger.info(
+                            "Distributed goal %d: samples=%d (+%d), capacity=%d, "
+                            "tasks=%d (+%d), max(logL)=%.6g, iteration=%.2fs, elapsed=%.2fs",
+                            int(state.goal_loop_iter), count, count - previous_count,
+                            state.samples.log_likelihoods.shape[0],
+                            distributed.next_task_id,
+                            distributed.next_task_id - previous_task_id,
+                            float(state.log_L_supremum), now - iteration_started_s,
+                            now - started_s,
+                        )
+                        previous_count = count
+                        previous_task_id = distributed.next_task_id
+                        iteration_started_s = now
+                    # At this point every task from the depth is committed and no
+                    # provisional reservation is present. The checkpoint therefore
+                    # exposes exactly the same immutable state seen by goal_cond.
+                    if checkpoint_manager is not None:
+                        checkpoint_manager.maybe_save(distributed)
                     continue
-                state = dataclasses.replace(
-                    state,
-                    random_key=distributed.goal_key,
-                    goal_key=distributed.goal_key,
-                    depth_reached=jnp.asarray(True, mp_policy.bool_dtype),
-                    goal_loop_iter=(
-                        distributed.state.goal_loop_iter
-                        + jnp.asarray(
-                            1,
-                            distributed.state.goal_loop_iter.dtype,
+                if bool(status.has_work):
+                    # A pool may temporarily have no live lanes while an operator
+                    # replaces a node. Zero capacity is not a scientific error:
+                    # keep this exact depth open until a worker recovers or joins.
+                    try:
+                        self._wait_for_worker_capacity(
+                            client,
+                            distributed.session_id,
                         )
-                    ),
-                    allocation_loop_iter=(
-                        distributed.state.allocation_loop_iter
-                        + jnp.asarray(
-                            1,
-                            distributed.state.allocation_loop_iter.dtype,
-                        )
-                    ),
-                    scheduler_data=None,
-                )
-                distributed = dataclasses.replace(
+                    except Exception as exc:
+                        raise DistributedRunError(
+                            f"Observing distributed capacity failed: {exc}",
+                            distributed,
+                        ) from exc
+                    continue
+                raise DistributedRunError(
+                    "Distributed depth made no dispatch, growth, completion, "
+                    "or termination progress.",
                     distributed,
-                    state=state,
-                    depth_active=False,
                 )
-                # At this point every task from the depth is committed and no
-                # provisional reservation is present. The checkpoint therefore
-                # exposes exactly the same immutable state seen by goal_cond.
-                if checkpoint_manager is not None:
-                    checkpoint_manager.maybe_save(distributed)
-                continue
-            if bool(status.has_work):
-                # A pool may temporarily have no live lanes while an operator
-                # replaces a node. Zero capacity is not a scientific error:
-                # keep this exact depth open until a worker recovers or joins.
-                try:
-                    self._wait_for_worker_capacity(
-                        client,
-                        distributed.session_id,
-                    )
-                except Exception as exc:
-                    raise DistributedRunError(
-                        f"Observing distributed capacity failed: {exc}",
-                        distributed,
-                    ) from exc
-                continue
-            raise DistributedRunError(
-                "Distributed depth made no dispatch, growth, completion, "
-                "or termination progress.",
-                distributed,
-            )
+        except KeyboardInterrupt:
+            # Pending requests own their exact keys and reservations. Preserve
+            # this latest committed prefix before the outer boundary cancels
+            # remote execution and re-raises the interruption.
+            raise _DistributedInterrupt(distributed) from None
 
     def _dispatch_threads(
             self,

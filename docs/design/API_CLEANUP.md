@@ -131,3 +131,34 @@ state transfer, late worker arrival, checkpoint precedence, and local return.
 All maintained evidence-sampling helpers, reference functions, benchmarks, and
 tests now use the `sample_evidence` name, including their compiled and batched
 variants. This is a symbol-only change to the evidence kernels.
+
+## Progress and interruption
+
+Both runners accept `verbose=False`. Progress uses existing scalar fields,
+sample capacity, task identifiers, and Python monotonic times. It neither
+constructs results nor evaluates evidence or posterior summaries for logging.
+
+The requested SIGINT behavior extends the distributed lifecycle decision from
+issue #252: protocol 6 adds an explicit cancellation flag to session release.
+A cancelled session's busy assignments are fenced, its queued/completed task
+records are removed, and the existing node supervisor restarts affected worker
+processes. Other sessions and idle workers remain available. Local checkpointed
+runs return to Python at most every 32 replacement batches without callbacks
+inside JAX. Control returns retain the active schedule, random keys, and goal
+iteration counters. They do not become scientific goal boundaries.
+
+After Ctrl-C, the newest coherent state is saved when checkpointing is enabled,
+then KeyboardInterrupt propagates. Distributed cleanup also runs without a
+checkpoint. Signal deferral restores the caller's handler and is installed only
+on the main thread. Compilation and a currently executing batch must complete
+before the local continuation can be saved, so the batch bound is not a deadline
+in seconds. Initialisation interrupted before a complete state exists can only
+cancel the session, not invent a resumable state.
+
+The performance/intent review keeps progress outside compiled loops, adds no
+host callbacks, and restricts the extra compiled stopping condition to a scalar
+batch counter on the checkpointed path. A fixed-key SIGINT test resumes an
+unfinished local depth and reproduces every uninterrupted state leaf exactly,
+including the goal-call sequence. Real-process tests cover distributed SIGINT
+with and without checkpoints, zero-worker registration, replay of pending work,
+and preservation of another registered session. No wall-time speedup is claimed.

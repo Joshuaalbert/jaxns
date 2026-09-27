@@ -57,6 +57,10 @@ moving the run changes its execution resources while preserving its scientific
 configuration. ``unlimited_samples=True`` lets the sample buffers grow as
 needed instead of stopping at a fixed sample limit. The machine holding the
 state still needs enough memory for the growing sample collection.
+``verbose=True`` prints one progress line per goal iteration, using existing
+sample counters, maximum log-likelihood, and elapsed times. Distributed runs
+also report registration wait time and task counts. Progress reporting does
+not construct results or perform evidence sampling.
 
 .. literalinclude:: ../examples/laptop_to_cluster/laptop.py
    :language: python
@@ -194,6 +198,24 @@ longer than 60 seconds before its next checkpoint. A changed final state is
 always saved when the goal condition returns true. Checkpoints are published
 atomically, and an interrupted process resumes from the latest saved state.
 Work after that checkpoint may need to be repeated.
+
+Ctrl-C raises ``KeyboardInterrupt`` after saving the current continuation when
+checkpointing is enabled. Local checkpointed runs return control after at most
+32 replacement batches, with each batch finishing its constrained chains. A
+currently compiling or executing batch must finish before its state can be
+saved. This bound counts batches, not seconds. No signal callbacks run inside
+the compiled sampling loop.
+
+Distributed interruption saves committed samples and the exact pending
+requests, then cancels that session's remote work. Its busy workers are fenced
+and replaced by their supervisors. Other sessions remain registered, and the
+shared coordinator stays running. The next invocation replays saved pending
+requests. With checkpointing disabled, Ctrl-C propagates without a save, while
+distributed session cleanup still runs.
+
+A Ctrl-C checkpoint can contain an unfinished depth. Resume it through the
+same runner before making a local/distributed handoff. Use the ``PAUSE`` file
+when you want a completed goal boundary ready to transfer between topologies.
 
 On the cluster, ``touch PAUSE`` requests a clean pause in the same way as on the
 laptop. After the script returns, remove the file and run ``cluster.py`` again

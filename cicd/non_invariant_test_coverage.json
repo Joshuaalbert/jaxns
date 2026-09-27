@@ -920,6 +920,36 @@
       "path": "cicd/tests/test_distributed_runtime.py",
       "reason": "architecture_boundary",
       "note": "Exercises the laptop-to-cluster workflow over real TCP processes, starting without workers, joining a node, checkpointing, and returning to local sampling while retaining earlier samples."
+    },
+    "test_local_sigint_saves_partial_depth_and_replays_exactly": {
+      "path": "cicd/tests/test_run_control.py",
+      "reason": "architecture_boundary",
+      "note": "Exercises an actual SIGINT between bounded compiled batches, saving the unfinished schedule, restoring the signal handler, and reproducing uninterrupted state exactly."
+    },
+    "test_local_sigint_without_checkpoint_bubbles_up": {
+      "path": "cicd/tests/test_run_control.py",
+      "reason": "architecture_boundary",
+      "note": "Checks that Ctrl-C propagates without checkpoint writes when checkpointing is disabled."
+    },
+    "test_verbose_reports_goals_without_computing_results": {
+      "path": "cicd/tests/test_run_control.py",
+      "reason": "architecture_boundary",
+      "note": "Checks per-goal progress while evidence and result APIs are forbidden to the logging path."
+    },
+    "test_distributed_sigint_cancels_only_its_session": {
+      "path": "cicd/tests/test_distributed_runtime.py",
+      "reason": "architecture_boundary",
+      "note": "Exercises SIGINT with real processes, preserving another session and resuming committed and pending work from a checkpoint."
+    },
+    "test_cancel_fences_busy_workers_without_discarding_other_sessions": {
+      "path": "cicd/tests/test_distributed_runtime.py",
+      "reason": "architecture_boundary",
+      "note": "Checks cancellation fencing and remote-worker restart requests without destroying another session or an idle worker."
+    },
+    "test_sigint_during_worker_registration_saves_handoff": {
+      "path": "cicd/tests/test_distributed_runtime.py",
+      "reason": "architecture_boundary",
+      "note": "Checks that Ctrl-C during the zero-worker registration wait saves the supplied local handoff and removes its pending registration."
     }
   }
 }
