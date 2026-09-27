@@ -1018,9 +1018,9 @@ def test_real_pool_runs_scalar_vmap_retries_and_cli_lifecycle(tmp_path):
             state.samples.phantom_samples.valid_mask[4:state.num_samples]
         ))
 
-        # Exercise worker-local vmap explicitly. A partially filled worker
-        # takes the scalar path after batch_wait_s, while two compatible queued
-        # tasks use its configured two-lane vmap.
+        # Warm both scalar and two-lane programs before checking cache reuse.
+        # Submitting individual tasks in a loop can leave one width untested
+        # until reconnection, depending on worker and client timing.
         conformance_id = "worker-programs"
         # The local lambda proves one-time model/session registration supports
         # notebook and closure code rather than only importable module symbols.
@@ -1048,11 +1048,17 @@ def test_real_pool_runs_scalar_vmap_retries_and_cli_lifecycle(tmp_path):
                     sampler_data=None,
                 )
                 requests[task_id] = request
-                client.submit(conformance_id, task_id, request)
+            client.submit(conformance_id, 1, requests[1])
             completed = {
-                client.receive(conformance_id, timeout_s=30.0)[0]
-                for _ in requests
+                client.receive(conformance_id, timeout_s=30.0)[0],
             }
+            client.submit_many(
+                conformance_id, tuple(list(requests.items())[1:]),
+            )
+            completed.update(
+                client.receive(conformance_id, timeout_s=30.0)[0]
+                for _ in range(len(requests) - 1)
+            )
             assert completed == set(requests)
             for task_id in completed:
                 client.acknowledge(conformance_id, task_id)
