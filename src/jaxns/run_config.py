@@ -120,6 +120,8 @@ def resolve_run_config(
             raise TypeError(
                 "max_phantom_samples must be an integer or None."
             ) from error
+        if max_phantom_samples < 1:
+            raise ValueError("max_phantom_samples must be positive.")
     sampler = sampler._with_phantom_capacity(
         max_phantom_samples,
         U_ndims,

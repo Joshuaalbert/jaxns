@@ -48,19 +48,11 @@ MIN_CONTINUATION_CHAINS = 8
 
 
 class AbstractSampler(ABC):
-    """
-    Performs sampling from the prior within a likelihood constraint, to produce i.i.d. samples for nested sampling.
-    The sampler is assumed to be stateless and pure.
-    """
+    """Stateless, pure transitions from stationary seeds to classic children."""
 
     @abstractmethod
     def num_phantom(self) -> int:
-        """
-        Get the number of phantom samples to produce per real sample. Note that the number of phantom samples may be less than this if the sampler fails to produce enough valid phantom samples, but it will never be more than this.
-
-        Returns:
-            the number of phantom samples to produce per real sample.
-        """
+        """Return the retained phantom capacity per classic child."""
         ...
 
     @abstractmethod
@@ -74,20 +66,20 @@ class AbstractSampler(ABC):
             args=(),
             params=None,
     ) -> tuple[UType, FloatArray, IntArray, PhantomSamples]:
-        """
-        Produce a single i.i.d. sample from the model within the log_L_constraint.
+        """Produce a classic sample strictly above the parent contour.
 
         Args:
             key: PRNGkey
             model: Model owned by the calling run.
             log_L_constraint: the constraint to sample within
-            seed_point: a seed point to begin sampling from
+            seed_point: A stationary seed for the strict constrained prior.
 
         Returns:
-            U_sample: an i.i.d. sample within the constraint
+            U_sample: A sample from the strict constrained-prior marginal.
             log_L: the log-likelihood of the sample
-            num_likelihood_evaluations: number of likelihood evaluations used to produce the sample
-            phantom_samples: samples that satisfy the constraint but were not accepted. Can be used for various things, e.g. estimating evidence uncertainty.
+            num_likelihood_evaluations: Likelihood work used by this chain.
+            phantom_samples: Retained intermediate constrained-chain states,
+                excluding the final classic child.
         """
         ...
 

@@ -1143,8 +1143,10 @@ class DistributedNestedSampler:
 
         if depth_cond is None:
             depth_cond = self.depth_condition
+        # The checkpoint owns the resumed scientific model, just as it owns
+        # its arguments and parameters. Local sampling uses this same owner.
         session = WorkerSession(
-            model=self.model,
+            model=distributed.state.model,
             sampler=self.sampler,
             args=distributed.state.args,
             params=distributed.state.params,

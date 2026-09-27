@@ -188,7 +188,8 @@
   ],
   "A state contains all scientific data and random-stream position needed to continue its run without hidden mutable sampler state.": [
     "test_ellipsoidal_state_survives_checkpoint_growth_and_resume",
-    "test_user_stages_gmm_directions_between_uncertainty_goals"
+    "test_user_stages_gmm_directions_between_uncertainty_goals",
+    "test_distributed_resume_registers_the_checkpoint_model"
   ],
   "A finite scientific sample limit is never exceeded, including by a partially filled replacement batch.": [
     "test_finite_capacity_terminates_below_and_exactly_at_hard_maximum",

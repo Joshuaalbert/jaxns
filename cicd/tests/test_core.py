@@ -2603,6 +2603,13 @@ def test_nested_sampler_resolves_and_preserves_phantom_capacity():
 
     with pytest.raises(ValueError, match="collect_phantom_samples"):
         NestedSampler(model=model, max_phantom_samples=1)
+    for invalid_capacity in (0, -1):
+        with pytest.raises(ValueError, match="must be positive"):
+            NestedSampler(
+                model=model,
+                collect_phantom_samples=True,
+                max_phantom_samples=invalid_capacity,
+            )
     with pytest.raises(ValueError, match="num_slices - 1"):
         NestedSampler(
             model=model,

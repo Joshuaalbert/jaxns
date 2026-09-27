@@ -4,6 +4,8 @@ The runner owns the model, model inputs, sampler configuration, and a default
 `DepthCondition`. State retains the model and inputs needed to resume and
 interpret that run. A constrained sampler describes transitions only, and
 receives the owning run's model explicitly when asked to sample.
+New runs use the runner's model. Once a state exists, its saved model and
+inputs are authoritative for continuation, including worker registration.
 
 ## Results and inference
 
@@ -71,8 +73,12 @@ Review compared the implementation with develop at `317cec5`. The MC entry
 point now validates metadata once through the owning shrinkage API. Lineage
 expansion compiles from four required arrays, so changing a phantom prefix or
 the transformed parameter tree cannot retrace this independent operation.
-The sampler retains the existing random split schedule after removing
+Distributed resumption registers the checkpoint model, matching the model
+used by local resumption, rather than reading a separate runner model. The
+sampler retains the existing random split schedule after removing
 step-out bracketing, including the unused reserved stream.
+An explicitly supplied phantom capacity must be positive: zero previously
+fell through to full retention instead of expressing a valid memory bound.
 
 A fixed-key local run produced identical classic and phantom samples,
 out-degrees, likelihood counts, posterior weights, expectation summaries, and

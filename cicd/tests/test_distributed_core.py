@@ -79,6 +79,42 @@ def _local_checkpoint(
     )
 
 
+def test_distributed_resume_registers_the_checkpoint_model(monkeypatch):
+    from jaxns.runtime.client import SupervisorClient
+
+    runner = DistributedNestedSampler(
+        model=make_toy_model(), coordinator_port=5555,
+        root_allocation_degree=2, initial_capacity=4,
+    )
+    checkpoint = _local_checkpoint(runner, jax.random.PRNGKey(288))
+    # Run settings may be reused, but resumption must evaluate the model in
+    # the saved state, not a different likelihood now attached to the runner.
+    runner.model = dataclasses.replace(runner.model, centre=0.75)
+    registered = []
+
+    class Client:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            return False
+
+        def register(self, session_id, session):
+            registered.append(session)
+            return (1,)
+
+        def release(self, session_id):
+            assert session_id == checkpoint.session_id
+
+    monkeypatch.setattr(SupervisorClient, "from_port", lambda port: Client())
+    completed = runner.resume_until_goal(checkpoint, goal_cond=lambda state: True)
+    assert completed is checkpoint
+    assert registered[0].model is checkpoint.state.model
+    assert registered[0].args is checkpoint.state.args
+    assert registered[0].params is checkpoint.state.params
+    assert float(registered[0].model.log_likelihood(jnp.asarray(0.25))) == 0.0
+
+
 def test_distributed_directions_change_only_at_drained_boundaries():
     """Direction geometry is scientific state, never in-flight task state."""
     runner = DistributedNestedSampler(
