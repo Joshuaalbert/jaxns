@@ -38,14 +38,14 @@ from jaxns.runtime.protocol import (
 )
 
 if TYPE_CHECKING:
-    from jaxns.constrained_sampler import (
+    from jaxns.runtime.session import WorkerSession
+    from jaxns.sampling.ellipsoid import SamplerData
+    from jaxns.sampling.protocol import (
         ConstrainedSampleBatch,
         ConstrainedSampleRequest,
         LikelihoodEvaluation,
         LikelihoodRequest,
     )
-    from jaxns.runtime.session import WorkerSession
-    from jaxns.sampling.ellipsoid import SamplerData
 
 
 class RuntimeUnavailableError(RuntimeError):

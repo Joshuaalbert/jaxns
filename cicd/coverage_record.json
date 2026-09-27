@@ -21,7 +21,7 @@
   "Every nested-sampling contour is strict: a point satisfies contour lambda exactly when its likelihood is greater than lambda.": [
     "test_block_state_rejects_strict_contour_violation",
     "test_state_consistency_rejects_strict_contour_violation",
-    "test_results_sample_mc_shrinkage_rejects_strict_contour_equality",
+    "test_results_sample_evidence_mc_rejects_strict_contour_equality",
     "test_public_sample_mc_shrinkage_rejects_strict_contour_equality"
   ],
   "A seed used for a constrained chain is stationary for the requested parent contour before the chain starts.": [
@@ -130,7 +130,7 @@
     "test_gamma_weighted_helper_inactive_gate_ignores_phantom_counts_exactly"
   ],
   "When all eligible phantom clusters are independent singletons, phantom conditioning reduces to ordinary conjugate categorical-count conditioning.": [
-    "test_results_sample_mc_shrinkage_uses_gamma_conditioning_when_gate_active"
+    "test_results_sample_evidence_mc_uses_gamma_conditioning_when_gate_active"
   ],
   "A generated edge from parent likelihood L_i to child likelihood L_j adds one active lineage to every existing block whose likelihood satisfies L_i less than L_g less than or equal to L_j.": [
     "test_jax_decomposition_matches_python_reference_and_exact_coverage"
@@ -207,7 +207,8 @@
     "test_nested_sampling_run_results"
   ],
   "Posterior resampling draws from the normalized posterior weights represented by the result.": [
-    "test_resample_keeps_phantom_likelihood_metadata_aligned"
+    "test_resample_returns_an_empirical_posterior_with_integration",
+    "test_resampled_posterior_integrates_its_draws_and_round_trips"
   ],
   "Independent logical random choices use non-overlapping random streams derived from the run key.": [
     "test_gamma_race_components_and_cluster_weights_are_independent_draws"
@@ -215,7 +216,7 @@
   "Invalid shapes, invalid lineage capacity, inconsistent block membership, or incompatible phantom metadata fail visibly before producing scientific summaries.": [
     "test_count_matrix_validation_rejects_malformed_count_relations",
     "test_count_input_validation_rejects_stale_and_malformed_metadata",
-    "test_results_sample_mc_shrinkage_rejects_malformed_arrays_before_jit",
+    "test_results_sample_evidence_mc_rejects_malformed_arrays_before_jit",
     "test_public_sample_mc_shrinkage_rejects_stale_block_likelihoods_before_jit",
     "test_sample_evidence_mc_rejects_invalid_batch_sizes",
     "test_sample_evidence_mc_rejects_invalid_phantom_prefix"
@@ -271,5 +272,11 @@
   "A completed distributed state exposed to a user contains no provisional lineage or uncommitted sampling work.": [
     "test_reservations_are_planning_data_until_once_only_acceptance",
     "test_real_pool_runs_scalar_vmap_retries_and_cli_lifecycle"
+  ],
+  "User-facing evidence sampling defaults to classic conditioning and requires an explicit opt-in to phantom conditioning.": [
+    "test_mc_defaults_to_classic_without_changing_expectation_estimates"
+  ],
+  "Evaluating a model through its unit-hypercube representation gives the same likelihood as evaluating the corresponding transformed parameter values.": [
+    "test_sampler_uses_the_model_supplied_for_each_request"
   ]
 }

@@ -21,16 +21,20 @@ from jaxctx.priors.prior import Prior
 from tensorflow_probability.substrates import jax as tfp
 
 from jaxns.constrained_sampler import (
-    ConstrainedSampleRequest,
     UniDimSliceSampler,
-    sample_request,
 )
 from jaxns.model import Model
 from jaxns.runtime import client as runtime_client
 from jaxns.runtime.client import SupervisorClient
 from jaxns.runtime.session import WorkerSession
 from jaxns.samples import SeedPoint
+from jaxns.sampling.batching import (
+    sample_request,
+)
 from jaxns.sampling.ellipsoid import empty_sampler_data
+from jaxns.sampling.protocol import (
+    ConstrainedSampleRequest,
+)
 
 tfpd = tfp.distributions
 
@@ -122,6 +126,7 @@ def batched_request(keys, seed_u, seed_log_likelihood):
 
 
 def measure_local_width(
+        model: Model,
         sampler,
         width: int,
         tasks: int,
@@ -142,6 +147,7 @@ def measure_local_width(
             result = sample_request(
                 sampler,
                 batched_request(batch, seed_u, seed_log_likelihood),
+                model=model,
             )
             return total + jnp.sum(result.num_likelihood_evaluations), None
 
@@ -210,7 +216,7 @@ def run_round(
 
 def measure(workers: int, tasks: int, repeats: int) -> dict[str, object]:
     model = Model(prior_model=prior_model)
-    sampler = UniDimSliceSampler(model=model, num_slices=10)
+    sampler = UniDimSliceSampler(num_slices=10)
     session = WorkerSession(
         model=model,
         sampler=sampler,
@@ -334,7 +340,6 @@ def measure_batch_grouping(tasks: int, repeats: int) -> dict[str, object]:
     """Measure the marginal value of ignoring non-execution counters."""
     model = Model(prior_model=prior_model)
     sampler = UniDimSliceSampler(
-        model=model,
         num_slices=10,
     )
     session = WorkerSession(
@@ -443,7 +448,7 @@ def main() -> int:
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     model = Model(prior_model=prior_model)
-    sampler = UniDimSliceSampler(model=model, num_slices=10)
+    sampler = UniDimSliceSampler(num_slices=10)
     seed_u = model.sample_U(jax.random.PRNGKey(0))
     seed_log_likelihood = model.log_likelihood(seed_u)
     widths = tuple(
@@ -468,6 +473,7 @@ def main() -> int:
         ],
         "local_vmap_records": [
             measure_local_width(
+                model,
                 sampler,
                 width,
                 args.tasks,

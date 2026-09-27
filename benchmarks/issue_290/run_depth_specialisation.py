@@ -23,7 +23,7 @@ from jaxns.mixed_precision import mp_policy
     jax.jit,
     inline=True,
     static_argnames=(
-        "shell_size",
+        "replacement_width",
         "allocation_target",
         "root_degree",
         "delta_K",
@@ -35,14 +35,14 @@ def legacy_specialisation(
         sampler,
         depth_cond,
         *,
-        shell_size,
+        replacement_width,
         allocation_target,
         root_degree,
         delta_K,
         max_samples,
 ):
     """Reference the former cache key while leaving its dead values unused."""
-    del shell_size, allocation_target, root_degree, delta_K
+    del replacement_width, allocation_target, root_degree, delta_K
     return _run_depth(
         state,
         sampler,
@@ -65,7 +65,7 @@ def main() -> None:
     state = _start_schedule_round(
         state,
         condition,
-        shell_size=width,
+        replacement_width=width,
         allocation_target="uniform",
         root_degree=width,
         delta_K=1,
@@ -100,7 +100,7 @@ def main() -> None:
         state,
         sampler,
         condition,
-        shell_size=width,
+        replacement_width=width,
         allocation_target="uniform",
         root_degree=width,
         delta_K=1,
@@ -114,7 +114,7 @@ def main() -> None:
         state,
         sampler,
         condition,
-        shell_size=4 * width,
+        replacement_width=4 * width,
         allocation_target="posterior_improving",
         root_degree=2 * width,
         delta_K=width,
@@ -134,7 +134,7 @@ def main() -> None:
         state,
         sampler,
         condition,
-        shell_size=width,
+        replacement_width=width,
         allocation_target="uniform",
         root_degree=width,
         delta_K=1,
@@ -144,7 +144,7 @@ def main() -> None:
         state,
         sampler,
         condition,
-        shell_size=4 * width,
+        replacement_width=4 * width,
         allocation_target="posterior_improving",
         root_degree=2 * width,
         delta_K=width,

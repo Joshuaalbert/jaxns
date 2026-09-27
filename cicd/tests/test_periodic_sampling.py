@@ -8,15 +8,17 @@ from jax import numpy as jnp
 from jaxctx.priors.prior import Prior
 from tensorflow_probability.substrates import jax as tfp
 
-from jaxns.constrained_sampler import (
-    ConstrainedSampleRequest,
-    sample_request,
-)
 from jaxns.core import NestedSampler
 from jaxns.distributed_core import DistributedNestedSampler
 from jaxns.model import Model
 from jaxns.runtime.session import WorkerSession
 from jaxns.samples import SeedPoint
+from jaxns.sampling.batching import (
+    sample_request,
+)
+from jaxns.sampling.protocol import (
+    ConstrainedSampleRequest,
+)
 
 tfpd = tfp.distributions
 CONCENTRATION = 12.0
@@ -144,12 +146,14 @@ def test_distributed_worker_replays_the_configured_periodic_sampler():
         request,
         args=restored.args,
         params=restored.params,
+        model=model,
     )
     second = sample_request(
         restored.sampler,
         request,
         args=restored.args,
         params=restored.params,
+        model=model,
     )
 
     for left, right in zip(

@@ -12,7 +12,7 @@ from jax import numpy as jnp
 
 from cicd.tests.core_fixtures import make_state
 from cicd.tests.distributed_support import make_toy_model
-from jaxns import constrained_sampler, core
+from jaxns import constrained_sampler, core, run_config
 from jaxns.algorithm import depth
 from jaxns.algorithm.allocation import (
     AllocationPlan,
@@ -48,6 +48,8 @@ class DeterministicSampler(PureDataclassPytree, AbstractSampler):
             seed_point: SeedPoint,
             args=(),
             params=None,
+            *,
+            model,
     ):
         del key, args, params
         finite_constraint = jnp.where(
@@ -203,7 +205,7 @@ def _heap_test_schedule():
         block_state,
         _allocation_plan(block_state, (4, 0, 0, 0, 0, 0)),
         block_state.valid,
-        shell_size=2,
+        replacement_width=2,
         tail_K=jnp.asarray(0, dtype=jnp.int32),
     )
     return state, schedule
@@ -229,7 +231,7 @@ def test_continuations_wait_until_each_frozen_thread_has_started():
         block_state,
         _allocation_plan(block_state, (4, 0, 0, 0, 0, 0)),
         block_state.valid,
-        shell_size=2,
+        replacement_width=2,
         tail_K=jnp.asarray(0, dtype=jnp.int32),
     )
 
@@ -462,7 +464,7 @@ def test_same_contour_parallel_threads_use_distinct_stationary_seeds():
         block_state,
         _allocation_plan(block_state, (2, 0, 0, 0)),
         block_state.valid,
-        shell_size=4,
+        replacement_width=4,
         tail_K=jnp.asarray(0, dtype=jnp.int32),
     )
     _, work = depth._plan_scheduled_work_batch(
@@ -499,7 +501,7 @@ def test_same_contour_thread_starts_remain_distinct_across_batches():
         block_state,
         _allocation_plan(block_state, (6, 0, 0, 0, 0, 0)),
         block_state.valid,
-        shell_size=2,
+        replacement_width=2,
         tail_K=jnp.asarray(0, dtype=jnp.int32),
         seed_reservoir_size=6,
     )
@@ -546,7 +548,7 @@ def test_nonroot_start_reservation_is_not_bounded_by_batch_width():
             (0, 12, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
         ),
         block_state.valid,
-        shell_size=2,
+        replacement_width=2,
         tail_K=jnp.asarray(0, dtype=jnp.int32),
         seed_reservoir_size=2,
     )
@@ -601,7 +603,7 @@ def test_start_seed_reservations_rehash_exactly_when_storage_grows():
             (1,) + (0,) * (sample_capacity - 1),
         ),
         block_state.valid,
-        shell_size=1,
+        replacement_width=1,
         tail_K=jnp.asarray(0, dtype=jnp.int32),
     )
     original_size = schedule.start_seed_reservation_idx.shape[0]
@@ -680,7 +682,7 @@ def test_start_seed_reservation_storage_is_independent_of_sample_capacity():
                 (1,) + (0,) * (sample_capacity - 1),
             ),
             block_state.valid,
-            shell_size=2,
+            replacement_width=2,
             tail_K=jnp.asarray(0, dtype=jnp.int32),
         )
         sizes.append(schedule.start_seed_reservation_idx.shape[0])
@@ -728,7 +730,7 @@ def test_thread_starts_partition_published_and_retained_stationary_seeds():
         block_state,
         _allocation_plan(block_state, (4, 0, 0, 0, 0, 0, 0, 0)),
         block_state.valid,
-        shell_size=2,
+        replacement_width=2,
         tail_K=jnp.asarray(0, dtype=jnp.int32),
         seed_reservoir_size=4,
     )
@@ -807,7 +809,7 @@ def test_frozen_seed_rank_index_matches_every_brute_force_interval():
         blocks,
         _allocation_plan(blocks, (0,) * 6),
         blocks.valid,
-        shell_size=2,
+        replacement_width=2,
         tail_K=jnp.asarray(0, dtype=jnp.int32),
     )
     likelihood = np.asarray(state.samples.log_likelihoods)
@@ -856,7 +858,7 @@ def test_mixed_contour_seed_groups_remain_distinct_after_rejection():
         block_state,
         _allocation_plan(block_state, (0, 0, 0, 0, 0)),
         block_state.valid,
-        shell_size=5,
+        replacement_width=5,
         tail_K=jnp.asarray(0, dtype=jnp.int32),
     )
     constraints = jnp.asarray(
@@ -906,7 +908,7 @@ def test_missing_stationary_seed_reparents_to_closest_shallower_contour():
         block_state,
         _allocation_plan(block_state, (0, 0, 1, 0)),
         block_state.valid,
-        shell_size=1,
+        replacement_width=1,
         tail_K=jnp.asarray(0, dtype=jnp.int32),
     )
     # Isolate the fallback decision by representing a frozen contour whose
@@ -951,7 +953,7 @@ def test_effective_fallback_contour_orders_start_before_continuation():
         block_state,
         _allocation_plan(block_state, (0, 0, 1, 0)),
         block_state.valid,
-        shell_size=1,
+        replacement_width=1,
         tail_K=jnp.asarray(0, dtype=jnp.int32),
     )
     schedule = dataclasses.replace(
@@ -1000,7 +1002,7 @@ def test_seedless_continuation_heap_uses_its_effective_contour():
         block_state,
         _allocation_plan(block_state, (0, 0, 0, 0)),
         block_state.valid,
-        shell_size=1,
+        replacement_width=1,
         tail_K=jnp.asarray(0, dtype=jnp.int32),
     )
     schedule = dataclasses.replace(
@@ -1048,7 +1050,7 @@ def test_pending_same_contour_seeds_are_reserved_across_refills():
         block_state,
         _allocation_plan(block_state, (0, 0, 0, 0)),
         block_state.valid,
-        shell_size=2,
+        replacement_width=2,
         tail_K=jnp.asarray(0, dtype=jnp.int32),
     )
     selected = depth._sample_stationary_seeds(
@@ -1086,7 +1088,7 @@ def test_post_freeze_pending_start_is_counted_once():
         block_state,
         _allocation_plan(block_state, (3, 0, 0, 0, 0)),
         block_state.valid,
-        shell_size=3,
+        replacement_width=3,
         tail_K=jnp.asarray(0, dtype=jnp.int32),
     )
     current = make_state(
@@ -1150,7 +1152,7 @@ def test_evicted_recent_reservations_do_not_hide_unseen_stationary_seeds():
         block_state,
         _allocation_plan(block_state, (2, 0, 0, 0, 0)),
         block_state.valid,
-        shell_size=2,
+        replacement_width=2,
         tail_K=jnp.asarray(0, dtype=jnp.int32),
     )
     current = make_state(
@@ -1215,7 +1217,7 @@ def test_seed_pool_uses_value_independent_post_freeze_reservoir():
         block_state,
         _allocation_plan(block_state, (0, 0, 0, 0)),
         block_state.valid,
-        shell_size=2,
+        replacement_width=2,
         tail_K=jnp.asarray(0, dtype=jnp.int32),
     )
     current = make_state(
@@ -1277,7 +1279,7 @@ def test_appended_seed_population_remains_distinct_when_large_enough():
         block_state,
         _allocation_plan(block_state, (0, 0, 0, 0, 0, 0)),
         block_state.valid,
-        shell_size=3,
+        replacement_width=3,
         tail_K=jnp.asarray(0, dtype=jnp.int32),
     )
     current = make_state(
@@ -1332,7 +1334,7 @@ def test_seed_source_refresh_uses_geometric_generations():
         block_state,
         _allocation_plan(block_state, (1, 0, 0, 0)),
         block_state.valid,
-        shell_size=2,
+        replacement_width=2,
         tail_K=jnp.asarray(0, dtype=jnp.int32),
     )
     minimum_rows = (
@@ -1389,7 +1391,7 @@ def test_seed_source_refresh_uses_geometric_generations():
         grown_blocks,
         _allocation_plan(grown_blocks, (1,) + (0,) * 39),
         grown_blocks.valid,
-        shell_size=2,
+        replacement_width=2,
         tail_K=jnp.asarray(0, dtype=jnp.int32),
     )
     assert grown_schedule.continuation_parent_idx.shape[0] == 10
@@ -1398,8 +1400,8 @@ def test_seed_source_refresh_uses_geometric_generations():
 def test_seed_publication_preserves_frozen_thread_target():
     sampler = NestedSampler(
         model=make_toy_model(),
-        target_num_live_points=2,
-        shell_size=1,
+        root_allocation_degree=2,
+        replacement_width=1,
         delta_K=2,
         initial_capacity=64,
         unlimited_samples=True,
@@ -1454,7 +1456,7 @@ def test_seed_publication_merges_generation_larger_than_thread_heap():
         blocks,
         _allocation_plan(blocks, (1,) + (0,) * 199),
         blocks.valid,
-        shell_size=2,
+        replacement_width=2,
         tail_K=jnp.asarray(0, dtype=jnp.int32),
     )
     assert schedule.continuation_parent_idx.shape[0] == 10
@@ -1548,7 +1550,7 @@ def test_seed_publication_merges_root_dominated_refresh_generation():
         blocks,
         _allocation_plan(blocks, (1,) + (0,) * (capacity - 1)),
         blocks.valid,
-        shell_size=1,
+        replacement_width=1,
         tail_K=jnp.asarray(0, dtype=jnp.int32),
         seed_reservoir_size=source_size,
     )
@@ -1600,7 +1602,7 @@ def test_thread_storage_grows_independently_of_sample_storage():
         blocks,
         _allocation_plan(blocks, (1,) + (0,) * 39),
         blocks.valid,
-        shell_size=2,
+        replacement_width=2,
         tail_K=jnp.asarray(0, dtype=jnp.int32),
     )
     # Nine queued heads cannot safely admit another two-wide replacement
@@ -1640,7 +1642,7 @@ def test_thread_storage_grows_independently_of_sample_storage():
         )
         for fraction in (0.0, 0.49, 0.99)
     ])
-    runner_grown = core._grow_continuation_storage(state, shell_size=2)
+    runner_grown = core._grow_continuation_storage(state, replacement_width=2)
     assert runner_grown.scheduler_data.continuation_parent_idx.shape[0] == 20
     assert int(runner_grown.scheduler_data.continuation_count) == 9
     assert int(runner_grown.num_samples) == int(state.num_samples)
@@ -1703,7 +1705,7 @@ def test_frozen_target_projects_by_successor_contour():
         block_state,
         _allocation_plan(block_state, (0, 0, 0, 0, 0)),
         block_state.valid,
-        shell_size=2,
+        replacement_width=2,
         tail_K=jnp.asarray(9, dtype=jnp.int32),
     )
     schedule = dataclasses.replace(
@@ -1725,8 +1727,8 @@ def test_frozen_target_projects_by_successor_contour():
 def test_depth_epoch_appends_without_reordering_coordinate_payload():
     ns = NestedSampler(
         model=make_toy_model(),
-        target_num_live_points=2,
-        shell_size=1,
+        root_allocation_degree=2,
+        replacement_width=1,
         max_samples=3,
         initial_capacity=3,
         sampler=DeterministicSampler(),
@@ -1855,7 +1857,7 @@ def test_likelihood_order_publication_merges_new_rows_across_growth():
     state = depth._start_schedule_round(
         state,
         DepthCondition(),
-        shell_size=1,
+        replacement_width=1,
         allocation_target="uniform",
         root_degree=2,
         delta_K=1,
@@ -1900,8 +1902,8 @@ def test_likelihood_order_publication_merges_new_rows_across_growth():
 def test_partial_batch_respects_non_multiple_max_samples():
     ns = NestedSampler(
         model=make_toy_model(),
-        target_num_live_points=2,
-        shell_size=2,
+        root_allocation_degree=2,
+        replacement_width=2,
         max_samples=3,
         initial_capacity=4,
         sampler=DeterministicSampler(),
@@ -1925,8 +1927,8 @@ def test_partial_batch_respects_non_multiple_max_samples():
 def test_outer_target_uses_fixed_initial_degree_not_mutable_root_degree():
     ns = NestedSampler(
         model=make_toy_model(),
-        target_num_live_points=2,
-        shell_size=1,
+        root_allocation_degree=2,
+        replacement_width=1,
         delta_K=1,
         max_samples=20,
         initial_capacity=20,
@@ -1951,8 +1953,8 @@ def test_outer_target_uses_fixed_initial_degree_not_mutable_root_degree():
 def test_first_uniform_depth_view_uses_zero_based_allocation_target():
     ns = NestedSampler(
         model=make_toy_model(),
-        target_num_live_points=2,
-        shell_size=1,
+        root_allocation_degree=2,
+        replacement_width=1,
         delta_K=2,
         sampler=DeterministicSampler(),
     )
@@ -1978,8 +1980,8 @@ def test_first_uniform_depth_view_uses_zero_based_allocation_target():
 def test_resume_uses_stored_key_and_matches_uninterrupted_run():
     ns = NestedSampler(
         model=make_toy_model(),
-        target_num_live_points=2,
-        shell_size=1,
+        root_allocation_degree=2,
+        replacement_width=1,
         max_samples=8,
         initial_capacity=4,
         sampler=DeterministicSampler(),
@@ -2008,8 +2010,8 @@ def test_resume_uses_stored_key_and_matches_uninterrupted_run():
 def test_python_goal_loop_reports_terminal_depth_budget_without_iteration():
     ns = NestedSampler(
         model=make_toy_model(),
-        target_num_live_points=2,
-        shell_size=1,
+        root_allocation_degree=2,
+        replacement_width=1,
         max_samples=2,
         initial_capacity=2,
         sampler=DeterministicSampler(),
@@ -2031,8 +2033,8 @@ def test_python_goal_loop_reports_terminal_depth_budget_without_iteration():
 def test_filled_target_advances_allocation_without_exposing_user_goal():
     ns = NestedSampler(
         model=make_toy_model(),
-        target_num_live_points=2,
-        shell_size=1,
+        root_allocation_degree=2,
+        replacement_width=1,
         delta_K=1,
         max_samples=4,
         initial_capacity=4,
@@ -2097,34 +2099,34 @@ def test_filled_target_advances_allocation_without_exposing_user_goal():
 def test_sample_storage_modes_are_explicit_and_inspectable():
     finite_default = NestedSampler(
         model=make_toy_model(),
-        target_num_live_points=2,
-        shell_size=1,
+        root_allocation_degree=2,
+        replacement_width=1,
         sampler=DeterministicSampler(),
     )
-    assert finite_default.max_samples == 2 * core.SAMPLES_PER_ROOT
-    assert finite_default.initial_capacity == 2 + core.INITIAL_BATCHES
+    assert finite_default.max_samples == 2 * run_config.SAMPLES_PER_ROOT
+    assert finite_default.initial_capacity == 2 + run_config.INITIAL_BATCHES
     assert finite_default.delta_K == 2
     assert not finite_default.unlimited_samples
 
     finite_large = NestedSampler(
         model=make_toy_model(),
-        target_num_live_points=2,
-        shell_size=1,
+        root_allocation_degree=2,
+        replacement_width=1,
         max_samples=5000,
         sampler=DeterministicSampler(),
     )
     assert finite_large.max_samples == 5000
-    assert finite_large.initial_capacity == 2 + core.INITIAL_BATCHES
+    assert finite_large.initial_capacity == 2 + run_config.INITIAL_BATCHES
 
     unlimited = NestedSampler(
         model=make_toy_model(),
-        target_num_live_points=2,
-        shell_size=1,
+        root_allocation_degree=2,
+        replacement_width=1,
         unlimited_samples=True,
         sampler=DeterministicSampler(),
     )
     assert unlimited.max_samples is None
-    assert unlimited.initial_capacity == 2 + core.INITIAL_BATCHES
+    assert unlimited.initial_capacity == 2 + run_config.INITIAL_BATCHES
 
     with pytest.raises(ValueError, match="conflicts"):
         NestedSampler(
@@ -2146,8 +2148,8 @@ def _assert_single_depth_outcome(state):
 def test_compiled_depth_classifies_normal_growth_and_terminal_returns():
     common = {
         "model": make_toy_model(),
-        "target_num_live_points": 2,
-        "shell_size": 1,
+        "root_allocation_degree": 2,
+        "replacement_width": 1,
         "delta_K": 1,
         "sampler": DeterministicSampler(),
     }
@@ -2209,8 +2211,8 @@ def test_compiled_depth_classifies_normal_growth_and_terminal_returns():
 def test_unlimited_growth_matches_preallocated_scientific_continuation():
     common = {
         "model": make_toy_model(),
-        "target_num_live_points": 2,
-        "shell_size": 1,
+        "root_allocation_degree": 2,
+        "replacement_width": 1,
         "delta_K": 1,
         "unlimited_samples": True,
         "sampler": DeterministicSampler(),
@@ -2258,8 +2260,8 @@ def test_unlimited_growth_matches_preallocated_scientific_continuation():
 def test_finite_capacity_terminates_below_and_exactly_at_hard_maximum():
     common = {
         "model": make_toy_model(),
-        "target_num_live_points": 2,
-        "shell_size": 2,
+        "root_allocation_degree": 2,
+        "replacement_width": 2,
         "delta_K": 2,
         "sampler": DeterministicSampler(),
     }
@@ -2299,8 +2301,8 @@ def test_finite_capacity_terminates_below_and_exactly_at_hard_maximum():
 def test_state_checkpoint_round_trip_preserves_resume_key_and_order():
     ns = NestedSampler(
         model=make_toy_model(),
-        target_num_live_points=2,
-        shell_size=1,
+        root_allocation_degree=2,
+        replacement_width=1,
         max_samples=4,
         sampler=DeterministicSampler(),
     )
@@ -2320,13 +2322,12 @@ def test_state_checkpoint_round_trip_preserves_resume_key_and_order():
 def test_ellipsoidal_state_survives_checkpoint_growth_and_resume():
     model = TwoDimensionalModel()
     sampler = UniDimSliceSampler(
-        model=model,
         num_slices=4,
     )
     common = {
         "model": model,
         "root_allocation_degree": 6,
-        "shell_size": 2,
+        "replacement_width": 2,
         "delta_K": 2,
         "unlimited_samples": True,
         "sampler": sampler,
@@ -2428,11 +2429,11 @@ def test_ellipsoidal_state_survives_checkpoint_growth_and_resume():
 def test_user_stages_gmm_directions_between_uncertainty_goals():
     """Exercise the public isotropic -> fit -> GMM continuation workflow."""
     model = NarrowTwoDimensionalModel()
-    sampler = UniDimSliceSampler(model=model, num_slices=4)
+    sampler = UniDimSliceSampler(num_slices=4)
     ns = NestedSampler(
         model=model,
         root_allocation_degree=8,
-        shell_size=8,
+        replacement_width=8,
         max_samples=12_000,
         sampler=sampler,
     )
@@ -2497,8 +2498,8 @@ def test_user_stages_gmm_directions_between_uncertainty_goals():
 def test_public_scientific_data_objects_are_frozen_and_slotted():
     ns = NestedSampler(
         model=make_toy_model(),
-        target_num_live_points=2,
-        shell_size=1,
+        root_allocation_degree=2,
+        replacement_width=1,
         max_samples=3,
         initial_capacity=3,
         sampler=DeterministicSampler(),
@@ -2560,7 +2561,6 @@ def test_nested_sampler_resolves_and_preserves_phantom_capacity():
     # supplies an otherwise unbounded built-in slice sampler. Direct low-level
     # use remains capable of retaining every eligible transition.
     custom_unbounded = UniDimSliceSampler(
-        model=model,
         num_slices=10,
         collect_phantom_samples=True,
     )
@@ -2617,7 +2617,7 @@ def test_additional_retained_phantoms_leave_classic_run_invariant():
         "model": model,
         "collect_phantom_samples": True,
         "root_allocation_degree": 4,
-        "shell_size": 2,
+        "replacement_width": 2,
         "max_samples": 6,
         "initial_capacity": 6,
         "depth_condition": DepthCondition(),
@@ -2654,12 +2654,12 @@ def test_additional_retained_phantoms_leave_classic_run_invariant():
     evidence_key = jax.random.PRNGKey(2284)
     short_evidence = short_result.sample_evidence_mc(
         num_samples=16,
-        conditioning="classic",
+        phantom_conditioning=False,
         key=evidence_key,
     )
     long_evidence = long_result.sample_evidence_mc(
         num_samples=16,
-        conditioning="classic",
+        phantom_conditioning=False,
         key=evidence_key,
     )
     np.testing.assert_array_equal(

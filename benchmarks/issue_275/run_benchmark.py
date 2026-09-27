@@ -167,7 +167,7 @@ def _evidence_samples(result, conditioning: str, seed: int):
         # 256 draws make MC error in the ensemble mean negligible relative to
         # the between-run NS error while keeping the 30-seed benchmark cheap.
         num_samples=256,
-        conditioning=conditioning,
+        phantom_conditioning=(conditioning == "phantom"),
         key=jax.random.PRNGKey(90_000 + seed),
     )
     values = np.asarray(shrinkage.log_Z_samples)

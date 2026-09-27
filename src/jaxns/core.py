@@ -1,7 +1,6 @@
 """Depth-first nested sampling core described by the paper."""
 
 import dataclasses
-import operator
 from collections.abc import Callable
 from contextlib import nullcontext
 from pathlib import Path
@@ -31,27 +30,21 @@ from jaxns.checkpoint import (
 )
 from jaxns.constrained_sampler import (
     AbstractSampler,
-    UniDimSliceSampler,
 )
 from jaxns.depth_condition import DepthCondition
 from jaxns.mixed_precision import mp_policy
 from jaxns.model import Model
 from jaxns.pytree import PureDataclassPytree
+from jaxns.run_config import resolve_run_config
 from jaxns.state import State
 from jaxns.types import PRNGKey
-
-# The default finite ceiling permits substantial runs without silently opting
-# into unlimited memory. Physical storage starts smaller and grows on demand;
-# keeping both policies singular lets benchmark evidence revise either one.
-SAMPLES_PER_ROOT = 1000
-INITIAL_BATCHES = 64
 
 
 def _ensure_thread_schedule(
         state: State,
         depth_cond: DepthCondition,
         *,
-        shell_size: int,
+        replacement_width: int,
         allocation_target: str,
         root_degree: int,
         delta_K: int,
@@ -68,7 +61,7 @@ def _ensure_thread_schedule(
     state = _start_schedule_round(
         state,
         depth_cond,
-        shell_size=shell_size,
+        replacement_width=replacement_width,
         allocation_target=allocation_target,
         root_degree=root_degree,
         delta_K=delta_K,
@@ -76,13 +69,13 @@ def _ensure_thread_schedule(
     return state
 
 
-def _grow_continuation_storage(state: State, shell_size: int) -> State:
+def _grow_continuation_storage(state: State, replacement_width: int) -> State:
     """Double the transient thread heap without advancing logical work."""
     schedule = state.scheduler_data
     if schedule is None:
         raise ValueError("Continuation growth requires an active schedule.")
     current_size = schedule.continuation_parent_idx.shape[0]
-    required_size = int(schedule.continuation_count) + shell_size
+    required_size = int(schedule.continuation_count) + replacement_width
     new_size = max(2 * current_size, required_size)
     return dataclasses.replace(
         state,
@@ -96,13 +89,13 @@ def _grow_continuation_storage(state: State, shell_size: int) -> State:
     )
 
 
-def _grow_start_seed_storage(state: State, shell_size: int) -> State:
+def _grow_start_seed_storage(state: State, replacement_width: int) -> State:
     """Double exact no-replacement storage without advancing the schedule."""
     schedule = state.scheduler_data
     if schedule is None:
         raise ValueError("Seed reservation growth requires an active schedule.")
     current_size = schedule.start_seed_reservation_idx.shape[0]
-    required_size = 2 * (int(schedule.num_start_seeds) + shell_size)
+    required_size = 2 * (int(schedule.num_start_seeds) + replacement_width)
     new_size = max(2 * current_size, required_size)
     new_size = 1 << (new_size - 1).bit_length()
     return dataclasses.replace(
@@ -130,10 +123,9 @@ class NestedSampler(PureDataclassPytree):
     """
 
     model: Model
-    target_num_live_points: int | None = None
     root_allocation_degree: int | None = None
     max_samples: int | None = None
-    shell_size: int | None = None
+    replacement_width: int | None = None
     args: tuple = ()
     params: CtxParams | None = None
     sampler: AbstractSampler | None = None
@@ -150,131 +142,40 @@ class NestedSampler(PureDataclassPytree):
     unlimited_samples: bool = False
 
     def __post_init__(self):
-        periodic = self.model._periodic_coordinates(self.args, self.params)
-        # The aligned metadata already carries one flag per scalar base-space
-        # coordinate, so it also supplies dimension without a second model
-        # init trace. Collapse all-false flags before sampler construction to
-        # preserve the exact pre-periodic key schedule and compiled hot path.
-        U_ndims = len(periodic)
-        if not any(periodic):
-            periodic = ()
-        root_degree = self.root_allocation_degree
-        if root_degree is None:
-            root_degree = self.target_num_live_points
-        if root_degree is None:
-            # Match v2's robust default number of independent Markov chains.
-            # Merely recording phantoms must not change the sampled race tree.
-            root_degree = max(1, 30 * U_ndims)
-        if (
-            self.root_allocation_degree is not None
-            and self.target_num_live_points is not None
-            and self.root_allocation_degree != self.target_num_live_points
-        ):
-            raise ValueError(
-                "root_allocation_degree and target_num_live_points disagree."
-            )
-        shell_size = self.shell_size
-        if shell_size is None:
-            # A wider vmap increases exposure to the slowest data-dependent
-            # rejection loop in the batch. Ten chains per dimension retains
-            # useful CPU batching without the long-tail cost observed at the
-            # former half-root width on multimodal problems.
-            shell_size = min(root_degree, max(1, 10 * U_ndims))
-        max_samples = self.max_samples
-        if self.unlimited_samples and max_samples is not None:
-            raise ValueError(
-                "unlimited_samples=True conflicts with a finite max_samples."
-            )
-        if not self.unlimited_samples:
-            if max_samples is None:
-                max_samples = max(
-                    root_degree + shell_size,
-                    SAMPLES_PER_ROOT * root_degree,
-                )
-            max_samples = int(max_samples)
-            if max_samples < root_degree:
-                raise ValueError("max_samples must hold all root samples.")
-        delta_K = self.delta_K
-        if delta_K is None:
-            if self.allocation_target == "uniform":
-                # Uniform iteration k targets d_0 + delta_K * k. Matching the
-                # increment to d_0 adds one root population at each completed
-                # goal-loop iteration: d_0, 2 d_0, 3 d_0, and so on.
-                delta_K = root_degree
-            else:
-                # Utility allocation defines a direct gap, so one replacement
-                # width normally keeps every vmapped lane scientifically busy.
-                delta_K = shell_size
-        if shell_size <= 0 or delta_K <= 0:
-            raise ValueError("shell_size and delta_K must be positive.")
-
-        sampler = self.sampler
-        if sampler is None:
-            num_slices = max(1, 5 * U_ndims)
-            sampler = UniDimSliceSampler(
-                model=self.model,
-                num_slices=num_slices,
-                no_step_out=True,
-                collect_phantom_samples=self.collect_phantom_samples,
-            )
-        max_phantom_samples = self.max_phantom_samples
-        if max_phantom_samples is not None:
-            try:
-                max_phantom_samples = operator.index(max_phantom_samples)
-            except TypeError as error:
-                raise TypeError(
-                    "max_phantom_samples must be an integer or None."
-                ) from error
-        sampler = sampler._with_phantom_capacity(
-            max_phantom_samples,
-            U_ndims,
+        config = resolve_run_config(
+            execution="local",
+            model=self.model,
+            args=self.args,
+            params=self.params,
+            root_allocation_degree=self.root_allocation_degree,
+            replacement_width=self.replacement_width,
+            max_samples=self.max_samples,
+            sampler=self.sampler,
+            depth_condition=self.depth_condition,
+            collect_phantom_samples=self.collect_phantom_samples,
+            max_phantom_samples=self.max_phantom_samples,
+            allocation_target=self.allocation_target,
+            delta_K=self.delta_K,
+            initial_capacity=self.initial_capacity,
+            unlimited_samples=self.unlimited_samples,
         )
-        sampler = sampler._with_periodic(periodic)
-        sampler.validate_core(U_ndims)
-
-        depth_condition = self.depth_condition
-        if depth_condition is None:
-            depth_condition = DepthCondition(
-                # Match the released v2 scientific stopping goal exactly so
-                # accuracy/performance comparisons cannot benefit from an
-                # earlier termination threshold.
-                dlogZ=jnp.log1p(
-                    jnp.asarray(1e-3, mp_policy.measure_dtype)
-                ),
-            )
-        initial_capacity = self.initial_capacity
-        if initial_capacity is None:
-            # Preallocating the full default maximum makes every fixed-shape
-            # block scan pay for unused padding. Start with enough room for a
-            # useful number of replacement batches, then grow geometrically.
-            initial_capacity = root_degree + INITIAL_BATCHES * shell_size
-        initial_capacity = int(initial_capacity)
-        if initial_capacity < root_degree:
-            raise ValueError("initial_capacity must hold all root samples.")
-        if max_samples is not None:
-            initial_capacity = min(initial_capacity, max_samples)
-
-        self.target_num_live_points = root_degree
-        self.root_allocation_degree = root_degree
-        self.shell_size = int(shell_size)
-        self.max_samples = max_samples
-        self.sampler = sampler
-        # Publish the resolved static width, including custom samplers, so a
-        # caller can distinguish retained capacity from later MC prefix use.
-        self.max_phantom_samples = int(sampler.num_phantom())
-        self.depth_condition = depth_condition
-        self.initial_capacity = initial_capacity
-        self.delta_K = int(delta_K)
+        self.root_allocation_degree = config.root_allocation_degree
+        self.replacement_width = config.replacement_width
+        self.max_samples = config.max_samples
+        self.sampler = config.sampler
+        self.max_phantom_samples = config.max_phantom_samples
+        self.depth_condition = config.depth_condition
+        self.initial_capacity = config.initial_capacity
+        self.delta_K = config.delta_K
 
     @classmethod
     def flatten(cls, this) -> tuple[list[Any], tuple[Any, ...]]:
         return cls.build_flatten(
             this,
             [
-                "target_num_live_points",
                 "root_allocation_degree",
                 "max_samples",
-                "shell_size",
+                "replacement_width",
                 "collect_phantom_samples",
                 "max_phantom_samples",
                 "allocation_target",
@@ -507,7 +408,7 @@ class NestedSampler(PureDataclassPytree):
             state = _ensure_thread_schedule(
                 state,
                 depth_cond,
-                shell_size=int(self.shell_size),
+                replacement_width=int(self.replacement_width),
                 allocation_target=self.allocation_target,
                 root_degree=int(self.root_allocation_degree),
                 delta_K=int(self.delta_K),
@@ -521,7 +422,7 @@ class NestedSampler(PureDataclassPytree):
             if bool(state.needs_growth):
                 capacity = state.samples.log_likelihoods.shape[0]
                 required_capacity = int(state.num_samples) + int(
-                    self.shell_size
+                    self.replacement_width
                 )
                 new_capacity = max(2 * capacity, required_capacity)
                 if self.max_samples is not None:
@@ -565,7 +466,7 @@ class NestedSampler(PureDataclassPytree):
             ):
                 state = _grow_continuation_storage(
                     state,
-                    int(self.shell_size),
+                    int(self.replacement_width),
                 )
                 continue
             if (
@@ -576,7 +477,7 @@ class NestedSampler(PureDataclassPytree):
             ):
                 state = _grow_start_seed_storage(
                     state,
-                    int(self.shell_size),
+                    int(self.replacement_width),
                 )
                 continue
             source_published = False
@@ -617,7 +518,7 @@ class NestedSampler(PureDataclassPytree):
                         state,
                         previous,
                         depth_cond,
-                        shell_size=int(self.shell_size),
+                        replacement_width=int(self.replacement_width),
                     )
                     schedule = state.scheduler_data
                     if schedule is None:
@@ -772,7 +673,7 @@ class NestedSampler(PureDataclassPytree):
             state = _ensure_thread_schedule(
                 state,
                 depth_cond,
-                shell_size=int(self.shell_size),
+                replacement_width=int(self.replacement_width),
                 allocation_target=self.allocation_target,
                 root_degree=int(self.root_allocation_degree),
                 delta_K=int(self.delta_K),
@@ -795,7 +696,7 @@ class NestedSampler(PureDataclassPytree):
             ):
                 state = _grow_continuation_storage(
                     state,
-                    int(self.shell_size),
+                    int(self.replacement_width),
                 )
                 continue
             if (
@@ -806,7 +707,7 @@ class NestedSampler(PureDataclassPytree):
             ):
                 state = _grow_start_seed_storage(
                     state,
-                    int(self.shell_size),
+                    int(self.replacement_width),
                 )
                 continue
             source_published = False
@@ -857,7 +758,7 @@ class NestedSampler(PureDataclassPytree):
                 state,
                 previous,
                 depth_cond,
-                shell_size=int(self.shell_size),
+                replacement_width=int(self.replacement_width),
             )
             schedule = state.scheduler_data
             if schedule is None:

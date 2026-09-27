@@ -50,7 +50,7 @@ def main() -> None:
         result = state.to_result().trim()
         ensemble = result.sample_evidence_mc(
             num_samples=1000,
-            conditioning="classic",
+            phantom_conditioning=False,
             key=jax.random.PRNGKey(290 + seed),
         )
         samples = np.asarray(ensemble.log_Z_samples)  # [M]

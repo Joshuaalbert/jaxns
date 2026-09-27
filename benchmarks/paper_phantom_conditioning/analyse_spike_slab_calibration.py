@@ -18,6 +18,7 @@ from benchmarks.paper_phantom_conditioning.prefix_sweep import (
     sample_phantom_prefix_sweep_reference,
 )
 from jaxns.checkpoint import CheckpointManager
+from jaxns.results import _incoming_lineages_per_sample
 
 DIMENSION = 8
 NUM_GROUPS = 9
@@ -165,7 +166,7 @@ def main() -> None:
     log_Z, gates = sample_phantom_prefix_sweep_reference(
         key=jax.random.fold_in(jax.random.PRNGKey(args.seed), 1),
         log_L_constraints=results.log_L_constraints,
-        K_classic=results.num_live_points_per_sample,
+        K_classic=_incoming_lineages_per_sample(results),
         valid_phantom=results.valid_phantom,
         log_L_phantom=results.log_L_phantom,
         num_samples=results.total_num_samples,
@@ -202,7 +203,7 @@ def main() -> None:
         "goal_loop_iterations": int(state.goal_loop_iter),
         "allocation_loop_iterations": int(state.allocation_loop_iter),
         "maximum_active_lineages": int(np.max(
-            np.asarray(results.num_live_points_per_sample)[valid_blocks]
+            np.asarray(_incoming_lineages_per_sample(results))[valid_blocks]
         )),
         "likelihood_evaluations": int(
             results.total_num_likelihood_evaluations

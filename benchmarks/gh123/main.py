@@ -52,7 +52,6 @@ def build_run_model(k):
         model = Model(prior_model=prior_model)
         num_slices = max(9, k + 1)
         sampler = UniDimSliceSampler(
-            model=model,
             num_slices=num_slices,
             collect_phantom_samples=(k > 0),
             max_phantom_samples=k if k > 0 else None,

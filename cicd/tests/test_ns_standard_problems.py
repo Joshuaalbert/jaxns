@@ -557,7 +557,7 @@ def test_nested_sampling_run_results(case, collect_phantom_samples):
     # and is checked separately against the known evidence below.
     classic_shrinkage = results.sample_evidence_mc(
         num_samples=1000,
-        conditioning="classic",
+        phantom_conditioning=False,
         key=jax.random.PRNGKey(20260823),
     )
     classic_log_Z_mean = np.mean(
@@ -573,7 +573,7 @@ def test_nested_sampling_run_results(case, collect_phantom_samples):
     if collect_phantom_samples:
         mc_shrinkage = results.sample_evidence_mc(
             num_samples=1000,
-            conditioning="phantom",
+            phantom_conditioning=True,
             key=jax.random.PRNGKey(20260823),
         )
     else:

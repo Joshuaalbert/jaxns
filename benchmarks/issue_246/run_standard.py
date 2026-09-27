@@ -247,10 +247,9 @@ def main() -> None:
     dimension = int(model.U_ndims())
     num_slices = 5 * dimension
     root_degree = 30 * dimension
-    shell_size = min(root_degree, 10 * dimension)
+    replacement_width = min(root_degree, 10 * dimension)
     retained_phantoms = dimension if args.phantoms else 0
     sampler = UniDimSliceSampler(
-        model=model,
         num_slices=num_slices,
         collect_phantom_samples=args.phantoms,
         max_phantom_samples=(
@@ -260,7 +259,7 @@ def main() -> None:
     nested_sampler = NestedSampler(
         model=model,
         root_allocation_degree=root_degree,
-        shell_size=shell_size,
+        replacement_width=replacement_width,
         max_samples=100 * root_degree,
         collect_phantom_samples=args.phantoms,
         sampler=sampler,
@@ -284,7 +283,7 @@ def main() -> None:
         "truth_log_Z": float(truth),
         "dimension": dimension,
         "root_degree": root_degree,
-        "replacement_width": shell_size,
+        "replacement_width": replacement_width,
         "num_slices": num_slices,
         "dlogZ": float(nested_sampler.depth_condition.dlogZ),
         "fit_log_Z_uncert": (
@@ -323,7 +322,7 @@ def main() -> None:
         start = time.perf_counter()
         evidence = results.sample_evidence_mc(
             num_samples=args.mc_draws,
-            conditioning=conditioning,
+            phantom_conditioning=(conditioning == "phantom"),
             key=jax.random.fold_in(key, 1),
         )
         jax.block_until_ready(evidence)

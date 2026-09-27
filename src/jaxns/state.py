@@ -1,7 +1,6 @@
 import dataclasses
 import operator
 from functools import partial
-from typing import Literal
 
 import jax.random
 import jax.tree
@@ -28,7 +27,6 @@ from jaxns.shrinkage.classic import (
     dirichlet_probability_means,
     expected_evidence_summary,
     expected_log_posterior_weights,
-    sample_evidence,
     validate_lineage_capacity,
 )
 from jaxns.shrinkage.phantom import EvidenceSamples
@@ -146,20 +144,6 @@ class State(PureDataclassPytree):
         """Return the logical likelihood work from valid classic rows only."""
         return _total_likelihood_evaluations(self)
 
-    def sample_logZ(self, key, num_samples: int) -> FloatArray:
-        """
-        Samples log-evidence from the current state.
-
-        Args:
-            key: PRNGKey
-            num_samples: how many sampels to produce.
-
-        Returns:
-            samples of log-evidence.
-        """
-        _validate_evidence_block_capacity(self)
-        return _sample_logZ(self, key, num_samples)
-
     def fit_gmm_directions(
             self,
             *,
@@ -242,7 +226,7 @@ class State(PureDataclassPytree):
             self,
             num_samples: int,
             *,
-            conditioning: Literal["classic", "phantom"],
+            phantom_conditioning: bool = False,
             key: jax.Array,
             num_phantoms: int | None = None,
             batch_size: int | None = None,
@@ -252,13 +236,14 @@ class State(PureDataclassPytree):
         """Draw final evidence samples from this immutable state.
 
         This is a thin state-level forwarder to the same result implementation
-        used after a run. ``conditioning`` must explicitly be ``"classic"``
-        or ``"phantom"``; the depth-loop expectation register is not used.
+        used after a run. Classic conditioning is the default. Phantom
+        conditioning is opt-in and never changes the expectation-based
+        summaries used by the goal condition.
 
         Args:
             num_samples: Number of evidence draws.
-            conditioning: Whether to use only the classic race or condition
-                on retained phantom clusters.
+            phantom_conditioning: Whether to condition on retained phantom
+                clusters. False uses only the classic race.
             key: Explicit JAX random key.
             num_phantoms: Number of retained states to use from the start of
                 each phantom cluster. ``None`` uses every saved state.
@@ -272,7 +257,7 @@ class State(PureDataclassPytree):
         """
         return self.to_result().trim().sample_evidence_mc(
             num_samples=num_samples,
-            conditioning=conditioning,
+            phantom_conditioning=phantom_conditioning,
             key=key,
             num_phantoms=num_phantoms,
             batch_size=batch_size,
@@ -600,24 +585,6 @@ def _to_result(self: State) -> NestedSamplerResults:
         )
     )(U_samples) - log_Z_mean
     log_posterior_density = jnp.where(sample_mask, log_posterior_density, -jnp.inf)
-    # Storage order is stable append order, not likelihood order. Map each
-    # sample to its strict likelihood block instead of sorting the coordinate
-    # pytree merely to recover K_g.
-    sample_block_idx = jnp.searchsorted(
-        block_state.log_L_blocks,
-        self.samples.log_likelihoods,
-        side="left",
-    )
-    sample_block_idx = jnp.clip(
-        sample_block_idx,
-        0,
-        block_state.log_L_blocks.shape[0] - 1,
-    )
-    num_live_points_per_sample = jnp.where(
-        sample_mask,
-        block_state.incoming_K[sample_block_idx],
-        jnp.asarray(0, mp_policy.count_dtype),
-    )
     # Physical storage tail rows may contain ignored scheduler work or stale
     # overwritten batches. They are not classic samples and must contribute
     # neither a per-sample logical count nor the user-facing total.
@@ -662,7 +629,6 @@ def _to_result(self: State) -> NestedSamplerResults:
         log_dp=log_dp,
         log_X_mean=log_X_mean,
         log_posterior_density=log_posterior_density,
-        num_live_points_per_sample=num_live_points_per_sample,
         num_likelihood_evaluations_per_sample=num_likelihood_evaluations_per_sample,
         log_Z_mean=log_Z_mean,
         log_Z_uncert=log_Z_uncert,
@@ -859,20 +825,3 @@ def _ensure_consistency(self: State):
         validate=True,
     )
     return
-
-
-@partial(jax.jit, inline=True, static_argnames=['num_samples'])
-def _sample_logZ(self: State, key, num_samples: int) -> FloatArray:
-    block_state = build_block_state(
-        self.samples,
-        root_out_degree=self.root_out_degree,
-        num_samples=self.num_samples,
-        likelihood_order=self.likelihood_order,
-    )
-    concentrations = classic_dirichlet_concentrations(block_state)
-    return sample_evidence(
-        key=key,
-        block_state=block_state,
-        concentrations=concentrations,
-        num_samples=num_samples,
-    ).log_Z_samples

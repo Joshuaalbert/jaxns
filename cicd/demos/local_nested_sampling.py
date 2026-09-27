@@ -27,7 +27,7 @@ def main() -> None:
     sampler = NestedSampler(
         model=model,
         root_allocation_degree=8,
-        shell_size=4,
+        replacement_width=4,
         max_samples=32,
         collect_phantom_samples=True,
     )
@@ -36,12 +36,12 @@ def main() -> None:
 
     classic = results.sample_evidence_mc(
         num_samples=16,
-        conditioning="classic",
+        phantom_conditioning=False,
         key=jax.random.PRNGKey(11),
     )
     phantom = results.sample_evidence_mc(
         num_samples=16,
-        conditioning="phantom",
+        phantom_conditioning=True,
         key=jax.random.PRNGKey(13),
     )
 

@@ -51,6 +51,7 @@ def sample_complete_chains(
         sampler: AbstractSampler,
         request: ConstrainedSampleRequest,
         *,
+        model: Model,
         args=(),
         params=None,
 ) -> ConstrainedSampleBatch:
@@ -68,6 +69,7 @@ def sample_complete_chains(
             sample_key,
             constraint,
             seed,
+            model=model,
             args=args,
             params=params,
             sampler_data=request.sampler_data,
@@ -104,4 +106,28 @@ def sample_complete_chains(
         phantom_samples=phantom_samples,
         num_directions=num_directions,
         num_isotropic=num_isotropic,
+    )
+
+
+def sample_request(
+        sampler: AbstractSampler,
+        request: ConstrainedSampleRequest,
+        *,
+        model: Model,
+        args=(),
+        params=None,
+) -> ConstrainedSampleBatch:
+    """Execute one local or worker-side constrained-sampling batch.
+
+    Samplers own their batch execution because only the sampler knows whether
+    its data-dependent work can be continued between likelihood evaluations.
+    The base implementation retains complete-chain ``vmap`` as the reference
+    and fallback for samplers without an explicit batching strategy.
+    """
+
+    return sampler.get_samples(
+        request,
+        model=model,
+        args=args,
+        params=params,
     )

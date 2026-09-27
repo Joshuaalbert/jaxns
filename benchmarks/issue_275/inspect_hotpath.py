@@ -26,9 +26,13 @@ from jax import numpy as jnp
 from jaxctx.priors.prior import Prior
 from tensorflow_probability.substrates import jax as tfp
 
-from jaxns.constrained_sampler import (
+from jaxns.sampling.protocol import (
     ConstrainedSampleRequest,
+)
+from jaxns.constrained_sampler import (
     UniDimSliceSampler,
+)
+from jaxns.sampling.batching import (
     sample_request,
 )
 from jaxns.core import NestedSampler
@@ -64,7 +68,7 @@ def main() -> None:
     configured = NestedSampler(
         model=model,
         root_allocation_degree=32,
-        sampler=UniDimSliceSampler(model=model, num_slices=32),
+        sampler=UniDimSliceSampler(num_slices=32),
     ).sampler
     keys = jax.random.split(jax.random.PRNGKey(1), 8)
     # [S, ...] structured unit-cube seeds.
@@ -84,7 +88,7 @@ def main() -> None:
     for _ in range(5):
         jax.clear_caches()
         lowered = jax.jit(
-            lambda value: sample_request(configured, value)
+            lambda value: sample_request(configured, value, model=model)
         ).lower(request)
         started = time.perf_counter()
         compiled = lowered.compile()

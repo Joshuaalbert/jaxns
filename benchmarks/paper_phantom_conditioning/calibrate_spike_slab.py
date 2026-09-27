@@ -24,6 +24,7 @@ from jaxns.checkpoint import CheckpointManager
 from jaxns.constrained_sampler import UniDimSliceSampler
 from jaxns.core import NestedSampler
 from jaxns.depth_condition import DepthCondition
+from jaxns.results import _incoming_lineages_per_sample
 
 DIMENSION = 8
 ROOT_DEGREE = 30 * DIMENSION
@@ -174,7 +175,7 @@ def _mode_summary(state) -> dict:
     narrow = assignments == 0  # [N]
     num_samples = int(results.total_num_samples)
     active_lineages = np.asarray(
-        results.num_live_points_per_sample
+        _incoming_lineages_per_sample(results)
     )[:num_samples]  # [N]
     return {
         "classic_samples": num_samples,
@@ -282,7 +283,6 @@ def main() -> None:
     )
     model, truth = cases.build_ss8()
     sampler = UniDimSliceSampler(
-        model=model,
         num_slices=NUM_SLICES,
         collect_phantom_samples=True,
         max_phantom_samples=RETAINED_PHANTOMS,
@@ -290,7 +290,7 @@ def main() -> None:
     nested_sampler = NestedSampler(
         model=model,
         root_allocation_degree=ROOT_DEGREE,
-        shell_size=REPLACEMENT_WIDTH,
+        replacement_width=REPLACEMENT_WIDTH,
         collect_phantom_samples=True,
         sampler=sampler,
         allocation_target="uniform",

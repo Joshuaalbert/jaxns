@@ -132,7 +132,7 @@ def main() -> None:
         planning_lowered = _start_schedule_round.lower(
             state,
             condition,
-            shell_size=width,
+            replacement_width=width,
             allocation_target="uniform",
             root_degree=width,
             delta_K=delta_K,
@@ -150,7 +150,7 @@ def main() -> None:
             state,
             sampler,
             condition,
-            shell_size=width,
+            replacement_width=width,
             allocation_target="uniform",
             root_degree=width,
             delta_K=delta_K,

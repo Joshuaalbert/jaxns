@@ -59,9 +59,7 @@ def main():
         np.asarray([0.25, 0.5, 0.75]),
     )
     sampler = UniDimSliceSampler(
-        model=model,
         num_slices=5 * ndims,
-        no_step_out=True,
         collect_phantom_samples=True,
         max_phantom_samples=ndims,
     )
@@ -71,6 +69,7 @@ def main():
             sample_key,
             jnp.asarray(constraint, dtype=jnp.float64),
             SeedPoint(U0=u0, log_L0=log_l0),
+            model=model,
         )
 
     expected_survival = np.asarray([

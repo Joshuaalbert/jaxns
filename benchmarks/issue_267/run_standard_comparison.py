@@ -131,7 +131,7 @@ def measure(
     started = time.perf_counter()
     evidence = results.sample_evidence_mc(
         num_samples=1000,
-        conditioning=conditioning,
+        phantom_conditioning=(conditioning == "phantom"),
         key=jax.random.fold_in(key, 1),
     )
     jax.block_until_ready(evidence)
@@ -202,7 +202,6 @@ def main() -> int:
     num_slices = 5 * dimension
     retained_phantoms = dimension if args.phantoms else 0
     sampler = UniDimSliceSampler(
-        model=model,
         num_slices=num_slices,
         collect_phantom_samples=args.phantoms,
         max_phantom_samples=(
@@ -276,7 +275,7 @@ def main() -> int:
 
     if args.runner in ("local", "both"):
         local = NestedSampler(
-            shell_size=replacement_width,
+            replacement_width=replacement_width,
             **common,
         )
         warm = measure(

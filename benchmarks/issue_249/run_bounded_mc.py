@@ -22,48 +22,26 @@ import jaxns
 from cicd.tests.test_ns_standard_problems import STANDARD_PROBLEM_CASES_BY_NAME
 from jaxns.constrained_sampler import UniDimSliceSampler
 from jaxns.core import NestedSampler
-from jaxns.results import _block_state_from_results
+from jaxns.results import _incoming_lineages_per_sample
+from jaxns.shrinkage.phantom import _sample_mc_shrinkage_summary_jit
 
 
 def _compiled_program_record(results, *, key, draws, batch_size):
     """Inspect the exact final-MC executable used by the selected source."""
-    from jaxns import phantom_eval
-
-    block_state = _block_state_from_results(results)
-    if hasattr(phantom_eval, "_sample_mc_shrinkage_summary_jit"):
-        lowered = phantom_eval._sample_mc_shrinkage_summary_jit.lower(
-            key=key,
-            log_L_constraints=results.log_L_constraints,
-            log_L_classic=results.log_L,
-            K_classic=results.num_live_points_per_sample,
-            valid_phantom=results.valid_phantom,
-            log_L_phantom=results.log_L_phantom,
-            num_samples=results.total_num_samples,
-            num_Z_samples=draws,
-            block_state=block_state,
-            batch_size=min(batch_size, draws),
-            C_min=20,
-        )
-        program = "bounded-summary"
-    else:
-        # Develop before issue 249 has one monolithic full-diagnostic program;
-        # its public batch argument is present but not used by the kernel.
-        from jaxns.results import _sample_mc_shrinkage_with_block_state_jit
-
-        lowered = _sample_mc_shrinkage_with_block_state_jit.lower(
-            key=key,
-            log_L_constraints=results.log_L_constraints,
-            log_L_classic=results.log_L,
-            K_classic=results.num_live_points_per_sample,
-            valid_phantom=results.valid_phantom,
-            log_L_phantom=results.log_L_phantom,
-            total_num_samples=results.total_num_samples,
-            num_Z_samples=draws,
-            block_state=block_state,
-            batch_size=batch_size,
-            C_min=20,
-        )
-        program = "monolithic-diagnostics"
+    lowered = _sample_mc_shrinkage_summary_jit.lower(
+        key=key,
+        log_L_constraints=results.log_L_constraints,
+        log_L_classic=results.log_L,
+        K_classic=_incoming_lineages_per_sample(results),
+        valid_phantom=results.valid_phantom,
+        log_L_phantom=results.log_L_phantom,
+        num_samples=results.total_num_samples,
+        num_Z_samples=draws,
+        block_state=results.block_data.to_block_state(),
+        batch_size=min(batch_size, draws),
+        C_min=20,
+    )
+    program = "bounded-summary"
     compiled = lowered.compile()
     memory = compiled.memory_analysis()
     hlo = lowered.compiler_ir(dialect="hlo").as_hlo_text()
@@ -103,16 +81,14 @@ def main():
     replacement_width = min(root_degree, 10 * ndims)
     num_slices = 5 * ndims
     sampler = UniDimSliceSampler(
-        model=model,
         num_slices=num_slices,
-        no_step_out=True,
         collect_phantom_samples=True,
         max_phantom_samples=ndims,
     )
     nested_sampler = NestedSampler(
         model=model,
         root_allocation_degree=root_degree,
-        shell_size=replacement_width,
+        replacement_width=replacement_width,
         max_samples=100 * root_degree,
         collect_phantom_samples=True,
         sampler=sampler,
@@ -131,7 +107,7 @@ def main():
         start = time.perf_counter()
         samples = results.sample_evidence_mc(
             num_samples=args.draws,
-            conditioning=args.conditioning,
+            phantom_conditioning=(args.conditioning == "phantom"),
             key=key,
             batch_size=args.batch_size,
         )

@@ -43,6 +43,8 @@ class _HighPhantomLikelihoodSampler(AbstractSampler, PureDataclassPytree):
         seed_point,
         args=(),
         params=None,
+            *,
+            model,
     ):
         del key, log_L_constraint, seed_point, args, params
         classic_u = jnp.asarray(0.25, dtype=mp_policy.measure_dtype)
@@ -80,6 +82,8 @@ class _MixedPhantomValiditySampler(AbstractSampler, PureDataclassPytree):
         seed_point,
         args=(),
         params=None,
+            *,
+            model,
     ):
         del key, log_L_constraint, seed_point, args, params
         classic_u = jnp.asarray(0.25, dtype=mp_policy.measure_dtype)
@@ -154,9 +158,13 @@ def _make_result_case() -> ResultCase:
             dtype=mp_policy.measure_dtype,
         ),
         log_posterior_density=log_posterior_density,
-        num_live_points_per_sample=jnp.asarray(
-            [4, 3, 2],
-            dtype=mp_policy.count_dtype,
+        block_data=BlockData(
+            log_L=log_l,
+            first_idx=jnp.arange(3),
+            size=jnp.ones(3, dtype=mp_policy.count_dtype),
+            incoming_K=jnp.asarray([4, 3, 2], dtype=mp_policy.count_dtype),
+            out_degree=jnp.zeros(3, dtype=mp_policy.count_dtype),
+            valid=jnp.ones(3, dtype=mp_policy.bool_dtype),
         ),
         num_likelihood_evaluations_per_sample=jnp.asarray(
             [2, 2, 2],
@@ -245,10 +253,6 @@ def _make_padded_plateau_result(num_phantom: int) -> NestedSamplerResults:
         ),
         log_X_mean=jnp.asarray([-0.5, -1.0], dtype=mp_policy.measure_dtype),
         log_posterior_density=log_l,
-        num_live_points_per_sample=jnp.asarray(
-            [2, 2],
-            dtype=mp_policy.count_dtype,
-        ),
         num_likelihood_evaluations_per_sample=jnp.asarray(
             [1 + num_phantom, 1 + num_phantom],
             dtype=mp_policy.count_dtype,
@@ -307,7 +311,6 @@ def _make_single_block_gamma_public_result() -> NestedSamplerResults:
         log_dp=jnp.full((num_samples,), -jnp.log(num_samples), dtype=mp_policy.measure_dtype),
         log_X_mean=-jnp.linspace(0.0, 1.0, num_samples),
         log_posterior_density=log_l,
-        num_live_points_per_sample=jnp.full((num_samples,), 40, dtype=mp_policy.count_dtype),
         num_likelihood_evaluations_per_sample=jnp.full((num_samples,), 2, dtype=mp_policy.count_dtype),
         log_L_supremum=jnp.asarray(0.0, dtype=mp_policy.measure_dtype),
         U_supremum=u_samples[0],
@@ -349,9 +352,9 @@ def _run_high_phantom_probe():
     ns = NestedSampler(
         model=make_toy_model(),
         sampler=sampler,
-        target_num_live_points=2,
+        root_allocation_degree=2,
         max_samples=3,
-        shell_size=1,
+        replacement_width=1,
         depth_condition=DepthCondition(),
     )
     return ns.run(jax.random.PRNGKey(11))
@@ -362,9 +365,9 @@ def _run_mixed_validity_probe():
     ns = NestedSampler(
         model=make_toy_model(),
         sampler=sampler,
-        target_num_live_points=2,
+        root_allocation_degree=2,
         max_samples=3,
-        shell_size=1,
+        replacement_width=1,
         depth_condition=DepthCondition(),
     )
     return ns.run(jax.random.PRNGKey(23))
@@ -404,13 +407,15 @@ def test_results_expose_public_phantom_conditioning_diagnostics():
     np.testing.assert_allclose(np.asarray(diagnostics.R_g), [0.0, 0.0, 0.0])
 
 
-def test_results_sample_mc_shrinkage_exposes_kish_gate_diagnostics_not_target_rho():
+def test_results_sample_evidence_mc_exposes_kish_gate_diagnostics_not_target_rho():
     result_case = _make_result_case()
 
-    evidence_samples = result_case.results.sample_mc_shrinkage(
+    evidence_samples = result_case.results.sample_evidence_mc(
         num_samples=4,
         key=jax.random.PRNGKey(7),
         C_min=2,
+        phantom_conditioning=True,
+        diagnostics=True,
     )
 
     np.testing.assert_allclose(
@@ -426,7 +431,7 @@ def test_results_sample_mc_shrinkage_exposes_kish_gate_diagnostics_not_target_rh
             "phantom_R",
     ):
         assert hasattr(evidence_samples, field_name), (
-            "EvidenceSamples from result.sample_mc_shrinkage() must expose "
+            "EvidenceSamples from result.sample_evidence_mc() must expose "
             f"{field_name}."
         )
         assert np.asarray(getattr(evidence_samples, field_name)).shape == (
@@ -437,25 +442,29 @@ def test_results_sample_mc_shrinkage_exposes_kish_gate_diagnostics_not_target_rh
             assert getattr(evidence_samples, old_name) is None
 
 
-def test_results_sample_mc_shrinkage_uses_gamma_conditioning_when_gate_active():
+def test_results_sample_evidence_mc_uses_gamma_conditioning_when_gate_active():
     results = _make_single_block_gamma_public_result()
     num_draws = 4096
 
-    active = results.sample_mc_shrinkage(
+    active = results.sample_evidence_mc(
         num_samples=num_draws,
         key=jax.random.PRNGKey(103),
         C_min=20,
+        phantom_conditioning=True,
+        diagnostics=True,
     )
-    inactive = results.sample_mc_shrinkage(
+    inactive = results.sample_evidence_mc(
         num_samples=num_draws,
         key=jax.random.PRNGKey(103),
         C_min=21,
+        phantom_conditioning=True,
+        diagnostics=True,
     )
 
     for samples in (active, inactive):
         for field_name in ("p_gt_samples", "p_eq_samples", "p_lt_samples"):
             assert hasattr(samples, field_name), (
-                "NestedSamplerResults.sample_mc_shrinkage() must return "
+                "NestedSamplerResults.sample_evidence_mc() must return "
                 f"{field_name} so the public path target can be verified."
             )
 
@@ -496,7 +505,7 @@ def test_sample_evidence_mc_batches_have_exact_requested_shape(batch_size):
 
     samples = results.sample_evidence_mc(
         num_samples=10,
-        conditioning="phantom",
+        phantom_conditioning=True,
         key=jax.random.PRNGKey(211),
         batch_size=batch_size,
     )
@@ -518,19 +527,19 @@ def test_sample_evidence_mc_batching_is_reproducible_and_matches_moments():
 
     batched = results.sample_evidence_mc(
         num_samples=num_draws,
-        conditioning="phantom",
+        phantom_conditioning=True,
         key=key,
         batch_size=257,
     )
     repeated = results.sample_evidence_mc(
         num_samples=num_draws,
-        conditioning="phantom",
+        phantom_conditioning=True,
         key=key,
         batch_size=257,
     )
-    unbatched = results.sample_mc_shrinkage(
+    unbatched = results.sample_evidence_mc(
         num_samples=num_draws,
-        conditioning="phantom",
+        phantom_conditioning=True,
         key=key,
         diagnostics=False,
     )
@@ -569,15 +578,15 @@ def test_sample_evidence_mc_one_batch_preserves_fixed_key_draws():
     results = _make_single_block_gamma_public_result()
     key = jax.random.PRNGKey(227)
 
-    unbatched = results.sample_mc_shrinkage(
+    unbatched = results.sample_evidence_mc(
         num_samples=10,
-        conditioning="phantom",
+        phantom_conditioning=True,
         key=key,
         diagnostics=False,
     )
     larger_batch = results.sample_evidence_mc(
         num_samples=10,
-        conditioning="phantom",
+        phantom_conditioning=True,
         key=key,
         batch_size=100,
     )
@@ -614,7 +623,7 @@ def test_sample_evidence_mc_prefix_matches_physically_sliced_result():
 
     selected = retained.sample_evidence_mc(
         num_samples=32,
-        conditioning="phantom",
+        phantom_conditioning=True,
         num_phantoms=2,
         key=key,
         batch_size=11,
@@ -622,20 +631,20 @@ def test_sample_evidence_mc_prefix_matches_physically_sliced_result():
     )
     expected = physically_sliced.sample_evidence_mc(
         num_samples=32,
-        conditioning="phantom",
+        phantom_conditioning=True,
         key=key,
         batch_size=11,
         diagnostics=True,
     )
     all_default = retained.sample_evidence_mc(
         num_samples=32,
-        conditioning="phantom",
+        phantom_conditioning=True,
         key=key,
         batch_size=11,
     )
     all_explicit = retained.sample_evidence_mc(
         num_samples=32,
-        conditioning="phantom",
+        phantom_conditioning=True,
         num_phantoms=3,
         key=key,
         batch_size=11,
@@ -666,7 +675,7 @@ def test_sample_evidence_mc_rejects_invalid_phantom_prefix(num_phantoms):
     with pytest.raises(ValueError, match="num_phantoms"):
         retained.sample_evidence_mc(
             num_samples=4,
-            conditioning="phantom",
+            phantom_conditioning=True,
             num_phantoms=num_phantoms,
             key=jax.random.PRNGKey(1284),
         )
@@ -678,7 +687,7 @@ def test_sample_evidence_mc_rejects_prefix_for_classic_conditioning():
     with pytest.raises(ValueError, match="only valid with phantom"):
         results.sample_evidence_mc(
             num_samples=4,
-            conditioning="classic",
+            phantom_conditioning=False,
             num_phantoms=1,
             key=jax.random.PRNGKey(2284),
         )
@@ -691,14 +700,14 @@ def test_state_sample_evidence_mc_forwards_phantom_prefix():
 
     from_state = state.sample_evidence_mc(
         num_samples=8,
-        conditioning="phantom",
+        phantom_conditioning=True,
         num_phantoms=1,
         key=key,
         C_min=1,
     )
     from_results = results.sample_evidence_mc(
         num_samples=8,
-        conditioning="phantom",
+        phantom_conditioning=True,
         num_phantoms=1,
         key=key,
         C_min=1,
@@ -719,7 +728,7 @@ def test_sample_evidence_mc_rejects_invalid_batch_sizes(batch_size):
     with pytest.raises(ValueError, match="batch_size.*positive integer"):
         results.sample_evidence_mc(
             num_samples=10,
-            conditioning="phantom",
+            phantom_conditioning=True,
             key=jax.random.PRNGKey(229),
             batch_size=batch_size,
         )
@@ -729,28 +738,28 @@ def test_batched_summary_preserves_block_models_and_kish_gate():
     plateau = _make_single_block_gamma_public_result()
     active = plateau.sample_evidence_mc(
         num_samples=128,
-        conditioning="phantom",
+        phantom_conditioning=True,
         key=jax.random.PRNGKey(233),
         batch_size=31,
         C_min=20,
     )
     inactive = plateau.sample_evidence_mc(
         num_samples=128,
-        conditioning="phantom",
+        phantom_conditioning=True,
         key=jax.random.PRNGKey(233),
         batch_size=31,
         C_min=21,
     )
     singleton = _make_result_case().results.sample_evidence_mc(
         num_samples=32,
-        conditioning="phantom",
+        phantom_conditioning=True,
         key=jax.random.PRNGKey(239),
         batch_size=7,
         C_min=1,
     )
     classic = _make_padded_plateau_result(0).sample_evidence_mc(
         num_samples=9,
-        conditioning="classic",
+        phantom_conditioning=False,
         key=jax.random.PRNGKey(241),
         batch_size=1,
     )
@@ -773,7 +782,7 @@ def test_full_diagnostics_support_a_partial_final_batch():
 
     samples = results.sample_evidence_mc(
         num_samples=10,
-        conditioning="phantom",
+        phantom_conditioning=True,
         key=jax.random.PRNGKey(251),
         batch_size=4,
         diagnostics=True,
@@ -785,36 +794,24 @@ def test_full_diagnostics_support_a_partial_final_batch():
     assert samples.phantom_add_gt_samples.shape == (10, 1)
 
 
-def test_legacy_sample_evidence_uses_the_bounded_default():
+def test_results_sample_evidence_mc_matches_explicit_block_state_public_call():
     results = _make_single_block_gamma_public_result()
-    key = jax.random.PRNGKey(257)
-
-    default = results.sample_evidence(num_samples=100, key=key)
-    explicit = results.sample_evidence(
-        num_samples=100,
-        batch_size=64,
-        key=key,
-    )
-
-    np.testing.assert_array_equal(np.asarray(default), np.asarray(explicit))
-
-
-def test_results_sample_mc_shrinkage_matches_explicit_block_state_public_call():
-    results = _make_single_block_gamma_public_result()
-    block_state = results_module._block_state_from_results(results)
+    block_state = results.block_data.to_block_state()
     assert block_state is not None
 
     key = jax.random.PRNGKey(107)
-    result_samples = results.sample_mc_shrinkage(
+    result_samples = results.sample_evidence_mc(
         num_samples=16,
         key=key,
         C_min=20,
+        phantom_conditioning=True,
+        diagnostics=True,
     )
     direct_samples = sample_mc_shrinkage(
         key=key,
         log_L_constraints=results.log_L_constraints,
         log_L_classic=results.log_L,
-        K_classic=results.num_live_points_per_sample,
+        K_classic=results_module._incoming_lineages_per_sample(results),
         valid_phantom=results.valid_phantom,
         log_L_phantom=results.log_L_phantom,
         num_samples=results.total_num_samples,
@@ -830,57 +827,6 @@ def test_results_sample_mc_shrinkage_matches_explicit_block_state_public_call():
             assert got is expected
             continue
         np.testing.assert_allclose(np.asarray(got), np.asarray(expected))
-
-
-def test_results_sample_mc_shrinkage_uses_block_state_helper(monkeypatch):
-    results = _make_single_block_gamma_public_result()
-    block_state = results_module._block_state_from_results(results)
-    assert block_state is not None
-    helper_calls = []
-    sentinel = object()
-
-    def fake_block_state_helper(*, block_state, **kwargs):
-        helper_calls.append((block_state, kwargs))
-        return sentinel
-
-    def fail_generic_path(*args, **kwargs):
-        del args, kwargs
-        raise AssertionError(
-            "NestedSamplerResults.sample_mc_shrinkage() must use the "
-            "block-state helper when result block arrays are present."
-        )
-
-    monkeypatch.setattr(
-        results_module,
-        "_sample_mc_shrinkage_with_block_state",
-        fake_block_state_helper,
-        raising=False,
-    )
-    monkeypatch.setattr(
-        results_module,
-        "_sample_mc_shrinkage",
-        fail_generic_path,
-    )
-
-    got = results.sample_mc_shrinkage(
-        num_samples=4,
-        key=jax.random.PRNGKey(109),
-        C_min=20,
-    )
-
-    assert got is sentinel
-    assert len(helper_calls) == 1
-    called_block_state, kwargs = helper_calls[0]
-    np.testing.assert_allclose(
-        np.asarray(called_block_state.log_L_blocks),
-        np.asarray(block_state.log_L_blocks),
-    )
-    np.testing.assert_array_equal(
-        np.asarray(called_block_state.block_size),
-        np.asarray(block_state.block_size),
-    )
-    assert kwargs["num_samples"] == 4
-    assert kwargs["C_min"] == 20
 
 
 def test_trim_keeps_log_l_blocks_aligned_to_trimmed_sample_size():
@@ -906,9 +852,11 @@ def test_trim_keeps_log_l_blocks_aligned_to_trimmed_sample_size():
     assert trimmed.log_L.shape == (2,)
     assert trimmed.block_data is not None
     assert trimmed.block_data.log_L.shape == (2,)
-    evidence_samples = trimmed.sample_mc_shrinkage(
+    evidence_samples = trimmed.sample_evidence_mc(
         num_samples=4,
         key=jax.random.PRNGKey(13),
+        phantom_conditioning=True,
+        diagnostics=True,
     )
     np.testing.assert_allclose(
         np.asarray(trimmed.block_data.log_L),
@@ -922,9 +870,11 @@ def test_plateau_result_with_padded_inf_block_has_finite_h_samples(
 ):
     results = _make_padded_plateau_result(num_phantom)
 
-    evidence_samples = results.sample_mc_shrinkage(
+    evidence_samples = results.sample_evidence_mc(
         num_samples=8,
         key=jax.random.PRNGKey(53 + num_phantom),
+        phantom_conditioning=(num_phantom > 0),
+        diagnostics=True,
     )
 
     log_l_blocks = np.asarray(evidence_samples.log_L_blocks)
@@ -965,55 +915,71 @@ def test_result_point_estimates_do_not_have_or_use_phantom_coordinates():
     np.testing.assert_allclose(results.X_map, results.X_samples[map_idx])
 
 
-def test_resample_keeps_phantom_likelihood_metadata_aligned():
+def test_resample_returns_an_empirical_posterior_with_integration():
+    from jaxns.posterior import PosteriorSamples
+
     result_case = _make_result_case()
     results = result_case.results
+    draws = results.resample(num_samples=7, key=jax.random.PRNGKey(1))
+    assert type(draws) is PosteriorSamples
+    assert {field.name for field in dataclasses.fields(draws)} == {
+        "U_samples", "X_samples", "log_L",
+    }
+    np.testing.assert_array_equal(draws.log_L, jnp.zeros(7))
+    np.testing.assert_allclose(draws.U_samples, jnp.full(7, 0.1))
+    np.testing.assert_allclose(draws.X_samples, jnp.full(7, 0.1))
 
-    resampled = results.resample(
-        num_samples=1,
-        replace=True,
-        key=jax.random.PRNGKey(0),
-    )
+    def moments(x):
+        return {"signed": x - 0.5, "vector": jnp.stack([x, x*x])}
 
-    expected_idx = result_case.expected_resample_idx
-    assert int(resampled.total_num_samples) == 1
-    assert resampled.log_L_constraints.shape == (1,)
-    assert resampled.log_L_phantom.shape == (
-        1,
-        results.log_L_phantom.shape[1],
+    for batch_size in (None, 3):
+        actual = draws.integrate_fn_over_posterior(moments, batch_size=batch_size)
+        np.testing.assert_allclose(actual["signed"], -0.4)
+        np.testing.assert_allclose(actual["vector"], [0.1, 0.01])
+        positive = draws.integrate_fn_over_posterior(
+            lambda x: x*x, semi_positive=True, batch_size=batch_size,
+        )
+        np.testing.assert_allclose(positive, 0.01)
+
+
+def test_resampled_posterior_integrates_its_draws_and_round_trips(tmp_path):
+    from jaxns.posterior import PosteriorSamples
+
+    results = dataclasses.replace(
+        _make_result_case().results,
+        log_dp=jnp.log(jnp.asarray([0.2, 0.3, 0.5])),
     )
-    assert resampled.valid_phantom.shape == (1,)
-    # Posterior resampling destroys the race-tree block identities, so block
-    # diagnostics must not masquerade as aligned data on the resampled result.
-    assert resampled.block_data is None
-    assert not hasattr(resampled, "U_phantom_samples")
-    assert not hasattr(resampled, "X_phantom_samples")
+    draws = results.resample(4096, key=jax.random.PRNGKey(288))
+    frequencies = np.bincount(np.asarray(draws.log_L, dtype=int), minlength=3) / 4096
+    np.testing.assert_allclose(frequencies, [0.2, 0.3, 0.5], atol=0.025)
+    actual = draws.integrate_fn_over_posterior(lambda x: x - 0.2)
+    np.testing.assert_allclose(actual, np.mean(np.asarray(draws.X_samples) - 0.2))
+    output = tmp_path / "posterior.pkl"
+    draws.save(str(output))
+    restored = PosteriorSamples.load(str(output))
+    np.testing.assert_array_equal(restored.X_samples, draws.X_samples)
     np.testing.assert_allclose(
-        resampled.log_L,
-        results.log_L[expected_idx:expected_idx + 1],
+        restored.integrate_fn_over_posterior(lambda x: x - 0.2), actual,
     )
-    np.testing.assert_allclose(
-        resampled.log_L_constraints,
-        results.log_L_constraints[expected_idx:expected_idx + 1],
-    )
-    np.testing.assert_allclose(
-        resampled.log_L_phantom,
-        results.log_L_phantom[expected_idx:expected_idx + 1],
-    )
-    np.testing.assert_array_equal(
-        np.asarray(resampled.valid_phantom),
-        np.asarray(results.valid_phantom[expected_idx:expected_idx + 1]),
-    )
-    for field_name in (
-        "effective_parent_idx",
-        "requested_parent_idx",
-        "requested_log_L_constraint",
-        "phantom_seed_idx",
-    ):
-        assert not hasattr(resampled, field_name)
 
 
-def test_results_sample_mc_shrinkage_rejects_malformed_arrays_before_jit():
+def test_mc_defaults_to_classic_without_changing_expectation_estimates():
+    results = _make_single_block_gamma_public_result()
+    key = jax.random.PRNGKey(288)
+    default = results.sample_evidence_mc(16, key=key)
+    explicit = results.sample_evidence_mc(16, key=key, phantom_conditioning=False)
+    np.testing.assert_array_equal(default.log_Z_samples, explicit.log_Z_samples)
+    phantom = results.sample_evidence_mc(16, key=key, phantom_conditioning=True, C_min=1)
+    assert not np.array_equal(default.log_Z_samples, phantom.log_Z_samples)
+    assert float(results.log_Z_mean) == 0.0
+    np.testing.assert_allclose(results.log_Z_uncert, 0.1)
+    with pytest.raises(TypeError, match="key"):
+        results.sample_evidence_mc(16)
+    with pytest.raises(TypeError, match="bool"):
+        results.sample_evidence_mc(16, key=key, phantom_conditioning="phantom")
+
+
+def test_results_sample_evidence_mc_rejects_malformed_arrays_before_jit():
     result_case = _make_result_case()
     results = dataclasses.replace(
         result_case.results,
@@ -1031,13 +997,15 @@ def test_results_sample_mc_shrinkage_rejects_malformed_arrays_before_jit():
         ValueError,
         match="valid_phantom.*one-dimensional.*per-cluster",
     ):
-        results.sample_mc_shrinkage(
+        results.sample_evidence_mc(
             num_samples=4,
             key=jax.random.PRNGKey(31),
+            phantom_conditioning=True,
+            diagnostics=True,
         )
 
 
-def test_results_sample_mc_shrinkage_rejects_strict_contour_equality():
+def test_results_sample_evidence_mc_rejects_strict_contour_equality():
     result_case = _make_result_case()
     results = dataclasses.replace(
         result_case.results,
@@ -1048,9 +1016,11 @@ def test_results_sample_mc_shrinkage_rejects_strict_contour_equality():
     )
 
     with pytest.raises(ValueError, match="Strict contour.*must be greater"):
-        results.sample_mc_shrinkage(
+        results.sample_evidence_mc(
             num_samples=4,
             key=jax.random.PRNGKey(41),
+            phantom_conditioning=True,
+            diagnostics=True,
         )
 
 
@@ -1124,7 +1094,7 @@ def test_public_sample_mc_shrinkage_rejects_stale_block_likelihoods_before_jit()
         )
 
 
-def test_results_sample_mc_shrinkage_rejects_stale_block_likelihoods_before_jit():
+def test_results_sample_evidence_mc_rejects_stale_block_likelihoods_before_jit():
     result_case = _make_result_case()
     results = dataclasses.replace(
         result_case.results,
@@ -1150,9 +1120,11 @@ def test_results_sample_mc_shrinkage_rejects_stale_block_likelihoods_before_jit(
         ValueError,
         match=r"block_state\.log_L_blocks.*log_L_classic",
     ):
-        results.sample_mc_shrinkage(
+        results.sample_evidence_mc(
             num_samples=2,
             key=jax.random.PRNGKey(49),
+            phantom_conditioning=True,
+            diagnostics=True,
         )
 
 
@@ -1172,7 +1144,7 @@ def test_results_cluster_block_fields_in_block_data():
         block_data.size = jnp.asarray([1], dtype=mp_policy.count_dtype)
 
 
-def test_nested_sampler_keeps_phantom_likelihood_only_with_legacy_flag():
+def test_nested_sampler_keeps_phantom_likelihood_without_coordinates():
     state = _run_high_phantom_probe()
     num_samples = int(state.num_samples)
 

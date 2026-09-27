@@ -41,7 +41,6 @@ def truth() -> float:
 
 def sampler(model: Model, phantoms: bool) -> UniDimSliceSampler:
     return UniDimSliceSampler(
-        model=model,
         num_slices=3,
         collect_phantom_samples=phantoms,
         max_phantom_samples=2 if phantoms else None,
@@ -52,7 +51,7 @@ def local_runner(model: Model, phantoms: bool) -> NestedSampler:
     return NestedSampler(
         model=model,
         root_allocation_degree=6,
-        shell_size=6,
+        replacement_width=6,
         delta_K=6,
         max_samples=512,
         initial_capacity=128,

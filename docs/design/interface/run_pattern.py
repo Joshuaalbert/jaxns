@@ -12,7 +12,6 @@ from jaxctx import CtxParams
 from jaxctx.priors.prior import Prior
 
 from jaxns.core import NestedSampler
-from jaxns.depth_condition import DepthCondition
 from jaxns.distributed_core import DistributedNestedSampler, DistributedState
 from jaxns.model import Model
 from jaxns.shrinkage.phantom import EvidenceSamples
@@ -40,7 +39,7 @@ model_params: CtxParams = model.init_params(
 
 def goal_cond(state: State) -> bool:
     # The Python goal loop receives only complete immutable scientific states.
-    return state.to_result().log_Z_uncert < 0.1
+    return state.expected_log_Z_uncert < 0.1
 
 
 # The established local path keeps the complete depth epoch in one JIT and
@@ -53,7 +52,6 @@ local = NestedSampler(
 )
 local_state = local.run_until_goal(
     goal_cond=goal_cond,
-    depth_cond=DepthCondition(),
     key=jax.random.PRNGKey(1),
     checkpoint_dir="checkpoints/local",
     checkpoint_cadence=3600.0,
@@ -84,7 +82,6 @@ distributed = DistributedNestedSampler(
 )
 checkpoint: DistributedState = distributed.run_until_goal(
     goal_cond=goal_cond,
-    depth_cond=DepthCondition(),
     key=jax.random.PRNGKey(2),
     checkpoint_dir="checkpoints/distributed",
     checkpoint_cadence=3600.0,
@@ -96,7 +93,6 @@ checkpoint: DistributedState = distributed.run_until_goal(
 checkpoint = distributed.resume_until_goal(
     checkpoint,
     goal_cond=goal_cond,
-    depth_cond=DepthCondition(),
     checkpoint_dir="checkpoints/distributed",
     checkpoint_cadence=3600.0,
 )
@@ -114,11 +110,24 @@ expected_post_predictive = results.integrate_fn_over_posterior(
     some_fn,
     semi_positive=True,
 )
-shrinkage_samples: EvidenceSamples = results.sample_mc_shrinkage(
+# Deterministic classic expectations remain on results.log_Z_mean and
+# results.log_Z_uncert. The ensemble below owns its separate MC summary.
+shrinkage_samples: EvidenceSamples = results.sample_evidence_mc(
     num_samples=1000,
+    key=jax.random.PRNGKey(3),
+    phantom_conditioning=True,
+    diagnostics=True,
 )
-plt.plot(results.log_L_blocks, shrinkage_samples.rho_values)
-plt.plot(results.log_L_blocks, shrinkage_samples.rho_fit)
+valid_blocks = results.block_data.valid
+plt.plot(
+    results.block_data.log_L[valid_blocks],
+    shrinkage_samples.p_gt_mean[valid_blocks],
+)
+
+posterior = results.resample(1000, key=jax.random.PRNGKey(4))
+resampled_post_predictive = posterior.integrate_fn_over_posterior(
+    some_fn, semi_positive=True,
+)
 
 # Stack shutdown is explicit and idempotent:
 #

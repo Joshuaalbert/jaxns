@@ -10,6 +10,7 @@ from jax import numpy as jnp
 from jax import random
 
 from jaxns.mixed_precision import mp_policy
+from jaxns.model import Model
 from jaxns.pytree import PureDataclassPytree, TreeField
 from jaxns.samples import PhantomSamples
 from jaxns.sampling.protocol import (
@@ -287,6 +288,7 @@ def _continue_slice_chains(
         sampler: UniDimSliceSampler,
         request: ConstrainedSampleRequest,
         *,
+        model: Model,
         args=(),
         params=None,
 ) -> ConstrainedSampleBatch:
@@ -310,7 +312,7 @@ def _continue_slice_chains(
     )
 
     def evaluate_one(u_sample):
-        return sampler.model.log_likelihood(
+        return model.log_likelihood(
             u_sample,
             args=args,
             params=params,

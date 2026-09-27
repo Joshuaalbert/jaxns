@@ -80,6 +80,8 @@ class BenchmarkSampler(PureDataclassPytree, AbstractSampler):
             seed_point: SeedPoint,
             args=(),
             params=None,
+            *,
+            model,
     ):
         del key, args, params
         finite = jnp.where(
@@ -106,7 +108,7 @@ model = BenchmarkModel()
 runner = NestedSampler(
     model=model,
     root_allocation_degree=16,
-    shell_size=8,
+    replacement_width=8,
     max_samples=256,
     initial_capacity=256,
     sampler=BenchmarkSampler(),

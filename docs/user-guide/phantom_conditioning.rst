@@ -41,23 +41,30 @@ prefix:
 
    all_saved = results.sample_evidence_mc(
        num_samples=4096,
-       conditioning="phantom",
+       phantom_conditioning=True,
        num_phantoms=None,
        key=jax.random.PRNGKey(1),
    )
    first_four = results.sample_evidence_mc(
        num_samples=4096,
-       conditioning="phantom",
+       phantom_conditioning=True,
        num_phantoms=4,
        key=jax.random.PRNGKey(1),
    )
    classic = results.sample_evidence_mc(
        num_samples=4096,
-       conditioning="classic",
+       phantom_conditioning=False,
        key=jax.random.PRNGKey(1),
    )
 
 ``None`` uses all saved states. An explicit positive count uses
 ``log_L_phantom[:, :num_phantoms]`` before the MC kernel is compiled, so an
-unused suffix does not add device work. Classic conditioning is independent of
-phantom storage and remains the explicit zero-phantom path.
+unused suffix does not add device work. Classic conditioning is the default,
+independent of phantom storage. Phantom conditioning requires
+``phantom_conditioning=True``.
+
+``state.expected_log_Z_mean`` and ``state.expected_log_Z_uncert`` provide the
+classic expectation calculation for goal conditions. Results carry those
+estimates in ``log_Z_mean`` and ``log_Z_uncert``. Calling
+``sample_evidence_mc`` leaves them unchanged and returns a separate ensemble
+with its own Monte Carlo mean and uncertainty.

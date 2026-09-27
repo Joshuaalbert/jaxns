@@ -24,9 +24,7 @@ from jax import numpy as jnp
 from cicd.tests.distributed_support import make_periodic_model, make_toy_model
 from jaxns.cli import _stop_started_process
 from jaxns.constrained_sampler import (
-    ConstrainedSampleRequest,
     UniDimSliceSampler,
-    sample_request,
 )
 from jaxns.depth_condition import DepthCondition
 from jaxns.distributed_core import (
@@ -59,7 +57,13 @@ from jaxns.runtime.protocol import (
 from jaxns.runtime.session import WorkerSession
 from jaxns.runtime.worker import _fence_process
 from jaxns.samples import SeedPoint
+from jaxns.sampling.batching import (
+    sample_request,
+)
 from jaxns.sampling.ellipsoid import empty_sampler_data
+from jaxns.sampling.protocol import (
+    ConstrainedSampleRequest,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -94,7 +98,6 @@ def test_batch_group_ignores_direction_diagnostics_but_not_geometry():
     # remain observational and cannot enter the worker's direction law.
     model = make_toy_model()
     sampler = UniDimSliceSampler(
-        model=model,
         num_slices=2,
     )
     request = ConstrainedSampleRequest(
@@ -107,10 +110,11 @@ def test_batch_group_ignores_direction_diagnostics_but_not_geometry():
         ),
         sampler_data=data,
     )
-    reference = sample_request(sampler, request)
+    reference = sample_request(sampler, request, model=model)
     observed = sample_request(
         sampler,
         dataclasses.replace(request, sampler_data=diagnostics),
+        model=model,
     )
     assert all(
         bool(jnp.array_equal(left, right))
@@ -846,7 +850,6 @@ def test_phantom_payload_does_not_change_vector_worker_trajectory(tmp_path):
 
         def run(collect_phantoms):
             sampler = UniDimSliceSampler(
-                model=model,
                 num_slices=2,
                 collect_phantom_samples=collect_phantoms,
                 max_phantom_samples=(1 if collect_phantoms else None),
@@ -935,7 +938,7 @@ def test_periodic_sampler_executes_in_real_worker_processes(tmp_path):
             delta_K=4,
             max_samples=12,
             initial_capacity=8,
-            sampler=UniDimSliceSampler(model=model, num_slices=4),
+            sampler=UniDimSliceSampler(num_slices=4),
         )
 
         checkpoint = runner.run_until_goal(
@@ -972,7 +975,6 @@ def test_real_pool_runs_scalar_vmap_retries_and_cli_lifecycle(tmp_path):
 
         model = make_toy_model()
         sampler = UniDimSliceSampler(
-            model=model,
             num_slices=2,
             collect_phantom_samples=True,
             max_phantom_samples=1,
@@ -1078,7 +1080,7 @@ def test_real_pool_runs_scalar_vmap_retries_and_cli_lifecycle(tmp_path):
         # Register a new uncompiled session, kill its active worker, and
         # observe the unchanged task complete after an automatic replacement.
         session_id = "worker-loss"
-        loss_sampler = UniDimSliceSampler(model=model, num_slices=50)
+        loss_sampler = UniDimSliceSampler(num_slices=50)
         session = WorkerSession(
             model=model,
             sampler=loss_sampler,
@@ -1186,7 +1188,7 @@ def test_node_joins_runs_restarts_and_drains_over_tcp(tmp_path):
             assert replacement["lease_generation"] > old_generation
 
             model = make_toy_model()
-            sampler = UniDimSliceSampler(model=model, num_slices=2)
+            sampler = UniDimSliceSampler(num_slices=2)
             distributed = DistributedNestedSampler(
                 model=model,
                 coordinator_port=load_runtime_config(
@@ -1210,7 +1212,7 @@ def test_node_joins_runs_restarts_and_drains_over_tcp(tmp_path):
             # scientific run. Keep the same thread and checkpoint alive beyond
             # its coordinator-health timeout, then let a fresh node instance
             # register and consume the coordinator's queued work.
-            slow_sampler = UniDimSliceSampler(model=model, num_slices=100)
+            slow_sampler = UniDimSliceSampler(num_slices=100)
             starved = DistributedNestedSampler(
                 model=model,
                 coordinator_port=load_runtime_config(

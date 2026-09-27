@@ -67,16 +67,14 @@ def main():
     if root_multiplier is None:
         root_multiplier = 30
     root_degree = root_multiplier * ndims
-    shell_size = min(
+    replacement_width = min(
         root_degree,
         max(1, args.shell_multiplier * ndims),
     )
     num_slices = args.slice_multiplier * ndims
     retained_phantoms = ndims if args.phantoms else 0
     sampler = UniDimSliceSampler(
-        model=model,
         num_slices=num_slices,
-        no_step_out=True,
         collect_phantom_samples=args.phantoms,
         max_phantom_samples=(
             retained_phantoms if args.phantoms else None
@@ -85,7 +83,7 @@ def main():
     ns = NestedSampler(
         model=model,
         root_allocation_degree=root_degree,
-        shell_size=shell_size,
+        replacement_width=replacement_width,
         max_samples=100 * root_degree,
         collect_phantom_samples=args.phantoms,
         sampler=sampler,
@@ -160,7 +158,7 @@ def main():
         "truth_log_Z": float(truth),
         "ndims": ndims,
         "root_degree": root_degree,
-        "replacement_width": shell_size,
+        "replacement_width": replacement_width,
         "allocation_increment": int(ns.delta_K),
         "num_slices": int(ns.sampler.num_slices),
         "num_retained_phantoms": int(ns.sampler.num_phantom()),
@@ -195,7 +193,7 @@ def main():
         )
         evidence = results.sample_evidence_mc(
             num_samples=args.mc_draws,
-            conditioning=conditioning,
+            phantom_conditioning=(conditioning == "phantom"),
             key=evidence_key,
             C_min=args.c_min,
         )

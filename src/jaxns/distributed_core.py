@@ -42,19 +42,22 @@ from jaxns.checkpoint import (
 )
 from jaxns.constrained_sampler import (
     AbstractSampler,
-    ConstrainedSampleBatch,
-    ConstrainedSampleRequest,
-    LikelihoodEvaluation,
-    LikelihoodRequest,
 )
-from jaxns.core import NestedSampler, _grow_start_seed_storage
+from jaxns.core import _grow_start_seed_storage
 from jaxns.depth_condition import DepthCondition
 from jaxns.logging import jaxns_logger
 from jaxns.mixed_precision import mp_policy
 from jaxns.model import Model
 from jaxns.pytree import PureDataclassPytree
+from jaxns.run_config import resolve_run_config
 from jaxns.runtime.session import WorkerSession
 from jaxns.samples import SeedPoint
+from jaxns.sampling.protocol import (
+    ConstrainedSampleBatch,
+    ConstrainedSampleRequest,
+    LikelihoodEvaluation,
+    LikelihoodRequest,
+)
 from jaxns.state import State
 from jaxns.types import BoolArray, FloatArray, IntArray, PRNGKey
 
@@ -588,7 +591,6 @@ class DistributedNestedSampler:
     """
 
     __slots__ = (
-        "_core",
         "allocation_target",
         "args",
         "collect_phantom_samples",
@@ -603,7 +605,6 @@ class DistributedNestedSampler:
         "receive_timeout_s",
         "root_allocation_degree",
         "sampler",
-        "target_num_live_points",
         "unlimited_samples",
     )
 
@@ -611,7 +612,6 @@ class DistributedNestedSampler:
             self,
             model: Model,
             coordinator_port: int,
-            target_num_live_points: int | None = None,
             root_allocation_degree: int | None = None,
             max_samples: int | None = None,
             args: tuple = (),
@@ -635,7 +635,6 @@ class DistributedNestedSampler:
         # one of the immutable scientific-state dataclasses.
         self.model = model
         self.coordinator_port = coordinator_port
-        self.target_num_live_points = target_num_live_points
         self.root_allocation_degree = root_allocation_degree
         self.max_samples = max_samples
         self.args = args
@@ -659,50 +658,29 @@ class DistributedNestedSampler:
             )
         if self.receive_timeout_s <= 0.0:
             raise ValueError("receive_timeout_s must be positive.")
-        root_degree = self.root_allocation_degree
-        if root_degree is None:
-            root_degree = self.target_num_live_points
-        if root_degree is None:
-            root_degree = max(1, 30 * int(self.model.U_ndims(self.args, self.params)))
-        # With no local replacement width, one root population is the natural
-        # work increment. Uniform allocation therefore follows d_0, 2 d_0,
-        # 3 d_0, and so on. Utility allocation uses the same
-        # worker-topology-independent increment.
-        if self.delta_K is None:
-            delta_K = root_degree
-        else:
-            delta_K = self.delta_K
-        initial_capacity = self.initial_capacity
-        if initial_capacity is None:
-            initial_capacity = root_degree + 10 * delta_K
-        core = NestedSampler(
+        config = resolve_run_config(
+            execution="distributed",
             model=self.model,
-            target_num_live_points=self.target_num_live_points,
-            root_allocation_degree=self.root_allocation_degree,
-            max_samples=self.max_samples,
-            # This width is used only by NestedSampler configuration and root
-            # storage initialization. Distributed replacement never reads it.
-            shell_size=1,
             args=self.args,
             params=self.params,
+            root_allocation_degree=self.root_allocation_degree,
+            max_samples=self.max_samples,
             sampler=self.sampler,
             depth_condition=self.depth_condition,
             collect_phantom_samples=self.collect_phantom_samples,
             max_phantom_samples=self.max_phantom_samples,
             allocation_target=self.allocation_target,
-            delta_K=delta_K,
-            initial_capacity=initial_capacity,
+            delta_K=self.delta_K,
+            initial_capacity=self.initial_capacity,
             unlimited_samples=self.unlimited_samples,
         )
-        self._core = core
-        self.target_num_live_points = core.target_num_live_points
-        self.root_allocation_degree = core.root_allocation_degree
-        self.max_samples = core.max_samples
-        self.sampler = core.sampler
-        self.max_phantom_samples = core.max_phantom_samples
-        self.depth_condition = core.depth_condition
-        self.delta_K = core.delta_K
-        self.initial_capacity = core.initial_capacity
+        self.root_allocation_degree = config.root_allocation_degree
+        self.max_samples = config.max_samples
+        self.sampler = config.sampler
+        self.max_phantom_samples = config.max_phantom_samples
+        self.depth_condition = config.depth_condition
+        self.initial_capacity = config.initial_capacity
+        self.delta_K = config.delta_K
 
     def initialise(self, key: PRNGKey | None = None) -> DistributedState:
         """Create a root checkpoint without a local likelihood evaluation.
@@ -1394,7 +1372,7 @@ class DistributedNestedSampler:
                         state,
                         previous,
                         depth_cond,
-                        shell_size=planning_width,
+                        replacement_width=planning_width,
                     )
                     schedule = state.scheduler_data
                     if schedule is None:
@@ -1520,7 +1498,7 @@ class DistributedNestedSampler:
             state = _start_schedule_round(
                 distributed.state,
                 depth_cond,
-                shell_size=planning_width,
+                replacement_width=planning_width,
                 allocation_target=self.allocation_target,
                 root_degree=int(self.root_allocation_degree),
                 delta_K=int(self.delta_K),

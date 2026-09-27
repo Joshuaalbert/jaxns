@@ -266,8 +266,6 @@ def _new_proposal(
         key: PRNGKey,
         U0: TreeField[UType],
         direction: TreeField[UType],
-        slice_width: FloatArray,
-        no_step_out: bool,
         log_L_constraint: FloatArray,
         log_likelihood_fn: Callable[[UType], FloatArray],
         periodic: tuple[bool, ...] = (),
@@ -277,7 +275,6 @@ def _new_proposal(
     FloatArray,
     IntArray,
     TreeField[UType],
-    FloatArray,
     BoolArray,
 ]:
     """
@@ -286,7 +283,6 @@ def _new_proposal(
     Args:
         key: PRNG key
         direction: the direction to sample along
-        no_step_out: if true then perform exponential shrinkage from maximal bounds, requiring no step-out procedure.
         log_L_constraint: the constraint to sample within
         log_likelihood_fn: the log-likelihood function
 
@@ -340,7 +336,7 @@ def _new_proposal(
     # Chose the direction to go
     num_likelihood_evaluations = jnp.full((), 0, mp_policy.count_dtype)
 
-    chart_key, run_key, t_key, step_key, after_key = _slice_keys(
+    chart_key, run_key, t_key, _, after_key = _slice_keys(
         key,
         periodic,
     )
@@ -363,92 +359,7 @@ def _new_proposal(
         point_U0=U0,
         direction=direction
     )
-    slice_width = jnp.asarray(slice_width, left_bound.dtype)
-
-    if no_step_out:
-        left, right = left_bound, right_bound
-        step_out_num_likelihood_evaluations = jnp.asarray(0, mp_policy.count_dtype)
-    else:
-        class StepOutCarry(NamedTuple):
-            key: PRNGKey
-            left: FloatArray
-            right: FloatArray
-            left_outside_slice: BoolArray
-            right_outside_slice: BoolArray
-            num_likelihood_evaluations: IntArray
-
-        eps = jnp.asarray(1e-12, left_bound.dtype)
-        use_full_slice = jnp.isinf(slice_width)
-        effective_slice_width = jnp.maximum(slice_width, eps)
-        place_key, step_key = random.split(step_key)
-        uniform_origin = random.uniform(place_key, dtype=left_bound.dtype)
-        initial_left = -uniform_origin * effective_slice_width
-        initial_right = initial_left + effective_slice_width
-
-        left = jnp.where(use_full_slice, left_bound, jnp.maximum(left_bound, initial_left))
-        right = jnp.where(use_full_slice, right_bound, jnp.minimum(right_bound, initial_right))
-
-        def _point_at_t(t: FloatArray) -> TreeField[UType]:
-            return U0 + direction * t
-
-        def step_out_cond(carry: StepOutCarry) -> BoolArray:
-            can_expand_left = carry.left > left_bound
-            can_expand_right = carry.right < right_bound
-            both_outside_box = jnp.bitwise_not(jnp.bitwise_or(can_expand_left, can_expand_right))
-            both_outside_slice = jnp.bitwise_and(carry.left_outside_slice, carry.right_outside_slice)
-            return jnp.bitwise_not(jnp.bitwise_or(both_outside_box, both_outside_slice))
-
-        def step_out_body(carry: StepOutCarry) -> StepOutCarry:
-            key, choose_key = random.split(carry.key, 2)
-
-            can_expand_left = carry.left > left_bound
-            can_expand_right = carry.right < right_bound
-
-            choose_left_random = random.uniform(choose_key, dtype=left_bound.dtype) < jnp.where(
-                can_expand_left & can_expand_right, 0.5, jnp.where(can_expand_left, 1., 0.))
-
-            current_width = jnp.maximum(carry.right - carry.left, eps)
-            candidate_left = jnp.maximum(left_bound, carry.left - current_width)
-            candidate_right = jnp.minimum(right_bound, carry.right + current_width)
-
-            t_eval = jnp.where(choose_left_random, candidate_left, candidate_right)
-
-            next_left = jnp.where(choose_left_random, candidate_left, carry.left)
-            next_right = jnp.where(choose_left_random, carry.right, candidate_right)
-
-            log_L_eval = log_likelihood_fn(_point_at_t(t_eval).tree)
-            outside_slice_eval = log_L_eval <= log_L_constraint
-            next_left_outside_slice = jnp.where(choose_left_random, outside_slice_eval, carry.left_outside_slice)
-            next_right_outside_slice = jnp.where(choose_left_random, carry.right_outside_slice, outside_slice_eval)
-            num_likelihood_evaluations = carry.num_likelihood_evaluations + jnp.ones_like(carry.num_likelihood_evaluations)
-
-            return StepOutCarry(
-                key=key,
-                left=next_left,
-                right=next_right,
-                left_outside_slice=next_left_outside_slice,
-                right_outside_slice=next_right_outside_slice,
-                num_likelihood_evaluations=num_likelihood_evaluations
-            )
-
-        left_outside_slice = log_likelihood_fn(_point_at_t(left).tree) <= log_L_constraint
-        right_outside_slice = log_likelihood_fn(_point_at_t(right).tree) <= log_L_constraint
-        step_out_init = StepOutCarry(
-            key=step_key,
-            left=left,
-            right=right,
-            left_outside_slice=left_outside_slice,
-            right_outside_slice=right_outside_slice,
-            num_likelihood_evaluations=jnp.asarray(2, mp_policy.count_dtype)
-        )
-
-        step_out_carry = jax.lax.while_loop(
-            cond_fun=lambda c: jnp.bitwise_and(jnp.bitwise_not(use_full_slice), step_out_cond(c)),
-            body_fun=step_out_body,
-            init_val=step_out_init
-        )
-        left, right = step_out_carry.left, step_out_carry.right
-        step_out_num_likelihood_evaluations = step_out_carry.num_likelihood_evaluations
+    left, right = left_bound, right_bound
 
     point_U, t = _pick_point_in_interval(
         key=t_key,
@@ -459,7 +370,6 @@ def _new_proposal(
     )
     log_L = log_likelihood_fn(point_U.tree).astype(log_L_constraint.dtype)
     num_likelihood_evaluations += jnp.ones_like(num_likelihood_evaluations)
-    num_likelihood_evaluations += step_out_num_likelihood_evaluations
     init_carry = Carry(
         key=run_key,
         direction=direction,
@@ -491,7 +401,6 @@ def _new_proposal(
             log_L_constraint,
             sampler_data,
         )
-    next_slice_width = 2 * (carry.right - carry.left)
     point_U = carry.point_U
     if periodic:
         point_U = _close_chart(point_U, chart_offset, periodic)
@@ -500,6 +409,5 @@ def _new_proposal(
         carry.log_L,
         num_likelihood_evaluations,
         direction,
-        next_slice_width,
         direction_isotropic,
     )

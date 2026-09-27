@@ -1,5 +1,6 @@
 import dataclasses
 
+import jax
 import numpy as np
 import pytest
 from jax import numpy as jnp
@@ -94,11 +95,11 @@ def test_to_result_marks_no_phantoms_invalid():
     # array at each outer boundary.
     np.testing.assert_allclose(
         np.asarray(state.expected_log_Z_mean),
-        np.asarray(results.expected_log_Z_mean),
+        np.asarray(results.log_Z_mean),
     )
     np.testing.assert_allclose(
         np.asarray(state.expected_log_Z_uncert),
-        np.asarray(results.expected_log_Z_uncert),
+        np.asarray(results.log_Z_uncert),
     )
     assert int(state.total_num_likelihood_evaluations) == int(
         results.total_num_likelihood_evaluations
@@ -120,7 +121,7 @@ def test_to_result_marks_no_phantoms_invalid():
         np.zeros_like(np.asarray(results.block_data.log_L), dtype=bool),
     )
 
-    evidence_samples = results.sample_mc_shrinkage(num_samples=16, C_min=20)
+    evidence_samples = results.sample_evidence_mc(num_samples=16, C_min=20, phantom_conditioning=False, diagnostics=True, key=random.PRNGKey(42))
     np.testing.assert_allclose(
         np.asarray(evidence_samples.kish_participating_cluster_counts),
         np.zeros_like(np.asarray(evidence_samples.log_L_blocks), dtype=float),
@@ -136,12 +137,12 @@ def test_to_result_marks_no_phantoms_invalid():
     key = random.PRNGKey(11)
     explicit = results.sample_evidence_mc(
         num_samples=16,
-        conditioning="classic",
+        phantom_conditioning=False,
         key=key,
     )
     from_state = state.sample_evidence_mc(
         num_samples=16,
-        conditioning="classic",
+        phantom_conditioning=False,
         key=key,
     )
     np.testing.assert_array_equal(
@@ -153,7 +154,7 @@ def test_to_result_marks_no_phantoms_invalid():
     with pytest.raises(ValueError, match="no phantom slots"):
         results.sample_evidence_mc(
             num_samples=16,
-            conditioning="phantom",
+            phantom_conditioning=True,
             key=key,
         )
 
@@ -193,7 +194,7 @@ def test_expected_evidence_rebuilds_order_for_active_growth_state():
     active = _start_schedule_round(
         initial,
         DepthCondition(),
-        shell_size=1,
+        replacement_width=1,
         allocation_target="uniform",
         root_degree=1,
         delta_K=2,
@@ -404,11 +405,11 @@ def test_state_consistency_rejects_strict_contour_violation():
         state.ensure_consistency()
 
 
-def test_state_sample_logZ_rejects_strict_contour_equality():
+def test_state_sample_evidence_mc_rejects_strict_contour_equality():
     state = _make_strict_contour_violation_state()
 
     with pytest.raises(ValueError, match="Strict contour.*must be greater"):
-        state.sample_logZ(random.PRNGKey(7), num_samples=2)
+        state.sample_evidence_mc(key=random.PRNGKey(7), num_samples=2)
 
 
 def test_state_to_result_rejects_strict_contour_equality():
@@ -418,15 +419,17 @@ def test_state_to_result_rejects_strict_contour_equality():
         state.to_result()
 
 
-def test_state_sample_logZ_uses_public_block_path():
+def test_state_sample_evidence_mc_uses_public_block_path():
+    model = _make_basic_model()
+    U_samples = jax.vmap(model.sample_U)(random.split(random.PRNGKey(288), 2))
     samples = Samples(
         log_L_constraints=jnp.array([-jnp.inf, 0.0]),
         log_likelihoods=jnp.array([0.0, 1.0]),
-        U_samples=jnp.array([[0.25], [0.75]]),
+        U_samples=U_samples,
         out_degree=jnp.array([1, 0], dtype=jnp.int32),
         num_likelihood_evaluations=jnp.array([1, 1], dtype=jnp.int32),
         phantom_samples=PhantomSamples(
-            U_samples=jnp.zeros((2, 0, 1)),
+            U_samples=None,
             valid_mask=jnp.zeros((2, 0), dtype=jnp.bool_),
             log_L=jnp.zeros((2, 0)),
         ),
@@ -436,22 +439,24 @@ def test_state_sample_logZ_uses_public_block_path():
         samples=samples,
         num_samples=jnp.asarray(2, dtype=jnp.int32),
         log_L_supremum=jnp.asarray(1.0),
-        U_supremum=jnp.array([0.75]),
+        U_supremum=jax.tree.map(lambda u: u[-1], U_samples),
         termination_reason=jnp.asarray(0, dtype=jnp.int32),
-        model=_make_basic_model(),
+        model=model,
     )
 
-    log_Z = state.sample_logZ(random.PRNGKey(3), num_samples=5)
+    log_Z = state.sample_evidence_mc(
+        key=random.PRNGKey(3), num_samples=5,
+    ).log_Z_samples
 
     assert np.asarray(log_Z).shape == (5,)
     assert np.all(np.isfinite(np.asarray(log_Z)))
 
 
-def test_state_sample_logZ_rejects_invalid_plateau_capacity():
+def test_state_sample_evidence_mc_rejects_invalid_plateau_capacity():
     state = _make_invalid_plateau_capacity_state()
 
     with pytest.raises(ValueError, match="K_g|m_g|incoming|plateau"):
-        state.sample_logZ(random.PRNGKey(5), num_samples=2)
+        state.sample_evidence_mc(key=random.PRNGKey(5), num_samples=2)
 
 
 def test_state_to_result_evidence_summary_uses_block_model():

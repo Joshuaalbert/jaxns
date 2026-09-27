@@ -18,11 +18,7 @@ from jaxns.algorithm.depth import (
     _start_schedule_round,
 )
 from jaxns.constrained_sampler import (
-    ConstrainedSampleBatch,
-    ConstrainedSampleRequest,
-    LikelihoodEvaluation,
     UniDimSliceSampler,
-    sample_request,
 )
 from jaxns.core import NestedSampler
 from jaxns.depth_condition import DepthCondition
@@ -39,6 +35,14 @@ from jaxns.distributed_core import (
 )
 from jaxns.runtime.client import RuntimeUnavailableError
 from jaxns.samples import PhantomSamples, SeedPoint
+from jaxns.sampling.batching import (
+    sample_request,
+)
+from jaxns.sampling.protocol import (
+    ConstrainedSampleBatch,
+    ConstrainedSampleRequest,
+    LikelihoodEvaluation,
+)
 
 
 def _local_checkpoint(
@@ -46,7 +50,22 @@ def _local_checkpoint(
         key,
 ) -> DistributedState:
     """Build planning state without requiring the process-runtime boundary."""
-    state = runner._core.initialise(key)
+    # These scheduler tests deliberately initialise a local fixture. The
+    # production distributed runner evaluates its roots only on workers.
+    state = NestedSampler(
+        model=runner.model,
+        args=runner.args,
+        params=runner.params,
+        root_allocation_degree=runner.root_allocation_degree,
+        max_samples=runner.max_samples,
+        initial_capacity=runner.initial_capacity,
+        unlimited_samples=runner.unlimited_samples,
+        sampler=runner.sampler,
+        depth_condition=runner.depth_condition,
+        allocation_target=runner.allocation_target,
+        delta_K=runner.delta_K,
+        replacement_width=1,
+    ).initialise(key)
     return DistributedState(
         state=state,
         reservations=ReservationState.empty(
@@ -163,7 +182,7 @@ def test_distributed_initialisation_dispatches_every_likelihood():
 def test_distributed_completion_order_preserves_scientific_state():
     """Worker latency cannot choose a different committed race."""
     model = make_toy_model()
-    sampler = UniDimSliceSampler(model=model, num_slices=2)
+    sampler = UniDimSliceSampler(num_slices=2)
     runner = DistributedNestedSampler(
         model=model,
         coordinator_port=5555,
@@ -189,7 +208,7 @@ def test_distributed_completion_order_preserves_scientific_state():
             del session_id
             self.submitted.extend(tasks)
             self.results.extend(
-                (task_id, sample_request(sampler, request))
+                (task_id, sample_request(sampler, request, model=model))
                 for task_id, request in tasks
             )
 
@@ -388,7 +407,7 @@ def test_reservations_are_planning_data_until_once_only_acceptance():
     state = NestedSampler(
         model=model,
         root_allocation_degree=2,
-        shell_size=1,
+        replacement_width=1,
         max_samples=6,
         initial_capacity=6,
     ).initialise(jax.random.PRNGKey(1))
@@ -437,14 +456,14 @@ def test_distributed_continuation_returns_to_heap_not_dispatch_window():
     state = NestedSampler(
         model=make_toy_model(),
         root_allocation_degree=2,
-        shell_size=1,
+        replacement_width=1,
         max_samples=6,
         initial_capacity=6,
     ).initialise(jax.random.PRNGKey(33))
     state = _start_schedule_round(
         state,
         DepthCondition(),
-        shell_size=2,
+        replacement_width=2,
         allocation_target="uniform",
         root_degree=2,
         delta_K=1,
@@ -764,7 +783,7 @@ def test_distributed_seed_refresh_waits_for_no_pending_tasks():
     state = _start_schedule_round(
         state,
         DepthCondition(),
-        shell_size=2,
+        replacement_width=2,
         allocation_target="uniform",
         root_degree=2,
         delta_K=1,
@@ -813,7 +832,7 @@ def test_distributed_start_seed_storage_grows_without_losing_reservations():
     state = _start_schedule_round(
         state,
         DepthCondition(),
-        shell_size=2,
+        replacement_width=2,
         allocation_target="uniform",
         root_degree=2,
         delta_K=1,
@@ -902,7 +921,7 @@ def test_distributed_dispatch_starts_evidence_utility_schedule():
     expected_state = _start_schedule_round(
         checkpoint.state,
         DepthCondition(),
-        shell_size=2,
+        replacement_width=2,
         allocation_target="evidence_improving",
         root_degree=4,
         delta_K=3,
@@ -955,7 +974,7 @@ def test_distributed_refill_reserves_pending_same_contour_seed():
     state = _start_schedule_round(
         state,
         DepthCondition(),
-        shell_size=2,
+        replacement_width=2,
         allocation_target="uniform",
         root_degree=2,
         delta_K=1,
@@ -1046,7 +1065,7 @@ def test_distributed_refills_reserve_starts_beyond_worker_capacity():
     state = _start_schedule_round(
         state,
         DepthCondition(),
-        shell_size=2,
+        replacement_width=2,
         allocation_target="uniform",
         root_degree=6,
         delta_K=3,
@@ -1086,7 +1105,7 @@ def test_distributed_refills_reserve_starts_beyond_worker_capacity():
 
 def test_worker_request_uses_scalar_and_vmap_paths_above_strict_contour():
     model = make_toy_model()
-    sampler = UniDimSliceSampler(model=model, num_slices=2)
+    sampler = UniDimSliceSampler(num_slices=2)
     seed_u = jnp.asarray([0.2, 0.8])
     seed_log_likelihood = jax.vmap(model.log_likelihood)(seed_u)
 
@@ -1102,7 +1121,7 @@ def test_worker_request_uses_scalar_and_vmap_paths_above_strict_contour():
             sampler_data=None,
         )
         return jax.jit(
-            lambda value: sample_request(sampler, value)
+            lambda value: sample_request(sampler, value, model=model)
         )(request)
 
     scalar = run(1)
