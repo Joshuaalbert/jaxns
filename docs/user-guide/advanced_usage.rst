@@ -194,7 +194,7 @@ Reading the diagnostic plot
 .. code-block:: python
 
    results.plot_diagnostics()
-    results.plot_cornerplot()
+   results.plot_cornerplot()
 
 .. figure:: ../examples/advanced_diagnostics.png
    :width: 640px
