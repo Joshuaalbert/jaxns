@@ -545,8 +545,12 @@ def test_nested_sampling_run_results(case, collect_phantom_samples):
     assert not np.isnan(results.log_Z_uncert)
     if collect_phantom_samples:
         assert results.log_L_phantom.shape[1] > 0
-        if int(state.depth_loop_iter) > 0:
-            assert int(results.total_phantom_samples) > 0
+        # A constant likelihood can allocate only sentinel children. Direct
+        # prior draws have no chain, even when they occur in a depth iteration.
+        num_chains = int(state.num_samples) - int(state.root_out_degree)
+        assert int(results.total_phantom_samples) == (
+            num_chains * results.log_L_phantom.shape[1]
+        )
     else:
         assert results.log_L_phantom.shape[1] == 0
         assert int(results.total_phantom_samples) == 0

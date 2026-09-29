@@ -124,6 +124,11 @@ memory drops from 492,364 to 482,564 bytes, exactly the 9,800 bytes saved by
 replacing 100-by-99 booleans with 100 booleans. This measures the direct sampler
 output, including coordinates, and makes no wall-time speedup claim. Root draws
 intentionally use a different random trajectory from the former root MCMC.
+The scheduled dispatcher also preserves non-root outputs exactly. At the same
+shapes, its compiler-reported argument memory increases by 100 bytes for the
+bounded root flags, temporary memory increases by 6,976 bytes, and output
+memory decreases by 9,800 bytes. Both versions discard phantom coordinates
+before measuring this scheduling boundary.
 
 ## Performance and intent review
 
