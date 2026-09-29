@@ -29,9 +29,9 @@ def compact_lookup(cumulative, ranks):
 
 def measure(reservoir_size: int, repetitions: int) -> dict[str, float | int]:
     """Return synchronized lookup evidence for one reservoir width."""
-    shell_size = 80
+    replacement_width = 80
     proposal_width = 64
-    rows = jnp.arange(shell_size, dtype=mp_policy.index_dtype)  # [S]
+    rows = jnp.arange(replacement_width, dtype=mp_policy.index_dtype)  # [S]
     slots = jnp.arange(reservoir_size, dtype=mp_policy.index_dtype)  # [R]
     eligible = ((rows[:, None] + slots[None, :]) % 3) == 0  # [S, R]
     cumulative = jnp.cumsum(
@@ -82,7 +82,7 @@ def measure(reservoir_size: int, repetitions: int) -> dict[str, float | int]:
     dense_median = statistics.median(dense_times[2:])
     compact_median = statistics.median(compact_times[2:])
     return {
-        "shell_size": shell_size,
+        "replacement_width": replacement_width,
         "proposal_width": proposal_width,
         "reservoir_size": reservoir_size,
         "repetitions": repetitions,

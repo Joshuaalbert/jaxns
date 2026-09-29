@@ -18,20 +18,27 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import jax
+import numpy as np
 import pytest
 from jax import numpy as jnp
 
-from cicd.tests.distributed_support import make_periodic_model, make_toy_model
+from cicd.tests.distributed_support import (
+    half_prior_model,
+    make_periodic_model,
+    make_toy_model,
+)
+from jaxns.checkpoint import CheckpointManager
 from jaxns.cli import _stop_started_process
 from jaxns.constrained_sampler import (
-    ConstrainedSampleRequest,
     UniDimSliceSampler,
-    sample_request,
 )
+from jaxns.core import NestedSampler
 from jaxns.depth_condition import DepthCondition
 from jaxns.distributed_core import (
     DistributedNestedSampler,
+    DistributedState,
 )
+from jaxns.model import Model
 from jaxns.runtime.client import SupervisorClient, _sampler_batch_group
 from jaxns.runtime.config import (
     WorkerConfig,
@@ -59,9 +66,63 @@ from jaxns.runtime.protocol import (
 from jaxns.runtime.session import WorkerSession
 from jaxns.runtime.worker import _fence_process
 from jaxns.samples import SeedPoint
+from jaxns.sampling.batching import (
+    sample_request,
+)
 from jaxns.sampling.ellipsoid import empty_sampler_data
+from jaxns.sampling.protocol import (
+    ConstrainedSampleRequest,
+)
+from jaxns.state import State
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def test_zero_plateau_evidence_in_real_worker_processes(tmp_path):
+    config_path = tmp_path / "zero-plateau.toml"
+    _write_batch_config(config_path)
+    _cli(config_path, "up")
+    try:
+        config = load_runtime_config(config_path)
+        runner = DistributedNestedSampler(
+            model=Model(half_prior_model),
+            coordinator_port=config.network.port,
+            root_allocation_degree=64,
+            delta_K=64,
+            max_samples=512,
+            initial_capacity=512,
+            sampler=UniDimSliceSampler(
+                num_slices=4,
+                collect_phantom_samples=True,
+                max_phantom_samples=3,
+            ),
+        )
+        finished = runner.run_until_goal(
+            lambda state: int(state.root_out_degree) >= 128,
+            key=jax.random.PRNGKey(42),
+        )
+        state = finished.to_state()
+        state.ensure_consistency()
+        n = int(state.num_samples)
+        roots = np.asarray(state.samples.num_likelihood_evaluations[:n]) == 1
+        assert np.sum(roots) == int(state.root_out_degree)
+        assert int(state.root_out_degree) >= 128
+        assert np.any(~roots)
+        assert np.any(np.isneginf(state.samples.log_likelihoods[:n]))
+        np.testing.assert_array_equal(
+            state.samples.phantom_samples.valid_mask[:n], ~roots,
+        )
+        for conditioning in (False, True):
+            evidence = state.sample_evidence(
+                64,
+                key=jax.random.PRNGKey(43),
+                phantom_conditioning=conditioning,
+            )
+            np.testing.assert_allclose(
+                jnp.exp(evidence.log_Z_mean), 0.5, atol=0.15,
+            )
+    finally:
+        _cli(config_path, "down")
 
 
 def test_batch_group_ignores_direction_diagnostics_but_not_geometry():
@@ -94,12 +155,12 @@ def test_batch_group_ignores_direction_diagnostics_but_not_geometry():
     # remain observational and cannot enter the worker's direction law.
     model = make_toy_model()
     sampler = UniDimSliceSampler(
-        model=model,
         num_slices=2,
     )
     request = ConstrainedSampleRequest(
         keys=jax.random.split(jax.random.PRNGKey(4), 1),
         valid=jnp.asarray([True]),
+        from_root=jnp.asarray([False]),
         log_L_constraints=jnp.asarray([-1.0]),
         seed_points=SeedPoint(
             U0=jnp.asarray([0.5]),
@@ -107,10 +168,11 @@ def test_batch_group_ignores_direction_diagnostics_but_not_geometry():
         ),
         sampler_data=data,
     )
-    reference = sample_request(sampler, request)
+    reference = sample_request(sampler, request, model=model)
     observed = sample_request(
         sampler,
         dataclasses.replace(request, sampler_data=diagnostics),
+        model=model,
     )
     assert all(
         bool(jnp.array_equal(left, right))
@@ -751,6 +813,40 @@ def test_supervisor_rotates_dispatch_fairly_between_sessions():
     assert selected_second[0].session_id == "second"
 
 
+def test_cancel_fences_busy_workers_without_discarding_other_sessions():
+    interrupted = SessionRecord("stop", "one", b"model", b"client-one")
+    other = SessionRecord("keep", "two", b"model", b"client-two")
+    busy = WorkerRecord(
+        WorkerConfig("cpu", "0", 1), None, None, b"busy",
+        node_id="remote", instance_id="old",
+    )
+    idle = WorkerRecord(WorkerConfig("cpu", "1", 1), None, None, b"idle")
+    busy.ready = idle.ready = True
+    busy.registered.update(("stop", "keep"))
+    idle.registered.update(("stop", "keep"))
+    busy.task = (("stop", 7),)
+    task = TaskRecord(7, "direction", SAMPLE, "fingerprint", b"payload")
+    task.state = "running"
+    interrupted.tasks[7] = task
+    supervisor = object.__new__(Supervisor)
+    supervisor.sessions = {"stop": interrupted, "keep": other}
+    supervisor.session_order = deque(("stop", "keep"))
+    supervisor.workers = {busy.identity: busy, idle.identity: idle}
+    supervisor.restart_requests = {}
+    supervisor._send = lambda *args, **kwargs: None
+    with pytest.raises(RuntimeError, match="unacknowledged"):
+        supervisor._release_client(b"client-one", {"session_id": "stop"})
+    supervisor._release_client(
+        b"client-one", {"session_id": "stop", "cancel": True},
+    )
+    assert supervisor.sessions == {"keep": other}
+    assert list(supervisor.session_order) == ["keep"]
+    assert busy.dropped and busy.task is None
+    assert supervisor.restart_requests["remote"]
+    assert idle.ready and not idle.dropped
+    assert idle.registered == {"keep"}
+
+
 def test_incompatible_worker_is_rejected_before_model_registration():
     worker = WorkerRecord(
         WorkerConfig("cpu", "0", 1),
@@ -846,7 +942,6 @@ def test_phantom_payload_does_not_change_vector_worker_trajectory(tmp_path):
 
         def run(collect_phantoms):
             sampler = UniDimSliceSampler(
-                model=model,
                 num_slices=2,
                 collect_phantom_samples=collect_phantoms,
                 max_phantom_samples=(1 if collect_phantoms else None),
@@ -935,7 +1030,7 @@ def test_periodic_sampler_executes_in_real_worker_processes(tmp_path):
             delta_K=4,
             max_samples=12,
             initial_capacity=8,
-            sampler=UniDimSliceSampler(model=model, num_slices=4),
+            sampler=UniDimSliceSampler(num_slices=4),
         )
 
         checkpoint = runner.run_until_goal(
@@ -944,7 +1039,10 @@ def test_periodic_sampler_executes_in_real_worker_processes(tmp_path):
             key=jax.random.PRNGKey(275),
         )
 
-        assert runner.sampler._periodic == (True,)
+        config = runner._resolve_config(
+            checkpoint.state.model, checkpoint.state.args, checkpoint.state.params,
+        )
+        assert config.sampler._periodic == (True,)
         assert int(checkpoint.state.num_samples) > 4
         num_samples = int(checkpoint.state.num_samples)
         for value in jax.tree.leaves(checkpoint.state.samples.U_samples):
@@ -972,7 +1070,6 @@ def test_real_pool_runs_scalar_vmap_retries_and_cli_lifecycle(tmp_path):
 
         model = make_toy_model()
         sampler = UniDimSliceSampler(
-            model=model,
             num_slices=2,
             collect_phantom_samples=True,
             max_phantom_samples=1,
@@ -1013,9 +1110,9 @@ def test_real_pool_runs_scalar_vmap_retries_and_cli_lifecycle(tmp_path):
             state.samples.phantom_samples.valid_mask[4:state.num_samples]
         ))
 
-        # Exercise worker-local vmap explicitly. A partially filled worker
-        # takes the scalar path after batch_wait_s, while two compatible queued
-        # tasks use its configured two-lane vmap.
+        # Warm both scalar and two-lane programs before checking cache reuse.
+        # Submitting individual tasks in a loop can leave one width untested
+        # until reconnection, depending on worker and client timing.
         conformance_id = "worker-programs"
         # The local lambda proves one-time model/session registration supports
         # notebook and closure code rather than only importable module symbols.
@@ -1035,6 +1132,7 @@ def test_real_pool_runs_scalar_vmap_retries_and_cli_lifecycle(tmp_path):
                 request = ConstrainedSampleRequest(
                     keys=jax.random.split(jax.random.PRNGKey(30 + task_id), 1),
                     valid=jnp.ones((1,), dtype=bool),
+                    from_root=jnp.zeros((1,), dtype=bool),
                     log_L_constraints=jnp.full((1,), -1.0),
                     seed_points=SeedPoint(
                         U0=jnp.full((1,), 0.5),
@@ -1043,11 +1141,17 @@ def test_real_pool_runs_scalar_vmap_retries_and_cli_lifecycle(tmp_path):
                     sampler_data=None,
                 )
                 requests[task_id] = request
-                client.submit(conformance_id, task_id, request)
+            client.submit(conformance_id, 1, requests[1])
             completed = {
-                client.receive(conformance_id, timeout_s=30.0)[0]
-                for _ in requests
+                client.receive(conformance_id, timeout_s=30.0)[0],
             }
+            client.submit_many(
+                conformance_id, tuple(list(requests.items())[1:]),
+            )
+            completed.update(
+                client.receive(conformance_id, timeout_s=30.0)[0]
+                for _ in range(len(requests) - 1)
+            )
             assert completed == set(requests)
             for task_id in completed:
                 client.acknowledge(conformance_id, task_id)
@@ -1078,7 +1182,7 @@ def test_real_pool_runs_scalar_vmap_retries_and_cli_lifecycle(tmp_path):
         # Register a new uncompiled session, kill its active worker, and
         # observe the unchanged task complete after an automatic replacement.
         session_id = "worker-loss"
-        loss_sampler = UniDimSliceSampler(model=model, num_slices=50)
+        loss_sampler = UniDimSliceSampler(num_slices=50)
         session = WorkerSession(
             model=model,
             sampler=loss_sampler,
@@ -1088,6 +1192,7 @@ def test_real_pool_runs_scalar_vmap_retries_and_cli_lifecycle(tmp_path):
         request = ConstrainedSampleRequest(
             keys=jax.random.split(jax.random.PRNGKey(22), 1),
             valid=jnp.asarray([True]),
+            from_root=jnp.asarray([False]),
             log_L_constraints=jnp.asarray([-1.0]),
             seed_points=SeedPoint(
                 U0=jnp.asarray([0.5]),
@@ -1133,6 +1238,203 @@ def test_real_pool_runs_scalar_vmap_retries_and_cli_lifecycle(tmp_path):
 
     second_down = json.loads(_cli(config_path, "down").stdout)
     assert second_down["idempotent"] is True
+
+
+def test_local_handoff_waits_for_workers_then_resumes_locally(tmp_path):
+    """Continue saved scientific work through both execution topologies."""
+    coordinator, node = _write_network_configs(tmp_path)
+    settings = {
+        "model": make_toy_model(), "root_allocation_degree": 3, "delta_K": 3,
+        "sampler": UniDimSliceSampler(
+            num_slices=2, collect_phantom_samples=True, max_phantom_samples=1,
+        ),
+        "collect_phantom_samples": True, "initial_capacity": 6,
+        "unlimited_samples": True,
+        "depth_condition": DepthCondition(dlogZ=jnp.asarray(0.5)),
+    }
+    local = NestedSampler(**settings)
+    state = local.run_until_goal(
+        lambda state: int(state.goal_loop_iter) >= 1,
+        key=jax.random.PRNGKey(301),
+    )
+    filename = str(tmp_path / "laptop.pkl")
+    state.save(filename)
+    handoff = DistributedState.from_state(State.load(filename))
+    distributed = DistributedNestedSampler(
+        **settings,
+        coordinator_port=load_runtime_config(coordinator).network.port,
+    )
+    outcome = {}
+
+    def continue_on_cluster():
+        try:
+            outcome["completed"] = distributed.resume_until_goal(
+                handoff,
+                lambda state: int(state.goal_loop_iter) >= 2,
+                checkpoint_dir=tmp_path / "cluster-checkpoints",
+                checkpoint_cadence=0.0,
+            )
+        except BaseException as exc:  # noqa: BLE001
+            outcome["error"] = exc
+
+    science = threading.Thread(target=continue_on_cluster, daemon=True)
+    _cli(coordinator, "up")
+    try:
+        science.start()
+        deadline = time.monotonic() + 15.0
+        while time.monotonic() < deadline:
+            status = _status(coordinator)
+            if status["sessions"] == 1:
+                break
+            time.sleep(0.02)
+        assert status["sessions"] == 1
+        assert status["workers"] == []
+        assert science.is_alive()
+        assert not outcome
+        _cli(node, "up")
+        science.join(timeout=60.0)
+        assert not science.is_alive()
+        assert "error" not in outcome, outcome.get("error")
+        completed = outcome["completed"]
+        returned = completed.to_state()
+        assert int(returned.goal_loop_iter) == 2
+        assert int(returned.num_samples) > int(state.num_samples)
+        count = int(state.num_samples)
+        # A topology change appends observations without replacing existing
+        # classic or phantom samples. Parent out-degrees may legitimately grow.
+        np.testing.assert_array_equal(
+            returned.samples.log_likelihoods[:count],
+            state.samples.log_likelihoods[:count],
+        )
+        np.testing.assert_array_equal(
+            returned.samples.phantom_samples.log_L[:count],
+            state.samples.phantom_samples.log_L[:count],
+        )
+        assert (tmp_path / "cluster-checkpoints" / "CHECKPOINT").is_file()
+        resumed = distributed.resume_until_goal(
+            handoff,
+            lambda state: int(state.goal_loop_iter) >= 2,
+            checkpoint_dir=tmp_path / "cluster-checkpoints",
+        )
+        np.testing.assert_array_equal(resumed.state.random_key, returned.random_key)
+        final = local.resume_until_goal(
+            returned, lambda state: int(state.goal_loop_iter) >= 3,
+        )
+        assert int(final.goal_loop_iter) == 3
+        assert int(final.num_samples) > int(returned.num_samples)
+    finally:
+        _cli(node, "down", check=False)
+        _cli(coordinator, "down", check=False)
+        science.join(timeout=5.0)
+
+
+@pytest.mark.parametrize("checkpointing", [False, True])
+def test_distributed_sigint_cancels_only_its_session(
+        tmp_path, monkeypatch, checkpointing,
+):
+    coordinator, node = _write_network_configs(tmp_path)
+    settings = {
+        "model": make_toy_model(), "root_allocation_degree": 3, "delta_K": 3,
+        "sampler": UniDimSliceSampler(num_slices=2), "max_samples": 128,
+        "initial_capacity": 32,
+        "depth_condition": DepthCondition(dlogZ=jnp.asarray(0.1)),
+    }
+    initial = NestedSampler(**settings).initialise(jax.random.PRNGKey(302))
+    handoff = DistributedState.from_state(initial)
+    runner = DistributedNestedSampler(
+        **settings, coordinator_port=load_runtime_config(coordinator).network.port,
+        verbose=True,
+    )
+    receive = DistributedNestedSampler._receive_group_waiting_for_workers
+    received = 0
+
+    def interrupt_after_a_commit(self, client, session_id):
+        nonlocal received
+        if received:
+            signal.raise_signal(signal.SIGINT)
+        received += 1
+        return receive(self, client, session_id)
+
+    checkpoint_dir = tmp_path / "checkpoints" if checkpointing else None
+    _cli(coordinator, "up")
+    _cli(node, "up")
+    try:
+        # An unrelated registered session must survive cancellation. Its worker
+        # programs may be registered afresh when a busy process is replaced.
+        with SupervisorClient.from_port(runner.coordinator_port) as other:
+            other.register("other-session", WorkerSession(
+                model=settings["model"], sampler=settings["sampler"],
+                args=(), params=None,
+            ))
+            with monkeypatch.context() as patcher:
+                patcher.setattr(
+                    DistributedNestedSampler, "_receive_group_waiting_for_workers",
+                    interrupt_after_a_commit,
+                )
+                with pytest.raises(KeyboardInterrupt):
+                    runner.resume_until_goal(
+                        handoff, lambda state: int(state.goal_loop_iter) >= 3,
+                        checkpoint_dir=checkpoint_dir,
+                    )
+            status = _status(coordinator)
+            assert status["sessions"] == 1
+            assert status["queued"] == status["running"] == 0
+            assert status["completed_unacknowledged"] == 0
+            other.release("other-session")
+        if checkpointing:
+            with CheckpointManager[DistributedState](checkpoint_dir) as manager:
+                saved = manager.load()
+            assert saved.pending
+            assert int(saved.state.num_samples) > int(initial.num_samples)
+            count = int(saved.state.num_samples)
+            resumed = runner.resume_until_goal(
+                handoff, lambda state: int(state.goal_loop_iter) >= 3,
+                checkpoint_dir=checkpoint_dir,
+            )
+            assert int(resumed.state.goal_loop_iter) == 3
+            assert not resumed.pending
+            np.testing.assert_array_equal(
+                resumed.state.samples.log_likelihoods[:count],
+                saved.state.samples.log_likelihoods[:count],
+            )
+        else:
+            assert not (tmp_path / "checkpoints").exists()
+    finally:
+        _cli(node, "down", check=False)
+        _cli(coordinator, "down", check=False)
+
+
+def test_sigint_during_worker_registration_saves_handoff(tmp_path, monkeypatch):
+    coordinator, _ = _write_network_configs(tmp_path)
+    local = NestedSampler(model=make_toy_model(), root_allocation_degree=3)
+    state = local.initialise(jax.random.PRNGKey(302))
+    handoff = DistributedState.from_state(state)
+    runner = DistributedNestedSampler(
+        model=state.model, coordinator_port=load_runtime_config(coordinator).network.port,
+    )
+    receive = SupervisorClient._receive_until
+
+    def stop_waiting(self, deadline):
+        if deadline is None:
+            signal.raise_signal(signal.SIGINT)
+        return receive(self, deadline)
+
+    _cli(coordinator, "up")
+    try:
+        monkeypatch.setattr(SupervisorClient, "_receive_until", stop_waiting)
+        with pytest.raises(KeyboardInterrupt):
+            runner.resume_until_goal(
+                handoff, lambda state: False,
+                checkpoint_dir=tmp_path / "checkpoints",
+            )
+        assert _status(coordinator)["sessions"] == 0
+        with CheckpointManager[DistributedState](tmp_path / "checkpoints") as manager:
+            saved = manager.load()
+        assert saved.session_id == handoff.session_id
+        np.testing.assert_array_equal(saved.state.random_key, state.random_key)
+        assert not saved.pending
+    finally:
+        _cli(coordinator, "down", check=False)
 
 
 def test_node_joins_runs_restarts_and_drains_over_tcp(tmp_path):
@@ -1186,7 +1488,7 @@ def test_node_joins_runs_restarts_and_drains_over_tcp(tmp_path):
             assert replacement["lease_generation"] > old_generation
 
             model = make_toy_model()
-            sampler = UniDimSliceSampler(model=model, num_slices=2)
+            sampler = UniDimSliceSampler(num_slices=2)
             distributed = DistributedNestedSampler(
                 model=model,
                 coordinator_port=load_runtime_config(
@@ -1210,7 +1512,7 @@ def test_node_joins_runs_restarts_and_drains_over_tcp(tmp_path):
             # scientific run. Keep the same thread and checkpoint alive beyond
             # its coordinator-health timeout, then let a fresh node instance
             # register and consume the coordinator's queued work.
-            slow_sampler = UniDimSliceSampler(model=model, num_slices=100)
+            slow_sampler = UniDimSliceSampler(num_slices=100)
             starved = DistributedNestedSampler(
                 model=model,
                 coordinator_port=load_runtime_config(

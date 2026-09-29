@@ -31,16 +31,14 @@ def _run_case(case_name: str, seed: int):
     ndims = int(model.U_ndims())
     num_slices = 5 * ndims
     sampler = UniDimSliceSampler(
-        model=model,
         num_slices=num_slices,
-        no_step_out=True,
         collect_phantom_samples=True,
         max_phantom_samples=ndims,
     )
     nested_sampler = NestedSampler(
         model=model,
         root_allocation_degree=30 * ndims,
-        shell_size=10 * ndims,
+        replacement_width=10 * ndims,
         max_samples=100 * 30 * ndims,
         collect_phantom_samples=True,
         sampler=sampler,
@@ -55,9 +53,9 @@ def _plot_phantom_conditioning(
         save_path: Path,
 ) -> None:
     """Plot the block probabilities and Kish gate used by conditioning."""
-    evidence = result.sample_evidence_mc(
+    evidence = result.sample_evidence(
         num_samples=1_000,
-        conditioning="phantom",
+        phantom_conditioning=True,
         key=key,
     )
     valid = np.isfinite(np.asarray(evidence.log_L_blocks))
@@ -140,9 +138,9 @@ def main() -> None:
             evidence_key,
             Path(f"{prefix}_phantom_conditioning.png"),
         )
-        evidence = result.sample_evidence_mc(
+        evidence = result.sample_evidence(
             num_samples=1_000,
-            conditioning="phantom",
+            phantom_conditioning=True,
             key=evidence_key,
         )
         print(

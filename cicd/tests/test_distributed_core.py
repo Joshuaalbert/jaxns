@@ -10,19 +10,18 @@ from jax import numpy as jnp
 
 from cicd.tests.core_fixtures import make_state
 from cicd.tests.distributed_support import make_toy_model
+from jaxns.algorithm.allocation import AllocationPlan, VolumePath
 from jaxns.algorithm.depth import (
     SEED_SOURCE_REFRESH_WINDOWS,
     CoreWorkBatch,
     _insert_seed_reservation,
+    _new_thread_schedule,
     _seed_reservation_contains,
     _start_schedule_round,
 )
+from jaxns.algorithm.race_tree import build_block_state
 from jaxns.constrained_sampler import (
-    ConstrainedSampleBatch,
-    ConstrainedSampleRequest,
-    LikelihoodEvaluation,
     UniDimSliceSampler,
-    sample_request,
 )
 from jaxns.core import NestedSampler
 from jaxns.depth_condition import DepthCondition
@@ -39,6 +38,14 @@ from jaxns.distributed_core import (
 )
 from jaxns.runtime.client import RuntimeUnavailableError
 from jaxns.samples import PhantomSamples, SeedPoint
+from jaxns.sampling.batching import (
+    sample_request,
+)
+from jaxns.sampling.protocol import (
+    ConstrainedSampleBatch,
+    ConstrainedSampleRequest,
+    LikelihoodEvaluation,
+)
 
 
 def _local_checkpoint(
@@ -46,7 +53,21 @@ def _local_checkpoint(
         key,
 ) -> DistributedState:
     """Build planning state without requiring the process-runtime boundary."""
-    state = runner._core.initialise(key)
+    # These scheduler tests deliberately initialise a local fixture. The
+    # production distributed runner evaluates its roots only on workers.
+    config = runner._resolve_config(runner.model, (), None)
+    state = NestedSampler(
+        model=runner.model,
+        root_allocation_degree=config.root_allocation_degree,
+        max_samples=config.max_samples,
+        initial_capacity=config.initial_capacity,
+        unlimited_samples=runner.unlimited_samples,
+        sampler=config.sampler,
+        depth_condition=runner.depth_condition,
+        allocation_target=runner.allocation_target,
+        delta_K=config.delta_K,
+        replacement_width=1,
+    ).initialise(key)
     return DistributedState(
         state=state,
         reservations=ReservationState.empty(
@@ -60,6 +81,92 @@ def _local_checkpoint(
     )
 
 
+def test_distributed_resume_registers_the_checkpoint_model(monkeypatch):
+    from jaxns.runtime.client import SupervisorClient
+
+    runner = DistributedNestedSampler(
+        model=make_toy_model(), coordinator_port=5555,
+        root_allocation_degree=2, initial_capacity=4,
+    )
+    checkpoint = _local_checkpoint(runner, jax.random.PRNGKey(288))
+    # Run settings may be reused, but resumption must evaluate the model in
+    # the saved state, not a different likelihood now attached to the runner.
+    runner.model = dataclasses.replace(runner.model, centre=0.75)
+    registered = []
+
+    class Client:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            return False
+
+        def register(self, session_id, session):
+            registered.append(session)
+            return (1,)
+
+        def release(self, session_id):
+            assert session_id == checkpoint.session_id
+
+    monkeypatch.setattr(SupervisorClient, "from_port", lambda port: Client())
+    completed = runner.resume_until_goal(checkpoint, goal_cond=lambda state: True)
+    assert completed is checkpoint
+    assert registered[0].model is checkpoint.state.model
+    assert registered[0].args is checkpoint.state.args
+    assert registered[0].params is checkpoint.state.params
+    assert float(registered[0].model.log_likelihood(jnp.asarray(0.25))) == 0.0
+
+
+def test_local_distributed_handoff_preserves_state_and_keys(tmp_path):
+    runner = NestedSampler(model=make_toy_model(), root_allocation_degree=3)
+    state = runner.initialise(jax.random.PRNGKey(301))
+    distributed = DistributedState.from_state(state)
+    assert distributed.to_state() is state
+    assert distributed.goal_key is state.goal_key
+    assert distributed.session_id != DistributedState.from_state(state).session_id
+
+    filename = str(tmp_path / "handoff.pkl")
+    distributed.save(filename)
+    restored = DistributedState.load(filename).to_state()
+    for original, loaded in zip(
+            jax.tree.leaves(state), jax.tree.leaves(restored), strict=True,
+    ):
+        np.testing.assert_array_equal(original, loaded)
+    assert not distributed.pending
+    assert int(distributed.reservations.num_reserved) == 0
+
+
+@pytest.mark.parametrize("change", [
+    {"depth_reached": jnp.asarray(False)},
+    {"needs_growth": jnp.asarray(True)},
+    {"termination_reason": jnp.asarray(1)},
+    {"random_key": None},
+    {"goal_key": None},
+])
+def test_local_handoff_rejects_incomplete_continuation(change):
+    state = NestedSampler(
+        model=make_toy_model(), root_allocation_degree=3,
+    ).initialise(jax.random.PRNGKey(301))
+    with pytest.raises(ValueError, match="handoff requires"):
+        DistributedState.from_state(dataclasses.replace(state, **change))
+
+
+def test_distributed_to_state_rejects_unfinished_work():
+    state = NestedSampler(
+        model=make_toy_model(), root_allocation_degree=3,
+    ).initialise(jax.random.PRNGKey(301))
+    distributed = DistributedState.from_state(state)
+    reservations = dataclasses.replace(
+        distributed.reservations, num_reserved=jnp.asarray(1),
+    )
+    for unfinished in (
+        dataclasses.replace(distributed, depth_active=True),
+        dataclasses.replace(distributed, reservations=reservations),
+    ):
+        with pytest.raises(RuntimeError, match="pending|active"):
+            unfinished.to_state()
+
+
 def test_distributed_directions_change_only_at_drained_boundaries():
     """Direction geometry is scientific state, never in-flight task state."""
     runner = DistributedNestedSampler(
@@ -68,7 +175,7 @@ def test_distributed_directions_change_only_at_drained_boundaries():
         root_allocation_degree=4,
         initial_capacity=8,
     )
-    assert runner.delta_K == 4
+    assert runner._resolve_config(runner.model, (), None).delta_K == 4
     checkpoint = _local_checkpoint(runner, jax.random.PRNGKey(246))
 
     fitted = checkpoint.fit_gmm_directions(
@@ -91,7 +198,8 @@ def test_distributed_directions_change_only_at_drained_boundaries():
         active.gmm_directions()
 
 
-def test_distributed_initialisation_dispatches_every_likelihood():
+@pytest.mark.parametrize("first_likelihood", [-jnp.inf, jnp.nan])
+def test_distributed_initialisation_dispatches_every_likelihood(first_likelihood):
     class Client:
         evaluations = 0
         reject_first = True
@@ -114,7 +222,7 @@ def test_distributed_initialisation_dispatches_every_likelihood():
             for task_id, request in tasks:
                 Client.evaluations += 1
                 if Client.reject_first:
-                    likelihood = jnp.full((1,), -jnp.inf)
+                    likelihood = jnp.full((1,), first_likelihood)
                     Client.reject_first = False
                 else:
                     likelihood = -jnp.square(request.U_samples - 0.25)
@@ -146,24 +254,26 @@ def test_distributed_initialisation_dispatches_every_likelihood():
         Client(),
         "initialisation-test",
         jax.random.PRNGKey(41),
+        config=runner._resolve_config(runner.model, (), None), args=(), params=None,
     )
 
-    assert Client.evaluations == 4
+    retried = int(np.isnan(first_likelihood))
+    assert Client.evaluations == 3 + retried
     assert int(checkpoint.state.num_samples) == 3
-    assert checkpoint.next_task_id == 4
+    assert checkpoint.next_task_id == 3 + retried
     np.testing.assert_array_equal(
         np.asarray(checkpoint.state.samples.num_likelihood_evaluations[:3]),
-        np.asarray([2, 1, 1], dtype=np.int32),
+        np.asarray([1 + retried, 1, 1], dtype=np.int32),
     )
-    assert bool(jnp.all(
-        checkpoint.state.samples.log_likelihoods[:3] > -jnp.inf
-    ))
+    likelihoods = np.asarray(checkpoint.state.samples.log_likelihoods[:3])
+    assert np.all(np.isfinite(likelihoods[1:]))
+    assert bool(np.isfinite(likelihoods[0])) == bool(retried)
 
 
 def test_distributed_completion_order_preserves_scientific_state():
     """Worker latency cannot choose a different committed race."""
     model = make_toy_model()
-    sampler = UniDimSliceSampler(model=model, num_slices=2)
+    sampler = UniDimSliceSampler(num_slices=2)
     runner = DistributedNestedSampler(
         model=model,
         coordinator_port=5555,
@@ -189,7 +299,7 @@ def test_distributed_completion_order_preserves_scientific_state():
             del session_id
             self.submitted.extend(tasks)
             self.results.extend(
-                (task_id, sample_request(sampler, request))
+                (task_id, sample_request(sampler, request, model=model))
                 for task_id, request in tasks
             )
 
@@ -231,6 +341,7 @@ def test_distributed_completion_order_preserves_scientific_state():
             goal,
             DepthCondition(),
             checkpoint_manager=None,
+            config=runner._resolve_config(runner.model, (), None),
         )
         return completed.state.trim(), client
 
@@ -332,7 +443,7 @@ def _batch() -> ConstrainedSampleBatch:
         num_likelihood_evaluations=jnp.asarray([3, 2, 0], dtype=jnp.int32),
         phantom_samples=PhantomSamples(
             U_samples=jnp.zeros((3, 0)),
-            valid_mask=jnp.zeros((3, 0), dtype=bool),
+            valid_mask=jnp.zeros((3,), dtype=bool),
             log_L=jnp.zeros((3, 0)),
         ),
         num_directions=jnp.zeros((3,), dtype=jnp.int32),
@@ -388,7 +499,7 @@ def test_reservations_are_planning_data_until_once_only_acceptance():
     state = NestedSampler(
         model=model,
         root_allocation_degree=2,
-        shell_size=1,
+        replacement_width=1,
         max_samples=6,
         initial_capacity=6,
     ).initialise(jax.random.PRNGKey(1))
@@ -437,14 +548,14 @@ def test_distributed_continuation_returns_to_heap_not_dispatch_window():
     state = NestedSampler(
         model=make_toy_model(),
         root_allocation_degree=2,
-        shell_size=1,
+        replacement_width=1,
         max_samples=6,
         initial_capacity=6,
     ).initialise(jax.random.PRNGKey(33))
     state = _start_schedule_round(
         state,
         DepthCondition(),
-        shell_size=2,
+        replacement_width=2,
         allocation_target="uniform",
         root_degree=2,
         delta_K=1,
@@ -465,7 +576,7 @@ def test_distributed_continuation_returns_to_heap_not_dispatch_window():
         ),
         phantom_samples=PhantomSamples(
             U_samples=jnp.zeros((1, 0)),
-            valid_mask=jnp.zeros((1, 0), dtype=bool),
+            valid_mask=jnp.zeros((1,), dtype=bool),
             log_L=jnp.zeros((1, 0)),
         ),
         num_directions=jnp.zeros((1,), dtype=jnp.int32),
@@ -499,6 +610,7 @@ def test_distributed_checkpoint_preserves_unreturned_task_and_keys():
     request = ConstrainedSampleRequest(
         keys=jax.random.split(jax.random.PRNGKey(2), 3),
         valid=work.valid,
+        from_root=jnp.zeros_like(work.valid),
         log_L_constraints=work.log_L_constraint,
         seed_points=SeedPoint(
             U0=jnp.asarray([0.3, 0.7, 0.3]),
@@ -564,6 +676,7 @@ def test_growth_preserves_pending_payload_and_logical_depth():
     request = ConstrainedSampleRequest(
         keys=jax.random.split(jax.random.PRNGKey(9), 1),
         valid=work.valid,
+        from_root=jnp.zeros_like(work.valid),
         log_L_constraints=work.log_L_constraint,
         seed_points=SeedPoint(
             U0=state.samples.U_samples[1:2],
@@ -590,7 +703,7 @@ def test_growth_preserves_pending_payload_and_logical_depth():
         depth_active=True,
         goal_key=state.goal_key,
     )
-    grown = runner._grow(checkpoint)
+    grown = runner._grow(checkpoint, config=runner._resolve_config(runner.model, (), None))
 
     assert grown.state.samples.log_likelihoods.shape[0] == 4
     assert grown.reservations.parent_delta.shape == (4,)
@@ -623,6 +736,7 @@ def test_submit_failure_exposes_newest_resumable_checkpoint():
             checkpoint,
             DepthCondition(),
             lane_capacity=1,
+            config=runner._resolve_config(runner.model, (), None),
         )
     except DistributedRunError as exc:
         failed = exc.checkpoint
@@ -645,6 +759,7 @@ def test_submit_failure_exposes_newest_resumable_checkpoint():
             UnavailableClient(),
             checkpoint,
             DepthCondition(),
+            config=runner._resolve_config(runner.model, (), None),
         )
     except DistributedRunError as exc:
         unavailable = exc.checkpoint
@@ -682,6 +797,7 @@ def test_worker_slots_are_not_refilled_after_sample_budget_terminates():
         checkpoint,
         DepthCondition(),
         lane_capacity=2,
+        config=runner._resolve_config(runner.model, (), None),
     )
 
     assert client.submitted == 0
@@ -715,6 +831,7 @@ def test_distributed_dispatch_queues_scalar_threads_without_shell_barrier():
         checkpoint,
         DepthCondition(),
         lane_capacity=8,
+        config=runner._resolve_config(runner.model, (), None),
     )
 
     assert len(client.requests) > 1
@@ -748,6 +865,7 @@ def test_distributed_planning_width_tracks_worker_capacity():
         checkpoint,
         DepthCondition(),
         lane_capacity=1,
+        config=runner._resolve_config(runner.model, (), None),
     )
 
     assert queued.state.scheduler_data.valid.shape[0] == 1
@@ -764,7 +882,7 @@ def test_distributed_seed_refresh_waits_for_no_pending_tasks():
     state = _start_schedule_round(
         state,
         DepthCondition(),
-        shell_size=2,
+        replacement_width=2,
         allocation_target="uniform",
         root_degree=2,
         delta_K=1,
@@ -813,7 +931,7 @@ def test_distributed_start_seed_storage_grows_without_losing_reservations():
     state = _start_schedule_round(
         state,
         DepthCondition(),
-        shell_size=2,
+        replacement_width=2,
         allocation_target="uniform",
         root_degree=2,
         delta_K=1,
@@ -902,7 +1020,7 @@ def test_distributed_dispatch_starts_evidence_utility_schedule():
     expected_state = _start_schedule_round(
         checkpoint.state,
         DepthCondition(),
-        shell_size=2,
+        replacement_width=2,
         allocation_target="evidence_improving",
         root_degree=4,
         delta_K=3,
@@ -916,6 +1034,7 @@ def test_distributed_dispatch_starts_evidence_utility_schedule():
         checkpoint,
         DepthCondition(),
         lane_capacity=2,
+        config=runner._resolve_config(runner.model, (), None),
     )
 
     assert client.tasks
@@ -940,10 +1059,10 @@ def test_distributed_refill_reserves_pending_same_contour_seed():
         initial_capacity=8,
     )
     state = make_state(
-        root_out_degree=2,
-        log_likelihoods=(1.0, 2.0),
-        log_L_constraints=(-np.inf, -np.inf),
-        out_degree=(0, 0),
+        root_out_degree=3,
+        log_likelihoods=(0.0, 1.0, 2.0),
+        log_L_constraints=(-np.inf,) * 3,
+        out_degree=(0,) * 3,
         max_samples=8,
     )
     state = dataclasses.replace(
@@ -955,21 +1074,21 @@ def test_distributed_refill_reserves_pending_same_contour_seed():
     state = _start_schedule_round(
         state,
         DepthCondition(),
-        shell_size=2,
+        replacement_width=2,
         allocation_target="uniform",
         root_degree=2,
         delta_K=1,
     )
     schedule = state.scheduler_data
     assert schedule is not None
-    # Isolate refill behavior with two already-materialised root threads. The
+    # Isolate refill behavior with two threads at a real contour. The
     # compressed queue is exhausted so only these equal-contour heads can be
     # dispatched across the two separate calls below.
     schedule = dataclasses.replace(
         schedule,
-        parent_idx=jnp.full_like(schedule.parent_idx, -1),
+        parent_idx=jnp.zeros_like(schedule.parent_idx),
         thread_id=jnp.arange(2, dtype=schedule.thread_id.dtype),
-        log_L_constraint=jnp.asarray([-jnp.inf, -jnp.inf]),
+        log_L_constraint=jnp.asarray([0.0, 0.0]),
         terminal_log_L=jnp.asarray([1.0, 1.0]),
         valid=jnp.asarray([True, True]),
         next_run=schedule.num_runs,
@@ -996,12 +1115,14 @@ def test_distributed_refill_reserves_pending_same_contour_seed():
         checkpoint,
         DepthCondition(),
         lane_capacity=1,
+        config=runner._resolve_config(runner.model, (), None),
     )
     refilled = runner._dispatch_threads(
         Client(),
         first,
         DepthCondition(),
         lane_capacity=2,
+        config=runner._resolve_config(runner.model, (), None),
     )
 
     assert len(refilled.pending) == 2
@@ -1015,7 +1136,7 @@ def test_distributed_refill_reserves_pending_same_contour_seed():
 
 
 def test_distributed_refills_reserve_starts_beyond_worker_capacity():
-    """Worker width two must spread six root starts without replacement."""
+    """Worker width two must spread six real-contour starts without replacement."""
     class Client:
         def submit_many(self, session_id, tasks):
             del session_id, tasks
@@ -1023,34 +1144,42 @@ def test_distributed_refills_reserve_starts_beyond_worker_capacity():
     runner = DistributedNestedSampler(
         model=make_toy_model(),
         coordinator_port=5555,
-        root_allocation_degree=6,
+        root_allocation_degree=7,
         delta_K=3,
         max_samples=12,
         initial_capacity=12,
     )
     state = make_state(
-        root_out_degree=6,
-        log_likelihoods=(1.0, 2.0, 3.0, 4.0, 5.0, 6.0),
-        log_L_constraints=(-np.inf,) * 6,
-        out_degree=(0,) * 6,
+        root_out_degree=7,
+        log_likelihoods=(0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0),
+        log_L_constraints=(-np.inf,) * 7,
+        out_degree=(0,) * 7,
         max_samples=12,
     )
-    state = dataclasses.replace(
-        state,
-        # At k=2, d_0 + Delta K k = 12 and the six missing root starts
-        # require three successive width-two dispatches.
-        allocation_loop_iter=jnp.asarray(2, dtype=jnp.int32),
-        random_key=jax.random.PRNGKey(292),
-        goal_key=jax.random.PRNGKey(293),
+    # Six starts above the first real contour have six eligible seeds.
+    # Width two requires three refills of the same stationary population.
+    blocks = build_block_state(
+        state.samples, state.root_out_degree, state.num_samples,
     )
-    state = _start_schedule_round(
-        state,
-        DepthCondition(),
-        shell_size=2,
-        allocation_target="uniform",
-        root_degree=6,
-        delta_K=3,
+    gap = jnp.zeros_like(blocks.incoming_K).at[1].set(6)
+    plan = AllocationPlan(
+        target_K=blocks.incoming_K + gap,
+        current_K=blocks.incoming_K,
+        unit_peak_utility=blocks.valid.astype(jnp.float64),
+        log_L_blocks=blocks.log_L_blocks,
+        valid=blocks.valid,
+        volume_path=VolumePath(
+            X_prev=jnp.ones(gap.shape),
+            X=jnp.ones(gap.shape),
+            shell_mass=jnp.zeros(gap.shape),
+        ),
     )
+    schedule = _new_thread_schedule(
+        state, blocks, plan, blocks.valid,
+        replacement_width=2,
+        tail_K=jnp.asarray(0, dtype=jnp.int32),
+    )
+    state = dataclasses.replace(state, scheduler_data=schedule)
     checkpoint = DistributedState(
         state=state,
         reservations=ReservationState.empty(12),
@@ -1068,6 +1197,7 @@ def test_distributed_refills_reserve_starts_beyond_worker_capacity():
             checkpoint,
             DepthCondition(),
             lane_capacity=2,
+            config=runner._resolve_config(runner.model, (), None),
         )
         selected.extend(
             int(task.work.seed_idx[0]) for task in checkpoint.pending
@@ -1081,12 +1211,12 @@ def test_distributed_refills_reserve_starts_beyond_worker_capacity():
             pending=(),
         )
 
-    assert set(selected) == set(range(6))
+    assert set(selected) == set(range(1, 7))
 
 
 def test_worker_request_uses_scalar_and_vmap_paths_above_strict_contour():
     model = make_toy_model()
-    sampler = UniDimSliceSampler(model=model, num_slices=2)
+    sampler = UniDimSliceSampler(num_slices=2)
     seed_u = jnp.asarray([0.2, 0.8])
     seed_log_likelihood = jax.vmap(model.log_likelihood)(seed_u)
 
@@ -1094,6 +1224,7 @@ def test_worker_request_uses_scalar_and_vmap_paths_above_strict_contour():
         request = ConstrainedSampleRequest(
             keys=jax.random.split(jax.random.PRNGKey(10), width),
             valid=jnp.ones((width,), dtype=bool),
+            from_root=jnp.zeros((width,), dtype=bool),
             log_L_constraints=jnp.full((width,), -1.0),
             seed_points=SeedPoint(
                 U0=seed_u[:width],
@@ -1102,7 +1233,7 @@ def test_worker_request_uses_scalar_and_vmap_paths_above_strict_contour():
             sampler_data=None,
         )
         return jax.jit(
-            lambda value: sample_request(sampler, value)
+            lambda value: sample_request(sampler, value, model=model)
         )(request)
 
     scalar = run(1)

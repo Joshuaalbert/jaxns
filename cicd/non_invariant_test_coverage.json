@@ -26,17 +26,17 @@
       "path": "cicd/tests/test_core.py",
       "reason": "configuration_contract"
     },
-    "test_phantom_capacity_validation_and_burn_in_deprecation": {
-      "note": "Checks fail-fast bounds for the direct retained capacity and the compatibility warning for the inverse legacy option.",
+    "test_phantom_capacity_validation": {
+      "note": "Checks direct phantom capacity bounds and integer validation.",
       "path": "cicd/tests/test_constrained_sampler.py",
       "reason": "configuration_contract"
     },
-    "test_sample_evidence_mc_rejects_prefix_for_classic_conditioning": {
+    "test_sample_evidence_rejects_prefix_for_classic_conditioning": {
       "note": "Checks that the explicit classic-conditioning API remains independent of the phantom-prefix option.",
       "path": "cicd/tests/test_phantom_results.py",
       "reason": "configuration_contract"
     },
-    "test_state_sample_evidence_mc_forwards_phantom_prefix": {
+    "test_state_sample_evidence_forwards_phantom_prefix": {
       "note": "Checks parity between the thin State forwarder and the authoritative result-level phantom-prefix implementation.",
       "path": "cicd/tests/test_phantom_results.py",
       "reason": "reference_parity"
@@ -60,11 +60,6 @@
       "note": "Checks explicit evidence-conditioning selection and exact-evidence rendering in the result plotting utility.",
       "path": "cicd/tests/test_results_plotting.py",
       "reason": "output_behavior"
-    },
-    "test_evidence_equivalent_live_points_is_not_posterior_ess": {
-      "note": "Checks the explicitly named evidence-equivalent live-point diagnostic and that the misleading phantom posterior-ESS API is absent.",
-      "path": "cicd/tests/test_results_plotting.py",
-      "reason": "result_schema_regression"
     },
     "test_summary_does_not_compare_incommensurate_phantom_statistics": {
       "note": "Checks that the text summary does not label an effective-live-point diagnostic as phantom posterior Kish ESS or compare it with the classic ESS.",
@@ -131,11 +126,6 @@
       "path": "cicd/tests/test_constrained_sampler.py",
       "reason": "implementation_regression"
     },
-    "test_nonperfect_batch_keeps_complete_chain_reference": {
-      "note": "Checks that trajectory modes not represented by the continuation scheduler remain owned by the complete-chain reference implementation.",
-      "path": "cicd/tests/test_constrained_sampler.py",
-      "reason": "architecture_boundary"
-    },
     "test_slice_continuations_do_not_execute_scheduler_padding": {
       "note": "Checks the current distinction between logical scheduler padding, physical filler evaluations, and retained phantom validity.",
       "path": "cicd/tests/test_constrained_sampler.py",
@@ -196,12 +186,7 @@
       "path": "cicd/tests/test_phantom_results.py",
       "reason": "architecture_boundary"
     },
-    "test_legacy_sample_evidence_uses_the_bounded_default": {
-      "note": "Checks that the legacy evidence convenience method shares the bounded default.",
-      "path": "cicd/tests/test_phantom_results.py",
-      "reason": "architecture_boundary"
-    },
-    "test_sample_evidence_mc_batches_have_exact_requested_shape": {
+    "test_sample_evidence_batches_have_exact_requested_shape": {
       "note": "Checks the current bounded-batch result schema and batch-size edge cases.",
       "path": "cicd/tests/test_phantom_results.py",
       "reason": "architecture_boundary"
@@ -231,11 +216,6 @@
       "path": "cicd/tests/test_phantom_results.py",
       "reason": "architecture_boundary"
     },
-    "test_results_sample_mc_shrinkage_uses_block_state_helper": {
-      "note": "Checks the current result-to-block helper routing rather than an implementation-agnostic result property.",
-      "path": "cicd/tests/test_phantom_results.py",
-      "reason": "architecture_boundary"
-    },
     "test_state_to_result_evidence_summary_uses_block_model": {
       "note": "Checks that state-to-result wiring selects the current block-model implementation.",
       "path": "cicd/tests/test_state.py",
@@ -256,7 +236,7 @@
       "path": "cicd/tests/test_phantom_results.py",
       "reason": "result_schema_regression"
     },
-    "test_results_sample_mc_shrinkage_matches_explicit_block_state_public_call": {
+    "test_results_sample_evidence_matches_explicit_block_state_public_call": {
       "note": "Checks parity between two public and internal result paths without asserting state immutability across final inference.",
       "path": "cicd/tests/test_phantom_results.py",
       "reason": "reference_parity"
@@ -436,7 +416,7 @@
       "path": "cicd/tests/test_phantom_eval_jax.py",
       "reason": "reference_parity"
     },
-    "test_jax_and_reference_sample_mc_shrinkage_emit_new_diagnostics": {
+    "test_jax_and_reference_sample_evidence_emit_new_diagnostics": {
       "note": "Checks JAX/reference implementation parity or current diagnostic schema.",
       "path": "cicd/tests/test_phantom_eval_jax.py",
       "reason": "reference_parity"
@@ -471,27 +451,12 @@
       "path": "cicd/tests/test_multi_ellipsoid.py",
       "reason": "deferred_sampler_utility"
     },
-    "test_nested_sampler_keeps_phantom_likelihood_only_with_legacy_flag": {
+    "test_nested_sampler_keeps_phantom_likelihood_without_coordinates": {
       "note": "Checks current result wiring, validation timing, or diagnostic schema beyond a mapped user-facing invariant.",
       "path": "cicd/tests/test_phantom_results.py",
       "reason": "result_schema_regression"
     },
-    "test_new_proposal_nonperfect_finite_width_clips_and_steps_out": {
-      "note": "Exercises finite-width step-out behavior which is outside the current release sampler requirement.",
-      "path": "cicd/tests/test_constrained_sampler.py",
-      "reason": "deferred_sampler_mode"
-    },
-    "test_new_proposal_nonperfect_first_uses_full_slice_width": {
-      "note": "Exercises finite-width step-out behavior which is outside the current release sampler requirement.",
-      "path": "cicd/tests/test_constrained_sampler.py",
-      "reason": "deferred_sampler_mode"
-    },
-    "test_new_proposal_nonperfect_reuses_previous_width": {
-      "note": "Exercises finite-width step-out behavior which is outside the current release sampler requirement.",
-      "path": "cicd/tests/test_constrained_sampler.py",
-      "reason": "deferred_sampler_mode"
-    },
-    "test_no_phantom_mc_shrinkage_uses_supplied_block_incoming_K": {
+    "test_no_phantom_evidence_uses_supplied_block_incoming_K": {
       "note": "Checks a shrinkage helper, validation path, or diagnostic compatibility detail beyond mapped invariants.",
       "path": "cicd/tests/test_shrinkage.py",
       "reason": "implementation_regression"
@@ -546,22 +511,22 @@
       "path": "cicd/tests/test_core.py",
       "reason": "architecture_boundary"
     },
-    "test_public_mc_shrinkage_rejects_invalid_plateau_capacity": {
+    "test_public_evidence_rejects_invalid_plateau_capacity": {
       "note": "Checks a shrinkage helper, validation path, or diagnostic compatibility detail beyond mapped invariants.",
       "path": "cicd/tests/test_shrinkage.py",
       "reason": "implementation_regression"
     },
-    "test_public_mc_shrinkage_rejects_plateau_when_first_K_too_small": {
+    "test_public_evidence_rejects_plateau_when_first_K_too_small": {
       "note": "Checks a shrinkage helper, validation path, or diagnostic compatibility detail beyond mapped invariants.",
       "path": "cicd/tests/test_shrinkage.py",
       "reason": "implementation_regression"
     },
-    "test_public_phantom_eval_sample_mc_shrinkage_uses_gamma_conditioning_when_gate_active": {
+    "test_public_phantom_eval_sample_evidence_uses_gamma_conditioning_when_gate_active": {
       "note": "Checks a shrinkage helper, validation path, or diagnostic compatibility detail beyond mapped invariants.",
       "path": "cicd/tests/test_shrinkage.py",
       "reason": "implementation_regression"
     },
-    "test_public_sample_mc_shrinkage_preserves_means_and_inflates_correlated_cluster_variance": {
+    "test_public_sample_evidence_preserves_means_and_inflates_correlated_cluster_variance": {
       "note": "Checks a shrinkage helper, validation path, or diagnostic compatibility detail beyond mapped invariants.",
       "path": "cicd/tests/test_shrinkage.py",
       "reason": "implementation_regression"
@@ -591,7 +556,7 @@
       "path": "cicd/tests/test_phantom_eval_ref.py",
       "reason": "reference_implementation"
     },
-    "test_reference_sample_mc_shrinkage_runs_with_kish_gate_diagnostics": {
+    "test_reference_sample_evidence_runs_with_kish_gate_diagnostics": {
       "note": "Checks the NumPy reference implementation or its validation surface.",
       "path": "cicd/tests/test_phantom_eval_ref.py",
       "reason": "reference_implementation"
@@ -616,12 +581,12 @@
       "path": "cicd/tests/test_phantom_results.py",
       "reason": "result_schema_regression"
     },
-    "test_results_sample_mc_shrinkage_exposes_kish_gate_diagnostics_not_target_rho": {
+    "test_results_sample_evidence_exposes_kish_gate_diagnostics_not_target_rho": {
       "note": "Checks current result wiring, validation timing, or diagnostic schema beyond a mapped user-facing invariant.",
       "path": "cicd/tests/test_phantom_results.py",
       "reason": "result_schema_regression"
     },
-    "test_results_sample_mc_shrinkage_rejects_stale_block_likelihoods_before_jit": {
+    "test_results_sample_evidence_rejects_stale_block_likelihoods_before_jit": {
       "note": "Checks current result wiring, validation timing, or diagnostic schema beyond a mapped user-facing invariant.",
       "path": "cicd/tests/test_phantom_results.py",
       "reason": "result_schema_regression"
@@ -656,17 +621,17 @@
       "path": "cicd/tests/test_cumulative_ops.py",
       "reason": "utility_behavior"
     },
-    "test_state_sample_logZ_rejects_invalid_plateau_capacity": {
+    "test_state_sample_evidence_rejects_invalid_plateau_capacity": {
       "note": "Checks current state/result wiring or validation timing beyond mapped scientific invariants.",
       "path": "cicd/tests/test_state.py",
       "reason": "result_schema_regression"
     },
-    "test_state_sample_logZ_rejects_strict_contour_equality": {
+    "test_state_sample_evidence_rejects_strict_contour_equality": {
       "note": "Checks current state/result wiring or validation timing beyond mapped scientific invariants.",
       "path": "cicd/tests/test_state.py",
       "reason": "result_schema_regression"
     },
-    "test_state_sample_logZ_uses_public_block_path": {
+    "test_state_sample_evidence_uses_public_block_path": {
       "note": "Checks current state/result wiring or validation timing beyond mapped scientific invariants.",
       "path": "cicd/tests/test_state.py",
       "reason": "result_schema_regression"
@@ -915,6 +880,86 @@
       "note": "Checks uniform sampling with replacement includes every index, including zero, for singleton and larger populations through JIT.",
       "path": "cicd/tests/test_random.py",
       "reason": "utility_behavior"
+    },
+    "test_runner_reuse_resolves_dimensions_from_each_runs_inputs": {
+      "note": "Reusing and serialising a runner preserves unresolved configuration while each State owns its runtime inputs and dimension-dependent defaults.",
+      "path": "cicd/tests/test_run_inputs.py",
+      "reason": "configuration_contract"
+    },
+    "test_local_run_entrypoints_forward_inputs": {
+      "note": "Local start methods forward runtime arguments and parameters into State and likelihood evaluations.",
+      "path": "cicd/tests/test_run_inputs.py",
+      "reason": "configuration_contract"
+    },
+    "test_local_resume_resolves_only_checkpoint_inputs": {
+      "note": "Explicit and automatic resumption use checkpoint inputs and model before resolving topology, preserving the uninterrupted trajectory.",
+      "path": "cicd/tests/test_run_inputs.py",
+      "reason": "configuration_contract"
+    },
+    "test_distributed_run_and_resume_use_state_owned_inputs": {
+      "note": "Distributed start methods register runtime inputs, and resumption reconstructs worker topology and registration from State.",
+      "path": "cicd/tests/test_run_inputs.py",
+      "reason": "configuration_contract"
+    },
+    "test_local_distributed_handoff_preserves_state_and_keys": {
+      "path": "cicd/tests/test_distributed_core.py",
+      "reason": "architecture_boundary",
+      "note": "Checks local/distributed round-trip identity, independent runtime sessions, and serialization without changing scientific state or keys."
+    },
+    "test_local_handoff_rejects_incomplete_continuation": {
+      "path": "cicd/tests/test_distributed_core.py",
+      "reason": "architecture_boundary",
+      "note": "Checks that incomplete, hard-terminated, or unkeyed local states cannot silently enter a fresh distributed session."
+    },
+    "test_distributed_to_state_rejects_unfinished_work": {
+      "path": "cicd/tests/test_distributed_core.py",
+      "reason": "architecture_boundary",
+      "note": "Checks that a local conversion cannot discard active distributed work or reservations."
+    },
+    "test_local_handoff_waits_for_workers_then_resumes_locally": {
+      "path": "cicd/tests/test_distributed_runtime.py",
+      "reason": "architecture_boundary",
+      "note": "Exercises the laptop-to-cluster workflow over real TCP processes, starting without workers, joining a node, checkpointing, and returning to local sampling while retaining earlier samples."
+    },
+    "test_local_sigint_saves_partial_depth_and_replays_exactly": {
+      "path": "cicd/tests/test_run_control.py",
+      "reason": "architecture_boundary",
+      "note": "Exercises an actual SIGINT between bounded compiled batches, saving the unfinished schedule, restoring the signal handler, and reproducing uninterrupted state exactly."
+    },
+    "test_local_sigint_without_checkpoint_bubbles_up": {
+      "path": "cicd/tests/test_run_control.py",
+      "reason": "architecture_boundary",
+      "note": "Checks that Ctrl-C propagates without checkpoint writes when checkpointing is disabled."
+    },
+    "test_verbose_reports_goals_without_computing_results": {
+      "path": "cicd/tests/test_run_control.py",
+      "reason": "architecture_boundary",
+      "note": "Checks per-goal progress while evidence and result APIs are forbidden to the logging path."
+    },
+    "test_distributed_sigint_cancels_only_its_session": {
+      "path": "cicd/tests/test_distributed_runtime.py",
+      "reason": "architecture_boundary",
+      "note": "Exercises SIGINT with real processes, preserving another session and resuming committed and pending work from a checkpoint."
+    },
+    "test_cancel_fences_busy_workers_without_discarding_other_sessions": {
+      "path": "cicd/tests/test_distributed_runtime.py",
+      "reason": "architecture_boundary",
+      "note": "Checks cancellation fencing and remote-worker restart requests without destroying another session or an idle worker."
+    },
+    "test_sigint_during_worker_registration_saves_handoff": {
+      "path": "cicd/tests/test_distributed_runtime.py",
+      "reason": "architecture_boundary",
+      "note": "Checks that Ctrl-C during the zero-worker registration wait saves the supplied local handoff and removes its pending registration."
+    },
+    "test_migration_cli_preserves_conditional_model_and_comments": {
+      "note": "Executes the downloadable v2 migration CLI, checks the original is untouched, and compares the generated hierarchical prior and likelihood with their analytic transformations.",
+      "path": "cicd/tests/test_model_migration.py",
+      "reason": "reference_parity"
+    },
+    "test_migration_rejects_unsupported_generator_patterns": {
+      "note": "Ensures the source-conversion helper rejects generator patterns whose scientific calling convention cannot safely be inferred.",
+      "path": "cicd/tests/test_model_migration.py",
+      "reason": "configuration_contract"
     }
   }
 }

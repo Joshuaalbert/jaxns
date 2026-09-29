@@ -4,7 +4,6 @@ import jax
 import numpy as np
 from jax import numpy as jnp
 from jax import random
-from jaxctx.priors.prior import Prior
 from tensorflow_probability.substrates import jax as tfp
 
 from jaxns.diagnostics.plotting import _weighted_percentile
@@ -13,6 +12,7 @@ from jaxns.diagnostics.reference import (
     bruteforce_posterior_samples,
 )
 from jaxns.model import Model
+from jaxns.priors import Prior
 from jaxns.pytree import PureDataclassPytree
 from jaxns.random_utils import resample
 

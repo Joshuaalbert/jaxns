@@ -19,10 +19,15 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 # of an editable installation for another worktree.
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
-from jaxns.constrained_sampler import UniDimSliceSampler, sample_request
+from jaxns.constrained_sampler import (
+    UniDimSliceSampler,
+)
 from jaxns.mixed_precision import mp_policy
 from jaxns.pytree import PureDataclassPytree
 from jaxns.samples import SeedPoint
+from jaxns.sampling.batching import (
+    sample_request,
+)
 from jaxns.sampling.continuation import _initialise_slice_chains
 from jaxns.sampling.ellipsoid import empty_sampler_data
 from jaxns.sampling.protocol import ConstrainedSampleRequest
@@ -64,6 +69,7 @@ def make_request(
     return ConstrainedSampleRequest(
         keys=jax.random.split(jax.random.PRNGKey(290), width),  # [S, 2]
         valid=jnp.ones((width,), dtype=mp_policy.bool_dtype),  # [S]
+        from_root=jnp.zeros((width,), dtype=mp_policy.bool_dtype),
         log_L_constraints=jnp.full(
             (width,),
             -0.25,
@@ -271,7 +277,6 @@ def main() -> None:
         centre=jnp.asarray([0.45, 0.55], mp_policy.measure_dtype)
     )
     continuation_sampler = UniDimSliceSampler(
-        model=model,
         num_slices=32,
         collect_phantom_samples=True,
         max_phantom_samples=2,
@@ -292,7 +297,6 @@ def main() -> None:
     )
 
     reference_sampler = UniDimSliceSampler(
-        model=model,
         num_slices=8,
         collect_phantom_samples=True,
         max_phantom_samples=2,
@@ -301,7 +305,7 @@ def main() -> None:
     reference_retained = retain_disabled_fit(reference_plain)
     reference_record = measure_scenario(
         "complete_reference",
-        lambda request: sample_request(reference_sampler, request),
+        lambda request: sample_request(reference_sampler, request, model=model),
         reference_plain,
         reference_retained,
         num_slices=reference_sampler.num_slices,

@@ -11,13 +11,14 @@ from pathlib import Path
 import jax
 import numpy as np
 from jax import numpy as jnp
-from jaxctx.priors.prior import Prior
 from tensorflow_probability.substrates import jax as tfp
 
 from jaxns.core import NestedSampler
 from jaxns.depth_condition import DepthCondition
 from jaxns.model import Model
-from jaxns.shrinkage.phantom import _sample_mc_shrinkage_summary_jit
+from jaxns.priors import Prior
+from jaxns.results import _incoming_lineages_per_sample
+from jaxns.shrinkage.phantom import _sample_evidence_summary_jit
 
 tfpd = tfp.distributions
 
@@ -42,7 +43,7 @@ def _compile_summary_kernel(results, prefix: int, draws: int, batch_size: int):
         "key": jax.random.PRNGKey(284),
         "log_L_constraints": results.log_L_constraints,
         "log_L_classic": results.log_L,
-        "K_classic": results.num_live_points_per_sample,
+        "K_classic": _incoming_lineages_per_sample(results),
         "valid_phantom": results.valid_phantom,
         "log_L_phantom": results.log_L_phantom[:, :prefix],
         "num_samples": results.total_num_samples,
@@ -52,7 +53,7 @@ def _compile_summary_kernel(results, prefix: int, draws: int, batch_size: int):
         "C_min": 20.0,
     }
     lower_started = time.perf_counter()
-    lowered = _sample_mc_shrinkage_summary_jit.lower(**kwargs)
+    lowered = _sample_evidence_summary_jit.lower(**kwargs)
     lower_s = time.perf_counter() - lower_started
     compile_started = time.perf_counter()
     compiled = lowered.compile()
@@ -94,9 +95,9 @@ def _measure_public_prefix(
     key = jax.random.PRNGKey(1284)
 
     def run_once():
-        samples = results.sample_evidence_mc(
+        samples = results.sample_evidence(
             num_samples=draws,
-            conditioning="phantom",
+            phantom_conditioning=True,
             num_phantoms=prefix,
             key=key,
             batch_size=batch_size,
@@ -119,9 +120,9 @@ def _measure_public_prefix(
         results,
         log_L_phantom=results.log_L_phantom[:, :prefix],
     )
-    expected = sliced.sample_evidence_mc(
+    expected = sliced.sample_evidence(
         num_samples=draws,
-        conditioning="phantom",
+        phantom_conditioning=True,
         key=key,
         batch_size=batch_size,
     )
@@ -153,7 +154,7 @@ def main() -> int:
     sampler = NestedSampler(
         model=model,
         root_allocation_degree=64,
-        shell_size=16,
+        replacement_width=16,
         max_samples=args.max_samples,
         initial_capacity=args.max_samples,
         collect_phantom_samples=True,

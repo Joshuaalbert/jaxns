@@ -25,9 +25,6 @@ from jaxns.algorithm.scheduler import (
 )
 from jaxns.constrained_sampler import (
     AbstractSampler,
-    ConstrainedSampleBatch,
-    ConstrainedSampleRequest,
-    sample_request,
 )
 from jaxns.depth_condition import (
     DepthCondition,
@@ -35,6 +32,13 @@ from jaxns.depth_condition import (
 from jaxns.mixed_precision import mp_policy
 from jaxns.pytree import PureDataclassPytree
 from jaxns.samples import Samples, SeedPoint
+from jaxns.sampling.batching import (
+    sample_request,
+)
+from jaxns.sampling.protocol import (
+    ConstrainedSampleBatch,
+    ConstrainedSampleRequest,
+)
 from jaxns.shrinkage.classic import classic_dirichlet_concentrations
 from jaxns.state import State
 from jaxns.types import BoolArray, FloatArray, IntArray, PRNGKey
@@ -348,9 +352,9 @@ def _continuation_storage_full(schedule: ThreadSchedule) -> BoolArray:
     )
 
 
-def _seed_reservation_capacity(shell_size: int) -> int:
+def _seed_reservation_capacity(replacement_width: int) -> int:
     """Give ordinary groups several batches before logarithmic growth."""
-    minimum = max(8 * shell_size, 2)
+    minimum = max(8 * replacement_width, 2)
     return 1 << (minimum - 1).bit_length()
 
 
@@ -698,7 +702,7 @@ def _new_thread_schedule(
         block_state: BlockState,
         plan: AllocationPlan,
         relevant: BoolArray,
-        shell_size: int,
+        replacement_width: int,
         tail_K: IntArray,
         seed_reservoir_size: int | None = None,
 ) -> ThreadSchedule:
@@ -709,7 +713,7 @@ def _new_thread_schedule(
     only while one schedule remains active.
     """
     if seed_reservoir_size is None:
-        seed_reservoir_size = shell_size
+        seed_reservoir_size = replacement_width
     # Begin with four ordinary frontier windows plus one window that may be in
     # flight when the boundary is observed. An unusually wide continuation
     # frontier returns to Python and doubles this heap transparently instead of
@@ -780,7 +784,7 @@ def _new_thread_schedule(
         state.random_key,
         state.allocation_loop_iter,
     )  # [2]
-    reservation_size = _seed_reservation_capacity(shell_size)
+    reservation_size = _seed_reservation_capacity(replacement_width)
     start_seed_reservation_idx = jnp.full(
         (reservation_size,),
         -1,
@@ -827,27 +831,27 @@ def _new_thread_schedule(
         num_start_seeds=num_start_seeds,
         num_published_start_seeds=num_published_start_seeds,
         parent_idx=jnp.full(
-            (shell_size,),
+            (replacement_width,),
             -1,
             dtype=mp_policy.index_dtype,
         ),
         thread_id=jnp.full(
-            (shell_size,),
+            (replacement_width,),
             -1,
             dtype=mp_policy.index_dtype,
         ),
         log_L_constraint=jnp.full(
-            (shell_size,),
+            (replacement_width,),
             -jnp.inf,
             dtype=mp_policy.measure_dtype,
         ),
         terminal_log_L=jnp.full(
-            (shell_size,),
+            (replacement_width,),
             -jnp.inf,
             dtype=mp_policy.measure_dtype,
         ),
-        new_start=jnp.zeros((shell_size,), mp_policy.bool_dtype),
-        valid=jnp.zeros((shell_size,), mp_policy.bool_dtype),
+        new_start=jnp.zeros((replacement_width,), mp_policy.bool_dtype),
+        valid=jnp.zeros((replacement_width,), mp_policy.bool_dtype),
         continuation_parent_idx=jnp.full(
             (continuation_size,),
             -1,
@@ -1070,7 +1074,6 @@ def _sample_stationary_seeds(
         state: State,
         schedule: ThreadSchedule,
         log_L_constraint: FloatArray,
-        from_root: BoolArray,
         valid: BoolArray,
         reserved_seed_idx: IntArray,
         reserved_log_L_constraint: FloatArray,
@@ -1085,8 +1088,8 @@ def _sample_stationary_seeds(
     needed only for simultaneous no-replacement coordination, never to search
     for a scientifically valid seed.
     """
-    shell_size = valid.shape[0]
-    rows = jnp.arange(shell_size, dtype=mp_policy.index_dtype)  # [S]
+    replacement_width = valid.shape[0]
+    rows = jnp.arange(replacement_width, dtype=mp_policy.index_dtype)  # [S]
     assignment_key, strata_key, rejection_key = jax.random.split(key, 3)
     strata = jax.random.permutation(assignment_key, rows)  # [S]
     rotation = jax.random.uniform(
@@ -1097,7 +1100,7 @@ def _sample_stationary_seeds(
     stratified_fraction = jnp.mod(
         rotation
         + strata.astype(mp_policy.measure_dtype)
-        / jnp.asarray(shell_size, mp_policy.measure_dtype),
+        / jnp.asarray(replacement_width, mp_policy.measure_dtype),
         1.0,
     )  # [S]
     same_group = (
@@ -1113,6 +1116,7 @@ def _sample_stationary_seeds(
     reserved_same_group = (
         valid[:, None]
         & reserved_valid[None, :]
+        & (reserved_seed_idx[None, :] >= 0)
         & (
             log_L_constraint[:, None]
             == reserved_log_L_constraint[None, :]
@@ -1139,10 +1143,8 @@ def _sample_stationary_seeds(
         )
     )(log_L_constraint)  # [S]
 
-    # The frozen rank index handles root and non-root contours uniformly. The
-    # recent-row reservoir still distinguishes sentinel births from ordinary
-    # birth contours when checking whether a retained row crosses the request.
-    use_root = valid & from_root  # [S]
+    # Sentinel work bypasses seeding. For every real contour, including zero,
+    # frozen and recent candidates obey the same strict crossing condition.
     reservoir_sample_idx = schedule.seed_reservoir_idx  # [R]
     reservoir_safe_idx = jnp.maximum(reservoir_sample_idx, 0)  # [R]
     reservoir_birth = state.samples.log_L_constraints[
@@ -1158,16 +1160,8 @@ def _sample_stationary_seeds(
     reservoir_eligible = (
         valid[:, None]
         & schedule.seed_reservoir_valid[None, :]
-        & jnp.where(
-            use_root[:, None],
-            jnp.isneginf(reservoir_birth)[None, :],
-            (
-                reservoir_birth[None, :] <= log_L_constraint[:, None]
-            )
-            & (
-                reservoir_log_L[None, :] > log_L_constraint[:, None]
-            ),
-        )
+        & (reservoir_birth[None, :] <= log_L_constraint[:, None])
+        & (reservoir_log_L[None, :] > log_L_constraint[:, None])
     )  # [S, R]
     reservoir_count = jnp.sum(
         reservoir_eligible,
@@ -1211,7 +1205,7 @@ def _sample_stationary_seeds(
     )
     proposal_width = 64
     selected_seed_idx = jnp.full(
-        (shell_size,),
+        (replacement_width,),
         -1,
         dtype=mp_policy.index_dtype,
     )  # [S]
@@ -1366,7 +1360,7 @@ def _sample_stationary_seeds(
 
     return jax.lax.fori_loop(
         0,
-        shell_size,
+        replacement_width,
         select_lane,
         selected_seed_idx,
     )
@@ -1694,8 +1688,8 @@ def _fill_thread_heads(
 ) -> ThreadSchedule:
     """Fill lanes from the shallowest frozen or continuing thread frontier."""
     del state
-    shell_size = schedule.valid.shape[0]
-    parent_keys = jax.random.split(key, shell_size)  # [S, 2]
+    replacement_width = schedule.valid.shape[0]
+    parent_keys = jax.random.split(key, replacement_width)  # [S, 2]
 
     def fill_lane(
             lane_idx,
@@ -1833,7 +1827,7 @@ def _fill_thread_heads(
 
     heads = jax.lax.fori_loop(
         0,
-        shell_size,
+        replacement_width,
         fill_lane,
         _ThreadHeadCarry(
             parent_idx=schedule.parent_idx,
@@ -2031,25 +2025,25 @@ def _plan_scheduled_work_batch(
     """Resolve one fixed-width batch from already materialised threads."""
     parent_key, seed_key = jax.random.split(key)
     schedule = _fill_thread_heads(parent_key, state, schedule)
-    shell_size = schedule.valid.shape[0]
+    replacement_width = schedule.valid.shape[0]
     if reserved_seed_idx is None:
         reserved_seed_idx = jnp.full(
-            (shell_size,),
+            (replacement_width,),
             -1,
             dtype=mp_policy.index_dtype,
         )
     if reserved_log_L_constraint is None:
         reserved_log_L_constraint = jnp.full(
-            (shell_size,),
+            (replacement_width,),
             -jnp.inf,
             dtype=mp_policy.measure_dtype,
         )
     if reserved_valid is None:
         reserved_valid = jnp.zeros(
-            (shell_size,),
+            (replacement_width,),
             dtype=mp_policy.bool_dtype,
         )
-    slots = jnp.arange(shell_size, dtype=mp_policy.index_dtype)
+    slots = jnp.arange(replacement_width, dtype=mp_policy.index_dtype)
     num_valid = jnp.minimum(
         jnp.sum(schedule.valid, dtype=mp_policy.index_dtype),
         jnp.maximum(max_valid_lanes, 0),
@@ -2059,7 +2053,7 @@ def _plan_scheduled_work_batch(
     requested_has_seed, effective_block, effective_constraint = jax.vmap(
         lambda constraint: _effective_parent_contour(schedule, constraint)
     )(schedule.log_L_constraint)
-    fallback_keys = jax.random.split(parent_key, shell_size)
+    fallback_keys = jax.random.split(parent_key, replacement_width)
     fallback_parent = jax.vmap(
         lambda one_key, block_idx: _sample_parent_from_block(
             one_key,
@@ -2068,9 +2062,14 @@ def _plan_scheduled_work_batch(
         )
     )(fallback_keys, effective_block)
     parent_idx = jnp.where(
-        requested_has_seed,
+        requested_has_seed | (schedule.parent_idx < 0),
         schedule.parent_idx,
         fallback_parent,
+    )
+    # Sentinel work is always possible: it draws directly from the prior and
+    # needs neither a stationary seed nor membership in the seed population.
+    effective_constraint = jnp.where(
+        parent_idx < 0, -jnp.inf, effective_constraint,
     )
 
     # A distributed start remains pending after its identity is recorded in
@@ -2111,8 +2110,7 @@ def _plan_scheduled_work_batch(
         state,
         schedule,
         effective_constraint,
-        jnp.isneginf(effective_constraint),
-        valid,
+        valid & (parent_idx >= 0),
         reserved_seed_idx,
         reserved_log_L_constraint,
         unique_pending_valid,
@@ -2121,8 +2119,11 @@ def _plan_scheduled_work_batch(
         schedule,
         seed_idx,
         effective_constraint,
-        valid,
+        valid & (parent_idx >= 0),
     )
+    # A negative identity cannot enter a pending task's seed reservations.
+    # Its gathered coordinate is only filler: root requests never use a seed.
+    seed_idx = jnp.where(parent_idx < 0, -1, seed_idx)
     # Fixed-width padding can be traced through both sides of vmapped sampler
     # control flow even though invalid lanes never enter scientific state.
     # Give every padded lane the first valid request so those speculative
@@ -2140,7 +2141,7 @@ def _plan_scheduled_work_batch(
         valid=valid,
         parent_idx=parent_idx,
         log_L_constraint=effective_constraint,
-        seed_idx=jnp.maximum(seed_idx, 0),
+        seed_idx=seed_idx,
     )
 
 
@@ -2151,8 +2152,8 @@ def _advance_thread_schedule(
         insert_idx: IntArray,
 ) -> ThreadSchedule:
     """Queue sampled continuations and compact only unsampled heads."""
-    shell_size = schedule.valid.shape[0]
-    slots = jnp.arange(shell_size, dtype=mp_policy.index_dtype)
+    replacement_width = schedule.valid.shape[0]
+    slots = jnp.arange(replacement_width, dtype=mp_policy.index_dtype)
     continuing = work.valid & (
         batch.log_likelihoods < schedule.terminal_log_L
     )
@@ -2171,7 +2172,7 @@ def _advance_thread_schedule(
     num_remaining = num_active - num_sampled
     source = jnp.minimum(
         slots + num_sampled,
-        jnp.asarray(shell_size - 1, mp_policy.index_dtype),
+        jnp.asarray(replacement_width - 1, mp_policy.index_dtype),
     )
     valid = slots < num_remaining
     active = (
@@ -2202,14 +2203,14 @@ def _release_thread_heads(
     retry-stable ``PendingTask``. Compacting only undispatched heads leaves
     exactly the vacated slots needed when those tasks later continue.
     """
-    shell_size = schedule.valid.shape[0]
-    slots = jnp.arange(shell_size, dtype=mp_policy.index_dtype)
+    replacement_width = schedule.valid.shape[0]
+    slots = jnp.arange(replacement_width, dtype=mp_policy.index_dtype)
     num_dispatched = jnp.sum(dispatched, dtype=mp_policy.index_dtype)
     num_active = jnp.sum(schedule.valid, dtype=mp_policy.index_dtype)
     num_remaining = num_active - num_dispatched
     source = jnp.minimum(
         slots + num_dispatched,
-        jnp.asarray(shell_size - 1, mp_policy.index_dtype),
+        jnp.asarray(replacement_width - 1, mp_policy.index_dtype),
     )
     valid = slots < num_remaining
     return dataclasses.replace(
@@ -2279,10 +2280,12 @@ def _sample_work_batch(
         log_L_constraints=work.log_L_constraint,
         seed_points=seed_points,
         sampler_data=state.sampler_data,
+        from_root=work.parent_idx < 0,
     )
     return sample_request(
         sampler,
         request,
+        model=state.model,
         args=state.args,
         params=state.params,
     )
@@ -2295,7 +2298,7 @@ def _accept_work_batch(
         *,
         update_likelihood_order: bool = True,
 ) -> State:
-    shell_size = batch.log_likelihoods.shape[0]
+    replacement_width = batch.log_likelihoods.shape[0]
     # Phantom shrinkage needs likelihoods and cluster identity, not phantom
     # coordinates. Discarding coordinates keeps the persistent state compact.
     stored_phantoms = dataclasses.replace(
@@ -2306,7 +2309,7 @@ def _accept_work_batch(
         log_L_constraints=work.log_L_constraint,
         log_likelihoods=batch.log_likelihoods,
         U_samples=batch.U_samples,
-        out_degree=jnp.zeros((shell_size,), mp_policy.count_dtype),
+        out_degree=jnp.zeros((replacement_width,), mp_policy.count_dtype),
         num_likelihood_evaluations=(
             batch.num_likelihood_evaluations.astype(
                 mp_policy.count_dtype
@@ -2618,7 +2621,7 @@ def _depth_condition_reached(
     jax.jit,
     inline=True,
     static_argnames=(
-        "shell_size",
+        "replacement_width",
         "allocation_target",
         "root_degree",
         "delta_K",
@@ -2628,7 +2631,7 @@ def _start_schedule_round(
         state: State,
         depth_cond: DepthCondition,
         *,
-        shell_size: int,
+        replacement_width: int,
         allocation_target: str,
         root_degree: int,
         delta_K: int,
@@ -2646,9 +2649,9 @@ def _start_schedule_round(
         block_state,
         plan,
         relevant,
-        shell_size,
+        replacement_width,
         tail_K,
-        seed_reservoir_size=max(shell_size, root_degree),
+        seed_reservoir_size=max(replacement_width, root_degree),
     )
     state = dataclasses.replace(state, scheduler_data=schedule)
     # State is the sole owner of transient scheduling data. Returning the same
@@ -2660,14 +2663,14 @@ def _start_schedule_round(
 @partial(
     jax.jit,
     inline=True,
-    static_argnames=("shell_size",),
+    static_argnames=("replacement_width",),
 )
 def _continue_schedule_round(
         state: State,
         previous: ThreadSchedule,
         depth_cond: DepthCondition,
         *,
-        shell_size: int,
+        replacement_width: int,
 ) -> State:
     """Fill newly exposed gaps without changing the allocation target."""
     block_state = build_block_state(
@@ -2698,7 +2701,7 @@ def _continue_schedule_round(
         block_state,
         plan,
         relevant,
-        shell_size,
+        replacement_width,
         previous.tail_K,
         seed_reservoir_size=previous.seed_reservoir_idx.shape[0],
     )
@@ -2709,7 +2712,7 @@ def _continue_schedule_round(
 @partial(
     jax.jit,
     inline=True,
-    static_argnames=("max_samples",),
+    static_argnames=("max_samples", "max_batches"),
 )
 def _run_depth(
         state: State,
@@ -2717,12 +2720,15 @@ def _run_depth(
         depth_cond: DepthCondition,
         *,
         max_samples: int | None,
+        max_batches: int | None = None,
 ) -> State:
     """Run one allocation depth epoch entirely in compiled JAX.
 
     The returned state atomically carries the continuation key and exactly one
     exit outcome. A physical-capacity return may therefore be resized and
     resumed without changing the logical allocation epoch or random stream.
+    An optional batch budget exposes the same continuation for interruptible
+    checkpointed runs, without evaluating a goal or changing the schedule.
     """
 
     def cond(carry: _DepthCarry):
@@ -2741,8 +2747,14 @@ def _run_depth(
         if max_samples is not None:
             sample_limit = jnp.asarray(max_samples, mp_policy.count_dtype)
         below_global_limit = carry.state.num_samples < sample_limit
+        within_budget = jnp.asarray(True, mp_policy.bool_dtype)
+        if max_batches is not None:
+            within_budget = (
+                carry.state.depth_loop_iter - state.depth_loop_iter < max_batches
+            )
         return (
             carry.schedule.active
+            & within_budget
             & has_buffer
             & below_global_limit
             & jnp.logical_not(_continuation_storage_full(carry.schedule))

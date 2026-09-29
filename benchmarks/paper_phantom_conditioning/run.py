@@ -41,6 +41,7 @@ from jaxns.checkpoint import MANIFEST_NAME, CheckpointManager
 from jaxns.constrained_sampler import UniDimSliceSampler
 from jaxns.core import NestedSampler
 from jaxns.depth_condition import DepthCondition
+from jaxns.results import _incoming_lineages_per_sample
 
 PAPER_CASE_NAMES = (
     "basic_mvn",
@@ -363,7 +364,6 @@ def main() -> None:
     num_slices = SLICE_TRANSITIONS_PER_DIMENSION * dimension
     retained_phantoms = MAX_PHANTOM_MULTIPLIER * dimension
     sampler = UniDimSliceSampler(
-        model=model,
         num_slices=num_slices,
         collect_phantom_samples=True,
         # Retain the maximal 9D prefix once. Each evidence calculation below
@@ -374,7 +374,7 @@ def main() -> None:
     nested_sampler = NestedSampler(
         model=model,
         root_allocation_degree=root_degree,
-        shell_size=replacement_width,
+        replacement_width=replacement_width,
         collect_phantom_samples=True,
         sampler=sampler,
         allocation_target="uniform",
@@ -640,7 +640,7 @@ def main() -> None:
             sample_phantom_prefix_sweep_reference(
                 key=evidence_key,
                 log_L_constraints=results.log_L_constraints,
-                K_classic=results.num_live_points_per_sample,
+                K_classic=_incoming_lineages_per_sample(results),
                 valid_phantom=results.valid_phantom,
                 log_L_phantom=results.log_L_phantom,
                 num_samples=results.total_num_samples,

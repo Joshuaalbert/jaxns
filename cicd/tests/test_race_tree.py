@@ -86,7 +86,7 @@ def _derive_blocks(fixture: RaceTreeFixture):
         ),
         phantom_samples=PhantomSamples(
             U_samples=jnp.zeros((num_samples, 0, 1)),
-            valid_mask=jnp.zeros((num_samples, 0), dtype=jnp.bool_),
+            valid_mask=jnp.zeros((num_samples,), dtype=jnp.bool_),
             log_L=jnp.zeros((num_samples, 0)),
         ),
     )
@@ -161,7 +161,7 @@ def test_jax_block_state_groups_plateaus_and_incoming_K_g() -> None:
         num_likelihood_evaluations=jnp.ones((6,), dtype=jnp.int32),
         phantom_samples=PhantomSamples(
             U_samples=jnp.zeros((6, 0, 1)),
-            valid_mask=jnp.zeros((6, 0), dtype=jnp.bool_),
+            valid_mask=jnp.zeros((6,), dtype=jnp.bool_),
             log_L=jnp.zeros((6, 0)),
         ),
     )
@@ -246,7 +246,7 @@ def test_default_block_state_keeps_negative_infinity_likelihood_block() -> None:
         num_likelihood_evaluations=jnp.ones((2,), dtype=jnp.int32),
         phantom_samples=PhantomSamples(
             U_samples=jnp.zeros((2, 0, 1)),
-            valid_mask=jnp.zeros((2, 0), dtype=jnp.bool_),
+            valid_mask=jnp.zeros((2,), dtype=jnp.bool_),
             log_L=jnp.zeros((2, 0)),
         ),
     )

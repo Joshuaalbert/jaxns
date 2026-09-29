@@ -209,13 +209,13 @@ def test_jax_and_reference_explicit_gamma_conditioning_match():
         )
 
 
-def test_jax_and_reference_sample_mc_shrinkage_emit_new_diagnostics():
+def test_jax_and_reference_sample_evidence_emit_new_diagnostics():
     fixture = _fixture()
     log_L_classic = np.asarray([0.0, 1.0, 2.0, 99.0], dtype=float)
     K_classic = np.asarray([6, 5, 4, 1], dtype=np.int32)
     num_samples = np.int32(3)
 
-    jax_out = jax_phantom.sample_mc_shrinkage(
+    jax_out = jax_phantom.sample_evidence(
         key=jax.random.PRNGKey(17),
         log_L_constraints=jnp.asarray(fixture.log_L_constraints),
         log_L_classic=jnp.asarray(log_L_classic),
@@ -226,7 +226,7 @@ def test_jax_and_reference_sample_mc_shrinkage_emit_new_diagnostics():
         num_Z_samples=8,
         C_min=2,
     )
-    ref_out = ref_phantom.sample_mc_shrinkage(
+    ref_out = ref_phantom.sample_evidence(
         seed=17,
         log_L_constraints=fixture.log_L_constraints,
         log_L_classic=log_L_classic,
@@ -277,7 +277,7 @@ def test_jax_and_reference_sample_mc_shrinkage_emit_new_diagnostics():
 def test_each_retained_chain_is_one_kish_cluster():
     fixture = _fixture()
     counts = _count_call(jax_phantom, fixture)
-    output = jax_phantom.sample_mc_shrinkage(
+    output = jax_phantom.sample_evidence(
         key=jax.random.PRNGKey(19),
         log_L_constraints=jnp.asarray(fixture.log_L_constraints),
         log_L_classic=jnp.asarray([0.0, 1.0, 2.0, 99.0]),

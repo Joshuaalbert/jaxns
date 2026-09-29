@@ -190,12 +190,13 @@ def _depth_program(ns: NestedSampler, state) -> dict:
         state,
         goal_loop_iter=jnp.asarray(1, jnp.int32),
     )
+    config = ns._resolve_config(state.model, state.args, state.params)
     start = time.perf_counter()
     lowered = _run_depth.lower(
         state,
-        ns.sampler,
+        config.sampler,
         ns.depth_condition,
-        max_samples=ns.max_samples,
+        max_samples=config.max_samples,
     )
     lower_s = time.perf_counter() - start
     start = time.perf_counter()
@@ -204,7 +205,7 @@ def _depth_program(ns: NestedSampler, state) -> dict:
     execution = []
     for _ in range(3):
         start = time.perf_counter()
-        output = compiled(state, ns.sampler, ns.depth_condition)
+        output = compiled(state, config.sampler, ns.depth_condition)
         jax.block_until_ready(output)
         execution.append(time.perf_counter() - start)
     memory = compiled.memory_analysis()
@@ -247,10 +248,9 @@ def main() -> None:
     dimension = int(model.U_ndims())
     num_slices = 5 * dimension
     root_degree = 30 * dimension
-    shell_size = min(root_degree, 10 * dimension)
+    replacement_width = min(root_degree, 10 * dimension)
     retained_phantoms = dimension if args.phantoms else 0
     sampler = UniDimSliceSampler(
-        model=model,
         num_slices=num_slices,
         collect_phantom_samples=args.phantoms,
         max_phantom_samples=(
@@ -260,7 +260,7 @@ def main() -> None:
     nested_sampler = NestedSampler(
         model=model,
         root_allocation_degree=root_degree,
-        shell_size=shell_size,
+        replacement_width=replacement_width,
         max_samples=100 * root_degree,
         collect_phantom_samples=args.phantoms,
         sampler=sampler,
@@ -284,7 +284,7 @@ def main() -> None:
         "truth_log_Z": float(truth),
         "dimension": dimension,
         "root_degree": root_degree,
-        "replacement_width": shell_size,
+        "replacement_width": replacement_width,
         "num_slices": num_slices,
         "dlogZ": float(nested_sampler.depth_condition.dlogZ),
         "fit_log_Z_uncert": (
@@ -321,9 +321,9 @@ def main() -> None:
         result_s = time.perf_counter() - start
 
         start = time.perf_counter()
-        evidence = results.sample_evidence_mc(
+        evidence = results.sample_evidence(
             num_samples=args.mc_draws,
-            conditioning=conditioning,
+            phantom_conditioning=(conditioning == "phantom"),
             key=jax.random.fold_in(key, 1),
         )
         jax.block_until_ready(evidence)

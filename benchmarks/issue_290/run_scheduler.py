@@ -55,7 +55,7 @@ def make_state(
         ),
         phantom_samples=PhantomSamples(
             U_samples=None,
-            valid_mask=jnp.zeros((capacity, 0), dtype=bool),
+            valid_mask=jnp.zeros((capacity,), dtype=bool),
             log_L=jnp.zeros((capacity, 0)),
         ),
     )
@@ -132,7 +132,7 @@ def main() -> None:
         planning_lowered = _start_schedule_round.lower(
             state,
             condition,
-            shell_size=width,
+            replacement_width=width,
             allocation_target="uniform",
             root_degree=width,
             delta_K=delta_K,
@@ -150,7 +150,7 @@ def main() -> None:
             state,
             sampler,
             condition,
-            shell_size=width,
+            replacement_width=width,
             allocation_target="uniform",
             root_degree=width,
             delta_K=delta_K,

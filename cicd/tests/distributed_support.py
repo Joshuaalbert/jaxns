@@ -5,13 +5,19 @@ import time
 
 import jax
 import jax.numpy as jnp
-from jaxctx.priors.prior import Prior
 from tensorflow_probability.substrates import jax as tfp
 
 from jaxns.model import Model
+from jaxns.priors import Prior
 from jaxns.pytree import PureDataclassPytree
 
 tfpd = tfp.distributions
+
+
+def half_prior_model():
+    """Indicator likelihood with a zero plateau of prior mass one half."""
+    x = Prior(tfpd.Uniform(0.0, 1.0), name="x").realise()
+    return jnp.where(x < 0.5, -jnp.inf, 0.0)
 
 
 class OffsetNode:

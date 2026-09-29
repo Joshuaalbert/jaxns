@@ -22,8 +22,10 @@ SeedPoint.register_pytree()
 
 @dataclasses.dataclass(slots=True, frozen=True)
 class PhantomSamples(PureDataclassPytree):
+    """One retained chain prefix, valid or invalid as a whole."""
+
     U_samples: UType | None  # [P, ...] unit-hypercube pytree leaves
-    valid_mask: BoolArray  # [P]
+    valid_mask: BoolArray  # [] (one flag per cluster, [N] when batched)
     log_L: FloatArray  # [P]
 
 

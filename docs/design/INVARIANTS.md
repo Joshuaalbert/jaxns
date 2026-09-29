@@ -193,8 +193,8 @@ The exact text following each `- Invariant:` prefix is the stable key used by
 
 - Invariant: Converting a state to results preserves every valid classic sample and excludes
   every unused capacity entry from user-facing sample statistics.
-- Invariant: User-facing evidence sampling requires an explicit choice between classic and
-  phantom conditioning.
+- Invariant: User-facing evidence sampling defaults to classic conditioning and requires an
+  explicit opt-in to phantom conditioning.
 - Invariant: Classic evidence sampling remains available whether or not phantom samples were
   collected.
 - Invariant: Phantom evidence sampling fails clearly when the state lacks the metadata required

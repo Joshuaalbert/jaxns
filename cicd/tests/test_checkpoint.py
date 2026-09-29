@@ -22,7 +22,6 @@ from jaxns.checkpoint import (
     CheckpointManager,
 )
 from jaxns.constrained_sampler import (
-    ConstrainedSampleRequest,
     UniDimSliceSampler,
 )
 from jaxns.core import NestedSampler
@@ -34,6 +33,9 @@ from jaxns.distributed_core import (
 )
 from jaxns.pytree import PureDataclassPytree, Pytree
 from jaxns.samples import SeedPoint
+from jaxns.sampling.protocol import (
+    ConstrainedSampleRequest,
+)
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -286,11 +288,11 @@ def test_checkpoint_cadence_rejects_invalid_seconds(tmp_path, cadence):
 
 def test_local_automatic_resume_matches_uninterrupted_random_stream(tmp_path):
     model = make_toy_model()
-    sampler = UniDimSliceSampler(model=model, num_slices=2)
+    sampler = UniDimSliceSampler(num_slices=2)
     nested_sampler = NestedSampler(
         model=model,
         root_allocation_degree=2,
-        shell_size=1,
+        replacement_width=1,
         max_samples=10,
         initial_capacity=4,
         sampler=sampler,
@@ -327,10 +329,10 @@ def test_run_single_iteration_automatically_loads_and_advances_checkpoint(
     nested_sampler = NestedSampler(
         model=model,
         root_allocation_degree=2,
-        shell_size=1,
+        replacement_width=1,
         max_samples=6,
         initial_capacity=6,
-        sampler=UniDimSliceSampler(model=model, num_slices=2),
+        sampler=UniDimSliceSampler(num_slices=2),
     )
     first = nested_sampler.run_single_iteration(
         key=jax.random.PRNGKey(21),
@@ -357,6 +359,7 @@ def test_complete_distributed_pending_state_round_trips_without_task_loss(
     request = ConstrainedSampleRequest(
         keys=jax.random.split(jax.random.PRNGKey(31), 1),
         valid=jnp.asarray([True]),
+        from_root=jnp.asarray([False]),
         log_L_constraints=jnp.asarray([0.0]),
         seed_points=SeedPoint(
             U0=jnp.asarray([0.4]),

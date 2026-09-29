@@ -571,7 +571,7 @@ def test_utility_schedule_continuation_projects_frozen_absolute_target(
     source = _start_schedule_round(
         source,
         depth_cond=DepthCondition(),
-        shell_size=3,
+        replacement_width=3,
         allocation_target=allocation_target,
         root_degree=3,
         delta_K=3,
@@ -614,7 +614,7 @@ def test_utility_schedule_continuation_projects_frozen_absolute_target(
         refined,
         drained,
         depth_cond=DepthCondition(),
-        shell_size=3,
+        replacement_width=3,
     )
     continuation = refined.scheduler_data
     assert continuation is not None
@@ -630,7 +630,7 @@ def test_utility_schedule_continuation_projects_frozen_absolute_target(
     recomputed_state = _start_schedule_round(
         dataclasses.replace(refined, scheduler_data=None),
         depth_cond=DepthCondition(),
-        shell_size=3,
+        replacement_width=3,
         allocation_target=allocation_target,
         root_degree=3,
         delta_K=3,

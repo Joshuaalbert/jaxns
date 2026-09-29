@@ -42,10 +42,9 @@ def plot_diagnostics(results: NestedSamplerResults, save_file=None):
     sample_order = np.argsort(negative_log_X, kind="stable")
     log_X = log_X[sample_order]
     negative_log_X = negative_log_X[sample_order]
-    num_live_points_per_sample = np.asarray(
-        results.num_live_points_per_sample[:num_samples]
-    )[sample_order]
     log_L = np.asarray(results.log_L[:num_samples])[sample_order]
+    block_idx = np.searchsorted(np.asarray(results.block_data.log_L), log_L)
+    incoming_lineages = np.asarray(results.block_data.incoming_K)[block_idx]
     max_log_likelihood = np.max(log_L)
     log_dp = np.asarray(results.log_dp[:num_samples])[sample_order]
     # Accumulating in append order would mix unrelated volume regions.
@@ -68,9 +67,9 @@ def plot_diagnostics(results: NestedSamplerResults, save_file=None):
     else:
         efficiency = 1. / num_likelihood_evaluations_per_sample
 
-    # Plot the number of live points
-    axs[0].plot(negative_log_X, num_live_points_per_sample, c='black')
-    axs[0].set_ylabel(r'$n_{\rm live}$')
+    # Plot incoming race-tree lineage counts
+    axs[0].plot(negative_log_X, incoming_lineages, c='black')
+    axs[0].set_ylabel(r'$K_g$')
     # detect if too small log likelihood
     rel_log_L = log_L - max_log_likelihood
     axs[1].plot(negative_log_X, np.exp(rel_log_L), c='black')
@@ -146,9 +145,9 @@ def plot_evidence(
             keys,
             strict=True,
     ):
-        evidence_samples = results.sample_evidence_mc(
+        evidence_samples = results.sample_evidence(
             num_samples=num_samples,
-            conditioning=conditioning,
+            phantom_conditioning=(conditioning == "phantom"),
             key=conditioning_key,
             diagnostics=False,
         )

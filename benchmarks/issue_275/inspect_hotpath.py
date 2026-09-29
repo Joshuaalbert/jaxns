@@ -23,12 +23,16 @@ sys.path.insert(0, str(args.source_root / "src"))
 import jax
 import numpy as np
 from jax import numpy as jnp
-from jaxctx.priors.prior import Prior
+from jaxns.priors import Prior
 from tensorflow_probability.substrates import jax as tfp
 
-from jaxns.constrained_sampler import (
+from jaxns.sampling.protocol import (
     ConstrainedSampleRequest,
+)
+from jaxns.constrained_sampler import (
     UniDimSliceSampler,
+)
+from jaxns.sampling.batching import (
     sample_request,
 )
 from jaxns.core import NestedSampler
@@ -64,8 +68,8 @@ def main() -> None:
     configured = NestedSampler(
         model=model,
         root_allocation_degree=32,
-        sampler=UniDimSliceSampler(model=model, num_slices=32),
-    ).sampler
+        sampler=UniDimSliceSampler(num_slices=32),
+    )._resolve_config(model, (), None).sampler
     keys = jax.random.split(jax.random.PRNGKey(1), 8)
     # [S, ...] structured unit-cube seeds.
     seeds = jax.vmap(model.sample_U)(keys)
@@ -73,6 +77,7 @@ def main() -> None:
     request = ConstrainedSampleRequest(
         keys=jax.random.split(jax.random.PRNGKey(2), 8),
         valid=jnp.ones((8,), dtype=jnp.bool_),
+        from_root=jnp.zeros((8,), dtype=jnp.bool_),
         log_L_constraints=jnp.full((8,), -0.3),
         seed_points=SeedPoint(
             U0=seeds,
@@ -84,7 +89,7 @@ def main() -> None:
     for _ in range(5):
         jax.clear_caches()
         lowered = jax.jit(
-            lambda value: sample_request(configured, value)
+            lambda value: sample_request(configured, value, model=model)
         ).lower(request)
         started = time.perf_counter()
         compiled = lowered.compile()

@@ -1,0 +1,10 @@
+[runtime]
+stack_id = "laptop-to-cluster"
+node_id = "coordinator"
+log_dir = "logs"
+task_timeout_s = 1800
+
+[network]
+port = 5555
+
+# No workers are required on the coordinator host.

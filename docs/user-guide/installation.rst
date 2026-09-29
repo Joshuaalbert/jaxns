@@ -16,9 +16,14 @@ The maintained examples additionally use scikit-learn and Optax:
 
    pip install 'jaxns[examples]'
 
-Distributed execution is not part of the current release API. It will receive
-an installation extra only after its process and serialization design has been
-validated.
+For distributed execution, install the runtime dependencies on the coordinator
+and worker nodes:
+
+.. code-block:: bash
+
+   pip install 'jaxns[distributed]'
+
+See :doc:`laptop_to_cluster` for continuing a local run on CPU and GPU workers.
 
 or the latest release (after appropriate dependencies) with
 

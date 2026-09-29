@@ -13,9 +13,8 @@ from jaxns.shrinkage.classic import (
     classic_dirichlet_concentrations,
     expected_evidence_summary,
     expected_log_posterior_weights,
-    sample_evidence,
 )
-from jaxns.shrinkage.phantom import sample_mc_shrinkage
+from jaxns.shrinkage.phantom import sample_evidence
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -123,7 +122,7 @@ def test_sample_evidence_uses_strict_endpoint_recurrence() -> None:
         epsilon=jnp.array([1e-6, 1e-6, 1e-6]),
     )
 
-    evidence = sample_evidence(
+    evidence = shrinkage.sample_evidence(
         key=random.PRNGKey(11),
         block_state=blocks,
         concentrations=concentrations,
@@ -167,7 +166,7 @@ def test_mc_linear_evidence_moments_match_deterministic_expectations() -> None:
     concentrations = classic_dirichlet_concentrations(block_state)
     expected = expected_evidence_summary(block_state, concentrations)
     num_draws = 65_536
-    sampled = sample_evidence(
+    sampled = shrinkage.sample_evidence(
         key=random.PRNGKey(20260823),
         block_state=block_state,
         concentrations=concentrations,
@@ -230,9 +229,9 @@ def test_posterior_weights_split_plateau_equality_atom_mass() -> None:
     assert expected_sample_weights[0] == expected_sample_weights[2]
 
 
-def test_no_phantom_mc_shrinkage_uses_canonical_plateau_blocks() -> None:
+def test_no_phantom_evidence_uses_canonical_plateau_blocks() -> None:
     log_l = np.log(np.array([2.0, 3.0, 3.0, 5.0]))
-    evidence = sample_mc_shrinkage(
+    evidence = sample_evidence(
         key=random.PRNGKey(17),
         log_L_constraints=jnp.full((4,), -jnp.inf),
         log_L_classic=jnp.asarray(log_l),
@@ -263,9 +262,9 @@ def test_no_phantom_mc_shrinkage_uses_canonical_plateau_blocks() -> None:
     assert np.asarray(evidence.log_Z_samples).shape == (4,)
 
 
-def test_public_mc_shrinkage_rejects_invalid_plateau_capacity() -> None:
+def test_public_evidence_rejects_invalid_plateau_capacity() -> None:
     with pytest.raises(ValueError, match="K_g|m_g|incoming|plateau"):
-        sample_mc_shrinkage(
+        sample_evidence(
             key=random.PRNGKey(19),
             log_L_constraints=jnp.full((2,), -jnp.inf),
             log_L_classic=jnp.asarray([0.0, 0.0]),
@@ -277,9 +276,9 @@ def test_public_mc_shrinkage_rejects_invalid_plateau_capacity() -> None:
         )
 
 
-def test_public_mc_shrinkage_rejects_plateau_when_first_K_too_small() -> None:
+def test_public_evidence_rejects_plateau_when_first_K_too_small() -> None:
     with pytest.raises(ValueError, match="K_g|m_g|incoming|plateau"):
-        sample_mc_shrinkage(
+        sample_evidence(
             key=random.PRNGKey(29),
             log_L_constraints=jnp.full((3,), -jnp.inf),
             log_L_classic=jnp.asarray([0.0, 0.0, 1.0]),
@@ -291,7 +290,7 @@ def test_public_mc_shrinkage_rejects_plateau_when_first_K_too_small() -> None:
         )
 
 
-def test_no_phantom_mc_shrinkage_uses_supplied_block_incoming_K() -> None:
+def test_no_phantom_evidence_uses_supplied_block_incoming_K() -> None:
     block_state = BlockState(
         log_L_blocks=jnp.asarray([np.log(3.0), jnp.inf]),
         block_first_idx=jnp.asarray([1, -1], dtype=jnp.int32),
@@ -308,7 +307,7 @@ def test_no_phantom_mc_shrinkage_uses_supplied_block_incoming_K() -> None:
         ),
     )
 
-    evidence = sample_mc_shrinkage(
+    evidence = sample_evidence(
         key=random.PRNGKey(23),
         log_L_constraints=jnp.full((2,), -jnp.inf),
         log_L_classic=jnp.log(jnp.asarray([3.0, 3.0])),
@@ -419,7 +418,7 @@ def _probability_matrix(samples) -> np.ndarray:
     )
 
 
-def test_public_phantom_eval_sample_mc_shrinkage_uses_gamma_conditioning_when_gate_active():
+def test_public_phantom_eval_sample_evidence_uses_gamma_conditioning_when_gate_active():
     (
         log_L_constraints,
         log_L_classic,
@@ -429,7 +428,7 @@ def test_public_phantom_eval_sample_mc_shrinkage_uses_gamma_conditioning_when_ga
     ) = _single_block_public_phantom_case()
     num_draws = 4096
 
-    active = sample_mc_shrinkage(
+    active = sample_evidence(
         key=random.PRNGKey(101),
         log_L_constraints=jnp.asarray(log_L_constraints),
         log_L_classic=jnp.asarray(log_L_classic),
@@ -440,7 +439,7 @@ def test_public_phantom_eval_sample_mc_shrinkage_uses_gamma_conditioning_when_ga
         num_Z_samples=num_draws,
         C_min=20,
     )
-    inactive = sample_mc_shrinkage(
+    inactive = sample_evidence(
         key=random.PRNGKey(101),
         log_L_constraints=jnp.asarray(log_L_constraints),
         log_L_classic=jnp.asarray(log_L_classic),
@@ -482,7 +481,7 @@ def test_public_phantom_eval_sample_mc_shrinkage_uses_gamma_conditioning_when_ga
     )
 
 
-def test_public_sample_mc_shrinkage_preserves_means_and_inflates_correlated_cluster_variance():
+def test_public_sample_evidence_preserves_means_and_inflates_correlated_cluster_variance():
     (
         log_L_constraints,
         log_L_classic,
@@ -494,7 +493,7 @@ def test_public_sample_mc_shrinkage_preserves_means_and_inflates_correlated_clus
     ) = _single_block_public_equivalent_cluster_cases()
     num_draws = 12000
 
-    singleton = sample_mc_shrinkage(
+    singleton = sample_evidence(
         key=random.PRNGKey(301),
         log_L_constraints=jnp.asarray(log_L_constraints),
         log_L_classic=jnp.asarray(log_L_classic),
@@ -505,7 +504,7 @@ def test_public_sample_mc_shrinkage_preserves_means_and_inflates_correlated_clus
         num_Z_samples=num_draws,
         C_min=1,
     )
-    correlated = sample_mc_shrinkage(
+    correlated = sample_evidence(
         key=random.PRNGKey(301),
         log_L_constraints=jnp.asarray(log_L_constraints),
         log_L_classic=jnp.asarray(log_L_classic),
@@ -679,8 +678,8 @@ def test_phantom_gate_rejects_zero_participation_when_threshold_is_zero() -> Non
     )
 
 
-def test_sample_mc_shrinkage_no_phantom_path_does_not_require_old_rho_diagnostics() -> None:
-    evidence = sample_mc_shrinkage(
+def test_sample_evidence_no_phantom_path_does_not_require_old_rho_diagnostics() -> None:
+    evidence = sample_evidence(
         key=random.PRNGKey(31),
         log_L_constraints=jnp.full((3,), -jnp.inf),
         log_L_classic=jnp.asarray([0.0, 1.0, 2.0]),

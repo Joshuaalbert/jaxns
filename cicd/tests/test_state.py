@@ -1,10 +1,10 @@
 import dataclasses
 
+import jax
 import numpy as np
 import pytest
 from jax import numpy as jnp
 from jax import random
-from jaxctx.priors.prior import Prior
 from tensorflow_probability.substrates import jax as tfp
 
 from cicd.tests.distributed_support import make_toy_model
@@ -17,6 +17,7 @@ from jaxns.algorithm.race_tree import (
 from jaxns.core import NestedSampler
 from jaxns.depth_condition import DepthCondition
 from jaxns.model import Model
+from jaxns.priors import Prior
 from jaxns.samples import PhantomSamples, Samples
 from jaxns.sampling.ellipsoid import empty_sampler_data
 from jaxns.shrinkage.classic import (
@@ -45,7 +46,7 @@ def _make_invalid_plateau_capacity_state() -> State:
         num_likelihood_evaluations=jnp.array([1, 1], dtype=jnp.int32),
         phantom_samples=PhantomSamples(
             U_samples=jnp.zeros((2, 0, 1)),
-            valid_mask=jnp.zeros((2, 0), dtype=jnp.bool_),
+            valid_mask=jnp.zeros((2,), dtype=jnp.bool_),
             log_L=jnp.zeros((2, 0)),
         ),
     )
@@ -69,7 +70,7 @@ def _make_strict_contour_violation_state() -> State:
         num_likelihood_evaluations=jnp.array([1], dtype=jnp.int32),
         phantom_samples=PhantomSamples(
             U_samples=jnp.zeros((1, 0, 1)),
-            valid_mask=jnp.zeros((1, 0), dtype=jnp.bool_),
+            valid_mask=jnp.zeros((1,), dtype=jnp.bool_),
             log_L=jnp.zeros((1, 0)),
         ),
     )
@@ -94,11 +95,11 @@ def test_to_result_marks_no_phantoms_invalid():
     # array at each outer boundary.
     np.testing.assert_allclose(
         np.asarray(state.expected_log_Z_mean),
-        np.asarray(results.expected_log_Z_mean),
+        np.asarray(results.log_Z_mean),
     )
     np.testing.assert_allclose(
         np.asarray(state.expected_log_Z_uncert),
-        np.asarray(results.expected_log_Z_uncert),
+        np.asarray(results.log_Z_uncert),
     )
     assert int(state.total_num_likelihood_evaluations) == int(
         results.total_num_likelihood_evaluations
@@ -120,7 +121,7 @@ def test_to_result_marks_no_phantoms_invalid():
         np.zeros_like(np.asarray(results.block_data.log_L), dtype=bool),
     )
 
-    evidence_samples = results.sample_mc_shrinkage(num_samples=16, C_min=20)
+    evidence_samples = results.sample_evidence(num_samples=16, C_min=20, phantom_conditioning=False, diagnostics=True, key=random.PRNGKey(42))
     np.testing.assert_allclose(
         np.asarray(evidence_samples.kish_participating_cluster_counts),
         np.zeros_like(np.asarray(evidence_samples.log_L_blocks), dtype=float),
@@ -134,14 +135,14 @@ def test_to_result_marks_no_phantoms_invalid():
             assert getattr(evidence_samples, old_name) is None
 
     key = random.PRNGKey(11)
-    explicit = results.sample_evidence_mc(
+    explicit = results.sample_evidence(
         num_samples=16,
-        conditioning="classic",
+        phantom_conditioning=False,
         key=key,
     )
-    from_state = state.sample_evidence_mc(
+    from_state = state.sample_evidence(
         num_samples=16,
-        conditioning="classic",
+        phantom_conditioning=False,
         key=key,
     )
     np.testing.assert_array_equal(
@@ -151,9 +152,9 @@ def test_to_result_marks_no_phantoms_invalid():
     assert np.isfinite(float(explicit.log_Z_mean))
     assert np.isfinite(float(explicit.log_Z_uncert))
     with pytest.raises(ValueError, match="no phantom slots"):
-        results.sample_evidence_mc(
+        results.sample_evidence(
             num_samples=16,
-            conditioning="phantom",
+            phantom_conditioning=True,
             key=key,
         )
 
@@ -161,7 +162,7 @@ def test_to_result_marks_no_phantoms_invalid():
 def test_expected_evidence_rebuilds_order_for_active_growth_state():
     phantom_samples = PhantomSamples(
         U_samples=jnp.zeros((3, 0, 1)),
-        valid_mask=jnp.zeros((3, 0), dtype=jnp.bool_),
+        valid_mask=jnp.zeros((3,), dtype=jnp.bool_),
         log_L=jnp.zeros((3, 0)),
     )
     initial_samples = Samples(
@@ -193,7 +194,7 @@ def test_expected_evidence_rebuilds_order_for_active_growth_state():
     active = _start_schedule_round(
         initial,
         DepthCondition(),
-        shell_size=1,
+        replacement_width=1,
         allocation_target="uniform",
         root_degree=1,
         delta_K=2,
@@ -247,7 +248,7 @@ def test_samples_resize_preserves_constraints_and_provenance_fields():
         num_likelihood_evaluations=jnp.array([2, 3], dtype=jnp.int32),
         phantom_samples=PhantomSamples(
             U_samples=jnp.array([[[0.1]], [[0.2]]]),
-            valid_mask=jnp.array([[True], [False]]),
+            valid_mask=jnp.array([True, False]),
             log_L=jnp.array([[0.5], [1.5]]),
         ),
     )
@@ -272,7 +273,7 @@ def test_samples_resize_preserves_constraints_and_provenance_fields():
     )
     np.testing.assert_array_equal(
         np.asarray(resized.phantom_samples.valid_mask[:2]),
-        np.array([[True], [False]]),
+        np.array([True, False]),
     )
     np.testing.assert_allclose(
         np.asarray(resized.log_L_constraints[2:]),
@@ -310,7 +311,7 @@ def test_state_resize_grows_all_sample_buffers_and_preserves_continuation():
     assert resized.samples.U_samples.shape == (4, 1)
     assert resized.samples.out_degree.shape == (4,)
     assert resized.samples.num_likelihood_evaluations.shape == (4,)
-    assert resized.samples.phantom_samples.valid_mask.shape == (4, 0)
+    assert resized.samples.phantom_samples.valid_mask.shape == (4,)
     assert resized.samples.phantom_samples.log_L.shape == (4, 0)
     assert resized.samples.phantom_samples.U_samples.shape == (4, 0, 1)
     assert resized.likelihood_order.sample_indices.shape == (4,)
@@ -404,11 +405,11 @@ def test_state_consistency_rejects_strict_contour_violation():
         state.ensure_consistency()
 
 
-def test_state_sample_logZ_rejects_strict_contour_equality():
+def test_state_sample_evidence_rejects_strict_contour_equality():
     state = _make_strict_contour_violation_state()
 
     with pytest.raises(ValueError, match="Strict contour.*must be greater"):
-        state.sample_logZ(random.PRNGKey(7), num_samples=2)
+        state.sample_evidence(key=random.PRNGKey(7), num_samples=2)
 
 
 def test_state_to_result_rejects_strict_contour_equality():
@@ -418,16 +419,18 @@ def test_state_to_result_rejects_strict_contour_equality():
         state.to_result()
 
 
-def test_state_sample_logZ_uses_public_block_path():
+def test_state_sample_evidence_uses_public_block_path():
+    model = _make_basic_model()
+    U_samples = jax.vmap(model.sample_U)(random.split(random.PRNGKey(288), 2))
     samples = Samples(
         log_L_constraints=jnp.array([-jnp.inf, 0.0]),
         log_likelihoods=jnp.array([0.0, 1.0]),
-        U_samples=jnp.array([[0.25], [0.75]]),
+        U_samples=U_samples,
         out_degree=jnp.array([1, 0], dtype=jnp.int32),
         num_likelihood_evaluations=jnp.array([1, 1], dtype=jnp.int32),
         phantom_samples=PhantomSamples(
-            U_samples=jnp.zeros((2, 0, 1)),
-            valid_mask=jnp.zeros((2, 0), dtype=jnp.bool_),
+            U_samples=None,
+            valid_mask=jnp.zeros((2,), dtype=jnp.bool_),
             log_L=jnp.zeros((2, 0)),
         ),
     )
@@ -436,22 +439,24 @@ def test_state_sample_logZ_uses_public_block_path():
         samples=samples,
         num_samples=jnp.asarray(2, dtype=jnp.int32),
         log_L_supremum=jnp.asarray(1.0),
-        U_supremum=jnp.array([0.75]),
+        U_supremum=jax.tree.map(lambda u: u[-1], U_samples),
         termination_reason=jnp.asarray(0, dtype=jnp.int32),
-        model=_make_basic_model(),
+        model=model,
     )
 
-    log_Z = state.sample_logZ(random.PRNGKey(3), num_samples=5)
+    log_Z = state.sample_evidence(
+        key=random.PRNGKey(3), num_samples=5,
+    ).log_Z_samples
 
     assert np.asarray(log_Z).shape == (5,)
     assert np.all(np.isfinite(np.asarray(log_Z)))
 
 
-def test_state_sample_logZ_rejects_invalid_plateau_capacity():
+def test_state_sample_evidence_rejects_invalid_plateau_capacity():
     state = _make_invalid_plateau_capacity_state()
 
     with pytest.raises(ValueError, match="K_g|m_g|incoming|plateau"):
-        state.sample_logZ(random.PRNGKey(5), num_samples=2)
+        state.sample_evidence(key=random.PRNGKey(5), num_samples=2)
 
 
 def test_state_to_result_evidence_summary_uses_block_model():
@@ -463,7 +468,7 @@ def test_state_to_result_evidence_summary_uses_block_model():
         num_likelihood_evaluations=jnp.array([1, 1, 1], dtype=jnp.int32),
         phantom_samples=PhantomSamples(
             U_samples=jnp.zeros((3, 0)),
-            valid_mask=jnp.zeros((3, 0), dtype=jnp.bool_),
+            valid_mask=jnp.zeros((3,), dtype=jnp.bool_),
             log_L=jnp.zeros((3, 0)),
         ),
     )
@@ -527,7 +532,7 @@ def test_state_to_result_excludes_storage_tail_likelihood_counts():
         ),
         phantom_samples=PhantomSamples(
             U_samples=jnp.zeros((3, 1)),
-            valid_mask=jnp.ones((3, 1), dtype=jnp.bool_),
+            valid_mask=jnp.ones((3,), dtype=jnp.bool_),
             log_L=jnp.asarray([[0.5], [1.5], [999.0]]),
         ),
     )
@@ -561,11 +566,7 @@ def test_state_to_result_preserves_phantom_provenance_for_kish_diagnostics():
         phantom_samples=PhantomSamples(
             U_samples=None,
             valid_mask=jnp.asarray(
-                [
-                    [True, True],
-                    [True, True],
-                    [True, True],
-                ],
+                [True, True, True],
                 dtype=jnp.bool_,
             ),
             log_L=jnp.asarray(

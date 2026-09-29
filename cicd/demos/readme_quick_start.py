@@ -8,11 +8,11 @@ import jax
 import matplotlib
 import numpy as np
 from jax import numpy as jnp
-from jaxctx.priors.prior import Prior
 from tensorflow_probability.substrates import jax as tfp
 
 from jaxns.core import NestedSampler
 from jaxns.model import Model
+from jaxns.priors import Prior
 from jaxns.results import NestedSamplerResults
 
 matplotlib.use("Agg")
@@ -59,10 +59,9 @@ def run_quick_start() -> NestedSamplerResults:
 
     sampler = NestedSampler(
         model=model,
-        args=args,
         collect_phantom_samples=True,
     )
-    state = sampler.run(key=jax.random.PRNGKey(6))
+    state = sampler.run(key=jax.random.PRNGKey(6), args=args)
     jax.block_until_ready(state)
     return state.to_result().trim()
 

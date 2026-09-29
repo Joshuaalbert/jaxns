@@ -63,7 +63,7 @@ likelihood, and pass observations or other runtime data through `args`.
 ```python
 import jax
 from jax import numpy as jnp
-from jaxctx.priors.prior import Prior
+from jaxns.priors import Prior
 from tensorflow_probability.substrates import jax as tfp
 
 from jaxns.model import Model
@@ -143,11 +143,10 @@ from jaxns.core import NestedSampler
 
 sampler = NestedSampler(
     model=model,
-    args=args,
     collect_phantom_samples=True,
     max_phantom_samples=2,
 )
-state = sampler.run(key=jax.random.PRNGKey(6))
+state = sampler.run(key=jax.random.PRNGKey(6), args=args)
 results = state.to_result().trim()
 
 results.summary()
@@ -161,12 +160,20 @@ results.plot_evidence(
 )
 
 # Reuse the same retained clusters with a shorter conditioning prefix.
-prefix_evidence = results.sample_evidence_mc(
+prefix_evidence = results.sample_evidence(
     num_samples=4096,
-    conditioning="phantom",
+    phantom_conditioning=True,
     num_phantoms=1,
     key=jax.random.PRNGKey(4),
 )
+
+# Classic expectation summaries remain on results.log_Z_mean/log_Z_uncert.
+# This separate ensemble provides the Monte Carlo summaries.
+classic_evidence = results.sample_evidence(4096, key=jax.random.PRNGKey(5))
+
+# Resampling returns an equally weighted posterior with integration methods.
+posterior = results.resample(1000, key=jax.random.PRNGKey(7))
+mean_slope = posterior.integrate_fn_over_posterior(lambda x: x["slope"])
 ```
 
 Phantom collection and evidence conditioning are separate choices. The
@@ -178,6 +185,11 @@ value uses that many states from the same start prefix without rerunning nested
 sampling. Retaining more states increases result/checkpoint memory, while a
 shorter evidence prefix is physically sliced before JAX compilation so its
 unused suffix adds no MC-kernel work.
+
+Classic conditioning is the default for Monte Carlo evidence. Set
+`phantom_conditioning=True` to use retained phantoms. See the
+[API migration note](docs/design/API_CLEANUP.md) for the removed v2 names and
+the model-independent constrained-sampler interface.
 
 A fixed-seed CPU run of the example above produces this summary:
 

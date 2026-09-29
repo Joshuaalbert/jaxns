@@ -12,7 +12,7 @@ from jax import numpy as jnp
 
 from cicd.tests.core_fixtures import make_state
 from cicd.tests.distributed_support import make_toy_model
-from jaxns import constrained_sampler, core
+from jaxns import constrained_sampler, core, run_config
 from jaxns.algorithm import depth
 from jaxns.algorithm.allocation import (
     AllocationPlan,
@@ -48,6 +48,8 @@ class DeterministicSampler(PureDataclassPytree, AbstractSampler):
             seed_point: SeedPoint,
             args=(),
             params=None,
+            *,
+            model,
     ):
         del key, args, params
         finite_constraint = jnp.where(
@@ -64,7 +66,7 @@ class DeterministicSampler(PureDataclassPytree, AbstractSampler):
                     (0,) + jnp.shape(seed_point.U0),
                     dtype=jnp.asarray(seed_point.U0).dtype,
                 ),
-                valid_mask=jnp.zeros((0,), dtype=bool),
+                valid_mask=jnp.asarray(False),
                 log_L=jnp.zeros((0,), dtype=jnp.asarray(log_L_constraint).dtype),
             ),
         )
@@ -81,6 +83,7 @@ def test_compiled_depth_signature_contains_only_runtime_dependencies():
         "sampler",
         "depth_cond",
         "max_samples",
+        "max_batches",
     )
 
 
@@ -203,7 +206,7 @@ def _heap_test_schedule():
         block_state,
         _allocation_plan(block_state, (4, 0, 0, 0, 0, 0)),
         block_state.valid,
-        shell_size=2,
+        replacement_width=2,
         tail_K=jnp.asarray(0, dtype=jnp.int32),
     )
     return state, schedule
@@ -229,7 +232,7 @@ def test_continuations_wait_until_each_frozen_thread_has_started():
         block_state,
         _allocation_plan(block_state, (4, 0, 0, 0, 0, 0)),
         block_state.valid,
-        shell_size=2,
+        replacement_width=2,
         tail_K=jnp.asarray(0, dtype=jnp.int32),
     )
 
@@ -443,12 +446,36 @@ def test_continuation_heap_fills_bound_without_overwrite():
     )
 
 
-def test_same_contour_parallel_threads_use_distinct_stationary_seeds():
+def test_sentinel_threads_do_not_select_or_reserve_stationary_seeds():
     state = make_state(
         root_out_degree=2,
         log_likelihoods=(1.0, 2.0),
-        log_L_constraints=(-np.inf, -np.inf),
         out_degree=(0, 0),
+        max_samples=4,
+    )
+    blocks = build_block_state(state.samples, state.root_out_degree, state.num_samples)
+    schedule = depth._new_thread_schedule(
+        state,
+        blocks,
+        _allocation_plan(blocks, (4, 0, 0, 0)),
+        blocks.valid,
+        replacement_width=2,
+        tail_K=jnp.asarray(0, dtype=jnp.int32),
+    )
+    schedule, work = depth._plan_scheduled_work_batch(
+        jax.random.PRNGKey(7), state, schedule, jnp.asarray(2, dtype=jnp.int32),
+    )
+    np.testing.assert_array_equal(work.parent_idx, -1)
+    np.testing.assert_array_equal(work.seed_idx, -1)
+    assert int(schedule.num_start_seeds) == 0
+
+
+def test_same_contour_parallel_threads_use_distinct_stationary_seeds():
+    state = make_state(
+        root_out_degree=3,
+        log_likelihoods=(0.0, 1.0, 2.0),
+        log_L_constraints=(-np.inf,) * 3,
+        out_degree=(0,) * 3,
         max_samples=4,
     )
     block_state = build_block_state(
@@ -460,9 +487,9 @@ def test_same_contour_parallel_threads_use_distinct_stationary_seeds():
     schedule = depth._new_thread_schedule(
         state,
         block_state,
-        _allocation_plan(block_state, (2, 0, 0, 0)),
+        _allocation_plan(block_state, (0, 2, 0, 0)),
         block_state.valid,
-        shell_size=4,
+        replacement_width=4,
         tail_K=jnp.asarray(0, dtype=jnp.int32),
     )
     _, work = depth._plan_scheduled_work_batch(
@@ -480,13 +507,13 @@ def test_same_contour_parallel_threads_use_distinct_stationary_seeds():
 
 
 def test_same_contour_thread_starts_remain_distinct_across_batches():
-    """A narrow vmap must rotate once through a wider root population."""
+    """A narrow vmap must exhaust the eligible population at a real contour."""
     state = make_state(
-        root_out_degree=6,
-        log_likelihoods=(1.0, 2.0, 3.0, 4.0, 5.0, 6.0),
-        log_L_constraints=(-np.inf,) * 6,
-        out_degree=(0,) * 6,
-        max_samples=6,
+        root_out_degree=7,
+        log_likelihoods=(0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0),
+        log_L_constraints=(-np.inf,) * 7,
+        out_degree=(0,) * 7,
+        max_samples=7,
     )
     block_state = build_block_state(
         state.samples,
@@ -497,9 +524,9 @@ def test_same_contour_thread_starts_remain_distinct_across_batches():
     schedule = depth._new_thread_schedule(
         state,
         block_state,
-        _allocation_plan(block_state, (6, 0, 0, 0, 0, 0)),
+        _allocation_plan(block_state, (0, 6, 0, 0, 0, 0, 0)),
         block_state.valid,
-        shell_size=2,
+        replacement_width=2,
         tail_K=jnp.asarray(0, dtype=jnp.int32),
         seed_reservoir_size=6,
     )
@@ -517,8 +544,8 @@ def test_same_contour_thread_starts_remain_distinct_across_batches():
         reservation_counts.append(int(schedule.num_start_seeds))
         schedule = depth._release_thread_heads(schedule, work.valid)
 
-    assert set(selected) == set(range(6))
-    # Once every root start is dispatched there is no future same-contour
+    assert set(selected) == set(range(1, 7))
+    # Once every start is dispatched there is no future same-contour
     # choice to constrain, so the bounded reservation can be released.
     assert reservation_counts == [2, 4, 0]
 
@@ -546,7 +573,7 @@ def test_nonroot_start_reservation_is_not_bounded_by_batch_width():
             (0, 12, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
         ),
         block_state.valid,
-        shell_size=2,
+        replacement_width=2,
         tail_K=jnp.asarray(0, dtype=jnp.int32),
         seed_reservoir_size=2,
     )
@@ -601,7 +628,7 @@ def test_start_seed_reservations_rehash_exactly_when_storage_grows():
             (1,) + (0,) * (sample_capacity - 1),
         ),
         block_state.valid,
-        shell_size=1,
+        replacement_width=1,
         tail_K=jnp.asarray(0, dtype=jnp.int32),
     )
     original_size = schedule.start_seed_reservation_idx.shape[0]
@@ -680,7 +707,7 @@ def test_start_seed_reservation_storage_is_independent_of_sample_capacity():
                 (1,) + (0,) * (sample_capacity - 1),
             ),
             block_state.valid,
-            shell_size=2,
+            replacement_width=2,
             tail_K=jnp.asarray(0, dtype=jnp.int32),
         )
         sizes.append(schedule.start_seed_reservation_idx.shape[0])
@@ -726,14 +753,14 @@ def test_thread_starts_partition_published_and_retained_stationary_seeds():
     schedule = depth._new_thread_schedule(
         source,
         block_state,
-        _allocation_plan(block_state, (4, 0, 0, 0, 0, 0, 0, 0)),
+        _allocation_plan(block_state, (0, 4, 0, 0, 0, 0, 0, 0)),
         block_state.valid,
-        shell_size=2,
+        replacement_width=2,
         tail_K=jnp.asarray(0, dtype=jnp.int32),
         seed_reservoir_size=4,
     )
     current = make_state(
-        root_out_degree=4,
+        root_out_degree=8,
         log_likelihoods=(1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0),
         log_L_constraints=(-np.inf,) * 8,
         out_degree=(0,) * 8,
@@ -760,7 +787,7 @@ def test_thread_starts_partition_published_and_retained_stationary_seeds():
         schedule = depth._release_thread_heads(schedule, work.valid)
 
     assert len(set(selected)) == 4
-    assert set(selected) <= set(range(8))
+    assert set(selected) <= set(range(1, 8))
     assert published_counts == [sum(seed < 4 for seed in selected[:2]), 0]
 
     keys = jax.random.split(jax.random.PRNGKey(296), 256)
@@ -770,8 +797,7 @@ def test_thread_starts_partition_published_and_retained_stationary_seeds():
             one_key,
             current,
             draw_schedule,
-            jnp.asarray([-jnp.inf]),
-            jnp.asarray([True]),
+            jnp.asarray([1.0]),
             jnp.asarray([True]),
             jnp.asarray([-1], dtype=jnp.int32),
             jnp.asarray([-jnp.inf]),
@@ -784,7 +810,9 @@ def test_thread_starts_partition_published_and_retained_stationary_seeds():
     )
     # This fixture retains all four appended rows, so both source components
     # occur at frequencies consistent with their complete stationary union.
-    assert np.all((counts >= 16) & (counts <= 48))
+    assert counts[0] == 0
+    sigma = np.sqrt(256 * (1 / 7) * (6 / 7))
+    assert np.all(np.abs(counts[1:] - 256 / 7) < 4 * sigma)
 
 
 def test_frozen_seed_rank_index_matches_every_brute_force_interval():
@@ -807,7 +835,7 @@ def test_frozen_seed_rank_index_matches_every_brute_force_interval():
         blocks,
         _allocation_plan(blocks, (0,) * 6),
         blocks.valid,
-        shell_size=2,
+        replacement_width=2,
         tail_K=jnp.asarray(0, dtype=jnp.int32),
     )
     likelihood = np.asarray(state.samples.log_likelihoods)
@@ -856,7 +884,7 @@ def test_mixed_contour_seed_groups_remain_distinct_after_rejection():
         block_state,
         _allocation_plan(block_state, (0, 0, 0, 0, 0)),
         block_state.valid,
-        shell_size=5,
+        replacement_width=5,
         tail_K=jnp.asarray(0, dtype=jnp.int32),
     )
     constraints = jnp.asarray(
@@ -867,7 +895,6 @@ def test_mixed_contour_seed_groups_remain_distinct_after_rejection():
         state,
         schedule,
         constraints,
-        jnp.isneginf(constraints),
         jnp.ones((5,), dtype=bool),
         jnp.full((5,), -1, dtype=jnp.int32),
         jnp.full((5,), -jnp.inf),
@@ -906,7 +933,7 @@ def test_missing_stationary_seed_reparents_to_closest_shallower_contour():
         block_state,
         _allocation_plan(block_state, (0, 0, 1, 0)),
         block_state.valid,
-        shell_size=1,
+        replacement_width=1,
         tail_K=jnp.asarray(0, dtype=jnp.int32),
     )
     # Isolate the fallback decision by representing a frozen contour whose
@@ -951,7 +978,7 @@ def test_effective_fallback_contour_orders_start_before_continuation():
         block_state,
         _allocation_plan(block_state, (0, 0, 1, 0)),
         block_state.valid,
-        shell_size=1,
+        replacement_width=1,
         tail_K=jnp.asarray(0, dtype=jnp.int32),
     )
     schedule = dataclasses.replace(
@@ -1000,7 +1027,7 @@ def test_seedless_continuation_heap_uses_its_effective_contour():
         block_state,
         _allocation_plan(block_state, (0, 0, 0, 0)),
         block_state.valid,
-        shell_size=1,
+        replacement_width=1,
         tail_K=jnp.asarray(0, dtype=jnp.int32),
     )
     schedule = dataclasses.replace(
@@ -1048,7 +1075,7 @@ def test_pending_same_contour_seeds_are_reserved_across_refills():
         block_state,
         _allocation_plan(block_state, (0, 0, 0, 0)),
         block_state.valid,
-        shell_size=2,
+        replacement_width=2,
         tail_K=jnp.asarray(0, dtype=jnp.int32),
     )
     selected = depth._sample_stationary_seeds(
@@ -1056,7 +1083,6 @@ def test_pending_same_contour_seeds_are_reserved_across_refills():
         state,
         schedule,
         jnp.asarray([1.0, 1.0]),
-        jnp.zeros((2,), dtype=bool),
         jnp.ones((2,), dtype=bool),
         jnp.asarray([1, -1]),
         jnp.asarray([1.0, -jnp.inf]),
@@ -1069,11 +1095,11 @@ def test_pending_same_contour_seeds_are_reserved_across_refills():
 def test_post_freeze_pending_start_is_counted_once():
     """A pending appended seed must not shrink the distinct pool twice."""
     source = make_state(
-        root_out_degree=2,
-        log_likelihoods=(1.0, 2.0),
-        log_L_constraints=(-np.inf, -np.inf),
-        out_degree=(0, 0),
-        max_samples=5,
+        root_out_degree=3,
+        log_likelihoods=(0.0, 1.0, 2.0),
+        log_L_constraints=(-np.inf,) * 3,
+        out_degree=(0,) * 3,
+        max_samples=6,
     )
     block_state = build_block_state(
         source.samples,
@@ -1084,25 +1110,25 @@ def test_post_freeze_pending_start_is_counted_once():
     schedule = depth._new_thread_schedule(
         source,
         block_state,
-        _allocation_plan(block_state, (3, 0, 0, 0, 0)),
+        _allocation_plan(block_state, (0, 3, 0, 0, 0, 0)),
         block_state.valid,
-        shell_size=3,
+        replacement_width=3,
         tail_K=jnp.asarray(0, dtype=jnp.int32),
     )
     current = make_state(
-        root_out_degree=4,
-        log_likelihoods=(1.0, 2.0, 3.0, 4.0),
-        log_L_constraints=(-np.inf,) * 4,
-        out_degree=(0,) * 4,
-        max_samples=5,
+        root_out_degree=5,
+        log_likelihoods=(0.0, 1.0, 2.0, 3.0, 4.0),
+        log_L_constraints=(-np.inf,) * 5,
+        out_degree=(0,) * 5,
+        max_samples=6,
     )
     schedule = depth._update_seed_reservoir(
         schedule,
-        jnp.asarray([2, 3, -1], dtype=jnp.int32),
+        jnp.asarray([3, 4, -1], dtype=jnp.int32),
         jnp.asarray([True, True, False]),
     )
     reservation_idx, reservation_group = depth._insert_seed_reservation(
-        jnp.asarray(3, dtype=jnp.int32),
+        jnp.asarray(4, dtype=jnp.int32),
         schedule.current_start_group,
         schedule.start_seed_reservation_idx,
         schedule.start_seed_reservation_group,
@@ -1111,7 +1137,7 @@ def test_post_freeze_pending_start_is_counted_once():
         schedule,
         start_seed_reservation_idx=reservation_idx,
         start_seed_reservation_group=reservation_group,
-        start_seed_log_L_constraint=jnp.asarray(-jnp.inf),
+        start_seed_log_L_constraint=jnp.asarray(0.0),
         num_start_seeds=jnp.asarray(1, dtype=jnp.int32),
     )
 
@@ -1120,24 +1146,24 @@ def test_post_freeze_pending_start_is_counted_once():
         current,
         schedule,
         jnp.asarray(3, dtype=jnp.int32),
-        reserved_seed_idx=jnp.asarray([3, -1, -1], dtype=jnp.int32),
-        reserved_log_L_constraint=jnp.asarray([-jnp.inf] * 3),
+        reserved_seed_idx=jnp.asarray([4, -1, -1], dtype=jnp.int32),
+        reserved_log_L_constraint=jnp.zeros((3,)),
         reserved_valid=jnp.asarray([True, False, False]),
     )
 
-    # The pending identity 3 already belongs to the retained group. Exactly
+    # The pending identity 4 already belongs to the retained group. Exactly
     # the three remaining stationary seeds therefore fill this next window.
-    assert set(np.asarray(work.seed_idx).tolist()) == {0, 1, 2}
+    assert set(np.asarray(work.seed_idx).tolist()) == {1, 2, 3}
 
 
 def test_evicted_recent_reservations_do_not_hide_unseen_stationary_seeds():
     """Exhaustion counts the current frozen+reservoir union exactly."""
     source = make_state(
-        root_out_degree=2,
-        log_likelihoods=(1.0, 2.0),
-        log_L_constraints=(-np.inf, -np.inf),
-        out_degree=(0, 0),
-        max_samples=5,
+        root_out_degree=3,
+        log_likelihoods=(0.0, 1.0, 2.0),
+        log_L_constraints=(-np.inf,) * 3,
+        out_degree=(0,) * 3,
+        max_samples=6,
     )
     block_state = build_block_state(
         source.samples,
@@ -1148,22 +1174,22 @@ def test_evicted_recent_reservations_do_not_hide_unseen_stationary_seeds():
     schedule = depth._new_thread_schedule(
         source,
         block_state,
-        _allocation_plan(block_state, (2, 0, 0, 0, 0)),
+        _allocation_plan(block_state, (0, 2, 0, 0, 0, 0)),
         block_state.valid,
-        shell_size=2,
+        replacement_width=2,
         tail_K=jnp.asarray(0, dtype=jnp.int32),
     )
     current = make_state(
-        root_out_degree=5,
-        log_likelihoods=(1.0, 2.0, 3.0, 4.0, 5.0),
-        log_L_constraints=(-np.inf,) * 5,
-        out_degree=(0,) * 5,
-        max_samples=5,
+        root_out_degree=6,
+        log_likelihoods=(0.0, 1.0, 2.0, 3.0, 4.0, 5.0),
+        log_L_constraints=(-np.inf,) * 6,
+        out_degree=(0,) * 6,
+        max_samples=6,
     )
-    # Identities 2 and 4 were used while recent, then left the bounded
-    # reservoir. Identity 0 remains frozen and used, while 1 and the current
-    # recent identity 3 are the two unseen eligible choices.
-    for seed_idx in (0, 2, 4):
+    # Identities 3 and 5 were used while recent, then left the bounded
+    # reservoir. Identity 1 remains frozen and used, while 2 and the current
+    # recent identity 4 are the two unseen eligible choices.
+    for seed_idx in (1, 3, 5):
         reservation_idx, reservation_group = (
             depth._insert_seed_reservation(
                 jnp.asarray(seed_idx, dtype=jnp.int32),
@@ -1179,9 +1205,9 @@ def test_evicted_recent_reservations_do_not_hide_unseen_stationary_seeds():
         )
     schedule = dataclasses.replace(
         schedule,
-        seed_reservoir_idx=jnp.asarray([3, -1], dtype=jnp.int32),
+        seed_reservoir_idx=jnp.asarray([4, -1], dtype=jnp.int32),
         seed_reservoir_valid=jnp.asarray([True, False]),
-        start_seed_log_L_constraint=jnp.asarray(-jnp.inf),
+        start_seed_log_L_constraint=jnp.asarray(0.0),
         num_start_seeds=jnp.asarray(3, dtype=jnp.int32),
         num_published_start_seeds=jnp.asarray(1, dtype=jnp.int32),
     )
@@ -1193,7 +1219,7 @@ def test_evicted_recent_reservations_do_not_hide_unseen_stationary_seeds():
         jnp.asarray(2, dtype=jnp.int32),
     )
 
-    assert set(np.asarray(work.seed_idx).tolist()) == {1, 3}
+    assert set(np.asarray(work.seed_idx).tolist()) == {2, 4}
 
 
 def test_seed_pool_uses_value_independent_post_freeze_reservoir():
@@ -1215,7 +1241,7 @@ def test_seed_pool_uses_value_independent_post_freeze_reservoir():
         block_state,
         _allocation_plan(block_state, (0, 0, 0, 0)),
         block_state.valid,
-        shell_size=2,
+        replacement_width=2,
         tail_K=jnp.asarray(0, dtype=jnp.int32),
     )
     current = make_state(
@@ -1247,7 +1273,6 @@ def test_seed_pool_uses_value_independent_post_freeze_reservoir():
             current,
             schedule,
             jnp.asarray([2.0]),
-            jnp.asarray([False]),
             jnp.asarray([True]),
             jnp.asarray([-1], dtype=jnp.int32),
             jnp.asarray([-jnp.inf]),
@@ -1277,7 +1302,7 @@ def test_appended_seed_population_remains_distinct_when_large_enough():
         block_state,
         _allocation_plan(block_state, (0, 0, 0, 0, 0, 0)),
         block_state.valid,
-        shell_size=3,
+        replacement_width=3,
         tail_K=jnp.asarray(0, dtype=jnp.int32),
     )
     current = make_state(
@@ -1303,7 +1328,6 @@ def test_appended_seed_population_remains_distinct_when_large_enough():
         current,
         schedule,
         constraints,
-        jnp.zeros((3,), dtype=bool),
         jnp.ones((3,), dtype=bool),
         jnp.full((3,), -1, dtype=jnp.int32),
         jnp.full((3,), -jnp.inf),
@@ -1332,7 +1356,7 @@ def test_seed_source_refresh_uses_geometric_generations():
         block_state,
         _allocation_plan(block_state, (1, 0, 0, 0)),
         block_state.valid,
-        shell_size=2,
+        replacement_width=2,
         tail_K=jnp.asarray(0, dtype=jnp.int32),
     )
     minimum_rows = (
@@ -1389,7 +1413,7 @@ def test_seed_source_refresh_uses_geometric_generations():
         grown_blocks,
         _allocation_plan(grown_blocks, (1,) + (0,) * 39),
         grown_blocks.valid,
-        shell_size=2,
+        replacement_width=2,
         tail_K=jnp.asarray(0, dtype=jnp.int32),
     )
     assert grown_schedule.continuation_parent_idx.shape[0] == 10
@@ -1398,8 +1422,8 @@ def test_seed_source_refresh_uses_geometric_generations():
 def test_seed_publication_preserves_frozen_thread_target():
     sampler = NestedSampler(
         model=make_toy_model(),
-        target_num_live_points=2,
-        shell_size=1,
+        root_allocation_degree=2,
+        replacement_width=1,
         delta_K=2,
         initial_capacity=64,
         unlimited_samples=True,
@@ -1454,7 +1478,7 @@ def test_seed_publication_merges_generation_larger_than_thread_heap():
         blocks,
         _allocation_plan(blocks, (1,) + (0,) * 199),
         blocks.valid,
-        shell_size=2,
+        replacement_width=2,
         tail_K=jnp.asarray(0, dtype=jnp.int32),
     )
     assert schedule.continuation_parent_idx.shape[0] == 10
@@ -1548,7 +1572,7 @@ def test_seed_publication_merges_root_dominated_refresh_generation():
         blocks,
         _allocation_plan(blocks, (1,) + (0,) * (capacity - 1)),
         blocks.valid,
-        shell_size=1,
+        replacement_width=1,
         tail_K=jnp.asarray(0, dtype=jnp.int32),
         seed_reservoir_size=source_size,
     )
@@ -1600,7 +1624,7 @@ def test_thread_storage_grows_independently_of_sample_storage():
         blocks,
         _allocation_plan(blocks, (1,) + (0,) * 39),
         blocks.valid,
-        shell_size=2,
+        replacement_width=2,
         tail_K=jnp.asarray(0, dtype=jnp.int32),
     )
     # Nine queued heads cannot safely admit another two-wide replacement
@@ -1640,7 +1664,7 @@ def test_thread_storage_grows_independently_of_sample_storage():
         )
         for fraction in (0.0, 0.49, 0.99)
     ])
-    runner_grown = core._grow_continuation_storage(state, shell_size=2)
+    runner_grown = core._grow_continuation_storage(state, replacement_width=2)
     assert runner_grown.scheduler_data.continuation_parent_idx.shape[0] == 20
     assert int(runner_grown.scheduler_data.continuation_count) == 9
     assert int(runner_grown.num_samples) == int(state.num_samples)
@@ -1703,7 +1727,7 @@ def test_frozen_target_projects_by_successor_contour():
         block_state,
         _allocation_plan(block_state, (0, 0, 0, 0, 0)),
         block_state.valid,
-        shell_size=2,
+        replacement_width=2,
         tail_K=jnp.asarray(9, dtype=jnp.int32),
     )
     schedule = dataclasses.replace(
@@ -1725,8 +1749,8 @@ def test_frozen_target_projects_by_successor_contour():
 def test_depth_epoch_appends_without_reordering_coordinate_payload():
     ns = NestedSampler(
         model=make_toy_model(),
-        target_num_live_points=2,
-        shell_size=1,
+        root_allocation_degree=2,
+        replacement_width=1,
         max_samples=3,
         initial_capacity=3,
         sampler=DeterministicSampler(),
@@ -1855,7 +1879,7 @@ def test_likelihood_order_publication_merges_new_rows_across_growth():
     state = depth._start_schedule_round(
         state,
         DepthCondition(),
-        shell_size=1,
+        replacement_width=1,
         allocation_target="uniform",
         root_degree=2,
         delta_K=1,
@@ -1900,8 +1924,8 @@ def test_likelihood_order_publication_merges_new_rows_across_growth():
 def test_partial_batch_respects_non_multiple_max_samples():
     ns = NestedSampler(
         model=make_toy_model(),
-        target_num_live_points=2,
-        shell_size=2,
+        root_allocation_degree=2,
+        replacement_width=2,
         max_samples=3,
         initial_capacity=4,
         sampler=DeterministicSampler(),
@@ -1925,8 +1949,8 @@ def test_partial_batch_respects_non_multiple_max_samples():
 def test_outer_target_uses_fixed_initial_degree_not_mutable_root_degree():
     ns = NestedSampler(
         model=make_toy_model(),
-        target_num_live_points=2,
-        shell_size=1,
+        root_allocation_degree=2,
+        replacement_width=1,
         delta_K=1,
         max_samples=20,
         initial_capacity=20,
@@ -1951,8 +1975,8 @@ def test_outer_target_uses_fixed_initial_degree_not_mutable_root_degree():
 def test_first_uniform_depth_view_uses_zero_based_allocation_target():
     ns = NestedSampler(
         model=make_toy_model(),
-        target_num_live_points=2,
-        shell_size=1,
+        root_allocation_degree=2,
+        replacement_width=1,
         delta_K=2,
         sampler=DeterministicSampler(),
     )
@@ -1978,8 +2002,8 @@ def test_first_uniform_depth_view_uses_zero_based_allocation_target():
 def test_resume_uses_stored_key_and_matches_uninterrupted_run():
     ns = NestedSampler(
         model=make_toy_model(),
-        target_num_live_points=2,
-        shell_size=1,
+        root_allocation_degree=2,
+        replacement_width=1,
         max_samples=8,
         initial_capacity=4,
         sampler=DeterministicSampler(),
@@ -2008,8 +2032,8 @@ def test_resume_uses_stored_key_and_matches_uninterrupted_run():
 def test_python_goal_loop_reports_terminal_depth_budget_without_iteration():
     ns = NestedSampler(
         model=make_toy_model(),
-        target_num_live_points=2,
-        shell_size=1,
+        root_allocation_degree=2,
+        replacement_width=1,
         max_samples=2,
         initial_capacity=2,
         sampler=DeterministicSampler(),
@@ -2031,8 +2055,8 @@ def test_python_goal_loop_reports_terminal_depth_budget_without_iteration():
 def test_filled_target_advances_allocation_without_exposing_user_goal():
     ns = NestedSampler(
         model=make_toy_model(),
-        target_num_live_points=2,
-        shell_size=1,
+        root_allocation_degree=2,
+        replacement_width=1,
         delta_K=1,
         max_samples=4,
         initial_capacity=4,
@@ -2097,41 +2121,44 @@ def test_filled_target_advances_allocation_without_exposing_user_goal():
 def test_sample_storage_modes_are_explicit_and_inspectable():
     finite_default = NestedSampler(
         model=make_toy_model(),
-        target_num_live_points=2,
-        shell_size=1,
+        root_allocation_degree=2,
+        replacement_width=1,
         sampler=DeterministicSampler(),
     )
-    assert finite_default.max_samples == 2 * core.SAMPLES_PER_ROOT
-    assert finite_default.initial_capacity == 2 + core.INITIAL_BATCHES
-    assert finite_default.delta_K == 2
+    finite_default_config = finite_default._resolve_config(finite_default.model, (), None)
+    assert finite_default_config.max_samples == 2 * run_config.SAMPLES_PER_ROOT
+    assert finite_default_config.initial_capacity == 2 + run_config.INITIAL_BATCHES
+    assert finite_default_config.delta_K == 2
     assert not finite_default.unlimited_samples
 
     finite_large = NestedSampler(
         model=make_toy_model(),
-        target_num_live_points=2,
-        shell_size=1,
+        root_allocation_degree=2,
+        replacement_width=1,
         max_samples=5000,
         sampler=DeterministicSampler(),
     )
-    assert finite_large.max_samples == 5000
-    assert finite_large.initial_capacity == 2 + core.INITIAL_BATCHES
+    finite_large_config = finite_large._resolve_config(finite_large.model, (), None)
+    assert finite_large_config.max_samples == 5000
+    assert finite_large_config.initial_capacity == 2 + run_config.INITIAL_BATCHES
 
     unlimited = NestedSampler(
         model=make_toy_model(),
-        target_num_live_points=2,
-        shell_size=1,
+        root_allocation_degree=2,
+        replacement_width=1,
         unlimited_samples=True,
         sampler=DeterministicSampler(),
     )
-    assert unlimited.max_samples is None
-    assert unlimited.initial_capacity == 2 + core.INITIAL_BATCHES
+    unlimited_config = unlimited._resolve_config(unlimited.model, (), None)
+    assert unlimited_config.max_samples is None
+    assert unlimited_config.initial_capacity == 2 + run_config.INITIAL_BATCHES
 
     with pytest.raises(ValueError, match="conflicts"):
         NestedSampler(
             model=make_toy_model(),
             max_samples=100,
             unlimited_samples=True,
-        )
+        ).initialise()
 
 
 def _assert_single_depth_outcome(state):
@@ -2146,8 +2173,8 @@ def _assert_single_depth_outcome(state):
 def test_compiled_depth_classifies_normal_growth_and_terminal_returns():
     common = {
         "model": make_toy_model(),
-        "target_num_live_points": 2,
-        "shell_size": 1,
+        "root_allocation_degree": 2,
+        "replacement_width": 1,
         "delta_K": 1,
         "sampler": DeterministicSampler(),
     }
@@ -2209,8 +2236,8 @@ def test_compiled_depth_classifies_normal_growth_and_terminal_returns():
 def test_unlimited_growth_matches_preallocated_scientific_continuation():
     common = {
         "model": make_toy_model(),
-        "target_num_live_points": 2,
-        "shell_size": 1,
+        "root_allocation_degree": 2,
+        "replacement_width": 1,
         "delta_K": 1,
         "unlimited_samples": True,
         "sampler": DeterministicSampler(),
@@ -2258,8 +2285,8 @@ def test_unlimited_growth_matches_preallocated_scientific_continuation():
 def test_finite_capacity_terminates_below_and_exactly_at_hard_maximum():
     common = {
         "model": make_toy_model(),
-        "target_num_live_points": 2,
-        "shell_size": 2,
+        "root_allocation_degree": 2,
+        "replacement_width": 2,
         "delta_K": 2,
         "sampler": DeterministicSampler(),
     }
@@ -2299,8 +2326,8 @@ def test_finite_capacity_terminates_below_and_exactly_at_hard_maximum():
 def test_state_checkpoint_round_trip_preserves_resume_key_and_order():
     ns = NestedSampler(
         model=make_toy_model(),
-        target_num_live_points=2,
-        shell_size=1,
+        root_allocation_degree=2,
+        replacement_width=1,
         max_samples=4,
         sampler=DeterministicSampler(),
     )
@@ -2320,13 +2347,12 @@ def test_state_checkpoint_round_trip_preserves_resume_key_and_order():
 def test_ellipsoidal_state_survives_checkpoint_growth_and_resume():
     model = TwoDimensionalModel()
     sampler = UniDimSliceSampler(
-        model=model,
         num_slices=4,
     )
     common = {
         "model": model,
         "root_allocation_degree": 6,
-        "shell_size": 2,
+        "replacement_width": 2,
         "delta_K": 2,
         "unlimited_samples": True,
         "sampler": sampler,
@@ -2428,11 +2454,11 @@ def test_ellipsoidal_state_survives_checkpoint_growth_and_resume():
 def test_user_stages_gmm_directions_between_uncertainty_goals():
     """Exercise the public isotropic -> fit -> GMM continuation workflow."""
     model = NarrowTwoDimensionalModel()
-    sampler = UniDimSliceSampler(model=model, num_slices=4)
+    sampler = UniDimSliceSampler(num_slices=4)
     ns = NestedSampler(
         model=model,
         root_allocation_degree=8,
-        shell_size=8,
+        replacement_width=8,
         max_samples=12_000,
         sampler=sampler,
     )
@@ -2497,8 +2523,8 @@ def test_user_stages_gmm_directions_between_uncertainty_goals():
 def test_public_scientific_data_objects_are_frozen_and_slotted():
     ns = NestedSampler(
         model=make_toy_model(),
-        target_num_live_points=2,
-        shell_size=1,
+        root_allocation_degree=2,
+        replacement_width=1,
         max_samples=3,
         initial_capacity=3,
         sampler=DeterministicSampler(),
@@ -2551,64 +2577,76 @@ def test_nested_sampler_resolves_and_preserves_phantom_capacity():
         max_phantom_samples=5,
     )
 
-    assert default.max_phantom_samples == 2
-    assert default.sampler.num_phantom() == 2
-    assert bounded.max_phantom_samples == 5
-    assert bounded.sampler.num_phantom() == 5
+    default_config = default._resolve_config(model, (), None)
+    assert default_config.max_phantom_samples == 2
+    assert default_config.sampler.num_phantom() == 2
+    bounded_config = bounded._resolve_config(model, (), None)
+    assert bounded_config.max_phantom_samples == 5
+    assert bounded_config.sampler.num_phantom() == 5
 
     # NestedSampler owns the high-level D-sized default even when the caller
     # supplies an otherwise unbounded built-in slice sampler. Direct low-level
     # use remains capable of retaining every eligible transition.
     custom_unbounded = UniDimSliceSampler(
-        model=model,
         num_slices=10,
         collect_phantom_samples=True,
     )
     assert custom_unbounded.num_phantom() == 9
     custom_default = NestedSampler(model=model, sampler=custom_unbounded)
-    assert custom_default.max_phantom_samples == 2
-    assert custom_default.sampler.num_phantom() == 2
+    custom_default_config = custom_default._resolve_config(model, (), None)
+    assert custom_default_config.max_phantom_samples == 2
+    assert custom_default_config.sampler.num_phantom() == 2
 
     custom_explicit = NestedSampler(
         model=model,
         sampler=custom_unbounded,
         max_phantom_samples=np.int64(4),
     )
-    assert custom_explicit.max_phantom_samples is int(
-        custom_explicit.max_phantom_samples
+    custom_explicit_config = custom_explicit._resolve_config(model, (), None)
+    assert custom_explicit_config.max_phantom_samples is int(
+        custom_explicit_config.max_phantom_samples
     )
-    assert custom_explicit.max_phantom_samples == 4
-    assert custom_explicit.sampler.num_phantom() == 4
+    assert custom_explicit_config.max_phantom_samples == 4
+    assert custom_explicit_config.sampler.num_phantom() == 4
 
     sampler_capacity = dataclasses.replace(
         custom_unbounded,
         max_phantom_samples=5,
     )
     sampler_precedence = NestedSampler(model=model, sampler=sampler_capacity)
-    assert sampler_precedence.max_phantom_samples == 5
+    sampler_precedence_config = sampler_precedence._resolve_config(model, (), None)
+    assert sampler_precedence_config.max_phantom_samples == 5
     with pytest.raises(ValueError, match="disagrees"):
         NestedSampler(
             model=model,
             sampler=sampler_capacity,
             max_phantom_samples=4,
-        )
+        ).initialise()
 
     restored_sampler = pickle.loads(pickle.dumps(bounded))
-    assert restored_sampler.max_phantom_samples == 5
-    assert restored_sampler.sampler.num_phantom() == 5
+    restored_sampler_config = restored_sampler._resolve_config(model, (), None)
+    assert restored_sampler_config.max_phantom_samples == 5
+    assert restored_sampler_config.sampler.num_phantom() == 5
 
     state = bounded.initialise(jax.random.PRNGKey(284))
     restored_state = pickle.loads(pickle.dumps(state))
     assert restored_state.samples.phantom_samples.log_L.shape[1] == 5
 
     with pytest.raises(ValueError, match="collect_phantom_samples"):
-        NestedSampler(model=model, max_phantom_samples=1)
+        NestedSampler(model=model, max_phantom_samples=1).initialise()
+    for invalid_capacity in (0, -1):
+        with pytest.raises(ValueError, match="must be positive"):
+            NestedSampler(
+                model=model,
+                collect_phantom_samples=True,
+                max_phantom_samples=invalid_capacity,
+            ).initialise()
     with pytest.raises(ValueError, match="num_slices - 1"):
         NestedSampler(
             model=model,
             collect_phantom_samples=True,
             max_phantom_samples=10,
-        )
+        ).initialise()
 
 
 def test_additional_retained_phantoms_leave_classic_run_invariant():
@@ -2617,7 +2655,7 @@ def test_additional_retained_phantoms_leave_classic_run_invariant():
         "model": model,
         "collect_phantom_samples": True,
         "root_allocation_degree": 4,
-        "shell_size": 2,
+        "replacement_width": 2,
         "max_samples": 6,
         "initial_capacity": 6,
         "depth_condition": DepthCondition(),
@@ -2652,14 +2690,14 @@ def test_additional_retained_phantoms_leave_classic_run_invariant():
     short_result = short_state.to_result().trim()
     long_result = long_state.to_result().trim()
     evidence_key = jax.random.PRNGKey(2284)
-    short_evidence = short_result.sample_evidence_mc(
+    short_evidence = short_result.sample_evidence(
         num_samples=16,
-        conditioning="classic",
+        phantom_conditioning=False,
         key=evidence_key,
     )
-    long_evidence = long_result.sample_evidence_mc(
+    long_evidence = long_result.sample_evidence(
         num_samples=16,
-        conditioning="classic",
+        phantom_conditioning=False,
         key=evidence_key,
     )
     np.testing.assert_array_equal(

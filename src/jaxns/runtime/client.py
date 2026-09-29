@@ -38,14 +38,14 @@ from jaxns.runtime.protocol import (
 )
 
 if TYPE_CHECKING:
-    from jaxns.constrained_sampler import (
+    from jaxns.runtime.session import WorkerSession
+    from jaxns.sampling.ellipsoid import SamplerData
+    from jaxns.sampling.protocol import (
         ConstrainedSampleBatch,
         ConstrainedSampleRequest,
         LikelihoodEvaluation,
         LikelihoodRequest,
     )
-    from jaxns.runtime.session import WorkerSession
-    from jaxns.sampling.ellipsoid import SamplerData
 
 
 class RuntimeUnavailableError(RuntimeError):
@@ -233,22 +233,39 @@ class SupervisorClient:
                 raise RuntimeError("Supervisor returned invalid worker capacities.")
             return tuple(capacities)
 
-    def release(self, session_id: str) -> None:
-        """Release one drained session and its worker-side compiled programs."""
+    def release(
+            self,
+            session_id: str,
+            *,
+            cancel: bool = False,
+            timeout_s: float | None = None,
+    ) -> None:
+        """Release a session, optionally cancelling its outstanding tasks.
+
+        Cancellation fences busy workers assigned to this session and removes
+        its queued work. Other sessions remain registered and can keep running.
+        """
         self._socket.send_multipart([
-            encode_header(RELEASE, session_id=session_id),
+            encode_header(RELEASE, session_id=session_id, cancel=cancel),
             b"",
         ])
-        header, payloads = self._receive_until(
-            time.monotonic() + self._default_timeout_s
-        )
-        del payloads
-        if header["command"] == ERROR:
-            _raise_runtime_error(header)
-        if header["command"] != RELEASED:
-            raise RuntimeError(
-                f"Expected session release, received {header['command']!r}."
-            )
+        timeout = self._default_timeout_s if timeout_s is None else timeout_s
+        deadline = time.monotonic() + timeout
+        while True:
+            header, _ = self._receive_until(deadline)
+            command = header["command"]
+            # Ctrl-C may arrive while registration, a capacity query, or task
+            # results are still in flight. Their replies precede RELEASED on
+            # this socket and are obsolete only for the cancelled session.
+            if cancel and command in (REGISTERED, CAPACITY, RESULT):
+                continue
+            if command == ERROR:
+                _raise_runtime_error(header)
+            if command != RELEASED or header.get("session_id") != session_id:
+                raise RuntimeError(
+                    f"Expected session release, received {header!r}."
+                )
+            return
 
     def submit(
             self,

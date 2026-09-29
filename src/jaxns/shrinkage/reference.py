@@ -66,8 +66,11 @@ def _validate_phantom_metadata(
             "valid_phantom contains a stale association beyond num_samples."
         )
     active = K_classic[:n] > 0
+    zero_root = np.isneginf(log_L_classic[:n]) & np.isneginf(log_L_constraints[:n])
     strict_violations = active & (
-        log_L_classic[:n] <= log_L_constraints[:n]
+        ((log_L_classic[:n] <= log_L_constraints[:n]) & ~zero_root)
+        | (zero_root & valid_phantom[:n])
+        | np.isnan(log_L_classic[:n]) | np.isnan(log_L_constraints[:n])
     )
     if np.any(strict_violations):
         bad = np.where(strict_violations)[0][0]
@@ -297,6 +300,10 @@ def compute_phantom_count_matrices(
         for block_idx in range(valid_count):
             parent = -np.inf if block_idx == 0 else log_L_blocks[block_idx - 1]
             endpoint = log_L_blocks[block_idx]
+            # Sentinel draws have no phantoms. Chains above zero cannot
+            # inform how much of the unconditional prior has zero likelihood.
+            if block_idx == 0 and np.isneginf(endpoint):
+                continue
             if constraint > parent:
                 continue
             values = log_L_phantom[cluster_idx]
@@ -539,7 +546,7 @@ def _log_dz_from_probabilities(
     return log_Z, log_dZ, H
 
 
-def sample_mc_shrinkage(
+def sample_evidence(
         seed: int,
         log_L_constraints: FloatArray,
         log_L_classic: FloatArray,

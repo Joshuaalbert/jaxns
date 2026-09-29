@@ -15,7 +15,6 @@ from pathlib import Path
 import jax
 import jax.numpy as jnp
 import numpy as np
-from jaxctx.priors.prior import Prior
 from scipy.special import erf
 from tensorflow_probability.substrates import jax as tfp
 
@@ -24,6 +23,7 @@ from jaxns.core import NestedSampler
 from jaxns.depth_condition import DepthCondition
 from jaxns.distributed_core import DistributedNestedSampler
 from jaxns.model import Model
+from jaxns.priors import Prior
 from jaxns.runtime.config import load_runtime_config
 
 tfpd = tfp.distributions
@@ -41,7 +41,6 @@ def truth() -> float:
 
 def sampler(model: Model, phantoms: bool) -> UniDimSliceSampler:
     return UniDimSliceSampler(
-        model=model,
         num_slices=3,
         collect_phantom_samples=phantoms,
         max_phantom_samples=2 if phantoms else None,
@@ -52,7 +51,7 @@ def local_runner(model: Model, phantoms: bool) -> NestedSampler:
     return NestedSampler(
         model=model,
         root_allocation_degree=6,
-        shell_size=6,
+        replacement_width=6,
         delta_K=6,
         max_samples=512,
         initial_capacity=128,
@@ -95,7 +94,7 @@ def measure(runner, seed: int) -> dict[str, float | int]:
         )),
         "retained_phantoms": int(jnp.sum(
             state.samples.phantom_samples.valid_mask[:valid]
-        )),
+        )) * state.samples.phantom_samples.log_L.shape[-1],
     }
 
 

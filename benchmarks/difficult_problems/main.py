@@ -4,10 +4,10 @@ from typing import Dict
 import jax
 import jax.numpy as jnp
 import tensorflow_probability.substrates.jax as tfp
-from jaxctx.priors.prior import Prior
 
 from jaxns.core import NestedSampler
 from jaxns.model import Model
+from jaxns.priors import Prior
 
 tfpd = tfp.distributions
 

@@ -9,14 +9,17 @@ is `root_allocation_degree * 1000`, enlarged only when necessary to hold the
 root samples and one replacement batch. Physical storage starts at the root
 batch plus 64 replacement batches and grows geometrically to that finite
 ceiling. An explicitly smaller maximum clamps the initial allocation. The
-resolved `initial_capacity` and `max_samples` remain visible on the sampler.
+runner retains the requested settings. Model-dependent defaults resolve from
+the run inputs at initialization. The state's array shape shows its current
+physical capacity.
 
 ```python
 sampler = NestedSampler(
     model=model,
     max_samples=1_000_000,
 )
-print(sampler.initial_capacity, sampler.max_samples)
+state = sampler.initialise(args=model_args, params=model_params)
+print(state.samples.log_likelihoods.shape[0], sampler.max_samples)
 ```
 
 Unlimited storage requires the explicit `unlimited_samples=True` opt-in and

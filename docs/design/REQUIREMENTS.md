@@ -73,6 +73,9 @@ properties that must hold independently of implementation live in
 
 - Requirement: Distributed execution is an opt-in `DistributedNestedSampler`; the established
   local `NestedSampler` remains the compiled, dependency-light execution path.
+- Requirement: A completed local goal boundary can become a fresh `DistributedState` without
+  altering its scientific state or keys. A drained distributed state can expose that full
+  `State` for local continuation; pending tasks and active schedules must not be discarded.
 - Requirement: `jaxns-cli` owns one named coordinator or worker node and provides idempotent
   `config validate`, `up`, `status`, and `down` operations from a TOML configuration.
 - Requirement: A coordinator publishes a versioned same-user ownership manifest containing its
@@ -177,6 +180,9 @@ properties that must hold independently of implementation live in
 ## Core Run Architecture
 
 - Requirement: The outer goal loop is Pythonic and calls a user-provided condition on `State`.
+- Requirement: Optional verbose progress uses existing scalar state, task counters, and Python
+  wall-clock timings at completed goal iterations, without constructing results or recomputing
+  evidence summaries for logging.
 - Requirement: One depth epoch is a pure JAX computation suitable for JIT compilation and
   returns control at a depth boundary, capacity boundary, or explicit no-progress boundary.
 - Requirement: The compiled depth loop computes allocation gaps, selects parents, selects
@@ -259,6 +265,11 @@ properties that must hold independently of implementation live in
 - Requirement: A retryable distributed execution error checkpoints the complete
   `DistributedState`, including pending task identities, immutable requests, and provisional
   reservations, before exposing the error when checkpointing is enabled.
+- Requirement: SIGINT checkpoints the latest coherent local or distributed continuation when
+  enabled, then propagates KeyboardInterrupt. Checkpointed local depths return after a bounded
+  number of replacement batches without host callbacks or extra goal evaluations. Distributed
+  interruption cancels only its own runtime session after saving pending requests, fencing busy
+  workers through the existing node restart lifecycle and preserving other registered sessions.
 - Requirement: Checkpoints use trusted Python pickle serialization and are recovery artifacts for
   a compatible Python environment, not a safe untrusted-data or archival interchange format.
 
@@ -314,7 +325,7 @@ properties that must hold independently of implementation live in
   boundaries are 32 slice transitions and eight lanes.
 - Requirement: Continuation batching preserves every chain's scalar PRNG stream, strict parent
   contour, stationary seed, generated phantom order, classic child, and logical likelihood count.
-- Requirement: Retained phantoms are the earliest eligible post-burn-in intermediate states of a
+- Requirement: Retained phantoms are the earliest generated intermediate states of a
   chain, are ordered as generated, and exclude the final classic child.
 - Requirement: Merely enabling phantom retention cannot change the number of slice transitions
   or random choices that determine the final classic child.
@@ -327,8 +338,9 @@ properties that must hold independently of implementation live in
   equality prior, whose current neutral value is epsilon equal to one half.
 - Requirement: The classic expectation calculation supplies depth conditions at planning or
   drain boundaries and inexpensive state summaries; it is not maintained per replacement batch.
-- Requirement: Final user-facing evidence uncertainty and evidence draws use Monte Carlo
-  shrinkage and expose classic and phantom-conditioned modes explicitly.
+- Requirement: State and result evidence summaries use classic expectation calculations.
+  A separately keyed Monte Carlo method defaults to classic shrinkage and explicitly opts
+  into phantom conditioning, returning its own evidence draws and summaries.
 - Requirement: The default phantom gate uses the Kish participating-cluster count with
   `C_min = 20`, while public final-inference APIs may accept an explicit alternative threshold.
 - Requirement: One Gamma(1, 1) weight is drawn per phantom cluster and Monte Carlo draw and is
@@ -403,3 +415,12 @@ properties that must hold independently of implementation live in
   across commits.
 - Requirement: Benchmark programs are not ordinary unit tests and do not make a pull request
   fail solely because shared-runner wall time fluctuates.
+
+## Model And Configuration Ownership
+
+- Requirement: The runner owns its model and default depth condition. Constrained samplers
+  receive the model explicitly when executing a request rather than retaining another model.
+- Requirement: Local and distributed construction share default resolution. Distributed
+  execution neither constructs a local runner nor exposes a replacement width.
+- Requirement: Posterior resampling returns equally weighted posterior samples with integration
+  methods, without copying run-level evidence, uncertainty, ESS, or race metadata.

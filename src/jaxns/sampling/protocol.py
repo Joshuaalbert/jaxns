@@ -57,6 +57,8 @@ class ConstrainedSampleRequest(PureDataclassPytree):
 
     keys: PRNGKey  # [S, 2]
     valid: BoolArray  # [S]
+    # Derived from transient parent indices, never stored on sample rows.
+    from_root: BoolArray  # [S]
     log_L_constraints: FloatArray  # [S]
     seed_points: SeedPoint  # U0 [S, ...], log_L0 [S]
     sampler_data: SamplerData | None  # [K, D, D] and component data

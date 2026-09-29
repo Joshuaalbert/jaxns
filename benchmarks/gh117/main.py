@@ -3,11 +3,10 @@ import time
 import jax
 import tensorflow_probability.substrates.jax as tfp
 from jax import random
-from jaxctx.priors.prior import Prior
 
 from jaxns.core import NestedSampler
 from jaxns.model import Model
-
+from jaxns.priors import Prior
 
 tfpd = tfp.distributions
 

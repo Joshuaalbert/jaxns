@@ -8,12 +8,12 @@ import pytest
 from jax import numpy as jnp
 from jax.scipy.linalg import solve_triangular
 from jax.scipy.special import logsumexp
-from jaxctx.priors.prior import Prior
 from tensorflow_probability.substrates import jax as tfp
 
 from jaxns.core import NestedSampler
 from jaxns.diagnostics.reference import bruteforce_evidence
 from jaxns.model import Model
+from jaxns.priors import Prior
 
 matplotlib.use("Agg")
 
@@ -545,8 +545,12 @@ def test_nested_sampling_run_results(case, collect_phantom_samples):
     assert not np.isnan(results.log_Z_uncert)
     if collect_phantom_samples:
         assert results.log_L_phantom.shape[1] > 0
-        if int(state.depth_loop_iter) > 0:
-            assert int(results.total_phantom_samples) > 0
+        # A constant likelihood can allocate only sentinel children. Direct
+        # prior draws have no chain, even when they occur in a depth iteration.
+        num_chains = int(state.num_samples) - int(state.root_out_degree)
+        assert int(results.total_phantom_samples) == (
+            num_chains * results.log_L_phantom.shape[1]
+        )
     else:
         assert results.log_L_phantom.shape[1] == 0
         assert int(results.total_phantom_samples) == 0
@@ -555,9 +559,9 @@ def test_nested_sampling_run_results(case, collect_phantom_samples):
     # so validate it against a classic MC ensemble even when this run also
     # retained phantoms. Phantom conditioning is a distinct posterior update
     # and is checked separately against the known evidence below.
-    classic_shrinkage = results.sample_evidence_mc(
+    classic_shrinkage = results.sample_evidence(
         num_samples=1000,
-        conditioning="classic",
+        phantom_conditioning=False,
         key=jax.random.PRNGKey(20260823),
     )
     classic_log_Z_mean = np.mean(
@@ -571,14 +575,14 @@ def test_nested_sampling_run_results(case, collect_phantom_samples):
     )
 
     if collect_phantom_samples:
-        mc_shrinkage = results.sample_evidence_mc(
+        evidence = results.sample_evidence(
             num_samples=1000,
-            conditioning="phantom",
+            phantom_conditioning=True,
             key=jax.random.PRNGKey(20260823),
         )
     else:
-        mc_shrinkage = classic_shrinkage
-    log_Z_samples = np.asarray(mc_shrinkage.log_Z_samples)
+        evidence = classic_shrinkage
+    log_Z_samples = np.asarray(evidence.log_Z_samples)
     log_Z_ensemble_mean = np.mean(log_Z_samples)
     log_Z_ensemble_std = np.std(log_Z_samples)
 

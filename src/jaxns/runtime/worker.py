@@ -33,12 +33,6 @@ def _run(
     import jax.numpy as jnp
     import zmq
 
-    from jaxns.constrained_sampler import (
-        ConstrainedSampleRequest,
-        LikelihoodRequest,
-        evaluate_request,
-        sample_request,
-    )
     from jaxns.runtime.config import load_runtime_config
     from jaxns.runtime.protocol import (
         ERROR,
@@ -57,6 +51,14 @@ def _run(
         encode_header,
     )
     from jaxns.samples import SeedPoint
+    from jaxns.sampling.batching import (
+        evaluate_request,
+        sample_request,
+    )
+    from jaxns.sampling.protocol import (
+        ConstrainedSampleRequest,
+        LikelihoodRequest,
+    )
 
     config = load_runtime_config(config_path)
     name = f"{platform}-{configured_device}"
@@ -67,6 +69,7 @@ def _run(
             return sample_request(
                 registered.sampler,
                 request,
+                model=registered.model,
                 args=registered.args,
                 params=registered.params,
             )
@@ -431,6 +434,7 @@ def _combine_requests(requests, request_type, seed_type, jnp, jax):
     return request_type(
         keys=concatenate(*(request.keys for request in requests)),
         valid=concatenate(*(request.valid for request in requests)),
+        from_root=concatenate(*(request.from_root for request in requests)),
         log_L_constraints=concatenate(*(
             request.log_L_constraints for request in requests
         )),

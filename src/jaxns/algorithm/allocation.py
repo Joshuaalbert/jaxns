@@ -385,19 +385,12 @@ def stationary_seed_indices_python(
         samples: Samples,
         num_samples: int,
         log_L_constraint: float,
-        *,
-        from_root: bool,
 ) -> np.ndarray:
-    """Pure-Python reference for exact stationary seed eligibility."""
+    """Stationary seeds for a real contour. Sentinel draws need no seeds."""
     constraints = np.asarray(samples.log_L_constraints[:num_samples])
     likelihoods = np.asarray(samples.log_likelihoods[:num_samples])
-    if from_root:
-        # Root children are exactly the samples generated from the sentinel
-        # contour. No persistent parent identity is needed to recover them.
-        eligible = np.isneginf(constraints)
-    else:
-        eligible = (
-            (constraints <= log_L_constraint)
-            & (log_L_constraint < likelihoods)
-        )
+    eligible = (
+        (constraints <= log_L_constraint)
+        & (log_L_constraint < likelihoods)
+    )
     return np.flatnonzero(eligible).astype(np.int64)

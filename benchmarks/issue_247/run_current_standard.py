@@ -67,16 +67,14 @@ def main():
     if root_multiplier is None:
         root_multiplier = 30
     root_degree = root_multiplier * ndims
-    shell_size = min(
+    replacement_width = min(
         root_degree,
         max(1, args.shell_multiplier * ndims),
     )
     num_slices = args.slice_multiplier * ndims
     retained_phantoms = ndims if args.phantoms else 0
     sampler = UniDimSliceSampler(
-        model=model,
         num_slices=num_slices,
-        no_step_out=True,
         collect_phantom_samples=args.phantoms,
         max_phantom_samples=(
             retained_phantoms if args.phantoms else None
@@ -85,11 +83,13 @@ def main():
     ns = NestedSampler(
         model=model,
         root_allocation_degree=root_degree,
-        shell_size=shell_size,
+        replacement_width=replacement_width,
         max_samples=100 * root_degree,
         collect_phantom_samples=args.phantoms,
         sampler=sampler,
     )
+
+    config = ns._resolve_config(model, (), None)
 
     lower_s = None
     compile_s = None
@@ -108,9 +108,9 @@ def main():
         lower_start = time.perf_counter()
         lowered = _run_depth.lower(
             depth_state,
-            ns.sampler,
+            config.sampler,
             ns.depth_condition,
-            max_samples=ns.max_samples,
+            max_samples=config.max_samples,
         )
         lower_s = time.perf_counter() - lower_start
         compile_start = time.perf_counter()
@@ -120,7 +120,7 @@ def main():
             warm_start = time.perf_counter()
             warm_state = compiled(
                 depth_state,
-                ns.sampler,
+                config.sampler,
                 ns.depth_condition,
             )
             jax.block_until_ready(warm_state)
@@ -160,10 +160,10 @@ def main():
         "truth_log_Z": float(truth),
         "ndims": ndims,
         "root_degree": root_degree,
-        "replacement_width": shell_size,
-        "allocation_increment": int(ns.delta_K),
-        "num_slices": int(ns.sampler.num_slices),
-        "num_retained_phantoms": int(ns.sampler.num_phantom()),
+        "replacement_width": replacement_width,
+        "allocation_increment": int(config.delta_K),
+        "num_slices": int(config.sampler.num_slices),
+        "num_retained_phantoms": int(config.sampler.num_phantom()),
         "dlogZ": float(ns.depth_condition.dlogZ),
         "lower_s": lower_s,
         "compile_s": compile_s,
@@ -193,9 +193,9 @@ def main():
             if args.mc_key is not None
             else jax.random.fold_in(key, 1)
         )
-        evidence = results.sample_evidence_mc(
+        evidence = results.sample_evidence(
             num_samples=args.mc_draws,
-            conditioning=conditioning,
+            phantom_conditioning=(conditioning == "phantom"),
             key=evidence_key,
             C_min=args.c_min,
         )

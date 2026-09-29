@@ -42,19 +42,27 @@ from jaxns.checkpoint import (
 )
 from jaxns.constrained_sampler import (
     AbstractSampler,
-    ConstrainedSampleBatch,
-    ConstrainedSampleRequest,
-    LikelihoodEvaluation,
-    LikelihoodRequest,
 )
-from jaxns.core import NestedSampler, _grow_start_seed_storage
+from jaxns.core import _grow_start_seed_storage
 from jaxns.depth_condition import DepthCondition
 from jaxns.logging import jaxns_logger
 from jaxns.mixed_precision import mp_policy
 from jaxns.model import Model
 from jaxns.pytree import PureDataclassPytree
+from jaxns.run_config import (
+    ResolvedRunConfig,
+    default_depth_condition,
+    resolve_run_config,
+)
+from jaxns.run_control import DeferredSIGINT
 from jaxns.runtime.session import WorkerSession
 from jaxns.samples import SeedPoint
+from jaxns.sampling.protocol import (
+    ConstrainedSampleBatch,
+    ConstrainedSampleRequest,
+    LikelihoodEvaluation,
+    LikelihoodRequest,
+)
 from jaxns.state import State
 from jaxns.types import BoolArray, FloatArray, IntArray, PRNGKey
 
@@ -71,6 +79,40 @@ class DistributedRunError(RuntimeError):
     def __init__(self, message: str, checkpoint: DistributedState):
         super().__init__(message)
         self.checkpoint = checkpoint
+
+
+class _DistributedInterrupt(KeyboardInterrupt):
+    """Carry the latest coherent state out of the asynchronous goal loop."""
+
+    def __init__(self, checkpoint: DistributedState):
+        super().__init__()
+        self.checkpoint = checkpoint
+
+
+def _checkpoint_and_cancel(
+        client: SupervisorClient,
+        session_id: str,
+        checkpoint: DistributedState | None,
+        checkpoint_manager: CheckpointManager[DistributedState] | None,
+) -> None:
+    """Persist replayable work before releasing only this client's session."""
+    from zmq import ZMQError
+
+    with DeferredSIGINT():
+        try:
+            if checkpoint_manager is not None and checkpoint is not None:
+                checkpoint_manager.save_if_changed(checkpoint)
+        finally:
+            try:
+                client.release(session_id, cancel=True, timeout_s=5.0)
+            except (OSError, RuntimeError, ZMQError) as exc:
+                # A failed coordinator cannot confirm cancellation. Keep the
+                # saved replay state and expose the cleanup failure in the log
+                # without replacing the user's KeyboardInterrupt.
+                jaxns_logger.warning(
+                    "Could not cancel interrupted session %s: %s",
+                    session_id, exc,
+                )
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -131,8 +173,53 @@ class DistributedState(PureDataclassPytree):
     depth_active: bool
     goal_key: PRNGKey  # [2]
 
-    def to_result(self) -> NestedSamplerResults:
-        """Return the ordinary user-facing result from committed samples."""
+    @classmethod
+    def from_state(cls, state: State) -> DistributedState:
+        """Prepare a completed local goal boundary for distributed resumption.
+
+        Args:
+            state: Full state returned by a local run whose goal was met.
+
+        Returns:
+            A new runtime session retaining the exact scientific state and keys.
+
+        Raises:
+            ValueError: If the local run has unfinished work, hit a hard limit,
+                or lacks continuation keys.
+        """
+        if (
+            not bool(state.depth_reached)
+            or state.scheduler_data is not None
+            or bool(state.needs_growth)
+            or int(state.termination_reason) != 0
+        ):
+            raise ValueError(
+                "Local-to-distributed handoff requires a completed goal "
+                "boundary with no unfinished work or hard termination."
+            )
+        if state.random_key is None or state.goal_key is None:
+            raise ValueError("Local-to-distributed handoff requires saved keys.")
+        # Local execution has no remote tasks to replay. Retain every scientific
+        # field, while giving the new distributed session its own task namespace.
+        return cls(
+            state=state,
+            reservations=ReservationState.empty(
+                state.samples.log_likelihoods.shape[0]
+            ),
+            pending=(),
+            next_task_id=0,
+            session_id=uuid4().hex,
+            depth_active=False,
+            goal_key=state.goal_key,
+        )
+
+    def to_state(self) -> State:
+        """Return the full scientific state for local resumption or inspection.
+
+        Raises:
+            RuntimeError: If distributed tasks or an active depth still need
+                to be completed before their runtime bookkeeping can be dropped.
+        """
         if (
             self.pending
             or int(self.reservations.num_reserved) != 0
@@ -140,10 +227,14 @@ class DistributedState(PureDataclassPytree):
             or self.state.scheduler_data is not None
         ):
             raise RuntimeError(
-                "Results are unavailable while work is pending or a "
+                "Local state is unavailable while work is pending or a "
                 "distributed depth is active."
             )
-        return self.state.to_result()
+        return self.state
+
+    def to_result(self) -> NestedSamplerResults:
+        """Return the ordinary user-facing result from committed samples."""
+        return self.to_state().to_result()
 
     def fit_gmm_directions(
             self,
@@ -282,19 +373,6 @@ def _change_reservations(
     )
 
 
-def _sample_limit(
-        state: State,
-        max_samples: int | None,
-) -> IntArray:
-    limit = jnp.asarray(
-        state.samples.log_likelihoods.shape[0],
-        mp_policy.count_dtype,
-    )
-    if max_samples is not None:
-        limit = jnp.asarray(max_samples, mp_policy.count_dtype)
-    return limit
-
-
 @partial(
     jax.jit,
     inline=True,
@@ -325,11 +403,13 @@ def _prepare_task(
         - state.num_samples
         - reservations.num_reserved
     )
-    global_free = (
-        _sample_limit(state, max_samples)
-        - state.num_samples
-        - reservations.num_reserved
-    )
+    global_free = physical_free
+    if max_samples is not None:
+        global_free = (
+            jnp.asarray(max_samples, mp_policy.count_dtype)
+            - state.num_samples
+            - reservations.num_reserved
+        )
     available = jnp.maximum(
         jnp.minimum(physical_free, global_free),
         0,
@@ -363,6 +443,7 @@ def _prepare_task(
         log_L_constraints=work.log_L_constraint,
         seed_points=seed_points,
         sampler_data=state.sampler_data,
+        from_root=work.parent_idx < 0,
     )
     has_work = work.num_valid > 0
     thread_id = schedule.thread_id
@@ -404,7 +485,12 @@ def _accept_task(
         jnp.logical_not(work.valid)
         | (
             jnp.logical_not(jnp.isnan(batch.log_likelihoods))
-            & (batch.log_likelihoods > work.log_L_constraint)
+            & (
+                (work.parent_idx < 0)
+                | (batch.log_likelihoods > work.log_L_constraint)
+            )
+            # A sentinel child is a direct prior draw, never a phantom chain.
+            & ((work.parent_idx >= 0) | ~batch.phantom_samples.valid_mask)
         )
     )
     continuing = jnp.asarray(False, mp_policy.bool_dtype)
@@ -506,8 +592,13 @@ def _depth_status(
             & jnp.logical_not(seed_source_refresh_due)
             & _start_seed_storage_full(state.scheduler_data)
         )
-    limit = _sample_limit(state, max_samples)
-    hard_limit = state.num_samples >= limit
+    # Physical capacity limits dispatch, but only an explicit scientific limit
+    # can terminate the run. Unlimited runs grow when their current buffer fills.
+    hard_limit = jnp.asarray(False, mp_policy.bool_dtype)
+    below_limit = jnp.asarray(True, mp_policy.bool_dtype)
+    if max_samples is not None:
+        hard_limit = state.num_samples >= max_samples
+        below_limit = state.num_samples + reservations.num_reserved < max_samples
     termination_reason = jnp.where(
         state.termination_reason != 0,
         state.termination_reason,
@@ -521,9 +612,6 @@ def _depth_status(
     physical_full = (
         state.num_samples + reservations.num_reserved
         >= state.samples.log_likelihoods.shape[0]
-    )
-    below_limit = (
-        state.num_samples + reservations.num_reserved < limit
     )
     has_work = (
         has_schedule_work
@@ -585,12 +673,16 @@ class DistributedNestedSampler:
         receive_timeout_s: Maximum time to wait for a coordinator health
             response. Worker completion itself has no deadline because an
             empty pool is a recoverable operational state.
+        verbose: Report scalar progress, task counts, and Python wall times
+            after each goal iteration without computing result summaries.
+
+    Ctrl-C saves the current continuation when checkpointing is enabled and
+    cancels only this session's remote work before propagating KeyboardInterrupt.
+    Pending requests retain their exact keys for checkpoint resumption.
     """
 
     __slots__ = (
-        "_core",
         "allocation_target",
-        "args",
         "collect_phantom_samples",
         "coordinator_port",
         "delta_K",
@@ -599,23 +691,19 @@ class DistributedNestedSampler:
         "max_phantom_samples",
         "max_samples",
         "model",
-        "params",
         "receive_timeout_s",
         "root_allocation_degree",
         "sampler",
-        "target_num_live_points",
         "unlimited_samples",
+        "verbose",
     )
 
     def __init__(
             self,
             model: Model,
             coordinator_port: int,
-            target_num_live_points: int | None = None,
             root_allocation_degree: int | None = None,
             max_samples: int | None = None,
-            args: tuple = (),
-            params: CtxParams | None = None,
             sampler: AbstractSampler | None = None,
             depth_condition: DepthCondition | None = None,
             collect_phantom_samples: bool = False,
@@ -629,17 +717,15 @@ class DistributedNestedSampler:
             initial_capacity: int | None = None,
             unlimited_samples: bool = False,
             receive_timeout_s: float = 300.0,
+            verbose: bool = False,
     ) -> None:
         # This object owns a runtime service configuration and is deliberately
         # mutable. Manual slots make that lifecycle explicit without posing as
         # one of the immutable scientific-state dataclasses.
         self.model = model
         self.coordinator_port = coordinator_port
-        self.target_num_live_points = target_num_live_points
         self.root_allocation_degree = root_allocation_degree
         self.max_samples = max_samples
-        self.args = args
-        self.params = params
         self.sampler = sampler
         self.depth_condition = depth_condition
         self.collect_phantom_samples = collect_phantom_samples
@@ -649,6 +735,7 @@ class DistributedNestedSampler:
         self.initial_capacity = initial_capacity
         self.unlimited_samples = unlimited_samples
         self.receive_timeout_s = receive_timeout_s
+        self.verbose = verbose
 
         if (
             type(self.coordinator_port) is not int
@@ -659,66 +746,63 @@ class DistributedNestedSampler:
             )
         if self.receive_timeout_s <= 0.0:
             raise ValueError("receive_timeout_s must be positive.")
-        root_degree = self.root_allocation_degree
-        if root_degree is None:
-            root_degree = self.target_num_live_points
-        if root_degree is None:
-            root_degree = max(1, 30 * int(self.model.U_ndims(self.args, self.params)))
-        # With no local replacement width, one root population is the natural
-        # work increment. Uniform allocation therefore follows d_0, 2 d_0,
-        # 3 d_0, and so on. Utility allocation uses the same
-        # worker-topology-independent increment.
-        if self.delta_K is None:
-            delta_K = root_degree
-        else:
-            delta_K = self.delta_K
-        initial_capacity = self.initial_capacity
-        if initial_capacity is None:
-            initial_capacity = root_degree + 10 * delta_K
-        core = NestedSampler(
-            model=self.model,
-            target_num_live_points=self.target_num_live_points,
+        if self.depth_condition is None:
+            self.depth_condition = default_depth_condition()
+
+    def _resolve_config(
+            self,
+            model: Model,
+            args: tuple,
+            params: CtxParams | None,
+    ) -> ResolvedRunConfig:
+        # Resolve once per session from the new or checkpoint-owned inputs.
+        # Keep requested defaults intact for later runs on the same runner.
+        return resolve_run_config(
+            execution="distributed",
+            model=model,
+            args=args,
+            params=params,
             root_allocation_degree=self.root_allocation_degree,
             max_samples=self.max_samples,
-            # This width is used only by NestedSampler configuration and root
-            # storage initialization. Distributed replacement never reads it.
-            shell_size=1,
-            args=self.args,
-            params=self.params,
             sampler=self.sampler,
-            depth_condition=self.depth_condition,
             collect_phantom_samples=self.collect_phantom_samples,
             max_phantom_samples=self.max_phantom_samples,
             allocation_target=self.allocation_target,
-            delta_K=delta_K,
-            initial_capacity=initial_capacity,
+            delta_K=self.delta_K,
+            initial_capacity=self.initial_capacity,
             unlimited_samples=self.unlimited_samples,
         )
-        self._core = core
-        self.target_num_live_points = core.target_num_live_points
-        self.root_allocation_degree = core.root_allocation_degree
-        self.max_samples = core.max_samples
-        self.sampler = core.sampler
-        self.max_phantom_samples = core.max_phantom_samples
-        self.depth_condition = core.depth_condition
-        self.delta_K = core.delta_K
-        self.initial_capacity = core.initial_capacity
 
-    def initialise(self, key: PRNGKey | None = None) -> DistributedState:
+    def initialise(
+            self,
+            key: PRNGKey | None = None,
+            *,
+            args: tuple = (),
+            params: CtxParams | None = None,
+    ) -> DistributedState:
         """Create a root checkpoint without a local likelihood evaluation.
 
         The scientific process may have no likelihood-capable device. It draws
         unit-hypercube coordinates locally, but every root likelihood is an
         explicit worker task just like later constrained-chain evaluations.
+
+        Args:
+            key: Root sampling key, with a deterministic default if omitted.
+            args: Model arguments stored on the new State.
+            params: Model parameters stored on the new State.
+
+        Returns:
+            A distributed state containing the root samples and inputs.
         """
         from jaxns.runtime.client import SupervisorClient
 
+        config = self._resolve_config(self.model, args, params)
         session_id = uuid4().hex
         session = WorkerSession(
             model=self.model,
-            sampler=self.sampler,
-            args=self.args,
-            params=self.params,
+            sampler=config.sampler,
+            args=args,
+            params=params,
         )
         with SupervisorClient.from_port(self.coordinator_port) as client:
             client.register(session_id, session)
@@ -726,6 +810,9 @@ class DistributedNestedSampler:
                 client,
                 session_id,
                 key,
+                config=config,
+                args=args,
+                params=params,
             )
             client.release(session_id)
             return distributed
@@ -735,6 +822,10 @@ class DistributedNestedSampler:
             client: SupervisorClient,
             session_id: str,
             key: PRNGKey | None,
+            *,
+            config: ResolvedRunConfig,
+            args: tuple,
+            params: CtxParams | None,
     ) -> DistributedState:
         """Build roots while retaining one already registered worker session."""
         if key is None:
@@ -742,16 +833,16 @@ class DistributedNestedSampler:
         init_key, run_key = jax.random.split(key)
         root_keys = jax.random.split(
             init_key,
-            int(self.root_allocation_degree),
+            int(config.root_allocation_degree),
         )
         U_samples = _sample_prior_points(
             root_keys,
             self.model,
-            self.args,
-            self.params,
+            args,
+            params,
         )
         num_evals = jnp.ones(
-            (int(self.root_allocation_degree),),
+            (int(config.root_allocation_degree),),
             mp_policy.count_dtype,
         )
         next_task_id = 0
@@ -763,12 +854,12 @@ class DistributedNestedSampler:
             next_task_id,
         )
         invalid = np.flatnonzero(np.asarray(
-            jax.device_get(log_likelihoods <= -jnp.inf)
+            jax.device_get(jnp.isnan(log_likelihoods))
         ))
         while invalid.size:
             # Preserve one independent retry stream per root. Only roots
-            # rejected by the sentinel contour consume another key and
-            # likelihood call, matching ordinary initialization exactly.
+            # with invalid model evaluations consume another key and
+            # likelihood call. A true zero is retained as a prior observation.
             key_pairs = jax.vmap(
                 lambda value: jax.random.split(value, 2)
             )(root_keys[invalid])
@@ -776,8 +867,8 @@ class DistributedNestedSampler:
             proposals = _sample_prior_points(
                 key_pairs[:, 1],
                 self.model,
-                self.args,
-                self.params,
+                args,
+                params,
             )
             U_samples = jax.tree.map(
                 lambda current, proposal, slots=invalid: current.at[
@@ -797,18 +888,18 @@ class DistributedNestedSampler:
             )
             num_evals = num_evals.at[invalid].add(1)
             invalid = np.flatnonzero(np.asarray(
-                jax.device_get(log_likelihoods <= -jnp.inf)
+                jax.device_get(jnp.isnan(log_likelihoods))
             ))
 
         state = _build_init_state(
             self.model,
-            self.args,
-            self.params,
+            args,
+            params,
             U_samples,
             log_likelihoods,
             num_evals,
-            sample_capacity=int(self.initial_capacity),
-            num_phantom=int(self.sampler.num_phantom()),
+            sample_capacity=int(config.initial_capacity),
+            num_phantom=int(config.sampler.num_phantom()),
         )
         state = dataclasses.replace(
             state,
@@ -946,10 +1037,15 @@ class DistributedNestedSampler:
             key: PRNGKey | None = None,
             checkpoint_dir: str | Path | None = None,
             checkpoint_cadence: float = CHECKPOINT_CADENCE_SECONDS,
+            *,
+            args: tuple = (),
+            params: CtxParams | None = None,
     ) -> DistributedState:
         """Run until the configured expectation-based goal is met.
 
         Args:
+            args: Model arguments used only when starting a new run.
+            params: Model parameters used only when starting a new run.
             key: Random key used only when starting a new run.
             checkpoint_dir: Optional directory for automatic full-state
                 checkpointing and resume.
@@ -971,6 +1067,8 @@ class DistributedNestedSampler:
         return self.run_until_goal(
             default_goal,
             key=key,
+            args=args,
+            params=params,
             checkpoint_dir=checkpoint_dir,
             checkpoint_cadence=checkpoint_cadence,
         )
@@ -982,15 +1080,20 @@ class DistributedNestedSampler:
             key: PRNGKey | None = None,
             checkpoint_dir: str | Path | None = None,
             checkpoint_cadence: float = CHECKPOINT_CADENCE_SECONDS,
+            *,
+            args: tuple = (),
+            params: CtxParams | None = None,
     ) -> DistributedState:
         """Initialise and run the asynchronous Python goal/depth loops.
 
         A valid checkpoint in ``checkpoint_dir`` takes precedence over
-        ``key`` and resumes its stored random stream and pending work. JAXNS
-        verifies storage integrity, while compatible model, sampler, and run
-        configuration remain the caller's responsibility.
+        ``key``, ``args``, and ``params`` and resumes its saved model, random
+        stream, and pending work. JAXNS verifies storage integrity. Compatible
+        sampler and run configuration remain the caller's responsibility.
 
         Args:
+            args: Model arguments used only when starting a new run.
+            params: Model parameters used only when starting a new run.
             goal_cond: User goal evaluated only on drained immutable states.
             depth_cond: Expectation-based boundary for each allocation epoch.
             key: Run random key; a deterministic default is used when absent.
@@ -1008,6 +1111,8 @@ class DistributedNestedSampler:
             goal_cond,
             depth_cond=depth_cond,
             key=key,
+            args=args,
+            params=params,
             checkpoint_dir=checkpoint_dir,
             checkpoint_cadence=checkpoint_cadence,
         )
@@ -1019,23 +1124,32 @@ class DistributedNestedSampler:
             depth_cond: DepthCondition | None,
             key: PRNGKey | None,
             checkpoint_manager: CheckpointManager[DistributedState] | None,
+            args: tuple,
+            params: CtxParams | None,
     ) -> DistributedState:
         """Start a new distributed session after checkpoint resolution."""
         from jaxns.runtime.client import SupervisorClient
 
         if depth_cond is None:
             depth_cond = self.depth_condition
+        config = self._resolve_config(self.model, args, params)
         session_id = uuid4().hex
         session = WorkerSession(
             model=self.model,
-            sampler=self.sampler,
-            args=self.args,
-            params=self.params,
+            sampler=config.sampler,
+            args=args,
+            params=params,
         )
         distributed = None
         with SupervisorClient.from_port(self.coordinator_port) as client:
             try:
+                registration_started_s = time.monotonic() if self.verbose else 0.0
                 client.register(session_id, session)
+                if self.verbose:
+                    jaxns_logger.info(
+                        "Distributed session ready after %.2fs waiting for registration",
+                        time.monotonic() - registration_started_s,
+                    )
                 # A new run retains one registration from root likelihoods
                 # through constrained sampling. This avoids serialising the
                 # same model twice and preserves the worker executable cache.
@@ -1043,6 +1157,9 @@ class DistributedNestedSampler:
                     client,
                     session_id,
                     key,
+                    config=config,
+                    args=args,
+                    params=params,
                 )
                 completed = self._run_connected(
                     client,
@@ -1050,10 +1167,21 @@ class DistributedNestedSampler:
                     goal_cond,
                     depth_cond,
                     checkpoint_manager,
+                    config=config,
                 )
                 distributed = completed
                 client.release(session_id)
                 return completed
+            except _DistributedInterrupt as exc:
+                _checkpoint_and_cancel(
+                    client, session_id, exc.checkpoint, checkpoint_manager,
+                )
+                raise KeyboardInterrupt from None
+            except KeyboardInterrupt:
+                _checkpoint_and_cancel(
+                    client, session_id, distributed, checkpoint_manager,
+                )
+                raise
             except DistributedRunError as exc:
                 if checkpoint_manager is not None:
                     checkpoint_manager.save_if_changed(exc.checkpoint)
@@ -1119,6 +1247,8 @@ class DistributedNestedSampler:
             key: PRNGKey | None,
             checkpoint_dir: str | Path | None,
             checkpoint_cadence: float,
+            args: tuple = (),
+            params: CtxParams | None = None,
     ) -> DistributedState:
         """Resolve checkpoint precedence before starting or resuming."""
         checkpoint_context = (
@@ -1139,6 +1269,8 @@ class DistributedNestedSampler:
                     goal_cond,
                     depth_cond=depth_cond,
                     key=key,
+                    args=args,
+                    params=params,
                     checkpoint_manager=checkpoint_manager,
                 )
             else:
@@ -1165,15 +1297,28 @@ class DistributedNestedSampler:
 
         if depth_cond is None:
             depth_cond = self.depth_condition
+        # The checkpoint owns the resumed scientific model, just as it owns
+        # its arguments and parameters. Local sampling uses this same owner.
+        config = self._resolve_config(
+            distributed.state.model,
+            distributed.state.args,
+            distributed.state.params,
+        )
         session = WorkerSession(
-            model=self.model,
-            sampler=self.sampler,
+            model=distributed.state.model,
+            sampler=config.sampler,
             args=distributed.state.args,
             params=distributed.state.params,
         )
         with SupervisorClient.from_port(self.coordinator_port) as client:
             try:
+                registration_started_s = time.monotonic() if self.verbose else 0.0
                 capacities = client.register(distributed.session_id, session)
+                if self.verbose:
+                    jaxns_logger.info(
+                        "Distributed session ready after %.2fs waiting for registration",
+                        time.monotonic() - registration_started_s,
+                    )
                 if not capacities:
                     raise RuntimeError("The supervisor has no ready workers.")
                 if distributed.pending:
@@ -1190,10 +1335,21 @@ class DistributedNestedSampler:
                     goal_cond,
                     depth_cond,
                     checkpoint_manager,
+                    config=config,
                 )
                 distributed = completed
                 client.release(completed.session_id)
                 return completed
+            except _DistributedInterrupt as exc:
+                _checkpoint_and_cancel(
+                    client, distributed.session_id, exc.checkpoint, checkpoint_manager,
+                )
+                raise KeyboardInterrupt from None
+            except KeyboardInterrupt:
+                _checkpoint_and_cancel(
+                    client, distributed.session_id, distributed, checkpoint_manager,
+                )
+                raise
             except DistributedRunError as exc:
                 if checkpoint_manager is not None:
                     checkpoint_manager.save_if_changed(exc.checkpoint)
@@ -1214,277 +1370,306 @@ class DistributedNestedSampler:
             goal_cond: Callable[[State], bool],
             depth_cond: DepthCondition,
             checkpoint_manager: CheckpointManager[DistributedState] | None,
+            *,
+            config: ResolvedRunConfig,
     ) -> DistributedState:
         completed_tasks: dict[
             int,
             tuple[ConstrainedSampleBatch, int],
         ] = {}
         next_completion_group = 0
-        while True:
-            state = distributed.state
-            if (
-                not distributed.pending
-                and (
-                    int(state.termination_reason) != 0
-                    or (
-                        not distributed.depth_active
-                        and bool(goal_cond(state))
+        started_s = time.monotonic() if self.verbose else 0.0
+        iteration_started_s = started_s
+        previous_count = int(distributed.state.num_samples) if self.verbose else 0
+        previous_task_id = distributed.next_task_id
+        try:
+            while True:
+                state = distributed.state
+                if (
+                    not distributed.pending
+                    and (
+                        int(state.termination_reason) != 0
+                        or (
+                            not distributed.depth_active
+                            and bool(goal_cond(state))
+                        )
                     )
-                )
-            ):
-                return distributed
+                ):
+                    return distributed
 
-            if not distributed.depth_active:
-                depth_key, goal_key = jax.random.split(state.random_key)
-                state = dataclasses.replace(
-                    state,
-                    random_key=depth_key,
-                    goal_key=goal_key,
-                    needs_growth=jnp.asarray(False, mp_policy.bool_dtype),
-                    depth_reached=jnp.asarray(False, mp_policy.bool_dtype),
-                )
-                distributed = dataclasses.replace(
+                if not distributed.depth_active:
+                    depth_key, goal_key = jax.random.split(state.random_key)
+                    state = dataclasses.replace(
+                        state,
+                        random_key=depth_key,
+                        goal_key=goal_key,
+                        needs_growth=jnp.asarray(False, mp_policy.bool_dtype),
+                        depth_reached=jnp.asarray(False, mp_policy.bool_dtype),
+                    )
+                    distributed = dataclasses.replace(
+                        distributed,
+                        state=state,
+                        depth_active=True,
+                        goal_key=goal_key,
+                    )
+
+                distributed = self._grow_if_needed(distributed, config)
+                distributed = self._dispatch_threads(
+                    client,
                     distributed,
-                    state=state,
-                    depth_active=True,
-                    goal_key=goal_key,
+                    depth_cond,
+                    config=config,
                 )
-
-            distributed = self._grow_if_needed(distributed, depth_cond)
-            distributed = self._dispatch_threads(
-                client,
-                distributed,
-                depth_cond,
-            )
-            if distributed.pending:
-                # Sampling completion is asynchronous, but scientific commits
-                # follow task identity. Runtime latency (including the extra
-                # bytes produced by phantom collection) must not choose a
-                # different race tree for the same assigned random stream.
-                pending = min(
-                    distributed.pending,
-                    key=lambda task: task.task_id,
-                )
-                while pending.task_id not in completed_tasks:
-                    try:
-                        completed_group = self._receive_group_waiting_for_workers(
-                            client,
-                            distributed.session_id,
-                        )
-                    except Exception as exc:
-                        raise DistributedRunError(
-                            f"Waiting for distributed task failed: {exc}",
-                            distributed,
-                        ) from exc
-                    completion_group = next_completion_group
-                    next_completion_group += 1
-                    for task_id, batch in completed_group:
-                        if not any(
-                            task.task_id == task_id
-                            for task in distributed.pending
-                        ):
-                            # A replay for an already committed task is safe to
-                            # release because its state mutation already happened.
-                            client.acknowledge(
-                                distributed.session_id,
-                                task_id,
-                            )
-                            continue
-                        completed_tasks[task_id] = (
-                            batch,
-                            completion_group,
-                        )
-
-                # Results from one worker vmap arrive atomically. Commit only
-                # the contiguous IDs in that assignment before refill. A
-                # faster sibling worker may already have returned later IDs,
-                # but network timing must not merge two scientific boundaries.
-                commit_group = completed_tasks[pending.task_id][1]
-                while distributed.pending:
+                if distributed.pending:
+                    # Sampling completion is asynchronous, but scientific commits
+                    # follow task identity. Runtime latency (including the extra
+                    # bytes produced by phantom collection) must not choose a
+                    # different race tree for the same assigned random stream.
                     pending = min(
                         distributed.pending,
                         key=lambda task: task.task_id,
                     )
-                    if pending.task_id not in completed_tasks:
-                        break
-                    batch, completion_group = completed_tasks[pending.task_id]
-                    if completion_group != commit_group:
-                        break
-                    completed_tasks.pop(pending.task_id)
-                    accepted = _accept_task(
-                        distributed.state,
-                        distributed.reservations,
-                        pending.thread_id,
-                        pending.terminal_log_L,
-                        pending.work,
-                        batch,
-                    )
-                    if not bool(accepted.accepted):
-                        raise DistributedRunError(
-                            f"Worker task {pending.task_id} violated its strict contour.",
-                            distributed,
-                        )
-                    client.acknowledge(
-                        distributed.session_id,
-                        pending.task_id,
-                    )
-                    distributed = dataclasses.replace(
-                        distributed,
-                        state=accepted.state,
-                        reservations=accepted.reservations,
-                        pending=tuple(
-                            task
-                            for task in distributed.pending
-                            if task.task_id != pending.task_id
-                        ),
-                    )
-                continue
+                    while pending.task_id not in completed_tasks:
+                        try:
+                            completed_group = self._receive_group_waiting_for_workers(
+                                client,
+                                distributed.session_id,
+                            )
+                        except Exception as exc:
+                            raise DistributedRunError(
+                                f"Waiting for distributed task failed: {exc}",
+                                distributed,
+                            ) from exc
+                        completion_group = next_completion_group
+                        next_completion_group += 1
+                        for task_id, batch in completed_group:
+                            if not any(
+                                task.task_id == task_id
+                                for task in distributed.pending
+                            ):
+                                # A replay for an already committed task is safe to
+                                # release because its state mutation already happened.
+                                client.acknowledge(
+                                    distributed.session_id,
+                                    task_id,
+                                )
+                                continue
+                            completed_tasks[task_id] = (
+                                batch,
+                                completion_group,
+                            )
 
-            status = self._status(distributed, depth_cond)
-            if bool(status.needs_thread_growth):
-                distributed = self._grow_thread_storage(distributed)
-                continue
-            if bool(status.needs_seed_growth):
-                distributed = self._grow_seed_storage(distributed)
-                continue
-            if bool(status.needs_growth):
-                distributed = self._grow(distributed)
-                continue
-            if int(status.termination_reason) != 0:
-                terminal_state = _refresh_likelihood_order(
-                    distributed.state,
-                )
-                return dataclasses.replace(
-                    distributed,
-                    state=dataclasses.replace(
-                        terminal_state,
-                        termination_reason=status.termination_reason,
-                        needs_growth=jnp.asarray(
-                            False,
-                            mp_policy.bool_dtype,
-                        ),
-                        depth_reached=jnp.asarray(
-                            False,
-                            mp_policy.bool_dtype,
-                        ),
-                        scheduler_data=None,
-                    ),
-                    depth_active=False,
-                )
-            if bool(status.source_refresh_due):
-                # All dispatched edges are committed before publication. Only
-                # the exact seed source advances; logical thread heads and the
-                # continuation heap remain available to any worker that joins.
-                state = _publish_seed_source(distributed.state)
-                distributed = dataclasses.replace(
-                    distributed,
-                    state=state,
-                )
-                continue
-            if bool(status.schedule_drained):
-                state = _refresh_likelihood_order(distributed.state)
-                reached_expected_depth = bool(_depth_condition_reached(
-                    state,
-                    depth_cond,
-                ))
-                if not reached_expected_depth:
-                    previous = state.scheduler_data
-                    planning_width = previous.valid.shape[0]
-                    state = _continue_schedule_round(
-                        state,
-                        previous,
-                        depth_cond,
-                        shell_size=planning_width,
-                    )
-                    schedule = state.scheduler_data
-                    if schedule is None:
-                        raise RuntimeError(
-                            "Continuation planning did not create a schedule."
+                    # Results from one worker vmap arrive atomically. Commit only
+                    # the contiguous IDs in that assignment before refill. A
+                    # faster sibling worker may already have returned later IDs,
+                    # but network timing must not merge two scientific boundaries.
+                    commit_group = completed_tasks[pending.task_id][1]
+                    while distributed.pending:
+                        pending = min(
+                            distributed.pending,
+                            key=lambda task: task.task_id,
                         )
-                    if bool(schedule.active):
+                        if pending.task_id not in completed_tasks:
+                            break
+                        batch, completion_group = completed_tasks[pending.task_id]
+                        if completion_group != commit_group:
+                            break
+                        completed_tasks.pop(pending.task_id)
+                        accepted = _accept_task(
+                            distributed.state,
+                            distributed.reservations,
+                            pending.thread_id,
+                            pending.terminal_log_L,
+                            pending.work,
+                            batch,
+                        )
+                        if not bool(accepted.accepted):
+                            raise DistributedRunError(
+                                f"Worker task {pending.task_id} violated its strict contour.",
+                                distributed,
+                            )
+                        client.acknowledge(
+                            distributed.session_id,
+                            pending.task_id,
+                        )
                         distributed = dataclasses.replace(
                             distributed,
-                            state=dataclasses.replace(
-                                state,
-                                depth_reached=jnp.asarray(
-                                    False,
-                                    mp_policy.bool_dtype,
-                                ),
+                            state=accepted.state,
+                            reservations=accepted.reservations,
+                            pending=tuple(
+                                task
+                                for task in distributed.pending
+                                if task.task_id != pending.task_id
                             ),
+                        )
+                    continue
+
+                status = self._status(distributed, config)
+                if bool(status.needs_thread_growth):
+                    distributed = self._grow_thread_storage(distributed)
+                    continue
+                if bool(status.needs_seed_growth):
+                    distributed = self._grow_seed_storage(distributed)
+                    continue
+                if bool(status.needs_growth):
+                    distributed = self._grow(distributed, config)
+                    continue
+                if int(status.termination_reason) != 0:
+                    terminal_state = _refresh_likelihood_order(
+                        distributed.state,
+                    )
+                    return dataclasses.replace(
+                        distributed,
+                        state=dataclasses.replace(
+                            terminal_state,
+                            termination_reason=status.termination_reason,
+                            needs_growth=jnp.asarray(
+                                False,
+                                mp_policy.bool_dtype,
+                            ),
+                            depth_reached=jnp.asarray(
+                                False,
+                                mp_policy.bool_dtype,
+                            ),
+                            scheduler_data=None,
+                        ),
+                        depth_active=False,
+                    )
+                if bool(status.source_refresh_due):
+                    # All dispatched edges are committed before publication. Only
+                    # the exact seed source advances; logical thread heads and the
+                    # continuation heap remain available to any worker that joins.
+                    state = _publish_seed_source(distributed.state)
+                    distributed = dataclasses.replace(
+                        distributed,
+                        state=state,
+                    )
+                    continue
+                if bool(status.schedule_drained):
+                    state = _refresh_likelihood_order(distributed.state)
+                    reached_expected_depth = bool(_depth_condition_reached(
+                        state,
+                        depth_cond,
+                    ))
+                    if not reached_expected_depth:
+                        previous = state.scheduler_data
+                        planning_width = previous.valid.shape[0]
+                        state = _continue_schedule_round(
+                            state,
+                            previous,
+                            depth_cond,
+                            replacement_width=planning_width,
+                        )
+                        schedule = state.scheduler_data
+                        if schedule is None:
+                            raise RuntimeError(
+                                "Continuation planning did not create a schedule."
+                            )
+                        if bool(schedule.active):
+                            distributed = dataclasses.replace(
+                                distributed,
+                                state=dataclasses.replace(
+                                    state,
+                                    depth_reached=jnp.asarray(
+                                        False,
+                                        mp_policy.bool_dtype,
+                                    ),
+                                ),
+                            )
+                            continue
+                        state = dataclasses.replace(
+                            state,
+                            allocation_loop_iter=(
+                                state.allocation_loop_iter
+                                + jnp.asarray(
+                                    1,
+                                    state.allocation_loop_iter.dtype,
+                                )
+                            ),
+                            depth_reached=jnp.asarray(
+                                False,
+                                mp_policy.bool_dtype,
+                            ),
+                            scheduler_data=None,
+                        )
+                        distributed = dataclasses.replace(
+                            distributed,
+                            state=state,
                         )
                         continue
                     state = dataclasses.replace(
                         state,
-                        allocation_loop_iter=(
-                            state.allocation_loop_iter
+                        random_key=distributed.goal_key,
+                        goal_key=distributed.goal_key,
+                        depth_reached=jnp.asarray(True, mp_policy.bool_dtype),
+                        goal_loop_iter=(
+                            distributed.state.goal_loop_iter
                             + jnp.asarray(
                                 1,
-                                state.allocation_loop_iter.dtype,
+                                distributed.state.goal_loop_iter.dtype,
                             )
                         ),
-                        depth_reached=jnp.asarray(
-                            False,
-                            mp_policy.bool_dtype,
+                        allocation_loop_iter=(
+                            distributed.state.allocation_loop_iter
+                            + jnp.asarray(
+                                1,
+                                distributed.state.allocation_loop_iter.dtype,
+                            )
                         ),
                         scheduler_data=None,
                     )
                     distributed = dataclasses.replace(
                         distributed,
                         state=state,
+                        depth_active=False,
                     )
+                    if self.verbose:
+                        now = time.monotonic()
+                        count = int(state.num_samples)
+                        jaxns_logger.info(
+                            "Distributed goal %d: samples=%d (+%d), capacity=%d, "
+                            "tasks=%d (+%d), max(logL)=%.6g, iteration=%.2fs, elapsed=%.2fs",
+                            int(state.goal_loop_iter), count, count - previous_count,
+                            state.samples.log_likelihoods.shape[0],
+                            distributed.next_task_id,
+                            distributed.next_task_id - previous_task_id,
+                            float(state.log_L_supremum), now - iteration_started_s,
+                            now - started_s,
+                        )
+                        previous_count = count
+                        previous_task_id = distributed.next_task_id
+                        iteration_started_s = now
+                    # At this point every task from the depth is committed and no
+                    # provisional reservation is present. The checkpoint therefore
+                    # exposes exactly the same immutable state seen by goal_cond.
+                    if checkpoint_manager is not None:
+                        checkpoint_manager.maybe_save(distributed)
                     continue
-                state = dataclasses.replace(
-                    state,
-                    random_key=distributed.goal_key,
-                    goal_key=distributed.goal_key,
-                    depth_reached=jnp.asarray(True, mp_policy.bool_dtype),
-                    goal_loop_iter=(
-                        distributed.state.goal_loop_iter
-                        + jnp.asarray(
-                            1,
-                            distributed.state.goal_loop_iter.dtype,
+                if bool(status.has_work):
+                    # A pool may temporarily have no live lanes while an operator
+                    # replaces a node. Zero capacity is not a scientific error:
+                    # keep this exact depth open until a worker recovers or joins.
+                    try:
+                        self._wait_for_worker_capacity(
+                            client,
+                            distributed.session_id,
                         )
-                    ),
-                    allocation_loop_iter=(
-                        distributed.state.allocation_loop_iter
-                        + jnp.asarray(
-                            1,
-                            distributed.state.allocation_loop_iter.dtype,
-                        )
-                    ),
-                    scheduler_data=None,
-                )
-                distributed = dataclasses.replace(
+                    except Exception as exc:
+                        raise DistributedRunError(
+                            f"Observing distributed capacity failed: {exc}",
+                            distributed,
+                        ) from exc
+                    continue
+                raise DistributedRunError(
+                    "Distributed depth made no dispatch, growth, completion, "
+                    "or termination progress.",
                     distributed,
-                    state=state,
-                    depth_active=False,
                 )
-                # At this point every task from the depth is committed and no
-                # provisional reservation is present. The checkpoint therefore
-                # exposes exactly the same immutable state seen by goal_cond.
-                if checkpoint_manager is not None:
-                    checkpoint_manager.maybe_save(distributed)
-                continue
-            if bool(status.has_work):
-                # A pool may temporarily have no live lanes while an operator
-                # replaces a node. Zero capacity is not a scientific error:
-                # keep this exact depth open until a worker recovers or joins.
-                try:
-                    self._wait_for_worker_capacity(
-                        client,
-                        distributed.session_id,
-                    )
-                except Exception as exc:
-                    raise DistributedRunError(
-                        f"Observing distributed capacity failed: {exc}",
-                        distributed,
-                    ) from exc
-                continue
-            raise DistributedRunError(
-                "Distributed depth made no dispatch, growth, completion, "
-                "or termination progress.",
-                distributed,
-            )
+        except KeyboardInterrupt:
+            # Pending requests own their exact keys and reservations. Preserve
+            # this latest committed prefix before the outer boundary cancels
+            # remote execution and re-raises the interruption.
+            raise _DistributedInterrupt(distributed) from None
 
     def _dispatch_threads(
             self,
@@ -1492,6 +1677,8 @@ class DistributedNestedSampler:
             distributed: DistributedState,
             depth_cond: DepthCondition,
             lane_capacity: int | None = None,
+            *,
+            config: ResolvedRunConfig,
     ) -> DistributedState:
         # Fill every currently measured worker lane without imposing a
         # completion barrier. Worker capacity chooses only the number of
@@ -1520,10 +1707,10 @@ class DistributedNestedSampler:
             state = _start_schedule_round(
                 distributed.state,
                 depth_cond,
-                shell_size=planning_width,
+                replacement_width=planning_width,
                 allocation_target=self.allocation_target,
-                root_degree=int(self.root_allocation_degree),
-                delta_K=int(self.delta_K),
+                root_degree=int(config.root_allocation_degree),
+                delta_K=int(config.delta_K),
             )
             distributed = dataclasses.replace(
                 distributed,
@@ -1552,7 +1739,7 @@ class DistributedNestedSampler:
         planning_width = distributed.state.scheduler_data.valid.shape[0]
         pending_limit = min(capacity, planning_width)
         free = max(0, pending_limit - len(distributed.pending))
-        while free > 0 and bool(self._status(distributed, depth_cond).has_work):
+        while free > 0 and bool(self._status(distributed, config).has_work):
             # Pending worker requests and newly filled heads are one logical
             # concurrent batch. Carry their exact seed reservations into the
             # next refill so equal-contour work remains without replacement.
@@ -1590,7 +1777,7 @@ class DistributedNestedSampler:
             prepared = _prepare_task(
                 distributed.state,
                 distributed.reservations,
-                self.sampler,
+                config.sampler,
                 reserved_seed_idx,
                 reserved_log_L_constraint,
                 reserved_valid,
@@ -1598,7 +1785,7 @@ class DistributedNestedSampler:
                 # batch. Every valid lane becomes its own transport task.
                 dispatch_width=planning_width,
                 max_threads=jnp.asarray(free, mp_policy.index_dtype),
-                max_samples=self.max_samples,
+                max_samples=config.max_samples,
             )
             if not bool(prepared.has_work):
                 break
@@ -1647,6 +1834,7 @@ class DistributedNestedSampler:
                             ),
                         ),
                         sampler_data=host_request.sampler_data,
+                        from_root=host_request.from_root[lane:lane + 1],
                     ),
                 )
                 for lane in range(num_tasks)
@@ -1680,29 +1868,33 @@ class DistributedNestedSampler:
     def _status(
             self,
             distributed: DistributedState,
-            depth_cond: DepthCondition,
+            config: ResolvedRunConfig,
     ) -> DepthStatus:
         return _depth_status(
             distributed.state,
             distributed.reservations,
-            max_samples=self.max_samples,
+            max_samples=config.max_samples,
         )
 
     def _grow_if_needed(
             self,
             distributed: DistributedState,
-            depth_cond: DepthCondition,
+            config: ResolvedRunConfig,
     ) -> DistributedState:
-        status = self._status(distributed, depth_cond)
+        status = self._status(distributed, config)
         if bool(status.needs_thread_growth):
             return self._grow_thread_storage(distributed)
         if bool(status.needs_seed_growth):
             return self._grow_seed_storage(distributed)
         if bool(status.needs_growth):
-            return self._grow(distributed)
+            return self._grow(distributed, config)
         return distributed
 
-    def _grow(self, distributed: DistributedState) -> DistributedState:
+    def _grow(
+            self,
+            distributed: DistributedState,
+            config: ResolvedRunConfig,
+    ) -> DistributedState:
         capacity = distributed.state.samples.log_likelihoods.shape[0]
         required = (
             int(distributed.state.num_samples)
@@ -1714,10 +1906,10 @@ class DistributedNestedSampler:
             ))
         )
         new_capacity = max(2 * capacity, required)
-        if self.max_samples is not None:
+        if config.max_samples is not None:
             new_capacity = min(
                 new_capacity,
-                self.max_samples,
+                config.max_samples,
             )
         if new_capacity <= capacity:
             return dataclasses.replace(

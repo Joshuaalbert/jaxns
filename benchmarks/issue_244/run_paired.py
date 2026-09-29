@@ -15,13 +15,15 @@ from cicd.tests.test_ns_standard_problems import (
     STANDARD_PROBLEM_CASES_BY_NAME,
 )
 from jaxns.constrained_sampler import (
-    ConstrainedSampleBatch,
-    ConstrainedSampleRequest,
     UniDimSliceSampler,
 )
 from jaxns.core import NestedSampler
 from jaxns.sampling.batching import (
     sample_complete_chains as _sample_complete_chains,
+)
+from jaxns.sampling.protocol import (
+    ConstrainedSampleBatch,
+    ConstrainedSampleRequest,
 )
 
 
@@ -35,12 +37,14 @@ class CompleteChainSampler(UniDimSliceSampler):
             *,
             args=(),
             params=None,
+            model,
     ) -> ConstrainedSampleBatch:
         return _sample_complete_chains(
             self,
             request,
             args=args,
             params=params,
+            model=model,
         )
 
 

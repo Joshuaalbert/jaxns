@@ -8,7 +8,6 @@ from jax import random
 
 from jaxns.constrained_sampler import (
     UniDimSliceSampler,
-    sample_request,
 )
 from jaxns.pytree import PureDataclassPytree, TreeField
 from jaxns.samples import SeedPoint
@@ -47,6 +46,30 @@ class QuadraticModel(PureDataclassPytree):
 
 
 QuadraticModel.register_pytree()
+
+
+@pytest.mark.parametrize("num_slices,width", [(2, 1), (32, 8)])
+def test_sampler_uses_the_model_supplied_for_each_request(num_slices, width):
+    """Reusing transition settings must never reuse another run's model."""
+    sampler = UniDimSliceSampler(num_slices=num_slices)
+    request = dataclasses.replace(
+        _request(width), log_L_constraints=jnp.full((width,), -jnp.inf),
+    )
+    execute = jax.jit(lambda model: sampler.get_samples(request, model=model))
+    first_model = QuadraticModel(centre=jnp.asarray([0.1, 0.2]))
+    second_model = QuadraticModel(centre=jnp.asarray([0.8, 0.9]))
+    first = execute(first_model)
+    second = execute(second_model)
+    # Every first proposal is accepted here. The random coordinates should
+    # agree while the evaluated likelihood follows the explicitly passed model.
+    np.testing.assert_array_equal(first.U_samples, second.U_samples)
+    np.testing.assert_allclose(
+        first.log_likelihoods, jax.vmap(first_model.log_likelihood)(first.U_samples),
+    )
+    np.testing.assert_allclose(
+        second.log_likelihoods, jax.vmap(second_model.log_likelihood)(second.U_samples),
+    )
+    assert not np.allclose(first.log_likelihoods, second.log_likelihoods)
 
 
 @dataclasses.dataclass(slots=True, frozen=True)
@@ -102,6 +125,7 @@ def _request(width: int) -> ConstrainedSampleRequest:
     return ConstrainedSampleRequest(
         keys=random.split(random.PRNGKey(244), width),
         valid=jnp.ones((width,), dtype=jnp.bool_),
+        from_root=jnp.zeros((width,), dtype=jnp.bool_),
         log_L_constraints=jnp.full((width,), -0.25),
         seed_points=SeedPoint(
             U0=seeds,
@@ -118,6 +142,7 @@ def _periodic_request(width: int) -> ConstrainedSampleRequest:
     return ConstrainedSampleRequest(
         keys=random.split(random.PRNGKey(275), width),
         valid=jnp.ones((width,), dtype=jnp.bool_),
+        from_root=jnp.zeros((width,), dtype=jnp.bool_),
         log_L_constraints=jnp.full((width,), -0.5),
         seed_points=SeedPoint(
             U0=seeds,
@@ -130,17 +155,16 @@ def _periodic_request(width: int) -> ConstrainedSampleRequest:
 def test_slice_continuations_preserve_complete_chain_outputs():
     model = QuadraticModel(centre=jnp.asarray([0.45, 0.55]))
     sampler = UniDimSliceSampler(
-        model=model,
         num_slices=32,
         collect_phantom_samples=True,
         max_phantom_samples=2,
     )
     request = _request(width=8)
     reference = jax.jit(
-        lambda value: _sample_complete_chains(sampler, value)
+        lambda value: _sample_complete_chains(sampler, value, model=model)
     )(request)
     continued = jax.jit(
-        lambda value: sample_request(sampler, value)
+        lambda value: sampler.get_samples(value, model=model)
     )(request)
 
     # The fixed logical IDs, random streams, phantom prefix, and counters must
@@ -160,12 +184,10 @@ def test_phantom_capacity_retains_start_prefix_and_excludes_classic():
         log_L0=model.log_likelihood(jnp.asarray([0.35, 0.65])),
     )
     complete_prefix_sampler = UniDimSliceSampler(
-        model=model,
         num_slices=4,
         collect_phantom_samples=True,
     )
     bounded_sampler = UniDimSliceSampler(
-        model=model,
         num_slices=4,
         collect_phantom_samples=True,
         max_phantom_samples=2,
@@ -176,11 +198,13 @@ def test_phantom_capacity_retains_start_prefix_and_excludes_classic():
         key,
         jnp.asarray(-0.25),
         seed,
+        model=model,
     )
     bounded = bounded_sampler.get_sample(
         key,
         jnp.asarray(-0.25),
         seed,
+        model=model,
     )
 
     # Four generated transitions contain exactly three eligible phantoms; the
@@ -202,62 +226,48 @@ def test_phantom_capacity_retains_start_prefix_and_excludes_classic():
     )
 
 
-def test_phantom_capacity_validation_and_burn_in_deprecation():
-    model = QuadraticModel(centre=jnp.asarray([0.45, 0.55]))
+def test_phantom_capacity_validation():
 
     for non_python_integer in (np.int64(2), jnp.asarray(2)):
         with pytest.raises(TypeError, match="Python integer"):
             UniDimSliceSampler(
-                model=model,
                 num_slices=4,
                 collect_phantom_samples=True,
                 max_phantom_samples=non_python_integer,
             )
     with pytest.raises(ValueError, match="positive"):
         UniDimSliceSampler(
-            model=model,
             num_slices=4,
             collect_phantom_samples=True,
             max_phantom_samples=0,
         )
     with pytest.raises(ValueError, match="num_slices - 1"):
         UniDimSliceSampler(
-            model=model,
             num_slices=4,
             collect_phantom_samples=True,
             max_phantom_samples=4,
         )
     with pytest.raises(ValueError, match="collect_phantom_samples"):
         UniDimSliceSampler(
-            model=model,
             num_slices=4,
             max_phantom_samples=1,
         )
-    with pytest.warns(DeprecationWarning, match="phantom_burn_in"):
-        legacy = UniDimSliceSampler(
-            model=model,
-            num_slices=4,
-            collect_phantom_samples=True,
-            phantom_burn_in=1,
-        )
-    assert legacy.num_phantom() == 2
 
 
 def test_periodic_slice_continuations_preserve_complete_chain_outputs():
     """The pool scheduler preserves each random-chart scalar transition."""
     model = CircularModel(centre=jnp.asarray([0.99, 0.01]))
     sampler = UniDimSliceSampler(
-        model=model,
         num_slices=32,
         collect_phantom_samples=True,
         max_phantom_samples=2,
     )._with_periodic((True, True))
     request = _periodic_request(width=8)
     reference = jax.jit(
-        lambda value: _sample_complete_chains(sampler, value)
+        lambda value: _sample_complete_chains(sampler, value, model=model)
     )(request)
     continued = jax.jit(
-        lambda value: sample_request(sampler, value)
+        lambda value: sampler.get_samples(value, model=model)
     )(request)
 
     for expected, actual in zip(
@@ -293,19 +303,18 @@ def test_periodic_scalar_and_vmapped_chains_share_one_transition_law():
     width = 4
     model = CircularModel(centre=jnp.asarray([0.99, 0.01]))
     sampler = UniDimSliceSampler(
-        model=model,
         num_slices=8,
     )._with_periodic((True, True))
     request = _periodic_request(width)
 
-    vmapped = sample_request(sampler, request)
+    vmapped = sampler.get_samples(request, model=model)
     scalar_results = []
     for lane in range(width):
         scalar_request = jax.tree.map(
             lambda value, index=lane: value[index:index + 1],
             request,
         )
-        scalar_results.append(sample_request(sampler, scalar_request))
+        scalar_results.append(sampler.get_samples(scalar_request, model=model))
     scalar = jax.tree.map(
         lambda *values: jnp.concatenate(values, axis=0),
         *scalar_results,
@@ -338,12 +347,10 @@ def test_random_charts_preserve_uniform_circular_measure():
     direction = TreeField(jnp.asarray([1.0]))
 
     def draw(key):
-        point, _, _, _, _, _ = _new_proposal(
+        point, _, _, _, _ = _new_proposal(
             key=key,
             U0=U0,
             direction=direction,
-            slice_width=jnp.asarray(jnp.inf),
-            no_step_out=True,
             log_L_constraint=jnp.asarray(-1.0),
             log_likelihood_fn=lambda value: jnp.asarray(0.0),
             periodic=(True,),
@@ -378,6 +385,7 @@ def test_mixed_cylinder_crosses_only_the_periodic_seam():
     request = ConstrainedSampleRequest(
         keys=random.split(random.PRNGKey(278), width),
         valid=jnp.ones((width,), dtype=jnp.bool_),
+        from_root=jnp.zeros((width,), dtype=jnp.bool_),
         log_L_constraints=jnp.full((width,), -2.0),
         seed_points=SeedPoint(
             U0=seeds,
@@ -386,11 +394,10 @@ def test_mixed_cylinder_crosses_only_the_periodic_seam():
         sampler_data=None,
     )
     sampler = UniDimSliceSampler(
-        model=model,
         num_slices=16,
     )._with_periodic((True, False))
 
-    samples = np.asarray(sample_request(sampler, request).U_samples)
+    samples = np.asarray(sampler.get_samples(request, model=model).U_samples)
 
     assert np.any(samples[:, 0] < 0.1)
     assert np.any(samples[:, 0] > 0.9)
@@ -403,13 +410,12 @@ def test_mixed_cylinder_crosses_only_the_periodic_seam():
 def test_slice_continuations_handle_one_scalar_transition():
     model = QuadraticModel(centre=jnp.asarray([0.45, 0.55]))
     sampler = UniDimSliceSampler(
-        model=model,
         num_slices=1,
         collect_phantom_samples=False,
     )
     request = _request(width=1)
     result = jax.jit(
-        lambda value: sample_request(sampler, value)
+        lambda value: sampler.get_samples(value, model=model)
     )(request)
 
     assert result.log_likelihoods.shape == (1,)
@@ -417,31 +423,14 @@ def test_slice_continuations_handle_one_scalar_transition():
     assert int(result.num_likelihood_evaluations[0]) >= 1
 
 
-def test_nonperfect_batch_keeps_complete_chain_reference():
-    model = QuadraticModel(centre=jnp.asarray([0.45, 0.55]))
-    sampler = UniDimSliceSampler(
-        model=model,
-        num_slices=2,
-        no_step_out=False,
-    )
-    request = _request(width=2)
-    reference = _sample_complete_chains(sampler, request)
-    observed = sample_request(sampler, request)
-
-    for expected, actual in zip(
-        jax.tree.leaves(reference),
-        jax.tree.leaves(observed),
-        strict=True,
-    ):
-        np.testing.assert_array_equal(np.asarray(actual), np.asarray(expected))
 
 
 def test_narrow_batch_keeps_complete_chain_reference():
     model = QuadraticModel(centre=jnp.asarray([0.45, 0.55]))
-    sampler = UniDimSliceSampler(model=model, num_slices=40)
+    sampler = UniDimSliceSampler(num_slices=40)
     request = _request(width=4)
-    reference = _sample_complete_chains(sampler, request)
-    observed = sample_request(sampler, request)
+    reference = _sample_complete_chains(sampler, request, model=model)
+    observed = sampler.get_samples(request, model=model)
 
     for expected, actual in zip(
         jax.tree.leaves(reference),
@@ -453,15 +442,15 @@ def test_narrow_batch_keeps_complete_chain_reference():
 
 def test_continuation_outer_jit_captures_registered_function_args():
     model = QuadraticModel(centre=jnp.asarray([0.45, 0.55]))
-    sampler = UniDimSliceSampler(model=model, num_slices=32)
+    sampler = UniDimSliceSampler(num_slices=32)
     request = _request(width=8)
     registered_args = (lambda value: value,)
 
     observed = jax.jit(
-        lambda value: sample_request(
-            sampler,
+        lambda value: sampler.get_samples(
             value,
             args=registered_args,
+            model=model,
         )
     )(request)
 
@@ -472,7 +461,6 @@ def test_continuation_outer_jit_captures_registered_function_args():
 def test_slice_continuations_preserve_gmm_direction_law():
     model = QuadraticModel(centre=jnp.asarray([0.45, 0.55]))
     sampler = UniDimSliceSampler(
-        model=model,
         num_slices=32,
         collect_phantom_samples=True,
         max_phantom_samples=2,
@@ -489,8 +477,8 @@ def test_slice_continuations_preserve_gmm_direction_law():
         iso_prob=jnp.asarray(0.01),
     )
     request = dataclasses.replace(_request(width=8), sampler_data=data)
-    reference = _sample_complete_chains(sampler, request)
-    continued = sample_request(sampler, request)
+    reference = _sample_complete_chains(sampler, request, model=model)
+    continued = sampler.get_samples(request, model=model)
 
     for expected, actual in zip(
         jax.tree.leaves(reference),
@@ -525,7 +513,6 @@ def test_disabled_retained_fit_matches_plain_isotropic_key_stream(
 ):
     model = QuadraticModel(centre=jnp.asarray([0.45, 0.55]))
     sampler = UniDimSliceSampler(
-        model=model,
         num_slices=num_slices,
         collect_phantom_samples=True,
         max_phantom_samples=2,
@@ -547,8 +534,8 @@ def test_disabled_retained_fit_matches_plain_isotropic_key_stream(
         sampler_data=data,
     )
 
-    plain = sample_request(sampler, plain_request)
-    retained = sample_request(sampler, retained_request)
+    plain = sampler.get_samples(plain_request, model=model)
+    retained = sampler.get_samples(retained_request, model=model)
 
     # Disabling a retained fit takes the exact plain-isotropic key stream. The
     # diagnostics remain nonzero because the explicit state-owned direction
@@ -594,7 +581,6 @@ def test_disabled_retained_fit_matches_plain_isotropic_key_stream(
 def test_slice_continuations_do_not_execute_scheduler_padding():
     model = QuadraticModel(centre=jnp.asarray([0.45, 0.55]))
     sampler = UniDimSliceSampler(
-        model=model,
         num_slices=32,
         collect_phantom_samples=True,
         max_phantom_samples=1,
@@ -607,6 +593,7 @@ def test_slice_continuations_do_not_execute_scheduler_padding():
     scalar_request = ConstrainedSampleRequest(
         keys=request.keys[:1],
         valid=request.valid[:1],
+        from_root=jnp.zeros_like(request.valid[:1]),
         log_L_constraints=request.log_L_constraints[:1],
         seed_points=SeedPoint(
             U0=jax.tree.map(
@@ -618,13 +605,13 @@ def test_slice_continuations_do_not_execute_scheduler_padding():
         sampler_data=None,
     )
 
-    reference = sample_request(sampler, scalar_request)
-    continued = sample_request(sampler, padded_request)
+    reference = sampler.get_samples(scalar_request, model=model)
+    continued = sampler.get_samples(padded_request, model=model)
 
     # An invalid tail lane is transport/storage padding, not a logical chain.
     # It remains a filler device lane only while the valid chain is active.
     assert int(continued.num_likelihood_evaluations[1]) == 0
-    assert not bool(continued.phantom_samples.valid_mask[1, 0])
+    assert not bool(continued.phantom_samples.valid_mask[1])
     np.testing.assert_allclose(
         np.asarray(continued.log_likelihoods[0]),
         np.asarray(reference.log_likelihoods[0]),
@@ -649,76 +636,10 @@ def _log_likelihood_1d(U):
     return -(x - 0.5) ** 2
 
 
-def test_new_proposal_nonperfect_first_uses_full_slice_width():
-    U0 = TreeField(jnp.asarray([0.5]))
-    direction = TreeField(jnp.asarray([1.0]))
-
-    point_U, log_L, num_evals, _, next_slice_width, _ = _new_proposal(
-        key=random.PRNGKey(0),
-        U0=U0,
-        direction=direction,
-        slice_width=jnp.asarray(jnp.inf),
-        no_step_out=False,
-        log_L_constraint=jnp.asarray(-1.0),
-        log_likelihood_fn=_log_likelihood_1d,
-    )
-
-    np.testing.assert_allclose(next_slice_width, 2.0)
-    assert 0.0 <= float(point_U.tree[0]) <= 1.0
-    assert float(log_L) > -1.0
-    assert int(num_evals) >= 1
 
 
-def test_new_proposal_nonperfect_finite_width_clips_and_steps_out():
-    U0 = TreeField(jnp.asarray([0.95]))
-    direction = TreeField(jnp.asarray([1.0]))
-
-    _, _, num_evals, _, next_slice_width, _ = _new_proposal(
-        key=random.PRNGKey(1),
-        U0=U0,
-        direction=direction,
-        slice_width=jnp.asarray(0.05),
-        no_step_out=False,
-        log_L_constraint=jnp.asarray(-1.0),
-        log_likelihood_fn=_log_likelihood_1d,
-    )
-
-    assert int(num_evals) > 1
-    assert float(next_slice_width) > 0.0
-    np.testing.assert_allclose(next_slice_width, 2.0)
 
 
-def test_new_proposal_nonperfect_reuses_previous_width():
-    U0 = TreeField(jnp.asarray([0.5]))
-    direction = TreeField(jnp.asarray([1.0]))
-
-    point_U, _, _, direction_1, slice_width_1, _ = _new_proposal(
-        key=random.PRNGKey(2),
-        U0=U0,
-        direction=direction,
-        slice_width=jnp.asarray(jnp.inf),
-        no_step_out=False,
-        log_L_constraint=jnp.asarray(-1.0),
-        log_likelihood_fn=_log_likelihood_1d,
-    )
-
-    _, _, num_evals_2, _, slice_width_2, _ = _new_proposal(
-        key=random.PRNGKey(3),
-        U0=point_U,
-        direction=direction_1,
-        slice_width=slice_width_1,
-        no_step_out=False,
-        log_L_constraint=jnp.asarray(-1.0),
-        log_likelihood_fn=_log_likelihood_1d,
-    )
-
-    assert isinstance(direction_1, TreeField)
-    assert not isinstance(direction_1.tree, TreeField)
-    np.testing.assert_allclose(direction_1.tree, jnp.asarray([1.0]))
-    assert jnp.isfinite(slice_width_1)
-    np.testing.assert_allclose(slice_width_1, 2.0)
-    assert int(num_evals_2) > 1
-    assert float(slice_width_2) > 0.0
 
 
 def test_component_eligibility_uses_fitted_mean_likelihood():

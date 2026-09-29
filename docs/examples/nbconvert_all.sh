@@ -35,7 +35,7 @@ for file in *.ipynb; do
       --ExecutePreprocessor.extra_arguments=--matplotlib=inline \
       "$file"
     post_run_timestamp=$(stat -c %Y "$file")
-    # Save the captured timestamp, not the post-run timestamp
+    # nbconvert rewrites the notebook, so cache its successful output timestamp.
     echo "$post_run_timestamp" >"$timestamp_file"
   fi
 done

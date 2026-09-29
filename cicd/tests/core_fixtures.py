@@ -23,7 +23,7 @@ def make_state(
         log_L_constraints = tuple([-np.inf] * len(log_likelihoods))
     pad_count = max_samples - len(log_likelihoods)
     phantom_log_L = np.full((max_samples, num_phantom), -np.inf)
-    phantom_valid = np.zeros((max_samples, num_phantom), dtype=bool)
+    phantom_valid = np.zeros((max_samples,), dtype=bool)
     samples = Samples(
         log_L_constraints=jnp.asarray(
             log_L_constraints + tuple([np.inf] * pad_count)

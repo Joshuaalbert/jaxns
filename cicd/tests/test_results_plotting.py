@@ -8,7 +8,7 @@ from jax import numpy as jnp
 from jax import tree_util
 
 from jaxns.diagnostics.plotting import _weighted_percentile
-from jaxns.results import NestedSamplerResults
+from jaxns.results import BlockData, NestedSamplerResults
 
 matplotlib.use("Agg")
 
@@ -76,7 +76,14 @@ def _make_fake_results(num_samples: int = 64) -> NestedSamplerResults:
         log_dp=jnp.asarray(np.linspace(-2.0, -1.0, num_samples)),
         log_X_mean=-jnp.linspace(0.0, 1.0, num_samples),
         log_posterior_density=log_posterior_density,
-        num_live_points_per_sample=jnp.full((num_samples,), 20),
+        block_data=BlockData(
+            log_L=jnp.sort(log_l),
+            first_idx=jnp.argsort(log_l),
+            size=jnp.ones(num_samples, dtype=jnp.int32),
+            incoming_K=jnp.full((num_samples,), 20),
+            out_degree=jnp.ones(num_samples, dtype=jnp.int32),
+            valid=jnp.ones(num_samples, dtype=jnp.bool_),
+        ),
         num_likelihood_evaluations_per_sample=jnp.full((num_samples,), 2),
         log_L_supremum=jnp.max(log_l),
         U_supremum=x_supremum,
@@ -109,7 +116,11 @@ def test_plot_diagnostics_orders_append_results_by_negative_log_x(monkeypatch):
     results = dataclasses.replace(
         results,
         log_X_mean=jnp.asarray(-negative_log_x),
-        num_live_points_per_sample=jnp.asarray(live_points),
+        block_data=dataclasses.replace(
+            results.block_data,
+            log_L=jnp.sort(jnp.asarray(log_l)),
+            incoming_K=jnp.asarray(live_points)[jnp.argsort(log_l)],
+        ),
         log_L=jnp.asarray(log_l),
         log_dp=jnp.log(jnp.asarray(posterior_mass)),
         num_likelihood_evaluations_per_sample=jnp.asarray(
@@ -234,25 +245,25 @@ def test_plot_evidence_compares_explicit_conditionings_and_exact_value(
 ):
     calls = []
 
-    def _sample_evidence_mc(
+    def _sample_evidence(
             self,
             num_samples,
             *,
-            conditioning,
+            phantom_conditioning,
             key,
             diagnostics,
     ):
         del self, key
-        calls.append((num_samples, conditioning, diagnostics))
-        offset = 0.0 if conditioning == "classic" else 0.2
+        calls.append((num_samples, phantom_conditioning, diagnostics))
+        offset = 0.2 if phantom_conditioning else 0.0
         return SimpleNamespace(
             log_Z_samples=jnp.linspace(-0.5, 0.5, num_samples) + offset
         )
 
     monkeypatch.setattr(
         NestedSamplerResults,
-        "sample_evidence_mc",
-        _sample_evidence_mc,
+        "sample_evidence",
+        _sample_evidence,
     )
     output_file = tmp_path / "evidence.png"
 
@@ -264,56 +275,13 @@ def test_plot_evidence_compares_explicit_conditionings_and_exact_value(
     )
 
     assert calls == [
-        (64, "classic", False),
-        (64, "phantom", False),
+        (64, False, False),
+        (64, True, False),
     ]
     assert output_file.exists()
     assert output_file.stat().st_size > 0
 
 
-def test_evidence_equivalent_live_points_is_not_posterior_ess(monkeypatch):
-    calls = []
-
-    def _sample_evidence_mc(
-            self,
-            num_samples,
-            *,
-            conditioning,
-            key,
-            batch_size,
-            C_min,
-            diagnostics,
-    ):
-        del self, key
-        calls.append(
-            (num_samples, conditioning, batch_size, C_min, diagnostics)
-        )
-        return SimpleNamespace(
-            H_samples=jnp.asarray([2.0, 4.0, jnp.nan]),
-            log_Z_samples=jnp.asarray([0.0, 2.0, 10.0]),
-        )
-
-    monkeypatch.setattr(
-        NestedSamplerResults,
-        "sample_evidence_mc",
-        _sample_evidence_mc,
-    )
-    results = _make_fake_results()
-    expected = 3.0 / 1.0
-
-    explicit = results.evidence_equivalent_live_points(
-        num_samples=3,
-        conditioning="phantom",
-        key=jnp.asarray([0, 1], dtype=jnp.uint32),
-        batch_size=2,
-        C_min=12,
-    )
-
-    np.testing.assert_allclose(explicit, expected)
-    assert not hasattr(results, "ess_with_phantom")
-    assert calls == [
-        (3, "phantom", 2, 12, False),
-    ]
 
 
 def test_weighted_percentile_retains_dominant_boundary_sample_mass():

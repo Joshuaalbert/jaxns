@@ -7,11 +7,11 @@ import numpy as np
 import pkg_resources
 import tensorflow_probability.substrates.jax as tfp
 from jax._src.scipy.linalg import solve_triangular
-from jaxctx.priors.prior import Prior
 
 from jaxns.constrained_sampler import UniDimSliceSampler
 from jaxns.core import NestedSampler
 from jaxns.model import Model
+from jaxns.priors import Prior
 
 tfpd = tfp.distributions
 
@@ -52,7 +52,6 @@ def build_run_model(k):
         model = Model(prior_model=prior_model)
         num_slices = max(9, k + 1)
         sampler = UniDimSliceSampler(
-            model=model,
             num_slices=num_slices,
             collect_phantom_samples=(k > 0),
             max_phantom_samples=k if k > 0 else None,
