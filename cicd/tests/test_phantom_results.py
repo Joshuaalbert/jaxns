@@ -56,7 +56,7 @@ class _HighPhantomLikelihoodSampler(AbstractSampler, PureDataclassPytree):
             PhantomSamples(
                 U_samples=phantom_u,
                 log_L=jnp.asarray([10.0], dtype=mp_policy.measure_dtype),
-                valid_mask=jnp.asarray([True], dtype=mp_policy.bool_dtype),
+                valid_mask=jnp.asarray(True, dtype=mp_policy.bool_dtype),
             ),
         )
 
@@ -65,8 +65,8 @@ _HighPhantomLikelihoodSampler.register_pytree()
 
 
 @dataclasses.dataclass(slots=True, frozen=True)
-class _MixedPhantomValiditySampler(AbstractSampler, PureDataclassPytree):
-    """Sampler probe with one invalid phantom slot in every cluster."""
+class _InvalidPhantomClusterSampler(AbstractSampler, PureDataclassPytree):
+    """Sampler probe whose retained prefixes are invalid as whole clusters."""
 
     @classmethod
     def flatten(cls, this):
@@ -96,14 +96,14 @@ class _MixedPhantomValiditySampler(AbstractSampler, PureDataclassPytree):
                 U_samples=phantom_u,
                 log_L=jnp.asarray([1.0, 2.0], dtype=mp_policy.measure_dtype),
                 valid_mask=jnp.asarray(
-                    [True, False],
+                    False,
                     dtype=mp_policy.bool_dtype,
                 ),
             ),
         )
 
 
-_MixedPhantomValiditySampler.register_pytree()
+_InvalidPhantomClusterSampler.register_pytree()
 
 
 def _make_result_case() -> ResultCase:
@@ -360,8 +360,8 @@ def _run_high_phantom_probe():
     return ns.run(jax.random.PRNGKey(11))
 
 
-def _run_mixed_validity_probe():
-    sampler = _MixedPhantomValiditySampler()
+def _run_invalid_cluster_probe():
+    sampler = _InvalidPhantomClusterSampler()
     ns = NestedSampler(
         model=make_toy_model(),
         sampler=sampler,
@@ -694,7 +694,7 @@ def test_sample_evidence_rejects_prefix_for_classic_conditioning():
 
 
 def test_state_sample_evidence_forwards_phantom_prefix():
-    state = _run_mixed_validity_probe()
+    state = _run_invalid_cluster_probe()
     results = state.to_result().trim()
     key = jax.random.PRNGKey(3284)
 
@@ -1156,23 +1156,22 @@ def test_nested_sampler_keeps_phantom_likelihood_without_coordinates():
 
 
 def test_state_to_result_preserves_per_cluster_phantom_validity():
-    state = _run_mixed_validity_probe()
+    state = _run_invalid_cluster_probe()
     num_samples = int(state.num_samples)
-    per_phantom_validity = np.asarray(
+    cluster_validity = np.asarray(
         state.samples.phantom_samples.valid_mask[:num_samples],
         dtype=bool,
     )
-    expected_cluster_validity = np.all(per_phantom_validity, axis=-1)
 
     results = state.to_result().trim()
 
     np.testing.assert_array_equal(
         np.asarray(results.valid_phantom, dtype=bool),
-        expected_cluster_validity,
+        cluster_validity,
     )
-    assert results.log_L_phantom.shape == per_phantom_validity.shape
+    assert results.log_L_phantom.shape == (num_samples, 2)
     assert int(results.total_phantom_samples) == int(
-        np.sum(per_phantom_validity),
+        np.sum(cluster_validity) * 2,
     )
     assert not np.any(np.asarray(results.valid_phantom, dtype=bool))
 

@@ -434,6 +434,7 @@ def _combine_requests(requests, request_type, seed_type, jnp, jax):
     return request_type(
         keys=concatenate(*(request.keys for request in requests)),
         valid=concatenate(*(request.valid for request in requests)),
+        from_root=concatenate(*(request.from_root for request in requests)),
         log_L_constraints=concatenate(*(
             request.log_L_constraints for request in requests
         )),

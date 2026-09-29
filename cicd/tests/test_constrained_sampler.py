@@ -14,9 +14,6 @@ from jaxns.samples import SeedPoint
 from jaxns.sampling.batching import (
     sample_complete_chains as _sample_complete_chains,
 )
-from jaxns.sampling.batching import (
-    sample_request,
-)
 from jaxns.sampling.ellipsoid import (
     component_probabilities,
     component_probabilities_reference,
@@ -58,7 +55,7 @@ def test_sampler_uses_the_model_supplied_for_each_request(num_slices, width):
     request = dataclasses.replace(
         _request(width), log_L_constraints=jnp.full((width,), -jnp.inf),
     )
-    execute = jax.jit(lambda model: sample_request(sampler, request, model=model))
+    execute = jax.jit(lambda model: sampler.get_samples(request, model=model))
     first_model = QuadraticModel(centre=jnp.asarray([0.1, 0.2]))
     second_model = QuadraticModel(centre=jnp.asarray([0.8, 0.9]))
     first = execute(first_model)
@@ -128,6 +125,7 @@ def _request(width: int) -> ConstrainedSampleRequest:
     return ConstrainedSampleRequest(
         keys=random.split(random.PRNGKey(244), width),
         valid=jnp.ones((width,), dtype=jnp.bool_),
+        from_root=jnp.zeros((width,), dtype=jnp.bool_),
         log_L_constraints=jnp.full((width,), -0.25),
         seed_points=SeedPoint(
             U0=seeds,
@@ -144,6 +142,7 @@ def _periodic_request(width: int) -> ConstrainedSampleRequest:
     return ConstrainedSampleRequest(
         keys=random.split(random.PRNGKey(275), width),
         valid=jnp.ones((width,), dtype=jnp.bool_),
+        from_root=jnp.zeros((width,), dtype=jnp.bool_),
         log_L_constraints=jnp.full((width,), -0.5),
         seed_points=SeedPoint(
             U0=seeds,
@@ -165,7 +164,7 @@ def test_slice_continuations_preserve_complete_chain_outputs():
         lambda value: _sample_complete_chains(sampler, value, model=model)
     )(request)
     continued = jax.jit(
-        lambda value: sample_request(sampler, value, model=model)
+        lambda value: sampler.get_samples(value, model=model)
     )(request)
 
     # The fixed logical IDs, random streams, phantom prefix, and counters must
@@ -268,7 +267,7 @@ def test_periodic_slice_continuations_preserve_complete_chain_outputs():
         lambda value: _sample_complete_chains(sampler, value, model=model)
     )(request)
     continued = jax.jit(
-        lambda value: sample_request(sampler, value, model=model)
+        lambda value: sampler.get_samples(value, model=model)
     )(request)
 
     for expected, actual in zip(
@@ -308,14 +307,14 @@ def test_periodic_scalar_and_vmapped_chains_share_one_transition_law():
     )._with_periodic((True, True))
     request = _periodic_request(width)
 
-    vmapped = sample_request(sampler, request, model=model)
+    vmapped = sampler.get_samples(request, model=model)
     scalar_results = []
     for lane in range(width):
         scalar_request = jax.tree.map(
             lambda value, index=lane: value[index:index + 1],
             request,
         )
-        scalar_results.append(sample_request(sampler, scalar_request, model=model))
+        scalar_results.append(sampler.get_samples(scalar_request, model=model))
     scalar = jax.tree.map(
         lambda *values: jnp.concatenate(values, axis=0),
         *scalar_results,
@@ -386,6 +385,7 @@ def test_mixed_cylinder_crosses_only_the_periodic_seam():
     request = ConstrainedSampleRequest(
         keys=random.split(random.PRNGKey(278), width),
         valid=jnp.ones((width,), dtype=jnp.bool_),
+        from_root=jnp.zeros((width,), dtype=jnp.bool_),
         log_L_constraints=jnp.full((width,), -2.0),
         seed_points=SeedPoint(
             U0=seeds,
@@ -397,7 +397,7 @@ def test_mixed_cylinder_crosses_only_the_periodic_seam():
         num_slices=16,
     )._with_periodic((True, False))
 
-    samples = np.asarray(sample_request(sampler, request, model=model).U_samples)
+    samples = np.asarray(sampler.get_samples(request, model=model).U_samples)
 
     assert np.any(samples[:, 0] < 0.1)
     assert np.any(samples[:, 0] > 0.9)
@@ -415,7 +415,7 @@ def test_slice_continuations_handle_one_scalar_transition():
     )
     request = _request(width=1)
     result = jax.jit(
-        lambda value: sample_request(sampler, value, model=model)
+        lambda value: sampler.get_samples(value, model=model)
     )(request)
 
     assert result.log_likelihoods.shape == (1,)
@@ -430,7 +430,7 @@ def test_narrow_batch_keeps_complete_chain_reference():
     sampler = UniDimSliceSampler(num_slices=40)
     request = _request(width=4)
     reference = _sample_complete_chains(sampler, request, model=model)
-    observed = sample_request(sampler, request, model=model)
+    observed = sampler.get_samples(request, model=model)
 
     for expected, actual in zip(
         jax.tree.leaves(reference),
@@ -447,8 +447,7 @@ def test_continuation_outer_jit_captures_registered_function_args():
     registered_args = (lambda value: value,)
 
     observed = jax.jit(
-        lambda value: sample_request(
-            sampler,
+        lambda value: sampler.get_samples(
             value,
             args=registered_args,
             model=model,
@@ -479,7 +478,7 @@ def test_slice_continuations_preserve_gmm_direction_law():
     )
     request = dataclasses.replace(_request(width=8), sampler_data=data)
     reference = _sample_complete_chains(sampler, request, model=model)
-    continued = sample_request(sampler, request, model=model)
+    continued = sampler.get_samples(request, model=model)
 
     for expected, actual in zip(
         jax.tree.leaves(reference),
@@ -535,8 +534,8 @@ def test_disabled_retained_fit_matches_plain_isotropic_key_stream(
         sampler_data=data,
     )
 
-    plain = sample_request(sampler, plain_request, model=model)
-    retained = sample_request(sampler, retained_request, model=model)
+    plain = sampler.get_samples(plain_request, model=model)
+    retained = sampler.get_samples(retained_request, model=model)
 
     # Disabling a retained fit takes the exact plain-isotropic key stream. The
     # diagnostics remain nonzero because the explicit state-owned direction
@@ -594,6 +593,7 @@ def test_slice_continuations_do_not_execute_scheduler_padding():
     scalar_request = ConstrainedSampleRequest(
         keys=request.keys[:1],
         valid=request.valid[:1],
+        from_root=jnp.zeros_like(request.valid[:1]),
         log_L_constraints=request.log_L_constraints[:1],
         seed_points=SeedPoint(
             U0=jax.tree.map(
@@ -605,13 +605,13 @@ def test_slice_continuations_do_not_execute_scheduler_padding():
         sampler_data=None,
     )
 
-    reference = sample_request(sampler, scalar_request, model=model)
-    continued = sample_request(sampler, padded_request, model=model)
+    reference = sampler.get_samples(scalar_request, model=model)
+    continued = sampler.get_samples(padded_request, model=model)
 
     # An invalid tail lane is transport/storage padding, not a logical chain.
     # It remains a filler device lane only while the valid chain is active.
     assert int(continued.num_likelihood_evaluations[1]) == 0
-    assert not bool(continued.phantom_samples.valid_mask[1, 0])
+    assert not bool(continued.phantom_samples.valid_mask[1])
     np.testing.assert_allclose(
         np.asarray(continued.log_likelihoods[0]),
         np.asarray(reference.log_likelihoods[0]),

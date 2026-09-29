@@ -22,7 +22,11 @@ import numpy as np
 import pytest
 from jax import numpy as jnp
 
-from cicd.tests.distributed_support import make_periodic_model, make_toy_model
+from cicd.tests.distributed_support import (
+    half_prior_model,
+    make_periodic_model,
+    make_toy_model,
+)
 from jaxns.checkpoint import CheckpointManager
 from jaxns.cli import _stop_started_process
 from jaxns.constrained_sampler import (
@@ -34,6 +38,7 @@ from jaxns.distributed_core import (
     DistributedNestedSampler,
     DistributedState,
 )
+from jaxns.model import Model
 from jaxns.runtime.client import SupervisorClient, _sampler_batch_group
 from jaxns.runtime.config import (
     WorkerConfig,
@@ -73,6 +78,53 @@ from jaxns.state import State
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
+def test_zero_plateau_evidence_in_real_worker_processes(tmp_path):
+    config_path = tmp_path / "zero-plateau.toml"
+    _write_batch_config(config_path)
+    _cli(config_path, "up")
+    try:
+        config = load_runtime_config(config_path)
+        runner = DistributedNestedSampler(
+            model=Model(half_prior_model),
+            coordinator_port=config.network.port,
+            root_allocation_degree=64,
+            delta_K=64,
+            max_samples=512,
+            initial_capacity=512,
+            sampler=UniDimSliceSampler(
+                num_slices=4,
+                collect_phantom_samples=True,
+                max_phantom_samples=3,
+            ),
+        )
+        finished = runner.run_until_goal(
+            lambda state: int(state.root_out_degree) >= 128,
+            key=jax.random.PRNGKey(42),
+        )
+        state = finished.to_state()
+        state.ensure_consistency()
+        n = int(state.num_samples)
+        roots = np.asarray(state.samples.num_likelihood_evaluations[:n]) == 1
+        assert np.sum(roots) == int(state.root_out_degree)
+        assert int(state.root_out_degree) >= 128
+        assert np.any(~roots)
+        assert np.any(np.isneginf(state.samples.log_likelihoods[:n]))
+        np.testing.assert_array_equal(
+            state.samples.phantom_samples.valid_mask[:n], ~roots,
+        )
+        for conditioning in (False, True):
+            evidence = state.sample_evidence(
+                64,
+                key=jax.random.PRNGKey(43),
+                phantom_conditioning=conditioning,
+            )
+            np.testing.assert_allclose(
+                jnp.exp(evidence.log_Z_mean), 0.5, atol=0.15,
+            )
+    finally:
+        _cli(config_path, "down")
+
+
 def test_batch_group_ignores_direction_diagnostics_but_not_geometry():
     data = empty_sampler_data(num_components=2, dimension=1)
     data = dataclasses.replace(
@@ -108,6 +160,7 @@ def test_batch_group_ignores_direction_diagnostics_but_not_geometry():
     request = ConstrainedSampleRequest(
         keys=jax.random.split(jax.random.PRNGKey(4), 1),
         valid=jnp.asarray([True]),
+        from_root=jnp.asarray([False]),
         log_L_constraints=jnp.asarray([-1.0]),
         seed_points=SeedPoint(
             U0=jnp.asarray([0.5]),
@@ -1079,6 +1132,7 @@ def test_real_pool_runs_scalar_vmap_retries_and_cli_lifecycle(tmp_path):
                 request = ConstrainedSampleRequest(
                     keys=jax.random.split(jax.random.PRNGKey(30 + task_id), 1),
                     valid=jnp.ones((1,), dtype=bool),
+                    from_root=jnp.zeros((1,), dtype=bool),
                     log_L_constraints=jnp.full((1,), -1.0),
                     seed_points=SeedPoint(
                         U0=jnp.full((1,), 0.5),
@@ -1138,6 +1192,7 @@ def test_real_pool_runs_scalar_vmap_retries_and_cli_lifecycle(tmp_path):
         request = ConstrainedSampleRequest(
             keys=jax.random.split(jax.random.PRNGKey(22), 1),
             valid=jnp.asarray([True]),
+            from_root=jnp.asarray([False]),
             log_L_constraints=jnp.asarray([-1.0]),
             seed_points=SeedPoint(
                 U0=jnp.asarray([0.5]),

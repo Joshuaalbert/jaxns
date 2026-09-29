@@ -443,6 +443,7 @@ def _prepare_task(
         log_L_constraints=work.log_L_constraint,
         seed_points=seed_points,
         sampler_data=state.sampler_data,
+        from_root=work.parent_idx < 0,
     )
     has_work = work.num_valid > 0
     thread_id = schedule.thread_id
@@ -484,7 +485,12 @@ def _accept_task(
         jnp.logical_not(work.valid)
         | (
             jnp.logical_not(jnp.isnan(batch.log_likelihoods))
-            & (batch.log_likelihoods > work.log_L_constraint)
+            & (
+                (work.parent_idx < 0)
+                | (batch.log_likelihoods > work.log_L_constraint)
+            )
+            # A sentinel child is a direct prior draw, never a phantom chain.
+            & ((work.parent_idx >= 0) | ~batch.phantom_samples.valid_mask)
         )
     )
     continuing = jnp.asarray(False, mp_policy.bool_dtype)
@@ -848,12 +854,12 @@ class DistributedNestedSampler:
             next_task_id,
         )
         invalid = np.flatnonzero(np.asarray(
-            jax.device_get(log_likelihoods <= -jnp.inf)
+            jax.device_get(jnp.isnan(log_likelihoods))
         ))
         while invalid.size:
             # Preserve one independent retry stream per root. Only roots
-            # rejected by the sentinel contour consume another key and
-            # likelihood call, matching ordinary initialization exactly.
+            # with invalid model evaluations consume another key and
+            # likelihood call. A true zero is retained as a prior observation.
             key_pairs = jax.vmap(
                 lambda value: jax.random.split(value, 2)
             )(root_keys[invalid])
@@ -882,7 +888,7 @@ class DistributedNestedSampler:
             )
             num_evals = num_evals.at[invalid].add(1)
             invalid = np.flatnonzero(np.asarray(
-                jax.device_get(log_likelihoods <= -jnp.inf)
+                jax.device_get(jnp.isnan(log_likelihoods))
             ))
 
         state = _build_init_state(
@@ -1828,6 +1834,7 @@ class DistributedNestedSampler:
                             ),
                         ),
                         sampler_data=host_request.sampler_data,
+                        from_root=host_request.from_root[lane:lane + 1],
                     ),
                 )
                 for lane in range(num_tasks)

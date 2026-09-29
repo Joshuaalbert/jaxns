@@ -526,6 +526,8 @@ def _total_likelihood_evaluations(self: State) -> IntArray:
 @partial(jax.jit, inline=True)
 def _to_result(self: State) -> NestedSamplerResults:
     max_samples = self.samples.log_likelihoods.shape[0]
+    if self.samples.phantom_samples.valid_mask.shape != (max_samples,):
+        raise ValueError("Phantom validity must have one scalar per stored sample.")
     total_num_samples = self.num_samples.astype(mp_policy.count_dtype)
     sample_mask = jnp.arange(max_samples) < total_num_samples
     log_L = self.samples.log_likelihoods
@@ -600,21 +602,18 @@ def _to_result(self: State) -> NestedSamplerResults:
     # rows still contain a shaped phantom buffer.
     phantom_valid_mask = (
         self.samples.phantom_samples.valid_mask
-        & sample_mask[:, None]
+        & sample_mask
     )
-    total_phantom_samples = jnp.sum(phantom_valid_mask).astype(
-        mp_policy.count_dtype
+    num_phantom = self.samples.phantom_samples.log_L.shape[-1]
+    total_phantom_samples = (
+        jnp.sum(phantom_valid_mask, dtype=mp_policy.count_dtype) * num_phantom
     )
     total_num_likelihood_evaluations = jnp.sum(num_likelihood_evaluations_per_sample)
     log_efficiency = jnp.log(total_num_samples) - jnp.log(total_num_likelihood_evaluations)
     log_L_constraints = self.samples.log_L_constraints
     log_L_phantom = self.samples.phantom_samples.log_L
-    # A cluster is one statistical unit with a shared gamma weight. Partially
-    # populated rows are excluded rather than silently changing cluster size.
-    if phantom_valid_mask.shape[-1] == 0:
-        valid_phantom = jnp.zeros(phantom_valid_mask.shape[:-1], dtype=mp_policy.bool_dtype)
-    else:
-        valid_phantom = jnp.all(phantom_valid_mask, axis=-1)
+    # A completed chain contributes its entire retained prefix or none of it.
+    valid_phantom = phantom_valid_mask & (num_phantom > 0)
     block_p_gt_mean, block_p_eq_mean, _ = dirichlet_probability_means(concentrations)
 
     X_supremum = self.model.transform_to_X(self.U_supremum, args=self.args, params=self.params)
@@ -810,8 +809,12 @@ def _ensure_consistency(self: State):
 
     log_likelihoods = np.asarray(self.samples.log_likelihoods[:num_samples])
     constraints = np.asarray(self.samples.log_L_constraints[:num_samples])
-    if np.any(log_likelihoods <= constraints):
-        bad = np.where(log_likelihoods <= constraints)[0][0]
+    # Zero arrivals are direct prior draws from the negative sentinel.
+    zero_root = np.isneginf(log_likelihoods) & np.isneginf(constraints)
+    violations = (log_likelihoods <= constraints) & ~zero_root
+    violations |= np.isnan(log_likelihoods) | np.isnan(constraints)
+    if np.any(violations):
+        bad = np.where(violations)[0][0]
         raise ValueError(
             "Strict contour violation for sample "
             f"{bad}: log_likelihood={log_likelihoods[bad]} must be greater "

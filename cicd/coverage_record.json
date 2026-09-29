@@ -111,7 +111,8 @@
   ],
   "A phantom contributes to a block only when its cluster parent contour is no stricter than the preceding block contour and the phantom lies beyond that preceding contour.": [
     "test_per_cluster_counts_are_parent_contour_gated_with_equality_and_open_interval",
-    "test_reference_count_matrices_expose_parent_gated_R_and_aggregates"
+    "test_reference_count_matrices_expose_parent_gated_R_and_aggregates",
+    "test_zero_contour_phantoms_cannot_inform_zero_plateau_mass"
   ],
   "For a plateau block, an eligible phantom is classified exactly once as beyond the block, equal to the block, or in the open race interval.": [
     "test_per_cluster_counts_are_parent_contour_gated_with_equality_and_open_interval",
@@ -189,7 +190,8 @@
   "A state contains all scientific data and random-stream position needed to continue its run without hidden mutable sampler state.": [
     "test_ellipsoidal_state_survives_checkpoint_growth_and_resume",
     "test_user_stages_gmm_directions_between_uncertainty_goals",
-    "test_distributed_resume_registers_the_checkpoint_model"
+    "test_distributed_resume_registers_the_checkpoint_model",
+    "test_zero_plateau_survives_allocation_and_checkpoint_round_trip"
   ],
   "A finite scientific sample limit is never exceeded, including by a partially filled replacement batch.": [
     "test_finite_capacity_terminates_below_and_exactly_at_hard_maximum",
@@ -252,7 +254,8 @@
     "test_task_timeout_requeues_byte_identical_payload_on_compatible_worker"
   ],
   "In distributed execution every likelihood evaluation, including root initialization, executes on a registered worker and not in the scientific coordinator process.": [
-    "test_distributed_initialisation_dispatches_every_likelihood"
+    "test_distributed_initialisation_dispatches_every_likelihood",
+    "test_zero_plateau_evidence_in_real_worker_processes"
   ],
   "Joining, losing, or replacing worker capacity cannot discard or duplicate a logical task, and cannot permanently close an active run to later compatible capacity.": [
     "test_remote_restart_request_waits_for_node_heartbeat_and_acknowledgement",
@@ -279,5 +282,12 @@
   ],
   "Evaluating a model through its unit-hypercube representation gives the same likelihood as evaluating the corresponding transformed parameter values.": [
     "test_sampler_uses_the_model_supplied_for_each_request"
+  ],
+  "A model defines a likelihood over a normalized prior measure, and the evidence is the prior expectation of that likelihood.": [
+    "test_zero_likelihood_prior_mass_is_retained_in_evidence"
+  ],
+  "A classic child associated with a parent contour has the constrained-prior marginal distribution above that parent contour.": [
+    "test_root_draws_and_zero_contour_chains_have_different_support",
+    "test_sentinel_threads_do_not_select_or_reserve_stationary_seeds"
   ]
 }

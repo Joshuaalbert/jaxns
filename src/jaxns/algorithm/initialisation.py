@@ -9,6 +9,7 @@ from jaxns.algorithm.race_tree import initialise_likelihood_order
 from jaxns.mixed_precision import mp_policy
 from jaxns.model import Model
 from jaxns.samples import PhantomSamples, Samples
+from jaxns.sampling.prior import sample_prior
 from jaxns.state import State
 from jaxns.types import PRNGKey
 
@@ -33,37 +34,9 @@ def _sample_init_state(
 ) -> State:
     """Draw the root sentinel children with a single vectorised prior call."""
 
-    def sample_root(root_key):
-        def draw(draw_key):
-            U = model.sample_U(draw_key, args=args, params=params)
-            log_L = model.log_likelihood(
-                U,
-                args=args,
-                params=params,
-                allow_nan=False,
-            ).astype(mp_policy.measure_dtype)
-            return draw_key, U, log_L, jnp.asarray(1, mp_policy.count_dtype)
-
-        draw_key, U, log_L, num_evals = draw(root_key)
-
-        def invalid(carry):
-            _, _, likelihood, _ = carry
-            return likelihood <= -jnp.inf
-
-        def redraw(carry):
-            old_key, _, _, old_evals = carry
-            next_key, proposal_key = jax.random.split(old_key)
-            _, next_U, next_log_L, _ = draw(proposal_key)
-            return next_key, next_U, next_log_L, old_evals + 1
-
-        _, U, log_L, num_evals = jax.lax.while_loop(
-            invalid,
-            redraw,
-            (draw_key, U, log_L, num_evals),
-        )
-        return U, log_L, num_evals
-
-    U_samples, log_likelihoods, num_evals = jax.vmap(sample_root)(
+    U_samples, log_likelihoods, num_evals = jax.vmap(
+        lambda root_key: sample_prior(root_key, model, args, params)
+    )(
         jax.random.split(key, root_degree)
     )
     return _build_init_state(
@@ -98,8 +71,9 @@ def _build_init_state(
     root_degree = log_likelihoods.shape[0]
     phantom_U = None
     root_samples = Samples(
-        # -inf is the sentinel contour. It is also sufficient to recognise
-        # root children later; no persistent parent identity is required.
+        # Root draws and real zero contours share the stored -inf boundary.
+        # Root identity is needed only while sampling: roots are independent
+        # prior draws, have no phantom chain, and increment root_out_degree.
         log_L_constraints=jnp.full(
             (root_degree,),
             -jnp.inf,
@@ -112,7 +86,7 @@ def _build_init_state(
         phantom_samples=PhantomSamples(
             U_samples=phantom_U,
             valid_mask=jnp.zeros(
-                (root_degree, num_phantom),
+                (root_degree,),
                 mp_policy.bool_dtype,
             ),
             log_L=jnp.full(
@@ -138,4 +112,3 @@ def _build_init_state(
             jnp.asarray(root_degree, mp_policy.count_dtype),
         ),
     )
-

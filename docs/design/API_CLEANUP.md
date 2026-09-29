@@ -79,8 +79,51 @@ implemented transition. The existing random split schedule is preserved.
 - Request and worker-execution types belong to `jaxns.sampling.protocol` and
   `jaxns.sampling.batching`, rather than being sampler-module re-exports.
 
-This change does not regroup State storage, change the statistical model,
-change seed selection, or alter the distributed wire protocol and retry law.
+Samples remain append ordered. The sentinel and phantom-storage follow-up
+below changes root execution and the request schema while preserving the
+race and phantom-conditioning models.
+
+## Negative sentinel and zero likelihood
+
+The mathematical sentinel has likelihood -1 and prior volume one. Its
+logarithm is never evaluated. Initial and subsequently allocated sentinel
+children are independent unconditional prior draws, including true zeros.
+The half-prior indicator likelihood, zero below x=1/2 and one above it,
+reproduced evidence 0.999025 before this fix, instead of its correct value 1/2.
+
+Scheduling already knows the transient parent index. A bounded request flag
+derived from that index distinguishes direct prior work from constrained
+chains, including chains above a real zero contour. No parent identity or
+additional sentinel mask is persisted per sample. Both kinds of parent retain
+-infinity in the existing contour field. Seed selection applies only to
+non-root chains, whose strict likelihood comparison excludes actual zeros.
+Root requests do not reserve a seed or produce phantoms.
+
+Phantoms from a zero contour must not update the initial zero plateau's mass.
+Both count implementations skip that block for such chains. Classic race
+counts retain all zero arrivals and therefore measure their prior mass.
+True zero likelihoods remain -infinity, while invalid NaN model evaluations
+retain the existing root retry behavior.
+
+Phantom validity is one scalar per completed chain, or shape [N] in storage,
+instead of shape [N, P]. A chain contributes its whole retained prefix or
+none of it. Root draws and unused capacity have false validity. Scheduled
+worker results discard transient phantom coordinates before transport, as
+scientific state already did at commit. Direct sampler calls still expose
+the full coordinates. Protocol 7 carries root-request flags and the smaller
+validity array, rejecting older worker protocols. Checkpoints with the old
+per-phantom mask schema require the matching older code and are not silently
+reinterpreted by this change.
+
+The follow-up performance review compares fixed-key non-root slice chains
+against `40f9a38` on CPU with JAX 0.11.1, x64 enabled, 10 dimensions, 100 lanes,
+100 transitions and 99 retained phantoms. Every classic and phantom coordinate,
+likelihood and evaluation count matches exactly. Compiler-reported argument
+memory remains 6,500 bytes and temporary memory remains 993,176 bytes. Output
+memory drops from 492,364 to 482,564 bytes, exactly the 9,800 bytes saved by
+replacing 100-by-99 booleans with 100 booleans. This measures the direct sampler
+output, including coordinates, and makes no wall-time speedup claim. Root draws
+intentionally use a different random trajectory from the former root MCMC.
 
 ## Performance and intent review
 

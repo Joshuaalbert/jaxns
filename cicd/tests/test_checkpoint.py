@@ -359,6 +359,7 @@ def test_complete_distributed_pending_state_round_trips_without_task_loss(
     request = ConstrainedSampleRequest(
         keys=jax.random.split(jax.random.PRNGKey(31), 1),
         valid=jnp.asarray([True]),
+        from_root=jnp.asarray([False]),
         log_L_constraints=jnp.asarray([0.0]),
         seed_points=SeedPoint(
             U0=jnp.asarray([0.4]),

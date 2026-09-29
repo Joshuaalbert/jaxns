@@ -46,7 +46,7 @@ def _make_invalid_plateau_capacity_state() -> State:
         num_likelihood_evaluations=jnp.array([1, 1], dtype=jnp.int32),
         phantom_samples=PhantomSamples(
             U_samples=jnp.zeros((2, 0, 1)),
-            valid_mask=jnp.zeros((2, 0), dtype=jnp.bool_),
+            valid_mask=jnp.zeros((2,), dtype=jnp.bool_),
             log_L=jnp.zeros((2, 0)),
         ),
     )
@@ -70,7 +70,7 @@ def _make_strict_contour_violation_state() -> State:
         num_likelihood_evaluations=jnp.array([1], dtype=jnp.int32),
         phantom_samples=PhantomSamples(
             U_samples=jnp.zeros((1, 0, 1)),
-            valid_mask=jnp.zeros((1, 0), dtype=jnp.bool_),
+            valid_mask=jnp.zeros((1,), dtype=jnp.bool_),
             log_L=jnp.zeros((1, 0)),
         ),
     )
@@ -162,7 +162,7 @@ def test_to_result_marks_no_phantoms_invalid():
 def test_expected_evidence_rebuilds_order_for_active_growth_state():
     phantom_samples = PhantomSamples(
         U_samples=jnp.zeros((3, 0, 1)),
-        valid_mask=jnp.zeros((3, 0), dtype=jnp.bool_),
+        valid_mask=jnp.zeros((3,), dtype=jnp.bool_),
         log_L=jnp.zeros((3, 0)),
     )
     initial_samples = Samples(
@@ -248,7 +248,7 @@ def test_samples_resize_preserves_constraints_and_provenance_fields():
         num_likelihood_evaluations=jnp.array([2, 3], dtype=jnp.int32),
         phantom_samples=PhantomSamples(
             U_samples=jnp.array([[[0.1]], [[0.2]]]),
-            valid_mask=jnp.array([[True], [False]]),
+            valid_mask=jnp.array([True, False]),
             log_L=jnp.array([[0.5], [1.5]]),
         ),
     )
@@ -273,7 +273,7 @@ def test_samples_resize_preserves_constraints_and_provenance_fields():
     )
     np.testing.assert_array_equal(
         np.asarray(resized.phantom_samples.valid_mask[:2]),
-        np.array([[True], [False]]),
+        np.array([True, False]),
     )
     np.testing.assert_allclose(
         np.asarray(resized.log_L_constraints[2:]),
@@ -311,7 +311,7 @@ def test_state_resize_grows_all_sample_buffers_and_preserves_continuation():
     assert resized.samples.U_samples.shape == (4, 1)
     assert resized.samples.out_degree.shape == (4,)
     assert resized.samples.num_likelihood_evaluations.shape == (4,)
-    assert resized.samples.phantom_samples.valid_mask.shape == (4, 0)
+    assert resized.samples.phantom_samples.valid_mask.shape == (4,)
     assert resized.samples.phantom_samples.log_L.shape == (4, 0)
     assert resized.samples.phantom_samples.U_samples.shape == (4, 0, 1)
     assert resized.likelihood_order.sample_indices.shape == (4,)
@@ -430,7 +430,7 @@ def test_state_sample_evidence_uses_public_block_path():
         num_likelihood_evaluations=jnp.array([1, 1], dtype=jnp.int32),
         phantom_samples=PhantomSamples(
             U_samples=None,
-            valid_mask=jnp.zeros((2, 0), dtype=jnp.bool_),
+            valid_mask=jnp.zeros((2,), dtype=jnp.bool_),
             log_L=jnp.zeros((2, 0)),
         ),
     )
@@ -468,7 +468,7 @@ def test_state_to_result_evidence_summary_uses_block_model():
         num_likelihood_evaluations=jnp.array([1, 1, 1], dtype=jnp.int32),
         phantom_samples=PhantomSamples(
             U_samples=jnp.zeros((3, 0)),
-            valid_mask=jnp.zeros((3, 0), dtype=jnp.bool_),
+            valid_mask=jnp.zeros((3,), dtype=jnp.bool_),
             log_L=jnp.zeros((3, 0)),
         ),
     )
@@ -532,7 +532,7 @@ def test_state_to_result_excludes_storage_tail_likelihood_counts():
         ),
         phantom_samples=PhantomSamples(
             U_samples=jnp.zeros((3, 1)),
-            valid_mask=jnp.ones((3, 1), dtype=jnp.bool_),
+            valid_mask=jnp.ones((3,), dtype=jnp.bool_),
             log_L=jnp.asarray([[0.5], [1.5], [999.0]]),
         ),
     )
@@ -566,11 +566,7 @@ def test_state_to_result_preserves_phantom_provenance_for_kish_diagnostics():
         phantom_samples=PhantomSamples(
             U_samples=None,
             valid_mask=jnp.asarray(
-                [
-                    [True, True],
-                    [True, True],
-                    [True, True],
-                ],
+                [True, True, True],
                 dtype=jnp.bool_,
             ),
             log_L=jnp.asarray(

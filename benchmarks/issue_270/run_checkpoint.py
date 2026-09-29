@@ -95,7 +95,7 @@ class BenchmarkSampler(PureDataclassPytree, AbstractSampler):
             jnp.asarray(1, dtype=jnp.int32),
             PhantomSamples(
                 U_samples=jnp.zeros((0, 8)),
-                valid_mask=jnp.zeros((0,), dtype=bool),
+                valid_mask=jnp.asarray(False),
                 log_L=jnp.zeros((0,)),
             ),
         )

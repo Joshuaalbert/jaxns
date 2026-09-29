@@ -10,13 +10,16 @@ from jax import numpy as jnp
 
 from cicd.tests.core_fixtures import make_state
 from cicd.tests.distributed_support import make_toy_model
+from jaxns.algorithm.allocation import AllocationPlan, VolumePath
 from jaxns.algorithm.depth import (
     SEED_SOURCE_REFRESH_WINDOWS,
     CoreWorkBatch,
     _insert_seed_reservation,
+    _new_thread_schedule,
     _seed_reservation_contains,
     _start_schedule_round,
 )
+from jaxns.algorithm.race_tree import build_block_state
 from jaxns.constrained_sampler import (
     UniDimSliceSampler,
 )
@@ -195,7 +198,8 @@ def test_distributed_directions_change_only_at_drained_boundaries():
         active.gmm_directions()
 
 
-def test_distributed_initialisation_dispatches_every_likelihood():
+@pytest.mark.parametrize("first_likelihood", [-jnp.inf, jnp.nan])
+def test_distributed_initialisation_dispatches_every_likelihood(first_likelihood):
     class Client:
         evaluations = 0
         reject_first = True
@@ -218,7 +222,7 @@ def test_distributed_initialisation_dispatches_every_likelihood():
             for task_id, request in tasks:
                 Client.evaluations += 1
                 if Client.reject_first:
-                    likelihood = jnp.full((1,), -jnp.inf)
+                    likelihood = jnp.full((1,), first_likelihood)
                     Client.reject_first = False
                 else:
                     likelihood = -jnp.square(request.U_samples - 0.25)
@@ -253,16 +257,17 @@ def test_distributed_initialisation_dispatches_every_likelihood():
         config=runner._resolve_config(runner.model, (), None), args=(), params=None,
     )
 
-    assert Client.evaluations == 4
+    retried = int(np.isnan(first_likelihood))
+    assert Client.evaluations == 3 + retried
     assert int(checkpoint.state.num_samples) == 3
-    assert checkpoint.next_task_id == 4
+    assert checkpoint.next_task_id == 3 + retried
     np.testing.assert_array_equal(
         np.asarray(checkpoint.state.samples.num_likelihood_evaluations[:3]),
-        np.asarray([2, 1, 1], dtype=np.int32),
+        np.asarray([1 + retried, 1, 1], dtype=np.int32),
     )
-    assert bool(jnp.all(
-        checkpoint.state.samples.log_likelihoods[:3] > -jnp.inf
-    ))
+    likelihoods = np.asarray(checkpoint.state.samples.log_likelihoods[:3])
+    assert np.all(np.isfinite(likelihoods[1:]))
+    assert bool(np.isfinite(likelihoods[0])) == bool(retried)
 
 
 def test_distributed_completion_order_preserves_scientific_state():
@@ -438,7 +443,7 @@ def _batch() -> ConstrainedSampleBatch:
         num_likelihood_evaluations=jnp.asarray([3, 2, 0], dtype=jnp.int32),
         phantom_samples=PhantomSamples(
             U_samples=jnp.zeros((3, 0)),
-            valid_mask=jnp.zeros((3, 0), dtype=bool),
+            valid_mask=jnp.zeros((3,), dtype=bool),
             log_L=jnp.zeros((3, 0)),
         ),
         num_directions=jnp.zeros((3,), dtype=jnp.int32),
@@ -571,7 +576,7 @@ def test_distributed_continuation_returns_to_heap_not_dispatch_window():
         ),
         phantom_samples=PhantomSamples(
             U_samples=jnp.zeros((1, 0)),
-            valid_mask=jnp.zeros((1, 0), dtype=bool),
+            valid_mask=jnp.zeros((1,), dtype=bool),
             log_L=jnp.zeros((1, 0)),
         ),
         num_directions=jnp.zeros((1,), dtype=jnp.int32),
@@ -605,6 +610,7 @@ def test_distributed_checkpoint_preserves_unreturned_task_and_keys():
     request = ConstrainedSampleRequest(
         keys=jax.random.split(jax.random.PRNGKey(2), 3),
         valid=work.valid,
+        from_root=jnp.zeros_like(work.valid),
         log_L_constraints=work.log_L_constraint,
         seed_points=SeedPoint(
             U0=jnp.asarray([0.3, 0.7, 0.3]),
@@ -670,6 +676,7 @@ def test_growth_preserves_pending_payload_and_logical_depth():
     request = ConstrainedSampleRequest(
         keys=jax.random.split(jax.random.PRNGKey(9), 1),
         valid=work.valid,
+        from_root=jnp.zeros_like(work.valid),
         log_L_constraints=work.log_L_constraint,
         seed_points=SeedPoint(
             U0=state.samples.U_samples[1:2],
@@ -1052,10 +1059,10 @@ def test_distributed_refill_reserves_pending_same_contour_seed():
         initial_capacity=8,
     )
     state = make_state(
-        root_out_degree=2,
-        log_likelihoods=(1.0, 2.0),
-        log_L_constraints=(-np.inf, -np.inf),
-        out_degree=(0, 0),
+        root_out_degree=3,
+        log_likelihoods=(0.0, 1.0, 2.0),
+        log_L_constraints=(-np.inf,) * 3,
+        out_degree=(0,) * 3,
         max_samples=8,
     )
     state = dataclasses.replace(
@@ -1074,14 +1081,14 @@ def test_distributed_refill_reserves_pending_same_contour_seed():
     )
     schedule = state.scheduler_data
     assert schedule is not None
-    # Isolate refill behavior with two already-materialised root threads. The
+    # Isolate refill behavior with two threads at a real contour. The
     # compressed queue is exhausted so only these equal-contour heads can be
     # dispatched across the two separate calls below.
     schedule = dataclasses.replace(
         schedule,
-        parent_idx=jnp.full_like(schedule.parent_idx, -1),
+        parent_idx=jnp.zeros_like(schedule.parent_idx),
         thread_id=jnp.arange(2, dtype=schedule.thread_id.dtype),
-        log_L_constraint=jnp.asarray([-jnp.inf, -jnp.inf]),
+        log_L_constraint=jnp.asarray([0.0, 0.0]),
         terminal_log_L=jnp.asarray([1.0, 1.0]),
         valid=jnp.asarray([True, True]),
         next_run=schedule.num_runs,
@@ -1129,7 +1136,7 @@ def test_distributed_refill_reserves_pending_same_contour_seed():
 
 
 def test_distributed_refills_reserve_starts_beyond_worker_capacity():
-    """Worker width two must spread six root starts without replacement."""
+    """Worker width two must spread six real-contour starts without replacement."""
     class Client:
         def submit_many(self, session_id, tasks):
             del session_id, tasks
@@ -1137,34 +1144,42 @@ def test_distributed_refills_reserve_starts_beyond_worker_capacity():
     runner = DistributedNestedSampler(
         model=make_toy_model(),
         coordinator_port=5555,
-        root_allocation_degree=6,
+        root_allocation_degree=7,
         delta_K=3,
         max_samples=12,
         initial_capacity=12,
     )
     state = make_state(
-        root_out_degree=6,
-        log_likelihoods=(1.0, 2.0, 3.0, 4.0, 5.0, 6.0),
-        log_L_constraints=(-np.inf,) * 6,
-        out_degree=(0,) * 6,
+        root_out_degree=7,
+        log_likelihoods=(0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0),
+        log_L_constraints=(-np.inf,) * 7,
+        out_degree=(0,) * 7,
         max_samples=12,
     )
-    state = dataclasses.replace(
-        state,
-        # At k=2, d_0 + Delta K k = 12 and the six missing root starts
-        # require three successive width-two dispatches.
-        allocation_loop_iter=jnp.asarray(2, dtype=jnp.int32),
-        random_key=jax.random.PRNGKey(292),
-        goal_key=jax.random.PRNGKey(293),
+    # Six starts above the first real contour have six eligible seeds.
+    # Width two requires three refills of the same stationary population.
+    blocks = build_block_state(
+        state.samples, state.root_out_degree, state.num_samples,
     )
-    state = _start_schedule_round(
-        state,
-        DepthCondition(),
+    gap = jnp.zeros_like(blocks.incoming_K).at[1].set(6)
+    plan = AllocationPlan(
+        target_K=blocks.incoming_K + gap,
+        current_K=blocks.incoming_K,
+        unit_peak_utility=blocks.valid.astype(jnp.float64),
+        log_L_blocks=blocks.log_L_blocks,
+        valid=blocks.valid,
+        volume_path=VolumePath(
+            X_prev=jnp.ones(gap.shape),
+            X=jnp.ones(gap.shape),
+            shell_mass=jnp.zeros(gap.shape),
+        ),
+    )
+    schedule = _new_thread_schedule(
+        state, blocks, plan, blocks.valid,
         replacement_width=2,
-        allocation_target="uniform",
-        root_degree=6,
-        delta_K=3,
+        tail_K=jnp.asarray(0, dtype=jnp.int32),
     )
+    state = dataclasses.replace(state, scheduler_data=schedule)
     checkpoint = DistributedState(
         state=state,
         reservations=ReservationState.empty(12),
@@ -1196,7 +1211,7 @@ def test_distributed_refills_reserve_starts_beyond_worker_capacity():
             pending=(),
         )
 
-    assert set(selected) == set(range(6))
+    assert set(selected) == set(range(1, 7))
 
 
 def test_worker_request_uses_scalar_and_vmap_paths_above_strict_contour():
@@ -1209,6 +1224,7 @@ def test_worker_request_uses_scalar_and_vmap_paths_above_strict_contour():
         request = ConstrainedSampleRequest(
             keys=jax.random.split(jax.random.PRNGKey(10), width),
             valid=jnp.ones((width,), dtype=bool),
+            from_root=jnp.zeros((width,), dtype=bool),
             log_L_constraints=jnp.full((width,), -1.0),
             seed_points=SeedPoint(
                 U0=seed_u[:width],

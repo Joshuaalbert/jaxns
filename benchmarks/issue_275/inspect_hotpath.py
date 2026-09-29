@@ -77,6 +77,7 @@ def main() -> None:
     request = ConstrainedSampleRequest(
         keys=jax.random.split(jax.random.PRNGKey(2), 8),
         valid=jnp.ones((8,), dtype=jnp.bool_),
+        from_root=jnp.zeros((8,), dtype=jnp.bool_),
         log_L_constraints=jnp.full((8,), -0.3),
         seed_points=SeedPoint(
             U0=seeds,

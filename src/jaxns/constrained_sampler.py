@@ -583,7 +583,7 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
         phantom_samples = PhantomSamples(
             U_samples=phantom_fraction.U_sample.tree,
             log_L=phantom_fraction.log_L,
-            valid_mask=jnp.ones(phantom_fraction.log_L.shape, mp_policy.bool_dtype)
+            valid_mask=jnp.asarray(self.num_phantom() > 0, mp_policy.bool_dtype)
         )
 
         U_sample = final_carry.U_sample.tree

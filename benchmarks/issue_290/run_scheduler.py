@@ -55,7 +55,7 @@ def make_state(
         ),
         phantom_samples=PhantomSamples(
             U_samples=None,
-            valid_mask=jnp.zeros((capacity, 0), dtype=bool),
+            valid_mask=jnp.zeros((capacity,), dtype=bool),
             log_L=jnp.zeros((capacity, 0)),
         ),
     )

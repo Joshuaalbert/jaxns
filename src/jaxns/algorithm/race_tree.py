@@ -386,8 +386,13 @@ def _validate_race_tree_inputs(
     if np.any(out_degree < 0):
         bad = np.where(out_degree < 0)[0][0]
         raise ValueError(f"Invalid race tree: out_degree[{bad}] is negative.")
-    if np.any(log_likelihoods <= log_L_constraints):
-        bad = np.where(log_likelihoods <= log_L_constraints)[0][0]
+    # A zero-likelihood arrival can only be a direct sentinel draw. Its
+    # stored boundary is -inf too, so this pair is not a contour equality.
+    zero_root = np.isneginf(log_likelihoods) & np.isneginf(log_L_constraints)
+    violations = (log_likelihoods <= log_L_constraints) & ~zero_root
+    violations |= np.isnan(log_likelihoods) | np.isnan(log_L_constraints)
+    if np.any(violations):
+        bad = np.where(violations)[0][0]
         raise ValueError(
             "Strict contour violation for sample "
             f"{bad}: log_likelihood={log_likelihoods[bad]} must be greater "

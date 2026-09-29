@@ -561,10 +561,7 @@ def _continue_slice_chains(
     phantom_samples = PhantomSamples(
         U_samples=state.phantom_samples,
         log_L=state.phantom_log_likelihoods,
-        valid_mask=jnp.broadcast_to(
-            request.valid[:, None],
-            (num_chains, num_phantom),
-        ),
+        valid_mask=request.valid & (num_phantom > 0),
     )
     if request.sampler_data is None:
         num_directions = jnp.zeros(

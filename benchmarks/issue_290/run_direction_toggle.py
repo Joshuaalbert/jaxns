@@ -69,6 +69,7 @@ def make_request(
     return ConstrainedSampleRequest(
         keys=jax.random.split(jax.random.PRNGKey(290), width),  # [S, 2]
         valid=jnp.ones((width,), dtype=mp_policy.bool_dtype),  # [S]
+        from_root=jnp.zeros((width,), dtype=mp_policy.bool_dtype),
         log_L_constraints=jnp.full(
             (width,),
             -0.25,

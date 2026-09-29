@@ -465,7 +465,12 @@ def _validate_phantom_metadata(
     if n == 0:
         return
     active = live_points[:n] > 0
-    strict_violations = active & (log_l[:n] <= constraints[:n])
+    zero_root = np.isneginf(log_l[:n]) & np.isneginf(constraints[:n])
+    strict_violations = active & (
+        ((log_l[:n] <= constraints[:n]) & ~zero_root)
+        | (zero_root & cluster_valid[:n])
+        | np.isnan(log_l[:n]) | np.isnan(constraints[:n])
+    )
     if np.any(strict_violations):
         bad = np.where(strict_violations)[0][0]
         raise ValueError(
@@ -969,7 +974,13 @@ def compute_phantom_count_matrices(
     num_valid_blocks = jnp.sum(block_valid_mask, dtype=jnp.int32)
 
     left_c = jnp.searchsorted(log_L_blocks, log_L_constraints, side="left")
-    start_idx = jnp.where(jnp.isneginf(log_L_constraints), 0, left_c + 1)
+    # Roots have no phantom chains. A -inf phantom birth is therefore a real
+    # zero contour and cannot constrain the prior mass of the zero plateau.
+    start_idx = jnp.where(
+        jnp.isneginf(log_L_constraints),
+        jnp.isneginf(log_L_blocks[0]).astype(jnp.int32),
+        left_c + 1,
+    )
     start_idx = jnp.minimum(start_idx, num_valid_blocks)
     start_idx = jnp.where(effective_valid_phantom, start_idx, 0)
 
@@ -1149,7 +1160,8 @@ def _prepare_phantom_events(
     )
     start_idx = jnp.where(
         jnp.isneginf(log_L_constraints),
-        0,
+        # Same zero-plateau exclusion as the dense count reference above.
+        jnp.isneginf(log_L_blocks[0]).astype(jnp.int32),
         left_constraint + 1,
     )
     start_idx = jnp.minimum(start_idx, num_valid_blocks)

@@ -13,9 +13,6 @@ from jaxns.model import Model
 from jaxns.priors import Prior
 from jaxns.runtime.session import WorkerSession
 from jaxns.samples import SeedPoint
-from jaxns.sampling.batching import (
-    sample_request,
-)
 from jaxns.sampling.protocol import (
     ConstrainedSampleRequest,
 )
@@ -132,6 +129,7 @@ def test_distributed_worker_replays_the_configured_periodic_sampler():
     request = ConstrainedSampleRequest(
         keys=jax.random.split(jax.random.PRNGKey(279), 2),
         valid=jnp.ones((2,), dtype=jnp.bool_),
+        from_root=jnp.zeros((2,), dtype=jnp.bool_),
         log_L_constraints=jnp.full((2,), -CONCENTRATION),
         seed_points=SeedPoint(
             U0=seeds,
@@ -140,15 +138,13 @@ def test_distributed_worker_replays_the_configured_periodic_sampler():
         sampler_data=None,
     )
 
-    first = sample_request(
-        restored.sampler,
+    first = restored.sampler.get_samples(
         request,
         args=restored.args,
         params=restored.params,
         model=model,
     )
-    second = sample_request(
-        restored.sampler,
+    second = restored.sampler.get_samples(
         request,
         args=restored.args,
         params=restored.params,

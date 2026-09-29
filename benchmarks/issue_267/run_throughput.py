@@ -98,6 +98,7 @@ def request(
     return ConstrainedSampleRequest(
         keys=key[None],
         valid=jnp.asarray([True]),
+        from_root=jnp.asarray([False]),
         log_L_constraints=jnp.asarray([-1.0]),
         seed_points=SeedPoint(
             U0=jax.tree.map(lambda value: value[None], seed_u),
@@ -113,6 +114,7 @@ def batched_request(keys, seed_u, seed_log_likelihood):
     return ConstrainedSampleRequest(
         keys=keys,
         valid=jnp.ones((width,), dtype=jnp.bool_),
+        from_root=jnp.zeros((width,), dtype=jnp.bool_),
         log_L_constraints=jnp.full((width,), -1.0),
         seed_points=SeedPoint(
             U0=jax.tree.map(

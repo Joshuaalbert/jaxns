@@ -1074,7 +1074,6 @@ def _sample_stationary_seeds(
         state: State,
         schedule: ThreadSchedule,
         log_L_constraint: FloatArray,
-        from_root: BoolArray,
         valid: BoolArray,
         reserved_seed_idx: IntArray,
         reserved_log_L_constraint: FloatArray,
@@ -1117,6 +1116,7 @@ def _sample_stationary_seeds(
     reserved_same_group = (
         valid[:, None]
         & reserved_valid[None, :]
+        & (reserved_seed_idx[None, :] >= 0)
         & (
             log_L_constraint[:, None]
             == reserved_log_L_constraint[None, :]
@@ -1143,10 +1143,8 @@ def _sample_stationary_seeds(
         )
     )(log_L_constraint)  # [S]
 
-    # The frozen rank index handles root and non-root contours uniformly. The
-    # recent-row reservoir still distinguishes sentinel births from ordinary
-    # birth contours when checking whether a retained row crosses the request.
-    use_root = valid & from_root  # [S]
+    # Sentinel work bypasses seeding. For every real contour, including zero,
+    # frozen and recent candidates obey the same strict crossing condition.
     reservoir_sample_idx = schedule.seed_reservoir_idx  # [R]
     reservoir_safe_idx = jnp.maximum(reservoir_sample_idx, 0)  # [R]
     reservoir_birth = state.samples.log_L_constraints[
@@ -1162,16 +1160,8 @@ def _sample_stationary_seeds(
     reservoir_eligible = (
         valid[:, None]
         & schedule.seed_reservoir_valid[None, :]
-        & jnp.where(
-            use_root[:, None],
-            jnp.isneginf(reservoir_birth)[None, :],
-            (
-                reservoir_birth[None, :] <= log_L_constraint[:, None]
-            )
-            & (
-                reservoir_log_L[None, :] > log_L_constraint[:, None]
-            ),
-        )
+        & (reservoir_birth[None, :] <= log_L_constraint[:, None])
+        & (reservoir_log_L[None, :] > log_L_constraint[:, None])
     )  # [S, R]
     reservoir_count = jnp.sum(
         reservoir_eligible,
@@ -2072,9 +2062,14 @@ def _plan_scheduled_work_batch(
         )
     )(fallback_keys, effective_block)
     parent_idx = jnp.where(
-        requested_has_seed,
+        requested_has_seed | (schedule.parent_idx < 0),
         schedule.parent_idx,
         fallback_parent,
+    )
+    # Sentinel work is always possible: it draws directly from the prior and
+    # needs neither a stationary seed nor membership in the seed population.
+    effective_constraint = jnp.where(
+        parent_idx < 0, -jnp.inf, effective_constraint,
     )
 
     # A distributed start remains pending after its identity is recorded in
@@ -2115,8 +2110,7 @@ def _plan_scheduled_work_batch(
         state,
         schedule,
         effective_constraint,
-        jnp.isneginf(effective_constraint),
-        valid,
+        valid & (parent_idx >= 0),
         reserved_seed_idx,
         reserved_log_L_constraint,
         unique_pending_valid,
@@ -2125,8 +2119,11 @@ def _plan_scheduled_work_batch(
         schedule,
         seed_idx,
         effective_constraint,
-        valid,
+        valid & (parent_idx >= 0),
     )
+    # A negative identity cannot enter a pending task's seed reservations.
+    # Its gathered coordinate is only filler: root requests never use a seed.
+    seed_idx = jnp.where(parent_idx < 0, -1, seed_idx)
     # Fixed-width padding can be traced through both sides of vmapped sampler
     # control flow even though invalid lanes never enter scientific state.
     # Give every padded lane the first valid request so those speculative
@@ -2144,7 +2141,7 @@ def _plan_scheduled_work_batch(
         valid=valid,
         parent_idx=parent_idx,
         log_L_constraint=effective_constraint,
-        seed_idx=jnp.maximum(seed_idx, 0),
+        seed_idx=seed_idx,
     )
 
 
@@ -2283,6 +2280,7 @@ def _sample_work_batch(
         log_L_constraints=work.log_L_constraint,
         seed_points=seed_points,
         sampler_data=state.sampler_data,
+        from_root=work.parent_idx < 0,
     )
     return sample_request(
         sampler,

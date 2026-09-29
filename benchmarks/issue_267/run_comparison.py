@@ -94,7 +94,7 @@ def measure(runner, seed: int) -> dict[str, float | int]:
         )),
         "retained_phantoms": int(jnp.sum(
             state.samples.phantom_samples.valid_mask[:valid]
-        )),
+        )) * state.samples.phantom_samples.log_L.shape[-1],
     }
 
 

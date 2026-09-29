@@ -66,7 +66,7 @@ class DeterministicSampler(PureDataclassPytree, AbstractSampler):
                     (0,) + jnp.shape(seed_point.U0),
                     dtype=jnp.asarray(seed_point.U0).dtype,
                 ),
-                valid_mask=jnp.zeros((0,), dtype=bool),
+                valid_mask=jnp.asarray(False),
                 log_L=jnp.zeros((0,), dtype=jnp.asarray(log_L_constraint).dtype),
             ),
         )
@@ -446,12 +446,36 @@ def test_continuation_heap_fills_bound_without_overwrite():
     )
 
 
-def test_same_contour_parallel_threads_use_distinct_stationary_seeds():
+def test_sentinel_threads_do_not_select_or_reserve_stationary_seeds():
     state = make_state(
         root_out_degree=2,
         log_likelihoods=(1.0, 2.0),
-        log_L_constraints=(-np.inf, -np.inf),
         out_degree=(0, 0),
+        max_samples=4,
+    )
+    blocks = build_block_state(state.samples, state.root_out_degree, state.num_samples)
+    schedule = depth._new_thread_schedule(
+        state,
+        blocks,
+        _allocation_plan(blocks, (4, 0, 0, 0)),
+        blocks.valid,
+        replacement_width=2,
+        tail_K=jnp.asarray(0, dtype=jnp.int32),
+    )
+    schedule, work = depth._plan_scheduled_work_batch(
+        jax.random.PRNGKey(7), state, schedule, jnp.asarray(2, dtype=jnp.int32),
+    )
+    np.testing.assert_array_equal(work.parent_idx, -1)
+    np.testing.assert_array_equal(work.seed_idx, -1)
+    assert int(schedule.num_start_seeds) == 0
+
+
+def test_same_contour_parallel_threads_use_distinct_stationary_seeds():
+    state = make_state(
+        root_out_degree=3,
+        log_likelihoods=(0.0, 1.0, 2.0),
+        log_L_constraints=(-np.inf,) * 3,
+        out_degree=(0,) * 3,
         max_samples=4,
     )
     block_state = build_block_state(
@@ -463,7 +487,7 @@ def test_same_contour_parallel_threads_use_distinct_stationary_seeds():
     schedule = depth._new_thread_schedule(
         state,
         block_state,
-        _allocation_plan(block_state, (2, 0, 0, 0)),
+        _allocation_plan(block_state, (0, 2, 0, 0)),
         block_state.valid,
         replacement_width=4,
         tail_K=jnp.asarray(0, dtype=jnp.int32),
@@ -483,13 +507,13 @@ def test_same_contour_parallel_threads_use_distinct_stationary_seeds():
 
 
 def test_same_contour_thread_starts_remain_distinct_across_batches():
-    """A narrow vmap must rotate once through a wider root population."""
+    """A narrow vmap must exhaust the eligible population at a real contour."""
     state = make_state(
-        root_out_degree=6,
-        log_likelihoods=(1.0, 2.0, 3.0, 4.0, 5.0, 6.0),
-        log_L_constraints=(-np.inf,) * 6,
-        out_degree=(0,) * 6,
-        max_samples=6,
+        root_out_degree=7,
+        log_likelihoods=(0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0),
+        log_L_constraints=(-np.inf,) * 7,
+        out_degree=(0,) * 7,
+        max_samples=7,
     )
     block_state = build_block_state(
         state.samples,
@@ -500,7 +524,7 @@ def test_same_contour_thread_starts_remain_distinct_across_batches():
     schedule = depth._new_thread_schedule(
         state,
         block_state,
-        _allocation_plan(block_state, (6, 0, 0, 0, 0, 0)),
+        _allocation_plan(block_state, (0, 6, 0, 0, 0, 0, 0)),
         block_state.valid,
         replacement_width=2,
         tail_K=jnp.asarray(0, dtype=jnp.int32),
@@ -520,8 +544,8 @@ def test_same_contour_thread_starts_remain_distinct_across_batches():
         reservation_counts.append(int(schedule.num_start_seeds))
         schedule = depth._release_thread_heads(schedule, work.valid)
 
-    assert set(selected) == set(range(6))
-    # Once every root start is dispatched there is no future same-contour
+    assert set(selected) == set(range(1, 7))
+    # Once every start is dispatched there is no future same-contour
     # choice to constrain, so the bounded reservation can be released.
     assert reservation_counts == [2, 4, 0]
 
@@ -729,14 +753,14 @@ def test_thread_starts_partition_published_and_retained_stationary_seeds():
     schedule = depth._new_thread_schedule(
         source,
         block_state,
-        _allocation_plan(block_state, (4, 0, 0, 0, 0, 0, 0, 0)),
+        _allocation_plan(block_state, (0, 4, 0, 0, 0, 0, 0, 0)),
         block_state.valid,
         replacement_width=2,
         tail_K=jnp.asarray(0, dtype=jnp.int32),
         seed_reservoir_size=4,
     )
     current = make_state(
-        root_out_degree=4,
+        root_out_degree=8,
         log_likelihoods=(1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0),
         log_L_constraints=(-np.inf,) * 8,
         out_degree=(0,) * 8,
@@ -763,7 +787,7 @@ def test_thread_starts_partition_published_and_retained_stationary_seeds():
         schedule = depth._release_thread_heads(schedule, work.valid)
 
     assert len(set(selected)) == 4
-    assert set(selected) <= set(range(8))
+    assert set(selected) <= set(range(1, 8))
     assert published_counts == [sum(seed < 4 for seed in selected[:2]), 0]
 
     keys = jax.random.split(jax.random.PRNGKey(296), 256)
@@ -773,8 +797,7 @@ def test_thread_starts_partition_published_and_retained_stationary_seeds():
             one_key,
             current,
             draw_schedule,
-            jnp.asarray([-jnp.inf]),
-            jnp.asarray([True]),
+            jnp.asarray([1.0]),
             jnp.asarray([True]),
             jnp.asarray([-1], dtype=jnp.int32),
             jnp.asarray([-jnp.inf]),
@@ -787,7 +810,9 @@ def test_thread_starts_partition_published_and_retained_stationary_seeds():
     )
     # This fixture retains all four appended rows, so both source components
     # occur at frequencies consistent with their complete stationary union.
-    assert np.all((counts >= 16) & (counts <= 48))
+    assert counts[0] == 0
+    sigma = np.sqrt(256 * (1 / 7) * (6 / 7))
+    assert np.all(np.abs(counts[1:] - 256 / 7) < 4 * sigma)
 
 
 def test_frozen_seed_rank_index_matches_every_brute_force_interval():
@@ -870,7 +895,6 @@ def test_mixed_contour_seed_groups_remain_distinct_after_rejection():
         state,
         schedule,
         constraints,
-        jnp.isneginf(constraints),
         jnp.ones((5,), dtype=bool),
         jnp.full((5,), -1, dtype=jnp.int32),
         jnp.full((5,), -jnp.inf),
@@ -1059,7 +1083,6 @@ def test_pending_same_contour_seeds_are_reserved_across_refills():
         state,
         schedule,
         jnp.asarray([1.0, 1.0]),
-        jnp.zeros((2,), dtype=bool),
         jnp.ones((2,), dtype=bool),
         jnp.asarray([1, -1]),
         jnp.asarray([1.0, -jnp.inf]),
@@ -1072,11 +1095,11 @@ def test_pending_same_contour_seeds_are_reserved_across_refills():
 def test_post_freeze_pending_start_is_counted_once():
     """A pending appended seed must not shrink the distinct pool twice."""
     source = make_state(
-        root_out_degree=2,
-        log_likelihoods=(1.0, 2.0),
-        log_L_constraints=(-np.inf, -np.inf),
-        out_degree=(0, 0),
-        max_samples=5,
+        root_out_degree=3,
+        log_likelihoods=(0.0, 1.0, 2.0),
+        log_L_constraints=(-np.inf,) * 3,
+        out_degree=(0,) * 3,
+        max_samples=6,
     )
     block_state = build_block_state(
         source.samples,
@@ -1087,25 +1110,25 @@ def test_post_freeze_pending_start_is_counted_once():
     schedule = depth._new_thread_schedule(
         source,
         block_state,
-        _allocation_plan(block_state, (3, 0, 0, 0, 0)),
+        _allocation_plan(block_state, (0, 3, 0, 0, 0, 0)),
         block_state.valid,
         replacement_width=3,
         tail_K=jnp.asarray(0, dtype=jnp.int32),
     )
     current = make_state(
-        root_out_degree=4,
-        log_likelihoods=(1.0, 2.0, 3.0, 4.0),
-        log_L_constraints=(-np.inf,) * 4,
-        out_degree=(0,) * 4,
-        max_samples=5,
+        root_out_degree=5,
+        log_likelihoods=(0.0, 1.0, 2.0, 3.0, 4.0),
+        log_L_constraints=(-np.inf,) * 5,
+        out_degree=(0,) * 5,
+        max_samples=6,
     )
     schedule = depth._update_seed_reservoir(
         schedule,
-        jnp.asarray([2, 3, -1], dtype=jnp.int32),
+        jnp.asarray([3, 4, -1], dtype=jnp.int32),
         jnp.asarray([True, True, False]),
     )
     reservation_idx, reservation_group = depth._insert_seed_reservation(
-        jnp.asarray(3, dtype=jnp.int32),
+        jnp.asarray(4, dtype=jnp.int32),
         schedule.current_start_group,
         schedule.start_seed_reservation_idx,
         schedule.start_seed_reservation_group,
@@ -1114,7 +1137,7 @@ def test_post_freeze_pending_start_is_counted_once():
         schedule,
         start_seed_reservation_idx=reservation_idx,
         start_seed_reservation_group=reservation_group,
-        start_seed_log_L_constraint=jnp.asarray(-jnp.inf),
+        start_seed_log_L_constraint=jnp.asarray(0.0),
         num_start_seeds=jnp.asarray(1, dtype=jnp.int32),
     )
 
@@ -1123,24 +1146,24 @@ def test_post_freeze_pending_start_is_counted_once():
         current,
         schedule,
         jnp.asarray(3, dtype=jnp.int32),
-        reserved_seed_idx=jnp.asarray([3, -1, -1], dtype=jnp.int32),
-        reserved_log_L_constraint=jnp.asarray([-jnp.inf] * 3),
+        reserved_seed_idx=jnp.asarray([4, -1, -1], dtype=jnp.int32),
+        reserved_log_L_constraint=jnp.zeros((3,)),
         reserved_valid=jnp.asarray([True, False, False]),
     )
 
-    # The pending identity 3 already belongs to the retained group. Exactly
+    # The pending identity 4 already belongs to the retained group. Exactly
     # the three remaining stationary seeds therefore fill this next window.
-    assert set(np.asarray(work.seed_idx).tolist()) == {0, 1, 2}
+    assert set(np.asarray(work.seed_idx).tolist()) == {1, 2, 3}
 
 
 def test_evicted_recent_reservations_do_not_hide_unseen_stationary_seeds():
     """Exhaustion counts the current frozen+reservoir union exactly."""
     source = make_state(
-        root_out_degree=2,
-        log_likelihoods=(1.0, 2.0),
-        log_L_constraints=(-np.inf, -np.inf),
-        out_degree=(0, 0),
-        max_samples=5,
+        root_out_degree=3,
+        log_likelihoods=(0.0, 1.0, 2.0),
+        log_L_constraints=(-np.inf,) * 3,
+        out_degree=(0,) * 3,
+        max_samples=6,
     )
     block_state = build_block_state(
         source.samples,
@@ -1151,22 +1174,22 @@ def test_evicted_recent_reservations_do_not_hide_unseen_stationary_seeds():
     schedule = depth._new_thread_schedule(
         source,
         block_state,
-        _allocation_plan(block_state, (2, 0, 0, 0, 0)),
+        _allocation_plan(block_state, (0, 2, 0, 0, 0, 0)),
         block_state.valid,
         replacement_width=2,
         tail_K=jnp.asarray(0, dtype=jnp.int32),
     )
     current = make_state(
-        root_out_degree=5,
-        log_likelihoods=(1.0, 2.0, 3.0, 4.0, 5.0),
-        log_L_constraints=(-np.inf,) * 5,
-        out_degree=(0,) * 5,
-        max_samples=5,
+        root_out_degree=6,
+        log_likelihoods=(0.0, 1.0, 2.0, 3.0, 4.0, 5.0),
+        log_L_constraints=(-np.inf,) * 6,
+        out_degree=(0,) * 6,
+        max_samples=6,
     )
-    # Identities 2 and 4 were used while recent, then left the bounded
-    # reservoir. Identity 0 remains frozen and used, while 1 and the current
-    # recent identity 3 are the two unseen eligible choices.
-    for seed_idx in (0, 2, 4):
+    # Identities 3 and 5 were used while recent, then left the bounded
+    # reservoir. Identity 1 remains frozen and used, while 2 and the current
+    # recent identity 4 are the two unseen eligible choices.
+    for seed_idx in (1, 3, 5):
         reservation_idx, reservation_group = (
             depth._insert_seed_reservation(
                 jnp.asarray(seed_idx, dtype=jnp.int32),
@@ -1182,9 +1205,9 @@ def test_evicted_recent_reservations_do_not_hide_unseen_stationary_seeds():
         )
     schedule = dataclasses.replace(
         schedule,
-        seed_reservoir_idx=jnp.asarray([3, -1], dtype=jnp.int32),
+        seed_reservoir_idx=jnp.asarray([4, -1], dtype=jnp.int32),
         seed_reservoir_valid=jnp.asarray([True, False]),
-        start_seed_log_L_constraint=jnp.asarray(-jnp.inf),
+        start_seed_log_L_constraint=jnp.asarray(0.0),
         num_start_seeds=jnp.asarray(3, dtype=jnp.int32),
         num_published_start_seeds=jnp.asarray(1, dtype=jnp.int32),
     )
@@ -1196,7 +1219,7 @@ def test_evicted_recent_reservations_do_not_hide_unseen_stationary_seeds():
         jnp.asarray(2, dtype=jnp.int32),
     )
 
-    assert set(np.asarray(work.seed_idx).tolist()) == {1, 3}
+    assert set(np.asarray(work.seed_idx).tolist()) == {2, 4}
 
 
 def test_seed_pool_uses_value_independent_post_freeze_reservoir():
@@ -1250,7 +1273,6 @@ def test_seed_pool_uses_value_independent_post_freeze_reservoir():
             current,
             schedule,
             jnp.asarray([2.0]),
-            jnp.asarray([False]),
             jnp.asarray([True]),
             jnp.asarray([-1], dtype=jnp.int32),
             jnp.asarray([-jnp.inf]),
@@ -1306,7 +1328,6 @@ def test_appended_seed_population_remains_distinct_when_large_enough():
         current,
         schedule,
         constraints,
-        jnp.zeros((3,), dtype=bool),
         jnp.ones((3,), dtype=bool),
         jnp.full((3,), -1, dtype=jnp.int32),
         jnp.full((3,), -jnp.inf),
