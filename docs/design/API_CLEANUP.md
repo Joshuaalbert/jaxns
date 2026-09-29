@@ -102,8 +102,25 @@ Root requests do not reserve a seed or produce phantoms.
 Phantoms from a zero contour must not update the initial zero plateau's mass.
 Both count implementations skip that block for such chains. Classic race
 counts retain all zero arrivals and therefore measure their prior mass.
-True zero likelihoods remain -infinity, while invalid NaN model evaluations
-retain the existing root retry behavior.
+Normal model evaluation always maps NaN log likelihood to -infinity, just
+like an explicit zero likelihood. Initial and later sentinel children keep
+every prior draw with one likelihood evaluation, without a retry loop.
+`Model` owns this policy for both local and worker evaluations, including
+later constrained proposals. The `allow_nan` option is removed. The recommended
+`sanity_check` evaluates raw outputs directly so it still reports NaNs before
+conversion, and a successful sampled check cannot certify the whole domain.
+
+The NaN-policy review compares initialization against `17f5cf3` on CPU with
+JAX 0.11.1, x64 enabled, 10 dimensions, 300 roots, capacity 2048, and 99 phantom
+slots. All 18 state leaves match exactly for the fixed-key finite Gaussian
+model. Lowered StableHLO shrinks from 91,193 to 56,320 bytes and loses the
+NaN-retry loop. Three other loops remain for random number generation.
+Compiler-reported argument and output memory stay at 8 and 1,788,146 bytes.
+Temporary memory changes from 44,160 to 47,168 bytes, so the smaller graph
+does not imply a smaller memory plan. No wall-time speedup is claimed.
+The half-prior NaN regression fails before the change with evidence 0.999025
+instead of 1/2. Coverage includes raw sanity diagnostics, root accounting,
+constrained proposals, checkpoint continuation, and actual worker processes.
 
 Phantom validity is one scalar per completed chain, or shape [N] in storage,
 instead of shape [N, P]. A chain contributes its whole retained prefix or

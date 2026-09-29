@@ -9,7 +9,7 @@ import pytest
 from jax import numpy as jnp
 
 from cicd.tests.core_fixtures import make_state
-from cicd.tests.distributed_support import make_toy_model
+from cicd.tests.distributed_support import half_prior_model, make_toy_model
 from jaxns.algorithm.allocation import AllocationPlan, VolumePath
 from jaxns.algorithm.depth import (
     SEED_SOURCE_REFRESH_WINDOWS,
@@ -36,15 +36,16 @@ from jaxns.distributed_core import (
     _depth_status,
     _planning_state,
 )
+from jaxns.model import Model
 from jaxns.runtime.client import RuntimeUnavailableError
 from jaxns.samples import PhantomSamples, SeedPoint
 from jaxns.sampling.batching import (
+    evaluate_request,
     sample_request,
 )
 from jaxns.sampling.protocol import (
     ConstrainedSampleBatch,
     ConstrainedSampleRequest,
-    LikelihoodEvaluation,
 )
 
 
@@ -198,11 +199,13 @@ def test_distributed_directions_change_only_at_drained_boundaries():
         active.gmm_directions()
 
 
-@pytest.mark.parametrize("first_likelihood", [-jnp.inf, jnp.nan])
-def test_distributed_initialisation_dispatches_every_likelihood(first_likelihood):
+@pytest.mark.parametrize("zero_log_likelihood", [-jnp.inf, jnp.nan])
+def test_distributed_initialisation_dispatches_every_likelihood(zero_log_likelihood):
+    model = Model(half_prior_model)
+    args = (zero_log_likelihood,)
+
     class Client:
         evaluations = 0
-        reject_first = True
 
         def __init__(self):
             self.results = []
@@ -221,14 +224,9 @@ def test_distributed_initialisation_dispatches_every_likelihood(first_likelihood
             del session_id
             for task_id, request in tasks:
                 Client.evaluations += 1
-                if Client.reject_first:
-                    likelihood = jnp.full((1,), first_likelihood)
-                    Client.reject_first = False
-                else:
-                    likelihood = -jnp.square(request.U_samples - 0.25)
                 self.results.append((
                     task_id,
-                    LikelihoodEvaluation(log_likelihoods=likelihood),
+                    evaluate_request(model, request, args=args),
                 ))
 
         def receive_group(self, session_id, timeout_s):
@@ -244,30 +242,38 @@ def test_distributed_initialisation_dispatches_every_likelihood(first_likelihood
             del session_id
 
     runner = DistributedNestedSampler(
-        model=make_toy_model(),
+        model=model,
         coordinator_port=5555,
-        root_allocation_degree=3,
-        initial_capacity=6,
+        root_allocation_degree=16,
+        initial_capacity=32,
     )
 
     checkpoint = runner._initialise_connected(
         Client(),
         "initialisation-test",
         jax.random.PRNGKey(41),
-        config=runner._resolve_config(runner.model, (), None), args=(), params=None,
+        config=runner._resolve_config(model, args, None), args=args, params=None,
     )
 
-    retried = int(np.isnan(first_likelihood))
-    assert Client.evaluations == 3 + retried
-    assert int(checkpoint.state.num_samples) == 3
-    assert checkpoint.next_task_id == 3 + retried
+    assert Client.evaluations == 16
+    assert int(checkpoint.state.num_samples) == 16
+    assert checkpoint.next_task_id == 16
     np.testing.assert_array_equal(
-        np.asarray(checkpoint.state.samples.num_likelihood_evaluations[:3]),
-        np.asarray([1 + retried, 1, 1], dtype=np.int32),
+        checkpoint.state.samples.num_likelihood_evaluations[:16], 1,
     )
-    likelihoods = np.asarray(checkpoint.state.samples.log_likelihoods[:3])
-    assert np.all(np.isfinite(likelihoods[1:]))
-    assert bool(np.isfinite(likelihoods[0])) == bool(retried)
+    likelihoods = np.asarray(checkpoint.state.samples.log_likelihoods[:16])
+    assert np.any(np.isneginf(likelihoods))
+    assert np.any(np.isfinite(likelihoods))
+    # Match the unconditional draws exactly, including NaN-domain coordinates.
+    init_key, _ = jax.random.split(jax.random.PRNGKey(41))
+    expected_u = jax.vmap(lambda key: model.sample_U(key, args=args))(
+        jax.random.split(init_key, 16),
+    )
+    for actual, expected in zip(
+            jax.tree.leaves(checkpoint.state.samples.U_samples),
+            jax.tree.leaves(expected_u),
+    ):
+        np.testing.assert_array_equal(actual[:16], expected)
 
 
 def test_distributed_completion_order_preserves_scientific_state():

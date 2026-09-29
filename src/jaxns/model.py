@@ -120,20 +120,21 @@ class Model(PureDataclassPytree):
         """
         return _transform_to_X(self, U, args=args, params=params)
 
-    def log_likelihood(self, U: UType, args=(), params=None, *, allow_nan: bool = True) -> FloatArray:
+    def log_likelihood(self, U: UType, args=(), params=None) -> FloatArray:
         """
-        Compute the log-likelihood.
+        Compute the log-likelihood, mapping NaN to zero likelihood (-inf).
+
+        Run ``sanity_check`` before sampling to diagnose raw NaN outputs.
 
         Args:
             U: U-space sample
             args: additional arguments for the likelihood function
             params: parameters of the model
-            allow_nan: whether to allow nans in likelihood
 
         Returns:
             log likelihood at the sample
         """
-        return _log_likelihood(self, U, args=args, params=params, allow_nan=allow_nan)
+        return _log_likelihood(self, U, args=args, params=params)
 
     def log_prior(self, U: UType, args=(), params=None) -> FloatArray:
         """
@@ -149,20 +150,19 @@ class Model(PureDataclassPytree):
         """
         return _log_prior(self, U, args=args, params=params)
 
-    def log_joint(self, U: UType, args=(), params=None, *, allow_nan: bool = True) -> FloatArray:
+    def log_joint(self, U: UType, args=(), params=None) -> FloatArray:
         """
-        Computes the log-joint probability of the model.
+        Compute the log joint with NaN likelihoods mapped to zero likelihood.
 
         Args:
             U: The U-space sample
             args: additional arguments for the joint function
             params: parameters of the model
-            allow_nan: whether to allow nans in likelihood
 
         Returns:
             the log joint probability of the model
         """
-        return _log_joint(self, U, args=args, params=params, allow_nan=allow_nan)
+        return _log_joint(self, U, args=args, params=params)
 
     def sanity_check(
             self,
@@ -173,9 +173,10 @@ class Model(PureDataclassPytree):
     ) -> None:
         """Check sampled prior states for invalid model outputs.
 
-        Negative-infinite log likelihood is valid and represents zero
-        likelihood. NaN and positive-infinite likelihoods cannot define a
-        finite nested-sampling target and therefore fail visibly.
+        Recommended before sampling. This checks raw model outputs, before
+        normal likelihood evaluation maps NaN to -inf, and reports NaN and
+        positive infinity as errors. An explicit -inf is valid zero likelihood.
+        A finite set of checked points cannot certify the whole prior domain.
 
         Args:
             key: PRNGKey
@@ -406,6 +407,8 @@ def _sample_sanity_check_outputs(
         # The transformed values and likelihood share one prior-model apply.
         # Keeping that work together avoids tracing and executing the model a
         # second time solely to diagnose the state that produced a bad value.
+        # Read the raw output here: log_likelihood maps NaN to -inf, which
+        # would hide the invalid evaluation this diagnostic must report.
         apply_return = transform(self.prior_model).apply(
             None,
             _make_model_collections(params=params, U=U),
@@ -443,18 +446,17 @@ def _transform_to_X(self: Model, U: UType, args=(), params=None) -> XType:
     return apply_return.collections['X']
 
 
-@partial(jax.jit, inline=True, static_argnames=('allow_nan',))
-def _log_likelihood(self: Model, U: UType, args=(), params=None, *, allow_nan: bool = True) -> FloatArray:
+@partial(jax.jit, inline=True)
+def _log_likelihood(self: Model, U: UType, args=(), params=None) -> FloatArray:
     apply_return = transform(self.prior_model).apply(
         None,
         _make_model_collections(params=params, U=U),
         *args,
     )
     log_likelihood = apply_return.fn_val
-    if allow_nan:
-        return log_likelihood
-    else:
-        return jnp.where(jnp.isnan(log_likelihood), -jnp.inf, log_likelihood)
+    # Own the policy here so every sampling path, including worker evaluations
+    # and later constrained proposals, sees zero likelihood for a NaN output.
+    return jnp.where(jnp.isnan(log_likelihood), -jnp.inf, log_likelihood)
 
 
 @partial(jax.jit, inline=True)
@@ -474,6 +476,6 @@ def _log_prior(self: Model, U: UType, args=(), params=None) -> FloatArray:
         return sum(log_prior[1:], log_prior[0])
 
 
-@partial(jax.jit, inline=True, static_argnames=('allow_nan',))
-def _log_joint(self: Model, U: UType, args=(), params=None, *, allow_nan: bool = True) -> FloatArray:
-    return self.log_prior(U, args, params) + self.log_likelihood(U, args, params, allow_nan=allow_nan)
+@partial(jax.jit, inline=True)
+def _log_joint(self: Model, U: UType, args=(), params=None) -> FloatArray:
+    return self.log_prior(U, args, params) + self.log_likelihood(U, args, params)

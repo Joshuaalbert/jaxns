@@ -40,7 +40,7 @@ def main():
         jax.random.split(reference_key, args.reference_draws)
     )
     reference_log_l = jax.vmap(
-        lambda u: model.log_likelihood(u, allow_nan=False)
+        lambda u: model.log_likelihood(u)
     )(reference_u)
     reference_log_l_np = np.asarray(reference_log_l)
     constraint = float(np.quantile(reference_log_l_np, args.constraint_quantile))

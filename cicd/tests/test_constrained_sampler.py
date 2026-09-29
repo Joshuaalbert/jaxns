@@ -38,10 +38,8 @@ class QuadraticModel(PureDataclassPytree):
             U,
             args=(),
             params=None,
-            *,
-            allow_nan=True,
     ):
-        del args, params, allow_nan
+        del args, params
         return -jnp.sum(jnp.square(U - self.centre))
 
 
@@ -83,10 +81,8 @@ class CircularModel(PureDataclassPytree):
             U,
             args=(),
             params=None,
-            *,
-            allow_nan=True,
     ):
-        del args, params, allow_nan
+        del args, params
         displacement = jnp.mod(U - self.centre + 0.5, 1.0) - 0.5
         return -jnp.sum(jnp.square(displacement))
 
@@ -105,10 +101,8 @@ class CylinderModel(PureDataclassPytree):
             U,
             args=(),
             params=None,
-            *,
-            allow_nan=True,
     ):
-        del args, params, allow_nan
+        del args, params
         circular = jnp.mod(U[0] - self.centre[0] + 0.5, 1.0) - 0.5
         hard = U[1] - self.centre[1]
         displacement = jnp.asarray([circular, hard])

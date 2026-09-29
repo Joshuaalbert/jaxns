@@ -518,7 +518,7 @@ class StandardProblemNode:
             raise ValueError(f"No model-only builder configured for distributed case '{case_name}'.") from e
 
     def evaluate(self, u):
-        return self.model.log_likelihood(u, allow_nan=False)
+        return self.model.log_likelihood(u)
 
 
 def make_standard_problem_node(case_name: str) -> StandardProblemNode:

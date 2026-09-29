@@ -108,8 +108,8 @@ class TwoDimensionalModel(PureDataclassPytree):
         del args, params
         return U
 
-    def log_likelihood(self, U, args=(), params=None, *, allow_nan=True):
-        del args, params, allow_nan
+    def log_likelihood(self, U, args=(), params=None):
+        del args, params
         return -jnp.sum(jnp.square(U - jnp.asarray([0.3, 0.7])))
 
     def log_prior(self, U, args=(), params=None):
@@ -140,8 +140,8 @@ class NarrowTwoDimensionalModel(PureDataclassPytree):
         del args, params
         return U
 
-    def log_likelihood(self, U, args=(), params=None, *, allow_nan=True):
-        del args, params, allow_nan
+    def log_likelihood(self, U, args=(), params=None):
+        del args, params
         return -25.0 * jnp.sum(
             jnp.square(U - jnp.asarray([0.3, 0.7]))
         )
@@ -158,8 +158,8 @@ class FitOnlyModel(PureDataclassPytree):
         del args, params
         return False, False
 
-    def log_likelihood(self, U, args=(), params=None, *, allow_nan=True):
-        del U, args, params, allow_nan
+    def log_likelihood(self, U, args=(), params=None):
+        del U, args, params
         raise AssertionError("fit_gmm_directions evaluated the user likelihood")
 
 

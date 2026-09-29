@@ -78,7 +78,8 @@ from jaxns.state import State
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
-def test_zero_plateau_evidence_in_real_worker_processes(tmp_path):
+@pytest.mark.parametrize("zero_log_likelihood", [-jnp.inf, jnp.nan])
+def test_zero_plateau_evidence_in_real_worker_processes(tmp_path, zero_log_likelihood):
     config_path = tmp_path / "zero-plateau.toml"
     _write_batch_config(config_path)
     _cli(config_path, "up")
@@ -100,6 +101,7 @@ def test_zero_plateau_evidence_in_real_worker_processes(tmp_path):
         finished = runner.run_until_goal(
             lambda state: int(state.root_out_degree) >= 128,
             key=jax.random.PRNGKey(42),
+            args=(zero_log_likelihood,),
         )
         state = finished.to_state()
         state.ensure_consistency()

@@ -316,7 +316,6 @@ def _continue_slice_chains(
             u_sample,
             args=args,
             params=params,
-            allow_nan=False,
         ).astype(request.log_L_constraints.dtype)
 
     def prepare_transition(

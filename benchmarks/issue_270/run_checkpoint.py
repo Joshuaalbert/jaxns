@@ -54,8 +54,8 @@ class BenchmarkModel(PureDataclassPytree):
         del args, params
         return U
 
-    def log_likelihood(self, U, args=(), params=None, *, allow_nan=True):
-        del args, params, allow_nan
+    def log_likelihood(self, U, args=(), params=None):
+        del args, params
         return -jnp.sum(jnp.square(U - 0.5))
 
     def log_prior(self, U, args=(), params=None):

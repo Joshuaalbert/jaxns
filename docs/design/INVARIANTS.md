@@ -24,8 +24,10 @@ The exact text following each `- Invariant:` prefix is the stable key used by
 - Invariant: A declared continuous periodic coordinate identifies its two unit-hypercube
   endpoints while preserving the normalized prior measure and canonical storage in the
   half-open unit interval.
-- Invariant: Invalid model outputs fail visibly rather than entering nested-sampling state as
-  apparently valid scientific samples.
+- Invariant: Model sanity checks report invalid raw outputs before likelihood conversion,
+  while accepting explicit zero likelihoods.
+- Invariant: Normal model evaluation maps NaN log-likelihoods to zero likelihood throughout
+  sampling, retaining the prior mass of those regions.
 
 ## Strict Constrained-Prior Sampling
 

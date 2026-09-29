@@ -14,10 +14,10 @@ from jaxns.pytree import PureDataclassPytree
 tfpd = tfp.distributions
 
 
-def half_prior_model():
+def half_prior_model(zero_log_likelihood=-jnp.inf):
     """Indicator likelihood with a zero plateau of prior mass one half."""
     x = Prior(tfpd.Uniform(0.0, 1.0), name="x").realise()
-    return jnp.where(x < 0.5, -jnp.inf, 0.0)
+    return jnp.where(x < 0.5, zero_log_likelihood, 0.0)
 
 
 class OffsetNode:
@@ -90,10 +90,8 @@ class ToyModel(PureDataclassPytree):
             U,
             args=(),
             params=None,
-            *,
-            allow_nan: bool = True,
     ):
-        del args, params, allow_nan
+        del args, params
         return quadratic_log_likelihood(U, centre=self.centre)
 
     def log_prior(self, U, args=(), params=None):
@@ -101,13 +99,12 @@ class ToyModel(PureDataclassPytree):
         inside = jnp.logical_and(U >= 0.0, U <= 1.0)
         return jnp.where(inside, 0.0, -jnp.inf)
 
-    def log_joint(self, U, args=(), params=None, *, allow_nan: bool = True):
+    def log_joint(self, U, args=(), params=None):
         log_prior = self.log_prior(U, args=args, params=params)
         return log_prior + self.log_likelihood(
             U,
             args=args,
             params=params,
-            allow_nan=allow_nan,
         )
 
 
