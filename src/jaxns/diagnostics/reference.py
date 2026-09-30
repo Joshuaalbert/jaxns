@@ -64,7 +64,6 @@ def bruteforce_posterior_samples(
             unravel_fn(u),
             args=args,
             params=params,
-            allow_nan=False,
         )
         return x, log_L
     if batch_size is None:
@@ -133,7 +132,6 @@ def bruteforce_evidence(
             unravel_fn(u),
             args=args,
             params=params,
-            allow_nan=False,
         )
     if batch_size is None:
         # Independent grid cells should occupy vector lanes by default. A

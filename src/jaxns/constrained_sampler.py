@@ -453,7 +453,6 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
                 U,
                 args=args,
                 params=params,
-                allow_nan=False,
             )
 
         class Carry(NamedTuple):

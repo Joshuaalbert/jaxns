@@ -123,7 +123,6 @@ def test_distributed_worker_replays_the_configured_periodic_sampler():
             value,
             args=restored.args,
             params=restored.params,
-            allow_nan=False,
         )
     )(seeds)
     request = ConstrainedSampleRequest(

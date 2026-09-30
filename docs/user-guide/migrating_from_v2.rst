@@ -58,6 +58,25 @@ Give each realised prior a stable name, unique within its model scope. Add
 without TFP quantiles still use the specialised JAXCTX classes, as illustrated
 by the logic and polynomial-order notebooks.
 
+NaN and zero likelihoods
+------------------------
+
+V2 allowed its default NaN-to-``-inf`` conversion to be bypassed with
+``allow_nan``. V3 removes that option: ``model.log_likelihood`` always maps NaN
+to ``-inf`` (zero likelihood), and ``model.log_joint`` uses that same likelihood.
+The policy applies to every local and worker evaluation throughout a run.
+
+We recommend ``model.sanity_check(...)`` before sampling. It reads raw outputs
+and reports NaNs before conversion, as well as non-finite prior values,
+positive-infinite log-likelihoods, and non-scalar likelihoods. It accepts an
+explicit ``-inf``. Passing this sampled check cannot guarantee that an
+unvisited part of the prior has no model errors.
+
+Root samples in v3 are unconditional prior draws, with one likelihood
+evaluation each. Both explicit zero likelihoods and mapped NaNs retain their
+prior mass without redrawing. For a uniform prior on [0, 1], a likelihood that
+is zero below 1/2 and one above it therefore has evidence 1/2.
+
 A helper for the common model pattern
 -------------------------------------
 

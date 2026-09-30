@@ -19,14 +19,17 @@ from jaxns.shrinkage import reference as ref_phantom
 from jaxns.state import State
 
 
-def test_zero_likelihood_prior_mass_is_retained_in_evidence():
+@pytest.mark.parametrize("zero_log_likelihood", [-jnp.inf, jnp.nan])
+def test_zero_likelihood_prior_mass_is_retained_in_evidence(zero_log_likelihood):
     runner = NestedSampler(
         model=Model(half_prior_model),
         root_allocation_degree=1024,
         replacement_width=8,
         max_samples=2048,
     )
-    state = runner.initialise(jax.random.PRNGKey(42))
+    state = runner.initialise(
+        jax.random.PRNGKey(42), args=(zero_log_likelihood,),
+    )
     evidence = float(jnp.exp(state.expected_log_Z_mean))
     # Dropping zero-likelihood prior draws instead estimates E[L | L > 0] = 1.
     # The fixed-seed tolerance allows finite root-population error around 1/2.
@@ -43,7 +46,10 @@ def test_zero_likelihood_prior_mass_is_retained_in_evidence():
 
 
 @pytest.mark.parametrize("num_slices", [4, 32])
-def test_root_draws_and_zero_contour_chains_have_different_support(num_slices):
+@pytest.mark.parametrize("zero_log_likelihood", [-jnp.inf, jnp.nan])
+def test_root_draws_and_zero_contour_chains_have_different_support(
+        num_slices, zero_log_likelihood,
+):
     model = Model(half_prior_model)
     width = 32
     sampler = UniDimSliceSampler(
@@ -68,7 +74,9 @@ def test_root_draws_and_zero_contour_chains_have_different_support(num_slices):
         sampler_data=None,
         from_root=jnp.arange(width) < width // 2,
     )
-    execute = jax.jit(lambda r: sample_request(sampler, r, model=model))
+    execute = jax.jit(lambda r: sample_request(
+        sampler, r, model=model, args=(zero_log_likelihood,),
+    ))
     result = execute(request)
     roots = slice(0, width // 2)
     chains = slice(width // 2, width)
@@ -96,7 +104,10 @@ def test_root_draws_and_zero_contour_chains_have_different_support(num_slices):
     np.testing.assert_array_equal(all_roots.phantom_samples.valid_mask, False)
 
 
-def test_zero_plateau_survives_allocation_and_checkpoint_round_trip(tmp_path):
+@pytest.mark.parametrize("zero_log_likelihood", [-jnp.inf, jnp.nan])
+def test_zero_plateau_survives_allocation_and_checkpoint_round_trip(
+        tmp_path, zero_log_likelihood,
+):
     runner = NestedSampler(
         model=Model(half_prior_model),
         root_allocation_degree=128,
@@ -112,6 +123,7 @@ def test_zero_plateau_survives_allocation_and_checkpoint_round_trip(tmp_path):
     state = runner.run_until_goal(
         lambda s: int(s.root_out_degree) >= 256,
         key=jax.random.PRNGKey(42),
+        args=(zero_log_likelihood,),
     )
     state.ensure_consistency()
     n = int(state.num_samples)

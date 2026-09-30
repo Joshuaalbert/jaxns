@@ -42,6 +42,14 @@ integrates with respect to that prior.
    results = state.to_result().trim()
    results.summary()
 
+Run ``model.sanity_check(...)`` before sampling. It examines raw model outputs
+and reports NaNs, positive-infinite log-likelihoods, non-finite prior values,
+and non-scalar likelihoods. Normal likelihood evaluation always maps NaN to
+``-inf`` (zero likelihood), including at points first visited later in the run.
+The sanity check bypasses this conversion so model errors remain visible.
+An explicit ``-inf`` log-likelihood is valid. A finite set of checked points
+cannot certify the whole prior domain.
+
 ``Prior(...)`` describes a distribution. ``realise()`` gives the value to use
 in this evaluation of the model, registering its name and the transformation
 from a unit-hypercube coordinate to the physical variable. The sampler controls

@@ -105,6 +105,19 @@ The model exposes the same explicit `args` and `params` on its lower-level
 operations, including `sample_U`, `transform_to_X`, `log_likelihood`,
 `log_prior`, and `log_joint`.
 
+We recommend running `model.sanity_check(...)` before sampling. Every normal
+likelihood evaluation maps NaN log-likelihoods to `-inf` (zero likelihood),
+including NaNs encountered later in local or distributed runs. The sanity
+check reads raw model outputs and reports NaNs before this conversion. It also
+checks for non-finite prior values, positive-infinite log-likelihoods, and
+non-scalar outputs. A sampled check cannot validate every point in the prior.
+
+**Change from v2:** v2 allowed NaN conversion to be bypassed with `allow_nan`.
+In v3 the conversion is unconditional and that option is removed. Initial
+and subsequently allocated root samples are unconditional prior draws, with
+one likelihood evaluation each. Zero likelihoods, including mapped NaNs, are
+retained without redrawing so their prior mass remains in the evidence.
+
 ## Declare continuous periodic parameters
 
 Use `realise(periodic=True)` when the two endpoints of a continuous prior's

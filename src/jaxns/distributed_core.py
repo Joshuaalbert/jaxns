@@ -853,44 +853,8 @@ class DistributedNestedSampler:
             U_samples,
             next_task_id,
         )
-        invalid = np.flatnonzero(np.asarray(
-            jax.device_get(jnp.isnan(log_likelihoods))
-        ))
-        while invalid.size:
-            # Preserve one independent retry stream per root. Only roots
-            # with invalid model evaluations consume another key and
-            # likelihood call. A true zero is retained as a prior observation.
-            key_pairs = jax.vmap(
-                lambda value: jax.random.split(value, 2)
-            )(root_keys[invalid])
-            root_keys = root_keys.at[invalid].set(key_pairs[:, 0])
-            proposals = _sample_prior_points(
-                key_pairs[:, 1],
-                self.model,
-                args,
-                params,
-            )
-            U_samples = jax.tree.map(
-                lambda current, proposal, slots=invalid: current.at[
-                    slots
-                ].set(proposal),
-                U_samples,
-                proposals,
-            )
-            replacements, next_task_id = self._evaluate_likelihoods(
-                client,
-                session_id,
-                proposals,
-                next_task_id,
-            )
-            log_likelihoods = log_likelihoods.at[invalid].set(
-                replacements
-            )
-            num_evals = num_evals.at[invalid].add(1)
-            invalid = np.flatnonzero(np.asarray(
-                jax.device_get(jnp.isnan(log_likelihoods))
-            ))
-
+        # Workers apply Model's NaN-to-zero policy. Keep every prior draw,
+        # including zeros, so initialization retains the full prior measure.
         state = _build_init_state(
             self.model,
             args,

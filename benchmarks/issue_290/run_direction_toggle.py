@@ -44,10 +44,8 @@ class QuadraticModel(PureDataclassPytree):
             U,
             args=(),
             params=None,
-            *,
-            allow_nan=True,
     ):
-        del args, params, allow_nan
+        del args, params
         return -jnp.sum(jnp.square(U - self.centre))
 
 

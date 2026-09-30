@@ -1,4 +1,5 @@
 import jax
+import numpy as np
 import pytest
 from jax import numpy as jnp
 from jaxctx import scope
@@ -8,6 +9,27 @@ from jaxns.model import Model
 from jaxns.priors import Prior
 
 tfpd = tfp.distributions
+
+
+def test_nan_likelihood_is_zero_but_sanity_check_reports_raw_output() -> None:
+    def prior_model(log_likelihood):
+        Prior(tfpd.Uniform(0.0, 1.0), name="value").realise()
+        return jnp.asarray(log_likelihood)
+
+    model = Model(prior_model)
+    sample = model.sample_U(jax.random.PRNGKey(0), args=(0.0,))
+    # Even after a successful check, every later evaluation must apply the
+    # policy. The diagnostic must still see NaNs before that conversion.
+    model.sanity_check(jax.random.PRNGKey(1), args=(0.0,), num_samples=4)
+    values = jnp.asarray([jnp.nan, -jnp.inf, -2.0, 0.0, jnp.inf])
+    expected = jnp.asarray([-jnp.inf, -jnp.inf, -2.0, 0.0, jnp.inf])
+    for evaluate in (model.log_likelihood, model.log_joint):
+        actual = jax.jit(jax.vmap(
+            lambda value, evaluate=evaluate: evaluate(sample, args=(value,)),
+        ))(values)
+        np.testing.assert_array_equal(actual, expected)
+    with pytest.raises(ValueError, match="log_likelihood: nan"):
+        model.sanity_check(jax.random.PRNGKey(1), args=(jnp.nan,), num_samples=4)
 
 
 def test_sanity_check_rejects_invalid_model_outputs() -> None:

@@ -37,7 +37,6 @@ def evaluate_request(
             U,
             args=args,
             params=params,
-            allow_nan=True,
         ).astype(mp_policy.measure_dtype)
 
     batch_size = jax.tree.leaves(request.U_samples)[0].shape[0]
