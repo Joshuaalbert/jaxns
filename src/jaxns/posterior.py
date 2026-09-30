@@ -90,6 +90,10 @@ def _integrate_posterior(
         values = fn(X)
 
         def increment(value):
+            # A function may be undefined outside posterior support (including
+            # zero-filled storage). Such rows contribute exactly zero, even if
+            # evaluating the function there produced NaN or infinity.
+            value = jnp.where(jnp.isneginf(weight.log_abs_val), 0, value)
             if semi_positive:
                 # The function returns ordinary values, not their logarithms.
                 f = LogSpace(jnp.log(value))

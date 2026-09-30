@@ -157,7 +157,6 @@ from jaxns.core import NestedSampler
 sampler = NestedSampler(
     model=model,
     collect_phantom_samples=True,
-    max_phantom_samples=2,
 )
 state = sampler.run(key=jax.random.PRNGKey(6), args=args)
 results = state.to_result().trim()
@@ -190,9 +189,9 @@ mean_slope = posterior.integrate_fn_over_posterior(lambda x: x["slope"])
 ```
 
 Phantom collection and evidence conditioning are separate choices. The
-sampler retains the first `max_phantom_samples` eligible transitions from each
-chain and always reserves the final transition for the classic replacement.
-Omitting the bound keeps one model dimension of phantom states by default.
+runner retains every intermediate state from each chain when collection is
+enabled: `num_slices - 1` phantoms, with the final transition reserved for the
+classic replacement. This policy also applies to explicitly supplied samplers.
 At evidence time, `num_phantoms=None` uses every retained state; an explicit
 value uses that many states from the same start prefix without rerunning nested
 sampling. Retaining more states increases result/checkpoint memory, while a

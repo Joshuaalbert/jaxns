@@ -51,9 +51,10 @@ distributed allocation increments and initial capacities keep their existing
 defaults. Shared resolution must not make the distributed defaults depend on
 worker topology or execute a likelihood in the scientific process.
 
-`UniDimSliceSampler(num_slices, collect_phantom_samples=False,
-max_phantom_samples=None)` retains the direct phantom-prefix capacity and
-collection switch. The deprecated inverse `phantom_burn_in` spelling and the
+`UniDimSliceSampler(num_slices, num_phantom_samples=0)` accepts a validated
+count for direct calls. Runners own `collect_phantom_samples` and configure
+all `num_slices - 1` intermediates or zero. The old `max_phantom_samples`
+runner option and sampler collection switch are removed. The deprecated inverse `phantom_burn_in` spelling and the
 unsupported step-out switch are removed. Perfect unit-cube bracketing is the
 implemented transition. The existing random split schedule is preserved.
 
@@ -227,3 +228,22 @@ unfinished local depth and reproduces every uninterrupted state leaf exactly,
 including the goal-call sequence. Real-process tests cover distributed SIGINT
 with and without checkpoints, zero-worker registration, replay of pending work,
 and preservation of another registered session. No wall-time speedup is claimed.
+
+## Develop audit follow-up (#307)
+
+State merging is a static host operation. It compares model inputs with NumPy
+before concatenating valid prefixes and preserves the compiled merge arithmetic.
+The diagnostic parent graph matches stored contours and out-degrees without
+persisting parent identities. Its indices refer to append-order storage.
+Posterior integration masks zero-mass rows before weighted arithmetic, and
+posterior resampling permits replacement only.
+
+JSON serialization stores base64 NumPy array records and a pickled PyTreeDef
+for registered structure and static metadata. Loading a trusted record restores
+host array leaves; callers choose subsequent device placement. Failed pickle
+serialization always propagates before checkpoint publication.
+
+Single-depth and goal-driven local execution share checkpoint precedence,
+continuation, schedule growth, and interruption handling. A single-depth call
+still returns at sample-capacity boundaries and does not increment the goal
+counter. Shared transient schedule growth belongs to algorithm/schedule_storage.py.

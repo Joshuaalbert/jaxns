@@ -72,7 +72,7 @@ def test_runner_reuse_resolves_dimensions_from_each_runs_inputs():
         # JAXCTX also retains the base coordinate for the scale parameter.
         model_dimension = dimension + 1
         assert int(state.num_samples) == 30 * model_dimension
-        assert state.samples.phantom_samples.log_L.shape[1] == model_dimension
+        assert state.samples.phantom_samples.log_L.shape[1] == 5 * model_dimension - 1
         _assert_state_inputs(state, args, params)
         # Reusing or serialising the runner must not freeze the last run's
         # dimension-dependent defaults or retain that run's data.

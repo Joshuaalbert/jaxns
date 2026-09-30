@@ -145,20 +145,20 @@ class AbstractSampler(ABC):
             )
         return self
 
-    def _with_phantom_capacity(
-            self,
-            max_phantom_samples: int | None,
-            dimension: int,
-    ) -> AbstractSampler:
-        """Apply a high-level retained capacity through an explicit API."""
-        del dimension
-        if (
-            max_phantom_samples is not None
-            and max_phantom_samples != self.num_phantom()
-        ):
+    def max_num_phantom(self) -> int:
+        """Return the number of available intermediate states per chain.
+
+        Fixed-capacity custom samplers may use their existing retained count.
+        Configurable samplers override this independently of current retention.
+        """
+        return self.num_phantom()
+
+    def _with_phantom_count(self, num_phantom_samples: int) -> AbstractSampler:
+        """Configure exactly the count requested by the owning runner."""
+        if num_phantom_samples != self.num_phantom():
             raise ValueError(
-                "max_phantom_samples must match the fixed capacity of a "
-                "custom sampler."
+                "The requested phantom count differs from this custom sampler's "
+                "fixed count. Implement _with_phantom_count to configure it."
             )
         return self
 
@@ -178,15 +178,13 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
 
     Args:
         num_slices: Number of transitions per classic replacement.
-        collect_phantom_samples: Whether to retain intermediate chain states.
-        max_phantom_samples: Retained start-prefix capacity. ``None`` retains
-            every intermediate transition when used directly. Runners resolve
-            it to at most one model dimension. The final classic is excluded.
+        num_phantom_samples: Number of intermediate states retained by direct
+            sampler calls, between zero and num_slices - 1. A runner owns its
+            collection policy and sets this to all intermediates or zero.
     """
 
     num_slices: int
-    collect_phantom_samples: bool = False
-    max_phantom_samples: int | None = None
+    num_phantom_samples: int = 0
     # Internal scalar topology derived from JAXCTX metadata by NestedSampler.
     # Keeping this private avoids a second user-supplied flat-index API.
     _periodic: tuple[bool, ...] = ()
@@ -195,8 +193,7 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
     def flatten(cls, this) -> tuple[list[Any], tuple[Any, ...]]:
         return cls.build_flatten(this, [
             'num_slices',
-            'collect_phantom_samples',
-            'max_phantom_samples',
+            'num_phantom_samples',
             '_periodic',
         ])
 
@@ -209,42 +206,19 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
             raise TypeError("num_slices must be a Python integer.")
         if num_slices < 1:
             raise ValueError(f"num_slices should be >= 1, got {self.num_slices}.")
-        if (
-            not self.collect_phantom_samples
-            and self.max_phantom_samples is not None
-        ):
-            raise ValueError(
-                "A phantom capacity requires collect_phantom_samples=True."
-            )
-        if self.max_phantom_samples is not None:
-            try:
-                max_phantom_samples = operator.index(
-                    self.max_phantom_samples
-                )
-            except TypeError as error:
-                raise TypeError(
-                    "max_phantom_samples must be a Python integer or None."
-                ) from error
-            if max_phantom_samples is not self.max_phantom_samples:
-                raise TypeError(
-                    "max_phantom_samples must be a Python integer or None."
-                )
-            if max_phantom_samples < 1:
-                raise ValueError("max_phantom_samples must be positive.")
-            if max_phantom_samples > self.num_slices - 1:
-                raise ValueError(
-                    "max_phantom_samples cannot exceed num_slices - 1: "
-                    f"got {max_phantom_samples} for "
-                    f"num_slices={self.num_slices}."
-                )
+        try:
+            num_phantom = operator.index(self.num_phantom_samples)
+        except TypeError as error:
+            raise TypeError("num_phantom_samples must be a Python integer.") from error
+        if num_phantom is not self.num_phantom_samples:
+            raise TypeError("num_phantom_samples must be a Python integer.")
+        if not 0 <= num_phantom <= self.num_slices - 1:
+            raise ValueError("num_phantom_samples must be in [0, num_slices - 1].")
 
     def num_phantom(self) -> int:
-        if not self.collect_phantom_samples:
-            return 0
-        if self.max_phantom_samples is not None:
-            return operator.index(self.max_phantom_samples)
-        # A low-level sampler with no explicit memory bound retains the whole
-        # eligible prefix. NestedSampler supplies its dimension-sized default.
+        return self.num_phantom_samples
+
+    def max_num_phantom(self) -> int:
         return self.num_slices - 1
 
     def _with_periodic(
@@ -254,41 +228,9 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
         """Install the model-derived static topology on this sampler."""
         return dataclasses.replace(self, _periodic=periodic)
 
-    def _with_phantom_capacity(
-            self,
-            max_phantom_samples: int | None,
-            dimension: int,
-    ) -> UniDimSliceSampler:
-        """Resolve NestedSampler's default or explicit retained capacity."""
-        if not self.collect_phantom_samples:
-            if max_phantom_samples is not None:
-                raise ValueError(
-                    "max_phantom_samples requires "
-                    "collect_phantom_samples=True."
-                )
-            return self
-        if max_phantom_samples is None:
-            if self.max_phantom_samples is not None:
-                # A capacity set directly on the low-level sampler is already
-                # explicit and takes precedence over the high-level default.
-                return self
-            max_phantom_samples = min(dimension, self.num_slices - 1)
-        elif (
-            self.max_phantom_samples is not None
-            and max_phantom_samples != self.max_phantom_samples
-        ):
-            raise ValueError(
-                "max_phantom_samples disagrees with the capacity configured "
-                "on the custom slice sampler."
-            )
-        if max_phantom_samples == 0:
-            return self
-        if max_phantom_samples == self.num_phantom():
-            return self
-        return dataclasses.replace(
-            self,
-            max_phantom_samples=max_phantom_samples,
-        )
+    def _with_phantom_count(self, num_phantom_samples: int) -> UniDimSliceSampler:
+        """Validate the runner's retention request without changing transitions."""
+        return dataclasses.replace(self, num_phantom_samples=num_phantom_samples)
 
     def validate_core(self, dimension: int) -> None:
         if self._periodic and len(self._periodic) != dimension:

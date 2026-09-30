@@ -149,7 +149,7 @@ def main() -> int:
     args = parser.parse_args()
 
     dimension = 8
-    retained_phantoms = dimension
+    retained_phantoms = 5 * dimension - 1
     model = _make_model(dimension)
     sampler = NestedSampler(
         model=model,
@@ -158,7 +158,6 @@ def main() -> int:
         max_samples=args.max_samples,
         initial_capacity=args.max_samples,
         collect_phantom_samples=True,
-        max_phantom_samples=retained_phantoms,
         depth_condition=DepthCondition(),
     )
     run_started = time.perf_counter()

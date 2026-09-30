@@ -362,14 +362,10 @@ def main() -> None:
     root_degree = 30 * dimension
     replacement_width = 10 * dimension
     num_slices = SLICE_TRANSITIONS_PER_DIMENSION * dimension
-    retained_phantoms = MAX_PHANTOM_MULTIPLIER * dimension
+    retained_phantoms = num_slices - 1
     sampler = UniDimSliceSampler(
         num_slices=num_slices,
-        collect_phantom_samples=True,
-        # Retain the maximal 9D prefix once. Each evidence calculation below
-        # masks this to kD states, so all k share the same classic race tree.
-        # The sampler always excludes the final classic replacement.
-        max_phantom_samples=retained_phantoms,
+        num_phantom_samples=retained_phantoms,
     )
     nested_sampler = NestedSampler(
         model=model,
@@ -619,7 +615,7 @@ def main() -> None:
                 "The paper prefix sweep supports only continuous problems."
             )
         if results.log_L_phantom.shape[1] != retained_phantoms:
-            raise RuntimeError("The sampler did not retain the full 9D prefix.")
+            raise RuntimeError("The sampler did not retain every intermediate state.")
 
         # All ten columns share classic race gammas and cluster weights. This
         # changes only their Monte Carlo coupling, while making every phantom

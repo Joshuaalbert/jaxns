@@ -30,8 +30,9 @@ properties that must hold independently of implementation live in
 - Requirement: User-facing state and result objects carry thin methods for operations naturally
   applied to their data, so scientific users can work object-orientedly without moving core
   orchestration into those containers.
-- Requirement: The default nested sampler exposes a direct maximum retained-phantom capacity;
-  its automatic capacity is the smaller of one model dimension and `num_slices - 1`.
+- Requirement: The runner owns phantom collection and retains all `num_slices - 1`
+  intermediate states when enabled, including with an explicit sampler. The sampler validates
+  the requested count through its explicit configuration interface.
 - Requirement: Evidence-time phantom prefix selection is independent of retained storage;
   `None` uses all saved states and an explicit positive count physically slices the start-prefix
   before the compiled Monte Carlo kernel so an unused suffix adds no device work or memory.

@@ -1,3 +1,4 @@
+import base64
 import dataclasses
 import pickle
 import warnings
@@ -51,7 +52,7 @@ class Pytree(ABC):
                         f"Failed to pickle {self.__class__.__name__}. "
                         f"It's possibly locally defined. Make sure it is globally defined."
                     )
-                    raise
+                raise
 
     @staticmethod
     def load(filename: str):
@@ -139,47 +140,76 @@ class Pytree(ABC):
         ...
 
     def to_json(self) -> dict:
-        """
-        Convert the Pytree to a JSON-serializable dictionary.
+        """Encode a trusted pytree as JSON with NumPy array leaves.
+
+        Array bytes are base64 encoded without losing dtype or precision.
+        The tree definition is pickled metadata so registered custom nodes,
+        tuples, and static model associations survive a round trip. Like
+        ``save``, this format must only be loaded from trusted sources in a
+        compatible Python environment.
 
         Returns:
             A dictionary representation of the Pytree.
         """
-        children, aux_data = self.flatten(self)
-        json_dict = {}
-
-        # two keys: 'children' and 'aux_data'
-        # First transform children (a list of arrays) to array structures {shape: ..., dtype: ..., data: [...]}
-        # data is flat list of bytes
-        def _array_to_dict(arr):
-            arr_np = np.asarray(arr)
-            return {
-                'shape': np.shape(arr_np),
-                'dtype': str(np.result_type(arr_np)),
-                'data': arr_np.tobytes().decode('latin1')  # use latin1 to preserve byte values
-            }
-
-        json_dict['children'] = jax.tree.map(_array_to_dict, children)
-        # Now aux_data (a tuple of auxiliary data)
-        json_dict['aux_data'] = aux_data  # assuming aux_data is JSON-serial
-        return json_dict
+        leaves, structure = jax.tree.flatten(self)
+        arrays = []
+        for leaf in leaves:
+            array = np.asarray(leaf)
+            if array.dtype.hasobject or array.dtype.fields is not None:
+                raise TypeError("JSON pytree leaves must have non-object scalar dtypes.")
+            arrays.append({
+                "type": "numpy.ndarray",
+                "dtype": array.dtype.name if array.dtype.kind == "V" else array.dtype.str,
+                "shape": list(array.shape),
+                "bytes": base64.b64encode(array.tobytes()).decode("ascii"),
+            })
+        return {
+            "version": 1,
+            "treedef": base64.b64encode(pickle.dumps(structure)).decode("ascii"),
+            "leaves": arrays,
+        }
 
     @classmethod
     def from_json(cls, json_dict: dict):
-        """
-        Load the Pytree from a JSON-serializable dictionary.
+        """Restore a trusted JSON pytree with arrays on the host.
+
+        No JAX device placement is performed. Call ``jax.device_put`` on the
+        returned object when ready to select a device. Tree metadata uses
+        pickle and must not come from an untrusted source.
 
         Args:
             json_dict: A dictionary representation of the Pytree.
         """
 
-        # inverse of to_json
-        def _dict_to_array(d):
-            return np.frombuffer(d['data'].encode('latin1'), dtype=d['dtype']).reshape(d['shape'])
-
-        children = jax.tree.map(_dict_to_array, json_dict['children'])
-        aux_data = json_dict['aux_data']
-        return cls.unflatten(aux_data, children)
+        if type(json_dict) is not dict or set(json_dict) != {"version", "treedef", "leaves"}:
+            raise ValueError("Invalid JSON pytree schema.")
+        if type(json_dict["version"]) is not int or json_dict["version"] != 1:
+            raise ValueError("Unsupported JSON pytree version.")
+        if type(json_dict["treedef"]) is not str or type(json_dict["leaves"]) is not list:
+            raise ValueError("Invalid JSON pytree metadata or leaves.")
+        arrays = []
+        for encoded in json_dict["leaves"]:
+            if type(encoded) is not dict or set(encoded) != {"type", "dtype", "shape", "bytes"}:
+                raise ValueError("Invalid JSON array schema.")
+            if (encoded["type"] != "numpy.ndarray"
+                    or type(encoded["dtype"]) is not str
+                    or type(encoded["bytes"]) is not str
+                    or type(encoded["shape"]) is not list
+                    or any(type(size) is not int or size < 0 for size in encoded["shape"])):
+                raise ValueError("Invalid JSON array type, dtype, shape, or bytes.")
+            dtype = np.dtype(encoded["dtype"])
+            if dtype.hasobject or dtype.fields is not None:
+                raise ValueError("JSON arrays cannot contain objects or structured dtypes.")
+            raw = base64.b64decode(encoded["bytes"], validate=True)
+            # A copy gives the restored host array ordinary writable ownership.
+            arrays.append(np.frombuffer(raw, dtype=dtype).reshape(encoded["shape"]).copy())
+        structure = pickle.loads(base64.b64decode(json_dict["treedef"], validate=True))
+        if type(structure) is not jax.tree_util.PyTreeDef:
+            raise ValueError("JSON tree metadata is not a PyTreeDef.")
+        restored = jax.tree.unflatten(structure, arrays)
+        if type(restored) is not cls:
+            raise ValueError(f"JSON tree does not contain {cls.__name__}.")
+        return restored
 
 
 class PureDataclassPytree(Pytree):

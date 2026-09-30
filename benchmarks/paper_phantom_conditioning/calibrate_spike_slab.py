@@ -30,7 +30,7 @@ DIMENSION = 8
 ROOT_DEGREE = 30 * DIMENSION
 REPLACEMENT_WIDTH = 10 * DIMENSION
 NUM_SLICES = 10 * DIMENSION
-RETAINED_PHANTOMS = 9 * DIMENSION
+RETAINED_PHANTOMS = NUM_SLICES - 1
 DEPTH_DLOG_Z = 1e-3
 
 
@@ -284,8 +284,7 @@ def main() -> None:
     model, truth = cases.build_ss8()
     sampler = UniDimSliceSampler(
         num_slices=NUM_SLICES,
-        collect_phantom_samples=True,
-        max_phantom_samples=RETAINED_PHANTOMS,
+        num_phantom_samples=RETAINED_PHANTOMS,
     )
     nested_sampler = NestedSampler(
         model=model,

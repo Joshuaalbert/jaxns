@@ -173,7 +173,8 @@
   "Resuming a state with its stored random-stream position is scientifically equivalent to uninterrupted continuation under the same conditions.": [
     "test_resume_uses_stored_key_and_matches_uninterrupted_run",
     "test_unlimited_growth_matches_preallocated_scientific_continuation",
-    "test_local_automatic_resume_matches_uninterrupted_random_stream"
+    "test_local_automatic_resume_matches_uninterrupted_random_stream",
+    "test_single_iteration_sigint_saves_and_resumes_exact_depth"
   ],
   "Automatic checkpoint resume restores exactly the last committed full run state, including its random stream and any retry-stable distributed work.": [
     "test_checkpoint_round_trip_publishes_manifest_after_complete_state",
@@ -292,5 +293,8 @@
   "A classic child associated with a parent contour has the constrained-prior marginal distribution above that parent contour.": [
     "test_root_draws_and_zero_contour_chains_have_different_support",
     "test_sentinel_threads_do_not_select_or_reserve_stationary_seeds"
+  ],
+  "Integrating a function over the posterior uses the result's normalized posterior measure and preserves the function's pytree structure.": [
+    "test_posterior_integration_ignores_undefined_zero_mass_rows"
   ]
 }

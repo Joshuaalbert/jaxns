@@ -22,7 +22,7 @@
       "reason": "result_schema_regression"
     },
     "test_nested_sampler_resolves_and_preserves_phantom_capacity": {
-      "note": "Checks the public retained-capacity configuration, resolved dimension-sized default, and current pytree/checkpoint representation.",
+      "note": "Checks runner-owned all-or-zero retention regardless of explicit sampler settings, including checkpoint round trips.",
       "path": "cicd/tests/test_core.py",
       "reason": "configuration_contract"
     },
@@ -960,6 +960,91 @@
       "note": "Ensures the source-conversion helper rejects generator patterns whose scientific calling convention cannot safely be inferred.",
       "path": "cicd/tests/test_model_migration.py",
       "reason": "configuration_contract"
+    },
+    "test_merge_compacts_valid_rows_and_preserves_results": {
+      "path": "cicd/tests/test_audit_regressions.py",
+      "reason": "regression_contract",
+      "note": "Merging padded populations must compact valid rows and match the evidence of compact inputs."
+    },
+    "test_merge_checks_input_values_at_host_boundary": {
+      "path": "cicd/tests/test_audit_regressions.py",
+      "reason": "regression_contract",
+      "note": "Static merge validates input values rather than just their pytree shapes."
+    },
+    "test_posterior_resampling_rejects_without_replacement": {
+      "path": "cicd/tests/test_audit_regressions.py",
+      "reason": "regression_contract",
+      "note": "Equal-weight posterior resampling rejects a selection policy that would change its measure."
+    },
+    "test_parent_graph_respects_contours_degrees_and_storage_indices": {
+      "path": "cicd/tests/test_audit_regressions.py",
+      "reason": "regression_contract",
+      "note": "Derived graph edges respect stored contours and degrees under append-order permutations and padding."
+    },
+    "test_signed_logspace_cumsum_preserves_sign_changes": {
+      "path": "cicd/tests/test_audit_regressions.py",
+      "reason": "regression_contract",
+      "note": "Signed cumulative arithmetic matches explicit prefix and suffix sums across axes and cancellations."
+    },
+    "test_json_round_trip_restores_nested_numpy_arrays": {
+      "path": "cicd/tests/test_audit_regressions.py",
+      "reason": "regression_contract",
+      "note": "JSON retains custom nested structure and restores dtype-preserving host arrays."
+    },
+    "test_serialization_failure_does_not_publish_checkpoint": {
+      "path": "cicd/tests/test_audit_regressions.py",
+      "reason": "regression_contract",
+      "note": "Injected serialization failure propagates without publishing a checkpoint manifest."
+    },
+    "test_models_accept_partial_and_jit_wrappers": {
+      "path": "cicd/tests/test_audit_regressions.py",
+      "reason": "regression_contract",
+      "note": "Supported callable wrappers retain model prior sampling and likelihood semantics."
+    },
+    "test_runner_owns_phantom_collection_with_explicit_sampler": {
+      "path": "cicd/tests/test_audit_regressions.py",
+      "reason": "regression_contract",
+      "note": "Runner collection configures full retention on an explicitly supplied sampler."
+    },
+    "test_run_counts_reject_nonintegers": {
+      "path": "cicd/tests/test_audit_regressions.py",
+      "reason": "regression_contract",
+      "note": "Fractional count options fail instead of silently truncating to integers."
+    },
+    "test_parent_graph_assigns_zero_arrivals_to_sentinel_and_respects_plateaus": {
+      "path": "cicd/tests/test_audit_regressions.py",
+      "reason": "regression_contract",
+      "note": "Graph reconstruction distinguishes sentinel assignments from zero-contour parents using existing degrees."
+    },
+    "test_partial_model_bindings_have_distinct_compilation_identity": {
+      "path": "cicd/tests/test_audit_regressions.py",
+      "reason": "regression_contract",
+      "note": "Different bound model inputs must not share an incompatible cached likelihood trace."
+    },
+    "test_state_json_round_trip_preserves_model_inputs_and_host_arrays": {
+      "path": "cicd/tests/test_audit_regressions.py",
+      "reason": "regression_contract",
+      "note": "State JSON preserves host array leaves, model association, inputs and evidence calculation."
+    },
+    "test_json_rejects_malformed_envelope": {
+      "path": "cicd/tests/test_audit_regressions.py",
+      "reason": "regression_contract",
+      "note": "JSON decoder validates the declared wire schema before reconstruction."
+    },
+    "test_resume_rejects_incompatible_phantom_width_before_execution": {
+      "path": "cicd/tests/test_audit_regressions.py",
+      "reason": "configuration_contract",
+      "note": "Rejects incompatible saved retention width before local compilation or distributed registration."
+    },
+    "test_capacity_limited_state_resumes_after_explicit_budget_increase": {
+      "path": "cicd/tests/test_audit_regressions.py",
+      "reason": "configuration_contract",
+      "note": "Executes the documented explicit acknowledgement of a larger finite sample budget."
+    },
+    "test_model_preserves_python_decorator_likelihood_semantics": {
+      "path": "cicd/tests/test_audit_regressions.py",
+      "reason": "configuration_contract",
+      "note": "Unwrapping JIT must preserve ordinary Python decorators that change the model likelihood."
     }
   }
 }

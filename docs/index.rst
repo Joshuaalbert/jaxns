@@ -11,9 +11,9 @@ full-fledged probabilistic programming framework.
 JAXNS has been applied in numerous domains from cosmology, astrophysics, gravitational waves, interferometry,
 exoplanets, particle physics, meta materials, epidemiology, climate modelling, and beyond. Not to mention it has been
 used in industry for a variety of applications. All of this is welcomed and gladly supported.
-JAXNS is citable, use the [(outdated) pre-print here](https://arxiv.org/abs/2012.15286).
+JAXNS is citable using the `original preprint <https://arxiv.org/abs/2012.15286>`_.
 
-Here are 10 things you can do with JAXNS:
+Here are nine things you can do with JAXNS:
 
 1. Build probabilistic models in an easy to use, high-level language, that can be used anywhere in the JAX ecosystem.
 
@@ -32,8 +32,6 @@ Here are 10 things you can do with JAXNS:
 8. Easily embed JAXNS in your ML model;
 
 9. Use JAXNS in a distributed computing environment;
-
-10. Solve global optimisation problems.
 
 
 JAXNS's Mission Statement

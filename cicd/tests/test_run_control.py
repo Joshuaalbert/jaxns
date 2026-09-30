@@ -87,6 +87,48 @@ def test_local_sigint_without_checkpoint_bubbles_up(monkeypatch):
     assert signal.getsignal(signal.SIGINT) == previous_handler
 
 
+@pytest.mark.parametrize("batch_budget", [1, 128])
+def test_single_iteration_sigint_saves_and_resumes_exact_depth(
+        tmp_path, monkeypatch, batch_budget,
+):
+    runner = NestedSampler(
+        model=make_toy_model(), root_allocation_degree=4, delta_K=4,
+        replacement_width=2, initial_capacity=128, max_samples=128,
+        sampler=UniDimSliceSampler(num_slices=2),
+        depth_condition=DepthCondition(dlogZ=jnp.asarray(0.1)),
+    )
+    initial = runner.initialise(jax.random.PRNGKey(307))
+    expected = runner.run_single_iteration(initial)
+    run_depth = core._run_depth
+    interrupted = False
+
+    def stop_after_batch(state, *args, **kwargs):
+        nonlocal interrupted
+        advanced = run_depth(state, *args, **kwargs)
+        if int(advanced.num_samples) > int(initial.num_samples) and not interrupted:
+            interrupted = True
+            signal.raise_signal(signal.SIGINT)
+        return advanced
+
+    monkeypatch.setattr(core, "INTERRUPT_BATCHES", batch_budget)
+    monkeypatch.setattr(core, "_run_depth", stop_after_batch)
+    previous_handler = signal.getsignal(signal.SIGINT)
+    with pytest.raises(KeyboardInterrupt):
+        runner.run_single_iteration(initial, checkpoint_dir=tmp_path)
+    assert signal.getsignal(signal.SIGINT) == previous_handler
+    with CheckpointManager[State](tmp_path) as manager:
+        saved = manager.load()
+    assert int(saved.num_samples) > int(initial.num_samples)
+    if bool(saved.depth_reached):
+        # The signal arrived at the completed boundary. Resuming would start
+        # the next iteration, so the checkpoint itself is the completed result.
+        actual = saved
+    else:
+        actual = runner.run_single_iteration(initial, checkpoint_dir=tmp_path)
+    for left, right in zip(jax.tree.leaves(expected), jax.tree.leaves(actual), strict=True):
+        np.testing.assert_array_equal(left, right)
+
+
 def test_verbose_reports_goals_without_computing_results(monkeypatch):
     messages = []
     monkeypatch.setattr(

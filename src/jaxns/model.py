@@ -1,7 +1,10 @@
 import dataclasses
+import inspect
 import pickle
+from collections.abc import Callable
 from functools import partial
-from typing import Any, Callable
+from types import FunctionType
+from typing import Any
 
 import jax
 import numpy as np
@@ -21,6 +24,11 @@ __all__ = [
 class Model(PureDataclassPytree):
     """
     Represents a Bayesian model in terms of a generative prior, and likelihood function.
+
+    Plain functions and ``functools.partial`` are supported. JIT wrappers are
+    unwrapped before the JAXCTX transformation so prior realisations belong to
+    the active model context. Prefer an unwrapped function: JAXNS compiles the
+    transformed sampling and likelihood programs itself.
     """
     prior_model: Callable
 
@@ -264,7 +272,7 @@ def _freeze_callable_identity(value):
     except TypeError:
         try:
             return ('pickle', pickle.dumps(value))
-        except Exception:
+        except (pickle.PickleError, AttributeError, TypeError):
             return ('repr', type(value).__module__, type(value).__qualname__, repr(value))
     return value
 
@@ -283,17 +291,40 @@ class _HashableCallable:
     fingerprint: tuple[Any, ...] = dataclasses.field(init=False, repr=False)
 
     def __post_init__(self):
-        closure = self.fn.__closure__ or ()
-        code = self.fn.__code__
+        # Stop at ordinary functions: a Python decorator may change the model's
+        # likelihood, so stripping functools.wraps metadata would change science.
+        fn = inspect.unwrap(
+            self.fn, stop=lambda wrapped: type(wrapped) in (FunctionType, partial),
+        )
+        if type(fn) is partial:
+            wrapped = _HashableCallable(fn.func)
+            object.__setattr__(self, 'fn', partial(wrapped.fn, *fn.args, **fn.keywords))
+            object.__setattr__(self, 'fingerprint', (
+                'partial', wrapped.fingerprint,
+                _freeze_callable_identity(fn.args),
+                _freeze_callable_identity(fn.keywords),
+            ))
+            return
+        if type(fn) is not FunctionType:
+            raise TypeError(
+                "prior_model must be a Python function, functools.partial, "
+                "or a JIT-wrapped function."
+            )
+        # Prior.realise mutates the active tracing context. Unwrap before that
+        # transformation, not just for hashing, or a cached inner JIT could
+        # reuse a trace without collecting the current run's prior variables.
+        object.__setattr__(self, 'fn', fn)
+        closure = fn.__closure__ or ()
+        code = fn.__code__
         fingerprint = (
-            self.fn.__module__,
-            self.fn.__qualname__,
+            fn.__module__,
+            fn.__qualname__,
             code.co_code,
             code.co_consts,
             code.co_names,
             code.co_varnames,
-            _freeze_callable_identity(self.fn.__defaults__),
-            _freeze_callable_identity(self.fn.__kwdefaults__),
+            _freeze_callable_identity(fn.__defaults__),
+            _freeze_callable_identity(fn.__kwdefaults__),
             tuple(_freeze_callable_identity(cell.cell_contents) for cell in closure),
         )
         object.__setattr__(self, 'fingerprint', fingerprint)
@@ -327,7 +358,7 @@ def _make_model_collections(*, params, U: UType | None = None) -> dict[str, CtxP
 
 def _U_ndims(self: Model, args=(), params=None) -> int:
     u_example = jax.eval_shape(self.sample_U, jax.random.PRNGKey(0), args=args, params=params)
-    U_ndims = sum(map(lambda x: np.prod(x.shape), jax.tree.leaves(u_example)))
+    U_ndims = sum(np.prod(x.shape) for x in jax.tree.leaves(u_example))
     return int(U_ndims)
 
 

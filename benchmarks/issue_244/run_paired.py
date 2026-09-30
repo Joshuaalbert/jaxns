@@ -70,7 +70,7 @@ def main() -> int:
         model, truth = case.build_case()
         dimension = int(model.U_ndims())
         num_slices = 5 * dimension
-        phantom_count = dimension if phantoms else 0
+        phantom_count = num_slices - 1 if phantoms else 0
         candidate = NestedSampler(
             model=model,
             collect_phantom_samples=phantoms,
@@ -79,10 +79,8 @@ def main() -> int:
             model=model,
             collect_phantom_samples=phantoms,
             sampler=CompleteChainSampler(
-                model=model,
                 num_slices=num_slices,
-                collect_phantom_samples=phantoms,
-                max_phantom_samples=(phantom_count if phantoms else None),
+                num_phantom_samples=phantom_count,
             ),
         )
         for seed in range(args.seeds):

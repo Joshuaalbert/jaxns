@@ -92,10 +92,10 @@ def test_zero_plateau_evidence_in_real_worker_processes(tmp_path, zero_log_likel
             delta_K=64,
             max_samples=512,
             initial_capacity=512,
+            collect_phantom_samples=True,
             sampler=UniDimSliceSampler(
                 num_slices=4,
-                collect_phantom_samples=True,
-                max_phantom_samples=3,
+                num_phantom_samples=3,
             ),
         )
         finished = runner.run_until_goal(
@@ -945,8 +945,7 @@ def test_phantom_payload_does_not_change_vector_worker_trajectory(tmp_path):
         def run(collect_phantoms):
             sampler = UniDimSliceSampler(
                 num_slices=2,
-                collect_phantom_samples=collect_phantoms,
-                max_phantom_samples=(1 if collect_phantoms else None),
+                num_phantom_samples=1 if collect_phantoms else 0,
             )
             runner = DistributedNestedSampler(
                 model=model,
@@ -1073,8 +1072,7 @@ def test_real_pool_runs_scalar_vmap_retries_and_cli_lifecycle(tmp_path):
         model = make_toy_model()
         sampler = UniDimSliceSampler(
             num_slices=2,
-            collect_phantom_samples=True,
-            max_phantom_samples=1,
+            num_phantom_samples=1,
         )
         distributed = DistributedNestedSampler(
             model=model,
@@ -1083,6 +1081,7 @@ def test_real_pool_runs_scalar_vmap_retries_and_cli_lifecycle(tmp_path):
             delta_K=2,
             max_samples=32,
             initial_capacity=8,
+            collect_phantom_samples=True,
             sampler=sampler,
         )
         checkpoint_dir = tmp_path / "distributed-checkpoint"
@@ -1248,7 +1247,8 @@ def test_local_handoff_waits_for_workers_then_resumes_locally(tmp_path):
     settings = {
         "model": make_toy_model(), "root_allocation_degree": 3, "delta_K": 3,
         "sampler": UniDimSliceSampler(
-            num_slices=2, collect_phantom_samples=True, max_phantom_samples=1,
+            num_slices=2,
+            num_phantom_samples=1,
         ),
         "collect_phantom_samples": True, "initial_capacity": 6,
         "unlimited_samples": True,
