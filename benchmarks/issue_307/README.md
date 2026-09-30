@@ -58,3 +58,36 @@ PYTHONPATH=src conda run --no-capture-output -n jaxns_py \
 Compare every array in the generated `sampling.npz`, `state.npz`, and
 `inference.npz` files with `numpy.testing.assert_array_equal`. Raw snapshots and
 compiler dumps are generated artifacts, not repository inputs.
+
+## Fixed-prefix accuracy gate and full-retention calibration
+
+Changing default retention from D to 5D-1 also changes the data used by the
+default phantom evidence call. The standard-problem regression therefore
+explicitly selects its original D-observation prefix. Its reference evidence,
+seed, and 2-sigma tolerance are unchanged. Full retention remains exercised by
+the end-to-end matched comparison above and the system test.
+
+The Jones case (seed 1001, four dimensions, 20 slice transitions) demonstrates
+why retention and uncertainty calibration must be distinguished. Running the
+parent with 19 phantoms explicitly configured reproduces all 26 candidate
+state leaves exactly. For 1,000 evidence draws with key 20260823, both versions
+give the following identical values:
+
+| Inference | Mean log evidence | Reported MC standard deviation |
+| --- | ---: | ---: |
+| Classic | 35.142736005275445 | 0.228260531809239 |
+| Original four-phantom prefix | 35.080828460746720 | 0.149780387568636 |
+| All 19 phantoms | 35.111009103357560 | 0.119889924976638 |
+
+The reference is 34.803948945405. Full conditioning misses its own 2-sigma
+interval on both versions. This is an existing calibration limitation exposed
+by the requested default change, not a change to the inference or samples.
+The classic expectation, sample count (1,390), and likelihood count (154,494)
+also agree exactly.
+
+To reproduce, build `STANDARD_PROBLEM_CASES_BY_NAME["jones_scalar"]` from
+`cicd.tests.test_ns_standard_problems`, run with its `run_seed`, and request
+1,000 evidence draws at prefixes 0 (classic), 4, and 19. On the parent, supply
+`UniDimSliceSampler(num_slices=20, collect_phantom_samples=True,
+max_phantom_samples=19)` to the runner. On the candidate, the default sampler
+retains all 19 when `collect_phantom_samples=True`.

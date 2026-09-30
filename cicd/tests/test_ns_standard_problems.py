@@ -575,9 +575,13 @@ def test_nested_sampling_run_results(case, collect_phantom_samples):
     )
 
     if collect_phantom_samples:
+        # Keep the established D-observation accuracy gate fixed when the
+        # storage policy changes. Full-retention uncertainty can be narrower
+        # without calibrated coverage (see benchmarks/issue_307/README.md).
         evidence = results.sample_evidence(
             num_samples=1000,
             phantom_conditioning=True,
+            num_phantoms=min(model.U_ndims(), results.log_L_phantom.shape[1]),
             key=jax.random.PRNGKey(20260823),
         )
     else:
