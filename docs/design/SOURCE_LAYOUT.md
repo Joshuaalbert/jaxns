@@ -23,7 +23,7 @@ than compatibility-only facades.
 
 | Package | Ownership |
 | --- | --- |
-| `algorithm/` | Allocation targets, stationary seed selection, race-tree blocks, initial state construction, and the complete pure-JAX depth loop. |
+| `algorithm/` | Allocation targets, stationary seed selection, race-tree blocks, initial state construction, the complete pure-JAX depth loop, and host growth of transient scheduling storage. |
 | `sampling/` | Request schemas, scalar/vmapped batching, slice transitions, continuation scheduling, GMM fitting, and ellipsoidal geometry. |
 | `shrinkage/` | Classic Bayesian shrinkage, phantom-conditioned Monte Carlo evidence, the independent reference implementation, and block expectation estimates. |
 | `runtime/` | Distributed configuration, transport protocol, worker sessions, coordinator/client processes, and node/worker lifecycle. |

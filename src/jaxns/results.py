@@ -259,19 +259,19 @@ class NestedSamplerResults(PureDataclassPytree):
             key: PRNGKey,
             replace: bool = True,
     ) -> PosteriorSamples:
-        """Draw equally weighted posterior samples using an explicit key.
+        """Draw equally weighted posterior samples with replacement.
 
         The returned empirical measure supports posterior integration and
-        carries no evidence estimates or race-tree diagnostics. With
-        ``replace=False``, samples are selected without replacement and are
-        dependent rather than independent draws from the posterior measure.
+        carries no evidence estimates or race-tree diagnostics. Sampling
+        without replacement is rejected because equal weighting would then
+        change the posterior measure.
         """
         num_samples = operator.index(num_samples)
         if num_samples <= 0:
             raise ValueError("num_samples must be positive.")
-        if not replace and num_samples > int(self.total_num_samples):
-            raise ValueError("Cannot draw more samples than exist without replacement.")
-        return _resample(self, key, num_samples, replace)
+        if replace is not True:
+            raise ValueError("Posterior resampling requires replace=True.")
+        return _resample(self, key, num_samples)
 
     def integrate_fn_over_posterior(self, fn: Callable[[XType], MF], *, semi_positive: bool = False, batch_size: int | None = None) -> MF:
         """
@@ -442,14 +442,13 @@ def _expand_block_lineages(
     return jnp.where(valid, incoming_K[block_idx], 0)
 
 
-@partial(jax.jit, inline=True, static_argnames=['num_samples', 'replace'])
+@partial(jax.jit, inline=True, static_argnames=['num_samples'])
 def _resample(
         results: NestedSamplerResults,
         key: PRNGKey,
         num_samples: int,
-        replace: bool,
 ) -> PosteriorSamples:
-    indices = resample_indicies(key, results.log_dp, S=num_samples, replace=replace)
+    indices = resample_indicies(key, results.log_dp, S=num_samples, replace=True)
     # Retain draw order and only data belonging to the empirical posterior.
     # Run-level uncertainty and lineage metadata cannot be resampled this way.
     return PosteriorSamples(

@@ -352,6 +352,7 @@ def _run_high_phantom_probe():
     ns = NestedSampler(
         model=make_toy_model(),
         sampler=sampler,
+        collect_phantom_samples=True,
         root_allocation_degree=2,
         max_samples=3,
         replacement_width=1,
@@ -365,6 +366,7 @@ def _run_invalid_cluster_probe():
     ns = NestedSampler(
         model=make_toy_model(),
         sampler=sampler,
+        collect_phantom_samples=True,
         root_allocation_degree=2,
         max_samples=3,
         replacement_width=1,

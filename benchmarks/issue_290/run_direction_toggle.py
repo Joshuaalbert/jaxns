@@ -276,8 +276,7 @@ def main() -> None:
     )
     continuation_sampler = UniDimSliceSampler(
         num_slices=32,
-        collect_phantom_samples=True,
-        max_phantom_samples=2,
+        num_phantom_samples=2,
     )
     continuation_plain = make_request(model, width=8)
     continuation_retained = retain_disabled_fit(continuation_plain)
@@ -296,8 +295,7 @@ def main() -> None:
 
     reference_sampler = UniDimSliceSampler(
         num_slices=8,
-        collect_phantom_samples=True,
-        max_phantom_samples=2,
+        num_phantom_samples=2,
     )
     reference_plain = make_request(model, width=2)
     reference_retained = retain_disabled_fit(reference_plain)

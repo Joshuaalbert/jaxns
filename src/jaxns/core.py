@@ -25,6 +25,10 @@ from jaxns.algorithm.depth import (
     _start_seed_storage_full,
 )
 from jaxns.algorithm.initialisation import _sample_init_state
+from jaxns.algorithm.schedule_storage import (
+    _grow_continuation_storage,
+    _grow_start_seed_storage,
+)
 from jaxns.checkpoint import (
     CHECKPOINT_CADENCE_SECONDS,
     CheckpointManager,
@@ -76,42 +80,6 @@ def _ensure_thread_schedule(
     return state
 
 
-def _grow_continuation_storage(state: State, replacement_width: int) -> State:
-    """Double the transient thread heap without advancing logical work."""
-    schedule = state.scheduler_data
-    if schedule is None:
-        raise ValueError("Continuation growth requires an active schedule.")
-    current_size = schedule.continuation_parent_idx.shape[0]
-    required_size = int(schedule.continuation_count) + replacement_width
-    new_size = max(2 * current_size, required_size)
-    return dataclasses.replace(
-        state,
-        scheduler_data=schedule.resize_threads(
-            schedule.valid.shape[0],
-            continuation_size=new_size,
-        ),
-        # This is a physical recompilation boundary, not completion of the
-        # frozen target or expected-depth traversal.
-        depth_reached=jnp.asarray(False, mp_policy.bool_dtype),
-    )
-
-
-def _grow_start_seed_storage(state: State, replacement_width: int) -> State:
-    """Double exact no-replacement storage without advancing the schedule."""
-    schedule = state.scheduler_data
-    if schedule is None:
-        raise ValueError("Seed reservation growth requires an active schedule.")
-    current_size = schedule.start_seed_reservation_idx.shape[0]
-    required_size = 2 * (int(schedule.num_start_seeds) + replacement_width)
-    new_size = max(2 * current_size, required_size)
-    new_size = 1 << (new_size - 1).bit_length()
-    return dataclasses.replace(
-        state,
-        scheduler_data=schedule.resize_start_seed_reservations(new_size),
-        depth_reached=jnp.asarray(False, mp_policy.bool_dtype),
-    )
-
-
 @dataclasses.dataclass(slots=True)
 class NestedSampler(PureDataclassPytree):
     """Object-oriented configuration and Python goal-loop driver.
@@ -122,11 +90,10 @@ class NestedSampler(PureDataclassPytree):
     into unbounded geometric growth and its associated memory use and one-time
     recompilation pause for each new shape.
 
-    When ``collect_phantom_samples=True``, ``max_phantom_samples`` bounds the
-    leading stationary chain prefix stored per classic replacement. ``None``
-    resolves to ``min(model dimension, num_slices - 1)`` for the default slice
-    sampler. The retained width is independent of the shorter prefix that can
-    later be selected by ``sample_evidence``.
+    When ``collect_phantom_samples=True``, every intermediate chain state is
+    retained: num_slices - 1 phantoms per classic replacement. The runner owns
+    this choice even with an explicit sampler. A shorter prefix can later be
+    selected by ``sample_evidence`` without changing the stored observations.
 
     ``verbose=True`` reports existing scalar counters and timings after each
     goal iteration without constructing results. With checkpointing enabled,
@@ -141,7 +108,6 @@ class NestedSampler(PureDataclassPytree):
     sampler: AbstractSampler | None = None
     depth_condition: DepthCondition | None = None
     collect_phantom_samples: bool = False
-    max_phantom_samples: int | None = None
     allocation_target: Literal[
         "uniform",
         "evidence_improving",
@@ -174,7 +140,6 @@ class NestedSampler(PureDataclassPytree):
             max_samples=self.max_samples,
             sampler=self.sampler,
             collect_phantom_samples=self.collect_phantom_samples,
-            max_phantom_samples=self.max_phantom_samples,
             allocation_target=self.allocation_target,
             delta_K=self.delta_K,
             initial_capacity=self.initial_capacity,
@@ -190,7 +155,6 @@ class NestedSampler(PureDataclassPytree):
                 "max_samples",
                 "replacement_width",
                 "collect_phantom_samples",
-                "max_phantom_samples",
                 "allocation_target",
                 "delta_K",
                 "initial_capacity",
@@ -242,7 +206,7 @@ class NestedSampler(PureDataclassPytree):
             params,
             root_degree=config.root_allocation_degree,
             sample_capacity=config.initial_capacity,
-            num_phantom=config.max_phantom_samples,
+            num_phantom=config.num_phantom_samples,
         )
         return dataclasses.replace(
             state,
@@ -329,7 +293,7 @@ class NestedSampler(PureDataclassPytree):
         Returns:
             The completed or terminal immutable state.
         """
-        return self._resume_until_goal(
+        return self._execute(
             None,
             goal_cond,
             depth_cond=depth_cond,
@@ -368,7 +332,7 @@ class NestedSampler(PureDataclassPytree):
         Returns:
             The completed or terminal immutable state.
         """
-        return self._resume_until_goal(
+        return self._execute(
             state,
             goal_cond,
             depth_cond=depth_cond,
@@ -377,10 +341,10 @@ class NestedSampler(PureDataclassPytree):
             checkpoint_cadence=checkpoint_cadence,
         )
 
-    def _resume_until_goal(
+    def _execute(
             self,
             state: State | None,
-            goal_cond: Callable[[State], bool],
+            goal_cond: Callable[[State], bool] | None,
             *,
             depth_cond: DepthCondition | None,
             key: PRNGKey | None,
@@ -389,7 +353,7 @@ class NestedSampler(PureDataclassPytree):
             args: tuple = (),
             params: CtxParams | None = None,
     ) -> State:
-        """Resolve checkpoint precedence, then continue one goal loop."""
+        """Resolve checkpoint and input ownership for every local run entry point."""
         checkpoint_context = (
             CheckpointManager[State](
                 checkpoint_dir,
@@ -412,7 +376,13 @@ class NestedSampler(PureDataclassPytree):
                 config = self._resolve_config(
                     state.model, state.args, state.params,
                 )
-            completed = self._run_goal_loop(
+                saved_phantoms = state.samples.phantom_samples.log_L.shape[1]
+                if saved_phantoms != config.num_phantom_samples:
+                    raise ValueError(
+                        "Saved phantom count differs from the runner's collection policy. "
+                        "Resume using compatible collection settings and code."
+                    )
+            completed = self._run_depth_epochs(
                 state,
                 goal_cond,
                 depth_cond=depth_cond,
@@ -424,17 +394,22 @@ class NestedSampler(PureDataclassPytree):
                 checkpoint_manager.save_if_changed(completed)
             return completed
 
-    def _run_goal_loop(
+    def _run_depth_epochs(
             self,
             state: State,
-            goal_cond: Callable[[State], bool],
+            goal_cond: Callable[[State], bool] | None,
             *,
             depth_cond: DepthCondition | None,
             key: PRNGKey | None,
             checkpoint_manager: CheckpointManager[State] | None,
             config: ResolvedRunConfig,
     ) -> State:
-        """Continue compiled depths after checkpoint ownership is resolved."""
+        """Advance coherent depths with one shared growth/interrupt lifecycle.
+
+        A missing goal requests one depth boundary and leaves sample growth to
+        the caller. Both entry points retain the same schedule and random keys
+        at physical interruptions, and commit a finished depth exactly once.
+        """
         if depth_cond is None:
             depth_cond = self.depth_condition
         if key is not None:
@@ -468,7 +443,8 @@ class NestedSampler(PureDataclassPytree):
                     interrupt.raise_if_requested()
                     # Capacity and interrupt-control returns resume the same
                     # logical depth, without evaluating the user's goal early.
-                    if bool(state.depth_reached) and bool(goal_cond(state)):
+                    if (goal_cond is not None and bool(state.depth_reached)
+                            and bool(goal_cond(state))):
                         break
                     batch_start = state.depth_loop_iter
                     state = _ensure_thread_schedule(
@@ -493,6 +469,8 @@ class NestedSampler(PureDataclassPytree):
                     # A drained compiled schedule still needs its Python depth
                     # check and key/counter commit before it is a goal boundary.
                     if bool(state.needs_growth):
+                        if goal_cond is None:
+                            break
                         capacity = state.samples.log_likelihoods.shape[0]
                         required_capacity = int(state.num_samples) + int(
                             config.replacement_width
@@ -631,7 +609,7 @@ class NestedSampler(PureDataclassPytree):
                             random_key=state.goal_key,
                             goal_loop_iter=(
                                 state.goal_loop_iter
-                                + jnp.asarray(1, state.goal_loop_iter.dtype)
+                                + jnp.asarray(goal_cond is not None, state.goal_loop_iter.dtype)
                             ),
                             allocation_loop_iter=(
                                 state.allocation_loop_iter
@@ -642,7 +620,7 @@ class NestedSampler(PureDataclassPytree):
                             # iteration constructs a fresh planning domain.
                             scheduler_data=None,
                         )
-                        if self.verbose:
+                        if self.verbose and goal_cond is not None:
                             now = time.monotonic()
                             count = int(state.num_samples)
                             jaxns_logger.info(
@@ -660,6 +638,8 @@ class NestedSampler(PureDataclassPytree):
                         # epoch and must not become a persisted goal boundary.
                         if checkpoint_manager is not None:
                             checkpoint_manager.maybe_save(state)
+                        if goal_cond is None:
+                            break
                         continue
                     if (
                         checkpoint_manager is not None
@@ -715,192 +695,16 @@ class NestedSampler(PureDataclassPytree):
         Returns:
             The immutable state returned by one compiled depth epoch.
         """
-        if checkpoint_dir is not None:
-            with CheckpointManager[State](
-                checkpoint_dir,
-                checkpoint_cadence,
-            ) as checkpoint_manager:
-                restored = checkpoint_manager.load()
-                if restored is not None:
-                    state = restored
-                    key = None
-                state = self._run_single_iteration(
-                    state=state,
-                    depth_cond=depth_cond,
-                    key=key,
-                    args=args,
-                    params=params,
-                )
-                checkpoint_manager.save_if_changed(state)
-                return state
-        return self._run_single_iteration(
-            state=state,
+        return self._execute(
+            state,
+            None,
             depth_cond=depth_cond,
             key=key,
+            checkpoint_dir=checkpoint_dir,
+            checkpoint_cadence=checkpoint_cadence,
             args=args,
             params=params,
         )
-
-    def _run_single_iteration(
-            self,
-            state: State | None,
-            depth_cond: DepthCondition | None,
-            key: PRNGKey | None,
-            *,
-            args: tuple = (),
-            params: CtxParams | None = None,
-    ) -> State:
-        """Execute one depth epoch after checkpoint ownership is resolved."""
-        if state is None:
-            config = self._resolve_config(self.model, args, params)
-        else:
-            config = self._resolve_config(state.model, state.args, state.params)
-        if state is None:
-            state = self._initialise(key, config, args=args, params=params)
-        elif key is not None:
-            state = dataclasses.replace(
-                state,
-                random_key=key,
-                goal_key=key,
-                depth_reached=jnp.asarray(True, mp_policy.bool_dtype),
-                scheduler_data=None,
-            )
-        elif state.random_key is None:
-            state = dataclasses.replace(
-                state,
-                random_key=jax.random.PRNGKey(42),
-                goal_key=jax.random.PRNGKey(42),
-                depth_reached=jnp.asarray(True, mp_policy.bool_dtype),
-            )
-        elif state.goal_key is None:
-            state = dataclasses.replace(
-                state,
-                goal_key=state.random_key,
-                depth_reached=jnp.asarray(True, mp_policy.bool_dtype),
-            )
-        elif bool(state.depth_reached) or (
-            state.scheduler_data is not None
-            and not bool(state.scheduler_data.active)
-        ):
-            state = dataclasses.replace(state, scheduler_data=None)
-        if depth_cond is None:
-            depth_cond = self.depth_condition
-        while True:
-            state = _ensure_thread_schedule(
-                state,
-                depth_cond,
-                replacement_width=int(config.replacement_width),
-                allocation_target=self.allocation_target,
-                root_degree=int(config.root_allocation_degree),
-                delta_K=int(config.delta_K),
-            )
-            state = _run_depth(
-                state,
-                config.sampler,
-                depth_cond,
-                max_samples=config.max_samples,
-            )
-            if bool(state.needs_growth):
-                return state
-            if int(state.termination_reason) != 0:
-                return _refresh_likelihood_order(state)
-            if (
-                state.scheduler_data is not None
-                and bool(_continuation_storage_full(
-                    state.scheduler_data,
-                ))
-            ):
-                state = _grow_continuation_storage(
-                    state,
-                    int(config.replacement_width),
-                )
-                continue
-            if (
-                state.scheduler_data is not None
-                and bool(_start_seed_storage_full(
-                    state.scheduler_data,
-                ))
-            ):
-                state = _grow_start_seed_storage(
-                    state,
-                    int(config.replacement_width),
-                )
-                continue
-            source_published = False
-            if (
-                state.scheduler_data is not None
-                and bool(state.scheduler_data.active)
-                and bool(_seed_source_refresh_due(
-                    state,
-                    state.scheduler_data,
-                ))
-            ):
-                state = _publish_seed_source(state)
-                source_published = True
-                if bool(state.scheduler_data.active):
-                    continue
-                else:
-                    state = dataclasses.replace(
-                        state,
-                        depth_reached=jnp.asarray(
-                            True,
-                            mp_policy.bool_dtype,
-                        ),
-                    )
-            if not bool(state.depth_reached):
-                raise RuntimeError(
-                    "Compiled planning round returned without termination, "
-                    "growth, or a drained schedule."
-                )
-            if not source_published:
-                state = _refresh_likelihood_order(state)
-            reached_expected_depth = bool(_depth_condition_reached(
-                state,
-                depth_cond,
-            ))
-            if reached_expected_depth:
-                return dataclasses.replace(
-                    state,
-                    random_key=state.goal_key,
-                    allocation_loop_iter=(
-                        state.allocation_loop_iter
-                        + jnp.asarray(1, state.allocation_loop_iter.dtype)
-                    ),
-                    depth_reached=jnp.asarray(True, mp_policy.bool_dtype),
-                    scheduler_data=None,
-                )
-            previous = state.scheduler_data
-            state = _continue_schedule_round(
-                state,
-                previous,
-                depth_cond,
-                replacement_width=int(config.replacement_width),
-            )
-            schedule = state.scheduler_data
-            if schedule is None:
-                raise RuntimeError(
-                    "Continuation planning did not create a schedule."
-                )
-            if bool(schedule.active):
-                state = dataclasses.replace(
-                    state,
-                    depth_reached=jnp.asarray(
-                        False,
-                        mp_policy.bool_dtype,
-                    ),
-                )
-                continue
-            # A full target that has not reached expected depth is an internal
-            # allocation boundary, not the single-iteration return boundary.
-            state = dataclasses.replace(
-                state,
-                allocation_loop_iter=(
-                    state.allocation_loop_iter
-                    + jnp.asarray(1, state.allocation_loop_iter.dtype)
-                ),
-                depth_reached=jnp.asarray(False, mp_policy.bool_dtype),
-                scheduler_data=None,
-            )
 
 
 NestedSampler.register_pytree()

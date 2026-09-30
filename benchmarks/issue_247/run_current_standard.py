@@ -72,13 +72,10 @@ def main():
         max(1, args.shell_multiplier * ndims),
     )
     num_slices = args.slice_multiplier * ndims
-    retained_phantoms = ndims if args.phantoms else 0
+    retained_phantoms = num_slices - 1 if args.phantoms else 0
     sampler = UniDimSliceSampler(
         num_slices=num_slices,
-        collect_phantom_samples=args.phantoms,
-        max_phantom_samples=(
-            retained_phantoms if args.phantoms else None
-        ),
+        num_phantom_samples=retained_phantoms,
     )
     ns = NestedSampler(
         model=model,

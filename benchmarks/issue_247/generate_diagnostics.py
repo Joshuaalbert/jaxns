@@ -32,8 +32,7 @@ def _run_case(case_name: str, seed: int):
     num_slices = 5 * ndims
     sampler = UniDimSliceSampler(
         num_slices=num_slices,
-        collect_phantom_samples=True,
-        max_phantom_samples=ndims,
+        num_phantom_samples=ndims,
     )
     nested_sampler = NestedSampler(
         model=model,

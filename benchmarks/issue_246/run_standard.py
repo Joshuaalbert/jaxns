@@ -249,13 +249,10 @@ def main() -> None:
     num_slices = 5 * dimension
     root_degree = 30 * dimension
     replacement_width = min(root_degree, 10 * dimension)
-    retained_phantoms = dimension if args.phantoms else 0
+    retained_phantoms = num_slices - 1 if args.phantoms else 0
     sampler = UniDimSliceSampler(
         num_slices=num_slices,
-        collect_phantom_samples=args.phantoms,
-        max_phantom_samples=(
-            retained_phantoms if args.phantoms else None
-        ),
+        num_phantom_samples=retained_phantoms,
     )
     nested_sampler = NestedSampler(
         model=model,

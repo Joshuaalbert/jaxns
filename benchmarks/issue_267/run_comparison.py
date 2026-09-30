@@ -42,8 +42,7 @@ def truth() -> float:
 def sampler(model: Model, phantoms: bool) -> UniDimSliceSampler:
     return UniDimSliceSampler(
         num_slices=3,
-        collect_phantom_samples=phantoms,
-        max_phantom_samples=2 if phantoms else None,
+        num_phantom_samples=2 if phantoms else 0,
     )
 
 
@@ -56,6 +55,7 @@ def local_runner(model: Model, phantoms: bool) -> NestedSampler:
         max_samples=512,
         initial_capacity=128,
         sampler=sampler(model, phantoms),
+        collect_phantom_samples=phantoms,
         depth_condition=DepthCondition(dlogZ=jnp.asarray(0.1)),
     )
 
@@ -73,6 +73,7 @@ def distributed_runner(
         max_samples=512,
         initial_capacity=128,
         sampler=sampler(model, phantoms),
+        collect_phantom_samples=phantoms,
         depth_condition=DepthCondition(dlogZ=jnp.asarray(0.1)),
     )
 

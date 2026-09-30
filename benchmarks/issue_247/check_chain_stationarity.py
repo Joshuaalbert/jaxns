@@ -60,8 +60,7 @@ def main():
     )
     sampler = UniDimSliceSampler(
         num_slices=5 * ndims,
-        collect_phantom_samples=True,
-        max_phantom_samples=ndims,
+        num_phantom_samples=ndims,
     )
 
     def sample_one(sample_key, u0, log_l0):

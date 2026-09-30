@@ -53,10 +53,9 @@ def build_run_model(k):
         num_slices = max(9, k + 1)
         sampler = UniDimSliceSampler(
             num_slices=num_slices,
-            collect_phantom_samples=(k > 0),
-            max_phantom_samples=k if k > 0 else None,
+            num_phantom_samples=k,
         )
-        ns = NestedSampler(model=model, sampler=sampler)
+        ns = NestedSampler(model=model, sampler=sampler, collect_phantom_samples=k > 0)
 
         state = ns.run(key)
         results = state.to_result()

@@ -10,7 +10,6 @@ from jaxctx import CtxParams
 
 from jaxns.algorithm.race_tree import LikelihoodOrder, build_block_state
 from jaxns.algorithm.scheduler import ThreadSchedule
-from jaxns.cumulative_ops import scan_or_while_loop
 from jaxns.log_semiring import LogSpace, normalise_log_space
 from jaxns.mixed_precision import mp_policy
 from jaxns.model import Model
@@ -84,27 +83,33 @@ class State(PureDataclassPytree):
     scheduler_data: ThreadSchedule | None = None
 
     def merge(self, other: 'State') -> 'State':
-        """
-        Merge samples from another state into this state. This is used for merging results from parallel nested sampling runs.
+        """Merge independent runs of the same model at a Python boundary.
+
+        This is a static operation, outside JIT or other JAX transformations.
+        Input values are transferred to NumPy for compatibility checks and
+        only valid sample prefixes are retained. Model inputs must agree.
 
         Args:
-            other: another state to merge with this state. Must have the same model, args, and params.
+            other: Independent state with the same model, args, and params.
 
         Returns:
-            a new state with the samples from both states merged together.
+            A compact state containing both runs' samples.
         """
         return _merge(self, other)
 
-    def determine_parent_graph(self):
+    def determine_parent_graph(self) -> np.ndarray:
         """
         Reconstruct one compatible parent graph from likelihoods and out-degrees.
 
         The graph is an optional derived view for inspection. Parent indices
         are not persistent state and are not needed for evidence calculation.
+        Reconstruction runs on the host. Within an equal-likelihood block,
+        the original parent identity is not identifiable, so any compatible
+        assignment is returned. Indices refer to the stored sample order.
 
         Returns:
-            parent_edges: [num_samples, 2] array of (parent_idx, child_idx) edges, where parent_idx is the index of the parent sample, and child_idx is the
-            index of the child sample. The root sample has parent_idx = -1.
+            NumPy array [num_samples, 2] of (parent_idx, child_idx) edges.
+            A sentinel child has parent_idx = -1.
         """
         return _determine_parent_graph(self)
 
@@ -677,11 +682,28 @@ def _to_result(self: State) -> NestedSamplerResults:
     )
 
 
-@partial(jax.jit, inline=True)
 def _merge(self: State, other: State) -> 'State':
-    assert jax.tree.structure(self.model) == jax.tree.structure(other.model), "Cannot merge states with different models"
-    assert jax.tree.structure(self.args) == jax.tree.structure(other.args), "Cannot merge states with different args"
-    assert jax.tree.structure(self.params) == jax.tree.structure(other.params), "Cannot merge states with different params"
+    for name, left, right in (
+        ("model", self.model, other.model),
+        ("args", self.args, other.args),
+        ("params", self.params, other.params),
+    ):
+        if jax.tree.structure(left) != jax.tree.structure(right):
+            raise ValueError(f"Cannot merge states with different {name} structures.")
+        # Merging changes the scientific population and is deliberately a host
+        # boundary. Matching shapes alone cannot establish a common likelihood.
+        jax.tree.map(
+            lambda x, y, name=name: np.testing.assert_allclose(
+                np.asarray(x), np.asarray(y), rtol=0, atol=0,
+                err_msg=f"Cannot merge states with different {name} values.",
+            ),
+            left, right,
+        )
+    return _merge_compact(self.trim(), other.trim())
+
+
+@partial(jax.jit, inline=True)
+def _merge_compact(self: State, other: State) -> State:
     termination_reason = jnp.bitwise_or(
         self.termination_reason,
         other.termination_reason,
@@ -755,28 +777,30 @@ def _merge(self: State, other: State) -> 'State':
     )
 
 
-@partial(jax.jit, inline=True)
 def _determine_parent_graph(self: State):
-    # This compatibility view chooses the likelihood-sorted nuisance ordering
-    # within plateaus. Scientific state deliberately stores only contours and
-    # out-degrees because concrete row identities would become stale on sort.
-    samples = self.samples.sort()
-    # Carry:
-    # next_parent_idx, remaining_out_degrees
-
-    carry_init = (jnp.asarray(-1, mp_policy.count_dtype), self.root_out_degree)
-
-    def scan_fn(carry, x):
-        next_parent_idx, remaining_out_degrees = carry
-        child_node_idx, = x
-        y = (next_parent_idx, child_node_idx)
-        remaining_out_degrees = remaining_out_degrees - 1
-        next_parent_idx = jnp.where(remaining_out_degrees <= 0, next_parent_idx + 1, next_parent_idx)
-        remaining_out_degrees = jnp.where(remaining_out_degrees <= 0, samples.out_degree[next_parent_idx], remaining_out_degrees)
-        return (next_parent_idx, remaining_out_degrees), y
-
-    _, parent_edges = scan_or_while_loop(scan_fn, carry_init, (jnp.arange(self.samples.log_likelihoods.shape[0]),), length=self.num_samples, unroll=1)
-    return parent_edges
+    self.ensure_consistency()
+    count = int(self.num_samples)
+    likelihoods = np.asarray(self.samples.log_likelihoods[:count])
+    constraints = np.asarray(self.samples.log_L_constraints[:count])
+    degrees = np.r_[int(self.root_out_degree), self.samples.out_degree[:count]]
+    parent_contours = np.r_[-np.inf, likelihoods]
+    # Repeat only indices, not sample payloads. Each outgoing edge must match
+    # one child's recorded generating contour. Stable sorting leaves sentinel
+    # slots before real zero-likelihood parents, so zero arrivals use the root.
+    slots = np.repeat(np.arange(-1, count), degrees)
+    slots = slots[np.argsort(parent_contours[slots + 1], kind="stable")]
+    children = np.lexsort((likelihoods, constraints))
+    if slots.size != count or not np.array_equal(
+            parent_contours[slots + 1], constraints[children],
+    ):
+        raise ValueError("Out-degrees cannot reproduce the recorded parent contours.")
+    root = slots == -1
+    if not np.all(root | (likelihoods[children] > parent_contours[slots + 1])):
+        raise ValueError("No parent graph satisfies the strict likelihood contours.")
+    # Return in child storage order rather than exposing the diagnostic sort.
+    parents = np.empty(count, dtype=np.int64)
+    parents[children] = slots
+    return np.column_stack((parents, np.arange(count)))
 
 
 def _ensure_consistency(self: State):

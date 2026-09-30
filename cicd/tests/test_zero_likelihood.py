@@ -54,8 +54,7 @@ def test_root_draws_and_zero_contour_chains_have_different_support(
     width = 32
     sampler = UniDimSliceSampler(
         num_slices=num_slices,
-        collect_phantom_samples=True,
-        max_phantom_samples=num_slices - 1,
+        num_phantom_samples=num_slices - 1,
     )
     point = jax.tree.map(
         lambda x: jnp.full_like(x, 0.75),
@@ -114,10 +113,10 @@ def test_zero_plateau_survives_allocation_and_checkpoint_round_trip(
         replacement_width=8,
         delta_K=128,
         max_samples=2048,
+        collect_phantom_samples=True,
         sampler=UniDimSliceSampler(
             num_slices=4,
-            collect_phantom_samples=True,
-            max_phantom_samples=3,
+            num_phantom_samples=3,
         ),
     )
     state = runner.run_until_goal(

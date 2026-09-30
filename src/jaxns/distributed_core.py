@@ -35,6 +35,7 @@ from jaxns.algorithm.depth import (
     _update_seed_reservoir,
 )
 from jaxns.algorithm.initialisation import _build_init_state
+from jaxns.algorithm.schedule_storage import _grow_start_seed_storage
 from jaxns.algorithm.scheduler import has_thread_work
 from jaxns.checkpoint import (
     CHECKPOINT_CADENCE_SECONDS,
@@ -43,7 +44,6 @@ from jaxns.checkpoint import (
 from jaxns.constrained_sampler import (
     AbstractSampler,
 )
-from jaxns.core import _grow_start_seed_storage
 from jaxns.depth_condition import DepthCondition
 from jaxns.logging import jaxns_logger
 from jaxns.mixed_precision import mp_policy
@@ -688,7 +688,6 @@ class DistributedNestedSampler:
         "delta_K",
         "depth_condition",
         "initial_capacity",
-        "max_phantom_samples",
         "max_samples",
         "model",
         "receive_timeout_s",
@@ -707,7 +706,6 @@ class DistributedNestedSampler:
             sampler: AbstractSampler | None = None,
             depth_condition: DepthCondition | None = None,
             collect_phantom_samples: bool = False,
-            max_phantom_samples: int | None = None,
             allocation_target: Literal[
                 "uniform",
                 "evidence_improving",
@@ -729,7 +727,6 @@ class DistributedNestedSampler:
         self.sampler = sampler
         self.depth_condition = depth_condition
         self.collect_phantom_samples = collect_phantom_samples
-        self.max_phantom_samples = max_phantom_samples
         self.allocation_target = allocation_target
         self.delta_K = delta_K
         self.initial_capacity = initial_capacity
@@ -766,7 +763,6 @@ class DistributedNestedSampler:
             max_samples=self.max_samples,
             sampler=self.sampler,
             collect_phantom_samples=self.collect_phantom_samples,
-            max_phantom_samples=self.max_phantom_samples,
             allocation_target=self.allocation_target,
             delta_K=self.delta_K,
             initial_capacity=self.initial_capacity,
@@ -1268,6 +1264,12 @@ class DistributedNestedSampler:
             distributed.state.args,
             distributed.state.params,
         )
+        saved_phantoms = distributed.state.samples.phantom_samples.log_L.shape[1]
+        if saved_phantoms != config.num_phantom_samples:
+            raise ValueError(
+                "Saved phantom count differs from the runner's collection policy. "
+                "Resume using compatible collection settings and code."
+            )
         session = WorkerSession(
             model=distributed.state.model,
             sampler=config.sampler,

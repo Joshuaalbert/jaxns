@@ -6,6 +6,7 @@ from jax import lax
 from jax import numpy as jnp
 from jax.scipy.special import logsumexp
 
+from jaxns.cumulative_ops import cumulative_op_static
 from jaxns.mixed_precision import mp_policy
 from jaxns.pytree import PureDataclassPytree
 from jaxns.types import FloatArray
@@ -52,47 +53,21 @@ def signed_logaddexp(log_abs_val1, sign1, log_abs_val2, sign2):
 
 
 def cumulative_logsumexp(u, sign=None, reverse=False, axis=0):
+    """Accumulate log magnitudes, retaining signed cancellation when requested."""
     if sign is not None:
-        u, sign = jnp.broadcast_arrays(u, sign)
+        result = LogSpace(u, sign).cumsum(axis=axis, reverse=reverse)
+        return result.log_abs_val, result.sign
+    # Keep the unsigned path free of sign arrays and signed arithmetic. This
+    # is the common evidence/CDF operation and retains its original scan.
+    ordered = jnp.swapaxes(u, axis, 0)
+    initial = jnp.full(ordered.shape[1:], -jnp.inf, dtype=u.dtype)
 
-    def body(state, X):
-        if sign is not None:
-            (u, u_sign) = X
-            (accumulant, accumulant_sign) = state
-            new_accumulant, _new_accumulant_sign = signed_logaddexp(accumulant, accumulant_sign, u, u_sign)
-            return (new_accumulant, accumulant_sign), (new_accumulant, accumulant_sign)
-        else:
-            u = X
-            accumulant = state
-            new_accumulant = jnp.logaddexp(accumulant, u)
-            return new_accumulant, new_accumulant
+    def add(accumulated, value):
+        accumulated = jnp.logaddexp(accumulated, value)
+        return accumulated, accumulated
 
-    if sign is not None:
-        if axis != 0:
-            sign = jnp.swapaxes(sign, axis, 0)
-            u = jnp.swapaxes(u, axis, 0)
-        state = (-jnp.inf * jnp.ones(u.shape[1:], dtype=u.dtype), jnp.ones(u.shape[1:], dtype=u.dtype))
-        X = (u, sign)
-    else:
-        if axis != 0:
-            u = jnp.swapaxes(u, axis, 0)
-        state = -jnp.inf * jnp.ones(u.shape[1:], dtype=u.dtype)
-        X = u
-    _, result = lax.scan(body,
-                         state,
-                         X,
-                         reverse=reverse)
-    if sign is not None:
-        v, v_sign = result
-        if axis != 0:
-            v = jnp.swapaxes(v, axis, 0)
-            v_sign = jnp.swapaxes(v_sign, axis, 0)
-        return v, v_sign
-    else:
-        v = result
-        if axis != 0:
-            v = jnp.swapaxes(v, axis, 0)
-        return v
+    _, result = lax.scan(add, initial, ordered, reverse=reverse)
+    return jnp.swapaxes(result, 0, axis)
 
 
 @dataclasses.dataclass(slots=True, frozen=True)
@@ -196,9 +171,26 @@ class LogSpace(PureDataclassPytree):
         return LogSpace(logsumexp(log_abs_val, axis=axis, keepdims=keepdims))
 
     def cumsum(self, axis=0, reverse=False):
-        if not self.naked:  # no coefficients
-            return LogSpace(*cumulative_logsumexp(self.log_abs_val, sign=self.sign, axis=axis, reverse=reverse))
-        return LogSpace(cumulative_logsumexp(self.log_abs_val, axis=axis, reverse=reverse))
+        if self.naked:
+            return LogSpace(cumulative_logsumexp(
+                self.log_abs_val, axis=axis, reverse=reverse,
+            ))
+        # Carry a complete signed value through the shared cumulative operator,
+        # rather than separately maintaining a sign that can become stale.
+        magnitude, sign = jnp.broadcast_arrays(self.log_abs_val, self.sign)
+        ordered = jax.tree.map(
+            lambda value: jnp.swapaxes(value, axis, 0), LogSpace(magnitude, sign),
+        )
+        if reverse:
+            ordered = jax.tree.map(lambda value: value[::-1], ordered)
+        initial = LogSpace(
+            jnp.full(ordered.log_abs_val.shape[1:], -jnp.inf, self.dtype),
+            jnp.ones(ordered.sign.shape[1:], self.dtype),
+        )
+        _, result = cumulative_op_static(LogSpace.__add__, initial, ordered)
+        if reverse:
+            result = jax.tree.map(lambda value: value[::-1], result)
+        return jax.tree.map(lambda value: jnp.swapaxes(value, 0, axis), result)
 
     def cumprod(self, axis=0):
         if not self.naked:  # no coefficients

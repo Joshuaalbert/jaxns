@@ -27,7 +27,7 @@ class ResolvedRunConfig:
     replacement_width: int | None
     max_samples: int | None
     sampler: AbstractSampler
-    max_phantom_samples: int
+    num_phantom_samples: int
     initial_capacity: int
     delta_K: int
 
@@ -37,6 +37,19 @@ def default_depth_condition() -> DepthCondition:
     return DepthCondition(
         dlogZ=jnp.log1p(jnp.asarray(1e-3, mp_policy.measure_dtype)),
     )
+
+
+def _positive_count(value: int | None, name: str) -> int | None:
+    """Validate static counts before defaults or shapes consume them."""
+    if value is None:
+        return None
+    try:
+        value = operator.index(value)
+    except TypeError as error:
+        raise TypeError(f"{name} must be an integer or None.") from error
+    if value <= 0:
+        raise ValueError(f"{name} must be positive.")
+    return value
 
 
 def resolve_run_config(
@@ -49,7 +62,6 @@ def resolve_run_config(
         max_samples: int | None,
         sampler: AbstractSampler | None,
         collect_phantom_samples: bool,
-        max_phantom_samples: int | None,
         allocation_target: AllocationTarget,
         delta_K: int | None,
         initial_capacity: int | None,
@@ -57,6 +69,11 @@ def resolve_run_config(
         replacement_width: int | None = None,
 ) -> ResolvedRunConfig:
     """Resolve defaults without sampling or depending on worker topology."""
+    root_allocation_degree = _positive_count(root_allocation_degree, "root_allocation_degree")
+    replacement_width = _positive_count(replacement_width, "replacement_width")
+    delta_K = _positive_count(delta_K, "delta_K")
+    max_samples = _positive_count(max_samples, "max_samples")
+    initial_capacity = _positive_count(initial_capacity, "initial_capacity")
     periodic = model._periodic_coordinates(args, params)
     # The aligned metadata already carries one flag per scalar base-space
     # coordinate, so it also supplies dimension without a second model
@@ -70,8 +87,6 @@ def resolve_run_config(
         # Match v2's robust default number of independent Markov chains.
         # Merely recording phantoms must not change the sampled race tree.
         root_degree = max(1, 30 * U_ndims)
-    if root_degree <= 0:
-        raise ValueError("root_allocation_degree must be positive.")
     if allocation_target not in (
         "uniform", "evidence_improving", "posterior_improving",
     ):
@@ -94,7 +109,6 @@ def resolve_run_config(
                 root_degree + (replacement_width or 1),
                 SAMPLES_PER_ROOT * root_degree,
             )
-        max_samples = int(max_samples)
         if max_samples < root_degree:
             raise ValueError("max_samples must hold all root samples.")
     if delta_K is None:
@@ -107,30 +121,12 @@ def resolve_run_config(
             # Utility allocation defines a direct gap, so one replacement
             # width normally keeps every vmapped lane scientifically busy.
             delta_K = replacement_width
-    if delta_K <= 0 or (
-        replacement_width is not None and replacement_width <= 0
-    ):
-        raise ValueError("replacement_width and delta_K must be positive.")
-
     if sampler is None:
-        num_slices = max(1, 5 * U_ndims)
-        sampler = UniDimSliceSampler(
-            num_slices=num_slices,
-            collect_phantom_samples=collect_phantom_samples,
-        )
-    if max_phantom_samples is not None:
-        try:
-            max_phantom_samples = operator.index(max_phantom_samples)
-        except TypeError as error:
-            raise TypeError(
-                "max_phantom_samples must be an integer or None."
-            ) from error
-        if max_phantom_samples < 1:
-            raise ValueError("max_phantom_samples must be positive.")
-    sampler = sampler._with_phantom_capacity(
-        max_phantom_samples,
-        U_ndims,
-    )
+        sampler = UniDimSliceSampler(num_slices=max(1, 5 * U_ndims))
+    # The runner owns collection even when the user supplies a sampler. Never
+    # silently inherit a conflicting low-level retention setting.
+    num_phantom_samples = sampler.max_num_phantom() if collect_phantom_samples else 0
+    sampler = sampler._with_phantom_count(num_phantom_samples)
     sampler = sampler._with_periodic(periodic)
     sampler.validate_core(U_ndims)
 
@@ -144,7 +140,6 @@ def resolve_run_config(
             )
         else:
             initial_capacity = root_degree + 10 * delta_K
-    initial_capacity = int(initial_capacity)
     if initial_capacity < root_degree:
         raise ValueError("initial_capacity must hold all root samples.")
     if max_samples is not None:
@@ -157,7 +152,7 @@ def resolve_run_config(
         ),
         max_samples=max_samples,
         sampler=sampler,
-        max_phantom_samples=int(sampler.num_phantom()),
+        num_phantom_samples=int(sampler.num_phantom()),
         initial_capacity=initial_capacity,
         delta_K=int(delta_K),
     )

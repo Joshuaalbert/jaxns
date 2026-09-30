@@ -66,6 +66,13 @@ callback to wire up. Use JAX operations in the function so it can be compiled
 and batched. Named realised variables appear in ``results.X_samples``.
 Give every realised prior a name that is unique within its model scope.
 
+``Model`` also accepts ``functools.partial`` and JIT-wrapped functions.
+Prefer an ordinary function: JAXNS compiles the transformed sampling and
+likelihood programs. Existing JIT wrappers are unwrapped before transformation
+so ``realise()`` registers priors in the active model context. Partial arguments
+remain part of the model definition; pass changing observations through ``args``
+to avoid capturing large changing arrays in the compilation identity.
+
 ``args`` holds fixed model inputs such as observed data. It is supplied when a
 run starts and is stored on its state for continuation. Most models need no
 ``params`` argument at all. ``run()`` uses the runner's default depth condition.
@@ -279,7 +286,6 @@ of the default slice chain, whose length is five times the model dimension:
        root_allocation_degree=30 * dimension,
        delta_K=30 * dimension,
        collect_phantom_samples=True,
-       max_phantom_samples=5 * dimension - 1,
        unlimited_samples=True,
        verbose=True,
    )
@@ -303,10 +309,9 @@ of the default slice chain, whose length is five times the model dimension:
    )
 
 ``sample_evidence`` defaults to classic conditioning. With phantom conditioning,
-``num_phantoms=None`` uses all retained states. Without an explicit retention
-capacity, the sampler stores only up to one dimension's worth of intermediate
-states, rather than the entire chain. A later analysis cannot recover discarded
-states. Increasing the number of evidence draws reduces Monte Carlo noise in
+``num_phantoms=None`` uses all retained states. Enabling collection retains
+every intermediate state, including when a custom slice sampler is supplied.
+A positive ``num_phantoms`` selects a shorter prefix for that analysis. Increasing the number of evidence draws reduces Monte Carlo noise in
 the ensemble summary, without adding likelihood observations.
 
 The state properties ``expected_log_Z_mean`` and ``expected_log_Z_uncert`` and
@@ -374,7 +379,7 @@ state with a runner using the second allocation policy:
 
 The ESS goal constructs a result at each completed goal boundary because ESS
 is a result property. Evidence-uncertainty goals can read the state directly.
-The ``replace`` call preserves sampler configuration and phantom capacity.
+The ``replace`` call preserves sampler configuration and phantom collection.
 Switch policies at a completed goal boundary so any unfinished work first
 finishes under its original policy.
 

@@ -150,8 +150,7 @@ def test_slice_continuations_preserve_complete_chain_outputs():
     model = QuadraticModel(centre=jnp.asarray([0.45, 0.55]))
     sampler = UniDimSliceSampler(
         num_slices=32,
-        collect_phantom_samples=True,
-        max_phantom_samples=2,
+        num_phantom_samples=2,
     )
     request = _request(width=8)
     reference = jax.jit(
@@ -179,12 +178,11 @@ def test_phantom_capacity_retains_start_prefix_and_excludes_classic():
     )
     complete_prefix_sampler = UniDimSliceSampler(
         num_slices=4,
-        collect_phantom_samples=True,
+        num_phantom_samples=3,
     )
     bounded_sampler = UniDimSliceSampler(
         num_slices=4,
-        collect_phantom_samples=True,
-        max_phantom_samples=2,
+        num_phantom_samples=2,
     )
     key = random.PRNGKey(284)
 
@@ -226,26 +224,19 @@ def test_phantom_capacity_validation():
         with pytest.raises(TypeError, match="Python integer"):
             UniDimSliceSampler(
                 num_slices=4,
-                collect_phantom_samples=True,
-                max_phantom_samples=non_python_integer,
+                num_phantom_samples=non_python_integer,
             )
-    with pytest.raises(ValueError, match="positive"):
+    with pytest.raises(ValueError, match="num_phantom_samples"):
         UniDimSliceSampler(
             num_slices=4,
-            collect_phantom_samples=True,
-            max_phantom_samples=0,
+            num_phantom_samples=-1,
         )
     with pytest.raises(ValueError, match="num_slices - 1"):
         UniDimSliceSampler(
             num_slices=4,
-            collect_phantom_samples=True,
-            max_phantom_samples=4,
+            num_phantom_samples=4,
         )
-    with pytest.raises(ValueError, match="collect_phantom_samples"):
-        UniDimSliceSampler(
-            num_slices=4,
-            max_phantom_samples=1,
-        )
+    assert UniDimSliceSampler(num_slices=4, num_phantom_samples=0).num_phantom() == 0
 
 
 def test_periodic_slice_continuations_preserve_complete_chain_outputs():
@@ -253,8 +244,7 @@ def test_periodic_slice_continuations_preserve_complete_chain_outputs():
     model = CircularModel(centre=jnp.asarray([0.99, 0.01]))
     sampler = UniDimSliceSampler(
         num_slices=32,
-        collect_phantom_samples=True,
-        max_phantom_samples=2,
+        num_phantom_samples=2,
     )._with_periodic((True, True))
     request = _periodic_request(width=8)
     reference = jax.jit(
@@ -405,7 +395,7 @@ def test_slice_continuations_handle_one_scalar_transition():
     model = QuadraticModel(centre=jnp.asarray([0.45, 0.55]))
     sampler = UniDimSliceSampler(
         num_slices=1,
-        collect_phantom_samples=False,
+        num_phantom_samples=0,
     )
     request = _request(width=1)
     result = jax.jit(
@@ -456,8 +446,7 @@ def test_slice_continuations_preserve_gmm_direction_law():
     model = QuadraticModel(centre=jnp.asarray([0.45, 0.55]))
     sampler = UniDimSliceSampler(
         num_slices=32,
-        collect_phantom_samples=True,
-        max_phantom_samples=2,
+        num_phantom_samples=2,
     )
     data = empty_sampler_data(num_components=1, dimension=2)
     data = dataclasses.replace(
@@ -508,8 +497,7 @@ def test_disabled_retained_fit_matches_plain_isotropic_key_stream(
     model = QuadraticModel(centre=jnp.asarray([0.45, 0.55]))
     sampler = UniDimSliceSampler(
         num_slices=num_slices,
-        collect_phantom_samples=True,
-        max_phantom_samples=2,
+        num_phantom_samples=2,
     )
     data = empty_sampler_data(num_components=1, dimension=2)
     data = dataclasses.replace(
@@ -576,8 +564,7 @@ def test_slice_continuations_do_not_execute_scheduler_padding():
     model = QuadraticModel(centre=jnp.asarray([0.45, 0.55]))
     sampler = UniDimSliceSampler(
         num_slices=32,
-        collect_phantom_samples=True,
-        max_phantom_samples=1,
+        num_phantom_samples=1,
     )
     request = _request(width=8)
     padded_request = dataclasses.replace(

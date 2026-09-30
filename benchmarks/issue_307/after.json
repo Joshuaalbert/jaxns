@@ -1,0 +1,43 @@
+{
+  "python": "3.12.9",
+  "jax": "0.11.1",
+  "devices": [
+    "cpu:0"
+  ],
+  "x64": true,
+  "shape": {
+    "dimension": 10,
+    "width": 100,
+    "transitions": 100,
+    "phantoms": 99
+  },
+  "lower_seconds": 0.9362925159512088,
+  "compile_seconds": 4.271373406983912,
+  "steady_median_seconds": 0.09572421095799655,
+  "steady_min_seconds": 0.08211918908637017,
+  "steady_max_seconds": 0.11221343500073999,
+  "steady_samples_seconds": [
+    0.09274339803960174,
+    0.08851321099791676,
+    0.09752735099755228,
+    0.09927108499687165,
+    0.09572421095799655,
+    0.09287681803107262,
+    0.09229844994843006,
+    0.08211918908637017,
+    0.106866913032718,
+    0.11221343500073999,
+    0.10415747005026788
+  ],
+  "argument_bytes": 6600,
+  "output_bytes": 86556,
+  "temporary_bytes": 904208,
+  "alias_bytes": 0,
+  "stablehlo_bytes": 183323,
+  "run_seconds_including_compilation": 43.81516522099264,
+  "classic_samples": 3678,
+  "likelihood_evaluations": 645662,
+  "expected_log_Z": -10.157836190208506,
+  "expected_uncertainty": 0.12097271981586784,
+  "reference_log_Z": -10.077421137436366
+}
