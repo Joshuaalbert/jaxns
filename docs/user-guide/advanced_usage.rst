@@ -4,6 +4,9 @@ Advanced modelling and run control
 This guide explains how models, optimisation parameters, evidence estimates,
 and continuation fit together. The examples use the public JAXNS API. See
 :doc:`laptop_to_cluster` for the complete distributed workflow.
+For the algorithmic foundations behind these interfaces, read the JAXNS v3
+paper, `Phantom-Conditioned Nested Sampling
+<https://arxiv.org/abs/2609.32120>`_.
 
 Defining a model with realised priors
 -------------------------------------

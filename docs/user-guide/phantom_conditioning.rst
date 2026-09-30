@@ -6,6 +6,10 @@ chain. They condition the Monte Carlo shrinkage model, but they are not classic
 race-tree samples and do not contribute posterior coordinates or posterior
 effective sample size.
 
+For the statistical derivation and experimental limitations of phantom
+conditioning, read the JAXNS v3 paper,
+`Phantom-Conditioned Nested Sampling <https://arxiv.org/abs/2609.32120>`_.
+
 Collection owns memory
 ----------------------
 

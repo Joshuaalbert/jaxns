@@ -126,20 +126,10 @@
       "path": "cicd/tests/test_constrained_sampler.py",
       "reason": "implementation_regression"
     },
-    "test_slice_continuations_do_not_execute_scheduler_padding": {
-      "note": "Checks the current distinction between logical scheduler padding, physical filler evaluations, and retained phantom validity.",
-      "path": "cicd/tests/test_constrained_sampler.py",
-      "reason": "implementation_regression"
-    },
     "test_slice_continuations_handle_one_scalar_transition": {
       "note": "Checks the scalar and one-transition compatibility boundary of the current batch implementation.",
       "path": "cicd/tests/test_constrained_sampler.py",
       "reason": "architecture_boundary"
-    },
-    "test_slice_continuations_preserve_complete_chain_outputs": {
-      "note": "Checks that the continuation scheduler preserves the concrete complete-chain random stream, phantom prefix, outputs, and counters.",
-      "path": "cicd/tests/test_constrained_sampler.py",
-      "reason": "implementation_regression"
     },
     "test_slice_continuations_preserve_gmm_direction_law": {
       "note": "Checks that transition-ordered ellipsoidal direction generation remains numerically equivalent to the complete-chain reference path.",
@@ -506,11 +496,6 @@
       "path": "cicd/tests/test_allocation.py",
       "reason": "implementation_formula"
     },
-    "test_public_scientific_data_objects_are_frozen_and_slotted": {
-      "note": "Checks that mutable sampler configuration remains separate from frozen scientific state and result data.",
-      "path": "cicd/tests/test_core.py",
-      "reason": "architecture_boundary"
-    },
     "test_public_evidence_rejects_invalid_plateau_capacity": {
       "note": "Checks a shrinkage helper, validation path, or diagnostic compatibility detail beyond mapped invariants.",
       "path": "cicd/tests/test_shrinkage.py",
@@ -786,11 +771,6 @@
       "path": "cicd/tests/test_distributed_core.py",
       "reason": "scheduler_architecture"
     },
-    "test_filled_target_advances_allocation_without_exposing_user_goal": {
-      "note": "Checks the selected Python goal-boundary and internal allocation-round separation.",
-      "path": "cicd/tests/test_core.py",
-      "reason": "architecture_boundary"
-    },
     "test_frozen_target_projects_by_successor_contour": {
       "note": "Checks the selected projection used when new contours refine a frozen absolute target.",
       "path": "cicd/tests/test_core.py",
@@ -881,26 +861,6 @@
       "path": "cicd/tests/test_random.py",
       "reason": "utility_behavior"
     },
-    "test_runner_reuse_resolves_dimensions_from_each_runs_inputs": {
-      "note": "Reusing and serialising a runner preserves unresolved configuration while each State owns its runtime inputs and dimension-dependent defaults.",
-      "path": "cicd/tests/test_run_inputs.py",
-      "reason": "configuration_contract"
-    },
-    "test_local_run_entrypoints_forward_inputs": {
-      "note": "Local start methods forward runtime arguments and parameters into State and likelihood evaluations.",
-      "path": "cicd/tests/test_run_inputs.py",
-      "reason": "configuration_contract"
-    },
-    "test_local_resume_resolves_only_checkpoint_inputs": {
-      "note": "Explicit and automatic resumption use checkpoint inputs and model before resolving topology, preserving the uninterrupted trajectory.",
-      "path": "cicd/tests/test_run_inputs.py",
-      "reason": "configuration_contract"
-    },
-    "test_distributed_run_and_resume_use_state_owned_inputs": {
-      "note": "Distributed start methods register runtime inputs, and resumption reconstructs worker topology and registration from State.",
-      "path": "cicd/tests/test_run_inputs.py",
-      "reason": "configuration_contract"
-    },
     "test_local_distributed_handoff_preserves_state_and_keys": {
       "path": "cicd/tests/test_distributed_core.py",
       "reason": "architecture_boundary",
@@ -976,11 +936,6 @@
       "reason": "regression_contract",
       "note": "Equal-weight posterior resampling rejects a selection policy that would change its measure."
     },
-    "test_parent_graph_respects_contours_degrees_and_storage_indices": {
-      "path": "cicd/tests/test_audit_regressions.py",
-      "reason": "regression_contract",
-      "note": "Derived graph edges respect stored contours and degrees under append-order permutations and padding."
-    },
     "test_signed_logspace_cumsum_preserves_sign_changes": {
       "path": "cicd/tests/test_audit_regressions.py",
       "reason": "regression_contract",
@@ -1010,11 +965,6 @@
       "path": "cicd/tests/test_audit_regressions.py",
       "reason": "regression_contract",
       "note": "Fractional count options fail instead of silently truncating to integers."
-    },
-    "test_parent_graph_assigns_zero_arrivals_to_sentinel_and_respects_plateaus": {
-      "path": "cicd/tests/test_audit_regressions.py",
-      "reason": "regression_contract",
-      "note": "Graph reconstruction distinguishes sentinel assignments from zero-contour parents using existing degrees."
     },
     "test_partial_model_bindings_have_distinct_compilation_identity": {
       "path": "cicd/tests/test_audit_regressions.py",

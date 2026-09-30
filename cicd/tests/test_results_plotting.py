@@ -104,6 +104,21 @@ def test_plot_diagnostics_writes_file(tmp_path):
     assert output_file.stat().st_size > 0
 
 
+def test_summary_and_plots_preserve_all_result_arrays(tmp_path):
+    from matplotlib import pyplot as plt
+
+    results = _make_fake_results()
+    before = [np.array(value) for value in tree_util.tree_leaves(results)]
+    try:
+        results.summary(f_obj=io.StringIO())
+        results.plot_diagnostics(save_file=str(tmp_path / "diagnostics.png"))
+        results.plot_cornerplot(save_name=str(tmp_path / "posterior.png"))
+        for actual, expected in zip(tree_util.tree_leaves(results), before, strict=True):
+            np.testing.assert_array_equal(actual, expected)
+    finally:
+        plt.close("all")
+
+
 def test_plot_diagnostics_orders_append_results_by_negative_log_x(monkeypatch):
     from matplotlib import pyplot as plt
 

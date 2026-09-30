@@ -11,6 +11,41 @@ from jaxns.priors import Prior
 tfpd = tfp.distributions
 
 
+@pytest.mark.parametrize("dimension", [1, 3])
+def test_prior_transform_preserves_hierarchical_measure_and_dimension(dimension):
+    def prior_model():
+        location = Prior(
+            tfpd.Uniform(jnp.zeros(dimension), jnp.ones(dimension)),
+            name="location",
+        ).realise()
+        value = Prior(
+            tfpd.Normal(jnp.sum(location), 0.5), name="value",
+        ).realise()
+        return -jnp.square(value)
+
+    model = Model(prior_model)
+    single = model.sample_U(jax.random.PRNGKey(303))
+    assert model.U_ndims() == dimension + 1
+    assert sum(leaf.size for leaf in jax.tree.leaves(single)) == dimension + 1
+    samples = jax.jit(jax.vmap(model.sample_U))(
+        jax.random.split(jax.random.PRNGKey(304), 8192),
+    )
+    transformed = jax.jit(jax.vmap(model.transform_to_X))(samples)
+    locations = np.asarray(transformed["location"])
+    # Testing the conditional residual catches a lost dependency even when
+    # each named variable's unconditional mean happens to remain correct.
+    residual = (np.asarray(transformed["value"]) - locations.sum(axis=1)) / 0.5
+    np.testing.assert_allclose(locations.mean(axis=0), 0.5, atol=0.02)
+    np.testing.assert_allclose(locations.var(axis=0), 1 / 12, atol=0.006)
+    np.testing.assert_allclose(residual.mean(), 0.0, atol=0.06)
+    np.testing.assert_allclose(residual.var(), 1.0, atol=0.08)
+    assert np.all((locations >= 0.0) & (locations < 1.0))
+    np.testing.assert_allclose(
+        np.mean((locations - 0.5) * residual[:, None], axis=0),
+        0.0, atol=0.02,
+    )
+
+
 def test_nan_likelihood_is_zero_but_sanity_check_reports_raw_output() -> None:
     def prior_model(log_likelihood):
         Prior(tfpd.Uniform(0.0, 1.0), name="value").realise()

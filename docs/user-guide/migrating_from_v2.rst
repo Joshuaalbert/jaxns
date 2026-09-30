@@ -4,6 +4,11 @@ Migrating from JAXNS v2
 Start by porting the model, then update the sampler and result calls. The
 :doc:`advanced_usage` guide explains the new model and run-control interfaces
 in more detail.
+The algorithm is described in the v3 paper,
+`Phantom-Conditioned Nested Sampling <https://arxiv.org/abs/2609.32120>`_.
+The earlier *Phantom-Powered Nested Sampling* paper is redacted. See
+:doc:`../papers/index` for the distinction between the current and earlier
+papers.
 
 Replace yielded priors with realised values
 -------------------------------------------
