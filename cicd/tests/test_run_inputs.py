@@ -58,6 +58,12 @@ def _assert_state_inputs(state, args, params):
         state.samples.log_likelihoods[:count], expected,
         rtol=1e-13, atol=1e-13,
     )
+    result = state.to_result().trim()
+    expected_x = jax.vmap(
+        lambda sample: state.model.transform_to_X(sample, args=args, params=params)
+    )(samples)
+    _assert_same_tree(result.X_samples, expected_x)
+    np.testing.assert_allclose(result.log_L, expected, rtol=1e-13, atol=1e-13)
 
 
 def test_runner_reuse_resolves_dimensions_from_each_runs_inputs():

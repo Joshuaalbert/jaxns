@@ -46,6 +46,75 @@ class QuadraticModel(PureDataclassPytree):
 QuadraticModel.register_pytree()
 
 
+def test_stationary_chains_preserve_classic_and_phantom_disk_marginals():
+    model = QuadraticModel(centre=jnp.asarray([0.5, 0.5]))
+    width = 4096
+    radius = 0.2
+    radial_key, angle_key, chain_key = random.split(random.PRNGKey(303), 3)
+    # Independent uniform disk seeds are an exact stationary oracle. Starting
+    # every chain at the centre would test burn-in instead of invariance.
+    radii = radius * jnp.sqrt(random.uniform(radial_key, (width,)))
+    angles = 2 * jnp.pi * random.uniform(angle_key, (width,))
+    seeds = model.centre + radii[:, None] * jnp.stack(
+        (jnp.cos(angles), jnp.sin(angles)), axis=1,
+    )
+    request = ConstrainedSampleRequest(
+        keys=random.split(chain_key, width),
+        valid=jnp.ones(width, dtype=bool),
+        from_root=jnp.zeros(width, dtype=bool),
+        log_L_constraints=jnp.full((width,), -radius ** 2),
+        seed_points=SeedPoint(
+            U0=seeds, log_L0=jax.vmap(model.log_likelihood)(seeds),
+        ),
+        sampler_data=None,
+    )
+    sampler = UniDimSliceSampler(num_slices=4, num_phantom_samples=3)
+    sampled = jax.jit(lambda r: sampler.get_samples(r, model=model))(request)
+    states = np.concatenate((
+        np.asarray(sampled.phantom_samples.U_samples),
+        np.asarray(sampled.U_samples)[:, None, :],
+    ), axis=1)
+    displacement = states - np.asarray(model.centre)
+    radial_cdf = np.sum(displacement ** 2, axis=-1) / radius ** 2
+    assert np.all((radial_cdf >= 0.0) & (radial_cdf < 1.0))
+    # Each transition is checked across independent chains, never by treating
+    # the correlated observations within a chain as additional replicates.
+    np.testing.assert_allclose(displacement.mean(axis=0), 0.0, atol=0.008)
+    np.testing.assert_allclose(
+        (displacement ** 2).mean(axis=0), radius ** 2 / 4, atol=0.001,
+    )
+    grid = np.arange(1, width + 1)[:, None] / width
+    assert np.max(np.abs(np.sort(radial_cdf, axis=0) - grid)) < 0.04
+    # Accidentally broadcasting one chain's seed or key couples clusters even
+    # if a marginal histogram can still appear stationary.
+    for index in range(states.shape[1]):
+        correlation = np.corrcoef(
+            radial_cdf[::2, index], radial_cdf[1::2, index],
+        )[0, 1]
+        assert abs(correlation) < 0.09
+
+
+def test_scalar_chain_counts_each_likelihood_evaluation_once():
+    calls = []
+
+    class ObservedModel:
+        def log_likelihood(self, u, args=(), params=None):
+            del args, params
+            jax.debug.callback(lambda value: calls.append(np.asarray(value)), u)
+            return -jnp.sum((u - 0.5) ** 2)
+
+    model = ObservedModel()
+    sampler = UniDimSliceSampler(num_slices=4, num_phantom_samples=3)
+    seed = SeedPoint(U0=jnp.asarray([0.5, 0.5]), log_L0=jnp.asarray(0.0))
+    sample = jax.jit(lambda key: sampler.get_sample(
+        key, jnp.asarray(-0.001), seed, model=model,
+    ))(random.PRNGKey(305))
+    jax.block_until_ready(sample)
+    jax.effects_barrier()
+    assert len(calls) == int(sample[2])
+    assert len(calls) > sampler.num_slices
+
+
 @pytest.mark.parametrize("num_slices,width", [(2, 1), (32, 8)])
 def test_sampler_uses_the_model_supplied_for_each_request(num_slices, width):
     """Reusing transition settings must never reuse another run's model."""
