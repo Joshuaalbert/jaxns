@@ -1,0 +1,15 @@
+[
+  {
+    "stage": "0.05",
+    "job": [
+      "ss10",
+      16,
+      "analysis"
+    ],
+    "exit_code": 1,
+    "resolved": true,
+    "analysis_commit": "5667381608eced7e3fcb754f32cc6c59db185735",
+    "reason": "Extend sparse reduction to the existing plateau law",
+    "successful_pid": 4044812
+  }
+]

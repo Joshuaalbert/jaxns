@@ -1,6 +1,0 @@
-jax>=0.6.0
-jaxlib
-matplotlib
-numpy
-scipy
-tfp_nightly

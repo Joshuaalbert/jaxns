@@ -1,0 +1,6 @@
+{
+  "singleton_draws_and_gates_bitwise_equal": true,
+  "draws": 64,
+  "prefixes": 10,
+  "old_source": "/largedata/albert/git/jaxns-paper-evidence10-AC300/benchmarks/paper_reproduction/prefix_sweep.py"
+}

@@ -1,0 +1,84 @@
+{
+  "launcher_checks": {
+    "R240": [
+      {
+        "command": [
+          "ruff",
+          "check",
+          "benchmarks/paper_reproduction/launch.py"
+        ],
+        "exit_code": 0,
+        "output": "All checks passed!\n"
+      },
+      {
+        "command": [
+          "flake8",
+          "benchmarks/paper_reproduction/launch.py"
+        ],
+        "exit_code": 0,
+        "output": ""
+      }
+    ],
+    "A240": [
+      {
+        "command": [
+          "ruff",
+          "check",
+          "benchmarks/paper_reproduction/launch.py"
+        ],
+        "exit_code": 0,
+        "output": "All checks passed!\n"
+      },
+      {
+        "command": [
+          "flake8",
+          "benchmarks/paper_reproduction/launch.py"
+        ],
+        "exit_code": 0,
+        "output": ""
+      }
+    ],
+    "C240": [
+      {
+        "command": [
+          "ruff",
+          "check",
+          "benchmarks/paper_reproduction/launch.py"
+        ],
+        "exit_code": 0,
+        "output": "All checks passed!\n"
+      },
+      {
+        "command": [
+          "flake8",
+          "benchmarks/paper_reproduction/launch.py"
+        ],
+        "exit_code": 0,
+        "output": ""
+      }
+    ],
+    "Cprime240": [
+      {
+        "command": [
+          "ruff",
+          "check",
+          "benchmarks/paper_reproduction/launch.py"
+        ],
+        "exit_code": 0,
+        "output": "All checks passed!\n"
+      },
+      {
+        "command": [
+          "flake8",
+          "benchmarks/paper_reproduction/launch.py"
+        ],
+        "exit_code": 0,
+        "output": ""
+      }
+    ]
+  },
+  "identical_reports": 5,
+  "verified_files_per_report": 49,
+  "new_cells": 240,
+  "all_five_installed_manuscripts_identical": true
+}

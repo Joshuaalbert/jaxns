@@ -1,0 +1,51 @@
+{
+  "case": "rosenbrock10",
+  "seed": 0,
+  "dimension": 10,
+  "source_commit": "b44d3b7bdfaa870315a7f09a2abe63c22a765bb3",
+  "legacy_commit": "67e45dac6d9b273c4f4d957433f53228bf9ea7e0",
+  "source_root": "/largedata/albert/git/jaxns-paper-posterior10",
+  "prior_bounds": [
+    -5.0,
+    5.0
+  ],
+  "ss10_definition": null,
+  "reference": {
+    "method": "no reference evidence used"
+  },
+  "root_degree": 300,
+  "delta_K": 300,
+  "shell_size": 100,
+  "num_slices": 100,
+  "retained_phantoms": 99,
+  "all_phantom_seeds": true,
+  "direction": "isotropic",
+  "allocation_target": "weighted",
+  "allocation_weights": {
+    "evidence": 0.1,
+    "posterior": 0.9
+  },
+  "allocation_rule": "weighted sum of rounded component gaps; ceil; no renormalisation",
+  "bootstrap": {
+    "allocation_target": "uniform",
+    "delta_K": 1,
+    "goals": 1
+  },
+  "goal_kish_ess": 3000,
+  "goal_classic_log_Z_uncert": null,
+  "depth_dlogZ": 0.0009995003330835331,
+  "affinity": [
+    1
+  ],
+  "versions": {
+    "jax": "0.10.0",
+    "jaxlib": "0.10.0",
+    "jaxctx": "1.2.0",
+    "numpy": "2.4.4",
+    "scipy": "1.17.1"
+  },
+  "source_sha256": {
+    "posterior_cases.py": "8d1e6dd40bfe460e3ba7258ba481345202b27c6837a1c8e18b18b837b69ff75a",
+    "run_posterior.py": "2a404c6fc791cfbb3d21b6835b47bd532a36d751e418baa3e002d6b8ab4fc53d"
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "date": "2026-08-28",
+  "baseline_commit": "7c34ca7",
+  "python": "3.12.9",
+  "jax": "0.10.0",
+  "jaxlib": "0.10.0",
+  "device": "cpu:0",
+  "x64": true,
+  "disabled_path": {
+    "repeats_per_version": 200,
+    "root_allocation_degree": 16,
+    "shell_size": 8,
+    "physical_capacity": 256,
+    "dimensions": 8,
+    "baseline_compile_and_first_run_seconds": 1.7404374489560723,
+    "branch_compile_and_first_run_seconds": 1.740593739086762,
+    "baseline_median_seconds": 0.003335175453685224,
+    "branch_median_seconds": 0.00327530805952847,
+    "median_ratio_branch_over_baseline": 0.9820497017359002,
+    "baseline_mean_seconds": 0.0033349413296673448,
+    "branch_mean_seconds": 0.003309287562733516,
+    "mean_ratio_branch_over_baseline": 0.992307580734445,
+    "all_scientific_signatures_exact": true
+  },
+  "checkpoint": {
+    "dimensions": 8,
+    "physical_capacity": 1000000,
+    "state_bytes": 104001927,
+    "save_seconds": [
+      0.6014408881310374,
+      0.5716654278803617,
+      0.6030775101389736,
+      0.6172457940410823,
+      0.6009946190752089
+    ],
+    "median_save_seconds": 0.6014408881310374,
+    "one_hour_wall_fraction": 0.0001670669133697326,
+    "one_hour_wall_percent": 0.01670669133697326
+  }
+}

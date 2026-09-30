@@ -1,0 +1,101 @@
+{
+  "case": "ss10",
+  "seed": 18,
+  "dimension": 10,
+  "case_revision": "evidence10-AC300-20260909",
+  "intervention": "A+C",
+  "source_commit": "aa79a0dc395c0d64b85cbb88d0e3e732decd7361",
+  "legacy_commit": "67e45dac6d9b273c4f4d957433f53228bf9ea7e0",
+  "source_root": "/largedata/albert/git/jaxns-paper-evidence10-AC300",
+  "reference": {
+    "method": "product of Gaussian CDF differences over the finite prior box",
+    "log_Z": -24.15593480605331,
+    "component_log_Z": [
+      -24.84906649788154,
+      -24.849097475584877
+    ],
+    "spike_mass": 0.5000077444258325,
+    "means": [
+      [
+        6.0,
+        6.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      [
+        2.5,
+        2.5,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    ],
+    "standard_deviations": [
+      0.282842712474619,
+      0.8944271909999159
+    ]
+  },
+  "ss10_definition": "repository",
+  "root_degree": 300,
+  "delta_K": 300,
+  "shell_size": 100,
+  "num_slices": 100,
+  "retained_phantoms": 99,
+  "all_phantom_seeds": true,
+  "direction": "isotropic",
+  "allocation_target": "evidence_improving",
+  "allocation_weights": null,
+  "allocation_rule": "current_K + ceil(300 * unit_peak_evidence_utility)",
+  "bootstrap": {
+    "allocation_target": "uniform",
+    "delta_K": 1,
+    "goals": 1
+  },
+  "goal_classic_log_Z_uncert": 0.05,
+  "resume_from": null,
+  "checkpoint_every_goals": 5,
+  "checkpoint_preserves_capacity": true,
+  "evidence_prefix_sizes": [
+    0,
+    10,
+    20,
+    30,
+    40,
+    50,
+    60,
+    70,
+    80,
+    90
+  ],
+  "C_min": 20.0,
+  "depth_dlogZ": 0.0009995003330835331,
+  "affinity": [
+    54
+  ],
+  "versions": {
+    "jax": "0.10.0",
+    "jaxlib": "0.10.0",
+    "jaxctx": "1.2.0",
+    "numpy": "2.4.4",
+    "scipy": "1.17.1"
+  },
+  "source_sha256": {
+    "run_evidence10.py": "5adbb546df65c56880ff64d446f59c93e9b5ab5610a332db707481014ef75014",
+    "evidence10_cases.py": "a26c21bf61073ae960b4fec772a5e04d8a5adbef7904283fd3ed82fdd5489dab",
+    "posterior_cases.py": "8d1e6dd40bfe460e3ba7258ba481345202b27c6837a1c8e18b18b837b69ff75a",
+    "run_posterior.py": "2a404c6fc791cfbb3d21b6835b47bd532a36d751e418baa3e002d6b8ab4fc53d",
+    "prefix_sweep.py": "943fc01c09909fc994f8aeb2bd9ed5d78b38480f34670941ee932d023ca845f8",
+    "references.py": "466fc353119bd7a3b9fceb5bb74c47f064523d4baf0c25813d192a6d305ab89e"
+  }
+}

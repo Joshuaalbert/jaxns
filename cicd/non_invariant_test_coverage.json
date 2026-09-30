@@ -1,0 +1,1000 @@
+{
+  "schema_version": 1,
+  "tests": {
+    "test_classic_runner_constructs_sampler_on_develop": {
+      "note": "Checks that the paper benchmark's default classic-only runner constructs a sampler without requiring the experimental phantom-seeding API.",
+      "path": "cicd/tests/test_paper_experiment.py",
+      "reason": "configuration_contract"
+    },
+    "test_mode_mass_uses_classic_expected_posterior_once": {
+      "note": "Checks that the benchmark mode-mass utility sums the supplied classic posterior weights once rather than deriving prefix-specific posterior diagnostics.",
+      "path": "cicd/tests/test_paper_experiment.py",
+      "reason": "utility_behavior"
+    },
+    "test_mode_mass_rejects_non_sample_aligned_membership": {
+      "note": "Checks the benchmark utility's shape validation for mode membership and classic posterior weights.",
+      "path": "cicd/tests/test_paper_experiment.py",
+      "reason": "configuration_contract"
+    },
+    "test_prefix_records_reject_posterior_diagnostics": {
+      "note": "Checks that the benchmark summary rejects historical prefix-local mode-mass fields in its evidence record schema.",
+      "path": "cicd/tests/test_paper_experiment.py",
+      "reason": "result_schema_regression"
+    },
+    "test_nested_sampler_resolves_and_preserves_phantom_capacity": {
+      "note": "Checks runner-owned all-or-zero retention regardless of explicit sampler settings, including checkpoint round trips.",
+      "path": "cicd/tests/test_core.py",
+      "reason": "configuration_contract"
+    },
+    "test_phantom_capacity_validation": {
+      "note": "Checks direct phantom capacity bounds and integer validation.",
+      "path": "cicd/tests/test_constrained_sampler.py",
+      "reason": "configuration_contract"
+    },
+    "test_sample_evidence_rejects_prefix_for_classic_conditioning": {
+      "note": "Checks that the explicit classic-conditioning API remains independent of the phantom-prefix option.",
+      "path": "cicd/tests/test_phantom_results.py",
+      "reason": "configuration_contract"
+    },
+    "test_state_sample_evidence_forwards_phantom_prefix": {
+      "note": "Checks parity between the thin State forwarder and the authoritative result-level phantom-prefix implementation.",
+      "path": "cicd/tests/test_phantom_results.py",
+      "reason": "reference_parity"
+    },
+    "test_effective_sample_size_kish_uses_posterior_weights": {
+      "note": "Checks that the reported posterior ESS is Kish's quantity for the actual posterior weights, independent of evidence moments or phantom states.",
+      "path": "cicd/tests/test_stats.py",
+      "reason": "utility_behavior"
+    },
+    "test_plot_diagnostics_orders_append_results_by_negative_log_x": {
+      "note": "Checks append-order result rendering and cumulative evidence traversal in nested prior-volume order.",
+      "path": "cicd/tests/test_results_plotting.py",
+      "reason": "output_behavior"
+    },
+    "test_plot_cornerplot_uses_authoritative_map_and_supremum": {
+      "note": "Checks that corner-plot point annotations use authoritative result fields rather than recomputed sample argmax indices.",
+      "path": "cicd/tests/test_results_plotting.py",
+      "reason": "result_schema_regression"
+    },
+    "test_plot_evidence_compares_explicit_conditionings_and_exact_value": {
+      "note": "Checks explicit evidence-conditioning selection and exact-evidence rendering in the result plotting utility.",
+      "path": "cicd/tests/test_results_plotting.py",
+      "reason": "output_behavior"
+    },
+    "test_summary_does_not_compare_incommensurate_phantom_statistics": {
+      "note": "Checks that the text summary does not label an effective-live-point diagnostic as phantom posterior Kish ESS or compare it with the classic ESS.",
+      "path": "cicd/tests/test_results_plotting.py",
+      "reason": "output_behavior"
+    },
+    "test_weighted_percentile_retains_dominant_boundary_sample_mass": {
+      "note": "Checks that corner-plot weighted quantiles retain the full mass of boundary samples under midpoint CDF interpolation.",
+      "path": "cicd/tests/test_results_plotting.py",
+      "reason": "utility_behavior"
+    },
+    "test_batch_group_ignores_direction_diagnostics_but_not_geometry": {
+      "note": "Checks the concrete worker specialization key and protects the premise that observational GMM counters cannot affect a constrained-sampling call.",
+      "path": "cicd/tests/test_distributed_runtime.py",
+      "reason": "implementation_regression"
+    },
+    "test_component_eligibility_uses_fitted_mean_likelihood": {
+      "note": "Checks the selected fitted-component eligibility proxy at the component mean rather than an independent scientific contract.",
+      "path": "cicd/tests/test_constrained_sampler.py",
+      "reason": "implementation_formula"
+    },
+    "test_component_selection_uses_contour_trimmed_volume_in_dimension": {
+      "note": "Checks the selected contour-trimmed ellipsoid-volume weighting formula used by the direction heuristic.",
+      "path": "cicd/tests/test_constrained_sampler.py",
+      "reason": "implementation_formula"
+    },
+    "test_disabled_ellipsoidal_directions_are_exact_isotropic_fallback": {
+      "note": "Checks the concrete state switch from retained GMM geometry to the isotropic direction implementation.",
+      "path": "cicd/tests/test_constrained_sampler.py",
+      "reason": "architecture_boundary"
+    },
+    "test_distributed_directions_change_only_at_drained_boundaries": {
+      "note": "Checks the selected distributed-state boundary for changing retained direction geometry without provisional work.",
+      "path": "cicd/tests/test_distributed_core.py",
+      "reason": "architecture_boundary"
+    },
+    "test_supervisor_validates_atomic_task_group_before_queue_mutation": {
+      "note": "Checks transactional validation of the current multipart task protocol before its retry table is mutated.",
+      "path": "cicd/tests/test_distributed_runtime.py",
+      "reason": "implementation_regression"
+    },
+    "test_capacity_counts_only_workers_registered_for_session": {
+      "note": "Checks that scheduler capacity excludes workers which failed or have not completed the concrete compatibility registration handshake.",
+      "path": "cicd/tests/test_distributed_runtime.py",
+      "reason": "architecture_boundary"
+    },
+    "test_incompatible_worker_is_rejected_before_model_registration": {
+      "note": "Checks the concrete Python/JAXNS/JAX/JAXLIB/x64/dtype compatibility handshake before Cloudpickle transfer.",
+      "path": "cicd/tests/test_distributed_runtime.py",
+      "reason": "architecture_boundary"
+    },
+    "test_ellipsoidal_direction_jit_vmap_uses_eligible_geometry": {
+      "note": "Checks the current compiled direction-kernel batching and eligible-geometry selection wiring.",
+      "path": "cicd/tests/test_constrained_sampler.py",
+      "reason": "architecture_boundary"
+    },
+    "test_continuation_outer_jit_captures_registered_function_args": {
+      "note": "Checks that the current compositional JIT boundary captures registered non-array model arguments instead of abstracting them as runtime arrays.",
+      "path": "cicd/tests/test_constrained_sampler.py",
+      "reason": "architecture_boundary"
+    },
+    "test_narrow_batch_keeps_complete_chain_reference": {
+      "note": "Checks the evidence-selected lane-width boundary between the continuation scheduler and the complete-chain reference implementation.",
+      "path": "cicd/tests/test_constrained_sampler.py",
+      "reason": "implementation_regression"
+    },
+    "test_slice_continuations_handle_one_scalar_transition": {
+      "note": "Checks the scalar and one-transition compatibility boundary of the current batch implementation.",
+      "path": "cicd/tests/test_constrained_sampler.py",
+      "reason": "architecture_boundary"
+    },
+    "test_slice_continuations_preserve_gmm_direction_law": {
+      "note": "Checks that transition-ordered ellipsoidal direction generation remains numerically equivalent to the complete-chain reference path.",
+      "path": "cicd/tests/test_constrained_sampler.py",
+      "reason": "implementation_regression"
+    },
+    "test_state_to_result_excludes_storage_tail_likelihood_counts": {
+      "note": "Checks that fixed-capacity storage padding cannot enter the current result-level likelihood or phantom accounting reductions.",
+      "path": "cicd/tests/test_state.py",
+      "reason": "implementation_regression"
+    },
+    "test_masked_non_finite_storage_cannot_poison_fit": {
+      "note": "Checks that masked physical padding cannot contaminate the current fixed-shape GMM implementation.",
+      "path": "cicd/tests/test_em_gmm.py",
+      "reason": "implementation_regression"
+    },
+    "test_sampler_data_warm_update_retains_geometry_after_failed_fit": {
+      "note": "Checks the current warm-fit state representation and its recovery from a singular candidate geometry.",
+      "path": "cicd/tests/test_multi_ellipsoid.py",
+      "reason": "implementation_regression"
+    },
+    "test_sampler_data_uses_gaussian_mean_height_without_sample_hull": {
+      "note": "Checks the selected responsibility-weighted reconstruction of fitted likelihood height at a component mean.",
+      "path": "cicd/tests/test_multi_ellipsoid.py",
+      "reason": "implementation_formula"
+    },
+    "test_state_merge_keeps_recent_geometry_and_cumulative_direction_work": {
+      "note": "Checks the concrete state-merge policy for sampler geometry and internal direction-work counters.",
+      "path": "cicd/tests/test_state.py",
+      "reason": "architecture_boundary"
+    },
+    "test_warm_weighted_fit_matches_numpy_reference": {
+      "note": "Checks numerical parity between the accelerated weighted GMM update and its pure NumPy reference.",
+      "path": "cicd/tests/test_em_gmm.py",
+      "reason": "reference_parity"
+    },
+    "test_dependency_metadata_matches_feature_boundaries": {
+      "note": "Checks the current packaging classification and optional-extra metadata rather than an implementation-agnostic scientific contract.",
+      "path": "cicd/tests/test_optional_dependencies.py",
+      "reason": "packaging_boundary"
+    },
+    "test_full_diagnostics_support_a_partial_final_batch": {
+      "note": "Checks the opt-in full-diagnostic output schema over a partial final batch.",
+      "path": "cicd/tests/test_phantom_results.py",
+      "reason": "architecture_boundary"
+    },
+    "test_sample_evidence_batches_have_exact_requested_shape": {
+      "note": "Checks the current bounded-batch result schema and batch-size edge cases.",
+      "path": "cicd/tests/test_phantom_results.py",
+      "reason": "architecture_boundary"
+    },
+    "test_bruteforce_utilities_preserve_model_unit_dtypes": {
+      "note": "Checks compatibility between the regular-grid diagnostic utilities and jaxctx's per-prior U-space dtype validation.",
+      "path": "cicd/tests/test_utils.py",
+      "reason": "utility_behavior"
+    },
+    "test_bruteforce_evidence_assigns_unit_volume_to_constant_likelihood": {
+      "note": "Checks that midpoint grid weights integrate a constant likelihood over exactly one unit of prior volume.",
+      "path": "cicd/tests/test_utils.py",
+      "reason": "utility_behavior"
+    },
+    "test_integrate_semi_positive_values_over_posterior": {
+      "note": "Checks that the semi-positive posterior integration utility consumes ordinary non-negative values rather than treating them as logarithms.",
+      "path": "cicd/tests/test_phantom_results.py",
+      "reason": "utility_behavior"
+    },
+    "test_plateau_result_with_padded_inf_block_has_finite_h_samples": {
+      "note": "Checks that the current padded block-buffer representation cannot contaminate an evidence diagnostic.",
+      "path": "cicd/tests/test_phantom_results.py",
+      "reason": "result_schema_regression"
+    },
+    "test_results_cluster_block_fields_in_block_data": {
+      "note": "Checks the current nested BlockData schema and its immutability requirement.",
+      "path": "cicd/tests/test_phantom_results.py",
+      "reason": "architecture_boundary"
+    },
+    "test_state_to_result_evidence_summary_uses_block_model": {
+      "note": "Checks that state-to-result wiring selects the current block-model implementation.",
+      "path": "cicd/tests/test_state.py",
+      "reason": "result_schema_regression"
+    },
+    "test_canonical_block_state_has_no_persisted_parent_field": {
+      "note": "Checks the storage-schema requirement that parent indices remain derived rather than persistent.",
+      "path": "cicd/tests/test_race_tree.py",
+      "reason": "architecture_boundary"
+    },
+    "test_canonical_block_state_is_invariant_to_generation_order": {
+      "note": "Checks block-construction order independence without also exercising the broader evidence and posterior invariant.",
+      "path": "cicd/tests/test_race_tree.py",
+      "reason": "implementation_regression"
+    },
+    "test_phantom_likelihoods_do_not_drive_supremum_or_map_outputs": {
+      "note": "Checks current result point-estimate wiring but does not prove that phantoms never enter the race tree.",
+      "path": "cicd/tests/test_phantom_results.py",
+      "reason": "result_schema_regression"
+    },
+    "test_results_sample_evidence_matches_explicit_block_state_public_call": {
+      "note": "Checks parity between two public and internal result paths without asserting state immutability across final inference.",
+      "path": "cicd/tests/test_phantom_results.py",
+      "reason": "reference_parity"
+    },
+    "test_state_checkpoint_round_trip_preserves_resume_key_and_order": {
+      "note": "Checks selected checkpoint fields but not full scientific behavior after serialization and resumed execution.",
+      "path": "cicd/tests/test_core.py",
+      "reason": "architecture_boundary"
+    },
+    "test_compiled_depth_classifies_normal_growth_and_terminal_returns": {
+      "note": "Checks the concrete state-carried control-status representation and precedence used at compiled depth boundaries.",
+      "path": "cicd/tests/test_core.py",
+      "reason": "architecture_boundary"
+    },
+    "test_sample_storage_modes_are_explicit_and_inspectable": {
+      "note": "Checks the public finite/unlimited storage configuration and resolved physical-capacity policy.",
+      "path": "cicd/tests/test_core.py",
+      "reason": "configuration_contract"
+    },
+    "test_state_merge_applies_terminal_growth_depth_precedence": {
+      "note": "Checks the current state-merge control-status representation and precedence.",
+      "path": "cicd/tests/test_state.py",
+      "reason": "architecture_boundary"
+    },
+    "test_state_resize_grows_all_sample_buffers_and_preserves_continuation": {
+      "note": "Checks the current sample-indexed buffer schema and immutable resize wiring.",
+      "path": "cicd/tests/test_state.py",
+      "reason": "architecture_boundary"
+    },
+    "test_expected_evidence_rebuilds_order_for_active_growth_state": {
+      "note": "Checks the exact diagnostic fallback for a physical growth return whose active frozen schedule has committed rows awaiting likelihood-order publication.",
+      "path": "cicd/tests/test_state.py",
+      "reason": "architecture_boundary"
+    },
+    "test_allocation_utilities_handle_tiny_positive_volume_without_inf": {
+      "note": "Checks the current allocation utility, normalization, and target construction rather than an implementation-agnostic scientific contract.",
+      "path": "cicd/tests/test_allocation.py",
+      "reason": "implementation_formula"
+    },
+    "test_batch_reduce": {
+      "note": "Checks generic cumulative and batched reduction utilities.",
+      "path": "cicd/tests/test_cumulative_ops.py",
+      "reason": "utility_behavior"
+    },
+    "test_batch_reduce_vec_kernel": {
+      "note": "Checks generic cumulative and batched reduction utilities.",
+      "path": "cicd/tests/test_cumulative_ops.py",
+      "reason": "utility_behavior"
+    },
+    "test_blob_decomp": {
+      "note": "Checks Gaussian-mixture utilities reserved for future direction proposals.",
+      "path": "cicd/tests/test_em_gmm.py",
+      "reason": "deferred_sampler_utility"
+    },
+    "test_bounding_ellipsoid": {
+      "note": "Checks ellipsoidal geometry utilities which are outside the current release sampler.",
+      "path": "cicd/tests/test_multi_ellipsoid.py",
+      "reason": "deferred_sampler_utility"
+    },
+    "test_build_allocation_plan_can_use_fixed_initial_root_out_degree": {
+      "note": "Checks the current allocation utility, normalization, and target construction rather than an implementation-agnostic scientific contract.",
+      "path": "cicd/tests/test_allocation.py",
+      "reason": "implementation_formula"
+    },
+    "test_build_posterior_allocation_plan_selects_conservative_utility": {
+      "note": "Checks the current allocation utility, normalization, and target construction rather than an implementation-agnostic scientific contract.",
+      "path": "cicd/tests/test_allocation.py",
+      "reason": "implementation_formula"
+    },
+    "test_build_uniform_allocation_plan_uses_exact_depth_iteration_targets": {
+      "note": "Checks the current allocation utility, normalization, and target construction rather than an implementation-agnostic scientific contract.",
+      "path": "cicd/tests/test_allocation.py",
+      "reason": "implementation_formula"
+    },
+    "test_build_utility_allocation_plan_uses_summaries_and_shared_targets": {
+      "note": "Checks the current allocation utility, normalization, and target construction rather than an implementation-agnostic scientific contract.",
+      "path": "cicd/tests/test_allocation.py",
+      "reason": "implementation_formula"
+    },
+    "test_covariance_to_rotational": {
+      "note": "Checks ellipsoidal geometry utilities which are outside the current release sampler.",
+      "path": "cicd/tests/test_multi_ellipsoid.py",
+      "reason": "deferred_sampler_utility"
+    },
+    "test_cumulative_op_dynamic": {
+      "note": "Checks generic cumulative and batched reduction utilities.",
+      "path": "cicd/tests/test_cumulative_ops.py",
+      "reason": "utility_behavior"
+    },
+    "test_cumulative_op_static": {
+      "note": "Checks generic cumulative and batched reduction utilities.",
+      "path": "cicd/tests/test_cumulative_ops.py",
+      "reason": "utility_behavior"
+    },
+    "test_default_block_state_keeps_negative_infinity_likelihood_block": {
+      "note": "Checks a race-tree representation detail not used as evidence for a broader invariant.",
+      "path": "cicd/tests/test_race_tree.py",
+      "reason": "implementation_regression"
+    },
+    "test_depth_epoch_appends_without_reordering_coordinate_payload": {
+      "note": "Checks the current compiled scheduler, append-order index, batching, or pytree architecture.",
+      "path": "cicd/tests/test_core.py",
+      "reason": "architecture_boundary"
+    },
+    "test_depth_relevance_is_a_complete_prefix_when_remaining_mass_rises": {
+      "note": "Checks the current compiled scheduler, append-order index, batching, or pytree architecture.",
+      "path": "cicd/tests/test_core.py",
+      "reason": "architecture_boundary"
+    },
+    "test_ellipsoid_params": {
+      "note": "Checks ellipsoidal geometry utilities which are outside the current release sampler.",
+      "path": "cicd/tests/test_multi_ellipsoid.py",
+      "reason": "deferred_sampler_utility"
+    },
+    "test_ellipsoid_transforms": {
+      "note": "Checks ellipsoidal geometry utilities which are outside the current release sampler.",
+      "path": "cicd/tests/test_multi_ellipsoid.py",
+      "reason": "deferred_sampler_utility"
+    },
+    "test_em_gmm": {
+      "note": "Checks Gaussian-mixture utilities reserved for future direction proposals.",
+      "path": "cicd/tests/test_em_gmm.py",
+      "reason": "deferred_sampler_utility"
+    },
+    "test_evidence_and_posterior_utilities_can_drive_different_targets": {
+      "note": "Checks the current allocation utility, normalization, and target construction rather than an implementation-agnostic scientific contract.",
+      "path": "cicd/tests/test_allocation.py",
+      "reason": "implementation_formula"
+    },
+    "test_evidence_improvement_nonpositive_evidence_falls_back_to_zero": {
+      "note": "Checks the current allocation utility, normalization, and target construction rather than an implementation-agnostic scientific contract.",
+      "path": "cicd/tests/test_allocation.py",
+      "reason": "implementation_formula"
+    },
+    "test_evidence_improvement_utility_matches_reference_loop": {
+      "note": "Checks the current allocation utility, normalization, and target construction rather than an implementation-agnostic scientific contract.",
+      "path": "cicd/tests/test_allocation.py",
+      "reason": "implementation_formula"
+    },
+    "test_evidence_utility_shape_is_invariant_to_large_log_likelihood_shift": {
+      "note": "Checks the current allocation utility, normalization, and target construction rather than an implementation-agnostic scientific contract.",
+      "path": "cicd/tests/test_allocation.py",
+      "reason": "implementation_formula"
+    },
+    "test_fractional_utility_gaps_ceil_after_scaling": {
+      "note": "Checks the current allocation utility, normalization, and target construction rather than an implementation-agnostic scientific contract.",
+      "path": "cicd/tests/test_allocation.py",
+      "reason": "implementation_formula"
+    },
+    "test_gh108": {
+      "note": "Preserves a focused historical regression without claiming broad invariant coverage.",
+      "path": "cicd/tests/test_gh108.py",
+      "reason": "regression_case"
+    },
+    "test_gh171": {
+      "note": "Checks generic reporting, resampling, percentile, or diagnostic utilities.",
+      "path": "cicd/tests/test_utils.py",
+      "reason": "utility_behavior"
+    },
+    "test_init_params_forwards_model_and_explicit_args": {
+      "note": "Preserves the explicit JAXCTX model-argument forwarding regression without claiming full state and result preservation coverage.",
+      "path": "cicd/tests/test_model.py",
+      "reason": "regression_case"
+    },
+    "test_invalid_allocation_target_and_delta_k_fail_explicitly": {
+      "note": "Checks the current allocation utility, normalization, and target construction rather than an implementation-agnostic scientific contract.",
+      "path": "cicd/tests/test_allocation.py",
+      "reason": "implementation_formula"
+    },
+    "test_is_complex": {
+      "note": "Checks a log-semiring helper not already mapped to numerical evidence stability.",
+      "path": "cicd/tests/test_log_semiring.py",
+      "reason": "utility_behavior"
+    },
+    "test_jax_and_reference_explicit_gamma_conditioning_match": {
+      "note": "Checks JAX/reference implementation parity or current diagnostic schema.",
+      "path": "cicd/tests/test_phantom_eval_jax.py",
+      "reason": "reference_parity"
+    },
+    "test_jax_and_reference_sample_evidence_emit_new_diagnostics": {
+      "note": "Checks JAX/reference implementation parity or current diagnostic schema.",
+      "path": "cicd/tests/test_phantom_eval_jax.py",
+      "reason": "reference_parity"
+    },
+    "test_jax_count_matrices_are_jittable_and_preserve_R_component": {
+      "note": "Checks JAX/reference implementation parity or current diagnostic schema.",
+      "path": "cicd/tests/test_phantom_eval_jax.py",
+      "reason": "reference_parity"
+    },
+    "test_jaxify_likelihood": {
+      "note": "Checks the Python-to-JAX likelihood adapter implementation.",
+      "path": "cicd/tests/test_jaxify.py",
+      "reason": "utility_behavior"
+    },
+    "test_likelihood_order_merges_only_integer_identities": {
+      "note": "Checks the current compiled scheduler, append-order index, batching, or pytree architecture.",
+      "path": "cicd/tests/test_core.py",
+      "reason": "architecture_boundary"
+    },
+    "test_likelihood_order_publication_merges_new_rows_across_growth": {
+      "note": "Checks bounded schedule-boundary order publication and repeated growth publication without duplicate identities.",
+      "path": "cicd/tests/test_core.py",
+      "reason": "implementation_regression"
+    },
+    "test_likelihood_order_rank_merge_matches_stable_reference": {
+      "note": "Checks the current compiled scheduler, append-order index, batching, or pytree architecture.",
+      "path": "cicd/tests/test_core.py",
+      "reason": "architecture_boundary"
+    },
+    "test_log_ellipsoid_volume": {
+      "note": "Checks ellipsoidal geometry utilities which are outside the current release sampler.",
+      "path": "cicd/tests/test_multi_ellipsoid.py",
+      "reason": "deferred_sampler_utility"
+    },
+    "test_nested_sampler_keeps_phantom_likelihood_without_coordinates": {
+      "note": "Checks current result wiring, validation timing, or diagnostic schema beyond a mapped user-facing invariant.",
+      "path": "cicd/tests/test_phantom_results.py",
+      "reason": "result_schema_regression"
+    },
+    "test_no_phantom_evidence_uses_supplied_block_incoming_K": {
+      "note": "Checks a shrinkage helper, validation path, or diagnostic compatibility detail beyond mapped invariants.",
+      "path": "cicd/tests/test_shrinkage.py",
+      "reason": "implementation_regression"
+    },
+    "test_outer_target_uses_fixed_initial_degree_not_mutable_root_degree": {
+      "note": "Checks the current compiled scheduler, append-order index, batching, or pytree architecture.",
+      "path": "cicd/tests/test_core.py",
+      "reason": "architecture_boundary"
+    },
+    "test_parallel_replacement_delegates_batching_without_sequential_map": {
+      "note": "Checks the current compiled scheduler, append-order index, batching, or pytree architecture.",
+      "path": "cicd/tests/test_core.py",
+      "reason": "architecture_boundary"
+    },
+    "test_plot_cornerplot_writes_file": {
+      "note": "Checks that plotting produces an artifact, not the underlying scientific result contract.",
+      "path": "cicd/tests/test_results_plotting.py",
+      "reason": "output_smoke"
+    },
+    "test_plot_diagnostics_writes_file": {
+      "note": "Checks that plotting produces an artifact, not the underlying scientific result contract.",
+      "path": "cicd/tests/test_results_plotting.py",
+      "reason": "output_smoke"
+    },
+    "test_posterior_improvement_tiny_positive_weight_limit_is_continuous": {
+      "note": "Checks the current allocation utility, normalization, and target construction rather than an implementation-agnostic scientific contract.",
+      "path": "cicd/tests/test_allocation.py",
+      "reason": "implementation_formula"
+    },
+    "test_posterior_improvement_utility_matches_exact_and_conservative_references": {
+      "note": "Checks the current allocation utility, normalization, and target construction rather than an implementation-agnostic scientific contract.",
+      "path": "cicd/tests/test_allocation.py",
+      "reason": "implementation_formula"
+    },
+    "test_posterior_improvement_zero_shell_mass_does_not_create_work": {
+      "note": "Checks the current allocation utility, normalization, and target construction rather than an implementation-agnostic scientific contract.",
+      "path": "cicd/tests/test_allocation.py",
+      "reason": "implementation_formula"
+    },
+    "test_posterior_improvement_zero_weight_limit_is_zero": {
+      "note": "Checks the current allocation utility, normalization, and target construction rather than an implementation-agnostic scientific contract.",
+      "path": "cicd/tests/test_allocation.py",
+      "reason": "implementation_formula"
+    },
+    "test_posterior_plan_shape_is_invariant_to_large_log_likelihood_shift": {
+      "note": "Checks the current allocation utility, normalization, and target construction rather than an implementation-agnostic scientific contract.",
+      "path": "cicd/tests/test_allocation.py",
+      "reason": "implementation_formula"
+    },
+    "test_public_evidence_rejects_invalid_plateau_capacity": {
+      "note": "Checks a shrinkage helper, validation path, or diagnostic compatibility detail beyond mapped invariants.",
+      "path": "cicd/tests/test_shrinkage.py",
+      "reason": "implementation_regression"
+    },
+    "test_public_evidence_rejects_plateau_when_first_K_too_small": {
+      "note": "Checks a shrinkage helper, validation path, or diagnostic compatibility detail beyond mapped invariants.",
+      "path": "cicd/tests/test_shrinkage.py",
+      "reason": "implementation_regression"
+    },
+    "test_public_phantom_eval_sample_evidence_uses_gamma_conditioning_when_gate_active": {
+      "note": "Checks a shrinkage helper, validation path, or diagnostic compatibility detail beyond mapped invariants.",
+      "path": "cicd/tests/test_shrinkage.py",
+      "reason": "implementation_regression"
+    },
+    "test_public_sample_evidence_preserves_means_and_inflates_correlated_cluster_variance": {
+      "note": "Checks a shrinkage helper, validation path, or diagnostic compatibility detail beyond mapped invariants.",
+      "path": "cicd/tests/test_shrinkage.py",
+      "reason": "implementation_regression"
+    },
+    "test_random_ortho_matrix": {
+      "note": "Checks generic random-matrix or resampling helpers.",
+      "path": "cicd/tests/test_random.py",
+      "reason": "utility_behavior"
+    },
+    "test_random_ortho_normal_matrix": {
+      "note": "Checks generic random-matrix or resampling helpers.",
+      "path": "cicd/tests/test_random.py",
+      "reason": "utility_behavior"
+    },
+    "test_reference_gamma_sampler_rejects_malformed_count_matrices": {
+      "note": "Checks the NumPy reference implementation or its validation surface.",
+      "path": "cicd/tests/test_phantom_eval_ref.py",
+      "reason": "reference_implementation"
+    },
+    "test_reference_phantom_gate_rejects_zero_participation_when_threshold_is_zero": {
+      "note": "Checks the NumPy reference implementation or its validation surface.",
+      "path": "cicd/tests/test_phantom_eval_ref.py",
+      "reason": "reference_implementation"
+    },
+    "test_reference_rejects_malformed_per_phantom_validity_mask": {
+      "note": "Checks the NumPy reference implementation or its validation surface.",
+      "path": "cicd/tests/test_phantom_eval_ref.py",
+      "reason": "reference_implementation"
+    },
+    "test_reference_sample_evidence_runs_with_kish_gate_diagnostics": {
+      "note": "Checks the NumPy reference implementation or its validation surface.",
+      "path": "cicd/tests/test_phantom_eval_ref.py",
+      "reason": "reference_implementation"
+    },
+    "test_resample": {
+      "note": "Checks generic reporting, resampling, percentile, or diagnostic utilities.",
+      "path": "cicd/tests/test_utils.py",
+      "reason": "utility_behavior"
+    },
+    "test_resample_indicies": {
+      "note": "Checks generic random-matrix or resampling helpers.",
+      "path": "cicd/tests/test_random.py",
+      "reason": "utility_behavior"
+    },
+    "test_result_point_estimates_do_not_have_or_use_phantom_coordinates": {
+      "note": "Checks current result wiring, validation timing, or diagnostic schema beyond a mapped user-facing invariant.",
+      "path": "cicd/tests/test_phantom_results.py",
+      "reason": "result_schema_regression"
+    },
+    "test_results_expose_public_phantom_conditioning_diagnostics": {
+      "note": "Checks current result wiring, validation timing, or diagnostic schema beyond a mapped user-facing invariant.",
+      "path": "cicd/tests/test_phantom_results.py",
+      "reason": "result_schema_regression"
+    },
+    "test_results_sample_evidence_exposes_kish_gate_diagnostics_not_target_rho": {
+      "note": "Checks current result wiring, validation timing, or diagnostic schema beyond a mapped user-facing invariant.",
+      "path": "cicd/tests/test_phantom_results.py",
+      "reason": "result_schema_regression"
+    },
+    "test_results_sample_evidence_rejects_stale_block_likelihoods_before_jit": {
+      "note": "Checks current result wiring, validation timing, or diagnostic schema beyond a mapped user-facing invariant.",
+      "path": "cicd/tests/test_phantom_results.py",
+      "reason": "result_schema_regression"
+    },
+    "test_samples_resize_preserves_constraints_and_provenance_fields": {
+      "note": "Checks current state/result wiring or validation timing beyond mapped scientific invariants.",
+      "path": "cicd/tests/test_state.py",
+      "reason": "result_schema_regression"
+    },
+    "test_scan_associative_cumulative_not_associative_op": {
+      "note": "Checks generic cumulative and batched reduction utilities.",
+      "path": "cicd/tests/test_cumulative_ops.py",
+      "reason": "utility_behavior"
+    },
+    "test_scan_associative_cumulative_op": {
+      "note": "Checks generic cumulative and batched reduction utilities.",
+      "path": "cicd/tests/test_cumulative_ops.py",
+      "reason": "utility_behavior"
+    },
+    "test_scan_associative_cumulative_op_likelihoods": {
+      "note": "Checks generic cumulative and batched reduction utilities.",
+      "path": "cicd/tests/test_cumulative_ops.py",
+      "reason": "utility_behavior"
+    },
+    "test_scan_associative_cumulative_op_with_pytrees": {
+      "note": "Checks generic cumulative and batched reduction utilities.",
+      "path": "cicd/tests/test_cumulative_ops.py",
+      "reason": "utility_behavior"
+    },
+    "test_scan_or_while_loop": {
+      "note": "Checks generic cumulative and batched reduction utilities.",
+      "path": "cicd/tests/test_cumulative_ops.py",
+      "reason": "utility_behavior"
+    },
+    "test_state_sample_evidence_rejects_invalid_plateau_capacity": {
+      "note": "Checks current state/result wiring or validation timing beyond mapped scientific invariants.",
+      "path": "cicd/tests/test_state.py",
+      "reason": "result_schema_regression"
+    },
+    "test_state_sample_evidence_rejects_strict_contour_equality": {
+      "note": "Checks current state/result wiring or validation timing beyond mapped scientific invariants.",
+      "path": "cicd/tests/test_state.py",
+      "reason": "result_schema_regression"
+    },
+    "test_state_sample_evidence_uses_public_block_path": {
+      "note": "Checks current state/result wiring or validation timing beyond mapped scientific invariants.",
+      "path": "cicd/tests/test_state.py",
+      "reason": "result_schema_regression"
+    },
+    "test_state_to_result_preserves_per_cluster_phantom_validity": {
+      "note": "Checks current result wiring, validation timing, or diagnostic schema beyond a mapped user-facing invariant.",
+      "path": "cicd/tests/test_phantom_results.py",
+      "reason": "result_schema_regression"
+    },
+    "test_state_to_result_preserves_phantom_provenance_for_kish_diagnostics": {
+      "note": "Checks current state/result wiring or validation timing beyond mapped scientific invariants.",
+      "path": "cicd/tests/test_state.py",
+      "reason": "result_schema_regression"
+    },
+    "test_state_to_result_rejects_invalid_plateau_capacity": {
+      "note": "Checks current state/result wiring or validation timing beyond mapped scientific invariants.",
+      "path": "cicd/tests/test_state.py",
+      "reason": "result_schema_regression"
+    },
+    "test_state_to_result_rejects_strict_contour_equality": {
+      "note": "Checks current state/result wiring or validation timing beyond mapped scientific invariants.",
+      "path": "cicd/tests/test_state.py",
+      "reason": "result_schema_regression"
+    },
+    "test_to_result_marks_no_phantoms_invalid": {
+      "note": "Checks current state/result wiring or validation timing beyond mapped scientific invariants.",
+      "path": "cicd/tests/test_state.py",
+      "reason": "result_schema_regression"
+    },
+    "test_treefield_arithmetic_preserves_wrapper_contract": {
+      "note": "Checks generic pytree arithmetic and wrapper behavior.",
+      "path": "cicd/tests/test_pytree.py",
+      "reason": "utility_behavior"
+    },
+    "test_treefield_helper_methods_return_wrapped_treefield": {
+      "note": "Checks generic pytree arithmetic and wrapper behavior.",
+      "path": "cicd/tests/test_pytree.py",
+      "reason": "utility_behavior"
+    },
+    "test_treefield_matmul_matches_dense_matrix_product": {
+      "note": "Checks generic pytree arithmetic and wrapper behavior.",
+      "path": "cicd/tests/test_pytree.py",
+      "reason": "utility_behavior"
+    },
+    "test_utility_fallbacks_are_deterministic_for_zero_tied_and_nonfinite_inputs": {
+      "note": "Checks the current allocation utility, normalization, and target construction rather than an implementation-agnostic scientific contract.",
+      "path": "cicd/tests/test_allocation.py",
+      "reason": "implementation_formula"
+    },
+    "test_utility_normalisation_and_integer_gaps_are_deterministic": {
+      "note": "Checks the current allocation utility, normalization, and target construction rather than an implementation-agnostic scientific contract.",
+      "path": "cicd/tests/test_allocation.py",
+      "reason": "implementation_formula"
+    },
+    "test_utility_normalisation_falls_back_to_uniform_over_valid_blocks": {
+      "note": "Checks the current allocation utility, normalization, and target construction rather than an implementation-agnostic scientific contract.",
+      "path": "cicd/tests/test_allocation.py",
+      "reason": "implementation_formula"
+    },
+    "test_validate_allocation_target_accepts_public_literals": {
+      "note": "Checks the current allocation utility, normalization, and target construction rather than an implementation-agnostic scientific contract.",
+      "path": "cicd/tests/test_allocation.py",
+      "reason": "implementation_formula"
+    },
+    "test_weighted_percentile": {
+      "note": "Checks generic reporting, resampling, percentile, or diagnostic utilities.",
+      "path": "cicd/tests/test_utils.py",
+      "reason": "utility_behavior"
+    },
+    "test_config_expands_workers_and_fingerprints_resolved_behavior": {
+      "note": "Checks the selected TOML schema, worker expansion, and CLI validation mechanics.",
+      "path": "cicd/tests/test_distributed_runtime.py",
+      "reason": "runtime_architecture"
+    },
+    "test_failed_cli_startup_forcibly_cleans_up_owned_supervisor": {
+      "note": "Checks the selected bounded process-escalation policy after a CLI-owned supervisor fails startup.",
+      "path": "cicd/tests/test_distributed_runtime.py",
+      "reason": "runtime_architecture"
+    },
+    "test_growth_preserves_pending_payload_and_logical_depth": {
+      "note": "Checks the current immutable buffer-growth implementation while distributed work is pending.",
+      "path": "cicd/tests/test_distributed_core.py",
+      "reason": "runtime_architecture"
+    },
+    "test_reservations_match_linear_python_reference": {
+      "note": "Checks the accelerated reservation scatter against a linear host reference.",
+      "path": "cicd/tests/test_distributed_core.py",
+      "reason": "reference_equivalence"
+    },
+    "test_supervisor_and_config_validation_avoid_scientific_imports": {
+      "note": "Checks the selected JAX-free supervisor and lightweight configuration-validation process boundaries.",
+      "path": "cicd/tests/test_distributed_runtime.py",
+      "reason": "runtime_architecture"
+    },
+    "test_checkpoint_cadence_uses_monotonic_seconds_and_retains_two_generations": {
+      "note": "Checks the selected one-hour monotonic cadence and two-generation retention policy.",
+      "path": "cicd/tests/test_checkpoint.py",
+      "reason": "checkpoint_implementation"
+    },
+    "test_checkpoint_cadence_rejects_invalid_seconds": {
+      "note": "Checks fail-fast validation for the public cadence unit and finite-value contract.",
+      "path": "cicd/tests/test_checkpoint.py",
+      "reason": "configuration_contract"
+    },
+    "test_checkpoint_directory_has_one_writer_for_whole_run": {
+      "note": "Checks the concrete advisory-lock implementation used to exclude concurrent checkpoint writers.",
+      "path": "cicd/tests/test_checkpoint.py",
+      "reason": "checkpoint_implementation"
+    },
+    "test_supervisor_rotates_dispatch_fairly_between_sessions": {
+      "note": "Checks the selected supervisor round-robin queue policy between active clients.",
+      "path": "cicd/tests/test_distributed_runtime.py",
+      "reason": "runtime_architecture"
+    },
+    "test_continuation_heap_fills_bound_without_overwrite": {
+      "note": "Checks the bounded minimum-frontier heap selected for frozen-thread continuation state.",
+      "path": "cicd/tests/test_core.py",
+      "reason": "scheduler_architecture"
+    },
+    "test_continuation_heap_matches_reference_under_interleaved_updates": {
+      "note": "Checks interleaved push and pop behavior against the Python heap reference.",
+      "path": "cicd/tests/test_core.py",
+      "reason": "scheduler_architecture"
+    },
+    "test_continuations_wait_until_each_frozen_thread_has_started": {
+      "note": "Checks the selected breadth-first dispatch order before FIFO continuation.",
+      "path": "cicd/tests/test_core.py",
+      "reason": "scheduler_architecture"
+    },
+    "test_decomposition_keeps_large_multiplicity_compressed": {
+      "note": "Checks the compressed run representation rather than a separate scientific contract.",
+      "path": "cicd/tests/test_scheduler.py",
+      "reason": "scheduler_architecture"
+    },
+    "test_distributed_continuation_returns_to_heap_not_dispatch_window": {
+      "note": "Checks that distributed completion uses the selected shared continuation heap.",
+      "path": "cicd/tests/test_distributed_core.py",
+      "reason": "scheduler_architecture"
+    },
+    "test_distributed_dispatch_starts_evidence_utility_schedule": {
+      "note": "Checks distributed wiring of the selected utility-schedule implementation.",
+      "path": "cicd/tests/test_distributed_core.py",
+      "reason": "scheduler_architecture"
+    },
+    "test_distributed_planning_width_tracks_worker_capacity": {
+      "note": "Checks the selected relationship between worker capacity and the transient planning window.",
+      "path": "cicd/tests/test_distributed_core.py",
+      "reason": "runtime_architecture"
+    },
+    "test_distributed_seed_refresh_waits_for_no_pending_tasks": {
+      "note": "Checks the selected atomic boundary between a frozen seed source and distributed pending work.",
+      "path": "cicd/tests/test_distributed_core.py",
+      "reason": "scheduler_architecture"
+    },
+    "test_frozen_target_projects_by_successor_contour": {
+      "note": "Checks the selected projection used when new contours refine a frozen absolute target.",
+      "path": "cicd/tests/test_core.py",
+      "reason": "scheduler_architecture"
+    },
+    "test_thread_storage_grows_independently_of_sample_storage": {
+      "note": "Checks that physical growth preserves every queued continuation while independently resizing sample-indexed planning data.",
+      "path": "cicd/tests/test_core.py",
+      "reason": "scheduler_architecture"
+    },
+    "test_resize_threads_preserves_a_nonempty_continuation_heap": {
+      "note": "Checks grow-only head and heap resizing without truncating live continuations.",
+      "path": "cicd/tests/test_core.py",
+      "reason": "scheduler_architecture"
+    },
+    "test_seed_pool_uses_value_independent_post_freeze_reservoir": {
+      "note": "Checks the bounded value-independent post-freeze seed-reservoir implementation.",
+      "path": "cicd/tests/test_core.py",
+      "reason": "scheduler_architecture"
+    },
+    "test_seed_publication_preserves_frozen_thread_target": {
+      "note": "Checks that an internal generation publication projects the same target instead of advancing the scientific allocation iteration.",
+      "path": "cicd/tests/test_core.py",
+      "reason": "architecture_boundary"
+    },
+    "test_seed_source_refresh_uses_geometric_generations": {
+      "note": "Checks the selected minimum-maturity and geometric source-generation cadence.",
+      "path": "cicd/tests/test_core.py",
+      "reason": "scheduler_architecture"
+    },
+    "test_summary_decodes_the_only_hard_termination_reason": {
+      "note": "Checks user-facing wording for the current termination reason-code representation.",
+      "path": "cicd/tests/test_results_plotting.py",
+      "reason": "result_schema_regression"
+    },
+    "test_utility_schedule_continuation_projects_frozen_absolute_target": {
+      "note": "Checks continuation wiring for the selected frozen utility-target implementation.",
+      "path": "cicd/tests/test_allocation.py",
+      "reason": "scheduler_architecture"
+    },
+    "test_bruteforce_reference_vectorisation_matches_memory_bounded_batches": {
+      "note": "Checks numerical parity between the vectorized diagnostic default and its explicit memory-bounded batching alternative.",
+      "path": "cicd/tests/test_utils.py",
+      "reason": "reference_parity"
+    },
+    "test_continuation_heap_returns_shallowest_frontier_first": {
+      "note": "Checks the minimum-frontier ordering selected for efficient continuation scheduling.",
+      "path": "cicd/tests/test_core.py",
+      "reason": "scheduler_architecture"
+    },
+    "test_distributed_start_seed_storage_grows_without_losing_reservations": {
+      "note": "Checks transparent exact-reservation growth at the distributed coordination boundary.",
+      "path": "cicd/tests/test_distributed_core.py",
+      "reason": "scheduler_architecture"
+    },
+    "test_start_seed_reservation_storage_is_independent_of_sample_capacity": {
+      "note": "Checks that exact start-seed reservation memory follows the unfinished contour group rather than total sample capacity.",
+      "path": "cicd/tests/test_core.py",
+      "reason": "scheduler_architecture"
+    },
+    "test_start_seed_reservations_rehash_exactly_when_storage_grows": {
+      "note": "Checks the selected growable open-addressed representation retains exact membership across rehashing.",
+      "path": "cicd/tests/test_core.py",
+      "reason": "scheduler_architecture"
+    },
+    "test_compiled_depth_signature_contains_only_runtime_dependencies": {
+      "note": "Checks that the compiled depth entry point does not specialize on allocation-policy values already materialized in scheduler state.",
+      "path": "cicd/tests/test_core.py",
+      "reason": "runtime_architecture"
+    },
+    "test_disabled_retained_fit_matches_plain_isotropic_key_stream": {
+      "note": "Checks the concrete compiled branch used when retained GMM geometry is disabled, including exact isotropic random-key routing.",
+      "path": "cicd/tests/test_constrained_sampler.py",
+      "reason": "implementation_regression"
+    },
+    "test_reservoir_rank_lookup_matches_dense_reference": {
+      "note": "Checks numerical parity between the compact reservoir rank lookup and the superseded dense proposal-by-reservoir mask.",
+      "path": "cicd/tests/test_core.py",
+      "reason": "reference_parity"
+    },
+    "test_sampler_data_ignores_zero_weight_nonfinite_height_observation": {
+      "note": "Checks the current masked component-height regression avoids an indeterminate zero-weight product without changing supported observations.",
+      "path": "cicd/tests/test_multi_ellipsoid.py",
+      "reason": "implementation_regression"
+    },
+    "test_resample_indices_uniform_with_replacement": {
+      "note": "Checks uniform sampling with replacement includes every index, including zero, for singleton and larger populations through JIT.",
+      "path": "cicd/tests/test_random.py",
+      "reason": "utility_behavior"
+    },
+    "test_local_distributed_handoff_preserves_state_and_keys": {
+      "path": "cicd/tests/test_distributed_core.py",
+      "reason": "architecture_boundary",
+      "note": "Checks local/distributed round-trip identity, independent runtime sessions, and serialization without changing scientific state or keys."
+    },
+    "test_local_handoff_rejects_incomplete_continuation": {
+      "path": "cicd/tests/test_distributed_core.py",
+      "reason": "architecture_boundary",
+      "note": "Checks that incomplete, hard-terminated, or unkeyed local states cannot silently enter a fresh distributed session."
+    },
+    "test_distributed_to_state_rejects_unfinished_work": {
+      "path": "cicd/tests/test_distributed_core.py",
+      "reason": "architecture_boundary",
+      "note": "Checks that a local conversion cannot discard active distributed work or reservations."
+    },
+    "test_local_handoff_waits_for_workers_then_resumes_locally": {
+      "path": "cicd/tests/test_distributed_runtime.py",
+      "reason": "architecture_boundary",
+      "note": "Exercises the laptop-to-cluster workflow over real TCP processes, starting without workers, joining a node, checkpointing, and returning to local sampling while retaining earlier samples."
+    },
+    "test_local_sigint_saves_partial_depth_and_replays_exactly": {
+      "path": "cicd/tests/test_run_control.py",
+      "reason": "architecture_boundary",
+      "note": "Exercises an actual SIGINT between bounded compiled batches, saving the unfinished schedule, restoring the signal handler, and reproducing uninterrupted state exactly."
+    },
+    "test_local_sigint_without_checkpoint_bubbles_up": {
+      "path": "cicd/tests/test_run_control.py",
+      "reason": "architecture_boundary",
+      "note": "Checks that Ctrl-C propagates without checkpoint writes when checkpointing is disabled."
+    },
+    "test_verbose_reports_goals_without_computing_results": {
+      "path": "cicd/tests/test_run_control.py",
+      "reason": "architecture_boundary",
+      "note": "Checks per-goal progress while evidence and result APIs are forbidden to the logging path."
+    },
+    "test_distributed_sigint_cancels_only_its_session": {
+      "path": "cicd/tests/test_distributed_runtime.py",
+      "reason": "architecture_boundary",
+      "note": "Exercises SIGINT with real processes, preserving another session and resuming committed and pending work from a checkpoint."
+    },
+    "test_cancel_fences_busy_workers_without_discarding_other_sessions": {
+      "path": "cicd/tests/test_distributed_runtime.py",
+      "reason": "architecture_boundary",
+      "note": "Checks cancellation fencing and remote-worker restart requests without destroying another session or an idle worker."
+    },
+    "test_sigint_during_worker_registration_saves_handoff": {
+      "path": "cicd/tests/test_distributed_runtime.py",
+      "reason": "architecture_boundary",
+      "note": "Checks that Ctrl-C during the zero-worker registration wait saves the supplied local handoff and removes its pending registration."
+    },
+    "test_migration_cli_preserves_conditional_model_and_comments": {
+      "note": "Executes the downloadable v2 migration CLI, checks the original is untouched, and compares the generated hierarchical prior and likelihood with their analytic transformations.",
+      "path": "cicd/tests/test_model_migration.py",
+      "reason": "reference_parity"
+    },
+    "test_migration_rejects_unsupported_generator_patterns": {
+      "note": "Ensures the source-conversion helper rejects generator patterns whose scientific calling convention cannot safely be inferred.",
+      "path": "cicd/tests/test_model_migration.py",
+      "reason": "configuration_contract"
+    },
+    "test_merge_compacts_valid_rows_and_preserves_results": {
+      "path": "cicd/tests/test_audit_regressions.py",
+      "reason": "regression_contract",
+      "note": "Merging padded populations must compact valid rows and match the evidence of compact inputs."
+    },
+    "test_merge_checks_input_values_at_host_boundary": {
+      "path": "cicd/tests/test_audit_regressions.py",
+      "reason": "regression_contract",
+      "note": "Static merge validates input values rather than just their pytree shapes."
+    },
+    "test_posterior_resampling_rejects_without_replacement": {
+      "path": "cicd/tests/test_audit_regressions.py",
+      "reason": "regression_contract",
+      "note": "Equal-weight posterior resampling rejects a selection policy that would change its measure."
+    },
+    "test_signed_logspace_cumsum_preserves_sign_changes": {
+      "path": "cicd/tests/test_audit_regressions.py",
+      "reason": "regression_contract",
+      "note": "Signed cumulative arithmetic matches explicit prefix and suffix sums across axes and cancellations."
+    },
+    "test_json_round_trip_restores_nested_numpy_arrays": {
+      "path": "cicd/tests/test_audit_regressions.py",
+      "reason": "regression_contract",
+      "note": "JSON retains custom nested structure and restores dtype-preserving host arrays."
+    },
+    "test_serialization_failure_does_not_publish_checkpoint": {
+      "path": "cicd/tests/test_audit_regressions.py",
+      "reason": "regression_contract",
+      "note": "Injected serialization failure propagates without publishing a checkpoint manifest."
+    },
+    "test_models_accept_partial_and_jit_wrappers": {
+      "path": "cicd/tests/test_audit_regressions.py",
+      "reason": "regression_contract",
+      "note": "Supported callable wrappers retain model prior sampling and likelihood semantics."
+    },
+    "test_runner_owns_phantom_collection_with_explicit_sampler": {
+      "path": "cicd/tests/test_audit_regressions.py",
+      "reason": "regression_contract",
+      "note": "Runner collection configures full retention on an explicitly supplied sampler."
+    },
+    "test_run_counts_reject_nonintegers": {
+      "path": "cicd/tests/test_audit_regressions.py",
+      "reason": "regression_contract",
+      "note": "Fractional count options fail instead of silently truncating to integers."
+    },
+    "test_partial_model_bindings_have_distinct_compilation_identity": {
+      "path": "cicd/tests/test_audit_regressions.py",
+      "reason": "regression_contract",
+      "note": "Different bound model inputs must not share an incompatible cached likelihood trace."
+    },
+    "test_state_json_round_trip_preserves_model_inputs_and_host_arrays": {
+      "path": "cicd/tests/test_audit_regressions.py",
+      "reason": "regression_contract",
+      "note": "State JSON preserves host array leaves, model association, inputs and evidence calculation."
+    },
+    "test_json_rejects_malformed_envelope": {
+      "path": "cicd/tests/test_audit_regressions.py",
+      "reason": "regression_contract",
+      "note": "JSON decoder validates the declared wire schema before reconstruction."
+    },
+    "test_resume_rejects_incompatible_phantom_width_before_execution": {
+      "path": "cicd/tests/test_audit_regressions.py",
+      "reason": "configuration_contract",
+      "note": "Rejects incompatible saved retention width before local compilation or distributed registration."
+    },
+    "test_capacity_limited_state_resumes_after_explicit_budget_increase": {
+      "path": "cicd/tests/test_audit_regressions.py",
+      "reason": "configuration_contract",
+      "note": "Executes the documented explicit acknowledgement of a larger finite sample budget."
+    },
+    "test_model_preserves_python_decorator_likelihood_semantics": {
+      "path": "cicd/tests/test_audit_regressions.py",
+      "reason": "configuration_contract",
+      "note": "Unwrapping JIT must preserve ordinary Python decorators that change the model likelihood."
+    }
+  }
+}

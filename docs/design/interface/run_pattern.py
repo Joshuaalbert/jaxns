@@ -1,0 +1,144 @@
+"""Supported local and trusted-network multi-node run patterns.
+
+The scientific client always connects to a same-user IPC coordinator. Local
+workers use that IPC endpoint; remote workers connect to the coordinator's TCP
+port on the trusted scientific network.
+"""
+
+import jax
+import matplotlib.pyplot as plt
+import tensorflow_probability.substrates.jax as tfp
+from jaxctx import CtxParams
+
+from jaxns.core import NestedSampler
+from jaxns.distributed_core import DistributedNestedSampler, DistributedState
+from jaxns.model import Model
+from jaxns.priors import Prior
+from jaxns.shrinkage.phantom import EvidenceSamples
+from jaxns.state import State
+
+tfpd = tfp.distributions
+
+
+# Model code is registered once with trusted worker processes. Module scope is
+# easiest to audit and cache; the distributed extra also supports notebook and
+# closure definitions through Cloudpickle.
+def prior_model(a, b):
+    x = Prior(tfpd.Uniform(0.0, a), name="x").realise()
+    y = Prior(tfpd.Uniform(0.0, b), name="y").parameter()
+    return x.sum() + y
+
+
+model = Model(prior_model=prior_model)
+model_args = (1.0, 2.0)
+model_params: CtxParams = model.init_params(
+    key=jax.random.PRNGKey(0),
+    args=model_args,
+)
+
+
+def goal_cond(state: State) -> bool:
+    # The Python goal loop receives only complete immutable scientific states.
+    return state.expected_log_Z_uncert < 0.1
+
+
+# The established local path keeps the complete depth epoch in one JIT and
+# vmaps replacement chains on the selected local JAX device.
+local = NestedSampler(
+    model=model,
+    collect_phantom_samples=True,
+)
+local_state = local.run_until_goal(
+    goal_cond=goal_cond,
+    args=model_args,
+    params=model_params,
+    key=jax.random.PRNGKey(1),
+    checkpoint_dir="checkpoints/local",
+    checkpoint_cadence=3600.0,
+)
+
+# Re-running this call with the same checkpoint directory loads the complete
+# last committed State automatically. Checkpoint integrity is verified before
+# pickle deserialization; compatible model and sampler configuration remain
+# the scientific caller's responsibility.
+
+
+# The opt-in distributed path uses a stack started separately with:
+#
+#   jaxns-cli --config docs/design/interface/workers.toml config validate
+#   jaxns-cli --config docs/design/interface/workers.toml up
+#
+# The main process still owns allocation, random keys, immutable checkpoints,
+# capacity growth, and goal evaluation. Workers receive complete constrained-
+# sampling requests, so data-dependent likelihood loops remain inside JAX. The
+# root coordinates are drawn locally, while their likelihood evaluations and
+# all constrained-chain likelihood evaluations run only in worker processes.
+distributed = DistributedNestedSampler(
+    model=model,
+    coordinator_port=5555,
+    collect_phantom_samples=True,
+)
+checkpoint: DistributedState = distributed.run_until_goal(
+    goal_cond=goal_cond,
+    args=model_args,
+    params=model_params,
+    key=jax.random.PRNGKey(2),
+    checkpoint_dir="checkpoints/distributed",
+    checkpoint_cadence=3600.0,
+)
+
+# A checkpoint contains retry-stable pending tasks if execution was interrupted.
+# Resumption reconnects the same session, resubmits those exact payloads, and
+# deduplicates any result retained by the supervisor.
+checkpoint = distributed.resume_until_goal(
+    checkpoint,
+    goal_cond=goal_cond,
+    checkpoint_dir="checkpoints/distributed",
+    checkpoint_cadence=3600.0,
+)
+results = checkpoint.to_result()
+results.summary()
+results.plot_diagnostics()
+results.plot_cornerplot()
+
+# A local run can move to the pool at a completed goal boundary. The reverse
+# conversion exposes the same scientific state only after remote work drains.
+handoff = DistributedState.from_state(local_state)
+continued = distributed.resume_until_goal(
+    handoff,
+    goal_cond=lambda state: state.expected_log_Z_uncert < 0.05,
+    checkpoint_dir="checkpoints/handoff",
+)
+returned_local = continued.to_state()
+
+
+def some_fn(parameters: CtxParams):
+    return {"x2": parameters["x"] ** 2, "y2": parameters["y"] ** 2}
+
+
+expected_post_predictive = results.integrate_fn_over_posterior(
+    some_fn,
+    semi_positive=True,
+)
+# Deterministic classic expectations remain on results.log_Z_mean and
+# results.log_Z_uncert. The ensemble below owns its separate MC summary.
+shrinkage_samples: EvidenceSamples = results.sample_evidence(
+    num_samples=1000,
+    key=jax.random.PRNGKey(3),
+    phantom_conditioning=True,
+    diagnostics=True,
+)
+valid_blocks = results.block_data.valid
+plt.plot(
+    results.block_data.log_L[valid_blocks],
+    shrinkage_samples.p_gt_mean[valid_blocks],
+)
+
+posterior = results.resample(1000, key=jax.random.PRNGKey(4))
+resampled_post_predictive = posterior.integrate_fn_over_posterior(
+    some_fn, semi_positive=True,
+)
+
+# Stack shutdown is explicit and idempotent:
+#
+#   jaxns-cli --config docs/design/interface/workers.toml down

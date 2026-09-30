@@ -1,0 +1,1122 @@
+{
+  "through_stage": "0.02",
+  "fits": {
+    "core": {
+      "intercept_gib": 2.5106786426279384,
+      "gib_per_million_capacity": 14.147025036357958,
+      "gib_per_million_samples": 0.0,
+      "residual_allowance_gib": 0.5555818079796424,
+      "observations": 54,
+      "headroom": 1.2
+    },
+    "analysis": {
+      "intercept_gib": 0.5908513636347016,
+      "gib_per_million_capacity": 5.320645945290663,
+      "gib_per_million_samples": 18.895410079454948,
+      "residual_allowance_gib": 0.01483411510839261,
+      "observations": 53,
+      "headroom": 1.2
+    }
+  },
+  "sample_exponent_by_seed": {
+    "0": 2.054559331637624,
+    "1": 2.0637323312355162,
+    "2": 2.107193392938613,
+    "4": 2.090949398000675,
+    "5": 2.075831025047336,
+    "6": 2.2579198195229955,
+    "7": 2.446371288587972,
+    "8": 2.0,
+    "9": 2.3743109527153146,
+    "11": 2.117588402670628,
+    "12": 2.202973271511551,
+    "13": 2.1764538571338097,
+    "15": 2.0393754569248377,
+    "16": 2.0754490943092705,
+    "17": 2.208600719670457,
+    "18": 2.2545853509945424,
+    "19": 2.1641451852317184,
+    "20": 2.107379121092345,
+    "22": 2.2460596808880218,
+    "23": 2.022100500248229,
+    "24": 2.020441833539469,
+    "25": 2.169072946360644,
+    "27": 2.099008647740434,
+    "28": 2.1044089292336436
+  },
+  "count_headroom": 1.1,
+  "observations": [
+    {
+      "stage": "0.05",
+      "seed": 0,
+      "phase": "core",
+      "capacity": 107200,
+      "samples": 72357,
+      "sigma": 0.04963884388154501,
+      "peak_gib": 4.00335693359375
+    },
+    {
+      "stage": "0.05",
+      "seed": 0,
+      "phase": "analysis",
+      "capacity": 107200,
+      "samples": 72357,
+      "sigma": 0.04963884388154501,
+      "peak_gib": 2.5198974609375
+    },
+    {
+      "stage": "0.05",
+      "seed": 1,
+      "phase": "core",
+      "capacity": 107200,
+      "samples": 74573,
+      "sigma": 0.04945401341824174,
+      "peak_gib": 4.03741455078125
+    },
+    {
+      "stage": "0.05",
+      "seed": 1,
+      "phase": "analysis",
+      "capacity": 107200,
+      "samples": 74573,
+      "sigma": 0.04945401341824174,
+      "peak_gib": 2.56158447265625
+    },
+    {
+      "stage": "0.05",
+      "seed": 2,
+      "phase": "core",
+      "capacity": 107200,
+      "samples": 79043,
+      "sigma": 0.049534721129070126,
+      "peak_gib": 4.01776123046875
+    },
+    {
+      "stage": "0.05",
+      "seed": 2,
+      "phase": "analysis",
+      "capacity": 107200,
+      "samples": 79043,
+      "sigma": 0.049534721129070126,
+      "peak_gib": 2.6505126953125
+    },
+    {
+      "stage": "0.05",
+      "seed": 3,
+      "phase": "core",
+      "capacity": 214400,
+      "samples": 191523,
+      "sigma": 0.049350165912741856,
+      "peak_gib": 5.73883056640625
+    },
+    {
+      "stage": "0.05",
+      "seed": 3,
+      "phase": "analysis",
+      "capacity": 214400,
+      "samples": 191523,
+      "sigma": 0.049350165912741856,
+      "peak_gib": 5.34405517578125
+    },
+    {
+      "stage": "0.05",
+      "seed": 4,
+      "phase": "core",
+      "capacity": 107200,
+      "samples": 73231,
+      "sigma": 0.04964854129414056,
+      "peak_gib": 3.9058837890625
+    },
+    {
+      "stage": "0.05",
+      "seed": 4,
+      "phase": "analysis",
+      "capacity": 107200,
+      "samples": 73231,
+      "sigma": 0.04964854129414056,
+      "peak_gib": 2.542236328125
+    },
+    {
+      "stage": "0.05",
+      "seed": 5,
+      "phase": "core",
+      "capacity": 107200,
+      "samples": 101246,
+      "sigma": 0.0494467411962811,
+      "peak_gib": 3.949462890625
+    },
+    {
+      "stage": "0.05",
+      "seed": 5,
+      "phase": "analysis",
+      "capacity": 107200,
+      "samples": 101246,
+      "sigma": 0.0494467411962811,
+      "peak_gib": 3.06744384765625
+    },
+    {
+      "stage": "0.05",
+      "seed": 6,
+      "phase": "core",
+      "capacity": 107200,
+      "samples": 82383,
+      "sigma": 0.04968788995658109,
+      "peak_gib": 4.01995849609375
+    },
+    {
+      "stage": "0.05",
+      "seed": 6,
+      "phase": "analysis",
+      "capacity": 107200,
+      "samples": 82383,
+      "sigma": 0.04968788995658109,
+      "peak_gib": 2.71722412109375
+    },
+    {
+      "stage": "0.05",
+      "seed": 7,
+      "phase": "core",
+      "capacity": 107200,
+      "samples": 72369,
+      "sigma": 0.04966094342747017,
+      "peak_gib": 3.9239501953125
+    },
+    {
+      "stage": "0.05",
+      "seed": 7,
+      "phase": "analysis",
+      "capacity": 107200,
+      "samples": 72369,
+      "sigma": 0.04966094342747017,
+      "peak_gib": 2.5184326171875
+    },
+    {
+      "stage": "0.05",
+      "seed": 8,
+      "phase": "core",
+      "capacity": 214400,
+      "samples": 153743,
+      "sigma": 0.0493902819054749,
+      "peak_gib": 5.7694091796875
+    },
+    {
+      "stage": "0.05",
+      "seed": 8,
+      "phase": "analysis",
+      "capacity": 214400,
+      "samples": 153743,
+      "sigma": 0.0493902819054749,
+      "peak_gib": 4.63031005859375
+    },
+    {
+      "stage": "0.05",
+      "seed": 9,
+      "phase": "core",
+      "capacity": 107200,
+      "samples": 82211,
+      "sigma": 0.04884984698428713,
+      "peak_gib": 3.9779052734375
+    },
+    {
+      "stage": "0.05",
+      "seed": 9,
+      "phase": "analysis",
+      "capacity": 107200,
+      "samples": 82211,
+      "sigma": 0.04884984698428713,
+      "peak_gib": 2.70806884765625
+    },
+    {
+      "stage": "0.05",
+      "seed": 10,
+      "phase": "core",
+      "capacity": 214400,
+      "samples": 172365,
+      "sigma": 0.04918459229048013,
+      "peak_gib": 5.739013671875
+    },
+    {
+      "stage": "0.05",
+      "seed": 10,
+      "phase": "analysis",
+      "capacity": 214400,
+      "samples": 172365,
+      "sigma": 0.04918459229048013,
+      "peak_gib": 4.9840087890625
+    },
+    {
+      "stage": "0.05",
+      "seed": 11,
+      "phase": "core",
+      "capacity": 107200,
+      "samples": 75998,
+      "sigma": 0.049934390524716626,
+      "peak_gib": 4.04681396484375
+    },
+    {
+      "stage": "0.05",
+      "seed": 11,
+      "phase": "analysis",
+      "capacity": 107200,
+      "samples": 75998,
+      "sigma": 0.049934390524716626,
+      "peak_gib": 2.59588623046875
+    },
+    {
+      "stage": "0.05",
+      "seed": 12,
+      "phase": "core",
+      "capacity": 107200,
+      "samples": 74366,
+      "sigma": 0.049641516609115685,
+      "peak_gib": 3.94464111328125
+    },
+    {
+      "stage": "0.05",
+      "seed": 12,
+      "phase": "analysis",
+      "capacity": 107200,
+      "samples": 74366,
+      "sigma": 0.049641516609115685,
+      "peak_gib": 2.556640625
+    },
+    {
+      "stage": "0.05",
+      "seed": 13,
+      "phase": "core",
+      "capacity": 107200,
+      "samples": 76795,
+      "sigma": 0.04978875299372092,
+      "peak_gib": 4.11236572265625
+    },
+    {
+      "stage": "0.05",
+      "seed": 13,
+      "phase": "analysis",
+      "capacity": 107200,
+      "samples": 76795,
+      "sigma": 0.04978875299372092,
+      "peak_gib": 2.607666015625
+    },
+    {
+      "stage": "0.05",
+      "seed": 14,
+      "phase": "core",
+      "capacity": 214400,
+      "samples": 151118,
+      "sigma": 0.04945536657918062,
+      "peak_gib": 5.724609375
+    },
+    {
+      "stage": "0.05",
+      "seed": 14,
+      "phase": "analysis",
+      "capacity": 214400,
+      "samples": 151118,
+      "sigma": 0.04945536657918062,
+      "peak_gib": 4.5924072265625
+    },
+    {
+      "stage": "0.05",
+      "seed": 15,
+      "phase": "core",
+      "capacity": 107200,
+      "samples": 74974,
+      "sigma": 0.04912753032137862,
+      "peak_gib": 4.037109375
+    },
+    {
+      "stage": "0.05",
+      "seed": 15,
+      "phase": "analysis",
+      "capacity": 107200,
+      "samples": 74974,
+      "sigma": 0.04912753032137862,
+      "peak_gib": 2.56787109375
+    },
+    {
+      "stage": "0.05",
+      "seed": 16,
+      "phase": "core",
+      "capacity": 214400,
+      "samples": 134405,
+      "sigma": 0.049795960977339904,
+      "peak_gib": 5.7193603515625
+    },
+    {
+      "stage": "0.05",
+      "seed": 16,
+      "phase": "analysis",
+      "capacity": 214400,
+      "samples": 134405,
+      "sigma": 0.049795960977339904,
+      "peak_gib": 4.27813720703125
+    },
+    {
+      "stage": "0.05",
+      "seed": 17,
+      "phase": "core",
+      "capacity": 107200,
+      "samples": 83593,
+      "sigma": 0.0488160494006039,
+      "peak_gib": 3.97076416015625
+    },
+    {
+      "stage": "0.05",
+      "seed": 17,
+      "phase": "analysis",
+      "capacity": 107200,
+      "samples": 83593,
+      "sigma": 0.0488160494006039,
+      "peak_gib": 2.74969482421875
+    },
+    {
+      "stage": "0.05",
+      "seed": 18,
+      "phase": "core",
+      "capacity": 107200,
+      "samples": 75064,
+      "sigma": 0.04915686442809948,
+      "peak_gib": 4.0142822265625
+    },
+    {
+      "stage": "0.05",
+      "seed": 18,
+      "phase": "analysis",
+      "capacity": 107200,
+      "samples": 75064,
+      "sigma": 0.04915686442809948,
+      "peak_gib": 2.58544921875
+    },
+    {
+      "stage": "0.05",
+      "seed": 19,
+      "phase": "core",
+      "capacity": 107200,
+      "samples": 72314,
+      "sigma": 0.04977560124809069,
+      "peak_gib": 3.93359375
+    },
+    {
+      "stage": "0.05",
+      "seed": 19,
+      "phase": "analysis",
+      "capacity": 107200,
+      "samples": 72314,
+      "sigma": 0.04977560124809069,
+      "peak_gib": 2.53228759765625
+    },
+    {
+      "stage": "0.05",
+      "seed": 20,
+      "phase": "core",
+      "capacity": 107200,
+      "samples": 84655,
+      "sigma": 0.048869511707485665,
+      "peak_gib": 3.927978515625
+    },
+    {
+      "stage": "0.05",
+      "seed": 20,
+      "phase": "analysis",
+      "capacity": 107200,
+      "samples": 84655,
+      "sigma": 0.048869511707485665,
+      "peak_gib": 2.7640380859375
+    },
+    {
+      "stage": "0.05",
+      "seed": 21,
+      "phase": "core",
+      "capacity": 214400,
+      "samples": 165126,
+      "sigma": 0.04950771116997811,
+      "peak_gib": 5.7362060546875
+    },
+    {
+      "stage": "0.05",
+      "seed": 21,
+      "phase": "analysis",
+      "capacity": 214400,
+      "samples": 165126,
+      "sigma": 0.04950771116997811,
+      "peak_gib": 4.84893798828125
+    },
+    {
+      "stage": "0.05",
+      "seed": 22,
+      "phase": "core",
+      "capacity": 107200,
+      "samples": 71149,
+      "sigma": 0.04948997950402375,
+      "peak_gib": 4.01458740234375
+    },
+    {
+      "stage": "0.05",
+      "seed": 22,
+      "phase": "analysis",
+      "capacity": 107200,
+      "samples": 71149,
+      "sigma": 0.04948997950402375,
+      "peak_gib": 2.51641845703125
+    },
+    {
+      "stage": "0.05",
+      "seed": 23,
+      "phase": "core",
+      "capacity": 214400,
+      "samples": 140154,
+      "sigma": 0.048982375158177154,
+      "peak_gib": 5.69293212890625
+    },
+    {
+      "stage": "0.05",
+      "seed": 23,
+      "phase": "analysis",
+      "capacity": 214400,
+      "samples": 140154,
+      "sigma": 0.048982375158177154,
+      "peak_gib": 4.38592529296875
+    },
+    {
+      "stage": "0.05",
+      "seed": 24,
+      "phase": "core",
+      "capacity": 214400,
+      "samples": 108714,
+      "sigma": 0.0487929203799172,
+      "peak_gib": 5.4962158203125
+    },
+    {
+      "stage": "0.05",
+      "seed": 24,
+      "phase": "analysis",
+      "capacity": 214400,
+      "samples": 108714,
+      "sigma": 0.0487929203799172,
+      "peak_gib": 3.78668212890625
+    },
+    {
+      "stage": "0.05",
+      "seed": 25,
+      "phase": "core",
+      "capacity": 107200,
+      "samples": 71530,
+      "sigma": 0.04938137050166673,
+      "peak_gib": 3.89898681640625
+    },
+    {
+      "stage": "0.05",
+      "seed": 25,
+      "phase": "analysis",
+      "capacity": 107200,
+      "samples": 71530,
+      "sigma": 0.04938137050166673,
+      "peak_gib": 2.513427734375
+    },
+    {
+      "stage": "0.05",
+      "seed": 26,
+      "phase": "core",
+      "capacity": 214400,
+      "samples": 190990,
+      "sigma": 0.0492095843651285,
+      "peak_gib": 5.7437744140625
+    },
+    {
+      "stage": "0.05",
+      "seed": 26,
+      "phase": "analysis",
+      "capacity": 214400,
+      "samples": 190990,
+      "sigma": 0.0492095843651285,
+      "peak_gib": 5.35205078125
+    },
+    {
+      "stage": "0.05",
+      "seed": 27,
+      "phase": "core",
+      "capacity": 107200,
+      "samples": 89234,
+      "sigma": 0.04912675108261423,
+      "peak_gib": 3.94677734375
+    },
+    {
+      "stage": "0.05",
+      "seed": 27,
+      "phase": "analysis",
+      "capacity": 107200,
+      "samples": 89234,
+      "sigma": 0.04912675108261423,
+      "peak_gib": 2.853759765625
+    },
+    {
+      "stage": "0.05",
+      "seed": 28,
+      "phase": "core",
+      "capacity": 107200,
+      "samples": 107141,
+      "sigma": 0.04902260278408458,
+      "peak_gib": 3.98712158203125
+    },
+    {
+      "stage": "0.05",
+      "seed": 28,
+      "phase": "analysis",
+      "capacity": 107200,
+      "samples": 107141,
+      "sigma": 0.04902260278408458,
+      "peak_gib": 3.1881103515625
+    },
+    {
+      "stage": "0.05",
+      "seed": 29,
+      "phase": "core",
+      "capacity": 214400,
+      "samples": 173925,
+      "sigma": 0.04940154560492051,
+      "peak_gib": 5.742919921875
+    },
+    {
+      "stage": "0.05",
+      "seed": 29,
+      "phase": "analysis",
+      "capacity": 214400,
+      "samples": 173925,
+      "sigma": 0.04940154560492051,
+      "peak_gib": 5.02001953125
+    },
+    {
+      "stage": "0.02",
+      "seed": 0,
+      "phase": "core",
+      "capacity": 857600,
+      "samples": 468908,
+      "sigma": 0.01998914998006664,
+      "peak_gib": 14.635498046875
+    },
+    {
+      "stage": "0.02",
+      "seed": 0,
+      "phase": "analysis",
+      "capacity": 857600,
+      "samples": 468908,
+      "sigma": 0.01998914998006664,
+      "peak_gib": 14.02032470703125
+    },
+    {
+      "stage": "0.02",
+      "seed": 1,
+      "phase": "core",
+      "capacity": 857600,
+      "samples": 484509,
+      "sigma": 0.019970579527815245,
+      "peak_gib": 14.61541748046875
+    },
+    {
+      "stage": "0.02",
+      "seed": 1,
+      "phase": "analysis",
+      "capacity": 857600,
+      "samples": 484509,
+      "sigma": 0.019970579527815245,
+      "peak_gib": 14.30291748046875
+    },
+    {
+      "stage": "0.02",
+      "seed": 2,
+      "phase": "core",
+      "capacity": 857600,
+      "samples": 536922,
+      "sigma": 0.01995487710590445,
+      "peak_gib": 14.59271240234375
+    },
+    {
+      "stage": "0.02",
+      "seed": 2,
+      "phase": "analysis",
+      "capacity": 857600,
+      "samples": 536922,
+      "sigma": 0.01995487710590445,
+      "peak_gib": 15.30084228515625
+    },
+    {
+      "stage": "0.02",
+      "seed": 4,
+      "phase": "core",
+      "capacity": 857600,
+      "samples": 491372,
+      "sigma": 0.01997691719530144,
+      "peak_gib": 14.17828369140625
+    },
+    {
+      "stage": "0.02",
+      "seed": 4,
+      "phase": "analysis",
+      "capacity": 857600,
+      "samples": 491372,
+      "sigma": 0.01997691719530144,
+      "peak_gib": 14.44677734375
+    },
+    {
+      "stage": "0.02",
+      "seed": 5,
+      "phase": "core",
+      "capacity": 857600,
+      "samples": 663027,
+      "sigma": 0.0199971555908845,
+      "peak_gib": 13.870849609375
+    },
+    {
+      "stage": "0.02",
+      "seed": 5,
+      "phase": "analysis",
+      "capacity": 857600,
+      "samples": 663027,
+      "sigma": 0.0199971555908845,
+      "peak_gib": 17.69232177734375
+    },
+    {
+      "stage": "0.02",
+      "seed": 6,
+      "phase": "core",
+      "capacity": 857600,
+      "samples": 647408,
+      "sigma": 0.01993963605304817,
+      "peak_gib": 14.6470947265625
+    },
+    {
+      "stage": "0.02",
+      "seed": 6,
+      "phase": "analysis",
+      "capacity": 857600,
+      "samples": 647408,
+      "sigma": 0.01993963605304817,
+      "peak_gib": 17.38446044921875
+    },
+    {
+      "stage": "0.02",
+      "seed": 7,
+      "phase": "core",
+      "capacity": 857600,
+      "samples": 672520,
+      "sigma": 0.019964777621687916,
+      "peak_gib": 14.72320556640625
+    },
+    {
+      "stage": "0.02",
+      "seed": 7,
+      "phase": "analysis",
+      "capacity": 857600,
+      "samples": 672520,
+      "sigma": 0.019964777621687916,
+      "peak_gib": 17.87042236328125
+    },
+    {
+      "stage": "0.02",
+      "seed": 8,
+      "phase": "core",
+      "capacity": 1715200,
+      "samples": 916116,
+      "sigma": 0.01998238375331671,
+      "peak_gib": 27.33123779296875
+    },
+    {
+      "stage": "0.02",
+      "seed": 8,
+      "phase": "analysis",
+      "capacity": 1715200,
+      "samples": 916116,
+      "sigma": 0.01998238375331671,
+      "peak_gib": 27.02117919921875
+    },
+    {
+      "stage": "0.02",
+      "seed": 9,
+      "phase": "core",
+      "capacity": 857600,
+      "samples": 685893,
+      "sigma": 0.019990502251160044,
+      "peak_gib": 14.653564453125
+    },
+    {
+      "stage": "0.02",
+      "seed": 9,
+      "phase": "analysis",
+      "capacity": 857600,
+      "samples": 685893,
+      "sigma": 0.019990502251160044,
+      "peak_gib": 18.11199951171875
+    },
+    {
+      "stage": "0.02",
+      "seed": 11,
+      "phase": "core",
+      "capacity": 857600,
+      "samples": 530513,
+      "sigma": 0.019947261344679255,
+      "peak_gib": 14.53125
+    },
+    {
+      "stage": "0.02",
+      "seed": 11,
+      "phase": "analysis",
+      "capacity": 857600,
+      "samples": 530513,
+      "sigma": 0.019947261344679255,
+      "peak_gib": 15.19293212890625
+    },
+    {
+      "stage": "0.02",
+      "seed": 12,
+      "phase": "core",
+      "capacity": 857600,
+      "samples": 552303,
+      "sigma": 0.019978355089967807,
+      "peak_gib": 14.56707763671875
+    },
+    {
+      "stage": "0.02",
+      "seed": 12,
+      "phase": "analysis",
+      "capacity": 857600,
+      "samples": 552303,
+      "sigma": 0.019978355089967807,
+      "peak_gib": 15.576171875
+    },
+    {
+      "stage": "0.02",
+      "seed": 13,
+      "phase": "core",
+      "capacity": 857600,
+      "samples": 563702,
+      "sigma": 0.01992353954125653,
+      "peak_gib": 14.5965576171875
+    },
+    {
+      "stage": "0.02",
+      "seed": 13,
+      "phase": "analysis",
+      "capacity": 857600,
+      "samples": 563702,
+      "sigma": 0.01992353954125653,
+      "peak_gib": 15.7989501953125
+    },
+    {
+      "stage": "0.02",
+      "seed": 15,
+      "phase": "core",
+      "capacity": 857600,
+      "samples": 470322,
+      "sigma": 0.019965554922631162,
+      "peak_gib": 14.60870361328125
+    },
+    {
+      "stage": "0.02",
+      "seed": 15,
+      "phase": "analysis",
+      "capacity": 857600,
+      "samples": 470322,
+      "sigma": 0.019965554922631162,
+      "peak_gib": 14.0478515625
+    },
+    {
+      "stage": "0.02",
+      "seed": 16,
+      "phase": "core",
+      "capacity": 1715200,
+      "samples": 892711,
+      "sigma": 0.019998291708742278,
+      "peak_gib": 27.24188232421875
+    },
+    {
+      "stage": "0.02",
+      "seed": 17,
+      "phase": "core",
+      "capacity": 857600,
+      "samples": 600078,
+      "sigma": 0.01999722827469002,
+      "peak_gib": 14.61767578125
+    },
+    {
+      "stage": "0.02",
+      "seed": 17,
+      "phase": "analysis",
+      "capacity": 857600,
+      "samples": 600078,
+      "sigma": 0.01999722827469002,
+      "peak_gib": 16.49090576171875
+    },
+    {
+      "stage": "0.02",
+      "seed": 18,
+      "phase": "core",
+      "capacity": 857600,
+      "samples": 570768,
+      "sigma": 0.01998999005017093,
+      "peak_gib": 14.5819091796875
+    },
+    {
+      "stage": "0.02",
+      "seed": 18,
+      "phase": "analysis",
+      "capacity": 857600,
+      "samples": 570768,
+      "sigma": 0.01998999005017093,
+      "peak_gib": 15.95220947265625
+    },
+    {
+      "stage": "0.02",
+      "seed": 19,
+      "phase": "core",
+      "capacity": 857600,
+      "samples": 521105,
+      "sigma": 0.019984460657000314,
+      "peak_gib": 14.868408203125
+    },
+    {
+      "stage": "0.02",
+      "seed": 19,
+      "phase": "analysis",
+      "capacity": 857600,
+      "samples": 521105,
+      "sigma": 0.019984460657000314,
+      "peak_gib": 15.01153564453125
+    },
+    {
+      "stage": "0.02",
+      "seed": 20,
+      "phase": "core",
+      "capacity": 857600,
+      "samples": 559675,
+      "sigma": 0.019943191375004648,
+      "peak_gib": 14.62109375
+    },
+    {
+      "stage": "0.02",
+      "seed": 20,
+      "phase": "analysis",
+      "capacity": 857600,
+      "samples": 559675,
+      "sigma": 0.019943191375004648,
+      "peak_gib": 15.72943115234375
+    },
+    {
+      "stage": "0.02",
+      "seed": 22,
+      "phase": "core",
+      "capacity": 857600,
+      "samples": 549218,
+      "sigma": 0.019922646341883354,
+      "peak_gib": 14.69317626953125
+    },
+    {
+      "stage": "0.02",
+      "seed": 22,
+      "phase": "analysis",
+      "capacity": 857600,
+      "samples": 549218,
+      "sigma": 0.019922646341883354,
+      "peak_gib": 15.54119873046875
+    },
+    {
+      "stage": "0.02",
+      "seed": 23,
+      "phase": "core",
+      "capacity": 1715200,
+      "samples": 862511,
+      "sigma": 0.019942188441503406,
+      "peak_gib": 26.23797607421875
+    },
+    {
+      "stage": "0.02",
+      "seed": 23,
+      "phase": "analysis",
+      "capacity": 1715200,
+      "samples": 862511,
+      "sigma": 0.019942188441503406,
+      "peak_gib": 26.00250244140625
+    },
+    {
+      "stage": "0.02",
+      "seed": 24,
+      "phase": "core",
+      "capacity": 857600,
+      "samples": 659491,
+      "sigma": 0.01999197637670464,
+      "peak_gib": 14.92633056640625
+    },
+    {
+      "stage": "0.02",
+      "seed": 24,
+      "phase": "analysis",
+      "capacity": 857600,
+      "samples": 659491,
+      "sigma": 0.01999197637670464,
+      "peak_gib": 17.61370849609375
+    },
+    {
+      "stage": "0.02",
+      "seed": 25,
+      "phase": "core",
+      "capacity": 857600,
+      "samples": 510615,
+      "sigma": 0.01995393245415584,
+      "peak_gib": 14.521728515625
+    },
+    {
+      "stage": "0.02",
+      "seed": 25,
+      "phase": "analysis",
+      "capacity": 857600,
+      "samples": 510615,
+      "sigma": 0.01995393245415584,
+      "peak_gib": 14.8070068359375
+    },
+    {
+      "stage": "0.02",
+      "seed": 27,
+      "phase": "core",
+      "capacity": 857600,
+      "samples": 594123,
+      "sigma": 0.019909637154047276,
+      "peak_gib": 14.61151123046875
+    },
+    {
+      "stage": "0.02",
+      "seed": 27,
+      "phase": "analysis",
+      "capacity": 857600,
+      "samples": 594123,
+      "sigma": 0.019909637154047276,
+      "peak_gib": 16.37274169921875
+    },
+    {
+      "stage": "0.02",
+      "seed": 28,
+      "phase": "core",
+      "capacity": 857600,
+      "samples": 708834,
+      "sigma": 0.019973696366996602,
+      "peak_gib": 14.56915283203125
+    },
+    {
+      "stage": "0.02",
+      "seed": 28,
+      "phase": "analysis",
+      "capacity": 857600,
+      "samples": 708834,
+      "sigma": 0.019973696366996602,
+      "peak_gib": 18.5277099609375
+    }
+  ],
+  "source_record_sha256": {
+    "0.05/ss10/seed-00/CORE.json": "5115b06f5aee27af12dae804a9fd847383bd8744527dad6e76ec9b90b7c70c79",
+    "0.05/ss10/seed-01/CORE.json": "35e9686fa43396bb789530f255f891e9ba15a917b661c98c33161bd2b40e3915",
+    "0.05/ss10/seed-02/CORE.json": "f20efe0fbeaad2aeb2c5619a747c0033c9cd1d3d0ff2145901dc9923945449fe",
+    "0.05/ss10/seed-03/CORE.json": "cae10f8a0e20184120b463ca16e0f0ea5b1b5927b4cd117ff4cc35bb1275126f",
+    "0.05/ss10/seed-04/CORE.json": "2ade1cc389de8bbf767e011a27f17a3eec8ac6631b38bdd7edde37e1242c73d9",
+    "0.05/ss10/seed-05/CORE.json": "fed9565f65d8b2d028092d5f3f88b8c406196ebf60b5113a1b4c1778f115b01d",
+    "0.05/ss10/seed-06/CORE.json": "0be92a9089630680afdd1be8d1e65af791aa0b545b3de4ce0a0e953df35ff3be",
+    "0.05/ss10/seed-07/CORE.json": "313c1c792fe185bc2a5e6204a5760825b755c949ab04379aff8b0ec06260c4e3",
+    "0.05/ss10/seed-08/CORE.json": "8bdcfe89dae3cf7fcf6828334edc0bdff6378e75a9216f231c825a58b9764d1f",
+    "0.05/ss10/seed-09/CORE.json": "675353d4d064bdd7ec3d4ebd80a0ca36bcae10273f53bd5c58b927aedd44a070",
+    "0.05/ss10/seed-10/CORE.json": "6a970eecb15acd1aab5b94545649fcf2effec2932972a57fa59b54f168a57b8f",
+    "0.05/ss10/seed-11/CORE.json": "d3dedd151c4e02097fff9b261a0a50989bf2021cfb69603232df95c697b5be14",
+    "0.05/ss10/seed-12/CORE.json": "1a94aa69b2217812a169d11a9ec35fcce0136a78b5e0e89a43b6d7dc414da32a",
+    "0.05/ss10/seed-13/CORE.json": "01e04fa6b214beef1162d39a6a93d04360d50c70d75beb706365cc39b614db64",
+    "0.05/ss10/seed-14/CORE.json": "54ac84ee808cbca2e96f6b03debc8495ef2a231eb4e6f1e80c4b11906877e3fc",
+    "0.05/ss10/seed-15/CORE.json": "1fd2745cada86e68e6f6fecd5bb95176a7e45a90447f91d397553f4264d41040",
+    "0.05/ss10/seed-16/CORE.json": "4c5a36bd89b011e3f02185ada4f68180708b5623cc43388c24b9bdb266f2217c",
+    "0.05/ss10/seed-17/CORE.json": "777a99579ac191cce87e4fdc70d6e4ce6d06d2275fc6faf80516ede3ec94d06d",
+    "0.05/ss10/seed-18/CORE.json": "d3f4feb484a176b772c708c7cdcd8f74a3335a96763fa79846741f6c2bba33c3",
+    "0.05/ss10/seed-19/CORE.json": "d51aacbbbeea5d41251d78d6d429e791802a0c5fb803a2f1837c0dea1d60f2b0",
+    "0.05/ss10/seed-20/CORE.json": "a9c1b6517a4f844046afe14ee172f8ff6f72d11be5ab6c905a8bb8ef8e59506a",
+    "0.05/ss10/seed-21/CORE.json": "dddb3bb4ad0555fdff3fc65e9b616a48e48042b9c328cc3aff80baac0bd1852f",
+    "0.05/ss10/seed-22/CORE.json": "dd4c51dbb4dc85144a15f9e45457f634229d05d7ee59b69762a6faa0fc9c7d3a",
+    "0.05/ss10/seed-23/CORE.json": "d311be47531537f10867a7d8b934edaa787e96e9f24cd1d3ff49c84e20ff42de",
+    "0.05/ss10/seed-24/CORE.json": "6ccbf876ac8bd253fc5b98dd1ac9ca9b414d74b4b35d43701285924f8fcb41d0",
+    "0.05/ss10/seed-25/CORE.json": "c8a9d4a7764a2f4babb6875d7cc4da151199ecce9b7e55045456ffaa3cb6fc76",
+    "0.05/ss10/seed-26/CORE.json": "4eff7385c882829460edb3983a2ec2771b2c5c07eb224da384a07ffbf4bf4b80",
+    "0.05/ss10/seed-27/CORE.json": "35c3a20c2fb0a76211464b43690db8b9a1c3cdcfd7b3d08b154583641309ba34",
+    "0.05/ss10/seed-28/CORE.json": "0ae337abf163baaa78c4f44069e1768a814682fd4a1fd17bc73d2531c201b6db",
+    "0.05/ss10/seed-29/CORE.json": "b24093c0695d0a9ec6ac3c8ab4aca31fe805540cc24aa996c0e5ccddaff8b0cd",
+    "0.05/ss10/seed-00/ANALYSIS.json": "19f55d99e3bce90fb92422af18198e9bef4e8a612565adaa509891be39963022",
+    "0.05/ss10/seed-01/ANALYSIS.json": "64fa4a28a35e770eccdafeb4eec7d81c917e7357a28b6f0aa8345eba53664968",
+    "0.05/ss10/seed-02/ANALYSIS.json": "5fd2317a436880d0ad0a555787a34ce982abe34f9f2f863ead738ea296927dd3",
+    "0.05/ss10/seed-03/ANALYSIS.json": "da12ae4b8df081ac68be2fe2649dd9c22ea3b22cbbfd96618967037226c5e2cd",
+    "0.05/ss10/seed-04/ANALYSIS.json": "db0f0d4938365be4156cae3a1c3d604aba110086ecaecaa5d7872b5353735307",
+    "0.05/ss10/seed-05/ANALYSIS.json": "bb06db973496b694df35744b515ddc9914989be96a78ad47f25182b3cc2a124b",
+    "0.05/ss10/seed-06/ANALYSIS.json": "6f4f307edeead93391c017393fa29e0aefccbba28a6ed24f7141df7957e18f23",
+    "0.05/ss10/seed-07/ANALYSIS.json": "e89a14562a24fdf93603a995b13c6ce8e170bf1dc571e1d72d80453b569d2c6d",
+    "0.05/ss10/seed-08/ANALYSIS.json": "07e3605e4a1b1282e33edf75428ce8be13435ec870ac1060e122f15287e6fbd5",
+    "0.05/ss10/seed-09/ANALYSIS.json": "51837ae8399b3209c0be687cdafb9274d031b736cb6330449bd31703a2032916",
+    "0.05/ss10/seed-10/ANALYSIS.json": "99b87d34c85dc05bfb39e980ed47e9a578fda40e242c87e941612039b6feedc3",
+    "0.05/ss10/seed-11/ANALYSIS.json": "65e4679fe53e649fab02eb5415f7d9a7893b4991a0e1352357fe0759a927c74b",
+    "0.05/ss10/seed-12/ANALYSIS.json": "c3ed0bb18cc94a45f98b876ee1c02da2b4032c6dbc8952f9a0d2e2d02dccc1c2",
+    "0.05/ss10/seed-13/ANALYSIS.json": "4f6830d3d13345022a70c29abd1311d31858be9311b6dad85181c11e8c9dd2cf",
+    "0.05/ss10/seed-14/ANALYSIS.json": "24bf970da8df1ad58dcbe258ef9b38007e393091453d892a9486c905159dab8f",
+    "0.05/ss10/seed-15/ANALYSIS.json": "1f92fd7bc5a77af9ef13c1fe4e5c47ab171c8b21942fe13dbf2bb2296bcf2494",
+    "0.05/ss10/seed-16/ANALYSIS.json": "a59be89474b1372460748122b27cbb34c709e5e25098648e2a71ace73fb59538",
+    "0.05/ss10/seed-17/ANALYSIS.json": "35e71a370dfe23df479d40fc25c49bfc00031a35672a74a51d8005bd1310d8cf",
+    "0.05/ss10/seed-18/ANALYSIS.json": "bf748ce19418cccbbe94ac5f65ae4ebe7334020ca4bdc3d6b506389448353344",
+    "0.05/ss10/seed-19/ANALYSIS.json": "4c5f541f1421bc402e5509d0b5e6e546731b1a798317a66fc185efde19907a78",
+    "0.05/ss10/seed-20/ANALYSIS.json": "f589a4231542f661a63cbf5afc310bf6b756d45d0354a121e21f8399a8278a55",
+    "0.05/ss10/seed-21/ANALYSIS.json": "d94c8da33fddea260a2e7e5d4cbea6ef6cab7b70dd12fd87533d5edda4da84ec",
+    "0.05/ss10/seed-22/ANALYSIS.json": "25e8d2346fd35e7efe8e07e8eef5ef37702bed93a54f3ea7837f9a853cb81a2e",
+    "0.05/ss10/seed-23/ANALYSIS.json": "d545eb2b551ee61308552e6fbe957c7cc161d83cddd81bd0d3d7674acf53b828",
+    "0.05/ss10/seed-24/ANALYSIS.json": "b8bb057b0ed5faf448f280fd45a9965044cf34c96103f0c71bf2eaf52b744a9f",
+    "0.05/ss10/seed-25/ANALYSIS.json": "ea5d7579850611a6683e89dd490c95ffd413d3f529c3fb25c43b6c863727767e",
+    "0.05/ss10/seed-26/ANALYSIS.json": "9554777f20d864889032220c9ae6976536dfb4439e19f6b8b9fe77b44da5ee99",
+    "0.05/ss10/seed-27/ANALYSIS.json": "b175b3c06f5c89def9e5a5b13b0c46f35cbebeb656c7897df802b28453a9b999",
+    "0.05/ss10/seed-28/ANALYSIS.json": "505d340c21fb88398c825e1de68a7f537a3cd2bc6dd6602bc6f35b1d48859049",
+    "0.05/ss10/seed-29/ANALYSIS.json": "4d5cd6e5dfb035ab5526a87918cc5211eb88abc5512758ce7ab227eea6ba438b",
+    "0.02/ss10/seed-00/CORE.json": "632f74fa0c1d4e5731c727c85c9854e9680c4d3b527e9818025bf69b96e13882",
+    "0.02/ss10/seed-01/CORE.json": "8436ae954bec4f483ea2510c7f37bc8172c87c32c77c146c77e172eef311364a",
+    "0.02/ss10/seed-02/CORE.json": "0705dcc7d03950d36ce5cd9e7c539f91c381371a43dcb558e889579acec497df",
+    "0.02/ss10/seed-04/CORE.json": "9b30ef8e6620a52ec835aafc5275518b0c39b8d1dd034104d3a59c95eb24b44f",
+    "0.02/ss10/seed-05/CORE.json": "bd338b66975f8976f108cab082e546a9da3ea248b7b758b2271eb451afe18b47",
+    "0.02/ss10/seed-06/CORE.json": "962470ec747da7acff66ba0ea4070cf6d2a5b2188ba1acaa70571e278ec9680a",
+    "0.02/ss10/seed-07/CORE.json": "05c1fd41b50782a6217f5d4a90b54b6ed9bac74af2f5abb30b3f6a53f81b2260",
+    "0.02/ss10/seed-08/CORE.json": "c6791552ca9d7cd9c8c43481381579060aa33598c8e63a9e1f947575f7889407",
+    "0.02/ss10/seed-09/CORE.json": "6ff0f4d0c2247749516cb0150137c96f09195707793f803050eef21a34191eae",
+    "0.02/ss10/seed-11/CORE.json": "097c41a2e7bfbd767a67c302c8db819812da6201588a6a461e0b5bea3a517b8e",
+    "0.02/ss10/seed-12/CORE.json": "6e135b6315ff2f862f900680192f25a2d709d346d304247a2664fb69ebc90025",
+    "0.02/ss10/seed-13/CORE.json": "3315cd410c70ee317ab29ecec226a818ebb00ccbc907c2aa4795b95273eefd15",
+    "0.02/ss10/seed-15/CORE.json": "dbcd7c474e289a51dab7a5caf250c5a252b0a661e1182bcb8d5ea16ca46e0966",
+    "0.02/ss10/seed-16/CORE.json": "b558274ca5cad974fac930ec12c3d1b0ef135632acc4821130e7117c478b91b2",
+    "0.02/ss10/seed-17/CORE.json": "7abbdb157ee7d9fe617d7a3769eb3027554ddac03c2e94ff02257f80dcea3be6",
+    "0.02/ss10/seed-18/CORE.json": "08d684227399085ea9ce320be1edca20a99bcbf5cea667066d6dd627402664fe",
+    "0.02/ss10/seed-19/CORE.json": "439efc5b2954ff63d2805d6cdbbebba656405989fb90faea07b3b46eae7c7550",
+    "0.02/ss10/seed-20/CORE.json": "b8f3bacdc55850f85bbf667ed25d25b1243d4e8fd2f297ea8bbdec6b9745d629",
+    "0.02/ss10/seed-22/CORE.json": "2aad072bd3ba26e96358f47cd8bb7838f4917d510ff0adbf42099b04d64d8795",
+    "0.02/ss10/seed-23/CORE.json": "4cd6abfd04507195f2d37a4a651cc0f3cfcfbec797f702806da2868f8e009e1c",
+    "0.02/ss10/seed-24/CORE.json": "6c9202fd0d7d5e23af6e471c92af216c1ace1e9770d94699fff5a62db31cb546",
+    "0.02/ss10/seed-25/CORE.json": "3b73763b585164db35e5824e03bbfe30a587ae628b05894c2afbc6c211372770",
+    "0.02/ss10/seed-27/CORE.json": "e74b4226db9e7c4d8be02c4e4f297d37d9d5f23754ce5b88f371ccc76d623de8",
+    "0.02/ss10/seed-28/CORE.json": "111a8645708650c5c4cb1c0b6ae4a4e197d1c9b48e54a20fb5d9de5559f0a315",
+    "0.02/ss10/seed-00/ANALYSIS.json": "f12ca8899ce8e1287090d590ac8cec1d8c8d22a550cbcf39bb46d2d9ce3d4a30",
+    "0.02/ss10/seed-01/ANALYSIS.json": "ca6984afa1278d1c56e8cfc14dbd873c83c704ad62c7c47b64b445f57f365175",
+    "0.02/ss10/seed-02/ANALYSIS.json": "1c697f34aa6e029a34db5759bc92847b65d1eaa0cf937650c494216e6cc4c481",
+    "0.02/ss10/seed-04/ANALYSIS.json": "a65df6e4d4da07fb952f90fc914b3796b1adf57741fcf3b6f5d67a57d245f956",
+    "0.02/ss10/seed-05/ANALYSIS.json": "8fe055a14f83d1fbb9b5008d7351fd8c72316d7417eeebdf61ddad3de264ba85",
+    "0.02/ss10/seed-06/ANALYSIS.json": "3ef9e01425aa32d5234f46b6df7427169d6f59d4045be236d98ce93856083b36",
+    "0.02/ss10/seed-07/ANALYSIS.json": "9f3a0251b3f403e18fb34713e411957d7515782a34f2ef0b92695112b77d4946",
+    "0.02/ss10/seed-08/ANALYSIS.json": "a819751a463d5de683662ec85b4486763e3dad8cea6325d1672aaad49e3322c4",
+    "0.02/ss10/seed-09/ANALYSIS.json": "928834e7a21842dc1e613f6aca748045bc6d237a137c89865abe3145d5bd7cdf",
+    "0.02/ss10/seed-11/ANALYSIS.json": "12cb492d1ab532c5f6627c4e3b8b6c8df4df04f5e74b64fa7e7537b39babcd8a",
+    "0.02/ss10/seed-12/ANALYSIS.json": "79bd2a4ec95de0efd3286c46cf4bc0891db6f6d08a978009c1ca04a2d6a58000",
+    "0.02/ss10/seed-13/ANALYSIS.json": "2f46e6a040260b4bf1f8f183b43363e8578e2e7c7999bb65d9e371979c301c54",
+    "0.02/ss10/seed-15/ANALYSIS.json": "3e119c576ba838843fa6b3a3f5a864a36dce24598aac291db8a1923a88691ac4",
+    "0.02/ss10/seed-17/ANALYSIS.json": "152a155cfd7edd782e220cb5dd9022d3104c349d7a8ab691675980531309210f",
+    "0.02/ss10/seed-18/ANALYSIS.json": "1b88be7091ce0a6b0eede8092894b3cad8044729721708e6b0844925955c688e",
+    "0.02/ss10/seed-19/ANALYSIS.json": "dc7331948ea4383b2d5fcb6e2dcdd3dc97db66a020c49231f1b85003b62aa5d3",
+    "0.02/ss10/seed-20/ANALYSIS.json": "43d36793160241d33e25f8ba82a7974316a639bea7c48c7f57d2202599652583",
+    "0.02/ss10/seed-22/ANALYSIS.json": "4f8cac7f67a5e3f175e6ac1c3d6b045d6cfb25bf36d367e258058fe1edcb601a",
+    "0.02/ss10/seed-23/ANALYSIS.json": "992073671e5c0e3c6e794894afbe5a41b37058650264611f5b936b58602ca780",
+    "0.02/ss10/seed-24/ANALYSIS.json": "0949fba47d0c22212298ba04c24b0cc72ab4f4b4786c2e57bf4aa0a55de293ee",
+    "0.02/ss10/seed-25/ANALYSIS.json": "36cf117649a2c9abb998adcc41a358c4ac948fc25cdc02a94c9a13166a441d4c",
+    "0.02/ss10/seed-27/ANALYSIS.json": "c5d22f22997986982302725a01bde543fd18e88390b189086a6906281a543119",
+    "0.02/ss10/seed-28/ANALYSIS.json": "ef2e5d9ed6bc935704b91cea86b88bc333f70ebfe99ddb7a7ebed6072a970e17"
+  }
+}

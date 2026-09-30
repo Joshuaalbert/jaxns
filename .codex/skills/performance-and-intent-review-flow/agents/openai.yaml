@@ -1,0 +1,4 @@
+interface:
+  display_name: "JAX Performance And Intent Review"
+  short_description: "Review JAX execution and code intent"
+  default_prompt: "Use $performance-and-intent-review-flow to review this JAX change for tracing, runtime, memory, numerical, and code-intent regressions."

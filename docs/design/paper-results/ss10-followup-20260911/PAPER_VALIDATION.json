@@ -1,0 +1,14 @@
+{
+  "paper_sha256": "04eedeae965f1e49cd19ed129e223a4d5d9c4b04607246db93ae5952fe081a93",
+  "labels": 72,
+  "references": 56,
+  "figures": 9,
+  "missing_preexisting_figures": [
+    "images/censor.drawio.pdf"
+  ],
+  "braces_balanced": true,
+  "environments_balanced": true,
+  "classic_followup_table_matches": true,
+  "tex_compiler": null,
+  "bibliography_present": false
+}

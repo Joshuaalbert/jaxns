@@ -1,0 +1,7 @@
+{
+  "protocol_tests": 10,
+  "pytest_exit": 0,
+  "ruff_exit": 0,
+  "flake8_exit": 0,
+  "production_src_identical_to_A": true
+}

@@ -1,0 +1,282 @@
+{
+  "iteration": 18,
+  "allocation_iteration": 18,
+  "root_out_degree": 5390,
+  "classic_log_Z": -24.73855744122077,
+  "classic_log_Z_uncert": 0.048869511707485665,
+  "classic_kish_ess": 21750.882598199194,
+  "likelihood_evaluations": 21266489,
+  "classic_samples": 84655,
+  "seconds": 674.8161912029609,
+  "case": "ss10",
+  "seed": 20,
+  "complete": true,
+  "run_seconds": 675.1050236939918,
+  "stage_run_seconds": 675.1050236939918,
+  "goal_progress": [
+    {
+      "iteration": 1,
+      "allocation_iteration": 1,
+      "root_out_degree": 300,
+      "classic_log_Z": -24.99353029858118,
+      "classic_log_Z_uncert": 0.19898632436278774,
+      "classic_kish_ess": 2571.5959026541886,
+      "likelihood_evaluations": 3996126,
+      "classic_samples": 10498,
+      "seconds": 98.96240940201096
+    },
+    {
+      "iteration": 2,
+      "allocation_iteration": 2,
+      "root_out_degree": 600,
+      "classic_log_Z": -24.845410363864232,
+      "classic_log_Z_uncert": 0.14462603425274173,
+      "classic_kish_ess": 3158.962297180944,
+      "likelihood_evaluations": 4694892,
+      "classic_samples": 14012,
+      "seconds": 143.00687506701797
+    },
+    {
+      "iteration": 3,
+      "allocation_iteration": 3,
+      "root_out_degree": 890,
+      "classic_log_Z": -24.803721479884388,
+      "classic_log_Z_uncert": 0.11925410580394388,
+      "classic_kish_ess": 3960.9612561310423,
+      "likelihood_evaluations": 5530887,
+      "classic_samples": 17939,
+      "seconds": 164.76752652903087
+    },
+    {
+      "iteration": 4,
+      "allocation_iteration": 4,
+      "root_out_degree": 1190,
+      "classic_log_Z": -24.76690180663344,
+      "classic_log_Z_uncert": 0.10320349474749528,
+      "classic_kish_ess": 5015.24699350783,
+      "likelihood_evaluations": 6441950,
+      "classic_samples": 22082,
+      "seconds": 174.0879925910849
+    },
+    {
+      "iteration": 5,
+      "allocation_iteration": 5,
+      "root_out_degree": 1490,
+      "classic_log_Z": -24.753358826385742,
+      "classic_log_Z_uncert": 0.09221094236153127,
+      "classic_kish_ess": 6102.728828141058,
+      "likelihood_evaluations": 7368000,
+      "classic_samples": 26258,
+      "seconds": 185.6081045740284
+    },
+    {
+      "iteration": 6,
+      "allocation_iteration": 6,
+      "root_out_degree": 1790,
+      "classic_log_Z": -24.793837005231264,
+      "classic_log_Z_uncert": 0.0844230756781274,
+      "classic_kish_ess": 7163.114237771675,
+      "likelihood_evaluations": 8336740,
+      "classic_samples": 30578,
+      "seconds": 232.65341117000207
+    },
+    {
+      "iteration": 7,
+      "allocation_iteration": 7,
+      "root_out_degree": 2090,
+      "classic_log_Z": -24.80158099229914,
+      "classic_log_Z_uncert": 0.07811684939249383,
+      "classic_kish_ess": 8278.33282325367,
+      "likelihood_evaluations": 9329193,
+      "classic_samples": 34932,
+      "seconds": 261.3792956690304
+    },
+    {
+      "iteration": 8,
+      "allocation_iteration": 8,
+      "root_out_degree": 2390,
+      "classic_log_Z": -24.805946225180396,
+      "classic_log_Z_uncert": 0.07311288892216142,
+      "classic_kish_ess": 9373.64769918482,
+      "likelihood_evaluations": 10340169,
+      "classic_samples": 39316,
+      "seconds": 281.92288189497776
+    },
+    {
+      "iteration": 9,
+      "allocation_iteration": 9,
+      "root_out_degree": 2690,
+      "classic_log_Z": -24.790646178297003,
+      "classic_log_Z_uncert": 0.06896086185364,
+      "classic_kish_ess": 10464.416815090892,
+      "likelihood_evaluations": 11357802,
+      "classic_samples": 43682,
+      "seconds": 299.7995181379374
+    },
+    {
+      "iteration": 10,
+      "allocation_iteration": 10,
+      "root_out_degree": 2990,
+      "classic_log_Z": -24.800083902195272,
+      "classic_log_Z_uncert": 0.06545476284509016,
+      "classic_kish_ess": 11608.772410760605,
+      "likelihood_evaluations": 12403568,
+      "classic_samples": 48168,
+      "seconds": 317.8180525440257
+    },
+    {
+      "iteration": 11,
+      "allocation_iteration": 11,
+      "root_out_degree": 3290,
+      "classic_log_Z": -24.76767499516924,
+      "classic_log_Z_uncert": 0.06251381242501951,
+      "classic_kish_ess": 12798.764529091037,
+      "likelihood_evaluations": 13435149,
+      "classic_samples": 52536,
+      "seconds": 336.77418227493763
+    },
+    {
+      "iteration": 12,
+      "allocation_iteration": 12,
+      "root_out_degree": 3590,
+      "classic_log_Z": -24.79557427216177,
+      "classic_log_Z_uncert": 0.059803034592498285,
+      "classic_kish_ess": 14051.526040141722,
+      "likelihood_evaluations": 14574133,
+      "classic_samples": 57217,
+      "seconds": 411.0007191840559
+    },
+    {
+      "iteration": 13,
+      "allocation_iteration": 13,
+      "root_out_degree": 3890,
+      "classic_log_Z": -24.77773701438547,
+      "classic_log_Z_uncert": 0.05746692545375875,
+      "classic_kish_ess": 15291.387663510639,
+      "likelihood_evaluations": 15649523,
+      "classic_samples": 61690,
+      "seconds": 463.59689370100386
+    },
+    {
+      "iteration": 14,
+      "allocation_iteration": 14,
+      "root_out_degree": 4190,
+      "classic_log_Z": -24.775689966212916,
+      "classic_log_Z_uncert": 0.05533152599452028,
+      "classic_kish_ess": 16513.040405043277,
+      "likelihood_evaluations": 16765603,
+      "classic_samples": 66280,
+      "seconds": 505.066403004108
+    },
+    {
+      "iteration": 15,
+      "allocation_iteration": 15,
+      "root_out_degree": 4490,
+      "classic_log_Z": -24.757222161071176,
+      "classic_log_Z_uncert": 0.05351936717364105,
+      "classic_kish_ess": 17723.475042697257,
+      "likelihood_evaluations": 17834303,
+      "classic_samples": 70749,
+      "seconds": 546.0437737940811
+    },
+    {
+      "iteration": 16,
+      "allocation_iteration": 16,
+      "root_out_degree": 4790,
+      "classic_log_Z": -24.74687365444738,
+      "classic_log_Z_uncert": 0.051850015422478406,
+      "classic_kish_ess": 19096.39608700337,
+      "likelihood_evaluations": 18950626,
+      "classic_samples": 75329,
+      "seconds": 587.7801534200553
+    },
+    {
+      "iteration": 17,
+      "allocation_iteration": 17,
+      "root_out_degree": 5090,
+      "classic_log_Z": -24.73131494444696,
+      "classic_log_Z_uncert": 0.05024973090223584,
+      "classic_kish_ess": 20454.94502392783,
+      "likelihood_evaluations": 20103884,
+      "classic_samples": 79938,
+      "seconds": 630.5308597490657
+    },
+    {
+      "iteration": 18,
+      "allocation_iteration": 18,
+      "root_out_degree": 5390,
+      "classic_log_Z": -24.73855744122077,
+      "classic_log_Z_uncert": 0.048869511707485665,
+      "classic_kish_ess": 21750.882598199194,
+      "likelihood_evaluations": 21266489,
+      "classic_samples": 84655,
+      "seconds": 674.8161912029609
+    }
+  ],
+  "goal_log_Z_uncert": 0.05,
+  "reference": {
+    "method": "product of Gaussian CDF differences over the finite prior box",
+    "log_Z": -24.15593480605331,
+    "component_log_Z": [
+      -24.84906649788154,
+      -24.849097475584877
+    ],
+    "spike_mass": 0.5000077444258325,
+    "means": [
+      [
+        6.0,
+        6.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      [
+        2.5,
+        2.5,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    ],
+    "standard_deviations": [
+      0.282842712474619,
+      0.8944271909999159
+    ]
+  },
+  "posterior_mean": [
+    2.688534799152289,
+    2.686801455547807,
+    -0.007535511699741751,
+    0.007634697051308953,
+    0.002255450663011404,
+    -0.005034647276434372,
+    0.000329771374037235,
+    0.00040574316664106533,
+    -0.009159587098309302,
+    0.0038298354912448054
+  ],
+  "posterior_standard_deviation": [
+    1.1616313454719018,
+    1.1699222854473468,
+    0.8681486418641371,
+    0.8672751878695002,
+    0.8665492773338447,
+    0.8722040270182997,
+    0.8690159545506623,
+    0.8718953072996712,
+    0.8707386218589378,
+    0.877750242531507
+  ],
+  "peak_rss_bytes": 4217634816,
+  "state_capacity": 107200
+}

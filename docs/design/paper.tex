@@ -1,0 +1,1392 @@
+\documentclass[pdflatex,sn-basic,icol]{sn-jnl}
+
+\usepackage{graphicx}%
+\usepackage{multirow}%
+\usepackage{amsmath,amssymb,amsfonts}%
+\usepackage{amsthm}%
+\usepackage{mathrsfs}%
+\usepackage[title]{appendix}%
+\usepackage{xcolor}%
+\usepackage{textcomp}%
+\usepackage{manyfoot}%
+\usepackage{booktabs}%
+\usepackage{algorithm}%
+\usepackage{algpseudocode}%
+\usepackage{listings}%
+\usepackage{url}%
+
+\newcommand*\aap{A\&A}
+\let\astap=\aap
+\newcommand*\aapr{A\&A~Rev.}
+\newcommand*\aaps{A\&AS}
+\newcommand*\actaa{Acta Astron.}
+\newcommand*\aj{AJ}
+\newcommand*\ao{Appl.~Opt.}
+\let\applopt\ao
+\newcommand*\apj{ApJ}
+\newcommand*\apjl{ApJ}
+\let\apjlett\apjl
+\newcommand*\apjs{ApJS}
+\let\apjsupp\apjs
+\newcommand*\aplett{Astrophys.~Lett.}
+\newcommand*\apspr{Astrophys.~Space~Phys.~Res.}
+\newcommand*\apss{Ap\&SS}
+\newcommand*\araa{ARA\&A}
+\newcommand*\azh{AZh}
+\newcommand*\baas{BAAS}
+\newcommand*\bac{Bull. astr. Inst. Czechosl.}
+\newcommand*\bain{Bull.~Astron.~Inst.~Netherlands}
+\newcommand*\caa{Chinese Astron. Astrophys.}
+\newcommand*\cjaa{Chinese J. Astron. Astrophys.}
+\newcommand*\fcp{Fund.~Cosmic~Phys.}
+\newcommand*\gca{Geochim.~Cosmochim.~Acta}
+\newcommand*\grl{Geophys.~Res.~Lett.}
+\newcommand*\iaucirc{IAU~Circ.}
+\newcommand*\icarus{Icarus}
+\newcommand*\jcap{J. Cosmology Astropart. Phys.}
+\newcommand*\jcp{J.~Chem.~Phys.}
+\newcommand*\jgr{J.~Geophys.~Res.}
+\newcommand*\jqsrt{J.~Quant.~Spectr.~Rad.~Transf.}
+\newcommand*\jrasc{JRASC}
+\newcommand*\memras{MmRAS}
+\newcommand*\memsai{Mem.~Soc.~Astron.~Italiana}
+\newcommand*\mnras{MNRAS}
+\newcommand*\na{New A}
+\newcommand*\nar{New A Rev.}
+\newcommand*\nat{Nature}
+\newcommand*\nphysa{Nucl.~Phys.~A}
+\newcommand*\pasa{PASA}
+\newcommand*\pasj{PASJ}
+\newcommand*\pasp{PASP}
+\newcommand*\physrep{Phys.~Rep.}
+\newcommand*\physscr{Phys.~Scr}
+\newcommand*\planss{Planet.~Space~Sci.}
+\newcommand*\pra{Phys.~Rev.~A}
+\newcommand*\prb{Phys.~Rev.~B}
+\newcommand*\prc{Phys.~Rev.~C}
+\newcommand*\prd{Phys.~Rev.~D}
+\newcommand*\pre{Phys.~Rev.~E}
+\newcommand*\prl{Phys.~Rev.~Lett.}
+\newcommand*\procspie{Proc.~SPIE}
+\newcommand*\qjras{QJRAS}
+\newcommand*\rmxaa{Rev. Mexicana Astron. Astrofis.}
+\newcommand*\skytel{S\&T}
+\newcommand*\solphys{Sol.~Phys.}
+\newcommand*\sovast{Soviet~Ast.}
+\newcommand*\ssr{Space~Sci.~Rev.}
+\newcommand*\zap{ZAp}
+
+\newcommand{\dd}{\mathrm{d}}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\Prob}{\mathbb{P}}
+\newcommand{\ind}{\mathbf{1}}
+\newcommand{\Exp}{\mathrm{Exp}}
+\newcommand{\Beta}{\mathrm{Beta}}
+\newcommand{\Dir}{\mathrm{Dirichlet}}
+\newcommand{\Unif}{\mathrm{Uniform}}
+\newcommand{\logit}{\mathrm{logit}}
+
+\theoremstyle{plain}
+\newtheorem{proposition}{Proposition}
+\newtheorem{corollary}{Corollary}
+\theoremstyle{definition}
+\newtheorem{definition}{Definition}
+\newtheorem{remark}{Remark}
+
+\newcommand{\placeholder}[1]{\fbox{\begin{minipage}[c][0.18\textheight][c]{0.94\linewidth}\centering #1\end{minipage}}}
+
+\raggedbottom
+
+\begin{document}
+
+\title[Phantom-Conditioned Nested Sampling]{Phantom-Conditioned Nested Sampling}
+
+\author*[1,2]{\fnm{Joshua G.} \sur{Albert}}\email{albert@strw.leidenuniv.nl}
+
+
+
+\affil[1]{\orgdiv{Leiden Observatory}, \orgname{Leiden University}, \orgaddress{\street{PO Box 9513}, \city{Leiden}, \postcode{2300}, \country{The Netherlands}}}
+
+\affil[2]{\orgdiv{Department of Astronomy}, \orgname{California Institute of Technology}, \orgaddress{\postcode{CA 91125}, \city{Pasadena},  \country{USA}}}
+
+\abstract{
+Nested sampling estimates the evidence by assigning prior volumes to an ordered sequence of likelihood contours.
+Markov chain constrained-prior samplers, which are used in high-dimensional problems, generate many intermediate states before producing the next classic sample.
+These intermediate states are discarded because their correlation prevents them from being inserted into the ordered NS sequence without changing its order-statistic law.
+This paper introduces a novel method of using them to improve evidence estimation, by formulating NS in a Bayesian way and conditioning on phantom samples as Monte Carlo observations.
+We then present the open-source software package, JAXNS v3, and its implementation choices.
+We validate the approach on a set of problems, and identify its limitations via ablation.
+On G10 and CG10, conditioning on 90 phantoms reduces point-estimate evidence RMSE by 49.4\% and 12.8\%, respectively, without additional likelihood evaluations. Only the G10 reduction is resolved by the paired 30-seed comparison.
+On SS10, continuing 30 matched trees from classic uncertainty $0.05$ through $0.02$ to $0.015$ improves spike-mass recovery but does not meet the recovery criterion. At the two stops with paired phantom analyses ($0.05$ and $0.02$), phantom conditioning shows no resolved additional evidence bias or RMSE, while its narrower conditional intervals have worse coverage of the reference evidence.
+Evidence-only phantom conditioning leaves classic posterior mode weights unchanged.
+}
+
+\keywords{Nested Sampling, Bayesian evidence, order statistics, exponential races, Monte Carlo, Markov-chain, phantom samples}
+
+\maketitle
+
+\section{Introduction}\label{sec:introduction}
+
+Nested sampling (NS) \citep{2004AIPC..735..395S} rewrites Bayesian evidence estimation as a one-dimensional Lebesgue integration problem.
+For standard background, terminology, and a broad review of modern implementations we refer to \citet{2023StSur..17..169B}.
+Here we only introduce the notation needed for the present construction.
+Let $(\mathcal{A},\Sigma,p)$ be a probability space and let $L:\mathcal{A}\to[0,\infty)$ be a measurable likelihood.
+The evidence is
+\begin{align}
+    Z = \int_\mathcal{A} L(x)\,\dd p(x).\label{eq:Z_lebesgue_new}
+\end{align}
+Nested sampling proceeds by constructing likelihood contours and assigning prior volumes to them.
+The computational difficulty is not the one-dimensional quadrature once these volumes are known, but the stochastic inference of the volume sequence.
+
+The present paper reframes nested sampling so that the volume sequence is treated as a random variable with a race-induced prior that can be conditioned on auxiliary Monte Carlo information.
+The auxiliary information comes from \textit{phantom samples}: intermediate states produced by a Markov-chain-type constrained-prior sampler while generating a \textit{classic sample}.
+The method therefore does not apply to rejection-sampling constrained-prior approaches, whose rejected proposals are not draws from the constrained prior.
+Phantom samples are correlated and thus cannot be used in the classic shrinkage formalism.
+The reason can be understood in two ways.
+Under the race view, it is because the races are no longer independent, so winner rate is no longer the sum of all rates.
+Under the order-statistic view, it is because the correlation gives non-uniform probability of some permutations of orderings of likelihoods.
+In this paper, we will adopt the race view, which is described in Section~\ref{sec:races}.
+
+Despite their inadequacy for classic shrinkage, phantom samples are still drawn from the same target distribution, and thus can be used for unbiased Monte Carlo expectation estimators.
+We will use them to form unbiased estimates of constrained-prior probabilities,
+\begin{align}
+    \Prob_{x\sim p(\cdot\mid L>a)}(L(x)>b)=\frac{X_b}{X_a},\label{eq:intro_phantom_identity}
+\end{align}
+which are precisely the shrinkage ratios supplied by the classic order statistics in NS.
+Correlated phantom states can be valid Monte Carlo observations of an expectation while being invalid as race participants.
+To our knowledge, phantom states have not previously been used in this direct way to improve the evidence calculation itself.
+
+The contributions are as follows.
+\begin{itemize}
+    \item First, we formulate NS shrinkage as exponential races of lineages, introducing the \textit{race tree}, which leads to a simplified dynamic nested sampling formulation.
+    \item Second, we present a Bayesian formalism for NS which properly treats plateaus.
+    \item Third, building on this Bayesian presentation, we introduce phantom-conditioned NS.
+    \item Finally, we present JAXNS v3, an open-source implementation of phantom-conditioned NS, validate it, and show its limitations.
+\end{itemize}
+
+The paper is structured in the following order.
+Section~\ref{sec:strict_ns} introduces the race tree formulation.
+Section~\ref{sec:bayesian_shrinkage} introduces a Bayesian model of which handles plateaus rigorously.
+Section~\ref{sec:phantoms} uses the Bayesian model to develop phantom-conditioned NS.
+Section~\ref{sec:v3} describes the JAXNS v3 implementation choices.
+Section~\ref{sec:experiments} presents paired evidence-accuracy benchmarks of classic and phantom-conditioned shrinkage.
+
+\section{Classic NS as an exponential race}
+\label{sec:strict_ns}\label{sec:races}
+
+
+For a threshold $\lambda$, define the strict constrained set and its prior volume by,
+\begin{align}
+    \mathcal{A}_\lambda &\triangleq \{x\in\mathcal{A}: L(x)>\lambda\},\\
+    X_\lambda &\triangleq p(\mathcal{A}_\lambda).
+    \label{eq:X_lambda}
+\end{align}
+When $X_\lambda>0$, define the strict constrained prior by,
+\begin{align}
+    \pi_\lambda(\dd x)
+    \triangleq
+    \frac{\ind\{L(x)>\lambda\}}{X_\lambda}\,p(\dd x).
+    \label{eq:strict_constrained_prior}
+\end{align}
+We shall call a \textit{sample} from a constrained prior a pair $(x_i \sim \pi_\lambda, L_i\triangleq L(x_i))$, with \textit{sample index} $i$ the label of the sample.
+% Note to self for future exploration:
+% All shrinkage quantities in this paper are strict.
+% Inclusive constraints may be useful as a constrained-sampling device for exploring a plateau, but they do not define a second shrinkage law in the evidence calculation.
+
+Let $\lambda_0$ be a \textit{sentinel} likelihood associated with $X_{\lambda_0}=1$.
+By convention, $\lambda_0$ is often set to $0$.
+For increasing distinct likelihood levels,
+\begin{align}
+    \lambda_0 < \lambda_1 < \cdots < \lambda_G,\label{eq:strict_likelihooods}
+\end{align}
+write $X_g\triangleq X_{\lambda_g}$.
+Nested sampling quadrature estimates the evidence as,
+\begin{align}
+    Z \approx \sum_{g=1}^{G} \lambda_g\,(X_{g-1}-X_g).
+    \label{eq:block_quadrature}
+\end{align}
+The likelihood levels in Eq.~\ref{eq:strict_likelihooods} are an arbitrary \textit{schedule} of values, and the goal of NS is to assign each level $\lambda_g$ a random variable $X_g$ with known distribution.
+We call the subscript $g$ the \textit{block index} associated with the level $\lambda_g$.
+In addition, an auxiliary output of NS is a set of weighted samples drawn from the posterior.
+In the absence of likelihood plateaus, we can uniquely associate each block index with a sample index, $g(i)$, and the unnormalised posterior sample weights are,
+\begin{align}
+    w_{g(i)} \triangleq \lambda_{g(i)}\, (X_{{g(i)}-1}-X_{g(i)}).\label{eq:post_weight_cont}
+\end{align}
+The posterior weights for samples that fall in likelihood plateaus will be shown later.
+
+Let us introduce the concept of a race tree.
+Let there be a set of $N$ samples, as well as a sentential sample with sample index $0$ given likelihood value $L_0 = \lambda_0$.
+These samples form a race tree if each sample (excluding the sentinel sample) is an independent draw from some constrained prior whose contour is also contained in the set of samples,
+\begin{align}
+    \forall i \in& (1 \ldots N)\\
+    \exists\, p(i) \in& (0 \ldots N) \label{eq:parent_def}\\
+    x_i \sim& \,\pi_{\lambda_{p(i)}}.
+\end{align}
+In this case we say that $p(i)$ is the parent of $i$, denoting this as $p(i) \to i$, and that these samples form a race tree.
+A \textit{lineage} is a maximal chain of parent links.
+We shall refer to these samples as \textit{classic samples}, to differentiate them from phantom samples later.
+The samples are non-decreasing,
+\begin{align}
+     \lambda_0 = L_0<L_1 \le \ldots \le L_N,
+\end{align}
+and we define a \textit{block} for a level $\lambda_g$ as the set of all sample indices with likelihood equal to $\lambda_g$,
+\begin{align}
+    \mathcal{B}_g &\triangleq \{i:L_i=\lambda_g\},
+    \label{eq:block_def}\\
+    m_g &\triangleq |\mathcal{B}_g|.
+\end{align}
+A block with $m_g > 1$ represents a plateau, where the ordering of samples in the block is not unique.
+
+The out-degree of sample $i$ is,
+\begin{align}
+    d_i \triangleq \#\{j:p(j)=i\}.
+\end{align}
+The sentinel must have out-degree $d_0 > 0$ in order for the race tree to not be empty.
+
+The crucial observation in NS is that a single sample generated from a parent $p(i) \to i$ shrinks the prior volume uniformly,
+\begin{align}
+    r_{p(i) \to i} \triangleq \frac{X_{\lambda_{i}}}{X_{\lambda_{p(i)}}} \sim&\, \mathcal{U}[0,1]\\
+    \Longleftrightarrow\quad -\log r_{p(i) \to i} \sim&\, \mathrm{Exp}(1).
+\end{align}
+Define \textit{race time} $s \triangleq -\log X$ and \textit{race rank} $r\triangleq \exp -s$, and interpret the race tree as a set of lineages equipped with unit-rate clocks incrementally racing from one sample to the next sample.
+For any sample-to-sample race $i-1 \to i$ there are $K_i$ active racing lineages.
+We have that the race time for $i-1 \to i$ is,
+\begin{align}
+    s_{i-1 \to i} \sim& \mathrm{Exp}(K_i)\label{eq:race_increment}\\
+    r_{i-1 \to i} =& e^{-s_{i-1 \to i}}.\label{eq:beta_shrinkage}
+\end{align}
+As is well-known from the order-statistic treatment of NS, $r_{i-1 \to i} \sim \mathrm{Beta}(K_i, 1)$.
+Starting with $K_1=d_0$, after the race $i-1\to i$ is done the active lineage count updates as,
+\begin{align}
+    K_{i+1} = K_i - 1 + d_{i}.\label{eq:K_recursion}
+\end{align}
+
+An interesting aspect of this formulation is that there is no notion of live points, nor of a specific order that samples must be generated, beyond the race tree structure requirements.
+A new child can be generated from any existing strict contour, and the only thing that must be tracked is the out-degree of its parent.
+This opens up the potential for parallel processing novelties.
+
+\begin{proposition}[Race-tree shrinkage]\label{prop:race_tree}
+Suppose that there are $K_i$ active lineages participating in race $i-1 \to i$, each represented by a unit-rate clock.
+Then $s_{i-1\to i}\sim\Exp(K_i)$, and afterwards the rate update is updated by Eq.~\ref{eq:K_recursion}.
+\end{proposition}
+
+\begin{proof}
+The minimum of independent exponential clocks is exponential with rate equal to the sum of the rates.
+Once the arriving sample $i$ is observed, its lineage segment no longer contributes to the next segment of the race and its $d_i$ child lineage segments begin.
+This changes the active lineage count by $-1+d_i$, giving Eq.~\ref{eq:K_recursion}.
+\end{proof}
+
+In classic races there are no ties, however in the presence of a plateau, $m_g>1$, we do have ties.
+The correct way to handle this is to introduce a nuisance winner ordering parameter that decides the order of winners, and that the race is not over until all winners have been accounted for.
+While the race is proceeding the race clocks are still ticking, hence each sample $k$ of block $\mathcal{B}_g$ gets a different race rank, $r^{(k)}_{g-1 \to g}$ falling within the atom $L = L_g$.
+It can easily be shown that the final sample in the plateau has known rank,
+\begin{align}
+    r^{(m_g)}_{g-1 \to g} \sim\, \mathrm{Beta}(K_g - m_g + 1, m_g).\label{eq:end_block_dist}
+\end{align}
+However, since all plateau samples are strictly inside the atom, none of them correspond exactly to the end of the block, i.e. we have that $r^{(m_g)}_{g-1 \to g} \neq r_{g-1 \to g}$ almost surely.
+This poses a problem because in order for shrinkage to proceed we need to know the race rank at the exact end of a block, not merely the race rank of the last sample in the block.
+This is depicted in Figure~\ref{fig:censor}.
+
+It will be helpful to define the following quantities,
+\begin{align}
+    p_{<g} \triangleq&\, \Prob(L_g > L > L_{g-1})\label{eq:open_category_defs_race}\\
+    p_{=g} \triangleq&\, \Prob(L = L_g)\label{eq:atom}\\
+    p_{>g} \triangleq&\, \Prob(L > L_g) \label{eq:strict_endpoint_pg} \\
+    =&\, \frac{X_g}{X_{g-1}}\\
+    =&\,r_{g-1 \to g},
+\end{align}
+where Eq.~\ref{eq:open_category_defs_race} defines the race interval, Eq.~\ref{eq:atom} defines a possible atom, and Eq.~\ref{eq:strict_endpoint_pg} is the end point of the race.
+As shown in Figure~\ref{fig:censor} the presence of an atom censors us from learning the end point $p_{>g}$.
+Thus, when there is a plateau we know that all the plateau samples \textit{finish} the race, just not \textit{when},
+\begin{align}
+    p_{>g} \le r^{(m_g)}_{g-1 \to g} \le p_{>g} + p_{=g}.
+\end{align}
+We call this loss of knowledge \textit{plateau censorship}.
+
+
+\begin{figure*}[ht]
+    \centering
+    \IfFileExists{images/censor.drawio.pdf}{%
+        \includegraphics[width=0.9\linewidth]{images/censor.drawio.pdf}%
+    }{%
+        \placeholder{Plateau-censorship diagram: the source asset
+        \texttt{images/censor.drawio.pdf} is not present in this checkout.}%
+    }
+    \caption{The presence of an atom $L=L_g$ causes us to to lose exact knowledge of $p_{>g}$, since $r^{(m_g)}_{g-1 \to g} \in [p_{>g}, p_{>g} + p_{=g}]$. The atom can be seen as an interval in race rank just before finishing the race where samples loose identity. None of the samples within the atom correspond exactly with the end of the block, whereas when $m_g=1$ it is exactly equivalent to the rank of the end of the block.}
+    \label{fig:censor}
+\end{figure*}
+
+\section{Bayesian shrinkage model}
+\label{sec:bayesian_shrinkage}
+
+We propose a Bayesian model that will simultaneously resolve the problem of plateau censorship, and allow us to condition shrinkage on phantom samples.
+Define the block probability vector,
+\begin{align}
+    p_g = (p_{>g}, p_{=g}, g_{<g}),
+\end{align}
+where clearly $|p_g| = 1$.
+Consider a block with $K_g$ incoming active lineages and $m_g>1$ block samples.
+Then, these define three observation categories,
+\begin{itemize}
+    \item $K_g - m_g$ samples lie past the atom,
+    \item $m_g$ samples fall in the atom,
+    \item $0$  samples fall in the race interval.
+\end{itemize}
+These are independent categorical observations, therefore the likelihood of $p_g$ is multinomial,
+\begin{align}
+    \mathcal{L}(p_g) \propto p_{>g}^{K_g - m_g} p_{=g}^{m_g}.
+\end{align}
+We set a Dirichlet prior,
+\begin{align}
+    p(p_g) = \mathrm{Dirichlet}(1, \epsilon_g, 1 - \epsilon_g),
+\end{align}
+which can be done be identifying the marginal of the Dirichlet, $\mathrm{Beta}(a_i, \sum_{j \neq i} a_j)$, with uniform shrinkage prior, $\mathcal{U}[0,1] \equiv \mathrm{Beta}(1, 1)$.
+The variable $\epsilon_g$ is a free parameter and should represent our belief of $\E[p_{=g}/(1 - p_{>g})]$.
+A fairly neutral choice would be $\epsilon_g=1/2$, given that $m_g > 1$.
+Using conjugacy of the Dirichlet and multinomial distributions the posterior becomes exactly,
+\begin{align}
+    &p_g \mid K_g, m_g \sim\, \mathrm{Dirichlet}(a_{>g}, a_{=g}, a_{<g}),\label{eq:post_pg}\\
+    &a_{>g}= K_g - m_g + 1,\\
+    &a_{=g}= m_g + \epsilon_g,\\
+    &a_{<g}= 1 - \epsilon_g
+\end{align}
+therefore the posterior marginals for $p_{>g}$ and $p_{=g}$ are,
+\begin{align}
+    p_{>g}  \mid K_g, m_g \sim&\, \mathrm{Beta}(K_g-m_g+1,m_g+1)\label{eq:posterior_pg}\\
+    p_{=g}  \mid K_g, m_g \sim&\, \mathrm{Beta}(m_g+\epsilon_g,K_g-m_g+2-\epsilon_g)\label{eq:posterior_pe}
+\end{align}
+Comparing Eq.~\ref{eq:posterior_pg} to Eq.~\ref{eq:end_block_dist}, we see the difference, which proves censorship in a rigorous way.
+
+Evidence quadrature, Eq.~\ref{eq:block_quadrature}, is be done using,
+\begin{align}
+    X_g = X_{g-1} p_{>g},
+\end{align}
+which can be used for form evidence expectations, or to produce samples of the evidence.
+Now, coming back to assigning posterior mass to plateau samples, this this is done by equally assigning atom mass to each sample $k\in\mathcal{B}_g$,
+\begin{align}
+    w^{(k)}_{g} = \frac{\lambda_g}{m_g} X_{g-1} p_{=g},
+\end{align}
+whereas the posterior mass assigned to a non-plateau sample, mirroring Eq.~\ref{eq:post_weight_cont}, is,
+\begin{align}
+    w_g = \lambda_g X_{g-1}(1 - p_{>g}).
+\end{align}
+In general, the posterior sample weights do not sum to the evidence quadrature when plateaus are present because $p_{=g}\neq 1-p_{>g}$.
+The difference is the open race-interval mass $p_{<g}$.
+
+When $m_g=1$, clearly Eq.~\ref{eq:posterior_pg} does not match Eq.~\ref{eq:end_block_dist}.
+This is reconciled by observing that a singleton block provides no evidence for an atom, so we must choose a two-class rather than a three-class prior.
+Removing the equality category recovers the exact classic shrinkage,
+\begin{align}
+    p_{>g} \mid K_g \sim\, \mathrm{Beta}(K_g,1),
+\end{align}
+when $m_g=1$.
+
+
+\section{Phantom-conditioned shrinkage}
+\label{sec:phantoms}
+
+We are now equipped to use information from phantom samples to improve shrinkage.
+Let $\mathcal{P}_i$ be phantom samples associated with sample $i$, which we'll call a \textit{cluster} of phantom samples.
+They are correlated draws from $\pi_{\lambda_{p(i)}}$ produced in the process of realising sample $i$.
+Typically, this is because a Markov-chain approach is used to produce iid samples from $\pi_{\lambda_{p(i)}}$.
+Since phantom samples are not independent they cannot participate in the race tree, however we are perfectly well able to use them to construct consistent unbiased MC estimates of expectations under $\pi_{\lambda_{p(i)}}$.
+We thus seek a procedure for sampling from $p_g \mid K_g, m_g, \bigcup_i \mathcal{P}_i$.
+As above, we first work under the assumption that a plateau is present, so $m_g>1$.
+We then derive the $m_g=1$ case in the same manner, using the correct limiting two-class prior when there is no evidence for an atom.
+
+An important assumption we make is that phantom samples \textit{between} clusters are approximately independent, which is justified because their initial chain points are independently drawn from the set of possible stationary seeds, while within-cluster phantom samples are allowed to be arbitrarily correlated.
+In fact, it's possible to redefine phantom clusters as any disjoint decomposition of phantom samples where each cluster is drawn stationarily from within the same parent, and samples are independent between clusters.
+As will be shown below, it is best to make clusters as small as possible such that this is true.
+
+Lets define, per cluster $c$, block interval counts,
+\begin{align}
+    A_{cg} =&\, \sum_{(x, L) \in \mathcal{P}_c} \mathbf{1}\{L(x) > L_{g-1}\} \mathbf{1}\{L_{c} \le L_{g-1}\}\\
+    B_{cg} =&\, \sum_{(x, L) \in \mathcal{P}_c} \mathbf{1}\{L(x) > L_{g}\} \mathbf{1}\{L_{c} \le L_{g-1}\}\\
+    E_{cg} =&\, \sum_{(x, L) \in \mathcal{P}_c} \mathbf{1}\{L(x) = L_{g}\} \mathbf{1}\{L_{c} \le L_{g-1}\}.
+\end{align}
+For each cluster, these are counts of samples falling in each interval in Figure~\ref{fig:censor}.
+Then an MC estimate of $p_g$ is,
+\begin{align}
+    \hat{p}_{g} =& \frac{\sum_c \left( B_{cg}, E_{cg}, A_{cg} - B_{cg} - E_{cg}\right)^\top}{\sum_c A_{cg}}.
+\end{align}
+Now, if the phantom samples were independent then the observable $\sum_c A_{cg} \hat{p}_g$ would satisfy the multinomial likelihood.
+In this case, the exact same machinery as in Section~\ref{sec:bayesian_shrinkage} could be used, and phantom-conditioned posterior shrinkage would be a Dirichlet distribution.
+However, as they are not independent the posterior has no closed form.
+
+One idea is to use a multinomial likelihood with an effective count calibrated for within-cluster correlation.
+However, a scalar effective count wrongly accounts for correlations in joint shrinkage and is sensitive to how it is calibrated.
+This approach was initially attempted and rejected for these reasons.
+
+We instead propose an MC-based approach that asymptotes to the Dirichlet posterior in the limit of independent phantom samples.
+To do this we will use the gamma construction of Dirichlet random variables to rewrite the race-induced posterior, Eq.~\ref{eq:post_pg},
+\begin{align}
+    M_{>g} \sim&\, \mathrm{Gamma}(a_{>g}, 1)\\
+    M_{=g} \sim&\, \mathrm{Gamma}(a_{=g}, 1)\\
+    M_{<g} \sim&\, \mathrm{Gamma}(a_{<g}, 1)\\
+    \frac{(M_{>g}, M_{=g}, M_{<g})^\top}{M_{>g} + M_{=g} + M_{<g}} \sim&\, \mathrm{Dirichlet}(a_{>g}, a_{=g}, a_{<g}).\label{eq:gamma_dir}
+\end{align}
+Now consider how we would condition on iid phantom samples.
+In this case, we are free to decompose each phantom cluster into singletons because doing so preserves inter-cluster independence.
+Then, we would have that $A_{cg}, B_{cg}, E_{cg} \in \{0, 1\}$, that is each cluster would contribute at most one count observation to each block.
+Define a cluster weight $v_c$ and then define,
+\begin{align}
+    M'_{>g} =& M_{>g} + \sum_c v_c B_{cg}\\
+    M'_{=g} =& M_{=g} + \sum_c v_c E_{cg}\\
+    M'_{<g} =& M_{<g} + \sum_c v_c (A_{cg} - B_{cg} - E_{cg})\\
+    p_g =& \frac{(M'_{>g}, M'_{=g}, M'_{<g})^\top}{M'_{>g} + M'_{=g} + M'_{<g}}.
+\end{align}
+Using additivity of identical-scale gamma random variables, we can then identify the natural cluster weight as,
+\begin{align}
+    v_c \sim\, \mathrm{Gamma}(1, 1).
+\end{align}
+With this choice of cluster weight, singleton clusters exactly produce the Dirichlet posterior in Eq.~\ref{eq:post_pg}.
+
+Now, consider what happens when cluster sizes are not singleton, that is we have a non-trivial irreducible correlation structure.
+In this case, the gamma's do not add as the scales are not identical.
+Under multiplication gamma variance scales quadratically, compared to linearly under addition, whereas the mean scales linearly under both multiplication and addition.
+Thus, the net effect of correlated clusters is to inflate variance, while preserving the mean, which is precisely what we expect correlation to do.
+Hence, if a single cluster can be split into two disjoint clusters where independence between the two clusters is approximately true, then it is favourable from the perspective of information utilisation to do this.
+
+An important well-known consideration for conditioning on MC counts is that there should be enough independent counts to properly capture the variance of outcomes.
+This why using sparsely populated histograms to draw conclusions is a bad idea.
+We impose a minimum participating cluster count criterion in order for a block to condition on phantom count information.
+Specifically, we use a Kish-like quantity to measure effective participating cluster count,
+\begin{align}
+    C^{\rm Kish}_g = \frac{\left(\sum_c A_{cg}\right)^2}{\sum_c A_{cg}^2},
+\end{align}
+and then define a minimum threshold for condition, say $C_{\rm min} = 20$, and hence,
+\begin{align}
+    M'_{>g} =& M_{>g} + \mathbf{1}\{C^{\rm Kish}_g \ge C_{\rm min}\} \sum_c v_c B_{cg}\\
+    M'_{=g} =& M_{=g} + \mathbf{1}\{C^{\rm Kish}_g \ge C_{\rm min}\} \sum_c v_c E_{cg}\\
+    M'_{<g} =& M_{<g} + \mathbf{1}\{C^{\rm Kish}_g \ge C_{\rm min}\} \sum_c v_c (A_{cg} - B_{cg} - E_{cg})\\
+    p_g =& \frac{(M'_{>g}, M'_{=g}, M'_{<g})^\top}{M'_{>g} + M'_{=g} + M'_{<g}}.
+\end{align}
+This provides a consistent generative shrinkage model that properly takes into account the race tree and phantom samples.
+The shrinkage at block $g$ is the the component $p_{>g}$, while the plateau atom size is $p_{=g}$.
+It is simple to calculate as the per-cluster counts are computed once, and then each draw from the joint posterior is just a set of draws from gamma distributions followed by reduction.
+
+We now take the prior in the limit of no atom-mass evidence, which is appropriate when $m_g=1$ and there is no other evidence for an atom.
+The equality category is then structurally absent,
+\begin{align}
+    M_{=g} = M'_{=g} = p_{=g} = 0,
+\end{align}
+and the race remains two-class.
+The phantom-conditioned construction then becomes,
+\begin{align}
+    M_{>g} \sim&\, \mathrm{Gamma}(K_g, 1),\\
+    M_{<g} \sim&\, \mathrm{Gamma}(1, 1),\\
+    M'_{>g} =&\, M_{>g} + \mathbf{1}\{C^{\rm Kish}_g \ge C_{\rm min}\} \sum_c v_c B_{cg},\\
+    M'_{<g} =&\, M_{<g} + \mathbf{1}\{C^{\rm Kish}_g \ge C_{\rm min}\} \sum_c v_c (A_{cg} - B_{cg}),\\
+    (p_{>g},p_{<g})^\top =&\, \frac{(M'_{>g}, M'_{<g})^\top}{M'_{>g} + M'_{<g}}.
+\end{align}
+As a sanity check, we verify that in the limit of iid phantom samples this construction recovers classic shrinkage,
+\begin{align}
+    p_{>g} \mid \bigcup_c \mathcal{P}_c
+    \sim \mathrm{Beta}\left(
+        K_g + \sum_c B_{cg},
+        1 + \sum_c (A_{cg} - B_{cg})
+    \right).
+\end{align}
+Thus, with no participating phantom clusters or plateaus, it recovers exactly $p_{>g}\sim\mathrm{Beta}(K_g,1)$.
+
+The above formulation assumes that the phantom samples in $\mathcal{P}_i$ are draws from $\pi_{\lambda_{p(i)}}$.
+Thus, when they are produced by a Markov chain, the chain must be stationary enough that the retained phantom states have the correct marginal expectation under the parent contour.
+The formulation cannot correct for non-stationary phantom samples.
+We address this in Section~\ref{sec:v3}.
+
+
+\section{JAXNS v3 implementation}\label{sec:v3}
+
+The race tree permits new children to be generated from any existing strict contour. We exploit this by representing allocation work as logical \textit{lineage threads}, which is an idea initially proposed in \citep{2019S&C....29..891H}.
+A thread is a single lineage from an initial parent, where the out-degree of each sample is one.
+An edge $i \to j$ adds one active lineage to every existing block $g$ whose contour it crosses, \begin{align}
+L_{i}<L_g\le L_j. \label{eq:edge_lineage_coverage}
+\end{align}
+Consequently, a completed thread beginning immediately before block $a$ and terminating once it reaches block $b$ adds one active lineage to every block $g\in\{a,\ldots,b\}$.
+We'll denote such a thread by $T(a,b)$.
+The final child may overshoot $L_b$, in which case the thread also provides additional lineage allocation beyond its requested terminal block.
+A thread is logical in nature, and thus its successive edges may be generated at different scheduling times.
+In particular there is no need for a scheduling barrier.
+JAXNS uses this property for distributed processing by treating cluster workers as a pool to which sampling work is outsourced while scheduling and thread evolution overlap.
+
+Algorithm~\ref{algo:jaxns} shows the core algorithm of JAXNS.
+There is an outer loop which, until a goal condition is met, iteratively sets a lineage allocation target and calls an inner loop that schedules thread sampling according to that target.
+The inner loop decomposes the target into threads and advances them until a depth condition is met.
+
+The depth conditions available in JAXNS are,
+\begin{align}
+    \text{small remaining evidence}\quad
+    \frac{L_G X_G}{\sum_g^G L_g(X_{g-1} - X_g) + L_G X_G}
+    &< \tau_Z,
+    \label{eq:small_remaining_evidence}
+    \\
+    \text{small remaining posterior mass}\quad
+    \frac{L_gX_g}{\max_{g'\le g}(L_{g'}X_{g'})}
+    &< \tau_{\rm post}.
+\end{align}
+The goal condition is user specified, and can be any condition computable from the samples, for example when a target effective sample size or evidence uncertainty is met.
+
+\subsection{Allocation targets}
+Given a lineage count $K_g$ for each block and an allocation target $D_g^k$ at goal-loop iteration $k$, we define the allocation gap,
+\begin{align}
+    G_g^k = (D_g^k - K_g)_+,
+    \label{eq:allocation_gap}
+\end{align}
+which is equivalent to the number of lineage threads that must contain block $g$.
+A schedule of sampling is done where $G_g^k$ is decomposed into a set of threads.
+This decomposition can be done in any manner.
+However, for the best scheduling performance, JAXNS greedily decomposes $G_g^k$ into maximal threads.
+
+JAXNS provides uniform, evidence-improving, and posterior-improving allocation targets.
+The uniform allocation target $D_g^k=d_0+\Delta K k$ leads to the allocation gap
+\begin{align}
+    G_g^k &= (d_0+\Delta K k-K_g)_+,
+    \label{eq:uniform_allocation_gap}
+\end{align}
+whereas the evidence- and posterior-improving allocation targets are based on unit-peak utilities derived in Appendix~\ref{sec:allocation_targets}.
+Writing $\bar U_g$ for the relevant utility, they give the allocation gap
+\begin{align}
+    G_g^k &= \left\lceil\Delta K\bar U_g\right\rceil.
+    \label{eq:utility_allocation_gap}
+\end{align}
+Here $\Delta K>0$ controls the amount of work introduced by one goal-loop iteration.
+
+\subsection{Thread scheduling}
+
+At the start of a scheduling round, JAXNS builds a race view, computes the allocation gap, and decomposes it into maximal threads.
+The race view, thread schedule, and allocation target remain fixed while those threads are advanced.
+Long scheduling rounds contain internal synchronisation boundaries spaced geometrically according to the number of samples represented by the current view.
+At each boundary, accepted samples are made available to subsequent thread extensions without changing the active schedule or allocation target.
+When a schedule drains, the likelihood ordering, race blocks, and expected volume path are updated, and the depth condition is evaluated.
+If the depth condition is not met, the same allocation target is projected onto the refined contour grid and any newly exposed gap is filled without evaluating the goal condition.
+
+\begin{algorithm}
+\caption{The JAXNS core algorithm with dynamic lineage allocation, outer goal terminating loop, and inner depth termination loop.}
+\begin{algorithmic}[1]
+\Require root lineage count $d_0$, sentinel likelihood $\lambda_0$
+% \ENSURE $\{(x_i, L_i, \mathcal{P}_i, d_i): i=1 \ldots N\}$
+
+\State Sample $(x_i, L_i, \mathcal{P}_i) \sim \pi_{\lambda_0}$ for $i\in\{1 \ldots d_0\}$
+\State Set $N=d_0$
+\State Set goal-loop iteration $k=0$
+
+\While{$\neg\, \mathbf{goal}$}
+    \State Compute $G_g^k$ using Eq.~\ref{eq:uniform_allocation_gap} or Eq.~\ref{eq:utility_allocation_gap}.
+    \While{$\neg\, \mathbf{depth}$}
+        \State Decompose $G_g^k$ into a set of maximal threads.
+        \While{some scheduled threads are incomplete}
+            \State Take an incomplete thread and let $i$ denote its current head.
+            \State Set $N \to N + 1$
+            \State Set $j \to N$
+            \State Choose a stationary seed $x^0_j$ for $\pi_{L_i}$ from the existing samples.
+            \State Sample $(x_j, L_j, \mathcal{P}_j) \sim\, \pi_{L_i}$ from $x^0_j$.
+            \State Set $d_i \to d_i + 1$
+            \State Advance the thread head to $j$.
+        \EndWhile
+    \EndWhile
+    \State Set $k\to k+1$.
+\EndWhile
+
+\State \Return $\{(x_i, L_i, \mathcal{P}_i, d_i): i\in\{1 \ldots N\}\}$
+
+\medskip
+\Statex \textbf{Note 1:} If no stationary seed exists for a requested parent contour, then the thread is reparented to the closest shallower contour with a stationary seed, or to the sentinel if none exists.
+\end{algorithmic}
+\label{algo:jaxns}
+\end{algorithm}
+
+\subsection{Constrained-prior sampling}
+
+\begin{algorithm}
+\caption{The JAXNS constrained sampler using one-dimensional slice sampling with perfect bracketing and uniform trajectory sampling.}
+\begin{algorithmic}[1]
+\Require direction kernel $\mathcal{D}$, contour $\lambda$, seed point $x^0$, steps per acceptance $T$.
+\State Set $i=0$.
+\While{$i < T$}
+    \State Choose direction, $\hat{n}\sim\,\mathcal{D}$.
+    \State Construct a trajectory $I$ that passes through $x^i$ along $\hat{n}$, with end points outside the slice and independent from $x^i$.
+    \State Uniformly sample $x^{i+1}\sim\,\pi_\lambda$ along $I$.
+    \State Set $i \to i + 1$.
+    \State Set $\mathbf{done}=L(x^i) > \lambda$.
+\EndWhile
+\State Set phantom cluster $\mathcal{P} = \{(x^k, L(x^k)) : k \in \{1 \ldots T-1\}\}$.
+\State \Return $(x^T, L(x^T), \mathcal{P})$
+
+\medskip
+\end{algorithmic}
+\label{algo:constrained_sampler}
+\end{algorithm}
+
+
+The statistical theory requires each classic child to be approximately sampled from the strict constrained prior of its parent.
+The JAXNS constrained sampler uses one-dimensional slice sampling \citep{2000physics...9028N} from a seed point $x^0$, as shown in Algorithm~\ref{algo:constrained_sampler}.
+Each Markov transition explores the constrained prior, with a total of $T$ steps per chain.
+Because the seed is stationary and each transition preserves the constrained prior, no burn-in is required.
+All generated chain states except the final classic sample form the phantom cluster.
+A single step involves choosing a direction from a symmetric distribution $\hat{n} \sim\, \mathcal{D}$ independent of the current chain.
+That is, all directions in the chain should come from the same distribution.
+Given a direction $\hat{n}$ and chain point $x^i$ a trajectory that brackets $x^i$ along the direction is chosen.
+The trajectory must have end points that land outside the contour, and the end points should be independent from $x^i$.
+Then, constrained sampling is performed along this trajectory, which can be done in any manner.
+A common approach is to randomly pick a point along the trajectory and greedily shrink the trajectory if the point falls outside the slice.
+
+The default direction proposal distribution $\mathcal{D}$ is an isotropic Gaussian in homogeneous prior space.
+This is the direction law used in all experiments in Section~\ref{sec:experiments}.
+JAXNS also provides Gaussian-mixture-model (GMM) directions.
+A Gaussian-mixture likelihood surrogate is fitted in homogeneous prior space using all classic samples collected so far and their stored likelihoods.
+At direction-sampling time, an ellipsoid is selected in proportion to its fitted volume above the parent contour $\lambda$, and its covariance is then used to sample a slice direction.
+This choice makes the direction distribution independent of the current chain point while maximising the probability of selecting a direction relevant to the constrained region.
+Isotropic search directions are randomly injected to prevent collapse of the direction distribution.
+
+JAXNS uses perfect bracketing along a straight line, where the endpoints are chosen to be the intersection with the bounds of the unit-hypercube representing the prior homogeneous measure.
+This is the maximal interval possible and can be determined without any likelihood evaluations.
+Constrained sampling along this trajectory proceeds with uniform sampling and greedy trajectory shrinkage which exponentially contracts towards the current chain point, where the slice is necessarily satisfied.
+This approach trades off the zero-cost trajectory determination with extra likelihood evaluations to uniformly sample the trajectory.
+However, in our experience this extra cost is negligible, and is compensated by better prior exploring.
+One problem with this approach is that it can lead to increased chance of mode evaporation, since a chain can easily move between modes.
+The probability of tunnelling between modes depends on the geometry of the problem.
+Preventing mode evaporation generally requires an MCMC proposal tuned to remain within modes, or another explicit mode-preservation mechanism.
+
+\subsection{Seed selection}
+
+Choosing the seed point must be carefully done to maintain stationarity of the chain without requiring a burnin.
+Specifically, if sampling from parent $j$ with likelihood $L_j$, i.e. sampling from $\pi_{L_j}$, then we should choose a seed as some sample $i_0$ already satisfying stationarity.
+That is choose a $i_0$ such that $L_j < L_{i_0}$ and $L_{p(i_0)} \le L_j$.
+This is possible to do without tracking parent indices, simply by tracking the parent likelihood contour of each existing sample.
+
+The experiments in Sections~\ref{sec:experiments} and~\ref{sec:posterior_recovery} retain every phantom unit-prior coordinate and extend the existing seed-selection population with those point identities (intervention A).
+A phantom from parent contour $L_p$ is eligible at $\lambda$ when $L_p\le\lambda<L_{\rm phantom}$.
+Eligible phantom identities participate in the existing uniform selection rule alongside eligible classic identities; the implementation does not assign a likelihood-dependent selection weight beyond the eligibility test.
+Sorted phantom likelihoods provide eligibility counts, while ranks are mapped back to original transition order to retrieve coordinates. The $0.015$ continuations use an exact block index and lazy rank lookup that preserve this seed population, ordering, and random draws; they retain the same full phantom coordinates.
+There is no bounded phantom reservoir or one-representative-per-cluster reduction in this intervention.
+Storing all phantom coordinates costs $O(NPD)$ for $N$ classic chains and $P$ retained phantoms per chain in dimension $D$.
+Phantom reseeding does not make the retained states or the resulting chains independent; this experiment measures the resulting posterior recovery empirically.
+
+Seed availability evolves as the thread schedule is advanced.
+An accepted child is itself a stationary seed for every contour between its parent contour and its own likelihood.
+Rebuilding the complete stationary-seed index after every sampling batch would repeatedly revisit the growing sample collection and give poor scaling.
+JAXNS instead makes accumulated children fully available at internal synchronisation boundaries spaced geometrically with the number of published samples.
+Between synchronisations, a classic-child reservoir makes recent classic children available as seeds.
+This allows active threads to benefit from samples generated earlier in the same scheduling round, while amortising the cost of rebuilding the complete seed index.
+
+A requested thread head can nevertheless have no stationary seed, most notably when a likelihood plateau collapses the interval from which one could be selected.
+In this case, the thread is reparented to the closest shallower contour that does have a stationary seed, falling back to the sentinel contour if necessary.
+This reparenting is trivial under the race-tree view because a new child may descend from any existing strict contour.
+Only the out-degree of the actual parent is incremented, and the resulting edge contributes a lineage to every block that it crosses.
+
+\subsection{Massively scalable distributed processing}
+
+JAXNS is designed for heterogeneous distributed likelihood evaluation scaling from a laptop to clusters with thousands of nodes.
+A central process owns the scientific state and thread schedule, while workers perform likelihood evaluations and constrained-prior sampling.
+Workers receive serialised likelihood models, arguments, parameters, and sampler configuration.
+Communication uses ZMQ and serialisation uses Python's \texttt{pickle} functionality combined with JAX's Pytree representation.
+Model arguments may consist of arbitrarily nested trees of literals and arrays.
+
+The thread schedule exposes the heads of incomplete logical threads as independent sampling work from potentially different parent contours.
+The coordinator assigns these heads across all available worker execution lanes and replenishes capacity as completed work is incorporated, provided that enough incomplete threads are available.
+This allows constrained-prior sampling calls to overlap without requiring every thread to reach the same contour or terminate at a scheduling barrier.
+The race-tree formulation makes this separation of logical work from physical workers straightforward because a completed child only increments the out-degree of its known parent and advances its logical thread.
+
+The worker pool is elastic throughout a run.
+Workers may register after sampling has begun, including after a node has been restarted, and immediately contribute their available capacity.
+Heartbeats identify workers that have become unavailable and fence their expired leases.
+Their unfinished tasks are returned to the queue, while the corresponding node supervisor is asked to restart the failed worker.
+If the entire pool becomes unavailable, the scientific process retains its state and waits for a worker to recover or join rather than terminating the run.
+Consequently, workers may join or leave at any time without making cluster membership part of the scientific algorithm.
+
+\clearpage
+\section{Evidence experiments}\label{sec:experiments}
+
+The central empirical question is whether conditioning on phantom clusters improves evidence estimation without adding likelihood evaluations.
+We therefore compare classic and phantom-conditioned shrinkage on the same completed race trees.
+This paired design holds constrained samples, likelihood evaluations, allocation, and stopping time exactly fixed.
+Over 30 runs, we measure the bias and RMSE of log-evidence estimates with and without phantom conditioning.
+
+\subsection{Known-evidence problems}
+
+The three problems have dimension $D=10$ and vary contour curvature and multimodality while retaining deterministic reference evidences.
+They are separate from the fixed JAXNS standard-problem regression suite.
+Below $\phi_D(x\mid\mu,\Sigma)$ denotes a $D$-variate normal density.
+Figure~\ref{fig:evidence_problems} shows their two-dimensional analogues.
+
+\paragraph{Correlated Gaussian (G10).}
+This problem places a shifted, strongly correlated Gaussian likelihood in the tail of an isotropic Gaussian prior,
+\begin{align}
+    L_{\rm G10}(x)=\phi_{10}(x\mid\mu_{\rm G},\Sigma_\ell),\qquad x\sim\mathcal{N}(0,I).
+    \label{eq:g10_likelihood}
+\end{align}
+Here $\mu_{\rm G}=(3,0,\ldots,0)$, $(\Sigma_\ell)_{ii}=1$, and $(\Sigma_\ell)_{ij}=0.99$ for $i\ne j$.
+Gaussian conjugacy gives
+\begin{align}
+    \log Z_{\rm G10}=\log\phi_{10}(\mu_{\rm G}\mid0,I+\Sigma_\ell)
+    =-14.48014927. \label{eq:g10_evidence}
+\end{align}
+G10 tests compression towards a thin correlated ridge in a unimodal target.
+
+\paragraph{Curved Gaussian (CG10).}
+This problem retains the standard normal prior of G10 and bends its likelihood with a volume-preserving shear,
+\begin{align}
+    L_{\rm CG10}(x)&=\phi_{10}\!\left(T_{0.4}^{-1}(x)\mid\mu_{\rm G},\Sigma_\ell\right),
+    \label{eq:cg10_likelihood}\\
+    T_\beta(z)&=\left(z_1,z_2+\beta\left[(z_1-3)^2-1\right],z_3,\ldots,z_{10}\right).
+\end{align}
+The shear is centered on the component's latent first-coordinate mean and variance.
+It has unit Jacobian and zero mean displacement of the second coordinate under the latent component.
+Conditioning $z_{2:10}$ on $z_1$ reduces the reference evidence to one-dimensional quadrature,
+\begin{align}
+    \log Z_{\rm CG10}
+    =\log\E_{z\sim\mathcal{N}(\mu_{\rm G},\Sigma_\ell)}
+       \!\left[\phi_{10}(T_{0.4}(z)\mid0,I)\right]
+    =-14.59968329. \label{eq:cg10_evidence}
+\end{align}
+Adaptive integration and independent 128- and 256-node Gauss--Hermite quadrature agree to better than $10^{-12}$ in log evidence.
+CG10 tests the combined effects of compression, strong correlation, and curved contours.
+
+\paragraph{Repository spike--slab mixture (SS10).}\label{sec:ss10}
+We use the spike--slab model from the earlier sampler-comparison repository.\footnote{Model source: \url{https://github.com/Joshuaalbert/jaxns-cosmology/blob/67e45dac6d9b273c4f4d957433f53228bf9ea7e0/jaxns_cosmology/models/spikeslab.py}.}
+Both components are full ten-dimensional densities; only their first two mean coordinates are shifted.
+The prior is uniform on $[-4,8]^{10}$ and
+\begin{align}
+    L_{\rm SS10}(x)&=\phi_{10}(x\mid\mu_1,0.08I)
+                   +\phi_{10}(x\mid\mu_2,0.8I),\label{eq:ss10_likelihood}\\
+    \mu_1&=(6,6,0,\ldots,0),\qquad\mu_2=(2.5,2.5,0,\ldots,0).
+\end{align}
+The covariance diagonals $0.08$ and $0.8$ correspond to standard deviations $\sqrt{0.08}$ and $\sqrt{0.8}$.
+Each normalized density has coefficient one; the sum is not divided by two.
+At equal component Mahalanobis radius the spike-to-slab geometric volume ratio is $(0.08/0.8)^{10/2}=10^{-5}$; this is not a posterior fraction or a volume ratio at a common likelihood threshold.
+Writing $s_1=\sqrt{0.08}$, $s_2=\sqrt{0.8}$ and $\Phi$ for the standard normal cumulative distribution function gives the finite-prior reference
+\begin{align}
+    Z_{\rm SS10}=12^{-10}\sum_{k=1}^{2}\prod_{j=1}^{10}
+    \left[\Phi\!\left(\frac{8-\mu_{kj}}{s_k}\right)
+         -\Phi\!\left(\frac{-4-\mu_{kj}}{s_k}\right)\right].\label{eq:ss10_evidence}
+\end{align}
+Thus $\log Z_{\rm SS10}=-24.15593481$, and the reference spike fraction is $0.5000077444$.
+The slab-only log evidence is $-24.84909748$.
+SS10 tests recovery of substantial posterior mass in a geometrically small component and provides an ablation of evidence precision when that structure is underrepresented.
+
+\begin{figure*}[t]
+    \centering
+    \includegraphics[width=\textwidth]{images/evidence_problems.pdf}
+    \caption{Two-dimensional analogues of G10, CG10, and SS10. Filled contours show relative log likelihood; white lines mark selected levels. Red dashed boundaries show the one-$\sigma$ Gaussian prior circle or the support of the uniform prior. These two-dimensional densities are analogues, not posterior marginals of the ten-dimensional problems. The SS10 geometric volume contrast is much larger in ten dimensions than shown here.}
+    \label{fig:evidence_problems}
+\end{figure*}
+
+\subsection{Paired protocol and metrics}
+
+All evidence tables use A+C with $30$ seeds numbered $0$--$29$ per problem.
+The sampler descends from commit \texttt{a18124b}; the frozen experiment source is \texttt{aa79a0d}.
+The sparse evidence reducer at \texttt{5667381} handles tied likelihood blocks with the sampler's existing Dirichlet plateau law; its sampler and model source are identical to the frozen run source.
+Ties are retained as observed, without jitter or deduplication. For singleton blocks, the revised reducer preserves the original random fields and results exactly.
+Intervention A retains every phantom unit-prior coordinate and includes eligible phantom identities in the existing uniform seed-selection rule.
+Intervention C uses the evidence-improving allocation target in Appendix~\ref{sec:allocation_targets}.
+Each run starts with $d_0=30D=300$ root lineages, completes one uniform discovery goal with \texttt{delta\_K=1}, then adds an evidence-improving allocation gap
+\begin{align}
+    \Delta K_g=\left\lceil300\,\overline U^Z_g\right\rceil,
+\end{align}
+where $\overline U^Z$ is normalized to unit peak.
+Execution width is $100$; each classic replacement uses $T=10D=100$ isotropic slice transitions without stepping out.
+All $99$ intermediate phantom states per chain are retained for seed eligibility.
+We condition evidence on their leading prefixes $D,2D,\ldots,9D$, with classic shrinkage denoted $0D$.
+Phantom states are not inserted into the posterior sample sequence.
+
+The baseline goal is
+\begin{align}
+    \widehat\sigma^{\rm exp}_{\log Z}<0.05.\label{eq:benchmark_goal}
+\end{align}
+The within-goal depth condition is Eq.~\ref{eq:small_remaining_evidence} with $\tau_Z=\log(1+10^{-3})$.
+Each tree is reduced with $2048$ paired shrinkage draws per prefix, using prefix increments of $D=10$ and minimum cluster participation count $C_{\min}=20$.
+One gamma weight is shared by all retained phantoms from a given chain, including across prefix increments.
+The cluster-weight random seeds are controlled across prefixes, and the stopping rule uses classic expected uncertainty throughout.
+One CPU is pinned to each worker on dorrie, with at most $60$ concurrent workers; tighter stages reduce concurrency to accommodate their growing phantom storage.
+
+Tables~\ref{tab:phantom_evidence_g10_0p05}--\ref{tab:phantom_evidence_ss10_0p02} report log-evidence bias, RMSE, mean reported shrinkage SD, and empirical coverage of the central $95\%$ shrinkage interval.
+Bias errors are across-tree SDs; RMSE errors are bootstrap SEs from $10{,}000$ resamples of the $30$ seeds, with bootstrap seed $20260909$.
+Paired bootstrap contrasts use the same resampled trees for classic and phantom RMSE and absolute cohort bias.
+For each resample, the latter contrast is $|\overline e_{\rm Ph90}|-|\overline e_{\rm classic}|$, where $e$ is log-evidence error; it is not a difference in mean absolute error.
+Bold marks the lowest point-estimate RMSE, not a significance statement.
+These intervals quantify shrinkage conditional on the represented tree; they need not cover exploration error.
+
+SS10 spike mass is computed once per classic tree as
+\begin{align}
+    \widehat m_1=\sum_i w_i^{\rm classic}
+       \frac{L_1(x_i)}{L_1(x_i)+L_2(x_i)}.
+\end{align}
+Using component responsibilities avoids a hard-assignment overlap error.
+Every phantom-prefix analysis shares this same classic posterior estimate.
+
+To test whether more sampling recovers the spike, the same $30$ SS10 trees were continued to classic uncertainty $0.02$.
+All $30$ continuations and paired reductions completed. The same trees were subsequently continued to $0.015$ using the efficient all-phantom implementation (sampler commit \texttt{650ae05}, runner \texttt{82cd8d3}); all $30$ completed. At $0.015$ we evaluate classic expected evidence and classic posterior mass only, without a new phantom-prefix reduction. Planned stages at $0.01$ and $0.005$ were cancelled because of computational cost; no completed result at either tighter target is reported.
+Before these runs, recovery was defined descriptively as spike-mass RMSE at most $0.05$ with no seed more than $0.15$ from the reference mass.
+This criterion governed planned continuation; it is not a formal hypothesis test, and phantom benefit is assessed separately.
+Full-capacity checkpoints preserve the stored random streams and buffer layout; trimming is used only for analysis because it changes the subsequent sampling trajectory in this implementation.
+Likelihood costs and goal counts for tighter stages are cumulative from the initial tree.
+\begin{table*}[t]
+\centering
+\scriptsize
+\caption{G10 A+C300, classic uncertainty target 0.05, 30 trees. Bias errors are across-tree SDs; RMSE errors are bootstrap SEs. SD is the mean reported shrinkage uncertainty, and coverage is the fraction of 95\% shrinkage intervals containing the reference log evidence. Mean likelihood calls: $(63.134\pm1.219)\times10^6$; mean goals: $28.60$. Bold marks the lowest point RMSE.}
+\label{tab:phantom_evidence_g10_0p05}
+\begin{tabular}{lrrrr}
+\toprule
+Prefix & Bias $\pm$ SD & RMSE $\pm$ SE & Mean SD & 95\% coverage \\
+\midrule
+$0D$ (classic) & +0.0145 $\pm$ 0.0458 & 0.0473 $\pm$ 0.0054 & 0.0494 & 93\% \\
+$1D$ & +0.0041 $\pm$ 0.0391 & 0.0387 $\pm$ 0.0044 & 0.0297 & 90\% \\
+$2D$ & -0.0012 $\pm$ 0.0347 & 0.0342 $\pm$ 0.0042 & 0.0264 & 87\% \\
+$3D$ & +0.0003 $\pm$ 0.0311 & 0.0306 $\pm$ 0.0034 & 0.0241 & 83\% \\
+$4D$ & +0.0014 $\pm$ 0.0281 & 0.0276 $\pm$ 0.0032 & 0.0224 & 90\% \\
+$5D$ & +0.0026 $\pm$ 0.0268 & 0.0265 $\pm$ 0.0034 & 0.0210 & 83\% \\
+$6D$ & +0.0027 $\pm$ 0.0249 & 0.0246 $\pm$ 0.0029 & 0.0198 & 87\% \\
+$7D$ & +0.0019 $\pm$ 0.0245 & 0.0241 $\pm$ 0.0028 & 0.0189 & 83\% \\
+$8D$ & +0.0021 $\pm$ 0.0249 & 0.0245 $\pm$ 0.0027 & 0.0180 & 80\% \\
+$9D$ & +0.0011 $\pm$ 0.0243 & \textbf{0.0239 $\pm$ 0.0026} & 0.0173 & 83\% \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\begin{table*}[t]
+\centering
+\scriptsize
+\caption{CG10 A+C300, classic uncertainty target 0.05, 30 trees. Bias errors are across-tree SDs; RMSE errors are bootstrap SEs. SD is the mean reported shrinkage uncertainty, and coverage is the fraction of 95\% shrinkage intervals containing the reference log evidence. Mean likelihood calls: $(64.570\pm0.777)\times10^6$; mean goals: $29.00$. Bold marks the lowest point RMSE.}
+\label{tab:phantom_evidence_cg10_0p05}
+\begin{tabular}{lrrrr}
+\toprule
+Prefix & Bias $\pm$ SD & RMSE $\pm$ SE & Mean SD & 95\% coverage \\
+\midrule
+$0D$ (classic) & -0.0104 $\pm$ 0.0317 & 0.0328 $\pm$ 0.0048 & 0.0493 & 100\% \\
+$1D$ & +0.0011 $\pm$ 0.0524 & 0.0515 $\pm$ 0.0048 & 0.0302 & 70\% \\
+$2D$ & +0.0058 $\pm$ 0.0462 & 0.0458 $\pm$ 0.0048 & 0.0269 & 73\% \\
+$3D$ & +0.0092 $\pm$ 0.0415 & 0.0419 $\pm$ 0.0049 & 0.0247 & 77\% \\
+$4D$ & +0.0111 $\pm$ 0.0392 & 0.0401 $\pm$ 0.0047 & 0.0230 & 70\% \\
+$5D$ & +0.0102 $\pm$ 0.0360 & 0.0368 $\pm$ 0.0046 & 0.0216 & 77\% \\
+$6D$ & +0.0092 $\pm$ 0.0338 & 0.0345 $\pm$ 0.0045 & 0.0205 & 80\% \\
+$7D$ & +0.0073 $\pm$ 0.0304 & 0.0308 $\pm$ 0.0044 & 0.0195 & 80\% \\
+$8D$ & +0.0075 $\pm$ 0.0287 & 0.0292 $\pm$ 0.0041 & 0.0186 & 83\% \\
+$9D$ & +0.0076 $\pm$ 0.0281 & \textbf{0.0286 $\pm$ 0.0038} & 0.0179 & 80\% \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\begin{table*}[t]
+\centering
+\scriptsize
+\caption{SS10 A+C300, classic uncertainty target 0.05, 30 trees. Bias errors are across-tree SDs; RMSE errors are bootstrap SEs. SD is the mean reported shrinkage uncertainty, and coverage is the fraction of 95\% shrinkage intervals containing the reference log evidence. Mean likelihood calls: $(28.742\pm14.918)\times10^6$; mean goals: $19.93$. Bold marks the lowest point RMSE.}
+\label{tab:phantom_evidence_ss10_0p05}
+\begin{tabular}{lrrrr}
+\toprule
+Prefix & Bias $\pm$ SD & RMSE $\pm$ SE & Mean SD & 95\% coverage \\
+\midrule
+$0D$ (classic) & -0.3497 $\pm$ 0.5276 & 0.6256 $\pm$ 0.0435 & 0.0491 & 10\% \\
+$1D$ & -0.3357 $\pm$ 0.5336 & 0.6229 $\pm$ 0.0449 & 0.0288 & 3\% \\
+$2D$ & -0.3439 $\pm$ 0.5307 & 0.6249 $\pm$ 0.0435 & 0.0237 & 3\% \\
+$3D$ & -0.3444 $\pm$ 0.5286 & 0.6235 $\pm$ 0.0429 & 0.0207 & 3\% \\
+$4D$ & -0.3442 $\pm$ 0.5278 & \textbf{0.6227 $\pm$ 0.0435} & 0.0187 & 3\% \\
+$5D$ & -0.3436 $\pm$ 0.5289 & 0.6233 $\pm$ 0.0438 & 0.0172 & 3\% \\
+$6D$ & -0.3449 $\pm$ 0.5292 & 0.6243 $\pm$ 0.0436 & 0.0162 & 3\% \\
+$7D$ & -0.3455 $\pm$ 0.5296 & 0.6249 $\pm$ 0.0435 & 0.0153 & 3\% \\
+$8D$ & -0.3457 $\pm$ 0.5307 & 0.6259 $\pm$ 0.0437 & 0.0145 & 3\% \\
+$9D$ & -0.3455 $\pm$ 0.5298 & 0.6250 $\pm$ 0.0437 & 0.0139 & 3\% \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\begin{table*}[t]
+\centering
+\scriptsize
+\caption{SS10 A+C300, classic uncertainty target 0.02, 30 trees. Bias errors are across-tree SDs; RMSE errors are bootstrap SEs. SD is the mean reported shrinkage uncertainty, and coverage is the fraction of 95\% shrinkage intervals containing the reference log evidence. Mean likelihood calls: $(193.296\pm75.479)\times10^6$; mean goals: $135.10$. Bold marks the lowest point RMSE.}
+\label{tab:phantom_evidence_ss10_0p02}
+\begin{tabular}{lrrrr}
+\toprule
+Prefix & Bias $\pm$ SD & RMSE $\pm$ SE & Mean SD & 95\% coverage \\
+\midrule
+$0D$ (classic) & -0.2911 $\pm$ 0.4466 & 0.5268 $\pm$ 0.0385 & 0.0199 & 7\% \\
+$1D$ & -0.2896 $\pm$ 0.4434 & 0.5234 $\pm$ 0.0393 & 0.0117 & 0\% \\
+$2D$ & -0.2915 $\pm$ 0.4416 & 0.5230 $\pm$ 0.0389 & 0.0097 & 0\% \\
+$3D$ & -0.2909 $\pm$ 0.4411 & \textbf{0.5222 $\pm$ 0.0387} & 0.0085 & 0\% \\
+$4D$ & -0.2906 $\pm$ 0.4416 & 0.5225 $\pm$ 0.0389 & 0.0077 & 0\% \\
+$5D$ & -0.2905 $\pm$ 0.4421 & 0.5228 $\pm$ 0.0390 & 0.0072 & 0\% \\
+$6D$ & -0.2907 $\pm$ 0.4418 & 0.5227 $\pm$ 0.0388 & 0.0067 & 0\% \\
+$7D$ & -0.2905 $\pm$ 0.4417 & 0.5225 $\pm$ 0.0388 & 0.0064 & 0\% \\
+$8D$ & -0.2906 $\pm$ 0.4416 & 0.5225 $\pm$ 0.0388 & 0.0061 & 0\% \\
+$9D$ & -0.2904 $\pm$ 0.4419 & 0.5226 $\pm$ 0.0389 & 0.0059 & 0\% \\
+\bottomrule
+\end{tabular}
+\end{table*}
+\clearpage
+\subsection{Results and limitations}
+
+For G10, the pre-specified $9D=90$ phantom prefix changes log-evidence RMSE from $0.0473$ to $0.0239$, a $49.4\%$ reduction.
+The paired bootstrap $95\%$ interval for phantom minus classic RMSE is $[-0.0344,-0.0119]$.
+
+This paired comparison resolves lower phantom-conditioned RMSE.
+
+For CG10, the pre-specified $9D=90$ phantom prefix changes log-evidence RMSE from $0.0328$ to $0.0286$, a $12.8\%$ reduction.
+The paired bootstrap $95\%$ interval for phantom minus classic RMSE is $[-0.0162,+0.0078]$.
+
+The 30-seed comparison does not resolve an RMSE difference.
+
+For SS10, the pre-specified $9D=90$ phantom prefix changes log-evidence RMSE from $0.6256$ to $0.6250$, a $0.1\%$ reduction.
+The paired bootstrap $95\%$ interval for phantom minus classic RMSE is $[-0.0214,+0.0216]$.
+
+The 30-seed comparison does not resolve an RMSE difference.
+
+Point accuracy and interval calibration require separate assessment. At Ph90, empirical $95\%$ interval coverage is $83\%$ for G10 and $80\%$ for CG10, compared with $93\%$ and $100\%$ for classic shrinkage. These are finite-cohort coverage measurements.
+
+
+\begin{figure*}[t]
+    \centering
+    \includegraphics[width=\textwidth]{images/evidence_accuracy.pdf}
+    \caption{Evidence accuracy on the same 30 A+C300 trees per problem at classic uncertainty
+below $0.05$. Points show empirical RMSE with bootstrap SE; dashed lines show mean reported
+shrinkage SD. Adding phantom conditioning uses no further likelihood evaluations and leaves the
+classic posterior unchanged.}
+    \label{fig:evidence_accuracy}
+\end{figure*}
+
+\subsection{Spike recovery and conditional certainty}
+
+At the $0.05$ stop, SS10 has mean classic spike mass $0.21483$ against the reference $0.5000077444$, with mass RMSE $0.3975$ and seed range $[0.00055,0.85290]$.
+There are $18$ of $30$ seeds with less than $10\%$ spike mass.
+The mean reported log-evidence SD changes from $0.0491$ to $0.0139$ under Ph90, while central $95\%$ interval coverage changes from $10\%$ to $3\%$.
+
+
+The uncertainty ladder separates posterior recovery from precision conditional on the
+represented tree.
+Every stage uses the same seed identities and retains all preceding sampling work.
+Table~\ref{tab:ss10_recovery} reports classic posterior recovery independently of phantom
+prefix; Table~\ref{tab:ss10_ladder_evidence} compares the evidence estimators and their cost.
+
+\begin{table*}[t]
+\centering
+\caption{SS10 classic posterior recovery across the matched uncertainty ladder, 30 seeds per
+stage. The reference spike fraction is $0.5000077444$. RMSE errors are bootstrap SEs. Recovery
+requires RMSE at most $0.05$ and no absolute seed error above $0.15$; the rule was fixed before
+the tighter runs.}
+\label{tab:ss10_recovery}
+\begin{tabular}{lrrrr}
+\toprule
+Stop & Mean spike mass & Spike-mass RMSE $\pm$ SE & Seed range & Recovered\\
+\midrule
+
+$0.05$ & 0.21483 & 0.3975 $\pm$ 0.0219 & [0.0006, 0.8529] & No \\
+
+$0.02$ & 0.27593 & 0.3227 $\pm$ 0.0205 & [0.0262, 0.8190] & No \\
+
+$0.015$ & 0.31265 & 0.2797 $\pm$ 0.0188 & [0.0530, 0.8050] & No \\
+
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\begin{table*}[t]
+\centering
+\scriptsize
+\caption{SS10 paired evidence accuracy and cumulative effort across the uncertainty ladder. RMSE
+errors are bootstrap SEs; reported SDs are means over 30 trees. Likelihood calls and goals
+include the work from all preceding stages. Classic and Ph90 reductions use the same completed
+tree at each stop.}
+\label{tab:ss10_ladder_evidence}
+\begin{tabular}{lrrrrrr}
+\toprule
+Stop & Classic RMSE $\pm$ SE & Ph90 RMSE $\pm$ SE & Classic SD & Ph90 SD & Calls ($10^6$) & Goals\\
+\midrule
+
+$0.05$ & 0.6256 $\pm$ 0.0435 & 0.6250 $\pm$ 0.0437 & 0.0491 & 0.0139 & 28.742 & 19.93 \\
+
+$0.02$ & 0.5268 $\pm$ 0.0385 & 0.5226 $\pm$ 0.0389 & 0.0199 & 0.0059 & 193.296 & 135.10 \\
+
+\bottomrule
+\end{tabular}
+\end{table*}
+
+
+The tightest completed stop is $0.015$; none of the three completed stages meets the spike-recovery criterion. Paired phantom reductions are available at $0.05$ and $0.02$ only. Partial $0.01$ checkpoints and the unstarted $0.005$ stage are excluded.
+
+At $0.02$, the tightest stage with paired phantom reductions, Ph90 minus classic evidence RMSE is $-0.0043$, with paired bootstrap $95\%$ interval $[-0.0117,+0.0023]$.
+
+This finite-seed comparison does not resolve a difference in RMSE at this stage.
+
+Tightening the classic target from $0.05$ to $0.02$ uses $6.73$ times the cumulative mean likelihood calls. Mean spike mass increases from $0.215$ to $0.276$, and spike-mass RMSE falls from $0.398$ to $0.323$. Nevertheless, $8$ of $30$ seeds still assign less than $10\%$ mass to the spike, whose reference mass is $50.0008\%$. More work improves the represented component masses without resolving the geometry sufficiently for accurate inference.
+
+
+\begin{table*}[t]
+\centering
+\scriptsize
+\caption{SS10 bias and interval calibration on the same 30 trees at each stop.
+Bias is mean log-evidence error. The absolute-bias contrast is Ph90 minus classic;
+brackets give its paired bootstrap $95\%$ interval. Coverage counts how many
+central $95\%$ shrinkage intervals contain the reference evidence.}
+\label{tab:ss10_bias_coverage}
+\begin{tabular}{lrrrrr}
+\toprule
+Stop & Classic bias & Ph90 bias & $\Delta|\mathrm{bias}|$ [95\% interval]
+& Classic coverage & Ph90 coverage\\
+\midrule
+
+$0.05$ & -0.3497 & -0.3455 & -0.0042 [-0.0242, +0.0176] & 3/30 & 1/30 \\
+
+$0.02$ & -0.2911 & -0.2904 & -0.0008 [-0.0094, +0.0069] & 2/30 & 0/30 \\
+
+\bottomrule
+\end{tabular}
+\end{table*}
+
+
+At both stops with paired phantom reductions, the classic and Ph90 estimates share a large negative
+bias (Table~\ref{tab:ss10_bias_coverage}). The absolute cohort bias is slightly
+smaller with Ph90, but both paired intervals include zero, as do the RMSE
+contrasts. These cohorts show no resolved additional bias or RMSE from phantom
+conditioning; they do not establish equivalence or a general no-harm guarantee.
+
+The limitation is clearest in interval calibration. At $0.02$, the mean
+reported SD falls from $0.0199$ to $0.0059$ with Ph90 while empirical RMSE
+remains above $0.52$. Classic intervals cover the reference in only $2/30$
+trees and Ph90 intervals in $0/30$, compared with $3/30$ and $1/30$ at $0.05$.
+Thus the unresolved component-mass error already affects classic inference;
+conditioning on more phantom information narrows uncertainty within that
+misrepresented tree without correcting the exploration error. Interpreting
+this conditional precision as total accuracy gives a false sense of certainty.
+Representative constrained-prior exploration and recovery of component masses
+are prerequisites for interpreting the gain, and interval calibration still
+requires independent checks even when point accuracy improves.
+
+
+\begin{figure*}[t]
+    \centering
+    \includegraphics[width=\textwidth]{images/ss10_recovery_ladder.pdf}
+    \caption{SS10 uncertainty ladder. Left: classic spike mass for each of the 30 matched seeds,
+with the exact mass dashed. Middle: empirical log-evidence RMSE and mean reported shrinkage SD
+for classic and Ph90 conditioning. Right: cumulative mean likelihood calls. Connecting lines
+identify continued trees rather than independent runs.}
+    \label{fig:ss10_recovery_ladder}
+\end{figure*}
+
+\paragraph{Continuation to $0.015$.}
+The completed 30-seed continuation raises mean classic spike mass from $0.27593$ to $0.31265$ and lowers spike-mass RMSE from $0.3227$ to $0.2797$ (Table~\ref{tab:ss10_recovery}).
+Classic expected log-evidence RMSE decreases from $0.5268$ to $0.4726$ (Table~\ref{tab:ss10_classic_followup}).
+Paired bootstrap $95\%$ intervals for the change from $0.02$ to $0.015$ are $[-0.0537,-0.0329]$ for spike-mass RMSE and $[-0.0669,-0.0417]$ for log-evidence RMSE, using $20{,}000$ resamples of the same seeds with random seed $292$.
+Despite this resolved improvement, the final spike masses range from $0.0530$ to $0.8050$, and only $1/30$ normal-approximation classic evidence intervals cover the reference.
+The continuation adds $5.180\times10^9$ likelihood evaluations across the cohort and a median of $100$ goals per seed (range $86$--$129$).
+With one pinned CPU per worker and memory-limited concurrency, elapsed queue time is $9.58$ hours and summed worker continuation time is $58.84$ core-hours; process peak memory ranges from $28.52$ to $55.04$ GiB including checkpointing.
+These times include loading, index conversion, compilation, stopping checks, and checkpoint writes, but exclude final posterior analysis and fingerprinting.
+The new index preserves the existing all-phantom selection law: all scientific fields and likelihood counts matched in the preceding 30 paired one-goal checks at $0.02$, and the checked classic diagnostics and counts matched at all $590$ overlapping goals in seven preserved old partial trajectories.
+The $0.015$ results measure improved sampling depth with the same A+C policy; no phantom-conditioned evidence result is inferred at this stop.
+
+\begin{table*}[t]
+\centering
+\scriptsize
+\caption{SS10 classic expected-evidence diagnostics for the 30 matched continuations. These use the deterministic classic expectation and its reported SD, rather than Monte Carlo shrinkage means. Coverage uses the normal approximation $\widehat{\log Z}\pm1.96\widehat\sigma^{\rm exp}_{\log Z}$; it is distinct from central Monte Carlo interval coverage in the prefix tables. Calls and goals are cumulative cohort means.}
+\label{tab:ss10_classic_followup}
+\begin{tabular}{lrrrrrr}
+\toprule
+Stop & Bias & RMSE & Mean SD & 95\% coverage & Calls ($10^6$) & Goals\\
+\midrule
+$0.02$ & -0.2911 & 0.5268 & 0.0200 & 2/30 & 193.296 & 135.10 \\
+$0.015$ & -0.2498 & 0.4726 & 0.0150 & 1/30 & 365.977 & 238.27 \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+
+\paragraph{Posterior-allocation follow-up.}
+Starting from each $0.015$ state, a further exploratory run switched C to pure posterior-improving allocation while retaining A, with a fixed target of twice that state's original classic Kish ESS.
+The run was cancelled after $7$ of $30$ seeds completed; $5$ active seeds were interrupted and $18$ queued seeds were cancelled.
+For the completed seeds $7,8,9,14,16,23,28$, ESS increased by factors $2.001$--$2.009$ while spike mass changed by only $0.00058$--$0.01068$ in absolute terms (Figure~\ref{fig:ss10_followup}).
+For example, seed $7$ moves from $0.31588$ to $0.32656$ and seed $28$ from $0.29634$ to $0.30095$, against the reference $0.50001$.
+This completion-selected subset shows that doubling reported ESS need not repair a component-weight error. It does not estimate the effect over all 30 seeds or establish that posterior allocation cannot recover unresolved structure with further exploration.
+
+\begin{figure*}[t]
+    \centering
+    \includegraphics[width=\textwidth]{images/ss10_followup.pdf}
+    \caption{SS10 classic posterior recovery. Left: all 30 matched trees at the three completed evidence-uncertainty stops. Right: the seven posterior-allocation continuations that doubled their initial $0.015$ ESS before cancellation; the remaining 23 are excluded from this panel. Lines connect the same seed, and the dashed line marks the reference spike mass. Phantom states supply seeds but carry no posterior weight.}
+    \label{fig:ss10_followup}
+\end{figure*}
+
+Seed $0$ at the baseline stop reproduces the earlier exploratory run: $18$ goals,
+$16.574\times10^6$ likelihood calls, and $0.2654\%$ classic spike mass against $50.0008\%$.
+Spike-dominated classic and retained phantom samples were present during its first goal, so this
+error is not equivalent to never visiting the spike.
+The classic shrinkage mean is $-24.7449$ with SD $0.0494$; Ph90 gives $-24.8583$ with SD
+$0.0131$, close to the slab-only log evidence $-24.8491$.
+Figure~\ref{fig:ss10_corner} shows that baseline posterior.
+
+\begin{figure*}[p]
+    \centering
+    \includegraphics[width=\textwidth]{images/ss10_corner.pdf}
+    \caption{SS10, seed $0$, A+C300 at classic expected uncertainty below $0.05$. Blue panels
+use classic posterior weights; orange diagonal curves are exact finite-box mixture marginals.
+The recovered spike mass is $0.2654\%$ against $50.0008\%$. Pair panels use weighted histograms
+with 68\% and 95\% contour levels after 0.6-bin smoothing. Phantom states enter seed selection
+but are not posterior samples.}
+    \label{fig:ss10_corner}
+\end{figure*}
+
+These tests assess evidence conditioning on completed trees, not a guarantee of stationary
+exploration or correct component allocation.
+Phantom seeding and evidence-improving allocation are fixed across the paired reductions, so the
+prefix comparison does not isolate their separate effects.
+Evidence-only phantom conditioning cannot repair a missing mode in the classic posterior.
+
+\section{Posterior recovery}\label{sec:posterior_recovery}
+
+We next examine three ten-dimensional posterior targets with ESS stopping, using the earlier sampler comparison's repository definitions.\footnote{Albert et al., \emph{A comparison of Bayesian sampling algorithms for high-dimensional particle physics and cosmology applications}, \url{https://arxiv.org/abs/2409.18464}. Model source: \url{https://github.com/Joshuaalbert/jaxns-cosmology/tree/67e45dac6d9b273c4f4d957433f53228bf9ea7e0/jaxns_cosmology/models}.}
+These exploratory single-seed experiments share all-phantom seed eligibility with the evidence tables, but use different allocation weights and stopping criteria. The following mixed-allocation protocol applies to Eggbox, Rosenbrock, and Rastrigin.
+Each run uses seed $0$, $D=10$, $d_0=30D=300$, execution width $100$, and $100$ isotropic slice transitions without stepping out.
+All $99$ retained phantom states per constrained chain are eligible for the existing seed-selection rule (intervention A).
+After one complete uniform discovery goal, further goals combine the integer evidence- and posterior-improving allocation gaps from Appendix~\ref{sec:allocation_targets},
+\begin{align}
+    \Delta K_g=\left\lceil 0.1\,\Delta K^Z_g+0.9\,\Delta K^P_g\right\rceil,
+    \qquad
+    \Delta K^j_g=\left\lceil 300\,\overline{U}^j_g\right\rceil .
+    \label{eq:posterior_candidate_allocation}
+\end{align}
+Here each component utility $\overline{U}^j$ is normalised to its own peak before forming its integer gap; the weighted sum is not normalised again.
+The depth remainder threshold remains $\log(1.001)$.
+Runs stop at the first completed goal whose classic Kish ESS reaches the specified target.
+Only normalised classic expected posterior weights enter $\mathrm{ESS}_{\rm Kish}=1/\sum_i w_i^2$ and the corner plots.
+Phantom eligibility can affect future classic samples, but phantom states are not added to the posterior.
+All three runs use frozen source commit \texttt{b44d3b7}, with one pinned CPU each on dorrie.
+
+\paragraph{Eggbox 10D.}
+The prior is uniform on $[0,10\pi]^{10}$ and the log likelihood is
+\begin{align}
+    \log L(x)=\left(2+\prod_{i=1}^{10}\cos(x_i/2)\right)^5.
+\end{align}
+The positive fifth-power expression is already a log likelihood in the historical code.
+The ESS target is $5000$.
+
+\paragraph{Rosenbrock 10D.}
+The prior is uniform on $[-5,5]^{10}$ and
+\begin{align}
+    \log L(x)=-\sum_{i=1}^{9}
+    \left[100\left(x_{i+1}-x_i^2\right)^2+(1-x_i)^2\right].
+\end{align}
+This follows the curved Rosenbrock expression in the repository, including the inner square on $x_i$.
+The ESS target is $3000$.
+
+\paragraph{Rastrigin 10D.}
+The prior is uniform on $[-5.12,5.12]^{10}$ and
+\begin{align}
+    \log L(x)=-\left[100+\sum_{i=1}^{10}
+    \left(x_i^2-10\cos(2\pi x_i)\right)\right].
+\end{align}
+The ESS target is $15000$.
+
+\subsection{Single-seed results}
+
+Table~\ref{tab:posterior_candidates} records the first completed goal satisfying each target.
+Rosenbrock already meets its target after the first uniform goal; its run therefore exercises A's seed pool but does not reach the mixed-allocation phase.
+The corner plots in Figures~\ref{fig:eggbox10_corner}--\ref{fig:rastrigin10_corner} include deterministic one-dimensional marginal references derived in Appendix~\ref{sec:posterior_references}.
+
+\begin{table*}[t]
+\centering
+\caption{Ten-dimensional posterior candidates, seed $0$ only. Likelihood calls are in millions. The evidence estimate and shrinkage uncertainty use classic samples. These are individual runs, not repeated-seed RMSE estimates. Rosenbrock stops during uniform discovery.}
+\label{tab:posterior_candidates}
+\begin{tabular}{lrrrrr}
+\toprule
+Problem & ESS target & Kish ESS & Goals & Calls ($10^6$) & Classic $\log Z\pm\sigma$\\
+\midrule
+Eggbox & 5000 & 5493 & 3 & 5.924 & $209.9162\pm0.2728$\\
+Rosenbrock & 3000 & 3681 & 1 & 9.099 & $-44.2477\pm0.3447$\\
+Rastrigin & 15000 & 16487 & 7 & 22.428 & $-38.4240\pm0.2232$\\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+All three runs reach their ESS targets while retaining visible posterior errors.
+Eggbox has uneven marginal mode weights; coordinate means range from $14.79$ to $20.53$ against the common reference $5\pi=15.708$.
+Rastrigin remains asymmetric: its ninth-coordinate mean is $-0.858$ against zero, and its first-coordinate mean is $0.407$.
+For Rosenbrock, the final-coordinate mean and standard deviation are $0.0527$ and $0.1267$, against deterministic reference values $0.5576$ and $0.8753$; the later-coordinate tails are substantially underrepresented.
+The reference log evidences are $210.11148649$, $-43.10835521$, and $-38.10866469$, respectively, giving classic errors $-0.1953$, $-1.1394$, and $-0.3154$.
+These results illustrate that concentrating allocation on posterior ESS can refine the represented mass without establishing correct mode weights or recovery of missing tails.
+This experiment does not isolate allocation from seed selection, and the single-seed results do not establish which intervention causes the remaining errors.
+The previous comparison used different stopping settings, so likelihood-call differences alone do not establish a speedup at matched posterior accuracy.
+
+\begin{figure*}[p]
+    \centering
+    \includegraphics[width=\textwidth]{images/eggbox10_corner.pdf}
+    \caption{Eggbox 10D classic posterior at Kish ESS $5493$, after three goals. Blue histograms show uneven mode weights relative to the orange deterministic marginals. All ten coordinates and all coordinate pairs are shown; marginal coverage does not establish coverage of the joint modes. Two-dimensional panels use classic weighted histograms; contour lines enclose $68\%$ and $95\%$ of the displayed histogram after smoothing by $0.6$ bins. Orange curves appear only on the diagonal.}
+    \label{fig:eggbox10_corner}
+\end{figure*}
+
+\begin{figure*}[p]
+    \centering
+    \includegraphics[width=\textwidth]{images/rosenbrock10_corner.pdf}
+    \caption{Rosenbrock 10D classic posterior at Kish ESS $3681$. The target is reached in the first uniform goal, before mixed allocation begins. The orange reference marginals expose the missing tails in later coordinates. Two-dimensional panels use classic weighted histograms; contour lines enclose $68\%$ and $95\%$ of the displayed histogram after smoothing by $0.6$ bins. Orange curves appear only on the diagonal.}
+    \label{fig:rosenbrock10_corner}
+\end{figure*}
+
+\begin{figure*}[p]
+    \centering
+    \includegraphics[width=\textwidth]{images/rastrigin10_corner.pdf}
+    \caption{Rastrigin 10D classic posterior at Kish ESS $16487$, after seven goals. The exact posterior factorises into identical symmetric marginals (orange); the blue posterior retains substantial asymmetry and mode-weight errors. Two-dimensional panels use classic weighted histograms; contour lines enclose $68\%$ and $95\%$ of the displayed histogram after smoothing by $0.6$ bins. Orange curves appear only on the diagonal.}
+    \label{fig:rastrigin10_corner}
+\end{figure*}
+
+
+\section{Conclusions}\label{sec:conclusion}
+
+This paper reformulates NS shrinkage as racing lineages, which decouples the shrinkage arithmetic from the sample generation process.
+We then introduce a rigorous Bayesian model for treating plateaus.
+Building on this model, we condition on phantom samples by using their Monte Carlo estimates of contour exceedance probabilities as observations.
+We show that plateaus censor the race rank: we know that the race finishes, but not when.
+The resulting method uses information that Markov-chain constrained samplers already generate, while preserving the order-statistic law of the classic sequence.
+This framework is implemented in JAXNS v3.
+We compare evidence estimates with and without phantom conditioning on the same completed race trees.
+On G10 and CG10, conditioning on 90 phantoms reduces point-estimate evidence RMSE by 49.4\% and 12.8\%, respectively, without additional likelihood evaluations. Only the G10 reduction is resolved by the paired 30-seed comparison.
+The completed SS10 $0.05$, $0.02$, and $0.015$ cohorts all fail the spike-recovery criterion, despite improved component-mass estimates with more work. At $0.05$ and $0.02$, neither paired comparison resolves additional evidence bias or RMSE from phantom conditioning, but narrower intervals worsen empirical coverage. Phantom-conditioned evidence was not recomputed at $0.015$. In seven completed exploratory continuations, doubling classic Kish ESS through posterior allocation barely changes component mass; the incomplete cohort limits this observation. The geometry error already affects classic inference and is not repaired by conditioning on phantoms from the same represented tree.
+Classic posterior mass is shared by all phantom-prefix reductions. The ESS-target experiments likewise reach their requested values while retaining mode-weight and tail-recovery errors. These operational stopping diagnostics therefore require independent posterior and evidence checks.
+Phantom conditioning is therefore conditional information rather than a
+substitute for stationary, representative constrained-prior exploration or
+for independent calibration checks.
+
+\backmatter
+
+\bmhead{Supplementary information}
+
+Code and data required to reproduce the experiments will be provided in the JAXNS repository at \url{https://www.github.com/joshuaalbert/jaxns}.
+
+\bmhead{Acknowledgments}
+
+JA would like to thank John Skilling for discussions around nested sampling, as well as Will Handley, Andrew Fowlie, and Johannes Buchner for pointing out flaws in earlier attempts to use phantom samples.
+
+\begin{appendices}
+
+\section{Alternative Allocation Targets}\label{sec:allocation_targets}
+The allocation targets define how likelihood evaluation work is dedicated per outer loop.
+The two utility-based gaps are,
+\begin{align}
+    G_g^{Z,k} &= \left\lceil\Delta K \bar{U}^Z_g\right\rceil,\\
+    G_g^{P,k} &= \left\lceil\Delta K \bar{U}^P_g\right\rceil,
+\end{align}
+where $\Delta K > 0$, and $\bar{U}^Z_g$ and $\bar{U}^P_g$ are defined below.
+
+Evidence improving allocation seeks to allocate new samples to contours by maximising the expected reduction in evidence variance.
+A key observation is that a new child generated from parent block $g$ changes the parent out-degree as $d_g\to d_g+1$, Eq.~\ref{eq:K_recursion}.
+The probability of that sample reaching $L_h$ is given by,
+\begin{align}
+    T^Z_{g h}
+    \triangleq
+    \Prob_{x\sim\pi_{L_g}}(L(x)>L_h)
+    = \frac{X_h}{X_g} \mathbf{1}\{h>g\}.
+    \label{eq:evidence_reach_probability}
+\end{align}
+That is, the probability that we add one additional active lineage count to blocks $g+1$ to $l$ is $T^Z_{g h}$.
+
+We will define utility function as the expected reduction in variance.
+To simplify calculation, we will use a first-order delta approximation to the log-evidence variance in terms of the log-shrinkage variance.
+Structurally, we have $\mathrm{Var}_\theta[f] \approx \sum_\theta (\partial_\theta f)^2\, \mathrm{Var}[\theta]$.
+Applying this to $\log Z$ given by Eq.~\ref{eq:block_quadrature} with block shrinkage $p_{>h} \sim \Beta(\alpha_h, \beta_h)$, and recalling that $X_h = p_{>h} X_{h-1} = \prod_j^h p_{>j}$ we have,
+\begin{align}
+    B_h \triangleq \frac{\partial \log Z}{\partial \log p_{>h}}
+    =&
+    \frac{
+    L_h X_h
+    -\sum_{j > h} L_j( X_{j-1}- X_j)
+    }{ Z},\label{eq:evidence_sensitivity}\\
+    \mathrm{Var}[\log p_{>h}] =& \psi_1(\alpha_h) - \psi_1(\alpha_h + \beta_h),
+\end{align}
+where $\psi_1$ is the tri-gamma function.
+The first term in Eq.~\ref{eq:evidence_sensitivity} is the contribution from changing the block $h$, and the second term is the accumulated downstream effect because $p_{>h}$ appears in every later term.
+Now the effect of adding one extra active lineage is that $\alpha_h \to \alpha_h + 1$, so the reduction in variance of log-evidence under this delta approximation is given by,
+\begin{align}
+    \Delta_h \mathrm{Var}[\log Z] \approx B_h^2 \left(\frac{1}{\alpha_h^2} - \frac{1}{(\alpha_h + \beta_h)^2}\right),\label{eq:delta_var_logZ}
+\end{align}
+where we used the relationship $\psi_1(z) - \psi_1(z + 1) = 1/z^2$.
+Now, the utility is the expectation of Eq.~\ref{eq:delta_var_logZ} over the transition probability, Eq.~\ref{eq:evidence_reach_probability},
+\begin{align}
+    U^Z_g = \frac{1}{X_g}\sum_{h > g} X_h B_h^2 \left(\frac{1}{\alpha_h^2} - \frac{1}{(\alpha_h + \beta_h)^2}\right).\label{eq:evidence_improving_utility}
+\end{align}
+This can be computed efficiently in two cumulative reductions.
+
+Posterior improving allocation seeks to increase the effective sample size, by allocating samples low-information shells defined by the half-open likelihood intervals, $(L_{h-1}, L_h]$.
+A key observation is that a uniform draw within contour $L_g$ will land in shell $h$ with probability,
+\begin{align}
+    T^P_{g h}
+    \triangleq
+    \Prob_{x\sim\,\pi_{L_{g}}}(L_{h-1} < L(x) \le L_h)
+    \approx \frac{ X_{h-1} -  X_{h}}{ X_g} \,\mathbf{1}\{h>g\}.
+\end{align}
+Recalling the posterior shell masses, Eq.~\ref{eq:post_weight_cont}, let us use Kish's effective sample size as a proxy for effective sample size,
+\begin{align}
+    \mathrm{ESS}^{\rm Kish} =& \frac{W^2}{Q}\\
+    W\triangleq& \sum_{j=1}^{G} w_j,\\
+    Q\triangleq& \sum_{j=1}^{G} w_j^2.
+\end{align}
+If a new sample lands in shell $h$, it splits the shell into two sub-shells.
+In this case $W$ is unchanged under additivity, and only $Q$ changes.
+Writing $u\sim\,\mathcal{U}[0, 1]$ for the fraction of the shell mass assigned to the lower sub-shell, the old contribution $w_h^2$ to $Q$ is replaced by $u^2 w_h^2+(1-u)^2 w_h^2$.
+Thus,
+\begin{align}
+    \mathrm{ESS}^{\rm Kish}_{h}(u)
+    =\frac{W^2}{Q - 2u(1-u)w_h^2}.
+\end{align}
+If we marginalise over $u$ the change of $\mathrm{ESS}^{\rm Kish}$ due to splitting in $h$ we get,
+\begin{align}
+    \Delta\mathrm{ESS}^{\rm Kish}_h
+    \triangleq&
+    \int_0^1
+    \left(\mathrm{ESS}^{\rm Kish}_h(u)-\mathrm{ESS}^{\rm Kish}\right)\,\dd u \\
+    &=
+    W^2\left[
+    \frac{
+    \tan^{-1}\left(\sqrt{w_h^2/(2Q-w_h^2)}\right)
+    }
+    {\sqrt{(Q-w_h^2/2)(w_h^2/2)}}
+    -\frac{1}{Q}
+    \right],
+    \label{eq:posterior_shell_value}
+\end{align}
+with the continuous limiting value $\Delta\mathrm{ESS}^{\rm Kish}_h \to 0$ as $w_h \to 0$.
+A simple conservative approximation is obtained by replacing the denominator with its expectation,
+\begin{align}
+    \Delta\mathrm{ESS}^{\rm Kish}_h
+    \approx
+    \frac{W^2}{Q - w_h^2/3} - \frac{W^2}{Q}.
+\end{align}
+This is conservative because $1/x$ is convex so $\E[1/x] \ge 1/\E[x]$.
+Now the utility is found by marginalising over the shell transition probabilities that a child from parent block $g$ lands in that shell $h$ gives the posterior-improving utility,
+\begin{align}
+    U^P_g
+    =
+    \frac{1}{X_g}\sum_{h > g}
+     (X_{h-1}- X_h)\,\Delta\mathrm{ESS}^{\rm Kish}_h .
+    \label{eq:posterior_improving_utility}
+\end{align}
+
+
+\section{Deterministic references for posterior candidates}\label{sec:posterior_references}
+
+For Eggbox, write $\exp[(2+t)^5-243]=\sum_{n\ge0}a_nt^n$.
+The nonnegative coefficients satisfy $a_0=\exp(-211)$ and
+\begin{align}
+    n a_n=80a_{n-1}+160a_{n-2}+120a_{n-3}+40a_{n-4}+5a_{n-5},
+\end{align}
+with negative-index coefficients zero.
+For $x\sim\Unif(0,10\pi)$, the cosine moments are $m_{2k}=\binom{2k}{k}/4^k$ and $m_{2k+1}=0$.
+Independence gives $Z=e^{243}\sum_n a_n m_n^{10}$, while a marginal density is
+\begin{align}
+    p(x_i)=\frac{\sum_n a_n m_n^9\cos^n(x_i/2)}
+    {10\pi\sum_n a_n m_n^{10}}.
+\end{align}
+Truncations at $800$ and $1200$ terms agree within $10^{-10}$ in $\log Z$; direct one- and two-dimensional quadrature independently validate the coefficient method in those dimensions.
+The ten-dimensional marginal mean is $5\pi$ and its standard deviation is $9.39842373$.
+
+Rosenbrock factorises into a nearest-neighbour chain.
+Using $F_1(x)=1$ and
+\begin{align}
+    F_{i+1}(y)=\int_{-5}^{5} F_i(x)
+    \exp\!\left[-100(y-x^2)^2-(1-x)^2\right]\,\dd x,
+\end{align}
+its evidence is $Z=10^{-10}\int_{-5}^{5}F_{10}(x)\,\dd x$.
+Forward and backward integration of this kernel gives each marginal.
+Gauss--Legendre orders $1024$ and $2048$ agree within $10^{-8}$ in $\log Z$ and in every marginal mean and standard deviation.
+
+Rastrigin factorises directly into ten identical one-dimensional integrals on $[-5.12,5.12]$.
+Adaptive quadrature gives $\log Z=-38.10866469$, marginal mean zero, and marginal standard deviation $0.70642169$.
+These references are used for diagnosis, not for any stopping decision.
+
+\end{appendices}
+
+\bibliography{cite}
+
+\end{document}

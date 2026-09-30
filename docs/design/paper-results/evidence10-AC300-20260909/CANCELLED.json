@@ -1,0 +1,595 @@
+{
+  "status": "cancelled",
+  "reason": "User cancelled the uncertainty ladder because runtime is too long",
+  "requested_utc": "2026-09-10T12:05:24+00:00",
+  "previous_status": {
+    "stage": "0.01",
+    "active": 7,
+    "pending": 53,
+    "failures": [],
+    "elapsed_seconds": 89526.20192933083,
+    "max_active": 60,
+    "reserved_gib": 500,
+    "active_jobs": [
+      [
+        "ss10",
+        0,
+        "core"
+      ],
+      [
+        "ss10",
+        1,
+        "core"
+      ],
+      [
+        "ss10",
+        2,
+        "core"
+      ],
+      [
+        "ss10",
+        3,
+        "core"
+      ],
+      [
+        "ss10",
+        4,
+        "core"
+      ],
+      [
+        "ss10",
+        5,
+        "core"
+      ],
+      [
+        "ss10",
+        6,
+        "core"
+      ]
+    ]
+  },
+  "controllers": [
+    {
+      "pid": 4045961,
+      "argv": [
+        "python",
+        "/tmp/evidence10-archive.py"
+      ],
+      "ppid": 4045954,
+      "start_ticks": "188100545"
+    },
+    {
+      "pid": 4045996,
+      "argv": [
+        "python",
+        "/tmp/evidence10-postprocess.py"
+      ],
+      "ppid": 4045990,
+      "start_ticks": "188101312"
+    },
+    {
+      "pid": 4049773,
+      "argv": [
+        "python",
+        "/tmp/evidence10-finalize.py"
+      ],
+      "ppid": 4049767,
+      "start_ticks": "188271366"
+    },
+    {
+      "pid": 4092075,
+      "argv": [
+        "python",
+        "/tmp/evidence10-calibrated-dispatch.py"
+      ],
+      "ppid": 4092069,
+      "start_ticks": "191947864"
+    }
+  ],
+  "workers": [
+    {
+      "pid": 4120926,
+      "argv": [
+        "/data/albert/miniconda3/envs/jaxns_py/bin/python",
+        "-m",
+        "benchmarks.paper_reproduction.run_evidence10",
+        "--case",
+        "ss10",
+        "--seed",
+        "0",
+        "--phase",
+        "core",
+        "--goal-log-z-uncert",
+        "0.01",
+        "--output",
+        "/largedata/albert/jaxns-evidence10-AC300-20260909/0.01/ss10/seed-00",
+        "--resume-from",
+        "/largedata/albert/jaxns-evidence10-AC300-20260909/0.02/ss10/seed-00"
+      ],
+      "ppid": 4092075,
+      "start_ticks": "193963189"
+    },
+    {
+      "pid": 4120927,
+      "argv": [
+        "/data/albert/miniconda3/envs/jaxns_py/bin/python",
+        "-m",
+        "benchmarks.paper_reproduction.run_evidence10",
+        "--case",
+        "ss10",
+        "--seed",
+        "1",
+        "--phase",
+        "core",
+        "--goal-log-z-uncert",
+        "0.01",
+        "--output",
+        "/largedata/albert/jaxns-evidence10-AC300-20260909/0.01/ss10/seed-01",
+        "--resume-from",
+        "/largedata/albert/jaxns-evidence10-AC300-20260909/0.02/ss10/seed-01"
+      ],
+      "ppid": 4092075,
+      "start_ticks": "193963189"
+    },
+    {
+      "pid": 4120928,
+      "argv": [
+        "/data/albert/miniconda3/envs/jaxns_py/bin/python",
+        "-m",
+        "benchmarks.paper_reproduction.run_evidence10",
+        "--case",
+        "ss10",
+        "--seed",
+        "2",
+        "--phase",
+        "core",
+        "--goal-log-z-uncert",
+        "0.01",
+        "--output",
+        "/largedata/albert/jaxns-evidence10-AC300-20260909/0.01/ss10/seed-02",
+        "--resume-from",
+        "/largedata/albert/jaxns-evidence10-AC300-20260909/0.02/ss10/seed-02"
+      ],
+      "ppid": 4092075,
+      "start_ticks": "193963189"
+    },
+    {
+      "pid": 4120929,
+      "argv": [
+        "/data/albert/miniconda3/envs/jaxns_py/bin/python",
+        "-m",
+        "benchmarks.paper_reproduction.run_evidence10",
+        "--case",
+        "ss10",
+        "--seed",
+        "3",
+        "--phase",
+        "core",
+        "--goal-log-z-uncert",
+        "0.01",
+        "--output",
+        "/largedata/albert/jaxns-evidence10-AC300-20260909/0.01/ss10/seed-03",
+        "--resume-from",
+        "/largedata/albert/jaxns-evidence10-AC300-20260909/0.02/ss10/seed-03"
+      ],
+      "ppid": 4092075,
+      "start_ticks": "193963189"
+    },
+    {
+      "pid": 4120930,
+      "argv": [
+        "/data/albert/miniconda3/envs/jaxns_py/bin/python",
+        "-m",
+        "benchmarks.paper_reproduction.run_evidence10",
+        "--case",
+        "ss10",
+        "--seed",
+        "4",
+        "--phase",
+        "core",
+        "--goal-log-z-uncert",
+        "0.01",
+        "--output",
+        "/largedata/albert/jaxns-evidence10-AC300-20260909/0.01/ss10/seed-04",
+        "--resume-from",
+        "/largedata/albert/jaxns-evidence10-AC300-20260909/0.02/ss10/seed-04"
+      ],
+      "ppid": 4092075,
+      "start_ticks": "193963189"
+    },
+    {
+      "pid": 4120931,
+      "argv": [
+        "/data/albert/miniconda3/envs/jaxns_py/bin/python",
+        "-m",
+        "benchmarks.paper_reproduction.run_evidence10",
+        "--case",
+        "ss10",
+        "--seed",
+        "5",
+        "--phase",
+        "core",
+        "--goal-log-z-uncert",
+        "0.01",
+        "--output",
+        "/largedata/albert/jaxns-evidence10-AC300-20260909/0.01/ss10/seed-05",
+        "--resume-from",
+        "/largedata/albert/jaxns-evidence10-AC300-20260909/0.02/ss10/seed-05"
+      ],
+      "ppid": 4092075,
+      "start_ticks": "193963189"
+    },
+    {
+      "pid": 4120932,
+      "argv": [
+        "/data/albert/miniconda3/envs/jaxns_py/bin/python",
+        "-m",
+        "benchmarks.paper_reproduction.run_evidence10",
+        "--case",
+        "ss10",
+        "--seed",
+        "6",
+        "--phase",
+        "core",
+        "--goal-log-z-uncert",
+        "0.01",
+        "--output",
+        "/largedata/albert/jaxns-evidence10-AC300-20260909/0.01/ss10/seed-06",
+        "--resume-from",
+        "/largedata/albert/jaxns-evidence10-AC300-20260909/0.02/ss10/seed-06"
+      ],
+      "ppid": 4092075,
+      "start_ticks": "193963189"
+    }
+  ],
+  "processes": [
+    {
+      "pid": 4045961,
+      "argv": [
+        "python",
+        "/tmp/evidence10-archive.py"
+      ],
+      "ppid": 4045954,
+      "start_ticks": "188100545"
+    },
+    {
+      "pid": 4045996,
+      "argv": [
+        "python",
+        "/tmp/evidence10-postprocess.py"
+      ],
+      "ppid": 4045990,
+      "start_ticks": "188101312"
+    },
+    {
+      "pid": 4049773,
+      "argv": [
+        "python",
+        "/tmp/evidence10-finalize.py"
+      ],
+      "ppid": 4049767,
+      "start_ticks": "188271366"
+    },
+    {
+      "pid": 4092075,
+      "argv": [
+        "python",
+        "/tmp/evidence10-calibrated-dispatch.py"
+      ],
+      "ppid": 4092069,
+      "start_ticks": "191947864"
+    },
+    {
+      "pid": 4120926,
+      "argv": [
+        "/data/albert/miniconda3/envs/jaxns_py/bin/python",
+        "-m",
+        "benchmarks.paper_reproduction.run_evidence10",
+        "--case",
+        "ss10",
+        "--seed",
+        "0",
+        "--phase",
+        "core",
+        "--goal-log-z-uncert",
+        "0.01",
+        "--output",
+        "/largedata/albert/jaxns-evidence10-AC300-20260909/0.01/ss10/seed-00",
+        "--resume-from",
+        "/largedata/albert/jaxns-evidence10-AC300-20260909/0.02/ss10/seed-00"
+      ],
+      "ppid": 4092075,
+      "start_ticks": "193963189"
+    },
+    {
+      "pid": 4120927,
+      "argv": [
+        "/data/albert/miniconda3/envs/jaxns_py/bin/python",
+        "-m",
+        "benchmarks.paper_reproduction.run_evidence10",
+        "--case",
+        "ss10",
+        "--seed",
+        "1",
+        "--phase",
+        "core",
+        "--goal-log-z-uncert",
+        "0.01",
+        "--output",
+        "/largedata/albert/jaxns-evidence10-AC300-20260909/0.01/ss10/seed-01",
+        "--resume-from",
+        "/largedata/albert/jaxns-evidence10-AC300-20260909/0.02/ss10/seed-01"
+      ],
+      "ppid": 4092075,
+      "start_ticks": "193963189"
+    },
+    {
+      "pid": 4120928,
+      "argv": [
+        "/data/albert/miniconda3/envs/jaxns_py/bin/python",
+        "-m",
+        "benchmarks.paper_reproduction.run_evidence10",
+        "--case",
+        "ss10",
+        "--seed",
+        "2",
+        "--phase",
+        "core",
+        "--goal-log-z-uncert",
+        "0.01",
+        "--output",
+        "/largedata/albert/jaxns-evidence10-AC300-20260909/0.01/ss10/seed-02",
+        "--resume-from",
+        "/largedata/albert/jaxns-evidence10-AC300-20260909/0.02/ss10/seed-02"
+      ],
+      "ppid": 4092075,
+      "start_ticks": "193963189"
+    },
+    {
+      "pid": 4120929,
+      "argv": [
+        "/data/albert/miniconda3/envs/jaxns_py/bin/python",
+        "-m",
+        "benchmarks.paper_reproduction.run_evidence10",
+        "--case",
+        "ss10",
+        "--seed",
+        "3",
+        "--phase",
+        "core",
+        "--goal-log-z-uncert",
+        "0.01",
+        "--output",
+        "/largedata/albert/jaxns-evidence10-AC300-20260909/0.01/ss10/seed-03",
+        "--resume-from",
+        "/largedata/albert/jaxns-evidence10-AC300-20260909/0.02/ss10/seed-03"
+      ],
+      "ppid": 4092075,
+      "start_ticks": "193963189"
+    },
+    {
+      "pid": 4120930,
+      "argv": [
+        "/data/albert/miniconda3/envs/jaxns_py/bin/python",
+        "-m",
+        "benchmarks.paper_reproduction.run_evidence10",
+        "--case",
+        "ss10",
+        "--seed",
+        "4",
+        "--phase",
+        "core",
+        "--goal-log-z-uncert",
+        "0.01",
+        "--output",
+        "/largedata/albert/jaxns-evidence10-AC300-20260909/0.01/ss10/seed-04",
+        "--resume-from",
+        "/largedata/albert/jaxns-evidence10-AC300-20260909/0.02/ss10/seed-04"
+      ],
+      "ppid": 4092075,
+      "start_ticks": "193963189"
+    },
+    {
+      "pid": 4120931,
+      "argv": [
+        "/data/albert/miniconda3/envs/jaxns_py/bin/python",
+        "-m",
+        "benchmarks.paper_reproduction.run_evidence10",
+        "--case",
+        "ss10",
+        "--seed",
+        "5",
+        "--phase",
+        "core",
+        "--goal-log-z-uncert",
+        "0.01",
+        "--output",
+        "/largedata/albert/jaxns-evidence10-AC300-20260909/0.01/ss10/seed-05",
+        "--resume-from",
+        "/largedata/albert/jaxns-evidence10-AC300-20260909/0.02/ss10/seed-05"
+      ],
+      "ppid": 4092075,
+      "start_ticks": "193963189"
+    },
+    {
+      "pid": 4120932,
+      "argv": [
+        "/data/albert/miniconda3/envs/jaxns_py/bin/python",
+        "-m",
+        "benchmarks.paper_reproduction.run_evidence10",
+        "--case",
+        "ss10",
+        "--seed",
+        "6",
+        "--phase",
+        "core",
+        "--goal-log-z-uncert",
+        "0.01",
+        "--output",
+        "/largedata/albert/jaxns-evidence10-AC300-20260909/0.01/ss10/seed-06",
+        "--resume-from",
+        "/largedata/albert/jaxns-evidence10-AC300-20260909/0.02/ss10/seed-06"
+      ],
+      "ppid": 4092075,
+      "start_ticks": "193963189"
+    }
+  ],
+  "forced_kill_pids": [],
+  "remaining_pids": [],
+  "stopped_utc": "2026-09-10T12:06:44+00:00",
+  "preserved_checkpoints": [
+    {
+      "seed": 0,
+      "path": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.01/ss10/seed-00/checkpoint.pkl",
+      "size_bytes": 9816092189,
+      "modified_utc": "2026-09-10T11:40:30+00:00",
+      "last_logged_progress": {
+        "iteration": 283,
+        "allocation_iteration": 284,
+        "root_out_degree": 63972,
+        "classic_log_Z": -24.76725571655824,
+        "classic_log_Z_uncert": 0.014357251335181908,
+        "classic_kish_ess": 265031.4775673131,
+        "likelihood_evaluations": 247347465,
+        "classic_samples": 999022,
+        "seconds": 35068.46941392007
+      }
+    },
+    {
+      "seed": 1,
+      "path": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.01/ss10/seed-01/checkpoint.pkl",
+      "size_bytes": 9816092189,
+      "modified_utc": "2026-09-10T11:40:53+00:00",
+      "last_logged_progress": {
+        "iteration": 243,
+        "allocation_iteration": 244,
+        "root_out_degree": 63514,
+        "classic_log_Z": -24.742451761175698,
+        "classic_log_Z_uncert": 0.014483156568007773,
+        "classic_kish_ess": 278198.97689495585,
+        "likelihood_evaluations": 254877775,
+        "classic_samples": 1011871,
+        "seconds": 35218.65186583111
+      }
+    },
+    {
+      "seed": 2,
+      "path": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.01/ss10/seed-02/checkpoint.pkl",
+      "size_bytes": 9816092189,
+      "modified_utc": "2026-09-10T11:37:51+00:00",
+      "last_logged_progress": {
+        "iteration": 209,
+        "allocation_iteration": 211,
+        "root_out_degree": 62801,
+        "classic_log_Z": -24.73004070274009,
+        "classic_log_Z_uncert": 0.014708534835724832,
+        "classic_kish_ess": 304798.08166955615,
+        "likelihood_evaluations": 270754922,
+        "classic_samples": 1042813,
+        "seconds": 36902.7873641802
+      }
+    },
+    {
+      "seed": 3,
+      "path": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.01/ss10/seed-03/checkpoint.pkl",
+      "size_bytes": 9816092189,
+      "modified_utc": "2026-09-10T11:48:15+00:00",
+      "last_logged_progress": {
+        "iteration": 227,
+        "allocation_iteration": 227,
+        "root_out_degree": 68097,
+        "classic_log_Z": -23.187495191569045,
+        "classic_log_Z_uncert": 0.017209120099806605,
+        "classic_kish_ess": 268788.405852132,
+        "likelihood_evaluations": 473779037,
+        "classic_samples": 1541992,
+        "seconds": 68629.39797881083
+      }
+    },
+    {
+      "seed": 4,
+      "path": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.01/ss10/seed-04/checkpoint.pkl",
+      "size_bytes": 9816092189,
+      "modified_utc": "2026-09-10T11:53:52+00:00",
+      "last_logged_progress": {
+        "iteration": 251,
+        "allocation_iteration": 251,
+        "root_out_degree": 61938,
+        "classic_log_Z": -24.643979254075226,
+        "classic_log_Z_uncert": 0.01518397537079339,
+        "classic_kish_ess": 314151.0623858016,
+        "likelihood_evaluations": 274925975,
+        "classic_samples": 1044922,
+        "seconds": 35729.746244026115
+      }
+    },
+    {
+      "seed": 5,
+      "path": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.01/ss10/seed-05/checkpoint.pkl",
+      "size_bytes": 9816092189,
+      "modified_utc": "2026-09-10T12:04:46+00:00",
+      "last_logged_progress": {
+        "iteration": 205,
+        "allocation_iteration": 205,
+        "root_out_degree": 61490,
+        "classic_log_Z": -24.53089165847503,
+        "classic_log_Z_uncert": 0.015545658682692509,
+        "classic_kish_ess": 371633.2509625798,
+        "likelihood_evaluations": 315864165,
+        "classic_samples": 1133501,
+        "seconds": 40788.599266530946
+      }
+    },
+    {
+      "seed": 6,
+      "path": "/largedata/albert/jaxns-evidence10-AC300-20260909/0.01/ss10/seed-06/checkpoint.pkl",
+      "size_bytes": 9816092189,
+      "modified_utc": "2026-09-10T11:58:27+00:00",
+      "last_logged_progress": {
+        "iteration": 206,
+        "allocation_iteration": 208,
+        "root_out_degree": 61677,
+        "classic_log_Z": -24.566185331621046,
+        "classic_log_Z_uncert": 0.015540007822161478,
+        "classic_kish_ess": 364480.53101112053,
+        "likelihood_evaluations": 312129058,
+        "classic_samples": 1127200,
+        "seconds": 40255.30322459899
+      }
+    }
+  ],
+  "completed_counts": {
+    "0.05": {
+      "g10": {
+        "CORE": 30,
+        "ANALYSIS": 30
+      },
+      "cg10": {
+        "CORE": 30,
+        "ANALYSIS": 30
+      },
+      "ss10": {
+        "CORE": 30,
+        "ANALYSIS": 30
+      }
+    },
+    "0.02": {
+      "ss10": {
+        "CORE": 30,
+        "ANALYSIS": 30
+      }
+    },
+    "0.01": {
+      "ss10": {
+        "CORE": 0,
+        "ANALYSIS": 0
+      }
+    },
+    "0.005": {
+      "ss10": {
+        "CORE": 0,
+        "ANALYSIS": 0
+      }
+    }
+  }
+}

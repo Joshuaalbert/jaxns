@@ -1,0 +1,430 @@
+..............FFFFFFFF                                                   [100%]
+=================================== FAILURES ===================================
+_______ test_adapter_matches_pinned_legacy_function_and_prior[eggbox10] ________
+
+case = 'eggbox10'
+
+    @pytest.mark.parametrize("case", list(PRIOR_BOUNDS))
+    def test_adapter_matches_pinned_legacy_function_and_prior(case):
+        name = {"eggbox10": "eggbox", "rosenbrock10": "rosenbrock",
+                "rastrigin10": "rastrigin", "ss10": "spikeslab"}[case]
+        source = ast.parse((REFERENCE / f"{name}.py").read_text())
+        function = next(node for node in ast.walk(source)
+                        if isinstance(node, ast.FunctionDef)
+                        and node.name == "log_likelihood")
+        module = ast.fix_missing_locations(ast.Module(body=[function], type_ignores=[]))
+        namespace = {"jnp": jnp, "tfp": tfp, "ndim": 10}
+        exec(compile(module, f"pinned_legacy_{name}", "exec"), namespace)
+        model = build_model(case, "repository" if case == "ss10" else None)
+        model = pickle.loads(pickle.dumps(model))
+        assert model.U_ndims() == 10
+        low, high = PRIOR_BOUNDS[case]
+        for seed in range(4):
+            u = model.sample_U(jax.random.PRNGKey(seed))
+            x = jax.tree.leaves(model.transform_to_X(u))[0]
+>           np.testing.assert_allclose(
+                x, low + (high - low) * jax.tree.leaves(u)[0], rtol=1e-13,
+            )
+E           AssertionError: 
+E           Not equal to tolerance rtol=1e-13, atol=0
+E           
+E           Mismatched elements: 10 / 10 (100%)
+E           First 5 mismatches are at indices:
+E            [0]: 3.276378482086282 (ACTUAL), 3.2763783931732178 (DESIRED)
+E            [1]: 10.80668867178878 (ACTUAL), 10.80668830871582 (DESIRED)
+E            [2]: 4.117599914106938 (ACTUAL), 4.117599964141846 (DESIRED)
+E            [3]: 25.451003293473672 (ACTUAL), 25.45100212097168 (DESIRED)
+E            [4]: 6.107606675133377 (ACTUAL), 6.107606410980225 (DESIRED)
+E           Max absolute difference among violations: 1.17250199e-06
+E           Max relative difference among violations: 4.60689912e-08
+E            ACTUAL: array([ 3.276378, 10.806689,  4.1176  , 25.451003,  6.107607, 19.965498,
+E                  25.965415, 14.178432,  3.681434, 16.603571])
+E            DESIRED: array([ 3.276378, 10.806688,  4.1176  , 25.451002,  6.107606, 19.965498,
+E                  25.965414, 14.178432,  3.681434, 16.60357 ], dtype=float32)
+
+cicd/tests/test_posterior_candidates.py:48: AssertionError
+_____ test_adapter_matches_pinned_legacy_function_and_prior[rosenbrock10] ______
+
+case = 'rosenbrock10'
+
+    @pytest.mark.parametrize("case", list(PRIOR_BOUNDS))
+    def test_adapter_matches_pinned_legacy_function_and_prior(case):
+        name = {"eggbox10": "eggbox", "rosenbrock10": "rosenbrock",
+                "rastrigin10": "rastrigin", "ss10": "spikeslab"}[case]
+        source = ast.parse((REFERENCE / f"{name}.py").read_text())
+        function = next(node for node in ast.walk(source)
+                        if isinstance(node, ast.FunctionDef)
+                        and node.name == "log_likelihood")
+        module = ast.fix_missing_locations(ast.Module(body=[function], type_ignores=[]))
+        namespace = {"jnp": jnp, "tfp": tfp, "ndim": 10}
+        exec(compile(module, f"pinned_legacy_{name}", "exec"), namespace)
+        model = build_model(case, "repository" if case == "ss10" else None)
+        model = pickle.loads(pickle.dumps(model))
+        assert model.U_ndims() == 10
+        low, high = PRIOR_BOUNDS[case]
+        for seed in range(4):
+            u = model.sample_U(jax.random.PRNGKey(seed))
+            x = jax.tree.leaves(model.transform_to_X(u))[0]
+>           np.testing.assert_allclose(
+                x, low + (high - low) * jax.tree.leaves(u)[0], rtol=1e-13,
+            )
+E           AssertionError: 
+E           Not equal to tolerance rtol=1e-13, atol=0
+E           
+E           Mismatched elements: 3 / 10 (30%)
+E           Mismatch at indices:
+E            [5]: 1.355215311050415 (ACTUAL), 1.355215072631836 (DESIRED)
+E            [6]: 3.2650482654571533 (ACTUAL), 3.265048027038574 (DESIRED)
+E            [9]: 0.2850806713104248 (ACTUAL), 0.2850809097290039 (DESIRED)
+E           Max absolute difference among violations: 2.38418579e-07
+E           Max relative difference among violations: 8.36318992e-07
+E            ACTUAL: array([-3.957096, -1.560124, -3.689327,  3.101306, -3.055888,  1.355215,
+E                   3.265048, -0.486865, -3.828163,  0.285081])
+E            DESIRED: array([-3.957096, -1.560124, -3.689327,  3.101306, -3.055888,  1.355215,
+E                   3.265048, -0.486865, -3.828163,  0.285081], dtype=float32)
+
+cicd/tests/test_posterior_candidates.py:48: AssertionError
+______ test_adapter_matches_pinned_legacy_function_and_prior[rastrigin10] ______
+
+case = 'rastrigin10'
+
+    @pytest.mark.parametrize("case", list(PRIOR_BOUNDS))
+    def test_adapter_matches_pinned_legacy_function_and_prior(case):
+        name = {"eggbox10": "eggbox", "rosenbrock10": "rosenbrock",
+                "rastrigin10": "rastrigin", "ss10": "spikeslab"}[case]
+        source = ast.parse((REFERENCE / f"{name}.py").read_text())
+        function = next(node for node in ast.walk(source)
+                        if isinstance(node, ast.FunctionDef)
+                        and node.name == "log_likelihood")
+        module = ast.fix_missing_locations(ast.Module(body=[function], type_ignores=[]))
+        namespace = {"jnp": jnp, "tfp": tfp, "ndim": 10}
+        exec(compile(module, f"pinned_legacy_{name}", "exec"), namespace)
+        model = build_model(case, "repository" if case == "ss10" else None)
+        model = pickle.loads(pickle.dumps(model))
+        assert model.U_ndims() == 10
+        low, high = PRIOR_BOUNDS[case]
+        for seed in range(4):
+            u = model.sample_U(jax.random.PRNGKey(seed))
+            x = jax.tree.leaves(model.transform_to_X(u))[0]
+>           np.testing.assert_allclose(
+                x, low + (high - low) * jax.tree.leaves(u)[0], rtol=1e-13,
+            )
+E           AssertionError: 
+E           Not equal to tolerance rtol=1e-13, atol=0
+E           
+E           Mismatched elements: 10 / 10 (100%)
+E           First 5 mismatches are at indices:
+E            [0]: -4.052066650390626 (ACTUAL), -4.052066802978516 (DESIRED)
+E            [1]: -1.5975671386718748 (ACTUAL), -1.597567081451416 (DESIRED)
+E            [2]: -3.77787109375 (ACTUAL), -3.7778711318969727 (DESIRED)
+E            [3]: 3.1757373046875 (ACTUAL), 3.1757373809814453 (DESIRED)
+E            [4]: -3.129229736328125 (ACTUAL), -3.1292295455932617 (DESIRED)
+E           Max absolute difference among violations: 1.90734863e-07
+E           Max relative difference among violations: 2.67805477e-07
+E            ACTUAL: array([-4.052067, -1.597567, -3.777871,  3.175737, -3.12923 ,  1.38774 ,
+E                   3.343409, -0.49855 , -3.920039,  0.291923])
+E            DESIRED: array([-4.052067, -1.597567, -3.777871,  3.175737, -3.12923 ,  1.387741,
+E                   3.34341 , -0.49855 , -3.920039,  0.291923], dtype=float32)
+
+cicd/tests/test_posterior_candidates.py:48: AssertionError
+_________ test_adapter_matches_pinned_legacy_function_and_prior[ss10] __________
+
+case = 'ss10'
+
+    @pytest.mark.parametrize("case", list(PRIOR_BOUNDS))
+    def test_adapter_matches_pinned_legacy_function_and_prior(case):
+        name = {"eggbox10": "eggbox", "rosenbrock10": "rosenbrock",
+                "rastrigin10": "rastrigin", "ss10": "spikeslab"}[case]
+        source = ast.parse((REFERENCE / f"{name}.py").read_text())
+        function = next(node for node in ast.walk(source)
+                        if isinstance(node, ast.FunctionDef)
+                        and node.name == "log_likelihood")
+        module = ast.fix_missing_locations(ast.Module(body=[function], type_ignores=[]))
+        namespace = {"jnp": jnp, "tfp": tfp, "ndim": 10}
+        exec(compile(module, f"pinned_legacy_{name}", "exec"), namespace)
+        model = build_model(case, "repository" if case == "ss10" else None)
+        model = pickle.loads(pickle.dumps(model))
+        assert model.U_ndims() == 10
+        low, high = PRIOR_BOUNDS[case]
+        for seed in range(4):
+            u = model.sample_U(jax.random.PRNGKey(seed))
+            x = jax.tree.leaves(model.transform_to_X(u))[0]
+>           np.testing.assert_allclose(
+                x, low + (high - low) * jax.tree.leaves(u)[0], rtol=1e-13,
+            )
+E           AssertionError: 
+E           Not equal to tolerance rtol=1e-13, atol=0
+E           
+E           Mismatched elements: 1 / 10 (10%)
+E           Mismatch at index:
+E            [6]: 5.918057918548584 (ACTUAL), 5.918058395385742 (DESIRED)
+E           Max absolute difference among violations: 4.76837158e-07
+E           Max relative difference among violations: 8.05732432e-08
+E            ACTUAL: array([-2.748516,  0.127851, -2.427193,  5.721567, -1.667066,  3.626258,
+E                   5.918058,  1.415762, -2.593796,  2.342097])
+E            DESIRED: array([-2.748516,  0.127851, -2.427193,  5.721567, -1.667066,  3.626258,
+E                   5.918058,  1.415762, -2.593796,  2.342097], dtype=float32)
+
+cicd/tests/test_posterior_candidates.py:48: AssertionError
+____________ test_ss10_finite_box_evidence_and_density[repository] _____________
+
+definition = 'repository'
+
+    @pytest.mark.parametrize("definition", SS10_DEFINITIONS)
+    def test_ss10_finite_box_evidence_and_density(definition):
+        model = build_model("ss10", definition)
+        means, scales = ss10_parameters(definition)
+        reference = reference_values("ss10", definition)
+        # Independent SciPy multivariate CDF at zero correlation, with finite bounds.
+        masses = np.array([
+            multivariate_normal.cdf(np.full(10, 8.), mean=mean,
+                                    cov=scale ** 2 * np.eye(10),
+                                    lower_limit=np.full(10, -4.))
+            for mean, scale in zip(means, scales, strict=True)
+        ])
+        np.testing.assert_allclose(reference["log_Z"], np.log(masses.sum() / 12. ** 10),
+                                   atol=1e-10, rtol=0)
+        np.testing.assert_allclose(reference["spike_mass"], masses[0] / masses.sum(),
+                                   atol=1e-10, rtol=0)
+        u = model.sample_U(jax.random.PRNGKey(30))
+        u = jax.tree.map(lambda value: jnp.asarray((means[0] + 4.) / 12.), u)
+        expected = np.logaddexp(*[
+            multivariate_normal.logpdf(means[0], mean=mean, cov=scale ** 2 * np.eye(10))
+            for mean, scale in zip(means, scales, strict=True)
+        ])
+>       np.testing.assert_allclose(model.log_likelihood(u), expected, rtol=1e-12)
+                                   ^^^^^^^^^^^^^^^^^^^^^^^
+
+cicd/tests/test_posterior_candidates.py:77: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+src/jaxns/model.py:136: in log_likelihood
+    return _log_likelihood(self, U, args=args, params=params, allow_nan=allow_nan)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src/jaxns/model.py:448: in _log_likelihood
+    apply_return = transform(self.prior_model).apply(
+/data/albert/miniconda3/envs/jaxns_py/lib/python3.12/site-packages/jaxctx/context.py:622: in apply
+    return self._apply_fn(rngs, collections, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/data/albert/miniconda3/envs/jaxns_py/lib/python3.12/site-packages/jaxctx/context.py:670: in apply_fn
+    fn_val = f(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^
+src/jaxns/model.py:301: in __call__
+    return self.fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+benchmarks/paper_reproduction/posterior_cases.py:104: in ss10_repository_prior
+    return prior_model("ss10", "repository")
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+benchmarks/paper_reproduction/posterior_cases.py:75: in prior_model
+    ), name="x").realise()
+                 ^^^^^^^^^
+/data/albert/miniconda3/envs/jaxns_py/lib/python3.12/site-packages/jaxctx/priors/prior.py:217: in realise
+    return realise_prior(prior=self, periodic=periodic, U_collection=U_collection, X_collection=X_collection,
+/data/albert/miniconda3/envs/jaxns_py/lib/python3.12/site-packages/jaxctx/priors/prior.py:697: in realise_prior
+    _validate_array_contract(
+/data/albert/miniconda3/envs/jaxns_py/lib/python3.12/site-packages/jaxctx/priors/prior.py:391: in _validate_array_contract
+    _validate_shape_dtype(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def _validate_shape_dtype(*, actual_shape, actual_dtype, shape: Tuple[int, ...], dtype, label: str):
+        expected_shape = tuple(shape)
+        if tuple(actual_shape) != expected_shape:
+            raise ValueError(f"{label} has shape {actual_shape}, expected {expected_shape}.")
+        expected_dtype = jax.dtypes.canonicalize_dtype(dtype)
+        actual_dtype = jax.dtypes.canonicalize_dtype(actual_dtype)
+        if actual_dtype != expected_dtype:
+>           raise ValueError(f"{label} has dtype {actual_dtype}, expected {expected_dtype}.")
+E           ValueError: Realised unit value x has dtype float64, expected float32.
+E           --------------------
+E           For simplicity, JAX has removed its internal frames from the traceback of the following exception. Set JAX_TRACEBACK_FILTERING=off to include these.
+
+/data/albert/miniconda3/envs/jaxns_py/lib/python3.12/site-packages/jaxctx/priors/prior.py:387: ValueError
+___________ test_ss10_finite_box_evidence_and_density[sd_first_two] ____________
+
+definition = 'sd_first_two'
+
+    @pytest.mark.parametrize("definition", SS10_DEFINITIONS)
+    def test_ss10_finite_box_evidence_and_density(definition):
+        model = build_model("ss10", definition)
+        means, scales = ss10_parameters(definition)
+        reference = reference_values("ss10", definition)
+        # Independent SciPy multivariate CDF at zero correlation, with finite bounds.
+        masses = np.array([
+            multivariate_normal.cdf(np.full(10, 8.), mean=mean,
+                                    cov=scale ** 2 * np.eye(10),
+                                    lower_limit=np.full(10, -4.))
+            for mean, scale in zip(means, scales, strict=True)
+        ])
+        np.testing.assert_allclose(reference["log_Z"], np.log(masses.sum() / 12. ** 10),
+                                   atol=1e-10, rtol=0)
+        np.testing.assert_allclose(reference["spike_mass"], masses[0] / masses.sum(),
+                                   atol=1e-10, rtol=0)
+        u = model.sample_U(jax.random.PRNGKey(30))
+        u = jax.tree.map(lambda value: jnp.asarray((means[0] + 4.) / 12.), u)
+        expected = np.logaddexp(*[
+            multivariate_normal.logpdf(means[0], mean=mean, cov=scale ** 2 * np.eye(10))
+            for mean, scale in zip(means, scales, strict=True)
+        ])
+>       np.testing.assert_allclose(model.log_likelihood(u), expected, rtol=1e-12)
+                                   ^^^^^^^^^^^^^^^^^^^^^^^
+
+cicd/tests/test_posterior_candidates.py:77: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+src/jaxns/model.py:136: in log_likelihood
+    return _log_likelihood(self, U, args=args, params=params, allow_nan=allow_nan)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src/jaxns/model.py:448: in _log_likelihood
+    apply_return = transform(self.prior_model).apply(
+/data/albert/miniconda3/envs/jaxns_py/lib/python3.12/site-packages/jaxctx/context.py:622: in apply
+    return self._apply_fn(rngs, collections, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/data/albert/miniconda3/envs/jaxns_py/lib/python3.12/site-packages/jaxctx/context.py:670: in apply_fn
+    fn_val = f(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^
+src/jaxns/model.py:301: in __call__
+    return self.fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+benchmarks/paper_reproduction/posterior_cases.py:109: in ss10_sd_first_two_prior
+    return prior_model("ss10", "sd_first_two")
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+benchmarks/paper_reproduction/posterior_cases.py:75: in prior_model
+    ), name="x").realise()
+                 ^^^^^^^^^
+/data/albert/miniconda3/envs/jaxns_py/lib/python3.12/site-packages/jaxctx/priors/prior.py:217: in realise
+    return realise_prior(prior=self, periodic=periodic, U_collection=U_collection, X_collection=X_collection,
+/data/albert/miniconda3/envs/jaxns_py/lib/python3.12/site-packages/jaxctx/priors/prior.py:697: in realise_prior
+    _validate_array_contract(
+/data/albert/miniconda3/envs/jaxns_py/lib/python3.12/site-packages/jaxctx/priors/prior.py:391: in _validate_array_contract
+    _validate_shape_dtype(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def _validate_shape_dtype(*, actual_shape, actual_dtype, shape: Tuple[int, ...], dtype, label: str):
+        expected_shape = tuple(shape)
+        if tuple(actual_shape) != expected_shape:
+            raise ValueError(f"{label} has shape {actual_shape}, expected {expected_shape}.")
+        expected_dtype = jax.dtypes.canonicalize_dtype(dtype)
+        actual_dtype = jax.dtypes.canonicalize_dtype(actual_dtype)
+        if actual_dtype != expected_dtype:
+>           raise ValueError(f"{label} has dtype {actual_dtype}, expected {expected_dtype}.")
+E           ValueError: Realised unit value x has dtype float64, expected float32.
+E           --------------------
+E           For simplicity, JAX has removed its internal frames from the traceback of the following exception. Set JAX_TRACEBACK_FILTERING=off to include these.
+
+/data/albert/miniconda3/envs/jaxns_py/lib/python3.12/site-packages/jaxctx/priors/prior.py:387: ValueError
+____________ test_ss10_finite_box_evidence_and_density[sd_all_ten] _____________
+
+definition = 'sd_all_ten'
+
+    @pytest.mark.parametrize("definition", SS10_DEFINITIONS)
+    def test_ss10_finite_box_evidence_and_density(definition):
+        model = build_model("ss10", definition)
+        means, scales = ss10_parameters(definition)
+        reference = reference_values("ss10", definition)
+        # Independent SciPy multivariate CDF at zero correlation, with finite bounds.
+        masses = np.array([
+            multivariate_normal.cdf(np.full(10, 8.), mean=mean,
+                                    cov=scale ** 2 * np.eye(10),
+                                    lower_limit=np.full(10, -4.))
+            for mean, scale in zip(means, scales, strict=True)
+        ])
+        np.testing.assert_allclose(reference["log_Z"], np.log(masses.sum() / 12. ** 10),
+                                   atol=1e-10, rtol=0)
+        np.testing.assert_allclose(reference["spike_mass"], masses[0] / masses.sum(),
+                                   atol=1e-10, rtol=0)
+        u = model.sample_U(jax.random.PRNGKey(30))
+        u = jax.tree.map(lambda value: jnp.asarray((means[0] + 4.) / 12.), u)
+        expected = np.logaddexp(*[
+            multivariate_normal.logpdf(means[0], mean=mean, cov=scale ** 2 * np.eye(10))
+            for mean, scale in zip(means, scales, strict=True)
+        ])
+>       np.testing.assert_allclose(model.log_likelihood(u), expected, rtol=1e-12)
+                                   ^^^^^^^^^^^^^^^^^^^^^^^
+
+cicd/tests/test_posterior_candidates.py:77: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+src/jaxns/model.py:136: in log_likelihood
+    return _log_likelihood(self, U, args=args, params=params, allow_nan=allow_nan)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src/jaxns/model.py:448: in _log_likelihood
+    apply_return = transform(self.prior_model).apply(
+/data/albert/miniconda3/envs/jaxns_py/lib/python3.12/site-packages/jaxctx/context.py:622: in apply
+    return self._apply_fn(rngs, collections, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/data/albert/miniconda3/envs/jaxns_py/lib/python3.12/site-packages/jaxctx/context.py:670: in apply_fn
+    fn_val = f(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^
+src/jaxns/model.py:301: in __call__
+    return self.fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+benchmarks/paper_reproduction/posterior_cases.py:114: in ss10_sd_all_ten_prior
+    return prior_model("ss10", "sd_all_ten")
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+benchmarks/paper_reproduction/posterior_cases.py:75: in prior_model
+    ), name="x").realise()
+                 ^^^^^^^^^
+/data/albert/miniconda3/envs/jaxns_py/lib/python3.12/site-packages/jaxctx/priors/prior.py:217: in realise
+    return realise_prior(prior=self, periodic=periodic, U_collection=U_collection, X_collection=X_collection,
+/data/albert/miniconda3/envs/jaxns_py/lib/python3.12/site-packages/jaxctx/priors/prior.py:697: in realise_prior
+    _validate_array_contract(
+/data/albert/miniconda3/envs/jaxns_py/lib/python3.12/site-packages/jaxctx/priors/prior.py:391: in _validate_array_contract
+    _validate_shape_dtype(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def _validate_shape_dtype(*, actual_shape, actual_dtype, shape: Tuple[int, ...], dtype, label: str):
+        expected_shape = tuple(shape)
+        if tuple(actual_shape) != expected_shape:
+            raise ValueError(f"{label} has shape {actual_shape}, expected {expected_shape}.")
+        expected_dtype = jax.dtypes.canonicalize_dtype(dtype)
+        actual_dtype = jax.dtypes.canonicalize_dtype(actual_dtype)
+        if actual_dtype != expected_dtype:
+>           raise ValueError(f"{label} has dtype {actual_dtype}, expected {expected_dtype}.")
+E           ValueError: Realised unit value x has dtype float64, expected float32.
+E           --------------------
+E           For simplicity, JAX has removed its internal frames from the traceback of the following exception. Set JAX_TRACEBACK_FILTERING=off to include these.
+
+/data/albert/miniconda3/envs/jaxns_py/lib/python3.12/site-packages/jaxctx/priors/prior.py:387: ValueError
+_____ test_mixed_phantom_run_classic_ess_matches_result_and_direct_weights _____
+
+    def test_mixed_phantom_run_classic_ess_matches_result_and_direct_weights():
+        model = build_model("rastrigin10")
+        depth = DepthCondition(dlogZ=jnp.log1p(.01))
+        sampler = NestedSampler(
+            model=model, root_allocation_degree=8, shell_size=4, delta_K=8,
+            sampler=UniDimSliceSampler(model=model, num_slices=5,
+                                       collect_phantom_samples=True,
+                                       max_phantom_samples=4, no_step_out=True),
+            collect_phantom_samples=True, max_phantom_samples=4,
+            allocation_target="weighted", allocation_weights=AllocationWeights(.1, .9),
+            unlimited_samples=True, depth_condition=depth,
+        )
+        bootstrap = dataclasses.replace(sampler, allocation_target="uniform",
+                                        allocation_weights=None, delta_K=1)
+        state = bootstrap.run_until_goal(lambda s: int(s.goal_loop_iter) >= 1,
+                                         key=jax.random.PRNGKey(0))
+        state = sampler.resume_until_goal(state, lambda s: int(s.goal_loop_iter) >= 2)
+        metrics = classic_metrics(state)
+        results = state.to_result().trim()
+        weights = np.exp(np.asarray(results.log_dp))
+        weights /= weights.sum()
+        np.testing.assert_allclose(metrics.kish_ess, 1. / np.sum(weights ** 2), rtol=1e-12)
+>       np.testing.assert_allclose(metrics.kish_ess, results.ESS, rtol=1e-12)
+                                                     ^^^^^^^^^^^
+E       AttributeError: 'NestedSamplerResults' object has no attribute 'ESS'
+
+cicd/tests/test_posterior_candidates.py:102: AttributeError
+=============================== warnings summary ===============================
+../../../../data/albert/miniconda3/envs/jaxns_py/lib/python3.12/site-packages/tensorflow_probability/python/internal/backend/jax/ops.py:684
+  /data/albert/miniconda3/envs/jaxns_py/lib/python3.12/site-packages/tensorflow_probability/python/internal/backend/jax/ops.py:684: DeprecationWarning: jax.core.pytype_aval_mappings is deprecated.
+    jax.core.pytype_aval_mappings[onp.ndarray])
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED cicd/tests/test_posterior_candidates.py::test_adapter_matches_pinned_legacy_function_and_prior[eggbox10]
+FAILED cicd/tests/test_posterior_candidates.py::test_adapter_matches_pinned_legacy_function_and_prior[rosenbrock10]
+FAILED cicd/tests/test_posterior_candidates.py::test_adapter_matches_pinned_legacy_function_and_prior[rastrigin10]
+FAILED cicd/tests/test_posterior_candidates.py::test_adapter_matches_pinned_legacy_function_and_prior[ss10]
+FAILED cicd/tests/test_posterior_candidates.py::test_ss10_finite_box_evidence_and_density[repository]
+FAILED cicd/tests/test_posterior_candidates.py::test_ss10_finite_box_evidence_and_density[sd_first_two]
+FAILED cicd/tests/test_posterior_candidates.py::test_ss10_finite_box_evidence_and_density[sd_all_ten]
+FAILED cicd/tests/test_posterior_candidates.py::test_mixed_phantom_run_classic_ess_matches_result_and_direct_weights
+8 failed, 14 passed, 1 warning in 49.66s
+ERROR conda.cli.main_run:execute(125): `conda run taskset -c 4 pytest -q cicd/tests/test_weighted_allocation.py cicd/tests/test_posterior_candidates.py` failed. (See above for error)

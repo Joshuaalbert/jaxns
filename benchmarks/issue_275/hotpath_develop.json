@@ -1,0 +1,21 @@
+{
+  "source_root": "/tmp/jaxns-issue-275-develop",
+  "periodic": false,
+  "stablehlo_sha256": "d4bb889d1efa6c9067cf182a9e2b7baac3167608550abe9afe32a9df14d4ebee",
+  "stablehlo_lines": 1152,
+  "remainder_operations": 0,
+  "select_operations": 133,
+  "compile_s": 0.49844488501548767,
+  "compile_samples_s": [
+    0.49612902686931193,
+    0.48142993706278503,
+    0.5474770220462233,
+    0.5085429570171982,
+    0.49844488501548767
+  ],
+  "median_execute_s": 0.00041279389057308436,
+  "temporary_bytes": 8136,
+  "argument_bytes": 200,
+  "output_bytes": 352,
+  "alias_bytes": 0
+}

@@ -1,0 +1,399 @@
+{
+  "Model sanity checks report invalid raw outputs before likelihood conversion, while accepting explicit zero likelihoods.": [
+    "test_sanity_check_rejects_invalid_model_outputs"
+  ],
+  "Normal model evaluation maps NaN log-likelihoods to zero likelihood throughout sampling, retaining the prior mass of those regions.": [
+    "test_nan_likelihood_is_zero_but_sanity_check_reports_raw_output"
+  ],
+  "A declared continuous periodic coordinate identifies its two unit-hypercube endpoints while preserving the normalized prior measure and canonical storage in the half-open unit interval.": [
+    "test_periodic_coordinates_expand_in_sampler_order",
+    "test_periodic_coordinates_report_all_false_topology",
+    "test_periodic_slice_continuations_preserve_complete_chain_outputs",
+    "test_random_charts_preserve_uniform_circular_measure",
+    "test_distributed_worker_replays_the_configured_periodic_sampler",
+    "test_periodic_sampler_executes_in_real_worker_processes"
+  ],
+  "Changing the chart origin of a periodic coordinate does not change the constrained target, while non-periodic coordinates retain their hard unit-hypercube endpoints.": [
+    "test_periodic_evidence_and_moment_are_rotation_invariant",
+    "test_mixed_cylinder_crosses_only_the_periodic_seam"
+  ],
+  "Collecting or retaining phantoms does not change the classic samples, race tree, or classic-conditioned result for the same random run.": [
+    "test_phantom_payload_does_not_change_vector_worker_trajectory",
+    "test_additional_retained_phantoms_leave_classic_run_invariant"
+  ],
+  "Every nested-sampling contour is strict: a point satisfies contour lambda exactly when its likelihood is greater than lambda.": [
+    "test_block_state_rejects_strict_contour_violation",
+    "test_state_consistency_rejects_strict_contour_violation",
+    "test_results_sample_evidence_rejects_strict_contour_equality",
+    "test_public_sample_evidence_rejects_strict_contour_equality"
+  ],
+  "A seed used for a constrained chain is stationary for the requested parent contour before the chain starts.": [
+    "test_mixed_contour_seed_groups_remain_distinct_after_rejection"
+  ],
+  "The sentinel out-degree plus all classic-sample out-degrees equals the number of classic samples in a complete stored race tree.": [
+    "test_block_state_rejects_inconsistent_out_degree_total"
+  ],
+  "The first race has active lineage count equal to the sentinel out-degree.": [
+    "test_canonical_block_state_groups_plateaus_and_incoming_K_g",
+    "test_jax_block_state_groups_plateaus_and_incoming_K_g"
+  ],
+  "After one sample arrives with out-degree d, the active lineage count changes from K to K minus one plus d.": [
+    "test_canonical_block_state_groups_plateaus_and_incoming_K_g",
+    "test_jax_block_state_groups_plateaus_and_incoming_K_g"
+  ],
+  "Every valid race arrival has a strictly positive incoming active-lineage count.": [
+    "test_canonical_block_state_rejects_plateau_with_too_few_lineages"
+  ],
+  "All classic samples at the same likelihood form one block, and distinct valid blocks are ordered by strictly increasing likelihood.": [
+    "test_canonical_block_state_groups_plateaus_and_incoming_K_g",
+    "test_jax_block_state_groups_plateaus_and_incoming_K_g",
+    "test_seed_publication_merges_generation_larger_than_thread_heap",
+    "test_seed_publication_merges_root_dominated_refresh_generation"
+  ],
+  "A block's multiplicity is the number of classic samples at its likelihood and its out-degree is the sum of their out-degrees.": [
+    "test_canonical_block_state_groups_plateaus_and_incoming_K_g",
+    "test_jax_block_state_groups_plateaus_and_incoming_K_g"
+  ],
+  "A block cannot contain more race arrivals than its incoming active lineage count.": [
+    "test_canonical_block_state_rejects_plateau_with_too_few_lineages",
+    "test_dirichlet_concentrations_reject_K_g_less_than_m_g"
+  ],
+  "The probability beyond a block is the strict prior-volume ratio across that block, the equality probability is the atom at the block likelihood, and the remaining probability is the open race interval.": [
+    "test_sample_evidence_uses_strict_endpoint_recurrence",
+    "test_plateau_equality_mass_and_R_component_are_separate_gamma_targets"
+  ],
+  "The beyond, equality, and open-interval probabilities of every valid block are non-negative and sum to one.": [
+    "test_jax_gamma_weighted_samples_are_raw_per_draw_normalization",
+    "test_reference_gamma_weighted_samples_are_raw_per_draw_normalization"
+  ],
+  "A singleton block is not evidence for a likelihood atom and uses the exact two-class shrinkage law Beta(K, 1).": [
+    "test_singleton_block_stays_two_class_and_correlated_cluster_inflates_variance",
+    "test_gamma_weighted_helper_keeps_singleton_block_two_class"
+  ],
+  "A plateau block with multiplicity greater than one uses a three-class model that separates strict volume beyond the plateau, equality-atom mass, and the open race interval.": [
+    "test_dirichlet_concentrations_use_plateau_epsilon_policy",
+    "test_gamma_weighted_helper_keeps_plateau_equality_and_open_interval_separate"
+  ],
+  "Equality-atom posterior mass for a plateau is divided equally among the classic samples in that plateau.": [
+    "test_posterior_weights_split_plateau_equality_atom_mass"
+  ],
+  "Strict prior volume after a plateau excludes the plateau's equality-atom mass.": [
+    "test_sample_evidence_uses_strict_endpoint_recurrence"
+  ],
+  "The initial prior volume is one and the valid strict prior-volume sequence is non-increasing and remains between zero and one.": [
+    "test_expected_volume_path_uses_dirichlet_p_gt_means"
+  ],
+  "Depth-loop evidence and posterior-tail conditions use the expected classic shrinkage path reconstructed at planning or drain boundaries and do not use phantom-conditioned Monte Carlo draws.": [
+    "test_depth_keeps_exploring_before_any_finite_likelihood_is_found"
+  ],
+  "Evidence and posterior calculations use the strict volume beyond each block rather than a race rank censored inside a plateau.": [
+    "test_sample_evidence_uses_strict_endpoint_recurrence"
+  ],
+  "Classic Monte Carlo shrinkage draws follow the same block probability model used by the corresponding classic expectation calculation.": [
+    "test_mc_linear_evidence_moments_match_deterministic_expectations",
+    "test_no_phantom_evidence_uses_canonical_plateau_blocks"
+  ],
+  "Increasing the number of independent shrinkage draws makes Monte Carlo evidence summaries converge to the moments implied by the classic shrinkage model.": [
+    "test_mc_linear_evidence_moments_match_deterministic_expectations"
+  ],
+  "Every phantom cluster is associated with one classic child and contains only a start-prefix of retained chain states generated under that child's recorded parent contour, with the final classic replacement excluded.": [
+    "test_each_retained_chain_is_one_kish_cluster",
+    "test_retained_phantoms_are_generated_chain_prefix",
+    "test_phantom_capacity_retains_start_prefix_and_excludes_classic"
+  ],
+  "Dependence within a phantom cluster is preserved by sharing one random cluster weight across all observations and all blocks contributed by that cluster in one shrinkage draw.": [
+    "test_deterministic_gamma_helper_reuses_cluster_weights_across_blocks_and_components"
+  ],
+  "Changing how independent final Monte Carlo draws are batched does not change phantom-cluster identity, the joint shrinkage law, or the evidence distribution.": [
+    "test_sample_evidence_batching_is_reproducible_and_matches_moments",
+    "test_sample_evidence_one_batch_preserves_fixed_key_draws",
+    "test_batched_summary_preserves_block_models_and_kish_gate"
+  ],
+  "Selecting a shorter phantom-conditioning prefix uses the first requested retained states of every cluster and is equivalent to physically truncating the result's phantom axis to that prefix.": [
+    "test_sample_evidence_prefix_matches_physically_sliced_result"
+  ],
+  "A phantom contributes to a block only when its cluster parent contour is no stricter than the preceding block contour and the phantom lies beyond that preceding contour.": [
+    "test_per_cluster_counts_are_parent_contour_gated_with_equality_and_open_interval",
+    "test_reference_count_matrices_expose_parent_gated_R_and_aggregates",
+    "test_zero_contour_phantoms_cannot_inform_zero_plateau_mass"
+  ],
+  "For a plateau block, an eligible phantom is classified exactly once as beyond the block, equal to the block, or in the open race interval.": [
+    "test_per_cluster_counts_are_parent_contour_gated_with_equality_and_open_interval",
+    "test_jax_and_reference_per_cluster_counts_match_plateau_fixture"
+  ],
+  "For a singleton block, phantom conditioning remains a two-class model: an eligible phantom is either beyond the block or in its complement, and no equality class is introduced.": [
+    "test_singleton_block_stays_two_class_and_correlated_cluster_inflates_variance",
+    "test_gamma_weighted_helper_keeps_singleton_block_two_class"
+  ],
+  "Phantom conditioning is applied to a block only when the participating clusters provide the configured minimum effective independent information.": [
+    "test_kish_gate_default_C_min_configurable_and_requires_independent_clusters",
+    "test_phantom_gate_rejects_zero_participation_when_threshold_is_zero"
+  ],
+  "When phantom conditioning is inactive for a block, that block has exactly the classic shrinkage law.": [
+    "test_no_phantom_and_gate_inactive_blocks_reduce_to_classic_race_gammas",
+    "test_gamma_weighted_helper_inactive_gate_ignores_phantom_counts_exactly"
+  ],
+  "When all eligible phantom clusters are independent singletons, phantom conditioning reduces to ordinary conjugate categorical-count conditioning.": [
+    "test_results_sample_evidence_uses_gamma_conditioning_when_gate_active"
+  ],
+  "A generated edge from parent likelihood L_i to child likelihood L_j adds one active lineage to every existing block whose likelihood satisfies L_i less than L_g less than or equal to L_j.": [
+    "test_jax_decomposition_matches_python_reference_and_exact_coverage"
+  ],
+  "The allocation gap at a block is the positive part of its target lineage count minus its current lineage count.": [
+    "test_depth_first_uniform_gaps_follow_additive_iteration_formula",
+    "test_first_uniform_depth_view_uses_zero_based_allocation_target"
+  ],
+  "Advancing a logical thread fills allocation gaps only along contours crossed by the generated lineage.": [
+    "test_jax_decomposition_matches_python_reference_and_exact_coverage"
+  ],
+  "A parent selected for new work is chosen from a contour with an outstanding allocation gap or from a scientifically equivalent seedable reparenting contour.": [
+    "test_missing_stationary_seed_reparents_to_closest_shallower_contour"
+  ],
+  "A seed is eligible for parent contour lambda only when its likelihood is greater than lambda and the contour from which it was generated is no greater than lambda.": [
+    "test_frozen_seed_rank_index_matches_every_brute_force_interval",
+    "test_mixed_contour_seed_groups_remain_distinct_after_rejection"
+  ],
+  "Concurrent children requested from the same parent contour use distinct eligible seeds whenever enough distinct eligible seeds exist.": [
+    "test_appended_seed_population_remains_distinct_when_large_enough",
+    "test_distributed_refill_reserves_pending_same_contour_seed",
+    "test_distributed_refills_reserve_starts_beyond_worker_capacity",
+    "test_nonroot_start_reservation_is_not_bounded_by_batch_width",
+    "test_pending_same_contour_seeds_are_reserved_across_refills",
+    "test_post_freeze_pending_start_is_counted_once",
+    "test_same_contour_parallel_threads_use_distinct_stationary_seeds",
+    "test_same_contour_thread_starts_remain_distinct_across_batches",
+    "test_thread_starts_partition_published_and_retained_stationary_seeds",
+    "test_evicted_recent_reservations_do_not_hide_unseen_stationary_seeds"
+  ],
+  "Reparenting caused by a lack of stationary seeds preserves the constrained-prior law required by the newly recorded parent contour.": [
+    "test_effective_fallback_contour_orders_start_before_continuation",
+    "test_seedless_continuation_heap_uses_its_effective_contour",
+    "test_missing_stationary_seed_reparents_to_closest_shallower_contour"
+  ],
+  "Resuming a state with its stored random-stream position is scientifically equivalent to uninterrupted continuation under the same conditions.": [
+    "test_resume_uses_stored_key_and_matches_uninterrupted_run",
+    "test_unlimited_growth_matches_preallocated_scientific_continuation",
+    "test_local_automatic_resume_matches_uninterrupted_random_stream",
+    "test_single_iteration_sigint_saves_and_resumes_exact_depth"
+  ],
+  "Automatic checkpoint resume restores exactly the last committed full run state, including its random stream and any retry-stable distributed work.": [
+    "test_checkpoint_round_trip_publishes_manifest_after_complete_state",
+    "test_local_automatic_resume_matches_uninterrupted_random_stream",
+    "test_run_single_iteration_automatically_loads_and_advances_checkpoint",
+    "test_complete_distributed_pending_state_round_trips_without_task_loss",
+    "test_real_pool_runs_scalar_vmap_retries_and_cli_lifecycle"
+  ],
+  "An interrupted or corrupted checkpoint cannot be accepted as a valid run state, and corrupted state bytes are rejected before deserialization.": [
+    "test_checksum_mismatch_fails_closed_before_deserialization",
+    "test_interrupted_state_write_preserves_previous_commit",
+    "test_interrupted_manifest_publication_preserves_previous_commit",
+    "test_missing_manifest_with_state_file_is_incomplete_checkpoint",
+    "test_malformed_manifest_fails_before_state_lookup",
+    "test_missing_state_file_and_unsupported_schema_fail_clearly"
+  ],
+  "A state contains all scientific data and random-stream position needed to continue its run without hidden mutable sampler state.": [
+    "test_ellipsoidal_state_survives_checkpoint_growth_and_resume",
+    "test_user_stages_gmm_directions_between_uncertainty_goals",
+    "test_distributed_resume_registers_the_checkpoint_model",
+    "test_zero_plateau_survives_allocation_and_checkpoint_round_trip"
+  ],
+  "A finite scientific sample limit is never exceeded, including by a partially filled replacement batch.": [
+    "test_finite_capacity_terminates_below_and_exactly_at_hard_maximum",
+    "test_partial_batch_respects_non_multiple_max_samples",
+    "test_worker_slots_are_not_refilled_after_sample_budget_terminates"
+  ],
+  "A run that cannot satisfy its goal returns its resumable state rather than silently claiming that the goal was met.": [
+    "test_python_goal_loop_reports_terminal_depth_budget_without_iteration"
+  ],
+  "Converting a state to results preserves every valid classic sample and excludes every unused capacity entry from user-facing sample statistics.": [
+    "test_trim_keeps_log_l_blocks_aligned_to_trimmed_sample_size"
+  ],
+  "Classic evidence sampling remains available whether or not phantom samples were collected.": [
+    "test_reference_sample_evidence_no_phantoms_uses_classic_gamma_path",
+    "test_sample_evidence_no_phantom_path_does_not_require_old_rho_diagnostics",
+    "test_nested_sampling_run_results"
+  ],
+  "Posterior resampling draws from the normalized posterior weights represented by the result.": [
+    "test_resample_returns_an_empirical_posterior_with_integration",
+    "test_resampled_posterior_integrates_its_draws_and_round_trips"
+  ],
+  "Independent logical random choices use non-overlapping random streams derived from the run key.": [
+    "test_gamma_race_components_and_cluster_weights_are_independent_draws"
+  ],
+  "Invalid shapes, invalid lineage capacity, inconsistent block membership, or incompatible phantom metadata fail visibly before producing scientific summaries.": [
+    "test_count_matrix_validation_rejects_malformed_count_relations",
+    "test_count_input_validation_rejects_stale_and_malformed_metadata",
+    "test_results_sample_evidence_rejects_malformed_arrays_before_jit",
+    "test_public_sample_evidence_rejects_stale_block_likelihoods_before_jit",
+    "test_sample_evidence_rejects_invalid_batch_sizes",
+    "test_sample_evidence_rejects_invalid_phantom_prefix"
+  ],
+  "The default installation supplies plotting dependencies, scientific imports do not eagerly import them, and requesting plotting when they are unavailable fails with an actionable installation remedy.": [
+    "test_missing_plotting_dependency_has_actionable_error"
+  ],
+  "Numerically stable evidence arithmetic represents values across the supported likelihood dynamic range without converting avoidable underflow or overflow into finite scientific conclusions.": [
+    "test_log_space",
+    "test_signed_logaddexp",
+    "test_cumulative_logsumexp",
+    "test_logaddexp"
+  ],
+  "Public effective-sample-size, uncertainty, and diagnostic quantities are finite whenever their mathematical inputs are finite and non-degenerate, and otherwise report the degenerate case explicitly.": [
+    "test_linear_to_log_stats"
+  ],
+  "Changing how valid constrained-sampling work is batched or scheduled does not change the marginal law of any classic child.": [
+    "test_distributed_dispatch_queues_scalar_threads_without_shell_barrier",
+    "test_distributed_completion_order_preserves_scientific_state",
+    "test_worker_request_uses_scalar_and_vmap_paths_above_strict_contour",
+    "test_periodic_scalar_and_vmapped_chains_share_one_transition_law",
+    "test_real_pool_runs_scalar_vmap_retries_and_cli_lifecycle"
+  ],
+  "Every emitted classic child satisfies its recorded parent contour strictly.": [
+    "test_worker_request_uses_scalar_and_vmap_paths_above_strict_contour",
+    "test_real_pool_runs_scalar_vmap_retries_and_cli_lifecycle"
+  ],
+  "Retrying one logical sampling task preserves its original random choices and can change committed scientific state at most once.": [
+    "test_two_missed_heartbeats_fence_lease_and_requeue",
+    "test_real_pool_runs_scalar_vmap_retries_and_cli_lifecycle",
+    "test_supervisor_deduplicates_task_identity_until_acknowledgement",
+    "test_task_timeout_requeues_byte_identical_payload_on_compatible_worker"
+  ],
+  "In distributed execution every likelihood evaluation, including root initialization, executes on a registered worker and not in the scientific coordinator process.": [
+    "test_distributed_initialisation_dispatches_every_likelihood",
+    "test_zero_plateau_evidence_in_real_worker_processes"
+  ],
+  "Joining, losing, or replacing worker capacity cannot discard or duplicate a logical task, and cannot permanently close an active run to later compatible capacity.": [
+    "test_remote_restart_request_waits_for_node_heartbeat_and_acknowledgement",
+    "test_node_restart_request_fences_only_the_named_worker_instance",
+    "test_fenced_worker_forces_process_exit_for_supervisor_restart",
+    "test_fresh_worker_instance_supersedes_live_stale_lease",
+    "test_node_joins_runs_restarts_and_drains_over_tcp"
+  ],
+  "Losing every distributed worker leaves scientific state unchanged and waits for compatible capacity rather than converting worker starvation into a scientific run failure.": [
+    "test_worker_starvation_waits_until_results_or_capacity_recover",
+    "test_node_joins_runs_restarts_and_drains_over_tcp"
+  ],
+  "A resumable distributed checkpoint identifies every outstanding logical sample and its random stream without treating an unreturned sample as an observed race-tree arrival.": [
+    "test_distributed_checkpoint_preserves_unreturned_task_and_keys",
+    "test_submit_failure_exposes_newest_resumable_checkpoint",
+    "test_complete_distributed_pending_state_round_trips_without_task_loss"
+  ],
+  "A completed distributed state exposed to a user contains no provisional lineage or uncommitted sampling work.": [
+    "test_reservations_are_planning_data_until_once_only_acceptance",
+    "test_real_pool_runs_scalar_vmap_retries_and_cli_lifecycle"
+  ],
+  "User-facing evidence sampling defaults to classic conditioning and requires an explicit opt-in to phantom conditioning.": [
+    "test_mc_defaults_to_classic_without_changing_expectation_estimates"
+  ],
+  "Evaluating a model through its unit-hypercube representation gives the same likelihood as evaluating the corresponding transformed parameter values.": [
+    "test_sampler_uses_the_model_supplied_for_each_request"
+  ],
+  "A model defines a likelihood over a normalized prior measure, and the evidence is the prior expectation of that likelihood.": [
+    "test_zero_likelihood_prior_mass_is_retained_in_evidence"
+  ],
+  "A classic child associated with a parent contour has the constrained-prior marginal distribution above that parent contour.": [
+    "test_root_draws_and_zero_contour_chains_have_different_support",
+    "test_sentinel_threads_do_not_select_or_reserve_stationary_seeds"
+  ],
+  "Integrating a function over the posterior uses the result's normalized posterior measure and preserves the function's pytree structure.": [
+    "test_posterior_integration_ignores_undefined_zero_mass_rows",
+    "test_posterior_integration_padding_preserves_parameter_gradients"
+  ],
+  "Sampling the model's unit-hypercube representation and transforming it to parameter space produces draws from the declared prior, including declared parameter dependencies.": [
+    "test_prior_transform_preserves_hierarchical_measure_and_dimension"
+  ],
+  "Model arguments and parameters used to create a run remain the arguments and parameters associated with every state and result derived from that run.": [
+    "test_local_run_entrypoints_forward_inputs",
+    "test_local_resume_resolves_only_checkpoint_inputs",
+    "test_distributed_run_and_resume_use_state_owned_inputs"
+  ],
+  "A model's reported unit-hypercube dimensionality equals the number of scalar unit-hypercube coordinates consumed by its prior transformation.": [
+    "test_prior_transform_preserves_hierarchical_measure_and_dimension",
+    "test_runner_reuse_resolves_dimensions_from_each_runs_inputs"
+  ],
+  "A constrained-sampling transition leaves the parent constrained-prior distribution invariant.": [
+    "test_stationary_chains_preserve_classic_and_phantom_disk_marginals"
+  ],
+  "Likelihood-evaluation accounting for a generated sample counts every likelihood evaluation used to generate that sample and no evaluations belonging to another sample.": [
+    "test_scalar_chain_counts_each_likelihood_evaluation_once",
+    "test_slice_continuations_preserve_complete_chain_outputs",
+    "test_slice_continuations_do_not_execute_scheduler_padding",
+    "test_root_draws_and_zero_contour_chains_have_different_support"
+  ],
+  "Every classic sample has exactly one parent contour, while the sentinel root has no parent and has strictly positive out-degree.": [
+    "test_completed_race_law_depends_on_edges_not_allocation_policy",
+    "test_parent_graph_respects_contours_degrees_and_storage_indices"
+  ],
+  "A sample's out-degree is exactly the number of classic children generated from that sample's contour.": [
+    "test_completed_race_law_depends_on_edges_not_allocation_policy",
+    "test_parent_graph_assigns_zero_arrivals_to_sentinel_and_respects_plateaus"
+  ],
+  "The likelihood contours and out-degrees determine the race shrinkage law independently of the physical storage order of samples.": [
+    "test_stored_sample_permutation_preserves_evidence_and_posterior"
+  ],
+  "Permuting samples within an equal-likelihood block does not change block lineage counts, shrinkage, evidence, or posterior mass.": [
+    "test_stored_sample_permutation_preserves_evidence_and_posterior"
+  ],
+  "Every valid evidence contribution and unnormalized posterior weight is non-negative.": [
+    "test_evidence_mass_is_nonnegative_and_posterior_is_normalized"
+  ],
+  "Normalized posterior weights over valid samples sum to one whenever the evidence is finite and positive.": [
+    "test_evidence_mass_is_nonnegative_and_posterior_is_normalized"
+  ],
+  "Evidence and posterior results are invariant to a compatible reordering of stored classic samples.": [
+    "test_stored_sample_permutation_preserves_evidence_and_posterior"
+  ],
+  "Phantom samples are auxiliary constrained-prior observations and never participate as arrivals or lineages in the classic race tree.": [
+    "test_additional_retained_phantoms_leave_classic_run_invariant"
+  ],
+  "Retained phantom states have the constrained-prior marginal distribution of their cluster's parent contour.": [
+    "test_stationary_chains_preserve_classic_and_phantom_disk_marginals"
+  ],
+  "Phantom clusters treated as independent contributions originate from independently initialized stationary chains.": [
+    "test_stationary_chains_preserve_classic_and_phantom_disk_marginals",
+    "test_same_contour_parallel_threads_use_distinct_stationary_seeds",
+    "test_same_contour_thread_starts_remain_distinct_across_batches"
+  ],
+  "Phantom-conditioned evidence is an optional final inference over a completed state and does not alter the state used to generate the race.": [
+    "test_final_phantom_inference_leaves_state_and_continuation_unchanged"
+  ],
+  "Allocation strategy may change where precision is added but cannot change the shrinkage law implied by the completed race tree.": [
+    "test_completed_race_law_depends_on_edges_not_allocation_policy"
+  ],
+  "The user-supplied goal condition is evaluated against complete immutable run states and determines successful user-goal termination.": [
+    "test_unlimited_growth_matches_preallocated_scientific_continuation",
+    "test_public_scientific_data_objects_are_frozen_and_slotted"
+  ],
+  "A depth condition bounds one allocation epoch without being reported as successful satisfaction of the user's outer goal.": [
+    "test_filled_target_advances_allocation_without_exposing_user_goal",
+    "test_unlimited_growth_matches_preallocated_scientific_continuation"
+  ],
+  "Phantom evidence sampling fails clearly when the state lacks the metadata required for valid conditioning.": [
+    "test_phantom_evidence_requires_collected_metadata",
+    "test_results_sample_evidence_rejects_malformed_arrays_before_jit",
+    "test_count_input_validation_rejects_stale_and_malformed_metadata"
+  ],
+  "Summary and plotting operations do not mutate the scientific result from which they are produced.": [
+    "test_summary_and_plots_preserve_all_result_arrays"
+  ],
+  "Repeating a run with the same model, configuration, inputs, and random key reproduces the same scientific state on the same supported execution platform.": [
+    "test_final_phantom_inference_leaves_state_and_continuation_unchanged",
+    "test_resume_uses_stored_key_and_matches_uninterrupted_run"
+  ],
+  "Changing only the random key may change a realization but does not change the target nested-sampling law.": [
+    "test_independent_prior_races_calibrate_evidence_and_converge_in_posterior",
+    "test_stationary_chains_preserve_classic_and_phantom_disk_marginals"
+  ],
+  "On a problem with known evidence, repeated normalized evidence errors are centered at zero and have unit-scale dispersion when the reported uncertainty is calibrated.": [
+    "test_independent_prior_races_calibrate_evidence_and_converge_in_posterior"
+  ],
+  "On a problem with a known posterior, posterior estimates converge to the known posterior as independent nested-sampling information increases.": [
+    "test_independent_prior_races_calibrate_evidence_and_converge_in_posterior"
+  ],
+  "On a likelihood with known equality atoms, inferred strict volume and atom mass converge to their known values without treating singleton observations as atom evidence.": [
+    "test_known_plateau_volumes_and_atoms_converge_with_independent_information"
+  ],
+  "Enabling valid phantom conditioning may reduce uncertainty but does not introduce systematic evidence or posterior bias.": [
+    "test_stationary_phantom_conditioning_preserves_analytic_evidence_and_posterior",
+    "test_final_phantom_inference_leaves_state_and_continuation_unchanged"
+  ]
+}

@@ -1,0 +1,525 @@
+{
+  "provisional": true,
+  "unfinished_0p02_seeds": [
+    3,
+    10,
+    14,
+    21,
+    26,
+    29
+  ],
+  "fits": {
+    "core": {
+      "intercept_gib": 2.5106786426279384,
+      "gib_per_million_capacity": 14.147025036357958,
+      "gib_per_million_samples": 0.0,
+      "residual_allowance_gib": 0.5555818079796424,
+      "observations": 54,
+      "headroom": 1.2
+    },
+    "analysis": {
+      "intercept_gib": 0.5908513636347016,
+      "gib_per_million_capacity": 5.320645945290663,
+      "gib_per_million_samples": 18.895410079454948,
+      "residual_allowance_gib": 0.01483411510839261,
+      "observations": 53,
+      "headroom": 1.2
+    }
+  },
+  "sample_exponent_by_seed": {
+    "0": 2.054559331637624,
+    "1": 2.0637323312355162,
+    "2": 2.107193392938613,
+    "4": 2.090949398000675,
+    "5": 2.075831025047336,
+    "6": 2.2579198195229955,
+    "7": 2.446371288587972,
+    "8": 2.0,
+    "9": 2.3743109527153146,
+    "11": 2.117588402670628,
+    "12": 2.202973271511551,
+    "13": 2.1764538571338097,
+    "15": 2.0393754569248377,
+    "16": 2.0754490943092705,
+    "17": 2.208600719670457,
+    "18": 2.2545853509945424,
+    "19": 2.1641451852317184,
+    "20": 2.107379121092345,
+    "22": 2.2460596808880218,
+    "23": 2.022100500248229,
+    "24": 2.020441833539469,
+    "25": 2.169072946360644,
+    "27": 2.099008647740434,
+    "28": 2.1044089292336436,
+    "3": 2.0,
+    "10": 2.0,
+    "14": 2.009524933193314,
+    "21": 2.0,
+    "26": 2.0,
+    "29": 2.0
+  },
+  "forecasts": {
+    ".01": {
+      "rows": [
+        {
+          "seed": 0,
+          "predicted_capacity": 3430400,
+          "predicted_samples": 2140326.940001891,
+          "core_gib": 62,
+          "analysis_gib": 72
+        },
+        {
+          "seed": 1,
+          "predicted_capacity": 3430400,
+          "predicted_samples": 2221367.774087969,
+          "core_gib": 62,
+          "analysis_gib": 73
+        },
+        {
+          "seed": 2,
+          "predicted_capacity": 3430400,
+          "predicted_samples": 2532592.2635726305,
+          "core_gib": 62,
+          "analysis_gib": 81
+        },
+        {
+          "seed": 3,
+          "predicted_capacity": 6860800,
+          "predicted_samples": 5539233.8433366185,
+          "core_gib": 121,
+          "analysis_gib": 171
+        },
+        {
+          "seed": 4,
+          "predicted_capacity": 3430400,
+          "predicted_samples": 2297168.819449694,
+          "core_gib": 62,
+          "analysis_gib": 75
+        },
+        {
+          "seed": 5,
+          "predicted_capacity": 3430400,
+          "predicted_samples": 3073852.896465145,
+          "core_gib": 62,
+          "analysis_gib": 93
+        },
+        {
+          "seed": 6,
+          "predicted_capacity": 3430400,
+          "predicted_samples": 3383048.423813095,
+          "core_gib": 62,
+          "analysis_gib": 100
+        },
+        {
+          "seed": 7,
+          "predicted_capacity": 6860800,
+          "predicted_samples": 4014729.4645701963,
+          "core_gib": 121,
+          "analysis_gib": 136
+        },
+        {
+          "seed": 8,
+          "predicted_capacity": 6860800,
+          "predicted_samples": 4023812.576106236,
+          "core_gib": 121,
+          "analysis_gib": 136
+        },
+        {
+          "seed": 9,
+          "predicted_capacity": 6860800,
+          "predicted_samples": 3907491.797287415,
+          "core_gib": 121,
+          "analysis_gib": 134
+        },
+        {
+          "seed": 10,
+          "predicted_capacity": 6860800,
+          "predicted_samples": 4862726.207357325,
+          "core_gib": 121,
+          "analysis_gib": 155
+        },
+        {
+          "seed": 11,
+          "predicted_capacity": 3430400,
+          "predicted_samples": 2518361.4737345083,
+          "core_gib": 62,
+          "analysis_gib": 80
+        },
+        {
+          "seed": 12,
+          "predicted_capacity": 3430400,
+          "predicted_samples": 2790584.222269483,
+          "core_gib": 62,
+          "analysis_gib": 86
+        },
+        {
+          "seed": 13,
+          "predicted_capacity": 3430400,
+          "predicted_samples": 2779710.873413729,
+          "core_gib": 62,
+          "analysis_gib": 86
+        },
+        {
+          "seed": 14,
+          "predicted_capacity": 6860800,
+          "predicted_samples": 4540887.628211508,
+          "core_gib": 121,
+          "analysis_gib": 148
+        },
+        {
+          "seed": 15,
+          "predicted_capacity": 3430400,
+          "predicted_samples": 2119212.304372663,
+          "core_gib": 62,
+          "analysis_gib": 71
+        },
+        {
+          "seed": 16,
+          "predicted_capacity": 6860800,
+          "predicted_samples": 4138081.2245423766,
+          "core_gib": 121,
+          "analysis_gib": 139
+        },
+        {
+          "seed": 17,
+          "predicted_capacity": 3430400,
+          "predicted_samples": 3050159.262515578,
+          "core_gib": 62,
+          "analysis_gib": 92
+        },
+        {
+          "seed": 18,
+          "predicted_capacity": 3430400,
+          "predicted_samples": 2992677.6021197275,
+          "core_gib": 62,
+          "analysis_gib": 91
+        },
+        {
+          "seed": 19,
+          "predicted_capacity": 3430400,
+          "predicted_samples": 2564838.382756683,
+          "core_gib": 62,
+          "analysis_gib": 81
+        },
+        {
+          "seed": 20,
+          "predicted_capacity": 3430400,
+          "predicted_samples": 2636996.7429330684,
+          "core_gib": 62,
+          "analysis_gib": 83
+        },
+        {
+          "seed": 21,
+          "predicted_capacity": 6860800,
+          "predicted_samples": 4759257.109129456,
+          "core_gib": 121,
+          "analysis_gib": 153
+        },
+        {
+          "seed": 22,
+          "predicted_capacity": 3430400,
+          "predicted_samples": 2841114.4718285417,
+          "core_gib": 62,
+          "analysis_gib": 88
+        },
+        {
+          "seed": 23,
+          "predicted_capacity": 6860800,
+          "predicted_samples": 3831140.5809482415,
+          "core_gib": 121,
+          "analysis_gib": 132
+        },
+        {
+          "seed": 24,
+          "predicted_capacity": 3430400,
+          "predicted_samples": 2940783.5538144372,
+          "core_gib": 62,
+          "analysis_gib": 90
+        },
+        {
+          "seed": 25,
+          "predicted_capacity": 3430400,
+          "predicted_samples": 2513448.270614844,
+          "core_gib": 62,
+          "analysis_gib": 80
+        },
+        {
+          "seed": 26,
+          "predicted_capacity": 6860800,
+          "predicted_samples": 5500599.645334079,
+          "core_gib": 121,
+          "analysis_gib": 170
+        },
+        {
+          "seed": 27,
+          "predicted_capacity": 3430400,
+          "predicted_samples": 2773355.855014722,
+          "core_gib": 62,
+          "analysis_gib": 86
+        },
+        {
+          "seed": 28,
+          "predicted_capacity": 3430400,
+          "predicted_samples": 3343679.615253718,
+          "core_gib": 62,
+          "analysis_gib": 99
+        },
+        {
+          "seed": 29,
+          "predicted_capacity": 6860800,
+          "predicted_samples": 4859475.776927677,
+          "core_gib": 121,
+          "analysis_gib": 155
+        }
+      ],
+      "first_core_pool": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "first_core_pool_gib": 493,
+      "oversized_analysis_seeds": []
+    },
+    ".005": {
+      "rows": [
+        {
+          "seed": 0,
+          "predicted_capacity": 13721600,
+          "predicted_samples": 9780403.891453475,
+          "core_gib": 237,
+          "analysis_gib": 311
+        },
+        {
+          "seed": 1,
+          "predicted_capacity": 13721600,
+          "predicted_samples": 10215473.159325272,
+          "core_gib": 237,
+          "analysis_gib": 320
+        },
+        {
+          "seed": 2,
+          "predicted_capacity": 13721600,
+          "predicted_samples": 12002905.281863118,
+          "core_gib": 237,
+          "analysis_gib": 361
+        },
+        {
+          "seed": 3,
+          "predicted_capacity": 27443200,
+          "predicted_samples": 24372628.910681125,
+          "core_gib": 470,
+          "analysis_gib": 729
+        },
+        {
+          "seed": 4,
+          "predicted_capacity": 13721600,
+          "predicted_samples": 10765249.164584646,
+          "core_gib": 237,
+          "analysis_gib": 333
+        },
+        {
+          "seed": 5,
+          "predicted_capacity": 27443200,
+          "predicted_samples": 14254866.996213801,
+          "core_gib": 470,
+          "analysis_gib": 500
+        },
+        {
+          "seed": 6,
+          "predicted_capacity": 27443200,
+          "predicted_samples": 17799282.37013106,
+          "core_gib": 470,
+          "analysis_gib": 580
+        },
+        {
+          "seed": 7,
+          "predicted_capacity": 27443200,
+          "predicted_samples": 24070222.7266948,
+          "core_gib": 470,
+          "analysis_gib": 722
+        },
+        {
+          "seed": 8,
+          "predicted_capacity": 27443200,
+          "predicted_samples": 17704775.33486744,
+          "core_gib": 470,
+          "analysis_gib": 578
+        },
+        {
+          "seed": 9,
+          "predicted_capacity": 27443200,
+          "predicted_samples": 22285869.13510463,
+          "core_gib": 470,
+          "analysis_gib": 682
+        },
+        {
+          "seed": 10,
+          "predicted_capacity": 27443200,
+          "predicted_samples": 21395995.31237223,
+          "core_gib": 470,
+          "analysis_gib": 662
+        },
+        {
+          "seed": 11,
+          "predicted_capacity": 13721600,
+          "predicted_samples": 12021769.02708313,
+          "core_gib": 237,
+          "analysis_gib": 361
+        },
+        {
+          "seed": 12,
+          "predicted_capacity": 27443200,
+          "predicted_samples": 14133471.710749744,
+          "core_gib": 470,
+          "analysis_gib": 497
+        },
+        {
+          "seed": 13,
+          "predicted_capacity": 27443200,
+          "predicted_samples": 13821978.282213418,
+          "core_gib": 470,
+          "analysis_gib": 490
+        },
+        {
+          "seed": 14,
+          "predicted_capacity": 27443200,
+          "predicted_samples": 20112252.918624863,
+          "core_gib": 470,
+          "analysis_gib": 632
+        },
+        {
+          "seed": 15,
+          "predicted_capacity": 13721600,
+          "predicted_samples": 9582533.296385799,
+          "core_gib": 237,
+          "analysis_gib": 306
+        },
+        {
+          "seed": 16,
+          "predicted_capacity": 27443200,
+          "predicted_samples": 19185102.683949564,
+          "core_gib": 470,
+          "analysis_gib": 611
+        },
+        {
+          "seed": 17,
+          "predicted_capacity": 27443200,
+          "predicted_samples": 15508516.863767814,
+          "core_gib": 470,
+          "analysis_gib": 528
+        },
+        {
+          "seed": 18,
+          "predicted_capacity": 27443200,
+          "predicted_samples": 15709068.623790402,
+          "core_gib": 470,
+          "analysis_gib": 533
+        },
+        {
+          "seed": 19,
+          "predicted_capacity": 13721600,
+          "predicted_samples": 12645188.42598898,
+          "core_gib": 237,
+          "analysis_gib": 376
+        },
+        {
+          "seed": 20,
+          "predicted_capacity": 13721600,
+          "predicted_samples": 12499326.316672964,
+          "core_gib": 237,
+          "analysis_gib": 372
+        },
+        {
+          "seed": 21,
+          "predicted_capacity": 27443200,
+          "predicted_samples": 20940731.280169606,
+          "core_gib": 470,
+          "analysis_gib": 651
+        },
+        {
+          "seed": 22,
+          "predicted_capacity": 27443200,
+          "predicted_samples": 14825616.21322025,
+          "core_gib": 470,
+          "analysis_gib": 513
+        },
+        {
+          "seed": 23,
+          "predicted_capacity": 27443200,
+          "predicted_samples": 17117237.57395664,
+          "core_gib": 470,
+          "analysis_gib": 565
+        },
+        {
+          "seed": 24,
+          "predicted_capacity": 13721600,
+          "predicted_samples": 13124094.307478746,
+          "core_gib": 237,
+          "analysis_gib": 386
+        },
+        {
+          "seed": 25,
+          "predicted_capacity": 13721600,
+          "predicted_samples": 12434223.123615261,
+          "core_gib": 237,
+          "analysis_gib": 371
+        },
+        {
+          "seed": 26,
+          "predicted_capacity": 27443200,
+          "predicted_samples": 24202638.43946995,
+          "core_gib": 470,
+          "analysis_gib": 725
+        },
+        {
+          "seed": 27,
+          "predicted_capacity": 13721600,
+          "predicted_samples": 13069616.600454472,
+          "core_gib": 237,
+          "analysis_gib": 385
+        },
+        {
+          "seed": 28,
+          "predicted_capacity": 27443200,
+          "predicted_samples": 15816396.856513927,
+          "core_gib": 470,
+          "analysis_gib": 535
+        },
+        {
+          "seed": 29,
+          "predicted_capacity": 27443200,
+          "predicted_samples": 21381693.418481782,
+          "core_gib": 470,
+          "analysis_gib": 661
+        }
+      ],
+      "first_core_pool": [
+        0,
+        1
+      ],
+      "first_core_pool_gib": 474,
+      "oversized_analysis_seeds": [
+        3,
+        6,
+        7,
+        8,
+        9,
+        10,
+        14,
+        16,
+        17,
+        18,
+        21,
+        22,
+        23,
+        26,
+        28,
+        29
+      ]
+    }
+  }
+}

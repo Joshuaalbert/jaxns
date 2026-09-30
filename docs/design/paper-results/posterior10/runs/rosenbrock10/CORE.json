@@ -1,0 +1,56 @@
+{
+  "iteration": 1,
+  "allocation_iteration": 1,
+  "root_out_degree": 300,
+  "classic_log_Z": -44.24772109225611,
+  "classic_log_Z_uncert": 0.34474214712521767,
+  "classic_kish_ess": 3681.158415562249,
+  "likelihood_evaluations": 9098530,
+  "classic_samples": 14714,
+  "seconds": 62.9499861469958,
+  "case": "rosenbrock10",
+  "seed": 0,
+  "complete": true,
+  "run_seconds": 63.204637449933216,
+  "goal_progress": [
+    {
+      "iteration": 1,
+      "allocation_iteration": 1,
+      "root_out_degree": 300,
+      "classic_log_Z": -44.24772109225611,
+      "classic_log_Z_uncert": 0.34474214712521767,
+      "classic_kish_ess": 3681.158415562249,
+      "likelihood_evaluations": 9098530,
+      "classic_samples": 14714,
+      "seconds": 62.9499861469958
+    }
+  ],
+  "reference": {
+    "method": "no reference evidence used"
+  },
+  "posterior_mean": [
+    0.7747399112420363,
+    0.8279443579838159,
+    0.7485377120195988,
+    0.6502993982868728,
+    0.5423459997850079,
+    0.4311300795764484,
+    0.32214023548790194,
+    0.21915900213368847,
+    0.1253591238214128,
+    0.05265178428882945
+  ],
+  "posterior_standard_deviation": [
+    0.4774161862329536,
+    0.24077714640987843,
+    0.2920835796670733,
+    0.33623167728921766,
+    0.36304404552667846,
+    0.3615940184620114,
+    0.3268342712084162,
+    0.2668032596802924,
+    0.19241566681476302,
+    0.12667362951588435
+  ],
+  "peak_rss_bytes": 2448556032
+}

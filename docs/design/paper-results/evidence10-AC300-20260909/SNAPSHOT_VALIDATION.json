@@ -1,0 +1,17 @@
+{
+  "cells": 120,
+  "files_verified": 600,
+  "cohorts": [
+    "g10/0.05: 30 seeds",
+    "cg10/0.05: 30 seeds",
+    "ss10/0.05: 30 seeds",
+    "ss10/0.02: 30 seeds"
+  ],
+  "evidence_statistics_from_saved_draws": true,
+  "paired_bias_intervals_verified": true,
+  "matched_continuations_verified": true,
+  "full_prefix_tables_match": true,
+  "classic_posterior_mass_source": "Previously audited ANALYSIS.json; no new state reduction",
+  "summary_sha256": "0fbf781e07d227cee83ebdd60db7979f224250e29aefbfd886ca8dbb5d3dfd00",
+  "script_sha256": "4498e92d16f323f511b9a9153ad911d3be02bb2b7d488396bd955ace239c06da"
+}

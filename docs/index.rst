@@ -11,9 +11,18 @@ full-fledged probabilistic programming framework.
 JAXNS has been applied in numerous domains from cosmology, astrophysics, gravitational waves, interferometry,
 exoplanets, particle physics, meta materials, epidemiology, climate modelling, and beyond. Not to mention it has been
 used in industry for a variety of applications. All of this is welcomed and gladly supported.
-JAXNS is citable, use the [(outdated) pre-print here](https://arxiv.org/abs/2012.15286).
 
-Here are 10 things you can do with JAXNS:
+For a deeper understanding of the JAXNS v3 algorithm, read and cite
+`Phantom-Conditioned Nested Sampling <https://arxiv.org/abs/2609.32120>`_
+(Albert, 2026). It describes the race-tree formulation, phantom conditioning,
+and evidence-improving and posterior-improving allocation.
+
+The previous *Phantom-Powered Nested Sampling* paper is redacted. The original
+JAXNS paper remains valid as a reference for JAXNS's high performance, but its
+algorithm description is superseded by the v3 paper. See
+:doc:`papers/index` for the references and citation details.
+
+Here are nine things you can do with JAXNS:
 
 1. Build probabilistic models in an easy to use, high-level language, that can be used anywhere in the JAX ecosystem.
 
@@ -32,8 +41,6 @@ Here are 10 things you can do with JAXNS:
 8. Easily embed JAXNS in your ML model;
 
 9. Use JAXNS in a distributed computing environment;
-
-10. Solve global optimisation problems.
 
 
 JAXNS's Mission Statement

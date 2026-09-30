@@ -1,0 +1,28 @@
+[
+  {
+    "case": "eggbox10",
+    "pid": 3993051,
+    "cpu": 0,
+    "output": "/largedata/albert/jaxns-posterior10-20260908/eggbox10/seed-00"
+  },
+  {
+    "case": "rosenbrock10",
+    "pid": 3993052,
+    "cpu": 1,
+    "output": "/largedata/albert/jaxns-posterior10-20260908/rosenbrock10/seed-00"
+  },
+  {
+    "case": "rastrigin10",
+    "pid": 3993053,
+    "cpu": 2,
+    "output": "/largedata/albert/jaxns-posterior10-20260908/rastrigin10/seed-00"
+  },
+  {
+    "case": "ss10",
+    "ss10_definition": "repository",
+    "pid": 4022619,
+    "cpu": 3,
+    "output": "/largedata/albert/jaxns-posterior10-20260908/ss10/seed-00",
+    "source_commit": "259d436bde03f502a93019817c3d749fd2f04207"
+  }
+]

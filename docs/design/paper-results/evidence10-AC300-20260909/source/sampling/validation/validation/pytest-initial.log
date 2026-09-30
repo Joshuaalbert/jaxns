@@ -1,0 +1,87 @@
+FF.....                                                                  [100%]
+=================================== FAILURES ===================================
+______________ test_gaussian_adapter_prior_and_inverse_shear[g10] ______________
+
+case = 'g10'
+
+    @pytest.mark.parametrize("case", ["g10", "cg10"])
+    def test_gaussian_adapter_prior_and_inverse_shear(case):
+        model, reference = build_case(case)
+        model = pickle.loads(pickle.dumps(model))
+        assert model.U_ndims() == 10
+        for seed in range(5):
+            u = model.sample_U(jax.random.PRNGKey(seed))
+            x = np.asarray(jax.tree.leaves(model.transform_to_X(u))[0])
+            z = x.copy()
+            if case == "cg10":
+                z[1] -= CG_BETA * ((z[0]-3.)**2-1.)
+            expected = multivariate_normal.logpdf(z, mean=GAUSSIAN_MEAN,
+                                                 cov=GAUSSIAN_COVARIANCE)
+            np.testing.assert_allclose(model.log_likelihood(u), expected, rtol=1e-12)
+>           np.testing.assert_allclose(model.log_prior(u),
+                                       multivariate_normal.logpdf(x), rtol=1e-12)
+E           AssertionError: 
+E           Not equal to tolerance rtol=1e-12, atol=0
+E           
+E           Mismatched elements: 10 / 10 (100%)
+E           First 5 mismatches are at indices:
+E            [0]: -12.665835173546064 (ACTUAL), -1.7095635352732594 (DESIRED)
+E            [1]: -12.665835173546064 (ACTUAL), -0.9995815927685389 (DESIRED)
+E            [2]: -12.665835173546064 (ACTUAL), -1.5476629303598277 (DESIRED)
+E            [3]: -12.665835173546064 (ACTUAL), -1.3047121836207185 (DESIRED)
+E            [4]: -12.665835173546064 (ACTUAL), -1.2902494288380304 (DESIRED)
+E           Max absolute difference among violations: 11.74433908
+E           Max relative difference among violations: 12.74486043
+E            ACTUAL: array(-12.665835)
+E            DESIRED: array([-1.709564, -0.999582, -1.547663, -1.304712, -1.290249, -0.978974,
+E                  -1.361155, -0.926422, -1.626018, -0.921496])
+
+cicd/tests/test_evidence10.py:34: AssertionError
+_____________ test_gaussian_adapter_prior_and_inverse_shear[cg10] ______________
+
+case = 'cg10'
+
+    @pytest.mark.parametrize("case", ["g10", "cg10"])
+    def test_gaussian_adapter_prior_and_inverse_shear(case):
+        model, reference = build_case(case)
+        model = pickle.loads(pickle.dumps(model))
+        assert model.U_ndims() == 10
+        for seed in range(5):
+            u = model.sample_U(jax.random.PRNGKey(seed))
+            x = np.asarray(jax.tree.leaves(model.transform_to_X(u))[0])
+            z = x.copy()
+            if case == "cg10":
+                z[1] -= CG_BETA * ((z[0]-3.)**2-1.)
+            expected = multivariate_normal.logpdf(z, mean=GAUSSIAN_MEAN,
+                                                 cov=GAUSSIAN_COVARIANCE)
+            np.testing.assert_allclose(model.log_likelihood(u), expected, rtol=1e-12)
+>           np.testing.assert_allclose(model.log_prior(u),
+                                       multivariate_normal.logpdf(x), rtol=1e-12)
+E           AssertionError: 
+E           Not equal to tolerance rtol=1e-12, atol=0
+E           
+E           Mismatched elements: 10 / 10 (100%)
+E           First 5 mismatches are at indices:
+E            [0]: -12.665835173546064 (ACTUAL), -1.7095635352732594 (DESIRED)
+E            [1]: -12.665835173546064 (ACTUAL), -0.9995815927685389 (DESIRED)
+E            [2]: -12.665835173546064 (ACTUAL), -1.5476629303598277 (DESIRED)
+E            [3]: -12.665835173546064 (ACTUAL), -1.3047121836207185 (DESIRED)
+E            [4]: -12.665835173546064 (ACTUAL), -1.2902494288380304 (DESIRED)
+E           Max absolute difference among violations: 11.74433908
+E           Max relative difference among violations: 12.74486043
+E            ACTUAL: array(-12.665835)
+E            DESIRED: array([-1.709564, -0.999582, -1.547663, -1.304712, -1.290249, -0.978974,
+E                  -1.361155, -0.926422, -1.626018, -0.921496])
+
+cicd/tests/test_evidence10.py:34: AssertionError
+=============================== warnings summary ===============================
+../../../../data/albert/miniconda3/envs/jaxns_py/lib/python3.12/site-packages/tensorflow_probability/python/internal/backend/jax/ops.py:684
+  /data/albert/miniconda3/envs/jaxns_py/lib/python3.12/site-packages/tensorflow_probability/python/internal/backend/jax/ops.py:684: DeprecationWarning: jax.core.pytype_aval_mappings is deprecated.
+    jax.core.pytype_aval_mappings[onp.ndarray])
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED cicd/tests/test_evidence10.py::test_gaussian_adapter_prior_and_inverse_shear[g10]
+FAILED cicd/tests/test_evidence10.py::test_gaussian_adapter_prior_and_inverse_shear[cg10]
+2 failed, 5 passed, 1 warning in 14.25s
+ERROR conda.cli.main_run:execute(125): `conda run taskset -c 4 pytest -q cicd/tests/test_evidence10.py cicd/tests/test_core.py::test_resume_uses_stored_key_and_matches_uninterrupted_run` failed. (See above for error)

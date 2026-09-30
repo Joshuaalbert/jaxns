@@ -1,0 +1,960 @@
+{"event": "start", "time": 1788877496.9828062, "cpu": 0, "pid": 3946895, "job": ["R240", "spike_slab", 0, "core"]}
+{"event": "start", "time": 1788877496.9834986, "cpu": 1, "pid": 3946896, "job": ["R240", "curved_spike_slab8", 0, "core"]}
+{"event": "start", "time": 1788877496.9841704, "cpu": 2, "pid": 3946897, "job": ["R240", "spike_slab", 1, "core"]}
+{"event": "start", "time": 1788877496.9848402, "cpu": 3, "pid": 3946898, "job": ["R240", "curved_spike_slab8", 1, "core"]}
+{"event": "start", "time": 1788877496.985507, "cpu": 4, "pid": 3946899, "job": ["R240", "spike_slab", 2, "core"]}
+{"event": "start", "time": 1788877496.9861724, "cpu": 5, "pid": 3946900, "job": ["R240", "curved_spike_slab8", 2, "core"]}
+{"event": "start", "time": 1788877496.9868543, "cpu": 6, "pid": 3946901, "job": ["R240", "spike_slab", 3, "core"]}
+{"event": "start", "time": 1788877496.987515, "cpu": 7, "pid": 3946902, "job": ["R240", "curved_spike_slab8", 3, "core"]}
+{"event": "start", "time": 1788877496.9881642, "cpu": 8, "pid": 3946903, "job": ["R240", "spike_slab", 4, "core"]}
+{"event": "start", "time": 1788877496.9888055, "cpu": 9, "pid": 3946904, "job": ["R240", "curved_spike_slab8", 4, "core"]}
+{"event": "start", "time": 1788877496.989466, "cpu": 10, "pid": 3946905, "job": ["R240", "spike_slab", 5, "core"]}
+{"event": "start", "time": 1788877496.9901586, "cpu": 11, "pid": 3946906, "job": ["R240", "curved_spike_slab8", 5, "core"]}
+{"event": "start", "time": 1788877496.9908082, "cpu": 12, "pid": 3946907, "job": ["R240", "spike_slab", 6, "core"]}
+{"event": "start", "time": 1788877496.9914837, "cpu": 13, "pid": 3946908, "job": ["R240", "curved_spike_slab8", 6, "core"]}
+{"event": "start", "time": 1788877496.9921687, "cpu": 14, "pid": 3946909, "job": ["R240", "spike_slab", 7, "core"]}
+{"event": "start", "time": 1788877496.9928107, "cpu": 15, "pid": 3946910, "job": ["R240", "curved_spike_slab8", 7, "core"]}
+{"event": "start", "time": 1788877496.9934638, "cpu": 16, "pid": 3946911, "job": ["R240", "spike_slab", 8, "core"]}
+{"event": "start", "time": 1788877496.9941614, "cpu": 17, "pid": 3946912, "job": ["R240", "curved_spike_slab8", 8, "core"]}
+{"event": "start", "time": 1788877496.9948165, "cpu": 18, "pid": 3946913, "job": ["R240", "spike_slab", 9, "core"]}
+{"event": "start", "time": 1788877496.9955022, "cpu": 19, "pid": 3946914, "job": ["R240", "curved_spike_slab8", 9, "core"]}
+{"event": "start", "time": 1788877496.9961655, "cpu": 20, "pid": 3946915, "job": ["R240", "spike_slab", 10, "core"]}
+{"event": "start", "time": 1788877496.9968421, "cpu": 21, "pid": 3946916, "job": ["R240", "curved_spike_slab8", 10, "core"]}
+{"event": "start", "time": 1788877496.9975128, "cpu": 22, "pid": 3946917, "job": ["R240", "spike_slab", 11, "core"]}
+{"event": "start", "time": 1788877496.9981976, "cpu": 23, "pid": 3946918, "job": ["R240", "curved_spike_slab8", 11, "core"]}
+{"event": "start", "time": 1788877496.9988694, "cpu": 24, "pid": 3946919, "job": ["R240", "spike_slab", 12, "core"]}
+{"event": "start", "time": 1788877496.999555, "cpu": 25, "pid": 3946920, "job": ["R240", "curved_spike_slab8", 12, "core"]}
+{"event": "start", "time": 1788877497.000241, "cpu": 26, "pid": 3946921, "job": ["R240", "spike_slab", 13, "core"]}
+{"event": "start", "time": 1788877497.0009358, "cpu": 27, "pid": 3946922, "job": ["R240", "curved_spike_slab8", 13, "core"]}
+{"event": "start", "time": 1788877497.001663, "cpu": 28, "pid": 3946923, "job": ["R240", "spike_slab", 14, "core"]}
+{"event": "start", "time": 1788877497.002417, "cpu": 29, "pid": 3946924, "job": ["R240", "curved_spike_slab8", 14, "core"]}
+{"event": "start", "time": 1788877497.0032187, "cpu": 30, "pid": 3946925, "job": ["R240", "spike_slab", 15, "core"]}
+{"event": "start", "time": 1788877497.004072, "cpu": 31, "pid": 3946926, "job": ["R240", "curved_spike_slab8", 15, "core"]}
+{"event": "start", "time": 1788877497.0048082, "cpu": 32, "pid": 3946927, "job": ["R240", "spike_slab", 16, "core"]}
+{"event": "start", "time": 1788877497.0055664, "cpu": 33, "pid": 3946928, "job": ["R240", "curved_spike_slab8", 16, "core"]}
+{"event": "start", "time": 1788877497.0063317, "cpu": 34, "pid": 3946929, "job": ["R240", "spike_slab", 17, "core"]}
+{"event": "start", "time": 1788877497.0071044, "cpu": 35, "pid": 3946930, "job": ["R240", "curved_spike_slab8", 17, "core"]}
+{"event": "start", "time": 1788877497.007862, "cpu": 36, "pid": 3946931, "job": ["R240", "spike_slab", 18, "core"]}
+{"event": "start", "time": 1788877497.0086126, "cpu": 37, "pid": 3946932, "job": ["R240", "curved_spike_slab8", 18, "core"]}
+{"event": "start", "time": 1788877497.0093386, "cpu": 38, "pid": 3946933, "job": ["R240", "spike_slab", 19, "core"]}
+{"event": "start", "time": 1788877497.0100965, "cpu": 39, "pid": 3946934, "job": ["R240", "curved_spike_slab8", 19, "core"]}
+{"event": "start", "time": 1788877497.0108476, "cpu": 40, "pid": 3946935, "job": ["R240", "spike_slab", 20, "core"]}
+{"event": "start", "time": 1788877497.0115685, "cpu": 41, "pid": 3946936, "job": ["R240", "curved_spike_slab8", 20, "core"]}
+{"event": "start", "time": 1788877497.0122747, "cpu": 42, "pid": 3946937, "job": ["R240", "spike_slab", 21, "core"]}
+{"event": "start", "time": 1788877497.0129933, "cpu": 43, "pid": 3946938, "job": ["R240", "curved_spike_slab8", 21, "core"]}
+{"event": "start", "time": 1788877497.013726, "cpu": 44, "pid": 3946939, "job": ["R240", "spike_slab", 22, "core"]}
+{"event": "start", "time": 1788877497.01445, "cpu": 45, "pid": 3946940, "job": ["R240", "curved_spike_slab8", 22, "core"]}
+{"event": "start", "time": 1788877497.0151742, "cpu": 46, "pid": 3946941, "job": ["R240", "spike_slab", 23, "core"]}
+{"event": "start", "time": 1788877497.0158885, "cpu": 47, "pid": 3946942, "job": ["R240", "curved_spike_slab8", 23, "core"]}
+{"event": "start", "time": 1788877497.0166001, "cpu": 48, "pid": 3946943, "job": ["R240", "spike_slab", 24, "core"]}
+{"event": "start", "time": 1788877497.0174005, "cpu": 49, "pid": 3946944, "job": ["R240", "curved_spike_slab8", 24, "core"]}
+{"event": "start", "time": 1788877497.0181782, "cpu": 50, "pid": 3946945, "job": ["R240", "spike_slab", 25, "core"]}
+{"event": "start", "time": 1788877497.0189414, "cpu": 51, "pid": 3946946, "job": ["R240", "curved_spike_slab8", 25, "core"]}
+{"event": "start", "time": 1788877497.0196695, "cpu": 52, "pid": 3946947, "job": ["R240", "spike_slab", 26, "core"]}
+{"event": "start", "time": 1788877497.0204191, "cpu": 53, "pid": 3946948, "job": ["R240", "curved_spike_slab8", 26, "core"]}
+{"event": "start", "time": 1788877497.021162, "cpu": 54, "pid": 3946949, "job": ["R240", "spike_slab", 27, "core"]}
+{"event": "start", "time": 1788877497.0219636, "cpu": 55, "pid": 3946950, "job": ["R240", "curved_spike_slab8", 27, "core"]}
+{"event": "start", "time": 1788877497.0229356, "cpu": 56, "pid": 3946951, "job": ["R240", "spike_slab", 28, "core"]}
+{"event": "start", "time": 1788877497.0238295, "cpu": 57, "pid": 3946952, "job": ["R240", "curved_spike_slab8", 28, "core"]}
+{"event": "start", "time": 1788877497.0247478, "cpu": 58, "pid": 3946953, "job": ["R240", "spike_slab", 29, "core"]}
+{"event": "start", "time": 1788877497.0256333, "cpu": 59, "pid": 3946954, "job": ["R240", "curved_spike_slab8", 29, "core"]}
+{"event": "finish", "time": 1788877573.0579102, "cpu": 46, "pid": 3946941, "job": ["R240", "spike_slab", 23, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877573.0581934, "cpu": 54, "pid": 3946949, "job": ["R240", "spike_slab", 27, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877573.0595434, "cpu": 46, "pid": 3948345, "job": ["R240", "spike_slab", 23, "analysis"]}
+{"event": "start", "time": 1788877573.0606248, "cpu": 54, "pid": 3948346, "job": ["R240", "spike_slab", 27, "analysis"]}
+{"event": "finish", "time": 1788877575.0614016, "cpu": 8, "pid": 3946903, "job": ["R240", "spike_slab", 4, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877575.0616217, "cpu": 20, "pid": 3946915, "job": ["R240", "spike_slab", 10, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877575.0618424, "cpu": 50, "pid": 3946945, "job": ["R240", "spike_slab", 25, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877575.0631227, "cpu": 8, "pid": 3948377, "job": ["R240", "spike_slab", 4, "analysis"]}
+{"event": "start", "time": 1788877575.064175, "cpu": 20, "pid": 3948378, "job": ["R240", "spike_slab", 10, "analysis"]}
+{"event": "start", "time": 1788877575.0651336, "cpu": 50, "pid": 3948379, "job": ["R240", "spike_slab", 25, "analysis"]}
+{"event": "finish", "time": 1788877577.065863, "cpu": 5, "pid": 3946900, "job": ["R240", "curved_spike_slab8", 2, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877577.066067, "cpu": 10, "pid": 3946905, "job": ["R240", "spike_slab", 5, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877577.0661576, "cpu": 11, "pid": 3946906, "job": ["R240", "curved_spike_slab8", 5, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877577.0662415, "cpu": 12, "pid": 3946907, "job": ["R240", "spike_slab", 6, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877577.066329, "cpu": 14, "pid": 3946909, "job": ["R240", "spike_slab", 7, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877577.06641, "cpu": 15, "pid": 3946910, "job": ["R240", "curved_spike_slab8", 7, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877577.0665255, "cpu": 23, "pid": 3946918, "job": ["R240", "curved_spike_slab8", 11, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877577.0666208, "cpu": 24, "pid": 3946919, "job": ["R240", "spike_slab", 12, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877577.0667233, "cpu": 26, "pid": 3946921, "job": ["R240", "spike_slab", 13, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877577.0668306, "cpu": 28, "pid": 3946923, "job": ["R240", "spike_slab", 14, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877577.0669389, "cpu": 30, "pid": 3946925, "job": ["R240", "spike_slab", 15, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877577.0670557, "cpu": 32, "pid": 3946927, "job": ["R240", "spike_slab", 16, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877577.0671878, "cpu": 38, "pid": 3946933, "job": ["R240", "spike_slab", 19, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877577.0673091, "cpu": 40, "pid": 3946935, "job": ["R240", "spike_slab", 20, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877577.0674233, "cpu": 42, "pid": 3946937, "job": ["R240", "spike_slab", 21, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877577.0675466, "cpu": 44, "pid": 3946939, "job": ["R240", "spike_slab", 22, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877577.067676, "cpu": 48, "pid": 3946943, "job": ["R240", "spike_slab", 24, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877577.0678165, "cpu": 52, "pid": 3946947, "job": ["R240", "spike_slab", 26, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877577.0679655, "cpu": 56, "pid": 3946951, "job": ["R240", "spike_slab", 28, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877577.068105, "cpu": 58, "pid": 3946953, "job": ["R240", "spike_slab", 29, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877577.0693345, "cpu": 5, "pid": 3948427, "job": ["R240", "curved_spike_slab8", 2, "analysis"]}
+{"event": "start", "time": 1788877577.0702603, "cpu": 10, "pid": 3948428, "job": ["R240", "spike_slab", 5, "analysis"]}
+{"event": "start", "time": 1788877577.0711327, "cpu": 11, "pid": 3948429, "job": ["R240", "curved_spike_slab8", 5, "analysis"]}
+{"event": "start", "time": 1788877577.0719616, "cpu": 12, "pid": 3948430, "job": ["R240", "spike_slab", 6, "analysis"]}
+{"event": "start", "time": 1788877577.0730343, "cpu": 14, "pid": 3948431, "job": ["R240", "spike_slab", 7, "analysis"]}
+{"event": "start", "time": 1788877577.0738401, "cpu": 15, "pid": 3948432, "job": ["R240", "curved_spike_slab8", 7, "analysis"]}
+{"event": "start", "time": 1788877577.07467, "cpu": 23, "pid": 3948433, "job": ["R240", "curved_spike_slab8", 11, "analysis"]}
+{"event": "start", "time": 1788877577.075474, "cpu": 24, "pid": 3948434, "job": ["R240", "spike_slab", 12, "analysis"]}
+{"event": "start", "time": 1788877577.0762846, "cpu": 26, "pid": 3948435, "job": ["R240", "spike_slab", 13, "analysis"]}
+{"event": "start", "time": 1788877577.077089, "cpu": 28, "pid": 3948436, "job": ["R240", "spike_slab", 14, "analysis"]}
+{"event": "start", "time": 1788877577.0778918, "cpu": 30, "pid": 3948437, "job": ["R240", "spike_slab", 15, "analysis"]}
+{"event": "start", "time": 1788877577.0786948, "cpu": 32, "pid": 3948438, "job": ["R240", "spike_slab", 16, "analysis"]}
+{"event": "start", "time": 1788877577.0795062, "cpu": 38, "pid": 3948439, "job": ["R240", "spike_slab", 19, "analysis"]}
+{"event": "start", "time": 1788877577.080301, "cpu": 40, "pid": 3948440, "job": ["R240", "spike_slab", 20, "analysis"]}
+{"event": "start", "time": 1788877577.0811145, "cpu": 42, "pid": 3948441, "job": ["R240", "spike_slab", 21, "analysis"]}
+{"event": "start", "time": 1788877577.0819612, "cpu": 44, "pid": 3948442, "job": ["R240", "spike_slab", 22, "analysis"]}
+{"event": "start", "time": 1788877577.0828247, "cpu": 48, "pid": 3948443, "job": ["R240", "spike_slab", 24, "analysis"]}
+{"event": "start", "time": 1788877577.0836513, "cpu": 52, "pid": 3948444, "job": ["R240", "spike_slab", 26, "analysis"]}
+{"event": "start", "time": 1788877577.0844781, "cpu": 56, "pid": 3948445, "job": ["R240", "spike_slab", 28, "analysis"]}
+{"event": "start", "time": 1788877577.0853038, "cpu": 58, "pid": 3948446, "job": ["R240", "spike_slab", 29, "analysis"]}
+{"event": "finish", "time": 1788877579.086, "cpu": 0, "pid": 3946895, "job": ["R240", "spike_slab", 0, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877579.0861423, "cpu": 2, "pid": 3946897, "job": ["R240", "spike_slab", 1, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877579.0862188, "cpu": 4, "pid": 3946899, "job": ["R240", "spike_slab", 2, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877579.0862916, "cpu": 6, "pid": 3946901, "job": ["R240", "spike_slab", 3, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877579.0863845, "cpu": 16, "pid": 3946911, "job": ["R240", "spike_slab", 8, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877579.0864732, "cpu": 18, "pid": 3946913, "job": ["R240", "spike_slab", 9, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877579.0865626, "cpu": 19, "pid": 3946914, "job": ["R240", "curved_spike_slab8", 9, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877579.0866568, "cpu": 22, "pid": 3946917, "job": ["R240", "spike_slab", 11, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877579.0867848, "cpu": 34, "pid": 3946929, "job": ["R240", "spike_slab", 17, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877579.0868998, "cpu": 36, "pid": 3946931, "job": ["R240", "spike_slab", 18, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877579.0870702, "cpu": 59, "pid": 3946954, "job": ["R240", "curved_spike_slab8", 29, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877579.0883136, "cpu": 0, "pid": 3948750, "job": ["R240", "spike_slab", 0, "analysis"]}
+{"event": "start", "time": 1788877579.0892878, "cpu": 2, "pid": 3948751, "job": ["R240", "spike_slab", 1, "analysis"]}
+{"event": "start", "time": 1788877579.0902874, "cpu": 4, "pid": 3948752, "job": ["R240", "spike_slab", 2, "analysis"]}
+{"event": "start", "time": 1788877579.0912113, "cpu": 6, "pid": 3948753, "job": ["R240", "spike_slab", 3, "analysis"]}
+{"event": "start", "time": 1788877579.0921462, "cpu": 16, "pid": 3948754, "job": ["R240", "spike_slab", 8, "analysis"]}
+{"event": "start", "time": 1788877579.0930102, "cpu": 18, "pid": 3948755, "job": ["R240", "spike_slab", 9, "analysis"]}
+{"event": "start", "time": 1788877579.093846, "cpu": 19, "pid": 3948756, "job": ["R240", "curved_spike_slab8", 9, "analysis"]}
+{"event": "start", "time": 1788877579.0947158, "cpu": 22, "pid": 3948757, "job": ["R240", "spike_slab", 11, "analysis"]}
+{"event": "start", "time": 1788877579.095563, "cpu": 34, "pid": 3948758, "job": ["R240", "spike_slab", 17, "analysis"]}
+{"event": "start", "time": 1788877579.0964332, "cpu": 36, "pid": 3948759, "job": ["R240", "spike_slab", 18, "analysis"]}
+{"event": "start", "time": 1788877579.0974326, "cpu": 59, "pid": 3948760, "job": ["R240", "curved_spike_slab8", 29, "analysis"]}
+{"event": "finish", "time": 1788877593.1057892, "cpu": 51, "pid": 3946946, "job": ["R240", "curved_spike_slab8", 25, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877593.1084197, "cpu": 51, "pid": 3948964, "job": ["R240", "curved_spike_slab8", 25, "analysis"]}
+{"event": "finish", "time": 1788877595.110144, "cpu": 21, "pid": 3946916, "job": ["R240", "curved_spike_slab8", 10, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877595.1106884, "cpu": 55, "pid": 3946950, "job": ["R240", "curved_spike_slab8", 27, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877595.1131866, "cpu": 21, "pid": 3948976, "job": ["R240", "curved_spike_slab8", 10, "analysis"]}
+{"event": "start", "time": 1788877595.1150892, "cpu": 55, "pid": 3948977, "job": ["R240", "curved_spike_slab8", 27, "analysis"]}
+{"event": "finish", "time": 1788877599.1182485, "cpu": 25, "pid": 3946920, "job": ["R240", "curved_spike_slab8", 12, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877599.1207204, "cpu": 25, "pid": 3949040, "job": ["R240", "curved_spike_slab8", 12, "analysis"]}
+{"event": "finish", "time": 1788877601.1221898, "cpu": 13, "pid": 3946908, "job": ["R240", "curved_spike_slab8", 6, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877601.122563, "cpu": 27, "pid": 3946922, "job": ["R240", "curved_spike_slab8", 13, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877601.1227841, "cpu": 29, "pid": 3946924, "job": ["R240", "curved_spike_slab8", 14, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877601.1229985, "cpu": 31, "pid": 3946926, "job": ["R240", "curved_spike_slab8", 15, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877601.123228, "cpu": 37, "pid": 3946932, "job": ["R240", "curved_spike_slab8", 18, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877601.1234303, "cpu": 39, "pid": 3946934, "job": ["R240", "curved_spike_slab8", 19, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877601.1236496, "cpu": 41, "pid": 3946936, "job": ["R240", "curved_spike_slab8", 20, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877601.1238363, "cpu": 43, "pid": 3946938, "job": ["R240", "curved_spike_slab8", 21, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877601.1240664, "cpu": 45, "pid": 3946940, "job": ["R240", "curved_spike_slab8", 22, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877601.1243446, "cpu": 53, "pid": 3946948, "job": ["R240", "curved_spike_slab8", 26, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877601.126681, "cpu": 13, "pid": 3949045, "job": ["R240", "curved_spike_slab8", 6, "analysis"]}
+{"event": "start", "time": 1788877601.1283984, "cpu": 27, "pid": 3949046, "job": ["R240", "curved_spike_slab8", 13, "analysis"]}
+{"event": "start", "time": 1788877601.1300423, "cpu": 29, "pid": 3949047, "job": ["R240", "curved_spike_slab8", 14, "analysis"]}
+{"event": "start", "time": 1788877601.1322613, "cpu": 31, "pid": 3949048, "job": ["R240", "curved_spike_slab8", 15, "analysis"]}
+{"event": "start", "time": 1788877601.1340559, "cpu": 37, "pid": 3949049, "job": ["R240", "curved_spike_slab8", 18, "analysis"]}
+{"event": "start", "time": 1788877601.1355972, "cpu": 39, "pid": 3949050, "job": ["R240", "curved_spike_slab8", 19, "analysis"]}
+{"event": "start", "time": 1788877601.137153, "cpu": 41, "pid": 3949051, "job": ["R240", "curved_spike_slab8", 20, "analysis"]}
+{"event": "start", "time": 1788877601.1384976, "cpu": 43, "pid": 3949052, "job": ["R240", "curved_spike_slab8", 21, "analysis"]}
+{"event": "start", "time": 1788877601.13999, "cpu": 45, "pid": 3949053, "job": ["R240", "curved_spike_slab8", 22, "analysis"]}
+{"event": "start", "time": 1788877601.1413722, "cpu": 53, "pid": 3949054, "job": ["R240", "curved_spike_slab8", 26, "analysis"]}
+{"event": "finish", "time": 1788877603.1426258, "cpu": 1, "pid": 3946896, "job": ["R240", "curved_spike_slab8", 0, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877603.1429038, "cpu": 3, "pid": 3946898, "job": ["R240", "curved_spike_slab8", 1, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877603.1430507, "cpu": 7, "pid": 3946902, "job": ["R240", "curved_spike_slab8", 3, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877603.143217, "cpu": 17, "pid": 3946912, "job": ["R240", "curved_spike_slab8", 8, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877603.1434062, "cpu": 33, "pid": 3946928, "job": ["R240", "curved_spike_slab8", 16, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877603.1435697, "cpu": 35, "pid": 3946930, "job": ["R240", "curved_spike_slab8", 17, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877603.1438055, "cpu": 47, "pid": 3946942, "job": ["R240", "curved_spike_slab8", 23, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877603.144082, "cpu": 57, "pid": 3946952, "job": ["R240", "curved_spike_slab8", 28, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877603.1463304, "cpu": 1, "pid": 3949217, "job": ["R240", "curved_spike_slab8", 0, "analysis"]}
+{"event": "start", "time": 1788877603.1483471, "cpu": 3, "pid": 3949218, "job": ["R240", "curved_spike_slab8", 1, "analysis"]}
+{"event": "start", "time": 1788877603.150233, "cpu": 7, "pid": 3949219, "job": ["R240", "curved_spike_slab8", 3, "analysis"]}
+{"event": "start", "time": 1788877603.1518285, "cpu": 17, "pid": 3949220, "job": ["R240", "curved_spike_slab8", 8, "analysis"]}
+{"event": "start", "time": 1788877603.1534526, "cpu": 33, "pid": 3949221, "job": ["R240", "curved_spike_slab8", 16, "analysis"]}
+{"event": "start", "time": 1788877603.1548882, "cpu": 35, "pid": 3949222, "job": ["R240", "curved_spike_slab8", 17, "analysis"]}
+{"event": "start", "time": 1788877603.156231, "cpu": 47, "pid": 3949223, "job": ["R240", "curved_spike_slab8", 23, "analysis"]}
+{"event": "start", "time": 1788877603.1576788, "cpu": 57, "pid": 3949224, "job": ["R240", "curved_spike_slab8", 28, "analysis"]}
+{"event": "finish", "time": 1788877605.1591434, "cpu": 9, "pid": 3946904, "job": ["R240", "curved_spike_slab8", 4, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877605.15965, "cpu": 49, "pid": 3946944, "job": ["R240", "curved_spike_slab8", 24, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877605.1620946, "cpu": 9, "pid": 3949363, "job": ["R240", "curved_spike_slab8", 4, "analysis"]}
+{"event": "start", "time": 1788877605.1638603, "cpu": 49, "pid": 3949364, "job": ["R240", "curved_spike_slab8", 24, "analysis"]}
+{"event": "finish", "time": 1788877615.1732633, "cpu": 46, "pid": 3948345, "job": ["R240", "spike_slab", 23, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877615.1737847, "cpu": 54, "pid": 3948346, "job": ["R240", "spike_slab", 27, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877615.176695, "cpu": 46, "pid": 3949451, "job": ["A240", "spike_slab", 0, "core"]}
+{"event": "start", "time": 1788877615.1790745, "cpu": 54, "pid": 3949452, "job": ["A240", "curved_spike_slab8", 0, "core"]}
+{"event": "finish", "time": 1788877619.1831439, "cpu": 8, "pid": 3948377, "job": ["R240", "spike_slab", 4, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877619.1838412, "cpu": 20, "pid": 3948378, "job": ["R240", "spike_slab", 10, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877619.1843054, "cpu": 50, "pid": 3948379, "job": ["R240", "spike_slab", 25, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877619.1873465, "cpu": 8, "pid": 3949484, "job": ["A240", "spike_slab", 1, "core"]}
+{"event": "start", "time": 1788877619.1897795, "cpu": 20, "pid": 3949485, "job": ["A240", "curved_spike_slab8", 1, "core"]}
+{"event": "start", "time": 1788877619.1923416, "cpu": 50, "pid": 3949486, "job": ["A240", "spike_slab", 2, "core"]}
+{"event": "finish", "time": 1788877621.1940517, "cpu": 10, "pid": 3948428, "job": ["R240", "spike_slab", 5, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877621.1943407, "cpu": 11, "pid": 3948429, "job": ["R240", "curved_spike_slab8", 5, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877621.1945634, "cpu": 12, "pid": 3948430, "job": ["R240", "spike_slab", 6, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877621.1947906, "cpu": 14, "pid": 3948431, "job": ["R240", "spike_slab", 7, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877621.195024, "cpu": 15, "pid": 3948432, "job": ["R240", "curved_spike_slab8", 7, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877621.1952353, "cpu": 23, "pid": 3948433, "job": ["R240", "curved_spike_slab8", 11, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877621.19545, "cpu": 26, "pid": 3948435, "job": ["R240", "spike_slab", 13, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877621.1956728, "cpu": 30, "pid": 3948437, "job": ["R240", "spike_slab", 15, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877621.195882, "cpu": 32, "pid": 3948438, "job": ["R240", "spike_slab", 16, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877621.1960971, "cpu": 38, "pid": 3948439, "job": ["R240", "spike_slab", 19, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877621.1963112, "cpu": 40, "pid": 3948440, "job": ["R240", "spike_slab", 20, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877621.1965408, "cpu": 42, "pid": 3948441, "job": ["R240", "spike_slab", 21, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877621.1967432, "cpu": 44, "pid": 3948442, "job": ["R240", "spike_slab", 22, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877621.1969485, "cpu": 48, "pid": 3948443, "job": ["R240", "spike_slab", 24, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877621.1971617, "cpu": 52, "pid": 3948444, "job": ["R240", "spike_slab", 26, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877621.1974154, "cpu": 56, "pid": 3948445, "job": ["R240", "spike_slab", 28, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877621.1976562, "cpu": 58, "pid": 3948446, "job": ["R240", "spike_slab", 29, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877621.1997962, "cpu": 10, "pid": 3949488, "job": ["A240", "curved_spike_slab8", 2, "core"]}
+{"event": "start", "time": 1788877621.2011774, "cpu": 11, "pid": 3949489, "job": ["A240", "spike_slab", 3, "core"]}
+{"event": "start", "time": 1788877621.202372, "cpu": 12, "pid": 3949490, "job": ["A240", "curved_spike_slab8", 3, "core"]}
+{"event": "start", "time": 1788877621.2037694, "cpu": 14, "pid": 3949491, "job": ["A240", "spike_slab", 4, "core"]}
+{"event": "start", "time": 1788877621.2052343, "cpu": 15, "pid": 3949492, "job": ["A240", "curved_spike_slab8", 4, "core"]}
+{"event": "start", "time": 1788877621.206509, "cpu": 23, "pid": 3949493, "job": ["A240", "spike_slab", 5, "core"]}
+{"event": "start", "time": 1788877621.2077003, "cpu": 26, "pid": 3949494, "job": ["A240", "curved_spike_slab8", 5, "core"]}
+{"event": "start", "time": 1788877621.208887, "cpu": 30, "pid": 3949495, "job": ["A240", "spike_slab", 6, "core"]}
+{"event": "start", "time": 1788877621.2102098, "cpu": 32, "pid": 3949496, "job": ["A240", "curved_spike_slab8", 6, "core"]}
+{"event": "start", "time": 1788877621.211523, "cpu": 38, "pid": 3949497, "job": ["A240", "spike_slab", 7, "core"]}
+{"event": "start", "time": 1788877621.2128491, "cpu": 40, "pid": 3949498, "job": ["A240", "curved_spike_slab8", 7, "core"]}
+{"event": "start", "time": 1788877621.2140634, "cpu": 42, "pid": 3949499, "job": ["A240", "spike_slab", 8, "core"]}
+{"event": "start", "time": 1788877621.2153625, "cpu": 44, "pid": 3949500, "job": ["A240", "curved_spike_slab8", 8, "core"]}
+{"event": "start", "time": 1788877621.2166488, "cpu": 48, "pid": 3949501, "job": ["A240", "spike_slab", 9, "core"]}
+{"event": "start", "time": 1788877621.2179062, "cpu": 52, "pid": 3949502, "job": ["A240", "curved_spike_slab8", 9, "core"]}
+{"event": "start", "time": 1788877621.2193134, "cpu": 56, "pid": 3949503, "job": ["A240", "spike_slab", 10, "core"]}
+{"event": "start", "time": 1788877621.2206059, "cpu": 58, "pid": 3949504, "job": ["A240", "curved_spike_slab8", 10, "core"]}
+{"event": "finish", "time": 1788877623.2220461, "cpu": 5, "pid": 3948427, "job": ["R240", "curved_spike_slab8", 2, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877623.222428, "cpu": 24, "pid": 3948434, "job": ["R240", "spike_slab", 12, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877623.2226887, "cpu": 28, "pid": 3948436, "job": ["R240", "spike_slab", 14, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877623.224861, "cpu": 5, "pid": 3949772, "job": ["A240", "spike_slab", 11, "core"]}
+{"event": "start", "time": 1788877623.2265592, "cpu": 24, "pid": 3949773, "job": ["A240", "curved_spike_slab8", 11, "core"]}
+{"event": "start", "time": 1788877623.2280958, "cpu": 28, "pid": 3949774, "job": ["A240", "spike_slab", 12, "core"]}
+{"event": "finish", "time": 1788877625.2294772, "cpu": 0, "pid": 3948750, "job": ["R240", "spike_slab", 0, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877625.2297764, "cpu": 2, "pid": 3948751, "job": ["R240", "spike_slab", 1, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877625.2300189, "cpu": 4, "pid": 3948752, "job": ["R240", "spike_slab", 2, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877625.230224, "cpu": 6, "pid": 3948753, "job": ["R240", "spike_slab", 3, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877625.2304156, "cpu": 16, "pid": 3948754, "job": ["R240", "spike_slab", 8, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877625.2305906, "cpu": 18, "pid": 3948755, "job": ["R240", "spike_slab", 9, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877625.2307642, "cpu": 19, "pid": 3948756, "job": ["R240", "curved_spike_slab8", 9, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877625.230954, "cpu": 22, "pid": 3948757, "job": ["R240", "spike_slab", 11, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877625.2311637, "cpu": 34, "pid": 3948758, "job": ["R240", "spike_slab", 17, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877625.2313724, "cpu": 36, "pid": 3948759, "job": ["R240", "spike_slab", 18, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877625.231588, "cpu": 59, "pid": 3948760, "job": ["R240", "curved_spike_slab8", 29, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877625.233365, "cpu": 0, "pid": 3949869, "job": ["A240", "curved_spike_slab8", 12, "core"]}
+{"event": "start", "time": 1788877625.2345853, "cpu": 2, "pid": 3949870, "job": ["A240", "spike_slab", 13, "core"]}
+{"event": "start", "time": 1788877625.2356343, "cpu": 4, "pid": 3949871, "job": ["A240", "curved_spike_slab8", 13, "core"]}
+{"event": "start", "time": 1788877625.236679, "cpu": 6, "pid": 3949872, "job": ["A240", "spike_slab", 14, "core"]}
+{"event": "start", "time": 1788877625.237688, "cpu": 16, "pid": 3949873, "job": ["A240", "curved_spike_slab8", 14, "core"]}
+{"event": "start", "time": 1788877625.2386599, "cpu": 18, "pid": 3949874, "job": ["A240", "spike_slab", 15, "core"]}
+{"event": "start", "time": 1788877625.2397044, "cpu": 19, "pid": 3949875, "job": ["A240", "curved_spike_slab8", 15, "core"]}
+{"event": "start", "time": 1788877625.240726, "cpu": 22, "pid": 3949876, "job": ["A240", "spike_slab", 16, "core"]}
+{"event": "start", "time": 1788877625.2416606, "cpu": 34, "pid": 3949877, "job": ["A240", "curved_spike_slab8", 16, "core"]}
+{"event": "start", "time": 1788877625.2427216, "cpu": 36, "pid": 3949878, "job": ["A240", "spike_slab", 17, "core"]}
+{"event": "start", "time": 1788877625.243753, "cpu": 59, "pid": 3949879, "job": ["A240", "curved_spike_slab8", 17, "core"]}
+{"event": "finish", "time": 1788877649.260267, "cpu": 51, "pid": 3948964, "job": ["R240", "curved_spike_slab8", 25, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877649.2624853, "cpu": 51, "pid": 3950110, "job": ["A240", "spike_slab", 18, "core"]}
+{"event": "finish", "time": 1788877651.2641358, "cpu": 21, "pid": 3948976, "job": ["R240", "curved_spike_slab8", 10, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877651.2644346, "cpu": 55, "pid": 3948977, "job": ["R240", "curved_spike_slab8", 27, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877651.2664304, "cpu": 21, "pid": 3950124, "job": ["A240", "curved_spike_slab8", 18, "core"]}
+{"event": "start", "time": 1788877651.2678173, "cpu": 55, "pid": 3950125, "job": ["A240", "spike_slab", 19, "core"]}
+{"event": "finish", "time": 1788877653.2689676, "cpu": 25, "pid": 3949040, "job": ["R240", "curved_spike_slab8", 12, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877653.2708488, "cpu": 25, "pid": 3950156, "job": ["A240", "curved_spike_slab8", 19, "core"]}
+{"event": "finish", "time": 1788877655.2718518, "cpu": 13, "pid": 3949045, "job": ["R240", "curved_spike_slab8", 6, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877655.2720778, "cpu": 27, "pid": 3949046, "job": ["R240", "curved_spike_slab8", 13, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877655.2722301, "cpu": 29, "pid": 3949047, "job": ["R240", "curved_spike_slab8", 14, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877655.2723775, "cpu": 31, "pid": 3949048, "job": ["R240", "curved_spike_slab8", 15, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877655.2725146, "cpu": 37, "pid": 3949049, "job": ["R240", "curved_spike_slab8", 18, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877655.2726562, "cpu": 39, "pid": 3949050, "job": ["R240", "curved_spike_slab8", 19, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877655.272798, "cpu": 41, "pid": 3949051, "job": ["R240", "curved_spike_slab8", 20, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877655.2729342, "cpu": 43, "pid": 3949052, "job": ["R240", "curved_spike_slab8", 21, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877655.27308, "cpu": 45, "pid": 3949053, "job": ["R240", "curved_spike_slab8", 22, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877655.273227, "cpu": 53, "pid": 3949054, "job": ["R240", "curved_spike_slab8", 26, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877655.2733684, "cpu": 1, "pid": 3949217, "job": ["R240", "curved_spike_slab8", 0, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877655.273512, "cpu": 7, "pid": 3949219, "job": ["R240", "curved_spike_slab8", 3, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877655.2736597, "cpu": 17, "pid": 3949220, "job": ["R240", "curved_spike_slab8", 8, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877655.2738008, "cpu": 33, "pid": 3949221, "job": ["R240", "curved_spike_slab8", 16, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877655.2739563, "cpu": 35, "pid": 3949222, "job": ["R240", "curved_spike_slab8", 17, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877655.275299, "cpu": 1, "pid": 3950178, "job": ["A240", "spike_slab", 20, "core"]}
+{"event": "start", "time": 1788877655.2762759, "cpu": 7, "pid": 3950179, "job": ["A240", "curved_spike_slab8", 20, "core"]}
+{"event": "start", "time": 1788877655.2771492, "cpu": 13, "pid": 3950180, "job": ["A240", "spike_slab", 21, "core"]}
+{"event": "start", "time": 1788877655.2779698, "cpu": 17, "pid": 3950181, "job": ["A240", "curved_spike_slab8", 21, "core"]}
+{"event": "start", "time": 1788877655.2787778, "cpu": 27, "pid": 3950182, "job": ["A240", "spike_slab", 22, "core"]}
+{"event": "start", "time": 1788877655.2796376, "cpu": 29, "pid": 3950183, "job": ["A240", "curved_spike_slab8", 22, "core"]}
+{"event": "start", "time": 1788877655.2804244, "cpu": 31, "pid": 3950184, "job": ["A240", "spike_slab", 23, "core"]}
+{"event": "start", "time": 1788877655.2812235, "cpu": 33, "pid": 3950185, "job": ["A240", "curved_spike_slab8", 23, "core"]}
+{"event": "start", "time": 1788877655.2820666, "cpu": 35, "pid": 3950186, "job": ["A240", "spike_slab", 24, "core"]}
+{"event": "start", "time": 1788877655.2828717, "cpu": 37, "pid": 3950187, "job": ["A240", "curved_spike_slab8", 24, "core"]}
+{"event": "start", "time": 1788877655.2836518, "cpu": 39, "pid": 3950188, "job": ["A240", "spike_slab", 25, "core"]}
+{"event": "start", "time": 1788877655.2844205, "cpu": 41, "pid": 3950189, "job": ["A240", "curved_spike_slab8", 25, "core"]}
+{"event": "start", "time": 1788877655.2851813, "cpu": 43, "pid": 3950190, "job": ["A240", "spike_slab", 26, "core"]}
+{"event": "start", "time": 1788877655.2859685, "cpu": 45, "pid": 3950191, "job": ["A240", "curved_spike_slab8", 26, "core"]}
+{"event": "start", "time": 1788877655.286759, "cpu": 53, "pid": 3950192, "job": ["A240", "spike_slab", 27, "core"]}
+{"event": "finish", "time": 1788877657.2875366, "cpu": 3, "pid": 3949218, "job": ["R240", "curved_spike_slab8", 1, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877657.2877614, "cpu": 47, "pid": 3949223, "job": ["R240", "curved_spike_slab8", 23, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877657.287929, "cpu": 57, "pid": 3949224, "job": ["R240", "curved_spike_slab8", 28, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877657.2892294, "cpu": 3, "pid": 3950419, "job": ["A240", "curved_spike_slab8", 27, "core"]}
+{"event": "start", "time": 1788877657.2901456, "cpu": 47, "pid": 3950420, "job": ["A240", "spike_slab", 28, "core"]}
+{"event": "start", "time": 1788877657.291058, "cpu": 57, "pid": 3950421, "job": ["A240", "curved_spike_slab8", 28, "core"]}
+{"event": "finish", "time": 1788877659.2919133, "cpu": 49, "pid": 3949364, "job": ["R240", "curved_spike_slab8", 24, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877659.2934568, "cpu": 49, "pid": 3950497, "job": ["A240", "spike_slab", 29, "core"]}
+{"event": "finish", "time": 1788877661.294364, "cpu": 9, "pid": 3949363, "job": ["R240", "curved_spike_slab8", 4, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877661.29586, "cpu": 9, "pid": 3950516, "job": ["A240", "curved_spike_slab8", 29, "core"]}
+{"event": "finish", "time": 1788877721.324304, "cpu": 56, "pid": 3949503, "job": ["A240", "spike_slab", 10, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877721.3259227, "cpu": 56, "pid": 3950643, "job": ["A240", "spike_slab", 10, "analysis"]}
+{"event": "finish", "time": 1788877725.3278384, "cpu": 46, "pid": 3949451, "job": ["A240", "spike_slab", 0, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877725.3280942, "cpu": 50, "pid": 3949486, "job": ["A240", "spike_slab", 2, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877725.3282392, "cpu": 10, "pid": 3949488, "job": ["A240", "curved_spike_slab8", 2, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877725.3283703, "cpu": 11, "pid": 3949489, "job": ["A240", "spike_slab", 3, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877725.3285055, "cpu": 14, "pid": 3949491, "job": ["A240", "spike_slab", 4, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877725.3286405, "cpu": 23, "pid": 3949493, "job": ["A240", "spike_slab", 5, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877725.3287737, "cpu": 30, "pid": 3949495, "job": ["A240", "spike_slab", 6, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877725.3289132, "cpu": 38, "pid": 3949497, "job": ["A240", "spike_slab", 7, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877725.3290539, "cpu": 42, "pid": 3949499, "job": ["A240", "spike_slab", 8, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877725.3291888, "cpu": 44, "pid": 3949500, "job": ["A240", "curved_spike_slab8", 8, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877725.3293273, "cpu": 48, "pid": 3949501, "job": ["A240", "spike_slab", 9, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877725.3306835, "cpu": 10, "pid": 3950660, "job": ["A240", "spike_slab", 0, "analysis"]}
+{"event": "start", "time": 1788877725.3317251, "cpu": 11, "pid": 3950661, "job": ["A240", "spike_slab", 2, "analysis"]}
+{"event": "start", "time": 1788877725.332735, "cpu": 14, "pid": 3950662, "job": ["A240", "curved_spike_slab8", 2, "analysis"]}
+{"event": "start", "time": 1788877725.3336358, "cpu": 23, "pid": 3950663, "job": ["A240", "spike_slab", 3, "analysis"]}
+{"event": "start", "time": 1788877725.33453, "cpu": 30, "pid": 3950664, "job": ["A240", "spike_slab", 4, "analysis"]}
+{"event": "start", "time": 1788877725.3353856, "cpu": 38, "pid": 3950665, "job": ["A240", "spike_slab", 5, "analysis"]}
+{"event": "start", "time": 1788877725.3362255, "cpu": 42, "pid": 3950666, "job": ["A240", "spike_slab", 6, "analysis"]}
+{"event": "start", "time": 1788877725.337127, "cpu": 44, "pid": 3950667, "job": ["A240", "spike_slab", 7, "analysis"]}
+{"event": "start", "time": 1788877725.338022, "cpu": 46, "pid": 3950668, "job": ["A240", "spike_slab", 8, "analysis"]}
+{"event": "start", "time": 1788877725.338921, "cpu": 48, "pid": 3950669, "job": ["A240", "curved_spike_slab8", 8, "analysis"]}
+{"event": "start", "time": 1788877725.3398285, "cpu": 50, "pid": 3950670, "job": ["A240", "spike_slab", 9, "analysis"]}
+{"event": "finish", "time": 1788877727.34071, "cpu": 8, "pid": 3949484, "job": ["A240", "spike_slab", 1, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877727.340977, "cpu": 5, "pid": 3949772, "job": ["A240", "spike_slab", 11, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877727.341175, "cpu": 24, "pid": 3949773, "job": ["A240", "curved_spike_slab8", 11, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877727.3413348, "cpu": 28, "pid": 3949774, "job": ["A240", "spike_slab", 12, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877727.342709, "cpu": 5, "pid": 3950836, "job": ["A240", "spike_slab", 1, "analysis"]}
+{"event": "start", "time": 1788877727.3436854, "cpu": 8, "pid": 3950837, "job": ["A240", "spike_slab", 11, "analysis"]}
+{"event": "start", "time": 1788877727.344604, "cpu": 24, "pid": 3950838, "job": ["A240", "curved_spike_slab8", 11, "analysis"]}
+{"event": "start", "time": 1788877727.3454494, "cpu": 28, "pid": 3950839, "job": ["A240", "spike_slab", 12, "analysis"]}
+{"event": "finish", "time": 1788877729.3462934, "cpu": 2, "pid": 3949870, "job": ["A240", "spike_slab", 13, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877729.34652, "cpu": 4, "pid": 3949871, "job": ["A240", "curved_spike_slab8", 13, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877729.3466787, "cpu": 6, "pid": 3949872, "job": ["A240", "spike_slab", 14, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877729.3468318, "cpu": 18, "pid": 3949874, "job": ["A240", "spike_slab", 15, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877729.3469765, "cpu": 19, "pid": 3949875, "job": ["A240", "curved_spike_slab8", 15, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877729.3471093, "cpu": 22, "pid": 3949876, "job": ["A240", "spike_slab", 16, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877729.3472574, "cpu": 36, "pid": 3949878, "job": ["A240", "spike_slab", 17, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877729.3485425, "cpu": 2, "pid": 3950911, "job": ["A240", "spike_slab", 13, "analysis"]}
+{"event": "start", "time": 1788877729.349516, "cpu": 4, "pid": 3950912, "job": ["A240", "curved_spike_slab8", 13, "analysis"]}
+{"event": "start", "time": 1788877729.3504276, "cpu": 6, "pid": 3950913, "job": ["A240", "spike_slab", 14, "analysis"]}
+{"event": "start", "time": 1788877729.3513103, "cpu": 18, "pid": 3950914, "job": ["A240", "spike_slab", 15, "analysis"]}
+{"event": "start", "time": 1788877729.352198, "cpu": 19, "pid": 3950915, "job": ["A240", "curved_spike_slab8", 15, "analysis"]}
+{"event": "start", "time": 1788877729.353046, "cpu": 22, "pid": 3950916, "job": ["A240", "spike_slab", 16, "analysis"]}
+{"event": "start", "time": 1788877729.3539066, "cpu": 36, "pid": 3950917, "job": ["A240", "spike_slab", 17, "analysis"]}
+{"event": "finish", "time": 1788877745.3641307, "cpu": 51, "pid": 3950110, "job": ["A240", "spike_slab", 18, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877745.3665872, "cpu": 51, "pid": 3951148, "job": ["A240", "spike_slab", 18, "analysis"]}
+{"event": "finish", "time": 1788877747.3681076, "cpu": 58, "pid": 3949504, "job": ["A240", "curved_spike_slab8", 10, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877747.3702595, "cpu": 58, "pid": 3951162, "job": ["A240", "curved_spike_slab8", 10, "analysis"]}
+{"event": "finish", "time": 1788877751.3733451, "cpu": 12, "pid": 3949490, "job": ["A240", "curved_spike_slab8", 3, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877751.3736868, "cpu": 15, "pid": 3949492, "job": ["A240", "curved_spike_slab8", 4, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877751.3739552, "cpu": 26, "pid": 3949494, "job": ["A240", "curved_spike_slab8", 5, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877751.374203, "cpu": 40, "pid": 3949498, "job": ["A240", "curved_spike_slab8", 7, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877751.374462, "cpu": 52, "pid": 3949502, "job": ["A240", "curved_spike_slab8", 9, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877751.3747318, "cpu": 55, "pid": 3950125, "job": ["A240", "spike_slab", 19, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877751.3767848, "cpu": 12, "pid": 3951202, "job": ["A240", "curved_spike_slab8", 3, "analysis"]}
+{"event": "start", "time": 1788877751.378257, "cpu": 15, "pid": 3951203, "job": ["A240", "curved_spike_slab8", 4, "analysis"]}
+{"event": "start", "time": 1788877751.3797588, "cpu": 26, "pid": 3951204, "job": ["A240", "curved_spike_slab8", 5, "analysis"]}
+{"event": "start", "time": 1788877751.3813345, "cpu": 40, "pid": 3951205, "job": ["A240", "curved_spike_slab8", 7, "analysis"]}
+{"event": "start", "time": 1788877751.3826926, "cpu": 52, "pid": 3951206, "job": ["A240", "curved_spike_slab8", 9, "analysis"]}
+{"event": "start", "time": 1788877751.383946, "cpu": 55, "pid": 3951207, "job": ["A240", "spike_slab", 19, "analysis"]}
+{"event": "finish", "time": 1788877753.385203, "cpu": 54, "pid": 3949452, "job": ["A240", "curved_spike_slab8", 0, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877753.3855433, "cpu": 32, "pid": 3949496, "job": ["A240", "curved_spike_slab8", 6, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877753.3858786, "cpu": 53, "pid": 3950192, "job": ["A240", "spike_slab", 27, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877753.3877816, "cpu": 32, "pid": 3951288, "job": ["A240", "curved_spike_slab8", 0, "analysis"]}
+{"event": "start", "time": 1788877753.3892362, "cpu": 53, "pid": 3951289, "job": ["A240", "curved_spike_slab8", 6, "analysis"]}
+{"event": "start", "time": 1788877753.390375, "cpu": 54, "pid": 3951290, "job": ["A240", "spike_slab", 27, "analysis"]}
+{"event": "finish", "time": 1788877755.3916621, "cpu": 39, "pid": 3950188, "job": ["A240", "spike_slab", 25, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877755.3937895, "cpu": 39, "pid": 3951347, "job": ["A240", "spike_slab", 25, "analysis"]}
+{"event": "finish", "time": 1788877757.395262, "cpu": 20, "pid": 3949485, "job": ["A240", "curved_spike_slab8", 1, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877757.395623, "cpu": 16, "pid": 3949873, "job": ["A240", "curved_spike_slab8", 14, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877757.3958986, "cpu": 25, "pid": 3950156, "job": ["A240", "curved_spike_slab8", 19, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877757.3961127, "cpu": 27, "pid": 3950182, "job": ["A240", "spike_slab", 22, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877757.3983378, "cpu": 16, "pid": 3951370, "job": ["A240", "curved_spike_slab8", 1, "analysis"]}
+{"event": "start", "time": 1788877757.3998926, "cpu": 20, "pid": 3951371, "job": ["A240", "curved_spike_slab8", 14, "analysis"]}
+{"event": "start", "time": 1788877757.4011693, "cpu": 25, "pid": 3951372, "job": ["A240", "curved_spike_slab8", 19, "analysis"]}
+{"event": "start", "time": 1788877757.4024882, "cpu": 27, "pid": 3951373, "job": ["A240", "spike_slab", 22, "analysis"]}
+{"event": "finish", "time": 1788877759.403815, "cpu": 0, "pid": 3949869, "job": ["A240", "curved_spike_slab8", 12, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877759.4042125, "cpu": 34, "pid": 3949877, "job": ["A240", "curved_spike_slab8", 16, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877759.4044914, "cpu": 59, "pid": 3949879, "job": ["A240", "curved_spike_slab8", 17, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877759.4047449, "cpu": 13, "pid": 3950180, "job": ["A240", "spike_slab", 21, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877759.404953, "cpu": 31, "pid": 3950184, "job": ["A240", "spike_slab", 23, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877759.40519, "cpu": 43, "pid": 3950190, "job": ["A240", "spike_slab", 26, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877759.407155, "cpu": 0, "pid": 3951429, "job": ["A240", "curved_spike_slab8", 12, "analysis"]}
+{"event": "start", "time": 1788877759.408593, "cpu": 13, "pid": 3951430, "job": ["A240", "curved_spike_slab8", 16, "analysis"]}
+{"event": "start", "time": 1788877759.4097683, "cpu": 31, "pid": 3951431, "job": ["A240", "curved_spike_slab8", 17, "analysis"]}
+{"event": "start", "time": 1788877759.4109488, "cpu": 34, "pid": 3951432, "job": ["A240", "spike_slab", 21, "analysis"]}
+{"event": "start", "time": 1788877759.4121447, "cpu": 43, "pid": 3951433, "job": ["A240", "spike_slab", 23, "analysis"]}
+{"event": "start", "time": 1788877759.4133778, "cpu": 59, "pid": 3951434, "job": ["A240", "spike_slab", 26, "analysis"]}
+{"event": "finish", "time": 1788877761.4145393, "cpu": 1, "pid": 3950178, "job": ["A240", "spike_slab", 20, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877761.4148922, "cpu": 7, "pid": 3950179, "job": ["A240", "curved_spike_slab8", 20, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877761.415133, "cpu": 35, "pid": 3950186, "job": ["A240", "spike_slab", 24, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877761.4153621, "cpu": 47, "pid": 3950420, "job": ["A240", "spike_slab", 28, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877761.4156199, "cpu": 56, "pid": 3950643, "job": ["A240", "spike_slab", 10, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877761.4176106, "cpu": 1, "pid": 3951525, "job": ["A240", "spike_slab", 20, "analysis"]}
+{"event": "start", "time": 1788877761.4191084, "cpu": 7, "pid": 3951526, "job": ["A240", "curved_spike_slab8", 20, "analysis"]}
+{"event": "start", "time": 1788877761.4204018, "cpu": 35, "pid": 3951527, "job": ["A240", "spike_slab", 24, "analysis"]}
+{"event": "start", "time": 1788877761.421666, "cpu": 47, "pid": 3951528, "job": ["A240", "spike_slab", 28, "analysis"]}
+{"event": "start", "time": 1788877761.423065, "cpu": 56, "pid": 3951529, "job": ["C240", "spike_slab", 0, "core"]}
+{"event": "finish", "time": 1788877765.4259043, "cpu": 49, "pid": 3950497, "job": ["A240", "spike_slab", 29, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877765.4263225, "cpu": 10, "pid": 3950660, "job": ["A240", "spike_slab", 0, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877765.4265723, "cpu": 23, "pid": 3950663, "job": ["A240", "spike_slab", 3, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877765.4268067, "cpu": 42, "pid": 3950666, "job": ["A240", "spike_slab", 6, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877765.4270213, "cpu": 44, "pid": 3950667, "job": ["A240", "spike_slab", 7, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877765.4272578, "cpu": 48, "pid": 3950669, "job": ["A240", "curved_spike_slab8", 8, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877765.4274662, "cpu": 50, "pid": 3950670, "job": ["A240", "spike_slab", 9, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877765.4292815, "cpu": 10, "pid": 3951625, "job": ["A240", "spike_slab", 29, "analysis"]}
+{"event": "start", "time": 1788877765.4307668, "cpu": 23, "pid": 3951626, "job": ["C240", "curved_spike_slab8", 0, "core"]}
+{"event": "start", "time": 1788877765.4320383, "cpu": 42, "pid": 3951627, "job": ["C240", "spike_slab", 1, "core"]}
+{"event": "start", "time": 1788877765.433207, "cpu": 44, "pid": 3951628, "job": ["C240", "curved_spike_slab8", 1, "core"]}
+{"event": "start", "time": 1788877765.4343767, "cpu": 48, "pid": 3951629, "job": ["C240", "spike_slab", 2, "core"]}
+{"event": "start", "time": 1788877765.4354992, "cpu": 49, "pid": 3951630, "job": ["C240", "curved_spike_slab8", 2, "core"]}
+{"event": "start", "time": 1788877765.4366107, "cpu": 50, "pid": 3951631, "job": ["C240", "spike_slab", 3, "core"]}
+{"event": "finish", "time": 1788877767.4378498, "cpu": 11, "pid": 3950661, "job": ["A240", "spike_slab", 2, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877767.4381886, "cpu": 14, "pid": 3950662, "job": ["A240", "curved_spike_slab8", 2, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877767.4384222, "cpu": 30, "pid": 3950664, "job": ["A240", "spike_slab", 4, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877767.4386294, "cpu": 38, "pid": 3950665, "job": ["A240", "spike_slab", 5, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877767.4388404, "cpu": 46, "pid": 3950668, "job": ["A240", "spike_slab", 8, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877767.4405448, "cpu": 11, "pid": 3951730, "job": ["C240", "curved_spike_slab8", 3, "core"]}
+{"event": "start", "time": 1788877767.4418156, "cpu": 14, "pid": 3951731, "job": ["C240", "spike_slab", 4, "core"]}
+{"event": "start", "time": 1788877767.4429932, "cpu": 30, "pid": 3951732, "job": ["C240", "curved_spike_slab8", 4, "core"]}
+{"event": "start", "time": 1788877767.444125, "cpu": 38, "pid": 3951733, "job": ["C240", "spike_slab", 5, "core"]}
+{"event": "start", "time": 1788877767.4452345, "cpu": 46, "pid": 3951734, "job": ["C240", "curved_spike_slab8", 5, "core"]}
+{"event": "finish", "time": 1788877769.446517, "cpu": 5, "pid": 3950836, "job": ["A240", "spike_slab", 1, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877769.4468803, "cpu": 8, "pid": 3950837, "job": ["A240", "spike_slab", 11, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877769.4471388, "cpu": 24, "pid": 3950838, "job": ["A240", "curved_spike_slab8", 11, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877769.4473674, "cpu": 28, "pid": 3950839, "job": ["A240", "spike_slab", 12, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877769.4491394, "cpu": 5, "pid": 3951819, "job": ["C240", "spike_slab", 6, "core"]}
+{"event": "start", "time": 1788877769.450562, "cpu": 8, "pid": 3951820, "job": ["C240", "curved_spike_slab8", 6, "core"]}
+{"event": "start", "time": 1788877769.4517937, "cpu": 24, "pid": 3951821, "job": ["C240", "spike_slab", 7, "core"]}
+{"event": "start", "time": 1788877769.4530602, "cpu": 28, "pid": 3951822, "job": ["C240", "curved_spike_slab8", 7, "core"]}
+{"event": "finish", "time": 1788877771.454307, "cpu": 2, "pid": 3950911, "job": ["A240", "spike_slab", 13, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877771.4546294, "cpu": 4, "pid": 3950912, "job": ["A240", "curved_spike_slab8", 13, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877771.4548552, "cpu": 6, "pid": 3950913, "job": ["A240", "spike_slab", 14, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877771.4550846, "cpu": 18, "pid": 3950914, "job": ["A240", "spike_slab", 15, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877771.4552958, "cpu": 19, "pid": 3950915, "job": ["A240", "curved_spike_slab8", 15, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877771.4555073, "cpu": 22, "pid": 3950916, "job": ["A240", "spike_slab", 16, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877771.4557173, "cpu": 36, "pid": 3950917, "job": ["A240", "spike_slab", 17, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877771.4574094, "cpu": 2, "pid": 3951892, "job": ["C240", "spike_slab", 8, "core"]}
+{"event": "start", "time": 1788877771.458681, "cpu": 4, "pid": 3951893, "job": ["C240", "curved_spike_slab8", 8, "core"]}
+{"event": "start", "time": 1788877771.4599905, "cpu": 6, "pid": 3951894, "job": ["C240", "spike_slab", 9, "core"]}
+{"event": "start", "time": 1788877771.4611492, "cpu": 18, "pid": 3951895, "job": ["C240", "curved_spike_slab8", 9, "core"]}
+{"event": "start", "time": 1788877771.4622238, "cpu": 19, "pid": 3951896, "job": ["C240", "spike_slab", 10, "core"]}
+{"event": "start", "time": 1788877771.463229, "cpu": 22, "pid": 3951897, "job": ["C240", "curved_spike_slab8", 10, "core"]}
+{"event": "start", "time": 1788877771.4642339, "cpu": 36, "pid": 3951898, "job": ["C240", "spike_slab", 11, "core"]}
+{"event": "finish", "time": 1788877783.4731886, "cpu": 41, "pid": 3950189, "job": ["A240", "curved_spike_slab8", 25, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877783.4753485, "cpu": 41, "pid": 3952053, "job": ["A240", "curved_spike_slab8", 25, "analysis"]}
+{"event": "finish", "time": 1788877787.4784377, "cpu": 21, "pid": 3950124, "job": ["A240", "curved_spike_slab8", 18, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877787.4788873, "cpu": 29, "pid": 3950183, "job": ["A240", "curved_spike_slab8", 22, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877787.4791572, "cpu": 3, "pid": 3950419, "job": ["A240", "curved_spike_slab8", 27, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877787.48114, "cpu": 3, "pid": 3952108, "job": ["A240", "curved_spike_slab8", 18, "analysis"]}
+{"event": "start", "time": 1788877787.4827166, "cpu": 21, "pid": 3952109, "job": ["A240", "curved_spike_slab8", 22, "analysis"]}
+{"event": "start", "time": 1788877787.4841464, "cpu": 29, "pid": 3952110, "job": ["A240", "curved_spike_slab8", 27, "analysis"]}
+{"event": "finish", "time": 1788877789.4855735, "cpu": 33, "pid": 3950185, "job": ["A240", "curved_spike_slab8", 23, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877789.4860122, "cpu": 37, "pid": 3950187, "job": ["A240", "curved_spike_slab8", 24, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877789.486315, "cpu": 51, "pid": 3951148, "job": ["A240", "spike_slab", 18, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877789.4885302, "cpu": 33, "pid": 3952194, "job": ["A240", "curved_spike_slab8", 23, "analysis"]}
+{"event": "start", "time": 1788877789.4901187, "cpu": 37, "pid": 3952195, "job": ["A240", "curved_spike_slab8", 24, "analysis"]}
+{"event": "start", "time": 1788877789.4916947, "cpu": 51, "pid": 3952196, "job": ["C240", "curved_spike_slab8", 11, "core"]}
+{"event": "finish", "time": 1788877791.4931738, "cpu": 17, "pid": 3950181, "job": ["A240", "curved_spike_slab8", 21, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877791.4935489, "cpu": 45, "pid": 3950191, "job": ["A240", "curved_spike_slab8", 26, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877791.493788, "cpu": 57, "pid": 3950421, "job": ["A240", "curved_spike_slab8", 28, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877791.4958768, "cpu": 17, "pid": 3952264, "job": ["A240", "curved_spike_slab8", 21, "analysis"]}
+{"event": "start", "time": 1788877791.497234, "cpu": 45, "pid": 3952265, "job": ["A240", "curved_spike_slab8", 26, "analysis"]}
+{"event": "start", "time": 1788877791.4984155, "cpu": 57, "pid": 3952266, "job": ["A240", "curved_spike_slab8", 28, "analysis"]}
+{"event": "finish", "time": 1788877795.501374, "cpu": 55, "pid": 3951207, "job": ["A240", "spike_slab", 19, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877795.50362, "cpu": 55, "pid": 3952324, "job": ["C240", "spike_slab", 12, "core"]}
+{"event": "finish", "time": 1788877797.5050936, "cpu": 9, "pid": 3950516, "job": ["A240", "curved_spike_slab8", 29, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877797.5056167, "cpu": 54, "pid": 3951290, "job": ["A240", "spike_slab", 27, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877797.5077763, "cpu": 9, "pid": 3952343, "job": ["A240", "curved_spike_slab8", 29, "analysis"]}
+{"event": "start", "time": 1788877797.509374, "cpu": 54, "pid": 3952344, "job": ["C240", "curved_spike_slab8", 12, "core"]}
+{"event": "finish", "time": 1788877799.5108721, "cpu": 58, "pid": 3951162, "job": ["A240", "curved_spike_slab8", 10, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877799.5114038, "cpu": 39, "pid": 3951347, "job": ["A240", "spike_slab", 25, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877799.5135555, "cpu": 39, "pid": 3952373, "job": ["C240", "spike_slab", 13, "core"]}
+{"event": "start", "time": 1788877799.5149212, "cpu": 58, "pid": 3952374, "job": ["C240", "curved_spike_slab8", 13, "core"]}
+{"event": "finish", "time": 1788877801.5163622, "cpu": 52, "pid": 3951206, "job": ["A240", "curved_spike_slab8", 9, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877801.5167305, "cpu": 25, "pid": 3951372, "job": ["A240", "curved_spike_slab8", 19, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877801.5169828, "cpu": 27, "pid": 3951373, "job": ["A240", "spike_slab", 22, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877801.5187974, "cpu": 25, "pid": 3952411, "job": ["C240", "spike_slab", 14, "core"]}
+{"event": "start", "time": 1788877801.5200906, "cpu": 27, "pid": 3952412, "job": ["C240", "curved_spike_slab8", 14, "core"]}
+{"event": "start", "time": 1788877801.5213087, "cpu": 52, "pid": 3952413, "job": ["C240", "spike_slab", 15, "core"]}
+{"event": "finish", "time": 1788877803.5225067, "cpu": 12, "pid": 3951202, "job": ["A240", "curved_spike_slab8", 3, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877803.5228276, "cpu": 15, "pid": 3951203, "job": ["A240", "curved_spike_slab8", 4, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877803.5230734, "cpu": 26, "pid": 3951204, "job": ["A240", "curved_spike_slab8", 5, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877803.5233166, "cpu": 40, "pid": 3951205, "job": ["A240", "curved_spike_slab8", 7, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877803.523578, "cpu": 34, "pid": 3951432, "job": ["A240", "spike_slab", 21, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877803.5237923, "cpu": 43, "pid": 3951433, "job": ["A240", "spike_slab", 23, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877803.5239854, "cpu": 59, "pid": 3951434, "job": ["A240", "spike_slab", 26, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877803.5257666, "cpu": 12, "pid": 3952465, "job": ["C240", "curved_spike_slab8", 15, "core"]}
+{"event": "start", "time": 1788877803.5270371, "cpu": 15, "pid": 3952466, "job": ["C240", "spike_slab", 16, "core"]}
+{"event": "start", "time": 1788877803.5280852, "cpu": 26, "pid": 3952467, "job": ["C240", "curved_spike_slab8", 16, "core"]}
+{"event": "start", "time": 1788877803.5292132, "cpu": 34, "pid": 3952468, "job": ["C240", "spike_slab", 17, "core"]}
+{"event": "start", "time": 1788877803.530276, "cpu": 40, "pid": 3952469, "job": ["C240", "curved_spike_slab8", 17, "core"]}
+{"event": "start", "time": 1788877803.5313044, "cpu": 43, "pid": 3952470, "job": ["C240", "spike_slab", 18, "core"]}
+{"event": "start", "time": 1788877803.532301, "cpu": 59, "pid": 3952471, "job": ["C240", "curved_spike_slab8", 18, "core"]}
+{"event": "finish", "time": 1788877805.5333235, "cpu": 32, "pid": 3951288, "job": ["A240", "curved_spike_slab8", 0, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877805.5336244, "cpu": 53, "pid": 3951289, "job": ["A240", "curved_spike_slab8", 6, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877805.533865, "cpu": 1, "pid": 3951525, "job": ["A240", "spike_slab", 20, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877805.5341036, "cpu": 7, "pid": 3951526, "job": ["A240", "curved_spike_slab8", 20, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877805.5343142, "cpu": 35, "pid": 3951527, "job": ["A240", "spike_slab", 24, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877805.5344975, "cpu": 47, "pid": 3951528, "job": ["A240", "spike_slab", 28, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877805.536196, "cpu": 1, "pid": 3952580, "job": ["C240", "spike_slab", 19, "core"]}
+{"event": "start", "time": 1788877805.5374386, "cpu": 7, "pid": 3952581, "job": ["C240", "curved_spike_slab8", 19, "core"]}
+{"event": "start", "time": 1788877805.53842, "cpu": 32, "pid": 3952582, "job": ["C240", "spike_slab", 20, "core"]}
+{"event": "start", "time": 1788877805.5393653, "cpu": 35, "pid": 3952583, "job": ["C240", "curved_spike_slab8", 20, "core"]}
+{"event": "start", "time": 1788877805.5402908, "cpu": 47, "pid": 3952584, "job": ["C240", "spike_slab", 21, "core"]}
+{"event": "start", "time": 1788877805.5412607, "cpu": 53, "pid": 3952585, "job": ["C240", "curved_spike_slab8", 21, "core"]}
+{"event": "finish", "time": 1788877807.5423362, "cpu": 16, "pid": 3951370, "job": ["A240", "curved_spike_slab8", 1, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877807.5426247, "cpu": 20, "pid": 3951371, "job": ["A240", "curved_spike_slab8", 14, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877807.542855, "cpu": 10, "pid": 3951625, "job": ["A240", "spike_slab", 29, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877807.544419, "cpu": 10, "pid": 3952684, "job": ["C240", "spike_slab", 22, "core"]}
+{"event": "start", "time": 1788877807.545621, "cpu": 16, "pid": 3952685, "job": ["C240", "curved_spike_slab8", 22, "core"]}
+{"event": "start", "time": 1788877807.5466657, "cpu": 20, "pid": 3952686, "job": ["C240", "spike_slab", 23, "core"]}
+{"event": "finish", "time": 1788877809.5476372, "cpu": 0, "pid": 3951429, "job": ["A240", "curved_spike_slab8", 12, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877809.5479174, "cpu": 13, "pid": 3951430, "job": ["A240", "curved_spike_slab8", 16, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877809.5481253, "cpu": 31, "pid": 3951431, "job": ["A240", "curved_spike_slab8", 17, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877809.5497034, "cpu": 0, "pid": 3952754, "job": ["C240", "curved_spike_slab8", 23, "core"]}
+{"event": "start", "time": 1788877809.5508106, "cpu": 13, "pid": 3952755, "job": ["C240", "spike_slab", 24, "core"]}
+{"event": "start", "time": 1788877809.551816, "cpu": 31, "pid": 3952756, "job": ["C240", "curved_spike_slab8", 24, "core"]}
+{"event": "finish", "time": 1788877829.5618324, "cpu": 41, "pid": 3952053, "job": ["A240", "curved_spike_slab8", 25, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877829.5634444, "cpu": 41, "pid": 3952813, "job": ["C240", "spike_slab", 25, "core"]}
+{"event": "finish", "time": 1788877831.564529, "cpu": 3, "pid": 3952108, "job": ["A240", "curved_spike_slab8", 18, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877831.5647902, "cpu": 21, "pid": 3952109, "job": ["A240", "curved_spike_slab8", 22, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877831.5649714, "cpu": 29, "pid": 3952110, "job": ["A240", "curved_spike_slab8", 27, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877831.5664213, "cpu": 3, "pid": 3952833, "job": ["C240", "curved_spike_slab8", 25, "core"]}
+{"event": "start", "time": 1788877831.567514, "cpu": 21, "pid": 3952834, "job": ["C240", "spike_slab", 26, "core"]}
+{"event": "start", "time": 1788877831.5684779, "cpu": 29, "pid": 3952835, "job": ["C240", "curved_spike_slab8", 26, "core"]}
+{"event": "finish", "time": 1788877833.5693412, "cpu": 14, "pid": 3951731, "job": ["C240", "spike_slab", 4, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877833.5696583, "cpu": 33, "pid": 3952194, "job": ["A240", "curved_spike_slab8", 23, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877833.5698466, "cpu": 37, "pid": 3952195, "job": ["A240", "curved_spike_slab8", 24, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877833.5712473, "cpu": 14, "pid": 3952882, "job": ["C240", "spike_slab", 27, "core"]}
+{"event": "start", "time": 1788877833.5723033, "cpu": 33, "pid": 3952883, "job": ["C240", "curved_spike_slab8", 27, "core"]}
+{"event": "start", "time": 1788877833.573328, "cpu": 37, "pid": 3952884, "job": ["C240", "spike_slab", 28, "core"]}
+{"event": "finish", "time": 1788877835.5741913, "cpu": 56, "pid": 3951529, "job": ["C240", "spike_slab", 0, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877835.574531, "cpu": 17, "pid": 3952264, "job": ["A240", "curved_spike_slab8", 21, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877835.5747118, "cpu": 45, "pid": 3952265, "job": ["A240", "curved_spike_slab8", 26, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877835.5748785, "cpu": 57, "pid": 3952266, "job": ["A240", "curved_spike_slab8", 28, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877835.5762222, "cpu": 17, "pid": 3952933, "job": ["C240", "curved_spike_slab8", 28, "core"]}
+{"event": "start", "time": 1788877835.5772865, "cpu": 45, "pid": 3952934, "job": ["C240", "spike_slab", 29, "core"]}
+{"event": "start", "time": 1788877835.5782864, "cpu": 56, "pid": 3952935, "job": ["C240", "curved_spike_slab8", 29, "core"]}
+{"event": "start", "time": 1788877835.5792036, "cpu": 57, "pid": 3952936, "job": ["C240", "spike_slab", 0, "analysis"]}
+{"event": "finish", "time": 1788877837.580028, "cpu": 42, "pid": 3951627, "job": ["C240", "spike_slab", 1, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877837.5802743, "cpu": 44, "pid": 3951628, "job": ["C240", "curved_spike_slab8", 1, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877837.5804517, "cpu": 48, "pid": 3951629, "job": ["C240", "spike_slab", 2, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877837.580613, "cpu": 49, "pid": 3951630, "job": ["C240", "curved_spike_slab8", 2, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877837.5807664, "cpu": 50, "pid": 3951631, "job": ["C240", "spike_slab", 3, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877837.5809298, "cpu": 38, "pid": 3951733, "job": ["C240", "spike_slab", 5, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877837.581109, "cpu": 19, "pid": 3951896, "job": ["C240", "spike_slab", 10, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877837.581262, "cpu": 22, "pid": 3951897, "job": ["C240", "curved_spike_slab8", 10, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877837.5825984, "cpu": 19, "pid": 3953000, "job": ["C240", "spike_slab", 1, "analysis"]}
+{"event": "start", "time": 1788877837.583547, "cpu": 22, "pid": 3953001, "job": ["C240", "curved_spike_slab8", 1, "analysis"]}
+{"event": "start", "time": 1788877837.584524, "cpu": 38, "pid": 3953002, "job": ["C240", "spike_slab", 2, "analysis"]}
+{"event": "start", "time": 1788877837.5854123, "cpu": 42, "pid": 3953003, "job": ["C240", "curved_spike_slab8", 2, "analysis"]}
+{"event": "start", "time": 1788877837.5862973, "cpu": 44, "pid": 3953004, "job": ["C240", "spike_slab", 3, "analysis"]}
+{"event": "start", "time": 1788877837.5872226, "cpu": 48, "pid": 3953005, "job": ["C240", "spike_slab", 4, "analysis"]}
+{"event": "start", "time": 1788877837.5880814, "cpu": 49, "pid": 3953006, "job": ["C240", "spike_slab", 5, "analysis"]}
+{"event": "start", "time": 1788877837.5889452, "cpu": 50, "pid": 3953007, "job": ["C240", "spike_slab", 10, "analysis"]}
+{"event": "finish", "time": 1788877839.5897894, "cpu": 23, "pid": 3951626, "job": ["C240", "curved_spike_slab8", 0, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877839.590056, "cpu": 11, "pid": 3951730, "job": ["C240", "curved_spike_slab8", 3, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877839.5902464, "cpu": 46, "pid": 3951734, "job": ["C240", "curved_spike_slab8", 5, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877839.5904117, "cpu": 5, "pid": 3951819, "job": ["C240", "spike_slab", 6, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877839.5905776, "cpu": 28, "pid": 3951822, "job": ["C240", "curved_spike_slab8", 7, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877839.5907698, "cpu": 9, "pid": 3952343, "job": ["A240", "curved_spike_slab8", 29, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877839.5920813, "cpu": 5, "pid": 3953148, "job": ["C240", "curved_spike_slab8", 0, "analysis"]}
+{"event": "start", "time": 1788877839.5930467, "cpu": 9, "pid": 3953149, "job": ["C240", "curved_spike_slab8", 3, "analysis"]}
+{"event": "start", "time": 1788877839.593985, "cpu": 11, "pid": 3953150, "job": ["C240", "curved_spike_slab8", 5, "analysis"]}
+{"event": "start", "time": 1788877839.5948455, "cpu": 23, "pid": 3953151, "job": ["C240", "spike_slab", 6, "analysis"]}
+{"event": "start", "time": 1788877839.5956848, "cpu": 28, "pid": 3953152, "job": ["C240", "curved_spike_slab8", 7, "analysis"]}
+{"event": "start", "time": 1788877839.5965428, "cpu": 46, "pid": 3953153, "job": ["C240", "curved_spike_slab8", 10, "analysis"]}
+{"event": "finish", "time": 1788877841.597375, "cpu": 24, "pid": 3951821, "job": ["C240", "spike_slab", 7, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877841.5976207, "cpu": 2, "pid": 3951892, "job": ["C240", "spike_slab", 8, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877841.5977948, "cpu": 4, "pid": 3951893, "job": ["C240", "curved_spike_slab8", 8, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877841.597972, "cpu": 6, "pid": 3951894, "job": ["C240", "spike_slab", 9, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877841.5981421, "cpu": 18, "pid": 3951895, "job": ["C240", "curved_spike_slab8", 9, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877841.5983095, "cpu": 36, "pid": 3951898, "job": ["C240", "spike_slab", 11, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877841.5997279, "cpu": 2, "pid": 3953252, "job": ["C240", "spike_slab", 7, "analysis"]}
+{"event": "start", "time": 1788877841.600763, "cpu": 4, "pid": 3953253, "job": ["C240", "spike_slab", 8, "analysis"]}
+{"event": "start", "time": 1788877841.6017005, "cpu": 6, "pid": 3953254, "job": ["C240", "curved_spike_slab8", 8, "analysis"]}
+{"event": "start", "time": 1788877841.6026103, "cpu": 18, "pid": 3953255, "job": ["C240", "spike_slab", 9, "analysis"]}
+{"event": "start", "time": 1788877841.6035204, "cpu": 24, "pid": 3953256, "job": ["C240", "curved_spike_slab8", 9, "analysis"]}
+{"event": "start", "time": 1788877841.6044068, "cpu": 36, "pid": 3953257, "job": ["C240", "spike_slab", 11, "analysis"]}
+{"event": "finish", "time": 1788877843.6053092, "cpu": 8, "pid": 3951820, "job": ["C240", "curved_spike_slab8", 6, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877843.6068952, "cpu": 8, "pid": 3953354, "job": ["C240", "curved_spike_slab8", 6, "analysis"]}
+{"event": "finish", "time": 1788877855.6128967, "cpu": 30, "pid": 3951732, "job": ["C240", "curved_spike_slab8", 4, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877855.613225, "cpu": 51, "pid": 3952196, "job": ["C240", "curved_spike_slab8", 11, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877855.6149085, "cpu": 30, "pid": 3953377, "job": ["C240", "curved_spike_slab8", 4, "analysis"]}
+{"event": "start", "time": 1788877855.6161134, "cpu": 51, "pid": 3953378, "job": ["C240", "curved_spike_slab8", 11, "analysis"]}
+{"event": "finish", "time": 1788877857.6172931, "cpu": 57, "pid": 3952936, "job": ["C240", "spike_slab", 0, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877857.619223, "cpu": 57, "pid": 3953410, "job": ["Cprime240", "spike_slab", 0, "core"]}
+{"event": "finish", "time": 1788877859.620228, "cpu": 55, "pid": 3952324, "job": ["C240", "spike_slab", 12, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877859.6205895, "cpu": 19, "pid": 3953000, "job": ["C240", "spike_slab", 1, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877859.6207647, "cpu": 38, "pid": 3953002, "job": ["C240", "spike_slab", 2, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877859.620919, "cpu": 42, "pid": 3953003, "job": ["C240", "curved_spike_slab8", 2, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877859.6210923, "cpu": 44, "pid": 3953004, "job": ["C240", "spike_slab", 3, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877859.6212544, "cpu": 48, "pid": 3953005, "job": ["C240", "spike_slab", 4, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877859.6214104, "cpu": 49, "pid": 3953006, "job": ["C240", "spike_slab", 5, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877859.6215756, "cpu": 50, "pid": 3953007, "job": ["C240", "spike_slab", 10, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877859.6229515, "cpu": 19, "pid": 3953428, "job": ["C240", "spike_slab", 12, "analysis"]}
+{"event": "start", "time": 1788877859.6241162, "cpu": 38, "pid": 3953429, "job": ["Cprime240", "curved_spike_slab8", 0, "core"]}
+{"event": "start", "time": 1788877859.6250935, "cpu": 42, "pid": 3953430, "job": ["Cprime240", "spike_slab", 1, "core"]}
+{"event": "start", "time": 1788877859.6260295, "cpu": 44, "pid": 3953431, "job": ["Cprime240", "curved_spike_slab8", 1, "core"]}
+{"event": "start", "time": 1788877859.626954, "cpu": 48, "pid": 3953432, "job": ["Cprime240", "spike_slab", 2, "core"]}
+{"event": "start", "time": 1788877859.6278703, "cpu": 49, "pid": 3953433, "job": ["Cprime240", "curved_spike_slab8", 2, "core"]}
+{"event": "start", "time": 1788877859.628745, "cpu": 50, "pid": 3953434, "job": ["Cprime240", "spike_slab", 3, "core"]}
+{"event": "start", "time": 1788877859.6296287, "cpu": 55, "pid": 3953435, "job": ["Cprime240", "curved_spike_slab8", 3, "core"]}
+{"event": "finish", "time": 1788877861.6306527, "cpu": 22, "pid": 3953001, "job": ["C240", "curved_spike_slab8", 1, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877861.630928, "cpu": 5, "pid": 3953148, "job": ["C240", "curved_spike_slab8", 0, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877861.631129, "cpu": 23, "pid": 3953151, "job": ["C240", "spike_slab", 6, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877861.6325557, "cpu": 5, "pid": 3953559, "job": ["Cprime240", "spike_slab", 4, "core"]}
+{"event": "start", "time": 1788877861.6336584, "cpu": 22, "pid": 3953560, "job": ["Cprime240", "curved_spike_slab8", 4, "core"]}
+{"event": "start", "time": 1788877861.63466, "cpu": 23, "pid": 3953561, "job": ["Cprime240", "spike_slab", 5, "core"]}
+{"event": "finish", "time": 1788877863.6355224, "cpu": 54, "pid": 3952344, "job": ["C240", "curved_spike_slab8", 12, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877863.6357768, "cpu": 39, "pid": 3952373, "job": ["C240", "spike_slab", 13, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877863.6359525, "cpu": 58, "pid": 3952374, "job": ["C240", "curved_spike_slab8", 13, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877863.6361084, "cpu": 25, "pid": 3952411, "job": ["C240", "spike_slab", 14, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877863.6363485, "cpu": 9, "pid": 3953149, "job": ["C240", "curved_spike_slab8", 3, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877863.6365132, "cpu": 11, "pid": 3953150, "job": ["C240", "curved_spike_slab8", 5, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877863.636672, "cpu": 28, "pid": 3953152, "job": ["C240", "curved_spike_slab8", 7, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877863.6368618, "cpu": 46, "pid": 3953153, "job": ["C240", "curved_spike_slab8", 10, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877863.6370215, "cpu": 2, "pid": 3953252, "job": ["C240", "spike_slab", 7, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877863.637172, "cpu": 4, "pid": 3953253, "job": ["C240", "spike_slab", 8, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877863.6373327, "cpu": 18, "pid": 3953255, "job": ["C240", "spike_slab", 9, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877863.6374936, "cpu": 36, "pid": 3953257, "job": ["C240", "spike_slab", 11, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877863.6388407, "cpu": 2, "pid": 3953615, "job": ["C240", "curved_spike_slab8", 12, "analysis"]}
+{"event": "start", "time": 1788877863.6398766, "cpu": 4, "pid": 3953616, "job": ["C240", "spike_slab", 13, "analysis"]}
+{"event": "start", "time": 1788877863.6407795, "cpu": 9, "pid": 3953617, "job": ["C240", "curved_spike_slab8", 13, "analysis"]}
+{"event": "start", "time": 1788877863.6416433, "cpu": 11, "pid": 3953618, "job": ["C240", "spike_slab", 14, "analysis"]}
+{"event": "start", "time": 1788877863.6425738, "cpu": 18, "pid": 3953619, "job": ["Cprime240", "curved_spike_slab8", 5, "core"]}
+{"event": "start", "time": 1788877863.643476, "cpu": 25, "pid": 3953620, "job": ["Cprime240", "spike_slab", 6, "core"]}
+{"event": "start", "time": 1788877863.6443543, "cpu": 28, "pid": 3953621, "job": ["Cprime240", "curved_spike_slab8", 6, "core"]}
+{"event": "start", "time": 1788877863.6452925, "cpu": 36, "pid": 3953622, "job": ["Cprime240", "spike_slab", 7, "core"]}
+{"event": "start", "time": 1788877863.6462026, "cpu": 39, "pid": 3953623, "job": ["Cprime240", "curved_spike_slab8", 7, "core"]}
+{"event": "start", "time": 1788877863.6470683, "cpu": 46, "pid": 3953624, "job": ["Cprime240", "spike_slab", 8, "core"]}
+{"event": "start", "time": 1788877863.6479278, "cpu": 54, "pid": 3953625, "job": ["Cprime240", "curved_spike_slab8", 8, "core"]}
+{"event": "start", "time": 1788877863.6488304, "cpu": 58, "pid": 3953626, "job": ["Cprime240", "spike_slab", 9, "core"]}
+{"event": "finish", "time": 1788877865.6496553, "cpu": 27, "pid": 3952412, "job": ["C240", "curved_spike_slab8", 14, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877865.6499462, "cpu": 52, "pid": 3952413, "job": ["C240", "spike_slab", 15, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877865.6502173, "cpu": 6, "pid": 3953254, "job": ["C240", "curved_spike_slab8", 8, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877865.6503947, "cpu": 24, "pid": 3953256, "job": ["C240", "curved_spike_slab8", 9, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877865.6517472, "cpu": 6, "pid": 3953810, "job": ["C240", "curved_spike_slab8", 14, "analysis"]}
+{"event": "start", "time": 1788877865.652748, "cpu": 24, "pid": 3953811, "job": ["C240", "spike_slab", 15, "analysis"]}
+{"event": "start", "time": 1788877865.6537592, "cpu": 27, "pid": 3953812, "job": ["Cprime240", "curved_spike_slab8", 9, "core"]}
+{"event": "start", "time": 1788877865.6547785, "cpu": 52, "pid": 3953813, "job": ["Cprime240", "spike_slab", 10, "core"]}
+{"event": "finish", "time": 1788877867.6556337, "cpu": 15, "pid": 3952466, "job": ["C240", "spike_slab", 16, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877867.6558785, "cpu": 26, "pid": 3952467, "job": ["C240", "curved_spike_slab8", 16, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877867.656276, "cpu": 34, "pid": 3952468, "job": ["C240", "spike_slab", 17, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877867.6564624, "cpu": 40, "pid": 3952469, "job": ["C240", "curved_spike_slab8", 17, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877867.6566253, "cpu": 43, "pid": 3952470, "job": ["C240", "spike_slab", 18, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877867.6567762, "cpu": 59, "pid": 3952471, "job": ["C240", "curved_spike_slab8", 18, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877867.6569638, "cpu": 20, "pid": 3952686, "job": ["C240", "spike_slab", 23, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877867.6571705, "cpu": 8, "pid": 3953354, "job": ["C240", "curved_spike_slab8", 6, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877867.6585095, "cpu": 8, "pid": 3953895, "job": ["C240", "spike_slab", 16, "analysis"]}
+{"event": "start", "time": 1788877867.659555, "cpu": 15, "pid": 3953896, "job": ["C240", "curved_spike_slab8", 16, "analysis"]}
+{"event": "start", "time": 1788877867.6605427, "cpu": 20, "pid": 3953897, "job": ["C240", "spike_slab", 17, "analysis"]}
+{"event": "start", "time": 1788877867.6614678, "cpu": 26, "pid": 3953898, "job": ["C240", "curved_spike_slab8", 17, "analysis"]}
+{"event": "start", "time": 1788877867.6624057, "cpu": 34, "pid": 3953899, "job": ["C240", "spike_slab", 18, "analysis"]}
+{"event": "start", "time": 1788877867.6633604, "cpu": 40, "pid": 3953900, "job": ["C240", "curved_spike_slab8", 18, "analysis"]}
+{"event": "start", "time": 1788877867.664269, "cpu": 43, "pid": 3953901, "job": ["C240", "spike_slab", 23, "analysis"]}
+{"event": "start", "time": 1788877867.665276, "cpu": 59, "pid": 3953902, "job": ["Cprime240", "curved_spike_slab8", 10, "core"]}
+{"event": "finish", "time": 1788877869.666117, "cpu": 12, "pid": 3952465, "job": ["C240", "curved_spike_slab8", 15, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877869.6663735, "cpu": 1, "pid": 3952580, "job": ["C240", "spike_slab", 19, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877869.666546, "cpu": 7, "pid": 3952581, "job": ["C240", "curved_spike_slab8", 19, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877869.666713, "cpu": 32, "pid": 3952582, "job": ["C240", "spike_slab", 20, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877869.6668782, "cpu": 35, "pid": 3952583, "job": ["C240", "curved_spike_slab8", 20, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877869.6670384, "cpu": 47, "pid": 3952584, "job": ["C240", "spike_slab", 21, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877869.6671934, "cpu": 53, "pid": 3952585, "job": ["C240", "curved_spike_slab8", 21, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877869.6673496, "cpu": 10, "pid": 3952684, "job": ["C240", "spike_slab", 22, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877869.6687376, "cpu": 1, "pid": 3954044, "job": ["C240", "curved_spike_slab8", 15, "analysis"]}
+{"event": "start", "time": 1788877869.6697524, "cpu": 7, "pid": 3954045, "job": ["C240", "spike_slab", 19, "analysis"]}
+{"event": "start", "time": 1788877869.6707013, "cpu": 10, "pid": 3954046, "job": ["C240", "curved_spike_slab8", 19, "analysis"]}
+{"event": "start", "time": 1788877869.6716394, "cpu": 12, "pid": 3954047, "job": ["C240", "spike_slab", 20, "analysis"]}
+{"event": "start", "time": 1788877869.672547, "cpu": 32, "pid": 3954048, "job": ["C240", "curved_spike_slab8", 20, "analysis"]}
+{"event": "start", "time": 1788877869.673443, "cpu": 35, "pid": 3954049, "job": ["C240", "spike_slab", 21, "analysis"]}
+{"event": "start", "time": 1788877869.6743815, "cpu": 47, "pid": 3954050, "job": ["C240", "curved_spike_slab8", 21, "analysis"]}
+{"event": "start", "time": 1788877869.6752944, "cpu": 53, "pid": 3954051, "job": ["C240", "spike_slab", 22, "analysis"]}
+{"event": "finish", "time": 1788877871.6761606, "cpu": 13, "pid": 3952755, "job": ["C240", "spike_slab", 24, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877871.6777394, "cpu": 13, "pid": 3954196, "job": ["C240", "spike_slab", 24, "analysis"]}
+{"event": "finish", "time": 1788877873.6787145, "cpu": 16, "pid": 3952685, "job": ["C240", "curved_spike_slab8", 22, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877873.6790185, "cpu": 31, "pid": 3952756, "job": ["C240", "curved_spike_slab8", 24, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877873.6805046, "cpu": 16, "pid": 3954224, "job": ["C240", "curved_spike_slab8", 22, "analysis"]}
+{"event": "start", "time": 1788877873.6816459, "cpu": 31, "pid": 3954225, "job": ["C240", "curved_spike_slab8", 24, "analysis"]}
+{"event": "finish", "time": 1788877875.6826525, "cpu": 0, "pid": 3952754, "job": ["C240", "curved_spike_slab8", 23, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877875.6844094, "cpu": 0, "pid": 3954257, "job": ["C240", "curved_spike_slab8", 23, "analysis"]}
+{"event": "finish", "time": 1788877879.686722, "cpu": 51, "pid": 3953378, "job": ["C240", "curved_spike_slab8", 11, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877879.6885579, "cpu": 51, "pid": 3954276, "job": ["Cprime240", "spike_slab", 11, "core"]}
+{"event": "finish", "time": 1788877881.6897385, "cpu": 30, "pid": 3953377, "job": ["C240", "curved_spike_slab8", 4, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877881.6900575, "cpu": 19, "pid": 3953428, "job": ["C240", "spike_slab", 12, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877881.6917596, "cpu": 19, "pid": 3954292, "job": ["Cprime240", "curved_spike_slab8", 11, "core"]}
+{"event": "start", "time": 1788877881.692945, "cpu": 30, "pid": 3954293, "job": ["Cprime240", "spike_slab", 12, "core"]}
+{"event": "finish", "time": 1788877885.6952424, "cpu": 4, "pid": 3953616, "job": ["C240", "spike_slab", 13, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877885.6955445, "cpu": 11, "pid": 3953618, "job": ["C240", "spike_slab", 14, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877885.6973643, "cpu": 4, "pid": 3954327, "job": ["Cprime240", "curved_spike_slab8", 12, "core"]}
+{"event": "start", "time": 1788877885.6986375, "cpu": 11, "pid": 3954328, "job": ["Cprime240", "spike_slab", 13, "core"]}
+{"event": "finish", "time": 1788877887.699851, "cpu": 24, "pid": 3953811, "job": ["C240", "spike_slab", 15, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877887.7015495, "cpu": 24, "pid": 3954360, "job": ["Cprime240", "curved_spike_slab8", 13, "core"]}
+{"event": "finish", "time": 1788877889.702597, "cpu": 41, "pid": 3952813, "job": ["C240", "spike_slab", 25, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877889.702919, "cpu": 2, "pid": 3953615, "job": ["C240", "curved_spike_slab8", 12, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877889.7031002, "cpu": 9, "pid": 3953617, "job": ["C240", "curved_spike_slab8", 13, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877889.7032962, "cpu": 6, "pid": 3953810, "job": ["C240", "curved_spike_slab8", 14, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877889.7034998, "cpu": 43, "pid": 3953901, "job": ["C240", "spike_slab", 23, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877889.70495, "cpu": 2, "pid": 3954378, "job": ["C240", "spike_slab", 25, "analysis"]}
+{"event": "start", "time": 1788877889.7061095, "cpu": 6, "pid": 3954379, "job": ["Cprime240", "spike_slab", 14, "core"]}
+{"event": "start", "time": 1788877889.7071855, "cpu": 9, "pid": 3954380, "job": ["Cprime240", "curved_spike_slab8", 14, "core"]}
+{"event": "start", "time": 1788877889.7081993, "cpu": 41, "pid": 3954381, "job": ["Cprime240", "spike_slab", 15, "core"]}
+{"event": "start", "time": 1788877889.7091913, "cpu": 43, "pid": 3954382, "job": ["Cprime240", "curved_spike_slab8", 15, "core"]}
+{"event": "finish", "time": 1788877891.7101502, "cpu": 8, "pid": 3953895, "job": ["C240", "spike_slab", 16, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877891.7104201, "cpu": 20, "pid": 3953897, "job": ["C240", "spike_slab", 17, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877891.7106075, "cpu": 34, "pid": 3953899, "job": ["C240", "spike_slab", 18, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877891.710796, "cpu": 7, "pid": 3954045, "job": ["C240", "spike_slab", 19, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877891.7109745, "cpu": 12, "pid": 3954047, "job": ["C240", "spike_slab", 20, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877891.711151, "cpu": 35, "pid": 3954049, "job": ["C240", "spike_slab", 21, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877891.712516, "cpu": 7, "pid": 3954460, "job": ["Cprime240", "spike_slab", 16, "core"]}
+{"event": "start", "time": 1788877891.7135406, "cpu": 8, "pid": 3954461, "job": ["Cprime240", "curved_spike_slab8", 16, "core"]}
+{"event": "start", "time": 1788877891.7145839, "cpu": 12, "pid": 3954462, "job": ["Cprime240", "spike_slab", 17, "core"]}
+{"event": "start", "time": 1788877891.7156339, "cpu": 20, "pid": 3954463, "job": ["Cprime240", "curved_spike_slab8", 17, "core"]}
+{"event": "start", "time": 1788877891.7166185, "cpu": 34, "pid": 3954464, "job": ["Cprime240", "spike_slab", 18, "core"]}
+{"event": "start", "time": 1788877891.7175736, "cpu": 35, "pid": 3954465, "job": ["Cprime240", "curved_spike_slab8", 18, "core"]}
+{"event": "finish", "time": 1788877893.7184203, "cpu": 3, "pid": 3952833, "job": ["C240", "curved_spike_slab8", 25, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877893.7187614, "cpu": 15, "pid": 3953896, "job": ["C240", "curved_spike_slab8", 16, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877893.7189507, "cpu": 26, "pid": 3953898, "job": ["C240", "curved_spike_slab8", 17, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877893.7191248, "cpu": 40, "pid": 3953900, "job": ["C240", "curved_spike_slab8", 18, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877893.7192965, "cpu": 10, "pid": 3954046, "job": ["C240", "curved_spike_slab8", 19, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877893.7194695, "cpu": 47, "pid": 3954050, "job": ["C240", "curved_spike_slab8", 21, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877893.719642, "cpu": 53, "pid": 3954051, "job": ["C240", "spike_slab", 22, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877893.7197995, "cpu": 13, "pid": 3954196, "job": ["C240", "spike_slab", 24, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877893.7211297, "cpu": 3, "pid": 3954561, "job": ["C240", "curved_spike_slab8", 25, "analysis"]}
+{"event": "start", "time": 1788877893.7222278, "cpu": 10, "pid": 3954562, "job": ["Cprime240", "spike_slab", 19, "core"]}
+{"event": "start", "time": 1788877893.7234159, "cpu": 13, "pid": 3954563, "job": ["Cprime240", "curved_spike_slab8", 19, "core"]}
+{"event": "start", "time": 1788877893.7244103, "cpu": 15, "pid": 3954564, "job": ["Cprime240", "spike_slab", 20, "core"]}
+{"event": "start", "time": 1788877893.7252846, "cpu": 26, "pid": 3954565, "job": ["Cprime240", "curved_spike_slab8", 20, "core"]}
+{"event": "start", "time": 1788877893.7261763, "cpu": 40, "pid": 3954566, "job": ["Cprime240", "spike_slab", 21, "core"]}
+{"event": "start", "time": 1788877893.7270672, "cpu": 47, "pid": 3954567, "job": ["Cprime240", "curved_spike_slab8", 21, "core"]}
+{"event": "start", "time": 1788877893.7279255, "cpu": 53, "pid": 3954568, "job": ["Cprime240", "spike_slab", 22, "core"]}
+{"event": "finish", "time": 1788877895.7287312, "cpu": 21, "pid": 3952834, "job": ["C240", "spike_slab", 26, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877895.728992, "cpu": 14, "pid": 3952882, "job": ["C240", "spike_slab", 27, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877895.729168, "cpu": 33, "pid": 3952883, "job": ["C240", "curved_spike_slab8", 27, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877895.7294095, "cpu": 1, "pid": 3954044, "job": ["C240", "curved_spike_slab8", 15, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877895.7295852, "cpu": 32, "pid": 3954048, "job": ["C240", "curved_spike_slab8", 20, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877895.730917, "cpu": 1, "pid": 3954695, "job": ["C240", "spike_slab", 26, "analysis"]}
+{"event": "start", "time": 1788877895.731932, "cpu": 14, "pid": 3954696, "job": ["C240", "spike_slab", 27, "analysis"]}
+{"event": "start", "time": 1788877895.7328756, "cpu": 21, "pid": 3954697, "job": ["C240", "curved_spike_slab8", 27, "analysis"]}
+{"event": "start", "time": 1788877895.7338173, "cpu": 32, "pid": 3954698, "job": ["Cprime240", "curved_spike_slab8", 22, "core"]}
+{"event": "start", "time": 1788877895.734783, "cpu": 33, "pid": 3954699, "job": ["Cprime240", "spike_slab", 23, "core"]}
+{"event": "finish", "time": 1788877897.7356005, "cpu": 29, "pid": 3952835, "job": ["C240", "curved_spike_slab8", 26, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877897.735868, "cpu": 37, "pid": 3952884, "job": ["C240", "spike_slab", 28, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877897.7361262, "cpu": 16, "pid": 3954224, "job": ["C240", "curved_spike_slab8", 22, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877897.7374558, "cpu": 16, "pid": 3954783, "job": ["C240", "curved_spike_slab8", 26, "analysis"]}
+{"event": "start", "time": 1788877897.7384615, "cpu": 29, "pid": 3954784, "job": ["C240", "spike_slab", 28, "analysis"]}
+{"event": "start", "time": 1788877897.7394054, "cpu": 37, "pid": 3954785, "job": ["Cprime240", "curved_spike_slab8", 23, "core"]}
+{"event": "finish", "time": 1788877899.7402418, "cpu": 17, "pid": 3952933, "job": ["C240", "curved_spike_slab8", 28, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877899.7405062, "cpu": 45, "pid": 3952934, "job": ["C240", "spike_slab", 29, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877899.7407627, "cpu": 31, "pid": 3954225, "job": ["C240", "curved_spike_slab8", 24, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877899.7421277, "cpu": 17, "pid": 3954853, "job": ["C240", "curved_spike_slab8", 28, "analysis"]}
+{"event": "start", "time": 1788877899.7431476, "cpu": 31, "pid": 3954854, "job": ["C240", "spike_slab", 29, "analysis"]}
+{"event": "start", "time": 1788877899.7442122, "cpu": 45, "pid": 3954855, "job": ["Cprime240", "spike_slab", 24, "core"]}
+{"event": "finish", "time": 1788877901.7451088, "cpu": 56, "pid": 3952935, "job": ["C240", "curved_spike_slab8", 29, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877901.7454422, "cpu": 0, "pid": 3954257, "job": ["C240", "curved_spike_slab8", 23, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877901.7469146, "cpu": 0, "pid": 3954904, "job": ["C240", "curved_spike_slab8", 29, "analysis"]}
+{"event": "start", "time": 1788877901.7480018, "cpu": 56, "pid": 3954905, "job": ["Cprime240", "curved_spike_slab8", 24, "core"]}
+{"event": "finish", "time": 1788877909.7519188, "cpu": 2, "pid": 3954378, "job": ["C240", "spike_slab", 25, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877909.7535045, "cpu": 2, "pid": 3954976, "job": ["Cprime240", "spike_slab", 25, "core"]}
+{"event": "finish", "time": 1788877913.7555532, "cpu": 3, "pid": 3954561, "job": ["C240", "curved_spike_slab8", 25, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877913.757073, "cpu": 3, "pid": 3954993, "job": ["Cprime240", "curved_spike_slab8", 25, "core"]}
+{"event": "finish", "time": 1788877915.758168, "cpu": 1, "pid": 3954695, "job": ["C240", "spike_slab", 26, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877915.7584214, "cpu": 14, "pid": 3954696, "job": ["C240", "spike_slab", 27, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877915.7598376, "cpu": 1, "pid": 3955009, "job": ["Cprime240", "spike_slab", 26, "core"]}
+{"event": "start", "time": 1788877915.7609122, "cpu": 14, "pid": 3955010, "job": ["Cprime240", "curved_spike_slab8", 26, "core"]}
+{"event": "finish", "time": 1788877917.7619004, "cpu": 21, "pid": 3954697, "job": ["C240", "curved_spike_slab8", 27, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877917.7633305, "cpu": 21, "pid": 3955043, "job": ["Cprime240", "spike_slab", 27, "core"]}
+{"event": "finish", "time": 1788877919.7643676, "cpu": 16, "pid": 3954783, "job": ["C240", "curved_spike_slab8", 26, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877919.764622, "cpu": 29, "pid": 3954784, "job": ["C240", "spike_slab", 28, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877919.7648118, "cpu": 31, "pid": 3954854, "job": ["C240", "spike_slab", 29, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877919.766137, "cpu": 16, "pid": 3955061, "job": ["Cprime240", "curved_spike_slab8", 27, "core"]}
+{"event": "start", "time": 1788877919.7671866, "cpu": 29, "pid": 3955062, "job": ["Cprime240", "spike_slab", 28, "core"]}
+{"event": "start", "time": 1788877919.7681537, "cpu": 31, "pid": 3955063, "job": ["Cprime240", "curved_spike_slab8", 28, "core"]}
+{"event": "finish", "time": 1788877921.7689743, "cpu": 57, "pid": 3953410, "job": ["Cprime240", "spike_slab", 0, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877921.7692447, "cpu": 42, "pid": 3953430, "job": ["Cprime240", "spike_slab", 1, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877921.7707546, "cpu": 42, "pid": 3955111, "job": ["Cprime240", "spike_slab", 29, "core"]}
+{"event": "start", "time": 1788877921.7718475, "cpu": 57, "pid": 3955112, "job": ["Cprime240", "curved_spike_slab8", 29, "core"]}
+{"event": "finish", "time": 1788877923.7726877, "cpu": 48, "pid": 3953432, "job": ["Cprime240", "spike_slab", 2, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877923.7729478, "cpu": 50, "pid": 3953434, "job": ["Cprime240", "spike_slab", 3, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877923.7731292, "cpu": 5, "pid": 3953559, "job": ["Cprime240", "spike_slab", 4, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877923.773296, "cpu": 23, "pid": 3953561, "job": ["Cprime240", "spike_slab", 5, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877923.7735572, "cpu": 17, "pid": 3954853, "job": ["C240", "curved_spike_slab8", 28, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877923.773722, "cpu": 0, "pid": 3954904, "job": ["C240", "curved_spike_slab8", 29, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877923.775018, "cpu": 0, "pid": 3955146, "job": ["Cprime240", "spike_slab", 0, "analysis"]}
+{"event": "start", "time": 1788877923.776053, "cpu": 5, "pid": 3955147, "job": ["Cprime240", "spike_slab", 1, "analysis"]}
+{"event": "start", "time": 1788877923.7769449, "cpu": 17, "pid": 3955148, "job": ["Cprime240", "spike_slab", 2, "analysis"]}
+{"event": "start", "time": 1788877923.777848, "cpu": 23, "pid": 3955149, "job": ["Cprime240", "spike_slab", 3, "analysis"]}
+{"event": "start", "time": 1788877923.77874, "cpu": 48, "pid": 3955150, "job": ["Cprime240", "spike_slab", 4, "analysis"]}
+{"event": "start", "time": 1788877923.7796636, "cpu": 50, "pid": 3955151, "job": ["Cprime240", "spike_slab", 5, "analysis"]}
+{"event": "finish", "time": 1788877925.7805002, "cpu": 52, "pid": 3953813, "job": ["Cprime240", "spike_slab", 10, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877925.7819753, "cpu": 52, "pid": 3955244, "job": ["Cprime240", "spike_slab", 10, "analysis"]}
+{"event": "finish", "time": 1788877927.782883, "cpu": 36, "pid": 3953622, "job": ["Cprime240", "spike_slab", 7, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877927.7831817, "cpu": 58, "pid": 3953626, "job": ["Cprime240", "spike_slab", 9, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877927.7846007, "cpu": 36, "pid": 3955266, "job": ["Cprime240", "spike_slab", 7, "analysis"]}
+{"event": "start", "time": 1788877927.785651, "cpu": 58, "pid": 3955267, "job": ["Cprime240", "spike_slab", 9, "analysis"]}
+{"event": "finish", "time": 1788877929.7865472, "cpu": 25, "pid": 3953620, "job": ["Cprime240", "spike_slab", 6, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877929.7880933, "cpu": 25, "pid": 3955315, "job": ["Cprime240", "spike_slab", 6, "analysis"]}
+{"event": "finish", "time": 1788877939.7927868, "cpu": 44, "pid": 3953431, "job": ["Cprime240", "curved_spike_slab8", 1, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877939.7931023, "cpu": 49, "pid": 3953433, "job": ["Cprime240", "curved_spike_slab8", 2, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877939.7945337, "cpu": 44, "pid": 3955519, "job": ["Cprime240", "curved_spike_slab8", 1, "analysis"]}
+{"event": "start", "time": 1788877939.7956839, "cpu": 49, "pid": 3955520, "job": ["Cprime240", "curved_spike_slab8", 2, "analysis"]}
+{"event": "finish", "time": 1788877941.796573, "cpu": 38, "pid": 3953429, "job": ["Cprime240", "curved_spike_slab8", 0, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877941.796856, "cpu": 55, "pid": 3953435, "job": ["Cprime240", "curved_spike_slab8", 3, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877941.7984211, "cpu": 38, "pid": 3955551, "job": ["Cprime240", "curved_spike_slab8", 0, "analysis"]}
+{"event": "start", "time": 1788877941.7995536, "cpu": 55, "pid": 3955552, "job": ["Cprime240", "curved_spike_slab8", 3, "analysis"]}
+{"event": "finish", "time": 1788877943.8005245, "cpu": 28, "pid": 3953621, "job": ["Cprime240", "curved_spike_slab8", 6, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877943.8007858, "cpu": 39, "pid": 3953623, "job": ["Cprime240", "curved_spike_slab8", 7, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877943.8009706, "cpu": 54, "pid": 3953625, "job": ["Cprime240", "curved_spike_slab8", 8, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877943.801154, "cpu": 59, "pid": 3953902, "job": ["Cprime240", "curved_spike_slab8", 10, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877943.8013232, "cpu": 51, "pid": 3954276, "job": ["Cprime240", "spike_slab", 11, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877943.8027442, "cpu": 28, "pid": 3955585, "job": ["Cprime240", "curved_spike_slab8", 6, "analysis"]}
+{"event": "start", "time": 1788877943.8037844, "cpu": 39, "pid": 3955586, "job": ["Cprime240", "curved_spike_slab8", 7, "analysis"]}
+{"event": "start", "time": 1788877943.8047247, "cpu": 51, "pid": 3955587, "job": ["Cprime240", "curved_spike_slab8", 8, "analysis"]}
+{"event": "start", "time": 1788877943.805639, "cpu": 54, "pid": 3955588, "job": ["Cprime240", "curved_spike_slab8", 10, "analysis"]}
+{"event": "start", "time": 1788877943.8065248, "cpu": 59, "pid": 3955589, "job": ["Cprime240", "spike_slab", 11, "analysis"]}
+{"event": "finish", "time": 1788877945.807372, "cpu": 18, "pid": 3953619, "job": ["Cprime240", "curved_spike_slab8", 5, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877945.8076434, "cpu": 27, "pid": 3953812, "job": ["Cprime240", "curved_spike_slab8", 9, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877945.8079448, "cpu": 5, "pid": 3955147, "job": ["Cprime240", "spike_slab", 1, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877945.8081317, "cpu": 50, "pid": 3955151, "job": ["Cprime240", "spike_slab", 5, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877945.8095033, "cpu": 5, "pid": 3955676, "job": ["Cprime240", "curved_spike_slab8", 5, "analysis"]}
+{"event": "start", "time": 1788877945.8105702, "cpu": 18, "pid": 3955677, "job": ["Cprime240", "curved_spike_slab8", 9, "analysis"]}
+{"event": "finish", "time": 1788877947.8115213, "cpu": 22, "pid": 3953560, "job": ["Cprime240", "curved_spike_slab8", 4, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877947.8117778, "cpu": 46, "pid": 3953624, "job": ["Cprime240", "spike_slab", 8, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877947.8120604, "cpu": 0, "pid": 3955146, "job": ["Cprime240", "spike_slab", 0, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877947.8122342, "cpu": 17, "pid": 3955148, "job": ["Cprime240", "spike_slab", 2, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877947.8124087, "cpu": 23, "pid": 3955149, "job": ["Cprime240", "spike_slab", 3, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877947.8125744, "cpu": 48, "pid": 3955150, "job": ["Cprime240", "spike_slab", 4, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877947.812741, "cpu": 52, "pid": 3955244, "job": ["Cprime240", "spike_slab", 10, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877947.8140566, "cpu": 0, "pid": 3955714, "job": ["Cprime240", "curved_spike_slab8", 4, "analysis"]}
+{"event": "start", "time": 1788877947.8150482, "cpu": 17, "pid": 3955715, "job": ["Cprime240", "spike_slab", 8, "analysis"]}
+{"event": "finish", "time": 1788877949.8160033, "cpu": 11, "pid": 3954328, "job": ["Cprime240", "spike_slab", 13, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877949.8174856, "cpu": 11, "pid": 3955764, "job": ["Cprime240", "spike_slab", 13, "analysis"]}
+{"event": "finish", "time": 1788877951.818498, "cpu": 41, "pid": 3954381, "job": ["Cprime240", "spike_slab", 15, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877951.818877, "cpu": 36, "pid": 3955266, "job": ["Cprime240", "spike_slab", 7, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877951.8190782, "cpu": 58, "pid": 3955267, "job": ["Cprime240", "spike_slab", 9, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877951.8204286, "cpu": 22, "pid": 3955782, "job": ["Cprime240", "spike_slab", 15, "analysis"]}
+{"event": "finish", "time": 1788877953.8214507, "cpu": 12, "pid": 3954462, "job": ["Cprime240", "spike_slab", 17, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877953.8217375, "cpu": 40, "pid": 3954566, "job": ["Cprime240", "spike_slab", 21, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877953.8219543, "cpu": 33, "pid": 3954699, "job": ["Cprime240", "spike_slab", 23, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877953.8222048, "cpu": 25, "pid": 3955315, "job": ["Cprime240", "spike_slab", 6, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877953.8235195, "cpu": 12, "pid": 3955799, "job": ["Cprime240", "spike_slab", 17, "analysis"]}
+{"event": "start", "time": 1788877953.8245413, "cpu": 23, "pid": 3955800, "job": ["Cprime240", "spike_slab", 21, "analysis"]}
+{"event": "start", "time": 1788877953.8255699, "cpu": 25, "pid": 3955801, "job": ["Cprime240", "spike_slab", 23, "analysis"]}
+{"event": "finish", "time": 1788877955.8265636, "cpu": 6, "pid": 3954379, "job": ["Cprime240", "spike_slab", 14, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877955.826858, "cpu": 10, "pid": 3954562, "job": ["Cprime240", "spike_slab", 19, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877955.8270462, "cpu": 15, "pid": 3954564, "job": ["Cprime240", "spike_slab", 20, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877955.8285003, "cpu": 6, "pid": 3955850, "job": ["Cprime240", "spike_slab", 14, "analysis"]}
+{"event": "start", "time": 1788877955.8294775, "cpu": 10, "pid": 3955851, "job": ["Cprime240", "spike_slab", 19, "analysis"]}
+{"event": "start", "time": 1788877955.8304462, "cpu": 15, "pid": 3955852, "job": ["Cprime240", "spike_slab", 20, "analysis"]}
+{"event": "finish", "time": 1788877959.832622, "cpu": 30, "pid": 3954293, "job": ["Cprime240", "spike_slab", 12, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877959.8341458, "cpu": 27, "pid": 3955921, "job": ["Cprime240", "spike_slab", 12, "analysis"]}
+{"event": "finish", "time": 1788877961.8350656, "cpu": 19, "pid": 3954292, "job": ["Cprime240", "curved_spike_slab8", 11, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877961.8353927, "cpu": 45, "pid": 3954855, "job": ["Cprime240", "spike_slab", 24, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877961.8369844, "cpu": 19, "pid": 3955937, "job": ["Cprime240", "curved_spike_slab8", 11, "analysis"]}
+{"event": "start", "time": 1788877961.8388968, "cpu": 30, "pid": 3955938, "job": ["Cprime240", "spike_slab", 24, "analysis"]}
+{"event": "finish", "time": 1788877965.841141, "cpu": 44, "pid": 3955519, "job": ["Cprime240", "curved_spike_slab8", 1, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877965.8414319, "cpu": 49, "pid": 3955520, "job": ["Cprime240", "curved_spike_slab8", 2, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877967.8427052, "cpu": 38, "pid": 3955551, "job": ["Cprime240", "curved_spike_slab8", 0, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877967.842999, "cpu": 55, "pid": 3955552, "job": ["Cprime240", "curved_spike_slab8", 3, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877967.8432095, "cpu": 59, "pid": 3955589, "job": ["Cprime240", "spike_slab", 11, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877969.8443375, "cpu": 24, "pid": 3954360, "job": ["Cprime240", "curved_spike_slab8", 13, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877969.8446145, "cpu": 9, "pid": 3954380, "job": ["Cprime240", "curved_spike_slab8", 14, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877969.8447952, "cpu": 43, "pid": 3954382, "job": ["Cprime240", "curved_spike_slab8", 15, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877969.8450315, "cpu": 28, "pid": 3955585, "job": ["Cprime240", "curved_spike_slab8", 6, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877969.8452048, "cpu": 39, "pid": 3955586, "job": ["Cprime240", "curved_spike_slab8", 7, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877969.8453977, "cpu": 51, "pid": 3955587, "job": ["Cprime240", "curved_spike_slab8", 8, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877969.845567, "cpu": 54, "pid": 3955588, "job": ["Cprime240", "curved_spike_slab8", 10, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877969.8468714, "cpu": 9, "pid": 3956001, "job": ["Cprime240", "curved_spike_slab8", 13, "analysis"]}
+{"event": "start", "time": 1788877969.847841, "cpu": 24, "pid": 3956002, "job": ["Cprime240", "curved_spike_slab8", 14, "analysis"]}
+{"event": "start", "time": 1788877969.848709, "cpu": 28, "pid": 3956003, "job": ["Cprime240", "curved_spike_slab8", 15, "analysis"]}
+{"event": "finish", "time": 1788877971.849711, "cpu": 13, "pid": 3954563, "job": ["Cprime240", "curved_spike_slab8", 19, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877971.8500063, "cpu": 2, "pid": 3954976, "job": ["Cprime240", "spike_slab", 25, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877971.850228, "cpu": 5, "pid": 3955676, "job": ["Cprime240", "curved_spike_slab8", 5, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877971.8503907, "cpu": 18, "pid": 3955677, "job": ["Cprime240", "curved_spike_slab8", 9, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877971.8505585, "cpu": 11, "pid": 3955764, "job": ["Cprime240", "spike_slab", 13, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877971.8518002, "cpu": 2, "pid": 3956050, "job": ["Cprime240", "curved_spike_slab8", 19, "analysis"]}
+{"event": "start", "time": 1788877971.8527665, "cpu": 5, "pid": 3956051, "job": ["Cprime240", "spike_slab", 25, "analysis"]}
+{"event": "finish", "time": 1788877973.8536868, "cpu": 4, "pid": 3954327, "job": ["Cprime240", "curved_spike_slab8", 12, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877973.8539453, "cpu": 20, "pid": 3954463, "job": ["Cprime240", "curved_spike_slab8", 17, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877973.85412, "cpu": 34, "pid": 3954464, "job": ["Cprime240", "spike_slab", 18, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877973.8542857, "cpu": 35, "pid": 3954465, "job": ["Cprime240", "curved_spike_slab8", 18, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877973.8544486, "cpu": 53, "pid": 3954568, "job": ["Cprime240", "spike_slab", 22, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877973.854642, "cpu": 17, "pid": 3955715, "job": ["Cprime240", "spike_slab", 8, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877973.8547962, "cpu": 25, "pid": 3955801, "job": ["Cprime240", "spike_slab", 23, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877973.8560636, "cpu": 4, "pid": 3956085, "job": ["Cprime240", "curved_spike_slab8", 12, "analysis"]}
+{"event": "start", "time": 1788877973.85699, "cpu": 11, "pid": 3956086, "job": ["Cprime240", "curved_spike_slab8", 17, "analysis"]}
+{"event": "start", "time": 1788877973.8578198, "cpu": 13, "pid": 3956087, "job": ["Cprime240", "spike_slab", 18, "analysis"]}
+{"event": "start", "time": 1788877973.8586545, "cpu": 17, "pid": 3956088, "job": ["Cprime240", "curved_spike_slab8", 18, "analysis"]}
+{"event": "start", "time": 1788877973.8595018, "cpu": 18, "pid": 3956089, "job": ["Cprime240", "spike_slab", 22, "analysis"]}
+{"event": "finish", "time": 1788877975.86041, "cpu": 7, "pid": 3954460, "job": ["Cprime240", "spike_slab", 16, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877975.8606527, "cpu": 26, "pid": 3954565, "job": ["Cprime240", "curved_spike_slab8", 20, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877975.8608634, "cpu": 0, "pid": 3955714, "job": ["Cprime240", "curved_spike_slab8", 4, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877975.8610058, "cpu": 22, "pid": 3955782, "job": ["Cprime240", "spike_slab", 15, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877975.8621786, "cpu": 0, "pid": 3956214, "job": ["Cprime240", "spike_slab", 16, "analysis"]}
+{"event": "start", "time": 1788877975.8630629, "cpu": 7, "pid": 3956215, "job": ["Cprime240", "curved_spike_slab8", 20, "analysis"]}
+{"event": "finish", "time": 1788877977.863943, "cpu": 8, "pid": 3954461, "job": ["Cprime240", "curved_spike_slab8", 16, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877977.8641946, "cpu": 47, "pid": 3954567, "job": ["Cprime240", "curved_spike_slab8", 21, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877977.8643942, "cpu": 32, "pid": 3954698, "job": ["Cprime240", "curved_spike_slab8", 22, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877977.8645725, "cpu": 1, "pid": 3955009, "job": ["Cprime240", "spike_slab", 26, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877977.8647418, "cpu": 12, "pid": 3955799, "job": ["Cprime240", "spike_slab", 17, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877977.86488, "cpu": 23, "pid": 3955800, "job": ["Cprime240", "spike_slab", 21, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877977.8650227, "cpu": 10, "pid": 3955851, "job": ["Cprime240", "spike_slab", 19, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877977.866184, "cpu": 1, "pid": 3956256, "job": ["Cprime240", "curved_spike_slab8", 16, "analysis"]}
+{"event": "start", "time": 1788877977.867072, "cpu": 8, "pid": 3956257, "job": ["Cprime240", "curved_spike_slab8", 21, "analysis"]}
+{"event": "start", "time": 1788877977.8679266, "cpu": 10, "pid": 3956258, "job": ["Cprime240", "curved_spike_slab8", 22, "analysis"]}
+{"event": "start", "time": 1788877977.8687155, "cpu": 12, "pid": 3956259, "job": ["Cprime240", "spike_slab", 26, "analysis"]}
+{"event": "finish", "time": 1788877979.8695917, "cpu": 21, "pid": 3955043, "job": ["Cprime240", "spike_slab", 27, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877979.8698378, "cpu": 6, "pid": 3955850, "job": ["Cprime240", "spike_slab", 14, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877979.8700147, "cpu": 15, "pid": 3955852, "job": ["Cprime240", "spike_slab", 20, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877979.871172, "cpu": 6, "pid": 3956322, "job": ["Cprime240", "spike_slab", 27, "analysis"]}
+{"event": "finish", "time": 1788877981.8720253, "cpu": 37, "pid": 3954785, "job": ["Cprime240", "curved_spike_slab8", 23, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877981.8732827, "cpu": 15, "pid": 3956342, "job": ["Cprime240", "curved_spike_slab8", 23, "analysis"]}
+{"event": "finish", "time": 1788877983.874155, "cpu": 27, "pid": 3955921, "job": ["Cprime240", "spike_slab", 12, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877985.8751278, "cpu": 56, "pid": 3954905, "job": ["Cprime240", "curved_spike_slab8", 24, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877985.875388, "cpu": 42, "pid": 3955111, "job": ["Cprime240", "spike_slab", 29, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877985.875571, "cpu": 30, "pid": 3955938, "job": ["Cprime240", "spike_slab", 24, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877985.8767178, "cpu": 20, "pid": 3956362, "job": ["Cprime240", "curved_spike_slab8", 24, "analysis"]}
+{"event": "start", "time": 1788877985.877585, "cpu": 21, "pid": 3956363, "job": ["Cprime240", "spike_slab", 29, "analysis"]}
+{"event": "finish", "time": 1788877987.8784323, "cpu": 19, "pid": 3955937, "job": ["Cprime240", "curved_spike_slab8", 11, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877989.879436, "cpu": 3, "pid": 3954993, "job": ["Cprime240", "curved_spike_slab8", 25, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877989.8807752, "cpu": 3, "pid": 3956416, "job": ["Cprime240", "curved_spike_slab8", 25, "analysis"]}
+{"event": "finish", "time": 1788877991.8816772, "cpu": 5, "pid": 3956051, "job": ["Cprime240", "spike_slab", 25, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877993.8827095, "cpu": 16, "pid": 3955061, "job": ["Cprime240", "curved_spike_slab8", 27, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877993.8829525, "cpu": 24, "pid": 3956002, "job": ["Cprime240", "curved_spike_slab8", 14, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877993.8831007, "cpu": 28, "pid": 3956003, "job": ["Cprime240", "curved_spike_slab8", 15, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877993.8842542, "cpu": 5, "pid": 3956434, "job": ["Cprime240", "curved_spike_slab8", 27, "analysis"]}
+{"event": "finish", "time": 1788877995.8850338, "cpu": 9, "pid": 3956001, "job": ["Cprime240", "curved_spike_slab8", 13, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877997.8859391, "cpu": 14, "pid": 3955010, "job": ["Cprime240", "curved_spike_slab8", 26, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877997.8861582, "cpu": 2, "pid": 3956050, "job": ["Cprime240", "curved_spike_slab8", 19, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877997.8862936, "cpu": 11, "pid": 3956086, "job": ["Cprime240", "curved_spike_slab8", 17, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877997.8864138, "cpu": 13, "pid": 3956087, "job": ["Cprime240", "spike_slab", 18, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877997.8865316, "cpu": 17, "pid": 3956088, "job": ["Cprime240", "curved_spike_slab8", 18, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877997.8866441, "cpu": 18, "pid": 3956089, "job": ["Cprime240", "spike_slab", 22, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877997.886761, "cpu": 12, "pid": 3956259, "job": ["Cprime240", "spike_slab", 26, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877997.8878639, "cpu": 2, "pid": 3956451, "job": ["Cprime240", "curved_spike_slab8", 26, "analysis"]}
+{"event": "finish", "time": 1788877999.8885689, "cpu": 29, "pid": 3955062, "job": ["Cprime240", "spike_slab", 28, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877999.8888102, "cpu": 4, "pid": 3956085, "job": ["Cprime240", "curved_spike_slab8", 12, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788877999.8889425, "cpu": 0, "pid": 3956214, "job": ["Cprime240", "spike_slab", 16, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788877999.8900325, "cpu": 0, "pid": 3956467, "job": ["Cprime240", "spike_slab", 28, "analysis"]}
+{"event": "finish", "time": 1788878001.8907728, "cpu": 57, "pid": 3955112, "job": ["Cprime240", "curved_spike_slab8", 29, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788878001.8909867, "cpu": 7, "pid": 3956215, "job": ["Cprime240", "curved_spike_slab8", 20, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788878001.8911383, "cpu": 1, "pid": 3956256, "job": ["Cprime240", "curved_spike_slab8", 16, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788878001.89125, "cpu": 10, "pid": 3956258, "job": ["Cprime240", "curved_spike_slab8", 22, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788878001.8913527, "cpu": 6, "pid": 3956322, "job": ["Cprime240", "spike_slab", 27, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788878001.8923955, "cpu": 1, "pid": 3956494, "job": ["Cprime240", "curved_spike_slab8", 29, "analysis"]}
+{"event": "finish", "time": 1788878003.8930707, "cpu": 8, "pid": 3956257, "job": ["Cprime240", "curved_spike_slab8", 21, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788878005.8938284, "cpu": 31, "pid": 3955063, "job": ["Cprime240", "curved_spike_slab8", 28, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788878005.8940232, "cpu": 15, "pid": 3956342, "job": ["Cprime240", "curved_spike_slab8", 23, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788878005.8950791, "cpu": 4, "pid": 3956512, "job": ["Cprime240", "curved_spike_slab8", 28, "analysis"]}
+{"event": "finish", "time": 1788878007.8957298, "cpu": 21, "pid": 3956363, "job": ["Cprime240", "spike_slab", 29, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788878009.8964436, "cpu": 20, "pid": 3956362, "job": ["Cprime240", "curved_spike_slab8", 24, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788878013.89769, "cpu": 3, "pid": 3956416, "job": ["Cprime240", "curved_spike_slab8", 25, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788878017.8989236, "cpu": 5, "pid": 3956434, "job": ["Cprime240", "curved_spike_slab8", 27, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788878021.9001484, "cpu": 2, "pid": 3956451, "job": ["Cprime240", "curved_spike_slab8", 26, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788878021.9003425, "cpu": 0, "pid": 3956467, "job": ["Cprime240", "spike_slab", 28, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788878023.9009557, "cpu": 1, "pid": 3956494, "job": ["Cprime240", "curved_spike_slab8", 29, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788878029.9025393, "cpu": 4, "pid": 3956512, "job": ["Cprime240", "curved_spike_slab8", 28, "analysis"], "exit_code": 0, "success": true}

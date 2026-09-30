@@ -1,0 +1,84 @@
+{
+  "case": "ss10",
+  "seed": 0,
+  "dimension": 10,
+  "source_commit": "259d436bde03f502a93019817c3d749fd2f04207",
+  "legacy_commit": "67e45dac6d9b273c4f4d957433f53228bf9ea7e0",
+  "source_root": "/largedata/albert/git/jaxns-paper-posterior10",
+  "prior_bounds": [
+    -4.0,
+    8.0
+  ],
+  "ss10_definition": "repository",
+  "reference": {
+    "method": "product of Gaussian CDF differences over the finite prior box",
+    "log_Z": -24.15593480605331,
+    "component_log_Z": [
+      -24.84906649788154,
+      -24.849097475584877
+    ],
+    "spike_mass": 0.5000077444258325,
+    "means": [
+      [
+        6.0,
+        6.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      [
+        2.5,
+        2.5,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    ],
+    "standard_deviations": [
+      0.282842712474619,
+      0.8944271909999159
+    ]
+  },
+  "root_degree": 300,
+  "delta_K": 300,
+  "shell_size": 100,
+  "num_slices": 100,
+  "retained_phantoms": 99,
+  "all_phantom_seeds": true,
+  "direction": "isotropic",
+  "allocation_target": "evidence_improving",
+  "allocation_weights": null,
+  "allocation_rule": "weighted sum of rounded component gaps; ceil; no renormalisation",
+  "bootstrap": {
+    "allocation_target": "uniform",
+    "delta_K": 1,
+    "goals": 1
+  },
+  "goal_kish_ess": null,
+  "goal_classic_log_Z_uncert": 0.05,
+  "depth_dlogZ": 0.0009995003330835331,
+  "affinity": [
+    3
+  ],
+  "versions": {
+    "jax": "0.10.0",
+    "jaxlib": "0.10.0",
+    "jaxctx": "1.2.0",
+    "numpy": "2.4.4",
+    "scipy": "1.17.1"
+  },
+  "source_sha256": {
+    "posterior_cases.py": "8d1e6dd40bfe460e3ba7258ba481345202b27c6837a1c8e18b18b837b69ff75a",
+    "run_posterior.py": "2a404c6fc791cfbb3d21b6835b47bd532a36d751e418baa3e002d6b8ab4fc53d"
+  }
+}

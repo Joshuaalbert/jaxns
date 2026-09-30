@@ -1,0 +1,9 @@
+Traceback (most recent call last):
+  File "/tmp/jaxns-AC240-prefix-audit.py", line 35, in <module>
+    np.array(astate.samples.U_samples[:count]),
+             ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^
+  File "/data/albert/miniconda3/envs/jaxns_py/lib/python3.12/site-packages/jaxctx/context.py", line 153, in __getitem__
+    return scope_dict[item]
+           ~~~~~~~~~~^^^^^^
+KeyError: slice(None, 5415, None)
+ERROR conda.cli.main_run:execute(125): `conda run taskset -c 64 python /tmp/jaxns-AC240-prefix-audit.py` failed. (See above for error)

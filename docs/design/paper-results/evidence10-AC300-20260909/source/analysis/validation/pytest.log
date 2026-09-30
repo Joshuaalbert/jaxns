@@ -1,0 +1,8 @@
+....                                                                     [100%]
+=============================== warnings summary ===============================
+../../../../data/albert/miniconda3/envs/jaxns_py/lib/python3.12/site-packages/tensorflow_probability/python/internal/backend/jax/ops.py:684
+  /data/albert/miniconda3/envs/jaxns_py/lib/python3.12/site-packages/tensorflow_probability/python/internal/backend/jax/ops.py:684: DeprecationWarning: jax.core.pytype_aval_mappings is deprecated.
+    jax.core.pytype_aval_mappings[onp.ndarray])
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+4 passed, 1 warning in 3.49s

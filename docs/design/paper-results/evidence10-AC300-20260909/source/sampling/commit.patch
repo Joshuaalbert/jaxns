@@ -1,0 +1,1231 @@
+commit aa79a0dc395c0d64b85cbb88d0e3e732decd7361
+Author:     joshuaalbert <albert@strw.leidenuniv.nl>
+AuthorDate: Wed Sep 9 11:12:32 2026 +0000
+Commit:     joshuaalbert <albert@strw.leidenuniv.nl>
+CommitDate: Wed Sep 9 11:12:32 2026 +0000
+
+    Freeze A+C300 ten-dimensional evidence and matched SS10 ladder protocol
+
+diff --git a/benchmarks/paper_reproduction/evidence10_cases.py b/benchmarks/paper_reproduction/evidence10_cases.py
+new file mode 100644
+index 0000000..b230966
+--- /dev/null
++++ b/benchmarks/paper_reproduction/evidence10_cases.py
+@@ -0,0 +1,85 @@
++"""Current evidence-paper cases: G10, CG10, and repository SS10."""
++
++import numpy as np
++from jax import numpy as jnp
++from jaxctx.priors.prior import Prior
++from scipy.special import logsumexp
++from scipy.special import roots_hermitenorm
++from scipy.stats import norm
++from tensorflow_probability.substrates import jax as tfp
++
++from benchmarks.paper_reproduction.posterior_cases import build_model
++from benchmarks.paper_reproduction.posterior_cases import reference_values
++from benchmarks.paper_reproduction.references import component_log_evidence
++from jaxns.model import Model
++
++DIMENSION = 10
++CASE_REVISION = "evidence10-AC300-20260909"
++CASES = ("g10", "cg10", "ss10")
++GAUSSIAN_MEAN = np.array([3.] + [0.] * 9)  # [D]
++GAUSSIAN_COVARIANCE = .01 * np.eye(DIMENSION) + .99  # [D,D]
++CG_BETA = .4
++
++
++def g10_prior_model():
++    """Shifted correlated normal likelihood under N(0,I)."""
++    x = Prior(tfp.distributions.MultivariateNormalDiag(
++        loc=jnp.zeros(DIMENSION, jnp.float64),
++        scale_diag=jnp.ones(DIMENSION, jnp.float64),
++    ), name="x").realise()
++    return tfp.distributions.MultivariateNormalTriL(
++        loc=jnp.asarray(GAUSSIAN_MEAN),
++        scale_tril=jnp.linalg.cholesky(jnp.asarray(GAUSSIAN_COVARIANCE)),
++    ).log_prob(x)
++
++
++def cg10_prior_model():
++    """G10 with a unit-Jacobian shear centered on its component mean."""
++    x = Prior(tfp.distributions.MultivariateNormalDiag(
++        loc=jnp.zeros(DIMENSION, jnp.float64),
++        scale_diag=jnp.ones(DIMENSION, jnp.float64),
++    ), name="x").realise()
++    shift = CG_BETA * ((x[0] - GAUSSIAN_MEAN[0]) ** 2
++                       - GAUSSIAN_COVARIANCE[0, 0])
++    z = x.at[1].add(-shift)  # [D], inverse shear in physical coordinates
++    return tfp.distributions.MultivariateNormalTriL(
++        loc=jnp.asarray(GAUSSIAN_MEAN),
++        scale_tril=jnp.linalg.cholesky(jnp.asarray(GAUSSIAN_COVARIANCE)),
++    ).log_prob(z)
++
++
++def build_case(case: str) -> tuple[Model, dict]:
++    """Build a durable model and its deterministic reference evidence."""
++    if case == "ss10":
++        return build_model("ss10", "repository"), reference_values("ss10", "repository")
++    if case not in ("g10", "cg10"):
++        raise ValueError(f"Unknown evidence case: {case}")
++    beta = CG_BETA if case == "cg10" else 0.
++    return (
++        Model(prior_model=cg10_prior_model if case == "cg10" else g10_prior_model),
++        {"log_Z": component_log_evidence(GAUSSIAN_MEAN, GAUSSIAN_COVARIANCE, beta),
++         "method": "conditional 1D quadrature" if beta else "Gaussian conjugacy",
++         "mean": GAUSSIAN_MEAN.tolist(),
++         "covariance": GAUSSIAN_COVARIANCE.tolist(), "shear_beta": beta},
++    )
++
++
++def cg10_hermite_reference(order: int) -> float:
++    """Check adaptive quadrature independently by Gaussian-weighted quadrature."""
++    covariance = GAUSSIAN_COVARIANCE
++    variance = covariance[0, 0]
++    slope = covariance[1:, 0] / variance  # [D-1]
++    conditional_covariance = covariance[1:, 1:] - np.outer(
++        covariance[1:, 0], covariance[0, 1:],
++    ) / variance  # [D-1,D-1]
++    combined = np.eye(DIMENSION - 1) + conditional_covariance
++    nodes, weights = roots_hermitenorm(order)  # [Q] each
++    first = (GAUSSIAN_MEAN[0] / (1. + variance)
++             + np.sqrt(variance / (1. + variance)) * nodes)  # [Q]
++    means = GAUSSIAN_MEAN[1:] + (first[:, None] - GAUSSIAN_MEAN[0]) * slope
++    means[:, 0] += CG_BETA * ((first-GAUSSIAN_MEAN[0])**2 - variance)
++    exponent = -.5 * np.einsum("qi,ij,qj->q", means, np.linalg.inv(combined), means)
++    log_integral = logsumexp(np.log(weights) + exponent) - .5 * np.log(2. * np.pi)
++    return float(norm.logpdf(GAUSSIAN_MEAN[0], scale=np.sqrt(1. + variance))
++                 - .5 * ((DIMENSION-1) * np.log(2. * np.pi)
++                         + np.linalg.slogdet(combined)[1]) + log_integral)
+diff --git a/benchmarks/paper_reproduction/reports/evidence10-AC300-20260909/PROTOCOL.md b/benchmarks/paper_reproduction/reports/evidence10-AC300-20260909/PROTOCOL.md
+new file mode 100644
+index 0000000..496627c
+--- /dev/null
++++ b/benchmarks/paper_reproduction/reports/evidence10-AC300-20260909/PROTOCOL.md
+@@ -0,0 +1,54 @@
++# A+C evidence experiments at D=10 (2026-09-09)
++
++The active paper cases are G10, CG10, and the linked repository SS10.
++G10 uses N(0,I) prior, mean (3,0,...,0), covariance with diagonal 1 and
++off-diagonal 0.99. CG10 applies the component-centered, unit-Jacobian shear
++x2 = z2 + 0.4*((z1-3)^2-1). SS10 uses U[-4,8]^10 and the sum of two
++normalized Gaussian densities: means (6,6,0,...,0) and (2.5,2.5,0,...,0),
++covariances 0.08I and 0.8I. REFERENCES.json records deterministic log Z.
++
++Baseline: 30 seeds (0--29) for each case; d0=300, shell width 100,
++100 isotropic no-step-out slices, 99 retained phantoms, all valid phantom
++U points eligible for seeding, no bounded reservoir. First full goal uses
++uniform allocation with delta_K=1; subsequent goals use evidence-improving
++allocation with delta_K=300. Depth dlogZ=log(1.001). Stop at classic
++expected sigma(log Z)<0.05. Posterior weights always use classics only.
++
++SS10 extension: resume the same 30 full-capacity trees and stored random
++streams to 0.02. If spike-mass recovery fails, resume to 0.01, and then
++0.005 as the final attempt. Recovery is descriptively defined before these
++runs as spike-mass RMSE <=0.05 and maximum absolute mass error <=0.15,
++relative to the exact bounded mass 0.5000077444258325. The criterion is not
++a formal hypothesis test. Stop decisions depend on posterior recovery,
++not on obtaining a preferred phantom result. Publish all completed stages.
++The uncertainty target may be achieved while recovery fails.
++
++Mass uses classic posterior weights times exact component responsibilities.
++For each fixed tree compute 2048 paired shrinkage draws at phantom prefix
++sizes 0,10,...,90, groups of 10, gate C_min=20. The prefix changes only
++evidence conditioning; it does not change the classic posterior mass.
++Evidence comparisons report empirical RMSE, bias, mean reported uncertainty,
++coverage, and paired RMSE change. Bootstrap whole seeds (10,000 resamples,
++seed 20260909) to quantify Monte Carlo uncertainty across runs. Preserve
++the seed-level values, draws, states, manifests and worker logs.
++
++One distinct pinned CPU per worker, numerical threads=1, CPU backend with
++JAX x64 enabled; the inherited jaxctx unit-prior dtype remains float32.
++At most 60 workers. Conservative memory reservations reduce concurrency
++for tighter stages: 8/24/64/192 GiB per worker for targets
++0.05/0.02/0.01/0.005, against a 480 GiB reservation budget. These are
++scheduling bounds, not changes to the sampler. Record actual peak RSS,
++likelihood calls, goal iterations, cumulative and incremental wall time.
++
++Checkpoint every five goals and at completion. Preserve full state capacity
++for resumption: a focused test found that trimming before resumption changes
++the trajectory despite preserving PRNG keys. Pickle/reload without trimming
++matches uninterrupted continuation exactly. Trim only for analysis.
++The final checkpoint and state are hardlinks to avoid duplicate disk usage.
++
++Validation before launch: eight focused tests passed, including model/prior
++agreement with SciPy, conjugate G10 evidence, adaptive and Hermite CG10
++quadrature, SS10 identity with the previous repository model, CLI smoke,
++full phantom checkpoint continuation, and the existing core resume test.
++Ruff and Flake8 (100-column limit) passed for the new harness and tests.
++No production sampler source is modified by this experiment branch.
+diff --git a/benchmarks/paper_reproduction/reports/evidence10-AC300-20260909/REFERENCES.json b/benchmarks/paper_reproduction/reports/evidence10-AC300-20260909/REFERENCES.json
+new file mode 100644
+index 0000000..4d0334f
+--- /dev/null
++++ b/benchmarks/paper_reproduction/reports/evidence10-AC300-20260909/REFERENCES.json
+@@ -0,0 +1,323 @@
++{
++  "g10": {
++    "log_Z": -14.480149273693915,
++    "method": "Gaussian conjugacy",
++    "mean": [
++      3.0,
++      0.0,
++      0.0,
++      0.0,
++      0.0,
++      0.0,
++      0.0,
++      0.0,
++      0.0,
++      0.0
++    ],
++    "covariance": [
++      [
++        1.0,
++        0.99,
++        0.99,
++        0.99,
++        0.99,
++        0.99,
++        0.99,
++        0.99,
++        0.99,
++        0.99
++      ],
++      [
++        0.99,
++        1.0,
++        0.99,
++        0.99,
++        0.99,
++        0.99,
++        0.99,
++        0.99,
++        0.99,
++        0.99
++      ],
++      [
++        0.99,
++        0.99,
++        1.0,
++        0.99,
++        0.99,
++        0.99,
++        0.99,
++        0.99,
++        0.99,
++        0.99
++      ],
++      [
++        0.99,
++        0.99,
++        0.99,
++        1.0,
++        0.99,
++        0.99,
++        0.99,
++        0.99,
++        0.99,
++        0.99
++      ],
++      [
++        0.99,
++        0.99,
++        0.99,
++        0.99,
++        1.0,
++        0.99,
++        0.99,
++        0.99,
++        0.99,
++        0.99
++      ],
++      [
++        0.99,
++        0.99,
++        0.99,
++        0.99,
++        0.99,
++        1.0,
++        0.99,
++        0.99,
++        0.99,
++        0.99
++      ],
++      [
++        0.99,
++        0.99,
++        0.99,
++        0.99,
++        0.99,
++        0.99,
++        1.0,
++        0.99,
++        0.99,
++        0.99
++      ],
++      [
++        0.99,
++        0.99,
++        0.99,
++        0.99,
++        0.99,
++        0.99,
++        0.99,
++        1.0,
++        0.99,
++        0.99
++      ],
++      [
++        0.99,
++        0.99,
++        0.99,
++        0.99,
++        0.99,
++        0.99,
++        0.99,
++        0.99,
++        1.0,
++        0.99
++      ],
++      [
++        0.99,
++        0.99,
++        0.99,
++        0.99,
++        0.99,
++        0.99,
++        0.99,
++        0.99,
++        0.99,
++        1.0
++      ]
++    ],
++    "shear_beta": 0.0
++  },
++  "cg10": {
++    "log_Z": -14.599683294937872,
++    "method": "conditional 1D quadrature",
++    "mean": [
++      3.0,
++      0.0,
++      0.0,
++      0.0,
++      0.0,
++      0.0,
++      0.0,
++      0.0,
++      0.0,
++      0.0
++    ],
++    "covariance": [
++      [
++        1.0,
++        0.99,
++        0.99,
++        0.99,
++        0.99,
++        0.99,
++        0.99,
++        0.99,
++        0.99,
++        0.99
++      ],
++      [
++        0.99,
++        1.0,
++        0.99,
++        0.99,
++        0.99,
++        0.99,
++        0.99,
++        0.99,
++        0.99,
++        0.99
++      ],
++      [
++        0.99,
++        0.99,
++        1.0,
++        0.99,
++        0.99,
++        0.99,
++        0.99,
++        0.99,
++        0.99,
++        0.99
++      ],
++      [
++        0.99,
++        0.99,
++        0.99,
++        1.0,
++        0.99,
++        0.99,
++        0.99,
++        0.99,
++        0.99,
++        0.99
++      ],
++      [
++        0.99,
++        0.99,
++        0.99,
++        0.99,
++        1.0,
++        0.99,
++        0.99,
++        0.99,
++        0.99,
++        0.99
++      ],
++      [
++        0.99,
++        0.99,
++        0.99,
++        0.99,
++        0.99,
++        1.0,
++        0.99,
++        0.99,
++        0.99,
++        0.99
++      ],
++      [
++        0.99,
++        0.99,
++        0.99,
++        0.99,
++        0.99,
++        0.99,
++        1.0,
++        0.99,
++        0.99,
++        0.99
++      ],
++      [
++        0.99,
++        0.99,
++        0.99,
++        0.99,
++        0.99,
++        0.99,
++        0.99,
++        1.0,
++        0.99,
++        0.99
++      ],
++      [
++        0.99,
++        0.99,
++        0.99,
++        0.99,
++        0.99,
++        0.99,
++        0.99,
++        0.99,
++        1.0,
++        0.99
++      ],
++      [
++        0.99,
++        0.99,
++        0.99,
++        0.99,
++        0.99,
++        0.99,
++        0.99,
++        0.99,
++        0.99,
++        1.0
++      ]
++    ],
++    "shear_beta": 0.4
++  },
++  "ss10": {
++    "method": "product of Gaussian CDF differences over the finite prior box",
++    "log_Z": -24.15593480605331,
++    "component_log_Z": [
++      -24.84906649788154,
++      -24.849097475584877
++    ],
++    "spike_mass": 0.5000077444258325,
++    "means": [
++      [
++        6.0,
++        6.0,
++        0.0,
++        0.0,
++        0.0,
++        0.0,
++        0.0,
++        0.0,
++        0.0,
++        0.0
++      ],
++      [
++        2.5,
++        2.5,
++        0.0,
++        0.0,
++        0.0,
++        0.0,
++        0.0,
++        0.0,
++        0.0,
++        0.0
++      ]
++    ],
++    "standard_deviations": [
++      0.282842712474619,
++      0.8944271909999159
++    ]
++  },
++  "cg10_checks": {
++    "128": -14.599683294937874,
++    "256": -14.599683294937883
++  }
++}
+\ No newline at end of file
+diff --git a/benchmarks/paper_reproduction/reports/evidence10-AC300-20260909/dispatch.py b/benchmarks/paper_reproduction/reports/evidence10-AC300-20260909/dispatch.py
+new file mode 100644
+index 0000000..c670f07
+--- /dev/null
++++ b/benchmarks/paper_reproduction/reports/evidence10-AC300-20260909/dispatch.py
+@@ -0,0 +1,164 @@
++"""Run frozen 10D paper cohorts and the matched SS10 uncertainty ladder."""
++
++import hashlib
++import json
++import os
++from pathlib import Path
++import shutil
++import subprocess
++import sys
++import time
++
++ROOT = Path('/largedata/albert/git/jaxns-paper-evidence10-AC300')
++OUT = Path('/largedata/albert/jaxns-evidence10-AC300-20260909')
++CPUS = sorted(os.sched_getaffinity(0))[:60]
++RESERVATIONS = {'0.05': 8, '0.02': 24, '0.01': 64, '0.005': 192}
++BUDGET_GIB = 480
++TRUTH_MASS = 0.5000077444258325
++assert len(CPUS) == 60
++assert not subprocess.check_output(['git', 'status', '--porcelain'], cwd=ROOT)
++OUT.mkdir(parents=True, exist_ok=True)
++source = {
++    'root': str(ROOT),
++    'commit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT,
++                                      text=True).strip(),
++    'src_tree': subprocess.check_output(['git', 'rev-parse', 'HEAD:src'], cwd=ROOT,
++                                        text=True).strip(),
++    'files': {p.name: hashlib.sha256(p.read_bytes()).hexdigest()
++              for p in (ROOT / 'benchmarks/paper_reproduction').glob('*.py')},
++}
++with (OUT / 'SOURCES.json').open('x') as stream:
++    json.dump(source, stream, indent=2)
++started = time.time()
++max_active = 0
++finished_cells = 0
++decisions = []
++
++
++def event(kind, **record):
++    print(json.dumps(dict(event=kind, time=time.time(), **record)), flush=True)
++
++
++for stage in ('0.05', '0.02', '0.01', '0.005'):
++    previous = {'0.02': '0.05', '0.01': '0.02', '0.005': '0.01'}.get(stage)
++    cases = ('ss10', 'g10', 'cg10') if stage == '0.05' else ('ss10',)
++    pending = [(case, seed, phase) for phase in ('core', 'analysis')
++               for seed in range(30) for case in cases]
++    active = {}
++    failures = []
++    last_audit = 0.
++    while pending or active:
++        for cpu, (process, log, job) in list(active.items()):
++            code = process.poll()
++            if code is None:
++                continue
++            log.close()
++            case, seed, phase = job
++            cell = OUT / stage / case / f'seed-{seed:02d}'
++            success = code == 0 and (cell / f'{phase.upper()}.json').exists()
++            event('finish', stage=stage, cpu=cpu, pid=process.pid, job=job,
++                  exit_code=code, success=success)
++            del active[cpu]
++            if not success:
++                failures.append(dict(stage=stage, job=job, exit_code=code))
++        if failures:
++            pending.clear()
++        occupied = {tuple(row[2][:2]) for row in active.values()}
++        for cpu in CPUS:
++            if cpu in active or failures:
++                continue
++            if (len(active) + 1) * RESERVATIONS[stage] > BUDGET_GIB:
++                break
++            ready = None
++            for index, job in enumerate(pending):
++                case, seed, phase = job
++                if tuple(job[:2]) in occupied:
++                    continue
++                cell = OUT / stage / case / f'seed-{seed:02d}'
++                if phase == 'analysis' and not (cell / 'CORE.json').exists():
++                    continue
++                ready = index
++                break
++            if ready is None:
++                continue
++            if shutil.disk_usage(OUT).free < 50 * 1024**3:
++                event('low_disk', free_bytes=shutil.disk_usage(OUT).free)
++                break
++            job = pending.pop(ready)
++            case, seed, phase = job
++            cell = OUT / stage / case / f'seed-{seed:02d}'
++            cell.mkdir(parents=True, exist_ok=True)
++            env = os.environ.copy()
++            env.update({name: '1' for name in (
++                'OMP_NUM_THREADS', 'OPENBLAS_NUM_THREADS', 'MKL_NUM_THREADS',
++                'BLIS_NUM_THREADS', 'NUMEXPR_NUM_THREADS', 'JAX_NUM_THREADS',
++                'TF_NUM_INTRAOP_THREADS', 'TF_NUM_INTEROP_THREADS')})
++            env.update(JAX_PLATFORMS='cpu', JAX_ENABLE_X64='true',
++                       PYTHONUNBUFFERED='1', MPLBACKEND='Agg',
++                       PYTHONPATH=f'{ROOT / "src"}:{ROOT}',
++                       XLA_FLAGS='--xla_cpu_multi_thread_eigen=false '
++                       'intra_op_parallelism_threads=1')
++            cmd = ['taskset', '-c', str(cpu), sys.executable, '-m',
++                   'benchmarks.paper_reproduction.run_evidence10',
++                   '--case', case, '--seed', str(seed), '--phase', phase,
++                   '--goal-log-z-uncert', stage, '--output', str(cell)]
++            if previous and phase == 'core':
++                cmd.extend(['--resume-from', str(OUT / previous / case /
++                                                f'seed-{seed:02d}')])
++            log = (cell / f'{phase}.log').open('x')
++            process = subprocess.Popen(cmd, cwd=ROOT, env=env,
++                                       stdout=log, stderr=subprocess.STDOUT)
++            os.sched_setaffinity(process.pid, {cpu})
++            active[cpu] = (process, log, job)
++            occupied.add(tuple(job[:2]))
++            event('start', stage=stage, cpu=cpu, pid=process.pid, job=job)
++        max_active = max(max_active, len(active))
++        if time.time() - last_audit > 30:
++            affinity = []
++            for cpu, (process, _, job) in active.items():
++                try:
++                    actual = sorted(os.sched_getaffinity(process.pid))
++                except ProcessLookupError:
++                    continue
++                if actual != [cpu]:
++                    raise RuntimeError(f'Affinity changed: {process.pid}: {actual}')
++                affinity.append(dict(pid=process.pid, cpu=cpu, job=job))
++            event('affinity_audit', stage=stage, workers=affinity)
++            last_audit = time.time()
++        (OUT / 'STATUS.json').write_text(json.dumps(dict(
++            stage=stage, active=len(active), pending=len(pending), failures=failures,
++            elapsed_seconds=time.time()-started, max_active=max_active,
++            reserved_gib=len(active)*RESERVATIONS[stage],
++            active_jobs=[row[2] for row in active.values()]), indent=2))
++        if not active and pending:
++            raise RuntimeError('Pending work cannot be dispatched; inspect disk/dependencies')
++        if active:
++            time.sleep(2)
++    if failures:
++        (OUT / 'FAILED.json').write_text(json.dumps(failures, indent=2))
++        raise RuntimeError(f'Worker failures: {failures}')
++    for case in cases:
++        for seed in range(30):
++            cell = OUT / stage / case / f'seed-{seed:02d}'
++            assert all((cell / name).exists() for name in ('CORE.json', 'ANALYSIS.json'))
++    finished_cells += 30 * len(cases)
++    masses = [json.loads((OUT / stage / 'ss10' / f'seed-{seed:02d}' /
++                          'ANALYSIS.json').read_text())['classic_spike_mass']
++              for seed in range(30)]
++    errors = [mass - TRUTH_MASS for mass in masses]
++    rmse = (sum(error**2 for error in errors) / 30)**.5
++    max_error = max(abs(error) for error in errors)
++    recovered = rmse <= .05 and max_error <= .15
++    decision = dict(stage=stage, masses=masses, mass_rmse=rmse,
++                    max_mass_error=max_error, recovered=recovered,
++                    continue_ladder=stage == '0.05' or (not recovered and stage != '0.005'))
++    decisions.append(decision)
++    (OUT / 'DECISIONS.json').write_text(json.dumps(decisions, indent=2))
++    event('stage_complete', **decision)
++    if not decision['continue_ladder']:
++        break
++(OUT / 'FINISHED.json').write_text(json.dumps(dict(
++    complete=True, cells=finished_cells, stages=[d['stage'] for d in decisions],
++    max_parallel=max_active, cpus=CPUS, elapsed_seconds=time.time()-started,
++    ss10_recovered=decisions[-1]['recovered']), indent=2))
++event('finished', cells=finished_cells)
+diff --git a/benchmarks/paper_reproduction/reports/evidence10-AC300-20260909/validation/flake8-final.log b/benchmarks/paper_reproduction/reports/evidence10-AC300-20260909/validation/flake8-final.log
+new file mode 100644
+index 0000000..e69de29
+diff --git a/benchmarks/paper_reproduction/reports/evidence10-AC300-20260909/validation/flake8.log b/benchmarks/paper_reproduction/reports/evidence10-AC300-20260909/validation/flake8.log
+new file mode 100644
+index 0000000..0c03b01
+--- /dev/null
++++ b/benchmarks/paper_reproduction/reports/evidence10-AC300-20260909/validation/flake8.log
+@@ -0,0 +1,2 @@
++cicd/tests/test_evidence10.py:36:46: E128 continuation line under-indented for visual indent
++ERROR conda.cli.main_run:execute(125): `conda run flake8 --max-line-length=100 benchmarks/paper_reproduction/evidence10_cases.py benchmarks/paper_reproduction/run_evidence10.py cicd/tests/test_evidence10.py` failed. (See above for error)
+diff --git a/benchmarks/paper_reproduction/reports/evidence10-AC300-20260909/validation/pytest-final.log b/benchmarks/paper_reproduction/reports/evidence10-AC300-20260909/validation/pytest-final.log
+new file mode 100644
+index 0000000..07eaf8e
+--- /dev/null
++++ b/benchmarks/paper_reproduction/reports/evidence10-AC300-20260909/validation/pytest-final.log
+@@ -0,0 +1,39 @@
++......F.                                                                 [100%]
++=================================== FAILURES ===================================
++____________ test_trimmed_phantom_checkpoint_preserves_continuation ____________
++
++    def test_trimmed_phantom_checkpoint_preserves_continuation():
++        model, _ = build_case("ss10")
++        sampler = NestedSampler(
++            model=model, root_allocation_degree=8, shell_size=4, delta_K=8,
++            sampler=UniDimSliceSampler(model=model, num_slices=5,
++                                       collect_phantom_samples=True,
++                                       max_phantom_samples=4, no_step_out=True),
++            collect_phantom_samples=True, max_phantom_samples=4,
++            allocation_target="evidence_improving", unlimited_samples=True,
++            depth_condition=DepthCondition(dlogZ=np.log1p(.01)),
++        )
++        bootstrap = dataclasses.replace(sampler, allocation_target="uniform", delta_K=1)
++        state = bootstrap.run_until_goal(lambda s: int(s.goal_loop_iter) >= 1,
++                                         key=jax.random.PRNGKey(0))
++        restored = pickle.loads(pickle.dumps(state.trim()))
++        expected = sampler.resume_until_goal(state, lambda s: int(s.goal_loop_iter) >= 3).trim()
++        actual = sampler.resume_until_goal(restored, lambda s: int(s.goal_loop_iter) >= 3).trim()
++>       assert int(actual.num_samples) == int(expected.num_samples)
++E       assert 351 == 368
++E        +  where 351 = int(Array(351, dtype=int64))
++E        +    where Array(351, dtype=int64) = State(root_out_degree=Array(24, dtype=int64), samples=Samples(log_L_constraints=Array([         -inf,          -inf,  ..., needs_growth=Array(False, dtype=bool), depth_reached=Array(True, dtype=bool), sampler_data=None, scheduler_data=None).num_samples
++E        +  and   368 = int(Array(368, dtype=int64))
++E        +    where Array(368, dtype=int64) = State(root_out_degree=Array(24, dtype=int64), samples=Samples(log_L_constraints=Array([         -inf,          -inf,  ..., needs_growth=Array(False, dtype=bool), depth_reached=Array(True, dtype=bool), sampler_data=None, scheduler_data=None).num_samples
++
++cicd/tests/test_evidence10.py:100: AssertionError
++=============================== warnings summary ===============================
++../../../../data/albert/miniconda3/envs/jaxns_py/lib/python3.12/site-packages/tensorflow_probability/python/internal/backend/jax/ops.py:684
++  /data/albert/miniconda3/envs/jaxns_py/lib/python3.12/site-packages/tensorflow_probability/python/internal/backend/jax/ops.py:684: DeprecationWarning: jax.core.pytype_aval_mappings is deprecated.
++    jax.core.pytype_aval_mappings[onp.ndarray])
++
++-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
++=========================== short test summary info ============================
++FAILED cicd/tests/test_evidence10.py::test_trimmed_phantom_checkpoint_preserves_continuation
++1 failed, 7 passed, 1 warning in 73.78s (0:01:13)
++ERROR conda.cli.main_run:execute(125): `conda run taskset -c 4 pytest -q cicd/tests/test_evidence10.py cicd/tests/test_core.py::test_resume_uses_stored_key_and_matches_uninterrupted_run` failed. (See above for error)
+diff --git a/benchmarks/paper_reproduction/reports/evidence10-AC300-20260909/validation/pytest-full-checkpoint.log b/benchmarks/paper_reproduction/reports/evidence10-AC300-20260909/validation/pytest-full-checkpoint.log
+new file mode 100644
+index 0000000..3db11c3
+--- /dev/null
++++ b/benchmarks/paper_reproduction/reports/evidence10-AC300-20260909/validation/pytest-full-checkpoint.log
+@@ -0,0 +1,8 @@
++........                                                                 [100%]
++=============================== warnings summary ===============================
++../../../../data/albert/miniconda3/envs/jaxns_py/lib/python3.12/site-packages/tensorflow_probability/python/internal/backend/jax/ops.py:684
++  /data/albert/miniconda3/envs/jaxns_py/lib/python3.12/site-packages/tensorflow_probability/python/internal/backend/jax/ops.py:684: DeprecationWarning: jax.core.pytype_aval_mappings is deprecated.
++    jax.core.pytype_aval_mappings[onp.ndarray])
++
++-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
++8 passed, 1 warning in 42.56s
+diff --git a/benchmarks/paper_reproduction/reports/evidence10-AC300-20260909/validation/pytest-initial.log b/benchmarks/paper_reproduction/reports/evidence10-AC300-20260909/validation/pytest-initial.log
+new file mode 100644
+index 0000000..494c321
+--- /dev/null
++++ b/benchmarks/paper_reproduction/reports/evidence10-AC300-20260909/validation/pytest-initial.log
+@@ -0,0 +1,87 @@
++FF.....                                                                  [100%]
++=================================== FAILURES ===================================
++______________ test_gaussian_adapter_prior_and_inverse_shear[g10] ______________
++
++case = 'g10'
++
++    @pytest.mark.parametrize("case", ["g10", "cg10"])
++    def test_gaussian_adapter_prior_and_inverse_shear(case):
++        model, reference = build_case(case)
++        model = pickle.loads(pickle.dumps(model))
++        assert model.U_ndims() == 10
++        for seed in range(5):
++            u = model.sample_U(jax.random.PRNGKey(seed))
++            x = np.asarray(jax.tree.leaves(model.transform_to_X(u))[0])
++            z = x.copy()
++            if case == "cg10":
++                z[1] -= CG_BETA * ((z[0]-3.)**2-1.)
++            expected = multivariate_normal.logpdf(z, mean=GAUSSIAN_MEAN,
++                                                 cov=GAUSSIAN_COVARIANCE)
++            np.testing.assert_allclose(model.log_likelihood(u), expected, rtol=1e-12)
++>           np.testing.assert_allclose(model.log_prior(u),
++                                       multivariate_normal.logpdf(x), rtol=1e-12)
++E           AssertionError: 
++E           Not equal to tolerance rtol=1e-12, atol=0
++E           
++E           Mismatched elements: 10 / 10 (100%)
++E           First 5 mismatches are at indices:
++E            [0]: -12.665835173546064 (ACTUAL), -1.7095635352732594 (DESIRED)
++E            [1]: -12.665835173546064 (ACTUAL), -0.9995815927685389 (DESIRED)
++E            [2]: -12.665835173546064 (ACTUAL), -1.5476629303598277 (DESIRED)
++E            [3]: -12.665835173546064 (ACTUAL), -1.3047121836207185 (DESIRED)
++E            [4]: -12.665835173546064 (ACTUAL), -1.2902494288380304 (DESIRED)
++E           Max absolute difference among violations: 11.74433908
++E           Max relative difference among violations: 12.74486043
++E            ACTUAL: array(-12.665835)
++E            DESIRED: array([-1.709564, -0.999582, -1.547663, -1.304712, -1.290249, -0.978974,
++E                  -1.361155, -0.926422, -1.626018, -0.921496])
++
++cicd/tests/test_evidence10.py:34: AssertionError
++_____________ test_gaussian_adapter_prior_and_inverse_shear[cg10] ______________
++
++case = 'cg10'
++
++    @pytest.mark.parametrize("case", ["g10", "cg10"])
++    def test_gaussian_adapter_prior_and_inverse_shear(case):
++        model, reference = build_case(case)
++        model = pickle.loads(pickle.dumps(model))
++        assert model.U_ndims() == 10
++        for seed in range(5):
++            u = model.sample_U(jax.random.PRNGKey(seed))
++            x = np.asarray(jax.tree.leaves(model.transform_to_X(u))[0])
++            z = x.copy()
++            if case == "cg10":
++                z[1] -= CG_BETA * ((z[0]-3.)**2-1.)
++            expected = multivariate_normal.logpdf(z, mean=GAUSSIAN_MEAN,
++                                                 cov=GAUSSIAN_COVARIANCE)
++            np.testing.assert_allclose(model.log_likelihood(u), expected, rtol=1e-12)
++>           np.testing.assert_allclose(model.log_prior(u),
++                                       multivariate_normal.logpdf(x), rtol=1e-12)
++E           AssertionError: 
++E           Not equal to tolerance rtol=1e-12, atol=0
++E           
++E           Mismatched elements: 10 / 10 (100%)
++E           First 5 mismatches are at indices:
++E            [0]: -12.665835173546064 (ACTUAL), -1.7095635352732594 (DESIRED)
++E            [1]: -12.665835173546064 (ACTUAL), -0.9995815927685389 (DESIRED)
++E            [2]: -12.665835173546064 (ACTUAL), -1.5476629303598277 (DESIRED)
++E            [3]: -12.665835173546064 (ACTUAL), -1.3047121836207185 (DESIRED)
++E            [4]: -12.665835173546064 (ACTUAL), -1.2902494288380304 (DESIRED)
++E           Max absolute difference among violations: 11.74433908
++E           Max relative difference among violations: 12.74486043
++E            ACTUAL: array(-12.665835)
++E            DESIRED: array([-1.709564, -0.999582, -1.547663, -1.304712, -1.290249, -0.978974,
++E                  -1.361155, -0.926422, -1.626018, -0.921496])
++
++cicd/tests/test_evidence10.py:34: AssertionError
++=============================== warnings summary ===============================
++../../../../data/albert/miniconda3/envs/jaxns_py/lib/python3.12/site-packages/tensorflow_probability/python/internal/backend/jax/ops.py:684
++  /data/albert/miniconda3/envs/jaxns_py/lib/python3.12/site-packages/tensorflow_probability/python/internal/backend/jax/ops.py:684: DeprecationWarning: jax.core.pytype_aval_mappings is deprecated.
++    jax.core.pytype_aval_mappings[onp.ndarray])
++
++-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
++=========================== short test summary info ============================
++FAILED cicd/tests/test_evidence10.py::test_gaussian_adapter_prior_and_inverse_shear[g10]
++FAILED cicd/tests/test_evidence10.py::test_gaussian_adapter_prior_and_inverse_shear[cg10]
++2 failed, 5 passed, 1 warning in 14.25s
++ERROR conda.cli.main_run:execute(125): `conda run taskset -c 4 pytest -q cicd/tests/test_evidence10.py cicd/tests/test_core.py::test_resume_uses_stored_key_and_matches_uninterrupted_run` failed. (See above for error)
+diff --git a/benchmarks/paper_reproduction/reports/evidence10-AC300-20260909/validation/ruff-final.log b/benchmarks/paper_reproduction/reports/evidence10-AC300-20260909/validation/ruff-final.log
+new file mode 100644
+index 0000000..5beb792
+--- /dev/null
++++ b/benchmarks/paper_reproduction/reports/evidence10-AC300-20260909/validation/ruff-final.log
+@@ -0,0 +1,2 @@
++All checks passed!
++
+diff --git a/benchmarks/paper_reproduction/reports/evidence10-AC300-20260909/validation/ruff.log b/benchmarks/paper_reproduction/reports/evidence10-AC300-20260909/validation/ruff.log
+new file mode 100644
+index 0000000..1f5f344
+--- /dev/null
++++ b/benchmarks/paper_reproduction/reports/evidence10-AC300-20260909/validation/ruff.log
+@@ -0,0 +1 @@
++All checks passed!
+diff --git a/benchmarks/paper_reproduction/run_evidence10.py b/benchmarks/paper_reproduction/run_evidence10.py
+new file mode 100644
+index 0000000..8cbac43
+--- /dev/null
++++ b/benchmarks/paper_reproduction/run_evidence10.py
+@@ -0,0 +1,274 @@
++"""Run one evidence-paper cell: A+C at d0=300, followed by paired prefix analysis."""
++
++import argparse
++import dataclasses
++import hashlib
++import importlib.metadata
++import json
++import os
++import pickle
++import resource
++import subprocess
++import time
++from pathlib import Path
++
++import jax
++import numpy as np
++from jax import numpy as jnp
++
++import jaxns
++from benchmarks.paper_reproduction.posterior_cases import DIMENSION
++from benchmarks.paper_reproduction.posterior_cases import LEGACY_COMMIT
++from jaxns.constrained_sampler import UniDimSliceSampler
++from jaxns.core import NestedSampler
++from jaxns.depth_condition import DepthCondition
++from jaxns.state import State
++from benchmarks.paper_reproduction.run_posterior import classic_metrics
++from benchmarks.paper_reproduction.evidence10_cases import CASES
++from benchmarks.paper_reproduction.evidence10_cases import CASE_REVISION
++from benchmarks.paper_reproduction.evidence10_cases import build_case
++from benchmarks.paper_reproduction.posterior_cases import ss10_parameters
++from benchmarks.paper_reproduction.prefix_sweep import sample_phantom_prefix_sweep_reference
++from scipy.special import logsumexp
++from scipy.stats import norm
++
++ROOT = Path(__file__).resolve().parents[2]
++
++
++def main() -> None:
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument("--case", choices=CASES, required=True)
++    parser.add_argument("--seed", type=int, required=True)
++    parser.add_argument("--phase", choices=("core", "analysis"), required=True)
++    parser.add_argument("--mc-draws", type=int, default=2048)
++    parser.add_argument("--goal-log-z-uncert", type=float, default=.05)
++    parser.add_argument("--resume-from", type=Path)
++    parser.add_argument("--output", type=Path, required=True)
++    args = parser.parse_args()
++    if not 0 <= args.seed < 30 or args.mc_draws < 2:
++        raise ValueError("Use seeds 0--29 and at least two shrinkage draws")
++    if args.goal_log_z_uncert not in (.05, .02, .01, .005):
++        raise ValueError("Use a predeclared uncertainty target")
++    if args.case != "ss10" and args.goal_log_z_uncert != .05:
++        raise ValueError("The tighter uncertainty ladder is only for SS10")
++    if len(os.sched_getaffinity(0)) != 1:
++        raise ValueError("Pin each worker to exactly one CPU")
++    if Path(jaxns.__file__).resolve().parents[2] != ROOT:
++        raise ValueError("Package imported from a different worktree")
++    if jax.default_backend() != "cpu" or not jax.config.jax_enable_x64:
++        raise ValueError("These runs require CPU float64")
++    if subprocess.check_output(["git", "diff", "HEAD", "--", "src",
++                                "benchmarks/paper_reproduction"], cwd=ROOT):
++        raise ValueError("Freeze experiment sources before launching")
++    model, reference = build_case(args.case)
++    if args.phase == "analysis":
++        analyse(args, reference)
++        return
++    weights = None
++    target = "evidence_improving"
++    depth = DepthCondition(dlogZ=jnp.log1p(jnp.float64(1e-3)))
++    core = NestedSampler(
++        model=model, root_allocation_degree=30 * DIMENSION,
++        shell_size=10 * DIMENSION, delta_K=30 * DIMENSION,
++        sampler=UniDimSliceSampler(
++            model=model, num_slices=10 * DIMENSION,
++            collect_phantom_samples=True,
++            max_phantom_samples=10 * DIMENSION - 1, no_step_out=True,
++        ),
++        collect_phantom_samples=True, max_phantom_samples=10 * DIMENSION - 1,
++        allocation_target=target, allocation_weights=weights,
++        unlimited_samples=True, depth_condition=depth,
++    )
++    args.output.mkdir(parents=True, exist_ok=True)
++    manifest = {
++        "case": args.case, "seed": args.seed, "dimension": DIMENSION,
++        "case_revision": CASE_REVISION, "intervention": "A+C",
++        "source_commit": subprocess.check_output(
++            ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True,
++        ).strip(),
++        "legacy_commit": LEGACY_COMMIT,
++        "source_root": str(ROOT), "reference": reference,
++        "ss10_definition": "repository" if args.case == "ss10" else None,
++        "root_degree": 300, "delta_K": 300, "shell_size": 100,
++        "num_slices": 100, "retained_phantoms": 99,
++        "all_phantom_seeds": True, "direction": "isotropic",
++        "allocation_target": target,
++        "allocation_weights": None if weights is None else dataclasses.asdict(weights),
++        "allocation_rule": "current_K + ceil(300 * unit_peak_evidence_utility)",
++        "bootstrap": {"allocation_target": "uniform", "delta_K": 1, "goals": 1},
++        "goal_classic_log_Z_uncert": args.goal_log_z_uncert,
++        "resume_from": str(args.resume_from) if args.resume_from else None,
++        "checkpoint_every_goals": 5, "checkpoint_preserves_capacity": True,
++        "evidence_prefix_sizes": list(range(0, 91, 10)), "C_min": 20.,
++        "depth_dlogZ": float(depth.dlogZ),
++        "affinity": sorted(os.sched_getaffinity(0)),
++        "versions": {name: importlib.metadata.version(name) for name in
++                     ("jax", "jaxlib", "jaxctx", "numpy", "scipy")},
++        "source_sha256": {
++            path.name: hashlib.sha256(path.read_bytes()).hexdigest()
++            for path in (Path(__file__),
++                         Path(__file__).with_name("evidence10_cases.py"),
++                         Path(__file__).with_name("posterior_cases.py"),
++                         Path(__file__).with_name("run_posterior.py"),
++                         Path(__file__).with_name("prefix_sweep.py"),
++                         Path(__file__).with_name("references.py"))
++        },
++    }
++    with (args.output / "MANIFEST.json").open("x") as stream:
++        json.dump(manifest, stream, indent=2, allow_nan=False)
++    started = time.perf_counter()
++    progress = []
++    preceding_run_seconds = 0.
++    if args.resume_from is not None:
++        previous = json.loads((args.resume_from / "CORE.json").read_text())
++        previous_manifest = json.loads((args.resume_from / "MANIFEST.json").read_text())
++        if (previous["case"] != args.case or previous["seed"] != args.seed
++                or previous_manifest["source_commit"] != manifest["source_commit"]
++                or previous_manifest["case_revision"] != CASE_REVISION):
++            raise ValueError("Resume state does not match this frozen experiment")
++        progress = previous["goal_progress"].copy()
++        preceding_run_seconds = previous["run_seconds"]
++
++    def goal(state: State) -> bool:
++        if int(state.goal_loop_iter) == 0:
++            return False
++        metrics = classic_metrics(state)
++        row = {
++            "iteration": int(state.goal_loop_iter),
++            "allocation_iteration": int(state.allocation_loop_iter),
++            "root_out_degree": int(state.root_out_degree),
++            "classic_log_Z": float(metrics.log_Z),
++            "classic_log_Z_uncert": float(metrics.log_Z_uncert),
++            "classic_kish_ess": float(metrics.kish_ess),
++            "likelihood_evaluations": int(np.asarray(
++                state.samples.num_likelihood_evaluations,
++            ).sum()),
++            "classic_samples": int(state.num_samples),
++            "seconds": preceding_run_seconds + time.perf_counter() - started,
++        }
++        if not progress or row["iteration"] != progress[-1]["iteration"]:
++            progress.append(row)
++            print(json.dumps(row, allow_nan=False), flush=True)
++            with (args.output / "progress.jsonl").open("a") as stream:
++                stream.write(json.dumps(row, allow_nan=False) + "\n")
++            # Save a resumable state periodically without writing the full
++            # growing phantom population after every goal in a 90-run cohort.
++            if (row["iteration"] == 1 or row["iteration"] % 5 == 0
++                    or float(metrics.log_Z_uncert) < args.goal_log_z_uncert):
++                temp = args.output / "checkpoint.tmp"
++                with temp.open("wb") as stream:
++                    pickle.dump(state, stream, protocol=pickle.HIGHEST_PROTOCOL)
++                temp.replace(args.output / "checkpoint.pkl")
++        return float(metrics.log_Z_uncert) < args.goal_log_z_uncert
++
++    if args.resume_from is None:
++        bootstrap = dataclasses.replace(
++            core, allocation_target="uniform", allocation_weights=None, delta_K=1,
++        )
++        state = bootstrap.run_until_goal(
++            lambda state: int(state.goal_loop_iter) == 1,
++            depth_cond=depth, key=jax.random.PRNGKey(args.seed),
++        )
++    else:
++        with (args.resume_from / "state.pkl").open("rb") as stream:
++            state = pickle.load(stream)
++    if not goal(state):
++        state = core.resume_until_goal(state, goal, depth_cond=depth)
++    jax.block_until_ready(state)
++    stage_run_seconds = time.perf_counter() - started
++    run_seconds = preceding_run_seconds + stage_run_seconds
++    metrics = classic_metrics(state)
++    success = float(metrics.log_Z_uncert) < args.goal_log_z_uncert
++    if not success:
++        raise RuntimeError("Sampler stopped before the requested goal; checkpoint saved")
++    with (args.output / "state.pkl").open("xb") as stream:
++        pickle.dump(state, stream, protocol=pickle.HIGHEST_PROTOCOL)
++    # The final checkpoint and finished state are the same durable object;
++    # a hard link avoids retaining two large phantom populations on disk.
++    checkpoint = args.output / "checkpoint.pkl"
++    checkpoint.unlink(missing_ok=True)
++    checkpoint.hardlink_to(args.output / "state.pkl")
++    results = state.trim().to_result().trim()
++    np.testing.assert_allclose(float(results.ess), float(metrics.kish_ess), rtol=1e-10)
++    x = np.asarray(jax.tree.leaves(results.X_samples)[0])  # [N, D]
++    log_weights = np.asarray(results.log_dp)  # [N], classic expected weights
++    np.savez_compressed(args.output / "classic_posterior.npz",
++                        x=x, log_dp=log_weights, log_L=np.asarray(results.log_L))
++    probabilities = np.exp(log_weights)
++    probabilities /= probabilities.sum()
++    mean = probabilities @ x  # [D]
++    variance = probabilities @ ((x - mean) ** 2)  # [D]
++    record = {
++        **progress[-1], "case": args.case, "seed": args.seed, "complete": True,
++        "run_seconds": run_seconds, "stage_run_seconds": stage_run_seconds,
++        "goal_progress": progress, "goal_log_Z_uncert": args.goal_log_z_uncert,
++        "reference": reference, "posterior_mean": mean.tolist(),
++        "posterior_standard_deviation": np.sqrt(variance).tolist(),
++        "peak_rss_bytes": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1024,
++        "state_capacity": int(state.samples.log_likelihoods.size),
++    }
++    with (args.output / "CORE.json").open("x") as stream:
++        json.dump(record, stream, indent=2, allow_nan=False)
++    print(json.dumps(record, allow_nan=False), flush=True)
++
++
++def analyse(args: argparse.Namespace, reference: dict) -> None:
++    """Reduce the saved tree, holding classic posterior weights fixed."""
++    started = time.perf_counter()
++    manifest = json.loads((args.output / "MANIFEST.json").read_text())
++    if manifest["case_revision"] != CASE_REVISION:
++        raise ValueError("Refusing a superseded problem definition")
++    source_commit = subprocess.check_output(
++        ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True,
++    ).strip()
++    if source_commit != manifest["source_commit"]:
++        raise ValueError("Analysis source differs from frozen sampling source")
++    with (args.output / "state.pkl").open("rb") as stream:
++        state = pickle.load(stream)
++    results = state.trim().to_result().trim()
++    posterior = np.load(args.output / "classic_posterior.npz")
++    weights = np.exp(posterior["log_dp"] - logsumexp(posterior["log_dp"]))
++    np.testing.assert_allclose(1. / np.sum(weights**2), float(results.ess), rtol=1e-10)
++    spike_mass = None
++    if args.case == "ss10":
++        means, scales = ss10_parameters("repository")
++        component_log_L = np.stack([
++            norm.logpdf(posterior["x"], loc=mean, scale=scale).sum(axis=1)
++            for mean, scale in zip(means, scales, strict=True)
++        ], axis=1)  # [N,2]
++        responsibility = np.exp(component_log_L[:, 0]
++                                - logsumexp(component_log_L, axis=1))  # [N]
++        spike_mass = float(weights @ responsibility)
++    draws, gates = sample_phantom_prefix_sweep_reference(
++        key=jax.random.fold_in(jax.random.PRNGKey(args.seed), 1),
++        log_L_constraints=results.log_L_constraints,
++        K_classic=results.num_live_points_per_sample,
++        valid_phantom=results.valid_phantom,
++        log_L_phantom=results.log_L_phantom[:, :90],
++        num_samples=results.total_num_samples,
++        block_state=results.block_data.to_block_state(),
++        dimension=10, num_draws=args.mc_draws, batch_size=1,
++        num_workers=1, num_groups=9, C_min=20.,
++    )
++    np.savez_compressed(args.output / "evidence_draws.npz", log_Z=draws)
++    record = {
++        "case": args.case, "seed": args.seed, "case_revision": CASE_REVISION,
++        "source_commit": source_commit, "reference": reference,
++        "goal_log_Z_uncert": manifest["goal_classic_log_Z_uncert"],
++        "classic_spike_mass": spike_mass,
++        "classic_kish_ess": float(results.ess), "mc_draws": args.mc_draws,
++        "prefix_sizes": list(range(0, 91, 10)),
++        "log_Z_mean": draws.mean(axis=0).tolist(),
++        "log_Z_uncert": draws.std(axis=0, ddof=1).tolist(),
++        "gate_fraction": gates.mean(axis=1).tolist(),
++        "analysis_seconds": time.perf_counter()-started,
++        "peak_rss_bytes": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1024,
++        "affinity": sorted(os.sched_getaffinity(0)),
++    }
++    with (args.output / "ANALYSIS.json").open("x") as stream:
++        json.dump(record, stream, indent=2, allow_nan=False)
++    print(json.dumps(record), flush=True)
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/cicd/tests/test_evidence10.py b/cicd/tests/test_evidence10.py
+new file mode 100644
+index 0000000..b5370cf
+--- /dev/null
++++ b/cicd/tests/test_evidence10.py
+@@ -0,0 +1,108 @@
++"""Independent checks for the current 10D evidence experiment definitions."""
++
++import dataclasses
++import pickle
++import subprocess
++import sys
++
++import jax
++import numpy as np
++import pytest
++from scipy.stats import multivariate_normal
++
++from benchmarks.paper_reproduction.evidence10_cases import CG_BETA
++from benchmarks.paper_reproduction.evidence10_cases import GAUSSIAN_COVARIANCE
++from benchmarks.paper_reproduction.evidence10_cases import GAUSSIAN_MEAN
++from benchmarks.paper_reproduction.evidence10_cases import build_case
++from benchmarks.paper_reproduction.evidence10_cases import cg10_hermite_reference
++from benchmarks.paper_reproduction.posterior_cases import build_model
++from jaxns.core import NestedSampler
++from jaxns.constrained_sampler import UniDimSliceSampler
++from jaxns.depth_condition import DepthCondition
++
++
++@pytest.mark.parametrize("case", ["g10", "cg10"])
++def test_gaussian_adapter_prior_and_inverse_shear(case):
++    model, reference = build_case(case)
++    model = pickle.loads(pickle.dumps(model))
++    assert model.U_ndims() == 10
++    for seed in range(5):
++        u = model.sample_U(jax.random.PRNGKey(seed))
++        x = np.asarray(jax.tree.leaves(model.transform_to_X(u))[0])
++        z = x.copy()
++        if case == "cg10":
++            z[1] -= CG_BETA * ((z[0]-3.)**2-1.)
++        expected = multivariate_normal.logpdf(
++            z, mean=GAUSSIAN_MEAN, cov=GAUSSIAN_COVARIANCE,
++        )
++        np.testing.assert_allclose(model.log_likelihood(u), expected, rtol=1e-12)
++        np.testing.assert_allclose(
++            model.log_prior(u), multivariate_normal.logpdf(x, mean=np.zeros(10)),
++            rtol=1e-12,
++        )
++    assert np.isfinite(reference["log_Z"])
++
++
++def test_g10_evidence_matches_rank_one_formula():
++    _, reference = build_case("g10")
++    # I + Sigma = 1.01 I + 0.99 11^T: determinant lemma and Sherman--Morrison.
++    diagonal, rank_one, dimension = 1.01, .99, 10
++    logdet = (dimension-1)*np.log(diagonal) + np.log(diagonal+dimension*rank_one)
++    quadratic = 9. * (1./diagonal - rank_one/(diagonal*(diagonal+dimension*rank_one)))
++    expected = -.5*(dimension*np.log(2.*np.pi)+logdet+quadratic)
++    np.testing.assert_allclose(reference["log_Z"], expected, atol=1e-12, rtol=0)
++
++
++def test_cg10_evidence_quadrature_refinement():
++    _, reference = build_case("cg10")
++    for order in (128, 256):
++        np.testing.assert_allclose(cg10_hermite_reference(order), reference["log_Z"],
++                                   atol=1e-9, rtol=0)
++
++
++def test_repository_ss10_is_identical_to_previous_run_model():
++    model, reference = build_case("ss10")
++    old = build_model("ss10", "repository")
++    for seed in range(5):
++        key = jax.random.PRNGKey(seed)
++        u = model.sample_U(key)
++        for new_leaf, old_leaf in zip(jax.tree.leaves(u),
++                                      jax.tree.leaves(old.sample_U(key)), strict=True):
++            np.testing.assert_array_equal(new_leaf, old_leaf)
++        np.testing.assert_array_equal(model.log_likelihood(u), old.log_likelihood(u))
++    np.testing.assert_allclose(reference["log_Z"], -24.15593480605331,
++                               atol=1e-12, rtol=0)
++
++
++def test_evidence_runner_cli_help():
++    result = subprocess.run(
++        [sys.executable, "-m", "benchmarks.paper_reproduction.run_evidence10", "--help"],
++        capture_output=True, text=True, check=True,
++    )
++    assert "--resume-from" in result.stdout
++    assert "--goal-log-z-uncert" in result.stdout
++
++
++def test_full_phantom_checkpoint_preserves_continuation():
++    model, _ = build_case("ss10")
++    sampler = NestedSampler(
++        model=model, root_allocation_degree=8, shell_size=4, delta_K=8,
++        sampler=UniDimSliceSampler(model=model, num_slices=5,
++                                   collect_phantom_samples=True,
++                                   max_phantom_samples=4, no_step_out=True),
++        collect_phantom_samples=True, max_phantom_samples=4,
++        allocation_target="evidence_improving", unlimited_samples=True,
++        depth_condition=DepthCondition(dlogZ=np.log1p(.01)),
++    )
++    bootstrap = dataclasses.replace(sampler, allocation_target="uniform", delta_K=1)
++    state = bootstrap.run_until_goal(lambda s: int(s.goal_loop_iter) >= 1,
++                                     key=jax.random.PRNGKey(0))
++    restored = pickle.loads(pickle.dumps(state))
++    expected = sampler.resume_until_goal(state, lambda s: int(s.goal_loop_iter) >= 3).trim()
++    actual = sampler.resume_until_goal(restored, lambda s: int(s.goal_loop_iter) >= 3).trim()
++    assert int(actual.num_samples) == int(expected.num_samples)
++    for left, right in zip(jax.tree.leaves(actual.samples),
++                           jax.tree.leaves(expected.samples), strict=True):
++        np.testing.assert_array_equal(left, right)
++    np.testing.assert_array_equal(actual.random_key, expected.random_key)
++    np.testing.assert_array_equal(actual.goal_key, expected.goal_key)

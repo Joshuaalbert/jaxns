@@ -1,0 +1,51 @@
+{
+  "environment": {
+    "device": "cpu:0",
+    "jax": "0.10.0",
+    "jaxlib": "0.10.0",
+    "x64": true
+  },
+  "method": {
+    "batches_per_scenario": 10,
+    "filler_calls_included": true,
+    "timing": "seven paired steady executions per batch with alternating order"
+  },
+  "scenarios": [
+    {
+      "bitwise_batches": 10,
+      "case": "spike_slab",
+      "median_physical_reduction": 0.5816067653276955,
+      "median_wall_ratio": 0.8335461896076979,
+      "num_slices": 32,
+      "quantile": 0.9,
+      "width": 80
+    },
+    {
+      "bitwise_batches": 10,
+      "case": "spike_slab",
+      "median_physical_reduction": 0.3979885057471264,
+      "median_wall_ratio": 1.0753131942211762,
+      "num_slices": 40,
+      "quantile": 0.9,
+      "width": 8
+    },
+    {
+      "bitwise_batches": 10,
+      "case": "weak_curved_spike_slab8",
+      "median_physical_reduction": 0.5995594713656387,
+      "median_wall_ratio": 0.7211280099533937,
+      "num_slices": 40,
+      "quantile": 0.9,
+      "width": 80
+    },
+    {
+      "bitwise_batches": 10,
+      "case": "spike_slab10",
+      "median_physical_reduction": 0.5985130111524164,
+      "median_wall_ratio": 0.7476873099606915,
+      "num_slices": 50,
+      "quantile": 0.9,
+      "width": 100
+    }
+  ]
+}

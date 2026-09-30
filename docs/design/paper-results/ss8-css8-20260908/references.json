@@ -1,0 +1,42 @@
+{
+  "basic_mvn": {
+    "log_Z": -12.442547394165363
+  },
+  "weak_curved_mvn8": {
+    "log_Z": -12.5580306213
+  },
+  "spike_slab": {
+    "log_Z": -11.434381273050118,
+    "component_log_Z": [
+      -11.929699628798845,
+      -12.374393338671377
+    ],
+    "component_fractions": [
+      0.609376877780559,
+      0.39062312221944
+    ],
+    "beta": 0.0
+  },
+  "curved_spike_slab8": {
+    "log_Z": -11.559092116295865,
+    "component_log_Z": [
+      -11.996433570982976,
+      -12.5968470547222
+    ],
+    "component_fractions": [
+      0.6457508990906693,
+      0.3542491009093314
+    ],
+    "beta": 0.4
+  },
+  "definition": {
+    "dimension": 8,
+    "spike_covariance_scale": 0.43,
+    "rho": 0.031,
+    "beta": 0.4,
+    "geometric_volume_ratio": 0.03418801,
+    "normalized_spike_geometric_volume": 0.03305782862441037,
+    "shear": "x2=z2+beta*((z1-mu_k1)^2-Sigma_k11)",
+    "revision": "ss8-css8-20260908"
+  }
+}

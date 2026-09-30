@@ -1,0 +1,27 @@
+{
+  "root": "/largedata/albert/git/jaxns-paper-evidence10-AC300",
+  "commit": "aa79a0dc395c0d64b85cbb88d0e3e732decd7361",
+  "src_tree": "528843937ff0497d916e53979573b5ef0be0bcff",
+  "files": {
+    "allocation_contrasts.py": "f8c7951a3f764d531f5f3af8f4b8913016760583d37c7b724ee8c650e20ee012",
+    "allocation_costs.py": "a2d9acc71c978f817d26960d2c8d61e5b361730d14b145aa77609827c9e94605",
+    "analyse_ss10.py": "71c7bcd4fc7c49ac9e46c9886f94a0886748e03cf1f40b248c40af23ed50e384",
+    "cases.py": "4df7488dc3c76574b212bf51828f189aaabfd07bfee7ba8b84766c64662460db",
+    "compare.py": "4e6e54cc4acc5d50bf01d525b13d2e8a6b62b974d016e845c2173baefa88ae44",
+    "continue_variants.py": "8b00f03feeb9b9b52844267b037381781ad368826aba691ef86d26828ba67094",
+    "implementation_equivalence.py": "062f7afe3d8aeae4205a7393501bb2e7cd1941da3abe667ab116cf8c830c1372",
+    "launch.py": "ef0b3d76f0b9b7169f1cb2cbc8ab28beec1a4c03859ab215c5dfade614c99ffa",
+    "launch_variants.py": "cc079927bfe8f2f40cd19be6e7b97a77fec556049745cffcabaaa3d8a6b9981d",
+    "mode_counts.py": "36bc85d0d2ef7676933ab9b29b05c40eb5a864c3c9f88a727ff515687c3c30a9",
+    "mode_memory.py": "5f1e2f60b8cc0ee68a632d3577d565788b728b93a2c5ab829332f9808fe73a47",
+    "posterior_cases.py": "8d1e6dd40bfe460e3ba7258ba481345202b27c6837a1c8e18b18b837b69ff75a",
+    "prefix_sweep.py": "943fc01c09909fc994f8aeb2bd9ed5d78b38480f34670941ee932d023ca845f8",
+    "references.py": "466fc353119bd7a3b9fceb5bb74c47f064523d4baf0c25813d192a6d305ab89e",
+    "run.py": "19e93c467f198e12d37f8676d926f73fe924bd3ad7a725c9ec0624dade64f51f",
+    "run_posterior.py": "2a404c6fc791cfbb3d21b6835b47bd532a36d751e418baa3e002d6b8ab4fc53d",
+    "seed_variance.py": "c50e1c65dae3ded0e4200b110b2eededc910d76e706bdef20fd055057e3f9029",
+    "test_protocol.py": "4f8b11a180be600dfc2c10b384dba07fa004b6b6ffb90bd4bba74a8bf8f11973",
+    "evidence10_cases.py": "a26c21bf61073ae960b4fec772a5e04d8a5adbef7904283fd3ed82fdd5489dab",
+    "run_evidence10.py": "5adbb546df65c56880ff64d446f59c93e9b5ab5610a332db707481014ef75014"
+  }
+}

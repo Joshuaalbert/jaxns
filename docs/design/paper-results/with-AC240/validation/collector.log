@@ -1,0 +1,29 @@
+# R/A/C/C′/A+C at 240 roots
+
+Thirty seeds per problem and variant. A+C combines all-phantom seeds with C’s evidence-improving allocation after a first uniform goal identical to A’s. R/A/C/C′ retain their previous measurements. SS8 uses covariance multiplier 0.43 and correlation 0.031; CSS8 is its component-centered β=0.4 shear. All runs use CPU float64, isotropic directions, width 80, 80 slice transitions and classic expected log-evidence uncertainty<0.05.
+
+Evidence analysis uses 2048 paired shrinkage draws and prefixes 0, 8, ..., 72. A and A+C retain all 79 phantoms for seed selection. Mode RMSE is measured once per classic posterior and does not depend on phantom prefix. The paper tables remain R240.
+
+| Problem | Variant | Classic RMSE | Ph72 RMSE | Mode RMSE | Mean calls (M) | Mean goals |
+|---|---|---:|---:|---:|---:|---:|
+| G8 | R240 | 0.0537 ± 0.0069 | 0.0303 ± 0.0040 | — | 63.832 | 28.00 |
+| G8 | A240 | 0.0534 ± 0.0066 | 0.0271 ± 0.0030 | — | 64.029 | 28.00 |
+| G8 | C240 | 0.0396 ± 0.0040 | 0.0311 ± 0.0044 | — | 32.350 | 29.00 |
+| G8 | C′240 | 0.0499 ± 0.0062 | 0.0227 ± 0.0046 | — | 43.325 | 54.03 |
+| G8 | A+C240 | 0.0478 ± 0.0057 | 0.0237 ± 0.0044 | — | 32.271 | 29.00 |
+| CG8 | R240 | 0.0582 ± 0.0058 | 0.0281 ± 0.0034 | — | 65.254 | 28.30 |
+| CG8 | A240 | 0.0480 ± 0.0055 | 0.0335 ± 0.0044 | — | 64.596 | 28.20 |
+| CG8 | C240 | 0.0454 ± 0.0045 | 0.0299 ± 0.0037 | — | 32.899 | 29.33 |
+| CG8 | C′240 | 0.0439 ± 0.0047 | 0.0301 ± 0.0031 | — | 43.776 | 54.17 |
+| CG8 | A+C240 | 0.0468 ± 0.0060 | 0.0304 ± 0.0033 | — | 32.808 | 29.23 |
+| SS8 | R240 | 0.0786 ± 0.0077 | 0.0649 ± 0.0074 | 0.0479 | 4.295 | 5.00 |
+| SS8 | A240 | 0.0597 ± 0.0066 | 0.0453 ± 0.0068 | 0.0315 | 4.292 | 5.00 |
+| SS8 | C240 | 0.0942 ± 0.0145 | 0.0634 ± 0.0074 | 0.0512 | 1.292 | 6.00 |
+| SS8 | C′240 | 0.0888 ± 0.0091 | 0.0659 ± 0.0067 | 0.0503 | 1.761 | 6.73 |
+| SS8 | A+C240 | 0.0616 ± 0.0101 | 0.0376 ± 0.0037 | 0.0295 | 1.277 | 6.00 |
+| CSS8 | R240 | 0.0710 ± 0.0104 | 0.0570 ± 0.0076 | 0.0405 | 5.118 | 5.80 |
+| CSS8 | A240 | 0.0609 ± 0.0073 | 0.0389 ± 0.0052 | 0.0282 | 5.061 | 5.77 |
+| CSS8 | C240 | 0.0701 ± 0.0105 | 0.0581 ± 0.0072 | 0.0386 | 1.509 | 6.90 |
+| CSS8 | C′240 | 0.0891 ± 0.0118 | 0.0607 ± 0.0096 | 0.0392 | 2.123 | 8.07 |
+| CSS8 | A+C240 | 0.0531 ± 0.0056 | 0.0332 ± 0.0037 | 0.0262 | 1.483 | 6.87 |
+

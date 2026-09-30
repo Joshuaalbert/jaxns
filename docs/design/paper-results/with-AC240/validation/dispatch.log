@@ -1,0 +1,480 @@
+{"event": "start", "time": 1788881130.9741476, "cpu": 0, "pid": 3961226, "job": ["AC240", "basic_mvn", 0, "core"]}
+{"event": "start", "time": 1788881130.9748394, "cpu": 1, "pid": 3961227, "job": ["AC240", "weak_curved_mvn8", 0, "core"]}
+{"event": "start", "time": 1788881130.9755216, "cpu": 2, "pid": 3961228, "job": ["AC240", "spike_slab", 0, "core"]}
+{"event": "start", "time": 1788881130.9761596, "cpu": 3, "pid": 3961229, "job": ["AC240", "curved_spike_slab8", 0, "core"]}
+{"event": "start", "time": 1788881130.9768066, "cpu": 4, "pid": 3961230, "job": ["AC240", "basic_mvn", 1, "core"]}
+{"event": "start", "time": 1788881130.9774594, "cpu": 5, "pid": 3961231, "job": ["AC240", "weak_curved_mvn8", 1, "core"]}
+{"event": "start", "time": 1788881130.9781039, "cpu": 6, "pid": 3961232, "job": ["AC240", "spike_slab", 1, "core"]}
+{"event": "start", "time": 1788881130.9787707, "cpu": 7, "pid": 3961233, "job": ["AC240", "curved_spike_slab8", 1, "core"]}
+{"event": "start", "time": 1788881130.9793859, "cpu": 8, "pid": 3961234, "job": ["AC240", "basic_mvn", 2, "core"]}
+{"event": "start", "time": 1788881130.979999, "cpu": 9, "pid": 3961235, "job": ["AC240", "weak_curved_mvn8", 2, "core"]}
+{"event": "start", "time": 1788881130.9806328, "cpu": 10, "pid": 3961236, "job": ["AC240", "spike_slab", 2, "core"]}
+{"event": "start", "time": 1788881130.981266, "cpu": 11, "pid": 3961237, "job": ["AC240", "curved_spike_slab8", 2, "core"]}
+{"event": "start", "time": 1788881130.981916, "cpu": 12, "pid": 3961238, "job": ["AC240", "basic_mvn", 3, "core"]}
+{"event": "start", "time": 1788881130.9825587, "cpu": 13, "pid": 3961239, "job": ["AC240", "weak_curved_mvn8", 3, "core"]}
+{"event": "start", "time": 1788881130.9832277, "cpu": 14, "pid": 3961240, "job": ["AC240", "spike_slab", 3, "core"]}
+{"event": "start", "time": 1788881130.9838843, "cpu": 15, "pid": 3961241, "job": ["AC240", "curved_spike_slab8", 3, "core"]}
+{"event": "start", "time": 1788881130.984527, "cpu": 16, "pid": 3961242, "job": ["AC240", "basic_mvn", 4, "core"]}
+{"event": "start", "time": 1788881130.9851847, "cpu": 17, "pid": 3961243, "job": ["AC240", "weak_curved_mvn8", 4, "core"]}
+{"event": "start", "time": 1788881130.985923, "cpu": 18, "pid": 3961244, "job": ["AC240", "spike_slab", 4, "core"]}
+{"event": "start", "time": 1788881130.9865966, "cpu": 19, "pid": 3961245, "job": ["AC240", "curved_spike_slab8", 4, "core"]}
+{"event": "start", "time": 1788881130.9872746, "cpu": 20, "pid": 3961246, "job": ["AC240", "basic_mvn", 5, "core"]}
+{"event": "start", "time": 1788881130.9879217, "cpu": 21, "pid": 3961247, "job": ["AC240", "weak_curved_mvn8", 5, "core"]}
+{"event": "start", "time": 1788881130.98858, "cpu": 22, "pid": 3961248, "job": ["AC240", "spike_slab", 5, "core"]}
+{"event": "start", "time": 1788881130.989237, "cpu": 23, "pid": 3961249, "job": ["AC240", "curved_spike_slab8", 5, "core"]}
+{"event": "start", "time": 1788881130.9899192, "cpu": 24, "pid": 3961250, "job": ["AC240", "basic_mvn", 6, "core"]}
+{"event": "start", "time": 1788881130.9906092, "cpu": 25, "pid": 3961251, "job": ["AC240", "weak_curved_mvn8", 6, "core"]}
+{"event": "start", "time": 1788881130.9912972, "cpu": 26, "pid": 3961252, "job": ["AC240", "spike_slab", 6, "core"]}
+{"event": "start", "time": 1788881130.9919734, "cpu": 27, "pid": 3961253, "job": ["AC240", "curved_spike_slab8", 6, "core"]}
+{"event": "start", "time": 1788881130.992641, "cpu": 28, "pid": 3961254, "job": ["AC240", "basic_mvn", 7, "core"]}
+{"event": "start", "time": 1788881130.9933176, "cpu": 29, "pid": 3961255, "job": ["AC240", "weak_curved_mvn8", 7, "core"]}
+{"event": "start", "time": 1788881130.9939966, "cpu": 30, "pid": 3961256, "job": ["AC240", "spike_slab", 7, "core"]}
+{"event": "start", "time": 1788881130.994688, "cpu": 31, "pid": 3961257, "job": ["AC240", "curved_spike_slab8", 7, "core"]}
+{"event": "start", "time": 1788881130.9953954, "cpu": 32, "pid": 3961258, "job": ["AC240", "basic_mvn", 8, "core"]}
+{"event": "start", "time": 1788881130.9960787, "cpu": 33, "pid": 3961259, "job": ["AC240", "weak_curved_mvn8", 8, "core"]}
+{"event": "start", "time": 1788881130.9967568, "cpu": 34, "pid": 3961260, "job": ["AC240", "spike_slab", 8, "core"]}
+{"event": "start", "time": 1788881130.9974437, "cpu": 35, "pid": 3961261, "job": ["AC240", "curved_spike_slab8", 8, "core"]}
+{"event": "start", "time": 1788881130.99814, "cpu": 36, "pid": 3961262, "job": ["AC240", "basic_mvn", 9, "core"]}
+{"event": "start", "time": 1788881130.9988365, "cpu": 37, "pid": 3961263, "job": ["AC240", "weak_curved_mvn8", 9, "core"]}
+{"event": "start", "time": 1788881130.9995234, "cpu": 38, "pid": 3961264, "job": ["AC240", "spike_slab", 9, "core"]}
+{"event": "start", "time": 1788881131.0002317, "cpu": 39, "pid": 3961265, "job": ["AC240", "curved_spike_slab8", 9, "core"]}
+{"event": "start", "time": 1788881131.0009527, "cpu": 40, "pid": 3961266, "job": ["AC240", "basic_mvn", 10, "core"]}
+{"event": "start", "time": 1788881131.0016615, "cpu": 41, "pid": 3961267, "job": ["AC240", "weak_curved_mvn8", 10, "core"]}
+{"event": "start", "time": 1788881131.0023742, "cpu": 42, "pid": 3961268, "job": ["AC240", "spike_slab", 10, "core"]}
+{"event": "start", "time": 1788881131.00307, "cpu": 43, "pid": 3961269, "job": ["AC240", "curved_spike_slab8", 10, "core"]}
+{"event": "start", "time": 1788881131.0037806, "cpu": 44, "pid": 3961270, "job": ["AC240", "basic_mvn", 11, "core"]}
+{"event": "start", "time": 1788881131.0044641, "cpu": 45, "pid": 3961271, "job": ["AC240", "weak_curved_mvn8", 11, "core"]}
+{"event": "start", "time": 1788881131.005188, "cpu": 46, "pid": 3961272, "job": ["AC240", "spike_slab", 11, "core"]}
+{"event": "start", "time": 1788881131.0058908, "cpu": 47, "pid": 3961273, "job": ["AC240", "curved_spike_slab8", 11, "core"]}
+{"event": "start", "time": 1788881131.0065858, "cpu": 48, "pid": 3961274, "job": ["AC240", "basic_mvn", 12, "core"]}
+{"event": "start", "time": 1788881131.0073197, "cpu": 49, "pid": 3961275, "job": ["AC240", "weak_curved_mvn8", 12, "core"]}
+{"event": "start", "time": 1788881131.0080311, "cpu": 50, "pid": 3961276, "job": ["AC240", "spike_slab", 12, "core"]}
+{"event": "start", "time": 1788881131.0087519, "cpu": 51, "pid": 3961277, "job": ["AC240", "curved_spike_slab8", 12, "core"]}
+{"event": "start", "time": 1788881131.0094755, "cpu": 52, "pid": 3961278, "job": ["AC240", "basic_mvn", 13, "core"]}
+{"event": "start", "time": 1788881131.0102203, "cpu": 53, "pid": 3961279, "job": ["AC240", "weak_curved_mvn8", 13, "core"]}
+{"event": "start", "time": 1788881131.010967, "cpu": 54, "pid": 3961280, "job": ["AC240", "spike_slab", 13, "core"]}
+{"event": "start", "time": 1788881131.0116887, "cpu": 55, "pid": 3961281, "job": ["AC240", "curved_spike_slab8", 13, "core"]}
+{"event": "start", "time": 1788881131.012453, "cpu": 56, "pid": 3961282, "job": ["AC240", "basic_mvn", 14, "core"]}
+{"event": "start", "time": 1788881131.013256, "cpu": 57, "pid": 3961283, "job": ["AC240", "weak_curved_mvn8", 14, "core"]}
+{"event": "start", "time": 1788881131.014139, "cpu": 58, "pid": 3961284, "job": ["AC240", "spike_slab", 14, "core"]}
+{"event": "start", "time": 1788881131.0149918, "cpu": 59, "pid": 3961285, "job": ["AC240", "curved_spike_slab8", 14, "core"]}
+{"event": "finish", "time": 1788881191.0404851, "cpu": 42, "pid": 3961268, "job": ["AC240", "spike_slab", 10, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788881191.0419202, "cpu": 42, "pid": 3962283, "job": ["AC240", "basic_mvn", 15, "core"]}
+{"event": "finish", "time": 1788881195.043534, "cpu": 3, "pid": 3961229, "job": ["AC240", "curved_spike_slab8", 0, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788881195.043708, "cpu": 6, "pid": 3961232, "job": ["AC240", "spike_slab", 1, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788881195.0438197, "cpu": 14, "pid": 3961240, "job": ["AC240", "spike_slab", 3, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788881195.0439084, "cpu": 15, "pid": 3961241, "job": ["AC240", "curved_spike_slab8", 3, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788881195.0440207, "cpu": 22, "pid": 3961248, "job": ["AC240", "spike_slab", 5, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788881195.0441172, "cpu": 23, "pid": 3961249, "job": ["AC240", "curved_spike_slab8", 5, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788881195.0442204, "cpu": 26, "pid": 3961252, "job": ["AC240", "spike_slab", 6, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788881195.0443313, "cpu": 30, "pid": 3961256, "job": ["AC240", "spike_slab", 7, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788881195.0444438, "cpu": 34, "pid": 3961260, "job": ["AC240", "spike_slab", 8, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788881195.044547, "cpu": 35, "pid": 3961261, "job": ["AC240", "curved_spike_slab8", 8, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788881195.0446618, "cpu": 38, "pid": 3961264, "job": ["AC240", "spike_slab", 9, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788881195.0447683, "cpu": 39, "pid": 3961265, "job": ["AC240", "curved_spike_slab8", 9, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788881195.0448873, "cpu": 43, "pid": 3961269, "job": ["AC240", "curved_spike_slab8", 10, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788881195.0450165, "cpu": 46, "pid": 3961272, "job": ["AC240", "spike_slab", 11, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788881195.045152, "cpu": 51, "pid": 3961277, "job": ["AC240", "curved_spike_slab8", 12, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788881195.0452876, "cpu": 54, "pid": 3961280, "job": ["AC240", "spike_slab", 13, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788881195.0454285, "cpu": 58, "pid": 3961284, "job": ["AC240", "spike_slab", 14, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788881195.0466123, "cpu": 3, "pid": 3962300, "job": ["AC240", "weak_curved_mvn8", 15, "core"]}
+{"event": "start", "time": 1788881195.0474706, "cpu": 6, "pid": 3962301, "job": ["AC240", "spike_slab", 15, "core"]}
+{"event": "start", "time": 1788881195.0482974, "cpu": 14, "pid": 3962302, "job": ["AC240", "curved_spike_slab8", 15, "core"]}
+{"event": "start", "time": 1788881195.0490832, "cpu": 15, "pid": 3962303, "job": ["AC240", "basic_mvn", 16, "core"]}
+{"event": "start", "time": 1788881195.0498347, "cpu": 22, "pid": 3962304, "job": ["AC240", "weak_curved_mvn8", 16, "core"]}
+{"event": "start", "time": 1788881195.050612, "cpu": 23, "pid": 3962305, "job": ["AC240", "spike_slab", 16, "core"]}
+{"event": "start", "time": 1788881195.051361, "cpu": 26, "pid": 3962306, "job": ["AC240", "curved_spike_slab8", 16, "core"]}
+{"event": "start", "time": 1788881195.0521712, "cpu": 30, "pid": 3962307, "job": ["AC240", "basic_mvn", 17, "core"]}
+{"event": "start", "time": 1788881195.0529828, "cpu": 34, "pid": 3962308, "job": ["AC240", "weak_curved_mvn8", 17, "core"]}
+{"event": "start", "time": 1788881195.0537682, "cpu": 35, "pid": 3962309, "job": ["AC240", "spike_slab", 17, "core"]}
+{"event": "start", "time": 1788881195.0545473, "cpu": 38, "pid": 3962310, "job": ["AC240", "curved_spike_slab8", 17, "core"]}
+{"event": "start", "time": 1788881195.0553067, "cpu": 39, "pid": 3962311, "job": ["AC240", "basic_mvn", 18, "core"]}
+{"event": "start", "time": 1788881195.0560598, "cpu": 43, "pid": 3962312, "job": ["AC240", "weak_curved_mvn8", 18, "core"]}
+{"event": "start", "time": 1788881195.056798, "cpu": 46, "pid": 3962313, "job": ["AC240", "spike_slab", 18, "core"]}
+{"event": "start", "time": 1788881195.0575783, "cpu": 51, "pid": 3962314, "job": ["AC240", "curved_spike_slab8", 18, "core"]}
+{"event": "start", "time": 1788881195.0583389, "cpu": 54, "pid": 3962315, "job": ["AC240", "basic_mvn", 19, "core"]}
+{"event": "start", "time": 1788881195.0590863, "cpu": 58, "pid": 3962316, "job": ["AC240", "weak_curved_mvn8", 19, "core"]}
+{"event": "finish", "time": 1788881197.059755, "cpu": 2, "pid": 3961228, "job": ["AC240", "spike_slab", 0, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788881197.0599215, "cpu": 7, "pid": 3961233, "job": ["AC240", "curved_spike_slab8", 1, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788881197.0600135, "cpu": 10, "pid": 3961236, "job": ["AC240", "spike_slab", 2, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788881197.0601163, "cpu": 18, "pid": 3961244, "job": ["AC240", "spike_slab", 4, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788881197.0602334, "cpu": 27, "pid": 3961253, "job": ["AC240", "curved_spike_slab8", 6, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788881197.060347, "cpu": 31, "pid": 3961257, "job": ["AC240", "curved_spike_slab8", 7, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788881197.0604968, "cpu": 47, "pid": 3961273, "job": ["AC240", "curved_spike_slab8", 11, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788881197.060633, "cpu": 50, "pid": 3961276, "job": ["AC240", "spike_slab", 12, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788881197.0607781, "cpu": 55, "pid": 3961281, "job": ["AC240", "curved_spike_slab8", 13, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788881197.060931, "cpu": 59, "pid": 3961285, "job": ["AC240", "curved_spike_slab8", 14, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788881197.0621552, "cpu": 2, "pid": 3962572, "job": ["AC240", "spike_slab", 19, "core"]}
+{"event": "start", "time": 1788881197.063078, "cpu": 7, "pid": 3962573, "job": ["AC240", "curved_spike_slab8", 19, "core"]}
+{"event": "start", "time": 1788881197.0639443, "cpu": 10, "pid": 3962574, "job": ["AC240", "basic_mvn", 20, "core"]}
+{"event": "start", "time": 1788881197.0647213, "cpu": 18, "pid": 3962575, "job": ["AC240", "weak_curved_mvn8", 20, "core"]}
+{"event": "start", "time": 1788881197.0655673, "cpu": 27, "pid": 3962576, "job": ["AC240", "spike_slab", 20, "core"]}
+{"event": "start", "time": 1788881197.0663648, "cpu": 31, "pid": 3962577, "job": ["AC240", "curved_spike_slab8", 20, "core"]}
+{"event": "start", "time": 1788881197.0671678, "cpu": 47, "pid": 3962578, "job": ["AC240", "basic_mvn", 21, "core"]}
+{"event": "start", "time": 1788881197.0679245, "cpu": 50, "pid": 3962579, "job": ["AC240", "weak_curved_mvn8", 21, "core"]}
+{"event": "start", "time": 1788881197.0686932, "cpu": 55, "pid": 3962580, "job": ["AC240", "spike_slab", 21, "core"]}
+{"event": "start", "time": 1788881197.069445, "cpu": 59, "pid": 3962581, "job": ["AC240", "curved_spike_slab8", 21, "core"]}
+{"event": "finish", "time": 1788881199.0701277, "cpu": 11, "pid": 3961237, "job": ["AC240", "curved_spike_slab8", 2, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788881199.0703044, "cpu": 19, "pid": 3961245, "job": ["AC240", "curved_spike_slab8", 4, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788881199.0715423, "cpu": 11, "pid": 3962749, "job": ["AC240", "basic_mvn", 22, "core"]}
+{"event": "start", "time": 1788881199.0724196, "cpu": 19, "pid": 3962750, "job": ["AC240", "weak_curved_mvn8", 22, "core"]}
+{"event": "finish", "time": 1788881257.0990827, "cpu": 46, "pid": 3962313, "job": ["AC240", "spike_slab", 18, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788881257.1012237, "cpu": 46, "pid": 3962829, "job": ["AC240", "spike_slab", 22, "core"]}
+{"event": "finish", "time": 1788881263.1052678, "cpu": 14, "pid": 3962302, "job": ["AC240", "curved_spike_slab8", 15, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788881263.1058156, "cpu": 23, "pid": 3962305, "job": ["AC240", "spike_slab", 16, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788881263.1079123, "cpu": 14, "pid": 3962846, "job": ["AC240", "curved_spike_slab8", 22, "core"]}
+{"event": "start", "time": 1788881263.1093218, "cpu": 23, "pid": 3962847, "job": ["AC240", "basic_mvn", 23, "core"]}
+{"event": "finish", "time": 1788881265.1104136, "cpu": 6, "pid": 3962301, "job": ["AC240", "spike_slab", 15, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788881265.1106696, "cpu": 26, "pid": 3962306, "job": ["AC240", "curved_spike_slab8", 16, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788881265.1108327, "cpu": 35, "pid": 3962309, "job": ["AC240", "spike_slab", 17, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788881265.1109776, "cpu": 38, "pid": 3962310, "job": ["AC240", "curved_spike_slab8", 17, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788881265.111138, "cpu": 51, "pid": 3962314, "job": ["AC240", "curved_spike_slab8", 18, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788881265.1112955, "cpu": 27, "pid": 3962576, "job": ["AC240", "spike_slab", 20, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788881265.1125288, "cpu": 6, "pid": 3962893, "job": ["AC240", "weak_curved_mvn8", 23, "core"]}
+{"event": "start", "time": 1788881265.1134455, "cpu": 26, "pid": 3962894, "job": ["AC240", "spike_slab", 23, "core"]}
+{"event": "start", "time": 1788881265.1143062, "cpu": 27, "pid": 3962895, "job": ["AC240", "curved_spike_slab8", 23, "core"]}
+{"event": "start", "time": 1788881265.1151848, "cpu": 35, "pid": 3962896, "job": ["AC240", "basic_mvn", 24, "core"]}
+{"event": "start", "time": 1788881265.1160293, "cpu": 38, "pid": 3962897, "job": ["AC240", "weak_curved_mvn8", 24, "core"]}
+{"event": "start", "time": 1788881265.1169302, "cpu": 51, "pid": 3962898, "job": ["AC240", "spike_slab", 24, "core"]}
+{"event": "finish", "time": 1788881267.1178489, "cpu": 2, "pid": 3962572, "job": ["AC240", "spike_slab", 19, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788881267.1180851, "cpu": 7, "pid": 3962573, "job": ["AC240", "curved_spike_slab8", 19, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788881267.118256, "cpu": 31, "pid": 3962577, "job": ["AC240", "curved_spike_slab8", 20, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788881267.1184268, "cpu": 55, "pid": 3962580, "job": ["AC240", "spike_slab", 21, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788881267.1196446, "cpu": 2, "pid": 3963002, "job": ["AC240", "curved_spike_slab8", 24, "core"]}
+{"event": "start", "time": 1788881267.1206086, "cpu": 7, "pid": 3963003, "job": ["AC240", "basic_mvn", 25, "core"]}
+{"event": "start", "time": 1788881267.1214805, "cpu": 31, "pid": 3963004, "job": ["AC240", "weak_curved_mvn8", 25, "core"]}
+{"event": "start", "time": 1788881267.1223347, "cpu": 55, "pid": 3963005, "job": ["AC240", "spike_slab", 25, "core"]}
+{"event": "finish", "time": 1788881269.123925, "cpu": 59, "pid": 3962581, "job": ["AC240", "curved_spike_slab8", 21, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788881269.1268697, "cpu": 59, "pid": 3963070, "job": ["AC240", "curved_spike_slab8", 25, "core"]}
+{"event": "finish", "time": 1788881333.1611238, "cpu": 46, "pid": 3962829, "job": ["AC240", "spike_slab", 22, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788881333.1630871, "cpu": 46, "pid": 3963159, "job": ["AC240", "basic_mvn", 26, "core"]}
+{"event": "finish", "time": 1788881339.1665623, "cpu": 26, "pid": 3962894, "job": ["AC240", "spike_slab", 23, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788881339.1668758, "cpu": 55, "pid": 3963005, "job": ["AC240", "spike_slab", 25, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788881339.168174, "cpu": 26, "pid": 3963266, "job": ["AC240", "weak_curved_mvn8", 26, "core"]}
+{"event": "start", "time": 1788881339.1691542, "cpu": 55, "pid": 3963267, "job": ["AC240", "spike_slab", 26, "core"]}
+{"event": "finish", "time": 1788881341.1705265, "cpu": 14, "pid": 3962846, "job": ["AC240", "curved_spike_slab8", 22, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788881341.1709847, "cpu": 27, "pid": 3962895, "job": ["AC240", "curved_spike_slab8", 23, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788881341.1712608, "cpu": 51, "pid": 3962898, "job": ["AC240", "spike_slab", 24, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788881341.1730878, "cpu": 14, "pid": 3963294, "job": ["AC240", "curved_spike_slab8", 26, "core"]}
+{"event": "start", "time": 1788881341.1747127, "cpu": 27, "pid": 3963295, "job": ["AC240", "basic_mvn", 27, "core"]}
+{"event": "start", "time": 1788881341.1762285, "cpu": 51, "pid": 3963296, "job": ["AC240", "weak_curved_mvn8", 27, "core"]}
+{"event": "finish", "time": 1788881345.1802192, "cpu": 2, "pid": 3963002, "job": ["AC240", "curved_spike_slab8", 24, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788881345.1816435, "cpu": 2, "pid": 3963351, "job": ["AC240", "spike_slab", 27, "core"]}
+{"event": "finish", "time": 1788881347.182875, "cpu": 59, "pid": 3963070, "job": ["AC240", "curved_spike_slab8", 25, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788881347.1847558, "cpu": 59, "pid": 3963365, "job": ["AC240", "curved_spike_slab8", 27, "core"]}
+{"event": "finish", "time": 1788881429.25112, "cpu": 55, "pid": 3963267, "job": ["AC240", "spike_slab", 26, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788881429.255937, "cpu": 55, "pid": 3963815, "job": ["AC240", "basic_mvn", 28, "core"]}
+{"event": "finish", "time": 1788881435.2632444, "cpu": 2, "pid": 3963351, "job": ["AC240", "spike_slab", 27, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788881435.2646344, "cpu": 2, "pid": 3963840, "job": ["AC240", "weak_curved_mvn8", 28, "core"]}
+{"event": "finish", "time": 1788881437.2656791, "cpu": 14, "pid": 3963294, "job": ["AC240", "curved_spike_slab8", 26, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788881437.2670472, "cpu": 14, "pid": 3963851, "job": ["AC240", "spike_slab", 28, "core"]}
+{"event": "finish", "time": 1788881439.2685742, "cpu": 59, "pid": 3963365, "job": ["AC240", "curved_spike_slab8", 27, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788881439.2712574, "cpu": 59, "pid": 3963866, "job": ["AC240", "curved_spike_slab8", 28, "core"]}
+{"event": "finish", "time": 1788881541.366484, "cpu": 14, "pid": 3963851, "job": ["AC240", "spike_slab", 28, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788881541.368762, "cpu": 14, "pid": 3964010, "job": ["AC240", "basic_mvn", 29, "core"]}
+{"event": "finish", "time": 1788881545.3724854, "cpu": 59, "pid": 3963866, "job": ["AC240", "curved_spike_slab8", 28, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788881545.3763223, "cpu": 59, "pid": 3964026, "job": ["AC240", "weak_curved_mvn8", 29, "core"]}
+{"event": "finish", "time": 1788882077.880209, "cpu": 56, "pid": 3961282, "job": ["AC240", "basic_mvn", 14, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882077.885298, "cpu": 56, "pid": 3964901, "job": ["AC240", "spike_slab", 29, "core"]}
+{"event": "finish", "time": 1788882085.8934152, "cpu": 48, "pid": 3961274, "job": ["AC240", "basic_mvn", 12, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882085.8950186, "cpu": 48, "pid": 3964918, "job": ["AC240", "curved_spike_slab8", 29, "core"]}
+{"event": "finish", "time": 1788882087.8965433, "cpu": 13, "pid": 3961239, "job": ["AC240", "weak_curved_mvn8", 3, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882087.8968697, "cpu": 16, "pid": 3961242, "job": ["AC240", "basic_mvn", 4, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882087.8970585, "cpu": 28, "pid": 3961254, "job": ["AC240", "basic_mvn", 7, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882087.8972204, "cpu": 37, "pid": 3961263, "job": ["AC240", "weak_curved_mvn8", 9, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882087.9003549, "cpu": 13, "pid": 3964934, "job": ["AC240", "spike_slab", 0, "analysis"]}
+{"event": "start", "time": 1788882087.9031427, "cpu": 16, "pid": 3964935, "job": ["AC240", "curved_spike_slab8", 0, "analysis"]}
+{"event": "start", "time": 1788882087.9056594, "cpu": 28, "pid": 3964936, "job": ["AC240", "spike_slab", 1, "analysis"]}
+{"event": "start", "time": 1788882087.9078634, "cpu": 37, "pid": 3964937, "job": ["AC240", "curved_spike_slab8", 1, "analysis"]}
+{"event": "finish", "time": 1788882089.9099936, "cpu": 9, "pid": 3961235, "job": ["AC240", "weak_curved_mvn8", 2, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882089.9104152, "cpu": 45, "pid": 3961271, "job": ["AC240", "weak_curved_mvn8", 11, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882089.913096, "cpu": 9, "pid": 3964940, "job": ["AC240", "weak_curved_mvn8", 2, "analysis"]}
+{"event": "start", "time": 1788882089.9149313, "cpu": 45, "pid": 3964941, "job": ["AC240", "spike_slab", 2, "analysis"]}
+{"event": "finish", "time": 1788882091.9161613, "cpu": 36, "pid": 3961262, "job": ["AC240", "basic_mvn", 9, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882091.9176013, "cpu": 36, "pid": 3965029, "job": ["AC240", "curved_spike_slab8", 2, "analysis"]}
+{"event": "finish", "time": 1788882095.9206963, "cpu": 12, "pid": 3961238, "job": ["AC240", "basic_mvn", 3, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882095.92086, "cpu": 44, "pid": 3961270, "job": ["AC240", "basic_mvn", 11, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882095.9222424, "cpu": 12, "pid": 3965068, "job": ["AC240", "basic_mvn", 3, "analysis"]}
+{"event": "start", "time": 1788882095.9232795, "cpu": 44, "pid": 3965069, "job": ["AC240", "weak_curved_mvn8", 3, "analysis"]}
+{"event": "finish", "time": 1788882099.9260526, "cpu": 17, "pid": 3961243, "job": ["AC240", "weak_curved_mvn8", 4, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882099.9265425, "cpu": 24, "pid": 3961250, "job": ["AC240", "basic_mvn", 6, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882099.9268136, "cpu": 52, "pid": 3961278, "job": ["AC240", "basic_mvn", 13, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882099.9303508, "cpu": 17, "pid": 3965104, "job": ["AC240", "spike_slab", 3, "analysis"]}
+{"event": "start", "time": 1788882099.9333425, "cpu": 24, "pid": 3965105, "job": ["AC240", "curved_spike_slab8", 3, "analysis"]}
+{"event": "start", "time": 1788882099.9363565, "cpu": 52, "pid": 3965106, "job": ["AC240", "basic_mvn", 4, "analysis"]}
+{"event": "finish", "time": 1788882101.938307, "cpu": 0, "pid": 3961226, "job": ["AC240", "basic_mvn", 0, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882101.9384692, "cpu": 29, "pid": 3961255, "job": ["AC240", "weak_curved_mvn8", 7, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882101.9385455, "cpu": 32, "pid": 3961258, "job": ["AC240", "basic_mvn", 8, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882101.939889, "cpu": 0, "pid": 3965164, "job": ["AC240", "basic_mvn", 0, "analysis"]}
+{"event": "start", "time": 1788882101.9408448, "cpu": 29, "pid": 3965165, "job": ["AC240", "weak_curved_mvn8", 4, "analysis"]}
+{"event": "start", "time": 1788882101.941717, "cpu": 32, "pid": 3965166, "job": ["AC240", "spike_slab", 4, "analysis"]}
+{"event": "finish", "time": 1788882103.9428465, "cpu": 49, "pid": 3961275, "job": ["AC240", "weak_curved_mvn8", 12, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882103.9454293, "cpu": 49, "pid": 3965212, "job": ["AC240", "curved_spike_slab8", 4, "analysis"]}
+{"event": "finish", "time": 1788882105.9469311, "cpu": 4, "pid": 3961230, "job": ["AC240", "basic_mvn", 1, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882105.9493399, "cpu": 4, "pid": 3965235, "job": ["AC240", "basic_mvn", 1, "analysis"]}
+{"event": "finish", "time": 1788882107.9507275, "cpu": 25, "pid": 3961251, "job": ["AC240", "weak_curved_mvn8", 6, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882107.9509008, "cpu": 40, "pid": 3961266, "job": ["AC240", "basic_mvn", 10, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882107.9525657, "cpu": 25, "pid": 3965257, "job": ["AC240", "spike_slab", 5, "analysis"]}
+{"event": "start", "time": 1788882107.9538758, "cpu": 40, "pid": 3965258, "job": ["AC240", "curved_spike_slab8", 5, "analysis"]}
+{"event": "finish", "time": 1788882109.955401, "cpu": 8, "pid": 3961234, "job": ["AC240", "basic_mvn", 2, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882109.9590743, "cpu": 8, "pid": 3965301, "job": ["AC240", "basic_mvn", 2, "analysis"]}
+{"event": "finish", "time": 1788882117.9670317, "cpu": 13, "pid": 3964934, "job": ["AC240", "spike_slab", 0, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882117.9676244, "cpu": 28, "pid": 3964936, "job": ["AC240", "spike_slab", 1, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882117.9702792, "cpu": 13, "pid": 3965326, "job": ["AC240", "basic_mvn", 6, "analysis"]}
+{"event": "start", "time": 1788882117.9722571, "cpu": 28, "pid": 3965327, "job": ["AC240", "weak_curved_mvn8", 6, "analysis"]}
+{"event": "finish", "time": 1788882119.9742346, "cpu": 45, "pid": 3964941, "job": ["AC240", "spike_slab", 2, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882119.9764311, "cpu": 45, "pid": 3965328, "job": ["AC240", "spike_slab", 6, "analysis"]}
+{"event": "finish", "time": 1788882121.977717, "cpu": 5, "pid": 3961231, "job": ["AC240", "weak_curved_mvn8", 1, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882121.97795, "cpu": 20, "pid": 3961246, "job": ["AC240", "basic_mvn", 5, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882121.978479, "cpu": 16, "pid": 3964935, "job": ["AC240", "curved_spike_slab8", 0, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882121.9787574, "cpu": 37, "pid": 3964937, "job": ["AC240", "curved_spike_slab8", 1, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882121.9790668, "cpu": 36, "pid": 3965029, "job": ["AC240", "curved_spike_slab8", 2, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882121.9812567, "cpu": 5, "pid": 3965371, "job": ["AC240", "weak_curved_mvn8", 1, "analysis"]}
+{"event": "start", "time": 1788882121.9830008, "cpu": 16, "pid": 3965372, "job": ["AC240", "basic_mvn", 5, "analysis"]}
+{"event": "start", "time": 1788882121.9845855, "cpu": 20, "pid": 3965373, "job": ["AC240", "curved_spike_slab8", 6, "analysis"]}
+{"event": "start", "time": 1788882121.9861357, "cpu": 36, "pid": 3965374, "job": ["AC240", "basic_mvn", 7, "analysis"]}
+{"event": "start", "time": 1788882121.987692, "cpu": 37, "pid": 3965375, "job": ["AC240", "weak_curved_mvn8", 7, "analysis"]}
+{"event": "finish", "time": 1788882123.9892945, "cpu": 41, "pid": 3961267, "job": ["AC240", "weak_curved_mvn8", 10, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882123.9919696, "cpu": 41, "pid": 3965381, "job": ["AC240", "spike_slab", 7, "analysis"]}
+{"event": "finish", "time": 1788882125.99332, "cpu": 57, "pid": 3961283, "job": ["AC240", "weak_curved_mvn8", 14, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882125.9950283, "cpu": 57, "pid": 3965458, "job": ["AC240", "curved_spike_slab8", 7, "analysis"]}
+{"event": "finish", "time": 1788882131.9996688, "cpu": 53, "pid": 3961279, "job": ["AC240", "weak_curved_mvn8", 13, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882132.000573, "cpu": 17, "pid": 3965104, "job": ["AC240", "spike_slab", 3, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882132.0036674, "cpu": 17, "pid": 3965496, "job": ["AC240", "basic_mvn", 8, "analysis"]}
+{"event": "start", "time": 1788882132.0062559, "cpu": 53, "pid": 3965497, "job": ["AC240", "spike_slab", 8, "analysis"]}
+{"event": "finish", "time": 1788882136.0111556, "cpu": 24, "pid": 3965105, "job": ["AC240", "curved_spike_slab8", 3, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882136.011676, "cpu": 32, "pid": 3965166, "job": ["AC240", "spike_slab", 4, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882136.0140884, "cpu": 24, "pid": 3965532, "job": ["AC240", "curved_spike_slab8", 8, "analysis"]}
+{"event": "start", "time": 1788882136.0159671, "cpu": 32, "pid": 3965533, "job": ["AC240", "basic_mvn", 9, "analysis"]}
+{"event": "finish", "time": 1788882142.0220761, "cpu": 49, "pid": 3965212, "job": ["AC240", "curved_spike_slab8", 4, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882142.0225792, "cpu": 25, "pid": 3965257, "job": ["AC240", "spike_slab", 5, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882142.02483, "cpu": 25, "pid": 3965583, "job": ["AC240", "weak_curved_mvn8", 9, "analysis"]}
+{"event": "start", "time": 1788882142.0266173, "cpu": 49, "pid": 3965584, "job": ["AC240", "spike_slab", 9, "analysis"]}
+{"event": "finish", "time": 1788882144.0286539, "cpu": 40, "pid": 3965258, "job": ["AC240", "curved_spike_slab8", 5, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882144.0312514, "cpu": 40, "pid": 3965585, "job": ["AC240", "curved_spike_slab8", 9, "analysis"]}
+{"event": "finish", "time": 1788882148.035165, "cpu": 21, "pid": 3961247, "job": ["AC240", "weak_curved_mvn8", 5, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882148.0376778, "cpu": 21, "pid": 3965634, "job": ["AC240", "weak_curved_mvn8", 5, "analysis"]}
+{"event": "finish", "time": 1788882154.0438147, "cpu": 45, "pid": 3965328, "job": ["AC240", "spike_slab", 6, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882154.046785, "cpu": 45, "pid": 3965652, "job": ["AC240", "basic_mvn", 10, "analysis"]}
+{"event": "finish", "time": 1788882160.0526555, "cpu": 20, "pid": 3965373, "job": ["AC240", "curved_spike_slab8", 6, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882160.0531714, "cpu": 41, "pid": 3965381, "job": ["AC240", "spike_slab", 7, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882160.055477, "cpu": 20, "pid": 3965668, "job": ["AC240", "weak_curved_mvn8", 10, "analysis"]}
+{"event": "start", "time": 1788882160.0574408, "cpu": 41, "pid": 3965669, "job": ["AC240", "spike_slab", 10, "analysis"]}
+{"event": "finish", "time": 1788882162.059193, "cpu": 1, "pid": 3961227, "job": ["AC240", "weak_curved_mvn8", 0, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882162.0632243, "cpu": 1, "pid": 3965671, "job": ["AC240", "weak_curved_mvn8", 0, "analysis"]}
+{"event": "finish", "time": 1788882168.069431, "cpu": 57, "pid": 3965458, "job": ["AC240", "curved_spike_slab8", 7, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882168.0700598, "cpu": 53, "pid": 3965497, "job": ["AC240", "spike_slab", 8, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882168.072748, "cpu": 53, "pid": 3965737, "job": ["AC240", "curved_spike_slab8", 10, "analysis"]}
+{"event": "start", "time": 1788882168.075173, "cpu": 57, "pid": 3965738, "job": ["AC240", "basic_mvn", 11, "analysis"]}
+{"event": "finish", "time": 1788882170.0769808, "cpu": 33, "pid": 3961259, "job": ["AC240", "weak_curved_mvn8", 8, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882170.079842, "cpu": 33, "pid": 3965739, "job": ["AC240", "weak_curved_mvn8", 8, "analysis"]}
+{"event": "finish", "time": 1788882172.0816762, "cpu": 24, "pid": 3965532, "job": ["AC240", "curved_spike_slab8", 8, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882172.0836873, "cpu": 24, "pid": 3965770, "job": ["AC240", "weak_curved_mvn8", 11, "analysis"]}
+{"event": "finish", "time": 1788882180.0918758, "cpu": 49, "pid": 3965584, "job": ["AC240", "spike_slab", 9, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882180.0948155, "cpu": 49, "pid": 3965807, "job": ["AC240", "spike_slab", 11, "analysis"]}
+{"event": "finish", "time": 1788882182.096969, "cpu": 30, "pid": 3962307, "job": ["AC240", "basic_mvn", 17, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882182.1004927, "cpu": 30, "pid": 3965808, "job": ["AC240", "curved_spike_slab8", 11, "analysis"]}
+{"event": "finish", "time": 1788882186.1049714, "cpu": 40, "pid": 3965585, "job": ["AC240", "curved_spike_slab8", 9, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882186.108171, "cpu": 40, "pid": 3965839, "job": ["AC240", "basic_mvn", 12, "analysis"]}
+{"event": "finish", "time": 1788882196.1184256, "cpu": 56, "pid": 3964901, "job": ["AC240", "spike_slab", 29, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882196.1213007, "cpu": 56, "pid": 3965886, "job": ["AC240", "weak_curved_mvn8", 12, "analysis"]}
+{"event": "finish", "time": 1788882198.123669, "cpu": 41, "pid": 3965669, "job": ["AC240", "spike_slab", 10, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882198.1264868, "cpu": 41, "pid": 3965902, "job": ["AC240", "spike_slab", 12, "analysis"]}
+{"event": "finish", "time": 1788882202.1309342, "cpu": 47, "pid": 3962578, "job": ["AC240", "basic_mvn", 21, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882202.1343677, "cpu": 47, "pid": 3965934, "job": ["AC240", "curved_spike_slab8", 12, "analysis"]}
+{"event": "finish", "time": 1788882204.1362827, "cpu": 3, "pid": 3962300, "job": ["AC240", "weak_curved_mvn8", 15, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882204.1366465, "cpu": 39, "pid": 3962311, "job": ["AC240", "basic_mvn", 18, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882204.1398072, "cpu": 3, "pid": 3965936, "job": ["AC240", "basic_mvn", 13, "analysis"]}
+{"event": "start", "time": 1788882204.1422553, "cpu": 39, "pid": 3965937, "job": ["AC240", "weak_curved_mvn8", 13, "analysis"]}
+{"event": "finish", "time": 1788882206.1439557, "cpu": 42, "pid": 3962283, "job": ["AC240", "basic_mvn", 15, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882206.1470072, "cpu": 42, "pid": 3965955, "job": ["AC240", "spike_slab", 13, "analysis"]}
+{"event": "finish", "time": 1788882208.1484559, "cpu": 54, "pid": 3962315, "job": ["AC240", "basic_mvn", 19, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882208.1487665, "cpu": 58, "pid": 3962316, "job": ["AC240", "weak_curved_mvn8", 19, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882208.1489239, "cpu": 10, "pid": 3962574, "job": ["AC240", "basic_mvn", 20, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882208.151809, "cpu": 10, "pid": 3965988, "job": ["AC240", "curved_spike_slab8", 13, "analysis"]}
+{"event": "start", "time": 1788882208.1542168, "cpu": 54, "pid": 3965989, "job": ["AC240", "basic_mvn", 14, "analysis"]}
+{"event": "start", "time": 1788882208.156086, "cpu": 58, "pid": 3965990, "job": ["AC240", "weak_curved_mvn8", 14, "analysis"]}
+{"event": "finish", "time": 1788882210.1579626, "cpu": 50, "pid": 3962579, "job": ["AC240", "weak_curved_mvn8", 21, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882210.1589487, "cpu": 53, "pid": 3965737, "job": ["AC240", "curved_spike_slab8", 10, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882210.1620631, "cpu": 50, "pid": 3966007, "job": ["AC240", "spike_slab", 14, "analysis"]}
+{"event": "start", "time": 1788882210.1646523, "cpu": 53, "pid": 3966008, "job": ["AC240", "curved_spike_slab8", 14, "analysis"]}
+{"event": "finish", "time": 1788882212.1668172, "cpu": 48, "pid": 3964918, "job": ["AC240", "curved_spike_slab8", 29, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882212.169784, "cpu": 48, "pid": 3966055, "job": ["AC240", "basic_mvn", 15, "analysis"]}
+{"event": "finish", "time": 1788882218.1754174, "cpu": 15, "pid": 3962303, "job": ["AC240", "basic_mvn", 16, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882218.1761768, "cpu": 11, "pid": 3962749, "job": ["AC240", "basic_mvn", 22, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882218.1794474, "cpu": 11, "pid": 3966117, "job": ["AC240", "weak_curved_mvn8", 15, "analysis"]}
+{"event": "start", "time": 1788882218.1821194, "cpu": 15, "pid": 3966118, "job": ["AC240", "spike_slab", 15, "analysis"]}
+{"event": "finish", "time": 1788882220.1850896, "cpu": 49, "pid": 3965807, "job": ["AC240", "spike_slab", 11, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882220.1884778, "cpu": 49, "pid": 3966121, "job": ["AC240", "curved_spike_slab8", 15, "analysis"]}
+{"event": "finish", "time": 1788882224.1930387, "cpu": 30, "pid": 3965808, "job": ["AC240", "curved_spike_slab8", 11, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882224.196116, "cpu": 30, "pid": 3966248, "job": ["AC240", "basic_mvn", 16, "analysis"]}
+{"event": "finish", "time": 1788882226.198348, "cpu": 43, "pid": 3962312, "job": ["AC240", "weak_curved_mvn8", 18, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882226.1989806, "cpu": 19, "pid": 3962750, "job": ["AC240", "weak_curved_mvn8", 22, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882226.2019227, "cpu": 19, "pid": 3966250, "job": ["AC240", "spike_slab", 16, "analysis"]}
+{"event": "start", "time": 1788882226.2041235, "cpu": 43, "pid": 3966251, "job": ["AC240", "curved_spike_slab8", 16, "analysis"]}
+{"event": "finish", "time": 1788882238.2171504, "cpu": 41, "pid": 3965902, "job": ["AC240", "spike_slab", 12, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882238.2205234, "cpu": 41, "pid": 3966317, "job": ["AC240", "basic_mvn", 17, "analysis"]}
+{"event": "finish", "time": 1788882246.2305653, "cpu": 42, "pid": 3965955, "job": ["AC240", "spike_slab", 13, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882246.2342587, "cpu": 42, "pid": 3966334, "job": ["AC240", "spike_slab", 17, "analysis"]}
+{"event": "finish", "time": 1788882248.2372055, "cpu": 47, "pid": 3965934, "job": ["AC240", "curved_spike_slab8", 12, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882248.2407627, "cpu": 47, "pid": 3966335, "job": ["AC240", "curved_spike_slab8", 17, "analysis"]}
+{"event": "finish", "time": 1788882252.2455347, "cpu": 18, "pid": 3962575, "job": ["AC240", "weak_curved_mvn8", 20, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882252.2465308, "cpu": 10, "pid": 3965988, "job": ["AC240", "curved_spike_slab8", 13, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882252.247078, "cpu": 50, "pid": 3966007, "job": ["AC240", "spike_slab", 14, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882252.2500682, "cpu": 10, "pid": 3966372, "job": ["AC240", "basic_mvn", 18, "analysis"]}
+{"event": "start", "time": 1788882252.2525315, "cpu": 18, "pid": 3966373, "job": ["AC240", "weak_curved_mvn8", 18, "analysis"]}
+{"event": "start", "time": 1788882252.255034, "cpu": 50, "pid": 3966374, "job": ["AC240", "spike_slab", 18, "analysis"]}
+{"event": "finish", "time": 1788882256.2598898, "cpu": 53, "pid": 3966008, "job": ["AC240", "curved_spike_slab8", 14, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882256.263343, "cpu": 53, "pid": 3966422, "job": ["AC240", "curved_spike_slab8", 18, "analysis"]}
+{"event": "finish", "time": 1788882260.2685235, "cpu": 15, "pid": 3966118, "job": ["AC240", "spike_slab", 15, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882260.2721531, "cpu": 15, "pid": 3966456, "job": ["AC240", "basic_mvn", 19, "analysis"]}
+{"event": "finish", "time": 1788882262.2749074, "cpu": 49, "pid": 3966121, "job": ["AC240", "curved_spike_slab8", 15, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882262.2781398, "cpu": 49, "pid": 3966461, "job": ["AC240", "weak_curved_mvn8", 19, "analysis"]}
+{"event": "finish", "time": 1788882270.2878542, "cpu": 19, "pid": 3966250, "job": ["AC240", "spike_slab", 16, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882270.2916183, "cpu": 19, "pid": 3966496, "job": ["AC240", "spike_slab", 19, "analysis"]}
+{"event": "finish", "time": 1788882272.2937987, "cpu": 22, "pid": 3962304, "job": ["AC240", "weak_curved_mvn8", 16, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882272.297339, "cpu": 22, "pid": 3966497, "job": ["AC240", "weak_curved_mvn8", 16, "analysis"]}
+{"event": "finish", "time": 1788882274.2999063, "cpu": 43, "pid": 3966251, "job": ["AC240", "curved_spike_slab8", 16, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882274.303133, "cpu": 43, "pid": 3966513, "job": ["AC240", "curved_spike_slab8", 19, "analysis"]}
+{"event": "finish", "time": 1788882292.3248634, "cpu": 42, "pid": 3966334, "job": ["AC240", "spike_slab", 17, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882292.3285017, "cpu": 42, "pid": 3966562, "job": ["AC240", "basic_mvn", 20, "analysis"]}
+{"event": "finish", "time": 1788882294.3310792, "cpu": 50, "pid": 3966374, "job": ["AC240", "spike_slab", 18, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882294.334397, "cpu": 50, "pid": 3966563, "job": ["AC240", "weak_curved_mvn8", 20, "analysis"]}
+{"event": "finish", "time": 1788882296.3371654, "cpu": 47, "pid": 3966335, "job": ["AC240", "curved_spike_slab8", 17, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882296.340664, "cpu": 47, "pid": 3966579, "job": ["AC240", "spike_slab", 20, "analysis"]}
+{"event": "finish", "time": 1788882304.3499167, "cpu": 34, "pid": 3962308, "job": ["AC240", "weak_curved_mvn8", 17, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882304.3539464, "cpu": 34, "pid": 3966628, "job": ["AC240", "weak_curved_mvn8", 17, "analysis"]}
+{"event": "finish", "time": 1788882310.3617532, "cpu": 53, "pid": 3966422, "job": ["AC240", "curved_spike_slab8", 18, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882310.3654964, "cpu": 53, "pid": 3966663, "job": ["AC240", "curved_spike_slab8", 20, "analysis"]}
+{"event": "finish", "time": 1788882316.3734775, "cpu": 19, "pid": 3966496, "job": ["AC240", "spike_slab", 19, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882316.3768961, "cpu": 19, "pid": 3966681, "job": ["AC240", "basic_mvn", 21, "analysis"]}
+{"event": "finish", "time": 1788882322.3846211, "cpu": 43, "pid": 3966513, "job": ["AC240", "curved_spike_slab8", 19, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882322.3881216, "cpu": 43, "pid": 3966714, "job": ["AC240", "weak_curved_mvn8", 21, "analysis"]}
+{"event": "finish", "time": 1788882330.397635, "cpu": 7, "pid": 3963003, "job": ["AC240", "basic_mvn", 25, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882330.401782, "cpu": 7, "pid": 3966733, "job": ["AC240", "spike_slab", 21, "analysis"]}
+{"event": "finish", "time": 1788882332.4044173, "cpu": 23, "pid": 3962847, "job": ["AC240", "basic_mvn", 23, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882332.4085176, "cpu": 23, "pid": 3966734, "job": ["AC240", "curved_spike_slab8", 21, "analysis"]}
+{"event": "finish", "time": 1788882334.4109762, "cpu": 6, "pid": 3962893, "job": ["AC240", "weak_curved_mvn8", 23, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882334.4148948, "cpu": 6, "pid": 3966750, "job": ["AC240", "basic_mvn", 22, "analysis"]}
+{"event": "finish", "time": 1788882342.424328, "cpu": 35, "pid": 3962896, "job": ["AC240", "basic_mvn", 24, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882342.4257157, "cpu": 47, "pid": 3966579, "job": ["AC240", "spike_slab", 20, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882342.4296565, "cpu": 35, "pid": 3966785, "job": ["AC240", "weak_curved_mvn8", 22, "analysis"]}
+{"event": "start", "time": 1788882342.432677, "cpu": 47, "pid": 3966786, "job": ["AC240", "spike_slab", 22, "analysis"]}
+{"event": "finish", "time": 1788882362.4574416, "cpu": 53, "pid": 3966663, "job": ["AC240", "curved_spike_slab8", 20, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882362.461125, "cpu": 53, "pid": 3967048, "job": ["AC240", "curved_spike_slab8", 22, "analysis"]}
+{"event": "finish", "time": 1788882376.479063, "cpu": 7, "pid": 3966733, "job": ["AC240", "spike_slab", 21, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882376.482746, "cpu": 7, "pid": 3967068, "job": ["AC240", "basic_mvn", 23, "analysis"]}
+{"event": "finish", "time": 1788882378.4852712, "cpu": 31, "pid": 3963004, "job": ["AC240", "weak_curved_mvn8", 25, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882378.4891005, "cpu": 31, "pid": 3967086, "job": ["AC240", "weak_curved_mvn8", 23, "analysis"]}
+{"event": "finish", "time": 1788882386.499693, "cpu": 23, "pid": 3966734, "job": ["AC240", "curved_spike_slab8", 21, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882386.5034192, "cpu": 23, "pid": 3967120, "job": ["AC240", "spike_slab", 23, "analysis"]}
+{"event": "finish", "time": 1788882392.5115027, "cpu": 47, "pid": 3966786, "job": ["AC240", "spike_slab", 22, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882392.5154448, "cpu": 47, "pid": 3967136, "job": ["AC240", "curved_spike_slab8", 23, "analysis"]}
+{"event": "finish", "time": 1788882408.5356798, "cpu": 38, "pid": 3962897, "job": ["AC240", "weak_curved_mvn8", 24, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882408.5397916, "cpu": 38, "pid": 3967175, "job": ["AC240", "basic_mvn", 24, "analysis"]}
+{"event": "finish", "time": 1788882416.5508883, "cpu": 53, "pid": 3967048, "job": ["AC240", "curved_spike_slab8", 22, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882416.5547495, "cpu": 53, "pid": 3967193, "job": ["AC240", "weak_curved_mvn8", 24, "analysis"]}
+{"event": "finish", "time": 1788882428.5698264, "cpu": 46, "pid": 3963159, "job": ["AC240", "basic_mvn", 26, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882428.5742626, "cpu": 46, "pid": 3967210, "job": ["AC240", "spike_slab", 24, "analysis"]}
+{"event": "finish", "time": 1788882436.5856128, "cpu": 23, "pid": 3967120, "job": ["AC240", "spike_slab", 23, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882436.589806, "cpu": 23, "pid": 3967226, "job": ["AC240", "curved_spike_slab8", 24, "analysis"]}
+{"event": "finish", "time": 1788882442.5977998, "cpu": 9, "pid": 3964940, "job": ["AC240", "weak_curved_mvn8", 2, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882442.602119, "cpu": 9, "pid": 3967259, "job": ["AC240", "basic_mvn", 25, "analysis"]}
+{"event": "finish", "time": 1788882446.6081145, "cpu": 47, "pid": 3967136, "job": ["AC240", "curved_spike_slab8", 23, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882446.6119397, "cpu": 47, "pid": 3967286, "job": ["AC240", "weak_curved_mvn8", 25, "analysis"]}
+{"event": "finish", "time": 1788882456.6251612, "cpu": 12, "pid": 3965068, "job": ["AC240", "basic_mvn", 3, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882456.6261094, "cpu": 44, "pid": 3965069, "job": ["AC240", "weak_curved_mvn8", 3, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882456.6300735, "cpu": 12, "pid": 3967325, "job": ["AC240", "spike_slab", 25, "analysis"]}
+{"event": "start", "time": 1788882456.6328738, "cpu": 44, "pid": 3967326, "job": ["AC240", "curved_spike_slab8", 25, "analysis"]}
+{"event": "finish", "time": 1788882462.6404092, "cpu": 52, "pid": 3965106, "job": ["AC240", "basic_mvn", 4, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882462.644638, "cpu": 52, "pid": 3967357, "job": ["AC240", "basic_mvn", 26, "analysis"]}
+{"event": "finish", "time": 1788882466.6495628, "cpu": 26, "pid": 3963266, "job": ["AC240", "weak_curved_mvn8", 26, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882466.6505964, "cpu": 0, "pid": 3965164, "job": ["AC240", "basic_mvn", 0, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882466.6543598, "cpu": 0, "pid": 3967373, "job": ["AC240", "weak_curved_mvn8", 26, "analysis"]}
+{"event": "start", "time": 1788882466.6574452, "cpu": 26, "pid": 3967374, "job": ["AC240", "spike_slab", 26, "analysis"]}
+{"event": "finish", "time": 1788882472.6649954, "cpu": 4, "pid": 3965235, "job": ["AC240", "basic_mvn", 1, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882472.6689246, "cpu": 4, "pid": 3967423, "job": ["AC240", "curved_spike_slab8", 26, "analysis"]}
+{"event": "finish", "time": 1788882474.6716619, "cpu": 29, "pid": 3965165, "job": ["AC240", "weak_curved_mvn8", 4, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882474.6752315, "cpu": 29, "pid": 3967427, "job": ["AC240", "spike_slab", 27, "analysis"]}
+{"event": "finish", "time": 1788882478.6804032, "cpu": 46, "pid": 3967210, "job": ["AC240", "spike_slab", 24, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882478.684036, "cpu": 46, "pid": 3967459, "job": ["AC240", "curved_spike_slab8", 27, "analysis"]}
+{"event": "finish", "time": 1788882482.6889677, "cpu": 8, "pid": 3965301, "job": ["AC240", "basic_mvn", 2, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882482.6928005, "cpu": 8, "pid": 3967478, "job": ["AC240", "spike_slab", 28, "analysis"]}
+{"event": "finish", "time": 1788882484.6952333, "cpu": 51, "pid": 3963296, "job": ["AC240", "weak_curved_mvn8", 27, "core"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882484.695985, "cpu": 28, "pid": 3965327, "job": ["AC240", "weak_curved_mvn8", 6, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882484.6995318, "cpu": 28, "pid": 3967481, "job": ["AC240", "weak_curved_mvn8", 27, "analysis"]}
+{"event": "start", "time": 1788882484.7025514, "cpu": 51, "pid": 3967482, "job": ["AC240", "curved_spike_slab8", 28, "analysis"]}
+{"event": "finish", "time": 1788882486.7048116, "cpu": 27, "pid": 3963295, "job": ["AC240", "basic_mvn", 27, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882486.708633, "cpu": 27, "pid": 3967498, "job": ["AC240", "basic_mvn", 27, "analysis"]}
+{"event": "finish", "time": 1788882488.7115993, "cpu": 23, "pid": 3967226, "job": ["AC240", "curved_spike_slab8", 24, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882488.7152152, "cpu": 23, "pid": 3967530, "job": ["AC240", "spike_slab", 29, "analysis"]}
+{"event": "finish", "time": 1788882490.7179081, "cpu": 36, "pid": 3965374, "job": ["AC240", "basic_mvn", 7, "analysis"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882490.7218027, "cpu": 36, "pid": 3967547, "job": ["AC240", "curved_spike_slab8", 29, "analysis"]}
+{"event": "finish", "time": 1788882494.726997, "cpu": 13, "pid": 3965326, "job": ["AC240", "basic_mvn", 6, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882496.730122, "cpu": 16, "pid": 3965372, "job": ["AC240", "basic_mvn", 5, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882496.730787, "cpu": 37, "pid": 3965375, "job": ["AC240", "weak_curved_mvn8", 7, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882498.733561, "cpu": 5, "pid": 3965371, "job": ["AC240", "weak_curved_mvn8", 1, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882500.737295, "cpu": 12, "pid": 3967325, "job": ["AC240", "spike_slab", 25, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882504.7427847, "cpu": 17, "pid": 3965496, "job": ["AC240", "basic_mvn", 8, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882504.7438526, "cpu": 44, "pid": 3967326, "job": ["AC240", "curved_spike_slab8", 25, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882510.7513564, "cpu": 26, "pid": 3967374, "job": ["AC240", "spike_slab", 26, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882514.7559125, "cpu": 32, "pid": 3965533, "job": ["AC240", "basic_mvn", 9, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882516.7584836, "cpu": 25, "pid": 3965583, "job": ["AC240", "weak_curved_mvn8", 9, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882516.7593868, "cpu": 29, "pid": 3967427, "job": ["AC240", "spike_slab", 27, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882520.7644715, "cpu": 4, "pid": 3967423, "job": ["AC240", "curved_spike_slab8", 26, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882524.7692854, "cpu": 46, "pid": 3967459, "job": ["AC240", "curved_spike_slab8", 27, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882526.7722342, "cpu": 8, "pid": 3967478, "job": ["AC240", "spike_slab", 28, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882530.7774756, "cpu": 51, "pid": 3967482, "job": ["AC240", "curved_spike_slab8", 28, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882530.7782881, "cpu": 23, "pid": 3967530, "job": ["AC240", "spike_slab", 29, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882536.7847338, "cpu": 36, "pid": 3967547, "job": ["AC240", "curved_spike_slab8", 29, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882538.7873552, "cpu": 45, "pid": 3965652, "job": ["AC240", "basic_mvn", 10, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882540.7898188, "cpu": 21, "pid": 3965634, "job": ["AC240", "weak_curved_mvn8", 5, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882542.7921941, "cpu": 20, "pid": 3965668, "job": ["AC240", "weak_curved_mvn8", 10, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882542.7927442, "cpu": 57, "pid": 3965738, "job": ["AC240", "basic_mvn", 11, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882550.8002486, "cpu": 24, "pid": 3965770, "job": ["AC240", "weak_curved_mvn8", 11, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882558.806966, "cpu": 33, "pid": 3965739, "job": ["AC240", "weak_curved_mvn8", 8, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882562.811128, "cpu": 40, "pid": 3965839, "job": ["AC240", "basic_mvn", 12, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882568.8164053, "cpu": 1, "pid": 3965671, "job": ["AC240", "weak_curved_mvn8", 0, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882568.8168864, "cpu": 56, "pid": 3965886, "job": ["AC240", "weak_curved_mvn8", 12, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882570.8186877, "cpu": 55, "pid": 3963815, "job": ["AC240", "basic_mvn", 28, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882570.8206406, "cpu": 1, "pid": 3967678, "job": ["AC240", "basic_mvn", 28, "analysis"]}
+{"event": "finish", "time": 1788882572.8220935, "cpu": 3, "pid": 3965936, "job": ["AC240", "basic_mvn", 13, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882578.8261666, "cpu": 39, "pid": 3965937, "job": ["AC240", "weak_curved_mvn8", 13, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882580.8280673, "cpu": 54, "pid": 3965989, "job": ["AC240", "basic_mvn", 14, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882580.828611, "cpu": 58, "pid": 3965990, "job": ["AC240", "weak_curved_mvn8", 14, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882580.8289557, "cpu": 48, "pid": 3966055, "job": ["AC240", "basic_mvn", 15, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882590.8351274, "cpu": 11, "pid": 3966117, "job": ["AC240", "weak_curved_mvn8", 15, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882590.8355796, "cpu": 30, "pid": 3966248, "job": ["AC240", "basic_mvn", 16, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882594.838075, "cpu": 2, "pid": 3963840, "job": ["AC240", "weak_curved_mvn8", 28, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882594.8397121, "cpu": 2, "pid": 3967762, "job": ["AC240", "weak_curved_mvn8", 28, "analysis"]}
+{"event": "finish", "time": 1788882610.8474512, "cpu": 10, "pid": 3966372, "job": ["AC240", "basic_mvn", 18, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882612.84862, "cpu": 41, "pid": 3966317, "job": ["AC240", "basic_mvn", 17, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882612.848954, "cpu": 18, "pid": 3966373, "job": ["AC240", "weak_curved_mvn8", 18, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882618.8519397, "cpu": 15, "pid": 3966456, "job": ["AC240", "basic_mvn", 19, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882624.8549798, "cpu": 49, "pid": 3966461, "job": ["AC240", "weak_curved_mvn8", 19, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882634.8598077, "cpu": 22, "pid": 3966497, "job": ["AC240", "weak_curved_mvn8", 16, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882636.8608222, "cpu": 42, "pid": 3966562, "job": ["AC240", "basic_mvn", 20, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882636.8610678, "cpu": 50, "pid": 3966563, "job": ["AC240", "weak_curved_mvn8", 20, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882648.865338, "cpu": 19, "pid": 3966681, "job": ["AC240", "basic_mvn", 21, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882650.8664029, "cpu": 43, "pid": 3966714, "job": ["AC240", "weak_curved_mvn8", 21, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882652.8672802, "cpu": 34, "pid": 3966628, "job": ["AC240", "weak_curved_mvn8", 17, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882654.8680286, "cpu": 6, "pid": 3966750, "job": ["AC240", "basic_mvn", 22, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882658.869348, "cpu": 14, "pid": 3964010, "job": ["AC240", "basic_mvn", 29, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882658.8705983, "cpu": 3, "pid": 3967944, "job": ["AC240", "basic_mvn", 29, "analysis"]}
+{"event": "finish", "time": 1788882664.8725548, "cpu": 35, "pid": 3966785, "job": ["AC240", "weak_curved_mvn8", 22, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882680.8775272, "cpu": 7, "pid": 3967068, "job": ["AC240", "basic_mvn", 23, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882684.8790345, "cpu": 31, "pid": 3967086, "job": ["AC240", "weak_curved_mvn8", 23, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882692.881609, "cpu": 38, "pid": 3967175, "job": ["AC240", "basic_mvn", 24, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882702.8843896, "cpu": 59, "pid": 3964026, "job": ["AC240", "weak_curved_mvn8", 29, "core"], "exit_code": 0, "success": true}
+{"event": "start", "time": 1788882702.8855329, "cpu": 4, "pid": 3968122, "job": ["AC240", "weak_curved_mvn8", 29, "analysis"]}
+{"event": "finish", "time": 1788882704.88615, "cpu": 53, "pid": 3967193, "job": ["AC240", "weak_curved_mvn8", 24, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882704.8863835, "cpu": 9, "pid": 3967259, "job": ["AC240", "basic_mvn", 25, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882710.8879788, "cpu": 47, "pid": 3967286, "job": ["AC240", "weak_curved_mvn8", 25, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882712.8887541, "cpu": 52, "pid": 3967357, "job": ["AC240", "basic_mvn", 26, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882718.890514, "cpu": 0, "pid": 3967373, "job": ["AC240", "weak_curved_mvn8", 26, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882726.8929248, "cpu": 28, "pid": 3967481, "job": ["AC240", "weak_curved_mvn8", 27, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882726.8931484, "cpu": 27, "pid": 3967498, "job": ["AC240", "basic_mvn", 27, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882768.902514, "cpu": 1, "pid": 3967678, "job": ["AC240", "basic_mvn", 28, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882786.9070058, "cpu": 2, "pid": 3967762, "job": ["AC240", "weak_curved_mvn8", 28, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882834.9185169, "cpu": 3, "pid": 3967944, "job": ["AC240", "basic_mvn", 29, "analysis"], "exit_code": 0, "success": true}
+{"event": "finish", "time": 1788882880.9289038, "cpu": 4, "pid": 3968122, "job": ["AC240", "weak_curved_mvn8", 29, "analysis"], "exit_code": 0, "success": true}

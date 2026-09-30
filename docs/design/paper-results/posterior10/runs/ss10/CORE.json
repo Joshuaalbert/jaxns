@@ -1,0 +1,279 @@
+{
+  "iteration": 18,
+  "allocation_iteration": 19,
+  "root_out_degree": 5058,
+  "classic_log_Z": -24.74418864564433,
+  "classic_log_Z_uncert": 0.04963884388154501,
+  "classic_kish_ess": 15632.744903042258,
+  "likelihood_evaluations": 16573991,
+  "classic_samples": 72357,
+  "seconds": 276.25795814208686,
+  "case": "ss10",
+  "seed": 0,
+  "complete": true,
+  "run_seconds": 276.5803903681226,
+  "goal_progress": [
+    {
+      "iteration": 1,
+      "allocation_iteration": 1,
+      "root_out_degree": 300,
+      "classic_log_Z": -25.022359667565638,
+      "classic_log_Z_uncert": 0.19898121744349445,
+      "classic_kish_ess": 2451.9589896175926,
+      "likelihood_evaluations": 2055098,
+      "classic_samples": 6912,
+      "seconds": 36.17473950702697
+    },
+    {
+      "iteration": 2,
+      "allocation_iteration": 2,
+      "root_out_degree": 600,
+      "classic_log_Z": -24.97376262436713,
+      "classic_log_Z_uncert": 0.14461597330269643,
+      "classic_kish_ess": 2982.218294380301,
+      "likelihood_evaluations": 2769791,
+      "classic_samples": 10482,
+      "seconds": 44.04831927502528
+    },
+    {
+      "iteration": 3,
+      "allocation_iteration": 3,
+      "root_out_degree": 890,
+      "classic_log_Z": -24.8559971070984,
+      "classic_log_Z_uncert": 0.1182244320052989,
+      "classic_kish_ess": 3721.283865682881,
+      "likelihood_evaluations": 3579389,
+      "classic_samples": 14307,
+      "seconds": 61.131810079095885
+    },
+    {
+      "iteration": 4,
+      "allocation_iteration": 4,
+      "root_out_degree": 1190,
+      "classic_log_Z": -24.813519914754377,
+      "classic_log_Z_uncert": 0.10236193404701494,
+      "classic_kish_ess": 4492.352523566928,
+      "likelihood_evaluations": 4431313,
+      "classic_samples": 18310,
+      "seconds": 71.9454129950609
+    },
+    {
+      "iteration": 5,
+      "allocation_iteration": 5,
+      "root_out_degree": 1490,
+      "classic_log_Z": -24.791678368955427,
+      "classic_log_Z_uncert": 0.09135513716104766,
+      "classic_kish_ess": 5371.490636069426,
+      "likelihood_evaluations": 5302810,
+      "classic_samples": 22368,
+      "seconds": 77.31915014307015
+    },
+    {
+      "iteration": 6,
+      "allocation_iteration": 6,
+      "root_out_degree": 1790,
+      "classic_log_Z": -24.755659268383496,
+      "classic_log_Z_uncert": 0.08315749043544333,
+      "classic_kish_ess": 6277.204198677007,
+      "likelihood_evaluations": 6173292,
+      "classic_samples": 26387,
+      "seconds": 82.89003119198605
+    },
+    {
+      "iteration": 7,
+      "allocation_iteration": 7,
+      "root_out_degree": 2090,
+      "classic_log_Z": -24.772732651580508,
+      "classic_log_Z_uncert": 0.07702151078922705,
+      "classic_kish_ess": 7135.017476903025,
+      "likelihood_evaluations": 7060457,
+      "classic_samples": 30481,
+      "seconds": 106.10288841906004
+    },
+    {
+      "iteration": 8,
+      "allocation_iteration": 8,
+      "root_out_degree": 2390,
+      "classic_log_Z": -24.743202434071755,
+      "classic_log_Z_uncert": 0.07198448102332614,
+      "classic_kish_ess": 7961.712981402562,
+      "likelihood_evaluations": 7928818,
+      "classic_samples": 34487,
+      "seconds": 118.51877056690864
+    },
+    {
+      "iteration": 9,
+      "allocation_iteration": 9,
+      "root_out_degree": 2690,
+      "classic_log_Z": -24.73775441872113,
+      "classic_log_Z_uncert": 0.06791718637777902,
+      "classic_kish_ess": 8740.522004690225,
+      "likelihood_evaluations": 8822915,
+      "classic_samples": 38588,
+      "seconds": 129.12684139190242
+    },
+    {
+      "iteration": 10,
+      "allocation_iteration": 10,
+      "root_out_degree": 2990,
+      "classic_log_Z": -24.73060369286046,
+      "classic_log_Z_uncert": 0.06437460989960998,
+      "classic_kish_ess": 9658.526265216482,
+      "likelihood_evaluations": 9721089,
+      "classic_samples": 42679,
+      "seconds": 139.50916519202292
+    },
+    {
+      "iteration": 11,
+      "allocation_iteration": 11,
+      "root_out_degree": 3290,
+      "classic_log_Z": -24.73827016401062,
+      "classic_log_Z_uncert": 0.061441649460097315,
+      "classic_kish_ess": 10469.900615081457,
+      "likelihood_evaluations": 10617408,
+      "classic_samples": 46805,
+      "seconds": 148.96074615512043
+    },
+    {
+      "iteration": 12,
+      "allocation_iteration": 13,
+      "root_out_degree": 3627,
+      "classic_log_Z": -24.760366930905413,
+      "classic_log_Z_uncert": 0.05858802682373178,
+      "classic_kish_ess": 11505.956190002427,
+      "likelihood_evaluations": 12262114,
+      "classic_samples": 52682,
+      "seconds": 167.31267536710948
+    },
+    {
+      "iteration": 13,
+      "allocation_iteration": 14,
+      "root_out_degree": 3927,
+      "classic_log_Z": -24.754318123097494,
+      "classic_log_Z_uncert": 0.05629626701114103,
+      "classic_kish_ess": 12386.776359320305,
+      "likelihood_evaluations": 13165543,
+      "classic_samples": 56815,
+      "seconds": 197.47608734411187
+    },
+    {
+      "iteration": 14,
+      "allocation_iteration": 15,
+      "root_out_degree": 4227,
+      "classic_log_Z": -24.738366777898413,
+      "classic_log_Z_uncert": 0.054255258216180186,
+      "classic_kish_ess": 13225.529317574976,
+      "likelihood_evaluations": 14052499,
+      "classic_samples": 60866,
+      "seconds": 219.12500472995453
+    },
+    {
+      "iteration": 15,
+      "allocation_iteration": 16,
+      "root_out_degree": 4508,
+      "classic_log_Z": -24.737834859354862,
+      "classic_log_Z_uncert": 0.05258348597558554,
+      "classic_kish_ess": 13974.06617613359,
+      "likelihood_evaluations": 14894644,
+      "classic_samples": 64737,
+      "seconds": 235.42744254809804
+    },
+    {
+      "iteration": 16,
+      "allocation_iteration": 17,
+      "root_out_degree": 4715,
+      "classic_log_Z": -24.762567238293396,
+      "classic_log_Z_uncert": 0.05143503454196856,
+      "classic_kish_ess": 14669.374198076479,
+      "likelihood_evaluations": 15550614,
+      "classic_samples": 67716,
+      "seconds": 252.04706778400578
+    },
+    {
+      "iteration": 17,
+      "allocation_iteration": 18,
+      "root_out_degree": 4891,
+      "classic_log_Z": -24.739146640173274,
+      "classic_log_Z_uncert": 0.050449548937659246,
+      "classic_kish_ess": 15211.673905122765,
+      "likelihood_evaluations": 16073567,
+      "classic_samples": 70058,
+      "seconds": 263.7887079170905
+    },
+    {
+      "iteration": 18,
+      "allocation_iteration": 19,
+      "root_out_degree": 5058,
+      "classic_log_Z": -24.74418864564433,
+      "classic_log_Z_uncert": 0.04963884388154501,
+      "classic_kish_ess": 15632.744903042258,
+      "likelihood_evaluations": 16573991,
+      "classic_samples": 72357,
+      "seconds": 276.25795814208686
+    }
+  ],
+  "reference": {
+    "method": "product of Gaussian CDF differences over the finite prior box",
+    "log_Z": -24.15593480605331,
+    "component_log_Z": [
+      -24.84906649788154,
+      -24.849097475584877
+    ],
+    "spike_mass": 0.5000077444258325,
+    "means": [
+      [
+        6.0,
+        6.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      [
+        2.5,
+        2.5,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    ],
+    "standard_deviations": [
+      0.282842712474619,
+      0.8944271909999159
+    ]
+  },
+  "posterior_mean": [
+    2.507231237970003,
+    2.514301489953857,
+    -0.0037131505112472547,
+    -0.010031197975841556,
+    0.007135671006479161,
+    -0.007324533095370843,
+    -0.004640114612676783,
+    0.010471593378847878,
+    -0.0012921025066001753,
+    0.005958688169347511
+  ],
+  "posterior_standard_deviation": [
+    0.9101361764623321,
+    0.9048588083830901,
+    0.8941639457458403,
+    0.8839955817926582,
+    0.8954948641492109,
+    0.8890591557484412,
+    0.8910344073068417,
+    0.883428485628388,
+    0.896333885591093,
+    0.8939754909580732
+  ],
+  "peak_rss_bytes": 4363059200
+}

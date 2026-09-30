@@ -1,0 +1,8 @@
+{
+  "case": "ss10",
+  "ss10_definition": "repository",
+  "pid": 4022619,
+  "cpu": 3,
+  "output": "/largedata/albert/jaxns-posterior10-20260908/ss10/seed-00",
+  "source_commit": "259d436bde03f502a93019817c3d749fd2f04207"
+}

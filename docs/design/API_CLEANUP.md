@@ -1,0 +1,249 @@
+# Scientific API cleanup (#288)
+
+The runner owns the model, requested sampler configuration, and a default
+`DepthCondition`. State owns the model inputs needed to resume and
+interpret that run. A constrained sampler describes transitions only, and
+receives the owning run's model explicitly when asked to sample.
+New runs use the runner's model. Once a state exists, its saved model and
+inputs are authoritative for continuation, including worker registration.
+
+## Results and inference
+
+- `State.expected_log_Z_mean` and `State.expected_log_Z_uncert` provide the
+  inexpensive classic expectation calculation used by goal conditions.
+- `NestedSamplerResults.log_Z_mean` and `log_Z_uncert` carry that expectation
+  calculation. They do not silently become Monte Carlo summaries.
+- Both objects expose `sample_evidence(num_samples, *, key,
+  phantom_conditioning=False, num_phantoms=None, batch_size=None, C_min=20,
+  diagnostics=False)`. Classic conditioning is the default. Phantom
+  conditioning is an explicit opt-in. The returned `EvidenceSamples` owns
+  the Monte Carlo summaries. Random evidence draws require a key.
+- `results.resample(num_samples, *, key, replace=True)` returns
+  `PosteriorSamples`, containing aligned U coordinates, X coordinates, and
+  likelihoods. Its `integrate_fn_over_posterior` averages over these equally
+  weighted observations. It carries no run evidence, uncertainty, ESS, or
+  race metadata. The weighted result retains its own integration method.
+- `BlockData.incoming_K` owns lineage counts. An expanded copy is not stored
+  on result rows. The MC adapter derives this view only when needed by the
+  existing shrinkage kernel.
+
+## Run configuration and constrained sampling
+
+Both runners accept `args` and `params` only when starting a run through
+`initialise`, `run`, or `run_until_goal`. Local `run_single_iteration` accepts
+them when starting without a state too. These inputs are stored on State,
+never on the runner. An existing state or checkpoint takes precedence over
+new-run inputs before any model-dependent defaults are resolved.
+
+Both runners use one shared default-resolution function. It returns an
+immutable, transient execution configuration at initialization or resumption.
+Dimension, periodic topology, and dependent defaults are derived from the
+active model inputs. Requested settings on the runner stay unchanged, so
+reusing it for different input shapes cannot inherit a previous run's defaults.
+The distributed runner no longer constructs or retains a local runner.
+Execution continues to use its explicitly owned default depth condition.
+Workers receive an immutable session containing the active inputs once per
+registration. This transport copy is derived from State on resumption.
+
+`replacement_width` replaces `shell_size` on the local runner. Distributed
+sampling has no replacement-width setting: workers own batching. Local and
+distributed allocation increments and initial capacities keep their existing
+defaults. Shared resolution must not make the distributed defaults depend on
+worker topology or execute a likelihood in the scientific process.
+
+`UniDimSliceSampler(num_slices, num_phantom_samples=0)` accepts a validated
+count for direct calls. Runners own `collect_phantom_samples` and configure
+all `num_slices - 1` intermediates or zero. The old `max_phantom_samples`
+runner option and sampler collection switch are removed. The deprecated inverse `phantom_burn_in` spelling and the
+unsupported step-out switch are removed. Perfect unit-cube bracketing is the
+implemented transition. The existing random split schedule is preserved.
+
+## Removed surface and migration
+
+- Import `Prior` from `jaxns.priors`. It re-exports the JAXCTX class directly,
+  so ordinary model definitions no longer need its dependency's import path.
+- `target_num_live_points` becomes `root_allocation_degree`.
+- `shell_size` becomes `replacement_width` for local execution.
+- `sample_logZ`, `sample_evidence_mc`, and the former result shrinkage alias are
+  replaced by the single `sample_evidence` method.
+- Move constructor `args` and `params` to the run-start call. Resumption
+  reads them from State. Runner attributes retain requested settings rather
+  than exposing model-dependent resolved defaults before initialization.
+- `conditioning="phantom"` becomes `phantom_conditioning=True` on that method.
+- Result `expected_log_Z_*` aliases are removed. Use its `log_Z_*` fields.
+- `num_live_points_per_sample` and `evidence_equivalent_live_points` are
+  removed. Block incoming lineage counts remain available.
+- Pass the model to sampling operations, not to `UniDimSliceSampler`.
+  Custom constrained samplers accept the keyword-only `model` argument too.
+- Manually constructed results supply `BlockData` explicitly. Saved result
+  objects using the retired schema should be regenerated from their State.
+- Request and worker-execution types belong to `jaxns.sampling.protocol` and
+  `jaxns.sampling.batching`, rather than being sampler-module re-exports.
+
+Samples remain append ordered. The sentinel and phantom-storage follow-up
+below changes root execution and the request schema while preserving the
+race and phantom-conditioning models.
+
+## Negative sentinel and zero likelihood
+
+The mathematical sentinel has likelihood -1 and prior volume one. Its
+logarithm is never evaluated. Initial and subsequently allocated sentinel
+children are independent unconditional prior draws, including true zeros.
+The half-prior indicator likelihood, zero below x=1/2 and one above it,
+reproduced evidence 0.999025 before this fix, instead of its correct value 1/2.
+
+Scheduling already knows the transient parent index. A bounded request flag
+derived from that index distinguishes direct prior work from constrained
+chains, including chains above a real zero contour. No parent identity or
+additional sentinel mask is persisted per sample. Both kinds of parent retain
+-infinity in the existing contour field. Seed selection applies only to
+non-root chains, whose strict likelihood comparison excludes actual zeros.
+Root requests do not reserve a seed or produce phantoms.
+
+Phantoms from a zero contour must not update the initial zero plateau's mass.
+Both count implementations skip that block for such chains. Classic race
+counts retain all zero arrivals and therefore measure their prior mass.
+Normal model evaluation always maps NaN log likelihood to -infinity, just
+like an explicit zero likelihood. Initial and later sentinel children keep
+every prior draw with one likelihood evaluation, without a retry loop.
+`Model` owns this policy for both local and worker evaluations, including
+later constrained proposals. The `allow_nan` option is removed. The recommended
+`sanity_check` evaluates raw outputs directly so it still reports NaNs before
+conversion, and a successful sampled check cannot certify the whole domain.
+
+The NaN-policy review compares initialization against `17f5cf3` on CPU with
+JAX 0.11.1, x64 enabled, 10 dimensions, 300 roots, capacity 2048, and 99 phantom
+slots. All 18 state leaves match exactly for the fixed-key finite Gaussian
+model. Lowered StableHLO shrinks from 91,193 to 56,320 bytes and loses the
+NaN-retry loop. Three other loops remain for random number generation.
+Compiler-reported argument and output memory stay at 8 and 1,788,146 bytes.
+Temporary memory changes from 44,160 to 47,168 bytes, so the smaller graph
+does not imply a smaller memory plan. No wall-time speedup is claimed.
+The half-prior NaN regression fails before the change with evidence 0.999025
+instead of 1/2. Coverage includes raw sanity diagnostics, root accounting,
+constrained proposals, checkpoint continuation, and actual worker processes.
+
+Phantom validity is one scalar per completed chain, or shape [N] in storage,
+instead of shape [N, P]. A chain contributes its whole retained prefix or
+none of it. Root draws and unused capacity have false validity. Scheduled
+worker results discard transient phantom coordinates before transport, as
+scientific state already did at commit. Direct sampler calls still expose
+the full coordinates. Protocol 7 carries root-request flags and the smaller
+validity array, rejecting older worker protocols. Checkpoints with the old
+per-phantom mask schema require the matching older code and are not silently
+reinterpreted by this change.
+
+The follow-up performance review compares fixed-key non-root slice chains
+against `40f9a38` on CPU with JAX 0.11.1, x64 enabled, 10 dimensions, 100 lanes,
+100 transitions and 99 retained phantoms. Every classic and phantom coordinate,
+likelihood and evaluation count matches exactly. Compiler-reported argument
+memory remains 6,500 bytes and temporary memory remains 993,176 bytes. Output
+memory drops from 492,364 to 482,564 bytes, exactly the 9,800 bytes saved by
+replacing 100-by-99 booleans with 100 booleans. This measures the direct sampler
+output, including coordinates, and makes no wall-time speedup claim. Root draws
+intentionally use a different random trajectory from the former root MCMC.
+The scheduled dispatcher also preserves non-root outputs exactly. At the same
+shapes, its compiler-reported argument memory increases by 100 bytes for the
+bounded root flags, temporary memory increases by 6,976 bytes, and output
+memory decreases by 9,800 bytes. Both versions discard phantom coordinates
+before measuring this scheduling boundary.
+
+## Performance and intent review
+
+Review compared the implementation with develop at `317cec5`. The MC entry
+point now validates metadata once through the owning shrinkage API. Lineage
+expansion compiles from four required arrays, so changing a phantom prefix or
+the transformed parameter tree cannot retrace this independent operation.
+Distributed resumption registers the checkpoint model, matching the model
+used by local resumption, rather than reading a separate runner model. The
+sampler retains the existing random split schedule after removing
+step-out bracketing, including the unused reserved stream.
+An explicitly supplied phantom capacity must be positive: zero previously
+fell through to full retention instead of expressing a valid memory bound.
+
+A fixed-key local run produced identical classic and phantom samples,
+out-degrees, likelihood counts, posterior weights, expectation summaries, and
+classic and phantom Monte Carlo evidence draws before and after the change.
+A compiled constrained-sampling comparison used CPU, JAX 0.11.1, x64, ten
+dimensions, 100 lanes, 100 transitions, and all 99 phantom states. Compiler
+cost estimates were identical. Both programs used 10,500 argument bytes,
+892,364 output bytes, and 1,810,520 temporary bytes, with zero aliased bytes.
+This is a compiler and numerical comparison, not a wall-time speedup claim.
+
+The follow-up input-ownership change resolves configuration once at each
+Python initialization or resume boundary, after checkpoint precedence has
+been decided. It does not introduce resolution inside a compiled depth loop
+or per worker task. Resolved settings retain no model-input arrays, and the
+default depth condition remains owned by the runner. A second fixed-key
+comparison against `25806f1` again matches all of the scientific outputs
+listed above exactly. Regression tests cover reuse across input dimensions,
+all run-start methods, and state-owned inputs and topology on resumption.
+
+## Execution handoff and documentation
+
+`DistributedState.from_state(state)` starts a fresh runtime session from a
+completed local goal boundary, preserving the exact scientific state and keys.
+`distributed.to_state()` returns that full state only after pending tasks and
+active schedules have drained. Neither conversion transforms posterior samples
+or repeats likelihood evaluations. The laptop-to-cluster user guide covers both
+directions, delayed CPU/GPU worker arrival, checkpoints, and automatic growth.
+
+The composed handoff test exposed a pre-existing unlimited-growth bug: the
+distributed status classifier treated physical buffer capacity as a scientific
+hard limit. It now distinguishes the two, preserving finite limits while
+allowing unlimited runs to resize. The real TCP test exercises growth, saved
+state transfer, late worker arrival, checkpoint precedence, and local return.
+
+All maintained evidence-sampling helpers, reference functions, benchmarks, and
+tests now use the `sample_evidence` name, including their compiled and batched
+variants. This is a symbol-only change to the evidence kernels.
+
+## Progress and interruption
+
+Both runners accept `verbose=False`. Progress uses existing scalar fields,
+sample capacity, task identifiers, and Python monotonic times. It neither
+constructs results nor evaluates evidence or posterior summaries for logging.
+
+The requested SIGINT behavior extends the distributed lifecycle decision from
+issue #252: protocol 6 adds an explicit cancellation flag to session release.
+A cancelled session's busy assignments are fenced, its queued/completed task
+records are removed, and the existing node supervisor restarts affected worker
+processes. Other sessions and idle workers remain available. Local checkpointed
+runs return to Python at most every 32 replacement batches without callbacks
+inside JAX. Control returns retain the active schedule, random keys, and goal
+iteration counters. They do not become scientific goal boundaries.
+
+After Ctrl-C, the newest coherent state is saved when checkpointing is enabled,
+then KeyboardInterrupt propagates. Distributed cleanup also runs without a
+checkpoint. Signal deferral restores the caller's handler and is installed only
+on the main thread. Compilation and a currently executing batch must complete
+before the local continuation can be saved, so the batch bound is not a deadline
+in seconds. Initialisation interrupted before a complete state exists can only
+cancel the session, not invent a resumable state.
+
+The performance/intent review keeps progress outside compiled loops, adds no
+host callbacks, and restricts the extra compiled stopping condition to a scalar
+batch counter on the checkpointed path. A fixed-key SIGINT test resumes an
+unfinished local depth and reproduces every uninterrupted state leaf exactly,
+including the goal-call sequence. Real-process tests cover distributed SIGINT
+with and without checkpoints, zero-worker registration, replay of pending work,
+and preservation of another registered session. No wall-time speedup is claimed.
+
+## Develop audit follow-up (#307)
+
+State merging is a static host operation. It compares model inputs with NumPy
+before concatenating valid prefixes and preserves the compiled merge arithmetic.
+The diagnostic parent graph matches stored contours and out-degrees without
+persisting parent identities. Its indices refer to append-order storage.
+Posterior integration masks zero-mass rows before weighted arithmetic, and
+posterior resampling permits replacement only.
+
+JSON serialization stores base64 NumPy array records and a pickled PyTreeDef
+for registered structure and static metadata. Loading a trusted record restores
+host array leaves; callers choose subsequent device placement. Failed pickle
+serialization always propagates before checkpoint publication.
+
+Single-depth and goal-driven local execution share checkpoint precedence,
+continuation, schedule growth, and interruption handling. A single-depth call
+still returns at sample-capacity boundaries and does not increment the goal
+counter. Shared transient schedule growth belongs to algorithm/schedule_storage.py.

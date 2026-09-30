@@ -1,0 +1,11 @@
+{
+  "5667381608eced7e3fcb754f32cc6c59db185735": {
+    "root": "/largedata/albert/git/jaxns-paper-evidence10-analysis",
+    "commit": "5667381608eced7e3fcb754f32cc6c59db185735",
+    "src_tree": "528843937ff0497d916e53979573b5ef0be0bcff",
+    "files": {
+      "prefix_sweep.py": "e2431b3ec3050f75cce4ed752c145268282cd59dcc666769e45973e8b9425549",
+      "run_evidence10.py": "e3256ad458b34963d0b1f251463a13ea5ff89e6547b9c29f9c3c65e79e74c7ec"
+    }
+  }
+}

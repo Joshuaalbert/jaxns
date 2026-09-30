@@ -1,0 +1,78 @@
+{
+  "ss10": {
+    "complete": true,
+    "ss10_definition": "repository",
+    "source_commit": "259d436bde03f502a93019817c3d749fd2f04207",
+    "stopped_at_first_qualifying_goal": true,
+    "affinity": [
+      3
+    ],
+    "phantom_U_shape": [
+      72357,
+      99,
+      10
+    ],
+    "phantom_U_dtype": "float32",
+    "classic_X_dtype": "float64",
+    "files": {
+      "state.pkl": {
+        "sha256": "6065d70202d0982779de8333a79c1c65ff592be187d6da9b434486ce497dfe6d",
+        "bytes": 414101616
+      },
+      "checkpoint.pkl": {
+        "sha256": "6065d70202d0982779de8333a79c1c65ff592be187d6da9b434486ce497dfe6d",
+        "bytes": 414101616
+      },
+      "classic_posterior.npz": {
+        "sha256": "051d0b7033a33509ff7118613dfd8b224b38dcaaaba8b1a699088c5d6e10237c",
+        "bytes": 4311735
+      },
+      "MANIFEST.json": {
+        "sha256": "4131528943bcc3c3342c1101adaef388aaef2fa733a66f888ed527a7b8edb74b",
+        "bytes": 1870
+      },
+      "CORE.json": {
+        "sha256": "198db3e9091de52baec92b94d2b2b040f5f7ada66503d9a6615d97db451ce78c",
+        "bytes": 7950
+      },
+      "ANALYSIS.json": {
+        "sha256": "f1f9ab63e17cf601c57a32437acb75b7d09ccb7d1139090c247e87083f9a04cd",
+        "bytes": 3408
+      },
+      "evidence_draws.npz": {
+        "sha256": "548016d71931a5e53e4530382c2f9cf990e6594008582e044100e49cd074f33a",
+        "bytes": 137860
+      },
+      "DISCOVERY.json": {
+        "sha256": "20a3d42c39da041b3d71533a170f6bb649362a5d69343489cea3988e3ba24832",
+        "bytes": 441
+      }
+    }
+  },
+  "paper": {
+    "existing_tables_preserved": 6,
+    "new_corner_pdfs": 4,
+    "source_copies_identical": true,
+    "new_references_resolved": true,
+    "duplicate_labels": false,
+    "full_pdf_built": false,
+    "missing_dependencies": [
+      "TeX compiler",
+      "sn-jnl.cls",
+      "cite.bib",
+      "images/censor.drawio.pdf"
+    ],
+    "tex_environment_nesting_balanced": true
+  },
+  "validation": {
+    "tests_passed": 64,
+    "new_files_ruff_pass": true,
+    "new_files_flake8_pass": true,
+    "production_ruff_pass": true,
+    "production_flake8_inherited_findings": 5,
+    "ss10_repository_tests_passed": 2,
+    "ss10_marginal_quadrature_pass": true,
+    "ss10_classic_mc_matches_expected_moments": true,
+    "previous_results_and_corners_unchanged": true
+  }
+}

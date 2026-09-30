@@ -1,0 +1,24 @@
+{
+  "AC240": {
+    "root": "/largedata/albert/git/jaxns-paper-AC240",
+    "commit": "b6889bce3079ffa232e4da6b606e1af0ed0c3f00",
+    "src_tree": "8a95c2b11054f381e7279d1015729b5bcf846cce",
+    "files": {
+      "allocation_contrasts.py": "f8c7951a3f764d531f5f3af8f4b8913016760583d37c7b724ee8c650e20ee012",
+      "allocation_costs.py": "a2d9acc71c978f817d26960d2c8d61e5b361730d14b145aa77609827c9e94605",
+      "cases.py": "4df7488dc3c76574b212bf51828f189aaabfd07bfee7ba8b84766c64662460db",
+      "compare.py": "4e6e54cc4acc5d50bf01d525b13d2e8a6b62b974d016e845c2173baefa88ae44",
+      "continue_variants.py": "8b00f03feeb9b9b52844267b037381781ad368826aba691ef86d26828ba67094",
+      "implementation_equivalence.py": "062f7afe3d8aeae4205a7393501bb2e7cd1941da3abe667ab116cf8c830c1372",
+      "launch.py": "ef0b3d76f0b9b7169f1cb2cbc8ab28beec1a4c03859ab215c5dfade614c99ffa",
+      "launch_variants.py": "cc079927bfe8f2f40cd19be6e7b97a77fec556049745cffcabaaa3d8a6b9981d",
+      "mode_counts.py": "36bc85d0d2ef7676933ab9b29b05c40eb5a864c3c9f88a727ff515687c3c30a9",
+      "mode_memory.py": "5f1e2f60b8cc0ee68a632d3577d565788b728b93a2c5ab829332f9808fe73a47",
+      "prefix_sweep.py": "943fc01c09909fc994f8aeb2bd9ed5d78b38480f34670941ee932d023ca845f8",
+      "references.py": "466fc353119bd7a3b9fceb5bb74c47f064523d4baf0c25813d192a6d305ab89e",
+      "run.py": "19e93c467f198e12d37f8676d926f73fe924bd3ad7a725c9ec0624dade64f51f",
+      "seed_variance.py": "c50e1c65dae3ded0e4200b110b2eededc910d76e706bdef20fd055057e3f9029",
+      "test_protocol.py": "4f8b11a180be600dfc2c10b384dba07fa004b6b6ffb90bd4bba74a8bf8f11973"
+    }
+  }
+}

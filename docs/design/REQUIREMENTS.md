@@ -1,0 +1,427 @@
+# Design Requirements
+
+This file contains the current JAXNS implementation, architecture, API,
+performance, and test-harness requirements. Scientific and user-visible
+properties that must hold independently of implementation live in
+`INVARIANTS.md`.
+
+## Design Sources
+
+- Requirement: The JAXNS v3 algorithm is defined by `docs/papers/paper.tex`; code comments and
+  tests may clarify it but may not silently replace its scientific model.
+- Requirement: The intended run orchestration is documented in
+  `docs/design/interface/run_pattern.py` and must be updated when the accepted local or
+  distributed run pattern changes.
+- Requirement: Design requirements and invariants use unversioned scientific names; source
+  files, classes, and variables do not acquire `v3` prefixes or suffixes.
+- Requirement: Distributed execution follows the accepted process, serialization, failure,
+  scheduling, and reproducibility decision recorded on issue 252; changes to those boundaries
+  require new evidence and an updated design decision.
+
+## Package And Public API
+
+- Requirement: Production code lives under `src/jaxns`, tests remain outside `src`, and the
+  package supports Python 3.10 and newer.
+- Requirement: State, samples, result, block-data, shrinkage-data, and scheduler-data containers
+  use frozen, slotted dataclasses registered through `PureDataclassPytree` where their contents
+  are JAX-compatible data.
+- Requirement: Every array-valued dataclass field has an adjacent shape comment using symbolic
+  axis names such as `# [N, D]` or `# []`.
+- Requirement: User-facing state and result objects carry thin methods for operations naturally
+  applied to their data, so scientific users can work object-orientedly without moving core
+  orchestration into those containers.
+- Requirement: The runner owns phantom collection and retains all `num_slices - 1`
+  intermediate states when enabled, including with an explicit sampler. The sampler validates
+  the requested count through its explicit configuration interface.
+- Requirement: Evidence-time phantom prefix selection is independent of retained storage;
+  `None` uses all saved states and an explicit positive count physically slices the start-prefix
+  before the compiled Monte Carlo kernel so an unused suffix adds no device work or memory.
+- Requirement: `NestedSamplerResults` keeps the commonly used evidence, posterior, and sample
+  fields visually primary and stores block-aligned implementation detail in one `BlockData`
+  field.
+- Requirement: Persistent samples store parent likelihood contours and out-degrees, not parent
+  storage indices.
+- Requirement: Parent indices may exist only as transient scheduling or scatter operands and
+  must not survive into persistent state or results.
+- Requirement: A compatible parent graph is reconstructed as a derived diagnostic when a caller
+  requests it; parent storage indices are not added to scientific state to make reconstruction
+  convenient.
+- Requirement: Result block data is derived consistently from classic likelihoods, parent
+  contours, out-degrees, and the valid-sample count.
+- Requirement: End-user state and result methods compute from the data carried by that object and
+  do not depend on an unrelated global run.
+- Requirement: Public methods validate incompatible shapes, missing metadata, and unsupported
+  modes before launching expensive compiled work.
+- Requirement: Public APIs have concise Google-style docstrings that state non-obvious
+  scientific behavior, arguments, returns, and failures.
+- Requirement: Serialization is supported through the shared pytree serialization surface rather
+  than bespoke serialization hidden in individual algorithms.
+- Requirement: Serializing and restoring a supported state or result preserves its scientific
+  arrays, model association, and posterior and evidence behavior.
+- Requirement: Runtime and optional dependencies are declared only in `pyproject.toml`, with the
+  rationale and public entry-point audit recorded in `docs/design/DEPENDENCIES.md`.
+- Requirement: The base install includes JAX, JAXCTX, NumPy, SciPy, and TFP because these support
+  the documented model-authoring, local nested-sampling, and public diagnostic workflow.
+- Requirement: JAX selects its compatible `jaxlib`; JAXNS does not independently constrain that
+  transitive runtime or interfere with accelerator-specific JAX installations.
+- Requirement: Matplotlib is supplied by the base installation but imported only when a plotting
+  operation is requested; extras do not repeat dependencies already supplied by the base.
+- Requirement: ZeroMQ and Cloudpickle are isolated in the `distributed` extra, while the
+  installed `jaxns-cli` configuration-validation command remains usable without importing JAX,
+  ZeroMQ, or model-serialization support.
+
+## Distributed Execution
+
+- Requirement: Distributed execution is an opt-in `DistributedNestedSampler`; the established
+  local `NestedSampler` remains the compiled, dependency-light execution path.
+- Requirement: A completed local goal boundary can become a fresh `DistributedState` without
+  altering its scientific state or keys. A drained distributed state can expose that full
+  `State` for local continuation; pending tasks and active schedules must not be discarded.
+- Requirement: `jaxns-cli` owns one named coordinator or worker node and provides idempotent
+  `config validate`, `up`, `status`, and `down` operations from a TOML configuration.
+- Requirement: A coordinator publishes a versioned same-user ownership manifest containing its
+  IPC endpoint, TCP port, protocol version, process identity, and resolved configuration
+  fingerprint. Remote nodes use an explicit TOML endpoint because they cannot read that local
+  discovery record.
+- Requirement: The scientific client and same-machine workers discover and use same-user IPC;
+  remote workers use TCP on a trusted scientific network. Pickle and Cloudpickle registration
+  payloads are explicitly not a safe interface for untrusted nodes.
+- Requirement: The supervisor imports no JAX or model code and routes opaque registration,
+  request, and result bytes between scientific clients and workers.
+- Requirement: Protocol headers have a defensive size limit, while scientific payload sizes are
+  not artificially capped. Model registration rejects workers whose Python, JAXNS, JAX/JAXLIB,
+  x64, or measure-dtype semantics differ from the scientific process. Device platform may differ
+  intentionally.
+- Requirement: Each worker is one OS process with one configured JAX device and one fixed batch
+  capacity; evidence-backed long-chain groups of at least eight batch ready proposals with
+  `jax.vmap`, while narrower groups retain complete-chain execution and size one is scalar.
+  `jax.lax.map` is never used.
+- Requirement: A worker's public name is derived exactly as `{platform}-{device}`; configuration
+  does not introduce a second user-selected name for the same physical specialization.
+- Requirement: Every worker process sets `XLA_PYTHON_CLIENT_PREALLOCATE=false` before importing
+  JAX so multiple worker processes can share accelerator memory.
+- Requirement: Distributed scientific scheduling has no shell size. The main process submits
+  scalar logical lineage threads continuously to fill compatible live pool lanes from currently
+  known allocation gaps; worker batch size is only a device-execution choice and cannot change
+  allocation targets or random task identity.
+- Requirement: Task credits are bounded by compatible live pool capacity. Every lane can begin
+  immediately, but the scheduler does not speculate beyond the currently measured pool.
+- Requirement: The coordinator groups only tasks from the same session and direction-state
+  specialization. A partial group may run after a short bounded fill interval so a wide worker
+  cannot deadlock a sparsely populated queue.
+- Requirement: Direction-state batch compatibility includes every value that can affect the
+  worker's sampling law and excludes GMM fit bookkeeping and completed-chain diagnostic
+  counters; observational counter changes alone do not split an otherwise compatible batch.
+- Requirement: A worker executes complete constrained-sampling tasks and keeps their continuation
+  state locally; individual likelihood evaluations inside data-dependent sampler loops never
+  cross IPC.
+- Requirement: The scientific process performs no likelihood evaluation in distributed mode.
+  Root unit-hypercube points are drawn before state construction, their likelihoods are dispatched
+  through an explicit worker operation, and constrained chains keep their internal likelihood
+  loops entirely within workers.
+- Requirement: Model, sampler, arguments, and parameters are registered once per scientific
+  session; task messages contain only task-specific keys, strict contours, stationary seeds,
+  validity, and direction state.
+- Requirement: Each worker keeps a small bounded cache of compiled session programs keyed by the
+  exact registration payload so releasing and later resuming the same model does not force an
+  avoidable recompilation or create unbounded executable retention.
+- Requirement: The main scientific process exclusively owns nested-sampling state, parent
+  out-degree commits, PRNG assignment, task identity, allocation, growth, and goal evaluation.
+- Requirement: Dispatch creates a separate provisional lineage reservation before transport;
+  reservations influence allocation planning but are not observations in user-facing `State`.
+- Requirement: The asynchronous pool consumes the shared logical-thread queue without a wave
+  barrier; an unknown pending endpoint is conservatively reserved beyond known contours and a
+  newly joined worker can immediately consume already queued work.
+- Requirement: Physical capacity accounts for committed and reserved rows, and capacity growth
+  preserves the active depth epoch and already dispatched immutable task payloads.
+- Requirement: Task submission is idempotent by session and task identity, a retry retains the
+  exact scientific payload and keys, and a completed payload remains replayable until the client
+  acknowledges its exactly-once commit.
+- Requirement: Results are committed to scientific state in stable task-ID order while workers
+  continue asynchronously. One worker assignment is returned and replayed as one
+  protocol group; the scientific core commits its contiguous stable-ID prefix before refill.
+  Result framing and phantom payload size cannot subdivide that prefix into timing-dependent
+  refill decisions.
+- Requirement: Worker death, missed heartbeats, or task timeout requeues an unchanged task and
+  causes its local or remote node supervisor to create a replacement process with bounded
+  backoff. Replacement attempts remain unbounded so transient partitions do not permanently
+  starve a long run.
+- Requirement: A remote node supervisor maintains a node-initiated bidirectional control
+  heartbeat. The coordinator retains an instance-targeted restart request until the node
+  acknowledges it or a fresh lease proves it obsolete, and replays the request when that node
+  reconnects. Worker nodes require no inbound connection from the coordinator.
+- Requirement: Zero compatible worker capacity is an indefinite operational wait state. The
+  scientific process logs starvation once, preserves queued tasks and immutable scientific
+  state, and resumes when capacity returns; only loss of the coordinator/control protocol is a
+  resumable distributed error.
+- Requirement: Coordinator restart is explicit rather than transparent. Its ownership lock fences
+  a second local owner; old worker leases become invalid, workers self-quarantine, node stacks are
+  restarted by the operator, and the scientific process resumes its immutable checkpoint.
+- Requirement: Every worker has a coordinator-issued lease and sends heartbeats independently of
+  data-dependent JAX sampling. Two missed heartbeats fence and drop the worker; two missed lease
+  acknowledgements make the worker self-quarantine, and assignment generations reject late
+  results from an old lease.
+- Requirement: A worker node may join an active session and receives its immutable registration
+  before work. Registration remains open without a deadline for the complete scientific session.
+  Removing a node drains running work before stopping its processes; an ungraceful loss remains
+  bounded by heartbeat detection and exact task requeue. A fresh worker instance with the same
+  logical identity supersedes and fences any stale lease left by a non-graceful node restart.
+- Requirement: Coordinator status exposes node identity, worker identity, device specialization,
+  readiness, busy/draining/dropped state, compile time, execution time, and memory high-water
+  mark without exposing registered scientific model or sampler payloads.
+- Requirement: The supervisor fairly rotates among registered sessions with dispatchable work;
+  one client cannot permanently monopolize every compatible idle worker.
+- Requirement: Goal conditions run only at a drained depth boundary; pending results and
+  provisional reservations are committed or explicitly retained in a resumable distributed
+  checkpoint before results can be exposed.
+- Requirement: Exact samples may differ when worker topology or completion latency changes, but
+  every topology preserves the constrained-prior and race-tree laws; topology invariance is not
+  promised as bitwise reproducibility.
+
+## Core Run Architecture
+
+- Requirement: The outer goal loop is Pythonic and calls a user-provided condition on `State`.
+- Requirement: Optional verbose progress uses existing scalar state, task counters, and Python
+  wall-clock timings at completed goal iterations, without constructing results or recomputing
+  evidence summaries for logging.
+- Requirement: One depth epoch is a pure JAX computation suitable for JIT compilation and
+  returns control at a depth boundary, capacity boundary, or explicit no-progress boundary.
+- Requirement: The compiled depth loop computes allocation gaps, selects parents, selects
+  stationary seeds, reparents seedless work, samples a fixed replacement width, and accepts that
+  work without host callbacks.
+- Requirement: Parallel replacement likelihood evaluation uses `jax.vmap`; logical chains
+  continue independently across slice-transition boundaries, and `jax.lax.map` is not used for
+  the replacement batch.
+- Requirement: Replacement width is static for a compiled depth epoch, while a validity mask
+  prevents unused lanes from changing scientific state or likelihood counts.
+- Requirement: Uniform allocation defaults to one root-population increment per allocation
+  iteration; utility-based allocation defaults to one replacement-width direct gap so ordinary
+  utility rounds do not leave most compiled sampler lanes idle.
+- Requirement: The depth hot path does not repeatedly sort all stored samples; append-order
+  samples are paired with a lightweight likelihood-order index and block reductions.
+- Requirement: Sample storage remains append ordered, and derived likelihood order is updated
+  without rewriting existing sample payload rows.
+- Requirement: Core functions remain linear and intent-commented; every non-obvious selection,
+  mask, lineage update, or numerical construction explains the scientific consequence that would
+  break if changed.
+- Requirement: Accelerated block, shrinkage, and phantom calculations retain a clear NumPy or
+  pure-Python reference implementation for correctness comparison.
+- Requirement: JAXCTX owns periodic prior declarations and their scoped metadata; JAXNS resolves
+  that metadata once per run into the constrained sampler and does not expose a second flat-index
+  topology API.
+- Requirement: Every isotropic slice transition draws a fresh state-independent random chart for
+  periodic coordinates, retains that chart across proposal retries, evaluates likelihoods in
+  canonical coordinates, and stores classic and phantom samples in the half-open unit cube.
+- Requirement: Static all-false periodic metadata preserves the exact ordinary sampler random-key
+  schedule and compiled hot path without modulo operations or device mask materialisation.
+- Requirement: Periodic coordinates fail during sampler validation when combined with the current
+  Euclidean ellipsoidal direction model; toroidal direction geometry requires separate evidence.
+
+## Capacity And Return State
+
+- Requirement: A finite `max_samples` is a scientific capacity limit; unlimited automatic growth
+  is an explicit opt-in mode rather than the default meaning of an omitted limit.
+- Requirement: The default finite maximum capacity is proportional to the root out-degree, with
+  a target default of approximately one thousand samples per root lineage unless the user
+  supplies a limit.
+- Requirement: The initial physical allocation is the root batch plus approximately 64
+  replacement batches, clamped to a finite maximum; it is smaller than a large finite maximum
+  so unused padding does not dominate compiled block operations.
+- Requirement: When unlimited growth is enabled and a depth epoch fills storage, the Python goal
+  loop doubles physical capacity sufficiently to fit the next full replacement batch and resumes
+  transparently after recompilation.
+- Requirement: `State` carries `needs_growth`, `depth_reached`, and a termination reason code so
+  callers do not infer return causes from unrelated counters or buffer sizes.
+- Requirement: Returning from a depth epoch solely because storage filled does not increment
+  `goal_loop_iter`.
+- Requirement: Resizing preserves every existing pytree leaf, likelihood-order entry, count,
+  diagnostic, and random key exactly.
+- Requirement: Padded storage entries contribute no prior volume, evidence, posterior mass,
+  block multiplicity, or lineage count.
+- Requirement: A result is built only after block capacity and lineage consistency have been
+  validated over the valid sample prefix.
+
+## Automatic Checkpointing
+
+- Requirement: Local and distributed run, run-until-goal, explicit-resume, and single-depth run
+  entry points accept a checkpoint directory and a cadence in seconds; checkpointing performs no
+  filesystem operation when the directory is omitted.
+- Requirement: Automatic checkpointing is opt-in and defaults to a one-hour cadence when a
+  checkpoint directory is supplied. Cadence is checked only at coherent Python depth boundaries,
+  and a changed final state is saved regardless of elapsed cadence.
+- Requirement: A checkpoint serializes the entire `State` or `DistributedState` through the
+  shared `Pytree.save` surface. Model, arguments, sampler, and runner compatibility are the
+  caller's responsibility and are not fingerprinted or inferred by the checkpoint layer.
+- Requirement: A state generation is written to a same-directory temporary file, flushed and
+  fsynced, checksummed with SHA-256, and atomically published before a final atomic `CHECKPOINT`
+  manifest commit. The containing directory is fsynced at each publication boundary on platforms
+  that support directory fsync.
+- Requirement: Loading verifies the exact manifest schema and state checksum before
+  deserialization. Missing, malformed, unsupported, incomplete, and checksum-mismatched
+  checkpoints fail with an actionable error rather than silently starting or rolling back.
+- Requirement: The newest two state generations are retained, but recovery never silently falls
+  back from a corrupt committed generation to an older state.
+- Requirement: One process owns a checkpoint-directory lock for the complete run so two writers
+  cannot resume and publish competing continuations.
+- Requirement: A retryable distributed execution error checkpoints the complete
+  `DistributedState`, including pending task identities, immutable requests, and provisional
+  reservations, before exposing the error when checkpointing is enabled.
+- Requirement: SIGINT checkpoints the latest coherent local or distributed continuation when
+  enabled, then propagates KeyboardInterrupt. Checkpointed local depths return after a bounded
+  number of replacement batches without host callbacks or extra goal evaluations. Distributed
+  interruption cancels only its own runtime session after saving pending requests, fencing busy
+  workers through the existing node restart lifecycle and preserving other registered sessions.
+- Requirement: Checkpoints use trusted Python pickle serialization and are recovery artifacts for
+  a compatible Python environment, not a safe untrusted-data or archival interchange format.
+
+## Allocation And Seed Scheduling
+
+- Requirement: Supported allocation targets are uniform, evidence improving, and posterior
+  improving.
+- Requirement: Allocation utilities use expectation-based block volumes and cumulative
+  reductions rather than Monte Carlo evidence draws inside the depth loop.
+- Requirement: Work planning selects at most the fixed replacement width of parent contours per
+  depth iteration without a full sort of sample payloads.
+- Requirement: Stationary seed eligibility is determined from each candidate's likelihood and
+  recorded parent contour.
+- Requirement: Seed reuse is prevented only among simultaneous children of the same parent
+  contour; seeds for distinct parent contours do not need to be globally distinct.
+- Requirement: If a requested parent has no stationary seed, work is reassigned to the closest
+  valid contour that has an eligible stationary seed and the child records that actual contour.
+- Requirement: Seed-reuse and reparenting event counters are not part of the user-facing result
+  schema.
+
+## Constrained Sampler
+
+- Requirement: The release sampler defaults to isotropic directions and perfect unit-hypercube
+  bracketing with greedy interval shrinkage, preserving isotropic directions as an explicit
+  correctness reference and fallback.
+- Requirement: New runs use exact isotropic directions. GMM direction fitting is a pure,
+  user-invoked transformation of immutable `State`; no fit or refinement occurs automatically in
+  a replacement batch, depth loop, or Python goal loop.
+- Requirement: An explicit GMM fit uses every stored classic and its expected posterior weight to
+  fit component locations and covariance geometry in homogeneous U-space. Stored likelihood
+  values fit each component's value at its mean; the fit does not call the user's likelihood.
+- Requirement: The conservative first-fit default is one full-covariance component. Additional
+  components are an explicit scientific choice; a warm refit preserves the existing component
+  count unless the user requests another one.
+- Requirement: A fitted component is eligible only when its fitted likelihood at the component
+  mean is strictly above the parent contour. Component selection is proportional to the volume of
+  its Gaussian ellipsoid lying above that contour, rather than its untrimmed covariance volume,
+  sample-hull volume, or empirical member maximum.
+- Requirement: `State.iso_directions()` forces exact isotropic directions without deleting a fit;
+  `State.gmm_directions()` re-enables a retained successful fit; and
+  `State.fit_gmm_directions()` fits or warm-refines and enables the GMM law. The enabled fit has an
+  independently configurable isotropic transition probability of one percent by default.
+- Requirement: Fitted geometry and the enabled direction mode are frozen for every complete
+  constrained chain and survive checkpoint/resume and sample-buffer growth.
+- Requirement: Gradient-guided directions, Galilean trajectories, and step-out bracketing are
+  not accepted by the release core until separately implemented and validated.
+- Requirement: Constrained chains are sampled at fixed replacement width and keep stable logical
+  IDs even though their likelihood-evaluation counts differ. Each physical likelihood call is a
+  fixed-width batch of the chains' ready proposals; finished lanes use `U=0.5` filler whose result
+  never enters scientific state or logical evaluation counts.
+- Requirement: Short or narrow chain batches retain complete-chain execution until representative
+  evidence shows that continuation bookkeeping is worthwhile; the current evidence-backed
+  boundaries are 32 slice transitions and eight lanes.
+- Requirement: Continuation batching preserves every chain's scalar PRNG stream, strict parent
+  contour, stationary seed, generated phantom order, classic child, and logical likelihood count.
+- Requirement: Retained phantoms are the earliest generated intermediate states of a
+  chain, are ordered as generated, and exclude the final classic child.
+- Requirement: Merely enabling phantom retention cannot change the number of slice transitions
+  or random choices that determine the final classic child.
+
+## Shrinkage And Evidence
+
+- Requirement: Singleton blocks set equality concentration and equality phantom contribution to
+  exactly zero and implement their complement as `A - B`.
+- Requirement: Plateau blocks use the paper's three-class concentrations with the configured
+  equality prior, whose current neutral value is epsilon equal to one half.
+- Requirement: The classic expectation calculation supplies depth conditions at planning or
+  drain boundaries and inexpensive state summaries; it is not maintained per replacement batch.
+- Requirement: State and result evidence summaries use classic expectation calculations.
+  A separately keyed Monte Carlo method defaults to classic shrinkage and explicitly opts
+  into phantom conditioning, returning its own evidence draws and summaries.
+- Requirement: The default phantom gate uses the Kish participating-cluster count with
+  `C_min = 20`, while public final-inference APIs may accept an explicit alternative threshold.
+- Requirement: One Gamma(1, 1) weight is drawn per phantom cluster and Monte Carlo draw and is
+  reused for all counts and blocks from that cluster.
+- Requirement: Monte Carlo shrinkage supports bounded batching so requested draw count does not
+  require materializing every draw and every block at once.
+- Requirement: Final evidence sampling defaults to an economical result without per-draw block
+  diagnostics and evaluates at most 64 independent draws per batch unless explicitly changed.
+- Requirement: Evidence batches execute sequentially at device runtime, or synchronize at a
+  host batching boundary, so asynchronous dispatch cannot make several nominally bounded
+  workspaces live concurrently.
+- Requirement: Batched per-block evidence moments are merged from first and second sufficient
+  statistics; batches are not averaged with equal weight when the final batch is partial.
+- Requirement: Phantom coordinates are not required for evidence conditioning once likelihoods,
+  validity, cluster identity, and parent-contour metadata have been retained.
+
+## Defaults And Scientific Comparability
+
+- Requirement: Unless explicitly overridden, root out-degree is thirty times unit-hypercube
+  dimensionality, slice transitions are five times dimensionality, and replacement width is at
+  most the root degree and targets ten times dimensionality.
+- Requirement: Default evidence stopping uses `log1p(1e-3)` so v2 and v3 scientific comparisons
+  use the same remaining-evidence condition.
+- Requirement: Benchmark comparisons explicitly report and match termination condition, root or
+  live-point count, slice count, phantom setting, hardware, precision, and compilation
+  treatment.
+- Requirement: Standard-problem acceptance retains the established tolerances in
+  `cicd/tests/test_ns_standard_problems.py`; v3 may not pass by loosening those tolerances.
+- Requirement: Standard-problem tests exercise phantom collection both disabled and enabled and
+  assess Monte Carlo evidence estimates against known expectations.
+- Requirement: Release evidence uses approximately thirty independent seeds per standard problem
+  and reports each problem separately rather than pooling unlike problems into one row.
+- Requirement: Per-problem release evidence reports log-evidence bias, root-mean-square error,
+  normalized-error mean and dispersion, reported uncertainty, likelihood evaluations, wall time,
+  and posterior diagnostics where a reference posterior exists.
+- Requirement: v2 and v3 performance comparisons use the same scientific stopping rule and
+  equivalent sampler budgets; defaults are never assumed silently in the report.
+- Requirement: Phantom-off and phantom-on comparisons report both how many phantoms were
+  retained and how many blocks passed the conditioning gate.
+- Requirement: Difficult multimodal problems, including spike-slab mode-weight recovery, are
+  judged on posterior mode weights as well as aggregate evidence error.
+- Requirement: Diagnostic artifacts for maintained benchmark runs include corner plots and
+  evidence or shrinkage diagnostics sufficient to investigate anomalous per-problem results.
+- Requirement: JAXNS v3 must be at least as accurate and performant as the latest released v2 on
+  the maintained standard-problem benchmark, with regressions explained and resolved before
+  release.
+
+## CI/CD Test Ownership
+
+- Requirement: `docs/design/INVARIANTS.md` is authored before existing tests are mapped to it so
+  the test suite cannot define the scientific contract retrospectively.
+- Requirement: `cicd/coverage_record.json` maps exact invariant text to non-empty lists of
+  uniquely named tests that genuinely exercise that invariant.
+- Requirement: Every discovered unit test is classified exactly once as invariant coverage or in
+  `cicd/non_invariant_test_coverage.json` with a path, reason, and note.
+- Requirement: Reviewer autochecks validate coverage-record integrity, test ownership,
+  repository structure, and review policy without pretending to be scientific invariant tests.
+- Requirement: Feature pull requests into `develop` run unit tests and reviewer autochecks,
+  while `develop` to `main` additionally runs system tests and the all-invariants-covered
+  pre-release gate.
+- Requirement: The unit-test workflow is a required pass for Python 3.10, 3.11, 3.12, 3.13, and
+  3.14.
+- Requirement: Pre-release autochecks fail when any design invariant lacks recorded test
+  coverage, even if all existing tests pass.
+- Requirement: System tests have an explicit design specification and validate composed public
+  behavior rather than private implementation state.
+- Requirement: Demos are executable, deterministic, network-independent examples of supported
+  user workflows and contain enough assertions to fail when the demonstrated contract drifts.
+- Requirement: Demos run automatically on `develop` after feature integration.
+- Requirement: Maintained benchmarks exercise production entry points, keep validation and
+  compilation outside timed steady-state regions, and record enough metadata for comparisons
+  across commits.
+- Requirement: Benchmark programs are not ordinary unit tests and do not make a pull request
+  fail solely because shared-runner wall time fluctuates.
+
+## Model And Configuration Ownership
+
+- Requirement: The runner owns its model and default depth condition. Constrained samplers
+  receive the model explicitly when executing a request rather than retaining another model.
+- Requirement: Local and distributed construction share default resolution. Distributed
+  execution neither constructs a local runner nor exposes a replacement width.
+- Requirement: Posterior resampling returns equally weighted posterior samples with integration
+  methods, without copying run-level evidence, uncertainty, ESS, or race metadata.

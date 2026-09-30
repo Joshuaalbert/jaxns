@@ -7,11 +7,11 @@ rm -rf dist/
 python -m venv env
 source env/bin/activate
 
-# upgrade pip, setuptools, wheel, and twine
-pip install --upgrade pip setuptools wheel twine
+# install the standards-based build and upload tools
+pip install --upgrade pip build twine
 
 # build the project
-python setup.py sdist bdist_wheel
+python -m build
 
 # check and upload
 twine check dist/* && twine upload dist/*

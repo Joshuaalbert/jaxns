@@ -1,0 +1,30 @@
+eggbox 600 210.11148648920877
+eggbox 800 210.11148648953605
+eggbox 1200 210.11148648953605
+rosenbrock 512 -43.1083549897311 [0.91780434 0.93580825 0.90357809 0.86001406 0.80347257 0.73379413
+ 0.65415366 0.57467311 0.52019974 0.55759036] [0.30134451 0.1550987  0.19792439 0.24317057 0.28864554 0.33268774
+ 0.37647831 0.43044656 0.53573511 0.87533324]
+rosenbrock 1024 -43.10835521465367 [0.91780433 0.93580824 0.90357807 0.86001402 0.80347251 0.73379404
+ 0.65415353 0.5746729  0.52019934 0.55758936] [0.30134452 0.15509871 0.1979244  0.24317059 0.28864555 0.33268773
+ 0.37647825 0.43044637 0.53573451 0.87533078]
+rosenbrock 2048 -43.108355214653514 [0.91780433 0.93580824 0.90357807 0.86001402 0.80347251 0.73379404
+ 0.65415353 0.5746729  0.52019934 0.55758936] [0.30134452 0.15509871 0.1979244  0.24317059 0.28864555 0.33268773
+ 0.37647825 0.43044637 0.53573451 0.87533078]
+Traceback (most recent call last):
+  File "/tmp/posterior10-reference.py", line 75, in <module>
+    np.testing.assert_allclose([r['log_Z'] for r in records['eggbox10']], records['eggbox10'][-1]['log_Z'], atol=1e-10, rtol=0)
+  File "/data/albert/miniconda3/envs/jaxns_py/lib/python3.12/site-packages/numpy/testing/_private/utils.py", line 1768, in assert_allclose
+    assert_array_compare(compare, actual, desired, err_msg=str(err_msg),
+  File "/data/albert/miniconda3/envs/jaxns_py/lib/python3.12/site-packages/numpy/testing/_private/utils.py", line 983, in assert_array_compare
+    raise AssertionError(msg)
+AssertionError: 
+Not equal to tolerance rtol=0, atol=1e-10
+
+Mismatched elements: 1 / 3 (33.3%)
+Mismatch at index:
+ [0]: 210.11148648920877 (ACTUAL), 210.11148648953605 (DESIRED)
+Max absolute difference among violations: 3.27275984e-10
+Max relative difference among violations: 1.55763014e-12
+ ACTUAL: array([210.111486, 210.111486, 210.111486])
+ DESIRED: array(210.111486)
+ERROR conda.cli.main_run:execute(125): `conda run taskset -c 4 python /tmp/posterior10-reference.py` failed. (See above for error)

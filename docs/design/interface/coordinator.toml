@@ -1,0 +1,15 @@
+[runtime]
+stack_id = "cluster-science"
+node_id = "main"
+runtime_dir = ".runtime"
+log_dir = ".logs"
+heartbeat_interval_s = 2
+missed_heartbeats = 2
+program_cache_size = 4
+
+# The coordinator always binds this port on all interfaces. Remote node
+# configs name a hostname or address by which they can reach this machine.
+[network]
+port = 5555
+
+# The coordinator may also own local device workers by adding [[workers]].
