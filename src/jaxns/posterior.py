@@ -85,15 +85,24 @@ def _integrate_posterior(
         batch_size: int | None,
 ) -> MF:
     """Apply the same signed, stable integration rule to either measure."""
+    # Evaluate zero-mass rows at one supported observation. Masking the output
+    # alone cannot stop undefined derivatives at padded inputs entering AD.
+    supported_index = jnp.argmax(log_weights)
+    supported_X = jax.tree.map(lambda x: x[supported_index], X_samples)
+
     def kernel(x):
         weight, X = x
+        zero_mass = jnp.isneginf(weight.log_abs_val)
+        X = jax.tree.map(
+            lambda value, supported: jnp.where(zero_mass, supported, value),
+            X, supported_X,
+        )
         values = fn(X)
 
         def increment(value):
-            # A function may be undefined outside posterior support (including
-            # zero-filled storage). Such rows contribute exactly zero, even if
-            # evaluating the function there produced NaN or infinity.
-            value = jnp.where(jnp.isneginf(weight.log_abs_val), 0, value)
+            # Keep the logarithm differentiable on ignored rows. Multiplication
+            # by their exact zero weight still contributes zero to the integral.
+            value = jnp.where(zero_mass, 1, value)
             if semi_positive:
                 # The function returns ordinary values, not their logarithms.
                 f = LogSpace(jnp.log(value))

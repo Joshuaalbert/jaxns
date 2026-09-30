@@ -295,6 +295,7 @@
     "test_sentinel_threads_do_not_select_or_reserve_stationary_seeds"
   ],
   "Integrating a function over the posterior uses the result's normalized posterior measure and preserves the function's pytree structure.": [
-    "test_posterior_integration_ignores_undefined_zero_mass_rows"
+    "test_posterior_integration_ignores_undefined_zero_mass_rows",
+    "test_posterior_integration_padding_preserves_parameter_gradients"
   ]
 }

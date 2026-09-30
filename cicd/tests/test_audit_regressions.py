@@ -77,6 +77,26 @@ def test_posterior_integration_ignores_undefined_zero_mass_rows(
     jax.tree.map(np.testing.assert_allclose, actual, expected)
 
 
+@pytest.mark.parametrize("batch_size", [None, 3])
+@pytest.mark.parametrize("semi_positive", [False, True])
+def test_posterior_integration_padding_preserves_parameter_gradients(
+        batch_size, semi_positive,
+):
+    results = NestedSampler(
+        make_toy_model(), root_allocation_degree=4, initial_capacity=16,
+    ).initialise().to_result()
+
+    def objective(theta, samples):
+        return samples.integrate_fn_over_posterior(
+            lambda x: jnp.log(theta * x) ** 2 + 1 / (theta * x),
+            semi_positive=semi_positive, batch_size=batch_size,
+        )
+
+    expected = jax.value_and_grad(objective)(jnp.asarray(2.0), results.trim())
+    actual = jax.value_and_grad(objective)(jnp.asarray(2.0), results)
+    jax.tree.map(np.testing.assert_allclose, actual, expected)
+
+
 def test_posterior_resampling_rejects_without_replacement():
     results = NestedSampler(
         make_toy_model(), root_allocation_degree=2,

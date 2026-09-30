@@ -91,3 +91,25 @@ To reproduce, build `STANDARD_PROBLEM_CASES_BY_NAME["jones_scalar"]` from
 `UniDimSliceSampler(num_slices=20, collect_phantom_samples=True,
 max_phantom_samples=19)` to the runner. On the candidate, the default sampler
 retains all 19 when `collect_phantom_samples=True`.
+
+## Posterior integration and gradients
+
+The padding regression also covers derivatives with respect to integrand
+parameters. Before the final boundary fix, a function containing `log(theta*x)`
+or `1/(theta*x)` produced a NaN gradient at padded `x=0`, despite the zero
+posterior weight. Padded and trimmed values and gradients now agree for both
+integration modes, with and without batching.
+
+A matched moments calculation uses 16,384 ten-dimensional normal samples
+(key 307), equal normalised weights on the first 12,288 rows, zero weight on
+the rest, batch size 128, and integrand `x**2 + 1`. The ten returned values
+match the parent exactly. Compiler-reported temporary memory is 20,896 B before
+and 21,032 B after (+136 B), with unchanged arguments (1,441,792 B) and output
+(80 B). The fix selects one supported observation for evaluating ignored rows
+and retains their zero weight, without copying the posterior or adding state.
+
+In 51 alternating, synchronised warm calls in the same process, medians were
+8.06 ms before and 8.26 ms after; ranges were 5.70–15.62 ms and 5.87–15.05 ms.
+Other tests were running, so these timings do not establish a speed difference.
+The additional work is confined to posterior integration; the sampling program
+and the exact end-to-end comparisons above are unchanged.
