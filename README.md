@@ -27,9 +27,16 @@ JAXNS can:
 4. Model continuous and discrete variables.
 5. Scale from a laptop to a cluster of thousands of accelerators.
 
-The original JAXNS paper is available on
-[arXiv](https://arxiv.org/abs/2012.15286), as is the paper on
-[phantom-powered nested sampling](https://arxiv.org/abs/2312.11330).
+JAXNS v3 is described in
+[Phantom-Conditioned Nested Sampling](https://arxiv.org/abs/2609.32120)
+(Albert, 2026). Read and cite this preprint for the current algorithm, phantom
+conditioning, and dynamic allocation schemes.
+
+The previous
+[Phantom-Powered Nested Sampling](https://arxiv.org/abs/2312.11330) paper is
+redacted. The [original JAXNS paper](https://arxiv.org/abs/2012.15286) remains
+valid as a reference for JAXNS's high performance, but its description of the
+algorithm is superseded by the v3 paper.
 
 # Install
 
