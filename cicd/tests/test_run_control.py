@@ -17,8 +17,9 @@ from jaxns.state import State
 
 
 @pytest.mark.parametrize("batch_budget", [1, 128])
+@pytest.mark.parametrize("covariance", [False, True])
 def test_local_sigint_saves_partial_depth_and_replays_exactly(
-        tmp_path, monkeypatch, batch_budget,
+        tmp_path, monkeypatch, batch_budget, covariance,
 ):
     runner = NestedSampler(
         model=make_toy_model(), root_allocation_degree=4, delta_K=4,
@@ -27,6 +28,8 @@ def test_local_sigint_saves_partial_depth_and_replays_exactly(
         depth_condition=DepthCondition(dlogZ=jnp.asarray(0.1)),
     )
     initial = runner.initialise(jax.random.PRNGKey(302))
+    if covariance:
+        initial = initial.covariance_directions()
     expected = runner.resume_until_goal(
         initial, lambda state: int(state.goal_loop_iter) >= 2,
     )

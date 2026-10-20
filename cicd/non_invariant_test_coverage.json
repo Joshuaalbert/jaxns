@@ -995,6 +995,41 @@
       "path": "cicd/tests/test_audit_regressions.py",
       "reason": "configuration_contract",
       "note": "Unwrapping JIT must preserve ordinary Python decorators that change the model likelihood."
+    },
+    "test_covariance_uses_strict_contour_and_excludes_padding": {
+      "note": "Checks the experimental direction-fit population and NumPy covariance reference; geometry does not define seed eligibility.",
+      "path": "cicd/tests/test_covariance_directions.py",
+      "reason": "configuration_contract"
+    },
+    "test_covariance_refreshes_after_one_efold_in_either_direction": {
+      "note": "Checks the experimental refresh cadence and persisted refresh position.",
+      "path": "cicd/tests/test_covariance_directions.py",
+      "reason": "configuration_contract"
+    },
+    "test_isotropic_core_keeps_singular_covariance_positive": {
+      "note": "Checks additive covariance regularisation, including completely collapsed input.",
+      "path": "cicd/tests/test_covariance_directions.py",
+      "reason": "configuration_contract"
+    },
+    "test_cholesky_directions_use_covariance_not_its_inverse": {
+      "note": "Checks the orientation of the whitening map on a structured unit-coordinate pytree.",
+      "path": "cicd/tests/test_covariance_directions.py",
+      "reason": "configuration_contract"
+    },
+    "test_covariance_directions_preserve_model_unit_dtype": {
+      "note": "Checks that measure-precision covariance does not promote the model-owned unit-coordinate dtype.",
+      "path": "cicd/tests/test_covariance_directions.py",
+      "reason": "configuration_contract"
+    },
+    "test_covariance_scalar_sampler_retains_frozen_geometry": {
+      "note": "Checks immutable geometry transport and periodic-coordinate rejection.",
+      "path": "cicd/tests/test_covariance_directions.py",
+      "reason": "configuration_contract"
+    },
+    "test_covariance_configuration_rejects_invalid_scales": {
+      "note": "Checks finite positive regularisation and refresh interval validation.",
+      "path": "cicd/tests/test_covariance_directions.py",
+      "reason": "configuration_contract"
     }
   }
 }

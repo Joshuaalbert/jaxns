@@ -18,7 +18,13 @@ from jaxns.types import BoolArray, FloatArray, IntArray, PRNGKey, UType
 
 
 @partial(jax.jit, inline=True)
-def _sample_direction(key: PRNGKey, u0: TreeField[UType], radii: TreeField[UType] | None = None, rotation: UType | None = None) -> TreeField[UType]:
+def _sample_direction(
+        key: PRNGKey,
+        u0: TreeField[UType],
+        radii: TreeField[UType] | None = None,
+        rotation: UType | None = None,
+        cholesky: FloatArray | None = None,
+) -> TreeField[UType]:
     """
     Choose a direction randomly from S^(D-1).
 
@@ -33,6 +39,13 @@ def _sample_direction(key: PRNGKey, u0: TreeField[UType], radii: TreeField[UType
     if ndim == 1:
         return u0.ones_like()
     direction = u0.random_normal_like(key)
+    if cholesky is not None:
+        # Isotropic in whitened coordinates means multiplying by L in U-space,
+        # where L L' = covariance. The inverse would amplify the stiff axis.
+        flat, unravel = pytree_ravel(direction.tree)
+        # Geometry may be accumulated in measure precision while the model
+        # owns a narrower U-space dtype. Never promote its prior coordinates.
+        direction = TreeField(unravel(cholesky.astype(flat.dtype) @ flat))
     if radii is not None:
         direction = radii * direction
     if rotation is not None:
@@ -272,6 +285,7 @@ def _new_proposal(
         log_likelihood_fn: Callable[[UType], FloatArray],
         periodic: tuple[bool, ...] = (),
         sampler_data: SamplerData | None = None,
+        direction_cholesky: FloatArray | None = None,
 ) -> tuple[
     TreeField[UType],
     FloatArray,
@@ -394,7 +408,9 @@ def _new_proposal(
     num_likelihood_evaluations = carry.num_likelihood_evaluations
     # Randomly choose a new direction
     if sampler_data is None:
-        direction = _sample_direction(after_key, direction)
+        direction = _sample_direction(
+            after_key, direction, cholesky=direction_cholesky,
+        )
         direction_isotropic = jnp.asarray(True, mp_policy.bool_dtype)
     else:
         direction, direction_isotropic = _draw_ellipsoidal_direction(

@@ -195,7 +195,8 @@
     "test_ellipsoidal_state_survives_checkpoint_growth_and_resume",
     "test_user_stages_gmm_directions_between_uncertainty_goals",
     "test_distributed_resume_registers_the_checkpoint_model",
-    "test_zero_plateau_survives_allocation_and_checkpoint_round_trip"
+    "test_zero_plateau_survives_allocation_and_checkpoint_round_trip",
+    "test_refresh_uses_classic_volume_and_state_retains_geometry"
   ],
   "A finite scientific sample limit is never exceeded, including by a partially filled replacement batch.": [
     "test_finite_capacity_terminates_below_and_exactly_at_hard_maximum",
@@ -245,7 +246,8 @@
     "test_distributed_completion_order_preserves_scientific_state",
     "test_worker_request_uses_scalar_and_vmap_paths_above_strict_contour",
     "test_periodic_scalar_and_vmapped_chains_share_one_transition_law",
-    "test_real_pool_runs_scalar_vmap_retries_and_cli_lifecycle"
+    "test_real_pool_runs_scalar_vmap_retries_and_cli_lifecycle",
+    "test_covariance_scalar_and_continued_chains_agree"
   ],
   "Every emitted classic child satisfies its recorded parent contour strictly.": [
     "test_worker_request_uses_scalar_and_vmap_paths_above_strict_contour",
