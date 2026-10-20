@@ -7,6 +7,8 @@ default and GMM workflow are unchanged.
 See [REPORT.md](REPORT.md) for the completed 30-seed curved comparison,
 ten-seed straight controls, validation, and limitations. The covariance change
 improves the curved toy substantially but does not recover its posterior.
+The [evidence-allocation follow-up](EVIDENCE_REPORT.md) repeats allocation until
+the classic log-evidence uncertainty reaches 0.1.
 
 ## Direction law
 
