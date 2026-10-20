@@ -4,6 +4,10 @@ Tracks [issue #312](https://github.com/Joshuaalbert/jaxns/issues/312).
 Base: `9efa455`. This is an opt-in local experiment; the released isotropic
 default and GMM workflow are unchanged.
 
+See [REPORT.md](REPORT.md) for the completed 30-seed curved comparison,
+ten-seed straight controls, validation, and limitations. The covariance change
+improves the curved toy substantially but does not recover its posterior.
+
 ## Direction law
 
 At a local dispatch boundary, take the shallowest non-root parent contour
