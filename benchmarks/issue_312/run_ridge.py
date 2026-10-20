@@ -3,6 +3,7 @@
 import argparse
 import hashlib
 import json
+import math
 import os
 import platform
 import subprocess
@@ -39,10 +40,20 @@ def main():
     parser.add_argument("--roots", type=int, default=150)
     parser.add_argument("--slices", type=int, default=90)
     parser.add_argument("--width", type=int, default=None)
+    parser.add_argument(
+        "--allocation-target", choices=("uniform", "evidence_improving"),
+        default="uniform",
+    )
+    parser.add_argument("--log-z-uncert", type=float, default=None)
+    parser.add_argument("--checkpoint-dir", type=Path, default=None)
     parser.add_argument("--cpu", type=int, default=None)
     parser.add_argument("--warmup", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--output", type=Path, required=True)
     options = parser.parse_args()
+    if options.log_z_uncert is not None and (
+        not math.isfinite(options.log_z_uncert) or options.log_z_uncert <= 0
+    ):
+        parser.error("--log-z-uncert must be finite and positive")
     if options.cpu is not None:
         os.sched_setaffinity(0, {options.cpu})
     # Pin before importing libraries that initialise backend/thread pools.
@@ -64,18 +75,56 @@ def main():
         root_allocation_degree=options.roots,
         sampler=UniDimSliceSampler(num_slices=options.slices),
         replacement_width=options.width,
+        allocation_target=options.allocation_target,
+        # A requested uncertainty goal must not silently become a sample-cap
+        # comparison. The runner grows storage at its existing safe boundaries.
+        unlimited_samples=options.log_z_uncert is not None,
     )
+    options.output.parent.mkdir(parents=True, exist_ok=True)
+    progress_path = options.output.with_suffix(".progress.jsonl")
 
-    def run(seed):
+    def run(seed, record_progress=True):
+        started = time.monotonic()
         state = runner.initialise(key=jax.random.PRNGKey(seed))
         if options.mode == "covariance":
             state = state.covariance_directions(
                 relative_regularisation=options.regularisation,
                 refresh_efolds=options.refresh_efolds,
             )
-        # Both arms finish the same first complete default-depth epoch.
+
+        def goal(current):
+            if options.log_z_uncert is None:
+                # Preserve the original single-epoch direction comparison.
+                return int(current.goal_loop_iter) > 0
+            if int(current.goal_loop_iter) == 0:
+                return False
+            uncertainty = float(current.expected_log_Z_uncert)
+            if record_progress:
+                progress = {
+                    "seed": seed,
+                    "mode": options.mode,
+                    "allocation_target": options.allocation_target,
+                    "epoch": int(current.goal_loop_iter),
+                    "samples": int(current.num_samples),
+                    "evaluations": int(current.total_num_likelihood_evaluations),
+                    "log_Z": float(current.expected_log_Z_mean),
+                    "log_Z_uncert": uncertainty,
+                    "seconds": time.monotonic() - started,
+                    "geometry_updates": (
+                        0 if current.covariance_data is None
+                        else int(current.covariance_data.num_updates)
+                    ),
+                }
+                with progress_path.open("a") as stream:
+                    stream.write(json.dumps(progress) + "\n")
+                print(json.dumps(progress), flush=True)
+            return uncertainty <= options.log_z_uncert
+
+        checkpoint_dir = None
+        if record_progress and options.checkpoint_dir is not None:
+            checkpoint_dir = options.checkpoint_dir / f"seed-{seed}"
         state = runner.resume_until_goal(
-            state, lambda current: int(current.goal_loop_iter) > 0,
+            state, goal, checkpoint_dir=checkpoint_dir, checkpoint_cadence=0,
         )
         return jax.block_until_ready(state.to_result()), state
 
@@ -99,13 +148,15 @@ def main():
         "roots": options.roots,
         "slices": options.slices,
         "width": options.width,
+        "allocation_target": options.allocation_target,
+        "target_log_Z_uncert": options.log_z_uncert,
+        "unlimited_samples": options.log_z_uncert is not None,
         "float64": True,
     }
     if options.warmup:
         started = time.monotonic()
-        run(options.seeds[0])
+        run(options.seeds[0], record_progress=False)
         metadata["warmup_seconds_including_compilation"] = time.monotonic() - started
-    options.output.parent.mkdir(parents=True, exist_ok=True)
     peak = (
         -np.log(options.sigma_stiff * np.sqrt(2 * np.pi))
         - 14 * np.log(0.05 * np.sqrt(2 * np.pi))
@@ -159,6 +210,14 @@ def main():
             ),
             "termination_reason": int(state.termination_reason),
             "depth_reached": bool(state.depth_reached),
+            "epochs": int(state.goal_loop_iter),
+            "goal_reached": (
+                bool(state.depth_reached) and int(state.termination_reason) == 0
+                and (
+                    options.log_z_uncert is None
+                    or float(state.expected_log_Z_uncert) <= options.log_z_uncert
+                )
+            ),
         }
         with options.output.open("a") as stream:
             stream.write(json.dumps(record) + "\n")

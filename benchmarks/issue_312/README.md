@@ -73,6 +73,27 @@ deviations are `1/sqrt(12)` for the three flat coordinates and `0.05` for x5.
 The script also compares inferred volume with the analytic interior-contour
 volume of a sheared 15-ball.
 
+For repeated evidence-improving allocation to a classic uncertainty goal:
+
+```bash
+PYTHONPATH=src JAX_ENABLE_X64=1 conda run --no-capture-output -n jaxns_py \
+  python benchmarks/issue_312/run_ridge.py \
+  --mode covariance --allocation-target evidence_improving --log-z-uncert 0.1 \
+  --seeds 0 --cpu 2 --no-warmup \
+  --checkpoint-dir /tmp/issue312-evidence-covariance-0 \
+  --output benchmarks/issue_312/raw/evidence-covariance-0.jsonl
+```
+
+This retains the default per-epoch depth condition,
+`dlogZ=log1p(1e-3)` and no `cummax_XL_frac` cutoff. It repeats epochs until
+`state.expected_log_Z_uncert <= 0.1`, with unlimited automatic sample-buffer
+growth so the default sample cap cannot substitute for the requested goal.
+The sibling `.progress.jsonl` file records each completed epoch. Checkpoints
+are optional and saved at each epoch; reuse the same command to resume an
+interrupted run. Use a separate checkpoint directory for each configuration.
+`--no-warmup` avoids duplicating the full multi-epoch run; its elapsed time
+includes compilation and should not be read as steady-state throughput.
+
 The equivalent application-side opt-in is:
 
 ```python
