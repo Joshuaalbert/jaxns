@@ -10,20 +10,14 @@ import time
 from functools import partial
 from pathlib import Path
 
-import jax
-import numpy as np
-from jax import numpy as jnp
-from scipy.special import gammaln
-from tensorflow_probability.substrates.jax import distributions as tfpd
-
-from jaxns.constrained_sampler import UniDimSliceSampler
-from jaxns.core import NestedSampler
-from jaxns.model import Model
-from jaxns.priors import Prior
-
 
 def prior_model(sigma_stiff: float, curvature: float):
     """Use curvature=0 to isolate linear anisotropy from a curved ridge."""
+    from jax import numpy as jnp
+    from tensorflow_probability.substrates.jax import distributions as tfpd
+
+    from jaxns.priors import Prior
+
     x = Prior(
         tfpd.Uniform(low=jnp.zeros(18), high=jnp.ones(18)), name="x",
     ).realise()
@@ -51,7 +45,17 @@ def main():
     options = parser.parse_args()
     if options.cpu is not None:
         os.sched_setaffinity(0, {options.cpu})
+    # Pin before importing libraries that initialise backend/thread pools.
+    # Changing only the main thread's affinity afterwards is insufficient.
+    import jax
+    import numpy as np
+    from scipy.special import gammaln
+
     jax.config.update("jax_enable_x64", True)
+    from jaxns.constrained_sampler import UniDimSliceSampler
+    from jaxns.core import NestedSampler
+    from jaxns.model import Model
+
     model = Model(prior_model=partial(
         prior_model, options.sigma_stiff, options.curvature,
     ))
