@@ -1,9 +1,12 @@
 # Slice geometry and full-cube bracketing
 
-Read-only review following the [180-slice experiment](SLICE_COUNT_REPORT.md).
-The production sampler is unchanged. Reproducible diagnostics are in
+Original review at `b6c45d4`, following the [180-slice experiment](SLICE_COUNT_REPORT.md).
+The cube-face bug described below is now fixed on this branch under
+[issue #313](https://github.com/Joshuaalbert/jaxns/issues/313). The reported
+ridge experiments predate that fix. Reproducible diagnostics are in
 [diagnose_geometry.py](diagnose_geometry.py), with numerical output in
-[geometry_diagnostics.json](geometry_diagnostics.json).
+[geometry_diagnostics.json](geometry_diagnostics.json) before the fix and
+[geometry_diagnostics_fixed.json](geometry_diagnostics_fixed.json) after it.
 
 ## What the code brackets
 
@@ -101,20 +104,19 @@ curved `(x0, x1)` ridge.
 
 ## Confirmed cube-face boundary bug
 
-The production `_slice_bounds` classifies intersections using both `t >= 0`
-and `t <= 0`. An intersection at zero is therefore assigned to both endpoints.
-For an anchor exactly on a cube face, this can collapse the bracket:
+The implementation reviewed at `b6c45d4` classified intersections using both
+`t >= 0` and `t <= 0`. An intersection at zero was therefore assigned to both
+endpoints. For an anchor exactly on a cube face, this collapsed the bracket:
 
-| Anchor | Direction | Correct bounds | Actual bounds |
+| Anchor | Direction | Correct bounds | Bounds before the fix |
 | --- | --- | --- | --- |
 | `(0.25, 0.5)` | `(1, 0.1)` | `[-0.25, 0.75]` | `[-0.25, 0.75]` |
 | `(0, 0.5)` | `(1, 0.1)` | `[0, 1]` | `[0, 0]` |
 | `(1, 0.5)` | `(-1, 0.1)` | `[0, 1]` | `[0, 0]` |
 
 Calling production `_new_proposal` with constant log likelihood 1 and contour
-0 returns the unchanged face anchor after one accepted evaluation. Dense random
-directions cannot release such an anchor from the face with these bounds.
-This is a concrete numerical edge case that should be fixed separately.
+0 returned the unchanged face anchor after one accepted evaluation. Dense random
+directions could not release such an anchor from the face with those bounds.
 
 The three final 180-slice checkpoints contain 2, 3 and 1 exact-face classic
 rows respectively, out of 98,832, 89,439 and 96,372 rows. Their combined
@@ -123,6 +125,28 @@ out-of-cube classic rows. These observations do not support the boundary bug
 as the main explanation for the toy's posterior collapse; an A/B fix would be
 needed to quantify any earlier genealogical effect. Boundary-heavy pRT
 posteriors have not been checked.
+
+## Boundary fix
+
+The shared `_slice_bounds` routine now orders each coordinate's two face
+intersections and intersects those coordinate intervals. An exact-zero
+direction component contributes `[-inf, inf]`; its denominator is replaced
+before division so a parallel face cannot produce `0/0`. This preserves
+genuinely zero-length chords at corners where neither direction enters the cube.
+Both scalar and continued chains use this routine.
+
+The original lower-face regression fails against the old implementation and
+passes with the fix. All 54 regression cases in
+`cicd/tests/test_slice_bounds.py` pass, covering lower/upper faces, both direction
+signs, tangent directions, corners, structured coordinates, both float32 and
+float64 bounds, full-chord proposals, and scalar/continued chains with isotropic
+or covariance directions. The saved post-fix diagnostic now returns `[0, 1]`
+and moves away from the seed for both face examples.
+
+This correction does not change the full-cube bracketing policy, direction
+law, allocation, or strict likelihood test. It does not establish recovery of
+the curved-ridge posterior; the evidence benchmarks have not been rerun with
+the boundary fix.
 
 ## Reproduction
 

@@ -12,7 +12,8 @@ the classic log-evidence uncertainty reaches 0.1.
 The [slice-count comparison](SLICE_COUNT_REPORT.md) tests 180 versus 90
 transitions at that same goal. The [geometry review](GEOMETRY_REVIEW.md)
 examines full-cube bracketing, disconnected line slices, curvature, and a
-reproduced cube-face boundary bug.
+reproduced cube-face boundary bug, subsequently fixed under
+[issue #313](https://github.com/Joshuaalbert/jaxns/issues/313).
 
 ## Direction law
 

@@ -22,6 +22,9 @@ repeat mistakes specific to this project. Keep learnings compact.
 - Keep the replacement vmap narrower than the root population on difficult
   targets. On the issue-247 10D mixture, S=100 took 20.9 s while S=150 took
   215.6 s because data-dependent rejection loops execute to the slowest lane.
+- Intersect per-coordinate entry/exit intervals for slice cube bounds.
+  Classifying a zero intersection as both signs traps face seeds; zero
+  direction components need an unrestricted interval and a safe denominator.
 - Singleton likelihood blocks are the paper's exact two-class `Beta(K, 1)`
   race, not a three-class Dirichlet with a tiny equality atom. Sampling them as
   `U**(1/K)` both preserves the model and avoids dominant Gamma-sampling cost.

@@ -212,34 +212,49 @@ def _draw_ellipsoidal_direction(
 
 
 @partial(jax.jit, inline=True)
-def _slice_bounds(point_U0: TreeField[UType], direction: TreeField[UType]) -> tuple[FloatArray, FloatArray]:
-    """
-    Compute the slice bounds, t, where point_U0 + direction * t intersects uit cube boundary.
+def _slice_bounds(
+        point_U0: TreeField[UType],
+        direction: TreeField[UType],
+) -> tuple[FloatArray, FloatArray]:
+    """Intersect the line ``point_U0 + direction * t`` with the unit cube.
 
     Args:
-        point_U0: starting point of slice
-        direction: direction of slice
+        point_U0: Anchor in the closed unit cube, including its faces.
+        direction: Nonzero line direction, with the same structure as the anchor.
 
     Returns:
-        left_bound: left most point (<= 0).
-        right_bound: right most point (>= 0).
+        The lower and upper displacement bounds, containing zero. Coordinates
+        parallel to a cube face impose no restriction on the line interval.
     """
     leaf_dtype = jax.tree.leaves(point_U0)[0].dtype
     zero = jnp.zeros((), leaf_dtype)
     one = jnp.ones((), leaf_dtype)
     inf = jnp.full((), jnp.inf, leaf_dtype)
-    t1 = (one - point_U0) / direction
-    t1_right = jax.tree.reduce(lambda x, y: jnp.minimum(jnp.min(jnp.where(x >= zero, x, inf)), jnp.min(jnp.where(y >= zero, y, inf))), t1,
-                               initializer=jnp.inf)
-    t1_left = jax.tree.reduce(lambda x, y: jnp.maximum(jnp.max(jnp.where(x <= zero, x, -inf)), jnp.max(jnp.where(y <= zero, y, -inf))), t1,
-                              initializer=-jnp.inf)
-    t0 = -point_U0 / direction
-    t0_right = jax.tree.reduce(lambda x, y: jnp.minimum(jnp.min(jnp.where(x >= zero, x, inf)), jnp.min(jnp.where(y >= zero, y, inf))), t0,
-                               initializer=jnp.inf)
-    t0_left = jax.tree.reduce(lambda x, y: jnp.maximum(jnp.max(jnp.where(x <= zero, x, -inf)), jnp.max(jnp.where(y <= zero, y, -inf))), t0,
-                              initializer=-jnp.inf)
-    right_bound = jnp.minimum(t0_right, t1_right)
-    left_bound = jnp.maximum(t0_left, t1_left)
+    # A stationary coordinate admits every t. Avoid 0/0 on a parallel face
+    # before replacing that coordinate's interval with [-inf, inf].
+    denominator = jax.tree.map(
+        lambda value: jnp.where(value == zero, one, value), direction,
+    )
+    t0 = -point_U0 / denominator
+    t1 = (one - point_U0) / denominator
+    # Order each coordinate's two face intersections before intersecting the
+    # intervals. Classifying t=0 as both signs would trap exact-face anchors.
+    lower = jax.tree.map(
+        lambda a, b, d: jnp.where(d == zero, -inf, jnp.minimum(a, b)),
+        t0, t1, direction,
+    )
+    upper = jax.tree.map(
+        lambda a, b, d: jnp.where(d == zero, inf, jnp.maximum(a, b)),
+        t0, t1, direction,
+    )
+    left_bound = jax.tree.reduce(
+        lambda bound, values: jnp.maximum(bound, jnp.max(values)),
+        lower, initializer=-inf,
+    )
+    right_bound = jax.tree.reduce(
+        lambda bound, values: jnp.minimum(bound, jnp.min(values)),
+        upper, initializer=inf,
+    )
     return left_bound, right_bound
 
 

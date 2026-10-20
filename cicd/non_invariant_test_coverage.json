@@ -1026,6 +1026,21 @@
       "path": "cicd/tests/test_covariance_directions.py",
       "reason": "configuration_contract"
     },
+    "test_slice_bounds_intersect_cube_faces": {
+      "note": "Checks analytic line-cube intervals at interior points, faces and corners, including signed zero direction components and structured coordinates in both precisions.",
+      "path": "cicd/tests/test_slice_bounds.py",
+      "reason": "utility_behavior"
+    },
+    "test_face_slice_proposals_explore_valid_chord": {
+      "note": "Regresses exact-face seed trapping by checking full-chord movement under a constant likelihood; boundary seeds are not a stationary ensemble.",
+      "path": "cicd/tests/test_slice_bounds.py",
+      "reason": "utility_behavior"
+    },
+    "test_boundary_seeds_escape_in_scalar_and_continued_chains": {
+      "note": "Checks that ordinary and covariance chains escape cube-face seeds in scalar and continuation execution with matching outputs and evaluation counts.",
+      "path": "cicd/tests/test_slice_bounds.py",
+      "reason": "utility_behavior"
+    },
     "test_covariance_configuration_rejects_invalid_scales": {
       "note": "Checks finite positive regularisation and refresh interval validation.",
       "path": "cicd/tests/test_covariance_directions.py",

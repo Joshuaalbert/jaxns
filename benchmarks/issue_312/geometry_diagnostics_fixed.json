@@ -1,0 +1,102 @@
+{
+  "production_bounds": [
+    {
+      "point": [
+        0.25,
+        0.5
+      ],
+      "direction": [
+        1.0,
+        0.1
+      ],
+      "expected_bounds": [
+        -0.25,
+        0.75
+      ],
+      "actual_bounds": [
+        -0.25,
+        0.75
+      ],
+      "constant_likelihood_child": [
+        0.08062436666431605,
+        0.4830624366664316
+      ],
+      "evaluations": 1
+    },
+    {
+      "point": [
+        0.0,
+        0.5
+      ],
+      "direction": [
+        1.0,
+        0.1
+      ],
+      "expected_bounds": [
+        0.0,
+        1.0
+      ],
+      "actual_bounds": [
+        -0.0,
+        1.0
+      ],
+      "constant_likelihood_child": [
+        0.08062436666431605,
+        0.5080624366664316
+      ],
+      "evaluations": 1
+    },
+    {
+      "point": [
+        1.0,
+        0.5
+      ],
+      "direction": [
+        -1.0,
+        0.1
+      ],
+      "expected_bounds": [
+        0.0,
+        1.0
+      ],
+      "actual_bounds": [
+        -0.0,
+        1.0
+      ],
+      "constant_likelihood_child": [
+        0.919375633335684,
+        0.5080624366664316
+      ],
+      "evaluations": 1
+    }
+  ],
+  "connected_full_cube": {
+    "draws": 100000,
+    "half_width": 1e-05,
+    "bracket_half_width": 0.5,
+    "mean_evaluations": 21.24219,
+    "accepted_std": 5.7632421533079575e-06,
+    "distant_interval_fraction": null
+  },
+  "connected_tighter_bracket": {
+    "draws": 100000,
+    "half_width": 1e-05,
+    "bracket_half_width": 0.0001,
+    "mean_evaluations": 4.41083,
+    "accepted_std": 5.781397733926075e-06,
+    "distant_interval_fraction": null
+  },
+  "disconnected_full_cube": {
+    "draws": 100000,
+    "half_width": 0.001,
+    "bracket_half_width": 0.5,
+    "mean_evaluations": 11.98922,
+    "accepted_std": 0.02485715842665194,
+    "distant_interval_fraction": 0.00691
+  },
+  "toy_global_covariance_eigenvalues": [
+    0.012716810145952651,
+    0.11561652328738067
+  ],
+  "checkpoint_boundaries": []
+}

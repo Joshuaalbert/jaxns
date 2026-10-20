@@ -74,4 +74,6 @@ sampler/core test suite was not rerun because no sampler code changed.
 
 The subsequent [geometry review](GEOMETRY_REVIEW.md) separates the cost of the
 initial bracket from short line intersections and identifies a cube-face
-boundary bug. That bug is recorded but not changed in this experiment.
+boundary bug. These runs predate its subsequent fix under
+[issue #313](https://github.com/Joshuaalbert/jaxns/issues/313); their results
+have not been regenerated with that correction.
