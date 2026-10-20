@@ -1,5 +1,6 @@
 """Summarise evidence-improving allocation at the requested uncertainty goal."""
 
+import argparse
 import csv
 import json
 from pathlib import Path
@@ -9,6 +10,11 @@ import numpy as np
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--comparison", choices=("directions", "slice_count"), default="directions",
+    )
+    options = parser.parse_args()
     matplotlib.use("Agg")
     from matplotlib import pyplot as plt
 
@@ -16,16 +22,31 @@ def main():
     rows = []
     summaries = []
     figure, axes = plt.subplots(1, 2, figsize=(11, 4), constrained_layout=True)
-    for mode, linestyle in (("isotropic", "--"), ("covariance", "-")):
+    if options.comparison == "slice_count":
+        configurations = (
+            ("covariance", 90, "evidence-covariance", "--"),
+            ("covariance", 180, "evidence-covariance-180", "-"),
+        )
+        output_prefix = "slice_count"
+        title = "Covariance directions: 90 versus 180 slices on the 18-D ridge"
+    else:
+        configurations = (
+            ("isotropic", 90, "evidence-isotropic", "--"),
+            ("covariance", 90, "evidence-covariance", "-"),
+        )
+        output_prefix = "evidence"
+        title = "Evidence-improving allocation: 18-D curved ridge"
+    for mode, slices, input_prefix, linestyle in configurations:
         records = []
         for seed in range(3):
-            path = directory / "raw" / f"evidence-{mode}-{seed}.jsonl"
+            path = directory / "raw" / f"{input_prefix}-{seed}.jsonl"
             lines = path.read_text().splitlines()
             if len(lines) != 1:
                 raise ValueError(f"Expected one completed seed in {path}.")
             record = json.loads(lines[0])
             if not (
                 record["seed"] == seed and record["mode"] == mode
+                and record["slices"] == slices
                 and record["allocation_target"] == "evidence_improving"
                 and record["target_log_Z_uncert"] == 0.1
                 and record["goal_reached"] and record["termination_reason"] == 0
@@ -35,7 +56,7 @@ def main():
             records.append(record)
             rows.append({
                 key: record[key] for key in (
-                    "mode", "seed", "epochs", "samples", "evaluations", "log_Z",
+                    "mode", "slices", "seed", "epochs", "samples", "evaluations", "log_Z",
                     "log_Z_uncert", "peak_gap", "std_x1", "std_x16", "std_x17",
                     "std_x5", "geometry_updates",
                 )
@@ -51,7 +72,10 @@ def main():
             }.values())
             progress.sort(key=lambda row: row["epoch"])
             calls = np.asarray([row["evaluations"] for row in progress]) / 1e6
-            label = f"{mode}, seed {seed}"
+            label = (
+                f"{slices} slices, seed {seed}"
+                if options.comparison == "slice_count" else f"{mode}, seed {seed}"
+            )
             for axis, key in zip(axes, ("log_Z", "log_Z_uncert")):
                 axis.plot(
                     calls, [row[key] for row in progress], linestyle,
@@ -60,6 +84,7 @@ def main():
         errors = np.asarray([row["log_Z"] for row in records])
         summaries.append({
             "mode": mode,
+            "slices": slices,
             "seeds": len(records),
             "mean_log_Z": float(errors.mean()),
             "rmse_log_Z": float(np.sqrt(np.mean(errors ** 2))),
@@ -87,16 +112,16 @@ def main():
         axis.set_xscale("log")
         axis.grid(alpha=0.15)
     axes[1].legend(loc="upper right", fontsize=8)
-    figure.suptitle("Evidence-improving allocation: 18-D curved ridge")
-    figure.savefig(directory / "evidence_progress.png", dpi=180)
-    figure.savefig(directory / "evidence_progress.pdf")
+    figure.suptitle(title)
+    figure.savefig(directory / f"{output_prefix}_progress.png", dpi=180)
+    figure.savefig(directory / f"{output_prefix}_progress.pdf")
     plt.close(figure)
-    with (directory / "evidence_summary.csv").open("w", newline="") as stream:
+    with (directory / f"{output_prefix}_summary.csv").open("w", newline="") as stream:
         writer = csv.DictWriter(stream, fieldnames=list(rows[0]), lineterminator="\n")
         writer.writeheader()
         writer.writerows(rows)
     output = {"groups": summaries, "runs": rows}
-    (directory / "evidence_summary.json").write_text(
+    (directory / f"{output_prefix}_summary.json").write_text(
         json.dumps(output, indent=2) + "\n",
     )
     print(json.dumps(output, indent=2))

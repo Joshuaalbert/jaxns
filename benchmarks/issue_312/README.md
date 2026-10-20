@@ -9,6 +9,10 @@ ten-seed straight controls, validation, and limitations. The covariance change
 improves the curved toy substantially but does not recover its posterior.
 The [evidence-allocation follow-up](EVIDENCE_REPORT.md) repeats allocation until
 the classic log-evidence uncertainty reaches 0.1.
+The [slice-count comparison](SLICE_COUNT_REPORT.md) tests 180 versus 90
+transitions at that same goal. The [geometry review](GEOMETRY_REVIEW.md)
+examines full-cube bracketing, disconnected line slices, curvature, and a
+reproduced cube-face boundary bug.
 
 ## Direction law
 
@@ -95,6 +99,27 @@ are optional and saved at each epoch; reuse the same command to resume an
 interrupted run. Use a separate checkpoint directory for each configuration.
 `--no-warmup` avoids duplicating the full multi-epoch run; its elapsed time
 includes compilation and should not be read as steady-state throughput.
+
+To compare `10D` with `5D` on the 18-dimensional toy, use `--slices 180`
+with otherwise identical covariance/evidence settings. Keep the checkpoints
+separate from the 90-slice runs:
+
+```bash
+PYTHONPATH=src JAX_ENABLE_X64=1 conda run --no-capture-output -n jaxns_py \
+  python benchmarks/issue_312/run_ridge.py \
+  --mode covariance --slices 180 \
+  --allocation-target evidence_improving --log-z-uncert 0.1 \
+  --seeds 0 --cpu 2 --no-warmup \
+  --checkpoint-dir /tmp/issue312-evidence-covariance-180-0 \
+  --output benchmarks/issue_312/raw/evidence-covariance-180-0.jsonl
+```
+
+Repeat for seeds 1 and 2, then compare with the existing 90-slice records:
+
+```bash
+conda run -n jaxns_py python benchmarks/issue_312/summarise_evidence.py \
+  --comparison slice_count
+```
 
 The equivalent application-side opt-in is:
 
