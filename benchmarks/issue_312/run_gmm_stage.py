@@ -69,7 +69,7 @@ def main():
     import numpy as np
 
     jax.config.update("jax_enable_x64", True)
-    from jaxns.checkpoint import CheckpointManager
+    from jaxns.checkpoint import CheckpointInUseError, CheckpointManager
     from jaxns.constrained_sampler import UniDimSliceSampler
     from jaxns.core import NestedSampler
     from jaxns.sampling.ellipsoid import component_probabilities
@@ -88,8 +88,17 @@ def main():
         and evidence["termination_reason"] == 0
     ):
         raise ValueError("The first stage must reach uncertainty 0.1 with isotropic directions.")
-    with CheckpointManager(options.evidence_checkpoint) as manager:
-        baseline_state = manager.load()
+    # Paired arms briefly need the same checkpoint lock while reading their
+    # common baseline. Retry only this read; continuation directories differ.
+    for attempt in range(6):
+        try:
+            with CheckpointManager(options.evidence_checkpoint) as manager:
+                baseline_state = manager.load()
+            break
+        except CheckpointInUseError:
+            if attempt == 5:
+                raise
+            time.sleep(0.25 * 2 ** attempt)
     if baseline_state is None:
         raise ValueError("Missing evidence-stage checkpoint.")
     if baseline_state.covariance_data is not None or baseline_state.sampler_data is not None:
