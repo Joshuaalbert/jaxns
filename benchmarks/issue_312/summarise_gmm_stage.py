@@ -14,6 +14,7 @@ def main():
 
     directory = Path(__file__).parent
     rows = []
+    fits = []
     groups = {name: [] for name in ("evidence", "isotropic", "gmm")}
     figure, axes = plt.subplots(2, 2, figsize=(12, 7), constrained_layout=True)
     axes = axes.ravel()
@@ -30,6 +31,8 @@ def main():
             if not (
                 record["seed"] == seed and record["mode"] == mode
                 and record["slices"] == 180 and record["components"] == 10
+                and record["fit_iterations"] == 10 and record["iso_prob"] == 0.01
+                and record["regularisation"] == 1e-6
                 and record["allocation_target"] == "posterior_improving"
                 and not record["covariance_whitening"] and record["goal_reached"]
                 and record["termination_reason"] == 0
@@ -74,6 +77,29 @@ def main():
                 {row["epoch"]: row for row in progress}.values(),
                 key=lambda row: row["epoch"],
             )
+            if mode == "gmm":
+                fit = json.loads((directory / "raw" / f"{prefix}.fit.json").read_text())
+                if not (
+                    len(fit["valid"]) == 10 and all(fit["valid"])
+                    and fit["num_updates"] == 1
+                    and all(row["fit_updates"] == 1 for row in progress)
+                ):
+                    raise ValueError(f"Seed {seed} must use one frozen ten-component fit.")
+                centres = np.asarray(fit["centres"])
+                # These are conditional probabilities of choosing a fitted
+                # component, not observed component counts or mixture masses.
+                fits.append({
+                    "seed": seed,
+                    "min_centre_x1": float(centres[:, 1].min()),
+                    "max_centre_x1": float(centres[:, 1].max()),
+                    "largest_mixture_mass": max(fit["mixture_masses"]),
+                    "largest_selection_probability_by_peak_gap": {
+                        gap: max(probabilities)
+                        for gap, probabilities in
+                        fit["selection_probabilities_by_peak_gap"].items()
+                    },
+                    "isotropic_direction_fraction": isotropic_fraction,
+                })
             progress = [
                 {**baseline, "additional_evaluations": 0},
                 *[row for row in progress if row["additional_evaluations"] > 0],
@@ -126,7 +152,7 @@ def main():
         writer = csv.DictWriter(stream, fieldnames=list(rows[0]), lineterminator="\n")
         writer.writeheader()
         writer.writerows(rows)
-    output = {"groups": summaries, "runs": rows}
+    output = {"groups": summaries, "runs": rows, "fits": fits}
     (directory / "staged_gmm_summary.json").write_text(json.dumps(output, indent=2) + "\n")
     print(json.dumps(output, indent=2))
 

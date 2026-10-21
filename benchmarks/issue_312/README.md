@@ -14,6 +14,10 @@ transitions at that same goal. The [geometry review](GEOMETRY_REVIEW.md)
 examines full-cube bracketing, disconnected line slices, curvature, and a
 reproduced cube-face boundary bug, subsequently fixed under
 [issue #313](https://github.com/Joshuaalbert/jaxns/issues/313).
+The [staged GMM report](STAGED_GMM_REPORT.md) tests a ten-component fit after
+isotropic evidence allocation reaches uncertainty 0.1, followed by posterior
+allocation until Kish ESS doubles, with paired isotropic controls and no
+covariance whitening.
 
 ## Direction law
 
@@ -185,3 +189,11 @@ mixture, not nearest-component tangent selection. The goal ESS only measures
 posterior weight concentration; it is not corrected for chain dependence.
 Evidence error, posterior widths, flat-coordinate Wasserstein distances, and
 actual isotropic-direction usage are therefore recorded alongside ESS.
+
+The completed three-seed results are in [STAGED_GMM_REPORT.md](STAGED_GMM_REPORT.md).
+Regenerate the summary tables and figures with:
+
+```bash
+MPLCONFIGDIR=/tmp/issue312-matplotlib conda run --no-capture-output -n jaxns_py \
+  python benchmarks/issue_312/summarise_gmm_stage.py
+```
