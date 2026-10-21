@@ -138,3 +138,50 @@ This experiment does not support periodic priors, simultaneous GMM geometry,
 or distributed continuation. Disable covariance directions with
 `state.iso_directions()` before merging runs or handing them to a distributed
 runner. These limits keep the experiment within the local direction-law path.
+
+## Staged GMM comparison
+
+The subsequent experiment uses no covariance whitening. For each seed, start
+with isotropic directions, 150 roots, 180 slices, and `evidence_improving`
+allocation until the classic log-evidence uncertainty is at most 0.1. It uses
+the cube-face fix from `f72a696`, the default depth condition, no phantoms,
+and unlimited sample-buffer growth, matching the earlier goal experiments.
+
+```bash
+PYTHONPATH=src JAX_ENABLE_X64=1 conda run --no-capture-output -n jaxns_py \
+  python benchmarks/issue_312/run_ridge.py \
+  --mode isotropic --slices 180 --allocation-target evidence_improving \
+  --log-z-uncert 0.1 --seeds 0 --cpu 2 --no-warmup \
+  --checkpoint-dir /tmp/issue312-gmm10-180-0/evidence \
+  --output benchmarks/issue_312/raw/staged-gmm10-180-0.evidence.jsonl
+```
+
+At that boundary, fit ten full-covariance GMM components using the existing
+posterior-weighted fit. Retain its defaults: ten EM iterations, relative
+regularisation `1e-6`, and isotropic probability 0.01. Fit once and freeze the
+mixture for the subsequent `posterior_improving` allocation stage, stopping
+at the first depth boundary where classic posterior-weight Kish ESS is at
+least twice its value before fitting.
+
+```bash
+PYTHONPATH=src JAX_ENABLE_X64=1 conda run --no-capture-output -n jaxns_py \
+  python benchmarks/issue_312/run_gmm_stage.py \
+  --evidence-record benchmarks/issue_312/raw/staged-gmm10-180-0.evidence.jsonl \
+  --evidence-checkpoint /tmp/issue312-gmm10-180-0/evidence/seed-0 \
+  --checkpoint-dir /tmp/issue312-gmm10-180-0/gmm \
+  --mode gmm --components 10 --ess-multiple 2 --cpu 2 \
+  --output benchmarks/issue_312/raw/staged-gmm10-180-0.gmm.jsonl
+```
+
+Repeat with `--mode isotropic` and separate output/checkpoint paths for the
+paired continuation control. Both arms start from the exact same saved state,
+random keys and ESS target; their records carry its checkpoint checksum. Repeat
+for seeds 1 and 2. Restart an interrupted continuation with its same command;
+the runner restores the saved state, including its frozen fitted geometry.
+
+The direction component is selected by contour-trimmed ellipsoid volume,
+independently of the chain location. This tests the existing position-independent
+mixture, not nearest-component tangent selection. The goal ESS only measures
+posterior weight concentration; it is not corrected for chain dependence.
+Evidence error, posterior widths, flat-coordinate Wasserstein distances, and
+actual isotropic-direction usage are therefore recorded alongside ESS.
