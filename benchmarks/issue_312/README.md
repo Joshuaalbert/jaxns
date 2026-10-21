@@ -18,6 +18,12 @@ The [staged GMM report](STAGED_GMM_REPORT.md) tests a ten-component fit after
 isotropic evidence allocation reaches uncertainty 0.1, followed by posterior
 allocation until Kish ESS doubles, with paired isotropic controls and no
 covariance whitening.
+The [GMM density-fit comparison](GMM_FIT_REPORT.md) examines 10 through 500 EM
+iterations on independent posterior draws and the saved populations, alongside
+recursive K-means splits accepted by the historical enclosing-volume criterion.
+It includes all 18 marginal densities, joint-density plots, convergence traces
+and portable input clouds. Ten iterations underfit the full curve; increasing
+to 100 helps substantially, but neither method resolves the density mismatch.
 
 ## Direction law
 

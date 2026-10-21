@@ -1,0 +1,24 @@
+{
+  "hull_checks": [
+    {
+      "dimension": 2,
+      "log_volume_absolute_error": 1.0391687510491465e-12
+    },
+    {
+      "dimension": 18,
+      "log_volume_absolute_error": 4.014566457044566e-13
+    }
+  ],
+  "all_split_records_passed": true,
+  "numpy_em_reference_datasets": 4,
+  "existing_tests_passed": 12,
+  "adaptive_split_records_passed": true,
+  "adaptive_leaf_counts": [
+    235,
+    29,
+    50,
+    18
+  ],
+  "input_and_script_checksums_passed": true,
+  "all_new_scripts_ruff_and_flake8_passed": true
+}
