@@ -24,6 +24,9 @@ recursive K-means splits accepted by the historical enclosing-volume criterion.
 It includes all 18 marginal densities, joint-density plots, convergence traces
 and portable input clouds. Ten iterations underfit the full curve; increasing
 to 100 helps substantially, but neither method resolves the density mismatch.
+The [100-iteration continuation](GMM_ITERATIONS_REPORT.md) tests whether that
+longer fit improves sampling, using the same evidence checkpoints and ESS goals
+as the ten-iteration staged experiment.
 
 ## Direction law
 
@@ -202,4 +205,36 @@ Regenerate the summary tables and figures with:
 ```bash
 MPLCONFIGDIR=/tmp/issue312-matplotlib conda run --no-capture-output -n jaxns_py \
   python benchmarks/issue_312/summarise_gmm_stage.py
+```
+
+## Staged GMM with 100 EM iterations
+
+Reuse each saved evidence-stage checkpoint above. It already satisfies
+`expected_log_Z_uncert <= 0.1` after isotropic `evidence_improving` allocation,
+with 150 initial roots and 180 slices. Using the identical checkpoint preserves
+the fitting population, sampler random keys and ESS target across the comparison.
+Fit ten components once with 100 EM iterations, then use `posterior_improving`
+allocation to twice that baseline Kish ESS:
+
+```bash
+PYTHONPATH=src JAX_ENABLE_X64=1 conda run --no-capture-output -n jaxns_py \
+  python benchmarks/issue_312/run_gmm_stage.py \
+  --evidence-record benchmarks/issue_312/raw/staged-gmm10-180-0.evidence.jsonl \
+  --evidence-checkpoint /tmp/issue312-gmm10-180-0/evidence/seed-0 \
+  --checkpoint-dir /tmp/issue312-gmm100-180-0/gmm \
+  --mode gmm --components 10 --fit-iterations 100 --ess-multiple 2 --cpu 2 \
+  --output benchmarks/issue_312/raw/staged-gmm100-180-0.gmm.jsonl
+```
+
+Repeat for seeds 1 and 2 with their corresponding evidence checkpoints and
+separate continuation paths. The `gmm100` filename denotes the iteration count;
+the component count remains ten. All other settings, including the one-percent
+isotropic mixture, regularisation, default depth condition and disabled
+covariance whitening, match the earlier continuation. Geometry remains frozen
+throughout the posterior stage. The earlier ten-iteration and isotropic controls
+are reused. Generate the paired tables and trajectories with:
+
+```bash
+MPLCONFIGDIR=/tmp/issue312-matplotlib conda run --no-capture-output -n jaxns_py \
+  python benchmarks/issue_312/summarise_gmm_iterations.py
 ```
