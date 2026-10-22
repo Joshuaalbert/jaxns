@@ -12,6 +12,10 @@ the reported convergence of a larger Dynesty run on the separate pRT model.
 It also does not excuse the documented JAXNS failures or establish which
 sampling mechanism causes either implementation's remaining errors.
 
+The subsequent [1,000-live-point controls](LARGE_POPULATION_REPORT.md) test six
+seeds each with Dynesty and UltraNest. They retain substantial evidence errors
+and incomplete ridge coverage at the tested settings.
+
 Tracks [issue #312](https://github.com/Joshuaalbert/jaxns/issues/312) and
 [draft PR #314](https://github.com/Joshuaalbert/jaxns/pull/314).
 

@@ -31,6 +31,11 @@ The [Dynesty control verification](DYNESTY_REPORT.md) reruns the reporter's
 150-live-point, 90-slice configuration with Dynesty 3.0.0 across six seeds.
 It reproduces good evidence estimates in some seeds, but also finds large
 evidence misses and persistent ridge-coordinate collapse.
+The [larger-population controls](LARGE_POPULATION_REPORT.md) compare six seeds
+with 1,000 live points in Dynesty and a minimum of 1,000 in reactive UltraNest,
+including evidence, all three flat marginals, Gaussian widths and ridge coverage.
+Neither tested configuration recovers this extreme toy: evidence RMSE is 1.566
+and 5.755 nats respectively, with persistent distortion of the ridge marginal.
 
 ## Direction law
 
