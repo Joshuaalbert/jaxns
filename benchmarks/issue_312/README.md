@@ -27,6 +27,10 @@ to 100 helps substantially, but neither method resolves the density mismatch.
 The [100-iteration continuation](GMM_ITERATIONS_REPORT.md) tests whether that
 longer fit improves sampling, using the same evidence checkpoints and ESS goals
 as the ten-iteration staged experiment.
+The [Dynesty control verification](DYNESTY_REPORT.md) reruns the reporter's
+150-live-point, 90-slice configuration with Dynesty 3.0.0 across six seeds.
+It reproduces good evidence estimates in some seeds, but also finds large
+evidence misses and persistent ridge-coordinate collapse.
 
 ## Direction law
 
