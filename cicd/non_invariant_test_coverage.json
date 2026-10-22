@@ -1,6 +1,26 @@
 {
   "schema_version": 1,
   "tests": {
+    "test_ridge_scaled_metric_matches_straight_contour_covariance": {
+      "note": "Checks the contour-scaled metric against the analytic covariance of the straight toy's uniform 15-ball times three unit intervals.",
+      "path": "cicd/tests/test_ridge_hessian_experiment.py",
+      "reason": "reference_parity"
+    },
+    "test_ridge_hessian_matches_autodiff": {
+      "note": "Checks the toy-only analytic Hessian and its regularisation against independent full automatic differentiation and NumPy eigendecomposition.",
+      "path": "cicd/tests/test_ridge_hessian_experiment.py",
+      "reason": "reference_parity"
+    },
+    "test_ridge_angular_density_matches_dense_reference": {
+      "note": "Checks the experimental normalized-Gaussian direction density against an independent dense precision calculation and antipodal symmetry.",
+      "path": "cicd/tests/test_ridge_hessian_experiment.py",
+      "reason": "reference_parity"
+    },
+    "test_ridge_mh_counts_rejections_as_transitions": {
+      "note": "Checks retained self-transitions and strict contour support in the toy-only Metropolis-corrected sampler, including a constant-geometry control.",
+      "path": "cicd/tests/test_ridge_hessian_experiment.py",
+      "reason": "utility_behavior"
+    },
     "test_classic_runner_constructs_sampler_on_develop": {
       "note": "Checks that the paper benchmark's default classic-only runner constructs a sampler without requiring the experimental phantom-seeding API.",
       "path": "cicd/tests/test_paper_experiment.py",

@@ -43,6 +43,14 @@ cube coordinates. Dynesty refreshes its fitted live-population geometry every
 0.13–0.14 e-folds at the median and uses an adapted local bracket. Float64
 does not resolve JAXNS's failure: evidence RMSE is 15.38 versus 15.42 for the
 matched float32 arm, with both retaining collapsed flat marginals.
+The [analytic Hessian experiment](HESSIAN_REPORT.md) tests a position-dependent
+direction law with a Metropolis correction at every transition. Scaling the
+geometry to the current contour reduces 30-seed evidence RMSE to 0.846 nats
+at 1.886M likelihood calls, versus 15.379 nats and 10.282M for float64
+isotropic directions. It largely restores inert widths but leaves a strongly
+distorted ridge marginal. An unscaled inverse-Hessian control fails even on
+the straight ridge because it restricts early broad-contour movement too much.
+This is a benchmark-only custom sampler; the released sampler is unchanged.
 
 ## Direction law
 

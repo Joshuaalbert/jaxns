@@ -48,3 +48,12 @@ repeat mistakes specific to this project. Keep learnings compact.
   stationary classic into the exact seed source before projecting the same
   allocation target. Reusing the older source reduced boundary time but made
   three fixed-seed standard gates fail and raised Jones likelihood work by 73%.
+- In the issue-312 oracle experiment, an inverse Hessian at posterior scale
+  prevented early broad-contour mixing, even on the straight ridge. Scaling
+  by contour volume geometry before imposing a prior-variance cap removed
+  that startup failure; the curved marginal remained poorly mixed. See
+  `benchmarks/issue_312/HESSIAN_REPORT.md` before generalising this experiment.
+- Normalised local Gaussian directions require the angular central Gaussian
+  density in a per-transition MH correction. Keep rejected self-transitions;
+  the endpoint density ratio alone assumes the fixed-direction slice kernel
+  remains reversible, including its bracketing rule.

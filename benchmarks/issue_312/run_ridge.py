@@ -32,12 +32,18 @@ def prior_model(sigma_stiff: float, curvature: float):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--mode", choices=("isotropic", "covariance"), required=True)
+    parser.add_argument(
+        "--mode", choices=("isotropic", "covariance", "hessian"), required=True,
+    )
     parser.add_argument("--seeds", nargs="+", type=int, default=[0, 1, 2])
     parser.add_argument("--sigma-stiff", type=float, default=1e-5)
     parser.add_argument("--curvature", type=float, default=0.3)
     parser.add_argument("--regularisation", type=float, default=1e-8)
     parser.add_argument("--refresh-efolds", type=float, default=1.0)
+    parser.add_argument("--precision-floor", type=float, default=12.0)
+    parser.add_argument(
+        "--hessian-contour-scale", action=argparse.BooleanOptionalAction, default=True,
+    )
     parser.add_argument("--roots", type=int, default=150)
     parser.add_argument("--slices", type=int, default=90)
     parser.add_argument("--width", type=int, default=None)
@@ -53,6 +59,8 @@ def main():
     parser.add_argument("--warmup", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--output", type=Path, required=True)
     options = parser.parse_args()
+    if options.mode == "hessian" and options.unit_dtype != "float64":
+        parser.error("--mode hessian requires --unit-dtype float64")
     if options.log_z_uncert is not None and (
         not math.isfinite(options.log_z_uncert) or options.log_z_uncert <= 0
     ):
@@ -88,10 +96,19 @@ def main():
     model = Model(prior_model=partial(
         prior_model, options.sigma_stiff, options.curvature,
     ))
+    sampler = UniDimSliceSampler(num_slices=options.slices)
+    if options.mode == "hessian":
+        from benchmarks.issue_312.hessian_sampler import ToyHessianSliceSampler
+
+        sampler = ToyHessianSliceSampler(
+            num_slices=options.slices, sigma_stiff=options.sigma_stiff,
+            curvature=options.curvature, precision_floor=options.precision_floor,
+            scale_to_contour=options.hessian_contour_scale,
+        )
     runner = NestedSampler(
         model=model,
         root_allocation_degree=options.roots,
-        sampler=UniDimSliceSampler(num_slices=options.slices),
+        sampler=sampler,
         replacement_width=options.width,
         allocation_target=options.allocation_target,
         # A requested uncertainty goal must not silently become a sample-cap
@@ -174,6 +191,12 @@ def main():
         "float64": True,
         "requested_unit_dtype": options.unit_dtype,
     }
+    if options.mode == "hessian":
+        metadata["precision_floor"] = options.precision_floor
+        metadata["hessian_contour_scale"] = options.hessian_contour_scale
+        metadata["hessian_sampler_sha256"] = hashlib.sha256(
+            Path(__file__).with_name("hessian_sampler.py").read_bytes(),
+        ).hexdigest()
     if options.warmup:
         started = time.monotonic()
         run(options.seeds[0], record_progress=False)
