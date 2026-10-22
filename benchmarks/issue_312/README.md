@@ -36,6 +36,13 @@ with 1,000 live points in Dynesty and a minimum of 1,000 in reactive UltraNest,
 including evidence, all three flat marginals, Gaussian widths and ridge coverage.
 Neither tested configuration recovers this extreme toy: evidence RMSE is 1.566
 and 5.755 nats respectively, with persistent distortion of the ridge marginal.
+The [runtime comparison and precision control](DYNESTY_ALGORITHM_REPORT.md)
+replays all six 150-live-point Dynesty runs exactly while observing geometry
+updates and slice work, then compares 30 JAXNS seeds with float32 and float64
+cube coordinates. Dynesty refreshes its fitted live-population geometry every
+0.13–0.14 e-folds at the median and uses an adapted local bracket. Float64
+does not resolve JAXNS's failure: evidence RMSE is 15.38 versus 15.42 for the
+matched float32 arm, with both retaining collapsed flat marginals.
 
 ## Direction law
 

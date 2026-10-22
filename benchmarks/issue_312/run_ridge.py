@@ -9,6 +9,7 @@ import platform
 import subprocess
 import time
 from functools import partial
+from importlib.metadata import version
 from pathlib import Path
 
 
@@ -40,6 +41,8 @@ def main():
     parser.add_argument("--roots", type=int, default=150)
     parser.add_argument("--slices", type=int, default=90)
     parser.add_argument("--width", type=int, default=None)
+    parser.add_argument("--unit-dtype", choices=("float32", "float64"), default=None)
+    parser.add_argument("--archive-dir", type=Path, default=None)
     parser.add_argument(
         "--allocation-target", choices=("uniform", "evidence_improving"),
         default="uniform",
@@ -66,6 +69,21 @@ def main():
     from jaxns.constrained_sampler import UniDimSliceSampler
     from jaxns.core import NestedSampler
     from jaxns.model import Model
+
+    if options.unit_dtype is not None:
+        import jaxctx
+
+        import jaxns.model as model_module
+
+        # This process-local benchmark override reaches every JAXCTX init/apply
+        # call before tracing. Merely enabling JAX x64 leaves its default cube
+        # dtype at float32. Production Model and sampler APIs stay unchanged.
+        model_module.transform = partial(
+            jaxctx.transform,
+            base_dtype={"float32": jax.numpy.float32, "float64": jax.numpy.float64}[
+                options.unit_dtype
+            ],
+        )
 
     model = Model(prior_model=partial(
         prior_model, options.sigma_stiff, options.curvature,
@@ -136,6 +154,8 @@ def main():
             ["git", "diff", "HEAD"],
         )).hexdigest(),
         "jax": jax.__version__,
+        "jaxctx": version("jaxctx"),
+        "script_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
         "python": platform.python_version(),
         "platform": platform.platform(),
         "device": str(jax.devices()[0]),
@@ -152,6 +172,7 @@ def main():
         "target_log_Z_uncert": options.log_z_uncert,
         "unlimited_samples": options.log_z_uncert is not None,
         "float64": True,
+        "requested_unit_dtype": options.unit_dtype,
     }
     if options.warmup:
         started = time.monotonic()
@@ -167,9 +188,25 @@ def main():
         elapsed = time.monotonic() - started
         count = int(result.total_num_samples)
         points = np.asarray(result.X_samples["x"])[:count]
+        unit_dtypes = sorted({str(leaf.dtype) for leaf in jax.tree.leaves(result.U_samples)})
+        if options.unit_dtype is not None and unit_dtypes != [options.unit_dtype]:
+            raise ValueError(f"Cube dtype override failed: {unit_dtypes}")
         log_weights = np.asarray(result.log_dp)[:count]
         weights = np.exp(log_weights - np.max(log_weights))
         weights /= weights.sum()
+        if options.archive_dir is not None:
+            options.archive_dir.mkdir(parents=True, exist_ok=True)
+            archive = options.archive_dir / f"seed-{seed}.npz"
+            if archive.exists():
+                raise FileExistsError(f"Refusing to overwrite {archive}")
+            np.savez_compressed(
+                archive,
+                samples=points,
+                unit_samples=np.asarray(jax.tree.leaves(result.U_samples)[0])[:count],
+                log_weights=log_weights,
+                log_likelihood=np.asarray(result.log_L)[:count],
+                log_volume=np.asarray(result.log_X_mean)[:count],
+            )
         mean = np.sum(weights[:, None] * points, axis=0)
         std = np.sqrt(np.sum(weights[:, None] * (points - mean) ** 2, axis=0))
         gap = peak - np.asarray(result.log_L)[:count]
@@ -189,9 +226,10 @@ def main():
         record = {
             **metadata,
             "seed": seed,
-            "unit_dtypes": sorted({
-                str(leaf.dtype) for leaf in jax.tree.leaves(result.U_samples)
-            }),
+            "unit_dtypes": unit_dtypes,
+            "physical_dtype": str(points.dtype),
+            "log_likelihood_dtype": str(result.log_L.dtype),
+            "evidence_dtype": str(result.log_Z_mean.dtype),
             "samples": count,
             "evaluations": int(result.total_num_likelihood_evaluations),
             "seconds": elapsed,

@@ -15,6 +15,10 @@ sampling mechanism causes either implementation's remaining errors.
 The subsequent [1,000-live-point controls](LARGE_POPULATION_REPORT.md) test six
 seeds each with Dynesty and UltraNest. They retain substantial evidence errors
 and incomplete ridge coverage at the tested settings.
+The [runtime audit](DYNESTY_ALGORITHM_REPORT.md) subsequently reproduces every
+archived sample and weight while observing the actual Dynesty geometry and
+adaptation choices. Its accompanying 30-seed JAXNS precision control rules out
+float64 cube coordinates as a remedy for this toy's failure.
 
 Tracks [issue #312](https://github.com/Joshuaalbert/jaxns/issues/312) and
 [draft PR #314](https://github.com/Joshuaalbert/jaxns/pull/314).
