@@ -1065,6 +1065,31 @@
       "note": "Checks finite positive regularisation and refresh interval validation.",
       "path": "cicd/tests/test_covariance_directions.py",
       "reason": "configuration_contract"
+    },
+    "test_gp_predictive_hessian_matches_autodiff_with_affine_inputs": {
+      "path": "cicd/tests/test_ridge_gp_experiment.py",
+      "reason": "utility_behavior",
+      "note": "Checks the RBF predictive-mean Hessian and transformation back to cube coordinates against autodiff."
+    },
+    "test_gp_fit_recovers_quadratic_curvature_and_padding": {
+      "path": "cicd/tests/test_ridge_gp_experiment.py",
+      "reason": "utility_behavior",
+      "note": "Checks learned curvature on a quadratic, exact padding exclusion, input covariance and optimizer restart selection."
+    },
+    "test_gp_representatives_remain_distinct_for_duplicate_points": {
+      "path": "cicd/tests/test_ridge_gp_experiment.py",
+      "reason": "utility_behavior",
+      "note": "Checks that representative selection does not repeat a training index in a collapsed cloud."
+    },
+    "test_gp_batch_hook_replays_frozen_sampler_exactly": {
+      "path": "cicd/tests/test_ridge_gp_experiment.py",
+      "reason": "utility_behavior",
+      "note": "Checks that the offline GP refresh seam preserves the full fixed-kernel race state and random stream."
+    },
+    "test_gp_mh_retains_rejected_states_and_uniform_target": {
+      "path": "cicd/tests/test_ridge_gp_experiment.py",
+      "reason": "utility_behavior",
+      "note": "Checks self-transitions and a fixed-GP stationarity probe; does not certify adaptive nested sampling."
     }
   }
 }

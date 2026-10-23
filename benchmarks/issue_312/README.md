@@ -51,6 +51,12 @@ isotropic directions. It largely restores inert widths but leaves a strongly
 distorted ridge marginal. An unscaled inverse-Hessian control fails even on
 the straight ridge because it restricts early broad-contour movement too much.
 This is a benchmark-only custom sampler; the released sampler is unchanged.
+The [GP Hessian follow-up](GP_HESSIAN_REPORT.md) replaces the analytic curvature
+with the Hessian of a GP predictive mean. It refits empirical input geometry
+and GP coefficients once per expected-volume e-fold, using 128 or 256
+representatives above the contour. Six-seed comparisons, portable fit audits
+and a frozen-kernel stationarity check show that the tested learned geometry
+does not recover the analytic-Hessian result.
 
 ## Direction law
 

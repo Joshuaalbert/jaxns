@@ -57,3 +57,8 @@ repeat mistakes specific to this project. Keep learnings compact.
   density in a per-transition MH correction. Keep rejected self-transitions;
   the endpoint density ratio alone assumes the fixed-direction slice kernel
   remains reversible, including its bracketing rule.
+- In the issue-312 GP experiment, interpolating stored log likelihoods did
+  not imply accurate Hessians on the thin curved population. Audit held-out
+  values and curvature separately; a high MH acceptance or stationary
+  ensemble can coexist with almost perfectly correlated chain endpoints.
+  The offline GP refresh hook is not a checkpointable production interface.
