@@ -1090,6 +1090,31 @@
       "path": "cicd/tests/test_ridge_gp_experiment.py",
       "reason": "utility_behavior",
       "note": "Checks self-transitions and a fixed-GP stationarity probe; does not certify adaptive nested sampling."
+    },
+    "test_cube_drift_matches_multiple_face_crossings": {
+      "note": "Checks the experimental cube billiard map against an independent multiple-crossing calculation.",
+      "path": "cicd/tests/test_ridge_reflection_experiment.py",
+      "reason": "reference_parity"
+    },
+    "test_midpoint_reflection_reversal_and_jacobian": {
+      "note": "Checks phase-space reversal, volume and speed preservation of both experimental reflection policies.",
+      "path": "cicd/tests/test_ridge_reflection_experiment.py",
+      "reason": "reference_parity"
+    },
+    "test_reflection_rejections_and_evaluation_accounting": {
+      "note": "Checks retained rejected endpoints and separate value/gradient work counts in the experimental kernel.",
+      "path": "cicd/tests/test_ridge_reflection_experiment.py",
+      "reason": "utility_behavior"
+    },
+    "test_reflection_time_reversal_on_stiff_ridge": {
+      "note": "Checks numerical reversal on the actual ill-conditioned eighteen-dimensional ridge.",
+      "path": "cicd/tests/test_ridge_reflection_experiment.py",
+      "reason": "reference_parity"
+    },
+    "test_reflection_preserves_uniform_curved_tube": {
+      "note": "Checks the experimental reflection kernel against independent exact curved-tube constrained-prior draws.",
+      "path": "cicd/tests/test_ridge_reflection_experiment.py",
+      "reason": "reference_parity"
     }
   }
 }
