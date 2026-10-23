@@ -4,6 +4,12 @@ Tracks [issue #312](https://github.com/Joshuaalbert/jaxns/issues/312).
 Base: `9efa455`. This is an opt-in local experiment; the released isotropic
 default and GMM workflow are unchanged.
 
+The latest [reflection experiment](REFLECTION_REPORT.md) implements reversible
+midpoint trajectories and reports 30 seeds. The subsequent
+[NN representation audit](NN_REPRESENTATION_REPORT.md) investigates incremental
+curvature learning with and without off-contour observations. Further ideas
+are recorded in [the experiment queue](../../EXPERIMENT_QUEUE.md).
+
 See [REPORT.md](REPORT.md) for the completed 30-seed curved comparison,
 ten-seed straight controls, validation, and limitations. The covariance change
 improves the curved toy substantially but does not recover its posterior.

@@ -55,7 +55,7 @@ def main():
 
             @jax.jit
             @jax.vmap
-            def chain(key, point):
+            def chain(key, point, sampler=sampler):
                 result, _ = sampler.run_chain(
                     key, point, likelihood(point), jnp.asarray(-options.gap), likelihood,
                 )

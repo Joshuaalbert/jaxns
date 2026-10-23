@@ -62,3 +62,10 @@ repeat mistakes specific to this project. Keep learnings compact.
   values and curvature separately; a high MH acceptance or stationary
   ensemble can coexist with almost perfectly correlated chain endpoints.
   The offline GP refresh hook is not a checkpointable production interface.
+- The issue-312 midpoint reflection experiment uses exact cube drifts around
+  an involutive velocity reflection and retains invalid endpoints as rejected
+  self-transitions. Time reversal does not require finding a contour crossing.
+  It improves evidence but still under-mixes flat marginals; count autodiff
+  calls separately. Off-contour value probes helped a subsequent NN recover
+  local stiff curvature, while full-ridge generalisation remained poor. See
+  the reflection and NN reports before treating either as a production kernel.

@@ -1115,6 +1115,21 @@
       "note": "Checks the experimental reflection kernel against independent exact curved-tube constrained-prior draws.",
       "path": "cicd/tests/test_ridge_reflection_experiment.py",
       "reason": "reference_parity"
+    },
+    "test_nn_representation_linear_quadratic_reference": {
+      "note": "Checks value and Hessian of the experimental learned representation against an independent quadratic form.",
+      "path": "cicd/tests/test_ridge_nn_experiment.py",
+      "reason": "reference_parity"
+    },
+    "test_nn_rebase_preserves_values_and_curvature": {
+      "note": "Checks that incremental changes of whitening and output scale preserve the full learned function and its curvature.",
+      "path": "cicd/tests/test_ridge_nn_experiment.py",
+      "reason": "reference_parity"
+    },
+    "test_nn_fit_recovers_known_quadratic": {
+      "note": "Checks the actual NN optimiser against a known Gaussian precision on held-out points.",
+      "path": "cicd/tests/test_ridge_nn_experiment.py",
+      "reason": "reference_parity"
     }
   }
 }

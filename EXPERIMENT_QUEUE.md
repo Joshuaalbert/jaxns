@@ -18,3 +18,19 @@
 
 Requested on 23 October 2026. Track results in issue #312 and PR #314; these
 are experimental kernels, not a change to the production sampler defaults.
+
+## Results and remaining directions
+
+- The [reflection experiment](benchmarks/issue_312/REFLECTION_REPORT.md) is
+  implemented and tested: 30 seeds with nine slices plus 90 midpoint
+  reflections give ln Z RMSE 0.922 at 1.465M model calls, including 0.586M
+  gradient calls. Flat posterior marginals still mix poorly.
+- The subsequent [NN representation audit](benchmarks/issue_312/NN_REPRESENTATION_REPORT.md)
+  tests warm-started residual features and off-contour training observations.
+  Added observations recover local stiff curvature, but broad-ridge accuracy
+  and earlier fits remain poor. This has not yet become an NN-Hessian sampler.
+- Next representation investigations: replay older/off-contour observations,
+  preserve useful prior fits rather than selecting solely by interpolation
+  loss, and test local or lower-dimensional residual features. Audit flat and
+  moderate curvature as well as the dominant stiff eigenvector. Only then
+  make a new full sampling comparison with the existing MH correction.

@@ -158,7 +158,7 @@ class ReflectionSampler(AbstractSampler, PureDataclassPytree):
                 step_size = self.step_size * jax.random.uniform(
                     time_key, dtype=point.dtype, minval=0.8, maxval=1.2,
                 )
-                proposed, unused_velocity = reflection_trajectory(
+                proposed, _ = reflection_trajectory(
                     current.point, velocity, step_size, self.num_bounces,
                     contour, value_and_grad, self.boundary_only,
                 )
