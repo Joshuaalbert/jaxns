@@ -46,7 +46,8 @@ class QuadraticModel(PureDataclassPytree):
 QuadraticModel.register_pytree()
 
 
-def test_stationary_chains_preserve_classic_and_phantom_disk_marginals():
+@pytest.mark.parametrize("covariance", [False, True])
+def test_stationary_chains_preserve_classic_and_phantom_disk_marginals(covariance):
     model = QuadraticModel(centre=jnp.asarray([0.5, 0.5]))
     width = 4096
     radius = 0.2
@@ -69,6 +70,10 @@ def test_stationary_chains_preserve_classic_and_phantom_disk_marginals():
         sampler_data=None,
     )
     sampler = UniDimSliceSampler(num_slices=4, num_phantom_samples=3)
+    if covariance:
+        sampler = sampler._with_direction_cholesky(
+            jnp.asarray([[0.1, 0.0], [0.05, 0.3]]),
+        )
     sampled = jax.jit(lambda r: sampler.get_samples(r, model=model))(request)
     states = np.concatenate((
         np.asarray(sampled.phantom_samples.U_samples),

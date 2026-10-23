@@ -187,6 +187,8 @@ class DistributedState(PureDataclassPytree):
             ValueError: If the local run has unfinished work, hit a hard limit,
                 or lacks continuation keys.
         """
+        if state.covariance_data is not None:
+            raise ValueError("Experimental covariance directions are local-only.")
         if (
             not bool(state.depth_reached)
             or state.scheduler_data is not None
@@ -1255,6 +1257,8 @@ class DistributedNestedSampler:
         """Reconnect one resolved immutable distributed state."""
         from jaxns.runtime.client import SupervisorClient
 
+        if distributed.state.covariance_data is not None:
+            raise ValueError("Experimental covariance directions are local-only.")
         if depth_cond is None:
             depth_cond = self.depth_condition
         # The checkpoint owns the resumed scientific model, just as it owns

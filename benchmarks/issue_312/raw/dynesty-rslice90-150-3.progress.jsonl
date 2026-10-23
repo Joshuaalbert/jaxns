@@ -1,0 +1,4 @@
+{"seed": 3, "iterations": 2334, "seconds": 30.000249098986387, "evaluations": 1178906, "log_Z": -55.620425957463155, "delta_log_Z": 39.08251997312181, "added_live": null}
+{"seed": 3, "iterations": 3957, "seconds": 60.00945165095618, "evaluations": 2282656, "log_Z": -11.427138413014445, "delta_log_Z": 5.075357034340411, "added_live": null}
+{"seed": 3, "iterations": 5589, "seconds": 90.02171046898002, "evaluations": 3384605, "log_Z": -5.922215871540576, "delta_log_Z": 4.037159415535035, "added_live": null}
+{"seed": 3, "iterations": 7278, "seconds": 119.21643510297872, "evaluations": 4504142, "log_Z": -4.858777370895038, "delta_log_Z": 6.61385656300494e-05, "added_live": 150}

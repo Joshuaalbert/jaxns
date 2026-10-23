@@ -1,0 +1,12 @@
+{
+  "dataset": "saved-2",
+  "seed": 20261024,
+  "samples": 16384,
+  "source": "Independent resamples of the same saved weighted empirical posterior",
+  "checkpoint": "/tmp/issue312-gmm10-180-2/evidence/seed-2",
+  "source_samples": 157347,
+  "checkpoint_checksum": "b9654750b5692e0dea32da88c648784aa27bf570fae991482d47aef1cc3df718",
+  "source_ess": 10519.563672516804,
+  "source_log_Z": -5.84555936406616,
+  "source_log_Z_uncert": 0.09911839369802465
+}

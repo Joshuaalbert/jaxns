@@ -1,0 +1,3 @@
+{"seed": 1, "iterations": 2476, "seconds": 30.01491484500002, "evaluations": 1188947, "log_Z": -34.66992341734821, "delta_log_Z": 33.22044320107685, "added_live": null}
+{"seed": 1, "iterations": 4300, "seconds": 60.021772300009616, "evaluations": 2351092, "log_Z": 2.6933839410882743, "delta_log_Z": 3.5286094834384696, "added_live": null}
+{"seed": 1, "iterations": 5880, "seconds": 88.88552330300445, "evaluations": 3380134, "log_Z": 4.444806459761853, "delta_log_Z": 6.618818738064964e-05, "added_live": 150}

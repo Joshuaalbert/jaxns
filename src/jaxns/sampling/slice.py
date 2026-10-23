@@ -18,7 +18,13 @@ from jaxns.types import BoolArray, FloatArray, IntArray, PRNGKey, UType
 
 
 @partial(jax.jit, inline=True)
-def _sample_direction(key: PRNGKey, u0: TreeField[UType], radii: TreeField[UType] | None = None, rotation: UType | None = None) -> TreeField[UType]:
+def _sample_direction(
+        key: PRNGKey,
+        u0: TreeField[UType],
+        radii: TreeField[UType] | None = None,
+        rotation: UType | None = None,
+        cholesky: FloatArray | None = None,
+) -> TreeField[UType]:
     """
     Choose a direction randomly from S^(D-1).
 
@@ -33,6 +39,13 @@ def _sample_direction(key: PRNGKey, u0: TreeField[UType], radii: TreeField[UType
     if ndim == 1:
         return u0.ones_like()
     direction = u0.random_normal_like(key)
+    if cholesky is not None:
+        # Isotropic in whitened coordinates means multiplying by L in U-space,
+        # where L L' = covariance. The inverse would amplify the stiff axis.
+        flat, unravel = pytree_ravel(direction.tree)
+        # Geometry may be accumulated in measure precision while the model
+        # owns a narrower U-space dtype. Never promote its prior coordinates.
+        direction = TreeField(unravel(cholesky.astype(flat.dtype) @ flat))
     if radii is not None:
         direction = radii * direction
     if rotation is not None:
@@ -199,34 +212,49 @@ def _draw_ellipsoidal_direction(
 
 
 @partial(jax.jit, inline=True)
-def _slice_bounds(point_U0: TreeField[UType], direction: TreeField[UType]) -> tuple[FloatArray, FloatArray]:
-    """
-    Compute the slice bounds, t, where point_U0 + direction * t intersects uit cube boundary.
+def _slice_bounds(
+        point_U0: TreeField[UType],
+        direction: TreeField[UType],
+) -> tuple[FloatArray, FloatArray]:
+    """Intersect the line ``point_U0 + direction * t`` with the unit cube.
 
     Args:
-        point_U0: starting point of slice
-        direction: direction of slice
+        point_U0: Anchor in the closed unit cube, including its faces.
+        direction: Nonzero line direction, with the same structure as the anchor.
 
     Returns:
-        left_bound: left most point (<= 0).
-        right_bound: right most point (>= 0).
+        The lower and upper displacement bounds, containing zero. Coordinates
+        parallel to a cube face impose no restriction on the line interval.
     """
     leaf_dtype = jax.tree.leaves(point_U0)[0].dtype
     zero = jnp.zeros((), leaf_dtype)
     one = jnp.ones((), leaf_dtype)
     inf = jnp.full((), jnp.inf, leaf_dtype)
-    t1 = (one - point_U0) / direction
-    t1_right = jax.tree.reduce(lambda x, y: jnp.minimum(jnp.min(jnp.where(x >= zero, x, inf)), jnp.min(jnp.where(y >= zero, y, inf))), t1,
-                               initializer=jnp.inf)
-    t1_left = jax.tree.reduce(lambda x, y: jnp.maximum(jnp.max(jnp.where(x <= zero, x, -inf)), jnp.max(jnp.where(y <= zero, y, -inf))), t1,
-                              initializer=-jnp.inf)
-    t0 = -point_U0 / direction
-    t0_right = jax.tree.reduce(lambda x, y: jnp.minimum(jnp.min(jnp.where(x >= zero, x, inf)), jnp.min(jnp.where(y >= zero, y, inf))), t0,
-                               initializer=jnp.inf)
-    t0_left = jax.tree.reduce(lambda x, y: jnp.maximum(jnp.max(jnp.where(x <= zero, x, -inf)), jnp.max(jnp.where(y <= zero, y, -inf))), t0,
-                              initializer=-jnp.inf)
-    right_bound = jnp.minimum(t0_right, t1_right)
-    left_bound = jnp.maximum(t0_left, t1_left)
+    # A stationary coordinate admits every t. Avoid 0/0 on a parallel face
+    # before replacing that coordinate's interval with [-inf, inf].
+    denominator = jax.tree.map(
+        lambda value: jnp.where(value == zero, one, value), direction,
+    )
+    t0 = -point_U0 / denominator
+    t1 = (one - point_U0) / denominator
+    # Order each coordinate's two face intersections before intersecting the
+    # intervals. Classifying t=0 as both signs would trap exact-face anchors.
+    lower = jax.tree.map(
+        lambda a, b, d: jnp.where(d == zero, -inf, jnp.minimum(a, b)),
+        t0, t1, direction,
+    )
+    upper = jax.tree.map(
+        lambda a, b, d: jnp.where(d == zero, inf, jnp.maximum(a, b)),
+        t0, t1, direction,
+    )
+    left_bound = jax.tree.reduce(
+        lambda bound, values: jnp.maximum(bound, jnp.max(values)),
+        lower, initializer=-inf,
+    )
+    right_bound = jax.tree.reduce(
+        lambda bound, values: jnp.minimum(bound, jnp.min(values)),
+        upper, initializer=inf,
+    )
     return left_bound, right_bound
 
 
@@ -272,6 +300,7 @@ def _new_proposal(
         log_likelihood_fn: Callable[[UType], FloatArray],
         periodic: tuple[bool, ...] = (),
         sampler_data: SamplerData | None = None,
+        direction_cholesky: FloatArray | None = None,
 ) -> tuple[
     TreeField[UType],
     FloatArray,
@@ -394,7 +423,9 @@ def _new_proposal(
     num_likelihood_evaluations = carry.num_likelihood_evaluations
     # Randomly choose a new direction
     if sampler_data is None:
-        direction = _sample_direction(after_key, direction)
+        direction = _sample_direction(
+            after_key, direction, cholesky=direction_cholesky,
+        )
         direction_isotropic = jnp.asarray(True, mp_policy.bool_dtype)
     else:
         direction, direction_isotropic = _draw_ellipsoidal_direction(

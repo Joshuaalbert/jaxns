@@ -1,6 +1,26 @@
 {
   "schema_version": 1,
   "tests": {
+    "test_ridge_scaled_metric_matches_straight_contour_covariance": {
+      "note": "Checks the contour-scaled metric against the analytic covariance of the straight toy's uniform 15-ball times three unit intervals.",
+      "path": "cicd/tests/test_ridge_hessian_experiment.py",
+      "reason": "reference_parity"
+    },
+    "test_ridge_hessian_matches_autodiff": {
+      "note": "Checks the toy-only analytic Hessian and its regularisation against independent full automatic differentiation and NumPy eigendecomposition.",
+      "path": "cicd/tests/test_ridge_hessian_experiment.py",
+      "reason": "reference_parity"
+    },
+    "test_ridge_angular_density_matches_dense_reference": {
+      "note": "Checks the experimental normalized-Gaussian direction density against an independent dense precision calculation and antipodal symmetry.",
+      "path": "cicd/tests/test_ridge_hessian_experiment.py",
+      "reason": "reference_parity"
+    },
+    "test_ridge_mh_counts_rejections_as_transitions": {
+      "note": "Checks retained self-transitions and strict contour support in the toy-only Metropolis-corrected sampler, including a constant-geometry control.",
+      "path": "cicd/tests/test_ridge_hessian_experiment.py",
+      "reason": "utility_behavior"
+    },
     "test_classic_runner_constructs_sampler_on_develop": {
       "note": "Checks that the paper benchmark's default classic-only runner constructs a sampler without requiring the experimental phantom-seeding API.",
       "path": "cicd/tests/test_paper_experiment.py",
@@ -995,6 +1015,126 @@
       "path": "cicd/tests/test_audit_regressions.py",
       "reason": "configuration_contract",
       "note": "Unwrapping JIT must preserve ordinary Python decorators that change the model likelihood."
+    },
+    "test_covariance_uses_strict_contour_and_excludes_padding": {
+      "note": "Checks the experimental direction-fit population and NumPy covariance reference; geometry does not define seed eligibility.",
+      "path": "cicd/tests/test_covariance_directions.py",
+      "reason": "configuration_contract"
+    },
+    "test_covariance_refreshes_after_one_efold_in_either_direction": {
+      "note": "Checks the experimental refresh cadence and persisted refresh position.",
+      "path": "cicd/tests/test_covariance_directions.py",
+      "reason": "configuration_contract"
+    },
+    "test_isotropic_core_keeps_singular_covariance_positive": {
+      "note": "Checks additive covariance regularisation, including completely collapsed input.",
+      "path": "cicd/tests/test_covariance_directions.py",
+      "reason": "configuration_contract"
+    },
+    "test_cholesky_directions_use_covariance_not_its_inverse": {
+      "note": "Checks the orientation of the whitening map on a structured unit-coordinate pytree.",
+      "path": "cicd/tests/test_covariance_directions.py",
+      "reason": "configuration_contract"
+    },
+    "test_covariance_directions_preserve_model_unit_dtype": {
+      "note": "Checks that measure-precision covariance does not promote the model-owned unit-coordinate dtype.",
+      "path": "cicd/tests/test_covariance_directions.py",
+      "reason": "configuration_contract"
+    },
+    "test_covariance_scalar_sampler_retains_frozen_geometry": {
+      "note": "Checks immutable geometry transport and periodic-coordinate rejection.",
+      "path": "cicd/tests/test_covariance_directions.py",
+      "reason": "configuration_contract"
+    },
+    "test_slice_bounds_intersect_cube_faces": {
+      "note": "Checks analytic line-cube intervals at interior points, faces and corners, including signed zero direction components and structured coordinates in both precisions.",
+      "path": "cicd/tests/test_slice_bounds.py",
+      "reason": "utility_behavior"
+    },
+    "test_face_slice_proposals_explore_valid_chord": {
+      "note": "Regresses exact-face seed trapping by checking full-chord movement under a constant likelihood; boundary seeds are not a stationary ensemble.",
+      "path": "cicd/tests/test_slice_bounds.py",
+      "reason": "utility_behavior"
+    },
+    "test_boundary_seeds_escape_in_scalar_and_continued_chains": {
+      "note": "Checks that ordinary and covariance chains escape cube-face seeds in scalar and continuation execution with matching outputs and evaluation counts.",
+      "path": "cicd/tests/test_slice_bounds.py",
+      "reason": "utility_behavior"
+    },
+    "test_covariance_configuration_rejects_invalid_scales": {
+      "note": "Checks finite positive regularisation and refresh interval validation.",
+      "path": "cicd/tests/test_covariance_directions.py",
+      "reason": "configuration_contract"
+    },
+    "test_gp_predictive_hessian_matches_autodiff_with_affine_inputs": {
+      "path": "cicd/tests/test_ridge_gp_experiment.py",
+      "reason": "utility_behavior",
+      "note": "Checks the RBF predictive-mean Hessian and transformation back to cube coordinates against autodiff."
+    },
+    "test_gp_fit_recovers_quadratic_curvature_and_padding": {
+      "path": "cicd/tests/test_ridge_gp_experiment.py",
+      "reason": "utility_behavior",
+      "note": "Checks learned curvature on a quadratic, exact padding exclusion, input covariance and optimizer restart selection."
+    },
+    "test_gp_representatives_remain_distinct_for_duplicate_points": {
+      "path": "cicd/tests/test_ridge_gp_experiment.py",
+      "reason": "utility_behavior",
+      "note": "Checks that representative selection does not repeat a training index in a collapsed cloud."
+    },
+    "test_gp_batch_hook_replays_frozen_sampler_exactly": {
+      "path": "cicd/tests/test_ridge_gp_experiment.py",
+      "reason": "utility_behavior",
+      "note": "Checks that the offline GP refresh seam preserves the full fixed-kernel race state and random stream."
+    },
+    "test_gp_mh_retains_rejected_states_and_uniform_target": {
+      "path": "cicd/tests/test_ridge_gp_experiment.py",
+      "reason": "utility_behavior",
+      "note": "Checks self-transitions and a fixed-GP stationarity probe; does not certify adaptive nested sampling."
+    },
+    "test_cube_drift_matches_multiple_face_crossings": {
+      "note": "Checks the experimental cube billiard map against an independent multiple-crossing calculation.",
+      "path": "cicd/tests/test_ridge_reflection_experiment.py",
+      "reason": "reference_parity"
+    },
+    "test_midpoint_reflection_reversal_and_jacobian": {
+      "note": "Checks phase-space reversal, volume and speed preservation of both experimental reflection policies.",
+      "path": "cicd/tests/test_ridge_reflection_experiment.py",
+      "reason": "reference_parity"
+    },
+    "test_reflection_rejections_and_evaluation_accounting": {
+      "note": "Checks retained rejected endpoints and separate value/gradient work counts in the experimental kernel.",
+      "path": "cicd/tests/test_ridge_reflection_experiment.py",
+      "reason": "utility_behavior"
+    },
+    "test_reflection_time_reversal_on_stiff_ridge": {
+      "note": "Checks numerical reversal on the actual ill-conditioned eighteen-dimensional ridge.",
+      "path": "cicd/tests/test_ridge_reflection_experiment.py",
+      "reason": "reference_parity"
+    },
+    "test_reflection_preserves_uniform_curved_tube": {
+      "note": "Checks the experimental reflection kernel against independent exact curved-tube constrained-prior draws.",
+      "path": "cicd/tests/test_ridge_reflection_experiment.py",
+      "reason": "reference_parity"
+    },
+    "test_nn_representation_linear_quadratic_reference": {
+      "note": "Checks value and Hessian of the experimental learned representation against an independent quadratic form.",
+      "path": "cicd/tests/test_ridge_nn_experiment.py",
+      "reason": "reference_parity"
+    },
+    "test_nn_rebase_preserves_values_and_curvature": {
+      "note": "Checks that incremental changes of whitening and output scale preserve the full learned function and its curvature.",
+      "path": "cicd/tests/test_ridge_nn_experiment.py",
+      "reason": "reference_parity"
+    },
+    "test_nn_fit_recovers_known_quadratic": {
+      "note": "Checks the actual NN optimiser against a known Gaussian precision on held-out points.",
+      "path": "cicd/tests/test_ridge_nn_experiment.py",
+      "reason": "reference_parity"
+    },
+    "test_nn_mh_retains_rejections_and_preserves_uniform_target": {
+      "note": "Checks the experimental NN direction law and MH correction against an independent uniform target, including retained rejected transitions.",
+      "path": "cicd/tests/test_ridge_nn_experiment.py",
+      "reason": "reference_parity"
     }
   }
 }

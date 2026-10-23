@@ -35,6 +35,7 @@ from jaxns.samples import Samples, SeedPoint
 from jaxns.sampling.batching import (
     sample_request,
 )
+from jaxns.sampling.covariance import refresh_covariance_directions
 from jaxns.sampling.protocol import (
     ConstrainedSampleBatch,
     ConstrainedSampleRequest,
@@ -2263,6 +2264,11 @@ def _sample_work_batch(
         work: CoreWorkBatch,
 ) -> ConstrainedSampleBatch:
     """Execute the planned batch through the sampler-owned batch strategy."""
+    if state.covariance_data is not None:
+        # Geometry is fixed before entering either scalar or continued chains.
+        sampler = sampler._with_direction_cholesky(
+            state.covariance_data.cholesky,
+        )
     keys = jax.random.split(key, work.seed_idx.shape[0])
     seed_points = SeedPoint(
         U0=jax.tree.map(
@@ -2289,6 +2295,46 @@ def _sample_work_batch(
         args=state.args,
         params=state.params,
     )
+
+
+def _refresh_covariance_for_work(state: State, work: CoreWorkBatch) -> State:
+    """Adapt the experimental local direction law at the dispatch frontier."""
+    constrained = work.valid & (work.parent_idx >= 0)
+    contour = jnp.min(jnp.where(
+        constrained, work.log_L_constraint, jnp.inf,
+    ))
+
+    def refresh(current: State) -> State:
+        # This experiment deliberately reconstructs the current classic
+        # volume path, rather than using sample count as a compression proxy.
+        # The append-order index is stale inside a frozen schedule. This extra
+        # sort is experimental overhead and absent from the isotropic path.
+        blocks = build_block_state(
+            current.samples,
+            root_out_degree=current.root_out_degree,
+            num_samples=current.num_samples,
+        )
+        concentrations = classic_dirichlet_concentrations(blocks)
+        total = (
+            concentrations.alpha_gt + concentrations.alpha_eq
+            + concentrations.alpha_lt
+        )
+        log_ratio = (
+            jnp.log(concentrations.alpha_gt) - jnp.log(total)
+        )
+        log_X = jnp.sum(jnp.where(
+            blocks.valid & (blocks.log_L_blocks <= contour), log_ratio, 0.0,
+        ))
+        data = refresh_covariance_directions(
+            current.covariance_data,
+            current.samples,
+            current.num_samples,
+            contour,
+            log_X,
+        )
+        return dataclasses.replace(current, covariance_data=data)
+
+    return jax.lax.cond(jnp.any(constrained), refresh, lambda s: s, state)
 
 
 def _accept_work_batch(
@@ -2791,15 +2837,18 @@ def _run_depth(
             carry.schedule,
             max_valid_lanes,
         )
+        sampling_state = carry.state
+        if sampling_state.covariance_data is not None:
+            sampling_state = _refresh_covariance_for_work(sampling_state, work)
         sampled_batch = _sample_work_batch(
             sample_key,
-            carry.state,
+            sampling_state,
             sampler,
             work,
         )
         insert_idx = carry.state.num_samples
         next_state = _accept_work_batch(
-            carry.state,
+            sampling_state,
             work,
             sampled_batch,
             # The frozen schedule never consumes likelihood order. Publishing

@@ -1,0 +1,12 @@
+{
+  "chains": 64,
+  "slices": 90,
+  "array_leaves": 8,
+  "bit_identical": true,
+  "includes_intermediate_states": true,
+  "original_sampler_sha256": "f62a9fcb82242e1890097eadb96ad173874e42c75c407c6282d807c8694f801b",
+  "source_sha256": {
+    "gp_hessian_sampler.py": "bf293b365b58e9aa57d86eef9675b3fde66e1c36d375bfef8c00b4ed8863c609",
+    "hessian_chain.py": "28de74f25eb2a18c1b590f59479aee7dcd8849fe6f0f667cef2c12a22c2dca5b"
+  }
+}
