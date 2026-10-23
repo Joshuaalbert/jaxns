@@ -28,9 +28,15 @@ are experimental kernels, not a change to the production sampler defaults.
 - The subsequent [NN representation audit](benchmarks/issue_312/NN_REPRESENTATION_REPORT.md)
   tests warm-started residual features and off-contour training observations.
   Added observations recover local stiff curvature, but broad-ridge accuracy
-  and earlier fits remain poor. This has not yet become an NN-Hessian sampler.
+  and earlier fits remain poor.
+- The [NN-driven sampling comparison](benchmarks/issue_312/NN_SAMPLING_REPORT.md)
+  now tests both fits across six seeds with the existing MH correction and
+  one-e-fold refits. Evidence RMSE is 104.52 nats stored-only and 110.96 with
+  probes, with severe marginal collapse. A frozen-kernel stationarity check
+  passes while endpoint correlations exceed 0.998. False moderate/flat
+  curvature remains large despite recovering the dominant stiff eigenvalue.
 - Next representation investigations: replay older/off-contour observations,
   preserve useful prior fits rather than selecting solely by interpolation
   loss, and test local or lower-dimensional residual features. Audit flat and
-  moderate curvature as well as the dominant stiff eigenvector. Only then
-  make a new full sampling comparison with the existing MH correction.
+  moderate curvature as well as the dominant stiff eigenvector. Compare any
+  further representation changes against the completed sampling failures.

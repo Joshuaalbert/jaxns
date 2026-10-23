@@ -1,6 +1,7 @@
 """Validate and plot the six-seed GP/Hessian comparison."""
 
 import csv
+import gzip
 import hashlib
 import json
 from pathlib import Path
@@ -36,7 +37,14 @@ def main():
             for line in (root / "results.jsonl").read_text().splitlines():
                 row = json.loads(line)
                 for name, checksum in row["source_sha256"].items():
-                    assert hashlib.sha256((folder / name).read_bytes()).hexdigest() == checksum
+                    sources = [(folder / name).read_bytes()]
+                    if name in ("gp_hessian_sampler.py", "run_gp_hessian.py"):
+                        # Preserve the executed GP source when its unchanged
+                        # transition law is shared with the NN experiment.
+                        sources.append(gzip.decompress(
+                            (folder / f"raw/{name}.before_nn.gz").read_bytes(),
+                        ))
+                    assert checksum in {hashlib.sha256(source).hexdigest() for source in sources}
                 assert row["training_points"] == count and row["fit_iterations"] == 100
                 assert row["refresh_efolds"] == 1.0 and row["warm_start"]
                 assert row["oracle_scale"]["quadratic_dimension"] == 15

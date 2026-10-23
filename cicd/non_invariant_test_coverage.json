@@ -1130,6 +1130,11 @@
       "note": "Checks the actual NN optimiser against a known Gaussian precision on held-out points.",
       "path": "cicd/tests/test_ridge_nn_experiment.py",
       "reason": "reference_parity"
+    },
+    "test_nn_mh_retains_rejections_and_preserves_uniform_target": {
+      "note": "Checks the experimental NN direction law and MH correction against an independent uniform target, including retained rejected transitions.",
+      "path": "cicd/tests/test_ridge_nn_experiment.py",
+      "reason": "reference_parity"
     }
   }
 }

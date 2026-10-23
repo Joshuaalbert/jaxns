@@ -7,6 +7,10 @@ the local Hessian substantially, but the network remains inaccurate elsewhere
 along the ridge. This is a fit-and-curvature experiment, not an end-to-end
 NN-driven nested-sampling result or a production sampler change.
 
+The subsequent [NN sampling report](NN_SAMPLING_REPORT.md) now tests both the
+stored-only and augmented fits in actual nested runs. Both fail; that report
+audits the weaker and flat directions missed by a stiff-axis-dominated norm.
+
 The requested order is recorded in [the experiment queue](../../EXPERIMENT_QUEUE.md):
 the reflection implementation and first nested runs preceded these NN fits.
 
@@ -95,11 +99,11 @@ value RMSEs are 2.45e5, 6.25e8 and 6.78e8 nats. Earlier populations also have
 poor local derivative fits. The final local improvement does not establish
 an improved sampling kernel or that an NN is preferable to a GP in general.
 
-The next investigations are recorded in the queue: replay older/off-contour
+Further investigations are recorded in the queue: replay older/off-contour
 observations, preserve useful earlier representations, and test local or
-lower-dimensional residual features before a new NN-Hessian sampling
-comparison. Such a kernel must still keep fits frozen within chains and
-use the true constraint and endpoint direction-density MH correction.
+lower-dimensional residual features. The subsequent sampling comparison
+keeps fits frozen within chains and uses the true constraint and endpoint
+direction-density MH correction; these do not supply sufficient mixing.
 
 ## Reproduction and validation
 

@@ -12,6 +12,7 @@ from benchmarks.issue_312.nn_geometry import (
     predictive_mean,
     rebase,
 )
+from benchmarks.issue_312.nn_hessian_sampler import NNHessianSliceSampler
 
 
 def test_nn_representation_linear_quadratic_reference():
@@ -60,3 +61,38 @@ def test_nn_fit_recovers_known_quadratic(relative_loss):
     assert record["held_out_rmse"] < 1e-5
     np.testing.assert_allclose(negative_predictive_hessian(network, jnp.array([0.3, 0.6])),
                                precision, rtol=1e-5, atol=1e-5)
+
+
+def test_nn_mh_retains_rejections_and_preserves_uniform_target():
+    # The network invents nonconstant geometry on a truly uniform cube.
+    # The endpoint direction-density correction must undo that preference.
+    rng = np.random.default_rng(31216)
+    points = rng.uniform(size=(64, 2))
+    values = -80 * (points[:, 0] - points[:, 1] ** 2) ** 2
+    network, _, _ = fit_nn(
+        points, values, peak=1.0, max_points=64, hidden_features=8, max_iterations=300,
+    )
+    sampler = NNHessianSliceSampler(
+        network, log_likelihood_peak=1.0, quadratic_dimension=2, num_slices=20,
+    )
+    seeds = jnp.asarray(rng.uniform(size=(2048, 2)))
+
+    @jax.jit
+    @jax.vmap
+    def chain(key, point):
+        return sampler.run_chain(
+            key, point, jnp.asarray(0.), jnp.asarray(-1.), lambda x: jnp.asarray(0.),
+        )
+
+    final, (states, values) = chain(
+        jax.random.split(jax.random.PRNGKey(31217), len(seeds)), seeds,
+    )
+    differences = np.diff(np.concatenate([seeds[:, None], states], axis=1), axis=1)
+    moved = np.any(differences != 0, axis=2)
+    np.testing.assert_array_equal(moved.sum(axis=1), final.accepted)
+    assert 0 < int(jnp.sum(final.accepted)) < 20 * len(seeds)
+    assert np.all((np.asarray(states) >= 0) & (np.asarray(states) <= 1))
+    assert np.all(np.asarray(values) == 0)
+    from scipy.stats import kstest
+
+    assert max(kstest(axis, "uniform").statistic for axis in np.asarray(final.point).T) < 0.06

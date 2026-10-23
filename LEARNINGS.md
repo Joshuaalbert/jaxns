@@ -69,3 +69,8 @@ repeat mistakes specific to this project. Keep learnings compact.
   calls separately. Off-contour value probes helped a subsequent NN recover
   local stiff curvature, while full-ridge generalisation remained poor. See
   the reflection and NN reports before treating either as a production kernel.
+- Actual issue-312 NN-Hessian runs failed much worse than the GP despite good
+  late stiff-axis fits. A Hessian norm dominated by one enormous eigenvalue
+  hides false curvature in flat/moderate directions. Audit direction variance
+  relative to the true normal and retained-chain movement, not only fit error
+  and stationary marginals; see `benchmarks/issue_312/NN_SAMPLING_REPORT.md`.

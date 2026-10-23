@@ -52,7 +52,10 @@ def main():
     )
     root = options.output_dir
     root.mkdir(parents=True, exist_ok=True)
-    source_names = ["gp_geometry.py", "gp_hessian_sampler.py", "gp_refresh.py", "run_gp_hessian.py"]
+    source_names = [
+        "gp_geometry.py", "gp_hessian_sampler.py", "hessian_chain.py",
+        "gp_refresh.py", "run_gp_hessian.py",
+    ]
     metadata = {
         "commit": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
         "source_sha256": {
