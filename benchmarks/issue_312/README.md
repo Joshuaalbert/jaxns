@@ -7,11 +7,16 @@ default and GMM workflow are unchanged.
 The [reflection experiment](REFLECTION_REPORT.md) implements reversible
 midpoint trajectories and reports 30 seeds. The subsequent
 [NN representation audit](NN_REPRESENTATION_REPORT.md) investigates incremental
-curvature learning with and without off-contour observations. The latest
+curvature learning with and without off-contour observations. The
 [actual NN sampling comparison](NN_SAMPLING_REPORT.md) tests both variants
 across six seeds: neither works, with evidence RMSE 105–111 nats and severe
-collapse even in Gaussian directions. Further representation ideas are
-recorded in [the experiment queue](../../EXPERIMENT_QUEUE.md).
+collapse even in Gaussian directions. The subsequent
+[local GMM comparison](LOCAL_GMM_REPORT.md) uses 100 EM iterations and actual
+component covariance directions selected by local responsibilities, with a
+full mixture MH correction. Across 24 runs, it does not solve the ridge;
+fresh fits preserve components, but local selection has larger evidence error
+than matched global selection. Further representation ideas are recorded in
+[the experiment queue](../../EXPERIMENT_QUEUE.md).
 
 See [REPORT.md](REPORT.md) for the completed 30-seed curved comparison,
 ten-seed straight controls, validation, and limitations. The covariance change

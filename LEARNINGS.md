@@ -74,3 +74,9 @@ repeat mistakes specific to this project. Keep learnings compact.
   hides false curvature in flat/moderate directions. Audit direction variance
   relative to the true normal and retained-chain movement, not only fit error
   and stationary marginals; see `benchmarks/issue_312/NN_SAMPLING_REPORT.md`.
+- In the local-GMM ridge experiment, warm EM fits to successively trimmed
+  populations lost all but one substantial component. Fresh 100-iteration
+  fits preserved ten components but local MH-corrected directions still
+  under-mixed. The correction uses the full marginal angular mixture at
+  both endpoints, including the isotropic branch, not a GMM point-density
+  ratio. See `benchmarks/issue_312/LOCAL_GMM_REPORT.md` for the tested scope.

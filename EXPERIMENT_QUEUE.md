@@ -35,6 +35,12 @@ are experimental kernels, not a change to the production sampler defaults.
   probes, with severe marginal collapse. A frozen-kernel stationarity check
   passes while endpoint correlations exceed 0.998. False moderate/flat
   curvature remains large despite recovering the dominant stiff eigenvalue.
+- The [local GMM experiment](benchmarks/issue_312/LOCAL_GMM_REPORT.md) fits ten
+  components for 100 EM iterations and corrects local responsibility-based
+  direction selection. Six-seed evidence RMSE is 6.24 with warm starts and
+  4.59 with fresh fits, versus 3.20/2.76 for matched global selection. Fresh
+  fits avoid collapse to one component, but neither protocol recovers the
+  ridge marginal. All 24 new runs and independent kernel/EM checks are saved.
 - Next representation investigations: replay older/off-contour observations,
   preserve useful prior fits rather than selecting solely by interpolation
   loss, and test local or lower-dimensional residual features. Audit flat and

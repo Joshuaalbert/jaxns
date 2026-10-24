@@ -1135,6 +1135,21 @@
       "note": "Checks the experimental NN direction law and MH correction against an independent uniform target, including retained rejected transitions.",
       "path": "cicd/tests/test_ridge_nn_experiment.py",
       "reason": "reference_parity"
+    },
+    "test_local_gmm_density_matches_independent_reference": {
+      "note": "Checks local responsibilities and the complete angular mixture against an independent dense Gaussian reference and sphere quadrature.",
+      "path": "cicd/tests/test_ridge_local_gmm_experiment.py",
+      "reason": "reference_parity"
+    },
+    "test_local_gmm_mh_preserves_uniform_target_and_self_transitions": {
+      "note": "Checks corrected local and global GMM transitions on a uniform target, includes a biased uncorrected negative control and exact callback accounting.",
+      "path": "cicd/tests/test_ridge_local_gmm_experiment.py",
+      "reason": "reference_parity"
+    },
+    "test_local_gmm_rejects_invalid_geometry": {
+      "note": "Checks that the benchmark rejects indefinite covariance and invalid component masses before sampling.",
+      "path": "cicd/tests/test_ridge_local_gmm_experiment.py",
+      "reason": "reference_parity"
     }
   }
 }
