@@ -1,0 +1,201 @@
+{
+  "hessian_uniform": {
+    "seeds": 30,
+    "mean_log_Z": -0.38682972102325114,
+    "rmse": 0.845693869610068,
+    "rmse_bootstrap_95_percent": [
+      0.6877071722895689,
+      0.9917936819190125
+    ],
+    "empirical_sd": 0.7648941022235269,
+    "range_log_Z": [
+      -1.4517748546549367,
+      1.6180140271468515
+    ],
+    "mean_quoted_uncertainty": 0.4610044897965465,
+    "range_quoted_uncertainty": [
+      0.4490036547148199,
+      0.47082491248514513
+    ],
+    "mean_evaluations": 1886326.1,
+    "mean_gradient_evaluations": 0.0,
+    "within_one_quoted_sd": 9,
+    "within_two_quoted_sd": 21,
+    "normalised_rmse": 1.828269264789884,
+    "median_peak_gap": 1.149996065176726,
+    "range_epochs": [
+      1,
+      1
+    ],
+    "mean_epochs": 1.0,
+    "range_roots": [
+      150,
+      150
+    ],
+    "median_widths": {
+      "x1": 0.202347727699621,
+      "x16": 0.2853243187107173,
+      "x17": 0.2832259924805872,
+      "x5": 0.0496884757301337
+    },
+    "median_wasserstein": {
+      "x1": 0.20216100699393197,
+      "x16": 0.026772304626561834,
+      "x17": 0.0261208753238487,
+      "x5": 0.005442954132177741
+    }
+  },
+  "hessian_evidence_improving": {
+    "seeds": 30,
+    "mean_log_Z": -0.45987171671204496,
+    "rmse": 0.9297161918992648,
+    "rmse_bootstrap_95_percent": [
+      0.7113609083194704,
+      1.1203095112808528
+    ],
+    "empirical_sd": 0.8218294572946556,
+    "range_log_Z": [
+      -1.8663900053790956,
+      1.5366768506318165
+    ],
+    "mean_quoted_uncertainty": 0.3172684074056727,
+    "range_quoted_uncertainty": [
+      0.24812541019837248,
+      0.3911720671420484
+    ],
+    "mean_evaluations": 3181127.4,
+    "mean_gradient_evaluations": 0.0,
+    "within_one_quoted_sd": 9,
+    "within_two_quoted_sd": 16,
+    "normalised_rmse": 2.9015865160135577,
+    "median_peak_gap": 1.6546151645085736,
+    "range_epochs": [
+      1,
+      2
+    ],
+    "mean_epochs": 1.1333333333333333,
+    "range_roots": [
+      251,
+      540
+    ],
+    "median_widths": {
+      "x1": 0.04586565130609134,
+      "x16": 0.2854956777649279,
+      "x17": 0.2877953410182037,
+      "x5": 0.05031916119774486
+    },
+    "median_wasserstein": {
+      "x1": 0.2906953726808815,
+      "x16": 0.02601371142801711,
+      "x17": 0.019761090250185357,
+      "x5": 0.005061005432651062
+    }
+  },
+  "hessian_paired_rmse_change_95_percent": [
+    -0.19382947315600435,
+    0.336279904387384
+  ],
+  "reflection_uniform": {
+    "seeds": 30,
+    "mean_log_Z": -0.01712402244652627,
+    "rmse": 0.9215378642332547,
+    "rmse_bootstrap_95_percent": [
+      0.6496033265170178,
+      1.1676590041635329
+    ],
+    "empirical_sd": 0.9371299562498621,
+    "range_log_Z": [
+      -2.230547648883856,
+      2.31091668888592
+    ],
+    "mean_quoted_uncertainty": 0.4599878715658966,
+    "range_quoted_uncertainty": [
+      0.44620846582486284,
+      0.47491494362452463
+    ],
+    "mean_evaluations": 1465271.0,
+    "mean_gradient_evaluations": 586131.0,
+    "within_one_quoted_sd": 14,
+    "within_two_quoted_sd": 22,
+    "normalised_rmse": 2.0057766043692475,
+    "median_peak_gap": 1.022780792950254,
+    "range_epochs": [
+      1,
+      1
+    ],
+    "mean_epochs": 1.0,
+    "range_roots": [
+      150,
+      150
+    ],
+    "median_widths": {
+      "x1": 0.153518418954131,
+      "x16": 0.19222906934378065,
+      "x17": 0.21443898923161314,
+      "x5": 0.04944379035904114
+    },
+    "median_wasserstein": {
+      "x1": 0.19953356744638712,
+      "x16": 0.1954709822262259,
+      "x17": 0.1766707895040445,
+      "x5": 0.004024952944876194
+    }
+  },
+  "reflection_evidence_improving": {
+    "seeds": 30,
+    "mean_log_Z": -0.26190875567571,
+    "rmse": 0.8451107662252749,
+    "rmse_bootstrap_95_percent": [
+      0.677911942122713,
+      1.0005670720259536
+    ],
+    "empirical_sd": 0.8172384180613723,
+    "range_log_Z": [
+      -1.7070476737248217,
+      1.1832880775783103
+    ],
+    "mean_quoted_uncertainty": 0.3167427892798026,
+    "range_quoted_uncertainty": [
+      0.251168008303587,
+      0.3942157467134222
+    ],
+    "mean_evaluations": 2574118.7333333334,
+    "mean_gradient_evaluations": 1073280.0,
+    "within_one_quoted_sd": 8,
+    "within_two_quoted_sd": 14,
+    "normalised_rmse": 2.6824261409715424,
+    "median_peak_gap": 1.5942339939052843,
+    "range_epochs": [
+      1,
+      2
+    ],
+    "mean_epochs": 1.1,
+    "range_roots": [
+      254,
+      526
+    ],
+    "median_widths": {
+      "x1": 0.1102680207458597,
+      "x16": 0.14770819502248217,
+      "x17": 0.15893829127534073,
+      "x5": 0.049159863585821736
+    },
+    "median_wasserstein": {
+      "x1": 0.21659967699093952,
+      "x16": 0.20646519148778883,
+      "x17": 0.18815902898807685,
+      "x5": 0.005722593164036206
+    }
+  },
+  "reflection_paired_rmse_change_95_percent": [
+    -0.36675424452238803,
+    0.23503091380376329
+  ],
+  "validation": {
+    "new_archives": 60,
+    "max_likelihood_error": 2.3618531486135907e-05,
+    "baseline_csv_sha256": "bd3411983cca8b83ac4628275bf225e76df39ec8d62ee67545d35618cdffc447",
+    "bootstrap_draws": 10000,
+    "bootstrap_seed": 312040
+  }
+}

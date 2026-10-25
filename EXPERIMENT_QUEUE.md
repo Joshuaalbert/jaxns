@@ -46,3 +46,10 @@ are experimental kernels, not a change to the production sampler defaults.
   loss, and test local or lower-dimensional residual features. Audit flat and
   moderate curvature as well as the dominant stiff eigenvector. Compare any
   further representation changes against the completed sampling failures.
+- The [evidence-goal comparison](benchmarks/issue_312/EVIDENCE_KERNELS_REPORT.md)
+  tests the unchanged exact scaled-Hessian and reflection kernels with
+  `evidence_improving` to classic log-evidence uncertainty 0.4, across 30 seeds
+  each. RMSE is 0.930 and 0.845 nats versus 0.846 and 0.922 for uniform
+  allocation, with mean quoted uncertainty 0.317 and 69–76% more model calls.
+  Ridge coverage worsens; tighter error bars do not establish calibrated
+  accuracy or posterior coverage.

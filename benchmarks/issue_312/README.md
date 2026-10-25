@@ -18,6 +18,13 @@ fresh fits preserve components, but local selection has larger evidence error
 than matched global selection. Further representation ideas are recorded in
 [the experiment queue](../../EXPERIMENT_QUEUE.md).
 
+The [evidence-goal comparison](EVIDENCE_KERNELS_REPORT.md) runs the unchanged
+exact scaled-Hessian and reflection kernels with `evidence_improving` to
+classic log-evidence uncertainty 0.4. Across 30 seeds each, evidence RMSE is
+0.930 and 0.845 nats, with mean quoted uncertainty 0.317. This costs 69–76%
+more model calls than the uniform controls without a clear RMSE improvement;
+ridge coverage worsens, particularly for the Hessian kernel.
+
 See [REPORT.md](REPORT.md) for the completed 30-seed curved comparison,
 ten-seed straight controls, validation, and limitations. The covariance change
 improves the curved toy substantially but does not recover its posterior.
