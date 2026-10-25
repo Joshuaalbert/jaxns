@@ -53,3 +53,10 @@ are experimental kernels, not a change to the production sampler defaults.
   allocation, with mean quoted uncertainty 0.317 and 69–76% more model calls.
   Ridge coverage worsens; tighter error bars do not establish calibrated
   accuracy or posterior coverage.
+- The [matched-work allocation comparison](benchmarks/issue_312/ALLOCATION_REPORT.md)
+  completes 180 runs across both kernels and all three strategies, at 2M/4M
+  model calls. At 4M, uniform gives the lowest observed RMSE (0.699 Hessian,
+  0.690 reflection); posterior allocation raises ESS but worsens evidence
+  (1.162/1.234) and ridge coverage. Actual chain movement stays similar across
+  policies at comparable contours. All 360 archives and seed identities are
+  audited; no production sampling or allocation interfaces changed.

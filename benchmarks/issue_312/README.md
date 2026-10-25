@@ -25,6 +25,14 @@ classic log-evidence uncertainty 0.4. Across 30 seeds each, evidence RMSE is
 more model calls than the uniform controls without a clear RMSE improvement;
 ridge coverage worsens, particularly for the Hessian kernel.
 
+The subsequent [matched-work allocation comparison](ALLOCATION_REPORT.md)
+isolates allocation using 180 runs, with snapshots at 2M and 4M model calls.
+At 4M, uniform/evidence/posterior allocation gives Hessian evidence RMSE
+0.699/0.847/1.162 and reflection RMSE 0.690/0.748/1.234. Posterior allocation
+raises weight ESS while worsening ridge coverage. Actual seed-to-child moves
+at comparable contours remain similar across allocation policies; neither
+kernel recovers the whole ridge.
+
 See [REPORT.md](REPORT.md) for the completed 30-seed curved comparison,
 ten-seed straight controls, validation, and limitations. The covariance change
 improves the curved toy substantially but does not recover its posterior.

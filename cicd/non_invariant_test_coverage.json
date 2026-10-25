@@ -1,6 +1,16 @@
 {
   "schema_version": 1,
   "tests": {
+    "test_allocation_observer_replays_seeds_and_preserves_complete_state": {
+      "note": "Checks that offline read-only seed-plan replay reproduces actual sampled children and preserves the complete run state for all three allocation strategies.",
+      "path": "cicd/tests/test_ridge_allocation_experiment.py",
+      "reason": "reference_parity"
+    },
+    "test_allocation_budget_return_resumes_without_an_extra_goal_boundary": {
+      "note": "Checks that the experimental call-budget observer returns a committed prefix, restores the core hook, and resumes exactly without inventing a scientific goal boundary.",
+      "path": "cicd/tests/test_ridge_allocation_experiment.py",
+      "reason": "reference_parity"
+    },
     "test_ridge_scaled_metric_matches_straight_contour_covariance": {
       "note": "Checks the contour-scaled metric against the analytic covariance of the straight toy's uniform 15-ball times three unit intervals.",
       "path": "cicd/tests/test_ridge_hessian_experiment.py",
