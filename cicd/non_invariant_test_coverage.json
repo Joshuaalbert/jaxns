@@ -1,6 +1,16 @@
 {
   "schema_version": 1,
   "tests": {
+    "test_numpy_phantom_counts_and_evidence_match_dense_reference": {
+      "note": "Checks the offline SciPy interval operators, shared-cluster weights, gate, complementary-mass combination and evidence quadrature against the independent dense reference and production quadrature, including tied blocks and inactive gates.",
+      "path": "cicd/tests/test_ridge_allocation_phantoms.py",
+      "reason": "reference_parity"
+    },
+    "test_allocation_phantoms_preserve_sampling_and_evidence_api": {
+      "note": "Checks that retaining Hessian/reflection chain prefixes leaves classic draws and work unchanged, and that archived evidence inputs reproduce the public classic/phantom inference API exactly.",
+      "path": "cicd/tests/test_ridge_allocation_phantoms.py",
+      "reason": "reference_parity"
+    },
     "test_allocation_observer_replays_seeds_and_preserves_complete_state": {
       "note": "Checks that offline read-only seed-plan replay reproduces actual sampled children and preserves the complete run state for all three allocation strategies.",
       "path": "cicd/tests/test_ridge_allocation_experiment.py",

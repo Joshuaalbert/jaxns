@@ -5,8 +5,8 @@ The [prespecified protocol](ALLOCATION_PROTOCOL.md) compares all three
 allocation strategies for the same exact scaled-Hessian and reflection
 kernels, with 30 seeds per cell and identical initial prior populations.
 
-At four million model calls, uniform allocation gives the lowest observed
-evidence RMSE and the broadest ridge marginal for both kernels. Posterior
+Using classic evidence at four million model calls, uniform allocation gives
+the lowest observed evidence RMSE and the broadest ridge marginal for both kernels. Posterior
 allocation raises nominal weight ESS substantially while worsening evidence
 and ridge coverage. Its RMSE increase relative to uniform is positive across
 the paired bootstrap intervals for both kernels. Evidence allocation has
@@ -47,6 +47,32 @@ These describe this cohort's seed variation, not corrected uncertainties for
 individual runs or a claim that uniform allocation is best on other targets.
 
 ![Evidence, cost development and widths](allocation_comparison.png)
+
+### Phantom-conditioned evidence
+
+The follow-up replays all 180 runs with retained phantoms. All 360 snapshots
+exactly match their original classic samples and likelihood counts. Each
+snapshot uses 4,096 evidence draws, with 89 Hessian or eight reflection
+phantoms per child and the default cluster gate. See the
+[full report and validation](ALLOCATION_PHANTOM_REPORT.md).
+
+| Kernel | Allocation | Classic RMSE, 4M | Phantom RMSE, 4M | Classic mean SD | Phantom mean SD |
+|---|---|---:|---:|---:|---:|
+| Exact scaled Hessian | uniform | 0.699 | 0.730 | 0.314 | 0.220 |
+| Exact scaled Hessian | evidence_improving | 0.847 | 0.777 | 0.271 | 0.190 |
+| Exact scaled Hessian | posterior_improving | 1.162 | 1.318 | 0.610 | 0.419 |
+| Reflection | uniform | 0.690 | 0.773 | 0.272 | 0.160 |
+| Reflection | evidence_improving | 0.748 | 0.936 | 0.244 | 0.143 |
+| Reflection | posterior_improving | 1.234 | 1.612 | 0.594 | 0.344 |
+
+Phantoms lower the point RMSE only for Hessian/evidence allocation; its
+paired bootstrap interval includes zero. Reflection RMSE worsens under
+all three strategies, with positive paired intervals. Quoted errors shrink
+in every cell while two-SD coverage falls to 7–13 of 30 runs.
+Uniform remains the lowest point RMSE; posterior allocation remains worse
+than uniform across the paired intervals for both kernels.
+
+![Classic and phantom evidence](allocation_phantom_comparison.png)
 
 ### Posterior coverage at 4M
 
