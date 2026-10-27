@@ -1220,6 +1220,11 @@
       "path": "cicd/tests/test_reflection_duration.py",
       "reason": "reference_parity",
       "note": "Frozen duration benchmark: independent count mapping, exact controls, variable work, strict support and full continuation parity."
+    },
+    "test_adaptive_roots_added_after_initialisation_have_no_reflection_work": {
+      "path": "cicd/tests/test_reflection_duration.py",
+      "reason": "reference_parity",
+      "note": "Reproduces the evidence-allocation smoke with six later prior roots; checks their true one-call/no-gradient law and total reflection work."
     }
   }
 }

@@ -196,6 +196,8 @@ def main():
         gradients = saved["gradient_evaluations_per_sample"]
         np.testing.assert_array_equal(gradients, 9 * counts)
         assert np.all(counts[root] == 0) and np.all(gradients[root] == 0)
+        assert np.all(saved["nominal_steps"][root] == 0)
+        assert np.all(saved["value_only_evaluations_per_sample"][root] == 1)
         np.testing.assert_array_equal(
             saved["value_only_evaluations_per_sample"], evaluations - gradients,
         )

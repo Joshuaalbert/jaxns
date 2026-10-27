@@ -41,6 +41,7 @@ def main(*, duration_comparison: bool = False):
         SCHEDULE_SHA256,
         make_arm,
         load_duration_freeze,
+        work_parameters,
     )
     from benchmarks.issue_312.tuning_common import (
         BASELINE,
@@ -98,7 +99,11 @@ def main(*, duration_comparison: bool = False):
     sampler, parameters = make_arm(
         "short" if options.arm == "tuned" else options.arm, schedule,
     )
-    batch_parameters = jax.jit(jax.vmap(parameters))
+
+    @jax.jit
+    def batch_parameters(contours, seed_indices):
+        return work_parameters(parameters, contours, seed_indices)
+
     runner = NestedSampler(
         model=model,
         root_allocation_degree=150,
@@ -216,7 +221,7 @@ def main(*, duration_comparison: bool = False):
         width = count - start
         # Use the same JAX contour lookup as the sampler, without evaluating the model.
         # Replay later verifies returned gradient counts and an independent NumPy lookup.
-        bounces, steps = batch_parameters(work.log_L_constraint)
+        bounces, steps = batch_parameters(work.log_L_constraint, work.seed_idx)
         bounces = np.asarray(bounces[:width], dtype=np.int64)
         steps = np.asarray(steps[:width], dtype=np.float64)
         bounce_counts.append(bounces)

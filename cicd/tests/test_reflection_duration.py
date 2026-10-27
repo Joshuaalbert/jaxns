@@ -181,3 +181,45 @@ def test_variable_count_phantoms_checkpoint_growth_continuation(allocation):
     assert jax.tree.structure(states[0]) == jax.tree.structure(states[1])
     for a, b in zip(jax.tree.leaves(states[0]), jax.tree.leaves(states[1]), strict=True):
         np.testing.assert_array_equal(a, b)
+
+
+def test_adaptive_roots_added_after_initialisation_have_no_reflection_work(frozen_schedule):
+    """Reproduce the real evidence-allocation smoke that adds six new root rows."""
+    from benchmarks.issue_312.duration_common import work_parameters
+
+    model = make_model()
+    sampler, parameters = make_arm('duration', frozen_schedule)
+    runner = NestedSampler(
+        model=model, root_allocation_degree=150, replacement_width=150, delta_K=150,
+        unlimited_samples=True, allocation_target='evidence_improving', sampler=sampler,
+        collect_phantom_samples=True,
+    )
+    gradient_total, newly_added_roots = 0, 0
+
+    @jax.jit
+    def count_batch(contours, seed_indices):
+        return work_parameters(parameters, contours, seed_indices)
+
+    def observe(before, after, work):
+        nonlocal gradient_total, newly_added_roots
+        start, stop = int(before.num_samples), int(after.num_samples)
+        width = stop - start
+        counts, steps = count_batch(work.log_L_constraint, work.seed_idx)
+        counts, steps = np.asarray(counts[:width]), np.asarray(steps[:width])
+        roots = np.asarray(work.seed_idx[:width]) < 0
+        actual_calls = np.asarray(after.samples.num_likelihood_evaluations)[start:stop]
+        # New roots are independently sampled from the prior, not reflection chains.
+        assert np.all(actual_calls[roots] == 1)
+        assert np.all(counts[roots] == 0) and np.all(steps[roots] == 0)
+        assert np.all(actual_calls[~roots] >= 9 * counts[~roots] + 18)
+        gradient_total += int(9 * counts.sum())
+        newly_added_roots += int(roots.sum())
+        return int(after.total_num_likelihood_evaluations) >= 60000
+
+    final = run_with_observer(
+        runner, runner.initialise(jax.random.PRNGKey(3122719)), observe, lambda current: False,
+    )
+    assert newly_added_roots == 6 and int(final.root_out_degree) == 156
+    assert int(final.num_samples) == 690
+    assert gradient_total == 48060  # 534 actual constrained children, B10/C9 each.
+    assert int(final.total_num_likelihood_evaluations) == 70937

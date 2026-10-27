@@ -95,3 +95,14 @@ def load_duration_freeze() -> dict:
     protocol = SOURCE_ROOT / 'benchmarks/issue_312/REFLECTION_DURATION_PROTOCOL.md'
     assert hashlib.sha256(protocol.read_bytes()).hexdigest() == freeze['protocol_sha256']
     return {**freeze, 'source_freeze_sha256': hashlib.sha256(freeze_path.read_bytes()).hexdigest()}
+
+
+def work_parameters(
+    parameters: Callable[[jax.Array], ReflectionParameters],
+    contours: jax.Array,
+    seed_indices: jax.Array,
+) -> ReflectionParameters:
+    """Count constrained paths only; initial and later adaptive roots are prior draws."""
+    counts, steps = jax.vmap(parameters)(contours)  # [width], [width]
+    is_child = seed_indices >= 0
+    return ReflectionParameters(jnp.where(is_child, counts, 0), jnp.where(is_child, steps, 0.))
