@@ -286,19 +286,25 @@ def main():
                         else None
                     )
             movement.append(item)
-        tail = np.exp(
+        log_tail = float(
             peak
             + saved["log_volume"][np.argmax(values)]
             - row["log_Z"]
             - 0.5 * row["log_Z_uncert"] ** 2
         )
+        # Early snapshots can have an enormous valid upper bound. Preserve its
+        # log value; JSON null plus a flag denotes linear overflow, never clipping.
+        tail_overflow = log_tail > np.log(np.finfo(np.float64).max)
+        tail = None if tail_overflow else float(np.exp(log_tail))
         analysis = {
             **row,
             **metrics,
             "movement": movement,
             "audit_passed": True,
             "max_likelihood_discrepancy": float(error),
-            "classic_tail_upper_fraction": float(tail),
+            "classic_tail_upper_fraction": tail,
+            "classic_tail_log_upper_fraction": log_tail,
+            "classic_tail_upper_fraction_overflow": bool(tail_overflow),
             "replay_exact": True,
             "replay_evaluations_full_run": replay_evaluations,
             "replay_gradients_full_run": replay_gradients,
