@@ -1,0 +1,438 @@
+{
+  "status": "complete",
+  "completed_utc": "2026-10-27T14:11:28.093359+00:00",
+  "coordinator_owns_further_publication": true,
+  "no_further_remote_source_commits_or_numeric_runs": true,
+  "hostname": "dorrie",
+  "output_root": "/largedata/albert/jaxns-reflection-duration-20261027",
+  "worktree": "/largedata/albert/git/jaxns-reflection-duration-20261027",
+  "branch": "experiment/reflection-duration-cpu-20261027",
+  "baseline_commit": "295893708805ff668178fc443cbda63faf2ac75d",
+  "executed_sampling_and_reduction_commit": "724d5e9a94d2db417573cd8cc473224e82a60a13",
+  "final_report_commit": "8de275df47f007e20b935bc0e8e5bb3c7debda4c",
+  "worktree_clean": true,
+  "runs": 180,
+  "analyses": 180,
+  "snapshots": 360,
+  "seeds": [
+    30,
+    31,
+    32,
+    33,
+    34,
+    35,
+    36,
+    37,
+    38,
+    39,
+    40,
+    41,
+    42,
+    43,
+    44,
+    45,
+    46,
+    47,
+    48,
+    49,
+    50,
+    51,
+    52,
+    53,
+    54,
+    55,
+    56,
+    57,
+    58,
+    59
+  ],
+  "arms": [
+    "fixed",
+    "short",
+    "duration"
+  ],
+  "allocations": [
+    "uniform",
+    "evidence_improving"
+  ],
+  "worker_failures": 0,
+  "live_scientific_workers": 0,
+  "completed_checkpoint_count": 180,
+  "raw_data_bytes": 4586767892,
+  "compact_archive_excludes_full_states_and_classic_point_arrays": true,
+  "raw_states_and_arrays_preserved_in_place": true,
+  "primary_findings": [
+    "No resolved 4M duration-versus-control RMSE improvement; all12primary paired intervals include zero.",
+    "Restored duration increases absolute movement relative to short paths but does not repair narrow flat posterior marginals at matched logical work.",
+    "Phantom-conditioned RMSE exceeds classic MC in all6cells at4M with positive paired intervals; reported uncertainties are smaller."
+  ],
+  "primary_metrics": {
+    "uniform": {
+      "fixed": {
+        "classic_moments": {
+          "bias": -0.3544248311639754,
+          "rmse": 0.74952126092983,
+          "mean_reported_sd": 0.27327091821104793,
+          "coverage95": 0.4666666666666667
+        },
+        "classic_mc": {
+          "bias": -0.3543686442690322,
+          "rmse": 0.7490638874519924,
+          "mean_reported_sd": 0.27429493707730496,
+          "coverage95": 0.4666666666666667
+        },
+        "phantom": {
+          "bias": -0.392542691967189,
+          "rmse": 0.9196387044101223,
+          "mean_reported_sd": 0.16049393381736854,
+          "coverage95": 0.23333333333333334
+        }
+      },
+      "short": {
+        "classic_moments": {
+          "bias": -0.3210998209320706,
+          "rmse": 0.761805873825121,
+          "mean_reported_sd": 0.27291981261040565,
+          "coverage95": 0.5
+        },
+        "classic_mc": {
+          "bias": -0.32253800740976735,
+          "rmse": 0.7619132831324174,
+          "mean_reported_sd": 0.2732148924249879,
+          "coverage95": 0.4666666666666667
+        },
+        "phantom": {
+          "bias": -0.4623816995173754,
+          "rmse": 0.9367559616181671,
+          "mean_reported_sd": 0.16615894799019418,
+          "coverage95": 0.3333333333333333
+        }
+      },
+      "duration": {
+        "classic_moments": {
+          "bias": -0.2636863311054425,
+          "rmse": 0.7741338582885615,
+          "mean_reported_sd": 0.3278895681532538,
+          "coverage95": 0.5333333333333333
+        },
+        "classic_mc": {
+          "bias": -0.26443298636222595,
+          "rmse": 0.7759134801015187,
+          "mean_reported_sd": 0.32912237911441067,
+          "coverage95": 0.5333333333333333
+        },
+        "phantom": {
+          "bias": -0.4268801971932516,
+          "rmse": 0.9975775711772311,
+          "mean_reported_sd": 0.19340276209111465,
+          "coverage95": 0.23333333333333334
+        }
+      }
+    },
+    "evidence_improving": {
+      "fixed": {
+        "classic_moments": {
+          "bias": -0.5482822212982471,
+          "rmse": 0.8592497090306523,
+          "mean_reported_sd": 0.24704960427981687,
+          "coverage95": 0.3
+        },
+        "classic_mc": {
+          "bias": -0.5478378421291901,
+          "rmse": 0.8593646325074937,
+          "mean_reported_sd": 0.24819609331219203,
+          "coverage95": 0.3
+        },
+        "phantom": {
+          "bias": -0.7234638998216845,
+          "rmse": 1.0855082123878395,
+          "mean_reported_sd": 0.14482444526808758,
+          "coverage95": 0.1
+        }
+      },
+      "short": {
+        "classic_moments": {
+          "bias": -0.5414440860396916,
+          "rmse": 0.8977255446458634,
+          "mean_reported_sd": 0.24648261640139768,
+          "coverage95": 0.43333333333333335
+        },
+        "classic_mc": {
+          "bias": -0.5408461681331159,
+          "rmse": 0.8978859205317217,
+          "mean_reported_sd": 0.24627012548884433,
+          "coverage95": 0.4666666666666667
+        },
+        "phantom": {
+          "bias": -0.7539404932633665,
+          "rmse": 1.1705966241795491,
+          "mean_reported_sd": 0.14962648073046758,
+          "coverage95": 0.2
+        }
+      },
+      "duration": {
+        "classic_moments": {
+          "bias": -0.5443186194265611,
+          "rmse": 0.8603656340229374,
+          "mean_reported_sd": 0.26712777896777734,
+          "coverage95": 0.26666666666666666
+        },
+        "classic_mc": {
+          "bias": -0.5448631933998382,
+          "rmse": 0.860692798355382,
+          "mean_reported_sd": 0.26704147285564817,
+          "coverage95": 0.26666666666666666
+        },
+        "phantom": {
+          "bias": -0.7070694190230047,
+          "rmse": 1.122779168919332,
+          "mean_reported_sd": 0.1570076136141064,
+          "coverage95": 0.13333333333333333
+        }
+      }
+    }
+  },
+  "diagnostic_correction": {
+    "scope": "Six derived B/T descriptors only;540JSON records corrected with before/after hashes.",
+    "sampling_reruns": 0,
+    "evidence_reruns": 0,
+    "replay_reruns": 0,
+    "all_other_fields_and_raw_inputs_unchanged": true,
+    "original_outputs_preserved": "/largedata/albert/jaxns-reflection-duration-20261027/pre-movement-diagnostic-correction"
+  },
+  "checks": {
+    "combined_tests_passed": 29,
+    "diagnostic_regression_tests_passed": 2,
+    "reviewer_autochecks_passed": 4,
+    "ruff_passed": true,
+    "flake8_max100_passed": true,
+    "whitespace_passed": true,
+    "independent_audits_passed": true,
+    "frozen_source_files_verified_from_git": 83,
+    "production_source_unchanged": true,
+    "manuscript_unchanged": true,
+    "github_publication_performed_remotely": false
+  },
+  "archives": [
+    {
+      "path": "/largedata/albert/jaxns-reflection-duration-20261027/compact-records.tar.gz",
+      "sha256": "7f076970d598930d9778ae2dcb67269ae1ed0a95d493a9254b3ddcbec9444101",
+      "bytes": 518134864,
+      "members": 3782
+    },
+    {
+      "path": "/largedata/albert/jaxns-reflection-duration-20261027/review-artifacts.tar.gz",
+      "sha256": "70c83a8a1a8130003d03957e456eb4e05049874c08b727911e95fe5d62c58017",
+      "bytes": 18908342,
+      "members": 1663
+    }
+  ],
+  "git_bundle": {
+    "path": "/largedata/albert/jaxns-reflection-duration-20261027/reflection-duration-2958937-to-8de275d.bundle",
+    "sha256": "9b1ef9209040a004af0165eadc3ad1c982bcbc3d3529f5ebf8bae80ba817dcd0",
+    "bytes": 238672,
+    "prerequisite": "295893708805ff668178fc443cbda63faf2ac75d",
+    "head": "8de275df47f007e20b935bc0e8e5bb3c7debda4c",
+    "branch": "experiment/reflection-duration-cpu-20261027",
+    "verified": true
+  },
+  "audits": {
+    "trajectory": {
+      "receipt": {
+        "path": "/largedata/albert/jaxns-reflection-duration-20261027/coordinator-audits/independent_trajectory_probe.json",
+        "sha256": "0bded44596ccb253b0091ee6c37ebf778d5b5803aeeb0d4e8c60d28886fd6221",
+        "bytes": 435
+      },
+      "exact_source": {
+        "path": "/largedata/albert/jaxns-reflection-duration-20261027/coordinator-audits/independent_trajectory_probe.py",
+        "sha256": "4890fa7ff9bb9246b9982e9f04f56e57b843d97df205733c4b3031f616077930",
+        "bytes": 3875
+      }
+    },
+    "heldout": {
+      "receipt": {
+        "path": "/largedata/albert/jaxns-reflection-duration-20261027/coordinator-audits/HELDOUT_AUDIT.json",
+        "sha256": "0f331d25cee1c197fb86f3ca826518e22b096394c13c40dde530525574dfad4b",
+        "bytes": 3788
+      },
+      "exact_source": {
+        "path": "/largedata/albert/jaxns-reflection-duration-20261027/coordinator-audits/independent_heldout_audit.py",
+        "sha256": "48980031a57c3482f6a3cc0532a7bc514cefaa8d33358684f60695d53188104b",
+        "bytes": 7045
+      }
+    },
+    "smoke": {
+      "receipt": {
+        "path": "/largedata/albert/jaxns-reflection-duration-20261027/coordinator-audits/SMOKE_AUDIT.json",
+        "sha256": "084bd854a936776bf1018b482849f4d99be425f08d01205aca4b065ce45152ed",
+        "bytes": 1548
+      },
+      "exact_source": {
+        "path": "/largedata/albert/jaxns-reflection-duration-20261027/coordinator-audits/independent_smoke_audit.py",
+        "sha256": "b34e3cb4d925f90ed5004430924d84c17193bde955947e7f8146a6c7030db179",
+        "bytes": 6853
+      }
+    },
+    "live_cpu": {
+      "receipt": {
+        "path": "/largedata/albert/jaxns-reflection-duration-20261027/coordinator-audits/LIVE_CPU_AUDIT.json",
+        "sha256": "ab984e13d651ec5daa16003200e424e48021e343c541db9f15da1dc9c4d98fcf",
+        "bytes": 2197
+      },
+      "source_note": "Coordinator supplied an OS audit receipt; no standalone script was referenced by this receipt."
+    },
+    "cohort": {
+      "receipt": {
+        "path": "/largedata/albert/jaxns-reflection-duration-20261027/coordinator-audits/COHORT_AUDIT.json",
+        "sha256": "a50d32af15f877bf0d64b68b6addb075bd9d4cc4170f4be50659cc4aa9415a02",
+        "bytes": 28927
+      },
+      "exact_source": {
+        "path": "/largedata/albert/jaxns-reflection-duration-20261027/coordinator-audits/independent_cohort_audit.py",
+        "sha256": "65a39cdeb8e65e6c564d1dff4f2ca3c60586b05740e1a61d649157055408b0ec",
+        "bytes": 21786
+      }
+    },
+    "correction": {
+      "receipt": {
+        "path": "/largedata/albert/jaxns-reflection-duration-20261027/coordinator-audits/CORRECTION_AUDIT.json",
+        "sha256": "950288ff7be2b935bea393b25fa799793f0a87e500541ea39465b94096e668ab",
+        "bytes": 485
+      },
+      "exact_source": {
+        "path": "/largedata/albert/jaxns-reflection-duration-20261027/coordinator-audits/independent_correction_audit.py",
+        "sha256": "37fd6751dc5e5e7430fb8c60bd4e70302b035a1c9c17e23e8aaff64c3fc209b6",
+        "bytes": 2565
+      }
+    }
+  },
+  "files": {
+    "REPORT.md": {
+      "path": "/largedata/albert/jaxns-reflection-duration-20261027/REPORT.md",
+      "sha256": "c115438273277d3f51bceae6cc9627b57ea0aa2996f18576fa1121fe7dca29d9",
+      "bytes": 17481
+    },
+    "SUMMARY.json": {
+      "path": "/largedata/albert/jaxns-reflection-duration-20261027/SUMMARY.json",
+      "sha256": "1c40bccaaf17768bb326cfd2fc1846fef9af7143511eb5741a796e631bb7669c",
+      "bytes": 807204
+    },
+    "ALL_RECORDS.csv": {
+      "path": "/largedata/albert/jaxns-reflection-duration-20261027/ALL_RECORDS.csv",
+      "sha256": "fda0076262c01f58bae76961bb5d3d426be49d5723f5722c7a52c2f324a99c33",
+      "bytes": 182864
+    },
+    "RAW_RECORDS_MANIFEST.json": {
+      "path": "/largedata/albert/jaxns-reflection-duration-20261027/RAW_RECORDS_MANIFEST.json",
+      "sha256": "d04d8c6e1119181d7c9d05a9913611937dfdcea074fcb647e3d6a7844854d298",
+      "bytes": 638532
+    },
+    "SOURCE_FREEZE.json": {
+      "path": "/largedata/albert/jaxns-reflection-duration-20261027/SOURCE_FREEZE.json",
+      "sha256": "5714ed9a45e0e6fc2ed189ccfdf5f5686b2c74310aac698a6d88b0b80d48f3fc",
+      "bytes": 9498
+    },
+    "PROTOCOL.json": {
+      "path": "/largedata/albert/jaxns-reflection-duration-20261027/PROTOCOL.json",
+      "sha256": "1042f0151e3fb4fe60d43f36ce04e740c5dd14130a95b27b548e03084c644a88",
+      "bytes": 950
+    },
+    "REFLECTION_DURATION_PROTOCOL.md": {
+      "path": "/largedata/albert/jaxns-reflection-duration-20261027/REFLECTION_DURATION_PROTOCOL.md",
+      "sha256": "44154ae79a7d91408c43fcb81f7a8edcf2c264c95205aa22f47d0723bfa5782b",
+      "bytes": 8106
+    },
+    "SCHEDULE.json": {
+      "path": "/largedata/albert/jaxns-reflection-duration-20261027/SCHEDULE.json",
+      "sha256": "21242cb5554c0b7c23c4750d1c8aa579e3d9856ff670a0f9c18133b1771a28d6",
+      "bytes": 441692
+    },
+    "EVALUATION_RELEASE.json": {
+      "path": "/largedata/albert/jaxns-reflection-duration-20261027/EVALUATION_RELEASE.json",
+      "sha256": "abc88898f81dd1017b57f6aba7c08e6010ba3bd052a289f2843861b69993ee7d",
+      "bytes": 803
+    },
+    "DIAGNOSTIC_CORRECTION.json": {
+      "path": "/largedata/albert/jaxns-reflection-duration-20261027/DIAGNOSTIC_CORRECTION.json",
+      "sha256": "6b65915f98a77433497efc2129415b277d41321a28b948f359b069267ca58fd2",
+      "bytes": 213678
+    },
+    "POSTPROCESS_SOURCE.json": {
+      "path": "/largedata/albert/jaxns-reflection-duration-20261027/POSTPROCESS_SOURCE.json",
+      "sha256": "970b8debf14393a7711390c48faece8b8328e9c01fbce8a49f62b55bcdd03cb7",
+      "bytes": 1029
+    },
+    "SOURCE_REPRODUCTION_AUDIT.json": {
+      "path": "/largedata/albert/jaxns-reflection-duration-20261027/SOURCE_REPRODUCTION_AUDIT.json",
+      "sha256": "b953e005a360597d9036c7bcec979e3af09550db0c34b99ef2bedbae67027a72",
+      "bytes": 431
+    },
+    "COHORT_STATUS.json": {
+      "path": "/largedata/albert/jaxns-reflection-duration-20261027/COHORT_STATUS.json",
+      "sha256": "e5016173ff85f13e2d922ab5a1219ce3add64f9c146a810ca9ce95303ca04e41",
+      "bytes": 658
+    },
+    "SUMMARY_READY.json": {
+      "path": "/largedata/albert/jaxns-reflection-duration-20261027/SUMMARY_READY.json",
+      "sha256": "2cb9982bf700f2d67f24737bc55c276c308d7267dc7737506641b449d99292ee",
+      "bytes": 1020
+    },
+    "validation/VALIDATION.json": {
+      "path": "/largedata/albert/jaxns-reflection-duration-20261027/validation/VALIDATION.json",
+      "sha256": "e53f9b386deec41da78bb7237eee02b16d561fd4202db90e68eb61f58d47b3dc",
+      "bytes": 107390
+    },
+    "logs/final-combined-tests.log": {
+      "path": "/largedata/albert/jaxns-reflection-duration-20261027/logs/final-combined-tests.log",
+      "sha256": "4e022bdf2569fdd4b1d88dd0b3f527da71c40018f10db11b3ab40aa24ef34719",
+      "bytes": 661
+    },
+    "logs/diagnostic-correction-tests.log": {
+      "path": "/largedata/albert/jaxns-reflection-duration-20261027/logs/diagnostic-correction-tests.log",
+      "sha256": "68683c941f53fd55547c17b6a1b7a966702a2b51e89bd6832b00e772606b6b6e",
+      "bytes": 98
+    },
+    "logs/reviewer-autochecks.log": {
+      "path": "/largedata/albert/jaxns-reflection-duration-20261027/logs/reviewer-autochecks.log",
+      "sha256": "fd18a4da724fec169567e0bb4f48b9b6b70de87b21fe3e66c44b6d74cdeab98c",
+      "bytes": 98
+    },
+    "logs/final-lint-after-correction.log": {
+      "path": "/largedata/albert/jaxns-reflection-duration-20261027/logs/final-lint-after-correction.log",
+      "sha256": "2459c3a9a18b27022491007990b4dd48f93c44b538c436d810f69bf844fe941b",
+      "bytes": 1540
+    }
+  },
+  "figures": [
+    {
+      "path": "/largedata/albert/jaxns-reflection-duration-20261027/evidence_comparison.pdf",
+      "sha256": "29ab250a1419a8bd75b53f115b53fbd53a50a067c0f2be7b3eee3c18e89e6da9",
+      "bytes": 26428
+    },
+    {
+      "path": "/largedata/albert/jaxns-reflection-duration-20261027/evidence_comparison.png",
+      "sha256": "9ef7e0ef037bdafdddfde60ecedcf227f97102fd293c9ea3e2ea9a84d20d1d8a",
+      "bytes": 306232
+    },
+    {
+      "path": "/largedata/albert/jaxns-reflection-duration-20261027/posterior_cdfs.pdf",
+      "sha256": "f1c367e880499830c1a98387b9d9e42decf15a4d287a7d94095aa026d0c8f10e",
+      "bytes": 4502503
+    },
+    {
+      "path": "/largedata/albert/jaxns-reflection-duration-20261027/posterior_cdfs.png",
+      "sha256": "70d2c0cf18a090cd468e3f723c060051e34cf37d9b66a5fc4afebf41bb917d9e",
+      "bytes": 2027141
+    },
+    {
+      "path": "/largedata/albert/jaxns-reflection-duration-20261027/chain_movement.pdf",
+      "sha256": "f031df68b7e99ec05a6172e1f28aa6fa548744976b7e15ba316aec5abe73a2b1",
+      "bytes": 42882
+    },
+    {
+      "path": "/largedata/albert/jaxns-reflection-duration-20261027/chain_movement.png",
+      "sha256": "1e9ee0c4daa41839a6e94bf63c1da741537de71a25b627da79ecb411cfc520ee",
+      "bytes": 432820
+    }
+  ]
+}

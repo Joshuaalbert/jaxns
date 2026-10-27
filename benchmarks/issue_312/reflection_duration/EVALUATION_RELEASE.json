@@ -1,0 +1,12 @@
+{
+  "approved": true,
+  "approved_utc": "2026-10-27T13:20:06.210863+00:00",
+  "source_commit": "724d5e9a94d2db417573cd8cc473224e82a60a13",
+  "source_freeze_sha256": "5714ed9a45e0e6fc2ed189ccfdf5f5686b2c74310aac698a6d88b0b80d48f3fc",
+  "protocol_sha256": "44154ae79a7d91408c43fcb81f7a8edcf2c264c95205aa22f47d0723bfa5782b",
+  "schedule_sha256": "21242cb5554c0b7c23c4750d1c8aa579e3d9856ff670a0f9c18133b1771a28d6",
+  "validation_sha256": "e53f9b386deec41da78bb7237eee02b16d561fd4202db90e68eb61f58d47b3dc",
+  "independent_heldout_audit_sha256": "0f331d25cee1c197fb86f3ca826518e22b096394c13c40dde530525574dfad4b",
+  "independent_smoke_audit_sha256": "084bd854a936776bf1018b482849f4d99be425f08d01205aca4b065ce45152ed",
+  "scope": "Prespecified180 runs,3arms,2allocations,seeds30--59; CPU-only; no retuning."
+}

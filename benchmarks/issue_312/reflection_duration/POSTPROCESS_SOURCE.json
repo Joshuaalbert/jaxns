@@ -1,0 +1,13 @@
+{
+  "executed_core_and_reduction_source": "724d5e9a94d2db417573cd8cc473224e82a60a13",
+  "postprocess_files_sha256": {
+    "benchmarks/issue_312/analyse_reflection_tuning.py": "a2ce783d2d0eed2bd04568bbb1956af90bb7b43fae3c1b0bd61067eb0772bc8a",
+    "benchmarks/issue_312/correct_reflection_duration_diagnostics.py": "106d2bfcce2b5711a94506528fc56c84693e4188a99dfbcf7594db4add84d20c",
+    "benchmarks/issue_312/summarise_reflection_tuning.py": "b26835591aa112c82cc7dee172c12fac86e0036ba15ce0084d95f99792cb76c8",
+    "benchmarks/issue_312/summarise_reflection_duration.py": "dd22913ae1140da7096da1b49d29d5fb7822882686de8aa47364d06102161395",
+    "benchmarks/issue_312/reflection_duration_report.py": "05052fb406d0a78601dd6a71c28e85e16f0e306779dec556d023f7db37bf3acc",
+    "cicd/tests/test_reflection_work_diagnostics.py": "b6a7ba024aea6ec4477e4e69133d08f3194307fbe459c6e5889648113b7c1217"
+  },
+  "sampling_or_evidence_reruns": 0,
+  "diagnostic_correction_sha256": "6b65915f98a77433497efc2129415b277d41321a28b948f359b069267ca58fd2"
+}

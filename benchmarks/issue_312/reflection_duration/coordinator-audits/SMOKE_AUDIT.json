@@ -1,0 +1,49 @@
+{
+  "passed": true,
+  "source_commit": "724d5e9a94d2db417573cd8cc473224e82a60a13",
+  "source_freeze_sha256": "5714ed9a45e0e6fc2ed189ccfdf5f5686b2c74310aac698a6d88b0b80d48f3fc",
+  "validation_sha256": "e53f9b386deec41da78bb7237eee02b16d561fd4202db90e68eb61f58d47b3dc",
+  "records": [
+    {
+      "allocation": "uniform",
+      "budget": 30000,
+      "roots": 150,
+      "samples": 444,
+      "gradient_evaluations": 26460,
+      "evaluations": 33297,
+      "classic_tail_log_upper_fraction": 766.5311647058463,
+      "classic_tail_upper_fraction_overflow": true
+    },
+    {
+      "allocation": "uniform",
+      "budget": 60000,
+      "roots": 150,
+      "samples": 699,
+      "gradient_evaluations": 49410,
+      "evaluations": 64468,
+      "classic_tail_log_upper_fraction": 207.8381307423479,
+      "classic_tail_upper_fraction_overflow": false
+    },
+    {
+      "allocation": "evidence_improving",
+      "budget": 30000,
+      "roots": 155,
+      "samples": 413,
+      "gradient_evaluations": 23220,
+      "evaluations": 30334,
+      "classic_tail_log_upper_fraction": 263.69061439586676,
+      "classic_tail_upper_fraction_overflow": false
+    },
+    {
+      "allocation": "evidence_improving",
+      "budget": 60000,
+      "roots": 156,
+      "samples": 690,
+      "gradient_evaluations": 48060,
+      "evaluations": 70937,
+      "classic_tail_log_upper_fraction": 138.58358289835098,
+      "classic_tail_upper_fraction_overflow": false
+    }
+  ],
+  "audit_script_sha256": "b34e3cb4d925f90ed5004430924d84c17193bde955947e7f8146a6c7030db179"
+}

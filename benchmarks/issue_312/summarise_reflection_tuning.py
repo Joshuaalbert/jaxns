@@ -633,6 +633,34 @@ def main(*, duration_comparison: bool = False):
     for extension in ("png", "pdf"):
         figure.savefig(root / f"posterior_cdfs.{extension}", dpi=160)
     plt.close(figure)
+    plot_movement(root, summary, arms, duration_comparison)
+    render_report(root, full)
+    for path in root.iterdir():
+        if path.suffix in (".json", ".csv", ".md", ".pdf", ".png") and path.is_file():
+            path.with_suffix(path.suffix + ".sha256").write_text(
+                hashlib.sha256(path.read_bytes()).hexdigest() + "  " + path.name + "\n"
+            )
+    print(json.dumps(full["audit"]))
+
+
+def plot_movement(root: Path, summary: dict, arms: tuple[str, ...],
+                  duration_comparison: bool) -> None:
+    """Render stored movement statistics without replaying chains or evidence."""
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    colors = {"fixed": "#3a6b91", "tuned": "#b85e2b",
+              "short": "#b85e2b", "duration": "#2f855a"}
+    allocation_labels = {"uniform": "Uniform allocation",
+                         "evidence_improving": "Evidence allocation"}
+    field_labels = {
+        "rms_dx1": "RMS displacement: x1",
+        "rms_dx16": "RMS displacement: x16",
+        "pooled_esjd_x1_per_gradient": "Squared displacement / gradient: x1",
+        "pooled_esjd_x16_per_gradient": "Squared displacement / gradient: x16",
+        "mean_bounce_count": "Midpoint count",
+        "mean_realised_duration": "Trajectory duration",
+    }
     move_fields = (
         ("rms_dx1", "rms_dx16", "pooled_esjd_x1_per_gradient",
          "pooled_esjd_x16_per_gradient", "mean_bounce_count", "mean_realised_duration")
@@ -654,27 +682,22 @@ def main(*, duration_comparison: bool = False):
                 if field.startswith("rms_"):
                     axes[r, c].axhline(np.sqrt(1 / 6), color="k", linestyle="--")
                 axes[r, c].set(
-                    title=f"{allocation}: {field}",
+                    title=f"{allocation_labels[allocation]}\n{field_labels[field]}",
                     yscale="log",
                     xticks=range(6),
-                    xticklabels=["0–5", "5–15", "15–40", "40–100", "100–1000", ">1000"],
+                    xticklabels=["0–5", "5–15", "15–40", "40–100", "100–1k", ">1k"],
                     xlabel="Parent peak-gap bin",
                     ylabel=("Absolute RMS (cube units)" if field.startswith("rms_")
                             else "Squared cube units / gradient" if "esjd" in field
                             else "Midpoint steps B" if "bounce" in field
                             else "Realised trajectory time"),
                 )
+                axes[r, c].tick_params(axis="x", labelrotation=25)
+                axes[r, c].set_title(axes[r, c].get_title(), fontsize=10)
                 axes[r, c].legend()
     for extension in ("png", "pdf"):
         figure.savefig(root / f"chain_movement.{extension}", dpi=160)
     plt.close(figure)
-    render_report(root, full)
-    for path in root.iterdir():
-        if path.suffix in (".json", ".csv", ".md", ".pdf", ".png") and path.is_file():
-            path.with_suffix(path.suffix + ".sha256").write_text(
-                hashlib.sha256(path.read_bytes()).hexdigest() + "  " + path.name + "\n"
-            )
-    print(json.dumps(full["audit"]))
 
 
 if __name__ == "__main__":

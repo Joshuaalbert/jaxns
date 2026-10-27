@@ -86,4 +86,7 @@ repeat mistakes specific to this project. Keep learnings compact.
   also shortens the trajectory. Evaluate displacement and evidence error at
   matched cost, and separate trajectory duration from integration resolution;
   acceptance alone is not a mixing objective. See
-  `benchmarks/issue_312/REFLECTION_TUNING_REPORT.md`.
+  `benchmarks/issue_312/REFLECTION_TUNING_REPORT.md`. A fresh 30-seed follow-up
+  restored duration with more midpoint steps: movement recovered, but gradient
+  cost rose and no primary RMSE advantage was resolved. Flat marginals remained
+  too narrow; see `benchmarks/issue_312/REFLECTION_DURATION_REPORT.md`.

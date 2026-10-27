@@ -174,3 +174,33 @@ Executed source: `724d5e9a94d2db417573cd8cc473224e82a60a13`. Protocol SHA256: `4
 Full resumable states, raw arrays/keys, evidence inputs and draws, replay diagnostics, manifests, progress, checksums, failed attempts and exact coordinator audit sources/receipts remain in the experiment output directory. SUMMARY.json contains all point estimates, coverage variants, standardized error diagnostics and paired intervals. No manuscript or production code was changed.
 
 Independent full-cohort coordinator audit passed; see `coordinator-audits/COHORT_AUDIT.json` and its exact source.
+
+## Figures and reproducible records
+
+The [curated records and audit receipts](reflection_duration/README.md) include
+all 360 snapshots, the complete summary, frozen schedule and provenance.
+The [protocol](REFLECTION_DURATION_PROTOCOL.md) and
+[reproduction notes](REFLECTION_DURATION_REPRODUCTION.md) describe the experiment.
+
+![Evidence RMSE across both budgets](reflection_duration/evidence_comparison.png)
+
+Shading shows pointwise 95% bootstrap intervals for each RMSE estimate. The
+paired differences in the tables are the appropriate comparisons between arms;
+overlap of the shaded bands is not a test of those differences.
+[Evidence figure PDF](reflection_duration/evidence_comparison.pdf).
+
+![Posterior CDFs for every run](reflection_duration/posterior_cdfs.png)
+
+Each faint curve is one run at the primary 4M budget, using classic posterior
+weights. Dashed black curves are the analytic marginal CDFs. Flat coordinates
+remain poorly recovered in every arm.
+[Posterior figure PDF](reflection_duration/posterior_cdfs.pdf).
+
+![Movement, gradient efficiency and trajectory duration](reflection_duration/chain_movement.png)
+
+Movement uses all retained transitions, including rejections. Dashed RMS lines
+show the displacement between independent uniform coordinates, sqrt(1/6).
+Squared displacement per gradient pools the recorded numerators and actual
+gradient counts. B and duration are medians of per-run means. The 1k tick label
+means 1,000 log-likelihood units below the peak.
+[Movement figure PDF](reflection_duration/chain_movement.pdf).
