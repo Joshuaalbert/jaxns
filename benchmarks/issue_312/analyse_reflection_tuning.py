@@ -4,6 +4,8 @@ Schema2 records include per-child variable work. Historical archives stay
 reproducible with their original executed source commits; no field inference.
 """
 
+from __future__ import annotations
+
 import argparse
 import hashlib
 import json
@@ -11,6 +13,34 @@ import os
 import resource
 import time
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import numpy as np
+
+
+def reflection_work_statistics(
+    bounce_counts: np.ndarray,
+    gradients: np.ndarray,
+    realised_steps: np.ndarray,
+) -> dict[str, int | float]:
+    """Describe retained paths; independently counted gradients guard count mixups."""
+    import numpy as np
+
+    if (bounce_counts.ndim != 1 or gradients.shape != bounce_counts.shape
+            or realised_steps.shape != (len(bounce_counts), 9) or not len(bounce_counts)):
+        raise ValueError("Expected nonempty [N] counts/gradients and [N, 9] realised steps.")
+    if not np.array_equal(gradients, 9 * bounce_counts):
+        raise ValueError("Reflection counts disagree with independently recorded gradients.")
+    durations = realised_steps * bounce_counts[:, None]  # [N, 9]
+    return {
+        "bounce_count_min": int(bounce_counts.min()),
+        "bounce_count_max": int(bounce_counts.max()),
+        "mean_bounce_count": float(bounce_counts.mean()),
+        "mean_realised_duration": float(durations.mean()),
+        "duration_min": float(durations.min()),
+        "duration_max": float(durations.max()),
+    }
 
 
 def main():
@@ -222,11 +252,13 @@ def main():
         )
         block = inputs.block_state
         block_valid = np.asarray(block.valid)
-        unique, inverse, counts = np.unique(values, return_inverse=True, return_counts=True)
+        unique, inverse, block_counts = np.unique(
+            values, return_inverse=True, return_counts=True,
+        )
         outgoing = np.bincount(inverse, weights=saved["out_degrees"]).astype(np.int64)
-        incoming = row["roots"] + np.concatenate([[0], np.cumsum(outgoing - counts)[:-1]])
+        incoming = row["roots"] + np.concatenate([[0], np.cumsum(outgoing - block_counts)[:-1]])
         np.testing.assert_array_equal(np.asarray(block.log_L_blocks)[block_valid], unique)
-        np.testing.assert_array_equal(np.asarray(block.block_size)[block_valid], counts)
+        np.testing.assert_array_equal(np.asarray(block.block_size)[block_valid], block_counts)
         np.testing.assert_array_equal(np.asarray(block.block_out_degree)[block_valid], outgoing)
         np.testing.assert_array_equal(np.asarray(block.incoming_K)[block_valid], incoming)
         weights = np.exp(saved["log_weights"] - logsumexp(saved["log_weights"]))
@@ -266,13 +298,9 @@ def main():
                 item["h_min"] = float(realised_steps[:count][select].min())
                 item["h_max"] = float(realised_steps[:count][select].max())
                 item["gradient_evaluations"] = int(gradients[select].sum())
-                item["bounce_count_min"] = int(counts[select].min())
-                item["bounce_count_max"] = int(counts[select].max())
-                item["mean_bounce_count"] = float(counts[select].mean())
-                durations = realised_steps[:count][select] * counts[select, None]
-                item["mean_realised_duration"] = float(durations.mean())
-                item["duration_min"] = float(durations.min())
-                item["duration_max"] = float(durations.max())
+                item.update(reflection_work_statistics(
+                    counts[select], gradients[select], realised_steps[:count][select],
+                ))
             if number >= 30:
                 for i in coordinates:
                     rms = float(np.sqrt(np.mean((ends[:, i] - starts[:, i]) ** 2)))

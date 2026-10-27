@@ -174,7 +174,7 @@ def write_report(root: Path, full: dict) -> None:
     )
 
 
-def main():
+def main(*, duration_comparison: bool = False):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, required=True)
     parser.add_argument("--cpu", type=int, required=True)
@@ -183,9 +183,17 @@ def main():
         help="Render REPORT.md from SUMMARY.json without repeating checks or figures.",
     )
     options = parser.parse_args()
+    arms = ("fixed", "short", "duration") if duration_comparison else ("fixed", "tuned")
+    seeds = list(range(30, 60)) if duration_comparison else list(range(30))
+    bootstrap_seed = 3122714 if duration_comparison else 3122706
+    render_report = write_report
+    if duration_comparison:
+        from benchmarks.issue_312.reflection_duration_report import write_duration_report
+
+        render_report = write_duration_report
     os.sched_setaffinity(0, {options.cpu})
     if options.report_only:
-        write_report(options.root, json.loads((options.root / "SUMMARY.json").read_text()))
+        render_report(options.root, json.loads((options.root / "SUMMARY.json").read_text()))
         return
     import matplotlib
     import numpy as np
@@ -196,11 +204,23 @@ def main():
     import matplotlib.pyplot as plt
 
     root = options.root
+    if duration_comparison:
+        freeze = json.loads((root / "SOURCE_FREEZE.json").read_text())
+        validation = json.loads((root / "validation/VALIDATION.json").read_text())
+        release = json.loads((root / "EVALUATION_RELEASE.json").read_text())
+        assert release["approved"] and validation["passed"]
+        assert release["source_commit"] == freeze["source_commit"]
+        assert release["validation_sha256"] == hashlib.sha256(
+            (root / "validation/VALIDATION.json").read_bytes()
+        ).hexdigest()
+        assert release["source_freeze_sha256"] == hashlib.sha256(
+            (root / "SOURCE_FREEZE.json").read_bytes()
+        ).hexdigest()
     rows, final_arrays, hashes = [], {}, {}
     runtimes, audit_count = [], 0
-    for arm in ("fixed", "tuned"):
+    for arm in arms:
         for allocation in ("uniform", "evidence_improving"):
-            for seed in range(30):
+            for seed in seeds:
                 directory = root / "runs" / arm / allocation / f"seed-{seed:02d}"
                 manifest = json.loads((directory / "MANIFEST.json").read_text())
                 core = json.loads((directory / "COMPLETE.json").read_text())
@@ -209,6 +229,16 @@ def main():
                 assert manifest["seed"] == seed and manifest["arm"] == arm
                 assert manifest["allocation"] == allocation and not manifest["smoke"]
                 assert manifest["budgets"] == [2000000, 4000000]
+                if duration_comparison:
+                    assert manifest["comparison"] == "duration" and manifest["record_schema"] == 2
+                    assert manifest["commit"] == freeze["source_commit"]
+                    assert manifest["source_freeze_sha256"] == release["source_freeze_sha256"]
+                    assert manifest["protocol_sha256"] == freeze["protocol_sha256"]
+                    assert manifest["schedule_sha256"] == freeze["schedule_sha256"]
+                    for relative, digest in manifest["source_sha256"].items():
+                        assert freeze["source_sha256"][relative] == digest
+                    for relative, digest in final["analysis_source_sha256"].items():
+                        assert freeze["source_sha256"][relative] == digest
                 assert manifest["initial_roots"] == manifest["replacement_width"] == 150
                 assert manifest["delta_K"] == 150 and manifest["unit_dtype"] == "float64"
                 assert manifest["phantoms"] == 8 and not manifest["phantom_seed_selection"]
@@ -239,6 +269,11 @@ def main():
                     row = json.loads((directory / f"ANALYSIS-{budget}.json").read_text())
                     assert row["audit_passed"] and row["replay_exact"]
                     assert row["mc_draws"] == 4096 and row["C_min"] == 20
+                    if duration_comparison:
+                        assert row["value_only_evaluations"] + row["gradient_evaluations"] == (
+                            row["evaluations"]
+                        )
+                        assert row["evaluations_before_last_batch"] < budget <= row["evaluations"]
                     hashes.setdefault(seed, set()).add(row["initial_sha256"])
                     for name, field in (
                         (f"calls-{budget}.npz", "archive_sha256"),
@@ -284,13 +319,13 @@ def main():
                                 raw["samples"],
                                 np.exp(raw["log_weights"] - logsumexp(raw["log_weights"])),
                             )
-    assert audit_count == 240 and len(final_arrays) == 120
+    assert audit_count == len(arms) * 120 and len(final_arrays) == len(arms) * 60
     assert all(len(value) == 1 for value in hashes.values())
-    indices = np.random.default_rng(3122706).integers(0, 30, size=(100000, 30))
+    indices = np.random.default_rng(bootstrap_seed).integers(0, 30, size=(100000, 30))
     summary, bootstrap = {}, {}
     estimators = ("classic_moments", "classic_mc", "phantom")
     for allocation in ("uniform", "evidence_improving"):
-        for arm in ("fixed", "tuned"):
+        for arm in arms:
             for budget in (2000000, 4000000):
                 group = sorted(
                     [
@@ -302,7 +337,7 @@ def main():
                     ],
                     key=lambda row: row["seed"],
                 )
-                assert [row["seed"] for row in group] == list(range(30))
+                assert [row["seed"] for row in group] == seeds
                 key = f"{arm}_{allocation}_{budget}"
                 info = {
                     "n": 30,
@@ -313,6 +348,15 @@ def main():
                     "mean_gradients": float(
                         np.mean([row["gradient_evaluations"] for row in group])
                     ),
+                    "mean_value_only_calls": float(np.mean([
+                        row["evaluations"] - row["gradient_evaluations"] for row in group
+                    ])),
+                    "mean_overshoot": float(np.mean([
+                        row["evaluations"] - budget for row in group
+                    ])),
+                    "mean_snapshot_seconds": float(np.mean([
+                        row["seconds_including_compilation_and_snapshots"] for row in group
+                    ])),
                     "mean_epochs": float(np.mean([row["completed_epochs"] for row in group])),
                     "median_weight_ess": float(np.median([row["kish_ess"] for row in group])),
                     "median_marginal_sd": {
@@ -327,11 +371,20 @@ def main():
                         f"x{i}": float(np.median([row[f"cdf_error_x{i}"] for row in group]))
                         for i in (1, 16, 17, 5)
                     },
-                    "max_tail_fraction": max(
-                        row["classic_tail_upper_fraction"] for row in group
+                    "max_tail_fraction": (
+                        max(row["classic_tail_upper_fraction"] for row in group)
+                        if all(row["classic_tail_upper_fraction"] is not None for row in group)
+                        else None
                     ),
                     "movement": {},
                 }
+                if duration_comparison:
+                    info["max_tail_log_fraction"] = max(
+                        row["classic_tail_log_upper_fraction"] for row in group
+                    )
+                    info["tail_overflow_runs"] = sum(
+                        row["classic_tail_upper_fraction_overflow"] for row in group
+                    )
                 for estimator in estimators:
                     prefix = "" if estimator == "classic_moments" else estimator + "_"
                     z = np.asarray([row[prefix + "log_Z"] for row in group])
@@ -369,7 +422,7 @@ def main():
                     metrics = {
                         "median_pairs": float(np.median([move["pairs"] for move in moves]))
                     }
-                    for field in (
+                    movement_fields = (
                         "acceptance",
                         "mean_realised_h",
                         "rms_dx1",
@@ -380,9 +433,16 @@ def main():
                         "corr_x16",
                         "corr_x17",
                         "corr_x5",
-                        "rms_dx1_per_gradient",
-                        "rms_dx16_per_gradient",
-                    ):
+                    )
+                    if duration_comparison:
+                        movement_fields += (
+                            "mean_bounce_count", "mean_realised_duration",
+                            "esjd_dx1_per_gradient", "esjd_dx16_per_gradient",
+                            "esjd_dx17_per_gradient", "esjd_dx5_per_gradient",
+                        )
+                    else:
+                        movement_fields += ("rms_dx1_per_gradient", "rms_dx16_per_gradient")
+                    for field in movement_fields:
                         values = [
                             move[field]
                             for move in moves
@@ -390,21 +450,45 @@ def main():
                         ]
                         metrics[field] = float(np.median(values)) if values else None
                         metrics[field + "_runs"] = len(values)
+                    if duration_comparison:
+                        metrics["total_pairs"] = sum(move["pairs"] for move in moves)
+                        metrics["pooled_acceptance"] = (
+                            sum(move.get("reflection_accepted", 0) for move in moves)
+                            / sum(move.get("reflection_attempted", 0) for move in moves)
+                            if metrics["total_pairs"] else None
+                        )
+                        for coordinate in (1, 16, 17, 5):
+                            field = f"squared_displacement_sum_x{coordinate}"
+                            eligible = [move for move in moves if field in move]
+                            squared = sum(move[field] for move in eligible)
+                            gradients = sum(move["gradient_evaluations"] for move in eligible)
+                            metrics[f"pooled_esjd_x{coordinate}_per_gradient"] = (
+                                squared / gradients if gradients else None
+                            )
+                            metrics[f"pooled_squared_displacement_x{coordinate}"] = squared
+                            metrics[f"pooled_gradient_denominator_x{coordinate}"] = gradients
                     info["movement"][str(i)] = metrics
                 summary[key] = info
     contrasts = {}
     for allocation in ("uniform", "evidence_improving"):
         for budget in (2000000, 4000000):
-            for estimator in estimators:
-                fixed, tuned = f"fixed_{allocation}_{budget}", f"tuned_{allocation}_{budget}"
-                difference = bootstrap[tuned, estimator] - bootstrap[fixed, estimator]
-                contrasts[f"tuned_minus_fixed_{allocation}_{budget}_{estimator}"] = {
-                    "delta_rmse": summary[tuned]["estimators"][estimator]["rmse"]
-                    - summary[fixed]["estimators"][estimator]["rmse"],
-                    "paired_bootstrap95": np.quantile(difference, [0.025, 0.975]).tolist(),
-                    "paired_bootstrap_se": float(difference.std(ddof=1)),
-                }
-            for arm in ("fixed", "tuned"):
+            comparisons = (
+                (("duration", "short"), ("duration", "fixed"), ("short", "fixed"))
+                if duration_comparison else (("tuned", "fixed"),)
+            )
+            for left, right in comparisons:
+                for estimator in estimators:
+                    first = f"{left}_{allocation}_{budget}"
+                    second = f"{right}_{allocation}_{budget}"
+                    difference = bootstrap[first, estimator] - bootstrap[second, estimator]
+                    name = f"{left}_minus_{right}_{allocation}_{budget}_{estimator}"
+                    contrasts[name] = {
+                        "delta_rmse": summary[first]["estimators"][estimator]["rmse"]
+                        - summary[second]["estimators"][estimator]["rmse"],
+                        "paired_bootstrap95": np.quantile(difference, [0.025, 0.975]).tolist(),
+                        "paired_bootstrap_se": float(difference.std(ddof=1)),
+                    }
+            for arm in arms:
                 key = f"{arm}_{allocation}_{budget}"
                 difference = bootstrap[key, "phantom"] - bootstrap[key, "classic_mc"]
                 contrasts[f"phantom_minus_classic_mc_{key}"] = {
@@ -417,20 +501,47 @@ def main():
         "contrasts": contrasts,
         "runtimes": runtimes,
         "audit": {
-            "runs": 120,
-            "snapshots": 240,
-            "all_seeds": list(range(30)),
+            "runs": len(arms) * 60,
+            "snapshots": len(arms) * 120,
+            "all_seeds": seeds,
             "matched_priors": True,
             "single_source": True,
             "single_schedule": True,
             "bootstrap_samples": 100000,
-            "bootstrap_seed": 3122706,
+            "bootstrap_seed": bootstrap_seed,
             "max_likelihood_discrepancy": max(
                 row["max_likelihood_discrepancy"] for row in rows
             ),
         },
-        "calibration": json.loads((root / "calibration/SCHEDULE.json").read_text()),
+        "calibration": json.loads((root / (
+            "SCHEDULE.json" if duration_comparison else "calibration/SCHEDULE.json"
+        )).read_text()),
     }
+    if duration_comparison:
+        correction_path = root / "DIAGNOSTIC_CORRECTION.json"
+        correction = json.loads(correction_path.read_text())
+        assert correction["passed"] and correction["all_other_fields_unchanged"]
+        assert correction["source_freeze_sha256"] == release["source_freeze_sha256"]
+        for changed in correction["corrected_files"]:
+            assert hashlib.sha256((root / changed["path"]).read_bytes()).hexdigest() == (
+                changed["after_sha256"]
+            )
+        full["audit"]["diagnostic_correction_sha256"] = hashlib.sha256(
+            correction_path.read_bytes()
+        ).hexdigest()
+        full["audit"].update(
+            source_commit=freeze["source_commit"],
+            protocol_sha256=freeze["protocol_sha256"],
+            source_freeze_sha256=release["source_freeze_sha256"],
+            validation_sha256=release["validation_sha256"],
+            reference_log_Z=0.0,
+            primary_budget=4000000,
+            reporting_source_sha256={
+                name: hashlib.sha256((Path(__file__).parent / name).read_bytes()).hexdigest()
+                for name in ("summarise_reflection_tuning.py", "summarise_reflection_duration.py",
+                             "reflection_duration_report.py")
+            },
+        )
     (root / "SUMMARY.json").write_text(json.dumps(full, indent=2, allow_nan=False) + "\n")
     fields = [
         "arm",
@@ -439,6 +550,7 @@ def main():
         "budget",
         "evaluations",
         "gradient_evaluations",
+        "value_only_evaluations",
         "completed_epochs",
         "log_Z",
         "log_Z_uncert",
@@ -458,6 +570,8 @@ def main():
         "cdf_error_x17",
         "cdf_error_x5",
         "classic_tail_upper_fraction",
+        "classic_tail_log_upper_fraction",
+        "classic_tail_upper_fraction_overflow",
         "initial_sha256",
     ]
     with (root / "ALL_RECORDS.csv").open("w") as stream:
@@ -465,9 +579,10 @@ def main():
         writer.writeheader()
         writer.writerows(rows)
     figure, axes = plt.subplots(2, 3, figsize=(13, 8), constrained_layout=True)
-    colors = {"fixed": "#3a6b91", "tuned": "#b85e2b"}
+    colors = {"fixed": "#3a6b91", "tuned": "#b85e2b",
+              "short": "#b85e2b", "duration": "#2f855a"}
     for r, allocation in enumerate(("uniform", "evidence_improving")):
-        for arm in ("fixed", "tuned"):
+        for arm in arms:
             info = summary[f"{arm}_{allocation}_4000000"]
             for c, estimator in enumerate(estimators):
                 values = [
@@ -475,6 +590,14 @@ def main():
                     for budget in (2000000, 4000000)
                 ]
                 axes[r, c].plot([2, 4], values, "o-", color=colors[arm], label=arm)
+                if duration_comparison:
+                    intervals = np.asarray([
+                        summary[f"{arm}_{allocation}_{budget}"]["estimators"][estimator][
+                            "rmse_bootstrap95"
+                        ] for budget in (2000000, 4000000)
+                    ])
+                    axes[r, c].fill_between([2, 4], intervals[:, 0], intervals[:, 1],
+                                            color=colors[arm], alpha=0.1)
                 axes[r, c].set(
                     title=f"{allocation}: {estimator}",
                     xlabel="Logical model calls (millions)",
@@ -485,11 +608,12 @@ def main():
     for extension in ("png", "pdf"):
         figure.savefig(root / f"evidence_comparison.{extension}", dpi=160)
     plt.close(figure)
-    figure, axes = plt.subplots(4, 4, figsize=(13, 11), constrained_layout=True)
+    figure, axes = plt.subplots(2 * len(arms), 4, figsize=(13, 3 * len(arms) + 5),
+                                constrained_layout=True)
     for r, (allocation, arm) in enumerate(
-        (a, b) for a in ("uniform", "evidence_improving") for b in ("fixed", "tuned")
+        (a, b) for a in ("uniform", "evidence_improving") for b in arms
     ):
-        for seed in range(30):
+        for seed in seeds:
             points, weights = final_arrays[arm, allocation, seed]
             for c, i in enumerate((1, 16, 17, 5)):
                 order = np.argsort(points[:, i])
@@ -509,11 +633,17 @@ def main():
     for extension in ("png", "pdf"):
         figure.savefig(root / f"posterior_cdfs.{extension}", dpi=160)
     plt.close(figure)
-    figure, axes = plt.subplots(2, 2, figsize=(11, 8), constrained_layout=True)
+    move_fields = (
+        ("rms_dx1", "rms_dx16", "pooled_esjd_x1_per_gradient",
+         "pooled_esjd_x16_per_gradient", "mean_bounce_count", "mean_realised_duration")
+        if duration_comparison else ("rms_dx1", "rms_dx16")
+    )
+    figure, axes = plt.subplots(2, len(move_fields), figsize=(4 * len(move_fields), 8),
+                                constrained_layout=True)
     for r, allocation in enumerate(("uniform", "evidence_improving")):
-        for arm in ("fixed", "tuned"):
+        for arm in arms:
             movement = summary[f"{arm}_{allocation}_4000000"]["movement"]
-            for c, field in enumerate(("rms_dx1", "rms_dx16")):
+            for c, field in enumerate(move_fields):
                 axes[r, c].plot(
                     range(6),
                     [movement[str(i)][field] for i in range(6)],
@@ -521,20 +651,24 @@ def main():
                     color=colors[arm],
                     label=arm,
                 )
-                axes[r, c].axhline(np.sqrt(1 / 6), color="k", linestyle="--")
+                if field.startswith("rms_"):
+                    axes[r, c].axhline(np.sqrt(1 / 6), color="k", linestyle="--")
                 axes[r, c].set(
                     title=f"{allocation}: {field}",
                     yscale="log",
                     xticks=range(6),
                     xticklabels=["0–5", "5–15", "15–40", "40–100", "100–1000", ">1000"],
                     xlabel="Parent peak-gap bin",
-                    ylabel="Absolute RMS movement (cube units)",
+                    ylabel=("Absolute RMS (cube units)" if field.startswith("rms_")
+                            else "Squared cube units / gradient" if "esjd" in field
+                            else "Midpoint steps B" if "bounce" in field
+                            else "Realised trajectory time"),
                 )
                 axes[r, c].legend()
     for extension in ("png", "pdf"):
         figure.savefig(root / f"chain_movement.{extension}", dpi=160)
     plt.close(figure)
-    write_report(root, full)
+    render_report(root, full)
     for path in root.iterdir():
         if path.suffix in (".json", ".csv", ".md", ".pdf", ".png") and path.is_file():
             path.with_suffix(path.suffix + ".sha256").write_text(

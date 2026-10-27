@@ -1225,6 +1225,16 @@
       "path": "cicd/tests/test_reflection_duration.py",
       "reason": "reference_parity",
       "note": "Reproduces the evidence-allocation smoke with six later prior roots; checks their true one-call/no-gradient law and total reflection work."
+    },
+    "test_work_diagnostics_use_actual_bounces_and_jittered_duration": {
+      "path": "cicd/tests/test_reflection_work_diagnostics.py",
+      "reason": "reference_parity",
+      "note": "Pure NumPy diagnostics regression: variable B/jittered time and independent gradient work prevent likelihood-block frequency shadowing."
+    },
+    "test_work_diagnostics_reject_likelihood_multiplicities_as_bounces": {
+      "path": "cicd/tests/test_reflection_work_diagnostics.py",
+      "reason": "reference_parity",
+      "note": "Pure NumPy diagnostics regression: variable B/jittered time and independent gradient work prevent likelihood-block frequency shadowing."
     }
   }
 }
