@@ -1170,6 +1170,31 @@
       "note": "Checks that the benchmark rejects indefinite covariance and invalid component masses before sampling.",
       "path": "cicd/tests/test_ridge_local_gmm_experiment.py",
       "reason": "reference_parity"
+    },
+    "test_frozen_step_lookup_uses_parent_contour_and_declared_tails": {
+      "path": "cicd/tests/test_reflection_step_tuning.py",
+      "reason": "reference_parity",
+      "note": "Frozen contour-step benchmark correctness: independent reference, fixed random stream, support and continuation checks."
+    },
+    "test_constant_schedule_exact_rng_and_phantom_equivalence": {
+      "path": "cicd/tests/test_reflection_step_tuning.py",
+      "reason": "reference_parity",
+      "note": "Frozen contour-step benchmark correctness: independent reference, fixed random stream, support and continuation checks."
+    },
+    "test_scheduled_reflection_reversal_rejections_and_call_counts": {
+      "path": "cicd/tests/test_reflection_step_tuning.py",
+      "reason": "reference_parity",
+      "note": "Frozen contour-step benchmark correctness: independent reference, fixed random stream, support and continuation checks."
+    },
+    "test_scheduled_phantom_retention_preserves_entire_classic_continuation": {
+      "path": "cicd/tests/test_reflection_step_tuning.py",
+      "reason": "reference_parity",
+      "note": "Frozen contour-step benchmark correctness: independent reference, fixed random stream, support and continuation checks."
+    },
+    "test_exact_reference_support_and_model_precision": {
+      "path": "cicd/tests/test_reflection_step_tuning.py",
+      "reason": "reference_parity",
+      "note": "Frozen contour-step benchmark correctness: independent reference, fixed random stream, support and continuation checks."
     }
   }
 }

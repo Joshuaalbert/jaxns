@@ -123,10 +123,14 @@ class ReflectionSampler(AbstractSampler, PureDataclassPytree):
     def run_chain(
         self, key: jax.Array, point: jax.Array, log_likelihood: jax.Array,
         contour: jax.Array, log_likelihood_fn: Callable[[jax.Array], jax.Array],
+        *, contour_step_size: jax.Array | None = None,
     ) -> tuple[ReflectionState, tuple[jax.Array, jax.Array]]:
         """Expose gradient counts and acceptance without changing the core API."""
         if point.dtype != jnp.float64:
             raise ValueError("Use float64 cube coordinates for this experiment.")
+        # Offline tuning may supply a frozen parent-contour step. This value
+        # stays fixed across the chain; independent trajectory jitter is unchanged.
+        base_step = self.step_size if contour_step_size is None else contour_step_size
         zero = jnp.asarray(0, mp_policy.count_dtype)
         initial = ReflectionState(point, log_likelihood, zero, zero, zero)
         value_and_grad = jax.value_and_grad(log_likelihood_fn)
@@ -155,7 +159,7 @@ class ReflectionSampler(AbstractSampler, PureDataclassPytree):
                 velocity = jax.random.normal(velocity_key, point.shape, dtype=point.dtype)
                 # Jitter is independent of position and fixed for the whole
                 # proposal, so the reversed path uses the same time steps.
-                step_size = self.step_size * jax.random.uniform(
+                step_size = base_step * jax.random.uniform(
                     time_key, dtype=point.dtype, minval=0.8, maxval=1.2,
                 )
                 proposed, _ = reflection_trajectory(
