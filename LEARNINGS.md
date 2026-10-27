@@ -80,3 +80,10 @@ repeat mistakes specific to this project. Keep learnings compact.
   under-mixed. The correction uses the full marginal angular mixture at
   both endpoints, including the isotropic branch, not a GMM point-density
   ratio. See `benchmarks/issue_312/LOCAL_GMM_REPORT.md` for the tested scope.
+- In the issue-312 reflection experiment, a frozen contour schedule targeting
+  70% endpoint acceptance reduced movement and increased the 4M-call evidence
+  RMSE point estimates. With ten midpoint steps fixed, reducing the step size
+  also shortens the trajectory. Evaluate displacement and evidence error at
+  matched cost, and separate trajectory duration from integration resolution;
+  acceptance alone is not a mixing objective. See
+  `benchmarks/issue_312/REFLECTION_TUNING_REPORT.md`.

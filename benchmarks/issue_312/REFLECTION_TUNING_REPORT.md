@@ -69,7 +69,7 @@ The acceptance target was selected before evaluation. Stationarity and higher ac
 
 In the 5–15 gap bin, tuning reduces median absolute x1 movement by about 35% and inert-coordinate movement by about 40%, despite raising path acceptance to 70%. The held-out exact ensembles show the same shorter-movement effect. Posterior widths generally narrow and marginal CDF errors worsen; higher acceptance has not repaired population coverage. This supports a movement-versus-acceptance tradeoff for fixed B=10 and C=9, not a universal optimal acceptance target.
 
-At 4M, phantom conditioning increases RMSE relative to classic MC in all four cells, with positive pointwise paired intervals. Mean reported uncertainties shrink while coverage remains poor. The full contrasts and per-seed MCSE are in SUMMARY.json; the largest evidence-mean MCSE over both budgets is 0.00673 (classic) or 0.00390 (phantom).
+At 4M, phantom conditioning increases RMSE relative to classic MC in all four cells, with positive pointwise paired intervals. Mean reported uncertainties shrink while coverage remains poor. The full contrasts and per-seed MCSE are in [SUMMARY.json](reflection_tuning/SUMMARY.json); the largest evidence-mean MCSE over both budgets is 0.00673 (classic) or 0.00390 (phantom).
 
 Classic moments, classic Monte Carlo and phantom Monte Carlo are distinct estimator conventions. Arms share seeds and initial populations but generate different trees; classic/phantom contrasts within an arm use the same tree. Phantoms receive no posterior weights or seed access. The original eight-cycle prefix and cluster-weight evidence law are unchanged. See SUMMARY.json for both budgets, all uncertainty diagnostics, per-seed errors, paired phantom-minus-classic contrasts and MC errors.
 
@@ -79,7 +79,17 @@ Each sampling process and reduction was pinned to one CPU with CPU-only JAX. Log
 
 Calibration used 7,208,960 model calls, including 6,553,600 gradient calls, and took 12.96 seconds. Amortized over the 60 tuned runs that is 120,149 extra model calls/run (3.00% of a 4M nominal budget). The shared control comparison still uses identical evaluation budgets; calibration is disclosed separately.
 
-Raw state.pkl files, complete arrays, evidence inputs/draws, replay diagnostics, manifests/checksums and source archive remain under this output directory. All three independent coordinator audits (pilot, held-out and complete cohort) passed; their sources and receipts are retained, including independent agreement on every reported paired interval. The failed serializer attempt is preserved. No production code, manuscript or GitHub artifact was changed.
+Raw state.pkl files, complete arrays, evidence inputs/draws, replay diagnostics, manifests/checksums and source archive remain in the dorrie output directory below. All three independent coordinator audits (pilot, held-out and complete cohort) passed; their sources and receipts are retained, including independent agreement on every reported paired interval. The failed serializer attempt is preserved. The experiment changed no production code or manuscript.
+
+## Figures
+
+![Evidence RMSE and quoted uncertainty](reflection_tuning/evidence_comparison.png)
+
+![Posterior marginal CDFs](reflection_tuning/posterior_cdfs.png)
+
+![Chain movement and acceptance](reflection_tuning/chain_movement.png)
+
+PDF copies accompany each figure in [reflection_tuning/](reflection_tuning/).
 
 ## Reproducibility and review files
 
@@ -92,14 +102,18 @@ The frozen schedule SHA256 is
 
 Complete output on dorrie:
 `/largedata/albert/jaxns-reflection-tuning-20261027/`.
-Read `HANDOFF_FINAL.json` for the incremental bundle and archive checksums.
+Read [HANDOFF_FINAL.json](reflection_tuning/HANDOFF_FINAL.json) for the
+incremental bundle and archive checksums, and the
+[artifact notes](reflection_tuning/README.md) for their provenance.
 `compact-records-20261027.tar.gz` contains all 120 run records, all 240 evidence-draw
 archives, chain diagnostics and the complete summary; full states, classic sample
 arrays and evidence inputs remain on dorrie with checksums.
 `review-provenance-20261027.tar.gz` contains protocol, frozen schedule, source,
 validation receipts, test logs, coordinator audits and the three PDF/PNG figures.
-The modest [per-snapshot CSV](reflection_tuning_records.csv) is also versioned;
-large numerical arrays are not in Git.
+The [per-snapshot CSV](reflection_tuning_records.csv),
+[full summary](reflection_tuning/SUMMARY.json),
+[frozen schedule](reflection_tuning/SCHEDULE.json), figures and independent
+audit receipts are versioned. Large numerical arrays remain on dorrie.
 
 The reporting entrypoint is `summarise_reflection_tuning.py`. Its `--report-only`
 option renders prose/tables from the audited `SUMMARY.json` without rerunning

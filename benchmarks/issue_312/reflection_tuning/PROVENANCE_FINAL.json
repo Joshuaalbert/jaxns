@@ -1,0 +1,61 @@
+{
+  "created_utc": "2026-10-27T11:55:50.707809+00:00",
+  "baseline_commit": "4e9cc2927b2d4ab4c50529af00201a4fd9960fe8",
+  "executed_commit": "da352c53ab98ecee12932abdbb2dd83ed670a689",
+  "reporting_commit": "53900657687a5527f4e83a929127d9c1246b9c43",
+  "branch": "experiment/reflection-tuning-cpu-20261027",
+  "worktree": "/largedata/albert/git/jaxns-reflection-tuning-20261027",
+  "output_root": "/largedata/albert/jaxns-reflection-tuning-20261027",
+  "hostname": "dorrie",
+  "python": "3.12.13",
+  "versions": {
+    "jax": "0.10.0",
+    "jaxlib": "0.10.0",
+    "jaxctx": "1.2.0",
+    "numpy": "2.4.4",
+    "scipy": "1.17.1",
+    "tfp-nightly": "0.26.0.dev20260508"
+  },
+  "backend": "cpu",
+  "unit_dtype": "float64",
+  "sampling_and_reduction_affinity_size": 1,
+  "cohort_concurrency_ceiling": 24,
+  "coordinator_cpu": 70,
+  "protocol_sha256": "c0770376d714bd44536a484ad9af9a070f9972561ac7b9c8bfef357688245bff",
+  "schedule_sha256": "21242cb5554c0b7c23c4750d1c8aa579e3d9856ff670a0f9c18133b1771a28d6",
+  "summary_sha256": "9ee206709b8581d91b588f3a167caa836021a7b99f308238c89d060c9764a77c",
+  "curated_report_sha256": "d3f0303c967ed8ab05798c36033e331402c1d395a5877ed1b8ad33212ce45618",
+  "cohort_counts": {
+    "runs": 120,
+    "snapshots": 240,
+    "seeds_per_arm_allocation": 30,
+    "failures": 0,
+    "excluded": 0
+  },
+  "independent_audits": {
+    "PILOT_AUDIT.json": {
+      "passed": true,
+      "sha256": "aae53d78f65aaed6b87bce61fc9a3a28f6d37210f609bc923c6bf0641ffefe59"
+    },
+    "HELDOUT_AUDIT.json": {
+      "passed": true,
+      "sha256": "84ac5ae05011cc0f83e7007e7ca83d12c4d0008df84c1757613b2c32fedf5bdf"
+    },
+    "COHORT_AUDIT.json": {
+      "passed": true,
+      "sha256": "ec8cda633ab7b2628dcfa7129369dcbb0cff26c835b647fde65ab5d1c510a692"
+    }
+  },
+  "checks": {
+    "pytest": "24 passed; one pre-existing TFP deprecation warning; 210.90 seconds",
+    "ruff": "passed",
+    "flake8_max_line_length_100": "passed",
+    "git_diff_check": "passed"
+  },
+  "operations": [
+    "First held-out publication failed on numpy.bool JSON serialization; raw attempt retained, same schedule/keys rerun after Python bool conversion.",
+    "Initial dispatcher exited under shell cleanup; its four detached cores completed, replacement controller adopted COMPLETE markers without rerunning them.",
+    "Report-only final rendering left SUMMARY.json, ALL_RECORDS.csv and all figures byte-identical."
+  ],
+  "publication": "Local commits and bundle only; no manuscript, GitHub, or production API edits."
+}
