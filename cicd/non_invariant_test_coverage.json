@@ -1195,6 +1195,31 @@
       "path": "cicd/tests/test_reflection_step_tuning.py",
       "reason": "reference_parity",
       "note": "Frozen contour-step benchmark correctness: independent reference, fixed random stream, support and continuation checks."
+    },
+    "test_duration_rounding_nodes_interiors_and_tails": {
+      "path": "cicd/tests/test_reflection_duration.py",
+      "reason": "reference_parity",
+      "note": "Frozen duration benchmark: independent count mapping, exact controls, variable work, strict support and full continuation parity."
+    },
+    "test_constant_duration_and_old_short_are_exact_controls": {
+      "path": "cicd/tests/test_reflection_duration.py",
+      "reason": "reference_parity",
+      "note": "Frozen duration benchmark: independent count mapping, exact controls, variable work, strict support and full continuation parity."
+    },
+    "test_heterogeneous_counts_support_and_rejection_repeats": {
+      "path": "cicd/tests/test_reflection_duration.py",
+      "reason": "reference_parity",
+      "note": "Frozen duration benchmark: independent count mapping, exact controls, variable work, strict support and full continuation parity."
+    },
+    "test_duration_phase_space_reversal_including_maximum_count": {
+      "path": "cicd/tests/test_reflection_duration.py",
+      "reason": "reference_parity",
+      "note": "Frozen duration benchmark: independent count mapping, exact controls, variable work, strict support and full continuation parity."
+    },
+    "test_variable_count_phantoms_checkpoint_growth_continuation": {
+      "path": "cicd/tests/test_reflection_duration.py",
+      "reason": "reference_parity",
+      "note": "Frozen duration benchmark: independent count mapping, exact controls, variable work, strict support and full continuation parity."
     }
   }
 }

@@ -13,10 +13,13 @@ from importlib.metadata import version
 from pathlib import Path
 
 
-def main():
+def main(*, duration_comparison: bool = False):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cpu", type=int, required=True)
-    parser.add_argument("--arm", choices=("fixed", "tuned"), required=True)
+    parser.add_argument(
+        "--arm", required=True,
+        choices=("fixed", "short", "duration") if duration_comparison else ("fixed", "tuned"),
+    )
     parser.add_argument(
         "--allocation", choices=("uniform", "evidence_improving"), required=True
     )
@@ -32,7 +35,13 @@ def main():
 
     from benchmarks.issue_312.allocation_observer import run_with_observer
     from benchmarks.issue_312.allocation_phantoms import EvidenceInputs
-    from benchmarks.issue_312.reflection_sampler import ReflectionSampler
+    from benchmarks.issue_312.duration_common import (
+        BASELINE as DURATION_BASELINE,
+        OUTPUT_ROOT as DURATION_OUTPUT_ROOT,
+        SCHEDULE_SHA256,
+        make_arm,
+        load_duration_freeze,
+    )
     from benchmarks.issue_312.tuning_common import (
         BASELINE,
         OUTPUT_ROOT,
@@ -41,13 +50,18 @@ def main():
         atomic_npz,
         make_model,
     )
-    from benchmarks.issue_312.tuning_schedule import FrozenContourReflectionSampler
     from jaxns.algorithm.depth import _refresh_likelihood_order
     from jaxns.core import NestedSampler
     from jaxns.pytree import pytree_ravel
 
+    output_root = DURATION_OUTPUT_ROOT if duration_comparison else OUTPUT_ROOT
+    baseline = DURATION_BASELINE if duration_comparison else BASELINE
+    schedule_hash = hashlib.sha256(options.schedule.read_bytes()).hexdigest()
+    if duration_comparison:
+        assert schedule_hash == SCHEDULE_SHA256
+        freeze = load_duration_freeze()
     if not options.smoke:
-        gate = json.loads((OUTPUT_ROOT / "validation/VALIDATION.json").read_text())
+        gate = json.loads((output_root / "validation/VALIDATION.json").read_text())
         assert (
             gate["passed"]
             and gate["schedule_sha256"]
@@ -55,7 +69,20 @@ def main():
                 options.schedule.read_bytes(),
             ).hexdigest()
         )
-        assert 0 <= options.seed < 30
+        assert 30 <= options.seed < 60 if duration_comparison else 0 <= options.seed < 30
+        if duration_comparison:
+            review = json.loads((output_root / "EVALUATION_RELEASE.json").read_text())
+            assert review["approved"] and review["schedule_sha256"] == schedule_hash
+            assert review["protocol_sha256"] == freeze["protocol_sha256"]
+            assert review["source_freeze_sha256"] == freeze["source_freeze_sha256"]
+            assert review["validation_sha256"] == hashlib.sha256(
+                (output_root / "validation/VALIDATION.json").read_bytes(),
+            ).hexdigest()
+            assert gate["source_freeze_sha256"] == freeze["source_freeze_sha256"]
+            assert review["source_commit"] == subprocess.check_output(
+                ["git", "rev-parse", "HEAD"], text=True,
+            ).strip()
+
     model = make_model()
     assert Path(__import__("jaxns").__file__).resolve().is_relative_to(SOURCE_ROOT)
     unit, unravel = pytree_ravel(model.sample_U(jax.random.PRNGKey(3122799)))
@@ -68,16 +95,10 @@ def main():
     peak = float(likelihood(jnp.full(18, 0.5)))
     assert peak == schedule["peak"]
     kernel = dict(num_cycles=9, slices_per_cycle=1, num_bounces=10, step_size=0.003)
-    sampler = (
-        ReflectionSampler(**kernel)
-        if options.arm == "fixed"
-        else FrozenContourReflectionSampler(
-            **kernel,
-            gaps=tuple(schedule["gaps"]),
-            steps=tuple(schedule["steps"]),
-            peak=peak,
-        )
+    sampler, parameters = make_arm(
+        "short" if options.arm == "tuned" else options.arm, schedule,
     )
+    batch_parameters = jax.jit(jax.vmap(parameters))
     runner = NestedSampler(
         model=model,
         root_allocation_degree=150,
@@ -95,18 +116,29 @@ def main():
     source_paths += [
         SOURCE_ROOT / "benchmarks/issue_312" / name
         for name in (
-            "REFLECTION_TUNING_PROTOCOL.md",
+            "REFLECTION_DURATION_PROTOCOL.md" if duration_comparison
+            else "REFLECTION_TUNING_PROTOCOL.md",
+            "duration_schedule.py",
+            "duration_common.py",
             "tuning_schedule.py",
             "tuning_common.py",
             "reflection_sampler.py",
             "allocation_observer.py",
             "allocation_phantoms.py",
             "run_reflection_tuning.py",
+            "run_reflection_duration.py",
+            "analyse_reflection_tuning.py",
+            "analyse_reflection_duration.py",
+            "validate_reflection_tuning.py",
+            "validate_reflection_duration.py",
+            "numpy_allocation_evidence.py",
             "run_ridge.py",
         )
     ]
     manifest = {
-        "baseline_commit": BASELINE,
+        "baseline_commit": baseline,
+        "comparison": "duration" if duration_comparison else "tuning",
+        "record_schema": 2,
         "commit": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
         "source_sha256": {
             str(p.relative_to(SOURCE_ROOT)): hashlib.sha256(p.read_bytes()).hexdigest()
@@ -137,6 +169,10 @@ def main():
         "peak": peak,
         "dlogZ": float(np.log1p(1e-3)),
         "kernel": kernel,
+        "count_law": "ceil(.03/old_h), h=.03/B; explicit early B10/h.003"
+        if options.arm == "duration" else "B10",
+        "gradient_law": "9 * per-child B; zero for roots",
+        "budget_counting": "Logical calls; masked SIMD hardware work is not counted twice",
         "unlimited_samples": True,
         "smoke": options.smoke,
         "thread_environment": {
@@ -151,6 +187,11 @@ def main():
             )
         },
     }
+    if duration_comparison:
+        manifest.update(
+            source_freeze_sha256=freeze["source_freeze_sha256"],
+            protocol_sha256=freeze["protocol_sha256"],
+        )
     atomic_json(folder / "MANIFEST.json", manifest)
     started = time.monotonic()
     initial = runner.initialise(jax.random.PRNGKey(options.seed))
@@ -162,14 +203,25 @@ def main():
     ).hexdigest()
     seeds, parents, batches = [[np.full(150, -1, dtype=np.int64)] for _ in range(3)]
     keys = [np.zeros((150, 2), np.uint32)]
+    bounce_counts = [np.zeros(150, np.int64)]
+    nominal_steps = [np.zeros(150, np.float64)]
+    total_gradients = 0
     records = []
     snapshot_seconds = 0.0
     next_budget = 0
 
     def observe(before, current, work):
-        nonlocal next_budget, snapshot_seconds
+        nonlocal next_budget, snapshot_seconds, total_gradients
         start, count = int(before.num_samples), int(current.num_samples)
         width = count - start
+        # Use the same JAX contour lookup as the sampler, without evaluating the model.
+        # Replay later verifies returned gradient counts and an independent NumPy lookup.
+        bounces, steps = batch_parameters(work.log_L_constraint)
+        bounces = np.asarray(bounces[:width], dtype=np.int64)
+        steps = np.asarray(steps[:width], dtype=np.float64)
+        bounce_counts.append(bounces)
+        nominal_steps.append(steps)
+        total_gradients += int(9 * bounces.sum())
         seeds.append(np.asarray(work.seed_idx[:width], dtype=np.int64))
         parents.append(np.asarray(work.parent_idx[:width], dtype=np.int64))
         batches.append(np.full(width, int(current.depth_loop_iter), dtype=np.int64))
@@ -185,6 +237,8 @@ def main():
                         {
                             "seconds": time.monotonic() - started,
                             "evaluations": evaluations,
+                            "gradient_evaluations": total_gradients,
+                            "value_only_evaluations": evaluations - total_gradients,
                             "samples": count,
                             "batches": int(current.depth_loop_iter),
                             "completed_epochs": int(current.goal_loop_iter),
@@ -222,6 +276,13 @@ def main():
                 parent_indices=parent_idx,
                 batch_indices=batch_idx,
                 chain_keys=np.concatenate(keys),
+                bounce_counts=np.concatenate(bounce_counts),
+                nominal_steps=np.concatenate(nominal_steps),
+                gradient_evaluations_per_sample=9 * np.concatenate(bounce_counts),
+                value_only_evaluations_per_sample=(
+                    np.asarray(result.num_likelihood_evaluations_per_sample)[:count]
+                    - 9 * np.concatenate(bounce_counts)
+                ),
                 out_degrees=np.asarray(current.samples.out_degree)[:count],
                 evaluations_per_sample=np.asarray(result.num_likelihood_evaluations_per_sample)[
                     :count
@@ -252,8 +313,10 @@ def main():
                 "samples": count,
                 "roots": roots,
                 "initial_sha256": initial_hash,
-                "gradient_evaluations": 90 * (count - roots),
-                "value_only_evaluations": evaluations - 90 * (count - roots),
+                "gradient_evaluations": total_gradients,
+                "value_only_evaluations": evaluations - total_gradients,
+                "bounce_count_min": int(np.concatenate(bounce_counts)[seed_idx >= 0].min()),
+                "bounce_count_max": int(np.concatenate(bounce_counts)[seed_idx >= 0].max()),
                 "log_Z": float(result.log_Z_mean),
                 "log_Z_uncert": float(result.log_Z_uncert),
                 "kish_ess": float(1 / np.sum(probability**2)),

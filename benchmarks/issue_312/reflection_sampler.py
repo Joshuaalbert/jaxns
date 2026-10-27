@@ -48,7 +48,7 @@ def reflection_trajectory(
     point: jax.Array,
     velocity: jax.Array,
     step_size: jax.Array,
-    num_bounces: int,
+    num_bounces: int | jax.Array,
     contour: jax.Array,
     value_and_grad: Callable[[jax.Array], tuple[jax.Array, jax.Array]],
     boundary_only: bool = False,
@@ -124,6 +124,7 @@ class ReflectionSampler(AbstractSampler, PureDataclassPytree):
         self, key: jax.Array, point: jax.Array, log_likelihood: jax.Array,
         contour: jax.Array, log_likelihood_fn: Callable[[jax.Array], jax.Array],
         *, contour_step_size: jax.Array | None = None,
+        contour_num_bounces: jax.Array | None = None,
     ) -> tuple[ReflectionState, tuple[jax.Array, jax.Array]]:
         """Expose gradient counts and acceptance without changing the core API."""
         if point.dtype != jnp.float64:
@@ -131,6 +132,9 @@ class ReflectionSampler(AbstractSampler, PureDataclassPytree):
         # Offline tuning may supply a frozen parent-contour step. This value
         # stays fixed across the chain; independent trajectory jitter is unchanged.
         base_step = self.step_size if contour_step_size is None else contour_step_size
+        # A benchmark-only dynamic count is fixed by the same parent contour.
+        # Keep the original static path when absent, preserving fixed/short controls.
+        bounces = self.num_bounces if contour_num_bounces is None else contour_num_bounces
         zero = jnp.asarray(0, mp_policy.count_dtype)
         initial = ReflectionState(point, log_likelihood, zero, zero, zero)
         value_and_grad = jax.value_and_grad(log_likelihood_fn)
@@ -163,7 +167,7 @@ class ReflectionSampler(AbstractSampler, PureDataclassPytree):
                     time_key, dtype=point.dtype, minval=0.8, maxval=1.2,
                 )
                 proposed, _ = reflection_trajectory(
-                    current.point, velocity, step_size, self.num_bounces,
+                    current.point, velocity, step_size, bounces,
                     contour, value_and_grad, self.boundary_only,
                 )
                 value = log_likelihood_fn(proposed)
@@ -171,8 +175,8 @@ class ReflectionSampler(AbstractSampler, PureDataclassPytree):
                 current = ReflectionState(
                     jnp.where(accepted, proposed, current.point),
                     jnp.where(accepted, value, current.log_likelihood),
-                    current.evaluations + self.num_bounces + 1,
-                    current.gradients + self.num_bounces,
+                    current.evaluations + bounces + 1,
+                    current.gradients + bounces,
                     current.accepted + accepted.astype(mp_policy.count_dtype),
                 )
             # Rejected trajectories remain self-transitions. Conditioning on

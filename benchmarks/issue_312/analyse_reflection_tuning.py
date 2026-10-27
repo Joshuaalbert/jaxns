@@ -1,4 +1,8 @@
-"""Independently audit one raw run, replay diagnostics, and condition its evidence."""
+"""Audit new-format raw runs, replay diagnostics, and condition their evidence.
+
+Schema2 records include per-child variable work. Historical archives stay
+reproducible with their original executed source commits; no field inference.
+"""
 
 import argparse
 import hashlib
@@ -25,7 +29,7 @@ def main():
 
     from benchmarks.issue_312.allocation_phantoms import EvidenceInputs
     from benchmarks.issue_312.numpy_allocation_evidence import draw_numpy_evidence
-    from benchmarks.issue_312.reflection_sampler import ReflectionSampler
+    from benchmarks.issue_312.duration_common import make_arm, numpy_parameters
     from benchmarks.issue_312.tuning_common import (
         SOURCE_ROOT,
         atomic_json,
@@ -33,13 +37,16 @@ def main():
         make_model,
         numpy_log_likelihood,
     )
-    from benchmarks.issue_312.tuning_schedule import FrozenContourReflectionSampler
     from jaxns.pytree import pytree_ravel
 
     folder = options.run
     manifest = json.loads((folder / "MANIFEST.json").read_text())
     completed = json.loads((folder / "COMPLETE.json").read_text())
     assert completed["core_complete"]
+    assert manifest["record_schema"] == 2
+    assert manifest["kernel"] == dict(
+        num_cycles=9, slices_per_cycle=1, num_bounces=10, step_size=0.003,
+    )
     for relative, digest in manifest["source_sha256"].items():
         assert hashlib.sha256((SOURCE_ROOT / relative).read_bytes()).hexdigest() == digest, (
             relative
@@ -54,16 +61,8 @@ def main():
 
     schedule = json.loads(options.schedule.read_text())
     peak = schedule["peak"]
-    sampler = (
-        ReflectionSampler(**manifest["kernel"])
-        if manifest["arm"] == "fixed"
-        else FrozenContourReflectionSampler(
-            **manifest["kernel"],
-            gaps=tuple(schedule["gaps"]),
-            steps=tuple(schedule["steps"]),
-            peak=peak,
-        )
-    )
+    arm = "short" if manifest["arm"] == "tuned" else manifest["arm"]
+    sampler, parameters = make_arm(arm, schedule)
 
     @jax.jit
     @jax.vmap
@@ -73,7 +72,7 @@ def main():
     @jax.jit
     @jax.vmap
     def trajectory_steps(key, contour):
-        base_h = 0.003 if manifest["arm"] == "fixed" else sampler.step_for_contour(contour)
+        _, base_h = parameters(contour)
 
         def jitter(cycle_key):
             _, _, time_key = jax.random.split(cycle_key, 3)
@@ -119,6 +118,13 @@ def main():
         np.testing.assert_array_equal(
             np.asarray(result.evaluations)[:size], raw["evaluations_per_sample"][selected]
         )
+        np.testing.assert_array_equal(
+            np.asarray(result.gradients)[:size], raw["gradient_evaluations_per_sample"][selected],
+        )
+        expected_b, expected_h = numpy_parameters(arm, schedule, raw["log_L_constraints"][selected])
+        np.testing.assert_array_equal(raw["bounce_counts"][selected], expected_b)
+        np.testing.assert_allclose(raw["nominal_steps"][selected], expected_h, rtol=2e-14, atol=0)
+        np.testing.assert_array_equal(np.asarray(result.gradients)[:size], 9 * expected_b)
         # Verify that the retained prefix includes every repeated cycle state.
         np.testing.assert_array_equal(
             np.asarray(values)[:size, :8], final_phantom_values[selected]
@@ -134,7 +140,12 @@ def main():
         replay_gradients += int(np.asarray(result.gradients)[:size].sum())
     replay_seconds = time.monotonic() - started
     diagnostic_path = folder / "chain-diagnostics.npz"
-    atomic_npz(diagnostic_path, reflection_accepted=accepted, realised_steps=realised_steps)
+    atomic_npz(
+        diagnostic_path, reflection_accepted=accepted, realised_steps=realised_steps,
+        bounce_counts=raw["bounce_counts"], nominal_steps=raw["nominal_steps"],
+        gradient_evaluations_per_sample=raw["gradient_evaluations_per_sample"],
+        realised_durations=realised_steps * raw["bounce_counts"][:, None],
+    )
     audit_rows = []
     coordinates = (1, 16, 17, 5)
     quantiles = (np.arange(8192) + 0.5) / 8192
@@ -181,7 +192,16 @@ def main():
         assert evaluations.sum() == row["evaluations"] and np.all(evaluations[root] == 1)
         assert row["evaluations_before_last_batch"] < budget <= row["evaluations"]
         assert evaluations[batch_idx == batch_idx.max()].sum() == row["last_batch_evaluations"]
-        assert row["gradient_evaluations"] == (~root).sum() * 90
+        counts = saved["bounce_counts"]
+        gradients = saved["gradient_evaluations_per_sample"]
+        np.testing.assert_array_equal(gradients, 9 * counts)
+        assert np.all(counts[root] == 0) and np.all(gradients[root] == 0)
+        np.testing.assert_array_equal(
+            saved["value_only_evaluations_per_sample"], evaluations - gradients,
+        )
+        assert row["gradient_evaluations"] == gradients.sum()
+        assert row["value_only_evaluations"] == (evaluations - gradients).sum()
+        assert np.all(evaluations[~root] >= gradients[~root] + 18)
         error = np.max(np.abs(values - numpy_log_likelihood(points)))
         assert error < 5e-5, error
         initial_hash = hashlib.sha256(
@@ -243,11 +263,21 @@ def main():
                 item["mean_realised_h"] = float(realised_steps[:count][select].mean())
                 item["h_min"] = float(realised_steps[:count][select].min())
                 item["h_max"] = float(realised_steps[:count][select].max())
+                item["gradient_evaluations"] = int(gradients[select].sum())
+                item["bounce_count_min"] = int(counts[select].min())
+                item["bounce_count_max"] = int(counts[select].max())
+                item["mean_bounce_count"] = float(counts[select].mean())
+                durations = realised_steps[:count][select] * counts[select, None]
+                item["mean_realised_duration"] = float(durations.mean())
+                item["duration_min"] = float(durations.min())
+                item["duration_max"] = float(durations.max())
             if number >= 30:
                 for i in coordinates:
                     rms = float(np.sqrt(np.mean((ends[:, i] - starts[:, i]) ** 2)))
                     item[f"rms_dx{i}"] = rms
-                    item[f"rms_dx{i}_per_gradient"] = rms / 90
+                    squared_sum = float(np.sum((ends[:, i] - starts[:, i]) ** 2))
+                    item[f"squared_displacement_sum_x{i}"] = squared_sum
+                    item[f"esjd_dx{i}_per_gradient"] = squared_sum / int(gradients[select].sum())
                     item[f"corr_x{i}"] = (
                         float(np.corrcoef(starts[:, i], ends[:, i])[0, 1])
                         if starts[:, i].std() > 0 and ends[:, i].std() > 0
@@ -275,12 +305,14 @@ def main():
             "cpu_affinity": sorted(os.sched_getaffinity(0)),
         }
         if not options.skip_evidence:
-            key = jax.random.PRNGKey(3122705)
+            duration_comparison = manifest.get("comparison", "tuning") == "duration"
+            key = jax.random.PRNGKey(3122713 if duration_comparison else 3122705)
             for value in (
                 manifest["seed"],
                 budget,
                 ("uniform", "evidence_improving").index(manifest["allocation"]),
-                ("fixed", "tuned").index(manifest["arm"]),
+                (("fixed", "short", "duration") if duration_comparison else
+                 ("fixed", "tuned")).index(manifest["arm"]),
             ):
                 key = jax.random.fold_in(key, value)
             draws = {}
@@ -333,6 +365,8 @@ def main():
                 for name in (
                     "benchmarks/issue_312/analyse_reflection_tuning.py",
                     "benchmarks/issue_312/numpy_allocation_evidence.py",
+                    "benchmarks/issue_312/duration_common.py",
+                    "benchmarks/issue_312/duration_schedule.py",
                 )
             },
         },
