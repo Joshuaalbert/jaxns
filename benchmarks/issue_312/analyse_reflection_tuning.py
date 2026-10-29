@@ -1,6 +1,7 @@
 """Audit new-format raw runs, replay diagnostics, and condition their evidence.
 
-Schema2 records include per-child variable work. Historical archives stay
+Schema2 records include per-child variable work; schema3 adds controller ledgers.
+Historical archives stay
 reproducible with their original executed source commits; no field inference.
 """
 
@@ -47,7 +48,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cpu", type=int, required=True)
     parser.add_argument("--run", type=Path, required=True)
-    parser.add_argument("--schedule", type=Path, required=True)
+    parser.add_argument("--schedule", type=Path)
     parser.add_argument("--skip-evidence", action="store_true")
     options = parser.parse_args()
     os.sched_setaffinity(0, {options.cpu})
@@ -73,7 +74,10 @@ def main():
     manifest = json.loads((folder / "MANIFEST.json").read_text())
     completed = json.loads((folder / "COMPLETE.json").read_text())
     assert completed["core_complete"]
-    assert manifest["record_schema"] == 2
+    online_comparison = manifest.get("comparison") == "online"
+    assert manifest["record_schema"] == (3 if online_comparison else 2)
+    if not online_comparison and options.schedule is None:
+        parser.error("Historical fixed-schedule experiments require --schedule.")
     assert manifest["kernel"] == dict(
         num_cycles=9, slices_per_cycle=1, num_bounces=10, step_size=0.003,
     )
@@ -81,7 +85,8 @@ def main():
         assert hashlib.sha256((SOURCE_ROOT / relative).read_bytes()).hexdigest() == digest, (
             relative
         )
-    schedule_hash = hashlib.sha256(options.schedule.read_bytes()).hexdigest()
+    schedule_hash = (hashlib.sha256(options.schedule.read_bytes()).hexdigest()
+                     if options.schedule is not None else None)
     assert schedule_hash == manifest["schedule_sha256"]
     model = make_model()
     _, unravel = pytree_ravel(model.sample_U(jax.random.PRNGKey(3122799)))
@@ -89,20 +94,34 @@ def main():
     def likelihood(point):
         return model.log_likelihood(unravel(point))
 
-    schedule = json.loads(options.schedule.read_text())
-    peak = schedule["peak"]
+    schedule = (json.loads(options.schedule.read_text())
+                if options.schedule is not None else None)
+    peak = manifest["peak"] if online_comparison else schedule["peak"]
     arm = "short" if manifest["arm"] == "tuned" else manifest["arm"]
-    sampler, parameters = make_arm(arm, schedule)
+    if online_comparison:
+        from benchmarks.issue_312.online_audit import audit_online_history
+        from benchmarks.issue_312.reflection_sampler import ReflectionSampler
+
+        sampler = ReflectionSampler(**manifest["kernel"])
+        parameters = None
+    else:
+        sampler, parameters = make_arm(arm, schedule)
 
     @jax.jit
     @jax.vmap
-    def replay(key, point, value, contour):
+    def replay(key, point, value, contour, count, step):
+        if online_comparison:
+            return sampler.run_chain(key, point, value, contour, likelihood,
+                                     contour_num_bounces=count, contour_step_size=step)
         return sampler.run_chain(key, point, value, contour, likelihood)
 
     @jax.jit
     @jax.vmap
-    def trajectory_steps(key, contour):
-        _, base_h = parameters(contour)
+    def trajectory_steps(key, contour, recorded_h):
+        if online_comparison:
+            base_h = recorded_h
+        else:
+            _, base_h = parameters(contour)
 
         def jitter(cycle_key):
             _, _, time_key = jax.random.split(cycle_key, 3)
@@ -118,6 +137,8 @@ def main():
         raw = dict(saved)
     with np.load(folder / f"inputs-{final_budget}.npz") as saved_inputs:
         final_phantom_values = saved_inputs["log_L_phantom"]
+    controller_audit = (audit_online_history(folder, manifest, raw, options.schedule)
+                        if online_comparison else None)
     n = len(raw["samples"])
     roots = raw["seed_indices"] < 0
     indices = np.flatnonzero(~roots)
@@ -136,6 +157,8 @@ def main():
                 jnp.asarray(raw["unit_samples"][seed_idx]),
                 jnp.asarray(raw["log_likelihood"][seed_idx]),
                 jnp.asarray(raw["log_L_constraints"][padded]),
+                jnp.asarray(raw["bounce_counts"][padded]),
+                jnp.asarray(raw["nominal_steps"][padded]),
             )
         )
         size = len(selected)
@@ -151,7 +174,14 @@ def main():
         np.testing.assert_array_equal(
             np.asarray(result.gradients)[:size], raw["gradient_evaluations_per_sample"][selected],
         )
-        expected_b, expected_h = numpy_parameters(arm, schedule, raw["log_L_constraints"][selected])
+        if online_comparison:
+            # The preceding chronological audit verified these choices before replay.
+            expected_b = raw["bounce_counts"][selected]
+            expected_h = raw["nominal_steps"][selected]
+        else:
+            expected_b, expected_h = numpy_parameters(
+                arm, schedule, raw["log_L_constraints"][selected],
+            )
         np.testing.assert_array_equal(raw["bounce_counts"][selected], expected_b)
         np.testing.assert_allclose(raw["nominal_steps"][selected], expected_h, rtol=2e-14, atol=0)
         np.testing.assert_array_equal(np.asarray(result.gradients)[:size], 9 * expected_b)
@@ -164,6 +194,7 @@ def main():
             trajectory_steps(
                 jnp.asarray(raw["chain_keys"][padded]),
                 jnp.asarray(raw["log_L_constraints"][padded]),
+                jnp.asarray(raw["nominal_steps"][padded]),
             )
         )[:size]
         replay_evaluations += int(np.asarray(result.evaluations)[:size].sum())
@@ -302,7 +333,7 @@ def main():
                     counts[select], gradients[select], realised_steps[:count][select],
                 ))
             if number >= 30:
-                for i in coordinates:
+                for i in range(18) if online_comparison else coordinates:
                     rms = float(np.sqrt(np.mean((ends[:, i] - starts[:, i]) ** 2)))
                     item[f"rms_dx{i}"] = rms
                     squared_sum = float(np.sum((ends[:, i] - starts[:, i]) ** 2))
@@ -313,6 +344,17 @@ def main():
                         if starts[:, i].std() > 0 and ends[:, i].std() > 0
                         else None
                     )
+                    if online_comparison:
+                        item[f"esjd_dx{i}_per_total_call"] = squared_sum / int(
+                            evaluations[select].sum(),
+                        )
+                        item[f"squared_coordinate_jump_sum_x{i}"] = float(np.sum(
+                            (ends[:, i]**2 - starts[:, i]**2)**2,
+                        ))
+                        item[f"corr_squared_x{i}"] = (
+                            float(np.corrcoef(starts[:, i]**2, ends[:, i]**2)[0, 1])
+                            if starts[:, i].std() > 0 and ends[:, i].std() > 0 else None
+                        )
             movement.append(item)
         log_tail = float(
             peak
@@ -340,14 +382,20 @@ def main():
             "schedule_sha256": schedule_hash,
             "cpu_affinity": sorted(os.sched_getaffinity(0)),
         }
+        if online_comparison:
+            analysis["controller_audit"] = controller_audit["snapshots"][str(budget)]
+            analysis["controller_audit_seconds_full_run"] = controller_audit["seconds"]
         if not options.skip_evidence:
             duration_comparison = manifest.get("comparison", "tuning") == "duration"
-            key = jax.random.PRNGKey(3122713 if duration_comparison else 3122705)
+            key = jax.random.PRNGKey(
+                3122902 if online_comparison else 3122713 if duration_comparison else 3122705,
+            )
             for value in (
                 manifest["seed"],
                 budget,
                 ("uniform", "evidence_improving").index(manifest["allocation"]),
-                (("fixed", "short", "duration") if duration_comparison else
+                (("fixed", "online", "frozen") if online_comparison else
+                 ("fixed", "short", "duration") if duration_comparison else
                  ("fixed", "tuned")).index(manifest["arm"]),
             ):
                 key = jax.random.fold_in(key, value)
@@ -403,7 +451,7 @@ def main():
                     "benchmarks/issue_312/numpy_allocation_evidence.py",
                     "benchmarks/issue_312/duration_common.py",
                     "benchmarks/issue_312/duration_schedule.py",
-                )
+                ) + (("benchmarks/issue_312/online_audit.py",) if online_comparison else ())
             },
         },
     )

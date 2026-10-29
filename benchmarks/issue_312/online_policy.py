@@ -94,7 +94,7 @@ def choose_log_parameters(
     factors = jnp.asarray([[1., 1.], [1 / 1.5, 1.], [1.5, 1.],
                            [1., 1 / 1.5], [1., 1.5]])
     requested = base * factors[choice]  # [2], before bounds and integer resolution
-    bounded = jnp.clip(requested, jnp.asarray([1e-5, .003]), jnp.asarray([.03, .3]))
+    bounded = jnp.clip(requested, jnp.asarray([.001, .003]), jnp.asarray([.03, .1]))
     duration = jnp.minimum(bounded[1], 256 * bounded[0])
     ratio = duration / bounded[0]
     nearest = jnp.rint(ratio)

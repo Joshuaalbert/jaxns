@@ -8,6 +8,7 @@ import numpy as np
 from jax import numpy as jnp
 
 from benchmarks.issue_312.online_controller import OnlineController, observe_completed
+from benchmarks.issue_312.online_frozen import FrozenLikelihoodPolicy
 from benchmarks.issue_312.online_policy import ChosenParameters, OnlinePolicy
 from benchmarks.issue_312.online_sampler import OnlineReflectionSampler, prepare_contours
 from benchmarks.issue_312.reflection_sampler import ReflectionSampler
@@ -55,6 +56,7 @@ class OnlineCheckpoint:
     kernel: ReflectionSampler
     adapt: bool
     explore: bool
+    frozen_policy: FrozenLikelihoodPolicy | None
     rows: tuple[dict[str, np.ndarray], ...]
     receipts: tuple[dict, ...]
     policy_history: tuple[OnlinePolicy, ...]
@@ -75,10 +77,12 @@ class OnlineSession:
     arrays appended here have only valid rows, and policy snapshots precede use.
     """
 
-    def __init__(self, initial_roots: int, *, adapt: bool = True, explore: bool = True):
+    def __init__(self, initial_roots: int, *, adapt: bool = True, explore: bool = True,
+                 frozen_policy: FrozenLikelihoodPolicy | None = None):
         self.controller = OnlineController.initialise(initial_roots)
         self.adapt = adapt
         self.explore = explore
+        self.frozen_policy = frozen_policy
         self.kernel = ReflectionSampler(num_cycles=9, slices_per_cycle=1,
                                         num_bounces=10, step_size=.003)
         self.active: OnlineReflectionSampler | None = None
@@ -97,6 +101,7 @@ class OnlineSession:
         self.active = OnlineReflectionSampler(
             self.kernel._with_phantom_count(original.num_phantom()),
             self.controller.policy, prepared, explore=self.explore,
+            frozen_policy=self.frozen_policy,
         )
         self.parameters = jax.device_get(dispatch_parameters(self.active, before, work))
         self.prepared_start = int(before.num_samples)
@@ -161,7 +166,8 @@ class OnlineSession:
             raise ValueError('Core and controller do not describe the same committed prefix.')
         return OnlineCheckpoint(
             jax.device_get(state), self.controller, self.kernel, self.adapt, self.explore,
-            tuple(self.rows), tuple(self.receipts), tuple(self.policy_history), budgets,
+            self.frozen_policy, tuple(self.rows), tuple(self.receipts),
+            tuple(self.policy_history), budgets,
             next_budget, snapshots, sampling_elapsed_seconds, self.controller_seconds,
             self.prepare_seconds, self.feedback_seconds, source_sha256,
         )
@@ -171,7 +177,10 @@ class OnlineSession:
         """Construct a fresh host session; no previous Python ledgers are consulted."""
         if int(checkpoint.state.num_samples) != checkpoint.controller.next_sample:
             raise ValueError('Checkpoint core/controller prefixes disagree.')
-        session = cls(0, adapt=checkpoint.adapt, explore=checkpoint.explore)
+        session = cls(
+            0, adapt=checkpoint.adapt, explore=checkpoint.explore,
+            frozen_policy=checkpoint.frozen_policy,
+        )
         session.controller = checkpoint.controller
         session.kernel = checkpoint.kernel
         session.rows = list(checkpoint.rows)

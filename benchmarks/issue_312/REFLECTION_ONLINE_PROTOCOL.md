@@ -1,7 +1,7 @@
 # Online reflection resolution and duration — proposed protocol
 
-2026-10-29. Review version 2, incorporating coordinator review01 before numerical
-outcomes (original version 1 is archived separately). Baseline: 1d84f157496f5b7a20659fdc5da9ca41fd8cec09. The coordinator
+2026-10-29. Review version 3, incorporating coordinator reviews01--03 before training
+or evaluation (versions1--2 are archived separately). Baseline: 1d84f157496f5b7a20659fdc5da9ca41fd8cec09. The coordinator
 must approve the final source and validation before large evaluation. Changes
 to this proposal are recorded before affected work, not selected from results.
 
@@ -99,7 +99,7 @@ the fixed table. All eligible changes in a batch use the SAME old table and
 statistics. This bounds a single multiplicative update by 1.25, uses no target
 acceptance, and leaves clipping/candidate collisions visible in the ledger.
 
-Bound desired h to [1e-5,0.03] and nominal T to [0.003,0.3]. Enforce T<=256*h
+Bound desired h to [0.001,0.03] and nominal T to [0.003,0.1]. Enforce T<=256*h
 by shortening requested T only when necessary, recorded explicitly. Choose
 B=ceil(T/h), minimum 1, maximum 256, and effective h=T/B. Treat ratios within
 8 float64 eps * max(1,abs(T/h)) of an integer as that integer before ceil, to
@@ -107,6 +107,23 @@ avoid an accidental extra bounce from log/exp roundoff. Report quantization
 and the cap separately. The initial central/control pair is represented by
 exact constants B=10 and h=0.003. Jitter follows rounding. All roots have
 B/h/T/gradients zero and one value call, including subsequently allocated roots.
+
+The desired-parameter domain was narrowed before training/evaluation because
+an independent probe found tiny-step/many-reflection round-trip failure at
+B256,T.00256,h1e-5 (including accepted paths). Source b8dffd9 and failed/raw
+probes remain archived. At the revised bounds B<=100, the256cap is inactive
+and nominal T>=.003. Ceil rounding can reduce effective h toward.00075 near
+T=.003,desired h=.001; jitter can reduce it further. Desired h is NOT a lower
+bound on effective or jittered h. No integrator or tolerance changed.
+
+Coordinator's revised4480-path,35-setting,140-cell probe passed the original
+position2e-9/velocity2e-8 limits, including rounding boundaries: production
+self-reversal max velocity8.34e-13 and equivalent analytic-field NumPy/JAX
+phase parity8.12e-12. This supports the probed range, not every possible
+floating-point path. An intermediate diagnostic compared TFP standardized
+arithmetic with centered manual residual arithmetic; its different vector
+fields must not be confused with equivalent-field phase parity. Exact scripts,
+raw arrays and receipts for every stage are archived under coordinator-audits.
 
 ## Training, evaluation and inference
 

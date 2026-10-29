@@ -13,21 +13,29 @@ from importlib.metadata import version
 from pathlib import Path
 
 
-def main(*, duration_comparison: bool = False):
+def main(*, duration_comparison: bool = False, online_comparison: bool = False):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cpu", type=int, required=True)
     parser.add_argument(
         "--arm", required=True,
-        choices=("fixed", "short", "duration") if duration_comparison else ("fixed", "tuned"),
+        choices=(("fixed", "online", "frozen") if online_comparison else
+                 ("fixed", "short", "duration") if duration_comparison else ("fixed", "tuned")),
     )
     parser.add_argument(
         "--allocation", choices=("uniform", "evidence_improving"), required=True
     )
     parser.add_argument("--seed", type=int, required=True)
-    parser.add_argument("--schedule", type=Path, required=True)
+    parser.add_argument("--schedule", type=Path, required=not online_comparison)
+    if online_comparison:
+        parser.add_argument("--phase", choices=("smoke", "training", "evaluation"),
+                            default="evaluation")
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--smoke", action="store_true")
     options = parser.parse_args()
+    if online_comparison:
+        if options.smoke and options.phase != "smoke":
+            parser.error("Use --phase smoke for the online shared runner.")
+        options.smoke = options.phase == "smoke"
     os.sched_setaffinity(0, {options.cpu})
     import jax
     import numpy as np
@@ -51,17 +59,29 @@ def main(*, duration_comparison: bool = False):
         atomic_npz,
         make_model,
     )
-    from jaxns.algorithm.depth import _refresh_likelihood_order
+    from jaxns.algorithm.depth import _refresh_likelihood_order, _run_depth
     from jaxns.core import NestedSampler
     from jaxns.pytree import pytree_ravel
 
-    output_root = DURATION_OUTPUT_ROOT if duration_comparison else OUTPUT_ROOT
-    baseline = DURATION_BASELINE if duration_comparison else BASELINE
-    schedule_hash = hashlib.sha256(options.schedule.read_bytes()).hexdigest()
+    if online_comparison:
+        from benchmarks.issue_312.online_common import (
+            BASELINE as ONLINE_BASELINE, OUTPUT_ROOT as ONLINE_OUTPUT_ROOT,
+            load_frozen_policy, load_online_freeze,
+        )
+        from benchmarks.issue_312.online_session import OnlineSession
+
+    output_root = (ONLINE_OUTPUT_ROOT if online_comparison else
+                   DURATION_OUTPUT_ROOT if duration_comparison else OUTPUT_ROOT)
+    baseline = (ONLINE_BASELINE if online_comparison else
+                DURATION_BASELINE if duration_comparison else BASELINE)
+    schedule_hash = (hashlib.sha256(options.schedule.read_bytes()).hexdigest()
+                     if options.schedule is not None else None)
+    if online_comparison:
+        freeze = load_online_freeze(options.phase, options.seed, options.arm, options.schedule)
     if duration_comparison:
         assert schedule_hash == SCHEDULE_SHA256
         freeze = load_duration_freeze()
-    if not options.smoke:
+    if not options.smoke and not online_comparison:
         gate = json.loads((output_root / "validation/VALIDATION.json").read_text())
         assert (
             gate["passed"]
@@ -92,13 +112,22 @@ def main(*, duration_comparison: bool = False):
     def likelihood(point):
         return model.log_likelihood(unravel(point))
 
-    schedule = json.loads(options.schedule.read_text())
-    peak = float(likelihood(jnp.full(18, 0.5)))
-    assert peak == schedule["peak"]
+    schedule = json.loads(options.schedule.read_text()) if options.schedule is not None else None
+    peak = float(likelihood(jnp.full(18, 0.5)))  # reporting/reference only for online experiment
+    if not online_comparison:
+        assert peak == schedule["peak"]
     kernel = dict(num_cycles=9, slices_per_cycle=1, num_bounces=10, step_size=0.003)
-    sampler, parameters = make_arm(
-        "short" if options.arm == "tuned" else options.arm, schedule,
-    )
+    if online_comparison:
+        frozen_policy = (load_frozen_policy(options.schedule, options.allocation)
+                         if options.arm == "frozen" else None)
+        online_session = OnlineSession(150, adapt=options.arm == "online",
+                                       explore=options.arm != "fixed", frozen_policy=frozen_policy)
+        sampler = online_session.kernel
+        parameters = None
+    else:
+        sampler, parameters = make_arm(
+            "short" if options.arm == "tuned" else options.arm, schedule,
+        )
 
     @jax.jit
     def batch_parameters(contours, seed_indices):
@@ -115,6 +144,8 @@ def main(*, duration_comparison: bool = False):
         collect_phantom_samples=True,
     )
     budgets = [30000, 60000] if options.smoke else [2000000, 4000000]
+    if online_comparison and options.smoke:
+        budgets.append(300000)  # allowed preflight to demonstrate actual controller updates
     folder = options.output
     folder.mkdir(parents=True, exist_ok=False)
     source_paths = sorted((SOURCE_ROOT / "src/jaxns").rglob("*.py"))
@@ -140,16 +171,19 @@ def main(*, duration_comparison: bool = False):
             "run_ridge.py",
         )
     ]
+    if online_comparison:
+        source_paths = [SOURCE_ROOT / relative for relative in freeze["source_sha256"]]
     manifest = {
         "baseline_commit": baseline,
-        "comparison": "duration" if duration_comparison else "tuning",
-        "record_schema": 2,
+        "comparison": ("online" if online_comparison else
+                       "duration" if duration_comparison else "tuning"),
+        "record_schema": 3 if online_comparison else 2,
         "commit": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
         "source_sha256": {
             str(p.relative_to(SOURCE_ROOT)): hashlib.sha256(p.read_bytes()).hexdigest()
             for p in source_paths
         },
-        "schedule_sha256": hashlib.sha256(options.schedule.read_bytes()).hexdigest(),
+        "schedule_sha256": schedule_hash,
         "versions": {
             name: version(name)
             for name in ("jax", "jaxlib", "jaxctx", "numpy", "scipy", "tfp-nightly")
@@ -189,10 +223,15 @@ def main(*, duration_comparison: bool = False):
                 "OPENBLAS_NUM_THREADS",
                 "MKL_NUM_THREADS",
                 "XLA_FLAGS",
+                "JAX_LOG_COMPILES",
             )
         },
     }
-    if duration_comparison:
+    if online_comparison:
+        manifest.update(phase=options.phase,
+                        count_law="per-child recorded h/T/B; original 9 cycles",
+                        state_file_schema="OnlineCheckpoint: core + controller + ledger + policies")
+    if duration_comparison or online_comparison:
         manifest.update(
             source_freeze_sha256=freeze["source_freeze_sha256"],
             protocol_sha256=freeze["protocol_sha256"],
@@ -221,7 +260,13 @@ def main(*, duration_comparison: bool = False):
         width = count - start
         # Use the same JAX contour lookup as the sampler, without evaluating the model.
         # Replay later verifies returned gradient counts and an independent NumPy lookup.
-        bounces, steps = batch_parameters(work.log_L_constraint, work.seed_idx)
+        if online_comparison:
+            online_row = online_session.observe(before, current, work)
+            bounces, steps = online_row["num_bounces"], online_row["step_size"]
+            with (folder / "controller-history.jsonl").open("a") as stream:
+                stream.write(json.dumps(online_session.receipts[-1]) + "\n")
+        else:
+            bounces, steps = batch_parameters(work.log_L_constraint, work.seed_idx)
         bounces = np.asarray(bounces[:width], dtype=np.int64)
         steps = np.asarray(steps[:width], dtype=np.float64)
         bounce_counts.append(bounces)
@@ -248,6 +293,8 @@ def main(*, duration_comparison: bool = False):
                             "batches": int(current.depth_loop_iter),
                             "completed_epochs": int(current.goal_loop_iter),
                             "capacity": current.samples.log_likelihoods.shape[0],
+                            **({"depth_compile_cache_size": _run_depth._cache_size()}
+                               if online_comparison else {}),
                             "max_rss_kib": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss,
                         }
                     )
@@ -293,6 +340,14 @@ def main(*, duration_comparison: bool = False):
                     :count
                 ],
             )
+            if online_comparison:
+                atomic_npz(folder / f"controller-{budget}.npz", **online_session.arrays())
+                atomic_npz(folder / f"policies-{budget}.npz",
+                           log_parameters=np.stack([
+                               p.log_parameters for p in online_session.policy_history
+                           ]),
+                           support=np.stack([p.support for p in online_session.policy_history]),
+                           version=np.stack([p.version for p in online_session.policy_history]))
             inputs = EvidenceInputs.from_result(result)
             np.testing.assert_array_equal(
                 np.asarray(inputs.valid_phantom)[:count], seed_idx >= 0
@@ -341,6 +396,21 @@ def main(*, duration_comparison: bool = False):
                 "max_rss_kib": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss,
                 "random_key": np.asarray(current.random_key).tolist(),
             }
+            if online_comparison:
+                record.update(
+                    phase=options.phase,
+                    controller_version=int(online_session.controller.policy.version),
+                    controller_real_updates=sum(
+                        r["real_parameter_change"] for r in online_session.receipts
+                    ),
+                    controller_seconds=online_session.controller_seconds,
+                    prepare_seconds=online_session.prepare_seconds,
+                    feedback_seconds=online_session.feedback_seconds,
+                    controller_ledger_sha256=hashlib.sha256(
+                        (folder / f"controller-{budget}.npz").read_bytes()).hexdigest(),
+                    controller_policies_sha256=hashlib.sha256(
+                        (folder / f"policies-{budget}.npz").read_bytes()).hexdigest(),
+                )
             snapshot_seconds += record["snapshot_seconds"]
             records.append(record)
             atomic_json(folder / f"CORE-{budget}.json", record)
@@ -348,11 +418,19 @@ def main(*, duration_comparison: bool = False):
             next_budget += 1
         return next_budget == len(budgets)
 
-    final = run_with_observer(runner, initial, observe, lambda current: False)
-    assert len(records) == 2 and int(final.termination_reason) == 0
+    final = run_with_observer(
+        runner, initial, observe, lambda current: False,
+        prepare_sampler=online_session.prepare if online_comparison else None,
+    )
+    assert len(records) == len(budgets) and int(final.termination_reason) == 0
     temporary = folder / "state.tmp.pkl"
     with temporary.open("wb") as stream:
-        pickle.dump(jax.device_get(final), stream)
+        saved = (online_session.checkpoint(
+            final, budgets=tuple(budgets), next_budget=next_budget, snapshots=tuple(records),
+            sampling_elapsed_seconds=time.monotonic() - started,
+            source_sha256=manifest["source_sha256"],
+        ) if online_comparison else jax.device_get(final))
+        pickle.dump(saved, stream)
         stream.flush()
         os.fsync(stream.fileno())
     temporary.replace(folder / "state.pkl")

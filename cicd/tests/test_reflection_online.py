@@ -36,8 +36,9 @@ def test_policy_fixed_shape_values_do_not_retrace_and_bounds_hold():
         variant = replace(policy, log_parameters=jnp.asarray(np.tile(logs, (65, 1))),
                           version=jnp.asarray(index, policy.version.dtype))
         result = choose(variant, jax.random.PRNGKey(index), jnp.asarray(15.))
-        assert 1 <= int(result.num_bounces) <= 256
-        assert min(.003, 256e-5) <= float(result.nominal_duration) <= .3
+        assert 1 <= int(result.num_bounces) <= 100
+        assert .003 <= float(result.nominal_duration) <= .1
+        assert not bool(result.duration_capped)
         assert float(result.step_size) > 0
         np.testing.assert_allclose(result.step_size * result.num_bounces,
                                    result.nominal_duration, rtol=2e-15)
@@ -149,8 +150,8 @@ def test_frozen_heterogeneous_resolution_duration_reversal():
     points, _ = exact_draws(np.random.default_rng(3122942), 32, 15.)
     rng = np.random.default_rng(3122943)
     velocities = rng.normal(size=points.shape)
-    counts = jnp.tile(jnp.array([2, 10, 37, 256]), 8)
-    durations = jnp.tile(jnp.array([.003, .03, .06, .03]), 8)
+    counts = jnp.tile(jnp.array([4, 10, 37, 100]), 8)
+    durations = jnp.tile(jnp.array([.003000000001, .03, .06, .1]), 8)
     steps = durations / counts * rng.uniform(.8, 1.2, 32)
     contour = likelihood(jnp.full(18, .5)) - 15.
 
@@ -167,7 +168,8 @@ def test_frozen_heterogeneous_resolution_duration_reversal():
 
 
 @pytest.mark.parametrize('allocation', ['uniform', 'evidence_improving'])
-def test_observer_fixed_policy_core_parity_with_growth_and_checkpoint(allocation):
+@pytest.mark.parametrize('frozen', [False, True])
+def test_observer_fixed_policy_core_parity_with_growth_and_checkpoint(allocation, frozen):
     from benchmarks.issue_312.allocation_observer import run_with_observer
     from benchmarks.issue_312.online_session import OnlineSession
     from jaxns.core import NestedSampler
@@ -183,7 +185,17 @@ def test_observer_fixed_policy_core_parity_with_growth_and_checkpoint(allocation
         runner, initial, lambda before, after, work: int(after.depth_loop_iter) >= 16,
         lambda state: False,
     )
-    session = OnlineSession(12, adapt=False, explore=False)
+    from benchmarks.issue_312.online_frozen import FrozenLikelihoodPolicy
+
+    frozen_policy = None
+    if frozen:
+        contours = np.full(268, np.inf)
+        contours[:2] = [-1e20, 100.]
+        frozen_policy = FrozenLikelihoodPolicy(
+            jnp.asarray(contours), jnp.asarray(np.tile(np.log([.003, .03]), (268, 1))),
+            jnp.asarray(2),
+        )
+    session = OnlineSession(12, adapt=False, explore=False, frozen_policy=frozen_policy)
 
     def observe(before, after, work):
         session.observe(before, after, work)
@@ -264,3 +276,95 @@ def test_zero_movement_consumption_is_not_reported_as_learning():
     assert int(after.policy.version) == 1 and len(receipt['changes']) == 1
     assert not receipt['real_parameter_change']
     np.testing.assert_array_equal(after.policy.log_parameters, controller.policy.log_parameters)
+
+
+def test_ceil_boundary_can_reduce_effective_h_below_desired_bound():
+    from benchmarks.issue_312.online_policy import choose_log_parameters
+
+    actual = jax.jit(lambda logs: choose_log_parameters(
+        logs, jax.random.PRNGKey(3122947), explore=False,
+    ))(jnp.log(jnp.array([.001, .003000000001])))
+    assert int(actual.num_bounces) == 4
+    assert .00075 < float(actual.step_size) < .001
+    assert not bool(actual.duration_capped)
+    np.testing.assert_allclose(actual.step_size * actual.num_bounces,
+                               actual.nominal_duration, rtol=2e-15)
+
+
+def test_classic_prefix_audit_has_no_future_edges_or_atom_at_singletons():
+    from benchmarks.issue_312.online_audit import classic_volume_profile
+
+    values = np.array([-4., -3., -2., -1.])
+    parents = np.array([-1, -1, 0, 1])
+    levels, compression, incoming, roots = classic_volume_profile(values, parents)
+    np.testing.assert_array_equal(levels, values)
+    np.testing.assert_array_equal(incoming, [2, 2, 2, 1])
+    np.testing.assert_allclose(compression, -np.cumsum(np.log([2/3, 2/3, 2/3, 1/2])))
+    assert roots == 2
+    # Truncating the prefix removes the later edge; a future child cannot affect c/K.
+    _, prefix, prefix_k, _ = classic_volume_profile(values[:3], parents[:3])
+    np.testing.assert_array_equal(prefix_k, [2, 2, 1])
+    assert prefix[-1] > compression[2]
+    with pytest.raises(ValueError, match='future'):
+        classic_volume_profile(values, np.array([-1, -1, 3, 1]))
+
+
+def test_training_entrypoint_requires_reviewed_release(tmp_path, monkeypatch):
+    import hashlib
+    import json
+
+    from benchmarks.issue_312 import online_common
+
+    protocol = tmp_path / 'benchmarks/issue_312/REFLECTION_ONLINE_PROTOCOL.md'
+    protocol.parent.mkdir(parents=True)
+    protocol.write_text('unit-test protocol; never a real experiment release')
+    freeze = dict(
+        source_commit='test-only-commit', baseline_commit=online_common.BASELINE,
+        source_sha256={}, protocol_sha256=hashlib.sha256(protocol.read_bytes()).hexdigest(),
+    )
+    (tmp_path / 'SOURCE_FREEZE.json').write_text(json.dumps(freeze))
+    monkeypatch.setattr(online_common, 'SOURCE_ROOT', tmp_path)
+    monkeypatch.setattr(online_common, 'OUTPUT_ROOT', tmp_path)
+    monkeypatch.setattr(online_common.subprocess, 'check_output',
+                        lambda *a, **k: 'test-only-commit')
+    with pytest.raises(FileNotFoundError):
+        online_common.load_online_freeze('training', 3122910, 'online', None)
+    (tmp_path / 'TRAINING_RELEASE.json').write_text(json.dumps(dict(approved=False)))
+    with pytest.raises(ValueError, match='coordinator release'):
+        online_common.load_online_freeze('training', 3122910, 'online', None)
+
+
+@pytest.mark.parametrize('allocation', ['uniform', 'evidence_improving'])
+def test_online_feedback_is_exactly_independent_of_phantom_collection(allocation):
+    from benchmarks.issue_312.allocation_observer import run_with_observer
+    from benchmarks.issue_312.online_session import OnlineSession
+    from jaxns.core import NestedSampler
+    from jaxns.samples import PhantomSamples
+
+    states, ledgers, histories = [], [], []
+    for retain in (False, True):
+        session = OnlineSession(12)
+        runner = NestedSampler(
+            model=make_model(), root_allocation_degree=12, replacement_width=4, delta_K=12,
+            initial_capacity=32, unlimited_samples=True, allocation_target=allocation,
+            sampler=session.kernel, collect_phantom_samples=retain,
+        )
+
+        def observe(before, after, work):
+            session.observe(before, after, work)
+            return int(after.depth_loop_iter) >= 16
+
+        initial = runner.initialise(jax.random.PRNGKey(3122948))
+        state = run_with_observer(runner, initial, observe, lambda current: False,
+                                  prepare_sampler=session.prepare)
+        assert state.samples.phantom_samples.U_samples is None
+        empty = PhantomSamples(None, jnp.zeros(0, bool), jnp.empty((0, 0)))
+        states.append(replace(state, samples=replace(state.samples, phantom_samples=empty)))
+        ledgers.append(session.arrays())
+        histories.append(session.receipts)
+    for left, right in zip(jax.tree.leaves(states[0]), jax.tree.leaves(states[1]), strict=True):
+        np.testing.assert_array_equal(left, right)
+    for name in ledgers[0]:
+        np.testing.assert_array_equal(ledgers[0][name], ledgers[1][name])
+    assert len(np.unique(ledgers[0]['num_bounces'])) > 1
+    assert histories[0] == histories[1]
