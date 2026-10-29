@@ -1,8 +1,9 @@
-"""Read-only batch observations for the offline allocation comparison.
+"""Benchmark batch observations and an explicit optional sampler-adaptation seam.
 
-Use the existing interruptible continuation, then replay only the deterministic
-seed planner to recover actual seed identities. No likelihood is replayed, no
-host callback enters compiled sampling, and no production interface changes.
+The default path is read-only and replays only deterministic seed planning.
+The optional supplier deliberately changes the benchmark kernel between batches
+using immutable data. Neither path replays likelihoods, changes production
+interfaces, or inserts a host callback into compiled sampling.
 """
 
 import dataclasses
@@ -15,6 +16,7 @@ from jax import numpy as jnp
 
 import jaxns.core as core_module
 from jaxns.algorithm.depth import CoreWorkBatch, _plan_scheduled_work_batch
+from jaxns.constrained_sampler import AbstractSampler
 from jaxns.core import NestedSampler
 from jaxns.state import State
 
@@ -55,12 +57,21 @@ def run_with_observer(
     state: State,
     observer: Callable[[State, State, CoreWorkBatch], bool],
     goal: Callable[[State], bool],
+    *,
+    prepare_sampler: Callable[
+        [State, CoreWorkBatch, AbstractSampler], AbstractSampler,
+    ] | None = None,
 ) -> State:
-    """Observe completed batches; return immediately if the observer says stop.
+    """Observe completed batches, optionally preparing a frozen sampler beforehand.
+
+    With no supplier, observations cannot change the sampling kernel. With a
+    supplier, adaptation is explicit benchmark behavior between complete batches.
 
     Physical pauses do not become goal boundaries. The production driver still
     owns allocation, seed publication, growth and completed-depth bookkeeping.
     This single-process experiment deliberately supplies no checkpoint manager.
+    A benchmark may supply immutable sampler data before dispatch; its observer
+    owns all adaptation and must checkpoint it together with the returned State.
     """
     original_depth = core_module._run_depth
 
@@ -69,12 +80,20 @@ def run_with_observer(
         while True:
             before = current
             start = int(before.num_samples)
+            active_sampler = sampler
+            planned_work = None
+            if prepare_sampler is not None:
+                # The optional experiment observes existing planner output; it
+                # cannot change scheduling or manufacture a scientific goal.
+                planned_work = replay_work(before, max_samples)
+                active_sampler = prepare_sampler(before, planned_work, sampler)
             current = original_depth(
-                before, sampler, depth_cond, max_samples=max_samples, max_batches=1,
+                before, active_sampler, depth_cond, max_samples=max_samples, max_batches=1,
             )
             stop = int(current.num_samples)
             if stop > start:
-                work = replay_work(before, max_samples)
+                work = (replay_work(before, max_samples) if planned_work is None
+                        else planned_work)
                 if int(work.num_valid) != stop - start:
                     raise RuntimeError("Replayed request has a different valid prefix.")
                 np.testing.assert_array_equal(

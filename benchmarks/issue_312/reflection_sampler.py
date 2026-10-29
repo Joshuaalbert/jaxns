@@ -188,15 +188,26 @@ class ReflectionSampler(AbstractSampler, PureDataclassPytree):
     def get_sample(
         self, key, log_L_constraint, seed_point: SeedPoint,
         *, model: Model, args=(), params=None,
+        contour_step_size: jax.Array | None = None,
+        contour_num_bounces: jax.Array | None = None,
     ):
         point, unravel = pytree_ravel(seed_point.U0)
 
         def likelihood(value):
             return model.log_likelihood(unravel(value), args=args, params=params)
 
-        final, (points, values) = self.run_chain(
-            key, point, seed_point.log_L0, log_L_constraint, likelihood,
-        )
+        if contour_step_size is None and contour_num_bounces is None:
+            final, (points, values) = self.run_chain(
+                key, point, seed_point.log_L0, log_L_constraint, likelihood,
+            )
+        else:
+            # Explicit benchmark parameters preserve shared phantom assembly;
+            # they never travel through model parameters or scientific fields.
+            final, (points, values) = self.run_chain(
+                key, point, seed_point.log_L0, log_L_constraint, likelihood,
+                contour_step_size=contour_step_size,
+                contour_num_bounces=contour_num_bounces,
+            )
         phantom = PhantomSamples(
             U_samples=jax.vmap(unravel)(points[:self.num_phantom_samples]),
             log_L=values[:self.num_phantom_samples],
