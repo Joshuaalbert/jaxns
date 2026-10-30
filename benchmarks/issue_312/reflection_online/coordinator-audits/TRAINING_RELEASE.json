@@ -1,0 +1,37 @@
+{
+  "approved": true,
+  "source_commit": "47a9384388d67063f53170ba91ec702d1fc78077",
+  "protocol_sha256": "6a0495c88e869d026fd986c5aa5ae65c916eb15c160cbdf6b46fc5000316581b",
+  "source_freeze_sha256": "e684cbcabcb077f8765c25c44a61bf0b1d9914488d2ed3446cc972f5def4b949",
+  "coordinator": "root",
+  "phase": "training",
+  "training_seeds": [
+    3122910,
+    3122911,
+    3122912,
+    3122913
+  ],
+  "allocations": [
+    "uniform",
+    "evidence_improving"
+  ],
+  "budgets": [
+    2000000,
+    4000000
+  ],
+  "independent_smoke_audit_sha256": "89c6af5aa870b36d5bdd408e685be7ec52ea6882ef47a6cd5ee74dd4cf956346",
+  "smoke_receipts": {
+    "uniform": {
+      "ANALYSIS-COMPLETE.json": "3043c16e0a47f34a0317f71842723c183b290e80835e5f436c4e6d10a2ea8ff8",
+      "CONTROLLER-AUDIT.json": "135be2fa47abe6253b59a7e39c69d606fe0ca6c2c3d7254cf490c0bb74e10047",
+      "CORE-300000.json": "338d51f83377c2716deca13945a86a817fbc5a337a080dc6679e3a066a2fe8c1"
+    },
+    "evidence_improving": {
+      "ANALYSIS-COMPLETE.json": "422c3c0f6637aab5e2501c9d9d89604dba7da77f50892d9c0f6da344892f1067",
+      "CONTROLLER-AUDIT.json": "2b3567e7b96c80615971312c8d8b17f38bc2c62e117846c4f39d6077f9c7ce74",
+      "CORE-300000.json": "be4e32b386c7de380e27eb51014685bd5c8c300a75838c8125bd151c9e57cf58"
+    }
+  },
+  "numerical_probe_sha256": "674cddc361a465a046f2665972d039493af24887b5f705acc585df042cb68ce2",
+  "review": "review03 bounds; unchanged integrator and numerical tolerances; 44 focused tests; independent chronological audit and all-chain replay passed. Evaluation remains unreleased."
+}

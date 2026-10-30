@@ -1,0 +1,26 @@
+{
+  "cpu_only": true,
+  "paths": 384,
+  "bounces": [
+    1,
+    2,
+    10,
+    37,
+    128,
+    256
+  ],
+  "nominal_durations": [
+    0.003,
+    0.03,
+    0.3,
+    0.06,
+    0.03,
+    0.00256
+  ],
+  "reversal_position_max": 0.0002635401852327801,
+  "reversal_velocity_max": 1.460134257930267,
+  "numpy_jax_position_max": 0.0009743917081859177,
+  "numpy_jax_velocity_max": 2.087782166816943,
+  "speed_squared_error_max": 1.5987211554602254e-13,
+  "source_sha256": "f0ec65d0c33725492e6d537c7dc7064f3e396327ac1b25f72ff3f7641bc409b5"
+}

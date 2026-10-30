@@ -1,0 +1,35 @@
+{
+  "passed": true,
+  "phase": "smoke",
+  "runs": 2,
+  "records": [
+    {
+      "folder": "/largedata/albert/jaxns-reflection-online-20261029/smoke-47a9384/evidence_improving",
+      "phase": "smoke",
+      "arm": "online",
+      "allocation": "evidence_improving",
+      "seed": 3122921,
+      "samples": 1817,
+      "evaluations": 320106,
+      "versions": 1,
+      "real_updates": 1,
+      "batches": 50,
+      "passed": true
+    },
+    {
+      "folder": "/largedata/albert/jaxns-reflection-online-20261029/smoke-47a9384/uniform",
+      "phase": "smoke",
+      "arm": "online",
+      "allocation": "uniform",
+      "seed": 3122920,
+      "samples": 2065,
+      "evaluations": 321423,
+      "versions": 1,
+      "real_updates": 1,
+      "batches": 21,
+      "passed": true
+    }
+  ],
+  "seconds": 0.101182262878865,
+  "audit_source_sha256": "08f00107a6d09eff93961594a8d41174d61b6af82dcc0a2047f33349293b62cf"
+}

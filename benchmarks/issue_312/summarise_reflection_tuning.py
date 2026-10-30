@@ -174,7 +174,7 @@ def write_report(root: Path, full: dict) -> None:
     )
 
 
-def main(*, duration_comparison: bool = False):
+def main(*, duration_comparison: bool = False, online_comparison: bool = False):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, required=True)
     parser.add_argument("--cpu", type=int, required=True)
@@ -186,11 +186,17 @@ def main(*, duration_comparison: bool = False):
     arms = ("fixed", "short", "duration") if duration_comparison else ("fixed", "tuned")
     seeds = list(range(30, 60)) if duration_comparison else list(range(30))
     bootstrap_seed = 3122714 if duration_comparison else 3122706
+    if online_comparison:
+        arms, seeds, bootstrap_seed = ("fixed", "online", "frozen"), list(range(60, 90)), 3122903
     render_report = write_report
     if duration_comparison:
         from benchmarks.issue_312.reflection_duration_report import write_duration_report
 
         render_report = write_duration_report
+    if online_comparison:
+        from benchmarks.issue_312.reflection_online_report import write_online_report
+
+        render_report = write_online_report
     os.sched_setaffinity(0, {options.cpu})
     if options.report_only:
         render_report(options.root, json.loads((options.root / "SUMMARY.json").read_text()))
@@ -204,7 +210,7 @@ def main(*, duration_comparison: bool = False):
     import matplotlib.pyplot as plt
 
     root = options.root
-    if duration_comparison:
+    if duration_comparison or online_comparison:
         freeze = json.loads((root / "SOURCE_FREEZE.json").read_text())
         validation = json.loads((root / "validation/VALIDATION.json").read_text())
         release = json.loads((root / "EVALUATION_RELEASE.json").read_text())
@@ -221,7 +227,8 @@ def main(*, duration_comparison: bool = False):
     for arm in arms:
         for allocation in ("uniform", "evidence_improving"):
             for seed in seeds:
-                directory = root / "runs" / arm / allocation / f"seed-{seed:02d}"
+                directory = root / ("evaluation" if online_comparison else "runs")
+                directory = directory / arm / allocation / f"seed-{seed:02d}"
                 manifest = json.loads((directory / "MANIFEST.json").read_text())
                 core = json.loads((directory / "COMPLETE.json").read_text())
                 final = json.loads((directory / "ANALYSIS-COMPLETE.json").read_text())
@@ -229,12 +236,21 @@ def main(*, duration_comparison: bool = False):
                 assert manifest["seed"] == seed and manifest["arm"] == arm
                 assert manifest["allocation"] == allocation and not manifest["smoke"]
                 assert manifest["budgets"] == [2000000, 4000000]
-                if duration_comparison:
-                    assert manifest["comparison"] == "duration" and manifest["record_schema"] == 2
+                if duration_comparison or online_comparison:
+                    comparison = "online" if online_comparison else "duration"
+                    schema = 3 if online_comparison else 2
+                    assert manifest["comparison"] == comparison
+                    assert manifest["record_schema"] == schema
                     assert manifest["commit"] == freeze["source_commit"]
                     assert manifest["source_freeze_sha256"] == release["source_freeze_sha256"]
                     assert manifest["protocol_sha256"] == freeze["protocol_sha256"]
-                    assert manifest["schedule_sha256"] == freeze["schedule_sha256"]
+                    if online_comparison:
+                        expected_policy = (release["frozen_policy_sha256"][allocation]
+                                           if arm == "frozen" else None)
+                        assert manifest["phase"] == "evaluation"
+                        assert manifest["schedule_sha256"] == expected_policy
+                    else:
+                        assert manifest["schedule_sha256"] == freeze["schedule_sha256"]
                     for relative, digest in manifest["source_sha256"].items():
                         assert freeze["source_sha256"][relative] == digest
                     for relative, digest in final["analysis_source_sha256"].items():
@@ -253,7 +269,8 @@ def main(*, duration_comparison: bool = False):
                 hashes.setdefault("source", set()).add(
                     json.dumps(manifest["source_sha256"], sort_keys=True)
                 )
-                hashes.setdefault("schedule", set()).add(manifest["schedule_sha256"])
+                schedule_key = f"schedule_{arm}_{allocation}" if online_comparison else "schedule"
+                hashes.setdefault(schedule_key, set()).add(manifest["schedule_sha256"])
                 runtimes.append(
                     {
                         "arm": arm,
@@ -269,7 +286,7 @@ def main(*, duration_comparison: bool = False):
                     row = json.loads((directory / f"ANALYSIS-{budget}.json").read_text())
                     assert row["audit_passed"] and row["replay_exact"]
                     assert row["mc_draws"] == 4096 and row["C_min"] == 20
-                    if duration_comparison:
+                    if duration_comparison or online_comparison:
                         assert row["value_only_evaluations"] + row["gradient_evaluations"] == (
                             row["evaluations"]
                         )
@@ -378,7 +395,7 @@ def main(*, duration_comparison: bool = False):
                     ),
                     "movement": {},
                 }
-                if duration_comparison:
+                if duration_comparison or online_comparison:
                     info["max_tail_log_fraction"] = max(
                         row["classic_tail_log_upper_fraction"] for row in group
                     )
@@ -434,7 +451,7 @@ def main(*, duration_comparison: bool = False):
                         "corr_x17",
                         "corr_x5",
                     )
-                    if duration_comparison:
+                    if duration_comparison or online_comparison:
                         movement_fields += (
                             "mean_bounce_count", "mean_realised_duration",
                             "esjd_dx1_per_gradient", "esjd_dx16_per_gradient",
@@ -450,7 +467,7 @@ def main(*, duration_comparison: bool = False):
                         ]
                         metrics[field] = float(np.median(values)) if values else None
                         metrics[field + "_runs"] = len(values)
-                    if duration_comparison:
+                    if duration_comparison or online_comparison:
                         metrics["total_pairs"] = sum(move["pairs"] for move in moves)
                         metrics["pooled_acceptance"] = (
                             sum(move.get("reflection_accepted", 0) for move in moves)
@@ -476,6 +493,8 @@ def main(*, duration_comparison: bool = False):
                 (("duration", "short"), ("duration", "fixed"), ("short", "fixed"))
                 if duration_comparison else (("tuned", "fixed"),)
             )
+            if online_comparison:
+                comparisons = (("online", "fixed"), ("frozen", "fixed"), ("online", "frozen"))
             for left, right in comparisons:
                 for estimator in estimators:
                     first = f"{left}_{allocation}_{budget}"
@@ -506,16 +525,16 @@ def main(*, duration_comparison: bool = False):
             "all_seeds": seeds,
             "matched_priors": True,
             "single_source": True,
-            "single_schedule": True,
+            "single_schedule": not online_comparison,
             "bootstrap_samples": 100000,
             "bootstrap_seed": bootstrap_seed,
             "max_likelihood_discrepancy": max(
                 row["max_likelihood_discrepancy"] for row in rows
             ),
         },
-        "calibration": json.loads((root / (
+        "calibration": (None if online_comparison else json.loads((root / (
             "SCHEDULE.json" if duration_comparison else "calibration/SCHEDULE.json"
-        )).read_text()),
+        )).read_text())),
     }
     if duration_comparison:
         correction_path = root / "DIAGNOSTIC_CORRECTION.json"
@@ -542,6 +561,10 @@ def main(*, duration_comparison: bool = False):
                              "reflection_duration_report.py")
             },
         )
+    if online_comparison:
+        from benchmarks.issue_312.reflection_online_report import add_online_diagnostics
+
+        add_online_diagnostics(root, full, rows, freeze, release)
     (root / "SUMMARY.json").write_text(json.dumps(full, indent=2, allow_nan=False) + "\n")
     fields = [
         "arm",
@@ -580,7 +603,8 @@ def main(*, duration_comparison: bool = False):
         writer.writerows(rows)
     figure, axes = plt.subplots(2, 3, figsize=(13, 8), constrained_layout=True)
     colors = {"fixed": "#3a6b91", "tuned": "#b85e2b",
-              "short": "#b85e2b", "duration": "#2f855a"}
+              "short": "#b85e2b", "duration": "#2f855a",
+              "online": "#b85e2b", "frozen": "#2f855a"}
     for r, allocation in enumerate(("uniform", "evidence_improving")):
         for arm in arms:
             info = summary[f"{arm}_{allocation}_4000000"]
@@ -590,7 +614,7 @@ def main(*, duration_comparison: bool = False):
                     for budget in (2000000, 4000000)
                 ]
                 axes[r, c].plot([2, 4], values, "o-", color=colors[arm], label=arm)
-                if duration_comparison:
+                if duration_comparison or online_comparison:
                     intervals = np.asarray([
                         summary[f"{arm}_{allocation}_{budget}"]["estimators"][estimator][
                             "rmse_bootstrap95"
@@ -633,7 +657,11 @@ def main(*, duration_comparison: bool = False):
     for extension in ("png", "pdf"):
         figure.savefig(root / f"posterior_cdfs.{extension}", dpi=160)
     plt.close(figure)
-    plot_movement(root, summary, arms, duration_comparison)
+    plot_movement(root, summary, arms, duration_comparison or online_comparison)
+    if online_comparison:
+        from benchmarks.issue_312.reflection_online_report import plot_online_controller
+
+        plot_online_controller(root, full)
     render_report(root, full)
     for path in root.iterdir():
         if path.suffix in (".json", ".csv", ".md", ".pdf", ".png") and path.is_file():
@@ -650,7 +678,8 @@ def plot_movement(root: Path, summary: dict, arms: tuple[str, ...],
     import numpy as np
 
     colors = {"fixed": "#3a6b91", "tuned": "#b85e2b",
-              "short": "#b85e2b", "duration": "#2f855a"}
+              "short": "#b85e2b", "duration": "#2f855a",
+              "online": "#b85e2b", "frozen": "#2f855a"}
     allocation_labels = {"uniform": "Uniform allocation",
                          "evidence_improving": "Evidence allocation"}
     field_labels = {

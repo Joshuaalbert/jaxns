@@ -16,7 +16,7 @@ from jax import numpy as jnp
 from benchmarks.issue_312.online_common import load_frozen_policy
 from benchmarks.issue_312.online_controller import OnlineController, observe_completed
 from benchmarks.issue_312.online_policy import ChosenParameters, choose_parameters
-from benchmarks.issue_312.tuning_common import atomic_json
+from benchmarks.issue_312.tuning_common import atomic_json, diagnostic_correlation
 
 
 def classic_volume_profile(
@@ -209,11 +209,8 @@ def compression_movement(
         gradient = int(ledger['gradient_evaluations'][select].sum())
         correlations, squared_correlations = [], []
         for i in range(18):
-            nonconstant = len(start) > 1 and start[:, i].std() > 0 and end[:, i].std() > 0
-            correlations.append(float(np.corrcoef(start[:, i], end[:, i])[0, 1])
-                                if nonconstant else None)
-            squared_correlations.append(float(np.corrcoef(start[:, i]**2, end[:, i]**2)[0, 1])
-                                        if nonconstant else None)
+            correlations.append(diagnostic_correlation(start[:, i], end[:, i]))
+            squared_correlations.append(diagnostic_correlation(start[:, i]**2, end[:, i]**2))
         records.append(dict(
             stratum=int(stratum), pairs=int(select.sum()),
             compression_min=float(ledger['compression'][select].min()),

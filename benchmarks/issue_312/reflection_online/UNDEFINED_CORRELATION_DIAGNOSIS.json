@@ -1,0 +1,59 @@
+{
+  "case": "frozen/evidence_improving/seed-72",
+  "failure": "Strict JSON rejected undefined correlation",
+  "findings": [
+    {
+      "budget": 4000000,
+      "stratum": 22,
+      "field": "squared_coordinate_correlations",
+      "coordinate": 4,
+      "pairs": 3,
+      "start": [
+        0.47555438706486874,
+        0.47555438706486874,
+        0.47555438706486874
+      ],
+      "end": [
+        0.4755387889503847,
+        0.47214392640577796,
+        0.47556070035298637
+      ],
+      "start_std": 5.551115123125783e-17,
+      "end_std": 0.0016055430376826086,
+      "start_squared_std": 0.0,
+      "end_squared_std": 0.0015215632020494781
+    },
+    {
+      "budget": 4000000,
+      "stratum": 22,
+      "field": "squared_coordinate_correlations",
+      "coordinate": 12,
+      "pairs": 3,
+      "start": [
+        0.4895718315962462,
+        0.4895718315962462,
+        0.4895718315962462
+      ],
+      "end": [
+        0.48958615042424186,
+        0.5143854667175862,
+        0.4895725803222121
+      ],
+      "start_std": 5.551115123125783e-17,
+      "end_std": 0.011693709629230132,
+      "start_squared_std": 0.0,
+      "end_squared_std": 0.011740073138425039
+    }
+  ],
+  "source_commit": "47a9384388d67063f53170ba91ec702d1fc78077",
+  "raw_sha256": {
+    "calls-2000000.npz": "e34391fd92d78d5ed4b9e5de229ee6d3f26d21c52f8703483c3e2dc35253262b",
+    "controller-2000000.npz": "9d84913398d42b7cbfc2967a33e342dd7dc1686210e46485e762a862aef1abd1",
+    "policies-2000000.npz": "235736d291ebf7d4acedce6aa69b0a9e9158f9cae86a1e26d8024e91114f3b41",
+    "inputs-2000000.npz": "290aa3d819ecbf6caeea74b074719e03cc64839721e351d4d426d64a38edc069",
+    "calls-4000000.npz": "62fb560470cf90fae97db46511e46045b0356d66ee620b3632986adaa34ce892",
+    "controller-4000000.npz": "c59bffd59b071042bdda582869476601ce3cd1c0a091ab5397f82b2672ea4807",
+    "policies-4000000.npz": "235736d291ebf7d4acedce6aa69b0a9e9158f9cae86a1e26d8024e91114f3b41",
+    "inputs-4000000.npz": "69fcd0637b8ce617764e8bfd84c30ff830553cbd0590d86fc4b9fdd94f173765"
+  }
+}

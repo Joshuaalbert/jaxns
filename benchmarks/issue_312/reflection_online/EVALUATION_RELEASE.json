@@ -1,0 +1,64 @@
+{
+  "approved": true,
+  "coordinator": "root",
+  "phase": "evaluation",
+  "source_commit": "47a9384388d67063f53170ba91ec702d1fc78077",
+  "protocol_sha256": "6a0495c88e869d026fd986c5aa5ae65c916eb15c160cbdf6b46fc5000316581b",
+  "source_freeze_sha256": "e684cbcabcb077f8765c25c44a61bf0b1d9914488d2ed3446cc972f5def4b949",
+  "validation_sha256": "619f09aeb8caecaf72a8233d57944360750c46ac8cc92750459ac676e07577f4",
+  "frozen_policy_sha256": {
+    "uniform": "777ed97a112c4fcb71e88ec543c9f788468a8b147530040d47a4e644f8a99073",
+    "evidence_improving": "f9c2a50d336f6810ce850da36c90ebd7fd8c0745a6f9c62d4d55de435f25b43a"
+  },
+  "independent_training_audit_sha256": "2063382330ded63b9041062cdbf9f1b1d87d7dd1be30c7d542dfc0ec062868c3",
+  "independent_heldout_audit_sha256": "c0c937a038d6f24dd6635933bb1078bcbb3b43ce9d87f33987fdc1d300d6899d",
+  "seeds": [
+    60,
+    61,
+    62,
+    63,
+    64,
+    65,
+    66,
+    67,
+    68,
+    69,
+    70,
+    71,
+    72,
+    73,
+    74,
+    75,
+    76,
+    77,
+    78,
+    79,
+    80,
+    81,
+    82,
+    83,
+    84,
+    85,
+    86,
+    87,
+    88,
+    89
+  ],
+  "arms": [
+    "fixed",
+    "online",
+    "frozen"
+  ],
+  "allocations": [
+    "uniform",
+    "evidence_improving"
+  ],
+  "budgets": [
+    2000000,
+    4000000
+  ],
+  "cpu_only": true,
+  "maximum_workers": 24,
+  "all_runs_and_failures_retained": true,
+  "review": "Independent training history, frozen-policy construction and all21 held-out ensembles pass. Source/integrator unchanged. Online adaptation remains experimental; frozen-kernel checks do not prove adaptive stationarity."
+}

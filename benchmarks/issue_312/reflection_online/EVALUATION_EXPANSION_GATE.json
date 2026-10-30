@@ -1,0 +1,6 @@
+{
+  "maximum_measured_rss_gib": 2.4697265625,
+  "full_disk_forecast_gib": 9.4834852386266,
+  "passed": true,
+  "rule": "1.5x largest completed4M evaluation pilot for188runs plus1GiB;8GiB per incoming worker;64GiB physical headroom"
+}

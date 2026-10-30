@@ -1,0 +1,74 @@
+[32m2026-10-29 23:37:33,234 WARNING  dispatch.py jax._src.dispatch: Finished tracing convert_element_type for jit in 0.000384569 sec[0m
+[32m2026-10-29 23:37:33,240 WARNING  pxla.py    jax._src.interpreters.pxla: Compiling jit(convert_element_type) with global shapes and types (ShapedArray(float64[]),). Argument mapping: (UnspecifiedValue,).[0m
+[32m2026-10-29 23:37:33,254 WARNING  dispatch.py jax._src.dispatch: Finished jaxpr to MLIR module conversion jit(convert_element_type) in 0.013770819 sec[0m
+[32m2026-10-29 23:37:33,260 WARNING  dispatch.py jax._src.dispatch: Finished XLA compilation of jit(convert_element_type) in 0.005114555 sec[0m
+[32m2026-10-29 23:37:33,316 WARNING  dispatch.py jax._src.dispatch: Finished tracing convert_element_type for jit in 0.000342846 sec[0m
+[32m2026-10-29 23:37:33,317 WARNING  pxla.py    jax._src.interpreters.pxla: Compiling jit(convert_element_type) with global shapes and types (ShapedArray(int64[]),). Argument mapping: (UnspecifiedValue,).[0m
+[32m2026-10-29 23:37:33,319 WARNING  dispatch.py jax._src.dispatch: Finished jaxpr to MLIR module conversion jit(convert_element_type) in 0.002429724 sec[0m
+[32m2026-10-29 23:37:33,324 WARNING  dispatch.py jax._src.dispatch: Finished XLA compilation of jit(convert_element_type) in 0.004047394 sec[0m
+[32m2026-10-29 23:37:33,326 WARNING  dispatch.py jax._src.dispatch: Finished tracing _threefry_seed for jit in 0.001331568 sec[0m
+[32m2026-10-29 23:37:33,326 WARNING  pxla.py    jax._src.interpreters.pxla: Compiling jit(_threefry_seed) with global shapes and types (ShapedArray(int64[]),). Argument mapping: (UnspecifiedValue,).[0m
+[32m2026-10-29 23:37:33,331 WARNING  dispatch.py jax._src.dispatch: Finished jaxpr to MLIR module conversion jit(_threefry_seed) in 0.004304886 sec[0m
+[32m2026-10-29 23:37:33,345 WARNING  dispatch.py jax._src.dispatch: Finished XLA compilation of jit(_threefry_seed) in 0.014089823 sec[0m
+[32m2026-10-29 23:37:33,624 WARNING  dispatch.py jax._src.dispatch: Finished tracing _sample_U for jit in 0.277589798 sec[0m
+[32m2026-10-29 23:37:33,624 WARNING  pxla.py    jax._src.interpreters.pxla: Compiling jit(_sample_U) with global shapes and types (ShapedArray(uint32[2]),). Argument mapping: (UnspecifiedValue,).[0m
+[32m2026-10-29 23:37:33,660 WARNING  dispatch.py jax._src.dispatch: Finished jaxpr to MLIR module conversion jit(_sample_U) in 0.035668135 sec[0m
+[32m2026-10-29 23:37:33,910 WARNING  dispatch.py jax._src.dispatch: Finished XLA compilation of jit(_sample_U) in 0.249622107 sec[0m
+[32m2026-10-29 23:37:33,911 WARNING  dispatch.py jax._src.dispatch: Finished tracing ravel for jit in 0.000217915 sec[0m
+[32m2026-10-29 23:37:33,912 WARNING  pxla.py    jax._src.interpreters.pxla: Compiling jit(ravel) with global shapes and types (ShapedArray(float64[18]),). Argument mapping: (UnspecifiedValue,).[0m
+[32m2026-10-29 23:37:33,914 WARNING  dispatch.py jax._src.dispatch: Finished jaxpr to MLIR module conversion jit(ravel) in 0.002313137 sec[0m
+[32m2026-10-29 23:37:33,920 WARNING  dispatch.py jax._src.dispatch: Finished XLA compilation of jit(ravel) in 0.005731344 sec[0m
+[32m2026-10-29 23:37:33,985 WARNING  dispatch.py jax._src.dispatch: Finished tracing convert_element_type for jit in 0.000179291 sec[0m
+[32m2026-10-29 23:37:33,985 WARNING  pxla.py    jax._src.interpreters.pxla: Compiling jit(convert_element_type) with global shapes and types (ShapedArray(float64[], weak_type=True),). Argument mapping: (UnspecifiedValue,).[0m
+[32m2026-10-29 23:37:33,988 WARNING  dispatch.py jax._src.dispatch: Finished jaxpr to MLIR module conversion jit(convert_element_type) in 0.002399683 sec[0m
+[32m2026-10-29 23:37:33,992 WARNING  dispatch.py jax._src.dispatch: Finished XLA compilation of jit(convert_element_type) in 0.004359722 sec[0m
+[32m2026-10-29 23:37:33,993 WARNING  dispatch.py jax._src.dispatch: Finished tracing broadcast_in_dim for jit in 0.000231743 sec[0m
+[32m2026-10-29 23:37:33,993 WARNING  pxla.py    jax._src.interpreters.pxla: Compiling jit(broadcast_in_dim) with global shapes and types (ShapedArray(float64[]),). Argument mapping: (UnspecifiedValue,).[0m
+[32m2026-10-29 23:37:33,996 WARNING  dispatch.py jax._src.dispatch: Finished jaxpr to MLIR module conversion jit(broadcast_in_dim) in 0.002369404 sec[0m
+[32m2026-10-29 23:37:34,010 WARNING  dispatch.py jax._src.dispatch: Finished XLA compilation of jit(broadcast_in_dim) in 0.013247252 sec[0m
+[32m2026-10-29 23:37:34,075 WARNING  dispatch.py jax._src.dispatch: Finished tracing choices for jit in 0.058565617 sec[0m
+[32m2026-10-29 23:37:34,076 WARNING  pxla.py    jax._src.interpreters.pxla: Compiling jit(choices) with global shapes and types (ShapedArray(uint32[150,2]), ShapedArray(float64[150])). Argument mapping: (UnspecifiedValue, UnspecifiedValue).[0m
+[32m2026-10-29 23:37:34,137 WARNING  dispatch.py jax._src.dispatch: Finished jaxpr to MLIR module conversion jit(choices) in 0.059995413 sec[0m
+[32m2026-10-29 23:37:34,750 WARNING  dispatch.py jax._src.dispatch: Finished XLA compilation of jit(choices) in 0.612890959 sec[0m
+/data/albert/miniconda3/envs/jaxns_py/lib/python3.12/site-packages/numpy/lib/_function_base_impl.py:3023: RuntimeWarning: invalid value encountered in divide
+  c /= stddev[:, None]
+/data/albert/miniconda3/envs/jaxns_py/lib/python3.12/site-packages/numpy/lib/_function_base_impl.py:3024: RuntimeWarning: invalid value encountered in divide
+  c /= stddev[None, :]
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/largedata/albert/git/jaxns-reflection-online-20261029/benchmarks/issue_312/analyse_reflection_tuning.py", line 461, in <module>
+    main()
+  File "/largedata/albert/git/jaxns-reflection-online-20261029/benchmarks/issue_312/analyse_reflection_tuning.py", line 140, in main
+    controller_audit = (audit_online_history(folder, manifest, raw, options.schedule)
+                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/largedata/albert/git/jaxns-reflection-online-20261029/benchmarks/issue_312/online_audit.py", line 191, in audit_online_history
+    atomic_json(folder / 'CONTROLLER-AUDIT.json', result)
+  File "/largedata/albert/git/jaxns-reflection-online-20261029/benchmarks/issue_312/tuning_common.py", line 42, in atomic_json
+    temporary.write_text(json.dumps(payload, indent=2, allow_nan=False) + '\n')
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data/albert/miniconda3/envs/jaxns_py/lib/python3.12/json/__init__.py", line 238, in dumps
+    **kw).encode(obj)
+          ^^^^^^^^^^^
+  File "/data/albert/miniconda3/envs/jaxns_py/lib/python3.12/json/encoder.py", line 202, in encode
+    chunks = list(chunks)
+             ^^^^^^^^^^^^
+  File "/data/albert/miniconda3/envs/jaxns_py/lib/python3.12/json/encoder.py", line 432, in _iterencode
+    yield from _iterencode_dict(o, _current_indent_level)
+  File "/data/albert/miniconda3/envs/jaxns_py/lib/python3.12/json/encoder.py", line 406, in _iterencode_dict
+    yield from chunks
+  File "/data/albert/miniconda3/envs/jaxns_py/lib/python3.12/json/encoder.py", line 406, in _iterencode_dict
+    yield from chunks
+  File "/data/albert/miniconda3/envs/jaxns_py/lib/python3.12/json/encoder.py", line 406, in _iterencode_dict
+    yield from chunks
+  File "/data/albert/miniconda3/envs/jaxns_py/lib/python3.12/json/encoder.py", line 326, in _iterencode_list
+    yield from chunks
+  File "/data/albert/miniconda3/envs/jaxns_py/lib/python3.12/json/encoder.py", line 406, in _iterencode_dict
+    yield from chunks
+  File "/data/albert/miniconda3/envs/jaxns_py/lib/python3.12/json/encoder.py", line 317, in _iterencode_list
+    yield buf + _floatstr(value)
+                ^^^^^^^^^^^^^^^^
+  File "/data/albert/miniconda3/envs/jaxns_py/lib/python3.12/json/encoder.py", line 240, in floatstr
+    raise ValueError(
+ValueError: Out of range float values are not JSON compliant: nan
+ERROR conda.cli.main_run:execute(125): `conda run python -m benchmarks.issue_312.analyse_reflection_tuning --cpu 16 --run /largedata/albert/jaxns-reflection-online-20261029/evaluation/frozen/evidence_improving/seed-72 --schedule /largedata/albert/jaxns-reflection-online-20261029/frozen/evidence_improving.json` failed. (See above for error)

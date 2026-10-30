@@ -1,0 +1,47 @@
+{
+  "passed": true,
+  "correction": "Undefined nonfinite correlation diagnostics encoded as null",
+  "source_commit": "47a9384388d67063f53170ba91ec702d1fc78077",
+  "wrapper_source": "/largedata/albert/jaxns-reflection-online-20261029/json_reduction_retry.py",
+  "wrapper_sha256": "7613760851a9d80204d9d62a9efc142490a37fff58a4c57087c9f676da72e737",
+  "frozen_source_unchanged": true,
+  "raw_inputs_unchanged": true,
+  "initial_raw_sha256": {
+    "calls-2000000.npz": "e34391fd92d78d5ed4b9e5de229ee6d3f26d21c52f8703483c3e2dc35253262b",
+    "controller-2000000.npz": "9d84913398d42b7cbfc2967a33e342dd7dc1686210e46485e762a862aef1abd1",
+    "policies-2000000.npz": "235736d291ebf7d4acedce6aa69b0a9e9158f9cae86a1e26d8024e91114f3b41",
+    "inputs-2000000.npz": "290aa3d819ecbf6caeea74b074719e03cc64839721e351d4d426d64a38edc069",
+    "calls-4000000.npz": "62fb560470cf90fae97db46511e46045b0356d66ee620b3632986adaa34ce892",
+    "controller-4000000.npz": "c59bffd59b071042bdda582869476601ce3cd1c0a091ab5397f82b2672ea4807",
+    "policies-4000000.npz": "235736d291ebf7d4acedce6aa69b0a9e9158f9cae86a1e26d8024e91114f3b41",
+    "inputs-4000000.npz": "69fcd0637b8ce617764e8bfd84c30ff830553cbd0590d86fc4b9fdd94f173765"
+  },
+  "null_replacements": [
+    [
+      "snapshots",
+      "4000000",
+      "compression_movement",
+      22,
+      "squared_coordinate_correlations",
+      4
+    ],
+    [
+      "snapshots",
+      "4000000",
+      "compression_movement",
+      22,
+      "squared_coordinate_correlations",
+      12
+    ]
+  ],
+  "output_sha256": {
+    "MANIFEST.json": "28286e29bd33f53841098297d9d6ff2decaec0b94136f4827475bffd4d0829f1",
+    "CORE-2000000.json": "2be37c1bfffee41476c3b59fa686f683a9482c3c3593d738167a6d61f91b1b07",
+    "CORE-4000000.json": "f4f0dc3e02826aeb5c7c1e72eefb2092fb612c17eeaade4c961918691355793c",
+    "COMPLETE.json": "a415284f3f11f5c7b5c01b50333b78d04303a1f74aca138461f0b71c4ec5aa53",
+    "CONTROLLER-AUDIT.json": "80c498fb5dd542613b4d5850165cfe84232f38bd77db331178fb4519d189def7",
+    "ANALYSIS-2000000.json": "8ee7dadd57acdf619ca1ff0d0ab78fa84c0896944e2f59499fd9a8717ea1f43d",
+    "ANALYSIS-4000000.json": "9a182c0746f3cbfae83361b0edc859d4bc65bc3cd088b448fd7558da6c26a7f0",
+    "ANALYSIS-COMPLETE.json": "a856ed8a5e70412e8f200ed50ae16c56e07dbc9b8137f6b32f50c3b396224fca"
+  }
+}

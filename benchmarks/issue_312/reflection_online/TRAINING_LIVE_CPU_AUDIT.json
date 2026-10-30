@@ -1,0 +1,184 @@
+{
+  "time_utc": "2026-10-29T23:15:37.733683+00:00",
+  "workers": [
+    {
+      "pid": 2573982,
+      "cpu": "2",
+      "threads": {
+        "2573982": "2"
+      },
+      "environment": {
+        "JAX_PLATFORMS": "cpu",
+        "CUDA_VISIBLE_DEVICES": "",
+        "OMP_NUM_THREADS": "1",
+        "OPENBLAS_NUM_THREADS": "1",
+        "MKL_NUM_THREADS": "1"
+      },
+      "role": "conda_wrapper"
+    },
+    {
+      "pid": 2573983,
+      "cpu": "3",
+      "threads": {
+        "2573983": "3"
+      },
+      "environment": {
+        "JAX_PLATFORMS": "cpu",
+        "CUDA_VISIBLE_DEVICES": "",
+        "OMP_NUM_THREADS": "1",
+        "OPENBLAS_NUM_THREADS": "1",
+        "MKL_NUM_THREADS": "1"
+      },
+      "role": "conda_wrapper"
+    },
+    {
+      "pid": 2573984,
+      "cpu": "4",
+      "threads": {
+        "2573984": "4"
+      },
+      "environment": {
+        "JAX_PLATFORMS": "cpu",
+        "CUDA_VISIBLE_DEVICES": "",
+        "OMP_NUM_THREADS": "1",
+        "OPENBLAS_NUM_THREADS": "1",
+        "MKL_NUM_THREADS": "1"
+      },
+      "role": "conda_wrapper"
+    },
+    {
+      "pid": 2573985,
+      "cpu": "5",
+      "threads": {
+        "2573985": "5"
+      },
+      "environment": {
+        "JAX_PLATFORMS": "cpu",
+        "CUDA_VISIBLE_DEVICES": "",
+        "OMP_NUM_THREADS": "1",
+        "OPENBLAS_NUM_THREADS": "1",
+        "MKL_NUM_THREADS": "1"
+      },
+      "role": "conda_wrapper"
+    },
+    {
+      "pid": 2574010,
+      "cpu": "5",
+      "threads": {
+        "2574010": "5",
+        "2574015": "5",
+        "2574019": "5",
+        "2574022": "5",
+        "2574025": "5",
+        "2574028": "5",
+        "2574031": "5",
+        "2574035": "5",
+        "2574038": "5",
+        "2574041": "5",
+        "2574044": "5",
+        "2574058": "5",
+        "2574060": "5",
+        "2574069": "5",
+        "2574072": "5"
+      },
+      "environment": {
+        "JAX_PLATFORMS": "cpu",
+        "CUDA_VISIBLE_DEVICES": "",
+        "OMP_NUM_THREADS": "1",
+        "OPENBLAS_NUM_THREADS": "1",
+        "MKL_NUM_THREADS": "1"
+      },
+      "role": "numeric_payload"
+    },
+    {
+      "pid": 2574011,
+      "cpu": "4",
+      "threads": {
+        "2574011": "4",
+        "2574016": "4",
+        "2574018": "4",
+        "2574021": "4",
+        "2574024": "4",
+        "2574027": "4",
+        "2574030": "4",
+        "2574033": "4",
+        "2574036": "4",
+        "2574039": "4",
+        "2574042": "4",
+        "2574056": "4",
+        "2574062": "4",
+        "2574070": "4",
+        "2574071": "4"
+      },
+      "environment": {
+        "JAX_PLATFORMS": "cpu",
+        "CUDA_VISIBLE_DEVICES": "",
+        "OMP_NUM_THREADS": "1",
+        "OPENBLAS_NUM_THREADS": "1",
+        "MKL_NUM_THREADS": "1"
+      },
+      "role": "numeric_payload"
+    },
+    {
+      "pid": 2574012,
+      "cpu": "3",
+      "threads": {
+        "2574012": "3",
+        "2574017": "3",
+        "2574020": "3",
+        "2574026": "3",
+        "2574029": "3",
+        "2574032": "3",
+        "2574037": "3",
+        "2574040": "3",
+        "2574043": "3",
+        "2574046": "3",
+        "2574047": "3",
+        "2574057": "3",
+        "2574059": "3",
+        "2574067": "3",
+        "2574074": "3"
+      },
+      "environment": {
+        "JAX_PLATFORMS": "cpu",
+        "CUDA_VISIBLE_DEVICES": "",
+        "OMP_NUM_THREADS": "1",
+        "OPENBLAS_NUM_THREADS": "1",
+        "MKL_NUM_THREADS": "1"
+      },
+      "role": "numeric_payload"
+    },
+    {
+      "pid": 2574013,
+      "cpu": "2",
+      "threads": {
+        "2574013": "2",
+        "2574023": "2",
+        "2574034": "2",
+        "2574045": "2",
+        "2574048": "2",
+        "2574049": "2",
+        "2574050": "2",
+        "2574051": "2",
+        "2574052": "2",
+        "2574053": "2",
+        "2574054": "2",
+        "2574055": "2",
+        "2574061": "2",
+        "2574068": "2",
+        "2574073": "2"
+      },
+      "environment": {
+        "JAX_PLATFORMS": "cpu",
+        "CUDA_VISIBLE_DEVICES": "",
+        "OMP_NUM_THREADS": "1",
+        "OPENBLAS_NUM_THREADS": "1",
+        "MKL_NUM_THREADS": "1"
+      },
+      "role": "numeric_payload"
+    }
+  ],
+  "passed": true,
+  "numeric_payloads": 4,
+  "conda_wrappers": 4
+}

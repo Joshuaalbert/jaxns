@@ -1,0 +1,8 @@
+..........................................                               [100%]
+=============================== warnings summary ===============================
+cicd/tests/test_reflection_online.py::test_original_fixed_kernel_exact_sampler_and_phantom_parity
+  /data/albert/miniconda3/envs/jaxns_py/lib/python3.12/site-packages/tensorflow_probability/python/internal/backend/jax/ops.py:684: DeprecationWarning: jax.core.pytype_aval_mappings is deprecated.
+    jax.core.pytype_aval_mappings[onp.ndarray])
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+42 passed, 1 warning in 301.79s (0:05:01)

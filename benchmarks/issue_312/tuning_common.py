@@ -36,6 +36,21 @@ def make_model() -> Model:
     return Model(prior_model=partial(prior_model, 1e-5, 0.3))
 
 
+def diagnostic_correlation(start: np.ndarray, end: np.ndarray) -> float | None:
+    """Return Pearson correlation, or null for a constant/undefined diagnostic.
+
+    Exact range catches repeated values whose mean-subtracted SD is nonzero
+    only from roundoff. Call this separately on coordinates and their squares.
+    """
+    if start.ndim != 1 or end.shape != start.shape:
+        raise ValueError('Expected matching one-dimensional diagnostic samples.')
+    if len(start) < 2 or np.ptp(start) == 0 or np.ptp(end) == 0:
+        return None
+    with np.errstate(invalid='ignore', divide='ignore', over='ignore'):
+        correlation = float(np.corrcoef(start, end)[0, 1])
+    return correlation if np.isfinite(correlation) else None
+
+
 def atomic_json(path: Path, payload: dict) -> None:
     """Publish a whole JSON record and its checksum together with no partial JSON."""
     temporary = path.with_name(path.name + '.tmp')

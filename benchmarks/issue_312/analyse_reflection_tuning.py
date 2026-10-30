@@ -65,6 +65,7 @@ def main():
         SOURCE_ROOT,
         atomic_json,
         atomic_npz,
+        diagnostic_correlation,
         make_model,
         numpy_log_likelihood,
     )
@@ -339,11 +340,7 @@ def main():
                     squared_sum = float(np.sum((ends[:, i] - starts[:, i]) ** 2))
                     item[f"squared_displacement_sum_x{i}"] = squared_sum
                     item[f"esjd_dx{i}_per_gradient"] = squared_sum / int(gradients[select].sum())
-                    item[f"corr_x{i}"] = (
-                        float(np.corrcoef(starts[:, i], ends[:, i])[0, 1])
-                        if starts[:, i].std() > 0 and ends[:, i].std() > 0
-                        else None
-                    )
+                    item[f"corr_x{i}"] = diagnostic_correlation(starts[:, i], ends[:, i])
                     if online_comparison:
                         item[f"esjd_dx{i}_per_total_call"] = squared_sum / int(
                             evaluations[select].sum(),
@@ -351,9 +348,8 @@ def main():
                         item[f"squared_coordinate_jump_sum_x{i}"] = float(np.sum(
                             (ends[:, i]**2 - starts[:, i]**2)**2,
                         ))
-                        item[f"corr_squared_x{i}"] = (
-                            float(np.corrcoef(starts[:, i]**2, ends[:, i]**2)[0, 1])
-                            if starts[:, i].std() > 0 and ends[:, i].std() > 0 else None
+                        item[f"corr_squared_x{i}"] = diagnostic_correlation(
+                            starts[:, i]**2, ends[:, i]**2,
                         )
             movement.append(item)
         log_tail = float(

@@ -90,3 +90,14 @@ repeat mistakes specific to this project. Keep learnings compact.
   restored duration with more midpoint steps: movement recovered, but gradient
   cost rose and no primary RMSE advantage was resolved. Flat marginals remained
   too narrow; see `benchmarks/issue_312/REFLECTION_DURATION_REPORT.md`.
+
+- In the online reflection follow-up, whole-chain squared displacement per model
+  call exercised h/T learning but did not resolve a 4M online RMSE benefit.
+  An independently trained frozen policy helped evidence allocation in that
+  cohort; flat marginals remained narrow. Compare the full configuration,
+  including its randomized parameter mixture, and charge training separately;
+  see `benchmarks/issue_312/REFLECTION_ONLINE_REPORT.md`.
+- For correlation diagnostics, check exact range separately on coordinates and
+  squared coordinates. Repeated floats can have a roundoff-positive SD while
+  their squares have zero SD; return null for undefined/nonfinite correlation
+  rather than failing strict JSON or altering observations.

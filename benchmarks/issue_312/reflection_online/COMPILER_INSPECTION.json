@@ -1,0 +1,47 @@
+{
+  "source_commit": "47a9384388d67063f53170ba91ec702d1fc78077",
+  "source_sha256": "3d6391c6371f7c1675ec01815a81e496142bab9d973702e102f2ad1f2d2b98a5",
+  "backend": "cpu",
+  "cpu_affinity": [
+    28
+  ],
+  "capacity": 19500,
+  "width": 150,
+  "policy_shape": [
+    65,
+    2
+  ],
+  "policy_dtype": "float64",
+  "checkpoint_sha256": "d50f97e5e53a03e386e1e3f5f0050c219de2fd3464a7f8d71d1becf5ae4f594d",
+  "checkpoint_unchanged": true,
+  "scientific_kernel_calls": 0,
+  "compiler_observed": [
+    {
+      "function": "prepare_contours",
+      "lower_and_compile_seconds": 0.0009983773343265057,
+      "memory": {
+        "argument_size_in_bytes": 313366,
+        "output_size_in_bytes": 3624,
+        "temp_size_in_bytes": 1564264,
+        "alias_size_in_bytes": 0,
+        "generated_code_size_in_bytes": 0
+      },
+      "hlo_sha256": "16934095ce6fea01dfb7e5627347bdf55fc95c0ce3ef2e5de5f07fb23980e634",
+      "hlo_bytes": 22946
+    },
+    {
+      "function": "dispatch_parameters",
+      "lower_and_compile_seconds": 1.1819777307100594,
+      "memory": {
+        "argument_size_in_bytes": 5865,
+        "output_size_in_bytes": 11662,
+        "temp_size_in_bytes": 13824,
+        "alias_size_in_bytes": 0,
+        "generated_code_size_in_bytes": 0
+      },
+      "hlo_sha256": "49b19e90333de4d94ed925abce8876063fbafadd199b31a429a33317abbf1840",
+      "hlo_bytes": 83201
+    }
+  ],
+  "scope": "Controller preparation/dispatch only; not a full-kernel runtime benchmark."
+}
