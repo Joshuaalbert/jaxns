@@ -1,0 +1,14 @@
+{
+  "model_peak": 39.669098320925556,
+  "analytic_peak": 39.669099296656015,
+  "peak_difference": -9.757304582080906e-07,
+  "analytic_log_evidence_bound": -2.133558846764934e-22,
+  "stiff_cube_min_boundary_sigma": 20000,
+  "gaussian_residual_dimension": 15,
+  "unit_dtype": "float64",
+  "shape": [
+    18
+  ],
+  "backend": "cpu",
+  "imported_source": "/largedata/albert/git/jaxns-reflection-tuning-20261027/src/jaxns/__init__.py"
+}

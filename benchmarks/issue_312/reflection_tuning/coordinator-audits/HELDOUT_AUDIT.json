@@ -1,0 +1,107 @@
+{
+  "passed": true,
+  "cases": 12,
+  "single_path_and_full_chain_cases": 24,
+  "exact_early_control_parity": true,
+  "rejected_path_self_transitions": true,
+  "schedule_sha256": "21242cb5554c0b7c23c4750d1c8aa579e3d9856ff670a0f9c18133b1771a28d6",
+  "records": [
+    {
+      "case": 0,
+      "arm": "fixed",
+      "gap": 5.0,
+      "h": 0.003,
+      "acceptance": 0.1597900390625,
+      "passed": true
+    },
+    {
+      "case": 0,
+      "arm": "tuned",
+      "gap": 5.0,
+      "h": 0.0008301693505200215,
+      "acceptance": 0.7037353515625,
+      "passed": true
+    },
+    {
+      "case": 1,
+      "arm": "fixed",
+      "gap": 15.0,
+      "h": 0.003,
+      "acceptance": 0.407958984375,
+      "passed": true
+    },
+    {
+      "case": 1,
+      "arm": "tuned",
+      "gap": 15.0,
+      "h": 0.0014058616639771328,
+      "acceptance": 0.7060546875,
+      "passed": true
+    },
+    {
+      "case": 2,
+      "arm": "fixed",
+      "gap": 40.0,
+      "h": 0.003,
+      "acceptance": 0.6119384765625,
+      "passed": true
+    },
+    {
+      "case": 2,
+      "arm": "tuned",
+      "gap": 40.0,
+      "h": 0.002295453068427069,
+      "acceptance": 0.6988525390625,
+      "passed": true
+    },
+    {
+      "case": 3,
+      "arm": "fixed",
+      "gap": 100.0,
+      "h": 0.003,
+      "acceptance": 0.751220703125,
+      "passed": true
+    },
+    {
+      "case": 3,
+      "arm": "tuned",
+      "gap": 100.0,
+      "h": 0.003,
+      "acceptance": 0.751220703125,
+      "passed": true
+    },
+    {
+      "case": 4,
+      "arm": "fixed",
+      "gap": 1000.0,
+      "h": 0.003,
+      "acceptance": 0.98046875,
+      "passed": true
+    },
+    {
+      "case": 4,
+      "arm": "tuned",
+      "gap": 1000.0,
+      "h": 0.003,
+      "acceptance": 0.98046875,
+      "passed": true
+    },
+    {
+      "case": 5,
+      "arm": "fixed",
+      "gap": "infinity",
+      "h": 0.003,
+      "acceptance": 1.0,
+      "passed": true
+    },
+    {
+      "case": 5,
+      "arm": "tuned",
+      "gap": "infinity",
+      "h": 0.003,
+      "acceptance": 1.0,
+      "passed": true
+    }
+  ],
+  "audit_script_sha256": "e2abc6f6810c1af96606113e5e9c822600c21a98dd006323f87218ded38e9830"
+}

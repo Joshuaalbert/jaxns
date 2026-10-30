@@ -166,6 +166,10 @@ class AbstractSampler(ABC):
         """Validate sampler compatibility with the current race-tree core."""
         del dimension
 
+    def _with_direction_cholesky(self, cholesky: FloatArray) -> AbstractSampler:
+        """Install frozen covariance geometry only on supporting samplers."""
+        raise ValueError("This sampler does not support covariance directions.")
+
 
 def _take_phantom_prefix(cumulative_samples, num_phantom: int):
     """Take retained generated transitions from the start of a chain."""
@@ -188,6 +192,7 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
     # Internal scalar topology derived from JAXCTX metadata by NestedSampler.
     # Keeping this private avoids a second user-supplied flat-index API.
     _periodic: tuple[bool, ...] = ()
+    _direction_cholesky: FloatArray | None = None  # [D, D] frozen per batch
 
     @classmethod
     def flatten(cls, this) -> tuple[list[Any], tuple[Any, ...]]:
@@ -231,6 +236,15 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
     def _with_phantom_count(self, num_phantom_samples: int) -> UniDimSliceSampler:
         """Validate the runner's retention request without changing transitions."""
         return dataclasses.replace(self, num_phantom_samples=num_phantom_samples)
+
+    def _with_direction_cholesky(
+            self,
+            cholesky: FloatArray,
+    ) -> UniDimSliceSampler:
+        """Keep one fixed, position-independent law for every chain step."""
+        if self._periodic:
+            raise ValueError("Covariance directions require non-periodic U-space.")
+        return dataclasses.replace(self, _direction_cholesky=cholesky)
 
     def validate_core(self, dimension: int) -> None:
         if self._periodic and len(self._periodic) != dimension:
@@ -422,6 +436,7 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
                 log_likelihood_fn=log_likelihood_fn,
                 periodic=self._periodic,
                 sampler_data=sampler_data,
+                direction_cholesky=self._direction_cholesky,
             )
 
             carry = Carry(
@@ -448,6 +463,7 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
             init_direction = _sample_direction(
                 direction_key,
                 TreeField(seed_point.U0),
+                cholesky=self._direction_cholesky,
             )
             init_direction_isotropic = jnp.asarray(
                 True,
@@ -480,6 +496,7 @@ class UniDimSliceSampler(AbstractSampler, PureDataclassPytree):
             log_likelihood_fn=log_likelihood_fn,
             periodic=self._periodic,
             sampler_data=sampler_data,
+            direction_cholesky=self._direction_cholesky,
         )
 
         init_carry = Carry(

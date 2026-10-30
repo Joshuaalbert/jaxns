@@ -1,0 +1,119 @@
+{
+  "passed": true,
+  "utc": "2026-10-27T13:30:45.872066+00:00",
+  "payloads_checked": 22,
+  "records": [
+    {
+      "cpu": 5,
+      "payload_pid": 1319546,
+      "threads_checked": 15
+    },
+    {
+      "cpu": 13,
+      "payload_pid": 1319875,
+      "threads_checked": 15
+    },
+    {
+      "cpu": 14,
+      "payload_pid": 1319933,
+      "threads_checked": 15
+    },
+    {
+      "cpu": 3,
+      "payload_pid": 1320082,
+      "threads_checked": 15
+    },
+    {
+      "cpu": 6,
+      "payload_pid": 1320081,
+      "threads_checked": 15
+    },
+    {
+      "cpu": 2,
+      "payload_pid": 1320147,
+      "threads_checked": 15
+    },
+    {
+      "cpu": 8,
+      "payload_pid": 1320149,
+      "threads_checked": 15
+    },
+    {
+      "cpu": 11,
+      "payload_pid": 1320240,
+      "threads_checked": 15
+    },
+    {
+      "cpu": 16,
+      "payload_pid": 1320239,
+      "threads_checked": 15
+    },
+    {
+      "cpu": 4,
+      "payload_pid": 1320298,
+      "threads_checked": 15
+    },
+    {
+      "cpu": 7,
+      "payload_pid": 1320299,
+      "threads_checked": 15
+    },
+    {
+      "cpu": 20,
+      "payload_pid": 1320642,
+      "threads_checked": 15
+    },
+    {
+      "cpu": 23,
+      "payload_pid": 1320703,
+      "threads_checked": 15
+    },
+    {
+      "cpu": 9,
+      "payload_pid": 1320755,
+      "threads_checked": 15
+    },
+    {
+      "cpu": 25,
+      "payload_pid": 1320756,
+      "threads_checked": 15
+    },
+    {
+      "cpu": 22,
+      "payload_pid": 1320885,
+      "threads_checked": 15
+    },
+    {
+      "cpu": 15,
+      "payload_pid": 1320989,
+      "threads_checked": 15
+    },
+    {
+      "cpu": 18,
+      "payload_pid": 1320990,
+      "threads_checked": 15
+    },
+    {
+      "cpu": 24,
+      "payload_pid": 1320991,
+      "threads_checked": 15
+    },
+    {
+      "cpu": 12,
+      "payload_pid": 1321181,
+      "threads_checked": 15
+    },
+    {
+      "cpu": 19,
+      "payload_pid": 1321182,
+      "threads_checked": 15
+    },
+    {
+      "cpu": 21,
+      "payload_pid": 1321183,
+      "threads_checked": 15
+    }
+  ],
+  "all_pinned_cpu_only": true,
+  "scope": "Actual sampling/reduction Python processes and every live thread; conda launch wrappers use orchestration CPU27."
+}

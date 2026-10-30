@@ -1,0 +1,14 @@
+{
+  "imported_report_commit": "8de275df47f007e20b935bc0e8e5bb3c7debda4c",
+  "executed_source_commit": "724d5e9a94d2db417573cd8cc473224e82a60a13",
+  "summary_sha256": "1c40bccaaf17768bb326cfd2fc1846fef9af7143511eb5741a796e631bb7669c",
+  "plot_source": "benchmarks/issue_312/summarise_reflection_tuning.py::plot_movement",
+  "plot_source_sha256": "153c843da9e9dd534fc8206deb75b7c2fc0029227301e7e9914584daede2d9c2",
+  "presentation_only_changes": [
+    "shorter movement labels",
+    "plot captions and links",
+    "curated provenance"
+  ],
+  "all_numeric_results_unchanged": true,
+  "sampling_evidence_or_replay_reruns_for_publication": 0
+}

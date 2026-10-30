@@ -16,6 +16,10 @@ from jaxns.model import Model
 from jaxns.pytree import PureDataclassPytree, pytree_ravel
 from jaxns.results import BlockData, NestedSamplerResults
 from jaxns.samples import Samples, UType
+from jaxns.sampling.covariance import (
+    CovarianceDirections,
+    empty_covariance_directions,
+)
 from jaxns.sampling.ellipsoid import (
     SamplerData,
     empty_sampler_data,
@@ -77,6 +81,9 @@ class State(PureDataclassPytree):
     # result. Keeping it on State makes capacity growth and checkpoint/resume
     # reproduce the same future transition kernels without hidden mutation.
     sampler_data: SamplerData | None = None
+    # Experimental local-only geometry; keeping the refresh position here
+    # preserves adaptation across capacity growth and checkpoint boundaries.
+    covariance_data: CovarianceDirections | None = None
     # A frozen schedule is present only while one planning round is incomplete.
     # It makes storage growth and checkpoint resume transparent without adding
     # parent identities to scientific samples or results.
@@ -149,6 +156,34 @@ class State(PureDataclassPytree):
         """Return the logical likelihood work from valid classic rows only."""
         return _total_likelihood_evaluations(self)
 
+    def covariance_directions(
+            self,
+            relative_regularisation: float = 1e-8,
+            refresh_efolds: float = 1.0,
+    ) -> "State":
+        """Enable experimental local covariance directions from this state.
+
+        Covariance is fitted to equally weighted classics above the shallowest
+        constrained parent in each dispatch batch. The Cholesky factor is
+        refreshed after the expected log volume moves by ``refresh_efolds``.
+        Every chain uses frozen geometry and the existing full-cube bracket.
+        """
+        if not np.isfinite(relative_regularisation) or relative_regularisation <= 0:
+            raise ValueError("relative_regularisation must be finite and positive.")
+        if not np.isfinite(refresh_efolds) or refresh_efolds <= 0:
+            raise ValueError("refresh_efolds must be finite and positive.")
+        if self.sampler_data is not None:
+            raise ValueError("Covariance and GMM direction data cannot be combined.")
+        if any(self.model._periodic_coordinates(self.args, self.params)):
+            raise ValueError("Covariance directions require non-periodic U-space.")
+        point, _ = pytree_ravel(self.U_supremum)
+        return dataclasses.replace(
+            self,
+            covariance_data=empty_covariance_directions(
+                point.shape[0], relative_regularisation, refresh_efolds,
+            ),
+        )
+
     def fit_gmm_directions(
             self,
             *,
@@ -197,9 +232,10 @@ class State(PureDataclassPytree):
         without refitting.
         """
         if self.sampler_data is None:
-            return self
+            return dataclasses.replace(self, covariance_data=None)
         return dataclasses.replace(
             self,
+            covariance_data=None,
             sampler_data=dataclasses.replace(
                 self.sampler_data,
                 enabled=jnp.asarray(False, mp_policy.bool_dtype),
@@ -335,6 +371,8 @@ def _fit_gmm_directions_public(
         regularisation: float,
 ) -> State:
     """Validate one explicit fit and publish only successful geometry."""
+    if state.covariance_data is not None:
+        raise ValueError("Disable covariance directions before fitting a GMM.")
     if num_components is None:
         num_components = (
             1
@@ -683,6 +721,10 @@ def _to_result(self: State) -> NestedSamplerResults:
 
 
 def _merge(self: State, other: State) -> 'State':
+    if self.covariance_data is not None or other.covariance_data is not None:
+        raise ValueError(
+            "Disable experimental covariance directions before merging states."
+        )
     for name, left, right in (
         ("model", self.model, other.model),
         ("args", self.args, other.args),

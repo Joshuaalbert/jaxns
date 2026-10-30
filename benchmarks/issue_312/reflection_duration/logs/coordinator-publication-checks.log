@@ -1,0 +1,5 @@
+Movement renderer executed successfully from unchanged SUMMARY.json; PNG visually reviewed.
+Ruff E4,E7,E9,F (isolated, matching remote default rules): passed.
+Flake8 --max-line-length 100: passed.
+Local additional Ruff rules report the same 16 existing diagnostics at 8de275d and after presentation edits; no new diagnostics.
+Git diff --check: passed.

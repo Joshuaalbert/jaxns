@@ -1,0 +1,6 @@
+{
+  "dataset": "oracle",
+  "seed": 20261021,
+  "samples": 16384,
+  "source": "Independent analytic posterior draws, cast to U float32"
+}

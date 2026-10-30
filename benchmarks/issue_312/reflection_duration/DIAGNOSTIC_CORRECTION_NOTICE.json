@@ -1,0 +1,26 @@
+{
+  "discovered_utc": "2026-10-27T13:44:49.900055+00:00",
+  "scope": "Derived movement-bin B and duration descriptors only",
+  "cause": "analyse_reflection_tuning.py reuses counts for np.unique likelihood block frequencies before movement descriptors. Raw bounce_counts and chain realised_durations remain correct.",
+  "affected_fields": [
+    "bounce_count_min",
+    "bounce_count_max",
+    "mean_bounce_count",
+    "mean_realised_duration",
+    "duration_min",
+    "duration_max"
+  ],
+  "unaffected": [
+    "classic sampling/state",
+    "all evaluation counts",
+    "raw B/h",
+    "stored per-cycle durations",
+    "exact replay",
+    "gradient work",
+    "ESJD",
+    "evidence draws and estimates",
+    "posterior metrics",
+    "bootstrap contrasts"
+  ],
+  "action": "Preserve original analysis JSON/summary/figures; recompute six descriptors from raw B plus replay steps; publish correction receipt and regenerate report only. No sampling/reduction reruns or retuning."
+}

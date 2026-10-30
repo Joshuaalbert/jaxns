@@ -1,0 +1,79 @@
+{
+  "timestamp_utc": "2026-10-22T21:27:56.527715+00:00",
+  "reason": "Distribute six benchmark processes over six physical CPU cores instead of three SMT pairs.",
+  "sampler_configuration_changed": false,
+  "runs": [
+    {
+      "seed": 0,
+      "original_cpu_affinity": [
+        1
+      ],
+      "new_cpu_affinity": [
+        0
+      ],
+      "last_progress_seconds": 3997.0506088649854,
+      "last_progress_evaluations": 34008215,
+      "last_progress_log_volume": -25.984000000008773
+    },
+    {
+      "seed": 1,
+      "original_cpu_affinity": [
+        3
+      ],
+      "new_cpu_affinity": [
+        1
+      ],
+      "last_progress_seconds": 3986.2315397440107,
+      "last_progress_evaluations": 33735250,
+      "last_progress_log_volume": -24.416000000006857
+    },
+    {
+      "seed": 2,
+      "original_cpu_affinity": [
+        5
+      ],
+      "new_cpu_affinity": [
+        2
+      ],
+      "last_progress_seconds": 3968.877946709981,
+      "last_progress_evaluations": 33362643,
+      "last_progress_log_volume": -25.08800000000768
+    },
+    {
+      "seed": 3,
+      "original_cpu_affinity": [
+        7
+      ],
+      "new_cpu_affinity": [
+        3
+      ],
+      "last_progress_seconds": 3956.9456658349372,
+      "last_progress_evaluations": 33380737,
+      "last_progress_log_volume": -24.864000000007405
+    },
+    {
+      "seed": 4,
+      "original_cpu_affinity": [
+        9
+      ],
+      "new_cpu_affinity": [
+        4
+      ],
+      "last_progress_seconds": 3982.450349360006,
+      "last_progress_evaluations": 33500186,
+      "last_progress_log_volume": -24.416000000006857
+    },
+    {
+      "seed": 5,
+      "original_cpu_affinity": [
+        11
+      ],
+      "new_cpu_affinity": [
+        5
+      ],
+      "last_progress_seconds": 3986.8422032819362,
+      "last_progress_evaluations": 33542659,
+      "last_progress_log_volume": -23.29600000000549
+    }
+  ]
+}

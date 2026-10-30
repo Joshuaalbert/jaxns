@@ -1,0 +1,22 @@
+[
+  {
+    "update": 0,
+    "population": 150,
+    "iterations": 100,
+    "warm_start": false,
+    "max_centre_error": 2.220446049250313e-16,
+    "max_covariance_error": 5.551115123125783e-17,
+    "max_log_mass_error": 0.0,
+    "archive_sha256": "43765da553fccb02689cfc24da1b65e8c2d1cf7b257e1e5a406d6306ea344956"
+  },
+  {
+    "update": 23,
+    "population": 342,
+    "iterations": 100,
+    "warm_start": false,
+    "max_centre_error": 1.0547118733938987e-15,
+    "max_covariance_error": 1.97758476261356e-16,
+    "max_log_mass_error": 1.1102230246251565e-14,
+    "archive_sha256": "6c2f10d75ce1241b3b6a0dbda4481c47efb87365d4dd07faf9f46f8f36ea94de"
+  }
+]

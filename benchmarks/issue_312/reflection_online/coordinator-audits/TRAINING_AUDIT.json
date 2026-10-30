@@ -1,0 +1,113 @@
+{
+  "passed": true,
+  "phase": "training",
+  "runs": 8,
+  "records": [
+    {
+      "folder": "/largedata/albert/jaxns-reflection-online-20261029/training/online/evidence_improving/seed-3122910",
+      "phase": "training",
+      "arm": "online",
+      "allocation": "evidence_improving",
+      "seed": 3122910,
+      "samples": 17769,
+      "evaluations": 4006817,
+      "versions": 14,
+      "real_updates": 14,
+      "batches": 354,
+      "passed": true
+    },
+    {
+      "folder": "/largedata/albert/jaxns-reflection-online-20261029/training/online/evidence_improving/seed-3122911",
+      "phase": "training",
+      "arm": "online",
+      "allocation": "evidence_improving",
+      "seed": 3122911,
+      "samples": 18474,
+      "evaluations": 4006767,
+      "versions": 8,
+      "real_updates": 8,
+      "batches": 294,
+      "passed": true
+    },
+    {
+      "folder": "/largedata/albert/jaxns-reflection-online-20261029/training/online/evidence_improving/seed-3122912",
+      "phase": "training",
+      "arm": "online",
+      "allocation": "evidence_improving",
+      "seed": 3122912,
+      "samples": 17526,
+      "evaluations": 4024573,
+      "versions": 7,
+      "real_updates": 7,
+      "batches": 301,
+      "passed": true
+    },
+    {
+      "folder": "/largedata/albert/jaxns-reflection-online-20261029/training/online/evidence_improving/seed-3122913",
+      "phase": "training",
+      "arm": "online",
+      "allocation": "evidence_improving",
+      "seed": 3122913,
+      "samples": 19165,
+      "evaluations": 4002459,
+      "versions": 13,
+      "real_updates": 13,
+      "batches": 345,
+      "passed": true
+    },
+    {
+      "folder": "/largedata/albert/jaxns-reflection-online-20261029/training/online/uniform/seed-3122910",
+      "phase": "training",
+      "arm": "online",
+      "allocation": "uniform",
+      "seed": 3122910,
+      "samples": 18456,
+      "evaluations": 4004171,
+      "versions": 9,
+      "real_updates": 9,
+      "batches": 190,
+      "passed": true
+    },
+    {
+      "folder": "/largedata/albert/jaxns-reflection-online-20261029/training/online/uniform/seed-3122911",
+      "phase": "training",
+      "arm": "online",
+      "allocation": "uniform",
+      "seed": 3122911,
+      "samples": 17997,
+      "evaluations": 4014695,
+      "versions": 13,
+      "real_updates": 13,
+      "batches": 191,
+      "passed": true
+    },
+    {
+      "folder": "/largedata/albert/jaxns-reflection-online-20261029/training/online/uniform/seed-3122912",
+      "phase": "training",
+      "arm": "online",
+      "allocation": "uniform",
+      "seed": 3122912,
+      "samples": 18392,
+      "evaluations": 4008163,
+      "versions": 11,
+      "real_updates": 11,
+      "batches": 191,
+      "passed": true
+    },
+    {
+      "folder": "/largedata/albert/jaxns-reflection-online-20261029/training/online/uniform/seed-3122913",
+      "phase": "training",
+      "arm": "online",
+      "allocation": "uniform",
+      "seed": 3122913,
+      "samples": 17953,
+      "evaluations": 4012496,
+      "versions": 15,
+      "real_updates": 15,
+      "batches": 206,
+      "passed": true
+    }
+  ],
+  "seconds": 2.247937471140176,
+  "audit_source_sha256": "08f00107a6d09eff93961594a8d41174d61b6af82dcc0a2047f33349293b62cf"
+}

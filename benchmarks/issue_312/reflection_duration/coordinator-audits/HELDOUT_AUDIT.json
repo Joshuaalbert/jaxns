@@ -1,0 +1,182 @@
+{
+  "passed": true,
+  "cases": 21,
+  "single_path_and_full_chain_cases": 42,
+  "exact_early_control_parity": true,
+  "rejected_path_self_transitions": true,
+  "schedule_sha256": "21242cb5554c0b7c23c4750d1c8aa579e3d9856ff670a0f9c18133b1771a28d6",
+  "records": [
+    {
+      "case": 0,
+      "arm": "fixed",
+      "gap": 0.1,
+      "h": 0.003,
+      "acceptance": 0.0,
+      "passed": true
+    },
+    {
+      "case": 0,
+      "arm": "short",
+      "gap": 0.1,
+      "h": 0.0001981218044016862,
+      "acceptance": 0.520263671875,
+      "passed": true
+    },
+    {
+      "case": 0,
+      "arm": "duration",
+      "gap": 0.1,
+      "h": 0.00019736842105263157,
+      "acceptance": 0.0,
+      "passed": true
+    },
+    {
+      "case": 1,
+      "arm": "fixed",
+      "gap": 5.0,
+      "h": 0.003,
+      "acceptance": 0.1663818359375,
+      "passed": true
+    },
+    {
+      "case": 1,
+      "arm": "short",
+      "gap": 5.0,
+      "h": 0.0008301693505200215,
+      "acceptance": 0.700439453125,
+      "passed": true
+    },
+    {
+      "case": 1,
+      "arm": "duration",
+      "gap": 5.0,
+      "h": 0.0008108108108108108,
+      "acceptance": 0.171875,
+      "passed": true
+    },
+    {
+      "case": 2,
+      "arm": "fixed",
+      "gap": 15.0,
+      "h": 0.003,
+      "acceptance": 0.411376953125,
+      "passed": true
+    },
+    {
+      "case": 2,
+      "arm": "short",
+      "gap": 15.0,
+      "h": 0.0014058616639771328,
+      "acceptance": 0.7042236328125,
+      "passed": true
+    },
+    {
+      "case": 2,
+      "arm": "duration",
+      "gap": 15.0,
+      "h": 0.0013636363636363635,
+      "acceptance": 0.421142578125,
+      "passed": true
+    },
+    {
+      "case": 3,
+      "arm": "fixed",
+      "gap": 40.0,
+      "h": 0.003,
+      "acceptance": 0.6038818359375,
+      "passed": true
+    },
+    {
+      "case": 3,
+      "arm": "short",
+      "gap": 40.0,
+      "h": 0.002295453068427069,
+      "acceptance": 0.6954345703125,
+      "passed": true
+    },
+    {
+      "case": 3,
+      "arm": "duration",
+      "gap": 40.0,
+      "h": 0.002142857142857143,
+      "acceptance": 0.611328125,
+      "passed": true
+    },
+    {
+      "case": 4,
+      "arm": "fixed",
+      "gap": 100.0,
+      "h": 0.003,
+      "acceptance": 0.7330322265625,
+      "passed": true
+    },
+    {
+      "case": 4,
+      "arm": "short",
+      "gap": 100.0,
+      "h": 0.003,
+      "acceptance": 0.7330322265625,
+      "passed": true
+    },
+    {
+      "case": 4,
+      "arm": "duration",
+      "gap": 100.0,
+      "h": 0.003,
+      "acceptance": 0.7330322265625,
+      "passed": true
+    },
+    {
+      "case": 5,
+      "arm": "fixed",
+      "gap": 1000.0,
+      "h": 0.003,
+      "acceptance": 0.9796142578125,
+      "passed": true
+    },
+    {
+      "case": 5,
+      "arm": "short",
+      "gap": 1000.0,
+      "h": 0.003,
+      "acceptance": 0.9796142578125,
+      "passed": true
+    },
+    {
+      "case": 5,
+      "arm": "duration",
+      "gap": 1000.0,
+      "h": 0.003,
+      "acceptance": 0.9796142578125,
+      "passed": true
+    },
+    {
+      "case": 6,
+      "arm": "fixed",
+      "gap": "infinity",
+      "h": 0.003,
+      "acceptance": 1.0,
+      "passed": true
+    },
+    {
+      "case": 6,
+      "arm": "short",
+      "gap": "infinity",
+      "h": 0.003,
+      "acceptance": 1.0,
+      "passed": true
+    },
+    {
+      "case": 6,
+      "arm": "duration",
+      "gap": "infinity",
+      "h": 0.003,
+      "acceptance": 1.0,
+      "passed": true
+    }
+  ],
+  "validation_sha256": "e53f9b386deec41da78bb7237eee02b16d561fd4202db90e68eb61f58d47b3dc",
+  "source_commit": "724d5e9a94d2db417573cd8cc473224e82a60a13",
+  "source_freeze_sha256": "5714ed9a45e0e6fc2ed189ccfdf5f5686b2c74310aac698a6d88b0b80d48f3fc",
+  "audit_script_sha256": "48980031a57c3482f6a3cc0532a7bc514cefaa8d33358684f60695d53188104b"
+}

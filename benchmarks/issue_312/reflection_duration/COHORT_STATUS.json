@@ -1,0 +1,21 @@
+{
+  "updated_utc": "2026-10-27T13:40:53.538150+00:00",
+  "controller_pid": 1315635,
+  "required_runs": 180,
+  "cores_complete": 180,
+  "analyses_complete": 180,
+  "snapshots_complete": 360,
+  "source_commit": "724d5e9a94d2db417573cd8cc473224e82a60a13",
+  "concurrency_ceiling": 24,
+  "expanded_after_measurement": true,
+  "both_duration_dynamic_replay_gates_passed": true,
+  "core_peak_rss_gib_max": 2.935546875,
+  "analysis_peak_rss_gib_max": 0.84881591796875,
+  "available_memory_gib": 473.3319091796875,
+  "free_disk_gib": 95.43341064453125,
+  "failures": [],
+  "workers": [],
+  "core_queued": 0,
+  "analysis_waiting_for_core": 0,
+  "analysis_ready": 0
+}

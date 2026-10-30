@@ -293,6 +293,14 @@ properties that must hold independently of implementation live in
 
 ## Constrained Sampler
 
+- Experimental issue 312: An explicit local `State.covariance_directions()`
+  opt-in uses equally weighted classics strictly above the shallowest parent
+  contour of a dispatch batch, with an additive isotropic covariance core.
+  Cholesky geometry refreshes after one expected-volume e-fold by default and
+  remains frozen throughout each chain. Geometry and refresh position are
+  resumable state. This experiment changes neither the released default nor
+  the GMM fitting contract; its protocol and limitations are recorded in
+  `benchmarks/issue_312/README.md`.
 - Requirement: The release sampler defaults to isotropic directions and perfect unit-hypercube
   bracketing with greedy interval shrinkage, preserving isotropic directions as an explicit
   correctness reference and fallback.

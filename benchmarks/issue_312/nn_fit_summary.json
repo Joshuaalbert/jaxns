@@ -1,0 +1,158 @@
+{
+  "stored": {
+    "fits": 7,
+    "training_value_queries": 0,
+    "converged_selected_fits": 3,
+    "warm_starts_selected": 0,
+    "last_fit": {
+      "update": 20,
+      "augment": false,
+      "max_iterations": 1000,
+      "new_true_evaluations": 0,
+      "population": 523,
+      "training_points": 128,
+      "hidden_features": 32,
+      "parameters": 1526,
+      "iterations": 206,
+      "optimizer_success": true,
+      "optimizer_message": "CONVERGENCE: RELATIVE REDUCTION OF F <= FACTR*EPSMCH",
+      "loss": 2.1671345648966998e-12,
+      "train_rmse": 4.581982358749548e-06,
+      "held_out_rmse": 2.583074926291226,
+      "warm_start": true,
+      "selected_start": 0,
+      "relative_loss": false,
+      "restart_losses": [
+        2.1671345648966998e-12,
+        2.196000176709533e-12
+      ],
+      "restart_iterations": [
+        206,
+        280
+      ],
+      "energy_scale": 18.64235765824872,
+      "population_held_out_count": 395,
+      "population_audit_rmse": 2.583075034341001,
+      "global_audit_rmse": 245258.48102615736,
+      "local": {
+        "hessian_relative_error": 0.9995336425166441,
+        "stiff_alignment": 0.9954724389832921,
+        "stiff_eigenvalue_ratio": 0.00047082440721687063
+      },
+      "global": {
+        "hessian_relative_error": 0.9997851706923062,
+        "stiff_alignment": 0.5827263062439004,
+        "stiff_eigenvalue_ratio": 0.00047589341808913777
+      },
+      "seconds": 0.8503109940793365,
+      "source_sha256": {
+        "nn_geometry.py": "7407214a9a595813c35c1c2a34248c74f321560f4ba80757669b50ae0fba132c",
+        "audit_nn_fit.py": "a4a112d3bd060e832b1838655d4a5a2ab5a8641869cfcfa6858a05af5942427f"
+      }
+    }
+  },
+  "augmented": {
+    "fits": 7,
+    "training_value_queries": 7168,
+    "converged_selected_fits": 0,
+    "warm_starts_selected": 2,
+    "last_fit": {
+      "update": 20,
+      "augment": true,
+      "max_iterations": 1000,
+      "new_true_evaluations": 1024,
+      "population": 1152,
+      "training_points": 1152,
+      "hidden_features": 32,
+      "parameters": 1526,
+      "iterations": 1000,
+      "optimizer_success": false,
+      "optimizer_message": "STOP: TOTAL NO. OF ITERATIONS REACHED LIMIT",
+      "loss": 1.703419982776061e-05,
+      "train_rmse": 99.10838399499663,
+      "held_out_rmse": null,
+      "warm_start": true,
+      "selected_start": 1,
+      "relative_loss": false,
+      "restart_losses": [
+        2.0985129329074193e-05,
+        1.703419982776061e-05
+      ],
+      "restart_iterations": [
+        1000,
+        1000
+      ],
+      "energy_scale": 24013.174141831416,
+      "population_held_out_count": 395,
+      "population_audit_rmse": 53.97617849062538,
+      "global_audit_rmse": 625418106.6162694,
+      "local": {
+        "hessian_relative_error": 0.023831947488839173,
+        "stiff_alignment": 0.9999732916158703,
+        "stiff_eigenvalue_ratio": 1.0153045711115456
+      },
+      "global": {
+        "hessian_relative_error": 1.1504777106488868,
+        "stiff_alignment": 0.6075835581890394,
+        "stiff_eigenvalue_ratio": 1.1665995356806844
+      },
+      "seconds": 2.9076722209574655,
+      "source_sha256": {
+        "nn_geometry.py": "7407214a9a595813c35c1c2a34248c74f321560f4ba80757669b50ae0fba132c",
+        "audit_nn_fit.py": "a4a112d3bd060e832b1838655d4a5a2ab5a8641869cfcfa6858a05af5942427f"
+      }
+    }
+  },
+  "relative": {
+    "fits": 7,
+    "training_value_queries": 7168,
+    "converged_selected_fits": 0,
+    "warm_starts_selected": 3,
+    "last_fit": {
+      "update": 20,
+      "augment": true,
+      "max_iterations": 2000,
+      "new_true_evaluations": 1024,
+      "population": 1152,
+      "training_points": 1152,
+      "hidden_features": 32,
+      "parameters": 1526,
+      "iterations": 2000,
+      "optimizer_success": false,
+      "optimizer_message": "STOP: TOTAL NO. OF ITERATIONS REACHED LIMIT",
+      "loss": 0.0008858364871782644,
+      "train_rmse": 3110.246287514748,
+      "held_out_rmse": null,
+      "warm_start": true,
+      "selected_start": 1,
+      "relative_loss": true,
+      "restart_losses": [
+        0.003346216326846908,
+        0.0008858364871782644
+      ],
+      "restart_iterations": [
+        2000,
+        2000
+      ],
+      "energy_scale": 24013.174141831416,
+      "population_held_out_count": 395,
+      "population_audit_rmse": 82.42256845397362,
+      "global_audit_rmse": 677721288.0938464,
+      "local": {
+        "hessian_relative_error": 0.02102568757289615,
+        "stiff_alignment": 0.9999632939009899,
+        "stiff_eigenvalue_ratio": 1.0049630293830605
+      },
+      "global": {
+        "hessian_relative_error": 1.2191979139632665,
+        "stiff_alignment": 0.6063107684620224,
+        "stiff_eigenvalue_ratio": 1.3147743868186321
+      },
+      "seconds": 4.8738364150049165,
+      "source_sha256": {
+        "nn_geometry.py": "7407214a9a595813c35c1c2a34248c74f321560f4ba80757669b50ae0fba132c",
+        "audit_nn_fit.py": "a4a112d3bd060e832b1838655d4a5a2ab5a8641869cfcfa6858a05af5942427f"
+      }
+    }
+  }
+}

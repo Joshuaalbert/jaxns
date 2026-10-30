@@ -22,6 +22,9 @@ repeat mistakes specific to this project. Keep learnings compact.
 - Keep the replacement vmap narrower than the root population on difficult
   targets. On the issue-247 10D mixture, S=100 took 20.9 s while S=150 took
   215.6 s because data-dependent rejection loops execute to the slowest lane.
+- Intersect per-coordinate entry/exit intervals for slice cube bounds.
+  Classifying a zero intersection as both signs traps face seeds; zero
+  direction components need an unrestricted interval and a safe denominator.
 - Singleton likelihood blocks are the paper's exact two-class `Beta(K, 1)`
   race, not a three-class Dirichlet with a tiny equality atom. Sampling them as
   `U**(1/K)` both preserves the model and avoids dominant Gamma-sampling cost.
@@ -45,3 +48,56 @@ repeat mistakes specific to this project. Keep learnings compact.
   stationary classic into the exact seed source before projecting the same
   allocation target. Reusing the older source reduced boundary time but made
   three fixed-seed standard gates fail and raised Jones likelihood work by 73%.
+- In the issue-312 oracle experiment, an inverse Hessian at posterior scale
+  prevented early broad-contour mixing, even on the straight ridge. Scaling
+  by contour volume geometry before imposing a prior-variance cap removed
+  that startup failure; the curved marginal remained poorly mixed. See
+  `benchmarks/issue_312/HESSIAN_REPORT.md` before generalising this experiment.
+- Normalised local Gaussian directions require the angular central Gaussian
+  density in a per-transition MH correction. Keep rejected self-transitions;
+  the endpoint density ratio alone assumes the fixed-direction slice kernel
+  remains reversible, including its bracketing rule.
+- In the issue-312 GP experiment, interpolating stored log likelihoods did
+  not imply accurate Hessians on the thin curved population. Audit held-out
+  values and curvature separately; a high MH acceptance or stationary
+  ensemble can coexist with almost perfectly correlated chain endpoints.
+  The offline GP refresh hook is not a checkpointable production interface.
+- The issue-312 midpoint reflection experiment uses exact cube drifts around
+  an involutive velocity reflection and retains invalid endpoints as rejected
+  self-transitions. Time reversal does not require finding a contour crossing.
+  It improves evidence but still under-mixes flat marginals; count autodiff
+  calls separately. Off-contour value probes helped a subsequent NN recover
+  local stiff curvature, while full-ridge generalisation remained poor. See
+  the reflection and NN reports before treating either as a production kernel.
+- Actual issue-312 NN-Hessian runs failed much worse than the GP despite good
+  late stiff-axis fits. A Hessian norm dominated by one enormous eigenvalue
+  hides false curvature in flat/moderate directions. Audit direction variance
+  relative to the true normal and retained-chain movement, not only fit error
+  and stationary marginals; see `benchmarks/issue_312/NN_SAMPLING_REPORT.md`.
+- In the local-GMM ridge experiment, warm EM fits to successively trimmed
+  populations lost all but one substantial component. Fresh 100-iteration
+  fits preserved ten components but local MH-corrected directions still
+  under-mixed. The correction uses the full marginal angular mixture at
+  both endpoints, including the isotropic branch, not a GMM point-density
+  ratio. See `benchmarks/issue_312/LOCAL_GMM_REPORT.md` for the tested scope.
+- In the issue-312 reflection experiment, a frozen contour schedule targeting
+  70% endpoint acceptance reduced movement and increased the 4M-call evidence
+  RMSE point estimates. With ten midpoint steps fixed, reducing the step size
+  also shortens the trajectory. Evaluate displacement and evidence error at
+  matched cost, and separate trajectory duration from integration resolution;
+  acceptance alone is not a mixing objective. See
+  `benchmarks/issue_312/REFLECTION_TUNING_REPORT.md`. A fresh 30-seed follow-up
+  restored duration with more midpoint steps: movement recovered, but gradient
+  cost rose and no primary RMSE advantage was resolved. Flat marginals remained
+  too narrow; see `benchmarks/issue_312/REFLECTION_DURATION_REPORT.md`.
+
+- In the online reflection follow-up, whole-chain squared displacement per model
+  call exercised h/T learning but did not resolve a 4M online RMSE benefit.
+  An independently trained frozen policy helped evidence allocation in that
+  cohort; flat marginals remained narrow. Compare the full configuration,
+  including its randomized parameter mixture, and charge training separately;
+  see `benchmarks/issue_312/REFLECTION_ONLINE_REPORT.md`.
+- For correlation diagnostics, check exact range separately on coordinates and
+  squared coordinates. Repeated floats can have a roundoff-positive SD while
+  their squares have zero SD; return null for undefined/nonfinite correlation
+  rather than failing strict JSON or altering observations.

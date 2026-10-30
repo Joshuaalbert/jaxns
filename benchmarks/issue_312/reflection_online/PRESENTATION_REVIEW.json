@@ -1,0 +1,21 @@
+{
+  "time_utc": "2026-10-30T00:03:55.861340+00:00",
+  "display_only": true,
+  "all_numerical_summary_fields_identical": true,
+  "before_source_sha256": {
+    "summarise_reflection_tuning.py": "170fc3345b1741bb876c1f8776f605205ada88cd6a7cfceac1f31c47b858241d",
+    "summarise_reflection_online.py": "7c51e4ddb7ca8023363c611e3475f5dfc24d5823a48568e88f1a56de90414a53",
+    "reflection_online_report.py": "9649add957978d8d03a24e4f9ee4784f72d1c92be681afdac10ee42f3cc8c0dd"
+  },
+  "after_source_sha256": {
+    "summarise_reflection_tuning.py": "170fc3345b1741bb876c1f8776f605205ada88cd6a7cfceac1f31c47b858241d",
+    "summarise_reflection_online.py": "7c51e4ddb7ca8023363c611e3475f5dfc24d5823a48568e88f1a56de90414a53",
+    "reflection_online_report.py": "789edede4810414741d8cc22f4235f939801220f64df9d7303cac51092b5ec3e"
+  },
+  "summary_sha256": "27be72e0e3b9cf617688a3a7ef3a2f1339585c4e3e15848882abbefe9893f5cb",
+  "changed_display": "Frozen panels finite training-knot limits; five sparse ticks; wrapped short titles",
+  "figure_sha256": {
+    "controller_policies.png": "62e51ff72d6166cd379b8a5cf590fb329c21e17f475aec6cd561c11c2c58aeb2",
+    "controller_policies.pdf": "77e6eb419dc934d98c86354cf216ed663b24fddf34031c052ebc3d53e8b4e677"
+  }
+}

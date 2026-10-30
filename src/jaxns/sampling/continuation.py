@@ -76,7 +76,11 @@ def _initialise_slice_chains(
         def draw_direction(direction_key):
             if direction_data is None:
                 return (
-                    _sample_direction(direction_key, TreeField(seed_u)),
+                    _sample_direction(
+                        direction_key,
+                        TreeField(seed_u),
+                        cholesky=sampler._direction_cholesky,
+                    ),
                     jnp.asarray(True, mp_policy.bool_dtype),
                 )
             return _draw_ellipsoidal_direction(

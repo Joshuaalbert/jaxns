@@ -1,0 +1,2 @@
+# Preserve exact archived bytes so checksums survive Git checkout.
+* -text

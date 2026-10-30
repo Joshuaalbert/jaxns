@@ -1,0 +1,16 @@
+{
+  "passed": true,
+  "snapshots": 360,
+  "runs": 180,
+  "paired_contrasts": 48,
+  "bootstrap_draws": 100000,
+  "bootstrap_seed": 3122903,
+  "bootstrap_indices_sha256": "0cff82d9e8cc9b2118eec76402b2bd67b8fb6653e776f37ad6223532fe6c7ba8",
+  "summary_sha256": "27be72e0e3b9cf617688a3a7ef3a2f1339585c4e3e15848882abbefe9893f5cb",
+  "raw_evidence_means_sds_mcse_and_intervals": true,
+  "raw_posterior_mean_sd_ess_cdf_and_discrete_reference_w1": true,
+  "exact_shared_initial_populations": true,
+  "raw_gradient_and_root_counts": true,
+  "seconds": 14.402171982917935,
+  "source_sha256": "b72b867e3c7d70fedca5dd95d6981ce8b2954bb02f5dd570007a6854996ee0ef"
+}

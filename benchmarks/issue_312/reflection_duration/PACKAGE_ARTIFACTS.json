@@ -1,0 +1,14 @@
+[
+  {
+    "path": "/largedata/albert/jaxns-reflection-duration-20261027/compact-records.tar.gz",
+    "sha256": "7f076970d598930d9778ae2dcb67269ae1ed0a95d493a9254b3ddcbec9444101",
+    "bytes": 518134864,
+    "members": 3782
+  },
+  {
+    "path": "/largedata/albert/jaxns-reflection-duration-20261027/review-artifacts.tar.gz",
+    "sha256": "70c83a8a1a8130003d03957e456eb4e05049874c08b727911e95fe5d62c58017",
+    "bytes": 18908342,
+    "members": 1663
+  }
+]

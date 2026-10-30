@@ -1,0 +1,129 @@
+{
+  "passed": true,
+  "policies": [
+    {
+      "allocation": "uniform",
+      "knots": 110,
+      "sha256": "777ed97a112c4fcb71e88ec543c9f788468a8b147530040d47a4e644f8a99073",
+      "passed": true
+    },
+    {
+      "allocation": "evidence_improving",
+      "knots": 98,
+      "sha256": "f9c2a50d336f6810ce850da36c90ebd7fd8c0745a6f9c62d4d55de435f25b43a",
+      "passed": true
+    }
+  ],
+  "source_sha256": "ca8be5f7efa0e578937dcaee1c2e82a0b419db6ffee33f5848498d414dba9556",
+  "heldout": {
+    "records": [
+      {
+        "case": 0,
+        "arm": "fixed",
+        "passed": true
+      },
+      {
+        "case": 0,
+        "arm": "frozen_uniform",
+        "passed": true
+      },
+      {
+        "case": 0,
+        "arm": "frozen_evidence_improving",
+        "passed": true
+      },
+      {
+        "case": 1,
+        "arm": "fixed",
+        "passed": true
+      },
+      {
+        "case": 1,
+        "arm": "frozen_uniform",
+        "passed": true
+      },
+      {
+        "case": 1,
+        "arm": "frozen_evidence_improving",
+        "passed": true
+      },
+      {
+        "case": 2,
+        "arm": "fixed",
+        "passed": true
+      },
+      {
+        "case": 2,
+        "arm": "frozen_uniform",
+        "passed": true
+      },
+      {
+        "case": 2,
+        "arm": "frozen_evidence_improving",
+        "passed": true
+      },
+      {
+        "case": 3,
+        "arm": "fixed",
+        "passed": true
+      },
+      {
+        "case": 3,
+        "arm": "frozen_uniform",
+        "passed": true
+      },
+      {
+        "case": 3,
+        "arm": "frozen_evidence_improving",
+        "passed": true
+      },
+      {
+        "case": 4,
+        "arm": "fixed",
+        "passed": true
+      },
+      {
+        "case": 4,
+        "arm": "frozen_uniform",
+        "passed": true
+      },
+      {
+        "case": 4,
+        "arm": "frozen_evidence_improving",
+        "passed": true
+      },
+      {
+        "case": 5,
+        "arm": "fixed",
+        "passed": true
+      },
+      {
+        "case": 5,
+        "arm": "frozen_uniform",
+        "passed": true
+      },
+      {
+        "case": 5,
+        "arm": "frozen_evidence_improving",
+        "passed": true
+      },
+      {
+        "case": 6,
+        "arm": "fixed",
+        "passed": true
+      },
+      {
+        "case": 6,
+        "arm": "frozen_uniform",
+        "passed": true
+      },
+      {
+        "case": 6,
+        "arm": "frozen_evidence_improving",
+        "passed": true
+      }
+    ],
+    "validation_sha256": "619f09aeb8caecaf72a8233d57944360750c46ac8cc92750459ac676e07577f4",
+    "passed": true
+  }
+}

@@ -1,0 +1,290 @@
+[
+  {
+    "update": 0,
+    "log_X": 0.0,
+    "max_iterations": 500,
+    "baseline": {
+      "negative_log_marginal_likelihood": -495.5317937490966,
+      "held_out_rmse": 1827469.872016121,
+      "stiff_alignment": 0.9999983418050005,
+      "stiff_eigenvalue_ratio": 1.0017858979146324,
+      "hessian_relative_error": 0.006516727081522386,
+      "iterations": 28
+    },
+    "refit": {
+      "population": 150,
+      "training_points": 128,
+      "iterations": 28,
+      "optimizer_success": true,
+      "optimizer_message": "CONVERGENCE: RELATIVE REDUCTION OF F <= FACTR*EPSMCH",
+      "negative_log_marginal_likelihood": -495.5317937490966,
+      "train_rmse": 59.12762369429826,
+      "held_out_rmse": 1827469.872016121,
+      "output_scale": 816772791.9215186,
+      "lengths": [
+        2.291988326972648,
+        0.9953200926795608,
+        999.9999999999998,
+        999.9999999999998,
+        999.9999999999998,
+        999.9999999999998,
+        999.9999999999998,
+        999.9999999999998,
+        999.9999999999998,
+        999.9999999999998,
+        999.9999999999998,
+        999.9999999999998,
+        999.9999999999998,
+        999.9999999999998,
+        999.9999999999998,
+        999.9999999999998,
+        999.9999999999998,
+        999.9999999999998
+      ],
+      "amplitude": 2.814074743203744,
+      "relative_jitter": 1e-10,
+      "warm_start": false,
+      "restart_objectives": [
+        -495.5317937490966
+      ],
+      "restart_iterations": [
+        28
+      ],
+      "hessian_relative_error": 0.006516727081522396,
+      "stiff_alignment": 0.9999983418050005,
+      "stiff_eigenvalue_ratio": 1.0017858979146324
+    }
+  },
+  {
+    "update": 1,
+    "log_X": -1.7010029359792043,
+    "max_iterations": 500,
+    "baseline": {
+      "negative_log_marginal_likelihood": 41.718779689791845,
+      "held_out_rmse": 7643092.959721714,
+      "stiff_alignment": 0.40029307766373745,
+      "stiff_eigenvalue_ratio": 0.07274887212230213,
+      "hessian_relative_error": 0.9990015913433723,
+      "iterations": 100
+    },
+    "refit": {
+      "population": 668,
+      "training_points": 128,
+      "iterations": 118,
+      "optimizer_success": true,
+      "optimizer_message": "CONVERGENCE: RELATIVE REDUCTION OF F <= FACTR*EPSMCH",
+      "negative_log_marginal_likelihood": 41.71737729074929,
+      "train_rmse": 0.000987206236280076,
+      "held_out_rmse": 7644474.837472937,
+      "output_scale": 8268423.592855017,
+      "lengths": [
+        999.9999999999998,
+        0.20678295600082333,
+        999.9999999999998,
+        999.9999999999998,
+        1.1298044819531667,
+        999.9999999999998,
+        999.9999999999998,
+        999.9999999999998,
+        999.9999999999998,
+        999.9999999999998,
+        999.9999999999998,
+        999.9999999999998,
+        4.561356948936982,
+        999.9999999999998,
+        1.2967521048408848,
+        2.9595910606287408,
+        999.9999999999998,
+        0.7679265797320257
+      ],
+      "amplitude": 0.9470292110985858,
+      "relative_jitter": 1e-10,
+      "warm_start": true,
+      "restart_objectives": [
+        41.71737729074929,
+        64.0
+      ],
+      "restart_iterations": [
+        118,
+        6
+      ],
+      "hessian_relative_error": 0.9989999718126521,
+      "stiff_alignment": 0.3845201809387492,
+      "stiff_eigenvalue_ratio": 0.07190131717132829
+    }
+  },
+  {
+    "update": 2,
+    "log_X": -2.8637979117462384,
+    "max_iterations": 500,
+    "baseline": {
+      "negative_log_marginal_likelihood": 44.878883866448696,
+      "held_out_rmse": 759552.9330867166,
+      "stiff_alignment": 0.48678828710641353,
+      "stiff_eigenvalue_ratio": 0.014265276173312455,
+      "hessian_relative_error": 0.9963489139886359,
+      "iterations": 83
+    },
+    "refit": {
+      "population": 558,
+      "training_points": 128,
+      "iterations": 83,
+      "optimizer_success": true,
+      "optimizer_message": "CONVERGENCE: RELATIVE REDUCTION OF F <= FACTR*EPSMCH",
+      "negative_log_marginal_likelihood": 44.878883866448696,
+      "train_rmse": 0.00012354336084708354,
+      "held_out_rmse": 759552.9330867166,
+      "output_scale": 755656.7181587084,
+      "lengths": [
+        0.10000000000000002,
+        999.9999999999998,
+        999.9999999999998,
+        16.94192907199662,
+        999.9999999999998,
+        999.9999999999998,
+        999.9999999999998,
+        999.9999999999998,
+        999.9999999999998,
+        999.9999999999998,
+        999.9999999999998,
+        999.9999999999998,
+        0.9836657699368883,
+        999.9999999999998,
+        999.9999999999998,
+        3.6014741375068975,
+        999.9999999999998,
+        0.5459832889019877
+      ],
+      "amplitude": 1.1125736657677112,
+      "relative_jitter": 1e-10,
+      "warm_start": true,
+      "restart_objectives": [
+        50.121884658501294,
+        44.878883866448696
+      ],
+      "restart_iterations": [
+        130,
+        83
+      ],
+      "hessian_relative_error": 0.9963489139886359,
+      "stiff_alignment": 0.48678828710641353,
+      "stiff_eigenvalue_ratio": 0.014265276173312455
+    }
+  },
+  {
+    "update": 10,
+    "log_X": -13.661179829582984,
+    "max_iterations": 500,
+    "baseline": {
+      "negative_log_marginal_likelihood": 21.0229912104422,
+      "held_out_rmse": 6.796901478943288,
+      "stiff_alignment": 0.3027867216120639,
+      "stiff_eigenvalue_ratio": 3.5205369006499016e-07,
+      "hessian_relative_error": 1.0000001506436544,
+      "iterations": 91
+    },
+    "refit": {
+      "population": 546,
+      "training_points": 128,
+      "iterations": 91,
+      "optimizer_success": true,
+      "optimizer_message": "CONVERGENCE: RELATIVE REDUCTION OF F <= FACTR*EPSMCH",
+      "negative_log_marginal_likelihood": 21.0229912104422,
+      "train_rmse": 4.725476866100902e-09,
+      "held_out_rmse": 6.796901478943288,
+      "output_scale": 14.996260307009122,
+      "lengths": [
+        0.6972397287439522,
+        999.9999999999998,
+        999.9999999999998,
+        999.9999999999998,
+        999.9999999999998,
+        1.0639423379843969,
+        4.246096407315748,
+        999.9999999999998,
+        2.5675845081309037,
+        980.8334087610039,
+        0.8964331129234399,
+        2.598911224186968,
+        3.901859234555706,
+        1.7682588772140075,
+        999.9999999999998,
+        999.9999999999998,
+        999.9999999999998,
+        1.278438835242899
+      ],
+      "amplitude": 1.2156345029810136,
+      "relative_jitter": 1e-10,
+      "warm_start": true,
+      "restart_objectives": [
+        21.0229912104422,
+        28.330752578868825
+      ],
+      "restart_iterations": [
+        91,
+        69
+      ],
+      "hessian_relative_error": 1.0000001506436544,
+      "stiff_alignment": 0.3027867216120639,
+      "stiff_eigenvalue_ratio": 3.520536900649901e-07
+    }
+  },
+  {
+    "update": 20,
+    "log_X": -29.476326930391647,
+    "max_iterations": 500,
+    "baseline": {
+      "negative_log_marginal_likelihood": 33.691487522129556,
+      "held_out_rmse": 2.241303789677437,
+      "stiff_alignment": 0.026889750317880663,
+      "stiff_eigenvalue_ratio": 1.7501636837480982e-07,
+      "hessian_relative_error": 1.000176036411795,
+      "iterations": 100
+    },
+    "refit": {
+      "population": 523,
+      "training_points": 128,
+      "iterations": 159,
+      "optimizer_success": true,
+      "optimizer_message": "CONVERGENCE: RELATIVE REDUCTION OF F <= FACTR*EPSMCH",
+      "negative_log_marginal_likelihood": 33.68944890285877,
+      "train_rmse": 6.136172437777727e-10,
+      "held_out_rmse": 2.2428473777673257,
+      "output_scale": 3.174870932355923,
+      "lengths": [
+        3.8039881655119197,
+        2.6497001317483004,
+        999.9999999999998,
+        3.388942488783249,
+        0.4995975991623443,
+        2.12445244825971,
+        999.9999999999998,
+        2.0763778540688147,
+        999.9999999999998,
+        999.9999999999998,
+        3.7347567153101813,
+        999.9999999999998,
+        4.540018845370335,
+        999.9999999999998,
+        3.6633370261721288,
+        999.9999999999998,
+        6.937533971497897,
+        1.6656907094846758
+      ],
+      "amplitude": 1.201238611530601,
+      "relative_jitter": 1e-10,
+      "warm_start": true,
+      "restart_objectives": [
+        34.966772736812445,
+        33.68944890285877
+      ],
+      "restart_iterations": [
+        148,
+        159
+      ],
+      "hessian_relative_error": 1.0001772478866342,
+      "stiff_alignment": 0.026856543786520443,
+      "stiff_eigenvalue_ratio": 1.7633866057246617e-07
+    }
+  }
+]

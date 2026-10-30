@@ -1,0 +1,16 @@
+{
+  "passed": true,
+  "changed_derived_files": 540,
+  "permitted_fields": [
+    "bounce_count_max",
+    "bounce_count_min",
+    "duration_max",
+    "duration_min",
+    "mean_bounce_count",
+    "mean_realised_duration"
+  ],
+  "all_other_fields_unchanged": true,
+  "unchanged_raw_inputs": 540,
+  "correction_receipt_sha256": "6b65915f98a77433497efc2129415b277d41321a28b948f359b069267ca58fd2",
+  "audit_script_sha256": "37fd6751dc5e5e7430fb8c60bd4e70302b035a1c9c17e23e8aaff64c3fc209b6"
+}

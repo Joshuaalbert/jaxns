@@ -1,0 +1,18 @@
+{
+  "complete": true,
+  "diagnostic_correction_applied": true,
+  "all_evidence_estimates_and_contrasts_exactly_unchanged": true,
+  "runs": 180,
+  "snapshots": 360,
+  "files": {
+    "SUMMARY.json": "1c40bccaaf17768bb326cfd2fc1846fef9af7143511eb5741a796e631bb7669c",
+    "ALL_RECORDS.csv": "fda0076262c01f58bae76961bb5d3d426be49d5723f5722c7a52c2f324a99c33",
+    "REPORT.md": "c115438273277d3f51bceae6cc9627b57ea0aa2996f18576fa1121fe7dca29d9",
+    "evidence_comparison.pdf": "29ab250a1419a8bd75b53f115b53fbd53a50a067c0f2be7b3eee3c18e89e6da9",
+    "evidence_comparison.png": "9ef7e0ef037bdafdddfde60ecedcf227f97102fd293c9ea3e2ea9a84d20d1d8a",
+    "posterior_cdfs.pdf": "f1c367e880499830c1a98387b9d9e42decf15a4d287a7d94095aa026d0c8f10e",
+    "posterior_cdfs.png": "70d2c0cf18a090cd468e3f723c060051e34cf37d9b66a5fc4afebf41bb917d9e",
+    "chain_movement.pdf": "f031df68b7e99ec05a6172e1f28aa6fa548744976b7e15ba316aec5abe73a2b1",
+    "chain_movement.png": "1e9ee0c4daa41839a6e94bf63c1da741537de71a25b627da79ecb411cfc520ee"
+  }
+}
